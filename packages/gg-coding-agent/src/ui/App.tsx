@@ -591,8 +591,14 @@ export function App(props: AppProps) {
 
   return (
     <Box flexDirection="column" minHeight={terminalHeight}>
-      {/* History — scrolled up, managed by Ink Static */}
-      <Static items={history}>{(item) => renderItem(item)}</Static>
+      {/* History — scrolled up, managed by Ink Static.
+          width="100%" is required because Static uses position:absolute internally,
+          which causes auto-width resolution to shrink-wrap content. Without it,
+          children using flexGrow+flexBasis=0 (like AssistantMessage) collapse to
+          near-zero width and text wraps at ~3 chars. */}
+      <Static items={history} style={{ width: "100%" }}>
+        {(item) => renderItem(item)}
+      </Static>
 
       {/* Content area — paddingRight prevents Yoga off-by-one blank lines
           when text wraps at the exact terminal edge */}
