@@ -62,6 +62,11 @@ export function useAgentLoop(
     ) => void;
     onServerToolCall?: (id: string, name: string, input: unknown) => void;
     onServerToolResult?: (toolUseId: string, resultType: string, data: unknown) => void;
+    onTurnEnd?: (
+      turn: number,
+      stopReason: string,
+      usage: { inputTokens: number; outputTokens: number },
+    ) => void;
     onDone?: (durationMs: number, toolsUsed: string[]) => void;
     onAborted?: () => void;
   },
@@ -73,6 +78,7 @@ export function useAgentLoop(
   const onToolEnd = callbacks?.onToolEnd;
   const onServerToolCall = callbacks?.onServerToolCall;
   const onServerToolResult = callbacks?.onServerToolResult;
+  const onTurnEnd = callbacks?.onTurnEnd;
   const onDone = callbacks?.onDone;
   const onAborted = callbacks?.onAborted;
   const [isRunning, setIsRunning] = useState(false);
@@ -315,6 +321,7 @@ export function useAgentLoop(
               break;
 
             case "turn_end":
+              onTurnEnd?.(event.turn, event.stopReason, event.usage);
               setCurrentTurn(event.turn);
               setTotalTokens((prev) => ({
                 input: prev.input + event.usage.inputTokens,
@@ -388,6 +395,7 @@ export function useAgentLoop(
       onToolEnd,
       onServerToolCall,
       onServerToolResult,
+      onTurnEnd,
       onDone,
       onAborted,
       startReveal,

@@ -10,6 +10,7 @@ export interface AppPaths {
   sessionsDir: string;
   settingsFile: string;
   authFile: string;
+  logFile: string;
   skillsDir: string;
   extensionsDir: string;
   agentsDir: string;
@@ -22,6 +23,7 @@ export function getAppPaths(): AppPaths {
     sessionsDir: path.join(agentDir, "sessions"),
     settingsFile: path.join(agentDir, "settings.json"),
     authFile: path.join(agentDir, "auth.json"),
+    logFile: path.join(agentDir, "debug.log"),
     skillsDir: path.join(agentDir, "skills"),
     extensionsDir: path.join(agentDir, "extensions"),
     agentsDir: path.join(agentDir, "agents"),

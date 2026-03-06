@@ -1,6 +1,8 @@
 import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { AgentSession } from "../core/agent-session.js";
 import { formatUserError } from "../utils/error-handler.js";
+import { initLogger, log, attachToEventBus, closeLogger } from "../core/logger.js";
+import { getAppPaths } from "../config.js";
 
 export interface JsonModeOptions {
   message: string;
@@ -18,6 +20,10 @@ function emitJson(payload: Record<string, unknown>): void {
 }
 
 export async function runJsonMode(options: JsonModeOptions): Promise<void> {
+  const paths = getAppPaths();
+  initLogger(paths.logFile, { provider: options.provider, model: options.model });
+  log("INFO", "startup", "JSON mode started");
+
   const ac = new AbortController();
   const onSigint = () => ac.abort();
   process.on("SIGINT", onSigint);
@@ -35,6 +41,7 @@ export async function runJsonMode(options: JsonModeOptions): Promise<void> {
   };
 
   const session = new AgentSession(sessionOpts);
+  attachToEventBus(session.eventBus);
 
   // Forward all agent events as NDJSON to stdout
   session.eventBus.on("text_delta", (payload) => {
@@ -81,5 +88,6 @@ export async function runJsonMode(options: JsonModeOptions): Promise<void> {
   } finally {
     process.removeListener("SIGINT", onSigint);
     await session.dispose();
+    closeLogger();
   }
 }

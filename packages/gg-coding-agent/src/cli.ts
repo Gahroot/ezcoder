@@ -15,6 +15,7 @@ import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { AuthStorage } from "./core/auth-storage.js";
 import { SessionManager } from "./core/session-manager.js";
 import { ensureAppDirs } from "./config.js";
+import { initLogger, log, closeLogger } from "./core/logger.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createTools } from "./tools/index.js";
 import { discoverAgents } from "./core/agents.js";
@@ -62,6 +63,8 @@ function main(): void {
 
   if (subcommand === "login") {
     runLogin().catch((err) => {
+      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+      closeLogger();
       process.stderr.write(formatUserError(err) + "\n");
       process.exit(1);
     });
@@ -70,6 +73,8 @@ function main(): void {
 
   if (subcommand === "logout") {
     runLogout().catch((err) => {
+      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+      closeLogger();
       process.stderr.write(formatUserError(err) + "\n");
       process.exit(1);
     });
@@ -140,6 +145,8 @@ function main(): void {
       cwd: process.cwd(),
       thinkingLevel,
     }).catch((err) => {
+      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+      closeLogger();
       process.stderr.write(formatUserError(err) + "\n");
       process.exit(1);
     });
@@ -164,6 +171,8 @@ function main(): void {
       thinkingLevel,
       maxTurns,
     }).catch((err) => {
+      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+      closeLogger();
       process.stderr.write(formatUserError(err) + "\n");
       process.exit(1);
     });
@@ -184,6 +193,8 @@ function main(): void {
     continueRecent,
     sessionPath: values.session,
   }).catch((err) => {
+    log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+    closeLogger();
     process.stderr.write(formatUserError(err) + "\n");
     process.exit(1);
   });
@@ -205,6 +216,8 @@ async function runInkTUI(opts: {
 
   // Resolve auth
   const paths = await ensureAppDirs();
+  initLogger(paths.logFile, { version: CLI_VERSION, provider, model });
+
   const authStorage = new AuthStorage(paths.authFile);
   await authStorage.load();
   const creds = await authStorage.resolveCredentials(provider);
@@ -258,7 +271,11 @@ async function runInkTUI(opts: {
 
         if (loadedMessages.length > 0) {
           messages.push(...loadedMessages);
-          sessionPath = existingPath; // reuse existing session file
+          sessionPath = existingPath;
+          log("INFO", "session", `Restored session`, {
+            path: existingPath,
+            messageCount: String(loadedMessages.length),
+          });
           initialHistory = messagesToHistoryItems(loadedMessages);
           initialHistory.push({
             kind: "info",
@@ -276,6 +293,7 @@ async function runInkTUI(opts: {
   if (!sessionPath) {
     const session = await sessionManager.create(cwd, provider, model);
     sessionPath = session.path;
+    log("INFO", "session", `New session created`, { path: sessionPath });
   }
 
   // Server-side tools (Anthropic only)
@@ -301,12 +319,17 @@ async function runInkTUI(opts: {
     sessionsDir: paths.sessionsDir,
     sessionPath,
   });
+
+  closeLogger();
 }
 
 // ── Login ──────────────────────────────────────────────────
 
 async function runLogin(): Promise<void> {
-  await ensureAppDirs();
+  const paths = await ensureAppDirs();
+  initLogger(paths.logFile, { version: CLI_VERSION });
+  log("INFO", "auth", "Login flow started");
+
   const authStorage = new AuthStorage();
   await authStorage.load();
 
@@ -364,19 +387,26 @@ async function runLogin(): Promise<void> {
     }
 
     await authStorage.setCredentials(provider, creds);
+    log("INFO", "auth", `Login succeeded for ${displayName(provider)}`);
     console.log(chalk.hex("#4ade80")(`\n✓ Logged in to ${displayName(provider)} successfully!`));
   } finally {
     rl.close();
+    closeLogger();
   }
 }
 
 // ── Logout ─────────────────────────────────────────────────
 
 async function runLogout(): Promise<void> {
-  await ensureAppDirs();
+  const paths = await ensureAppDirs();
+  initLogger(paths.logFile, { version: CLI_VERSION });
+  log("INFO", "auth", "Logout requested");
+
   const authStorage = new AuthStorage();
   await authStorage.load();
   await authStorage.clearAll();
+  log("INFO", "auth", "Logout succeeded");
+  closeLogger();
   console.log(chalk.green("Logged out successfully."));
 }
 

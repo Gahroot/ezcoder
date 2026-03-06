@@ -20,6 +20,7 @@ import { useTheme } from "./theme/theme.js";
 import { getGitBranch } from "../utils/git.js";
 import { getModel } from "../core/model-registry.js";
 import { SessionManager, type MessageEntry } from "../core/session-manager.js";
+import { log } from "../core/logger.js";
 
 // ── Completed Item Types ───────────────────────────────────
 
@@ -262,6 +263,7 @@ export function App(props: AppProps) {
       }, []),
       onToolStart: useCallback(
         (toolCallId: string, name: string, args: Record<string, unknown>) => {
+          log("INFO", "tool", `Tool call started: ${name}`, { id: toolCallId });
           if (name === "subagent") {
             // Create or update the sub-agent group item
             const newAgent: SubAgentInfo = {
@@ -325,6 +327,12 @@ export function App(props: AppProps) {
           durationMs: number,
           details?: unknown,
         ) => {
+          const level = isError ? "ERROR" : "INFO";
+          log(level as "INFO" | "ERROR", "tool", `Tool call ended: ${name}`, {
+            id: toolCallId,
+            duration: `${durationMs}ms`,
+            isError: String(isError),
+          });
           if (name === "subagent") {
             setLiveItems((prev) => {
               const groupIdx = prev.findIndex((item) => item.kind === "subagent_group");
@@ -380,12 +388,14 @@ export function App(props: AppProps) {
         [],
       ),
       onServerToolCall: useCallback((id: string, name: string, input: unknown) => {
+        log("INFO", "server_tool", `Server tool call: ${name}`, { id });
         setLiveItems((prev) => [
           ...prev,
           { kind: "server_tool_start", serverToolCallId: id, name, input, id: getId() },
         ]);
       }, []),
       onServerToolResult: useCallback((toolUseId: string, resultType: string, data: unknown) => {
+        log("INFO", "server_tool", `Server tool result`, { toolUseId, resultType });
         setLiveItems((prev) => {
           const startIdx = prev.findIndex(
             (item) => item.kind === "server_tool_start" && item.serverToolCallId === toolUseId,
@@ -410,10 +420,29 @@ export function App(props: AppProps) {
           ];
         });
       }, []),
+      onTurnEnd: useCallback(
+        (
+          turn: number,
+          stopReason: string,
+          usage: { inputTokens: number; outputTokens: number },
+        ) => {
+          log("INFO", "turn", `Turn ${turn} ended`, {
+            stopReason,
+            inputTokens: String(usage.inputTokens),
+            outputTokens: String(usage.outputTokens),
+          });
+        },
+        [],
+      ),
       onDone: useCallback((durationMs: number, toolsUsed: string[]) => {
+        log("INFO", "agent", `Agent done`, {
+          duration: `${durationMs}ms`,
+          toolsUsed: toolsUsed.join(",") || "none",
+        });
         setDoneStatus({ durationMs, toolsUsed });
       }, []),
       onAborted: useCallback(() => {
+        log("WARN", "agent", "Agent run aborted by user");
         setLiveItems((prev) => {
           const next = prev.map((item) =>
             item.kind === "subagent_group" ? { ...item, aborted: true } : item,
@@ -427,6 +456,13 @@ export function App(props: AppProps) {
   const handleSubmit = useCallback(
     async (input: string) => {
       const trimmed = input.trim();
+
+      if (trimmed.startsWith("/")) {
+        log("INFO", "command", `Slash command: ${trimmed}`);
+      } else {
+        const truncated = trimmed.length > 100 ? trimmed.slice(0, 100) + "..." : trimmed;
+        log("INFO", "input", `User input: ${truncated}`);
+      }
 
       // Handle /model directly — open inline selector
       if (trimmed === "/model" || trimmed === "/m") {
@@ -472,6 +508,7 @@ export function App(props: AppProps) {
         await agentLoop.run(input);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        log("ERROR", "error", msg);
         const isAbort = msg.includes("aborted") || msg.includes("abort");
         setLiveItems((prev) => [
           ...prev,
@@ -498,6 +535,7 @@ export function App(props: AppProps) {
     if (colonIdx === -1) return;
     const newProvider = value.slice(0, colonIdx) as Provider;
     const newModelId = value.slice(colonIdx + 1);
+    log("INFO", "model", `Model changed`, { provider: newProvider, model: newModelId });
     setCurrentProvider(newProvider);
     setCurrentModel(newModelId);
     const modelInfo = getModel(newModelId);

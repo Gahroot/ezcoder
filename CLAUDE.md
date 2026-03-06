@@ -129,6 +129,7 @@ Fix ALL errors before continuing. Quick fixes:
 - **agentLoop**: pure async generator — call LLM, yield deltas, execute tools, loop on tool_use
 - **OAuth-only auth**: no API keys, PKCE OAuth flows, tokens in `~/.gg/auth.json`
 - **Zod schemas**: tool parameters defined with Zod, converted to JSON Schema at provider boundary
+- **Debug logging**: `~/.gg/debug.log` — timestamped log of startup, auth, tool calls, turn completions, errors. Truncated on each CLI restart. Singleton logger in `src/core/logger.ts`
 
 ## Slash Commands
 

@@ -1,5 +1,7 @@
 import { AgentSession, type AgentSessionOptions } from "../core/agent-session.js";
 import { formatUserError } from "../utils/error-handler.js";
+import { initLogger, log, attachToEventBus, closeLogger } from "../core/logger.js";
+import { getAppPaths } from "../config.js";
 import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 
 export interface PrintModeOptions {
@@ -13,6 +15,10 @@ export interface PrintModeOptions {
 }
 
 export async function runPrintMode(options: PrintModeOptions): Promise<void> {
+  const paths = getAppPaths();
+  initLogger(paths.logFile, { provider: options.provider, model: options.model });
+  log("INFO", "startup", "Print mode started");
+
   const ac = new AbortController();
 
   const onSigint = () => ac.abort();
@@ -29,6 +35,7 @@ export async function runPrintMode(options: PrintModeOptions): Promise<void> {
   };
 
   const session = new AgentSession(sessionOpts);
+  attachToEventBus(session.eventBus);
 
   // Subscribe to events
   session.eventBus.on("text_delta", ({ text }) => {
@@ -53,5 +60,6 @@ export async function runPrintMode(options: PrintModeOptions): Promise<void> {
   } finally {
     process.removeListener("SIGINT", onSigint);
     await session.dispose();
+    closeLogger();
   }
 }
