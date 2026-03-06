@@ -1,17 +1,20 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Text, Box, useInput, useStdout } from "ink";
 import { useTheme } from "../theme/theme.js";
+import type { ImageAttachment } from "../../utils/image.js";
+import { extractImagePaths, readImageFile, getClipboardImage } from "../../utils/image.js";
 
 const MAX_VISIBLE_LINES = 5;
 const PROMPT = "❯ ";
 
 interface InputAreaProps {
-  onSubmit: (value: string) => void;
+  onSubmit: (value: string, images: ImageAttachment[]) => void;
   onAbort: () => void;
   disabled?: boolean;
   isActive?: boolean;
   onDownAtEnd?: () => void;
   onShiftTab?: () => void;
+  cwd: string;
 }
 
 // Border (1 each side) + padding (1 each side) = 4 characters of overhead
@@ -67,9 +70,11 @@ export function InputArea({
   isActive = true,
   onDownAtEnd,
   onShiftTab,
+  cwd,
 }: InputAreaProps) {
   const theme = useTheme();
   const [value, setValue] = useState("");
+  const [images, setImages] = useState<ImageAttachment[]>([]);
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const lastEscRef = useRef(0);
@@ -103,6 +108,35 @@ export function InputArea({
     return () => clearInterval(timer);
   }, [disabled]);
 
+  // Auto-detect image paths as they're pasted/typed — debounce so full paste arrives
+  const extractingRef = useRef(false);
+  useEffect(() => {
+    if (disabled || !value || extractingRef.current) return;
+    const timer = setTimeout(() => {
+      extractingRef.current = true;
+      extractImagePaths(value, cwd)
+        .then(async ({ imagePaths, cleanText }) => {
+          if (imagePaths.length === 0) return;
+          const newImages: ImageAttachment[] = [];
+          for (const imgPath of imagePaths) {
+            try {
+              newImages.push(await readImageFile(imgPath));
+            } catch {
+              // Not a valid image file — leave in text
+            }
+          }
+          if (newImages.length > 0) {
+            setImages((prev) => [...prev, ...newImages]);
+            setValue(cleanText);
+          }
+        })
+        .finally(() => {
+          extractingRef.current = false;
+        });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [value, cwd, disabled]);
+
   useInput(
     (input, key) => {
       if (disabled) {
@@ -119,12 +153,21 @@ export function InputArea({
 
       if (key.return) {
         const trimmed = value.trim();
-        if (trimmed) {
-          historyRef.current.push(trimmed);
+        if (trimmed || images.length > 0) {
+          if (trimmed) historyRef.current.push(trimmed);
           historyIndexRef.current = -1;
-          onSubmit(trimmed);
+          onSubmit(trimmed, [...images]);
           setValue("");
+          setImages([]);
         }
+        return;
+      }
+
+      // Ctrl+I — paste image from clipboard
+      if (key.ctrl && input === "i") {
+        getClipboardImage().then((img) => {
+          if (img) setImages((prev) => [...prev, img]);
+        });
         return;
       }
 
@@ -214,6 +257,11 @@ export function InputArea({
       paddingLeft={1}
       paddingRight={1}
     >
+      {images.length > 0 && (
+        <Box>
+          <Text color={theme.accent}>{images.map((_, i) => `[Image #${i + 1}]`).join(" ")}</Text>
+        </Box>
+      )}
       {displayLines.map((line, i) => (
         <Box key={i}>
           {/* Show prompt on first visible line only */}

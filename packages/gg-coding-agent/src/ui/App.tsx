@@ -1,7 +1,15 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Box, Text, Static } from "ink";
 import crypto from "node:crypto";
-import type { Message, Provider, ServerToolDefinition, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type {
+  Message,
+  Provider,
+  ServerToolDefinition,
+  ThinkingLevel,
+  TextContent,
+  ImageContent,
+} from "@kenkaiiii/gg-ai";
+import { extractImagePaths, type ImageAttachment } from "../utils/image.js";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { useAgentLoop, type ActivityPhase } from "./hooks/useAgentLoop.js";
 import { UserMessage } from "./components/UserMessage.js";
@@ -31,6 +39,7 @@ import { SettingsManager } from "../core/settings-manager.js";
 interface UserItem {
   kind: "user";
   text: string;
+  imageCount?: number;
   id: string;
 }
 
@@ -589,14 +598,18 @@ export function App(props: AppProps) {
   }, [doneStatus]);
 
   const handleSubmit = useCallback(
-    async (input: string) => {
+    async (input: string, inputImages: ImageAttachment[] = []) => {
       const trimmed = input.trim();
 
       if (trimmed.startsWith("/")) {
         log("INFO", "command", `Slash command: ${trimmed}`);
       } else {
         const truncated = trimmed.length > 100 ? trimmed.slice(0, 100) + "..." : trimmed;
-        log("INFO", "input", `User input: ${truncated}`);
+        log(
+          "INFO",
+          "input",
+          `User input: ${truncated}${inputImages.length > 0 ? ` (+${inputImages.length} image${inputImages.length > 1 ? "s" : ""})` : ""}`,
+        );
       }
 
       // Handle /model directly — open inline selector
@@ -632,15 +645,41 @@ export function App(props: AppProps) {
         return [];
       });
 
-      // Add user message to live area
-      const userItem: UserItem = { kind: "user", text: input, id: getId() };
+      // Build display text — strip image paths, show badges instead
+      const hasImages = inputImages.length > 0;
+      let displayText = input;
+      if (hasImages) {
+        const { cleanText } = await extractImagePaths(input, props.cwd);
+        displayText = cleanText;
+      }
+      const userItem: UserItem = {
+        kind: "user",
+        text: displayText,
+        imageCount: hasImages ? inputImages.length : undefined,
+        id: getId(),
+      };
       setLastUserMessage(input);
       setDoneStatus(null);
       setLiveItems([userItem]);
 
+      // Build user content — plain string or content array with images
+      let userContent: string | (TextContent | ImageContent)[];
+      if (hasImages) {
+        const parts: (TextContent | ImageContent)[] = [];
+        if (trimmed) {
+          parts.push({ type: "text", text: trimmed });
+        }
+        for (const img of inputImages) {
+          parts.push({ type: "image", mediaType: img.mediaType, data: img.data });
+        }
+        userContent = parts;
+      } else {
+        userContent = input;
+      }
+
       // Run agent
       try {
-        await agentLoop.run(input);
+        await agentLoop.run(userContent);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         log("ERROR", "error", msg);
@@ -722,7 +761,7 @@ export function App(props: AppProps) {
           />
         );
       case "user":
-        return <UserMessage key={item.id} text={item.text} />;
+        return <UserMessage key={item.id} text={item.text} imageCount={item.imageCount} />;
       case "assistant":
         return (
           <AssistantMessage
@@ -854,6 +893,7 @@ export function App(props: AppProps) {
         isActive={!taskBarFocused}
         onDownAtEnd={handleFocusTaskBar}
         onShiftTab={handleToggleThinking}
+        cwd={props.cwd}
       />
       {overlay === "model" ? (
         <ModelSelector

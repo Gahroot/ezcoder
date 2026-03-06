@@ -1,6 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { agentLoop, type AgentEvent, type AgentTool } from "@kenkaiiii/gg-agent";
-import type { Message, Provider, ServerToolDefinition, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type {
+  Message,
+  Provider,
+  ServerToolDefinition,
+  ThinkingLevel,
+  TextContent,
+  ImageContent,
+} from "@kenkaiiii/gg-ai";
 
 export interface ActiveToolCall {
   toolCallId: string;
@@ -25,8 +32,10 @@ export interface AgentLoopOptions {
 
 export type ActivityPhase = "waiting" | "thinking" | "generating" | "tools" | "idle";
 
+export type UserContent = string | (TextContent | ImageContent)[];
+
 export interface UseAgentLoopReturn {
-  run: (userContent: string) => Promise<void>;
+  run: (userContent: UserContent) => Promise<void>;
   abort: () => void;
   reset: () => void;
   isRunning: boolean;
@@ -172,7 +181,7 @@ export function useAgentLoop(
   }, []);
 
   const run = useCallback(
-    async (userContent: string) => {
+    async (userContent: UserContent) => {
       const ac = new AbortController();
       abortRef.current = ac;
       let wasAborted = false;
