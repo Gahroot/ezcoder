@@ -11,6 +11,7 @@ import { ProviderError } from "../errors.js";
 import { StreamResult } from "../utils/event-stream.js";
 import {
   normalizeAnthropicStopReason,
+  toAnthropicCacheControl,
   toAnthropicMessages,
   toAnthropicThinking,
   toAnthropicToolChoice,
@@ -37,23 +38,31 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
     ...(options.baseUrl ? { baseURL: options.baseUrl } : {}),
   });
 
-  const { system, messages } = toAnthropicMessages(options.messages);
+  const cacheControl = toAnthropicCacheControl(options.cacheRetention, options.baseUrl);
+  const { system, messages } = toAnthropicMessages(options.messages, cacheControl);
 
   let maxTokens = options.maxTokens ?? 4096;
-  let thinking: { type: "enabled"; budget_tokens: number } | undefined;
+  let thinking: Anthropic.ThinkingConfigParam | undefined;
+  let outputConfig: Record<string, unknown> | undefined;
 
   if (options.thinking) {
-    const t = toAnthropicThinking(options.thinking, maxTokens);
-    thinking = t.thinking as { type: "enabled"; budget_tokens: number };
+    const t = toAnthropicThinking(options.thinking, maxTokens, options.model);
+    thinking = t.thinking;
     maxTokens = t.maxTokens;
+    if (t.outputConfig) {
+      outputConfig = t.outputConfig;
+    }
   }
 
   const params: Anthropic.MessageCreateParams = {
     model: options.model,
     max_tokens: maxTokens,
     messages,
-    ...(system ? { system } : {}),
+    ...(system ? { system: system as Anthropic.MessageCreateParams["system"] } : {}),
     ...(thinking ? { thinking } : {}),
+    ...(outputConfig
+      ? { output_config: outputConfig as unknown as Anthropic.MessageCreateParams["output_config"] }
+      : {}),
     ...(options.temperature != null && !thinking ? { temperature: options.temperature } : {}),
     ...(options.topP != null ? { top_p: options.topP } : {}),
     ...(options.stop ? { stop_sequences: options.stop } : {}),
@@ -180,6 +189,16 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
       usage: {
         inputTokens: finalMessage.usage.input_tokens,
         outputTokens: finalMessage.usage.output_tokens,
+        ...((finalMessage.usage as unknown as Record<string, unknown>).cache_read_input_tokens !=
+          null && {
+          cacheRead: (finalMessage.usage as unknown as Record<string, unknown>)
+            .cache_read_input_tokens as number,
+        }),
+        ...((finalMessage.usage as unknown as Record<string, unknown>)
+          .cache_creation_input_tokens != null && {
+          cacheWrite: (finalMessage.usage as unknown as Record<string, unknown>)
+            .cache_creation_input_tokens as number,
+        }),
       },
     };
 

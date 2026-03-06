@@ -12,9 +12,17 @@ export interface BusEventMap {
   turn_end: {
     turn: number;
     stopReason: string;
-    usage: { inputTokens: number; outputTokens: number };
+    usage: { inputTokens: number; outputTokens: number; cacheRead?: number; cacheWrite?: number };
   };
-  agent_done: { totalTurns: number; totalUsage: { inputTokens: number; outputTokens: number } };
+  agent_done: {
+    totalTurns: number;
+    totalUsage: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheRead?: number;
+      cacheWrite?: number;
+    };
+  };
   error: { error: Error };
 
   // Server tool events

@@ -76,6 +76,7 @@ export async function* agentLoop(
         baseUrl: options.baseUrl,
         signal: options.signal,
         accountId: options.accountId,
+        cacheRetention: options.cacheRetention,
       });
 
       // Suppress unhandled rejection if the iterator path throws first
@@ -126,6 +127,12 @@ export async function* agentLoop(
     // Accumulate usage
     totalUsage.inputTokens += response.usage.inputTokens;
     totalUsage.outputTokens += response.usage.outputTokens;
+    if (response.usage.cacheRead) {
+      totalUsage.cacheRead = (totalUsage.cacheRead ?? 0) + response.usage.cacheRead;
+    }
+    if (response.usage.cacheWrite) {
+      totalUsage.cacheWrite = (totalUsage.cacheWrite ?? 0) + response.usage.cacheWrite;
+    }
 
     // Append assistant message to conversation
     messages.push(response.message);

@@ -65,7 +65,12 @@ export function useAgentLoop(
     onTurnEnd?: (
       turn: number,
       stopReason: string,
-      usage: { inputTokens: number; outputTokens: number },
+      usage: {
+        inputTokens: number;
+        outputTokens: number;
+        cacheRead?: number;
+        cacheWrite?: number;
+      },
     ) => void;
     onDone?: (durationMs: number, toolsUsed: string[]) => void;
     onAborted?: () => void;

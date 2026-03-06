@@ -41,7 +41,7 @@ Options:
   -m, --model <name>        Model name [default: claude-opus-4-6]
       --base-url <url>      Custom API base URL
       --system-prompt <text> Override system prompt
-      --thinking <level>    Thinking level (low, medium, high)
+      --thinking <level>    Thinking level (low, medium, high, max)
       --max-turns <n>       Maximum agent loop turns [default: 40]
   -s, --session <path>      Resume a specific session file
       --print               Print mode: one-shot, output to stdout, then exit
@@ -118,10 +118,12 @@ function main(): void {
   // Load saved settings for model/provider persistence
   let savedProvider: "anthropic" | "openai" | "glm" | "moonshot" | undefined;
   let savedModel: string | undefined;
+  let savedThinkingEnabled = false;
   try {
     const raw = JSON.parse(fs.readFileSync(getAppPaths().settingsFile, "utf-8"));
     if (raw.defaultProvider) savedProvider = raw.defaultProvider;
     if (raw.defaultModel) savedModel = raw.defaultModel;
+    if (raw.thinkingEnabled === true) savedThinkingEnabled = true;
   } catch {
     // No settings file or invalid JSON — use defaults
   }
@@ -147,7 +149,9 @@ function main(): void {
   const model: string =
     values.model ?? (!providerFromFlag && savedModel ? savedModel : getHardcodedDefault(provider));
 
-  const thinkingLevel = values.thinking as ThinkingLevel | undefined;
+  // CLI --thinking flag overrides saved setting; saved thinkingEnabled provides default
+  const thinkingLevel: ThinkingLevel | undefined =
+    (values.thinking as ThinkingLevel | undefined) ?? (savedThinkingEnabled ? "medium" : undefined);
   const maxTurns = values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined;
 
   // Print mode
@@ -238,7 +242,12 @@ async function runInkTUI(opts: {
 
   // Resolve auth
   const paths = await ensureAppDirs();
-  initLogger(paths.logFile, { version: CLI_VERSION, provider, model });
+  initLogger(paths.logFile, {
+    version: CLI_VERSION,
+    provider,
+    model,
+    thinking: opts.thinkingLevel,
+  });
 
   const authStorage = new AuthStorage(paths.authFile);
   await authStorage.load();

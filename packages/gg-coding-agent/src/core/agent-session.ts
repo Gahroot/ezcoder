@@ -228,6 +228,7 @@ export class AgentSession {
       baseUrl: this.baseUrl,
       signal: this.opts.signal,
       accountId: creds.accountId,
+      cacheRetention: "short",
     });
 
     for await (const event of generator as AsyncIterable<AgentEvent>) {

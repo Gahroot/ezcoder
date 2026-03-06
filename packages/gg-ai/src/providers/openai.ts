@@ -51,6 +51,7 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
   let textAccum = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheRead = 0;
   let finishReason: string | null = null;
 
   for await (const chunk of stream as AsyncIterable<OpenAI.ChatCompletionChunk>) {
@@ -59,6 +60,10 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens;
       outputTokens = chunk.usage.completion_tokens;
+      const details = chunk.usage.prompt_tokens_details;
+      if (details?.cached_tokens) {
+        cacheRead = details.cached_tokens;
+      }
     }
 
     if (!choice) continue;
@@ -138,7 +143,7 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
       content: contentParts.length > 0 ? contentParts : textAccum || "",
     },
     stopReason,
-    usage: { inputTokens, outputTokens },
+    usage: { inputTokens, outputTokens, ...(cacheRead > 0 && { cacheRead }) },
   };
 
   result.push({ type: "done", stopReason });

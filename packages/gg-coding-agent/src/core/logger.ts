@@ -12,7 +12,7 @@ let unsubscribers: (() => void)[] = [];
  */
 export function initLogger(
   filePath: string,
-  meta?: { version?: string; provider?: string; model?: string },
+  meta?: { version?: string; provider?: string; model?: string; thinking?: string },
 ): void {
   if (fd !== null) return;
   try {
@@ -26,6 +26,7 @@ export function initLogger(
   parts.push("started");
   if (meta?.provider) parts.push(`provider=${meta.provider}`);
   if (meta?.model) parts.push(`model=${meta.model}`);
+  if (meta?.thinking) parts.push(`thinking=${meta.thinking}`);
   log("INFO", "startup", parts.join(" "));
 }
 
@@ -84,6 +85,8 @@ export function attachToEventBus(bus: EventBus): void {
         stopReason,
         inputTokens: String(usage.inputTokens),
         outputTokens: String(usage.outputTokens),
+        ...(usage.cacheRead != null && { cacheRead: String(usage.cacheRead) }),
+        ...(usage.cacheWrite != null && { cacheWrite: String(usage.cacheWrite) }),
       });
     }),
   );
@@ -94,6 +97,8 @@ export function attachToEventBus(bus: EventBus): void {
         totalTurns: String(totalTurns),
         inputTokens: String(totalUsage.inputTokens),
         outputTokens: String(totalUsage.outputTokens),
+        ...(totalUsage.cacheRead != null && { cacheRead: String(totalUsage.cacheRead) }),
+        ...(totalUsage.cacheWrite != null && { cacheWrite: String(totalUsage.cacheWrite) }),
       });
     }),
   );

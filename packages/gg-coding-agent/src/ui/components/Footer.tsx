@@ -7,6 +7,7 @@ interface FooterProps {
   tokensIn: number;
   cwd: string;
   gitBranch?: string | null;
+  thinkingEnabled?: boolean;
 }
 
 // Model ID → short display name
@@ -72,14 +73,14 @@ const PARTIAL_BLOCKS = [
   "\u2588",
 ];
 
-export function Footer({ model, tokensIn, cwd, gitBranch }: FooterProps) {
+export function Footer({ model, tokensIn, cwd, gitBranch, thinkingEnabled }: FooterProps) {
   const theme = useTheme();
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
 
-  // Shorten home dir in path
-  const home = process.env.HOME ?? "";
-  const displayPath = home && cwd.startsWith(home) ? "~" + cwd.slice(home.length) : cwd;
+  // Show only last 2 path segments (project folder + immediate parent)
+  const parts = cwd.split("/").filter(Boolean);
+  const displayPath = parts.length <= 2 ? cwd : parts.slice(-2).join("/");
 
   const contextPct = getContextPercent(model, tokensIn);
   const contextColor = getContextColor(contextPct, theme);
@@ -116,9 +117,14 @@ export function Footer({ model, tokensIn, cwd, gitBranch }: FooterProps) {
     }
   }
 
+  // "Thinking on" / "Thinking off" + key hint (⇧⇹)
+  const thinkingText = thinkingEnabled ? "Thinking on" : "Thinking off";
+  const thinkingLen = thinkingText.length + 3 + 3; // " │ " separator + " ⇧⇹"
+
   // Truncate path if footer would overflow
   const rightLen =
     modelName.length +
+    thinkingLen +
     3 +
     barWidth +
     1 +
@@ -157,6 +163,9 @@ export function Footer({ model, tokensIn, cwd, gitBranch }: FooterProps) {
         <Text color={theme.primary} bold>
           {modelName}
         </Text>
+        {sep}
+        <Text color={thinkingEnabled ? theme.accent : theme.textDim}>{thinkingText}</Text>
+        <Text color={theme.border}>{" \u21E7\u21B9"}</Text>
       </Box>
     </Box>
   );

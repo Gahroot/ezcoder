@@ -11,6 +11,7 @@ interface InputAreaProps {
   disabled?: boolean;
   isActive?: boolean;
   onDownAtEnd?: () => void;
+  onShiftTab?: () => void;
 }
 
 // Border (1 each side) + padding (1 each side) = 4 characters of overhead
@@ -65,6 +66,7 @@ export function InputArea({
   disabled = false,
   isActive = true,
   onDownAtEnd,
+  onShiftTab,
 }: InputAreaProps) {
   const theme = useTheme();
   const [value, setValue] = useState("");
@@ -179,6 +181,11 @@ export function InputArea({
           setValue("");
         }
         lastEscRef.current = now;
+        return;
+      }
+
+      if (key.tab && key.shift) {
+        onShiftTab?.();
         return;
       }
 

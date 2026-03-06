@@ -5,6 +5,7 @@ export { stream } from "./stream.js";
 export type {
   Provider,
   ThinkingLevel,
+  CacheRetention,
   TextContent,
   ThinkingContent,
   ImageContent,

@@ -6,7 +6,11 @@ export type Provider = "anthropic" | "openai" | "glm" | "moonshot";
 
 // ── Thinking ───────────────────────────────────────────────
 
-export type ThinkingLevel = "low" | "medium" | "high";
+export type ThinkingLevel = "low" | "medium" | "high" | "max";
+
+// ── Cache ─────────────────────────────────────────────────
+
+export type CacheRetention = "none" | "short" | "long";
 
 // ── Content Types ──────────────────────────────────────────
 
@@ -181,6 +185,8 @@ export interface StreamResponse {
 export interface Usage {
   inputTokens: number;
   outputTokens: number;
+  cacheRead?: number;
+  cacheWrite?: number;
   serverToolUse?: { webSearchRequests?: number; webFetchRequests?: number };
 }
 
@@ -201,6 +207,8 @@ export interface StreamOptions {
   apiKey?: string;
   baseUrl?: string;
   signal?: AbortSignal;
+  /** Prompt cache retention preference. Providers map this to their supported values. Default: "short". */
+  cacheRetention?: CacheRetention;
   /** OpenAI ChatGPT account ID (from OAuth JWT) for codex endpoint */
   accountId?: string;
 }

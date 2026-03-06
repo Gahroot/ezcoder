@@ -74,7 +74,12 @@ export function Banner({ version, model, cwd }: BannerProps) {
       <Box>
         <GradientText text={LOGO_LINES[2]} shift={shift} />
         <Text>{GAP}</Text>
-        <Text color={theme.textDim}>{displayPath}</Text>
+        <Text color={theme.textDim}>
+          {displayPath}
+          {"  "}
+        </Text>
+        <Text color={theme.border}>Shift+Tab</Text>
+        <Text color={theme.textDim}> toggle thinking</Text>
       </Box>
     </Box>
   );

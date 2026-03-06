@@ -130,6 +130,7 @@ export interface AgentOptions {
   baseUrl?: string;
   signal?: AbortSignal;
   accountId?: string;
+  cacheRetention?: StreamOptions["cacheRetention"];
   /**
    * Called before each LLM call. Allows the caller to inspect and transform
    * the messages array (e.g. compaction, truncation). Return the same array

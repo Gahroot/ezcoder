@@ -222,6 +222,7 @@ export function App(props: AppProps) {
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState(props.model);
   const [currentProvider, setCurrentProvider] = useState(props.provider);
+  const [thinkingEnabled, setThinkingEnabled] = useState(!!props.thinking);
   const messagesRef = useRef<Message[]>(props.messages);
   const nextIdRef = useRef(0);
   const wasRunningRef = useRef(false);
@@ -333,7 +334,7 @@ export function App(props: AppProps) {
       tools: props.tools,
       serverTools: props.serverTools,
       maxTokens: props.maxTokens,
-      thinking: props.thinking,
+      thinking: thinkingEnabled ? (props.thinking ?? "medium") : undefined,
       apiKey: activeApiKey,
       baseUrl: props.baseUrl,
       accountId: activeAccountId,
@@ -508,12 +509,19 @@ export function App(props: AppProps) {
         (
           turn: number,
           stopReason: string,
-          usage: { inputTokens: number; outputTokens: number },
+          usage: {
+            inputTokens: number;
+            outputTokens: number;
+            cacheRead?: number;
+            cacheWrite?: number;
+          },
         ) => {
           log("INFO", "turn", `Turn ${turn} ended`, {
             stopReason,
             inputTokens: String(usage.inputTokens),
             outputTokens: String(usage.outputTokens),
+            ...(usage.cacheRead != null && { cacheRead: String(usage.cacheRead) }),
+            ...(usage.cacheWrite != null && { cacheWrite: String(usage.cacheWrite) }),
           });
         },
         [],
@@ -653,6 +661,22 @@ export function App(props: AppProps) {
       process.exit(0);
     }
   }, [agentLoop]);
+
+  const handleToggleThinking = useCallback(() => {
+    setThinkingEnabled((prev) => {
+      const next = !prev;
+      log("INFO", "thinking", `Thinking ${next ? "enabled" : "disabled"}`);
+      setLiveItems((items) => [
+        ...items,
+        { kind: "info", text: `Thinking ${next ? "on" : "off"}`, id: getId() },
+      ]);
+      if (props.settingsFile) {
+        const sm = new SettingsManager(props.settingsFile);
+        sm.load().then(() => sm.set("thinkingEnabled", next));
+      }
+      return next;
+    });
+  }, [props.settingsFile]);
 
   const handleModelSelect = useCallback(
     (value: string) => {
@@ -827,6 +851,7 @@ export function App(props: AppProps) {
         disabled={agentLoop.isRunning}
         isActive={!taskBarFocused}
         onDownAtEnd={handleFocusTaskBar}
+        onShiftTab={handleToggleThinking}
       />
       {overlay === "model" ? (
         <ModelSelector
@@ -842,6 +867,7 @@ export function App(props: AppProps) {
           tokensIn={agentLoop.contextUsed}
           cwd={props.cwd}
           gitBranch={gitBranch}
+          thinkingEnabled={thinkingEnabled}
         />
       )}
       {bgTasks.length > 0 && (
