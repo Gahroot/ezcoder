@@ -148,7 +148,7 @@ That's it.
 ggcoder
 ```
 
-Type `/help` inside a session to see everything available.
+All slash commands are listed above. Just start typing `/` and go.
 
 ---
 
