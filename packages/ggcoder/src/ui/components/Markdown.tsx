@@ -1,4 +1,4 @@
-import React, { useRef, useState, useLayoutEffect } from "react";
+import React, { useRef, useState, useLayoutEffect, useMemo } from "react";
 import { Text, Box, useStdout, measureElement, type DOMElement } from "ink";
 import { marked, type Token, type Tokens } from "marked";
 import { useTheme, type Theme } from "../theme/theme.js";
@@ -28,7 +28,7 @@ export function Markdown({ children }: { children: string }) {
         setMeasuredWidth(width);
       }
     }
-  });
+  }, [children, measuredWidth]);
 
   // Use measured width when available. On first mount (before layout runs)
   // fall back to stdout.columns minus padding overhead so tables don't
@@ -36,10 +36,31 @@ export function Markdown({ children }: { children: string }) {
   // plus 1 col safety margin = 4.  After the first layout pass,
   // measuredWidth takes over with the exact value.
   const columns = measuredWidth > 0 ? measuredWidth : Math.max(40, (stdout?.columns ?? 80) - 4);
-  const tokens = marked.lexer(children);
+
+  // Stabilise table rendering during streaming: if the text ends with an
+  // incomplete table row (starts with `|` but doesn't end with `|`), strip
+  // that trailing fragment before parsing.  This prevents marked from
+  // flip-flopping between "text" and "table" tokens as each character
+  // arrives, which is the primary cause of table flicker.
+  const stabilised = useMemo(() => {
+    const lines = children.split("\n");
+    let trailingFragment = "";
+    // Walk backwards to find an incomplete trailing table row
+    if (lines.length > 0) {
+      const lastLine = lines[lines.length - 1];
+      if (lastLine.startsWith("|") && !lastLine.trimEnd().endsWith("|")) {
+        trailingFragment = lines.pop()!;
+      }
+    }
+    return { body: lines.join("\n"), trailingFragment };
+  }, [children]);
+
+  const tokens = useMemo(() => marked.lexer(stabilised.body), [stabilised.body]);
+
   return (
     <Box ref={ref} flexDirection="column" flexShrink={1}>
       {renderTokens(tokens, theme, columns)}
+      {stabilised.trailingFragment && <Text color={theme.text}>{stabilised.trailingFragment}</Text>}
     </Box>
   );
 }
