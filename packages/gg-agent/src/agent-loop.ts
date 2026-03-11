@@ -315,8 +315,9 @@ export async function* agentLoop(
     Promise.all(executions)
       .then((results) => {
         if (toolResultsFinalized) return;
+        const resultsMap = new Map(results.map((r) => [r.toolCallId, r]));
         for (const tc of toolCalls) {
-          const r = results.find((x) => x.toolCallId === tc.id)!;
+          const r = resultsMap.get(tc.id)!;
           toolResults.push({
             type: "tool_result",
             toolCallId: tc.id,
@@ -344,8 +345,9 @@ export async function* agentLoop(
       // Without this, an aborted turn leaves an orphaned tool_use in the
       // message history which causes Anthropic API 400 errors on the next
       // request.
+      const resolvedIds = new Set(toolResults.map((r) => r.toolCallId));
       for (const tc of toolCalls) {
-        if (!toolResults.some((r) => r.toolCallId === tc.id)) {
+        if (!resolvedIds.has(tc.id)) {
           toolResults.push({
             type: "tool_result",
             toolCallId: tc.id,
