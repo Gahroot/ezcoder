@@ -10,6 +10,7 @@ import readline from "node:readline/promises";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { renderApp } from "./ui/render.js";
+import { runJsonMode } from "./modes/json-mode.js";
 import { renderLoginSelector } from "./ui/login.js";
 import { renderSessionSelector } from "./ui/sessions.js";
 import type { CompletedItem } from "./ui/App.js";
@@ -80,17 +81,44 @@ function main(): void {
     process.argv.splice(2, 1);
   }
 
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     options: {
       version: { type: "boolean", short: "v" },
+      json: { type: "boolean" },
+      provider: { type: "string" },
+      model: { type: "string" },
+      "max-turns": { type: "string" },
+      "system-prompt": { type: "string" },
     },
-    allowPositionals: false,
+    allowPositionals: true,
     strict: true,
   });
 
   if (values.version) {
     console.log(CLI_VERSION);
     process.exit(0);
+  }
+
+  // JSON mode — used by sub-agents
+  if (values.json) {
+    const message = positionals[0] ?? "";
+    const jsonProvider = (values.provider ?? "anthropic") as Provider;
+    const jsonModel = values.model ?? "claude-opus-4-6";
+    const maxTurns = values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined;
+    const systemPrompt = values["system-prompt"];
+    const cwd = process.cwd();
+    runJsonMode({
+      message,
+      provider: jsonProvider,
+      model: jsonModel,
+      cwd,
+      systemPrompt,
+      maxTurns,
+    }).catch((err: unknown) => {
+      process.stderr.write(formatUserError(err) + "\n");
+      process.exit(1);
+    });
+    return;
   }
 
   // Load saved settings for model/provider persistence

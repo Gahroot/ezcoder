@@ -4,7 +4,14 @@ import { useTheme } from "../theme/theme.js";
 import { Spinner } from "./Spinner.js";
 import { highlightCode, langFromPath } from "../utils/highlight.js";
 
-const MAX_OUTPUT_LINES = 4;
+const MAX_OUTPUT_LINES = 4; // max lines shown per tool result
+
+/** Truncate a line so it fits within ~1 terminal row. */
+function truncateLine(line: string, reservedChars = 6): string {
+  const cols = process.stdout.columns || 80;
+  const max = cols - reservedChars;
+  return line.length > max ? line.slice(0, max) + "…" : line;
+}
 
 interface ToolRunningProps {
   status: "running";
@@ -371,7 +378,7 @@ function buildResultBody(name: string, result: string, isError: boolean): BodyCo
     return {
       lines: display.map((l, i) => (
         <Text key={i} color="#f87171">
-          {l}
+          {truncateLine(l)}
         </Text>
       )),
       totalLines: lines.length,
@@ -390,7 +397,7 @@ function buildResultBody(name: string, result: string, isError: boolean): BodyCo
       return {
         lines: display.map((l, i) => (
           <Text key={i} color={exitCode !== "0" ? "#fbbf24" : "#9ca3af"}>
-            {l}
+            {truncateLine(l)}
           </Text>
         )),
         totalLines: outputLines.length,
@@ -434,7 +441,7 @@ function buildResultBody(name: string, result: string, isError: boolean): BodyCo
       return {
         lines: display.map((l, i) => (
           <Text key={i} color="#9ca3af">
-            {l}
+            {truncateLine(l)}
           </Text>
         )),
         totalLines: lines.length,
@@ -541,7 +548,10 @@ const GrepLine = memo(function GrepLine({ line }: { line: string }) {
 
   const file = line.slice(0, firstColon);
   const lineNo = line.slice(firstColon + 1, secondColon);
-  const content = line.slice(secondColon + 1);
+  const rawContent = line.slice(secondColon + 1);
+  // Truncate so the full line fits within ~4 terminal rows
+  const prefixLen = file.length + lineNo.length + 2; // 2 = colons
+  const content = truncateLine(rawContent, prefixLen + 6);
 
   return (
     <Text>
