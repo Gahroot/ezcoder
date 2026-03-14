@@ -21,6 +21,7 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
   const client = new OpenAI({
     apiKey: options.apiKey,
     ...(options.baseUrl ? { baseURL: options.baseUrl } : {}),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
   });
 
   // GLM and Moonshot use a custom `thinking` body param instead of `reasoning_effort`

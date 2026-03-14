@@ -32,6 +32,7 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
       ? { apiKey: null as unknown as string, authToken: options.apiKey }
       : { apiKey: options.apiKey }),
     ...(options.baseUrl ? { baseURL: options.baseUrl } : {}),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
     ...(isOAuth
       ? {
           defaultHeaders: {
