@@ -113,9 +113,9 @@ export function Footer({
     }
   }
 
-  // "Plan on" / "Plan off" + key hint (^P)
+  // "Plan on" / "Plan off" + key hint (⇧P)
   const planText = planMode ? "Plan on" : "Plan off";
-  const planLen = planText.length + 3 + 3; // " │ " separator + " ^P"
+  const planLen = planText.length + 3 + 3; // " │ " separator + " ⇧P"
 
   // "Thinking on" / "Thinking off" + key hint (⇧⇹)
   const thinkingText = thinkingEnabled ? "Thinking on" : "Thinking off";
@@ -166,7 +166,7 @@ export function Footer({
         </Text>
         {sep}
         <Text color={planMode ? theme.planPrimary : theme.textDim}>{planText}</Text>
-        <Text color={theme.border}>{" ^P"}</Text>
+        <Text color={theme.border}>{" ⇧P"}</Text>
         {sep}
         <Text color={thinkingEnabled ? theme.accent : theme.textDim}>{thinkingText}</Text>
         <Text color={theme.border}>{" \u21E7\u21B9"}</Text>

@@ -204,8 +204,8 @@ export function InputArea({
         return;
       }
 
-      // Ctrl+P toggles plan mode
-      if (key.ctrl && input === "p") {
+      // Shift+P toggles plan mode
+      if (input === "P" && !key.ctrl && !key.meta) {
         onTogglePlanMode?.();
         return;
       }
