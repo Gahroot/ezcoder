@@ -688,9 +688,9 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
 
     // EZ logo with gradient (matches Banner.tsx)
     const LOGO = [
-      " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-      " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-      " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+      " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+      " \u2588\u2580\u2580   \u2584\u2580 ",
+      " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
     ];
     const GRADIENT = [
       "#60a5fa",

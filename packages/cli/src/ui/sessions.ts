@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import { SessionManager, type SessionInfo } from "../core/session-manager.js";
 
 const LOGO_LINES = [
-  " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-  " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-  " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+  " \u2588\u2580\u2580   \u2584\u2580 ",
+  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
 ];
 const GRADIENT = [
   "#60a5fa",
