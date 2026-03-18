@@ -1021,6 +1021,7 @@ export function App(props: AppProps) {
       onAborted: useCallback(() => {
         log("WARN", "agent", "Agent run aborted by user");
         setRunAllTasks(false);
+        setDoneStatus(null);
         setLiveItems((prev) => {
           const next = prev.map((item): CompletedItem => {
             if (item.kind === "subagent_group") return { ...item, aborted: true };

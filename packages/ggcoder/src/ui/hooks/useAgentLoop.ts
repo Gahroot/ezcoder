@@ -590,6 +590,12 @@ export function useAgentLoop(
           }
           wasAborted = true;
         } finally {
+          // If the signal was aborted but the loop exited normally (e.g.
+          // agent_done fired right before the abort), treat it as aborted so
+          // the user sees "Request was stopped." instead of a duration verb.
+          if (!wasAborted && ac.signal.aborted) {
+            wasAborted = true;
+          }
           setIsRunning(false);
           abortRef.current = null;
           stopReveal();
