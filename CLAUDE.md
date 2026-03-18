@@ -19,7 +19,7 @@ packages/
   ├── ai/                 # @prestyj/ai — Unified LLM streaming API
   │   └── src/
   │       ├── types.ts       # Core types (StreamOptions, ContentBlock, events)
-  │       ├── errors.ts      # GGAIError, ProviderError
+  │       ├── errors.ts      # EZCoderAIError, ProviderError
   │       ├── stream.ts      # Main stream() dispatch function
   │       ├── providers/     # Anthropic, OpenAI streaming implementations
   │       └── utils/         # EventStream, Zod-to-JSON-Schema

@@ -44,4 +44,4 @@ export type {
 
 // Classes
 export { StreamResult, EventStream } from "./utils/event-stream.js";
-export { GGAIError, ProviderError } from "./errors.js";
+export { EZCoderAIError, ProviderError } from "./errors.js";

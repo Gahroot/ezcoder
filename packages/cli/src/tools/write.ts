@@ -26,16 +26,16 @@ export function createWriteTool(
       const resolved = resolvePath(cwd, file_path);
       await rejectSymlink(resolved);
 
-      // In plan mode, only allow writing to .gg/plans/
+      // In plan mode, only allow writing to .ezcoder/plans/
       if (planModeRef?.current) {
-        const plansDir = path.join(cwd, ".gg", "plans");
+        const plansDir = path.join(cwd, ".ezcoder", "plans");
         if (!resolved.startsWith(plansDir)) {
           return (
-            "Error: write is restricted in plan mode. You can only write to .gg/plans/. Got: " +
+            "Error: write is restricted in plan mode. You can only write to .ezcoder/plans/. Got: " +
             file_path
           );
         }
-        // Ensure .gg/plans/ directory exists
+        // Ensure .ezcoder/plans/ directory exists
         await fs.mkdir(plansDir, { recursive: true });
       }
 

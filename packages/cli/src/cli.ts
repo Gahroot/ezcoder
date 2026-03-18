@@ -284,10 +284,10 @@ async function runInkTUI(opts: {
   }
 
   // Ensure project-local .ezcoder directories exist
-  const localGGDir = path.join(cwd, ".ezcoder");
-  await fs.promises.mkdir(path.join(localGGDir, "skills"), { recursive: true });
-  await fs.promises.mkdir(path.join(localGGDir, "commands"), { recursive: true });
-  await fs.promises.mkdir(path.join(localGGDir, "agents"), { recursive: true });
+  const localEzDir = path.join(cwd, ".ezcoder");
+  await fs.promises.mkdir(path.join(localEzDir, "skills"), { recursive: true });
+  await fs.promises.mkdir(path.join(localEzDir, "commands"), { recursive: true });
+  await fs.promises.mkdir(path.join(localEzDir, "agents"), { recursive: true });
 
   // Discover agents and skills
   const agents = await discoverAgents({
@@ -782,8 +782,8 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken = serveValues["bot-token"] ?? process.env.GG_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
-  const userIdStr = serveValues["user-id"] ?? process.env.GG_TELEGRAM_USER_ID;
+  const botToken = serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
   if (!botToken || !userId || isNaN(userId)) {

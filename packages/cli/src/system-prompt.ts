@@ -56,10 +56,10 @@ export async function buildSystemPrompt(
         `### Workflow\n` +
         `1. Explore: Use read, grep, find, ls to understand the codebase\n` +
         `2. Research: Use web_fetch for documentation and best practices\n` +
-        `3. Draft: Write a structured plan to .gg/plans/<name>.md\n` +
+        `3. Draft: Write a structured plan to .ezcoder/plans/<name>.md\n` +
         `4. Submit: Call exit_plan with the plan path for user review\n\n` +
         `### Rules\n` +
-        `- DO NOT use bash, edit, write (except to .gg/plans/), or subagent — they are restricted\n` +
+        `- DO NOT use bash, edit, write (except to .ezcoder/plans/), or subagent — they are restricted\n` +
         `- Be specific: list exact file paths, function names, line numbers\n` +
         `- Include step-by-step implementation order with dependencies\n` +
         `- Note risks and verification criteria`,

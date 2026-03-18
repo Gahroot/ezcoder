@@ -1,5 +1,5 @@
 import type { StreamOptions } from "./types.js";
-import { GGAIError, ProviderError } from "./errors.js";
+import { EZCoderAIError, ProviderError } from "./errors.js";
 import { StreamResult } from "./utils/event-stream.js";
 import { streamAnthropic } from "./providers/anthropic.js";
 import { streamOpenAI } from "./providers/openai.js";
@@ -68,7 +68,7 @@ providerRegistry.register("moonshot", {
 export function stream(options: StreamOptions): StreamResult {
   const entry = providerRegistry.get(options.provider);
   if (!entry) {
-    throw new GGAIError(
+    throw new EZCoderAIError(
       `Unknown provider: "${options.provider}". Registered: ${providerRegistry.list().join(", ")}`,
     );
   }

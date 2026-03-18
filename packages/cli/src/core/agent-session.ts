@@ -114,10 +114,10 @@ export class AgentSession {
     this.sessionManager = new SessionManager(paths.sessionsDir);
 
     // Ensure project-local .ezcoder directories exist
-    const localGGDir = path.join(this.cwd, ".ezcoder");
-    await fs.mkdir(path.join(localGGDir, "skills"), { recursive: true });
-    await fs.mkdir(path.join(localGGDir, "commands"), { recursive: true });
-    await fs.mkdir(path.join(localGGDir, "agents"), { recursive: true });
+    const localEzDir = path.join(this.cwd, ".ezcoder");
+    await fs.mkdir(path.join(localEzDir, "skills"), { recursive: true });
+    await fs.mkdir(path.join(localEzDir, "commands"), { recursive: true });
+    await fs.mkdir(path.join(localEzDir, "agents"), { recursive: true });
 
     // Discover skills
     this.skills = await discoverSkills({

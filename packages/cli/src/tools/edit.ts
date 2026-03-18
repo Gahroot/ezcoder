@@ -25,7 +25,7 @@ export function createEditTool(
     parameters: EditParams,
     async execute({ file_path, old_text, new_text }) {
       if (planModeRef?.current) {
-        return "Error: edit is restricted in plan mode. Use read-only tools to explore the codebase, then write your plan to .gg/plans/.";
+        return "Error: edit is restricted in plan mode. Use read-only tools to explore the codebase, then write your plan to .ezcoder/plans/.";
       }
       const resolved = resolvePath(cwd, file_path);
       await rejectSymlink(resolved);

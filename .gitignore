@@ -5,7 +5,7 @@ dist/
 # Auth & secrets
 .env
 .env.*
-~/.gg/
+~/.ezcoder/
 
 # OS
 .DS_Store

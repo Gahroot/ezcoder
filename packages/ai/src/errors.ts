@@ -1,11 +1,11 @@
-export class GGAIError extends Error {
+export class EZCoderAIError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
-    this.name = "GGAIError";
+    this.name = "EZCoderAIError";
   }
 }
 
-export class ProviderError extends GGAIError {
+export class ProviderError extends EZCoderAIError {
   readonly provider: string;
   readonly statusCode?: number;
 

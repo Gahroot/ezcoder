@@ -34,10 +34,10 @@ export async function runInteractive(config: CliConfig): Promise<void> {
   const paths = await ensureAppDirs();
 
   // Ensure project-local .ezcoder directories exist
-  const localGGDir = path.join(cwd, ".ezcoder");
-  await fs.mkdir(path.join(localGGDir, "skills"), { recursive: true });
-  await fs.mkdir(path.join(localGGDir, "commands"), { recursive: true });
-  await fs.mkdir(path.join(localGGDir, "agents"), { recursive: true });
+  const localEzDir = path.join(cwd, ".ezcoder");
+  await fs.mkdir(path.join(localEzDir, "skills"), { recursive: true });
+  await fs.mkdir(path.join(localEzDir, "commands"), { recursive: true });
+  await fs.mkdir(path.join(localEzDir, "agents"), { recursive: true });
 
   // Discover skills & build system prompt
   const skills = await discoverSkills({
