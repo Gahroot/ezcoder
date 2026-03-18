@@ -1,4 +1,4 @@
-# gg-framework
+# ezcoder
 
 A modular TypeScript framework for building LLM-powered apps — from raw streaming to full coding agent.
 
@@ -6,17 +6,17 @@ A modular TypeScript framework for building LLM-powered apps — from raw stream
 
 | Package | npm Name | Description |
 |---|---|---|
-| `packages/gg-ai` | `@kenkaiiii/gg-ai` | Unified LLM streaming API |
-| `packages/gg-agent` | `@kenkaiiii/gg-agent` | Agent loop with tool execution |
-| `packages/ggcoder` | `@kenkaiiii/ggcoder` | CLI coding agent |
+| `packages/ai` | `@prestyj/ai` | Unified LLM streaming API |
+| `packages/agent` | `@prestyj/agent` | Agent loop with tool execution |
+| `packages/ezcoder` | `@prestyj/cli` | CLI coding agent |
 
-**Install**: `npm i -g @kenkaiiii/ggcoder`
+**Install**: `npm i -g @prestyj/cli`
 
 ## Project Structure
 
 ```
 packages/
-  ├── gg-ai/                 # @kenkaiiii/gg-ai — Unified LLM streaming API
+  ├── ai/                 # @prestyj/ai — Unified LLM streaming API
   │   └── src/
   │       ├── types.ts       # Core types (StreamOptions, ContentBlock, events)
   │       ├── errors.ts      # GGAIError, ProviderError
@@ -24,13 +24,13 @@ packages/
   │       ├── providers/     # Anthropic, OpenAI streaming implementations
   │       └── utils/         # EventStream, Zod-to-JSON-Schema
   │
-  ├── gg-agent/              # @kenkaiiii/gg-agent — Agent loop with tool execution
+  ├── agent/              # @prestyj/agent — Agent loop with tool execution
   │   └── src/
   │       ├── types.ts       # AgentTool, AgentEvent, AgentOptions
   │       ├── agent.ts       # Agent class + AgentStream
   │       └── agent-loop.ts  # Pure async generator loop
   │
-  └── ggcoder/               # @kenkaiiii/ggcoder — CLI (ggcoder)
+  └── ezcoder/               # @prestyj/cli — CLI (ezcoder)
       └── src/
           ├── cli.ts         # CLI entry point
           ├── config.ts      # Configuration constants
@@ -52,7 +52,7 @@ packages/
 
 ## Package Dependencies
 
-`@kenkaiiii/gg-ai` (standalone) → `@kenkaiiii/gg-agent` (depends on ai) → `@kenkaiiii/ggcoder` (depends on both)
+`@prestyj/ai` (standalone) → `@prestyj/agent` (depends on ai) → `@prestyj/cli` (depends on both)
 
 ## Tech Stack
 
@@ -73,9 +73,9 @@ pnpm build                          # tsc across all packages
 pnpm check                          # tsc --noEmit across all packages
 
 # Per-package
-pnpm --filter @kenkaiiii/gg-ai build
-pnpm --filter @kenkaiiii/gg-agent build
-pnpm --filter @kenkaiiii/ggcoder build
+pnpm --filter @prestyj/ai build
+pnpm --filter @prestyj/agent build
+pnpm --filter @prestyj/cli build
 ```
 
 ## Publishing to npm
@@ -89,9 +89,9 @@ Must use `pnpm publish` (not `npm publish`) so `workspace:*` references resolve 
 3. Publish in dependency order:
 
 ```bash
-pnpm --filter @kenkaiiii/gg-ai publish --no-git-checks
-pnpm --filter @kenkaiiii/gg-agent publish --no-git-checks
-pnpm --filter @kenkaiiii/ggcoder publish --no-git-checks
+pnpm --filter @prestyj/ai publish --no-git-checks
+pnpm --filter @prestyj/agent publish --no-git-checks
+pnpm --filter @prestyj/cli publish --no-git-checks
 ```
 
 ### Auth
@@ -103,9 +103,9 @@ pnpm --filter @kenkaiiii/ggcoder publish --no-git-checks
 ### Verify
 
 ```bash
-npm view @kenkaiiii/ggcoder versions --json   # check published versions
-npm i -g @kenkaiiii/ggcoder@<version>         # test install
-ggcoder --help                                # verify CLI works
+npm view @prestyj/cli versions --json   # check published versions
+npm i -g @prestyj/cli@<version>         # test install
+ezcoder --help                                # verify CLI works
 ```
 
 If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
@@ -113,8 +113,8 @@ If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
 ## Organization Rules
 
 - Types → `types.ts` in each package
-- Providers → `providers/` directory in @kenkaiiii/gg-ai
-- Tools → `tools/` directory in @kenkaiiii/ggcoder, one file per tool
+- Providers → `providers/` directory in @prestyj/ai
+- Tools → `tools/` directory in @prestyj/cli, one file per tool
 - UI components → `ui/components/`, one component per file
 - OAuth flows → `core/oauth/`, one file per provider
 - Tests → co-located with source files
@@ -135,11 +135,11 @@ Fix ALL errors before continuing. Quick fixes:
 ## Key Patterns
 
 - **StreamResult/AgentStream**: dual-nature objects — async iterable (`for await`) + thenable (`await`)
-- **EventStream**: push-based async iterable in `@kenkaiiii/gg-ai/utils/event-stream.ts`
+- **EventStream**: push-based async iterable in `@prestyj/ai/utils/event-stream.ts`
 - **agentLoop**: pure async generator — call LLM, yield deltas, execute tools, loop on tool_use
-- **OAuth-only auth**: no API keys, PKCE OAuth flows, tokens in `~/.gg/auth.json`
+- **OAuth-only auth**: no API keys, PKCE OAuth flows, tokens in `~/.ezcoder/auth.json`
 - **Zod schemas**: tool parameters defined with Zod, converted to JSON Schema at provider boundary
-- **Debug logging**: `~/.gg/debug.log` — timestamped log of startup, auth, tool calls, turn completions, errors. Truncated on each CLI restart. Singleton logger in `src/core/logger.ts`
+- **Debug logging**: `~/.ezcoder/debug.log` — timestamped log of startup, auth, tool calls, turn completions, errors. Truncated on each CLI restart. Singleton logger in `src/core/logger.ts`
 
 ## Slash Commands
 
@@ -195,4 +195,4 @@ To add a new registry command:
 | Access agent session (messages, auth, settings) | `slash-commands.ts` registry |
 | Both UI + session access | `App.tsx` (can call session methods via props) |
 
-There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.gg/commands/` directory).
+There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.ezcoder/commands/` directory).
