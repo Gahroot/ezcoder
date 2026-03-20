@@ -6,7 +6,9 @@ import { streamOpenAI } from "./providers/openai.js";
 import { streamOpenAICodex } from "./providers/openai-codex.js";
 import { providerRegistry } from "./provider-registry.js";
 
-const GLM_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
+/** Z.AI has two API systems — some accounts work on one, some on the other. */
+const GLM_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
+const GLM_REGULAR_BASE_URL = "https://api.z.ai/api/paas/v4";
 
 // ── Register built-in providers ────────────────────────────
 
@@ -25,11 +27,10 @@ providerRegistry.register("openai", {
 });
 
 providerRegistry.register("glm", {
-  stream: (options) =>
-    streamOpenAI({
-      ...options,
-      baseUrl: options.baseUrl ?? GLM_BASE_URL,
-    }),
+  stream: (options) => {
+    if (options.baseUrl) return streamOpenAI(options);
+    return streamGLMWithFallback(options);
+  },
 });
 
 providerRegistry.register("moonshot", {
@@ -69,4 +70,43 @@ export function stream(options: StreamOptions): StreamResult {
     );
   }
   return entry.stream(options);
+}
+
+// ── GLM fallback logic ────────────────────────────────────
+
+/**
+ * Try the coding endpoint first; if it fails for any reason, retry with the
+ * regular endpoint. Z.AI inconsistently provisions accounts — some work on
+ * /api/coding/paas/v4, others on /api/paas/v4, even on the same plan.
+ */
+function streamGLMWithFallback(options: StreamOptions): StreamResult {
+  const result = new StreamResult();
+
+  runGLMWithFallback(options, result).catch((err) => {
+    result.abort(err instanceof Error ? err : new Error(String(err)));
+  });
+
+  return result;
+}
+
+async function runGLMWithFallback(options: StreamOptions, result: StreamResult): Promise<void> {
+  const codingResult = streamOpenAI({ ...options, baseUrl: GLM_CODING_BASE_URL });
+
+  try {
+    for await (const event of codingResult) {
+      result.push(event);
+    }
+    result.complete(await codingResult.response);
+  } catch {
+    // Coding endpoint failed — try regular endpoint
+    const regularResult = streamOpenAI({ ...options, baseUrl: GLM_REGULAR_BASE_URL });
+    try {
+      for await (const event of regularResult) {
+        result.push(event);
+      }
+      result.complete(await regularResult.response);
+    } catch (fallbackErr) {
+      result.abort(fallbackErr instanceof Error ? fallbackErr : new Error(String(fallbackErr)));
+    }
+  }
 }
