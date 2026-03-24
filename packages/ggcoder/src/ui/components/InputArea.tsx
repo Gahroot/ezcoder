@@ -274,11 +274,12 @@ export function InputArea({
     hasImages: false,
   });
 
-  // Self-calibrating anchor: the terminal row (1-based) of the first
-  // display line.  Set from the first single-line click (unambiguous).
-  // Ink rewrites from the same starting row on each render, so this
-  // value stays correct as text wraps to additional lines below.
-  const firstLineRowRef = useRef(-1);
+  // Self-calibrating anchor: the terminal row (1-based) of the LAST
+  // display line.  We track the last line (not the first) because Ink
+  // grows the input box upward — the bottom stays at a stable position
+  // while the top moves up as lines are added.  Calibrated on any
+  // single-line click (unambiguous), then remains valid as text wraps.
+  const lastLineRowRef = useRef(-1);
 
   // Enable SGR mouse tracking and intercept mouse sequences before Ink's
   // useInput sees them (which would insert the raw escape text).  We wrap
@@ -319,9 +320,6 @@ export function InputArea({
         process.stdout.write(DISABLE_MOUSE);
         mouseDisabled = true;
       }
-      // Invalidate row calibration — after scrolling, Ink may redraw the
-      // input area at a different terminal row.
-      firstLineRowRef.current = -1;
       if (scrollTimer) clearTimeout(scrollTimer);
       scrollTimer = setTimeout(reenableMouse, 300);
     };
@@ -365,25 +363,37 @@ export function InputArea({
 
           const numDisplayLines = layout.displayLines.length;
 
-          // Calibrate on the first single-line click: the clicked row
-          // IS the first (and only) display line's terminal row.
-          if (firstLineRowRef.current < 0 && numDisplayLines === 1) {
-            firstLineRowRef.current = termRow;
+          // Calibrate on single-line click (unambiguous — the clicked row
+          // IS the last (and only) display line's terminal row).
+          if (numDisplayLines === 1) {
+            lastLineRowRef.current = termRow;
           }
 
-          // Determine which display line was clicked
+          // Determine which display line was clicked by computing from the
+          // last line's row (stable because Ink grows the box upward).
           let clickedDisplayLine: number;
-          if (firstLineRowRef.current > 0) {
-            clickedDisplayLine = termRow - firstLineRowRef.current;
+          if (lastLineRowRef.current > 0) {
+            const firstLineRow = lastLineRowRef.current - numDisplayLines + 1;
+            clickedDisplayLine = termRow - firstLineRow;
+            // If calibration is stale (click outside valid range), recalibrate.
+            if (clickedDisplayLine < 0) {
+              lastLineRowRef.current = termRow + (numDisplayLines - 1);
+              clickedDisplayLine = 0;
+            } else if (clickedDisplayLine >= numDisplayLines) {
+              lastLineRowRef.current = termRow;
+              clickedDisplayLine = numDisplayLines - 1;
+            }
           } else {
-            // Not calibrated yet (multi-line before first click) — default to line 0
-            clickedDisplayLine = 0;
+            // Not calibrated yet — assume click is on the last display line.
+            // This calibrates correctly because the bottom is stable in Ink.
+            lastLineRowRef.current = termRow;
+            clickedDisplayLine = numDisplayLines - 1;
           }
 
           log("INFO", "mouse", "click", {
             termRow,
             termCol,
-            firstLineRow: firstLineRowRef.current,
+            lastLineRow: lastLineRowRef.current,
             clickedDisplayLine,
             numDisplayLines,
           });
