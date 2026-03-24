@@ -24,6 +24,12 @@ const SGR_MOUSE_RE_G = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
 const ENABLE_MOUSE = "\x1b[?1000h\x1b[?1006h";
 const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1000l";
 
+// Guard against stray SGR mouse sequences leaking into text input.
+// Some terminals or multiplexers send these even without mouse tracking enabled.
+function isMouseEscapeSequence(input: string): boolean {
+  return input.includes("[<") && /\[<\d+;\d+;\d+[Mm]/.test(input);
+}
+
 // Option+Arrow escape sequences — terminals send these as raw input strings
 // rather than setting key.meta + key.leftArrow reliably.
 const OPTION_LEFT_SEQUENCES = new Set([
@@ -295,6 +301,31 @@ export function InputArea({
     const originalEmit = internal_eventEmitter.emit.bind(internal_eventEmitter);
     mouseEmitRef.current.original = originalEmit;
 
+    // Scroll passthrough: when a scroll event is detected, temporarily disable
+    // mouse tracking so the terminal handles scroll natively (scrollback buffer).
+    // Re-enable after a short idle period so click-to-cursor continues to work.
+    let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+    let mouseDisabled = false;
+
+    const reenableMouse = () => {
+      if (mouseDisabled) {
+        process.stdout.write(ENABLE_MOUSE);
+        mouseDisabled = false;
+      }
+    };
+
+    const pauseMouseForScroll = () => {
+      if (!mouseDisabled) {
+        process.stdout.write(DISABLE_MOUSE);
+        mouseDisabled = true;
+      }
+      // Invalidate row calibration — after scrolling, Ink may redraw the
+      // input area at a different terminal row.
+      firstLineRowRef.current = -1;
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(reenableMouse, 300);
+    };
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     internal_eventEmitter.emit = (event: string | symbol, ...args: any[]): boolean => {
       if (event === "input" && typeof args[0] === "string") {
@@ -317,8 +348,16 @@ export function InputArea({
           // bit 6 (64): scroll wheel
           const button = btnCode & 3;
           const isMotion = (btnCode & 32) !== 0;
+          const isScroll = (btnCode & 64) !== 0;
 
-          // Only handle left-click press (button 0), not motion or scroll
+          // On scroll: disable mouse tracking so the terminal handles it natively,
+          // then re-enable after idle so click-to-cursor keeps working.
+          if (isScroll) {
+            pauseMouseForScroll();
+            continue;
+          }
+
+          // Only handle left-click press (button 0), not motion or release
           if (button !== 0 || isMotion || !isPress) continue;
 
           const layout = layoutRef.current;
@@ -391,6 +430,7 @@ export function InputArea({
     };
 
     return () => {
+      if (scrollTimer) clearTimeout(scrollTimer);
       process.stdout.write(DISABLE_MOUSE);
       process.removeListener("exit", onProcessExit);
       // Restore original emit
@@ -421,6 +461,9 @@ export function InputArea({
 
   useInput(
     (input, key) => {
+      // Filter out stray mouse escape sequences so they don't get inserted as text
+      if (isMouseEscapeSequence(input)) return;
+
       // Ctrl+T toggles task overlay — works even while agent is running
       if (key.ctrl && input === "t") {
         onToggleTasks?.();
