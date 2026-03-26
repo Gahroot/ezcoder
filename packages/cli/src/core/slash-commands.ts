@@ -87,10 +87,10 @@ export class SlashCommandRegistry {
 export function createBuiltinCommands(): SlashCommand[] {
   return [
     {
-      name: "update",
+      name: "ezcoder-update",
       aliases: ["sync", "sync-upstream"],
       description: "Pull updates from upstream gg-framework and rebrand",
-      usage: "/update [--dry-run]",
+      usage: "/ezcoder-update [--dry-run]",
       async execute(args) {
         const { execSync } = await import("node:child_process");
         const { createRequire } = await import("node:module");
@@ -146,7 +146,7 @@ export function createBuiltinCommands(): SlashCommand[] {
           return (
             "Sync failed:\n" +
             (combined || execErr.message || "Unknown error") +
-            "\n\nIf there are merge conflicts, resolve them manually, then run /sync-upstream again."
+            "\n\nIf there are merge conflicts, resolve them manually, then run /ezcoder-update again."
           );
         }
       },
