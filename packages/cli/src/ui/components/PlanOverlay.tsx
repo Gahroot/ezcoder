@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, Static, useInput } from "ink";
 import { useTheme } from "../theme/theme.js";
 import { Markdown } from "./Markdown.js";
+import { useTerminalSize } from "../hooks/useTerminalSize.js";
+import { visualWidth } from "../utils/table-text.js";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -64,26 +66,52 @@ const AMBER_GRADIENT = [
 ];
 
 const GAP = "   ";
+const LOGO_VISUAL_WIDTH = visualWidth(PLAN_LOGO[0]);
+const SIDE_BY_SIDE_MIN = LOGO_VISUAL_WIDTH + GAP.length + 20;
 
+/**
+ * Render logo text with an amber gradient, batching consecutive same-color
+ * characters into single <Text> elements to reduce ANSI escape overhead.
+ */
 function PlanGradientText({ text }: { text: string }) {
-  const chars: React.ReactNode[] = [];
+  const spans: React.ReactNode[] = [];
   let colorIdx = 0;
+  let currentColor = "";
+  let currentChars = "";
+
+  const flush = () => {
+    if (currentChars) {
+      spans.push(
+        <Text key={spans.length} color={currentColor}>
+          {currentChars}
+        </Text>,
+      );
+      currentChars = "";
+    }
+  };
+
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (ch === " ") {
-      chars.push(ch);
+      // Spaces don't need color — batch them with the current run
+      currentChars += ch;
     } else {
       const color = AMBER_GRADIENT[colorIdx % AMBER_GRADIENT.length];
-      chars.push(
-        <Text key={i} color={color}>
-          {ch}
-        </Text>,
-      );
+      if (color !== currentColor) {
+        flush();
+        currentColor = color;
+      }
+      currentChars += ch;
       colorIdx++;
     }
   }
-  return <Text>{chars}</Text>;
+  flush();
+
+  return <Text>{spans}</Text>;
 }
+
+// ── Prefix width — matches AssistantMessage / StreamingArea ──
+const PREFIX_WIDTH = 2;
 
 // ── Static items for the expanded view ───────────────────
 
@@ -101,6 +129,7 @@ interface PlanHeaderStaticItem {
 interface PlanContentStaticItem {
   kind: "plan_content";
   content: string;
+  markdownWidth: number;
   id: string;
 }
 
@@ -126,6 +155,11 @@ export function PlanOverlay({
   onDeletePlan,
 }: PlanOverlayProps) {
   const theme = useTheme();
+
+  const { columns } = useTerminalSize();
+  // Pre-compute the width available for Markdown — same as AssistantMessage.
+  // Prefix (2) = 2 chars overhead.
+  const markdownWidth = Math.max(40, columns - PREFIX_WIDTH);
 
   const [plans, setPlans] = useState<PlanEntry[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -173,21 +207,18 @@ export function PlanOverlay({
     void readFile(plan.path, "utf-8")
       .then((content) => {
         setExpandedPlan(plan);
-
-        // Build static items for Ink's <Static> — renders to scrollback
         setStaticItems([
           { kind: "banner", id: getId() },
           { kind: "plan_header", name: plan.name, id: getId() },
-          { kind: "plan_content", content, id: getId() },
+          { kind: "plan_content", content, markdownWidth, id: getId() },
         ]);
       })
       .catch(() => {
         setExpandedPlan(plan);
-
         setStaticItems([
           { kind: "banner", id: getId() },
           { kind: "plan_header", name: plan.name, id: getId() },
-          { kind: "plan_content", content: "(could not read plan)", id: getId() },
+          { kind: "plan_content", content: "(could not read plan)", markdownWidth, id: getId() },
         ]);
       });
   }
@@ -301,31 +332,53 @@ export function PlanOverlay({
     }
   });
 
-  // ── Expanded view ──
+  // ── Shared banner renderer ──
+  function renderBanner(subtitle?: string) {
+    return columns < SIDE_BY_SIDE_MIN ? (
+      <Box flexDirection="column" marginTop={1} marginBottom={1} width={columns}>
+        <PlanGradientText text={PLAN_LOGO[0]} />
+        <PlanGradientText text={PLAN_LOGO[1]} />
+        <PlanGradientText text={PLAN_LOGO[2]} />
+        <Box marginTop={1}>
+          <Text color={theme.planPrimary} bold>
+            Plan Pane
+          </Text>
+        </Box>
+        {subtitle && <Text color={theme.textDim}>{subtitle}</Text>}
+      </Box>
+    ) : (
+      <Box flexDirection="column" marginTop={1} marginBottom={1} width={columns}>
+        <Box>
+          <PlanGradientText text={PLAN_LOGO[0]} />
+          <Text>{GAP}</Text>
+          <Text color={theme.planPrimary} bold>
+            Plan Pane
+          </Text>
+        </Box>
+        <Box>
+          <PlanGradientText text={PLAN_LOGO[1]} />
+          {subtitle && (
+            <>
+              <Text>{GAP}</Text>
+              <Text color={theme.textDim}>{subtitle}</Text>
+            </>
+          )}
+        </Box>
+        <Box>
+          <PlanGradientText text={PLAN_LOGO[2]} />
+        </Box>
+      </Box>
+    );
+  }
+
+  // ── Expanded view (Static pushes content into terminal scrollback for native scroll) ──
   if (expandedPlan) {
     return (
       <Box flexDirection="column">
-        {/* Plan content rendered into scrollback via Static */}
         <Static items={staticItems}>
           {(item) => {
             if (item.kind === "banner") {
-              return (
-                <Box key={item.id} flexDirection="column" marginTop={1} marginBottom={1}>
-                  <Box>
-                    <PlanGradientText text={PLAN_LOGO[0]} />
-                    <Text>{GAP}</Text>
-                    <Text color={theme.planPrimary} bold>
-                      Plan Pane
-                    </Text>
-                  </Box>
-                  <Box>
-                    <PlanGradientText text={PLAN_LOGO[1]} />
-                  </Box>
-                  <Box>
-                    <PlanGradientText text={PLAN_LOGO[2]} />
-                  </Box>
-                </Box>
-              );
+              return <React.Fragment key={item.id}>{renderBanner()}</React.Fragment>;
             }
             if (item.kind === "plan_header") {
               return (
@@ -339,15 +392,13 @@ export function PlanOverlay({
             }
             if (item.kind === "plan_content") {
               return (
-                <Box
-                  key={item.id}
-                  flexDirection="column"
-                  borderStyle="round"
-                  borderColor={theme.planBorder}
-                  paddingLeft={1}
-                  paddingRight={1}
-                >
-                  <Markdown>{item.content}</Markdown>
+                <Box key={item.id} flexDirection="row" marginTop={1} paddingRight={1}>
+                  <Box width={PREFIX_WIDTH} flexShrink={0}>
+                    <Text color={theme.planPrimary}>{"◇ "}</Text>
+                  </Box>
+                  <Box flexDirection="column" flexGrow={1} width={item.markdownWidth}>
+                    <Markdown width={item.markdownWidth}>{item.content}</Markdown>
+                  </Box>
                 </Box>
               );
             }
@@ -405,25 +456,7 @@ export function PlanOverlay({
   return (
     <Box flexDirection="column">
       {/* Banner */}
-      <Box flexDirection="column" marginTop={1} marginBottom={1}>
-        <Box>
-          <PlanGradientText text={PLAN_LOGO[0]} />
-          <Text>{GAP}</Text>
-          <Text color={theme.planPrimary} bold>
-            Plan Pane
-          </Text>
-        </Box>
-        <Box>
-          <PlanGradientText text={PLAN_LOGO[1]} />
-          <Text>{GAP}</Text>
-          <Text color={theme.textDim}>
-            {plans.length} plan{plans.length !== 1 ? "s" : ""} in .ezcoder/plans/
-          </Text>
-        </Box>
-        <Box>
-          <PlanGradientText text={PLAN_LOGO[2]} />
-        </Box>
-      </Box>
+      {renderBanner(`${plans.length} plan${plans.length !== 1 ? "s" : ""} in .ezcoder/plans/`)}
 
       {loaded && plans.length === 0 && (
         <Box flexDirection="column">
