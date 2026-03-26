@@ -198,7 +198,10 @@ describe("plan mode tool restrictions", () => {
       expect(result).toContain("bytes");
 
       // Verify file was actually created
-      const written = await fs.readFile(path.join(tmpDir, ".ezcoder", "plans", "my-plan.md"), "utf-8");
+      const written = await fs.readFile(
+        path.join(tmpDir, ".ezcoder", "plans", "my-plan.md"),
+        "utf-8",
+      );
       expect(written).toBe("# Plan\n\nDo stuff.");
     });
 

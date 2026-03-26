@@ -87,10 +87,10 @@ export class SlashCommandRegistry {
 export function createBuiltinCommands(): SlashCommand[] {
   return [
     {
-      name: "sync-upstream",
-      aliases: ["sync"],
+      name: "update",
+      aliases: ["sync", "sync-upstream"],
       description: "Pull updates from upstream gg-framework and rebrand",
-      usage: "/sync-upstream [--dry-run]",
+      usage: "/update [--dry-run]",
       async execute(args) {
         const { execSync } = await import("node:child_process");
         const { createRequire } = await import("node:module");
