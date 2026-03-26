@@ -196,3 +196,59 @@ To add a new registry command:
 | Both UI + session access | `App.tsx` (can call session methods via props) |
 
 There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.ezcoder/commands/` directory).
+
+## Upstream Sync (KenKaiii/gg-framework)
+
+This repo is a fork of [KenKaiii/gg-framework](https://github.com/KenKaiii/gg-framework). The upstream uses different directory names and npm scope:
+
+| Ours (ezcoder) | Upstream (gg-framework) |
+|---|---|
+| `packages/ai` | `packages/gg-ai` |
+| `packages/agent` | `packages/gg-agent` |
+| `packages/cli` | `packages/ggcoder` |
+| `@prestyj/*` scope | `@kenkaiiii/*` scope |
+| `~/.ezcoder/` config dir | `~/.gg/` config dir |
+| `EZ Coder` branding | `GG Coder` branding |
+| `EZCoderAIError` | `GGAIError` |
+| `Gahroot/ezcoder` repo | `KenKaiii/gg-framework` repo |
+
+### How to sync
+
+**Option 1: Script** (from repo root):
+```bash
+./scripts/sync-upstream.sh           # merge + rename dirs + fix branding
+./scripts/sync-upstream.sh --dry-run # preview changes without doing anything
+```
+
+**Option 2: Slash command** (inside ezcoder CLI):
+```
+/sync-upstream           # full sync
+/sync-upstream --dry-run # preview
+```
+
+Both do the same thing:
+1. `git fetch upstream`
+2. `git merge upstream/main`
+3. Rename dirs: `gg-ai`→`ai`, `gg-agent`→`agent`, `ggcoder`→`cli`
+4. Fix npm scope: `@kenkaiiii`→`@prestyj`
+5. Fix branding: GG→EZ, `~/.gg/`→`~/.ezcoder/`, `GGAIError`→`EZCoderAIError`
+6. Commit the fixup
+
+### When merge conflicts happen
+
+If `git merge upstream/main` hits conflicts:
+1. Resolve them manually (`git diff --name-only --diff-filter=U` to see conflicted files)
+2. Run `git merge --continue`
+3. Re-run the script or `/sync-upstream` to apply directory renames + branding
+
+### After syncing
+
+```bash
+pnpm install && pnpm build
+# Verify no remaining upstream branding:
+grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|GGAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
+```
+
+### Block art logos
+
+The EZ block art logo (in `Banner.tsx` and `cli.ts`) uses different characters than upstream's GG logo. After syncing, verify the LOGO_LINES arrays still show EZ, not GG. The sync script handles text replacements but cannot detect block art changes — check visually with `ezcoder --help`.
