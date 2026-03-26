@@ -15,7 +15,7 @@ interface PlanEntry {
 }
 
 async function loadPlanEntries(cwd: string): Promise<PlanEntry[]> {
-  const plansDir = path.join(cwd, ".gg", "plans");
+  const plansDir = path.join(cwd, .ezcoder, "plans");
   let files: string[];
   try {
     files = await fs.readdir(plansDir);
@@ -114,19 +114,19 @@ afterEach(async () => {
 // ── loadPlanEntries ──────────────────────────────────────────
 
 describe("loadPlanEntries", () => {
-  it("returns empty array when .gg/plans/ does not exist", async () => {
+  it("returns empty array when .ezcoder/plans/ does not exist", async () => {
     const entries = await loadPlanEntries(tmpDir);
     expect(entries).toEqual([]);
   });
 
-  it("returns empty array when .gg/plans/ exists but is empty", async () => {
-    await fs.mkdir(path.join(tmpDir, ".gg", "plans"), { recursive: true });
+  it("returns empty array when .ezcoder/plans/ exists but is empty", async () => {
+    await fs.mkdir(path.join(tmpDir, .ezcoder, "plans"), { recursive: true });
     const entries = await loadPlanEntries(tmpDir);
     expect(entries).toEqual([]);
   });
 
   it("ignores non-.md files", async () => {
-    const plansDir = path.join(tmpDir, ".gg", "plans");
+    const plansDir = path.join(tmpDir, .ezcoder, "plans");
     await fs.mkdir(plansDir, { recursive: true });
     await fs.writeFile(path.join(plansDir, "notes.txt"), "not a plan");
     await fs.writeFile(path.join(plansDir, "data.json"), "{}");
@@ -138,7 +138,7 @@ describe("loadPlanEntries", () => {
   });
 
   it("loads multiple plans and strips .md extension", async () => {
-    const plansDir = path.join(tmpDir, ".gg", "plans");
+    const plansDir = path.join(tmpDir, .ezcoder, "plans");
     await fs.mkdir(plansDir, { recursive: true });
     await fs.writeFile(path.join(plansDir, "alpha.md"), "# Alpha");
     await fs.writeFile(path.join(plansDir, "beta.md"), "# Beta");
@@ -153,7 +153,7 @@ describe("loadPlanEntries", () => {
   });
 
   it("sorts plans by modification time (newest first)", async () => {
-    const plansDir = path.join(tmpDir, ".gg", "plans");
+    const plansDir = path.join(tmpDir, .ezcoder, "plans");
     await fs.mkdir(plansDir, { recursive: true });
 
     const oldPath = path.join(plansDir, "old.md");
@@ -171,7 +171,7 @@ describe("loadPlanEntries", () => {
   });
 
   it("sets modifiedMs to 0 when stat fails (e.g., broken symlink)", async () => {
-    const plansDir = path.join(tmpDir, ".gg", "plans");
+    const plansDir = path.join(tmpDir, .ezcoder, "plans");
     await fs.mkdir(plansDir, { recursive: true });
 
     const brokenLink = path.join(plansDir, "broken.md");
@@ -184,7 +184,7 @@ describe("loadPlanEntries", () => {
   });
 
   it("includes correct absolute paths", async () => {
-    const plansDir = path.join(tmpDir, ".gg", "plans");
+    const plansDir = path.join(tmpDir, .ezcoder, "plans");
     await fs.mkdir(plansDir, { recursive: true });
     await fs.writeFile(path.join(plansDir, "my-plan.md"), "# Plan");
 
@@ -311,7 +311,7 @@ describe("auto-expand newest plan", () => {
 
 describe("plan file reading edge cases", () => {
   it("handles plan file that exists during listing but is deleted before reading", async () => {
-    const plansDir = path.join(tmpDir, ".gg", "plans");
+    const plansDir = path.join(tmpDir, .ezcoder, "plans");
     await fs.mkdir(plansDir, { recursive: true });
     const planPath = path.join(plansDir, "ephemeral.md");
     await fs.writeFile(planPath, "# Short-lived plan");
@@ -332,7 +332,7 @@ describe("plan file reading edge cases", () => {
   });
 
   it("handles plan file with empty content", async () => {
-    const plansDir = path.join(tmpDir, ".gg", "plans");
+    const plansDir = path.join(tmpDir, .ezcoder, "plans");
     await fs.mkdir(plansDir, { recursive: true });
     await fs.writeFile(path.join(plansDir, "empty.md"), "");
 
@@ -344,7 +344,7 @@ describe("plan file reading edge cases", () => {
   });
 
   it("handles plan file with very large content", async () => {
-    const plansDir = path.join(tmpDir, ".gg", "plans");
+    const plansDir = path.join(tmpDir, .ezcoder, "plans");
     await fs.mkdir(plansDir, { recursive: true });
     const largeContent = "# Plan\n\n" + "Step ".repeat(100_000);
     await fs.writeFile(path.join(plansDir, "large.md"), largeContent);

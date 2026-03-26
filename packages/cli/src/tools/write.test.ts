@@ -114,7 +114,7 @@ describe("createWriteTool", () => {
     expect(result).toContain("Wrote 5 bytes");
   });
 
-  it("restricts writes to .gg/plans/ in plan mode", async () => {
+  it("restricts writes to .ezcoder/plans/ in plan mode", async () => {
     const planModeRef = { current: true };
     const tool = createWriteTool(tmpDir, undefined, undefined, planModeRef);
 
@@ -127,19 +127,19 @@ describe("createWriteTool", () => {
     expect(result).toContain("Error: write is restricted in plan mode");
   });
 
-  it("allows writing to .gg/plans/ in plan mode", async () => {
+  it("allows writing to .ezcoder/plans/ in plan mode", async () => {
     const planModeRef = { current: true };
     const tool = createWriteTool(tmpDir, undefined, undefined, planModeRef);
 
     const raw = await tool.execute(
-      { file_path: ".gg/plans/plan.md", content: "# My Plan\n" },
+      { file_path: ".ezcoder/plans/plan.md", content: "# My Plan\n" },
       { signal: new AbortController().signal, toolCallId: "test-8" },
     );
 
     const result = resultToString(raw);
     expect(result).toContain("Wrote");
 
-    const written = await fs.readFile(path.join(tmpDir, ".gg/plans/plan.md"), "utf-8");
+    const written = await fs.readFile(path.join(tmpDir, ".ezcoder/plans/plan.md"), "utf-8");
     expect(written).toBe("# My Plan\n");
   });
 

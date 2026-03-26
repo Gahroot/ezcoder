@@ -49,7 +49,7 @@ export function useTerminalTitle({
   // Write terminal title
   useEffect(() => {
     if (!stdout) return;
-    const title = isRunning ? `${SPINNER_FRAMES[spinnerFrame]} ${phrase}...` : "GG Coder";
+    const title = isRunning ? `${SPINNER_FRAMES[spinnerFrame]} ${phrase}...` : "EZ Coder";
     if (title !== prevTitleRef.current) {
       prevTitleRef.current = title;
       stdout.write(`\x1b]0;${title}\x1b\\`);

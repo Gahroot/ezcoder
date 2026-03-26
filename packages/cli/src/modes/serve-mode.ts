@@ -650,7 +650,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     if (state?.isProcessing) {
       await bot.send(
         chatId,
-        "ggcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
+        "ezcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
       );
       return;
     }

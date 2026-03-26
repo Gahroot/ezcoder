@@ -87,6 +87,71 @@ export class SlashCommandRegistry {
 export function createBuiltinCommands(): SlashCommand[] {
   return [
     {
+      name: "sync-upstream",
+      aliases: ["sync"],
+      description: "Pull updates from upstream gg-framework and rebrand",
+      usage: "/sync-upstream [--dry-run]",
+      async execute(args) {
+        const { execSync } = await import("node:child_process");
+        const { createRequire } = await import("node:module");
+        const path = await import("node:path");
+        const fs = await import("node:fs");
+
+        // Find the sync script relative to the package root
+        const _require = createRequire(import.meta.url);
+        const pkgPath = path.default.resolve(
+          path.default.dirname(_require.resolve("../package.json")),
+        );
+
+        // Walk up to find the repo root (where scripts/sync-upstream.sh lives)
+        let repoRoot = process.cwd();
+        let scriptPath = path.default.join(repoRoot, "scripts", "sync-upstream.sh");
+
+        // If not found in cwd, try the package's parent dirs
+        if (!fs.existsSync(scriptPath)) {
+          let dir = pkgPath;
+          for (let i = 0; i < 5; i++) {
+            dir = path.default.dirname(dir);
+            const candidate = path.default.join(dir, "scripts", "sync-upstream.sh");
+            if (fs.existsSync(candidate)) {
+              scriptPath = candidate;
+              repoRoot = dir;
+              break;
+            }
+          }
+        }
+
+        if (!fs.existsSync(scriptPath)) {
+          return (
+            "sync-upstream.sh not found. Make sure you're in the ezcoder repo root,\n" +
+            "or that scripts/sync-upstream.sh exists.\n\n" +
+            "You can create it by checking the repo: https://github.com/Gahroot/ezcoder"
+          );
+        }
+
+        const dryRun = args.trim() === "--dry-run";
+        const cmd = dryRun ? `bash "${scriptPath}" --dry-run` : `bash "${scriptPath}"`;
+
+        try {
+          const output = execSync(cmd, {
+            cwd: repoRoot,
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: 120_000,
+          });
+          return output || "Sync complete.";
+        } catch (err: unknown) {
+          const execErr = err as { stdout?: string; stderr?: string; message?: string };
+          const combined = [execErr.stdout, execErr.stderr].filter(Boolean).join("\n");
+          return (
+            "Sync failed:\n" +
+            (combined || execErr.message || "Unknown error") +
+            "\n\nIf there are merge conflicts, resolve them manually, then run /sync-upstream again."
+          );
+        }
+      },
+    },
+    {
       name: "model",
       aliases: ["m"],
       description: "Switch model or list available models",

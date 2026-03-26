@@ -63,7 +63,7 @@ export function Banner({ version, model, cwd, taskCount }: BannerProps) {
         <GradientText text={LOGO_LINES[2]} shift={shift} />
         <Box marginTop={1}>
           <Text color={theme.primary} bold>
-            GG Coder
+            EZ Coder
           </Text>
           <Text color={theme.textDim}> v{version}</Text>
         </Box>
