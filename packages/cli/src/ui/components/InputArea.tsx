@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Text, Box, useInput, useStdin } from "ink";
 import type { EventEmitter } from "events";
 import { useTheme } from "../theme/theme.js";
-import { useAnimationTick, deriveFrame } from "./AnimationContext.js";
+import { useAnimationTick, useAnimationActive, deriveFrame } from "./AnimationContext.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import type { ImageAttachment } from "../../utils/image.js";
 import { extractImagePaths, readImageFile, getClipboardImage } from "../../utils/image.js";
@@ -197,6 +197,7 @@ export function InputArea({
   );
 
   // Derive border pulse and cursor blink from global animation tick
+  useAnimationActive();
   const tick = useAnimationTick();
   const borderFrame = disabled ? 0 : deriveFrame(tick, 800, borderPulseColors.length);
   // Cursor blink: ~530ms period → visible for ~500ms, hidden for ~500ms

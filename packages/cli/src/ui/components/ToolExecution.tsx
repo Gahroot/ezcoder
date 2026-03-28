@@ -30,6 +30,7 @@ interface ToolDoneProps {
   args: Record<string, unknown>;
   result: string;
   isError: boolean;
+  details?: unknown;
 }
 
 type ToolExecutionProps = ToolRunningProps | ToolDoneProps;
@@ -59,7 +60,7 @@ export function ToolExecution(props: ToolExecutionProps) {
     );
   }
 
-  const { name, args, result, isError } = props;
+  const { name, args, result, isError, details } = props;
   const headerContentWidth = Math.max(10, columns - HEADER_PREFIX);
   const bodyContentWidth = Math.max(10, columns - BODY_PREFIX);
 
@@ -80,11 +81,14 @@ export function ToolExecution(props: ToolExecutionProps) {
     );
   }
 
-  const isDiff = name === "edit" && !isError && result.includes("---");
+  // Extract diff from details (structured result) or fall back to result string
+  const editDetails = details as { diff?: string } | undefined;
+  const diffText = editDetails?.diff ?? (result.includes("---") ? result : undefined);
+  const isDiff = name === "edit" && !isError && !!diffText;
 
   const { label, detail } = getToolHeaderParts(name, args);
   const body = isDiff
-    ? buildDiffBody(result, args, columns)
+    ? buildDiffBody(diffText!, args, columns)
     : buildResultBody(name, result, isError, columns);
 
   const headerColor = isError ? theme.toolError : theme.toolName;

@@ -143,7 +143,7 @@ function printHelp(): void {
   const opts: [string, string][] = [
     ["-h, --help", "Show this help message"],
     ["-v, --version", "Show version number"],
-    ["--provider <name>", "AI provider (anthropic, openai)"],
+    ["--provider <name>", "AI provider (anthropic, openai, glm, moonshot)"],
     ["--model <name>", "Model to use (e.g. claude-sonnet-4-6, gpt-4.1)"],
     ["--max-turns <n>", "Maximum agent turns per prompt"],
     ["--system-prompt <text>", "Override the system prompt"],
@@ -345,7 +345,7 @@ function main(): void {
 
   function getHardcodedDefault(p: string): string {
     if (p === "openai") return "gpt-5.3-codex";
-    if (p === "glm") return "glm-5";
+    if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.5";
     return "claude-opus-4-6";
   }
@@ -702,7 +702,7 @@ async function runSessions(): Promise<void> {
 
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.3-codex";
-    if (p === "glm") return "glm-5";
+    if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.5";
     return "claude-opus-4-6";
   }
@@ -956,7 +956,7 @@ async function runServe(): Promise<void> {
 
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.3-codex";
-    if (p === "glm") return "glm-5";
+    if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.5";
     return "claude-opus-4-6";
   }

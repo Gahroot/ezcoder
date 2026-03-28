@@ -32,7 +32,11 @@ import { BackgroundTasksBar } from "./components/BackgroundTasksBar.js";
 import type { SlashCommandInfo } from "./components/SlashCommandMenu.js";
 import type { ProcessManager, BackgroundProcess } from "../core/process-manager.js";
 import { useTheme } from "./theme/theme.js";
-import { useAnimationTick, deriveFrame } from "./components/AnimationContext.js";
+import {
+  useAnimationTick,
+  useAnimationActive,
+  deriveFrame,
+} from "./components/AnimationContext.js";
 import { useTerminalTitle } from "./hooks/useTerminalTitle.js";
 import { getGitBranch } from "../utils/git.js";
 import { getModel, getContextWindow } from "../core/model-registry.js";
@@ -134,6 +138,7 @@ interface ToolDoneItem {
   result: string;
   isError: boolean;
   durationMs: number;
+  details?: unknown;
   id: string;
 }
 
@@ -986,6 +991,7 @@ export function App(props: AppProps) {
                   result,
                   isError,
                   durationMs,
+                  details,
                   id: startItem.id,
                 };
                 const next = [...prev];
@@ -995,7 +1001,16 @@ export function App(props: AppProps) {
               // Fallback: just append
               return [
                 ...prev,
-                { kind: "tool_done", name, args: {}, result, isError, durationMs, id: getId() },
+                {
+                  kind: "tool_done",
+                  name,
+                  args: {},
+                  result,
+                  isError,
+                  durationMs,
+                  details,
+                  id: getId(),
+                },
               ];
             });
           }
@@ -1224,6 +1239,7 @@ export function App(props: AppProps) {
   }, [agentLoop.activityPhase, agentLoop.isRunning, activeToolNamesKey]);
 
   // Animated thinking border — derived from global animation tick
+  useAnimationActive();
   const animTick = useAnimationTick();
   const thinkingBorderFrame =
     agentLoop.activityPhase === "thinking"
@@ -1657,6 +1673,7 @@ export function App(props: AppProps) {
             args={item.args}
             result={item.result}
             isError={item.isError}
+            details={item.details}
           />
         );
       case "tool_group":
@@ -1974,6 +1991,7 @@ export function App(props: AppProps) {
                 userMessage={lastUserMessage}
                 activeToolNames={agentLoop.activeToolCalls.map((tc) => tc.name)}
                 planMode={planMode}
+                retryInfo={agentLoop.retryInfo}
               />
             </Box>
           ) : (
