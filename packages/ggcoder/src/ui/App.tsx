@@ -837,6 +837,13 @@ export function App(props: AppProps) {
     {
       onComplete: useCallback(() => {
         persistNewMessages();
+        // Auto-clear plan progress and approved plan when all steps are completed
+        const steps = planStepsRef.current;
+        if (steps.length > 0 && steps.every((s) => s.completed)) {
+          planStepsRef.current = [];
+          setPlanSteps([]);
+          approvedPlanPathRef.current = undefined;
+        }
       }, [persistNewMessages]),
       onTurnText: useCallback((text: string, thinking: string, thinkingMs: number) => {
         // Track [DONE:n] markers for plan step progress
@@ -1524,6 +1531,12 @@ export function App(props: AppProps) {
       };
       setLastUserMessage(input);
       setDoneStatus(null);
+      // Clear stale plan progress if there's no active approved plan
+      // (avoids lingering progress from a completed or abandoned plan run)
+      if (planStepsRef.current.length > 0 && !approvedPlanPathRef.current) {
+        planStepsRef.current = [];
+        setPlanSteps([]);
+      }
       setLiveItems([userItem]);
 
       // Run agent
