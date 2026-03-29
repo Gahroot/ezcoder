@@ -437,6 +437,10 @@ export function useAgentLoop(
                 break;
 
               case "tool_call_start": {
+                // Flush any buffered text so the full message is visible
+                // before the tool call UI appears — otherwise the reveal
+                // timer lag makes it look like text was cut off mid-sentence.
+                flushAllText();
                 freezeThinking();
                 if (phaseRef.current !== "tools") {
                   phaseRef.current = "tools";
