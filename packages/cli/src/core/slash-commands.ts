@@ -89,7 +89,7 @@ export function createBuiltinCommands(): SlashCommand[] {
     {
       name: "update-ezcoder",
       aliases: ["sync", "sync-upstream"],
-      description: "Pull updates from upstream gg-framework and rebrand",
+      description: "Pull updates from upstream ezcoder and rebrand",
       usage: "/update-ezcoder [--dry-run]",
       async execute(args) {
         const { execSync } = await import("node:child_process");

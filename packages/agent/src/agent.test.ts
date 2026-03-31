@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { z } from "zod";
-import { registerPalsuProvider, palsuText, palsuToolCall } from "@kenkaiiii/gg-ai";
-import type { Message } from "@kenkaiiii/gg-ai";
-import type { PalsuProviderHandle } from "@kenkaiiii/gg-ai";
+import { registerPalsuProvider, palsuText, palsuToolCall } from "@prestyj/ai";
+import type { Message } from "@prestyj/ai";
+import type { PalsuProviderHandle } from "@prestyj/ai";
 import { Agent } from "./agent.js";
 import type { AgentEvent, AgentTool } from "./types.js";
 

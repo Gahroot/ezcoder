@@ -216,14 +216,8 @@ This repo is a fork of [KenKaiii/gg-framework](https://github.com/KenKaiii/gg-fr
 
 **Option 1: Script** (from repo root):
 ```bash
-./scripts/update-ezcoder.sh           # merge + rename dirs + fix branding
-./scripts/update-ezcoder.sh --dry-run # preview changes without doing anything
-```
-
-**Option 2: Slash command** (inside ezcoder CLI):
-```
-/update-ezcoder           # full sync
-/update-ezcoder --dry-run # preview
+./scripts/sync-upstream.sh           # merge + rename dirs + fix branding
+./scripts/sync-upstream.sh --dry-run # preview changes without doing anything
 ```
 
 Both do the same thing:
@@ -239,7 +233,7 @@ Both do the same thing:
 If `git merge upstream/main` hits conflicts:
 1. Resolve them manually (`git diff --name-only --diff-filter=U` to see conflicted files)
 2. Run `git merge --continue`
-3. Re-run the script or `/update-ezcoder` to apply directory renames + branding
+3. Re-run the script to apply directory renames + branding
 
 ### After syncing
 
