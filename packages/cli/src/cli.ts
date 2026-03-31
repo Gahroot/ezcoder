@@ -255,7 +255,6 @@ function main(): void {
     return;
   }
 
-
   if (subcommand === "continue") {
     // Remove "continue" so parseArgs handles remaining flags
     process.argv.splice(2, 1);
@@ -983,7 +982,6 @@ async function runServe(): Promise<void> {
     telegram: { botToken, userId },
   });
 }
-
 
 // ── Helpers ────────────────────────────────────────────────
 
