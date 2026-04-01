@@ -316,7 +316,9 @@ export function useAgentLoop(
               onQueuedStart?.(merged);
               return [{ role: "user" as const, content: merged }];
             },
-            clearToolUses: options.provider === "anthropic",
+            // clearToolUses disabled — causes model to output unsolicited context
+            // summaries ("KEY CONTEXT TO REMEMBER") when it sees gaps from stripped
+            // tool blocks. Normal client-side compaction handles context management.
           });
 
           for await (const event of generator as AsyncIterable<AgentEvent>) {
