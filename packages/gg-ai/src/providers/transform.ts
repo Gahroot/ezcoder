@@ -344,12 +344,11 @@ export function toOpenAIMessages(
         content: parts || textParts || null,
         ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
       };
-      // Attach reasoning_content for multi-turn coherence (non-standard field).
-      // Moonshot requires reasoning_content on ALL assistant messages with tool_calls
-      // when thinking is enabled — even if empty.
-      if (thinkingParts || toolCalls?.length) {
-        (assistantMsg as unknown as Record<string, unknown>).reasoning_content =
-          thinkingParts || " ";
+      // Attach reasoning_content for multi-turn thinking coherence (non-standard field).
+      // Only send when the model actually returned thinking content — never fabricate
+      // empty/space values, as GLM silently hangs and other providers may reject them.
+      if (thinkingParts) {
+        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = thinkingParts;
       }
       out.push(assistantMsg);
       continue;

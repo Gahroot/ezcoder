@@ -1,5 +1,11 @@
 import OpenAI from "openai";
-import type { ContentPart, StreamOptions, StreamResponse, ToolCall } from "../types.js";
+import type {
+  ContentPart,
+  StreamEvent,
+  StreamOptions,
+  StreamResponse,
+  ToolCall,
+} from "../types.js";
 import { ProviderError } from "../errors.js";
 import { StreamResult } from "../utils/event-stream.js";
 import {
@@ -11,13 +17,12 @@ import {
 } from "./transform.js";
 
 export function streamOpenAI(options: StreamOptions): StreamResult {
-  const result = new StreamResult();
-  const providerName = options.provider ?? "openai";
-  runStream(options, result).catch((err) => result.abort(toError(err, providerName)));
-  return result;
+  return new StreamResult(runStream(options));
 }
 
-async function runStream(options: StreamOptions, result: StreamResult): Promise<void> {
+async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, StreamResponse> {
+  const providerName = options.provider ?? "openai";
+
   const client = new OpenAI({
     apiKey: options.apiKey,
     ...(options.baseUrl ? { baseURL: options.baseUrl } : {}),
@@ -70,9 +75,30 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
       : { type: "disabled" };
   }
 
-  const stream = await client.chat.completions.create(params, {
-    signal: options.signal ?? undefined,
-  });
+  // Dump request body for stall diagnosis when GGAI_DUMP_REQUEST is set
+  if (
+    (globalThis as Record<string, unknown>).process &&
+    ((globalThis as Record<string, unknown>).process as Record<string, Record<string, string>>).env
+      ?.GGAI_DUMP_REQUEST
+  ) {
+    const fs = await import("fs");
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const dumpPath = `/tmp/ggai-request-${ts}.json`;
+    fs.writeFileSync(dumpPath, JSON.stringify(params, null, 2));
+    fs.appendFileSync(
+      "/tmp/ggai-requests.log",
+      `[${ts}] ${dumpPath} messages=${params.messages.length}\n`,
+    );
+  }
+
+  let stream: AsyncIterable<OpenAI.ChatCompletionChunk>;
+  try {
+    stream = (await client.chat.completions.create(params, {
+      signal: options.signal ?? undefined,
+    })) as AsyncIterable<OpenAI.ChatCompletionChunk>;
+  } catch (err) {
+    throw toError(err, providerName);
+  }
 
   const contentParts: ContentPart[] = [];
   const toolCallAccum = new Map<number, { id: string; name: string; argsJson: string }>();
@@ -83,7 +109,7 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
   let cacheRead = 0;
   let finishReason: string | null = null;
 
-  for await (const chunk of stream as AsyncIterable<OpenAI.ChatCompletionChunk>) {
+  for await (const chunk of stream) {
     const choice = chunk.choices?.[0];
 
     if (chunk.usage) {
@@ -109,13 +135,13 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
     const reasoningContent = (delta as Record<string, unknown>).reasoning_content;
     if (typeof reasoningContent === "string" && reasoningContent) {
       thinkingAccum += reasoningContent;
-      result.push({ type: "thinking_delta", text: reasoningContent });
+      yield { type: "thinking_delta", text: reasoningContent };
     }
 
     // Text delta
     if (delta.content) {
       textAccum += delta.content;
-      result.push({ type: "text_delta", text: delta.content });
+      yield { type: "text_delta", text: delta.content };
     }
 
     // Tool call deltas
@@ -134,12 +160,12 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
         if (tc.function?.name) accum.name = tc.function.name;
         if (tc.function?.arguments) {
           accum.argsJson += tc.function.arguments;
-          result.push({
+          yield {
             type: "toolcall_delta",
             id: accum.id,
             name: accum.name,
             argsJson: tc.function.arguments,
-          });
+          };
         }
       }
     }
@@ -170,12 +196,12 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
       args,
     };
     contentParts.push(toolCall);
-    result.push({
+    yield {
       type: "toolcall_done",
       id: tc.id,
       name: tc.name,
       args,
-    });
+    };
   }
 
   const stopReason = normalizeOpenAIStopReason(finishReason);
@@ -189,8 +215,8 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
     usage: { inputTokens, outputTokens, ...(cacheRead > 0 && { cacheRead }) },
   };
 
-  result.push({ type: "done", stopReason });
-  result.complete(response);
+  yield { type: "done", stopReason };
+  return response;
 }
 
 function toError(err: unknown, provider: string = "openai"): ProviderError {

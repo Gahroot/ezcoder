@@ -2,6 +2,7 @@ import os from "node:os";
 import type {
   ContentPart,
   Message,
+  StreamEvent,
   StreamOptions,
   StreamResponse,
   Tool,
@@ -14,12 +15,10 @@ import { zodToJsonSchema } from "../utils/zod-to-json-schema.js";
 const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
 
 export function streamOpenAICodex(options: StreamOptions): StreamResult {
-  const result = new StreamResult();
-  runStream(options, result).catch((err) => result.abort(toError(err)));
-  return result;
+  return new StreamResult(runStream(options));
 }
 
-async function runStream(options: StreamOptions, result: StreamResult): Promise<void> {
+async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, StreamResponse> {
   const baseUrl = (options.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
   const url = `${baseUrl}/codex/responses`;
 
@@ -115,13 +114,13 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
     if (type === "response.output_text.delta") {
       const delta = event.delta as string;
       textAccum += delta;
-      result.push({ type: "text_delta", text: delta });
+      yield { type: "text_delta", text: delta };
     }
 
     // Thinking delta
     if (type === "response.reasoning_summary_text.delta") {
       const delta = event.delta as string;
-      result.push({ type: "thinking_delta", text: delta });
+      yield { type: "thinking_delta", text: delta };
     }
 
     // Tool call started
@@ -144,12 +143,12 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
       for (const [key, tc] of toolCalls) {
         if (key.endsWith(`|${itemId}`)) {
           tc.argsJson += delta;
-          result.push({
+          yield {
             type: "toolcall_delta",
             id: tc.id,
             name: tc.name,
             argsJson: delta,
-          });
+          };
           break;
         }
       }
@@ -182,12 +181,12 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
           } catch {
             /* malformed JSON */
           }
-          result.push({
+          yield {
             type: "toolcall_done",
             id: tc.id,
             name: tc.name,
             args,
-          });
+          };
         }
       }
     }
@@ -236,8 +235,8 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
     usage: { inputTokens, outputTokens },
   };
 
-  result.push({ type: "done", stopReason });
-  result.complete(streamResponse);
+  yield { type: "done", stopReason };
+  return streamResponse;
 }
 
 // ── SSE Parser ─────────────────────────────────────────────
@@ -388,14 +387,4 @@ function toCodexTools(tools: Tool[]): unknown[] {
     parameters: tool.rawInputSchema ?? zodToJsonSchema(tool.parameters),
     strict: null,
   }));
-}
-
-// ── Error Handling ─────────────────────────────────────────
-
-function toError(err: unknown): ProviderError {
-  if (err instanceof ProviderError) return err;
-  if (err instanceof Error) {
-    return new ProviderError("openai", err.message, { cause: err });
-  }
-  return new ProviderError("openai", String(err));
 }

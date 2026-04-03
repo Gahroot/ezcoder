@@ -570,6 +570,14 @@ export function App(props: AppProps) {
   // Two-phase flush: items waiting to be moved to Static history after the
   // live area has been cleared and Ink has committed the smaller output.
   const pendingFlushRef = useRef<CompletedItem[]>([]);
+  const [flushGeneration, setFlushGeneration] = useState(0);
+
+  /** Queue items for two-phase flush and signal the drain effect. */
+  const queueFlush = useCallback((items: CompletedItem[]) => {
+    if (items.length === 0) return;
+    pendingFlushRef.current = [...pendingFlushRef.current, ...items];
+    setFlushGeneration((g) => g + 1);
+  }, []);
 
   // Derive credentials for the current provider
   const currentCreds = props.credentialsByProvider?.[currentProvider];
@@ -996,7 +1004,7 @@ export function App(props: AppProps) {
         setLiveItems((prev) => {
           const flushed = flushOnTurnText(prev);
           if (flushed.length > 0) {
-            pendingFlushRef.current = [...pendingFlushRef.current, ...flushed];
+            queueFlush(flushed);
           }
           const displayText = planStepsRef.current.length > 0 ? stripDoneMarkers(text) : text;
           return [{ kind: "assistant", text: displayText, thinking, thinkingMs, id: getId() }];
@@ -1012,7 +1020,7 @@ export function App(props: AppProps) {
           setLiveItems((prev) => {
             const { flushed, remaining } = partitionCompleted(prev);
             if (flushed.length > 0) {
-              pendingFlushRef.current = [...pendingFlushRef.current, ...flushed];
+              queueFlush(flushed);
             }
             return remaining;
           });
@@ -1138,7 +1146,7 @@ export function App(props: AppProps) {
               // Flush completed items to Static to keep the live area small
               const { flushed, remaining } = partitionCompleted(next);
               if (flushed.length > 0) {
-                pendingFlushRef.current = [...pendingFlushRef.current, ...flushed];
+                queueFlush(flushed);
               }
               return remaining;
             });
@@ -1202,7 +1210,7 @@ export function App(props: AppProps) {
               // Flush completed items to Static to keep the live area small
               const { flushed, remaining } = partitionCompleted(updated);
               if (flushed.length > 0) {
-                pendingFlushRef.current = [...pendingFlushRef.current, ...flushed];
+                queueFlush(flushed);
               }
               return remaining;
             });
@@ -1217,7 +1225,7 @@ export function App(props: AppProps) {
         setLiveItems((prev) => {
           const { flushed, remaining } = partitionCompleted(prev);
           if (flushed.length > 0) {
-            pendingFlushRef.current = [...pendingFlushRef.current, ...flushed];
+            queueFlush(flushed);
           }
           return [
             ...remaining,
@@ -1269,7 +1277,7 @@ export function App(props: AppProps) {
           // Flush completed items to Static
           const { flushed, remaining } = partitionCompleted(updated);
           if (flushed.length > 0) {
-            pendingFlushRef.current = [...pendingFlushRef.current, ...flushed];
+            queueFlush(flushed);
           }
           return remaining;
         });
@@ -1300,7 +1308,7 @@ export function App(props: AppProps) {
           setLiveItems((prev) => {
             const { flushed, remaining } = flushOnTurnEnd(prev, stopReason);
             if (flushed.length > 0) {
-              pendingFlushRef.current = [...pendingFlushRef.current, ...flushed];
+              queueFlush(flushed);
             }
             return remaining;
           });
@@ -1324,9 +1332,7 @@ export function App(props: AppProps) {
         // separate render cycle so the Static write never coincides with
         // a live-area height change in the same frame.
         setLiveItems((prev) => {
-          if (prev.length > 0) {
-            pendingFlushRef.current = [...pendingFlushRef.current, ...prev];
-          }
+          if (prev.length > 0) queueFlush(prev);
           return [];
         });
 
@@ -1408,9 +1414,7 @@ export function App(props: AppProps) {
             ? undefined
             : content.filter((c) => c.type === "image").length || undefined;
         setLiveItems((prev) => {
-          if (prev.length > 0) {
-            pendingFlushRef.current = [...pendingFlushRef.current, ...prev];
-          }
+          if (prev.length > 0) queueFlush(prev);
           return [];
         });
         const userItem: UserItem = {
@@ -1439,7 +1443,7 @@ export function App(props: AppProps) {
       pendingFlushRef.current = [];
       setHistory((h) => compactHistory([...h, ...trimFlushedItems(items)]));
     }
-  });
+  }, [flushGeneration]);
 
   // Sync terminal title with agent loop state
   useEffect(() => {

@@ -21,6 +21,26 @@ import type {
 const DEFAULT_MAX_TURNS = 200;
 
 /**
+ * Lightweight stream diagnostic callback. When set, the agent loop calls this
+ * at every phase boundary with timing and state info. This lets the hosting
+ * app (ggcoder, come-alive, etc.) log stall diagnostics without the agent
+ * package needing fs/process dependencies.
+ */
+export type StreamDiagnosticFn = (phase: string, data?: Record<string, unknown>) => void;
+
+/** Global diagnostic hook — set by the hosting app before calling agentLoop. */
+let _diagFn: StreamDiagnosticFn | null = null;
+
+/** Register a diagnostic callback for stream stall tracing. */
+export function setStreamDiagnostic(fn: StreamDiagnosticFn | null): void {
+  _diagFn = fn;
+}
+
+function diag(phase: string, data?: Record<string, unknown>): void {
+  _diagFn?.(phase, data);
+}
+
+/**
  * Detect abort errors — user-initiated cancellation or AbortSignal.
  * These should be caught and handled gracefully, not re-thrown.
  */
@@ -115,6 +135,19 @@ export async function* agentLoop(
       options.signal?.throwIfAborted();
       turn++;
 
+      // Estimate message payload size for diagnostics
+      let msgChars = 0;
+      for (const m of messages) {
+        if (typeof m.content === "string") msgChars += m.content.length;
+        else if (Array.isArray(m.content)) {
+          for (const p of m.content) {
+            if ("text" in p && typeof p.text === "string") msgChars += p.text.length;
+            if ("content" in p && typeof p.content === "string") msgChars += p.content.length;
+          }
+        }
+      }
+      diag("turn_start", { turn, messages: messages.length, chars: msgChars });
+
       // ── Initial steering poll: catch messages queued before the first LLM call ──
       if (firstTurn && options.getSteeringMessages) {
         const steering = await options.getSteeringMessages();
@@ -129,11 +162,17 @@ export async function* agentLoop(
 
       // ── Mid-loop context transform (compaction / truncation) ──
       if (options.transformContext) {
+        diag("transform_start");
         const transformed = await options.transformContext(messages);
         if (transformed !== messages) {
+          diag("transform_compacted", {
+            before: messages.length,
+            after: transformed.length,
+          });
           messages.length = 0;
           messages.push(...transformed);
         }
+        diag("transform_end");
       }
 
       // ── Repair tool pairing: ensure every tool_use has an adjacent tool_result ──
@@ -148,6 +187,11 @@ export async function* agentLoop(
       let hardTimer: ReturnType<typeof setTimeout> | null = null;
       let idleTimedOut = false;
 
+      // Stream event counters — declared here so timeout callbacks can access them
+      let streamEventCount = 0;
+      let lastEventTime = Date.now();
+      let streamCallStart = Date.now();
+
       // Forward caller abort to the per-attempt controller
       const forwardAbort = () => streamController.abort();
       options.signal?.addEventListener("abort", forwardAbort, { once: true });
@@ -158,6 +202,11 @@ export async function* agentLoop(
       const resetIdleTimer = () => {
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
+          diag("idle_timeout_fired", {
+            events: typeof streamEventCount !== "undefined" ? streamEventCount : 0,
+            sinceLastEventMs:
+              typeof lastEventTime !== "undefined" ? Date.now() - lastEventTime : -1,
+          });
           idleTimedOut = true;
           streamController.abort();
         }, STREAM_IDLE_TIMEOUT_MS);
@@ -166,11 +215,16 @@ export async function* agentLoop(
       // Hard timeout: absolute cap per LLM call. Safety net for streams that
       // keep sending sparse events (e.g. keep-alive pings) but never complete.
       hardTimer = setTimeout(() => {
+        diag("hard_timeout_fired", {
+          events: typeof streamEventCount !== "undefined" ? streamEventCount : 0,
+        });
         idleTimedOut = true;
         streamController.abort();
       }, STREAM_HARD_TIMEOUT_MS);
 
       try {
+        diag("stream_call");
+        streamCallStart = Date.now();
         const result = stream({
           provider: options.provider,
           model: options.model,
@@ -189,13 +243,32 @@ export async function* agentLoop(
           compaction: options.compaction,
           clearToolUses: options.clearToolUses,
         });
+        diag("stream_created", { setupMs: Date.now() - streamCallStart });
 
         // Suppress unhandled rejection if the iterator path throws first
         result.response.catch(() => {});
 
         // Forward streaming deltas — reset idle timer on each event
+        streamEventCount = 0;
+        lastEventTime = Date.now();
+        streamCallStart = Date.now();
         resetIdleTimer();
         for await (const event of result) {
+          streamEventCount++;
+          const now = Date.now();
+          const gap = now - lastEventTime;
+          // Log first event and any suspiciously long gaps
+          if (streamEventCount === 1) {
+            diag("first_event", { type: event.type, ttfMs: now - streamCallStart });
+          } else if (gap > 3000) {
+            diag("slow_gap", {
+              type: event.type,
+              gapMs: gap,
+              eventNum: streamEventCount,
+              sinceStartMs: now - streamCallStart,
+            });
+          }
+          lastEventTime = now;
           resetIdleTimer();
           if (event.type === "text_delta") {
             yield { type: "text_delta" as const, text: event.text };
@@ -218,8 +291,17 @@ export async function* agentLoop(
           }
         }
 
+        diag("stream_done", { events: streamEventCount, totalMs: Date.now() - streamCallStart });
         response = await result.response;
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        diag("stream_error", {
+          error: errMsg.slice(0, 200),
+          events: streamEventCount,
+          totalMs: Date.now() - streamCallStart,
+          idleTimedOut,
+          aborted: !!options.signal?.aborted,
+        });
         // Context overflow: force-compact via transformContext and retry (up to 3 times)
         if (
           overflowRetries < MAX_OVERFLOW_RETRIES &&

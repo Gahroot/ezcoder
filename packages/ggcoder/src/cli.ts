@@ -43,6 +43,7 @@ import { AuthStorage } from "./core/auth-storage.js";
 import { SessionManager } from "./core/session-manager.js";
 import { ensureAppDirs, getAppPaths } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
+import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createTools } from "./tools/index.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
@@ -419,6 +420,11 @@ async function runInkTUI(opts: {
     provider,
     model,
     thinking: opts.thinkingLevel,
+  });
+
+  // Wire stream stall diagnostics into the debug log
+  setStreamDiagnostic((phase, data) => {
+    log("INFO", "stream", phase, data as Record<string, unknown>);
   });
 
   const authStorage = new AuthStorage(paths.authFile);

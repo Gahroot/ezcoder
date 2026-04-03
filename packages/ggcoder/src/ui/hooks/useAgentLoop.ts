@@ -232,6 +232,32 @@ export function useAgentLoop(
         abortRef.current = ac;
         let wasAborted = false;
 
+        // Throttled streaming text flush — accumulate deltas in refs (zero-cost),
+        // only call setState at ~16ms intervals to avoid saturating the event loop
+        // with React renders during fast token streaming.
+        let streamFlushTimer: ReturnType<typeof setTimeout> | null = null;
+        let streamTextDirty = false;
+        let streamThinkingDirty = false;
+        const STREAM_FLUSH_MS = 16; // ~1 frame at 60fps
+
+        const flushStreamState = () => {
+          streamFlushTimer = null;
+          if (streamTextDirty) {
+            setStreamingText(textVisibleRef.current);
+            streamTextDirty = false;
+          }
+          if (streamThinkingDirty) {
+            setStreamingThinking(thinkingVisibleRef.current);
+            streamThinkingDirty = false;
+          }
+        };
+
+        const scheduleStreamFlush = () => {
+          if (streamFlushTimer === null) {
+            streamFlushTimer = setTimeout(flushStreamState, STREAM_FLUSH_MS);
+          }
+        };
+
         // Reset state
         doneCalledRef.current = false;
         textVisibleRef.current = "";
@@ -330,7 +356,8 @@ export function useAgentLoop(
               case "text_delta":
                 textVisibleRef.current += event.text;
                 charCountRef.current += event.text.length;
-                setStreamingText(textVisibleRef.current);
+                streamTextDirty = true;
+                scheduleStreamFlush();
                 if (phaseRef.current !== "generating") {
                   freezeThinking();
                   if (phaseRef.current === "retrying") setRetryInfo(null);
@@ -343,7 +370,8 @@ export function useAgentLoop(
                 thinkingBufferRef.current += event.text;
                 thinkingVisibleRef.current += event.text;
                 charCountRef.current += event.text.length;
-                setStreamingThinking(thinkingVisibleRef.current);
+                streamThinkingDirty = true;
+                scheduleStreamFlush();
                 if (phaseRef.current !== "thinking") {
                   thinkingStartRef.current = Date.now();
                   setIsThinking(true);
@@ -459,6 +487,12 @@ export function useAgentLoop(
                 break;
 
               case "turn_end": {
+                // Flush any throttled streaming text before processing turn end
+                if (streamFlushTimer) {
+                  clearTimeout(streamFlushTimer);
+                  streamFlushTimer = null;
+                }
+                flushStreamState();
                 setRetryInfo(null);
                 onTurnEnd?.(event.turn, event.stopReason, event.usage);
                 setCurrentTurn(event.turn);
