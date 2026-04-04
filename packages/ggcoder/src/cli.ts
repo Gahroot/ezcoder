@@ -369,7 +369,7 @@ function main(): void {
   const provider: "anthropic" | "openai" | "glm" | "moonshot" = savedProvider ?? "anthropic";
 
   function getHardcodedDefault(p: string): string {
-    if (p === "openai") return "gpt-5.3-codex";
+    if (p === "openai") return "gpt-5.4";
     if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.5";
     return "claude-opus-4-6";
@@ -748,7 +748,7 @@ async function runSessions(): Promise<void> {
   const provider: "anthropic" | "openai" | "glm" | "moonshot" = savedProvider ?? "anthropic";
 
   function getDefault(p: string): string {
-    if (p === "openai") return "gpt-5.3-codex";
+    if (p === "openai") return "gpt-5.4";
     if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.5";
     return "claude-opus-4-6";
@@ -1001,7 +1001,7 @@ async function runServe(): Promise<void> {
     (serveValues.provider as Provider | undefined) ?? savedProvider ?? "anthropic";
 
   function getDefault(p: string): string {
-    if (p === "openai") return "gpt-5.3-codex";
+    if (p === "openai") return "gpt-5.4";
     if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.5";
     return "claude-opus-4-6";
@@ -1189,7 +1189,7 @@ async function runAgentHome(): Promise<void> {
     (ahValues.provider as Provider | undefined) ?? savedProvider ?? "anthropic";
 
   function getDefault(p: string): string {
-    if (p === "openai") return "gpt-5.3-codex";
+    if (p === "openai") return "gpt-5.4";
     if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.5";
     return "claude-opus-4-6";
