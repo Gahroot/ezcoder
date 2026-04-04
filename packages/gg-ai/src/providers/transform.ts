@@ -343,10 +343,16 @@ export function toOpenAIMessages(
               .join("")
           : undefined;
 
+      const contentValue = parts || textParts || null;
+      const hasToolCalls = toolCalls && toolCalls.length > 0;
+      // Skip assistant messages with no content and no tool_calls (can happen
+      // with thinking-only responses) — providers like Xiaomi reject these.
+      if (!contentValue && !hasToolCalls) continue;
+
       const assistantMsg: OpenAI.ChatCompletionAssistantMessageParam = {
         role: "assistant",
-        content: parts || textParts || null,
-        ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
+        content: contentValue,
+        ...(hasToolCalls ? { tool_calls: toolCalls } : {}),
       };
       // Attach reasoning_content for multi-turn thinking coherence (non-standard field).
       // Only send when the model actually returned thinking content — never fabricate
