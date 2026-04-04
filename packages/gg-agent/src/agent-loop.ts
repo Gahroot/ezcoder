@@ -127,8 +127,15 @@ export async function* agentLoop(
   const OVERLOAD_BASE_DELAY_MS = 2_000;
   const OVERLOAD_MAX_DELAY_MS = 30_000;
   const STREAM_FIRST_EVENT_TIMEOUT_MS = 45_000; // 45s to get first event (Opus thinks long)
-  const STREAM_IDLE_TIMEOUT_MS = 10_000; // 10s between events once streaming starts
-  const STREAM_HARD_TIMEOUT_MS = 90_000; // 90s absolute cap per LLM call
+  const STREAM_IDLE_TIMEOUT_MS = 30_000; // 30s between events once streaming starts
+  // Anthropic models can pause 10-20s mid-stream while computing the next chunk
+  // (e.g. generating tool call args for a large write).  10s was too aggressive
+  // and caused false "stream stalled" errors, especially in plan mode.
+  const STREAM_HARD_TIMEOUT_MS = 90_000; // 90s absolute cap before output starts
+  // Once output events (text_delta) are actively streaming, extend the hard
+  // timeout — long responses (plan mode, detailed explanations) can legitimately
+  // take 2-3+ minutes while events flow continuously.
+  const STREAM_OUTPUT_HARD_TIMEOUT_MS = 300_000; // 5min hard cap once output is flowing
   // Reasoning models (MiMo) can pause 3-5 minutes between thinking and output
   // generation.  Once we've seen thinking events, extend timeouts significantly.
   const STREAM_THINKING_IDLE_TIMEOUT_MS = 300_000; // 5min idle after thinking
@@ -289,6 +296,18 @@ export async function* agentLoop(
             !hasReceivedEvent
           ) {
             hasReceivedEvent = true;
+            // Extend hard timeout now that output is actively streaming.
+            // Long responses (plan mode, detailed code) can exceed 90s while
+            // events flow continuously — the idle timeout (10s) catches real stalls.
+            if (hardTimer && hardTimeoutMs < STREAM_OUTPUT_HARD_TIMEOUT_MS) {
+              clearTimeout(hardTimer);
+              hardTimeoutMs = STREAM_OUTPUT_HARD_TIMEOUT_MS;
+              hardTimer = setTimeout(() => {
+                diag("hard_timeout_fired", { events: streamEventCount });
+                idleTimedOut = true;
+                streamController.abort();
+              }, hardTimeoutMs);
+            }
           }
           // Track thinking events — extends idle timeout and hard timeout
           // so reasoning models aren't killed during thinking→output transition.
