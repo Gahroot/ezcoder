@@ -41,7 +41,7 @@ import { formatUserError } from "./utils/error-handler.js";
 import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { AuthStorage } from "./core/auth-storage.js";
 import { SessionManager } from "./core/session-manager.js";
-import { ensureAppDirs, getAppPaths } from "./config.js";
+import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
 import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
 import { buildSystemPrompt } from "./system-prompt.js";
@@ -351,23 +351,10 @@ function main(): void {
   }
 
   // Load saved settings for model/provider persistence
-  let savedProvider: "anthropic" | "openai" | "glm" | "moonshot" | "minimax" | undefined;
-  let savedModel: string | undefined;
-  let savedThinkingEnabled = false;
-  let savedTheme: "auto" | "dark" | "light" = "auto";
-  try {
-    const raw = JSON.parse(fs.readFileSync(getAppPaths().settingsFile, "utf-8"));
-    if (raw.defaultProvider) savedProvider = raw.defaultProvider;
-    if (raw.defaultModel) savedModel = raw.defaultModel;
-    if (raw.thinkingEnabled === true) savedThinkingEnabled = true;
-    if (raw.theme === "dark" || raw.theme === "light" || raw.theme === "auto")
-      savedTheme = raw.theme;
-  } catch {
-    // No settings file or invalid JSON — use defaults
-  }
+  const saved = loadSavedSettings();
+  const savedTheme = saved.theme;
 
-  const provider: "anthropic" | "openai" | "glm" | "moonshot" | "minimax" =
-    savedProvider ?? "anthropic";
+  const provider: Provider = saved.provider ?? "anthropic";
 
   function getHardcodedDefault(p: string): string {
     if (p === "openai") return "gpt-5.4";
@@ -377,8 +364,8 @@ function main(): void {
     return "claude-opus-4-6";
   }
 
-  const model: string = savedModel ?? getHardcodedDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = savedThinkingEnabled ? "medium" : undefined;
+  const model: string = saved.model ?? getHardcodedDefault(provider);
+  const thinkingLevel: ThinkingLevel | undefined = saved.thinkingEnabled ? "medium" : undefined;
 
   // Interactive mode (Ink TUI)
   const cwd = process.cwd();
@@ -742,24 +729,9 @@ async function runSessions(): Promise<void> {
     process.exit(0);
   }
 
-  // Load saved settings for provider/model/theme
-  let savedProvider: "anthropic" | "openai" | "glm" | "moonshot" | "minimax" | undefined;
-  let savedModel: string | undefined;
-  let savedThinkingEnabled = false;
-  let savedTheme: "auto" | "dark" | "light" = "auto";
-  try {
-    const raw = JSON.parse(fs.readFileSync(paths.settingsFile, "utf-8"));
-    if (raw.defaultProvider) savedProvider = raw.defaultProvider;
-    if (raw.defaultModel) savedModel = raw.defaultModel;
-    if (raw.thinkingEnabled === true) savedThinkingEnabled = true;
-    if (raw.theme === "dark" || raw.theme === "light" || raw.theme === "auto")
-      savedTheme = raw.theme;
-  } catch {
-    // No settings file — use defaults
-  }
+  const saved2 = loadSavedSettings(paths.settingsFile);
 
-  const provider: "anthropic" | "openai" | "glm" | "moonshot" | "minimax" =
-    savedProvider ?? "anthropic";
+  const provider: Provider = saved2.provider ?? "anthropic";
 
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.4";
@@ -769,8 +741,8 @@ async function runSessions(): Promise<void> {
     return "claude-opus-4-6";
   }
 
-  const model = savedModel ?? getDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = savedThinkingEnabled ? "medium" : undefined;
+  const model = saved2.model ?? getDefault(provider);
+  const thinkingLevel: ThinkingLevel | undefined = saved2.thinkingEnabled ? "medium" : undefined;
 
   closeLogger();
 
@@ -780,7 +752,7 @@ async function runSessions(): Promise<void> {
     cwd,
     thinkingLevel,
     resumeSessionPath: selectedPath,
-    theme: savedTheme,
+    theme: saved2.theme,
   });
 }
 
@@ -999,21 +971,10 @@ async function runServe(): Promise<void> {
     process.exit(1);
   }
 
-  // Load saved settings
-  let savedProvider: "anthropic" | "openai" | "glm" | "moonshot" | "minimax" | undefined;
-  let savedModel: string | undefined;
-  let savedThinkingEnabled = false;
-  try {
-    const raw = JSON.parse(fs.readFileSync(getAppPaths().settingsFile, "utf-8"));
-    if (raw.defaultProvider) savedProvider = raw.defaultProvider;
-    if (raw.defaultModel) savedModel = raw.defaultModel;
-    if (raw.thinkingEnabled === true) savedThinkingEnabled = true;
-  } catch {
-    // No settings file
-  }
+  const saved3 = loadSavedSettings();
 
   const provider: Provider =
-    (serveValues.provider as Provider | undefined) ?? savedProvider ?? "anthropic";
+    (serveValues.provider as Provider | undefined) ?? saved3.provider ?? "anthropic";
 
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.4";
@@ -1023,8 +984,8 @@ async function runServe(): Promise<void> {
     return "claude-opus-4-6";
   }
 
-  const model = serveValues.model ?? savedModel ?? getDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = savedThinkingEnabled ? "medium" : undefined;
+  const model = serveValues.model ?? saved3.model ?? getDefault(provider);
+  const thinkingLevel: ThinkingLevel | undefined = saved3.thinkingEnabled ? "medium" : undefined;
 
   const paths = await ensureAppDirs();
   initLogger(paths.logFile, {
@@ -1188,21 +1149,10 @@ async function runAgentHome(): Promise<void> {
     process.exit(1);
   }
 
-  // Load saved settings
-  let savedProvider: "anthropic" | "openai" | "glm" | "moonshot" | "minimax" | undefined;
-  let savedModel: string | undefined;
-  let savedThinkingEnabled = false;
-  try {
-    const raw = JSON.parse(fs.readFileSync(getAppPaths().settingsFile, "utf-8"));
-    if (raw.defaultProvider) savedProvider = raw.defaultProvider;
-    if (raw.defaultModel) savedModel = raw.defaultModel;
-    if (raw.thinkingEnabled === true) savedThinkingEnabled = true;
-  } catch {
-    // No settings file
-  }
+  const saved4 = loadSavedSettings();
 
   const provider: Provider =
-    (ahValues.provider as Provider | undefined) ?? savedProvider ?? "anthropic";
+    (ahValues.provider as Provider | undefined) ?? saved4.provider ?? "anthropic";
 
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.4";
@@ -1212,8 +1162,8 @@ async function runAgentHome(): Promise<void> {
     return "claude-opus-4-6";
   }
 
-  const model = ahValues.model ?? savedModel ?? getDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = savedThinkingEnabled ? "medium" : undefined;
+  const model = ahValues.model ?? saved4.model ?? getDefault(provider);
+  const thinkingLevel: ThinkingLevel | undefined = saved4.thinkingEnabled ? "medium" : undefined;
 
   const paths = await ensureAppDirs();
   initLogger(paths.logFile, {
