@@ -1304,9 +1304,12 @@ export function App(props: AppProps) {
             ...(usage.cacheRead != null && { cacheRead: String(usage.cacheRead) }),
             ...(usage.cacheWrite != null && { cacheWrite: String(usage.cacheWrite) }),
           });
-          // Track actual token count for compaction decisions
+          // Track actual token count for compaction decisions.
+          // Anthropic has separate input/output limits — only count input.
+          // All other providers share the context window — count both.
+          const inputContext = usage.inputTokens + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
           lastActualTokensRef.current =
-            usage.inputTokens + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+            currentProvider === "anthropic" ? inputContext : inputContext + usage.outputTokens;
           // For tool-only turns (no text), flush completed items to Static so
           // liveItems doesn't grow unbounded across consecutive tool-only turns.
           setLiveItems((prev) => {
