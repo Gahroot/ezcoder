@@ -85,10 +85,17 @@ export interface AgentDoneEvent {
 
 export interface AgentRetryEvent {
   type: "retry";
-  reason: "overloaded" | "rate_limit" | "empty_response" | "context_overflow";
+  reason: "overloaded" | "rate_limit" | "empty_response" | "context_overflow" | "stream_stall";
   attempt: number;
   maxAttempts: number;
   delayMs: number;
+  /** When true, the retry should not be shown to the user (hidden retry). */
+  silent?: boolean;
+}
+
+export interface AgentToolCallDeltaEvent {
+  type: "toolcall_delta";
+  chars: number;
 }
 
 export interface AgentErrorEvent {
@@ -126,6 +133,7 @@ export type AgentEvent =
   | AgentToolCallStartEvent
   | AgentToolCallUpdateEvent
   | AgentToolCallEndEvent
+  | AgentToolCallDeltaEvent
   | AgentServerToolCallEvent
   | AgentServerToolResultEvent
   | AgentSteeringMessageEvent

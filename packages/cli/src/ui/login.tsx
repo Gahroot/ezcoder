@@ -30,9 +30,11 @@ let _version = "";
 
 const PROVIDERS: { label: string; value: Provider; description: string }[] = [
   { label: "Anthropic", value: "anthropic", description: "Claude Opus, Sonnet, Haiku" },
+  { label: "Xiaomi (MiMo)", value: "xiaomi", description: "MiMo-V2-Pro" },
   { label: "OpenAI", value: "openai", description: "GPT-5.3 Codex, GPT-5.1 Codex Mini" },
   { label: "Z.AI (GLM)", value: "glm", description: "GLM-5, GLM-4.7" },
   { label: "Moonshot", value: "moonshot", description: "Kimi K2.5" },
+  { label: "MiniMax", value: "minimax", description: "MiniMax M2.7, M2.7 Highspeed" },
 ];
 
 function gradientLine(text: string): string {

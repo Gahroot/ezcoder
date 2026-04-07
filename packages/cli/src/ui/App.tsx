@@ -1,6 +1,17 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Box, Text, Static, useStdout } from "ink";
 import { useTerminalSize } from "./hooks/useTerminalSize.js";
+import { useDoublePress } from "./hooks/useDoublePress.js";
+import {
+  useTaskBarStore,
+  useTaskBarPolling,
+  focusTaskBar,
+  exitTaskBar,
+  expandTaskBar,
+  collapseTaskBar,
+  navigateTaskBar,
+  killTask,
+} from "./stores/taskbar-store.js";
 import crypto, { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -28,10 +39,11 @@ import { PlanOverlay } from "./components/PlanOverlay.js";
 import { ModelSelector } from "./components/ModelSelector.js";
 import { TaskOverlay } from "./components/TaskOverlay.js";
 import { SkillsOverlay } from "./components/SkillsOverlay.js";
+import { ThemeSelector } from "./components/ThemeSelector.js";
 import { BackgroundTasksBar } from "./components/BackgroundTasksBar.js";
 import type { SlashCommandInfo } from "./components/SlashCommandMenu.js";
-import type { ProcessManager, BackgroundProcess } from "../core/process-manager.js";
-import { useTheme } from "./theme/theme.js";
+import type { ProcessManager } from "../core/process-manager.js";
+import { useTheme, useSetTheme, type ThemeName } from "./theme/theme.js";
 import {
   useAnimationTick,
   useAnimationActive,
@@ -43,7 +55,8 @@ import { getGitBranch } from "../utils/git.js";
 import { getModel, getContextWindow } from "../core/model-registry.js";
 import { SessionManager, type MessageEntry } from "../core/session-manager.js";
 import { log } from "../core/logger.js";
-import { SettingsManager } from "../core/settings-manager.js";
+import { generateSessionTitle } from "../utils/session-title.js";
+import { SettingsManager, type Settings } from "../core/settings-manager.js";
 import { shouldCompact, compact } from "../core/compaction/compactor.js";
 import { estimateConversationTokens } from "../core/compaction/token-estimator.js";
 import { PROMPT_COMMANDS, getPromptCommand } from "../core/prompt-commands.js";
@@ -60,7 +73,12 @@ import {
 import type { MCPClientManager } from "../core/mcp/index.js";
 import { getMCPServers } from "../core/mcp/index.js";
 import type { AuthStorage } from "../core/auth-storage.js";
-import { trimFlushedItems, flushOnTurnText, flushOnTurnEnd } from "./live-item-flush.js";
+import {
+  trimFlushedItems,
+  flushOnTurnText,
+  flushOnTurnEnd,
+  flushOverflow,
+} from "./live-item-flush.js";
 import { Buddy } from "./buddy/Buddy.js";
 
 // ── Provider Error Hints ──────────────────────────────────
@@ -129,6 +147,7 @@ interface AssistantItem {
   text: string;
   thinking?: string;
   thinkingMs?: number;
+  planMode?: boolean;
   id: string;
 }
 
@@ -138,6 +157,8 @@ interface ToolStartItem {
   name: string;
   args: Record<string, unknown>;
   id: string;
+  /** Live progress output (e.g., bash streaming stdout). */
+  progressOutput?: string;
 }
 
 interface ToolDoneItem {
@@ -477,7 +498,10 @@ export interface AppProps {
   showTokenUsage?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
-  credentialsByProvider?: Record<string, { accessToken: string; accountId?: string }>;
+  credentialsByProvider?: Record<
+    string,
+    { accessToken: string; accountId?: string; baseUrl?: string }
+  >;
   initialHistory?: CompletedItem[];
   sessionsDir?: string;
   sessionPath?: string;
@@ -495,24 +519,25 @@ export interface AppProps {
 
 export function App(props: AppProps) {
   const theme = useTheme();
+  const switchTheme = useSetTheme();
   const { stdout } = useStdout();
   const { columns, resizeKey } = useTerminalSize();
 
   // Hoisted before terminal title hook so it can reference them
   const [lastUserMessage, setLastUserMessage] = useState("");
+  const [exitPending, setExitPending] = useState(false);
   const [planMode, setPlanMode] = useState(false);
+  const planModeLocalRef = useRef(false);
+  planModeLocalRef.current = planMode;
 
   // Terminal title — updated later after agentLoop is created
   // (hoisted here so the hook is always called in the same order)
-  const [titlePhase, setTitlePhase] = useState<ActivityPhase>("idle");
   const [titleRunning, setTitleRunning] = useState(false);
-  const [titleToolNames, setTitleToolNames] = useState<string[]>([]);
+  const [sessionTitle, setSessionTitle] = useState<string | undefined>(undefined);
+  const sessionTitleGeneratedRef = useRef(false);
   useTerminalTitle({
-    phase: titlePhase,
     isRunning: titleRunning,
-    userMessage: lastUserMessage,
-    activeToolNames: titleToolNames,
-    planMode,
+    sessionTitle,
   });
 
   // Items scrolled into Static (history).  For restored sessions, skip the
@@ -532,7 +557,9 @@ export function App(props: AppProps) {
   }, [isRestoredSession, props.initialHistory]);
   // Items from the current/last turn — rendered in the live area so they stay visible
   const [liveItems, setLiveItems] = useState<CompletedItem[]>([]);
-  const [overlay, setOverlay] = useState<"model" | "tasks" | "skills" | "plan" | null>(null);
+  const [overlay, setOverlay] = useState<"model" | "tasks" | "skills" | "plan" | "theme" | null>(
+    null,
+  );
   const [taskCount, setTaskCount] = useState(() => getTaskCount(props.cwd));
   const [runAllTasks, setRunAllTasks] = useState(false);
   const runAllTasksRef = useRef(false);
@@ -572,11 +599,20 @@ export function App(props: AppProps) {
   // Two-phase flush: items waiting to be moved to Static history after the
   // live area has been cleared and Ink has committed the smaller output.
   const pendingFlushRef = useRef<CompletedItem[]>([]);
+  const [flushGeneration, setFlushGeneration] = useState(0);
+
+  /** Queue items for two-phase flush and signal the drain effect. */
+  const queueFlush = useCallback((items: CompletedItem[]) => {
+    if (items.length === 0) return;
+    pendingFlushRef.current = [...pendingFlushRef.current, ...items];
+    setFlushGeneration((g) => g + 1);
+  }, []);
 
   // Derive credentials for the current provider
   const currentCreds = props.credentialsByProvider?.[currentProvider];
   const activeApiKey = currentCreds?.accessToken ?? props.apiKey;
   const activeAccountId = currentCreds?.accountId ?? props.accountId;
+  const activeBaseUrl = currentCreds?.baseUrl ?? props.baseUrl;
 
   // Load git branch
   useEffect(() => {
@@ -648,7 +684,11 @@ export function App(props: AppProps) {
           stdout?.write("\x1b[2J\x1b[3J\x1b[H");
           setPlanAutoExpand(true);
           setOverlay("plan");
-          planOverlayPendingRef.current = false;
+          // Don't clear planOverlayPendingRef here — keep it true until
+          // the user actually approves/rejects the plan. Clearing it on a
+          // timer causes a race where agent_done fires after the 300ms
+          // timeout but before the user interacts, triggering a premature
+          // completion sound.
         }, 300);
         return (
           "Plan submitted. Exiting plan mode.\n" +
@@ -807,78 +847,39 @@ export function App(props: AppProps) {
     [currentModel, compactConversation],
   );
 
-  // ── Background task bar state ───────────────────────────
-  const [bgTasks, setBgTasks] = useState<BackgroundProcess[]>([]);
-  const [taskBarFocused, setTaskBarFocused] = useState(false);
-  const [taskBarExpanded, setTaskBarExpanded] = useState(false);
-  const [selectedTaskIndex, setSelectedTaskIndex] = useState(0);
+  // ── Background task bar state (external store) ──────────
+  const {
+    bgTasks,
+    focused: taskBarFocused,
+    expanded: taskBarExpanded,
+    selectedIndex: selectedTaskIndex,
+  } = useTaskBarStore();
+  useTaskBarPolling(props.processManager);
 
-  // Poll ProcessManager every 2s for running tasks
-  useEffect(() => {
-    if (!props.processManager) return;
-    const pm = props.processManager;
-    const poll = () => {
-      const running = pm.list().filter((p) => p.exitCode === null);
-      setBgTasks(running);
-    };
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => clearInterval(interval);
-  }, [props.processManager]);
-
-  // Auto-exit task panel when all tasks gone
-  useEffect(() => {
-    if (bgTasks.length === 0) {
-      setTaskBarFocused(false);
-      setTaskBarExpanded(false);
-    }
-    // Clamp selected index
-    const maxIdx = Math.min(bgTasks.length, 5) - 1;
-    if (selectedTaskIndex > maxIdx && maxIdx >= 0) {
-      setSelectedTaskIndex(maxIdx);
-    }
-  }, [bgTasks.length, selectedTaskIndex]);
-
-  const handleFocusTaskBar = useCallback(() => {
-    if (bgTasks.length > 0) {
-      setTaskBarFocused(true);
-    }
-  }, [bgTasks.length]);
-
-  const handleTaskBarExit = useCallback(() => {
-    setTaskBarFocused(false);
-    setTaskBarExpanded(false);
-  }, []);
-
-  const handleTaskBarExpand = useCallback(() => {
-    setTaskBarExpanded(true);
-    setSelectedTaskIndex(0);
-  }, []);
-
-  const handleTaskBarCollapse = useCallback(() => {
-    setTaskBarExpanded(false);
-  }, []);
-
+  const handleFocusTaskBar = useCallback(() => focusTaskBar(), []);
+  const handleTaskBarExit = useCallback(() => exitTaskBar(), []);
+  const handleTaskBarExpand = useCallback(() => expandTaskBar(), []);
+  const handleTaskBarCollapse = useCallback(() => collapseTaskBar(), []);
   const handleTaskKill = useCallback(
     (id: string) => {
-      props.processManager?.stop(id);
+      if (props.processManager) killTask(props.processManager, id);
     },
     [props.processManager],
   );
-
-  const handleTaskNavigate = useCallback((index: number) => {
-    setSelectedTaskIndex(index);
-  }, []);
+  const handleTaskNavigate = useCallback((index: number) => navigateTaskBar(index), []);
 
   // Resolve fresh OAuth credentials before each agent loop run.
   // Falls back to the static props when authStorage is not available.
-  const resolveCredentials = useCallback(async () => {
-    if (props.authStorage) {
-      const creds = await props.authStorage.resolveCredentials(currentProvider);
-      return { apiKey: creds.accessToken, accountId: creds.accountId };
-    }
-    return { apiKey: activeApiKey!, accountId: activeAccountId };
-  }, [props.authStorage, currentProvider, activeApiKey, activeAccountId]);
+  const resolveCredentials = useCallback(
+    async (opts?: { forceRefresh?: boolean }) => {
+      if (props.authStorage) {
+        const creds = await props.authStorage.resolveCredentials(currentProvider, opts);
+        return { apiKey: creds.accessToken, accountId: creds.accountId };
+      }
+      return { apiKey: activeApiKey!, accountId: activeAccountId };
+    },
+    [props.authStorage, currentProvider, activeApiKey, activeAccountId],
+  );
 
   const agentLoop = useAgentLoop(
     messagesRef,
@@ -890,7 +891,7 @@ export function App(props: AppProps) {
       maxTokens: props.maxTokens,
       thinking: thinkingEnabled ? (props.thinking ?? "medium") : undefined,
       apiKey: activeApiKey,
-      baseUrl: props.baseUrl,
+      baseUrl: activeBaseUrl,
       accountId: activeAccountId,
       resolveCredentials,
       transformContext,
@@ -912,7 +913,63 @@ export function App(props: AppProps) {
             }
           })();
         }
-      }, [persistNewMessages, planMode, props.cwd, props.skills]),
+
+        // Generate session title after the first turn (background, best-effort)
+        if (!sessionTitleGeneratedRef.current) {
+          sessionTitleGeneratedRef.current = true;
+          const msgs = messagesRef.current;
+          // Find the first user message and first assistant text
+          const userMsg = msgs.find((m) => m.role === "user");
+          const assistantMsg = msgs.find((m) => m.role === "assistant");
+          const userText =
+            typeof userMsg?.content === "string"
+              ? userMsg.content
+              : Array.isArray(userMsg?.content)
+                ? userMsg.content
+                    .filter((c): c is { type: "text"; text: string } => c.type === "text")
+                    .map((c) => c.text)
+                    .join(" ")
+                : "";
+          const assistantText =
+            typeof assistantMsg?.content === "string"
+              ? assistantMsg.content
+              : Array.isArray(assistantMsg?.content)
+                ? assistantMsg.content
+                    .filter((c): c is { type: "text"; text: string } => c.type === "text")
+                    .map((c) => c.text)
+                    .join(" ")
+                : "";
+          if (userText) {
+            generateSessionTitle({
+              provider: currentProvider,
+              userMessage: userText,
+              assistantPreview: assistantText.slice(0, 200),
+              apiKey: activeApiKey,
+              baseUrl: activeBaseUrl,
+              accountId: activeAccountId,
+              resolveCredentials,
+            }).then(
+              (title) => {
+                setSessionTitle(title);
+                log("INFO", "title", `Session title generated: ${title}`);
+              },
+              () => {
+                // Best-effort — silently ignore failures
+              },
+            );
+          }
+        }
+      }, [
+        persistNewMessages,
+        planMode,
+        props.cwd,
+        props.skills,
+        currentProvider,
+        activeApiKey,
+        activeAccountId,
+        activeBaseUrl,
+        resolveCredentials,
+      ]),
       onTurnText: useCallback((text: string, thinking: string, thinkingMs: number) => {
         // Track [DONE:n] markers for plan step progress
         if (planStepsRef.current.length > 0) {
@@ -929,13 +986,28 @@ export function App(props: AppProps) {
         // Flush all completed items from the previous turn to Static history.
         // This keeps liveItems bounded per-turn, preventing Ink's live area from
         // growing unbounded, which makes Ink's live-area re-renders expensive.
+        //
+        // Items are queued in pendingFlushRef (not sent to setHistory directly)
+        // so the Static write happens in a SEPARATE render cycle from the
+        // live-area change — avoiding both Ink cursor-math clipping and the
+        // brief duplicate that occurred when setHistory was nested inside the
+        // setLiveItems updater.
         setLiveItems((prev) => {
           const flushed = flushOnTurnText(prev);
           if (flushed.length > 0) {
-            setHistory((h) => compactHistory([...h, ...trimFlushedItems(flushed)]));
+            queueFlush(flushed);
           }
           const displayText = planStepsRef.current.length > 0 ? stripDoneMarkers(text) : text;
-          return [{ kind: "assistant", text: displayText, thinking, thinkingMs, id: getId() }];
+          return [
+            {
+              kind: "assistant",
+              text: displayText,
+              thinking,
+              thinkingMs,
+              planMode: planModeLocalRef.current,
+              id: getId(),
+            },
+          ];
         });
       }, []),
       onToolStart: useCallback(
@@ -948,7 +1020,7 @@ export function App(props: AppProps) {
           setLiveItems((prev) => {
             const { flushed, remaining } = partitionCompleted(prev);
             if (flushed.length > 0) {
-              setHistory((h) => compactHistory([...h, ...trimFlushedItems(flushed)]));
+              queueFlush(flushed);
             }
             return remaining;
           });
@@ -1013,6 +1085,27 @@ export function App(props: AppProps) {
         [],
       ),
       onToolUpdate: useCallback((toolCallId: string, update: unknown) => {
+        const u = update as Record<string, unknown>;
+
+        // Bash progress streaming — append output to tool_start item
+        if (u.type === "bash_progress") {
+          setLiveItems((prev) => {
+            const idx = prev.findIndex(
+              (item) => item.kind === "tool_start" && item.toolCallId === toolCallId,
+            );
+            if (idx === -1) return prev;
+            const item = prev[idx] as ToolStartItem;
+            const next = [...prev];
+            next[idx] = {
+              ...item,
+              progressOutput: (item.progressOutput ?? "") + String(u.output ?? ""),
+            };
+            return next;
+          });
+          return;
+        }
+
+        // Subagent updates
         setLiveItems((prev) => {
           const groupIdx = prev.findIndex((item) => item.kind === "subagent_group");
           if (groupIdx === -1) return prev;
@@ -1074,7 +1167,7 @@ export function App(props: AppProps) {
               // Flush completed items to Static to keep the live area small
               const { flushed, remaining } = partitionCompleted(next);
               if (flushed.length > 0) {
-                setHistory((h) => compactHistory([...h, ...trimFlushedItems(flushed)]));
+                queueFlush(flushed);
               }
               return remaining;
             });
@@ -1138,7 +1231,14 @@ export function App(props: AppProps) {
               // Flush completed items to Static to keep the live area small
               const { flushed, remaining } = partitionCompleted(updated);
               if (flushed.length > 0) {
-                setHistory((h) => compactHistory([...h, ...trimFlushedItems(flushed)]));
+                queueFlush(flushed);
+                return remaining;
+              }
+              // Overflow flush: if live area is still large, flush aggressively
+              const overflow = flushOverflow(updated);
+              if (overflow.flushed.length > 0) {
+                queueFlush(overflow.flushed);
+                return overflow.remaining;
               }
               return remaining;
             });
@@ -1153,7 +1253,7 @@ export function App(props: AppProps) {
         setLiveItems((prev) => {
           const { flushed, remaining } = partitionCompleted(prev);
           if (flushed.length > 0) {
-            setHistory((h) => compactHistory([...h, ...trimFlushedItems(flushed)]));
+            queueFlush(flushed);
           }
           return [
             ...remaining,
@@ -1205,7 +1305,7 @@ export function App(props: AppProps) {
           // Flush completed items to Static
           const { flushed, remaining } = partitionCompleted(updated);
           if (flushed.length > 0) {
-            setHistory((h) => compactHistory([...h, ...trimFlushedItems(flushed)]));
+            queueFlush(flushed);
           }
           return remaining;
         });
@@ -1228,15 +1328,18 @@ export function App(props: AppProps) {
             ...(usage.cacheRead != null && { cacheRead: String(usage.cacheRead) }),
             ...(usage.cacheWrite != null && { cacheWrite: String(usage.cacheWrite) }),
           });
-          // Track actual token count for compaction decisions
+          // Track actual token count for compaction decisions.
+          // Anthropic has separate input/output limits — only count input.
+          // All other providers share the context window — count both.
+          const inputContext = usage.inputTokens + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
           lastActualTokensRef.current =
-            usage.inputTokens + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+            currentProvider === "anthropic" ? inputContext : inputContext + usage.outputTokens;
           // For tool-only turns (no text), flush completed items to Static so
           // liveItems doesn't grow unbounded across consecutive tool-only turns.
           setLiveItems((prev) => {
             const { flushed, remaining } = flushOnTurnEnd(prev, stopReason);
             if (flushed.length > 0) {
-              setHistory((h) => compactHistory([...h, ...trimFlushedItems(flushed)]));
+              queueFlush(flushed);
             }
             return remaining;
           });
@@ -1260,9 +1363,7 @@ export function App(props: AppProps) {
         // separate render cycle so the Static write never coincides with
         // a live-area height change in the same frame.
         setLiveItems((prev) => {
-          if (prev.length > 0) {
-            pendingFlushRef.current = prev;
-          }
+          if (prev.length > 0) queueFlush(prev);
           return [];
         });
 
@@ -1344,9 +1445,7 @@ export function App(props: AppProps) {
             ? undefined
             : content.filter((c) => c.type === "image").length || undefined;
         setLiveItems((prev) => {
-          if (prev.length > 0) {
-            setHistory((h) => compactHistory([...h, ...trimFlushedItems(prev)]));
-          }
+          if (prev.length > 0) queueFlush(prev);
           return [];
         });
         const userItem: UserItem = {
@@ -1375,15 +1474,12 @@ export function App(props: AppProps) {
       pendingFlushRef.current = [];
       setHistory((h) => compactHistory([...h, ...trimFlushedItems(items)]));
     }
-  });
+  }, [flushGeneration]);
 
   // Sync terminal title with agent loop state
-  const activeToolNamesKey = agentLoop.activeToolCalls.map((tc) => tc.name).join(",");
   useEffect(() => {
-    setTitlePhase(agentLoop.activityPhase);
     setTitleRunning(agentLoop.isRunning);
-    setTitleToolNames(agentLoop.activeToolCalls.map((tc) => tc.name));
-  }, [agentLoop.activityPhase, agentLoop.isRunning, activeToolNamesKey]);
+  }, [agentLoop.isRunning]);
 
   // Terminal progress bar (OSC 9;4) — pulsing bar in supported terminals
   useTerminalProgress(agentLoop.isRunning, agentLoop.activeToolCalls.length > 0);
@@ -1449,7 +1545,15 @@ export function App(props: AppProps) {
           messagesRef.current = [{ role: "system" as const, content: newPrompt }];
         })();
         agentLoop.reset();
+        setSessionTitle(undefined);
+        sessionTitleGeneratedRef.current = false;
         setLiveItems([{ kind: "info", text: "Session cleared.", id: getId() }]);
+        return;
+      }
+
+      // Handle /theme — open theme selector overlay
+      if (trimmed === "/theme" || trimmed === "/t") {
+        setOverlay("theme");
         return;
       }
 
@@ -1539,7 +1643,7 @@ export function App(props: AppProps) {
           // Move live items into history before starting
           setLiveItems((prev) => {
             if (prev.length > 0) {
-              setHistory((h) => compactHistory([...h, ...trimFlushedItems(prev)]));
+              pendingFlushRef.current = [...pendingFlushRef.current, ...prev];
             }
             return [];
           });
@@ -1650,7 +1754,7 @@ export function App(props: AppProps) {
       // Move any remaining live items into history (Static) before starting new turn
       setLiveItems((prev) => {
         if (prev.length > 0) {
-          setHistory((h) => compactHistory([...h, ...trimFlushedItems(prev)]));
+          pendingFlushRef.current = [...pendingFlushRef.current, ...prev];
         }
         return [];
       });
@@ -1696,14 +1800,16 @@ export function App(props: AppProps) {
     [agentLoop, props.onSlashCommand, compactConversation],
   );
 
+  const handleDoubleExit = useDoublePress(setExitPending, () => process.exit(0));
+
   const handleAbort = useCallback(() => {
     if (agentLoop.isRunning) {
       agentLoop.clearQueue();
       agentLoop.abort();
     } else {
-      process.exit(0);
+      handleDoubleExit();
     }
-  }, [agentLoop]);
+  }, [agentLoop, handleDoubleExit]);
 
   const handleToggleThinking = useCallback(() => {
     setThinkingEnabled((prev) => {
@@ -1795,6 +1901,25 @@ export function App(props: AppProps) {
     [props.settingsFile, props.mcpManager, props.credentialsByProvider, props.authStorage],
   );
 
+  const handleThemeSelect = useCallback(
+    (name: ThemeName) => {
+      setOverlay(null);
+      if (switchTheme) {
+        switchTheme(name);
+      }
+      // Persist to settings
+      if (props.settingsFile) {
+        const sm = new SettingsManager(props.settingsFile);
+        sm.load().then(() => sm.set("theme", name as Settings["theme"]));
+      }
+      setLiveItems((prev) => [
+        ...prev,
+        { kind: "info", text: `Theme switched to: ${name}`, id: getId() },
+      ]);
+    },
+    [switchTheme, props.settingsFile],
+  );
+
   // All available slash commands for the command palette
   const allCommands = useMemo<SlashCommandInfo[]>(
     () => [
@@ -1802,6 +1927,7 @@ export function App(props: AppProps) {
       { name: "compact", aliases: ["c"], description: "Compact conversation" },
       { name: "clear", aliases: [], description: "Clear session and terminal" },
       { name: "quit", aliases: ["q", "exit"], description: "Exit the agent" },
+      { name: "theme", aliases: ["t"], description: "Switch theme" },
       { name: "plan", aliases: [], description: "Toggle plan mode (on/off)" },
       { name: "plans", aliases: [], description: "Open plans pane" },
       ...PROMPT_COMMANDS.map((cmd) => ({
@@ -1827,8 +1953,8 @@ export function App(props: AppProps) {
           <Banner
             key={item.id}
             version={props.version}
-            model={props.model}
-            provider={props.provider}
+            model={currentModel}
+            provider={currentProvider}
             cwd={props.cwd}
             taskCount={taskCount}
           />
@@ -1862,10 +1988,19 @@ export function App(props: AppProps) {
             thinking={item.thinking}
             thinkingMs={item.thinkingMs}
             showThinking={props.showThinking}
+            planMode={item.planMode}
           />
         );
       case "tool_start":
-        return <ToolExecution key={item.id} status="running" name={item.name} args={item.args} />;
+        return (
+          <ToolExecution
+            key={item.id}
+            status="running"
+            name={item.name}
+            args={item.args}
+            progressOutput={(item as ToolStartItem).progressOutput}
+          />
+        );
       case "tool_done":
         return (
           <ToolExecution
@@ -1930,7 +2065,7 @@ export function App(props: AppProps) {
         return (
           <Box key={item.id} marginTop={1} flexShrink={1}>
             <Text color={theme.planPrimary} bold wrap="wrap">
-              {item.active ? "⊞ " : "⊟ "}
+              {item.active ? "● " : "● "}
               {item.text}
             </Text>
           </Box>
@@ -2091,12 +2226,18 @@ export function App(props: AppProps) {
           cwd={props.cwd}
           autoExpandNewest={planAutoExpand}
           onClose={() => {
+            planOverlayPendingRef.current = false;
             stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setStaticKey((k) => k + 1);
             setPlanAutoExpand(false);
             setOverlay(null);
           }}
           onApprove={(planPath) => {
+            log("INFO", "plan", "Plan approved — transitioning to implementation", {
+              planPath,
+            });
+            // Plan overlay dismissed — allow future onDone to fire normally
+            planOverlayPendingRef.current = false;
             // Store approved plan path — will be injected into the new system prompt
             approvedPlanPathRef.current = planPath;
 
@@ -2119,33 +2260,40 @@ export function App(props: AppProps) {
 
             // Rebuild system prompt with the approved plan, then reset the session
             void (async () => {
-              const newPrompt = await buildSystemPrompt(props.cwd, props.skills, false, planPath);
-              messagesRef.current = [{ role: "system" as const, content: newPrompt }];
-              agentLoop.reset();
-              persistedIndexRef.current = messagesRef.current.length;
+              try {
+                const newPrompt = await buildSystemPrompt(props.cwd, props.skills, false, planPath);
+                messagesRef.current = [{ role: "system" as const, content: newPrompt }];
+                agentLoop.reset();
+                persistedIndexRef.current = messagesRef.current.length;
 
-              // Create a new session file
-              const sm = sessionManagerRef.current;
-              if (sm) {
-                const s = await sm.create(props.cwd, currentProvider, currentModel);
-                sessionPathRef.current = s.path;
+                // Create a new session file
+                const sm = sessionManagerRef.current;
+                if (sm) {
+                  const s = await sm.create(props.cwd, currentProvider, currentModel);
+                  sessionPathRef.current = s.path;
+                }
+
+                // Start implementation with a clean context
+                setLiveItems([
+                  {
+                    kind: "info",
+                    text: "Plan approved — starting fresh session for implementation",
+                    id: getId(),
+                  },
+                ]);
+                setDoneStatus(null);
+                await agentLoop.run(
+                  "The plan has been approved. Implement it now, following each step in order.",
+                );
+              } catch (err) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                log("ERROR", "error", errMsg);
+                setLiveItems((prev) => [...prev, { kind: "error", message: errMsg, id: getId() }]);
               }
-
-              // Start implementation with a clean context
-              setLiveItems([
-                {
-                  kind: "info",
-                  text: "Plan approved — starting fresh session for implementation",
-                  id: getId(),
-                },
-              ]);
-              setDoneStatus(null);
-              await agentLoop.run(
-                "The plan has been approved. Implement it now, following each step in order.",
-              );
             })();
           }}
           onReject={(planPath, feedback) => {
+            planOverlayPendingRef.current = false;
             stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setStaticKey((k) => k + 1);
             setPlanAutoExpand(false);
@@ -2159,7 +2307,11 @@ export function App(props: AppProps) {
               ...prev,
               { kind: "info", text: `Plan rejected — "${feedback}"`, id: getId() },
             ]);
-            void agentLoop.run(msg);
+            void agentLoop.run(msg).catch((err: unknown) => {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              log("ERROR", "error", errMsg);
+              setLiveItems((prev) => [...prev, { kind: "error", message: errMsg, id: getId() }]);
+            });
           }}
         />
       ) : (
@@ -2196,6 +2348,7 @@ export function App(props: AppProps) {
               <ActivityIndicator
                 phase={agentLoop.activityPhase}
                 elapsedMs={agentLoop.elapsedMs}
+                runStartRef={agentLoop.runStartRef}
                 thinkingMs={agentLoop.thinkingMs}
                 isThinking={agentLoop.isThinking}
                 tokenEstimate={agentLoop.streamedTokenEstimate}
@@ -2209,8 +2362,18 @@ export function App(props: AppProps) {
                 planTotal={planSteps.length}
               />
             </Box>
+          ) : agentLoop.stallError ? (
+            <Box marginTop={1} flexDirection="column">
+              <Text color={theme.warning}>
+                {"⚠ API provider stream interrupted — retries exhausted."}
+              </Text>
+              <Text color={theme.textDim}>
+                {"  Your conversation is preserved. Send a message to continue."}
+              </Text>
+            </Box>
           ) : (
-            doneStatus && (
+            doneStatus &&
+            !agentLoop.isRunning && (
               <Box marginTop={1}>
                 <Text color={theme.success}>
                   {"✻ "}
@@ -2271,16 +2434,21 @@ export function App(props: AppProps) {
               currentModel={currentModel}
               currentProvider={currentProvider}
             />
+          ) : overlay === "theme" ? (
+            <ThemeSelector
+              onSelect={handleThemeSelect}
+              onCancel={() => setOverlay(null)}
+              currentTheme={theme.name}
+            />
           ) : (
             <Footer
               model={currentModel}
               tokensIn={agentLoop.contextUsed}
-              linesAdded={agentLoop.linesChanged.added}
-              linesRemoved={agentLoop.linesChanged.removed}
               cwd={props.cwd}
               gitBranch={gitBranch}
               thinkingEnabled={thinkingEnabled}
               planMode={planMode}
+              exitPending={exitPending}
             />
           )}
           {/* Buddy companion */}
