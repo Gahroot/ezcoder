@@ -55,6 +55,7 @@ import { getGitBranch } from "../utils/git.js";
 import { getModel, getContextWindow } from "../core/model-registry.js";
 import { SessionManager, type MessageEntry } from "../core/session-manager.js";
 import { log } from "../core/logger.js";
+import { startPeriodicUpdateCheck, stopPeriodicUpdateCheck } from "../core/auto-update.js";
 import { generateSessionTitle } from "../utils/session-title.js";
 import { SettingsManager, type Settings } from "../core/settings-manager.js";
 import { shouldCompact, compact } from "../core/compaction/compactor.js";
@@ -620,6 +621,14 @@ export function App(props: AppProps) {
   useEffect(() => {
     getGitBranch(props.cwd).then(setGitBranch);
   }, [props.cwd]);
+
+  // Periodic update check during long sessions
+  useEffect(() => {
+    startPeriodicUpdateCheck(props.version, (msg) => {
+      setLiveItems((prev) => [...prev, { kind: "info", text: msg, id: getId() }]);
+    });
+    return () => stopPeriodicUpdateCheck();
+  }, [props.version]);
 
   // Load custom commands from .gg/commands/
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
