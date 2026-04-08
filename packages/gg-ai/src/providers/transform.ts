@@ -362,7 +362,7 @@ export function toOpenAIMessages(
       if (thinkingParts) {
         (assistantMsg as unknown as Record<string, unknown>).reasoning_content = thinkingParts;
       } else if (options?.thinking && hasToolCalls && options.provider !== "glm") {
-        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = "";
+        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = " ";
       }
       out.push(assistantMsg);
       continue;

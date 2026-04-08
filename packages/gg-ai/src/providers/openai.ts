@@ -64,18 +64,10 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     stream_options: { include_usage: true },
   };
 
-  // Inject provider-native web search tools (non-standard, bypass SDK types)
-  if (options.webSearch) {
-    if (options.provider === "moonshot") {
-      const raw = params as unknown as Record<string, unknown>;
-      const tools = ((raw.tools as unknown[]) ?? []).slice();
-      tools.push({ type: "builtin_function", function: { name: "$web_search" } });
-      raw.tools = tools;
-    }
-    // Xiaomi: web search requires account-level webSearchEnabled flag
-    // GLM (Z.AI): web search is provided via MCP servers, not inline tools
-    // OpenAI: Chat Completions API does not support web search
-  }
+  // Native web search is disabled for OpenAI-compatible providers — ggcoder
+  // provides its own web_search/web_fetch tools which handle results properly.
+  // Moonshot's $web_search was previously injected here but it returns opaque
+  // results and triggers reasoning_content validation errors with thinking mode.
 
   // Inject custom thinking param for GLM/Moonshot/Xiaomi (not part of OpenAI spec)
   if (usesThinkingParam) {
