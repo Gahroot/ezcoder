@@ -30,6 +30,7 @@ import { ServerToolExecution } from "./components/ServerToolExecution.js";
 import { SubAgentPanel, type SubAgentInfo } from "./components/SubAgentPanel.js";
 import { CompactionSpinner, CompactionDone } from "./components/CompactionNotice.js";
 import type { SubAgentUpdate, SubAgentDetails } from "../tools/subagent.js";
+import { createWebSearchTool } from "../tools/web-search.js";
 import { StreamingArea } from "./components/StreamingArea.js";
 import { ActivityIndicator } from "./components/ActivityIndicator.js";
 import { InputArea } from "./components/InputArea.js";
@@ -1867,44 +1868,61 @@ export function App(props: AppProps) {
       const newModelId = value.slice(colonIdx + 1);
       log("INFO", "model", `Model changed`, { provider: newProvider, model: newModelId });
 
-      // Reconnect MCP servers when provider changes
+      // Handle provider-specific tool changes when provider changes
       setCurrentProvider((prevProvider) => {
-        if (newProvider !== prevProvider && props.mcpManager) {
-          void (async () => {
-            // Disconnect old MCP servers
-            await props.mcpManager!.dispose();
+        if (newProvider !== prevProvider) {
+          // Add/remove client-side web_search tool based on provider.
+          // Anthropic has native server-side web search; all other providers need the client tool.
+          setCurrentTools((prev) => {
+            const hasWebSearch = prev.some((t) => t.name === "web_search");
+            if (newProvider === "anthropic" && hasWebSearch) {
+              // Switching TO anthropic — remove client-side web_search (server-side handles it)
+              return prev.filter((t) => t.name !== "web_search");
+            } else if (newProvider !== "anthropic" && !hasWebSearch) {
+              // Switching FROM anthropic — add client-side web_search
+              return [...prev, createWebSearchTool()];
+            }
+            return prev;
+          });
 
-            // Remove old MCP tools, connect new ones
-            let apiKey: string | undefined;
-            if (newProvider === "glm" && props.authStorage) {
-              try {
-                const glmCreds = await props.authStorage.resolveCredentials("glm");
-                apiKey = glmCreds.accessToken;
-              } catch {
-                // GLM not configured — skip Z.AI MCP servers
+          // Reconnect MCP servers
+          if (props.mcpManager) {
+            void (async () => {
+              // Disconnect old MCP servers
+              await props.mcpManager!.dispose();
+
+              // Remove old MCP tools, connect new ones
+              let apiKey: string | undefined;
+              if (newProvider === "glm" && props.authStorage) {
+                try {
+                  const glmCreds = await props.authStorage.resolveCredentials("glm");
+                  apiKey = glmCreds.accessToken;
+                } catch {
+                  // GLM not configured — skip Z.AI MCP servers
+                }
+              } else if (newProvider === "glm") {
+                apiKey = props.credentialsByProvider?.["glm"]?.accessToken;
               }
-            } else if (newProvider === "glm") {
-              apiKey = props.credentialsByProvider?.["glm"]?.accessToken;
-            }
-            try {
-              const mcpTools = await props.mcpManager!.connectAll(
-                getMCPServers(newProvider, apiKey),
-              );
-              setCurrentTools((prev) => [
-                ...prev.filter((t) => !t.name.startsWith("mcp__")),
-                ...mcpTools,
-              ]);
-              log("INFO", "mcp", `MCP servers reconnected for provider ${newProvider}`);
-            } catch (err) {
-              log(
-                "WARN",
-                "mcp",
-                `MCP reconnection failed: ${err instanceof Error ? err.message : String(err)}`,
-              );
-              // Still remove old MCP tools even if reconnection fails
-              setCurrentTools((prev) => prev.filter((t) => !t.name.startsWith("mcp__")));
-            }
-          })();
+              try {
+                const mcpTools = await props.mcpManager!.connectAll(
+                  getMCPServers(newProvider, apiKey),
+                );
+                setCurrentTools((prev) => [
+                  ...prev.filter((t) => !t.name.startsWith("mcp__")),
+                  ...mcpTools,
+                ]);
+                log("INFO", "mcp", `MCP servers reconnected for provider ${newProvider}`);
+              } catch (err) {
+                log(
+                  "WARN",
+                  "mcp",
+                  `MCP reconnection failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
+                // Still remove old MCP tools even if reconnection fails
+                setCurrentTools((prev) => prev.filter((t) => !t.name.startsWith("mcp__")));
+              }
+            })();
+          }
         }
         return newProvider;
       });
