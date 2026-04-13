@@ -2,7 +2,7 @@ import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 import type { ThemeName } from "./ui/theme/theme.js";
 
 export const APP_NAME = "ezcoder";

@@ -197,20 +197,20 @@ To add a new registry command:
 
 There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.ezcoder/commands/` directory).
 
-## Upstream Sync (KenKaiii/gg-framework)
+## Upstream Sync (KenKaiii/ezcoder)
 
-This repo is a fork of [KenKaiii/gg-framework](https://github.com/KenKaiii/gg-framework). The upstream uses different directory names and npm scope:
+This repo is a fork of [KenKaiii/ezcoder](https://github.com/KenKaiii/ezcoder). The upstream uses different directory names and npm scope:
 
-| Ours (ezcoder) | Upstream (gg-framework) |
+| Ours (ezcoder) | Upstream (ezcoder) |
 |---|---|
-| `packages/ai` | `packages/gg-ai` |
-| `packages/agent` | `packages/gg-agent` |
-| `packages/cli` | `packages/ggcoder` |
+| `packages/ai` | `packages/ai` |
+| `packages/agent` | `packages/agent` |
+| `packages/cli` | `packages/cli` |
 | `@prestyj/*` scope | `@kenkaiiii/*` scope |
-| `~/.ezcoder/` config dir | `~/.gg/` config dir |
+| `~/.ezcoder/` config dir | `~/.ezcoder/` config dir |
 | `EZ Coder` branding | `GG Coder` branding |
-| `EZCoderAIError` | `GGAIError` |
-| `Gahroot/ezcoder` repo | `KenKaiii/gg-framework` repo |
+| `EZCoderAIError` | `EZCoderAIError` |
+| `Gahroot/ezcoder` repo | `KenKaiii/ezcoder` repo |
 
 ### How to sync
 
@@ -225,7 +225,7 @@ Both do the same thing:
 2. `git merge upstream/main`
 3. Rename dirs: `gg-ai`→`ai`, `gg-agent`→`agent`, `ggcoder`→`cli`
 4. Fix npm scope: `@kenkaiiii`→`@prestyj`
-5. Fix branding: GG→EZ, `~/.gg/`→`~/.ezcoder/`, `GGAIError`→`EZCoderAIError`
+5. Fix branding: GG→EZ, `~/.ezcoder/`→`~/.ezcoder/`, `EZCoderAIError`→`EZCoderAIError`
 6. Commit the fixup
 
 ### When merge conflicts happen
@@ -240,7 +240,7 @@ If `git merge upstream/main` hits conflicts:
 ```bash
 pnpm install && pnpm build
 # Verify no remaining upstream branding:
-grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|GGAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
+grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|EZCoderAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
 ```
 
 ### Block art logos

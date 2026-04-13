@@ -566,7 +566,7 @@ After research completes, call the enter_plan tool to enter plan mode. Using the
 
    If you cannot find a concrete verification path, ask the user how to verify. Offer 2–3 specific options based on what the researcher found. Do not skip this — the workers cannot ask the user themselves.
 
-3. **Write the plan** to \`.gg/plans/batch.md\` with:
+3. **Write the plan** to \`.ezcoder/plans/batch.md\` with:
    - Summary of research findings
    - Numbered list of work units — each with: title, file list, one-line description
    - The test recipe (or "skip e2e because …")

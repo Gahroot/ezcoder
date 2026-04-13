@@ -752,7 +752,7 @@ async function runDoctor(): Promise<void> {
   console.log();
 
   const home = os.homedir();
-  const ggDir = path.join(home, ".gg");
+  const ggDir = path.join(home, ".ezcoder");
   const authFile = path.join(ggDir, "auth.json");
   const lockFile = authFile + ".lock";
   const myUid = process.getuid!();
@@ -771,7 +771,7 @@ async function runDoctor(): Promise<void> {
   }
   if (myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
-    console.log(dim("      Running ggcoder with sudo can cause ownership issues."));
+    console.log(dim("      Running ezcoder with sudo can cause ownership issues."));
     console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
   }
   console.log();
@@ -885,7 +885,7 @@ async function runDoctor(): Promise<void> {
         await fsP.copyFile(authFile, path.join(ggDir, backupName));
         await fsP.writeFile(authFile, "{}", { encoding: "utf-8", mode: 0o600 });
         console.log(good(`    ✓ Corrupt file backed up as ${backupName}`));
-        console.log(dim('      Run "ggcoder login" to re-authenticate'));
+        console.log(dim('      Run "ezcoder login" to re-authenticate'));
         authData = {};
         fixed++;
       }
@@ -902,7 +902,7 @@ async function runDoctor(): Promise<void> {
     }
   } catch {
     console.log(dim(`    Path:  ${authFile}`));
-    console.log(warn('    Not found — run "ggcoder login" to authenticate'));
+    console.log(warn('    Not found — run "ezcoder login" to authenticate'));
   }
   console.log();
 

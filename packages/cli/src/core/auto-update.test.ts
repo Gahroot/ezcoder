@@ -30,23 +30,23 @@ vi.mock("node:child_process", () => ({
 }));
 
 function writeStateFile(state: Record<string, unknown>): void {
-  fs.mkdirSync(path.join(tmpDir, ".gg"), { recursive: true });
-  fs.writeFileSync(path.join(tmpDir, ".gg", "update-state.json"), JSON.stringify(state));
+  fs.mkdirSync(path.join(tmpDir, ".ezcoder"), { recursive: true });
+  fs.writeFileSync(path.join(tmpDir, ".ezcoder", "update-state.json"), JSON.stringify(state));
 }
 
 function readStateFile(): Record<string, unknown> | null {
   try {
-    return JSON.parse(fs.readFileSync(path.join(tmpDir, ".gg", "update-state.json"), "utf-8"));
+    return JSON.parse(fs.readFileSync(path.join(tmpDir, ".ezcoder", "update-state.json"), "utf-8"));
   } catch {
     return null;
   }
 }
 
 beforeEach(() => {
-  fs.mkdirSync(path.join(tmpDir, ".gg"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".ezcoder"), { recursive: true });
   // Clear any existing state
   try {
-    fs.unlinkSync(path.join(tmpDir, ".gg", "update-state.json"));
+    fs.unlinkSync(path.join(tmpDir, ".ezcoder", "update-state.json"));
   } catch {
     // fine
   }
@@ -187,7 +187,7 @@ describe("checkAndAutoUpdate", () => {
   });
 
   it("handles corrupt state file gracefully", () => {
-    fs.writeFileSync(path.join(tmpDir, ".gg", "update-state.json"), "not json{{{");
+    fs.writeFileSync(path.join(tmpDir, ".ezcoder", "update-state.json"), "not json{{{");
 
     vi.stubGlobal(
       "fetch",
