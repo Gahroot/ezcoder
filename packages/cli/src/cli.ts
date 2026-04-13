@@ -282,27 +282,6 @@ function main(): void {
     return;
   }
 
-  if (subcommand === "agent-home-login") {
-    runAgentHomeLogin().catch((err) => {
-      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
-      closeLogger();
-      process.stderr.write(formatUserError(err) + "\n");
-      process.exit(1);
-    });
-    return;
-  }
-
-  if (subcommand === "agent-home") {
-    process.argv.splice(2, 1);
-    runAgentHome().catch((err) => {
-      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
-      closeLogger();
-      process.stderr.write(formatUserError(err) + "\n");
-      process.exit(1);
-    });
-    return;
-  }
-
   if (subcommand === "continue") {
     // Remove "continue" so parseArgs handles remaining flags
     process.argv.splice(2, 1);
