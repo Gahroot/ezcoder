@@ -30,6 +30,7 @@ import { ServerToolExecution } from "./components/ServerToolExecution.js";
 import { SubAgentPanel, type SubAgentInfo } from "./components/SubAgentPanel.js";
 import { CompactionSpinner, CompactionDone } from "./components/CompactionNotice.js";
 import type { SubAgentUpdate, SubAgentDetails } from "../tools/subagent.js";
+import { createWebSearchTool } from "../tools/web-search.js";
 import { StreamingArea } from "./components/StreamingArea.js";
 import { ActivityIndicator } from "./components/ActivityIndicator.js";
 import { InputArea } from "./components/InputArea.js";
@@ -55,6 +56,7 @@ import { getGitBranch } from "../utils/git.js";
 import { getModel, getContextWindow } from "../core/model-registry.js";
 import { SessionManager, type MessageEntry } from "../core/session-manager.js";
 import { log } from "../core/logger.js";
+import { startPeriodicUpdateCheck, stopPeriodicUpdateCheck } from "../core/auto-update.js";
 import { generateSessionTitle } from "../utils/session-title.js";
 import { SettingsManager, type Settings } from "../core/settings-manager.js";
 import { shouldCompact, compact } from "../core/compaction/compactor.js";
@@ -591,7 +593,9 @@ export function App(props: AppProps) {
   const persistedIndexRef = useRef(messagesRef.current.length);
   /** Last actual API-reported input token count (from turn_end). */
   const lastActualTokensRef = useRef(0);
-  /** Timestamp of last compaction — used for time-based cooldown. */
+  /** Timestamp (ms) when lastActualTokensRef was last updated by turn_end. */
+  const lastActualTokensTimestampRef = useRef(0);
+  /** Timestamp of last compaction — used for time-based cooldown and staleness detection. */
   const lastCompactionTimeRef = useRef(0);
 
   const getId = () => String(nextIdRef.current++);
@@ -618,6 +622,14 @@ export function App(props: AppProps) {
   useEffect(() => {
     getGitBranch(props.cwd).then(setGitBranch);
   }, [props.cwd]);
+
+  // Periodic update check during long sessions
+  useEffect(() => {
+    startPeriodicUpdateCheck(props.version, (msg) => {
+      setLiveItems((prev) => [...prev, { kind: "info", text: msg, id: getId() }]);
+    });
+    return () => stopPeriodicUpdateCheck();
+  }, [props.version]);
 
   // Load custom commands from .ezcoder/commands/
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
@@ -766,21 +778,27 @@ export function App(props: AppProps) {
           approvedPlanPath: approvedPlanPathRef.current,
         });
 
-        // Replace spinner with completed notice
-        setLiveItems((prev) =>
-          prev.map((item) =>
-            item.id === spinId
-              ? ({
-                  kind: "compacted",
-                  originalCount: result.result.originalCount,
-                  newCount: result.result.newCount,
-                  tokensBefore: result.result.tokensBeforeEstimate,
-                  tokensAfter: result.result.tokensAfterEstimate,
-                  id: spinId,
-                } as CompactedItem)
-              : item,
-          ),
-        );
+        if (result.result.compacted) {
+          // Replace spinner with completed notice
+          setLiveItems((prev) =>
+            prev.map((item) =>
+              item.id === spinId
+                ? ({
+                    kind: "compacted",
+                    originalCount: result.result.originalCount,
+                    newCount: result.result.newCount,
+                    tokensBefore: result.result.tokensBeforeEstimate,
+                    tokensAfter: result.result.tokensAfterEstimate,
+                    id: spinId,
+                  } as CompactedItem)
+                : item,
+            ),
+          );
+        } else {
+          // Nothing was actually compacted — remove spinner silently
+          log("INFO", "compaction", `Compaction skipped: ${result.result.reason ?? "unknown"}`);
+          setLiveItems((prev) => prev.filter((item) => item.id !== spinId));
+        }
 
         return result.messages;
       } catch (err) {
@@ -820,7 +838,6 @@ export function App(props: AppProps) {
       if (options?.force) {
         const result = await compactConversation(messages);
         lastCompactionTimeRef.current = Date.now();
-        lastActualTokensRef.current = 0; // Reset stale pre-compaction count
         return result;
       }
 
@@ -833,13 +850,20 @@ export function App(props: AppProps) {
       }
 
       const contextWindow = getContextWindow(currentModel);
-      // Prefer actual API-reported tokens over char-based estimate
+      // Prefer actual API-reported tokens over char-based estimate, but only
+      // when the token count was recorded AFTER the most recent compaction.
+      // A count from before compaction is stale — it reflects the old context
+      // size and would trigger compaction again immediately for no reason.
+      const tokensFresh = lastActualTokensTimestampRef.current > lastCompactionTimeRef.current;
       const actualTokens =
-        lastActualTokensRef.current > 0 ? lastActualTokensRef.current : undefined;
+        lastActualTokensRef.current > 0 && tokensFresh ? lastActualTokensRef.current : undefined;
       if (shouldCompact(messages, contextWindow, threshold, actualTokens)) {
+        const before = messages.length;
         const result = await compactConversation(messages);
         lastCompactionTimeRef.current = Date.now();
-        lastActualTokensRef.current = 0; // Reset stale pre-compaction count
+        // If compaction was a no-op (e.g. too few middle messages to summarize),
+        // return the original reference so the agent loop doesn't replace messages.
+        if (result.length === before) return messages;
         return result;
       }
       return messages;
@@ -1334,6 +1358,7 @@ export function App(props: AppProps) {
           const inputContext = usage.inputTokens + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
           lastActualTokensRef.current =
             currentProvider === "anthropic" ? inputContext : inputContext + usage.outputTokens;
+          lastActualTokensTimestampRef.current = Date.now();
           // For tool-only turns (no text), flush completed items to Static so
           // liveItems doesn't grow unbounded across consecutive tool-only turns.
           setLiveItems((prev) => {
@@ -1533,6 +1558,9 @@ export function App(props: AppProps) {
         // Clear terminal screen + scrollback — needed because Ink's <Static>
         // writes directly to stdout and can't be removed by clearing React state
         stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+        // Discard any items queued for two-phase flush so they don't leak
+        // into the new session after the Static remount.
+        pendingFlushRef.current = [];
         setHistory([{ kind: "banner", id: "banner" }]);
         setLiveItems([]);
         setDoneStatus(null);
@@ -1543,10 +1571,14 @@ export function App(props: AppProps) {
         void (async () => {
           const newPrompt = await buildSystemPrompt(props.cwd, props.skills, planMode, undefined);
           messagesRef.current = [{ role: "system" as const, content: newPrompt }];
+          persistedIndexRef.current = messagesRef.current.length;
         })();
         agentLoop.reset();
         setSessionTitle(undefined);
         sessionTitleGeneratedRef.current = false;
+        // Bump staticKey to force Ink's <Static> to remount, discarding its
+        // internal record of previously rendered items so they don't reappear.
+        setStaticKey((k) => k + 1);
         setLiveItems([{ kind: "info", text: "Session cleared.", id: getId() }]);
         return;
       }
@@ -1836,44 +1868,61 @@ export function App(props: AppProps) {
       const newModelId = value.slice(colonIdx + 1);
       log("INFO", "model", `Model changed`, { provider: newProvider, model: newModelId });
 
-      // Reconnect MCP servers when provider changes
+      // Handle provider-specific tool changes when provider changes
       setCurrentProvider((prevProvider) => {
-        if (newProvider !== prevProvider && props.mcpManager) {
-          void (async () => {
-            // Disconnect old MCP servers
-            await props.mcpManager!.dispose();
+        if (newProvider !== prevProvider) {
+          // Add/remove client-side web_search tool based on provider.
+          // Anthropic has native server-side web search; all other providers need the client tool.
+          setCurrentTools((prev) => {
+            const hasWebSearch = prev.some((t) => t.name === "web_search");
+            if (newProvider === "anthropic" && hasWebSearch) {
+              // Switching TO anthropic — remove client-side web_search (server-side handles it)
+              return prev.filter((t) => t.name !== "web_search");
+            } else if (newProvider !== "anthropic" && !hasWebSearch) {
+              // Switching FROM anthropic — add client-side web_search
+              return [...prev, createWebSearchTool()];
+            }
+            return prev;
+          });
 
-            // Remove old MCP tools, connect new ones
-            let apiKey: string | undefined;
-            if (newProvider === "glm" && props.authStorage) {
-              try {
-                const glmCreds = await props.authStorage.resolveCredentials("glm");
-                apiKey = glmCreds.accessToken;
-              } catch {
-                // GLM not configured — skip Z.AI MCP servers
+          // Reconnect MCP servers
+          if (props.mcpManager) {
+            void (async () => {
+              // Disconnect old MCP servers
+              await props.mcpManager!.dispose();
+
+              // Remove old MCP tools, connect new ones
+              let apiKey: string | undefined;
+              if (newProvider === "glm" && props.authStorage) {
+                try {
+                  const glmCreds = await props.authStorage.resolveCredentials("glm");
+                  apiKey = glmCreds.accessToken;
+                } catch {
+                  // GLM not configured — skip Z.AI MCP servers
+                }
+              } else if (newProvider === "glm") {
+                apiKey = props.credentialsByProvider?.["glm"]?.accessToken;
               }
-            } else if (newProvider === "glm") {
-              apiKey = props.credentialsByProvider?.["glm"]?.accessToken;
-            }
-            try {
-              const mcpTools = await props.mcpManager!.connectAll(
-                getMCPServers(newProvider, apiKey),
-              );
-              setCurrentTools((prev) => [
-                ...prev.filter((t) => !t.name.startsWith("mcp__")),
-                ...mcpTools,
-              ]);
-              log("INFO", "mcp", `MCP servers reconnected for provider ${newProvider}`);
-            } catch (err) {
-              log(
-                "WARN",
-                "mcp",
-                `MCP reconnection failed: ${err instanceof Error ? err.message : String(err)}`,
-              );
-              // Still remove old MCP tools even if reconnection fails
-              setCurrentTools((prev) => prev.filter((t) => !t.name.startsWith("mcp__")));
-            }
-          })();
+              try {
+                const mcpTools = await props.mcpManager!.connectAll(
+                  getMCPServers(newProvider, apiKey),
+                );
+                setCurrentTools((prev) => [
+                  ...prev.filter((t) => !t.name.startsWith("mcp__")),
+                  ...mcpTools,
+                ]);
+                log("INFO", "mcp", `MCP servers reconnected for provider ${newProvider}`);
+              } catch (err) {
+                log(
+                  "WARN",
+                  "mcp",
+                  `MCP reconnection failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
+                // Still remove old MCP tools even if reconnection fails
+                setCurrentTools((prev) => prev.filter((t) => !t.name.startsWith("mcp__")));
+              }
+            })();
+          }
         }
         return newProvider;
       });
