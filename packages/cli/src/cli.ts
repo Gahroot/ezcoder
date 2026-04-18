@@ -721,10 +721,8 @@ async function runDoctor(): Promise<void> {
   console.log();
   console.log(
     `  ${gradientLine(LOGO[0]!)}${GAP}` +
-      primary.bold("GG Coder") +
-      dim(` v${CLI_VERSION}`) +
-      dim(" · By ") +
-      chalk.white.bold("Ken Kai"),
+      primary.bold("EZ Coder") +
+      dim(` v${CLI_VERSION}`),
   );
   console.log(`  ${gradientLine(LOGO[1]!)}${GAP}` + accent("Doctor"));
   console.log(`  ${gradientLine(LOGO[2]!)}${GAP}` + dim("Diagnose & Fix"));
