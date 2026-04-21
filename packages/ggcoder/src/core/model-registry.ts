@@ -160,10 +160,10 @@ export const MODELS: ModelInfo[] = [
   },
   // ── Moonshot (Kimi) ──────────────────────────────────────
   {
-    id: "kimi-k2.5",
-    name: "Kimi K2.5",
+    id: "kimi-k2.6",
+    name: "Kimi K2.6",
     provider: "moonshot",
-    contextWindow: 200_000,
+    contextWindow: 262_144,
     maxOutputTokens: 16_384,
     supportsThinking: true,
     supportsImages: true,
@@ -183,7 +183,7 @@ export function getDefaultModel(provider: Provider): ModelInfo {
   if (provider === "xiaomi") return MODELS.find((m) => m.id === "mimo-v2-pro")!;
   if (provider === "openai") return MODELS.find((m) => m.id === "gpt-5.4")!;
   if (provider === "glm") return MODELS.find((m) => m.id === "glm-5.1")!;
-  if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k2.5")!;
+  if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k2.6")!;
   if (provider === "minimax") return MODELS.find((m) => m.id === "MiniMax-M2.7")!;
   if (provider === "openrouter") return MODELS.find((m) => m.id === "qwen/qwen3.6-plus")!;
   return MODELS.find((m) => m.id === "claude-sonnet-4-6")!;

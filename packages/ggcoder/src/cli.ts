@@ -385,7 +385,7 @@ function main(): void {
   function getHardcodedDefault(p: string): string {
     if (p === "openai") return "gpt-5.4";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
+    if (p === "moonshot") return "kimi-k2.6";
     if (p === "minimax") return "MiniMax-M2.7";
     if (p === "openrouter") return "qwen/qwen3.6-plus";
     return "claude-opus-4-7";
@@ -1021,7 +1021,7 @@ async function runSessions(): Promise<void> {
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.4";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
+    if (p === "moonshot") return "kimi-k2.6";
     if (p === "minimax") return "MiniMax-M2.7";
     return "claude-opus-4-7";
   }
@@ -1264,7 +1264,7 @@ async function runServe(): Promise<void> {
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.4";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
+    if (p === "moonshot") return "kimi-k2.6";
     if (p === "minimax") return "MiniMax-M2.7";
     return "claude-opus-4-7";
   }
@@ -1442,7 +1442,7 @@ async function runAgentHome(): Promise<void> {
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.4";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
+    if (p === "moonshot") return "kimi-k2.6";
     if (p === "minimax") return "MiniMax-M2.7";
     return "claude-opus-4-7";
   }
