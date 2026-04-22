@@ -4,6 +4,7 @@ import {
   type Message,
   type ToolCall,
   type ToolResult,
+  type ToolResultContent,
   type Usage,
   type ContentPart,
   type AssistantMessage,
@@ -367,6 +368,7 @@ export async function* agentLoop(
           signal: streamController.signal,
           accountId: options.accountId,
           cacheRetention: options.cacheRetention,
+          supportsImages: options.supportsImages,
           compaction: options.compaction,
           clearToolUses: options.clearToolUses,
           // Flip to non-streaming fallback after repeated stream stalls.
@@ -760,7 +762,7 @@ export async function* agentLoop(
           args: toolCall.args,
         });
 
-        let resultContent: string;
+        let resultContent: ToolResultContent;
         let details: unknown;
         let isError = false;
 
@@ -797,7 +799,7 @@ export async function* agentLoop(
         eventStream.push({
           type: "tool_call_end" as const,
           toolCallId: toolCall.id,
-          result: resultContent,
+          result: toolResultPreview(resultContent),
           details,
           isError,
           durationMs,
@@ -876,7 +878,9 @@ export async function* agentLoop(
           const HARD_MAX = 400_000; // absolute ceiling regardless of context window
           const max = Math.min(options.maxToolResultChars, HARD_MAX);
           for (const tr of toolResults) {
-            if (tr.content.length > max) {
+            // Only truncate string content — array content (text+image blocks)
+            // is already size-bounded by the image resizer.
+            if (typeof tr.content === "string" && tr.content.length > max) {
               // Keep 70% head + 30% tail to preserve errors/diagnostics at the end
               const headChars = Math.floor(max * 0.7);
               const tailChars = max - headChars;
@@ -940,6 +944,15 @@ export async function* agentLoop(
 
 function normalizeToolResult(raw: ToolExecuteResult): StructuredToolResult {
   return typeof raw === "string" ? { content: raw } : raw;
+}
+
+/** Flatten tool result content to a plain-text preview for the tool_call_end event.
+ *  Image blocks become a "[image]" placeholder so the UI has something to render. */
+function toolResultPreview(content: ToolResultContent): string {
+  if (typeof content === "string") return content;
+  return content
+    .map((block) => (block.type === "text" ? block.text : `[image ${block.mediaType}]`))
+    .join("\n");
 }
 
 function extractToolCalls(content: string | ContentPart[]): ToolCall[] {

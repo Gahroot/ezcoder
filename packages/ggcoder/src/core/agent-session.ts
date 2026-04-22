@@ -298,6 +298,7 @@ export class AgentSession {
     let creds = await this.authStorage.resolveCredentials(this.provider);
 
     const runAgentLoop = async (apiKey: string, accountId?: string) => {
+      const modelInfo = getModel(this.model);
       const generator = agentLoop(this.messages, {
         provider: this.provider,
         model: this.model,
@@ -310,6 +311,7 @@ export class AgentSession {
         signal: this.opts.signal,
         accountId,
         cacheRetention: "short",
+        supportsImages: modelInfo?.supportsImages,
         // clearToolUses disabled — causes model to output unsolicited context summaries
         // Single tool result shouldn't exceed 30% of context window (in chars)
         maxToolResultChars: Math.floor(getContextWindow(this.model) * 3.5 * 0.3),
