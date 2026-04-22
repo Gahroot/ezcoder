@@ -21,6 +21,7 @@ import type { Message, Provider, ThinkingLevel, TextContent, ImageContent } from
 import { extractImagePaths, type ImageAttachment } from "../utils/image.js";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { useAgentLoop, type UserContent } from "./hooks/useAgentLoop.js";
+import { isEyesActive, journalCount } from "@kenkaiiii/ggcoder-eyes";
 import { UserMessage } from "./components/UserMessage.js";
 import type { PasteInfo } from "./components/InputArea.js";
 import { AssistantMessage } from "./components/AssistantMessage.js";
@@ -40,6 +41,7 @@ import { PlanOverlay } from "./components/PlanOverlay.js";
 import { ModelSelector } from "./components/ModelSelector.js";
 import { TaskOverlay } from "./components/TaskOverlay.js";
 import { SkillsOverlay } from "./components/SkillsOverlay.js";
+import { EyesOverlay } from "./components/EyesOverlay.js";
 import { ThemeSelector } from "./components/ThemeSelector.js";
 import { BackgroundTasksBar } from "./components/BackgroundTasksBar.js";
 import type { SlashCommandInfo } from "./components/SlashCommandMenu.js";
@@ -559,10 +561,13 @@ export function App(props: AppProps) {
   }, [isRestoredSession, props.initialHistory]);
   // Items from the current/last turn — rendered in the live area so they stay visible
   const [liveItems, setLiveItems] = useState<CompletedItem[]>([]);
-  const [overlay, setOverlay] = useState<"model" | "tasks" | "skills" | "plan" | "theme" | null>(
-    null,
-  );
+  const [overlay, setOverlay] = useState<
+    "model" | "tasks" | "skills" | "plan" | "theme" | "eyes" | null
+  >(null);
   const [taskCount, setTaskCount] = useState(() => getTaskCount(props.cwd));
+  const [eyesCount, setEyesCount] = useState<number | undefined>(() =>
+    isEyesActive(props.cwd) ? journalCount({ status: "open" }, props.cwd) : undefined,
+  );
   const [runAllTasks, setRunAllTasks] = useState(false);
   const runAllTasksRef = useRef(false);
   const startTaskRef = useRef<(title: string, prompt: string, taskId: string) => void>(() => {});
@@ -1506,6 +1511,17 @@ export function App(props: AppProps) {
     setTitleRunning(agentLoop.isRunning);
   }, [agentLoop.isRunning]);
 
+  // Refresh eyes badge count when the agent settles (end of a turn) — a turn
+  // may have logged new rough/wish/blocked signals. Also covers the case where
+  // /eyes was run for the first time (manifest now exists).
+  useEffect(() => {
+    if (!agentLoop.isRunning) {
+      setEyesCount(
+        isEyesActive(props.cwd) ? journalCount({ status: "open" }, props.cwd) : undefined,
+      );
+    }
+  }, [agentLoop.isRunning, props.cwd]);
+
   // Terminal progress bar (OSC 9;4) — pulsing bar in supported terminals
   useTerminalProgress(agentLoop.isRunning, agentLoop.activeToolCalls.length > 0);
 
@@ -1586,6 +1602,25 @@ export function App(props: AppProps) {
       // Handle /theme — open theme selector overlay
       if (trimmed === "/theme" || trimmed === "/t") {
         setOverlay("theme");
+        return;
+      }
+
+      // Open the Eyes pane — read-only review of installed probes + open signals.
+      // Gated by the ggcoder-eyes manifest: in projects without /eyes set up,
+      // there's nothing useful to show.
+      if (trimmed === "/eyes-view" || trimmed === "/ev") {
+        if (!isEyesActive(props.cwd)) {
+          setLiveItems((prev) => [
+            ...prev,
+            {
+              kind: "info",
+              text: "Eyes not set up in this project. Run /eyes to get started.",
+              id: getId(),
+            },
+          ]);
+          return;
+        }
+        setOverlay("eyes");
         return;
       }
 
@@ -2224,7 +2259,8 @@ export function App(props: AppProps) {
   const isTaskView = overlay === "tasks";
   const isSkillsView = overlay === "skills";
   const isPlanView = overlay === "plan";
-  const isOverlayView = isTaskView || isSkillsView || isPlanView;
+  const isEyesView = overlay === "eyes";
+  const isOverlayView = isTaskView || isSkillsView || isPlanView || isEyesView;
 
   return (
     <Box flexDirection="column" width={columns}>
@@ -2272,6 +2308,21 @@ export function App(props: AppProps) {
             stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setStaticKey((k) => k + 1);
             setOverlay(null);
+          }}
+        />
+      ) : isEyesView ? (
+        <EyesOverlay
+          cwd={props.cwd}
+          onClose={() => {
+            stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+            setEyesCount(
+              isEyesActive(props.cwd) ? journalCount({ status: "open" }, props.cwd) : undefined,
+            );
+            setStaticKey((k) => k + 1);
+            setOverlay(null);
+          }}
+          onQueueMessage={(msg) => {
+            agentLoop.queueMessage(msg);
           }}
         />
       ) : isPlanView ? (
@@ -2478,6 +2529,7 @@ export function App(props: AppProps) {
             }}
             cwd={props.cwd}
             commands={allCommands}
+            eyesCount={eyesCount}
           />
           {overlay === "model" ? (
             <ModelSelector
@@ -2506,19 +2558,32 @@ export function App(props: AppProps) {
           )}
           {/* Buddy companion */}
           {buddyEnabled && <Buddy phase={agentLoop.activityPhase} />}
-          {/* Background tasks bar */}
-          {bgTasks.length > 0 && (
-            <BackgroundTasksBar
-              tasks={bgTasks}
-              focused={taskBarFocused}
-              expanded={taskBarExpanded}
-              selectedIndex={selectedTaskIndex}
-              onExpand={handleTaskBarExpand}
-              onCollapse={handleTaskBarCollapse}
-              onKill={handleTaskKill}
-              onExit={handleTaskBarExit}
-              onNavigate={handleTaskNavigate}
-            />
+          {/* Status row — background tasks (if any) and eyes call-to-action
+              (if any) share a single line. Eyes renders alone when no bg tasks;
+              hidden entirely when both are empty. */}
+          {(bgTasks.length > 0 || (eyesCount !== undefined && eyesCount > 0)) && (
+            <Box>
+              {bgTasks.length > 0 && (
+                <BackgroundTasksBar
+                  tasks={bgTasks}
+                  focused={taskBarFocused}
+                  expanded={taskBarExpanded}
+                  selectedIndex={selectedTaskIndex}
+                  onExpand={handleTaskBarExpand}
+                  onCollapse={handleTaskBarCollapse}
+                  onKill={handleTaskKill}
+                  onExit={handleTaskBarExit}
+                  onNavigate={handleTaskNavigate}
+                />
+              )}
+              {eyesCount !== undefined && eyesCount > 0 && (
+                <Box paddingLeft={bgTasks.length > 0 ? 2 : 1} paddingRight={1}>
+                  <Text color={theme.accent} bold>
+                    {`${eyesCount} eyes signal${eyesCount === 1 ? "" : "s"} · Run /eyes-improve to enhance GG Coder`}
+                  </Text>
+                </Box>
+              )}
+            </Box>
           )}
         </>
       )}

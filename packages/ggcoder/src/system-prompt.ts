@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isEyesActive, readJournal } from "@kenkaiiii/ggcoder-eyes";
 import { formatSkillsForPrompt, type Skill } from "./core/skills.js";
 import { TOOL_PROMPT_HINTS, DEFAULT_TOOL_NAMES } from "./tools/prompt-hints.js";
 
@@ -140,6 +141,27 @@ export async function buildSystemPrompt(
 
   if (contextParts.length > 0) {
     sections.push(`## Project Context\n\n${contextParts.join("\n\n")}`);
+  }
+
+  // 7. Eyes — open improvement signals from past probe use (gated on .gg/eyes/manifest.json)
+  if (isEyesActive(cwd)) {
+    const open = readJournal({ status: "open", order: "desc", limit: 10 }, cwd);
+    if (open.length > 0) {
+      const lines = open.map((e) => {
+        const probeTag = e.probe ? ` [${e.probe}]` : "";
+        const date = e.ts.slice(0, 10);
+        return `- ${date} · *${e.kind}*${probeTag}: ${e.reason}`;
+      });
+      sections.push(
+        `## Eyes — Open Improvement Signals\n\n` +
+          `These are unresolved signals from past use of this project's perception probes ` +
+          `(\`.gg/eyes/\`). Consider whether any bear on the current work. If a missing or ` +
+          `inadequate capability would force you to **guess, skip verification, or hand-wave**, ` +
+          `surface the tradeoff in conversation rather than working around it silently — give the ` +
+          `user the choice to fix the probe first.\n\n` +
+          lines.join("\n"),
+      );
+    }
   }
 
   // 9. Skills

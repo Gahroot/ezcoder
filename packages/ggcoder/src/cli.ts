@@ -43,7 +43,7 @@ import { PerformanceObserver, performance } from "node:perf_hooks";
 import { parseArgs } from "node:util";
 import fs from "node:fs";
 import readline from "node:readline/promises";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { renderApp } from "./ui/render.js";
 import { runJsonMode } from "./modes/json-mode.js";
@@ -62,6 +62,7 @@ import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
 import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
 import { buildSystemPrompt } from "./system-prompt.js";
+import { isEyesActive, journalCount } from "@kenkaiiii/ggcoder-eyes";
 import { createTools } from "./tools/index.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import { setEstimatorModel } from "./core/compaction/token-estimator.js";
@@ -224,6 +225,24 @@ function main(): void {
 
   // Handle subcommands before parseArgs
   const subcommand = process.argv[2];
+
+  // Passthrough to @kenkaiiii/ggcoder-eyes CLI. Agents call this from bash as
+  // `ggcoder eyes log rough "..."` etc. — `ggcoder` is guaranteed on PATH
+  // (user launched it), so this avoids depending on nested bin visibility in
+  // global npm/pnpm installs.
+  if (subcommand === "eyes") {
+    let cliPath: string;
+    try {
+      cliPath = _require.resolve("@kenkaiiii/ggcoder-eyes/cli");
+    } catch {
+      process.stderr.write("ggcoder-eyes package not installed\n");
+      process.exit(1);
+    }
+    const r = spawnSync(process.execPath, [cliPath, ...process.argv.slice(3)], {
+      stdio: "inherit",
+    });
+    process.exit(r.status ?? 0);
+  }
 
   if (subcommand === "login") {
     runLogin().catch((err) => {
@@ -597,6 +616,21 @@ async function runInkTUI(opts: {
     const session = await sessionManager.create(cwd, provider, model);
     sessionPath = session.path;
     log("INFO", "session", `New session created`, { path: sessionPath });
+  }
+
+  // Eyes startup banner — surface open journal signals from past sessions so the
+  // user isn't relying on reading agent prose to know improvements are pending.
+  if (isEyesActive(cwd)) {
+    const openCount = journalCount({ status: "open" }, cwd);
+    if (openCount > 0) {
+      const s = openCount === 1 ? "" : "s";
+      if (!initialHistory) initialHistory = [];
+      initialHistory.push({
+        kind: "info",
+        text: `👁  Eyes: ${openCount} open improvement signal${s} from recent sessions. Run /eyes-improve to triage.`,
+        id: "eyes-banner",
+      });
+    }
   }
 
   await renderApp({
