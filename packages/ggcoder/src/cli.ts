@@ -213,7 +213,7 @@ function main(): void {
   // Silent auto-update check (throttled, non-blocking on failure)
   const updateMessage = checkAndAutoUpdate(CLI_VERSION);
   if (updateMessage) {
-    console.error(chalk.hex("#60a5fa")(updateMessage));
+    console.error(chalk.bold.hex("#4ade80")(`✨ ${updateMessage}`));
   }
 
   // Intercept --help / -h before anything else so it works with subcommands

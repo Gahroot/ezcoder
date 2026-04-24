@@ -188,6 +188,12 @@ interface InfoItem {
   id: string;
 }
 
+interface UpdateNoticeItem {
+  kind: "update_notice";
+  text: string;
+  id: string;
+}
+
 interface QueuedItem {
   kind: "queued";
   text: string;
@@ -288,6 +294,7 @@ export type CompletedItem =
   | ServerToolDoneItem
   | ErrorItem
   | InfoItem
+  | UpdateNoticeItem
   | QueuedItem
   | CompactingItem
   | CompactedItem
@@ -631,7 +638,7 @@ export function App(props: AppProps) {
   // Periodic update check during long sessions
   useEffect(() => {
     startPeriodicUpdateCheck(props.version, (msg) => {
-      setLiveItems((prev) => [...prev, { kind: "info", text: msg, id: getId() }]);
+      setLiveItems((prev) => [...prev, { kind: "update_notice", text: msg, id: getId() }]);
     });
     return () => stopPeriodicUpdateCheck();
   }, [props.version]);
@@ -2173,6 +2180,22 @@ export function App(props: AppProps) {
         return (
           <Box key={item.id} marginTop={1} flexShrink={1}>
             <Text color={theme.textDim} wrap="wrap">
+              {item.text}
+            </Text>
+          </Box>
+        );
+      case "update_notice":
+        return (
+          <Box
+            key={item.id}
+            marginTop={1}
+            flexShrink={1}
+            borderStyle="round"
+            borderColor={theme.success}
+            paddingX={1}
+          >
+            <Text color={theme.success} bold wrap="wrap">
+              {"✨ "}
               {item.text}
             </Text>
           </Box>
