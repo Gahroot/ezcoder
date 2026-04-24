@@ -11,6 +11,8 @@ export interface ModelInfo {
   costTier: "low" | "medium" | "high";
 }
 
+// Provider display order — mirrors `PROVIDERS` in ui/login.tsx so the
+// /model selector and login selector sort models identically.
 export const MODELS: ModelInfo[] = [
   // ── Anthropic ──────────────────────────────────────────
   {
@@ -43,18 +45,27 @@ export const MODELS: ModelInfo[] = [
     supportsImages: true,
     costTier: "low",
   },
-  // ── Xiaomi (MiMo) ──────────────────────────────────────
-  {
-    id: "mimo-v2-pro",
-    name: "MiMo-V2-Pro",
-    provider: "xiaomi",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 131_072,
-    supportsThinking: true,
-    supportsImages: false,
-    costTier: "medium",
-  },
   // ── OpenAI (Codex) ─────────────────────────────────────
+  {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    provider: "openai",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    costTier: "high",
+  },
+  {
+    id: "gpt-5.5-pro",
+    name: "GPT-5.5 Pro",
+    provider: "openai",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    costTier: "high",
+  },
   {
     id: "gpt-5.4",
     name: "GPT-5.4",
@@ -95,7 +106,18 @@ export const MODELS: ModelInfo[] = [
     supportsImages: true,
     costTier: "low",
   },
-  // ── GLM (Z.AI) ───────────────────────────────────────────
+  // ── Moonshot (Kimi) ────────────────────────────────────
+  {
+    id: "kimi-k2.6",
+    name: "Kimi K2.6",
+    provider: "moonshot",
+    contextWindow: 262_144,
+    maxOutputTokens: 16_384,
+    supportsThinking: true,
+    supportsImages: true,
+    costTier: "medium",
+  },
+  // ── Z.AI (GLM) ─────────────────────────────────────────
   {
     id: "glm-5v-turbo",
     name: "GLM-5V-Turbo",
@@ -136,7 +158,7 @@ export const MODELS: ModelInfo[] = [
     supportsImages: false,
     costTier: "low",
   },
-  // ── MiniMax ───────────────────────────────────────────────
+  // ── MiniMax ────────────────────────────────────────────
   {
     id: "MiniMax-M2.7",
     name: "MiniMax M2.7",
@@ -157,7 +179,18 @@ export const MODELS: ModelInfo[] = [
     supportsImages: false,
     costTier: "medium",
   },
-  // ── OpenRouter ────────────────────────────────────────────
+  // ── Xiaomi (MiMo) ──────────────────────────────────────
+  {
+    id: "mimo-v2-pro",
+    name: "MiMo-V2-Pro",
+    provider: "xiaomi",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 131_072,
+    supportsThinking: true,
+    supportsImages: false,
+    costTier: "medium",
+  },
+  // ── OpenRouter ─────────────────────────────────────────
   {
     id: "qwen/qwen3.6-plus",
     name: "Qwen3.6-Plus",
@@ -166,17 +199,6 @@ export const MODELS: ModelInfo[] = [
     maxOutputTokens: 65_536,
     supportsThinking: true,
     supportsImages: false,
-    costTier: "medium",
-  },
-  // ── Moonshot (Kimi) ──────────────────────────────────────
-  {
-    id: "kimi-k2.5",
-    name: "Kimi K2.5",
-    provider: "moonshot",
-    contextWindow: 200_000,
-    maxOutputTokens: 16_384,
-    supportsThinking: true,
-    supportsImages: true,
     costTier: "medium",
   },
 ];
@@ -191,9 +213,9 @@ export function getModelsForProvider(provider: Provider): ModelInfo[] {
 
 export function getDefaultModel(provider: Provider): ModelInfo {
   if (provider === "xiaomi") return MODELS.find((m) => m.id === "mimo-v2-pro")!;
-  if (provider === "openai") return MODELS.find((m) => m.id === "gpt-5.4")!;
+  if (provider === "openai") return MODELS.find((m) => m.id === "gpt-5.5")!;
   if (provider === "glm") return MODELS.find((m) => m.id === "glm-5.1")!;
-  if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k2.5")!;
+  if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k2.6")!;
   if (provider === "minimax") return MODELS.find((m) => m.id === "MiniMax-M2.7")!;
   if (provider === "openrouter") return MODELS.find((m) => m.id === "qwen/qwen3.6-plus")!;
   return MODELS.find((m) => m.id === "claude-sonnet-4-6")!;

@@ -43,7 +43,7 @@ import { PerformanceObserver, performance } from "node:perf_hooks";
 import { parseArgs } from "node:util";
 import fs from "node:fs";
 import readline from "node:readline/promises";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { renderApp } from "./ui/render.js";
 import { runJsonMode } from "./modes/json-mode.js";
@@ -61,10 +61,11 @@ import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
 import { setStreamDiagnostic } from "@prestyj/agent";
 import { buildSystemPrompt } from "./system-prompt.js";
+import { isEyesActive, journalCount } from "@prestyj/ezcoder-eyes";
 import { createTools } from "./tools/index.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import { setEstimatorModel } from "./core/compaction/token-estimator.js";
-import { getContextWindow } from "./core/model-registry.js";
+import { getContextWindow, getDefaultModel } from "./core/model-registry.js";
 import { MCPClientManager, getMCPServers } from "./core/mcp/index.js";
 import { discoverAgents } from "./core/agents.js";
 import { discoverSkills } from "./core/skills.js";
@@ -163,7 +164,7 @@ function printHelp(): void {
     ["-h, --help", "Show this help message"],
     ["-v, --version", "Show version number"],
     ["--provider <name>", "AI provider (anthropic, xiaomi, openai, glm, moonshot)"],
-    ["--model <name>", "Model to use (e.g. claude-sonnet-4-6, gpt-4.1)"],
+    ["--model <name>", "Model to use (e.g. claude-sonnet-4-6, gpt-5.5)"],
     ["--max-turns <n>", "Maximum agent turns per prompt"],
     ["--system-prompt <text>", "Override the system prompt"],
     ["--json", "JSON output mode (for sub-agents)"],
@@ -209,7 +210,7 @@ function main(): void {
   // Silent auto-update check (throttled, non-blocking on failure)
   const updateMessage = checkAndAutoUpdate(CLI_VERSION);
   if (updateMessage) {
-    console.error(chalk.hex("#60a5fa")(updateMessage));
+    console.error(chalk.bold.hex("#4ade80")(`✨ ${updateMessage}`));
   }
 
   // Intercept --help / -h before anything else so it works with subcommands
@@ -221,6 +222,24 @@ function main(): void {
 
   // Handle subcommands before parseArgs
   const subcommand = process.argv[2];
+
+  // Passthrough to @prestyj/ezcoder-eyes CLI. Agents call this from bash as
+  // `ggcoder eyes log rough "..."` etc. — `ggcoder` is guaranteed on PATH
+  // (user launched it), so this avoids depending on nested bin visibility in
+  // global npm/pnpm installs.
+  if (subcommand === "eyes") {
+    let cliPath: string;
+    try {
+      cliPath = _require.resolve("@prestyj/ezcoder-eyes/cli");
+    } catch {
+      process.stderr.write("ezcoder-eyes package not installed\n");
+      process.exit(1);
+    }
+    const r = spawnSync(process.execPath, [cliPath, ...process.argv.slice(3)], {
+      stdio: "inherit",
+    });
+    process.exit(r.status ?? 0);
+  }
 
   if (subcommand === "login") {
     runLogin().catch((err) => {
@@ -359,9 +378,9 @@ function main(): void {
   const provider: Provider = saved.provider ?? "anthropic";
 
   function getHardcodedDefault(p: string): string {
-    if (p === "openai") return "gpt-5.4";
+    if (p === "openai") return "gpt-5.5";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
+    if (p === "moonshot") return "kimi-k2.6";
     if (p === "minimax") return "MiniMax-M2.7";
     if (p === "openrouter") return "qwen/qwen3.6-plus";
     return "claude-opus-4-7";
@@ -400,19 +419,12 @@ async function runInkTUI(opts: {
   resumeSessionPath?: string;
   theme?: "auto" | ThemeName;
 }): Promise<void> {
-  const { provider, model, cwd } = opts;
+  const { cwd } = opts;
 
-  // Set model for token estimation accuracy
-  setEstimatorModel(model);
-
-  // Resolve auth
+  // Resolve auth first so we can pick an active provider the user has
+  // actually logged in with — we must never default to a provider they
+  // haven't authenticated against.
   const paths = await ensureAppDirs();
-  initLogger(paths.logFile, {
-    version: CLI_VERSION,
-    provider,
-    model,
-    thinking: opts.thinkingLevel,
-  });
 
   // Wire stream stall diagnostics into the debug log
   setStreamDiagnostic((phase, data) => {
@@ -421,40 +433,42 @@ async function runInkTUI(opts: {
 
   const authStorage = new AuthStorage(paths.authFile);
   await authStorage.load();
-  const creds = await authStorage.resolveCredentials(provider);
 
-  // Detect all logged-in providers and preload their credentials
-  const allProviders: Provider[] = [
-    "anthropic",
-    "xiaomi",
-    "openai",
-    "glm",
-    "moonshot",
-    "minimax",
-    "openrouter",
-  ];
-  const loggedInProviders: Provider[] = [];
+  const { provider, model, loggedInProviders } = await resolveActiveProvider(
+    authStorage,
+    opts.provider,
+    opts.model,
+  );
+
+  // Preload every logged-in provider's credentials for the model switcher.
   const credentialsByProvider: Record<
     string,
     { accessToken: string; accountId?: string; baseUrl?: string }
   > = {};
-
-  for (const p of allProviders) {
-    const stored = await authStorage.getCredentials(p);
-    if (stored) {
-      loggedInProviders.push(p);
-      try {
-        const resolved = await authStorage.resolveCredentials(p);
-        credentialsByProvider[p] = {
-          accessToken: resolved.accessToken,
-          accountId: resolved.accountId,
-          baseUrl: resolved.baseUrl,
-        };
-      } catch {
-        // Token refresh failed — still mark as logged in
-      }
+  for (const p of loggedInProviders) {
+    try {
+      const resolved = await authStorage.resolveCredentials(p);
+      credentialsByProvider[p] = {
+        accessToken: resolved.accessToken,
+        accountId: resolved.accountId,
+        baseUrl: resolved.baseUrl,
+      };
+    } catch {
+      // Token refresh failed — still leave them in loggedInProviders
     }
   }
+
+  // Set model for token estimation accuracy (after provider is finalized)
+  setEstimatorModel(model);
+
+  initLogger(paths.logFile, {
+    version: CLI_VERSION,
+    provider,
+    model,
+    thinking: opts.thinkingLevel,
+  });
+
+  const creds = await authStorage.resolveCredentials(provider);
 
   // Ensure project-local .ezcoder directories exist
   const localEzDir = path.join(cwd, ".ezcoder");
@@ -578,6 +592,21 @@ async function runInkTUI(opts: {
     const session = await sessionManager.create(cwd, provider, model);
     sessionPath = session.path;
     log("INFO", "session", `New session created`, { path: sessionPath });
+  }
+
+  // Eyes startup banner — surface open journal signals from past sessions so the
+  // user isn't relying on reading agent prose to know improvements are pending.
+  if (isEyesActive(cwd)) {
+    const openCount = journalCount({ status: "open" }, cwd);
+    if (openCount > 0) {
+      const s = openCount === 1 ? "" : "s";
+      if (!initialHistory) initialHistory = [];
+      initialHistory.push({
+        kind: "info",
+        text: `👁  Eyes: ${openCount} open improvement signal${s} from recent sessions. Run /eyes-improve to triage.`,
+        id: "eyes-banner",
+      });
+    }
   }
 
   await renderApp({
@@ -993,9 +1022,9 @@ async function runSessions(): Promise<void> {
   const provider: Provider = saved2.provider ?? "anthropic";
 
   function getDefault(p: string): string {
-    if (p === "openai") return "gpt-5.4";
+    if (p === "openai") return "gpt-5.5";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
+    if (p === "moonshot") return "kimi-k2.6";
     if (p === "minimax") return "MiniMax-M2.7";
     return "claude-opus-4-7";
   }
@@ -1232,22 +1261,20 @@ async function runServe(): Promise<void> {
   }
 
   const saved3 = loadSavedSettings();
-
-  const provider: Provider =
-    (serveValues.provider as Provider | undefined) ?? saved3.provider ?? "anthropic";
-
-  function getDefault(p: string): string {
-    if (p === "openai") return "gpt-5.4";
-    if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
-    if (p === "minimax") return "MiniMax-M2.7";
-    return "claude-opus-4-7";
-  }
-
-  const model = serveValues.model ?? saved3.model ?? getDefault(provider);
   const thinkingLevel: ThinkingLevel | undefined = saved3.thinkingEnabled ? "medium" : undefined;
 
   const paths = await ensureAppDirs();
+  const authStorage = new AuthStorage(paths.authFile);
+  await authStorage.load();
+
+  const preferredProvider: Provider =
+    (serveValues.provider as Provider | undefined) ?? saved3.provider ?? "anthropic";
+  const { provider, model } = await resolveActiveProvider(
+    authStorage,
+    preferredProvider,
+    serveValues.model ?? saved3.model,
+  );
+
   initLogger(paths.logFile, {
     version: CLI_VERSION,
     provider,
@@ -1266,7 +1293,228 @@ async function runServe(): Promise<void> {
   });
 }
 
+// ── Agent Home Setup ────────────────────────────────────
+
+interface AgentHomeConfig {
+  token: string;
+}
+
+async function loadAgentHomeConfig(): Promise<AgentHomeConfig | null> {
+  try {
+    const raw = await fs.promises.readFile(getAppPaths().agentHomeFile, "utf-8");
+    const data = JSON.parse(raw) as AgentHomeConfig;
+    if (data.token) return data;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveAgentHomeConfig(config: AgentHomeConfig): Promise<void> {
+  const paths = await ensureAppDirs();
+  await fs.promises.writeFile(paths.agentHomeFile, JSON.stringify(config, null, 2), {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+}
+
+async function runAgentHomeLogin(): Promise<void> {
+  process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+  const paths = await ensureAppDirs();
+  initLogger(paths.logFile, { version: CLI_VERSION });
+  log("INFO", "agent-home", "Agent Home login started");
+
+  const existing = await loadAgentHomeConfig();
+
+  // Banner
+  const LOGO = [
+    " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+    " \u2588\u2580\u2580   \u2584\u2580 ",
+    " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
+  ];
+  function gradientTextLocal(text: string): string {
+    let colorIdx = 0;
+    return text
+      .split("")
+      .map((ch) => {
+        if (ch === " ") return ch;
+        const color = GRADIENT[colorIdx++ % GRADIENT.length]!;
+        return chalk.hex(color)(ch);
+      })
+      .join("");
+  }
+  const GAP = "   ";
+  console.log();
+  console.log(
+    `  ${gradientTextLocal(LOGO[0]!)}${GAP}` +
+      chalk.hex("#60a5fa").bold("EZ Coder") +
+      chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
+      chalk.hex("#6b7280")(" \u00b7 By ") +
+      chalk.white.bold("Nolan Grout"),
+  );
+  console.log(`  ${gradientTextLocal(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Agent Home Setup"));
+  console.log(
+    `  ${gradientTextLocal(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")("Remote Control via iOS"),
+  );
+  console.log();
+
+  if (existing) {
+    console.log(
+      chalk.hex("#6b7280")("  Current config:\n") +
+        chalk.hex("#6b7280")(
+          `    Token:  ${existing.token.slice(0, 8)}...${existing.token.slice(-4)}\n`,
+        ),
+    );
+  }
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  try {
+    console.log(
+      chalk.hex("#a78bfa")("  Auth Token\n") +
+        chalk.hex("#6b7280")(
+          "    Open Agent Home iOS app \u2192 Settings \u2192 Generate SDK Token\n",
+        ) +
+        chalk.hex("#6b7280")("    Copy the token\n"),
+    );
+
+    const tokenPrompt = existing
+      ? chalk.hex("#60a5fa")("  Auth token (enter to keep current): ")
+      : chalk.hex("#60a5fa")("  Auth token: ");
+    const tokenInput = await rl.question(tokenPrompt);
+    const token = tokenInput.trim() || existing?.token;
+
+    if (!token) {
+      console.log(chalk.hex("#ef4444")("\n  No token provided. Setup cancelled."));
+      return;
+    }
+
+    // Save config
+    await saveAgentHomeConfig({ token });
+
+    log("INFO", "agent-home", `Agent Home setup complete`);
+
+    console.log(
+      chalk.hex("#4ade80")(`\n  \u2713 Token saved`) +
+        "\n" +
+        chalk.hex("#4ade80")(`  \u2713 Config saved to ${paths.agentHomeFile}`) +
+        "\n\n" +
+        chalk.hex("#60a5fa")("  To start:\n") +
+        chalk.hex("#6b7280")("    cd your-project && ezcoder agent-home\n"),
+    );
+  } finally {
+    rl.close();
+    closeLogger();
+  }
+}
+
+// ── Agent Home (Run) ────────────────────────────────────
+
+async function runAgentHome(): Promise<void> {
+  const { values: ahValues } = parseArgs({
+    options: {
+      token: { type: "string" },
+      provider: { type: "string" },
+      model: { type: "string" },
+    },
+    strict: true,
+  });
+
+  // Priority: CLI flags > saved config
+  const saved = await loadAgentHomeConfig();
+  const token = ahValues.token ?? saved?.token;
+
+  if (!token) {
+    console.error(
+      chalk.hex("#ef4444")("Agent Home not configured.\n\n") +
+        "Run " +
+        chalk.hex("#60a5fa").bold("ezcoder agent-home-login") +
+        " to set up your token.\n\n" +
+        chalk.hex("#6b7280")("Or provide manually:\n") +
+        chalk.hex("#6b7280")("  ezcoder agent-home --token TOKEN"),
+    );
+    process.exit(1);
+  }
+
+  const saved4 = loadSavedSettings();
+  const thinkingLevel: ThinkingLevel | undefined = saved4.thinkingEnabled ? "medium" : undefined;
+
+  const paths = await ensureAppDirs();
+  const authStorage = new AuthStorage(paths.authFile);
+  await authStorage.load();
+
+  const preferredProvider: Provider =
+    (ahValues.provider as Provider | undefined) ?? saved4.provider ?? "anthropic";
+  const { provider, model } = await resolveActiveProvider(
+    authStorage,
+    preferredProvider,
+    ahValues.model ?? saved4.model,
+  );
+
+  initLogger(paths.logFile, {
+    version: CLI_VERSION,
+    provider,
+    model,
+  });
+
+  setEstimatorModel(model);
+
+  await runAgentHomeMode({
+    provider,
+    model,
+    cwd: process.cwd(),
+    version: CLI_VERSION,
+    thinkingLevel,
+    agentHome: { token },
+  });
+}
+
 // ── Helpers ────────────────────────────────────────────────
+
+/**/model to start with. If the preferred provider isn't
+ * one the user is logged into, fall back to the first provider they ARE
+ * logged into (in `allProviders` order). Throws if nothing is logged in.
+ *
+ * This prevents the CLI from crashing with "Not logged in" on startup just
+ * because settings.json remembers a provider the user later logged out of.
+ */
+async function resolveActiveProvider(
+  authStorage: AuthStorage,
+  preferred: Provider,
+  savedModel: string | undefined,
+): Promise<{ provider: Provider; model: string; loggedInProviders: Provider[] }> {
+  const allProviders: Provider[] = [
+    "anthropic",
+    "xiaomi",
+    "openai",
+    "glm",
+    "moonshot",
+    "minimax",
+    "openrouter",
+  ];
+  const loggedInProviders: Provider[] = [];
+  for (const p of allProviders) {
+    if (await authStorage.getCredentials(p)) loggedInProviders.push(p);
+  }
+
+  if (loggedInProviders.length === 0) {
+    throw new Error('Not logged in to any provider. Run "ezcoder login" to authenticate.');
+  }
+
+  if (loggedInProviders.includes(preferred)) {
+    return {
+      provider: preferred,
+      model: savedModel ?? getDefaultModel(preferred).id,
+      loggedInProviders,
+    };
+  }
+
+  // Preferred provider isn't authenticated — fall back to the first one
+  // that is, and use that provider's default model (the saved model
+  // belonged to a provider the user can no longer reach).
+  const provider = loggedInProviders[0]!;
+  return { provider, model: getDefaultModel(provider).id, loggedInProviders };
+}
 
 function displayName(provider: Provider): string {
   if (provider === "anthropic") return "Anthropic";
@@ -1295,8 +1543,14 @@ function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
   for (const msg of msgs) {
     if (msg.role === "tool") {
       for (const tr of msg.content) {
+        const text =
+          typeof tr.content === "string"
+            ? tr.content
+            : tr.content
+                .map((b) => (b.type === "text" ? b.text : `[image ${b.mediaType}]`))
+                .join("\n");
         toolResults.set(tr.toolCallId, {
-          content: tr.content,
+          content: text,
           isError: tr.isError ?? false,
         });
       }

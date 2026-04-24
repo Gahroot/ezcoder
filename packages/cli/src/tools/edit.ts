@@ -10,11 +10,23 @@ const EditItem = z.object({
   new_text: z.string().describe("The replacement text"),
 });
 
+// Some models (Opus 4.6, GLM-5.1) occasionally send `edits` as a JSON string
+// instead of a real array, which trips Zod and makes the model fall back to
+// sed/python. Coerce the string back into an array before validation.
+const coerceStringifiedEdits = (v: unknown): unknown => {
+  if (typeof v !== "string") return v;
+  try {
+    const parsed = JSON.parse(v);
+    return Array.isArray(parsed) ? parsed : v;
+  } catch {
+    return v;
+  }
+};
+
 const EditParams = z.object({
   file_path: z.string().describe("The file path to edit"),
   edits: z
-    .array(EditItem)
-    .min(1)
+    .preprocess(coerceStringifiedEdits, z.array(EditItem).min(1))
     .describe(
       "One or more edits applied in order. Each edit operates on the result of the previous one. " +
         "Every old_text must uniquely match exactly one location in the file at the time it is applied.",
@@ -65,7 +77,7 @@ export function createEditTool(
         if (occurrences === 0) {
           throw new Error(
             `old_text not found in ${fileName}${label}. ` +
-              "Make sure the text matches exactly, including whitespace and indentation.",
+              "Text must match verbatim — do not paraphrase. Re-read the file if unsure.",
           );
         }
         if (occurrences > 1) {
