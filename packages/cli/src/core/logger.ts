@@ -4,7 +4,7 @@ import type { EventBus } from "./event-bus.js";
 
 type LogLevel = "INFO" | "ERROR" | "WARN";
 
-// Cross-session log retention: the log is appended across ggcoder launches so
+// Cross-session log retention: the log is appended across ezcoder launches so
 // you can grep back through prior sessions. Rotated at MAX_BYTES to keep it
 // bounded; we keep one generation (debug.log.1) — that's enough to survive
 // one rotation's worth of scrollback while bounding disk usage.

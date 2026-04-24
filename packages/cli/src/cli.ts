@@ -49,6 +49,7 @@ import { renderApp } from "./ui/render.js";
 import { runJsonMode } from "./modes/json-mode.js";
 import { runRpcMode } from "./modes/rpc-mode.js";
 import { runServeMode } from "./modes/serve-mode.js";
+import { runAgentHomeMode } from "./modes/agent-home-mode.js";
 import { renderLoginSelector } from "./ui/login.js";
 import { renderSessionSelector } from "./ui/sessions.js";
 import type { CompletedItem } from "./ui/App.js";
@@ -224,7 +225,7 @@ function main(): void {
   const subcommand = process.argv[2];
 
   // Passthrough to @prestyj/ezcoder-eyes CLI. Agents call this from bash as
-  // `ggcoder eyes log rough "..."` etc. — `ggcoder` is guaranteed on PATH
+  // `ezcoder eyes log rough "..."` etc. — `ezcoder` is guaranteed on PATH
   // (user launched it), so this avoids depending on nested bin visibility in
   // global npm/pnpm installs.
   if (subcommand === "eyes") {
@@ -1471,7 +1472,8 @@ async function runAgentHome(): Promise<void> {
 
 // ── Helpers ────────────────────────────────────────────────
 
-/**/model to start with. If the preferred provider isn't
+/**
+ * Resolve the provider and model to start with. If the preferred provider isn't
  * one the user is logged into, fall back to the first provider they ARE
  * logged into (in `allProviders` order). Throws if nothing is logged in.
  *
