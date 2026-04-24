@@ -32,7 +32,7 @@ export async function buildSystemPrompt(
   // 2. How to Work (compressed)
   sections.push(
     `## How to Work\n\n` +
-      `- **Read before edit/write.** \`edit\` and \`write\` fail on any file not yet read this session.\n` +
+      `- **Read before \`edit\`/\`write\`.** Check you've read the file this session *before* composing the call — a missed read wastes the whole payload.\n` +
       `- Understand the task and surrounding code (\`find\`, \`grep\`, \`read\`) before changing it.\n` +
       `- Honor project context files (CLAUDE.md, AGENTS.md) — they override defaults.\n` +
       `- Follow existing conventions. Write code that fits in, not code that stands out.\n` +
