@@ -150,7 +150,7 @@ export function checkAndAutoUpdate(currentVersion: string): string | null {
         if (info.updateCommand) {
           // Run update in background — takes effect next launch
           performUpdateInBackground(info.updateCommand);
-          message = `Ken just shipped ${state.latestVersion}! Installing in the background — takes effect next launch.`;
+          message = `Nolan just shipped ${state.latestVersion}! Installing in the background — takes effect next launch.`;
 
           writeState({
             ...state,
