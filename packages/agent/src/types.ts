@@ -86,7 +86,7 @@ export interface AgentDoneEvent {
 
 export interface AgentRetryEvent {
   type: "retry";
-  reason: "overloaded" | "rate_limit" | "empty_response" | "stream_stall";
+  reason: "overloaded" | "rate_limit" | "empty_response" | "stream_stall" | "overflow_compact";
   attempt: number;
   maxAttempts: number;
   delayMs: number;

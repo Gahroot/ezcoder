@@ -164,7 +164,10 @@ function printHelp(): void {
   const opts: [string, string][] = [
     ["-h, --help", "Show this help message"],
     ["-v, --version", "Show version number"],
-    ["--provider <name>", "AI provider (anthropic, xiaomi, openai, glm, moonshot)"],
+    [
+      "--provider <name>",
+      "AI provider (anthropic, xiaomi, openai, glm, moonshot, minimax, deepseek, openrouter)",
+    ],
     ["--model <name>", "Model to use (e.g. claude-sonnet-4-6, gpt-5.5)"],
     ["--max-turns <n>", "Maximum agent turns per prompt"],
     ["--system-prompt <text>", "Override the system prompt"],
@@ -383,6 +386,7 @@ function main(): void {
     if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.6";
     if (p === "minimax") return "MiniMax-M2.7";
+    if (p === "deepseek") return "deepseek-v4-pro";
     if (p === "openrouter") return "qwen/qwen3.6-plus";
     return "claude-opus-4-7";
   }
@@ -693,6 +697,7 @@ async function runLogin(): Promise<void> {
       provider === "moonshot" ||
       provider === "xiaomi" ||
       provider === "minimax" ||
+      provider === "deepseek" ||
       provider === "openrouter"
     ) {
       const keyLabel =
@@ -702,9 +707,11 @@ async function runLogin(): Promise<void> {
             ? "Xiaomi MiMo"
             : provider === "minimax"
               ? "MiniMax"
-              : provider === "openrouter"
-                ? "OpenRouter"
-                : "Moonshot";
+              : provider === "deepseek"
+                ? "DeepSeek"
+                : provider === "openrouter"
+                  ? "OpenRouter"
+                  : "Moonshot";
       const apiKey = await rl.question(chalk.hex("#60a5fa")(`Paste your ${keyLabel} API key: `));
       if (!apiKey.trim()) {
         console.log(chalk.hex("#ef4444")("No API key provided. Login cancelled."));
@@ -1027,6 +1034,7 @@ async function runSessions(): Promise<void> {
     if (p === "glm") return "glm-5.1";
     if (p === "moonshot") return "kimi-k2.6";
     if (p === "minimax") return "MiniMax-M2.7";
+    if (p === "deepseek") return "deepseek-v4-pro";
     return "claude-opus-4-7";
   }
 
@@ -1492,6 +1500,7 @@ async function resolveActiveProvider(
     "glm",
     "moonshot",
     "minimax",
+    "deepseek",
     "openrouter",
   ];
   const loggedInProviders: Provider[] = [];
@@ -1524,6 +1533,7 @@ function displayName(provider: Provider): string {
   if (provider === "glm") return "Z.AI (GLM)";
   if (provider === "moonshot") return "Moonshot";
   if (provider === "minimax") return "MiniMax";
+  if (provider === "deepseek") return "DeepSeek";
   if (provider === "openrouter") return "OpenRouter";
   return "OpenAI";
 }
@@ -1574,27 +1584,67 @@ function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
         if (content) items.push({ kind: "assistant", text: content, id: `restore-${id++}` });
         continue;
       }
-      // Count block types for debugging
       for (const block of content) {
         blockTypeCounts[block.type] = (blockTypeCounts[block.type] ?? 0) + 1;
       }
-      // Process content blocks in order — text and tool calls
-      const text = extractText(content);
-      if (text) items.push({ kind: "assistant", text, id: `restore-${id++}` });
+      // Pair server_tool_result blocks with their server_tool_call by id
+      // (both live in the same assistant message for provider-side tools).
+      const serverResults = new Map<string, { resultType: string; data: unknown }>();
       for (const block of content) {
-        if (block.type === "tool_call") {
-          const result = toolResults.get(block.id);
-          items.push({
-            kind: "tool_done",
-            name: block.name,
-            args: block.args,
-            result: result?.content ?? "",
-            isError: result?.isError ?? false,
-            durationMs: 0,
-            id: `restore-${id++}`,
+        if (block.type === "server_tool_result") {
+          serverResults.set(block.toolUseId, {
+            resultType: block.resultType,
+            data: block.data,
           });
         }
       }
+      // Walk blocks in order. Buffer consecutive text blocks into a single
+      // assistant item (mirrors live rendering), and flush the buffer before
+      // each tool_call / server_tool_call so chronology is preserved.
+      let textBuf = "";
+      const flushText = () => {
+        if (textBuf) {
+          items.push({ kind: "assistant", text: textBuf, id: `restore-${id++}` });
+          textBuf = "";
+        }
+      };
+      for (const block of content) {
+        switch (block.type) {
+          case "text":
+            if (block.text) textBuf += (textBuf ? "\n" : "") + block.text;
+            break;
+          case "tool_call": {
+            flushText();
+            const result = toolResults.get(block.id);
+            items.push({
+              kind: "tool_done",
+              name: block.name,
+              args: block.args,
+              result: result?.content ?? "",
+              isError: result?.isError ?? false,
+              durationMs: 0,
+              id: `restore-${id++}`,
+            });
+            break;
+          }
+          case "server_tool_call": {
+            flushText();
+            const serverResult = serverResults.get(block.id);
+            items.push({
+              kind: "server_tool_done",
+              name: block.name,
+              input: block.input,
+              resultType: serverResult?.resultType ?? "",
+              data: serverResult?.data ?? null,
+              durationMs: 0,
+              id: `restore-${id++}`,
+            });
+            break;
+          }
+          // thinking, image, raw, server_tool_result: not surfaced in restored history
+        }
+      }
+      flushText();
     }
   }
 

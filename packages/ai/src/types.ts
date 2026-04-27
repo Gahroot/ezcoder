@@ -9,6 +9,7 @@ export type Provider =
   | "glm"
   | "moonshot"
   | "minimax"
+  | "deepseek"
   | "openrouter"
   | "palsu";
 

@@ -50,7 +50,7 @@ export const MODELS: ModelInfo[] = [
     id: "gpt-5.5",
     name: "GPT-5.5",
     provider: "openai",
-    contextWindow: 1_000_000,
+    contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
@@ -60,7 +60,7 @@ export const MODELS: ModelInfo[] = [
     id: "gpt-5.5-pro",
     name: "GPT-5.5 Pro",
     provider: "openai",
-    contextWindow: 1_000_000,
+    contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
@@ -112,7 +112,7 @@ export const MODELS: ModelInfo[] = [
     name: "Kimi K2.6",
     provider: "moonshot",
     contextWindow: 262_144,
-    maxOutputTokens: 16_384,
+    maxOutputTokens: 65_536,
     supportsThinking: true,
     supportsImages: true,
     costTier: "medium",
@@ -143,7 +143,7 @@ export const MODELS: ModelInfo[] = [
     name: "GLM-4.7",
     provider: "glm",
     contextWindow: 200_000,
-    maxOutputTokens: 16_384,
+    maxOutputTokens: 131_072,
     supportsThinking: true,
     supportsImages: false,
     costTier: "low",
@@ -153,7 +153,7 @@ export const MODELS: ModelInfo[] = [
     name: "GLM-4.7 Flash",
     provider: "glm",
     contextWindow: 200_000,
-    maxOutputTokens: 16_384,
+    maxOutputTokens: 131_072,
     supportsThinking: true,
     supportsImages: false,
     costTier: "low",
@@ -200,6 +200,27 @@ export const MODELS: ModelInfo[] = [
     supportsImages: true,
     costTier: "medium",
   },
+  // ── DeepSeek ───────────────────────────────────────────
+  {
+    id: "deepseek-v4-pro",
+    name: "DeepSeek V4 Pro",
+    provider: "deepseek",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    supportsThinking: true,
+    supportsImages: false,
+    costTier: "high",
+  },
+  {
+    id: "deepseek-v4-flash",
+    name: "DeepSeek V4 Flash",
+    provider: "deepseek",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    supportsThinking: true,
+    supportsImages: false,
+    costTier: "low",
+  },
   // ── OpenRouter ─────────────────────────────────────────
   {
     id: "qwen/qwen3.6-plus",
@@ -227,6 +248,7 @@ export function getDefaultModel(provider: Provider): ModelInfo {
   if (provider === "glm") return MODELS.find((m) => m.id === "glm-5.1")!;
   if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k2.6")!;
   if (provider === "minimax") return MODELS.find((m) => m.id === "MiniMax-M2.7")!;
+  if (provider === "deepseek") return MODELS.find((m) => m.id === "deepseek-v4-pro")!;
   if (provider === "openrouter") return MODELS.find((m) => m.id === "qwen/qwen3.6-plus")!;
   return MODELS.find((m) => m.id === "claude-sonnet-4-6")!;
 }
@@ -247,7 +269,7 @@ export function getSummaryModel(provider: Provider, currentModelId: string): Mod
   if (provider === "anthropic") {
     return MODELS.find((m) => m.id === "claude-sonnet-4-6")!;
   }
-  if (provider === "openai" || provider === "glm") {
+  if (provider === "openai" || provider === "glm" || provider === "deepseek") {
     const low = getModelsForProvider(provider).find((m) => m.costTier === "low");
     if (low) return low;
   }

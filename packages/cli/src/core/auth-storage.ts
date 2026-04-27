@@ -94,6 +94,7 @@ export class AuthStorage {
       provider === "moonshot" ||
       provider === "xiaomi" ||
       provider === "minimax" ||
+      provider === "deepseek" ||
       provider === "openrouter"
     ) {
       return creds;

@@ -555,21 +555,17 @@ export function App(props: AppProps) {
     sessionTitle,
   });
 
-  // Items scrolled into Static (history).  For restored sessions, skip the
-  // banner and add restored items via useEffect so Ink's <Static> treats them
-  // as incremental additions (large initial arrays can race with Static's
-  // internal useLayoutEffect and get dropped before being flushed).
-  const isRestoredSession = props.initialHistory && props.initialHistory.length > 0;
-  const [history, setHistory] = useState<CompletedItem[]>(
-    isRestoredSession ? [] : [{ kind: "banner", id: "banner" }],
-  );
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (isRestoredSession && !restoredRef.current) {
-      restoredRef.current = true;
-      setHistory((prev) => compactHistory([...prev, ...trimFlushedItems(props.initialHistory!)]));
+  // Items scrolled into Static (history). For restored sessions, seed the
+  // initial array directly — matches how every other Ink chat agent passes
+  // messages to <Static> (cat-code, harness, p90-cli, openai-chatgpt, lms,
+  // gatsby). Ink's Static (build/components/Static.js) starts with index=0
+  // so slice(0) returns the full array regardless of length.
+  const [history, setHistory] = useState<CompletedItem[]>(() => {
+    if (props.initialHistory && props.initialHistory.length > 0) {
+      return compactHistory(trimFlushedItems(props.initialHistory));
     }
-  }, [isRestoredSession, props.initialHistory]);
+    return [{ kind: "banner", id: "banner" }];
+  });
   // Items from the current/last turn — rendered in the live area so they stay visible
   const [liveItems, setLiveItems] = useState<CompletedItem[]>([]);
   const [overlay, setOverlay] = useState<
@@ -870,6 +866,13 @@ export function App(props: AppProps) {
       }
 
       const contextWindow = getContextWindow(currentModel);
+      // Reserve = max output budget + ~5K headroom for system prompt + tool
+      // schemas. Otherwise the API rejects requests where the prompt fits the
+      // window but leaves no room for the response (e.g. Codex Mini at 200K
+      // ctx / 100K out — pre-turn estimate may say 160K but a 100K reasoning
+      // response then overflows).
+      const modelInfo = getModel(currentModel);
+      const reserveTokens = (modelInfo?.maxOutputTokens ?? 0) + 5_000;
       // Prefer actual API-reported tokens over char-based estimate, but only
       // when the token count was recorded AFTER the most recent compaction.
       // A count from before compaction is stale — it reflects the old context
@@ -877,7 +880,7 @@ export function App(props: AppProps) {
       const tokensFresh = lastActualTokensTimestampRef.current > lastCompactionTimeRef.current;
       const actualTokens =
         lastActualTokensRef.current > 0 && tokensFresh ? lastActualTokensRef.current : undefined;
-      if (shouldCompact(messages, contextWindow, threshold, actualTokens)) {
+      if (shouldCompact(messages, contextWindow, threshold, actualTokens, reserveTokens)) {
         const before = messages.length;
         const result = await compactConversation(messages);
         lastCompactionTimeRef.current = Date.now();
@@ -1995,7 +1998,15 @@ export function App(props: AppProps) {
         sm.load().then(async () => {
           await sm.set(
             "defaultProvider",
-            newProvider as "anthropic" | "openai" | "glm" | "moonshot",
+            newProvider as
+              | "anthropic"
+              | "openai"
+              | "glm"
+              | "moonshot"
+              | "minimax"
+              | "xiaomi"
+              | "deepseek"
+              | "openrouter",
           );
           await sm.set("defaultModel", newModelId);
         });
@@ -2621,9 +2632,7 @@ export function App(props: AppProps) {
               update-ready indicator all share a single line. Order is
               intentional: active work (bg tasks) first, actionable signals
               (eyes) next, ambient hint (update ready) last. */}
-          {(bgTasks.length > 0 ||
-            (eyesCount !== undefined && eyesCount > 0) ||
-            updatePending) && (
+          {(bgTasks.length > 0 || (eyesCount !== undefined && eyesCount > 0) || updatePending) && (
             <Box>
               {bgTasks.length > 0 && (
                 <BackgroundTasksBar
