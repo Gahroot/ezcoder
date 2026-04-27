@@ -7,8 +7,11 @@ import type { SessionHeader, SessionMessageEntry, SessionEntry, SessionInfo } fr
 
 const SESSION_DIR = path.join(os.homedir(), ".ezcoder", "sessions");
 
+/** Maximum messages to load into memory (prevents OOM on large sessions) */
+const MAX_MESSAGES = 100;
+
 function encodeCwd(cwd: string): string {
-  return cwd.replace(/[\\/]/g, "_").replace(/:/g, "").replace(/^_/, "");
+  return cwd.replace(/[\/\\]/g, "_").replace(/:/g, "").replace(/^_/, "");
 }
 
 function sessionDirForCwd(cwd: string): string {
@@ -59,6 +62,10 @@ export async function createSession(
 
 // ── Load Session ────────────────────────────────────────────
 
+/**
+ * Load a session file with truncation for memory efficiency.
+ * Returns only the last MAX_MESSAGES to prevent OOM on large sessions.
+ */
 export async function loadSession(
   sessionPath: string,
 ): Promise<{ header: SessionHeader; messages: Message[] }> {
@@ -74,7 +81,7 @@ export async function loadSession(
       header = entry;
     } else if (entry.type === "message") {
       // Skip system messages — they'll be rebuilt fresh
-      if (entry.message.role !== "system") {
+      if (entry.message?.role !== "system") {
         messages.push(entry.message);
       }
     }
@@ -84,7 +91,14 @@ export async function loadSession(
     throw new Error(`Invalid session file: no header found in ${sessionPath}`);
   }
 
-  return { header, messages };
+  // Truncate to prevent memory exhaustion on large sessions
+  const truncated = messages.slice(-MAX_MESSAGES);
+  const truncatedCount = messages.length - truncated.length;
+  if (truncatedCount > 0) {
+    console.log(`[Session] Truncated ${truncatedCount} old messages for memory`);
+  }
+
+  return { header, messages: truncated };
 }
 
 // ── List Sessions ───────────────────────────────────────────

@@ -12,10 +12,10 @@ export class EventStream<T = StreamEvent> implements AsyncIterable<T> {
   private error: Error | null = null;
 
   push(event: T): void {
-    // Safety valve: if queue grows beyond 10k unconsumed events, drop oldest
+    // Safety valve: if queue grows beyond 2k unconsumed events, drop oldest
     // to prevent OOM when consumer is blocked/slow
-    if (this.queue.length > 10_000) {
-      this.queue.splice(0, this.queue.length - 5_000);
+    if (this.queue.length > 2_000) {
+      this.queue.splice(0, this.queue.length - 1_000);
     }
     this.queue.push(event);
     this.resolve?.();

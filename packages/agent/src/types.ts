@@ -175,6 +175,8 @@ export interface AgentOptions {
   /** Max consecutive pause_turn continuations before stopping (default: 5).
    *  Prevents infinite loops when server-side tools keep pausing. */
   maxContinuations?: number;
+  /** Maximum messages to keep in context (prevents OOM on long sessions). */
+  maxMessages?: number;
   /**
    * Called before each LLM call. Allows the caller to inspect and transform
    * the messages array (e.g. compaction, truncation). Return the same array

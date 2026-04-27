@@ -170,6 +170,7 @@ export async function* agentLoop(
 ): AsyncGenerator<AgentEvent, AgentResult> {
   const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
   const maxContinuations = options.maxContinuations ?? 5;
+  const MAX_MESSAGES = options.maxMessages ?? 100;
   const toolMap = new Map<string, AgentTool>((options.tools ?? []).map((t) => [t.name, t]));
 
   const totalUsage: Usage = { inputTokens: 0, outputTokens: 0 };
@@ -214,6 +215,11 @@ export async function* agentLoop(
   // unreachability doesn't cause multi-minute hangs, but not so aggressively
   // that slow-but-healthy backends get killed.
   const NON_STREAMING_HARD_TIMEOUT_MS = 300_000; // 5min for full non-streaming response
+
+  // Trim old messages to prevent memory exhaustion
+  if (messages.length > MAX_MESSAGES) {
+    messages = messages.slice(-MAX_MESSAGES);
+  }
 
   try {
     while (turn < maxTurns) {

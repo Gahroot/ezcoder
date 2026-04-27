@@ -315,7 +315,7 @@ export type CompletedItem =
  * we can swap out heavy objects for lightweight `{ kind: "tombstone", id }`
  * entries so GC can reclaim the original data.
  */
-const MAX_LIVE_HISTORY = 200;
+const MAX_LIVE_HISTORY = 150;
 function compactHistory(items: CompletedItem[]): CompletedItem[] {
   if (items.length <= MAX_LIVE_HISTORY) return items;
   const cutoff = items.length - MAX_LIVE_HISTORY;
