@@ -74,7 +74,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
   // Clear screen + scrollback so old commands don't appear above the TUI
   process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
 
-  const { waitUntilExit, clear } = render(
+  const { waitUntilExit } = render(
     React.createElement(
       ThemeProvider,
       { initial: resolvedTheme },
@@ -133,23 +133,9 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     },
   );
 
-  // Resize handling: debounce Ink's clear() so it only fires once after the
-  // user finishes dragging.  Previously clear() fired on every resize event
-  // (many per drag), causing Ink to lose its line tracking and re-render the
-  // live area at new positions — leaving ghost/duplicate copies in scrollback.
-  // The React-side useTerminalSize hook handles screen clearing and Static
-  // remount via its own 300ms debounce + resizeKey bump.
-  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-  const onResize = () => {
-    if (resizeTimer) clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      clear();
-    }, 300);
-  };
-  process.stdout.on("resize", onResize);
-
+  // Resize handling lives entirely in useTerminalSize: it clears the screen,
+  // bumps resizeKey to remount <Static>, and Ink's own internal resized()
+  // handler (ink/build/ink.js) recalculates layout and re-renders. A second
+  // debounced clear() here was racing with both, leaving partial output.
   await waitUntilExit();
-
-  process.stdout.off("resize", onResize);
-  if (resizeTimer) clearTimeout(resizeTimer);
 }

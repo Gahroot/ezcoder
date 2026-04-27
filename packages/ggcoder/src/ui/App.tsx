@@ -555,21 +555,17 @@ export function App(props: AppProps) {
     sessionTitle,
   });
 
-  // Items scrolled into Static (history).  For restored sessions, skip the
-  // banner and add restored items via useEffect so Ink's <Static> treats them
-  // as incremental additions (large initial arrays can race with Static's
-  // internal useLayoutEffect and get dropped before being flushed).
-  const isRestoredSession = props.initialHistory && props.initialHistory.length > 0;
-  const [history, setHistory] = useState<CompletedItem[]>(
-    isRestoredSession ? [] : [{ kind: "banner", id: "banner" }],
-  );
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (isRestoredSession && !restoredRef.current) {
-      restoredRef.current = true;
-      setHistory((prev) => compactHistory([...prev, ...trimFlushedItems(props.initialHistory!)]));
+  // Items scrolled into Static (history). For restored sessions, seed the
+  // initial array directly — matches how every other Ink chat agent passes
+  // messages to <Static> (cat-code, harness, p90-cli, openai-chatgpt, lms,
+  // gatsby). Ink's Static (build/components/Static.js) starts with index=0
+  // so slice(0) returns the full array regardless of length.
+  const [history, setHistory] = useState<CompletedItem[]>(() => {
+    if (props.initialHistory && props.initialHistory.length > 0) {
+      return compactHistory(trimFlushedItems(props.initialHistory));
     }
-  }, [isRestoredSession, props.initialHistory]);
+    return [{ kind: "banner", id: "banner" }];
+  });
   // Items from the current/last turn — rendered in the live area so they stay visible
   const [liveItems, setLiveItems] = useState<CompletedItem[]>([]);
   const [overlay, setOverlay] = useState<

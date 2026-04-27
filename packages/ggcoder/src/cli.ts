@@ -1608,27 +1608,67 @@ function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
         if (content) items.push({ kind: "assistant", text: content, id: `restore-${id++}` });
         continue;
       }
-      // Count block types for debugging
       for (const block of content) {
         blockTypeCounts[block.type] = (blockTypeCounts[block.type] ?? 0) + 1;
       }
-      // Process content blocks in order — text and tool calls
-      const text = extractText(content);
-      if (text) items.push({ kind: "assistant", text, id: `restore-${id++}` });
+      // Pair server_tool_result blocks with their server_tool_call by id
+      // (both live in the same assistant message for provider-side tools).
+      const serverResults = new Map<string, { resultType: string; data: unknown }>();
       for (const block of content) {
-        if (block.type === "tool_call") {
-          const result = toolResults.get(block.id);
-          items.push({
-            kind: "tool_done",
-            name: block.name,
-            args: block.args,
-            result: result?.content ?? "",
-            isError: result?.isError ?? false,
-            durationMs: 0,
-            id: `restore-${id++}`,
+        if (block.type === "server_tool_result") {
+          serverResults.set(block.toolUseId, {
+            resultType: block.resultType,
+            data: block.data,
           });
         }
       }
+      // Walk blocks in order. Buffer consecutive text blocks into a single
+      // assistant item (mirrors live rendering), and flush the buffer before
+      // each tool_call / server_tool_call so chronology is preserved.
+      let textBuf = "";
+      const flushText = () => {
+        if (textBuf) {
+          items.push({ kind: "assistant", text: textBuf, id: `restore-${id++}` });
+          textBuf = "";
+        }
+      };
+      for (const block of content) {
+        switch (block.type) {
+          case "text":
+            if (block.text) textBuf += (textBuf ? "\n" : "") + block.text;
+            break;
+          case "tool_call": {
+            flushText();
+            const result = toolResults.get(block.id);
+            items.push({
+              kind: "tool_done",
+              name: block.name,
+              args: block.args,
+              result: result?.content ?? "",
+              isError: result?.isError ?? false,
+              durationMs: 0,
+              id: `restore-${id++}`,
+            });
+            break;
+          }
+          case "server_tool_call": {
+            flushText();
+            const serverResult = serverResults.get(block.id);
+            items.push({
+              kind: "server_tool_done",
+              name: block.name,
+              input: block.input,
+              resultType: serverResult?.resultType ?? "",
+              data: serverResult?.data ?? null,
+              durationMs: 0,
+              id: `restore-${id++}`,
+            });
+            break;
+          }
+          // thinking, image, raw, server_tool_result: not surfaced in restored history
+        }
+      }
+      flushText();
     }
   }
 
