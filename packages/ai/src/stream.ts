@@ -1,6 +1,6 @@
 import type { StreamOptions } from "./types.js";
 import { EZCoderAIError } from "./errors.js";
-import { StreamResult } from "./utils/event-stream.js";
+import type { StreamResult } from "./utils/event-stream.js";
 import { streamAnthropic } from "./providers/anthropic.js";
 import { streamOpenAI } from "./providers/openai.js";
 import { streamOpenAICodex } from "./providers/openai-codex.js";

@@ -11,7 +11,7 @@ const SESSION_DIR = path.join(os.homedir(), ".ezcoder", "sessions");
 const MAX_MESSAGES = 100;
 
 function encodeCwd(cwd: string): string {
-  return cwd.replace(/[\/\\]/g, "_").replace(/:/g, "").replace(/^_/, "");
+  return cwd.replace(/[/\\]/g, "_").replace(/:/g, "").replace(/^_/, "");
 }
 
 function sessionDirForCwd(cwd: string): string {

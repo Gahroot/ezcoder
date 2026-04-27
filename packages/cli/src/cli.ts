@@ -153,6 +153,8 @@ function printHelp(): void {
     ["continue", "Resume the most recent session"],
     ["serve", "Start the HTTP/WebSocket API server"],
     ["telegram", "Configure Telegram bot integration"],
+    ["agent-home-login", "Configure Agent Home iOS remote control token"],
+    ["agent-home", "Run agent in Agent Home iOS remote-control mode"],
   ];
   for (const [name, desc] of cmds) {
     console.log(`  ${accent(name.padEnd(20))} ${dim(desc)}`);
@@ -299,6 +301,27 @@ function main(): void {
 
   if (subcommand === "doctor") {
     runDoctor().catch((err) => {
+      process.stderr.write(formatUserError(err) + "\n");
+      process.exit(1);
+    });
+    return;
+  }
+
+  if (subcommand === "agent-home-login") {
+    runAgentHomeLogin().catch((err) => {
+      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+      closeLogger();
+      process.stderr.write(formatUserError(err) + "\n");
+      process.exit(1);
+    });
+    return;
+  }
+
+  if (subcommand === "agent-home") {
+    process.argv.splice(2, 1);
+    runAgentHome().catch((err) => {
+      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+      closeLogger();
       process.stderr.write(formatUserError(err) + "\n");
       process.exit(1);
     });
@@ -757,9 +780,7 @@ async function runDoctor(): Promise<void> {
   const GAP = "   ";
   console.log();
   console.log(
-    `  ${gradientLine(LOGO[0]!)}${GAP}` +
-      primary.bold("EZ Coder") +
-      dim(` v${CLI_VERSION}`),
+    `  ${gradientLine(LOGO[0]!)}${GAP}` + primary.bold("EZ Coder") + dim(` v${CLI_VERSION}`),
   );
   console.log(`  ${gradientLine(LOGO[1]!)}${GAP}` + accent("Doctor"));
   console.log(`  ${gradientLine(LOGO[2]!)}${GAP}` + dim("Diagnose & Fix"));

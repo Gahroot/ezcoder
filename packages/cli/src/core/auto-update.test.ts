@@ -117,7 +117,7 @@ describe("checkAndAutoUpdate", () => {
     const result = checkAndAutoUpdate("1.0.0");
 
     expect(result).toContain("Nolan just shipped");
-    
+
     expect(result).toContain("2.0.0");
     expect(vi.mocked(spawn)).toHaveBeenCalled();
 

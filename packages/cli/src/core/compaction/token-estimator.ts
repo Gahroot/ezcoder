@@ -28,12 +28,9 @@ const MODEL_FAMILY_RATIOS: Record<string, number> = {
 const DEFAULT_CHARS_PER_TOKEN = 3.5;
 
 const PER_MESSAGE_OVERHEAD = 4; // tokens
-const MAX_CACHE_SIZE = 1000;
 
 /** Active model name, set via setEstimatorModel(). Used to select the right ratio. */
 let activeModel = "";
-
-const tokenCacheKeys = new Set<Message>();
 
 /**
  * Set the active model name for token estimation.
