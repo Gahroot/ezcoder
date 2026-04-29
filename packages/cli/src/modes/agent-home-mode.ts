@@ -617,9 +617,9 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
       home && options.cwd.startsWith(home) ? "~" + options.cwd.slice(home.length) : options.cwd;
 
     const LOGO = [
-      " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-      " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-      " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+      " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+      " \u2588\u2580\u2580   \u2584\u2580 ",
+      " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
     ];
     const GRADIENT = [
       "#60a5fa",

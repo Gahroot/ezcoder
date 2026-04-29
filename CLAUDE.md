@@ -284,4 +284,4 @@ grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ezcoder\|EZCoderAIError' packages/ --inclu
 
 ### Block art logos
 
-The EZ block art logo (in `Banner.tsx` and `cli.ts`) uses different characters than upstream's GG logo. After syncing, verify the LOGO_LINES arrays still show EZ, not GG. The sync script handles text replacements but cannot detect block art changes — check visually with `ezcoder --help`.
+The EZ block art logo uses different characters than upstream's GG logo. The sync script rewrites the three GG block-art lines (in both literal-Unicode and `\uXXXX` escape forms) to their EZ equivalents wherever they appear (`Banner.tsx`, `cli.ts`, `PlanOverlay.tsx`, `SkillsOverlay.tsx`, `TaskOverlay.tsx`, `agent-home-mode.ts`, `serve-mode.ts`, etc.). After syncing, verify the logos visually with `ezcoder --help` and by triggering plan mode (Ctrl+P) and the skills overlay.
