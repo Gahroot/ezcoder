@@ -455,10 +455,10 @@ function main(): void {
 function requireInteractiveTTY(): void {
   if (process.stdin.isTTY) return;
   process.stderr.write(
-    chalk.red("ggcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
+    chalk.red("ezcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
       chalk.hex("#6b7280")(
-        "Run ggcoder directly in your terminal (not piped or through an API shell). " +
-          'For headless use try "ggcoder --json \'<prompt>\'" or "ggcoder --rpc".\n',
+        "Run ezcoder directly in your terminal (not piped or through an API shell). " +
+          'For headless use try "ezcoder --json \'<prompt>\'" or "ezcoder --rpc".\n',
       ),
   );
   process.exit(1);
@@ -567,7 +567,7 @@ async function runInkTUI(opts: {
 
   // Rebuilds the cwd-bound tools for a different project root. Used by the
   // pixel-fix flow so the agent operates in the error's project, not in
-  // wherever ggcoder was launched from.
+  // wherever ezcoder was launched from.
   const rebuildToolsForCwd = (newCwd: string) => {
     const { tools: rebuilt } = createTools(newCwd, {
       agents,
@@ -1564,7 +1564,7 @@ async function runPixel(): Promise<void> {
   if (sub === "fix") {
     const errorId = rest[0];
     if (!errorId) {
-      process.stderr.write("Usage: ggcoder pixel fix <error_id>\n");
+      process.stderr.write("Usage: ezcoder pixel fix <error_id>\n");
       process.exit(1);
     }
     const { fixError } = await import("./core/pixel-fix.js");
@@ -1656,17 +1656,17 @@ function parsePixelInstallArgs(args: string[]): ParsedInstall {
 }
 
 function printPixelHelp(): void {
-  console.log(`ggcoder pixel — error tracking + auto-fix queue
+  console.log(`ezcoder pixel — error tracking + auto-fix queue
 
 Usage:
-  ggcoder pixel                  List open errors across every registered project
-  ggcoder pixel install          Register the current project and wire up the SDK
-  ggcoder pixel fix <error_id>   Fix one specific error end-to-end
-  ggcoder pixel run              Auto-fix every open error across all projects
+  ezcoder pixel                  List open errors across every registered project
+  ezcoder pixel install          Register the current project and wire up the SDK
+  ezcoder pixel fix <error_id>   Fix one specific error end-to-end
+  ezcoder pixel run              Auto-fix every open error across all projects
 
-  ggcoder pixel install --name <name>      Override the project name
-  ggcoder pixel install --ingest-url <url> Use a custom backend URL
-  ggcoder pixel install --skip-install     Don't run the package manager
+  ezcoder pixel install --name <name>      Override the project name
+  ezcoder pixel install --ingest-url <url> Use a custom backend URL
+  ezcoder pixel install --skip-install     Don't run the package manager
 `);
 }
 

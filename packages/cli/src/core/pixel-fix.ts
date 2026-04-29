@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import chalk from "chalk";
-import { DEFAULT_INGEST_URL } from "@kenkaiiii/gg-pixel";
+import { DEFAULT_INGEST_URL } from "@prestyj/pixel";
 import { PIXEL_FIX_SYSTEM_PROMPT } from "./pixel-fix-agent.js";
 import { tryResolveStack } from "./source-maps.js";
 
@@ -52,7 +52,7 @@ export interface FixOptions {
   homeDir?: string;
   fetchFn?: typeof fetch;
   spawnFn?: SpawnFn;
-  ggcoderBin?: string;
+  ezcoderBin?: string;
   inheritStdio?: boolean;
   maxTurns?: number;
 }
@@ -81,7 +81,7 @@ export async function fixError(errorId: string, opts: FixOptions = {}): Promise<
     prompt: buildAgentPrompt(error, branch, project.path),
     systemPrompt: PIXEL_FIX_SYSTEM_PROMPT,
     spawnFn: opts.spawnFn ?? spawn,
-    ggcoderBin: opts.ggcoderBin ?? "ggcoder",
+    ezcoderBin: opts.ezcoderBin ?? "ezcoder",
     inheritStdio: opts.inheritStdio ?? true,
     maxTurns: opts.maxTurns ?? 60,
   });
@@ -123,9 +123,9 @@ export async function runQueue(opts: QueueOptions = {}): Promise<{
   const home = opts.homeDir ?? homedir();
   const log = opts.onProgress ?? ((msg: string) => console.log(msg));
 
-  const projectsPath = join(home, ".gg", "projects.json");
+  const projectsPath = join(home, ".ezcoder", "projects.json");
   if (!existsSync(projectsPath)) {
-    log(chalk.dim("No projects registered. Run `ggcoder pixel install` first."));
+    log(chalk.dim("No projects registered. Run `ezcoder pixel install` first."));
     return { fixed: 0, failed: 0, total: 0 };
   }
   const projects = JSON.parse(readFileSync(projectsPath, "utf8")) as Record<string, ProjectMapping>;
@@ -321,17 +321,17 @@ async function fetchError(
 }
 
 function lookupProject(home: string, projectId: string): ProjectMapping {
-  const projectsPath = join(home, ".gg", "projects.json");
+  const projectsPath = join(home, ".ezcoder", "projects.json");
   if (!existsSync(projectsPath)) {
     throw new Error(
-      `No projects mapping at ${projectsPath} — run \`ggcoder pixel install\` in the project first.`,
+      `No projects mapping at ${projectsPath} — run \`ezcoder pixel install\` in the project first.`,
     );
   }
   const projects = JSON.parse(readFileSync(projectsPath, "utf8")) as Record<string, ProjectMapping>;
   const project = projects[projectId];
   if (!project) {
     throw new Error(
-      `No local mapping for project ${projectId} in ${projectsPath}. Run \`ggcoder pixel install\` in the project's directory.`,
+      `No local mapping for project ${projectId} in ${projectsPath}. Run \`ezcoder pixel install\` in the project's directory.`,
     );
   }
   return project;
@@ -356,7 +356,7 @@ interface AgentRunOptions {
   prompt: string;
   systemPrompt: string;
   spawnFn: SpawnFn;
-  ggcoderBin: string;
+  ezcoderBin: string;
   inheritStdio: boolean;
   maxTurns: number;
 }
@@ -371,7 +371,7 @@ async function runAgent(opts: AgentRunOptions): Promise<number> {
       opts.systemPrompt,
       opts.prompt,
     ];
-    const child = opts.spawnFn(opts.ggcoderBin, args, {
+    const child = opts.spawnFn(opts.ezcoderBin, args, {
       cwd: opts.cwd,
       stdio: opts.inheritStdio ? "inherit" : ["ignore", "pipe", "pipe"],
     });

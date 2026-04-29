@@ -1,36 +1,29 @@
-import { installBrowserAdapter, type BrowserAdapter } from "./adapters/browser.js";
+import { installDenoAdapter, type DenoAdapter } from "./adapters/deno.js";
 import { HttpSink } from "./core/sinks/http.js";
 import type { Sink } from "./core/types.js";
 
-export const DEFAULT_INGEST_URL = "https://gg-pixel-server.buzzbeamaustralia.workers.dev";
+export const DEFAULT_INGEST_URL = "https://ez-pixel-server.buzzbeamaustralia.workers.dev";
 
-export interface BrowserPixelOptions {
+export interface DenoPixelOptions {
   projectKey: string;
-  /** Backend ingest URL. Defaults to the public gg-pixel server. */
   ingestUrl?: string;
-  /** Override the runtime label. Default: `browser-<UA short>`. */
   runtime?: string;
-  /** Inject a custom sink — overrides ingestUrl. */
   sink?: Sink;
-  captureConsoleErrors?: boolean;
-  captureConsoleWarnings?: boolean;
   captureUnhandledRejections?: boolean;
   captureUncaughtExceptions?: boolean;
 }
 
-let active: BrowserAdapter | null = null;
+let active: DenoAdapter | null = null;
 
-export function initPixel(options: BrowserPixelOptions): BrowserAdapter {
+export function initPixel(options: DenoPixelOptions): DenoAdapter {
   if (active) {
-    throw new Error("gg-pixel is already initialized; call closePixel() first");
+    throw new Error("ez-pixel is already initialized; call closePixel() first");
   }
   const sink: Sink = options.sink ?? new HttpSink(buildIngestUrl(options.ingestUrl));
-  active = installBrowserAdapter({
+  active = installDenoAdapter({
     projectKey: options.projectKey,
     runtime: options.runtime ?? defaultRuntime(),
     sink,
-    captureConsoleErrors: options.captureConsoleErrors ?? false,
-    captureConsoleWarnings: options.captureConsoleWarnings ?? false,
     captureUnhandledRejections: options.captureUnhandledRejections ?? true,
     captureUncaughtExceptions: options.captureUncaughtExceptions ?? true,
   });
@@ -63,13 +56,10 @@ function buildIngestUrl(base?: string): string {
 }
 
 function defaultRuntime(): string {
-  if (typeof navigator === "undefined") return "browser-unknown";
-  const ua = navigator.userAgent;
-  if (/Chrome\/(\d+)/.test(ua)) return `chrome-${RegExp.$1}`;
-  if (/Firefox\/(\d+)/.test(ua)) return `firefox-${RegExp.$1}`;
-  if (/Version\/(\d+).*Safari/.test(ua)) return `safari-${RegExp.$1}`;
-  if (/Edg\/(\d+)/.test(ua)) return `edge-${RegExp.$1}`;
-  return "browser";
+  // Deno exposes its version on `Deno.version.deno`. Cast through unknown
+  // because TypeScript doesn't see `Deno` in standard lib types.
+  const d = (globalThis as { Deno?: { version?: { deno?: string } } }).Deno;
+  return d?.version?.deno ? `deno-${d.version.deno}` : "deno";
 }
 
 export type { Level, ReportInput, StackFrame, WireEvent } from "./core/types.js";

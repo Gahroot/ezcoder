@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import chalk from "chalk";
-import { DEFAULT_INGEST_URL, install } from "@kenkaiiii/gg-pixel";
+import { DEFAULT_INGEST_URL, install } from "@prestyj/pixel";
 
 interface ProjectMapping {
   name: string;
@@ -51,7 +51,7 @@ export interface PixelFetchResult {
 
 export async function fetchPixelEntries(opts: ListOptions = {}): Promise<PixelFetchResult> {
   const home = opts.homeDir ?? homedir();
-  const path = join(home, ".gg", "projects.json");
+  const path = join(home, ".ezcoder", "projects.json");
   const fetchFn = opts.fetchFn ?? fetch;
 
   if (!existsSync(path)) return { entries: [], unreachable: [], hasProjects: false };
@@ -165,7 +165,7 @@ function relativizeFile(file: string, projectPath?: string): string {
 
 export async function listAllErrors(opts: ListOptions = {}): Promise<void> {
   const home = opts.homeDir ?? homedir();
-  const path = join(home, ".gg", "projects.json");
+  const path = join(home, ".ezcoder", "projects.json");
   const fetchFn = opts.fetchFn ?? fetch;
 
   if (!existsSync(path)) {
@@ -303,7 +303,7 @@ function printNoProjects(): void {
   console.log("");
   console.log(
     "Run " +
-      chalk.hex("#60a5fa").bold("ggcoder pixel install") +
+      chalk.hex("#60a5fa").bold("ezcoder pixel install") +
       " inside any project to wire it up.",
   );
   console.log("");
@@ -376,7 +376,7 @@ export async function runPixelInstall(opts: InstallCliOptions): Promise<void> {
     case "no_entry_found":
       console.log(chalk.hex("#fbbf24")(`  ⚠  Could not auto-detect your entry file.`));
       console.log(chalk.dim(`     Add to the TOP of your entry: `));
-      console.log("       " + chalk.hex("#60a5fa")(`import "./gg-pixel.init.mjs";`));
+      console.log("       " + chalk.hex("#60a5fa")(`import "./ez-pixel.init.mjs";`));
       break;
     case "skipped":
       console.log(chalk.hex("#fbbf24")(`  ⚠  Entry wiring skipped: ${result.entryWiring.reason}`));

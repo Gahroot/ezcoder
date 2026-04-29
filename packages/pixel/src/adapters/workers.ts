@@ -20,20 +20,20 @@ interface WorkersExecutionContext {
 
 export interface WorkersPixelOptions {
   projectKey: string;
-  /** Backend ingest URL. Defaults to the public gg-pixel server. */
+  /** Backend ingest URL. Defaults to the public ez-pixel server. */
   ingestUrl?: string;
   /** Override the runtime label (default: `cloudflare-workers`). */
   runtime?: string;
 }
 
-const DEFAULT_INGEST_URL = "https://gg-pixel-server.buzzbeamaustralia.workers.dev";
+const DEFAULT_INGEST_URL = "https://ez-pixel-server.buzzbeamaustralia.workers.dev";
 
 const HANDLER_KEYS = ["fetch", "scheduled", "queue", "email", "trace"] as const;
 type HandlerKey = (typeof HANDLER_KEYS)[number];
 type AnyFn = (...args: unknown[]) => unknown;
 
 /**
- * Wrap an exported Worker handler so any thrown error is reported to gg-pixel
+ * Wrap an exported Worker handler so any thrown error is reported to ez-pixel
  * before being re-thrown. Original error semantics are preserved.
  */
 export function withPixel<H extends Partial<Record<HandlerKey, unknown>>>(

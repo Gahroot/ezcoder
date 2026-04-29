@@ -262,7 +262,7 @@ This repo is a fork of [KenKaiii/ezcoder](https://github.com/KenKaiii/ezcoder). 
 Both do the same thing:
 1. `git fetch upstream`
 2. `git merge upstream/main`
-3. Rename dirs: `gg-ai`→`ai`, `gg-agent`→`agent`, `ggcoder`→`cli`
+3. Rename dirs: `gg-ai`→`ai`, `gg-agent`→`agent`, `ezcoder`→`cli`
 4. Fix npm scope: `@kenkaiiii`→`@prestyj`
 5. Fix branding: GG→EZ, `~/.ezcoder/`→`~/.ezcoder/`, `EZCoderAIError`→`EZCoderAIError`
 6. Commit the fixup
@@ -279,7 +279,7 @@ If `git merge upstream/main` hits conflicts:
 ```bash
 pnpm install && pnpm build
 # Verify no remaining upstream branding:
-grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|EZCoderAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
+grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ezcoder\|EZCoderAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
 ```
 
 ### Block art logos

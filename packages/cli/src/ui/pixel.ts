@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { DEFAULT_INGEST_URL } from "@kenkaiiii/gg-pixel";
+import { DEFAULT_INGEST_URL } from "@prestyj/pixel";
 import { fetchPixelEntries, type PixelEntry, type PixelFetchResult } from "../core/pixel.js";
 
 const LOGO_LINES = [" ▄▀▀▀ ▄▀▀▀", " █ ▀█ █ ▀█", " ▀▄▄▀ ▀▄▄▀"];
@@ -160,10 +160,10 @@ export function renderScreen(
   lines.push(
     gradientLine(LOGO_LINES[0]!) +
       GAP +
-      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#60a5fa").bold("EZ Coder") +
       (version ? chalk.hex(TEXT_DIM)(` v${version}`) : "") +
       chalk.hex(TEXT_DIM)(" · By ") +
-      chalk.hex(TEXT).bold("Ken Kai"),
+      chalk.hex(TEXT).bold("Nolan G"),
   );
   lines.push(gradientLine(LOGO_LINES[1]!) + GAP + chalk.hex(PRIMARY)("Pixel"));
   lines.push(gradientLine(LOGO_LINES[2]!) + GAP + chalk.hex(TEXT_DIM)(summarize(data)));
@@ -175,7 +175,7 @@ export function renderScreen(
     lines.push("");
     lines.push(
       "  Run " +
-        chalk.hex(PRIMARY).bold("ggcoder pixel install") +
+        chalk.hex(PRIMARY).bold("ezcoder pixel install") +
         chalk.hex(TEXT_DIM)(" inside any project to wire it up."),
     );
   } else if (data.entries.length === 0) {

@@ -21,10 +21,10 @@ function parse(argv: string[]): ParsedArgs {
 }
 
 function printUsage(): void {
-  console.log(`gg-pixel install — drop the pixel into the current project
+  console.log(`ez-pixel install — drop the pixel into the current project
 
 Usage:
-  gg-pixel install [--name <project-name>] [--ingest-url <url>] [--skip-install]
+  ez-pixel install [--name <project-name>] [--ingest-url <url>] [--skip-install]
 
 Options:
   --name           Project name to register (defaults to package.json name)
@@ -69,7 +69,7 @@ async function main(argv: string[]): Promise<void> {
     case "no_entry_found":
       console.log(`  ⚠  Could not auto-detect your entry file.`);
       console.log(`     Add this line to the TOP of your entry file manually:`);
-      console.log(`       import "./gg-pixel.init.mjs";`);
+      console.log(`       import "./ez-pixel.init.mjs";`);
       break;
     case "skipped":
       console.log(`  ⚠  Entry wiring skipped: ${result.entryWiring.reason}`);

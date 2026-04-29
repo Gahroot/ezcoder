@@ -7,7 +7,7 @@ let active: NodeAdapter | null = null;
 
 export function initPixel(options: PixelOptions): NodeAdapter {
   if (active) {
-    throw new Error("gg-pixel is already initialized; call closePixel() first");
+    throw new Error("ez-pixel is already initialized; call closePixel() first");
   }
   const sink = buildSink(options.sink);
   active = installNodeAdapter({

@@ -1,13 +1,13 @@
 {
-  "name": "@kenkaiiii/gg-pixel",
+  "name": "@prestyj/pixel",
   "version": "4.3.83",
   "type": "module",
   "description": "Universal error tracking pixel optimized for autonomous coding agents",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kenkaiiii/gg-framework.git",
-    "directory": "packages/gg-pixel"
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
+    "directory": "packages/pixel"
   },
   "exports": {
     ".": {
@@ -29,7 +29,7 @@
     }
   },
   "bin": {
-    "gg-pixel": "./dist/cli.js"
+    "ez-pixel": "./dist/cli.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

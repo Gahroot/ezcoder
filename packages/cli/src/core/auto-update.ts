@@ -248,7 +248,7 @@ export function startPeriodicUpdateCheck(
         });
 
         onUpdate(
-          `Ken just pushed a fresh update — ${currentVersion} → ${latestVersion}! I'll grab it on next launch (or run ${info.updateCommand} if you can't wait).`,
+          `Nolan just pushed a fresh update — ${currentVersion} → ${latestVersion}! I'll grab it on next launch (or run ${info.updateCommand} if you can't wait).`,
         );
 
         // Stop checking once we've notified

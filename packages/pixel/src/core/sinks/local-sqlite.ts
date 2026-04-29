@@ -29,7 +29,7 @@ export class LocalSqliteSink implements Sink {
   private readonly insert: Database.Statement;
 
   constructor(path?: string) {
-    const resolved = path ?? join(homedir(), ".gg", "errors.db");
+    const resolved = path ?? join(homedir(), ".ezcoder", "errors.db");
     mkdirSync(dirname(resolved), { recursive: true });
     this.db = new Database(resolved);
     this.db.pragma("journal_mode = WAL");

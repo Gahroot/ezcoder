@@ -1,10 +1,10 @@
-# gg-pixel — Spec (v1, draft)
+# ez-pixel — Spec (v1, draft)
 
 Universal error tracking optimized for autonomous coding agents, not human dashboards.
 
 ## Vision
 
-Drop a "pixel" SDK into any project (web app, CLI, server, eventually mobile). Every error — uncaught crash, unhandled rejection, `console.error`, manual report — phones home to a central backend. A web dashboard shows everything live across every project. A global `ggcoder pixel` TUI pulls open errors and runs autonomous fix sessions, one per error, in the right project directory.
+Drop a "pixel" SDK into any project (web app, CLI, server, eventually mobile). Every error — uncaught crash, unhandled rejection, `console.error`, manual report — phones home to a central backend. A web dashboard shows everything live across every project. A global `ezcoder pixel` TUI pulls open errors and runs autonomous fix sessions, one per error, in the right project directory.
 
 The key shift vs. Sentry/Bugsnag: **the primary consumer is a coding agent, not a human.** Payloads, schemas, and APIs are designed for that.
 
@@ -12,10 +12,10 @@ The key shift vs. Sentry/Bugsnag: **the primary consumer is a coding agent, not 
 
 ## Architecture (4 components)
 
-1. **gg-pixel SDK** — drop-in library per runtime. Captures errors, posts to ingest.
+1. **ez-pixel SDK** — drop-in library per runtime. Captures errors, posts to ingest.
 2. **Ingest backend** — Cloudflare Workers + D1 (free tier). Accepts events, stores in SQLite-shaped DB, exposes management API + SSE stream.
 3. **Web dashboard** — real-time error feed across all projects. Lightweight; not the primary surface.
-4. **`ggcoder pixel`** — global TUI fix-queue runner. Reuses the existing Tasks pane engine. Spawns one agent session per error.
+4. **`ezcoder pixel`** — global TUI fix-queue runner. Reuses the existing Tasks pane engine. Spawns one agent session per error.
 
 ---
 
@@ -157,7 +157,7 @@ Do not merge. Do not mark anything as resolved yourself.
 ## Package layout
 
 ```
-packages/gg-pixel/
+packages/pixel/
   ├── package.json
   ├── README.md
   └── src/
@@ -168,7 +168,7 @@ packages/gg-pixel/
       │   ├── queue.ts                # in-memory queue + retry on transient sink failure
       │   └── sinks/
       │       ├── http.ts             # POST to ingest URL
-      │       └── local-sqlite.ts     # ~/.gg/errors.db (dev mode, no network)
+      │       └── local-sqlite.ts     # ~/.ezcoder/errors.db (dev mode, no network)
       ├── adapters/
       │   ├── node.ts                 # uncaughtException, unhandledRejection, console.error/warn monkey-patch
       │   └── browser.ts              # window.onerror, unhandledrejection (v2)
@@ -197,23 +197,23 @@ Dashboard auth deferred to v1.5 (single-user assumed for v1).
 
 ## Onboarding flow (agent-driven)
 
-Skill: `gg-pixel:install` or `ggcoder pixel install` from inside a project dir.
+Skill: `ez-pixel:install` or `ezcoder pixel install` from inside a project dir.
 
 The agent gets a dedicated system prompt and:
 
 1. Detects runtime (`package.json`, `requirements.txt`, etc.)
 2. `POST /api/projects` with the project name → receives `{ id, key }`
-3. Installs the right SDK package (`@kenkaiiii/gg-pixel`)
+3. Installs the right SDK package (`@prestyj/pixel`)
 4. Adds the init call at the entry point or framework hook
 5. Writes the project key to `.env` or appropriate config
 6. Triggers a deliberate test error to verify ingest works end-to-end
-7. Updates `~/.gg/projects.json` mapping `project_id → local_path` (for the fix-queue runner)
+7. Updates `~/.ezcoder/projects.json` mapping `project_id → local_path` (for the fix-queue runner)
 
 ```jsonc
-// ~/.gg/projects.json
+// ~/.ezcoder/projects.json
 {
   "proj_abc123": { "name": "client-x-app", "path": "/Users/kenkai/Documents/client-x" },
-  "proj_def456": { "name": "ggcoder",      "path": "/Users/kenkai/Documents/UnstableMind/gg-coder" }
+  "proj_def456": { "name": "ezcoder",      "path": "/Users/kenkai/Documents/UnstableMind/gg-coder" }
 }
 ```
 
@@ -235,18 +235,18 @@ One-way push, scales on Workers, simpler than WebSockets, sufficient for this wo
 
 ---
 
-## Fix-queue runner (`ggcoder pixel`)
+## Fix-queue runner (`ezcoder pixel`)
 
 Global TUI command. Reuses the Tasks-pane engine: queue → spawn session → observe → mark → next.
 
 Loop:
 
-1. Read `~/.gg/projects.json` for path mappings.
+1. Read `~/.ezcoder/projects.json` for path mappings.
 2. Subscribe to SSE (or poll `/api/projects/:id/errors?status=open`) for each known project.
 3. For each open error in priority order:
    - `cd` to project's local path
    - `PATCH /api/errors/:id { status: "in_progress" }`
-   - Spawn a ggcoder session with the **agent context** payload as the prompt
+   - Spawn a ezcoder session with the **agent context** payload as the prompt
    - Watch for: branch `fix/pixel-{id}` created? checks pass (project's `pnpm check` / `pytest` / etc.)? push succeeded?
    - All ✓ → `PATCH { status: "awaiting_review", branch: "fix/pixel-..." }`
    - Any ✗ → `PATCH { status: "failed" }`
@@ -262,7 +262,7 @@ Loop:
 
 ## Out of scope for v1
 
-- Browser SDK + source-map symbolication (Node-only first; covers ggcoder + deployed Node services)
+- Browser SDK + source-map symbolication (Node-only first; covers ezcoder + deployed Node services)
 - Heartbeats / uptime monitoring
 - Notifications (email, Slack, push)
 - Dashboard auth / multi-tenant (clients viewing their own projects)

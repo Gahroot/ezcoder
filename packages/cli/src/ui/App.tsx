@@ -2805,7 +2805,7 @@ export function App(props: AppProps) {
               {eyesCount !== undefined && eyesCount > 0 && (
                 <Box paddingLeft={bgTasks.length > 0 ? 2 : 1} paddingRight={1}>
                   <Text color={theme.accent} bold>
-                    {`${eyesCount} eyes signal${eyesCount === 1 ? "" : "s"} · Run /eyes-improve to enhance GG Coder`}
+                    {`${eyesCount} eyes signal${eyesCount === 1 ? "" : "s"} · Run /eyes-improve to enhance EZ Coder`}
                   </Text>
                 </Box>
               )}

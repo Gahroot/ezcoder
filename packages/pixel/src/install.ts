@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 
-export const DEFAULT_INGEST_URL = "https://gg-pixel-server.buzzbeamaustralia.workers.dev";
+export const DEFAULT_INGEST_URL = "https://ez-pixel-server.buzzbeamaustralia.workers.dev";
 
 export interface InstallOptions {
   cwd?: string;
@@ -116,7 +116,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
   const projectName = opts.projectName ?? pkg.name ?? nodeRoot.split("/").pop() ?? "unnamed";
   const kind = detectJsProjectKind(pkg, nodeRoot);
 
-  const projectsJsonPath = join(home, ".gg", "projects.json");
+  const projectsJsonPath = join(home, ".ezcoder", "projects.json");
   const envFilePath = join(nodeRoot, ".env");
 
   const existing = findMappingByPath(projectsJsonPath, nodeRoot);
@@ -133,7 +133,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
   const pm = detectPackageManager(nodeRoot);
   const packageInstalled = opts.skipPackageInstall
     ? false
-    : runInstall(nodeRoot, pm, "@kenkaiiii/gg-pixel");
+    : runInstall(nodeRoot, pm, "@prestyj/pixel");
 
   // Dispatch to per-framework wiring.
   const wired = wireFramework({
@@ -254,7 +254,7 @@ function runInstall(projectRoot: string, pm: PackageManager, pkg: string): boole
 
 export function renderInitFile(ingestUrl: string, projectKey?: string): string {
   const fallback = projectKey ? ` || ${JSON.stringify(projectKey)}` : "";
-  return `import { initPixel } from "@kenkaiiii/gg-pixel";
+  return `import { initPixel } from "@prestyj/pixel";
 
 const key = process.env.GG_PIXEL_KEY${fallback};
 if (key) {
@@ -268,7 +268,7 @@ if (key) {
 
 export function renderInitFileCjs(ingestUrl: string, projectKey?: string): string {
   const fallback = projectKey ? ` || ${JSON.stringify(projectKey)}` : "";
-  return `const { initPixel } = require("@kenkaiiii/gg-pixel");
+  return `const { initPixel } = require("@prestyj/pixel");
 
 const key = process.env.GG_PIXEL_KEY${fallback};
 if (key) {
@@ -310,7 +310,7 @@ export function wireEntryFile(
     return { kind: "skipped", reason: `unreadable: ${(err as Error).message}` };
   }
 
-  if (content.includes("gg-pixel.init")) {
+  if (content.includes("ez-pixel.init")) {
     return { kind: "already_present", entryPath };
   }
 
@@ -483,7 +483,7 @@ function wireFramework(w: WiringInput): WiringResult {
 }
 
 function wireNode({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput): WiringResult {
-  const initPath = join(projectRoot, "gg-pixel.init.mjs");
+  const initPath = join(projectRoot, "ez-pixel.init.mjs");
   writeFileSync(initPath, renderInitFile(ingestUrl, projectKey), "utf8");
   return {
     primaryInitPath: initPath,
@@ -493,7 +493,7 @@ function wireNode({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput): Wir
 }
 
 function wireBrowser({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput): WiringResult {
-  const initPath = join(projectRoot, "gg-pixel.init.mjs");
+  const initPath = join(projectRoot, "ez-pixel.init.mjs");
   writeFileSync(initPath, renderBrowserInitFile(ingestUrl, projectKey), "utf8");
   return {
     primaryInitPath: initPath,
@@ -512,7 +512,7 @@ function wireNextjs({ projectRoot, projectKey, ingestUrl }: WiringInput): Wiring
   const finalServerPath = serverInitPath ?? join(projectRoot, "instrumentation.ts");
   writeNextInstrumentation(finalServerPath, ingestUrl, projectKey);
 
-  // ── next.config: mark @kenkaiiii/gg-pixel as a server-external package
+  // ── next.config: mark @prestyj/pixel as a server-external package
   //    so Next's bundler doesn't try to compile better-sqlite3 (a native
   //    module) when bundling API routes / Server Components.
   patchNextConfig(projectRoot);
@@ -521,14 +521,14 @@ function wireNextjs({ projectRoot, projectKey, ingestUrl }: WiringInput): Wiring
   //    browser, then render it from the root layout. We can't just import
   //    a `.mjs` from layout.tsx — server-side rendering of pages like
   //    /_not-found would evaluate `window.onerror = ...` and blow up.
-  const clientInitPath = join(projectRoot, "gg-pixel.client.tsx");
+  const clientInitPath = join(projectRoot, "ez-pixel.client.tsx");
   writeFileSync(clientInitPath, renderNextClientComponent(ingestUrl, projectKey), "utf8");
 
   const layoutPath = findNextLayout(projectRoot);
   let entryWiring: EntryWiringResult;
   if (!layoutPath) {
     warnings.push(
-      'Could not auto-wire the Next.js client init — no app/layout.{tsx,jsx} or pages/_app.{tsx,jsx} found. Add `<GGPixelClient />` from "./gg-pixel.client" to your root layout/_app.',
+      'Could not auto-wire the Next.js client init — no app/layout.{tsx,jsx} or pages/_app.{tsx,jsx} found. Add `<GGPixelClient />` from "./ez-pixel.client" to your root layout/_app.',
     );
     entryWiring = { kind: "no_entry_found" };
   } else {
@@ -548,7 +548,7 @@ function wireNextjs({ projectRoot, projectKey, ingestUrl }: WiringInput): Wiring
 
 function writeNextInstrumentation(path: string, ingestUrl: string, projectKey?: string): void {
   const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-  if (existing.includes("@kenkaiiii/gg-pixel")) return; // idempotent
+  if (existing.includes("@prestyj/pixel")) return; // idempotent
 
   const newContent = existing
     ? existing + "\n" + nextInstrumentationAppend(ingestUrl, projectKey)
@@ -563,7 +563,7 @@ function nextInstrumentationStandalone(ingestUrl: string, projectKey?: string): 
 // Server Components, and route handlers.
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { initPixel } = await import("@kenkaiiii/gg-pixel");
+    const { initPixel } = await import("@prestyj/pixel");
     initPixel({
       projectKey: process.env.GG_PIXEL_KEY${fallback},
       sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },
@@ -575,8 +575,8 @@ export async function register() {
 
 function nextInstrumentationAppend(ingestUrl: string, projectKey?: string): string {
   const fallback = projectKey ? ` ?? ${JSON.stringify(projectKey)}` : "";
-  return `// gg-pixel: server-side error tracking
-import { initPixel } from "@kenkaiiii/gg-pixel";
+  return `// ez-pixel: server-side error tracking
+import { initPixel } from "@prestyj/pixel";
 if (typeof process !== "undefined" && process.env.NEXT_RUNTIME === "nodejs") {
   initPixel({
     projectKey: process.env.GG_PIXEL_KEY${fallback},
@@ -611,7 +611,7 @@ function renderNextClientComponent(ingestUrl: string, projectKey: string): strin
 // directive guarantees this module never executes during server-side
 // rendering — \`window.onerror\` references would otherwise crash builds.
 import { useEffect } from "react";
-import { initPixel } from "@kenkaiiii/gg-pixel/browser";
+import { initPixel } from "@prestyj/pixel/browser";
 
 let inited = false;
 
@@ -636,7 +636,7 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   } catch (err) {
     return { kind: "skipped", reason: `unreadable: ${(err as Error).message}` };
   }
-  if (content.includes("GGPixelClient") || content.includes("@kenkaiiii/gg-pixel")) {
+  if (content.includes("GGPixelClient") || content.includes("@prestyj/pixel")) {
     return { kind: "already_present", entryPath: layoutPath };
   }
   const fromDir = dirname(layoutPath);
@@ -672,7 +672,7 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
 
 function patchNextConfig(projectRoot: string): void {
   // Required so Next's bundler doesn't statically follow better-sqlite3
-  // (a native module) when @kenkaiiii/gg-pixel is imported server-side.
+  // (a native module) when @prestyj/pixel is imported server-side.
   const candidates = ["next.config.ts", "next.config.mjs", "next.config.js", "next.config.cjs"];
   let configPath: string | null = null;
   for (const c of candidates) {
@@ -686,20 +686,20 @@ function patchNextConfig(projectRoot: string): void {
     configPath = join(projectRoot, "next.config.ts");
     writeFileSync(
       configPath,
-      `import type { NextConfig } from "next";\n\nconst nextConfig: NextConfig = {\n  // Keeps Next's bundler from trying to compile better-sqlite3 (native dep).\n  serverExternalPackages: ["@kenkaiiii/gg-pixel"],\n};\n\nexport default nextConfig;\n`,
+      `import type { NextConfig } from "next";\n\nconst nextConfig: NextConfig = {\n  // Keeps Next's bundler from trying to compile better-sqlite3 (native dep).\n  serverExternalPackages: ["@prestyj/pixel"],\n};\n\nexport default nextConfig;\n`,
       "utf8",
     );
     return;
   }
   const content = readFileSync(configPath, "utf8");
-  if (content.includes("@kenkaiiii/gg-pixel")) return;
+  if (content.includes("@prestyj/pixel")) return;
   if (content.includes("serverExternalPackages")) {
     const updated = content.replace(
       /serverExternalPackages\s*:\s*\[([^\]]*)\]/,
       (_match: string, inside: string) => {
         const trimmed = inside.trim();
         const sep = trimmed.length > 0 ? ", " : "";
-        return `serverExternalPackages: [${trimmed}${sep}"@kenkaiiii/gg-pixel"]`;
+        return `serverExternalPackages: [${trimmed}${sep}"@prestyj/pixel"]`;
       },
     );
     if (updated !== content) writeFileSync(configPath, updated, "utf8");
@@ -712,7 +712,7 @@ function patchNextConfig(projectRoot: string): void {
     const insertAt = m.index + m[0].length;
     const updated =
       content.slice(0, insertAt) +
-      `\n  serverExternalPackages: ["@kenkaiiii/gg-pixel"],` +
+      `\n  serverExternalPackages: ["@prestyj/pixel"],` +
       content.slice(insertAt);
     writeFileSync(configPath, updated, "utf8");
   }
@@ -725,13 +725,13 @@ function wireSveltekit({ projectRoot, projectKey, ingestUrl }: WiringInput): Wir
   if (!existsSync(dirname(serverPath))) mkdirSync(dirname(serverPath), { recursive: true });
   appendOrCreate(
     serverPath,
-    `import { initPixel } from "@kenkaiiii/gg-pixel";\ninitPixel({\n  projectKey: process.env.GG_PIXEL_KEY ?? ${JSON.stringify(projectKey)},\n  sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },\n});\n`,
-    "@kenkaiiii/gg-pixel",
+    `import { initPixel } from "@prestyj/pixel";\ninitPixel({\n  projectKey: process.env.GG_PIXEL_KEY ?? ${JSON.stringify(projectKey)},\n  sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },\n});\n`,
+    "@prestyj/pixel",
   );
   appendOrCreate(
     clientPath,
-    `import { initPixel } from "@kenkaiiii/gg-pixel/browser";\ninitPixel({\n  projectKey: ${JSON.stringify(projectKey)},\n  ingestUrl: ${JSON.stringify(ingestUrl)},\n});\n`,
-    "@kenkaiiii/gg-pixel/browser",
+    `import { initPixel } from "@prestyj/pixel/browser";\ninitPixel({\n  projectKey: ${JSON.stringify(projectKey)},\n  ingestUrl: ${JSON.stringify(ingestUrl)},\n});\n`,
+    "@prestyj/pixel/browser",
   );
   return {
     primaryInitPath: clientPath,
@@ -748,16 +748,16 @@ function wireNuxt({ projectRoot, projectKey, ingestUrl }: WiringInput): WiringRe
   // Nuxt auto-loads plugins/*.client.ts and plugins/*.server.ts.
   const pluginsDir = join(projectRoot, "plugins");
   mkdirSync(pluginsDir, { recursive: true });
-  const serverPath = join(pluginsDir, "gg-pixel.server.ts");
-  const clientPath = join(pluginsDir, "gg-pixel.client.ts");
+  const serverPath = join(pluginsDir, "ez-pixel.server.ts");
+  const clientPath = join(pluginsDir, "ez-pixel.client.ts");
   writeFileSync(
     serverPath,
-    `import { initPixel } from "@kenkaiiii/gg-pixel";\nexport default defineNuxtPlugin(() => {\n  initPixel({\n    projectKey: process.env.GG_PIXEL_KEY ?? ${JSON.stringify(projectKey)},\n    sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },\n  });\n});\n`,
+    `import { initPixel } from "@prestyj/pixel";\nexport default defineNuxtPlugin(() => {\n  initPixel({\n    projectKey: process.env.GG_PIXEL_KEY ?? ${JSON.stringify(projectKey)},\n    sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },\n  });\n});\n`,
     "utf8",
   );
   writeFileSync(
     clientPath,
-    `import { initPixel } from "@kenkaiiii/gg-pixel/browser";\nexport default defineNuxtPlugin(() => {\n  initPixel({\n    projectKey: ${JSON.stringify(projectKey)},\n    ingestUrl: ${JSON.stringify(ingestUrl)},\n  });\n});\n`,
+    `import { initPixel } from "@prestyj/pixel/browser";\nexport default defineNuxtPlugin(() => {\n  initPixel({\n    projectKey: ${JSON.stringify(projectKey)},\n    ingestUrl: ${JSON.stringify(ingestUrl)},\n  });\n});\n`,
     "utf8",
   );
   return {
@@ -775,7 +775,7 @@ function wireRemix({ projectRoot, projectKey, ingestUrl }: WiringInput): WiringR
   const warnings: string[] = [];
 
   // Drop a small init module to import.
-  const clientInitPath = join(projectRoot, "gg-pixel.client.mjs");
+  const clientInitPath = join(projectRoot, "ez-pixel.client.mjs");
   writeFileSync(clientInitPath, renderBrowserInitFile(ingestUrl, projectKey), "utf8");
 
   if (clientPath) {
@@ -787,7 +787,7 @@ function wireRemix({ projectRoot, projectKey, ingestUrl }: WiringInput): WiringR
   }
 
   // Server-side: write a small init we import from entry.server.
-  const serverInitPath = join(projectRoot, "gg-pixel.server.mjs");
+  const serverInitPath = join(projectRoot, "ez-pixel.server.mjs");
   writeFileSync(serverInitPath, renderInitFile(ingestUrl), "utf8");
   let serverEntry: EntryWiringResult = { kind: "no_entry_found" };
   if (serverPath) {
@@ -813,8 +813,8 @@ function wireElectron({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput):
   const warnings: string[] = [];
   const isMainEsm = pkg.type === "module";
   const mainInitPath = isMainEsm
-    ? join(projectRoot, "gg-pixel.main.mjs")
-    : join(projectRoot, "gg-pixel.main.cjs");
+    ? join(projectRoot, "ez-pixel.main.mjs")
+    : join(projectRoot, "ez-pixel.main.cjs");
   writeFileSync(
     mainInitPath,
     isMainEsm ? renderInitFile(ingestUrl, projectKey) : renderInitFileCjs(ingestUrl, projectKey),
@@ -836,10 +836,10 @@ function wireElectron({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput):
   let rendererInitPath: string;
   if (htmlFiles.length > 0) {
     const rendererDir = dirname(htmlFiles[0]!);
-    rendererInitPath = join(rendererDir, "gg-pixel.browser.iife.js");
+    rendererInitPath = join(rendererDir, "ez-pixel.browser.iife.js");
     if (!copyIifeBundle(projectRoot, rendererInitPath)) {
       warnings.push(
-        "Could not copy gg-pixel browser IIFE bundle — install @kenkaiiii/gg-pixel and re-run.",
+        "Could not copy ez-pixel browser IIFE bundle — install @prestyj/pixel and re-run.",
       );
     }
     let patchedAny = false;
@@ -854,7 +854,7 @@ function wireElectron({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput):
       );
     }
   } else {
-    rendererInitPath = join(projectRoot, "gg-pixel.renderer.mjs");
+    rendererInitPath = join(projectRoot, "ez-pixel.renderer.mjs");
     writeFileSync(rendererInitPath, renderBrowserInitFile(ingestUrl, projectKey), "utf8");
     const rendererEntry = pickPath(projectRoot, [
       "src/renderer/index.ts",
@@ -877,7 +877,7 @@ function wireElectron({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput):
     if (rendererEntry) injectImport(rendererEntry, rendererInitPath);
     else
       warnings.push(
-        'Could not auto-detect the Electron renderer entry. Add `import "./gg-pixel.renderer.mjs";` to the top of your renderer entry file.',
+        'Could not auto-detect the Electron renderer entry. Add `import "./ez-pixel.renderer.mjs";` to the top of your renderer entry file.',
       );
   }
 
@@ -962,8 +962,8 @@ function findRendererHtmlFiles(projectRoot: string): string[] {
 
 function copyIifeBundle(projectRoot: string, dest: string): boolean {
   const candidates = [
-    join(projectRoot, "node_modules/@kenkaiiii/gg-pixel/dist/browser.iife.global.js"),
-    join(projectRoot, "node_modules/@kenkaiiii/gg-pixel/dist/browser.iife.js"),
+    join(projectRoot, "node_modules/@prestyj/pixel/dist/browser.iife.global.js"),
+    join(projectRoot, "node_modules/@prestyj/pixel/dist/browser.iife.js"),
   ];
   for (const c of candidates) {
     if (existsSync(c)) {
@@ -990,7 +990,7 @@ function patchRendererHtml(
   } catch {
     return "not-applicable";
   }
-  if (content.includes("gg-pixel.browser.iife")) return "already";
+  if (content.includes("ez-pixel.browser.iife")) return "already";
 
   const ingestOrigin = new URL(ingestUrl).origin;
   // Match content="..." OR content='...'. Critical: don't use `[^"']` for
@@ -1020,7 +1020,7 @@ function patchRendererHtml(
   );
 
   const relScript = relative(dirname(htmlPath), iifePath).split(sep).join("/");
-  const inject = `\n  <!-- gg-pixel: auto-wired by ggcoder pixel install -->\n  <script src="${relScript}"></script>\n  <script>\n    if (window.GGPixel) GGPixel.initPixel({ projectKey: ${JSON.stringify(projectKey)}, ingestUrl: ${JSON.stringify(ingestUrl)} });\n  </script>\n`;
+  const inject = `\n  <!-- ez-pixel: auto-wired by ezcoder pixel install -->\n  <script src="${relScript}"></script>\n  <script>\n    if (window.GGPixel) GGPixel.initPixel({ projectKey: ${JSON.stringify(projectKey)}, ingestUrl: ${JSON.stringify(ingestUrl)} });\n  </script>\n`;
   if (/<head[^>]*>/i.test(content)) {
     content = content.replace(/(<head[^>]*>)/i, `$1${inject}`);
   } else if (/<html[^>]*>/i.test(content)) {
@@ -1035,7 +1035,7 @@ function patchRendererHtml(
 function wireTauri({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput): WiringResult {
   // Tauri frontend = web. Use Browser SDK on the JS side.
   // The Rust backend has no SDK yet — we say so honestly.
-  const initPath = join(projectRoot, "gg-pixel.init.mjs");
+  const initPath = join(projectRoot, "ez-pixel.init.mjs");
   writeFileSync(initPath, renderBrowserInitFile(ingestUrl, projectKey), "utf8");
   const entryWiring = wireEntryFile(projectRoot, initPath, pkg);
   return {
@@ -1052,14 +1052,14 @@ function wireWorkers({ projectRoot, projectKey, ingestUrl }: WiringInput): Wirin
   // object with fetch/scheduled/queue handlers. We can't safely refactor their
   // default export with regex, so we drop a snippet showing the wrap pattern
   // and warn the user.
-  const initPath = join(projectRoot, "gg-pixel.workers.snippet.ts");
+  const initPath = join(projectRoot, "ez-pixel.workers.snippet.ts");
   writeFileSync(
     initPath,
-    `// gg-pixel — Cloudflare Workers wiring snippet.
-// Auto-generated by ggcoder pixel install. Wrap your default export with
+    `// ez-pixel — Cloudflare Workers wiring snippet.
+// Auto-generated by ezcoder pixel install. Wrap your default export with
 // withPixel(...) so any throw in your handler is auto-reported. Example:
 //
-//   import { withPixel } from "@kenkaiiii/gg-pixel/workers";
+//   import { withPixel } from "@prestyj/pixel/workers";
 //
 //   export default withPixel(
 //     { projectKey: ${JSON.stringify(projectKey)} },
@@ -1071,14 +1071,14 @@ function wireWorkers({ projectRoot, projectKey, ingestUrl }: WiringInput): Wirin
 //
 // For manual reports inside a handler:
 //
-//   import { reportPixel } from "@kenkaiiii/gg-pixel/workers";
+//   import { reportPixel } from "@prestyj/pixel/workers";
 //   reportPixel(ctx, { projectKey: ${JSON.stringify(projectKey)} }, {
 //     message: "user clicked the broken button",
 //   });
 //
 // Your project_key is publishable — safe to commit.
 
-import { withPixel, reportPixel } from "@kenkaiiii/gg-pixel/workers";
+import { withPixel, reportPixel } from "@prestyj/pixel/workers";
 export const PIXEL_KEY = ${JSON.stringify(projectKey)};
 export const PIXEL_INGEST = ${JSON.stringify(ingestUrl)};
 export { withPixel, reportPixel };
@@ -1134,8 +1134,8 @@ function injectImport(entryPath: string, initFilePath: string): EntryWiringResul
   } catch (err) {
     return { kind: "skipped", reason: `unreadable: ${(err as Error).message}` };
   }
-  const initBasename = initFilePath.split(sep).pop() ?? "gg-pixel.init.mjs";
-  if (content.includes(initBasename) || content.includes("@kenkaiiii/gg-pixel")) {
+  const initBasename = initFilePath.split(sep).pop() ?? "ez-pixel.init.mjs";
+  if (content.includes(initBasename) || content.includes("@prestyj/pixel")) {
     return { kind: "already_present", entryPath };
   }
   const fromDir = dirname(entryPath);
@@ -1194,9 +1194,9 @@ export function isBrowserProject(pkg: PackageJson, projectRoot: string): boolean
 }
 
 export function renderBrowserInitFile(ingestUrl: string, projectKey: string): string {
-  return `// gg-pixel init — auto-generated by ggcoder pixel install.
+  return `// ez-pixel init — auto-generated by ezcoder pixel install.
 // The project_key is publishable (designed to live in browser bundles).
-import { initPixel } from "@kenkaiiii/gg-pixel/browser";
+import { initPixel } from "@prestyj/pixel/browser";
 
 initPixel({
   projectKey: ${JSON.stringify(projectKey)},
@@ -1282,7 +1282,7 @@ async function installGo(ctx: NativeInstallContext): Promise<InstallResult> {
   const { projectRoot, opts, ingestUrl, fetchFn, home } = ctx;
   const projectName =
     opts.projectName ?? readGoModuleName(projectRoot) ?? projectRoot.split("/").pop() ?? "unnamed";
-  const projectsJsonPath = join(home, ".gg", "projects.json");
+  const projectsJsonPath = join(home, ".ezcoder", "projects.json");
   const envFilePath = join(projectRoot, ".env");
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
@@ -1301,12 +1301,12 @@ async function installGo(ctx: NativeInstallContext): Promise<InstallResult> {
   const initFilePath = join(projectRoot, "gg_pixel_init.go");
   writeFileSync(
     initFilePath,
-    `// gg-pixel init — auto-generated by ggcoder pixel install.
+    `// ez-pixel init — auto-generated by ezcoder pixel install.
 package main
 
 import (
 	"os"
-	gg "github.com/kenkaiiii/gg-pixel-go"
+	gg "github.com/Gahroot/ez-pixel-go"
 )
 
 func init() {
@@ -1353,7 +1353,7 @@ function readGoModuleName(projectRoot: string): string | null {
 }
 
 function runGoGet(projectRoot: string): boolean {
-  const result = spawnSync("go", ["get", "github.com/kenkaiiii/gg-pixel-go@latest"], {
+  const result = spawnSync("go", ["get", "github.com/Gahroot/ez-pixel-go@latest"], {
     cwd: projectRoot,
     stdio: "inherit",
   });
@@ -1364,7 +1364,7 @@ async function installRuby(ctx: NativeInstallContext): Promise<InstallResult> {
   const { projectRoot, opts, ingestUrl, fetchFn, home } = ctx;
   const projectName =
     opts.projectName ?? readRubyAppName(projectRoot) ?? projectRoot.split("/").pop() ?? "unnamed";
-  const projectsJsonPath = join(home, ".gg", "projects.json");
+  const projectsJsonPath = join(home, ".ezcoder", "projects.json");
   const envFilePath = join(projectRoot, ".env");
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
@@ -1383,7 +1383,7 @@ async function installRuby(ctx: NativeInstallContext): Promise<InstallResult> {
   const initFilePath = join(projectRoot, "gg_pixel_init.rb");
   writeFileSync(
     initFilePath,
-    `# gg-pixel init — auto-generated by ggcoder pixel install.
+    `# ez-pixel init — auto-generated by ezcoder pixel install.
 require "gg_pixel"
 GGPixel.init(
   project_key: ENV["GG_PIXEL_KEY"] || ${JSON.stringify(created.key)},
@@ -1461,7 +1461,7 @@ async function installPython(ctx: PythonInstallContext): Promise<InstallResult> 
   const projectName =
     opts.projectName ?? readPyprojectName(projectRoot) ?? projectRoot.split("/").pop() ?? "unnamed";
 
-  const projectsJsonPath = join(home, ".gg", "projects.json");
+  const projectsJsonPath = join(home, ".ezcoder", "projects.json");
   const envFilePath = join(projectRoot, ".env");
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
@@ -1517,12 +1517,12 @@ function readPyprojectName(projectRoot: string): string | null {
 function runPythonInstall(projectRoot: string, pm: PythonPackageManager): boolean {
   const cmd =
     pm === "uv"
-      ? ["uv", ["add", "gg-pixel"]]
+      ? ["uv", ["add", "ez-pixel"]]
       : pm === "poetry"
-        ? ["poetry", ["add", "gg-pixel"]]
+        ? ["poetry", ["add", "ez-pixel"]]
         : pm === "pipenv"
-          ? ["pipenv", ["install", "gg-pixel"]]
-          : ["pip", ["install", "gg-pixel"]];
+          ? ["pipenv", ["install", "ez-pixel"]]
+          : ["pip", ["install", "ez-pixel"]];
   const result = spawnSync(cmd[0] as string, cmd[1] as string[], {
     cwd: projectRoot,
     stdio: "inherit",
@@ -1530,12 +1530,12 @@ function runPythonInstall(projectRoot: string, pm: PythonPackageManager): boolea
   if (result.status === 0) return true;
   // Fallback: many systems only have `pip3` on PATH.
   if (pm === "pip") {
-    const r2 = spawnSync("pip3", ["install", "gg-pixel"], {
+    const r2 = spawnSync("pip3", ["install", "ez-pixel"], {
       cwd: projectRoot,
       stdio: "inherit",
     });
     if (r2.status === 0) return true;
-    const r3 = spawnSync("python3", ["-m", "pip", "install", "gg-pixel"], {
+    const r3 = spawnSync("python3", ["-m", "pip", "install", "ez-pixel"], {
       cwd: projectRoot,
       stdio: "inherit",
     });
@@ -1545,7 +1545,7 @@ function runPythonInstall(projectRoot: string, pm: PythonPackageManager): boolea
 }
 
 export function renderPythonInitFile(ingestUrl: string, projectKey: string): string {
-  return `"""gg-pixel init — auto-generated by ggcoder pixel install.
+  return `"""ez-pixel init — auto-generated by ezcoder pixel install.
 
 This file initializes error tracking. Importing it (which the install step
 wires into your entry file) registers the global Python error handlers.
@@ -1592,7 +1592,7 @@ function wirePythonEntry(projectRoot: string, initFilePath: string): EntryWiring
     moduleSpec = rel.replace(/\.py$/, "").replace(/\//g, ".");
   }
 
-  const importLine = `import ${moduleSpec}  # noqa: F401, E402  -- gg-pixel`;
+  const importLine = `import ${moduleSpec}  # noqa: F401, E402  -- ez-pixel`;
 
   const lines = content.split("\n");
   let insertAt = 0;

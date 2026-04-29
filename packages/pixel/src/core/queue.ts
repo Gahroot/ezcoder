@@ -61,7 +61,7 @@ export class EventQueue {
           // Drop the event but make the loss observable — silent data loss
           // from the error tracker is the worst possible failure mode.
           console.warn(
-            `[gg-pixel] dropping event after 5 failed deliveries: ${
+            `[ez-pixel] dropping event after 5 failed deliveries: ${
               err instanceof Error ? err.message : String(err)
             }`,
           );

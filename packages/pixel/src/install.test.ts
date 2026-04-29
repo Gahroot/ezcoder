@@ -14,7 +14,7 @@ import {
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "gg-pixel-install-"));
+  dir = mkdtempSync(join(tmpdir(), "ez-pixel-install-"));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -29,7 +29,7 @@ function fakeFetch(response: { id: string; key: string }, status = 201): typeof 
 describe("install (end-to-end, mocked backend)", () => {
   it("registers project, writes init file, env, and mapping", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "my-app" }));
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
 
     try {
       const result = await install({
@@ -44,10 +44,10 @@ describe("install (end-to-end, mocked backend)", () => {
       expect(result.projectName).toBe("my-app");
 
       const initContent = readFileSync(result.initFilePath, "utf8");
-      expect(initContent).toContain('import { initPixel } from "@kenkaiiii/gg-pixel"');
+      expect(initContent).toContain('import { initPixel } from "@prestyj/pixel"');
       expect(initContent).toContain("process.env.GG_PIXEL_KEY");
       expect(initContent).toContain(
-        '"https://gg-pixel-server.buzzbeamaustralia.workers.dev/ingest"',
+        '"https://ez-pixel-server.buzzbeamaustralia.workers.dev/ingest"',
       );
 
       expect(readFileSync(result.envFilePath, "utf8")).toContain("GG_PIXEL_KEY=pk_live_abc");
@@ -64,7 +64,7 @@ describe("install (end-to-end, mocked backend)", () => {
 
   it("uses --name override when provided", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "from-pkg" }));
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,
@@ -81,7 +81,7 @@ describe("install (end-to-end, mocked backend)", () => {
 
   it("falls back to directory name when package.json has no name", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({}));
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,
@@ -160,15 +160,15 @@ describe("writeEnvKey", () => {
 });
 
 describe("writeProjectsMapping", () => {
-  it("creates ~/.gg/projects.json with the entry", () => {
-    const path = join(dir, ".gg", "projects.json");
+  it("creates ~/.ezcoder/projects.json with the entry", () => {
+    const path = join(dir, ".ezcoder", "projects.json");
     writeProjectsMapping(path, "proj_a", "alpha", "/path/to/alpha");
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
       proj_a: { name: "alpha", path: "/path/to/alpha" },
     });
   });
   it("merges with existing entries", () => {
-    const path = join(dir, ".gg", "projects.json");
+    const path = join(dir, ".ezcoder", "projects.json");
     writeProjectsMapping(path, "proj_a", "alpha", "/a");
     writeProjectsMapping(path, "proj_b", "beta", "/b");
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
@@ -177,7 +177,7 @@ describe("writeProjectsMapping", () => {
     });
   });
   it("recovers from corrupt JSON by overwriting", () => {
-    const path = join(dir, ".gg", "projects.json");
+    const path = join(dir, ".ezcoder", "projects.json");
     writeProjectsMapping(path, "proj_a", "alpha", "/a");
     writeFileSync(path, "{ not json", "utf8");
     writeProjectsMapping(path, "proj_b", "beta", "/b");
@@ -193,7 +193,7 @@ describe("install — project-kind dispatch", () => {
       join(dir, "package.json"),
       JSON.stringify({ name: "myapp", dependencies: { react: "^19.0.0" } }),
     );
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,
@@ -203,7 +203,7 @@ describe("install — project-kind dispatch", () => {
       });
       expect(result.projectKind).toBe("browser");
       const initContent = readFileSync(result.initFilePath, "utf8");
-      expect(initContent).toContain('from "@kenkaiiii/gg-pixel/browser"');
+      expect(initContent).toContain('from "@prestyj/pixel/browser"');
       expect(initContent).toContain('"k_browser"'); // key inlined
     } finally {
       rmSync(home, { recursive: true, force: true });
@@ -215,7 +215,7 @@ describe("install — project-kind dispatch", () => {
       join(dir, "package.json"),
       JSON.stringify({ name: "myapp", devDependencies: { vite: "^5.0.0" } }),
     );
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,
@@ -232,7 +232,7 @@ describe("install — project-kind dispatch", () => {
   it("detects browser via index.html", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "myapp" }));
     writeFileSync(join(dir, "index.html"), "<html></html>");
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,
@@ -248,7 +248,7 @@ describe("install — project-kind dispatch", () => {
 
   it("defaults to node when no browser markers present", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "myapp", bin: "cli.js" }));
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,
@@ -258,7 +258,7 @@ describe("install — project-kind dispatch", () => {
       });
       expect(result.projectKind).toBe("node");
       const initContent = readFileSync(result.initFilePath, "utf8");
-      expect(initContent).toContain('from "@kenkaiiii/gg-pixel"'); // Node entry
+      expect(initContent).toContain('from "@prestyj/pixel"'); // Node entry
       expect(initContent).not.toContain("/browser");
     } finally {
       rmSync(home, { recursive: true, force: true });
@@ -268,7 +268,7 @@ describe("install — project-kind dispatch", () => {
   it("detects Python projects via pyproject.toml", async () => {
     writeFileSync(join(dir, "pyproject.toml"), `[project]\nname = "myapp"\nversion = "0.1.0"\n`);
     writeFileSync(join(dir, "main.py"), `print("hi")\n`);
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,
@@ -294,7 +294,7 @@ describe("install — project-kind dispatch", () => {
   it("detects Python projects via requirements.txt", async () => {
     writeFileSync(join(dir, "requirements.txt"), "requests==2.31.0\n");
     writeFileSync(join(dir, "app.py"), `print("hi")\n`);
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,
@@ -321,7 +321,7 @@ describe("install — project-kind dispatch", () => {
 
 describe("install — hybrid framework wiring", () => {
   function setupHome() {
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     return {
       home,
       cleanup: () => rmSync(home, { recursive: true, force: true }),
@@ -349,7 +349,7 @@ describe("install — hybrid framework wiring", () => {
       expect(result.projectKind).toBe("nextjs");
       expect(existsSync(join(dir, "instrumentation.ts"))).toBe(true);
       const inst = readFileSync(join(dir, "instrumentation.ts"), "utf8");
-      expect(inst).toContain("@kenkaiiii/gg-pixel");
+      expect(inst).toContain("@prestyj/pixel");
       expect(inst).toContain("NEXT_RUNTIME");
       // next.config patched with serverExternalPackages
       expect(existsSync(join(dir, "next.config.ts"))).toBe(true);
@@ -357,10 +357,10 @@ describe("install — hybrid framework wiring", () => {
         "serverExternalPackages",
       );
       // Client init is now a `.tsx` Client Component (avoids window-on-server).
-      expect(existsSync(join(dir, "gg-pixel.client.tsx"))).toBe(true);
-      const clientFile = readFileSync(join(dir, "gg-pixel.client.tsx"), "utf8");
+      expect(existsSync(join(dir, "ez-pixel.client.tsx"))).toBe(true);
+      const clientFile = readFileSync(join(dir, "ez-pixel.client.tsx"), "utf8");
       expect(clientFile).toContain('"use client"');
-      expect(clientFile).toContain("@kenkaiiii/gg-pixel/browser");
+      expect(clientFile).toContain("@prestyj/pixel/browser");
       const layout = readFileSync(join(dir, "app/layout.tsx"), "utf8");
       expect(layout).toContain("GGPixelClient");
       expect(result.secondaryInit?.description).toContain("server instrumentation");
@@ -394,14 +394,14 @@ describe("install — hybrid framework wiring", () => {
       });
       expect(result.projectKind).toBe("electron");
       // No "type":"module" in fixture → CJS main init
-      expect(existsSync(join(dir, "gg-pixel.main.cjs"))).toBe(true);
-      expect(existsSync(join(dir, "gg-pixel.renderer.mjs"))).toBe(true);
+      expect(existsSync(join(dir, "ez-pixel.main.cjs"))).toBe(true);
+      expect(existsSync(join(dir, "ez-pixel.renderer.mjs"))).toBe(true);
       // Renderer was wired
       const renderer = readFileSync(join(dir, "src/renderer/index.tsx"), "utf8");
-      expect(renderer).toContain("gg-pixel.renderer.mjs");
+      expect(renderer).toContain("ez-pixel.renderer.mjs");
       // Main was wired (CJS via require)
       const main = readFileSync(join(dir, "main.js"), "utf8");
-      expect(main).toContain("gg-pixel.main.cjs");
+      expect(main).toContain("ez-pixel.main.cjs");
     } finally {
       cleanup();
     }
@@ -431,7 +431,7 @@ describe("install — hybrid framework wiring", () => {
     }
   });
 
-  it("detects Nuxt and creates plugins/gg-pixel.{server,client}.ts", async () => {
+  it("detects Nuxt and creates plugins/ez-pixel.{server,client}.ts", async () => {
     writeFileSync(
       join(dir, "package.json"),
       JSON.stringify({ name: "myapp", dependencies: { nuxt: "^3.0.0" } }),
@@ -445,8 +445,8 @@ describe("install — hybrid framework wiring", () => {
         fetchFn: fakeFetch({ id: "p", key: "k_nuxt" }),
       });
       expect(result.projectKind).toBe("nuxt");
-      expect(existsSync(join(dir, "plugins/gg-pixel.server.ts"))).toBe(true);
-      expect(existsSync(join(dir, "plugins/gg-pixel.client.ts"))).toBe(true);
+      expect(existsSync(join(dir, "plugins/ez-pixel.server.ts"))).toBe(true);
+      expect(existsSync(join(dir, "plugins/ez-pixel.client.ts"))).toBe(true);
     } finally {
       cleanup();
     }
@@ -497,7 +497,7 @@ describe("install — hybrid framework wiring", () => {
 describe("install — idempotency", () => {
   it("reuses the existing project_id and key when re-running on the same directory", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "myapp" }));
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       let createCalls = 0;
       const countingFetch: typeof fetch = (async () => {
@@ -541,7 +541,7 @@ describe("install — idempotency", () => {
 
   it("mints a fresh project when the .env was deleted (lost the key)", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "myapp" }));
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const callKeys = ["pk_live_one", "pk_live_two"];
       const callIds = ["proj_one", "proj_two"];
@@ -576,69 +576,69 @@ describe("wireEntryFile", () => {
     mkdirSync(join(dir, "src"), { recursive: true });
     const entry = join(dir, "src", "index.ts");
     writeFileSync(entry, 'console.log("hi");\n');
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "// init\n");
 
     const result = wireEntryFile(dir, initPath, { main: "src/index.ts" });
     expect(result.kind).toBe("injected");
 
     const content = readFileSync(entry, "utf8");
-    expect(content.split("\n")[0]).toBe('import "../gg-pixel.init.mjs";');
+    expect(content.split("\n")[0]).toBe('import "../ez-pixel.init.mjs";');
     expect(content).toContain('console.log("hi");');
   });
 
   it("uses require() for CommonJS entries", () => {
     const entry = join(dir, "main.js");
     writeFileSync(entry, 'console.log("hi");\n');
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "");
 
     // pkg.type omitted → CJS by default for .js
     const result = wireEntryFile(dir, initPath, { main: "main.js" });
     expect(result.kind).toBe("injected");
-    expect(readFileSync(entry, "utf8").split("\n")[0]).toBe('require("./gg-pixel.init.mjs");');
+    expect(readFileSync(entry, "utf8").split("\n")[0]).toBe('require("./ez-pixel.init.mjs");');
   });
 
   it("uses ESM import when package.json type is module", () => {
     const entry = join(dir, "main.js");
     writeFileSync(entry, 'console.log("hi");\n');
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "");
 
     const result = wireEntryFile(dir, initPath, { main: "main.js", type: "module" });
     expect(result.kind).toBe("injected");
-    expect(readFileSync(entry, "utf8").split("\n")[0]).toBe('import "./gg-pixel.init.mjs";');
+    expect(readFileSync(entry, "utf8").split("\n")[0]).toBe('import "./ez-pixel.init.mjs";');
   });
 
   it("preserves shebang when injecting", () => {
     const entry = join(dir, "cli.ts");
     writeFileSync(entry, '#!/usr/bin/env node\nconsole.log("hi");\n');
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "");
 
     const result = wireEntryFile(dir, initPath, { bin: "cli.ts" });
     expect(result.kind).toBe("injected");
     const lines = readFileSync(entry, "utf8").split("\n");
     expect(lines[0]).toBe("#!/usr/bin/env node");
-    expect(lines[1]).toBe('import "./gg-pixel.init.mjs";');
+    expect(lines[1]).toBe('import "./ez-pixel.init.mjs";');
   });
 
   it("is idempotent — does not inject twice", () => {
     const entry = join(dir, "index.ts");
-    writeFileSync(entry, 'import "./gg-pixel.init.mjs";\nconsole.log("hi");\n');
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    writeFileSync(entry, 'import "./ez-pixel.init.mjs";\nconsole.log("hi");\n');
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "");
 
     const result = wireEntryFile(dir, initPath, {});
     expect(result.kind).toBe("already_present");
     // file unchanged
     const lines = readFileSync(entry, "utf8").split("\n");
-    expect(lines.filter((l) => l.includes("gg-pixel.init"))).toHaveLength(1);
+    expect(lines.filter((l) => l.includes("ez-pixel.init"))).toHaveLength(1);
   });
 
   it("returns no_entry_found when no candidate exists", () => {
     writeFileSync(join(dir, "package.json"), "{}");
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "");
     const result = wireEntryFile(dir, initPath, {});
     expect(result.kind).toBe("no_entry_found");
@@ -648,7 +648,7 @@ describe("wireEntryFile", () => {
     mkdirSync(join(dir, "src"));
     const entry = join(dir, "src", "index.ts");
     writeFileSync(entry, 'console.log("hi");\n');
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "");
 
     const result = wireEntryFile(dir, initPath, {});
@@ -660,7 +660,7 @@ describe("wireEntryFile", () => {
     const entry = join(dir, "bin/run.js");
     mkdirSync(join(dir, "bin"));
     writeFileSync(entry, 'console.log("hi");\n');
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "");
 
     const result = wireEntryFile(dir, initPath, {
@@ -675,7 +675,7 @@ describe("wireEntryFile", () => {
     mkdirSync(join(dir, "src"));
     const tsEntry = join(dir, "src", "index.ts");
     writeFileSync(tsEntry, 'console.log("hi");\n');
-    const initPath = join(dir, "gg-pixel.init.mjs");
+    const initPath = join(dir, "ez-pixel.init.mjs");
     writeFileSync(initPath, "");
 
     const result = wireEntryFile(dir, initPath, { main: "src/index.js" });
@@ -691,9 +691,9 @@ describe("renderInitFile", () => {
 });
 
 describe("install — file artifacts on disk", () => {
-  it("writes a runnable init file that imports gg-pixel", async () => {
+  it("writes a runnable init file that imports ez-pixel", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x" }));
-    const home = mkdtempSync(join(tmpdir(), "gg-pixel-home-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
     try {
       const result = await install({
         cwd: dir,

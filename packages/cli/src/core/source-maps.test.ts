@@ -6,7 +6,7 @@ import { SourceMapResolver, tryResolveStack } from "./source-maps.js";
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "gg-pixel-srcmap-"));
+  dir = mkdtempSync(join(tmpdir(), "ez-pixel-srcmap-"));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

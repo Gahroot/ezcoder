@@ -1,16 +1,16 @@
 {
-  "name": "@kenkaiiii/gg-pixel-server",
-  "version": "4.3.59",
+  "name": "@prestyj/pixel-server",
+  "version": "4.3.83",
   "private": true,
   "type": "module",
-  "description": "Cloudflare Workers backend for gg-pixel",
+  "description": "Cloudflare Workers backend for pixel",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:local": "wrangler d1 execute gg-pixel --local --file=./migrations/0001_init.sql",
-    "db:remote": "wrangler d1 execute gg-pixel --remote --file=./migrations/0001_init.sql"
+    "db:local": "wrangler d1 execute ez-pixel --local --file=./migrations/0001_init.sql",
+    "db:remote": "wrangler d1 execute ez-pixel --remote --file=./migrations/0001_init.sql"
   },
   "dependencies": {
     "hono": "^4.6.13"
