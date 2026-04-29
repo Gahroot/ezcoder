@@ -47,6 +47,8 @@ export interface RenderAppConfig {
   onEnterPlanRef?: { current: (reason?: string) => void };
   onExitPlanRef?: { current: (planPath: string) => Promise<string> };
   skills?: Skill[];
+  initialOverlay?: "pixel";
+  rebuildToolsForCwd?: (cwd: string) => AgentTool[];
 }
 
 /** Stateful theme provider — enables runtime theme switching via useSetTheme(). */
@@ -113,6 +115,8 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             onEnterPlanRef: config.onEnterPlanRef,
             onExitPlanRef: config.onExitPlanRef,
             skills: config.skills,
+            initialOverlay: config.initialOverlay,
+            rebuildToolsForCwd: config.rebuildToolsForCwd,
           }),
         ),
       ),
