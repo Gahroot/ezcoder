@@ -661,7 +661,10 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   if (childrenIdx === -1) {
     // Couldn't find {children} — write the import only and warn.
     writeFileSync(layoutPath, updated, "utf8");
-    return { kind: "skipped", reason: "added import but couldn't find {children} to render <GGPixelClient />" };
+    return {
+      kind: "skipped",
+      reason: "added import but couldn't find {children} to render <GGPixelClient />",
+    };
   }
   const before = updated.slice(0, childrenIdx);
   const after = updated.slice(childrenIdx);
@@ -706,7 +709,8 @@ function patchNextConfig(projectRoot: string): void {
     return;
   }
   // Inject a fresh `serverExternalPackages` line into the config object.
-  const objStart = /(const\s+\w+\s*:\s*NextConfig\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/;
+  const objStart =
+    /(const\s+\w+\s*:\s*NextConfig\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/;
   const m = objStart.exec(content);
   if (m) {
     const insertAt = m.index + m[0].length;
@@ -1149,7 +1153,9 @@ function injectImport(entryPath: string, initFilePath: string): EntryWiringResul
       /\brequire\s*\(/.test(content) &&
       !/\bimport\s+/.test(content) &&
       !/\bexport\s+/.test(content));
-  const importLine = isCjs ? `require(${JSON.stringify(spec)});` : `import ${JSON.stringify(spec)};`;
+  const importLine = isCjs
+    ? `require(${JSON.stringify(spec)});`
+    : `import ${JSON.stringify(spec)};`;
   const lines = content.split("\n");
   let insertAt = 0;
   if (lines[0]?.startsWith("#!")) insertAt = 1;

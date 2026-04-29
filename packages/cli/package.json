@@ -59,7 +59,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@prestyj/agent-home-sdk": "^0.3.8",
+    "@kenkaiiii/agent-home-sdk": "^0.3.8",
     "@prestyj/agent": "workspace:*",
     "@prestyj/ai": "workspace:*",
     "@prestyj/ezcoder-eyes": "workspace:*",

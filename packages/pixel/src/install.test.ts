@@ -353,9 +353,7 @@ describe("install — hybrid framework wiring", () => {
       expect(inst).toContain("NEXT_RUNTIME");
       // next.config patched with serverExternalPackages
       expect(existsSync(join(dir, "next.config.ts"))).toBe(true);
-      expect(readFileSync(join(dir, "next.config.ts"), "utf8")).toContain(
-        "serverExternalPackages",
-      );
+      expect(readFileSync(join(dir, "next.config.ts"), "utf8")).toContain("serverExternalPackages");
       // Client init is now a `.tsx` Client Component (avoids window-on-server).
       expect(existsSync(join(dir, "ez-pixel.client.tsx"))).toBe(true);
       const clientFile = readFileSync(join(dir, "ez-pixel.client.tsx"), "utf8");

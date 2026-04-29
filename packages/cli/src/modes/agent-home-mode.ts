@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
-import { AgentHomeClient, type AgentSession as AHSession } from "@prestyj/agent-home-sdk";
+import { AgentHomeClient, type AgentSession as AHSession } from "@kenkaiiii/agent-home-sdk";
 import { AgentSession } from "../core/agent-session.js";
 import { isAbortError } from "@prestyj/agent";
 import chalk from "chalk";

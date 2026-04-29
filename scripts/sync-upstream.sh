@@ -9,9 +9,9 @@
 # What it does:
 #   1. Fetches upstream (KenKaiii/gg-framework)
 #   2. Merges upstream/main into current branch
-#   3. Renames directories: gg-ai→ai, gg-agent→agent, ggcoder→cli
+#   3. Renames directories: gg-ai→ai, gg-agent→agent, ggcoder→cli, gg-pixel→pixel, gg-pixel-server→pixel-server
 #   4. Fixes npm scope: @kenkaiiii→@prestyj
-#   5. Fixes branding: GG→EZ, ggcoder→ezcoder, ~/.gg/→~/.ezcoder/
+#   5. Fixes branding: GG→EZ, ggcoder→ezcoder, gg-pixel→ez-pixel, ~/.gg/→~/.ezcoder/
 #   6. Commits the rename + branding fixup
 #
 # If the merge has conflicts, it stops and asks you to resolve them first.
@@ -111,6 +111,9 @@ rename_if_exists() {
 rename_if_exists "packages/gg-ai" "packages/ai"
 rename_if_exists "packages/gg-agent" "packages/agent"
 rename_if_exists "packages/ggcoder" "packages/cli"
+rename_if_exists "packages/gg-pixel" "packages/pixel"
+rename_if_exists "packages/gg-pixel-server" "packages/pixel-server"
+rename_if_exists "packages/ggcoder-eyes" "packages/ezcoder-eyes"
 
 # ── Step 4: Fix npm scope and branding ─────────────────────
 
@@ -135,24 +138,49 @@ while IFS= read -r file; do
     -e 's|@kenkaiiii/gg-ai|@prestyj/ai|g' \
     -e 's|@kenkaiiii/gg-agent|@prestyj/agent|g' \
     -e 's|@kenkaiiii/ggcoder|@prestyj/cli|g' \
+    -e 's|@kenkaiiii/gg-pixel|@prestyj/pixel|g' \
+    -e 's|@kenkaiiii/gg-pixel-server|@prestyj/pixel-server|g' \
+    -e 's|@kenkaiiii/ggcoder-eyes|@prestyj/ezcoder-eyes|g' \
+    -e 's|@kenkaiiii/ez-pixel-go|@prestyj/ez-pixel-go|g' \
+    -e 's|@kenkaiiii/ez-pixel-swift|@prestyj/ez-pixel-swift|g' \
     -e 's|packages/gg-ai|packages/ai|g' \
     -e 's|packages/gg-agent|packages/agent|g' \
     -e 's|packages/ggcoder|packages/cli|g' \
+    -e 's|packages/gg-pixel-server|packages/pixel-server|g' \
+    -e 's|packages/gg-pixel|packages/pixel|g' \
+    -e 's|packages/ggcoder-eyes|packages/ezcoder-eyes|g' \
     -e 's|"gg-framework"|"ezcoder"|g' \
     -e 's|gg-framework|ezcoder|g' \
     -e 's|~/.gg/|~/.ezcoder/|g' \
     -e 's|"\.gg"|".ezcoder"|g' \
     -e 's|\.gg/|.ezcoder/|g' \
+    -e 's|ggcoder pixel|ezcoder pixel|g' \
+    -e 's|ggcoder|ezcoder|g' \
+    -e 's|gg-pixel|ez-pixel|g' \
+    -e 's|GG Coder|EZ Coder|g' \
+    -e 's|GGCoder|EZCoder|g' \
     -e 's|GGAIError|EZCoderAIError|g' \
     -e 's|GG Framework|EZCoder Framework|g' \
     -e 's|KenKaiii/gg-framework|Gahroot/ezcoder|g' \
     -e 's|kenkaiiii/gg-framework|Gahroot/ezcoder|g' \
+    -e 's|github\.com/kenkaiiii/|github.com/Gahroot/|g' \
+    -e 's|Ken Kai|Nolan G|g' \
     "$file"
 done <<< "$FILES"
 
 # Fix the CLI binary name in package.json bin field
 if [[ -f "packages/cli/package.json" ]]; then
   sed -i 's|"ggcoder":|"ezcoder":|g' packages/cli/package.json
+fi
+
+# Fix the pixel binary name in package.json bin field
+if [[ -f "packages/pixel/package.json" ]]; then
+  sed -i 's|"gg-pixel":|"ez-pixel":|g' packages/pixel/package.json
+fi
+
+# Fix pixel-server wrangler.toml name
+if [[ -f "packages/pixel-server/wrangler.toml" ]]; then
+  sed -i 's|name = "gg-pixel-server"|name = "pixel-server"|g' packages/pixel-server/wrangler.toml
 fi
 
 # Fix the root package.json name
@@ -181,9 +209,9 @@ else
   git commit -m "$(cat <<'EOF'
 Rebrand upstream merge: rename dirs and fix scope
 
-- Rename: gg-ai→ai, gg-agent→agent, ggcoder→cli
+- Rename: gg-ai→ai, gg-agent→agent, ggcoder→cli, gg-pixel→pixel, gg-pixel-server→pixel-server
 - Scope: @kenkaiiii→@prestyj
-- Branding: GG→EZ, ~/.gg/→~/.ezcoder/
+- Branding: GG→EZ, GG Coder→EZ Coder, ggcoder→ezcoder, gg-pixel→ez-pixel, ~/.gg/→~/.ezcoder/
 - Repo: KenKaiii/gg-framework→Gahroot/ezcoder
 EOF
 )"
@@ -196,5 +224,5 @@ echo ""
 ok "Upstream sync complete!"
 info "Next steps:"
 info "  1. Run: pnpm install && pnpm build"
-info "  2. Check for any remaining GG references: grep -r 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|GGAIError' packages/ --include='*.ts' --include='*.tsx'"
+info "  2. Check for remaining GG references: grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|gg-pixel\|GG Coder\|GGAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'"
 info "  3. Test the CLI: pnpm --filter @prestyj/cli build && node packages/cli/dist/cli.js --version"
