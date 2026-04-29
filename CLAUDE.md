@@ -8,7 +8,9 @@ A modular TypeScript framework for building LLM-powered apps — from raw stream
 |---|---|---|
 | `packages/ai` | `@prestyj/ai` | Unified LLM streaming API |
 | `packages/agent` | `@prestyj/agent` | Agent loop with tool execution |
-| `packages/ezcoder` | `@prestyj/cli` | CLI coding agent |
+| `packages/cli` | `@prestyj/cli` | CLI coding agent |
+| `packages/pixel` | `@prestyj/pixel` | Universal error tracking SDK (Node + Browser + Deno + Workers) |
+| `packages/pixel-server` | (private — Cloudflare Worker) | Ingest backend (Workers + D1) |
 
 **Install**: `npm i -g @prestyj/cli`
 
@@ -140,6 +142,43 @@ Fix ALL errors before continuing. Quick fixes:
 - **OAuth-only auth**: no API keys, PKCE OAuth flows, tokens in `~/.ezcoder/auth.json`
 - **Zod schemas**: tool parameters defined with Zod, converted to JSON Schema at provider boundary
 - **Debug logging**: `~/.ezcoder/debug.log` — timestamped log of startup, auth, tool calls, turn completions, errors. Truncated on each CLI restart. Singleton logger in `src/core/logger.ts`
+
+## Pixel — error tracking + auto-fix queue
+
+`@prestyj/pixel` is a drop-in error tracking SDK. Errors flow to a Cloudflare Worker (`pixel-server`) backed by D1. `ezcoder pixel` opens an in-Ink overlay that lists open errors per project and hands each one off to the existing agent loop — same UX as the Task pane.
+
+### CLI
+
+```bash
+ezcoder pixel install          # Detect framework, wire up SDK + .env, register project key
+ezcoder pixel                  # Open the in-Ink overlay (also: Ctrl+E inside running ezcoder)
+ezcoder pixel fix <error_id>   # Fix one error end-to-end (subprocess flow, for non-TTY use)
+ezcoder pixel run              # Auto-fix every open error (non-interactive)
+```
+
+### In-Ink fix flow (the main path)
+
+`Ctrl+E` from inside ezcoder, or `ezcoder pixel`, opens `PixelOverlay`. Keys: `↑↓ navigate · Enter fix one · f fix all · d delete · Esc close`.
+
+When a fix starts, `startPixelFix(errorId)` in `App.tsx` swaps **four** things in lockstep before calling `agentLoop.run(prep.prompt)`:
+
+1. `process.chdir(prep.projectPath)` — for code reading `process.cwd()` directly.
+2. `setCurrentTools(rebuildToolsForCwd(prep.projectPath))` — read/write/edit/bash/find/grep/ls/tasks/sub-agent are all baked with `cwd` at creation, so they MUST be rebuilt; chdir alone is not enough.
+3. System prompt is rebuilt with the new project root (`buildSystemPrompt(prep.projectPath, …)`) and swapped into `messagesRef.current[0]` — this is the only place the model itself learns "where it is".
+4. `setDisplayedCwd(prep.projectPath)` — Banner + Footer read this. Because Banner lives inside Ink's `<Static>`, also bump `staticKey` so Static remounts and re-renders the banner with the new path.
+
+Reset chat state (`setHistory`, `setLiveItems`, `setStaticKey`, screen clear) **AFTER** the chdir is committed — otherwise the old-cwd banner gets written first and you see two banners stacked.
+
+`onDone` in `useAgentLoop` finalizes the fix: `finalizePixelFix(prep)` observes the `fix/pixel-{id}` branch + commits and patches the D1 status to `awaiting_review` or `failed`. Run-all picks up the next open error via the same path.
+
+### Backend
+
+`packages/pixel-server/` — Hono on Workers + D1. Routes:
+- `POST /ingest` — SDK posts events; server dedupes by `(project_id, fingerprint)`.
+- `GET /api/projects/:id/errors` — list (filter by `?status=open` etc).
+- `PATCH /api/errors/:id` — update status/branch (drives the state machine: `open → in_progress → awaiting_review → merged`, or `failed`).
+- `DELETE /api/errors/:id` — hard delete (used by `d` in the overlay).
+- CORS allows any origin since the `project_key` is the auth boundary.
 
 ## Slash Commands
 
