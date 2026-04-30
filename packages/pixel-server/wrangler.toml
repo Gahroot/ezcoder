@@ -6,5 +6,5 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "gg-pixel"
-database_id = "48159819-71c5-4b3c-9ead-0dade50ada33"
+database_id = "8c3cef8f-0a41-4de8-89e0-a35372169748"
 migrations_dir = "migrations"
