@@ -151,7 +151,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
     writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
   }
 
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, nodeRoot);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, nodeRoot, ingestUrl);
 
   return {
     projectId: created.id,
@@ -1327,7 +1327,7 @@ func init() {
   );
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, ingestUrl);
 
   return {
     projectId: created.id,
@@ -1400,7 +1400,7 @@ GGPixel.init(
   );
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, ingestUrl);
 
   return {
     projectId: created.id,
@@ -1484,11 +1484,11 @@ async function installPython(ctx: PythonInstallContext): Promise<InstallResult> 
   const pm = detectPythonPackageManager(projectRoot);
   const packageInstalled = opts.skipPackageInstall ? false : runPythonInstall(projectRoot, pm);
 
-  const initFilePath = join(projectRoot, "gg_pixel_init.py");
+  const initFilePath = join(projectRoot, "ez_pixel_init.py");
   writeFileSync(initFilePath, renderPythonInitFile(ingestUrl, created.key), "utf8");
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, ingestUrl);
 
   const entryWiring = wirePythonEntry(projectRoot, initFilePath);
 
@@ -1558,9 +1558,9 @@ wires into your entry file) registers the global Python error handlers.
 """
 import os
 
-import gg_pixel
+import ez_pixel
 
-gg_pixel.init_pixel(
+ez_pixel.init_pixel(
     project_key=os.environ.get("GG_PIXEL_KEY") or ${JSON.stringify(projectKey)},
     ingest_url=${JSON.stringify(`${ingestUrl}/ingest`)},
 )
@@ -1578,21 +1578,21 @@ function wirePythonEntry(projectRoot: string, initFilePath: string): EntryWiring
     return { kind: "skipped", reason: `unreadable: ${(err as Error).message}` };
   }
 
-  if (content.includes("gg_pixel_init")) {
+  if (content.includes("ez_pixel_init")) {
     return { kind: "already_present", entryPath };
   }
 
-  // Compute import name from the relative path. gg_pixel_init.py at root →
-  // `gg_pixel_init`. For nested, the user can adjust manually.
+  // Compute import name from the relative path. ez_pixel_init.py at root →
+  // `ez_pixel_init`. For nested, the user can adjust manually.
   const fromDir = dirname(entryPath);
   const rel = relative(fromDir, initFilePath).split(sep).join("/");
   let moduleSpec: string;
-  if (rel === "gg_pixel_init.py") {
-    moduleSpec = "gg_pixel_init";
+  if (rel === "ez_pixel_init.py") {
+    moduleSpec = "ez_pixel_init";
   } else if (rel.startsWith("../")) {
     // Init is above the entry — Python imports don't traverse via path,
     // so insert via sys.path manipulation as a fallback.
-    moduleSpec = "gg_pixel_init";
+    moduleSpec = "ez_pixel_init";
   } else {
     // Same-or-deeper directory: use module path.
     moduleSpec = rel.replace(/\.py$/, "").replace(/\//g, ".");
@@ -1645,9 +1645,10 @@ export function writeProjectsMapping(
   projectId: string,
   name: string,
   path: string,
+  ingestUrl?: string,
 ): void {
   mkdirSync(dirname(projectsJsonPath), { recursive: true });
-  let map: Record<string, { name: string; path: string }> = {};
+  let map: Record<string, { name: string; path: string; ingestUrl?: string }> = {};
   if (existsSync(projectsJsonPath)) {
     try {
       map = JSON.parse(readFileSync(projectsJsonPath, "utf8")) as typeof map;
@@ -1655,6 +1656,8 @@ export function writeProjectsMapping(
       // start fresh on corrupt file
     }
   }
-  map[projectId] = { name, path };
+  const entry: { name: string; path: string; ingestUrl?: string } = { name, path };
+  if (ingestUrl) entry.ingestUrl = ingestUrl;
+  map[projectId] = entry;
   writeFileSync(projectsJsonPath, `${JSON.stringify(map, null, 2)}\n`, "utf8");
 }

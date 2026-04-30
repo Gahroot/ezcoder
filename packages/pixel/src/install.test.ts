@@ -54,9 +54,13 @@ describe("install (end-to-end, mocked backend)", () => {
 
       const map = JSON.parse(readFileSync(result.projectsJsonPath, "utf8")) as Record<
         string,
-        { name: string; path: string }
+        { name: string; path: string; ingestUrl?: string }
       >;
-      expect(map.proj_test).toEqual({ name: "my-app", path: dir });
+      expect(map.proj_test).toEqual({
+        name: "my-app",
+        path: dir,
+        ingestUrl: "https://ez-pixel-server.buzzbeamaustralia.workers.dev",
+      });
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -277,15 +281,15 @@ describe("install — project-kind dispatch", () => {
         fetchFn: fakeFetch({ id: "p", key: "k_py" }),
       });
       expect(result.projectKind).toBe("python");
-      expect(result.initFilePath.endsWith("gg_pixel_init.py")).toBe(true);
+      expect(result.initFilePath.endsWith("ez_pixel_init.py")).toBe(true);
       const initContent = readFileSync(result.initFilePath, "utf8");
-      expect(initContent).toContain("import gg_pixel");
+      expect(initContent).toContain("import ez_pixel");
       expect(initContent).toContain('"k_py"');
 
       // Entry should have been wired
       expect(result.entryWiring.kind).toBe("injected");
       const main = readFileSync(join(dir, "main.py"), "utf8");
-      expect(main).toContain("import gg_pixel_init");
+      expect(main).toContain("import ez_pixel_init");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

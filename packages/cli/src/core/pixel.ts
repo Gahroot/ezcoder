@@ -7,6 +7,7 @@ import { DEFAULT_INGEST_URL, install } from "@prestyj/pixel";
 interface ProjectMapping {
   name: string;
   path: string;
+  ingestUrl?: string;
 }
 
 interface ErrorRow {
@@ -66,13 +67,14 @@ export async function fetchPixelEntries(opts: ListOptions = {}): Promise<PixelFe
   const projectIds = Object.keys(map);
   if (projectIds.length === 0) return { entries: [], unreachable: [], hasProjects: false };
 
-  const ingestUrl = (opts.ingestUrl ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
+  const globalIngestUrl = (opts.ingestUrl ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
   const entries: PixelEntry[] = [];
   const unreachable: string[] = [];
 
   for (const id of projectIds) {
     const project = map[id];
     if (!project) continue;
+    const ingestUrl = (project.ingestUrl ?? globalIngestUrl).replace(/\/+$/, "");
     try {
       const res = await fetchFn(`${ingestUrl}/api/projects/${id}/errors`);
       if (!res.ok) {
@@ -188,7 +190,7 @@ export async function listAllErrors(opts: ListOptions = {}): Promise<void> {
     return;
   }
 
-  const ingestUrl = (opts.ingestUrl ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
+  const globalIngestUrl = (opts.ingestUrl ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
 
   let totalOpen = 0;
   let totalAwaiting = 0;
@@ -198,6 +200,7 @@ export async function listAllErrors(opts: ListOptions = {}): Promise<void> {
   for (const id of projectIds) {
     const project = map[id];
     if (!project) continue;
+    const ingestUrl = (project.ingestUrl ?? globalIngestUrl).replace(/\/+$/, "");
     const url = `${ingestUrl}/api/projects/${id}/errors`;
 
     let body: { errors: ErrorRow[] };
