@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # ezcoder
 
 A modular TypeScript framework for building LLM-powered apps — from raw streaming to full coding agent.
@@ -11,6 +15,8 @@ A modular TypeScript framework for building LLM-powered apps — from raw stream
 | `packages/cli` | `@prestyj/cli` | CLI coding agent |
 | `packages/pixel` | `@prestyj/pixel` | Universal error tracking SDK (Node + Browser + Deno + Workers) |
 | `packages/pixel-server` | (private — Cloudflare Worker) | Ingest backend (Workers + D1) |
+| `packages/pixel-python` | `ez-pixel` (PyPI) | Python error tracking SDK |
+| `packages/ezcoder-eyes` | `@prestyj/ezcoder-eyes` | Perception probes for coding agents (screenshots, logs, APIs) |
 
 **Install**: `npm i -g @prestyj/cli`
 
@@ -74,7 +80,19 @@ packages/
 pnpm build                          # tsc across all packages
 pnpm check                          # tsc --noEmit across all packages
 
-# Per-package
+# Test (Vitest, run mode — no watch)
+pnpm test                                                      # all packages
+pnpm --filter @prestyj/ai test                                 # one package
+pnpm --filter @prestyj/cli exec vitest run path/to/file.test.ts # single file
+pnpm --filter @prestyj/cli exec vitest run -t "test name"      # single test by name
+
+# Lint / format
+pnpm lint                           # eslint across packages/*/src/
+pnpm lint:fix                       # auto-fix
+pnpm format                         # prettier --write
+pnpm format:check                   # prettier --check (CI-style)
+
+# Per-package build
 pnpm --filter @prestyj/ai build
 pnpm --filter @prestyj/agent build
 pnpm --filter @prestyj/cli build
@@ -111,6 +129,45 @@ ezcoder --help                                # verify CLI works
 ```
 
 If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
+
+## Publishing pixel-python (PyPI)
+
+`packages/pixel-python` is a Python package — it ships to **PyPI only** (not npm; npm is JS/TS-only). Build backend is `hatchling`, declared in `pyproject.toml`.
+
+### Tooling
+
+- `python3 -m build` — builds sdist + wheel into `dist/`
+- `twine` — uploads to PyPI (handles auth + checks)
+- `pytest` — test runner (tests in `packages/pixel-python/tests/`)
+
+### Steps
+
+From `packages/pixel-python/`:
+
+1. Bump `version` in `pyproject.toml`
+2. Run tests: `python3 -m pytest`
+3. Clean old artifacts: `rm -rf dist/ build/ src/*.egg-info`
+4. Build: `python3 -m build`  → produces `dist/ez_pixel-<ver>-py3-none-any.whl` + `.tar.gz`
+5. Sanity check the wheel: `python3 -m twine check dist/*`
+6. Upload: `python3 -m twine upload dist/*`
+
+### Auth
+
+- PyPI API token required: stored in `~/.pypirc` under `[pypi]` as `username = __token__`, `password = pypi-<token>`
+- Or pass inline: `TWINE_USERNAME=__token__ TWINE_PASSWORD=pypi-<token> python3 -m twine upload dist/*`
+- Tokens are project-scoped — generate at https://pypi.org/manage/account/token/
+
+### Verify
+
+```bash
+pip index versions ez-pixel              # check published versions
+pip install --upgrade ez-pixel           # test install
+python3 -c "import ez_pixel; print(ez_pixel.__name__)"
+```
+
+### Version coupling
+
+`ez-pixel` (PyPI) and `@prestyj/pixel` (npm) are **independent versions** — they speak the same wire format to `pixel-server` but ship on their own cadence. When changing the wire format in `pixel-server`, bump both SDKs and verify compatibility before publishing either.
 
 ## Organization Rules
 

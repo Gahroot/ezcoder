@@ -5,10 +5,10 @@
   "scripts": {
     "build": "pnpm -r build",
     "check": "pnpm -r check",
-    "lint": "eslint packages/*/src/",
-    "lint:fix": "eslint packages/*/src/ --fix",
-    "format": "prettier --write packages/*/src/",
-    "format:check": "prettier --check packages/*/src/",
+    "lint": "eslint packages/ai/src/ packages/agent/src/ packages/cli/src/ packages/pixel/src/ packages/pixel-server/src/ packages/ezcoder-eyes/src/",
+    "lint:fix": "eslint packages/ai/src/ packages/agent/src/ packages/cli/src/ packages/pixel/src/ packages/pixel-server/src/ packages/ezcoder-eyes/src/ --fix",
+    "format": "prettier --write \"packages/{ai,agent,cli,pixel,pixel-server,ezcoder-eyes}/src/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"packages/{ai,agent,cli,pixel,pixel-server,ezcoder-eyes}/src/**/*.{ts,tsx}\"",
     "test": "pnpm -r test",
     "prepare": "pnpm build"
   },
