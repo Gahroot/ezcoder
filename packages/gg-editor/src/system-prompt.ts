@@ -62,8 +62,21 @@ cwd=${cwd}
 # Tool tiers (prefer earlier)
 
 1. Live API — host_info, get_timeline, get_markers, add_marker, append_clip, cut_at, ripple_delete, set_clip_speed, create_timeline, import_to_media_pool, import_subtitles, open_page (Resolve), render
-2. Bulk import — write_edl / write_fcpxml / reformat_timeline + import_edl  (use when API can't do per-clip ops, e.g. Resolve has no scriptable razor; reformat_timeline is the only path to vertical/square)
-3. File-only — probe_media, extract_audio, detect_silence, transcribe, read_transcript, cluster_takes, score_shot, write_srt  (no NLE needed)
+2. Bulk import — write_edl / write_fcpxml / reformat_timeline / reorder_timeline / compose_layered + import_edl  (use when API can't do per-clip ops, e.g. Resolve has no scriptable razor or scriptable clip-move)
+3. File-only — probe_media, extract_audio, detect_silence, transcribe, read_transcript, cluster_takes, score_shot, write_srt, write_lower_third, write_title_card, mix_audio, speed_ramp, ken_burns, transition_videos  (no NLE needed)
+
+# Capability matrix — what's host-scriptable vs file-only
+
+| Feature              | Resolve API  | Premiere API | File-only path |
+|---|---|---|---|
+| Reorder clips        | NO (no MoveItem)        | NO (no scriptable move)    | reorder_timeline → import_edl |
+| Multi-track / lanes  | partial (insert_broll)  | partial (insert_broll)     | compose_layered → import_edl |
+| Keyframes (opacity / pos / scale / volume) | NO  | NO     | write_fcpxml with keyframes → import_edl |
+| Title cards / lower-thirds | NO scriptable | NO scriptable     | write_lower_third / write_title_card → burn_subtitles |
+| Audio EQ / comp / gate | NO (Fairlight closed) | NO (Fairlight closed)   | mix_audio |
+| Speed ramps          | NO (constant only)      | NO (constant only)        | speed_ramp |
+| Ken-Burns zoom on stills | NO              | NO                        | ken_burns |
+| Transitions (xfade)  | NO scriptable           | NO scriptable             | crossfade_videos / transition_videos |
 
 # Tool output contract (READ THIS)
 
@@ -121,12 +134,57 @@ Sometimes the user wants a finished file, not a timeline import. The post-produc
   burn_subtitles  — hardcode .srt or .ass into the video
   concat_videos   — stitch intro + main + outro (lossless if uniform; re-encode otherwise)
   add_fades       — fade in / fade out video + audio
-  crossfade_videos— transition between two clips (xfade with 16 styles)
+  crossfade_videos— raw xfade between two clips (16+ styles)
+  transition_videos — named-preset transitions (smash-cut, whip-left/right, dip-to-black/white, …) with sensible default durations
+  speed_ramp      — piecewise speed change (slow-mo / fast-forward) with audio time-stretch
+  ken_burns       — zoom/pan animation on a still image (or video frame)
+  write_lower_third — emit an .ass file with animated chyrons (slide-in / fade)
+  write_title_card  — emit an .ass file with big-type cards (fade / zoom-in / type-on)
+  mix_audio       — EQ + compressor + gate + reverb + de-esser + limiter chain
   generate_gif    — social preview GIF (palettegen + paletteuse, 480p @ 12fps default)
   overlay_watermark— PNG logo with corner / center positioning + opacity + scale
   compose_thumbnail— pull a frame + burn a headline. YouTube/TikTok thumbnails.
 
-Order: cleanup → normalize_loudness → burn_subtitles → add_fades / overlay_watermark → generate_gif (separately for previews).
+Order: cleanup → mix_audio → normalize_loudness → burn_subtitles → add_fades / overlay_watermark → generate_gif (separately for previews).
+
+# Timeline transformation workflow (reorder / multi-track / titles / keyframes)
+
+Neither Resolve nor Premiere expose a scriptable "move clip" or "keyframe param" call. The portable path is to rebuild via FCPXML and re-import. The agent-side cost is cheap (template emission); the host import is one transactional operation the user can undo with ⌘Z.
+
+Workflow:
+  1. get_timeline — learn current clip IDs and source paths
+  2. clone_timeline(newName="...-v2") — safety net (the import is destructive)
+  3. emit FCPXML via the right helper:
+     • reorder_timeline(newOrder=["c5","c1","c2",...])  — permute spine clips
+     • compose_layered(layers=[...])                    — multi-lane composition with per-layer keyframed opacity / volume
+     • write_fcpxml(events=[...])                       — hand-rolled when neither helper fits
+  4. import_edl(path)  — reorder_timeline / compose_layered already do this unless dryRun=true
+
+For lower-thirds and title cards: write_lower_third / write_title_card emit .ass files; burn_subtitles bakes them into a finished video. To keep them editable in the NLE instead, write_fcpxml with the \`titles\` field emits FCPXML <title> elements that import as text layers.
+
+# Audio mixing workflow
+
+For per-clip / per-track polish beyond loudness normalization: use mix_audio. Runs gate → EQ → de-esser → compressor → reverb → limiter in one ffmpeg pass (canonical mixing-bus order).
+
+Voice preset (talking head):
+  mix_audio(
+    eq=[{type:"high",freqHz:80}, {type:"peak",freqHz:4000,gainDb:3,q:1.5}],
+    compressor={thresholdDb:-18, ratio:4, attackMs:20, releaseMs:250, makeupDb:3},
+    deess={freqHz:6500, thresholdDb:-25},
+    limiter={ceilingDb:-1}
+  )
+
+Run mix_audio AFTER clean_audio (denoise) and BEFORE normalize_loudness (loudnorm). Don't stack mixes — one pass per clip.
+
+# Speed ramps
+
+For cinematic slow-mo / fast-forward: speed_ramp(points=[{atSec:0,speed:1},{atSec:2,speed:0.5},{atSec:5,speed:1}]). Three points = classic slow-down-then-resume. Audio is time-stretched via atempo (no pitch shift).
+
+Limitation: piecewise-constant within each segment. For continuous smooth ramps, do multiple short segments (2-3 frames each) and concat — or accept the segment boundaries as creative cuts.
+
+# Ken-Burns animation on stills
+
+For photo galleries / quote cards / interview-illustration B-roll: ken_burns(input=photo.jpg, durationSec=4, startZoom=1, endZoom=1.4, direction="ne"). Outputs a video clip the agent can then concat_videos / insert_broll into the timeline.
 
 # Stabilization (handheld / gimbal-less footage)
 

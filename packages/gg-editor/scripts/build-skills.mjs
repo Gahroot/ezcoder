@@ -8,6 +8,7 @@ const pkgRoot = resolve(here, "..");
 const long = readFileSync(resolve(pkgRoot, "src/skills/long-form-content-edit.md"), "utf8");
 const short = readFileSync(resolve(pkgRoot, "src/skills/short-form-content-edit.md"), "utf8");
 const chapters = readFileSync(resolve(pkgRoot, "src/skills/chapter-markers.md"), "utf8");
+const keyframing = readFileSync(resolve(pkgRoot, "src/skills/keyframing-and-titles.md"), "utf8");
 
 function esc(s) {
   return s
@@ -40,6 +41,8 @@ const out = [
   "",
   "const CHAPTER_MARKERS = `" + esc(chapters) + "`;",
   "",
+  "const KEYFRAMING_AND_TITLES = `" + esc(keyframing) + "`;",
+  "",
   "export const SKILLS: Record<string, BundledSkill> = {",
   '  "long-form-content-edit": {',
   '    name: "long-form-content-edit",',
@@ -58,6 +61,12 @@ const out = [
   "    description:",
   '      "Recipe for YouTube/podcast chapter timestamps. Reads transcript in 90s windows, identifies topic shifts, drops purple markers, and emits a YouTube-formatted description block. Constraints: first chapter at 00:00, 5–15 chapters, ≥30s apart.",',
   "    content: CHAPTER_MARKERS,",
+  "  },",
+  '  "keyframing-and-titles": {',
+  '    name: "keyframing-and-titles",',
+  "    description:",
+  '      "Recipes for the seven gaps neither Resolve nor Premiere expose via scripting: timeline reordering, multi-track / lane composition, lower-thirds and title cards (via ASS), keyframed opacity / position / volume ramps, audio mixing chains (EQ + comp + gate + de-esser + limiter), speed ramps, Ken-Burns on stills, and named transitions (smash-cut, whip-pan, dip-to-black). Wires reorder_timeline, compose_layered, write_lower_third, write_title_card, mix_audio, speed_ramp, ken_burns, transition_videos.",',
+  "    content: KEYFRAMING_AND_TITLES,",
   "  },",
   "};",
   "",

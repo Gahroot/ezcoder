@@ -16,6 +16,14 @@ import { createSaveProjectTool } from "./save-project.js";
 import { createWriteAssTool } from "./write-ass.js";
 import { createSetPrimaryCorrectionTool } from "./set-primary-correction.js";
 import { createSmartReframeTool } from "./smart-reframe.js";
+import { createReorderTimelineTool } from "./reorder-timeline.js";
+import { createComposeLayeredTool } from "./compose-layered.js";
+import { createMixAudioTool } from "./mix-audio.js";
+import { createWriteLowerThirdTool } from "./write-lower-third.js";
+import { createWriteTitleCardTool } from "./write-title-card.js";
+import { createSpeedRampTool } from "./speed-ramp.js";
+import { createKenBurnsTool } from "./ken-burns.js";
+import { createTransitionVideosTool } from "./transition-videos.js";
 
 /**
  * Tool-wrapper tests — exercise the zod validation + error formatting layer
@@ -212,5 +220,167 @@ describe("review_edit tool", () => {
     });
     expect(tool.name).toBe("review_edit");
     expect(tool.description).toMatch(/critique/i);
+  });
+});
+
+describe("reorder_timeline tool", () => {
+  it("surfaces unreachable host as an error", async () => {
+    const tool = createReorderTimelineTool(new NoneAdapter(), "/tmp");
+    const r = await tool.execute({ newOrder: ["x"] }, ctx as Parameters<typeof tool.execute>[1]);
+    expect(r).toMatch(/^error:/);
+  });
+});
+
+describe("compose_layered tool", () => {
+  it("writes an FCPXML in dryRun mode without touching the host", async () => {
+    const { mkdtempSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "gg-compose-"));
+    const tool = createComposeLayeredTool(new NoneAdapter(), dir);
+    const r = await tool.execute(
+      {
+        title: "t",
+        frameRate: 30,
+        layers: [
+          {
+            reel: "a",
+            sourcePath: "/a.mov",
+            sourceInFrame: 0,
+            sourceOutFrame: 30,
+            lane: 0,
+            recordOffsetFrame: 0,
+          },
+          {
+            reel: "b",
+            sourcePath: "/b.mov",
+            sourceInFrame: 0,
+            sourceOutFrame: 15,
+            lane: 1,
+            recordOffsetFrame: 5,
+          },
+        ],
+        fcpxmlOutput: "composed.fcpxml",
+        dryRun: true,
+      },
+      ctx as Parameters<typeof tool.execute>[1],
+    );
+    const parsed = JSON.parse(r as string);
+    expect(parsed.dryRun).toBe(true);
+    expect(parsed.layers).toBe(2);
+    const xml = readFileSync(join(dir, "composed.fcpxml"), "utf8");
+    expect(xml).toContain('lane="1"');
+  });
+});
+
+describe("mix_audio tool", () => {
+  it("rejects when no effects supplied", async () => {
+    const tool = createMixAudioTool("/tmp");
+    const r = await tool.execute(
+      { input: "a.wav", output: "b.wav" },
+      ctx as Parameters<typeof tool.execute>[1],
+    );
+    // Either ffmpeg-missing error OR our 'no effects supplied' error.
+    expect(r as string).toMatch(/^error:/);
+  });
+});
+
+describe("write_lower_third tool", () => {
+  it("writes an .ass file with \\move and \\fad overrides", async () => {
+    const { mkdtempSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "gg-lt-"));
+    const tool = createWriteLowerThirdTool(dir);
+    const r = await tool.execute(
+      {
+        output: "lt.ass",
+        width: 1920,
+        height: 1080,
+        items: [
+          {
+            primaryText: "Jane",
+            secondaryText: "Director",
+            startSec: 0,
+            durationSec: 3,
+          },
+        ],
+      },
+      ctx as Parameters<typeof tool.execute>[1],
+    );
+    const parsed = JSON.parse(r as string);
+    expect(parsed.path).toBe(join(dir, "lt.ass"));
+    const content = readFileSync(parsed.path, "utf8");
+    expect(content).toContain("\\move");
+    expect(content).toContain("\\fad");
+    expect(content).toContain("Jane");
+  });
+});
+
+describe("write_title_card tool", () => {
+  it("writes an .ass file with fade-in-out by default", async () => {
+    const { mkdtempSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "gg-tc-"));
+    const tool = createWriteTitleCardTool(dir);
+    const r = await tool.execute(
+      {
+        output: "tc.ass",
+        width: 1920,
+        height: 1080,
+        items: [{ text: "Chapter 1", startSec: 0, durationSec: 4 }],
+      },
+      ctx as Parameters<typeof tool.execute>[1],
+    );
+    const parsed = JSON.parse(r as string);
+    const content = readFileSync(parsed.path, "utf8");
+    expect(content).toContain("Chapter 1");
+    expect(content).toContain("\\fad(400,400)");
+  });
+});
+
+describe("speed_ramp tool", () => {
+  it("rejects when input == output", async () => {
+    const tool = createSpeedRampTool("/tmp");
+    const r = await tool.execute(
+      {
+        input: "x.mp4",
+        output: "x.mp4",
+        points: [
+          { atSec: 0, speed: 1 },
+          { atSec: 5, speed: 0.5 },
+        ],
+      },
+      ctx as Parameters<typeof tool.execute>[1],
+    );
+    expect(r).toMatch(/identical|ffmpeg/);
+  });
+});
+
+describe("ken_burns tool", () => {
+  it("rejects when input == output", async () => {
+    const tool = createKenBurnsTool("/tmp");
+    const r = await tool.execute(
+      { input: "x.jpg", output: "x.jpg", durationSec: 4 },
+      ctx as Parameters<typeof tool.execute>[1],
+    );
+    expect(r).toMatch(/identical|ffmpeg/);
+  });
+});
+
+describe("transition_videos tool", () => {
+  it("surfaces error when input file is missing", async () => {
+    const tool = createTransitionVideosTool("/tmp");
+    const r = await tool.execute(
+      {
+        inputA: "/no/a.mp4",
+        inputB: "/no/b.mp4",
+        output: "/tmp/out.mp4",
+        preset: "smash-cut",
+      },
+      ctx as Parameters<typeof tool.execute>[1],
+    );
+    expect(r as string).toMatch(/^error:/);
   });
 });

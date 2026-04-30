@@ -38,6 +38,8 @@ const EXPECTED_TOOLS = [
   "list_render_presets",
   "smart_reframe",
   "pre_render_check",
+  "reorder_timeline",
+  "compose_layered",
   // Captions / subtitles
   "write_srt",
   "write_ass",
@@ -52,6 +54,7 @@ const EXPECTED_TOOLS = [
   "normalize_loudness",
   "clean_audio",
   "duck_audio",
+  "mix_audio",
   // Frame extraction
   "extract_frame",
   // Stabilization
@@ -61,9 +64,14 @@ const EXPECTED_TOOLS = [
   "concat_videos",
   "add_fades",
   "crossfade_videos",
+  "transition_videos",
   "generate_gif",
   "overlay_watermark",
   "compose_thumbnail",
+  "speed_ramp",
+  "ken_burns",
+  "write_lower_third",
+  "write_title_card",
   // Host-independent media
   "probe_media",
   "extract_audio",

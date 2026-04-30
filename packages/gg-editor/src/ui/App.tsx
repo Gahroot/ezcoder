@@ -113,6 +113,25 @@ export function App(props: AppProps) {
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
   const [exitPending, setExitPending] = useState(false);
 
+  // ── Two-phase flush to <Static> ─────────────────────────────────────
+  // Pushing items into Static AND shrinking the streaming/live area in the
+  // SAME render cycle confuses Ink's cursor math: it has to clear an N-line
+  // tall live area while simultaneously committing M new lines into the
+  // scrollback. The result is that the bottom of long final responses gets
+  // overwritten and clipped.
+  //
+  // Fix: queue items in a ref, bump a generation counter to schedule a
+  // re-render, and drain the queue from a useEffect. Because the effect
+  // fires AFTER React has painted the prior render (which collapsed the
+  // live area), Ink's log-update writes the new Static lines into a
+  // freshly-cleaned region of the terminal.
+  const pendingFlushRef = useRef<HistoryItem[]>([]);
+  const [flushGeneration, setFlushGeneration] = useState(0);
+  const queueFlush = useCallback((item: HistoryItem) => {
+    pendingFlushRef.current.push(item);
+    setFlushGeneration((g) => g + 1);
+  }, []);
+
   // Live model + thinking state — swappable via /model and Shift-Tab.
   const [currentProvider, setCurrentProvider] = useState<Provider>(props.provider);
   const [currentModel, setCurrentModel] = useState<string>(props.model);
@@ -216,34 +235,31 @@ export function App(props: AppProps) {
     {
       onTurnText: (text, thinking, thinkingMs) => {
         if (text.trim().length === 0) return;
-        setHistoryItems((items) => [
-          ...items,
-          {
-            id: nextId(),
-            kind: "assistant",
-            text,
-            thinking: thinking || undefined,
-            thinkingMs: thinkingMs || undefined,
-          },
-        ]);
+        // Queue for two-phase flush rather than committing to Static this
+        // render. Prevents long final responses from being clipped when the
+        // live streaming area collapses in the same frame as the Static write.
+        queueFlush({
+          id: nextId(),
+          kind: "assistant",
+          text,
+          thinking: thinking || undefined,
+          thinkingMs: thinkingMs || undefined,
+        });
       },
       // Running tool calls are rendered live from agentLoop.activeToolCalls
       // OUTSIDE of <Static>; only the completed result enters scrollback here.
       onToolEnd: (toolCallId, name, result, isError, _durationMs, details) => {
         const active = agentLoop.activeToolCalls.find((tc) => tc.toolCallId === toolCallId);
-        setHistoryItems((items) => [
-          ...items,
-          {
-            id: nextId(),
-            kind: "tool_done",
-            toolCallId,
-            name,
-            args: active?.args ?? {},
-            result,
-            isError,
-            details,
-          },
-        ]);
+        queueFlush({
+          id: nextId(),
+          kind: "tool_done",
+          toolCallId,
+          name,
+          args: active?.args ?? {},
+          result,
+          isError,
+          details,
+        });
       },
       onComplete: () => {
         if (!props.persistSessions) return;
@@ -260,6 +276,19 @@ export function App(props: AppProps) {
       },
     },
   );
+
+  // Phase 2 of the two-phase flush: after the streaming/live area has
+  // collapsed (the previous render cycle), this effect commits the queued
+  // items into Static. Running this in a separate effect tick guarantees
+  // Ink's log-update doesn't have to clear a tall live area AND write new
+  // Static lines in the same frame — which is what was clipping long
+  // final responses.
+  useEffect(() => {
+    if (pendingFlushRef.current.length === 0) return;
+    const items = pendingFlushRef.current;
+    pendingFlushRef.current = [];
+    setHistoryItems((prev) => [...prev, ...items]);
+  }, [flushGeneration]);
 
   // ── Slash + submit handling ─────────────────────────────────────────
   const handleSubmit = useCallback(
@@ -453,17 +482,6 @@ export function App(props: AppProps) {
         </Box>
       ) : null}
 
-      {/* Model picker overlay (rendered between input and history when active). */}
-      {overlay === "model" ? (
-        <ModelSelector
-          onSelect={handleModelSelect}
-          onCancel={() => setOverlay(null)}
-          loggedInProviders={props.loggedInProviders}
-          currentModel={currentModel}
-          currentProvider={currentProvider}
-        />
-      ) : null}
-
       {/* Input */}
       <InputArea
         onSubmit={(value) => handleSubmit(value)}
@@ -475,19 +493,30 @@ export function App(props: AppProps) {
         commands={EDITOR_COMMANDS}
       />
 
-      {/* Footer */}
-      <Footer
-        model={currentModel}
-        tokensIn={agentLoop.contextUsed}
-        cwd={props.cwd}
-        thinkingEnabled={thinkingEnabled}
-        hidePlan
-        hideCwd
-        hideGitBranch
-        exitPending={exitPending}
-        statusLabel={composeStatusLabel(hostStatus, timelineGlance)}
-        statusColor={composeStatusColor(hostStatus, theme)}
-      />
+      {/* Model picker overlay sits below the input (replacing the Footer)
+          while open — matches ggcoder's layout exactly. */}
+      {overlay === "model" ? (
+        <ModelSelector
+          onSelect={handleModelSelect}
+          onCancel={() => setOverlay(null)}
+          loggedInProviders={props.loggedInProviders}
+          currentModel={currentModel}
+          currentProvider={currentProvider}
+        />
+      ) : (
+        <Footer
+          model={currentModel}
+          tokensIn={agentLoop.contextUsed}
+          cwd={props.cwd}
+          thinkingEnabled={thinkingEnabled}
+          hidePlan
+          hideCwd
+          hideGitBranch
+          exitPending={exitPending}
+          statusLabel={composeStatusLabel(hostStatus, timelineGlance)}
+          statusColor={composeStatusColor(hostStatus, theme)}
+        />
+      )}
     </Box>
   );
 }

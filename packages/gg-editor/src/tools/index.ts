@@ -14,9 +14,17 @@ import { createClusterTakesTool } from "./cluster-takes.js";
 import { createComposeThumbnailTool } from "./compose-thumbnail.js";
 import { createConcatVideosTool } from "./concat-videos.js";
 import { createColorMatchTool } from "./color-match.js";
+import { createComposeLayeredTool } from "./compose-layered.js";
 import { createCopyGradeTool } from "./copy-grade.js";
 import { createDetectSpeakerChangesTool } from "./detect-speaker-changes.js";
 import { createCrossfadeVideosTool } from "./crossfade-videos.js";
+import { createKenBurnsTool } from "./ken-burns.js";
+import { createMixAudioTool } from "./mix-audio.js";
+import { createReorderTimelineTool } from "./reorder-timeline.js";
+import { createSpeedRampTool } from "./speed-ramp.js";
+import { createTransitionVideosTool } from "./transition-videos.js";
+import { createWriteLowerThirdTool } from "./write-lower-third.js";
+import { createWriteTitleCardTool } from "./write-title-card.js";
 import { createDuckAudioTool } from "./duck-audio.js";
 import { createCreateTimelineTool } from "./create-timeline.js";
 import { createCutAtTool } from "./cut-at.js";
@@ -114,6 +122,8 @@ export function createEditorTools(opts: CreateEditorToolsOptions): AgentTool[] {
     createListRenderPresetsTool(host),
     createSmartReframeTool(host),
     createPreRenderCheckTool(host, cwd),
+    createReorderTimelineTool(host, cwd),
+    createComposeLayeredTool(host, cwd),
 
     // Captions / subtitles
     createWriteSrtTool(cwd),
@@ -131,6 +141,7 @@ export function createEditorTools(opts: CreateEditorToolsOptions): AgentTool[] {
     createNormalizeLoudnessTool(cwd),
     createCleanAudioTool(cwd),
     createDuckAudioTool(cwd),
+    createMixAudioTool(cwd),
 
     // Frame extraction
     createExtractFrameTool(cwd),
@@ -143,9 +154,14 @@ export function createEditorTools(opts: CreateEditorToolsOptions): AgentTool[] {
     createConcatVideosTool(cwd),
     createAddFadesTool(cwd),
     createCrossfadeVideosTool(cwd),
+    createTransitionVideosTool(cwd),
     createGenerateGifTool(cwd),
     createOverlayWatermarkTool(cwd),
     createComposeThumbnailTool(cwd),
+    createSpeedRampTool(cwd),
+    createKenBurnsTool(cwd),
+    createWriteLowerThirdTool(cwd),
+    createWriteTitleCardTool(cwd),
 
     // Host-independent media ops
     createProbeMediaTool(cwd),
@@ -182,8 +198,16 @@ export { createComposeThumbnailTool } from "./compose-thumbnail.js";
 export { createConcatVideosTool } from "./concat-videos.js";
 export { createCrossfadeVideosTool } from "./crossfade-videos.js";
 export { createColorMatchTool } from "./color-match.js";
+export { createComposeLayeredTool } from "./compose-layered.js";
 export { createCopyGradeTool } from "./copy-grade.js";
 export { createDetectSpeakerChangesTool } from "./detect-speaker-changes.js";
+export { createKenBurnsTool } from "./ken-burns.js";
+export { createMixAudioTool } from "./mix-audio.js";
+export { createReorderTimelineTool } from "./reorder-timeline.js";
+export { createSpeedRampTool } from "./speed-ramp.js";
+export { createTransitionVideosTool } from "./transition-videos.js";
+export { createWriteLowerThirdTool } from "./write-lower-third.js";
+export { createWriteTitleCardTool } from "./write-title-card.js";
 export { createDuckAudioTool } from "./duck-audio.js";
 export { createCreateTimelineTool } from "./create-timeline.js";
 export { createCutAtTool } from "./cut-at.js";

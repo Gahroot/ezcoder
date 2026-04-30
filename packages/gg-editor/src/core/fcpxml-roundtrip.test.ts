@@ -175,3 +175,98 @@ describe("FCPXML round-trip", () => {
     expect(clips[0].name.startsWith("intro_take_3")).toBe(true);
   });
 });
+
+describe("FCPXML round-trip — transform / keyframes / lane / title", () => {
+  it('emits both <adjust-transform> and <param name="position"> for a keyframed clip', () => {
+    const events: FcpxmlEvent[] = [
+      {
+        reel: "A",
+        sourcePath: "/a.mov",
+        sourceInFrame: 0,
+        sourceOutFrame: 60,
+        transform: {
+          position: {
+            keyframes: [
+              { frame: 0, value: [0, 0] },
+              { frame: 60, value: [200, 0] },
+            ],
+          },
+        },
+      },
+    ];
+    const xml = buildFcpxml({ title: "t", frameRate: 30, events });
+    expect(xml).toContain("<adjust-transform");
+    expect(xml).toContain('<param name="position">');
+    // Two keyframes, no interp on either (position rule).
+    const kfs = [...xml.matchAll(/<keyframe time="([^"]+)" value="([^"]+)"\s*\/>/g)];
+    expect(kfs.length).toBeGreaterThanOrEqual(2);
+    // Position values should be the literal x y pairs we asked for.
+    expect(kfs.find((m) => m[2] === "0 0")).toBeDefined();
+    expect(kfs.find((m) => m[2] === "200 0")).toBeDefined();
+  });
+
+  it('emits <filter-audio>/<param name="gain"> with linear interp for volume ramps', () => {
+    const events: FcpxmlEvent[] = [
+      {
+        reel: "A",
+        sourcePath: "/a.mov",
+        sourceInFrame: 0,
+        sourceOutFrame: 60,
+        volumeDb: {
+          keyframes: [
+            { frame: 0, value: -60 },
+            { frame: 30, value: 0 },
+            { frame: 60, value: -60 },
+          ],
+        },
+      },
+    ];
+    const xml = buildFcpxml({ title: "t", frameRate: 30, events });
+    expect(xml).toContain('<filter-audio name="Volume">');
+    // Every gain keyframe carries interp (NOT skipped like position).
+    const gainKfs = [
+      ...xml.matchAll(/<keyframe time="[^"]+" value="-?\d+(\.\d+)?" interp="[^"]+" \/>/g),
+    ];
+    expect(gainKfs.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("places lane clips at absolute offsets without disturbing the spine cursor", () => {
+    const events: FcpxmlEvent[] = [
+      { reel: "A", sourcePath: "/a.mov", sourceInFrame: 0, sourceOutFrame: 90 },
+      {
+        reel: "B",
+        sourcePath: "/b.mov",
+        sourceInFrame: 0,
+        sourceOutFrame: 30,
+        lane: 1,
+        recordOffsetFrame: 30,
+      },
+      { reel: "A", sourcePath: "/a.mov", sourceInFrame: 90, sourceOutFrame: 150 },
+    ];
+    const xml = buildFcpxml({ title: "t", frameRate: 30, events });
+    const clips = parseAssetClips(xml);
+    // 3 clips total; the spine clips advance the cursor (90 frames + 60 = 5s),
+    // and the lane clip sits at 1s without touching the cursor.
+    expect(clips).toHaveLength(3);
+    const spineOffsets = clips.filter((_, i) => i !== 1).map((c) => timeToSec(c.offset));
+    expect(spineOffsets[0]).toBeCloseTo(0);
+    expect(spineOffsets[1]).toBeCloseTo(3); // 90/30
+  });
+
+  it("emits a Basic Title effect resource exactly once when multiple titles share it", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [{ reel: "A", sourcePath: "/a.mov", sourceInFrame: 0, sourceOutFrame: 60 }],
+      titles: [
+        { text: "One", startFrame: 0, durationFrames: 30 },
+        { text: "Two", startFrame: 30, durationFrames: 30 },
+      ],
+    });
+    const titleEffectMatches = [...xml.matchAll(/name="Basic Title"/g)];
+    // The resource is emitted once; the two <title> elements reference it.
+    const titleElementMatches = [...xml.matchAll(/<title ref="/g)];
+    expect(titleEffectMatches.length).toBe(1);
+    expect(titleElementMatches.length).toBe(2);
+  });
+});

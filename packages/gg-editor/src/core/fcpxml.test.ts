@@ -3,6 +3,7 @@ import {
   buildFcpxml,
   frameRateToRational,
   framesToTime,
+  hexToFcpColor,
   totalRecordFramesFcpxml,
 } from "./fcpxml.js";
 
@@ -145,5 +146,249 @@ describe("totalRecordFramesFcpxml", () => {
         { reel: "a", sourcePath: "/a", sourceInFrame: 100, sourceOutFrame: 150 },
       ]),
     ).toBe(80);
+  });
+  it("ignores lane (non-spine) events", () => {
+    expect(
+      totalRecordFramesFcpxml([
+        { reel: "a", sourcePath: "/a", sourceInFrame: 0, sourceOutFrame: 30 },
+        { reel: "b", sourcePath: "/b", sourceInFrame: 0, sourceOutFrame: 100, lane: 1 },
+      ]),
+    ).toBe(30);
+  });
+});
+
+describe("hexToFcpColor", () => {
+  it("maps white", () => {
+    expect(hexToFcpColor("FFFFFF")).toBe("1 1 1 1");
+  });
+  it("maps black", () => {
+    expect(hexToFcpColor("000000")).toBe("0 0 0 1");
+  });
+  it("rejects bad hex", () => {
+    expect(() => hexToFcpColor("xyz")).toThrow();
+  });
+});
+
+describe("buildFcpxml — transforms", () => {
+  it("emits static <adjust-transform> with position+scale+anchor as attributes", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [
+        {
+          reel: "A",
+          sourcePath: "/a.mov",
+          sourceInFrame: 0,
+          sourceOutFrame: 30,
+          transform: { position: [10, -20], scale: [1.5, 1.5], anchor: [0, 0] },
+        },
+      ],
+    });
+    expect(xml).toContain("<adjust-transform");
+    expect(xml).toContain('position="10 -20"');
+    expect(xml).toContain('scale="1.5 1.5"');
+    expect(xml).toContain('anchor="0 0"');
+  });
+
+  it("emits keyframed position WITHOUT interp attribute (FCPXML spec)", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [
+        {
+          reel: "A",
+          sourcePath: "/a.mov",
+          sourceInFrame: 0,
+          sourceOutFrame: 60,
+          transform: {
+            position: {
+              keyframes: [
+                { frame: 0, value: [0, 0] },
+                { frame: 30, value: [100, 50] },
+              ],
+            },
+          },
+        },
+      ],
+    });
+    expect(xml).toContain('<param name="position">');
+    expect(xml).toContain("<keyframeAnimation>");
+    // Position keyframes must NOT carry interp attribute.
+    expect(xml).toMatch(/<keyframe time="0\/1s" value="0 0" \/>/);
+    expect(xml).toMatch(/<keyframe time="1\/1s" value="100 50" \/>/);
+    expect(xml).not.toMatch(/<keyframe[^>]*name="position"[^>]*interp=/);
+  });
+
+  it("emits keyframed scale WITH interp attribute", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [
+        {
+          reel: "A",
+          sourcePath: "/a.mov",
+          sourceInFrame: 0,
+          sourceOutFrame: 60,
+          transform: {
+            scale: {
+              keyframes: [
+                { frame: 0, value: [1, 1], interp: "easeIn" },
+                { frame: 60, value: [1.4, 1.4], interp: "easeOut" },
+              ],
+            },
+          },
+        },
+      ],
+    });
+    expect(xml).toContain('<param name="scale">');
+    expect(xml).toContain('interp="easeIn"');
+    expect(xml).toContain('interp="easeOut"');
+  });
+});
+
+describe("buildFcpxml — opacity", () => {
+  it("emits keyframed opacity", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [
+        {
+          reel: "A",
+          sourcePath: "/a.mov",
+          sourceInFrame: 0,
+          sourceOutFrame: 60,
+          opacity: {
+            keyframes: [
+              { frame: 0, value: 0 },
+              { frame: 30, value: 1 },
+            ],
+          },
+        },
+      ],
+    });
+    expect(xml).toContain('<param name="opacity">');
+    expect(xml).toMatch(/value="0".*interp="linear"/);
+  });
+
+  it("emits static opacity as a 2-keyframe ramp (round-trip safe)", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [
+        {
+          reel: "A",
+          sourcePath: "/a.mov",
+          sourceInFrame: 0,
+          sourceOutFrame: 30,
+          opacity: 0.5,
+        },
+      ],
+    });
+    expect(xml).toContain('<param name="opacity">');
+    expect(xml).toContain('value="0.5"');
+  });
+});
+
+describe("buildFcpxml — volume", () => {
+  it("emits static volume as <adjust-volume>", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [
+        {
+          reel: "A",
+          sourcePath: "/a.mov",
+          sourceInFrame: 0,
+          sourceOutFrame: 30,
+          volumeDb: -3,
+        },
+      ],
+    });
+    expect(xml).toContain('<adjust-volume amount="-3dB"');
+  });
+
+  it('emits keyframed volume as <filter-audio>/<param name="gain">', () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [
+        {
+          reel: "A",
+          sourcePath: "/a.mov",
+          sourceInFrame: 0,
+          sourceOutFrame: 60,
+          volumeDb: {
+            keyframes: [
+              { frame: 0, value: -60 },
+              { frame: 30, value: 0 },
+            ],
+          },
+        },
+      ],
+    });
+    expect(xml).toContain('<filter-audio name="Volume">');
+    expect(xml).toContain('<param name="gain">');
+    expect(xml).toContain('value="-60"');
+    expect(xml).toContain('value="0"');
+  });
+});
+
+describe("buildFcpxml — lane (multi-track)", () => {
+  it("emits lane attribute and absolute offset for B-roll layer", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [
+        { reel: "A", sourcePath: "/a.mov", sourceInFrame: 0, sourceOutFrame: 90 },
+        {
+          reel: "B",
+          sourcePath: "/b.mov",
+          sourceInFrame: 0,
+          sourceOutFrame: 30,
+          lane: 1,
+          recordOffsetFrame: 30,
+        },
+      ],
+    });
+    expect(xml).toContain('lane="1"');
+    // Lane clip starts at offset 30/30 = 1s, NOT after the spine clip.
+    expect(xml).toMatch(/lane="1" offset="1\/1s"/);
+  });
+});
+
+describe("buildFcpxml — titles", () => {
+  it("emits a Basic Title effect resource and a <title> element when titles are present", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [{ reel: "A", sourcePath: "/a.mov", sourceInFrame: 0, sourceOutFrame: 30 }],
+      titles: [
+        {
+          text: "Hello",
+          startFrame: 0,
+          durationFrames: 30,
+          fontSize: 80,
+          fontColor: "FF0000",
+          alignment: "center",
+          lane: 2,
+        },
+      ],
+    });
+    expect(xml).toContain('name="Basic Title"');
+    expect(xml).toContain('<title ref="');
+    expect(xml).toContain("<text>");
+    expect(xml).toContain("<text-style-def");
+    expect(xml).toContain('lane="2"');
+    expect(xml).toContain("Hello");
+    expect(xml).toContain('fontColor="1 0 0 1"');
+  });
+
+  it("omits the title effect resource when no titles are supplied", () => {
+    const xml = buildFcpxml({
+      title: "t",
+      frameRate: 30,
+      events: [{ reel: "A", sourcePath: "/a.mov", sourceInFrame: 0, sourceOutFrame: 30 }],
+    });
+    expect(xml).not.toContain("Basic Title");
   });
 });
