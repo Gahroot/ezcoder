@@ -6,9 +6,12 @@ import {
   mkdirSync,
   readdirSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
+
+const nodeRequire = createRequire(import.meta.url);
 
 export const DEFAULT_INGEST_URL = "https://gg-pixel-server.buzzbeamaustralia.workers.dev";
 
@@ -687,9 +690,24 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   return { kind: "injected", entryPath: layoutPath };
 }
 
+/**
+ * Adds `@kenkaiiii/gg-pixel` to `serverExternalPackages` in the user's
+ * next.config.{ts,mjs,js,cjs}. Required so Next's bundler doesn't statically
+ * follow `better-sqlite3` (an optional native peer dep) when the SDK is
+ * imported server-side.
+ *
+ * Uses `magicast` (Babel-backed AST surgery) so we handle the long tail of
+ * config shapes the previous regex implementation mangled:
+ *   - wrappers like `withSentryConfig(config)` / `withMDX({...})`
+ *   - object spreads `{ ...baseConfig, foo: bar }`
+ *   - `module.exports = function() { return {...}; }`
+ *   - `satisfies NextConfig`, `as const`, generic type assertions
+ *   - existing arrays containing comments or trailing commas
+ *
+ * Falls back to the original line-injection only when magicast can't load
+ * the config (extremely rare — would require syntactically invalid JS/TS).
+ */
 function patchNextConfig(projectRoot: string): void {
-  // Required so Next's bundler doesn't statically follow better-sqlite3
-  // (a native module) when @kenkaiiii/gg-pixel is imported server-side.
   const candidates = ["next.config.ts", "next.config.mjs", "next.config.js", "next.config.cjs"];
   let configPath: string | null = null;
   for (const c of candidates) {
@@ -708,29 +726,139 @@ function patchNextConfig(projectRoot: string): void {
     );
     return;
   }
-  const content = readFileSync(configPath, "utf8");
-  if (content.includes("@kenkaiiii/gg-pixel")) return;
+  patchNextConfigViaAst(configPath);
+}
+
+const PIXEL_PKG = "@kenkaiiii/gg-pixel";
+
+function patchNextConfigViaAst(configPath: string): void {
+  const original = readFileSync(configPath, "utf8");
+  if (original.includes(PIXEL_PKG)) return; // already wired
+
+  // Lazy require so the rest of install.ts doesn't pay the magicast import
+  // cost for non-Next.js projects. magicast is in `dependencies` so it's
+  // always installed; the require resolves synchronously.
+  let parseModule: (code: string) => MagicastModule;
+  let generateCode: (m: MagicastModule) => { code: string };
+  try {
+    const mod = nodeRequire("magicast") as {
+      parseModule: typeof parseModule;
+      generateCode: typeof generateCode;
+    };
+    parseModule = mod.parseModule;
+    generateCode = mod.generateCode;
+  } catch {
+    return patchNextConfigViaRegex(configPath, original);
+  }
+
+  let module_: MagicastModule;
+  try {
+    module_ = parseModule(original);
+  } catch {
+    return patchNextConfigViaRegex(configPath, original);
+  }
+
+  // Resolve the config object regardless of how it's exported.
+  const cfg = resolveNextConfigObject(module_);
+  if (!cfg) {
+    // Wrapped in a function call we can't unwrap (e.g. defineConfig(() => ({}))
+    // returning a closure). Fall back to regex injection.
+    return patchNextConfigViaRegex(configPath, original);
+  }
+
+  // Add to existing array, or create one. Magicast surfaces array nodes as
+  // proxies that respond to `includes` / `push` regardless of source shape;
+  // we cast through `unknown` because magicast's type surface for nested
+  // values is intentionally loose.
+  type ArrLike = { includes(v: string): boolean; push(v: string): void };
+  const existing = cfg.serverExternalPackages as unknown;
+  const isArrayLike =
+    Array.isArray(existing) ||
+    (typeof existing === "object" &&
+      existing !== null &&
+      (existing as { $type?: string }).$type === "array");
+  if (isArrayLike) {
+    const arr = existing as ArrLike;
+    if (arr.includes(PIXEL_PKG)) return;
+    arr.push(PIXEL_PKG);
+  } else {
+    cfg.serverExternalPackages = [PIXEL_PKG];
+  }
+
+  const out = generateCode(module_).code;
+  if (out !== original) writeFileSync(configPath, out, "utf8");
+}
+
+/**
+ * Walks the magicast module to find the NextConfig object literal, regardless
+ * of whether the user wraps it in `withSomething(...)`, exports as `default`
+ * vs CJS, or assigns to a const first. Returns the proxied object the caller
+ * can mutate, or null if it's a function/expression we can't statically reach.
+ */
+interface MagicastObject {
+  [key: string]: unknown;
+  $type?: string;
+  $args?: unknown[];
+}
+interface MagicastModule {
+  exports: { default?: MagicastObject } & Record<string, MagicastObject | undefined>;
+  $code?: string;
+}
+
+function resolveNextConfigObject(mod: MagicastModule): MagicastObject | null {
+  const root: MagicastObject | undefined =
+    mod.exports.default ?? (mod.exports as MagicastObject | undefined);
+  if (!root) return null;
+  return unwrapWrappers(root);
+}
+
+/**
+ * Many real configs are `withSomething(realConfig)` (Sentry, MDX, PWA, bundle-
+ * analyzer, etc.). Walk into the first object-literal argument we can find.
+ * If the wrapper takes a function (`defineConfig(() => ({...}))`), we bail —
+ * mutating closure bodies via magicast isn't reliable.
+ */
+function unwrapWrappers(node: MagicastObject): MagicastObject | null {
+  let cur = node;
+  for (let i = 0; i < 6; i++) {
+    if (cur.$type === "function-call") {
+      const args = cur.$args ?? [];
+      const objArg = args.find(
+        (a): a is MagicastObject =>
+          typeof a === "object" && a !== null && (a as MagicastObject).$type !== "function-call",
+      );
+      if (!objArg) return null; // function-as-arg → can't mutate safely
+      cur = objArg;
+      continue;
+    }
+    if (cur.$type === "object" || cur.$type === undefined) return cur;
+    return null;
+  }
+  return null;
+}
+
+function patchNextConfigViaRegex(configPath: string, content: string): void {
+  if (content.includes(PIXEL_PKG)) return;
   if (content.includes("serverExternalPackages")) {
     const updated = content.replace(
       /serverExternalPackages\s*:\s*\[([^\]]*)\]/,
       (_match: string, inside: string) => {
         const trimmed = inside.trim();
         const sep = trimmed.length > 0 ? ", " : "";
-        return `serverExternalPackages: [${trimmed}${sep}"@kenkaiiii/gg-pixel"]`;
+        return `serverExternalPackages: [${trimmed}${sep}${JSON.stringify(PIXEL_PKG)}]`;
       },
     );
     if (updated !== content) writeFileSync(configPath, updated, "utf8");
     return;
   }
-  // Inject a fresh `serverExternalPackages` line into the config object.
   const objStart =
-    /(const\s+\w+\s*:\s*NextConfig\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/;
+    /(const\s+\w+\s*(?::\s*\w+)?\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/;
   const m = objStart.exec(content);
   if (m) {
     const insertAt = m.index + m[0].length;
     const updated =
       content.slice(0, insertAt) +
-      `\n  serverExternalPackages: ["@kenkaiiii/gg-pixel"],` +
+      `\n  serverExternalPackages: [${JSON.stringify(PIXEL_PKG)}],` +
       content.slice(insertAt);
     writeFileSync(configPath, updated, "utf8");
   }

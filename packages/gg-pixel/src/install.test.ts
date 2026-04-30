@@ -714,6 +714,113 @@ export async function register() {
     }
   });
 
+  it("Next.js: AST-patches a wrapped config (e.g. withSomething(config)) without mangling", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "wrapped-app", dependencies: { next: "^15.0.0", react: "^19.0.0" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }: { children: React.ReactNode }) { return <html><body>{children}</body></html>; }`,
+    );
+    // A real-world shape the previous regex implementation mangled: the
+    // config is wrapped by a higher-order helper, has a spread, and uses
+    // `satisfies` instead of a type annotation.
+    writeFileSync(
+      join(dir, "next.config.ts"),
+      `import { withSentryConfig } from "@sentry/nextjs";\nimport baseConfig from "./shared.config";\n\nconst config = {\n  ...baseConfig,\n  serverExternalPackages: ["fs-extra"],\n  reactStrictMode: true,\n} satisfies import("next").NextConfig;\n\nexport default withSentryConfig(config);\n`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p", key: "k" }),
+      });
+      const after = readFileSync(join(dir, "next.config.ts"), "utf8");
+      // Both the existing entry and our new one are present; nothing else got mangled.
+      expect(after).toContain('"@kenkaiiii/gg-pixel"');
+      expect(after).toContain('"fs-extra"');
+      expect(after).toContain("withSentryConfig(config)");
+      expect(after).toContain("...baseConfig");
+      expect(after).toContain("reactStrictMode: true");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Next.js: AST-patches CommonJS config (`module.exports = { ... }`)", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "cjs-next", dependencies: { next: "^14", react: "^18" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }) { return <html><body>{children}</body></html>; }`,
+    );
+    writeFileSync(
+      join(dir, "next.config.js"),
+      `/** @type {import('next').NextConfig} */\nmodule.exports = {\n  reactStrictMode: true,\n};\n`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p", key: "k" }),
+      });
+      const after = readFileSync(join(dir, "next.config.js"), "utf8");
+      expect(after).toContain('"@kenkaiiii/gg-pixel"');
+      expect(after).toContain("reactStrictMode: true");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Next.js: re-install on already-patched config is a no-op (no duplicate entries)", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "x", dependencies: { next: "^15", react: "^19" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }: { children: React.ReactNode }) { return <html><body>{children}</body></html>; }`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p1", key: "k1" }),
+      });
+      const first = readFileSync(join(dir, "next.config.ts"), "utf8");
+      const occurrences = (first.match(/@kenkaiiii\/gg-pixel/g) ?? []).length;
+      expect(occurrences).toBe(1);
+
+      // Re-install (mints a fresh project but next.config patching should be idempotent).
+      rmSync(join(home, ".gg", "projects.json"));
+      rmSync(join(dir, ".env"));
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p2", key: "k2" }),
+      });
+      const second = readFileSync(join(dir, "next.config.ts"), "utf8");
+      // Still exactly one entry — magicast knows it's already there.
+      const occ2 = (second.match(/@kenkaiiii\/gg-pixel/g) ?? []).length;
+      expect(occ2).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
   it("Electron multi-window: detects HTMLs in src/ and patches each one", async () => {
     writeFileSync(
       join(dir, "package.json"),
