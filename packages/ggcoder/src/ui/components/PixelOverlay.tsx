@@ -17,6 +17,7 @@ export function PixelOverlay({ onClose, onFixOne, onFixAll, agentRunning, versio
   const [data, setData] = useState<PixelFetchResult>({
     entries: [],
     unreachable: [],
+    unmanaged: [],
     hasProjects: false,
   });
   const [selectedIndex, setSelectedIndex] = useState(0);

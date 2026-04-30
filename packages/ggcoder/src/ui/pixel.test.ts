@@ -8,17 +8,24 @@ function strip(s: string): string {
   return s.replace(/\[[0-9;]*m/g, "");
 }
 
-const empty: PixelFetchResult = { entries: [], unreachable: [], hasProjects: false };
+const empty: PixelFetchResult = {
+  entries: [],
+  unreachable: [],
+  unmanaged: [],
+  hasProjects: false,
+};
 
 const noErrors: PixelFetchResult = {
   entries: [],
   unreachable: [],
+  unmanaged: [],
   hasProjects: true,
 };
 
 const mixed: PixelFetchResult = {
   hasProjects: true,
   unreachable: [],
+  unmanaged: [],
   entries: [
     {
       errorId: "err_1",
@@ -126,6 +133,7 @@ describe("renderScreen", () => {
       hasProjects: true,
       entries: [],
       unreachable: ["client-x"],
+      unmanaged: [],
     };
     const out = strip(renderScreen(data, 0));
     expect(out).toContain("✗ client-x: backend unreachable");

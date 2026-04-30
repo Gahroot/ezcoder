@@ -20,16 +20,29 @@ function output(): string {
 }
 
 function fakeFetch(perProject: Record<string, unknown[]>): typeof fetch {
-  return (async (input: RequestInfo | URL): Promise<Response> => {
+  return (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     const match = /\/api\/projects\/([^/]+)\/errors/.exec(url);
     const id = match?.[1] ?? "";
+    // The new server requires Authorization. The fake mirrors that contract
+    // so tests verify the client actually sends it.
+    const headers = new Headers(init?.headers ?? {});
+    if (!headers.get("authorization")?.startsWith("Bearer ")) {
+      return new Response("missing auth", { status: 401 });
+    }
     const errors = perProject[id] ?? [];
     return new Response(JSON.stringify({ errors }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
   }) as unknown as typeof fetch;
+}
+
+// Builds a projects.json mapping with `secret` populated — what `pixel install`
+// produces in the new world. Tests that want to exercise the legacy
+// no-secret path can construct mappings without it explicitly.
+function project(name: string, path: string): { name: string; path: string; secret: string } {
+  return { name, path, secret: `sk_live_${name}_test` };
 }
 
 describe("listAllErrors", () => {
@@ -49,7 +62,7 @@ describe("listAllErrors", () => {
     mkdirSync(join(home, ".gg"), { recursive: true });
     writeFileSync(
       join(home, ".gg", "projects.json"),
-      JSON.stringify({ proj_a: { name: "alpha", path: "/p/alpha" } }),
+      JSON.stringify({ proj_a: project("alpha", "/p/alpha") }),
     );
     await listAllErrors({ homeDir: home, fetchFn: fakeFetch({ proj_a: [] }) });
     const out = output();
@@ -63,8 +76,8 @@ describe("listAllErrors", () => {
     writeFileSync(
       join(home, ".gg", "projects.json"),
       JSON.stringify({
-        proj_a: { name: "alpha", path: "/p/alpha" },
-        proj_b: { name: "beta", path: "/p/beta" },
+        proj_a: project("alpha", "/p/alpha"),
+        proj_b: project("beta", "/p/beta"),
       }),
     );
 
@@ -132,7 +145,7 @@ describe("listAllErrors", () => {
     mkdirSync(join(home, ".gg"), { recursive: true });
     writeFileSync(
       join(home, ".gg", "projects.json"),
-      JSON.stringify({ proj_a: { name: "alpha", path: "/p/alpha" } }),
+      JSON.stringify({ proj_a: project("alpha", "/p/alpha") }),
     );
     const failingFetch: typeof fetch = (async () =>
       new Response("oops", { status: 500 })) as unknown as typeof fetch;
@@ -142,7 +155,7 @@ describe("listAllErrors", () => {
 
   it("fetchPixelEntries returns structured data with hasProjects=false when no map exists", async () => {
     const result = await fetchPixelEntries({ homeDir: home, fetchFn: fakeFetch({}) });
-    expect(result).toEqual({ entries: [], unreachable: [], hasProjects: false });
+    expect(result).toEqual({ entries: [], unreachable: [], unmanaged: [], hasProjects: false });
   });
 
   it("fetchPixelEntries flattens errors from all projects, grouped and sorted", async () => {
@@ -150,8 +163,8 @@ describe("listAllErrors", () => {
     writeFileSync(
       join(home, ".gg", "projects.json"),
       JSON.stringify({
-        proj_a: { name: "alpha", path: "/p/a" },
-        proj_b: { name: "beta", path: "/p/b" },
+        proj_a: project("alpha", "/p/a"),
+        proj_b: project("beta", "/p/b"),
       }),
     );
     const aErrors = [
@@ -210,7 +223,7 @@ describe("listAllErrors", () => {
     mkdirSync(join(home, ".gg"), { recursive: true });
     writeFileSync(
       join(home, ".gg", "projects.json"),
-      JSON.stringify({ proj_a: { name: "alpha", path: "/p/a" } }),
+      JSON.stringify({ proj_a: project("alpha", "/p/a") }),
     );
     const failingFetch: typeof fetch = (async () =>
       new Response("oops", { status: 500 })) as unknown as typeof fetch;
@@ -224,7 +237,7 @@ describe("listAllErrors", () => {
     mkdirSync(join(home, ".gg"), { recursive: true });
     writeFileSync(
       join(home, ".gg", "projects.json"),
-      JSON.stringify({ proj_a: { name: "alpha", path: "/p" } }),
+      JSON.stringify({ proj_a: project("alpha", "/p") }),
     );
     const errors = [
       {
@@ -247,5 +260,61 @@ describe("listAllErrors", () => {
     const out = output();
     expect(out).toContain("/p/src/me.ts:11");
     expect(out).not.toContain(":999");
+  });
+
+  it("sends Authorization: Bearer <secret> on every list request", async () => {
+    mkdirSync(join(home, ".gg"), { recursive: true });
+    writeFileSync(
+      join(home, ".gg", "projects.json"),
+      JSON.stringify({
+        proj_a: { name: "alpha", path: "/p/a", secret: "sk_live_secret_a" },
+      }),
+    );
+    const seen: Array<{ url: string; auth: string | null }> = [];
+    const recorder: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push({
+        url: String(input),
+        auth: new Headers(init?.headers ?? {}).get("authorization"),
+      });
+      return new Response(JSON.stringify({ errors: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await fetchPixelEntries({ homeDir: home, fetchFn: recorder });
+    expect(result.unreachable).toEqual([]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.auth).toBe("Bearer sk_live_secret_a");
+  });
+
+  it("flags projects without a stored secret as unmanaged and skips them", async () => {
+    mkdirSync(join(home, ".gg"), { recursive: true });
+    writeFileSync(
+      join(home, ".gg", "projects.json"),
+      JSON.stringify({
+        proj_legacy: { name: "legacy-app", path: "/p/legacy" }, // no secret
+        proj_new: project("new-app", "/p/new"),
+      }),
+    );
+    const result = await fetchPixelEntries({
+      homeDir: home,
+      fetchFn: fakeFetch({ proj_new: [] }),
+    });
+    expect(result.unmanaged).toEqual(["legacy-app"]);
+    expect(result.hasProjects).toBe(true);
+    expect(result.entries).toEqual([]);
+  });
+
+  it("listAllErrors prints a re-install hint for projects with no secret", async () => {
+    mkdirSync(join(home, ".gg"), { recursive: true });
+    writeFileSync(
+      join(home, ".gg", "projects.json"),
+      JSON.stringify({
+        proj_legacy: { name: "legacy-app", path: "/p/legacy" },
+      }),
+    );
+    await listAllErrors({ homeDir: home, fetchFn: fakeFetch({}) });
+    const out = output();
+    expect(out).toContain("legacy-app");
+    expect(out).toContain("missing bearer secret");
+    expect(out).toContain("ggcoder pixel install");
   });
 });

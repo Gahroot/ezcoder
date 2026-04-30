@@ -39,6 +39,7 @@ export interface ErrorRow {
 interface ProjectMapping {
   name: string;
   path: string;
+  secret?: string;
 }
 
 export type SpawnFn = (
@@ -70,11 +71,11 @@ export async function fixError(errorId: string, opts: FixOptions = {}): Promise<
   const fetchFn = opts.fetchFn ?? fetch;
   const home = opts.homeDir ?? homedir();
 
-  const error = await fetchError(fetchFn, ingestUrl, errorId);
-  const project = lookupProject(home, error.project_id);
+  const owner = await resolveErrorOwner(fetchFn, ingestUrl, errorId, home);
+  const { error, project, secret } = owner;
 
   const branch = `fix/pixel-${error.id}`;
-  await patchError(fetchFn, ingestUrl, error.id, { status: "in_progress", branch });
+  await patchError(fetchFn, ingestUrl, error.id, { status: "in_progress", branch }, secret);
 
   const exitCode = await runAgent({
     cwd: project.path,
@@ -104,7 +105,7 @@ export async function fixError(errorId: string, opts: FixOptions = {}): Promise<
     reason = `Branch ${branch} created with ${observed.commitCount} commit(s) — ready for review`;
   }
 
-  await patchError(fetchFn, ingestUrl, error.id, { status: outcome, branch });
+  await patchError(fetchFn, ingestUrl, error.id, { status: outcome, branch }, secret);
 
   return { errorId: error.id, projectName: project.name, branch, outcome, reason };
 }
@@ -132,8 +133,11 @@ export async function runQueue(opts: QueueOptions = {}): Promise<{
 
   const queue: Array<{ projectName: string; errorId: string }> = [];
   for (const [projectId, project] of Object.entries(projects)) {
+    if (!project.secret) continue; // legacy entry: cannot list, must re-install
     try {
-      const res = await fetchFn(`${ingestUrl}/api/projects/${projectId}/errors?status=open`);
+      const res = await fetchFn(`${ingestUrl}/api/projects/${projectId}/errors?status=open`, {
+        headers: { authorization: `Bearer ${project.secret}` },
+      });
       if (!res.ok) continue;
       const body = (await res.json()) as { errors: Array<{ id: string }> };
       for (const e of body.errors) {
@@ -203,11 +207,11 @@ export async function preparePixelFix(
   const fetchFn = opts.fetchFn ?? fetch;
   const home = opts.homeDir ?? homedir();
 
-  const error = await fetchError(fetchFn, ingestUrl, errorId);
-  const project = lookupProject(home, error.project_id);
+  const owner = await resolveErrorOwner(fetchFn, ingestUrl, errorId, home);
+  const { error, project, secret } = owner;
   const branch = `fix/pixel-${error.id}`;
 
-  await patchError(fetchFn, ingestUrl, error.id, { status: "in_progress", branch });
+  await patchError(fetchFn, ingestUrl, error.id, { status: "in_progress", branch }, secret);
 
   return {
     errorId: error.id,
@@ -230,6 +234,7 @@ export async function finalizePixelFix(
 ): Promise<{ outcome: "awaiting_review" | "failed"; reason: string }> {
   const ingestUrl = (opts.ingestUrl ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
   const fetchFn = opts.fetchFn ?? fetch;
+  const home = opts.homeDir ?? homedir();
   const observed = await observeOutcome(prep.projectPath, prep.branch, opts.spawnFn ?? spawn);
 
   let outcome: "awaiting_review" | "failed";
@@ -248,7 +253,14 @@ export async function finalizePixelFix(
     reason = `Branch ${prep.branch} created with ${observed.commitCount} commit(s) — ready for review`;
   }
 
-  await patchError(fetchFn, ingestUrl, prep.errorId, { status: outcome, branch: prep.branch });
+  const secret = lookupProjectSecret(home, prep.projectId);
+  await patchError(
+    fetchFn,
+    ingestUrl,
+    prep.errorId,
+    { status: outcome, branch: prep.branch },
+    secret,
+  );
   return { outcome, reason };
 }
 
@@ -310,17 +322,49 @@ export function buildAgentPrompt(error: ErrorRow, branch: string, projectDir?: s
   return lines.join("\n");
 }
 
-async function fetchError(
+/**
+ * Walks ~/.gg/projects.json trying each project's bearer secret against
+ * GET /api/errors/:id until one returns 200. Wrong secrets get 403/404 from
+ * the server, so this scan exits as soon as the rightful owner is found.
+ *
+ * Bounded by the number of registered projects on this machine (typically
+ * single digits) so cost is negligible per fix.
+ */
+async function resolveErrorOwner(
   fetchFn: typeof fetch,
   ingestUrl: string,
   errorId: string,
-): Promise<ErrorRow> {
-  const res = await fetchFn(`${ingestUrl}/api/errors/${errorId}`);
-  if (!res.ok) throw new Error(`GET /api/errors/${errorId} failed: ${res.status}`);
-  return (await res.json()) as ErrorRow;
+  home: string,
+): Promise<{ error: ErrorRow; project: ProjectMapping; secret: string }> {
+  const projectsPath = join(home, ".gg", "projects.json");
+  if (!existsSync(projectsPath)) {
+    throw new Error(
+      `No projects mapping at ${projectsPath} — run \`ggcoder pixel install\` in the project first.`,
+    );
+  }
+  const projects = JSON.parse(readFileSync(projectsPath, "utf8")) as Record<string, ProjectMapping>;
+  const ownersWithSecret = Object.entries(projects).filter(([, p]) => Boolean(p.secret));
+  if (ownersWithSecret.length === 0) {
+    throw new Error(
+      "No managed projects on this machine — run `ggcoder pixel install` in the project to refresh management access.",
+    );
+  }
+  for (const [, project] of ownersWithSecret) {
+    const res = await fetchFn(`${ingestUrl}/api/errors/${errorId}`, {
+      headers: { authorization: `Bearer ${project.secret}` },
+    });
+    if (res.ok) {
+      const error = (await res.json()) as ErrorRow;
+      return { error, project, secret: project.secret! };
+    }
+    // 401/403/404 → not this project; keep scanning.
+  }
+  throw new Error(
+    `Error ${errorId} was not found in any registered project. Ensure the project is installed (\`ggcoder pixel install\`).`,
+  );
 }
 
-function lookupProject(home: string, projectId: string): ProjectMapping {
+function lookupProjectSecret(home: string, projectId: string): string {
   const projectsPath = join(home, ".gg", "projects.json");
   if (!existsSync(projectsPath)) {
     throw new Error(
@@ -334,7 +378,12 @@ function lookupProject(home: string, projectId: string): ProjectMapping {
       `No local mapping for project ${projectId} in ${projectsPath}. Run \`ggcoder pixel install\` in the project's directory.`,
     );
   }
-  return project;
+  if (!project.secret) {
+    throw new Error(
+      `Project ${projectId} is missing its bearer secret in ${projectsPath} — re-run \`ggcoder pixel install\` to refresh.`,
+    );
+  }
+  return project.secret;
 }
 
 async function patchError(
@@ -342,10 +391,14 @@ async function patchError(
   ingestUrl: string,
   errorId: string,
   body: { status: string; branch?: string },
+  secret: string,
 ): Promise<void> {
   const res = await fetchFn(`${ingestUrl}/api/errors/${errorId}`, {
     method: "PATCH",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${secret}`,
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PATCH /api/errors/${errorId} failed: ${res.status}`);

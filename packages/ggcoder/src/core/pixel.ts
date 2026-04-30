@@ -7,6 +7,9 @@ import { DEFAULT_INGEST_URL, install } from "@kenkaiiii/gg-pixel";
 interface ProjectMapping {
   name: string;
   path: string;
+  /** Bearer secret for /api/* calls. Missing on legacy entries — those projects
+   *  can't be queried until they're re-installed. */
+  secret?: string;
 }
 
 interface ErrorRow {
@@ -46,6 +49,9 @@ export interface PixelEntry {
 export interface PixelFetchResult {
   entries: PixelEntry[];
   unreachable: string[];
+  /** Project names that exist in projects.json but are missing the bearer
+   *  secret — they need to be re-installed before they can be managed. */
+  unmanaged: string[];
   hasProjects: boolean;
 }
 
@@ -54,27 +60,35 @@ export async function fetchPixelEntries(opts: ListOptions = {}): Promise<PixelFe
   const path = join(home, ".gg", "projects.json");
   const fetchFn = opts.fetchFn ?? fetch;
 
-  if (!existsSync(path)) return { entries: [], unreachable: [], hasProjects: false };
+  if (!existsSync(path)) return { entries: [], unreachable: [], unmanaged: [], hasProjects: false };
 
   let map: Record<string, ProjectMapping>;
   try {
     map = JSON.parse(readFileSync(path, "utf8")) as Record<string, ProjectMapping>;
   } catch {
-    return { entries: [], unreachable: [], hasProjects: false };
+    return { entries: [], unreachable: [], unmanaged: [], hasProjects: false };
   }
 
   const projectIds = Object.keys(map);
-  if (projectIds.length === 0) return { entries: [], unreachable: [], hasProjects: false };
+  if (projectIds.length === 0)
+    return { entries: [], unreachable: [], unmanaged: [], hasProjects: false };
 
   const ingestUrl = (opts.ingestUrl ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
   const entries: PixelEntry[] = [];
   const unreachable: string[] = [];
+  const unmanaged: string[] = [];
 
   for (const id of projectIds) {
     const project = map[id];
     if (!project) continue;
+    if (!project.secret) {
+      unmanaged.push(project.name);
+      continue;
+    }
     try {
-      const res = await fetchFn(`${ingestUrl}/api/projects/${id}/errors`);
+      const res = await fetchFn(`${ingestUrl}/api/projects/${id}/errors`, {
+        headers: { authorization: `Bearer ${project.secret}` },
+      });
       if (!res.ok) {
         unreachable.push(project.name);
         continue;
@@ -127,7 +141,7 @@ export async function fetchPixelEntries(opts: ListOptions = {}): Promise<PixelFe
     sorted.push(...group);
   }
 
-  return { entries: sorted, unreachable, hasProjects: true };
+  return { entries: sorted, unreachable, unmanaged, hasProjects: true };
 }
 
 function deriveLocation(stack: string | null, projectPath?: string): string {
@@ -200,9 +214,20 @@ export async function listAllErrors(opts: ListOptions = {}): Promise<void> {
     if (!project) continue;
     const url = `${ingestUrl}/api/projects/${id}/errors`;
 
+    if (!project.secret) {
+      console.log(
+        chalk.hex("#fbbf24")(
+          `⚠ ${project.name}: missing bearer secret — re-run \`ggcoder pixel install\` to refresh management access`,
+        ),
+      );
+      continue;
+    }
+
     let body: { errors: ErrorRow[] };
     try {
-      const res = await fetchFn(url);
+      const res = await fetchFn(url, {
+        headers: { authorization: `Bearer ${project.secret}` },
+      });
       if (!res.ok) {
         console.log(
           chalk.red(`✗ ${project.name}: failed to fetch (${res.status})`) + chalk.dim(`  ${url}`),

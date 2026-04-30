@@ -4,6 +4,7 @@ export interface ProjectRow {
   id: string;
   name: string;
   key: string;
+  secret: string | null;
   created_at: number;
 }
 
@@ -54,4 +55,5 @@ export interface Db {
 
 export interface AppEnv {
   Bindings: { DB: D1Database };
+  Variables: { project: ProjectRow };
 }

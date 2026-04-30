@@ -1,4 +1,7 @@
 import chalk from "chalk";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { DEFAULT_INGEST_URL } from "@kenkaiiii/gg-pixel";
 import { fetchPixelEntries, type PixelEntry, type PixelFetchResult } from "../core/pixel.js";
 
@@ -36,6 +39,7 @@ export type PixelSelection =
   | { kind: "all" };
 
 interface RenderOptions {
+  /** Override the home directory used to look up `~/.gg/projects.json`. */
   homeDir?: string;
   ingestUrl?: string;
   fetchFn?: typeof fetch;
@@ -132,9 +136,15 @@ export async function renderPixelSelector(
         }
         const ingest = (opts.ingestUrl ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
         const fetchFn = opts.fetchFn ?? fetch;
-        void fetchFn(`${ingest}/api/errors/${entry.errorId}`, { method: "DELETE" }).catch(() => {
-          // Backend may be unreachable; the row will reappear on next fetch.
-        });
+        const secret = readProjectSecret(opts.homeDir, entry.projectId);
+        if (secret) {
+          void fetchFn(`${ingest}/api/errors/${entry.errorId}`, {
+            method: "DELETE",
+            headers: { authorization: `Bearer ${secret}` },
+          }).catch(() => {
+            // Backend may be unreachable; the row will reappear on next fetch.
+          });
+        }
         draw();
         return;
       }
@@ -195,6 +205,17 @@ export function renderScreen(
     lines.push("");
     for (const name of data.unreachable) {
       lines.push(chalk.hex("#ef4444")(`  ✗ ${name}: backend unreachable`));
+    }
+  }
+
+  if (data.unmanaged.length > 0) {
+    lines.push("");
+    for (const name of data.unmanaged) {
+      lines.push(
+        chalk.hex("#fbbf24")(
+          `  ⚠ ${name}: missing bearer secret — re-run \`ggcoder pixel install\``,
+        ),
+      );
     }
   }
 
@@ -424,6 +445,17 @@ function windowEntries(entries: PixelEntry[], selectedIndex: number, maxVisible:
     hiddenAbove: startIdx,
     hiddenBelow: total - (startIdx + maxVisible),
   };
+}
+
+function readProjectSecret(homeDir: string | undefined, projectId: string): string | null {
+  const path = join(homeDir ?? homedir(), ".gg", "projects.json");
+  if (!existsSync(path)) return null;
+  try {
+    const map = JSON.parse(readFileSync(path, "utf8")) as Record<string, { secret?: string }>;
+    return map[projectId]?.secret ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function gradientLine(text: string): string {

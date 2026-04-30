@@ -18,9 +18,15 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-function fakeFetch(response: { id: string; key: string }, status = 201): typeof fetch {
+function fakeFetch(
+  response: { id: string; key: string; secret?: string },
+  status = 201,
+): typeof fetch {
+  // Default a synthetic secret if the test didn't pass one explicitly — keeps
+  // older tests honest without forcing every call site to spell it out.
+  const body = { secret: `sk_live_${response.id}_${"a".repeat(64)}`, ...response };
   return (async () =>
-    new Response(JSON.stringify(response), {
+    new Response(JSON.stringify(body), {
       status,
       headers: { "content-type": "application/json" },
     })) as unknown as typeof fetch;
@@ -41,7 +47,15 @@ describe("install (end-to-end, mocked backend)", () => {
 
       expect(result.projectId).toBe("proj_test");
       expect(result.projectKey).toBe("pk_live_abc");
+      expect(result.projectSecret).toMatch(/^sk_live_/);
       expect(result.projectName).toBe("my-app");
+
+      // Mapping persists the secret so subsequent /api/* calls can authenticate.
+      const mapAfterCreate = JSON.parse(readFileSync(result.projectsJsonPath, "utf8")) as Record<
+        string,
+        { secret?: string }
+      >;
+      expect(mapAfterCreate.proj_test?.secret).toBe(result.projectSecret);
 
       const initContent = readFileSync(result.initFilePath, "utf8");
       expect(initContent).toContain('import { initPixel } from "@kenkaiiii/gg-pixel"');
@@ -54,9 +68,11 @@ describe("install (end-to-end, mocked backend)", () => {
 
       const map = JSON.parse(readFileSync(result.projectsJsonPath, "utf8")) as Record<
         string,
-        { name: string; path: string }
+        { name: string; path: string; secret?: string }
       >;
-      expect(map.proj_test).toEqual({ name: "my-app", path: dir });
+      expect(map.proj_test?.name).toBe("my-app");
+      expect(map.proj_test?.path).toBe(dir);
+      expect(map.proj_test?.secret).toBe(result.projectSecret);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -165,6 +181,13 @@ describe("writeProjectsMapping", () => {
     writeProjectsMapping(path, "proj_a", "alpha", "/path/to/alpha");
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
       proj_a: { name: "alpha", path: "/path/to/alpha" },
+    });
+  });
+  it("includes the secret when provided", () => {
+    const path = join(dir, ".gg", "projects.json");
+    writeProjectsMapping(path, "proj_a", "alpha", "/a", "sk_live_xyz");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
+      proj_a: { name: "alpha", path: "/a", secret: "sk_live_xyz" },
     });
   });
   it("merges with existing entries", () => {
@@ -353,9 +376,7 @@ describe("install — hybrid framework wiring", () => {
       expect(inst).toContain("NEXT_RUNTIME");
       // next.config patched with serverExternalPackages
       expect(existsSync(join(dir, "next.config.ts"))).toBe(true);
-      expect(readFileSync(join(dir, "next.config.ts"), "utf8")).toContain(
-        "serverExternalPackages",
-      );
+      expect(readFileSync(join(dir, "next.config.ts"), "utf8")).toContain("serverExternalPackages");
       // Client init is now a `.tsx` Client Component (avoids window-on-server).
       expect(existsSync(join(dir, "gg-pixel.client.tsx"))).toBe(true);
       const clientFile = readFileSync(join(dir, "gg-pixel.client.tsx"), "utf8");
@@ -502,9 +523,14 @@ describe("install — idempotency", () => {
       let createCalls = 0;
       const countingFetch: typeof fetch = (async () => {
         createCalls++;
-        return new Response(JSON.stringify({ id: "proj_first", key: "pk_live_first" }), {
-          status: 201,
-        });
+        return new Response(
+          JSON.stringify({
+            id: "proj_first",
+            key: "pk_live_first",
+            secret: "sk_live_first",
+          }),
+          { status: 201 },
+        );
       }) as unknown as typeof fetch;
 
       const first = await install({
@@ -549,8 +575,9 @@ describe("install — idempotency", () => {
       const fetchFn: typeof fetch = (async () => {
         const id = callIds[i];
         const key = callKeys[i];
+        const secret = `sk_live_${id}`;
         i++;
-        return new Response(JSON.stringify({ id, key }), { status: 201 });
+        return new Response(JSON.stringify({ id, key, secret }), { status: 201 });
       }) as unknown as typeof fetch;
 
       await install({ cwd: dir, homeDir: home, skipPackageInstall: true, fetchFn });

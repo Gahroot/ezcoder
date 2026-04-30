@@ -24,6 +24,12 @@ export interface InstallOptions {
 export interface InstallResult {
   projectId: string;
   projectKey: string;
+  /**
+   * Per-project bearer secret returned by the server on creation. Stored in
+   * ~/.gg/projects.json and required for every /api/* call (read/list/patch/
+   * delete). Never leaves the user's machine — never inlined into source.
+   */
+  projectSecret: string;
   projectName: string;
   projectKind: ProjectKind;
   initFilePath: string;
@@ -121,10 +127,13 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
 
   const existing = findMappingByPath(projectsJsonPath, nodeRoot);
   const existingKey = readEnvKey(envFilePath, "GG_PIXEL_KEY");
-  let created: { id: string; key: string };
+  let created: CreatedProject;
   let reused = false;
-  if (existing && existingKey) {
-    created = { id: existing.id, key: existingKey };
+  // Reusing requires *all three* — id, publishable key, and the secret —
+  // because the secret is now mandatory for every management call. If any
+  // is missing (e.g. legacy install before secrets existed), mint fresh.
+  if (existing && existing.secret && existingKey) {
+    created = { id: existing.id, key: existingKey, secret: existing.secret };
     reused = true;
   } else {
     created = await createProject(fetchFn, ingestUrl, projectName);
@@ -151,11 +160,12 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
     writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
   }
 
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, nodeRoot);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, nodeRoot, created.secret);
 
   return {
     projectId: created.id,
     projectKey: created.key,
+    projectSecret: created.secret,
     projectName,
     projectKind: kind,
     initFilePath: wired.primaryInitPath,
@@ -170,12 +180,18 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
   };
 }
 
+interface CreatedProject {
+  id: string;
+  key: string;
+  secret: string;
+}
+
 function findMappingByPath(
   projectsJsonPath: string,
   projectRoot: string,
-): { id: string; name: string; path: string } | null {
+): { id: string; name: string; path: string; secret?: string } | null {
   if (!existsSync(projectsJsonPath)) return null;
-  let map: Record<string, { name: string; path: string }>;
+  let map: Record<string, { name: string; path: string; secret?: string }>;
   try {
     map = JSON.parse(readFileSync(projectsJsonPath, "utf8")) as typeof map;
   } catch {
@@ -213,7 +229,7 @@ async function createProject(
   fetchFn: typeof fetch,
   ingestUrl: string,
   name: string,
-): Promise<{ id: string; key: string }> {
+): Promise<CreatedProject> {
   const res = await fetchFn(`${ingestUrl}/api/projects`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -222,9 +238,11 @@ async function createProject(
   if (!res.ok) {
     throw new Error(`POST /api/projects failed: ${res.status} ${await safeText(res)}`);
   }
-  const body = (await res.json()) as { id: string; key: string };
-  if (!body.id || !body.key) throw new Error("response missing id/key");
-  return { id: body.id, key: body.key };
+  const body = (await res.json()) as { id: string; key: string; secret: string };
+  if (!body.id || !body.key || !body.secret) {
+    throw new Error("response missing id/key/secret");
+  }
+  return { id: body.id, key: body.key, secret: body.secret };
 }
 
 async function safeText(r: Response): Promise<string> {
@@ -661,7 +679,10 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   if (childrenIdx === -1) {
     // Couldn't find {children} — write the import only and warn.
     writeFileSync(layoutPath, updated, "utf8");
-    return { kind: "skipped", reason: "added import but couldn't find {children} to render <GGPixelClient />" };
+    return {
+      kind: "skipped",
+      reason: "added import but couldn't find {children} to render <GGPixelClient />",
+    };
   }
   const before = updated.slice(0, childrenIdx);
   const after = updated.slice(childrenIdx);
@@ -706,7 +727,8 @@ function patchNextConfig(projectRoot: string): void {
     return;
   }
   // Inject a fresh `serverExternalPackages` line into the config object.
-  const objStart = /(const\s+\w+\s*:\s*NextConfig\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/;
+  const objStart =
+    /(const\s+\w+\s*:\s*NextConfig\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/;
   const m = objStart.exec(content);
   if (m) {
     const insertAt = m.index + m[0].length;
@@ -1149,7 +1171,9 @@ function injectImport(entryPath: string, initFilePath: string): EntryWiringResul
       /\brequire\s*\(/.test(content) &&
       !/\bimport\s+/.test(content) &&
       !/\bexport\s+/.test(content));
-  const importLine = isCjs ? `require(${JSON.stringify(spec)});` : `import ${JSON.stringify(spec)};`;
+  const importLine = isCjs
+    ? `require(${JSON.stringify(spec)});`
+    : `import ${JSON.stringify(spec)};`;
   const lines = content.split("\n");
   let insertAt = 0;
   if (lines[0]?.startsWith("#!")) insertAt = 1;
@@ -1287,10 +1311,10 @@ async function installGo(ctx: NativeInstallContext): Promise<InstallResult> {
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
   const existingKey = readEnvKey(envFilePath, "GG_PIXEL_KEY");
-  let created: { id: string; key: string };
+  let created: CreatedProject;
   let reused = false;
-  if (existing && existingKey) {
-    created = { id: existing.id, key: existingKey };
+  if (existing && existing.secret && existingKey) {
+    created = { id: existing.id, key: existingKey, secret: existing.secret };
     reused = true;
   } else {
     created = await createProject(fetchFn, ingestUrl, projectName);
@@ -1321,11 +1345,12 @@ func init() {
   );
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, created.secret);
 
   return {
     projectId: created.id,
     projectKey: created.key,
+    projectSecret: created.secret,
     projectName,
     projectKind: "go",
     initFilePath,
@@ -1369,10 +1394,10 @@ async function installRuby(ctx: NativeInstallContext): Promise<InstallResult> {
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
   const existingKey = readEnvKey(envFilePath, "GG_PIXEL_KEY");
-  let created: { id: string; key: string };
+  let created: CreatedProject;
   let reused = false;
-  if (existing && existingKey) {
-    created = { id: existing.id, key: existingKey };
+  if (existing && existing.secret && existingKey) {
+    created = { id: existing.id, key: existingKey, secret: existing.secret };
     reused = true;
   } else {
     created = await createProject(fetchFn, ingestUrl, projectName);
@@ -1394,11 +1419,12 @@ GGPixel.init(
   );
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, created.secret);
 
   return {
     projectId: created.id,
     projectKey: created.key,
+    projectSecret: created.secret,
     projectName,
     projectKind: "ruby",
     initFilePath,
@@ -1466,10 +1492,10 @@ async function installPython(ctx: PythonInstallContext): Promise<InstallResult> 
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
   const existingKey = readEnvKey(envFilePath, "GG_PIXEL_KEY");
-  let created: { id: string; key: string };
+  let created: CreatedProject;
   let reused = false;
-  if (existing && existingKey) {
-    created = { id: existing.id, key: existingKey };
+  if (existing && existing.secret && existingKey) {
+    created = { id: existing.id, key: existingKey, secret: existing.secret };
     reused = true;
   } else {
     created = await createProject(fetchFn, ingestUrl, projectName);
@@ -1482,13 +1508,14 @@ async function installPython(ctx: PythonInstallContext): Promise<InstallResult> 
   writeFileSync(initFilePath, renderPythonInitFile(ingestUrl, created.key), "utf8");
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, created.secret);
 
   const entryWiring = wirePythonEntry(projectRoot, initFilePath);
 
   return {
     projectId: created.id,
     projectKey: created.key,
+    projectSecret: created.secret,
     projectName,
     projectKind: "python",
     initFilePath,
@@ -1639,9 +1666,10 @@ export function writeProjectsMapping(
   projectId: string,
   name: string,
   path: string,
+  secret?: string,
 ): void {
   mkdirSync(dirname(projectsJsonPath), { recursive: true });
-  let map: Record<string, { name: string; path: string }> = {};
+  let map: Record<string, { name: string; path: string; secret?: string }> = {};
   if (existsSync(projectsJsonPath)) {
     try {
       map = JSON.parse(readFileSync(projectsJsonPath, "utf8")) as typeof map;
@@ -1649,6 +1677,8 @@ export function writeProjectsMapping(
       // start fresh on corrupt file
     }
   }
-  map[projectId] = { name, path };
+  const entry: { name: string; path: string; secret?: string } = { name, path };
+  if (secret) entry.secret = secret;
+  map[projectId] = entry;
   writeFileSync(projectsJsonPath, `${JSON.stringify(map, null, 2)}\n`, "utf8");
 }
