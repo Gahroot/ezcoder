@@ -24,6 +24,8 @@ import { createWriteTitleCardTool } from "./write-title-card.js";
 import { createSpeedRampTool } from "./speed-ramp.js";
 import { createKenBurnsTool } from "./ken-burns.js";
 import { createTransitionVideosTool } from "./transition-videos.js";
+import { createGradeSkinTonesTool } from "./grade-skin-tones.js";
+import { createMatchClipColorTool } from "./match-clip-color.js";
 
 /**
  * Tool-wrapper tests — exercise the zod validation + error formatting layer
@@ -366,6 +368,73 @@ describe("ken_burns tool", () => {
       ctx as Parameters<typeof tool.execute>[1],
     );
     expect(r).toMatch(/identical|ffmpeg/);
+  });
+});
+
+describe("grade_skin_tones tool", () => {
+  it("rejects when OPENAI_API_KEY is missing", async () => {
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      const tool = createGradeSkinTonesTool("/tmp");
+      const r = await tool.execute(
+        {
+          referenceVideo: "ref.mp4",
+          referenceAtSec: 0,
+          targetVideo: "tgt.mp4",
+          targetAtSec: 0,
+          output: "graded.mp4",
+        },
+        ctx as Parameters<typeof tool.execute>[1],
+      );
+      expect(r as string).toMatch(/^error:.*(OPENAI_API_KEY|ffmpeg)/);
+    } finally {
+      if (prev !== undefined) process.env.OPENAI_API_KEY = prev;
+    }
+  });
+});
+
+describe("match_clip_color tool", () => {
+  it("rejects when OPENAI_API_KEY is missing", async () => {
+    const prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      const tool = createMatchClipColorTool(new NoneAdapter(), "/tmp");
+      const r = await tool.execute(
+        {
+          referenceVideo: "ref.mp4",
+          referenceAtSec: 0,
+          targetClipId: "x",
+          targetAtSec: 0,
+        },
+        ctx as Parameters<typeof tool.execute>[1],
+      );
+      expect(r as string).toMatch(/^error:.*(OPENAI_API_KEY|ffmpeg)/);
+    } finally {
+      if (prev !== undefined) process.env.OPENAI_API_KEY = prev;
+    }
+  });
+
+  it("surfaces NoneAdapter error when API key is set but no host is attached", async () => {
+    const prev = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-fake-key";
+    try {
+      const tool = createMatchClipColorTool(new NoneAdapter(), "/tmp");
+      const r = await tool.execute(
+        {
+          referenceVideo: "ref.mp4",
+          referenceAtSec: 0,
+          targetClipId: "x",
+          targetAtSec: 0,
+        },
+        ctx as Parameters<typeof tool.execute>[1],
+      );
+      // Either ffmpeg-missing OR NoneAdapter timeline error — both are clean errors.
+      expect(r as string).toMatch(/^error:/);
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = prev;
+    }
   });
 });
 

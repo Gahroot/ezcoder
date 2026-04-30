@@ -14,6 +14,8 @@ import { createClusterTakesTool } from "./cluster-takes.js";
 import { createComposeThumbnailTool } from "./compose-thumbnail.js";
 import { createConcatVideosTool } from "./concat-videos.js";
 import { createColorMatchTool } from "./color-match.js";
+import { createGradeSkinTonesTool } from "./grade-skin-tones.js";
+import { createMatchClipColorTool } from "./match-clip-color.js";
 import { createComposeLayeredTool } from "./compose-layered.js";
 import { createCopyGradeTool } from "./copy-grade.js";
 import { createDetectSpeakerChangesTool } from "./detect-speaker-changes.js";
@@ -135,6 +137,8 @@ export function createEditorTools(opts: CreateEditorToolsOptions): AgentTool[] {
     createSetPrimaryCorrectionTool(host),
     createCopyGradeTool(host),
     createColorMatchTool(cwd),
+    createGradeSkinTonesTool(cwd),
+    createMatchClipColorTool(host, cwd),
 
     // Audio cleanup + loudness (file-only; works on every host)
     createMeasureLoudnessTool(cwd),
@@ -198,6 +202,8 @@ export { createComposeThumbnailTool } from "./compose-thumbnail.js";
 export { createConcatVideosTool } from "./concat-videos.js";
 export { createCrossfadeVideosTool } from "./crossfade-videos.js";
 export { createColorMatchTool } from "./color-match.js";
+export { createGradeSkinTonesTool } from "./grade-skin-tones.js";
+export { createMatchClipColorTool } from "./match-clip-color.js";
 export { createComposeLayeredTool } from "./compose-layered.js";
 export { createCopyGradeTool } from "./copy-grade.js";
 export { createDetectSpeakerChangesTool } from "./detect-speaker-changes.js";

@@ -49,6 +49,8 @@ const EXPECTED_TOOLS = [
   "set_primary_correction",
   "copy_grade",
   "color_match",
+  "grade_skin_tones",
+  "match_clip_color",
   // Audio cleanup + loudness
   "measure_loudness",
   "normalize_loudness",

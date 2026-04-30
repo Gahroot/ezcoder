@@ -9,6 +9,7 @@ const long = readFileSync(resolve(pkgRoot, "src/skills/long-form-content-edit.md
 const short = readFileSync(resolve(pkgRoot, "src/skills/short-form-content-edit.md"), "utf8");
 const chapters = readFileSync(resolve(pkgRoot, "src/skills/chapter-markers.md"), "utf8");
 const keyframing = readFileSync(resolve(pkgRoot, "src/skills/keyframing-and-titles.md"), "utf8");
+const skinTone = readFileSync(resolve(pkgRoot, "src/skills/skin-tone-matching.md"), "utf8");
 
 function esc(s) {
   return s
@@ -43,6 +44,8 @@ const out = [
   "",
   "const KEYFRAMING_AND_TITLES = `" + esc(keyframing) + "`;",
   "",
+  "const SKIN_TONE_MATCHING = `" + esc(skinTone) + "`;",
+  "",
   "export const SKILLS: Record<string, BundledSkill> = {",
   '  "long-form-content-edit": {',
   '    name: "long-form-content-edit",',
@@ -67,6 +70,12 @@ const out = [
   "    description:",
   '      "Recipes for the seven gaps neither Resolve nor Premiere expose via scripting: timeline reordering, multi-track / lane composition, lower-thirds and title cards (via ASS), keyframed opacity / position / volume ramps, audio mixing chains (EQ + comp + gate + de-esser + limiter), speed ramps, Ken-Burns on stills, and named transitions (smash-cut, whip-pan, dip-to-black). Wires reorder_timeline, compose_layered, write_lower_third, write_title_card, mix_audio, speed_ramp, ken_burns, transition_videos.",',
   "    content: KEYFRAMING_AND_TITLES,",
+  "  },",
+  '  "skin-tone-matching": {',
+  '    name: "skin-tone-matching",',
+  "    description:",
+  '      "Recipe for matching faces across clips when host scripting can\'t reach power windows or qualifiers. Two paths: grade_skin_tones (file-only, every host \u2014 bakes a vision-derived colorbalance + selectivecolor + eq grade into a new mp4, pair with replace_clip) and match_clip_color (Resolve only \u2014 derives the same grade as a CDL and pipes it through set_primary_correction, non-baked). Both share one vision pass over a reference frame and a target frame; below confidence 0.4 the grade is unreliable.",',
+  "    content: SKIN_TONE_MATCHING,",
   "  },",
   "};",
   "",

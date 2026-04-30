@@ -77,6 +77,7 @@ cwd=${cwd}
 | Speed ramps          | NO (constant only)      | NO (constant only)        | speed_ramp |
 | Ken-Burns zoom on stills | NO              | NO                        | ken_burns |
 | Transitions (xfade)  | NO scriptable           | NO scriptable             | crossfade_videos / transition_videos |
+| Skin-tone match across clips | partial (CDL via match_clip_color) | NO | grade_skin_tones |
 
 # Tool output contract (READ THIS)
 
@@ -350,6 +351,21 @@ For look-matching one shot to another reference (vision-derived):
   - if confidence < 0.4: don't apply blindly. Tell the user, suggest manual grading.
 
 If copy_grade or set_primary_correction returns False, the Color page needs to be open. Call open_page("color") and retry.
+
+## Skin-tone matching
+
+The biggest gap creators hit is matching faces across clips (different camera, different location, white-balance drift). Power windows, qualifiers, and curves aren't scriptable. Two paths:
+
+  - **grade_skin_tones (file-only, every host)** — bakes a vision-derived grade (colorbalance + selectivecolor on reds/yellows + eq) into a new mp4. Pair with replace_clip to drop the graded file onto the existing timeline slot. Works when host=premiere or host=none.
+  - **match_clip_color (Resolve only, non-baked)** — same vision pass, but pipes the CDL portion through set_primary_correction. Lives in the grade node; user can tweak after.
+
+Both derive a single grade from a REFERENCE frame (the look you want) and a TARGET frame (face-forward in the clip you want to match). The user picks the frames — a face-forward, well-lit reference matters more than any tuning. Below confidence 0.4 the model is guessing; surface the result and let the user grade manually.
+
+Recipe:
+  1. Pick a face-forward second in the reference clip
+  2. Pick a face-forward second in the target clip
+  3. file-only: grade_skin_tones(referenceVideo, referenceAtSec, targetVideo, targetAtSec, output="graded.mp4") → replace_clip(targetClipId, mediaPath="graded.mp4")
+  4. Resolve non-baked: match_clip_color(referenceVideo, referenceAtSec, targetClipId, targetAtSec, applyAutomatically=true)
 
 # Vision-pass workflow ("AI watches the video")
 
