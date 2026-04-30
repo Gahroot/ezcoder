@@ -32,6 +32,10 @@ export interface InstallResult {
   projectSecret: string;
   projectName: string;
   projectKind: ProjectKind;
+  /** Resolved root of the user's project (the dir containing package.json /
+   *  pyproject.toml / go.mod / Gemfile, depending on kind). Needed by the
+   *  verifier so it can spawn a probe child from the right cwd. */
+  projectRoot: string;
   initFilePath: string;
   envFilePath: string;
   projectsJsonPath: string;
@@ -168,6 +172,7 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
     projectSecret: created.secret,
     projectName,
     projectKind: kind,
+    projectRoot: nodeRoot,
     initFilePath: wired.primaryInitPath,
     envFilePath,
     projectsJsonPath,
@@ -1503,6 +1508,7 @@ func init() {
     projectSecret: created.secret,
     projectName,
     projectKind: "go",
+    projectRoot,
     initFilePath,
     envFilePath,
     projectsJsonPath,
@@ -1577,6 +1583,7 @@ GGPixel.init(
     projectSecret: created.secret,
     projectName,
     projectKind: "ruby",
+    projectRoot,
     initFilePath,
     envFilePath,
     projectsJsonPath,
@@ -1668,6 +1675,7 @@ async function installPython(ctx: PythonInstallContext): Promise<InstallResult> 
     projectSecret: created.secret,
     projectName,
     projectKind: "python",
+    projectRoot,
     initFilePath,
     envFilePath,
     projectsJsonPath,

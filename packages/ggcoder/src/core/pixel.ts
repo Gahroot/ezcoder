@@ -2,7 +2,13 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import chalk from "chalk";
-import { DEFAULT_INGEST_URL, install } from "@kenkaiiii/gg-pixel";
+import {
+  DEFAULT_INGEST_URL,
+  install,
+  isInstallProbeFingerprint,
+  verifyInstall,
+  type VerifyOutcome,
+} from "@kenkaiiii/gg-pixel";
 
 interface ProjectMapping {
   name: string;
@@ -96,6 +102,9 @@ export async function fetchPixelEntries(opts: ListOptions = {}): Promise<PixelFe
       const body = (await res.json()) as { errors: ErrorRow[] };
       for (const err of body.errors) {
         if (err.status === "merged") continue;
+        // Hide install-verification probes from the overlay even if the
+        // probe-cleanup DELETE didn't land (network blip, etc.).
+        if (isInstallProbeFingerprint(err.fingerprint)) continue;
         entries.push({
           errorId: err.id,
           projectId: id,
@@ -242,7 +251,9 @@ export async function listAllErrors(opts: ListOptions = {}): Promise<void> {
       continue;
     }
 
-    const errors = body.errors.filter((e) => e.status !== "merged");
+    const errors = body.errors.filter(
+      (e) => e.status !== "merged" && !isInstallProbeFingerprint(e.fingerprint),
+    );
     if (errors.length === 0) {
       console.log(chalk.hex("#4ade80")(`✓ ${project.name}`) + chalk.dim("  no open errors"));
       continue;
@@ -422,4 +433,78 @@ export async function runPixelInstall(opts: InstallCliOptions): Promise<void> {
     console.log(chalk.hex("#fbbf24")(`  ⚠  ${w}`));
   }
   console.log("");
+
+  await runVerification(result, opts.ingestUrl);
+  console.log("");
+}
+
+/**
+ * Fires a synthetic event end-to-end and waits for it to round-trip through
+ * D1. Catches the silent-failure modes that wiring alone can't (stale env,
+ * sandboxed renderer, missing dotenv, broken `node_modules`, etc.).
+ */
+async function runVerification(
+  result: {
+    projectId: string;
+    projectKey: string;
+    projectSecret: string;
+    projectKind: string;
+    projectRoot: string;
+  },
+  ingestUrl: string | undefined,
+): Promise<void> {
+  if (!canVerify(result.projectKind)) {
+    // Non-JS kinds (python/go/ruby) have their own SDKs; verification path
+    // doesn't apply yet. Print a one-line note instead of leaving silence.
+    console.log(chalk.dim("  Verification skipped — not implemented for ") + result.projectKind);
+    return;
+  }
+  console.log(chalk.dim("  Verifying install…"));
+  const ingest = (ingestUrl ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
+  let outcome: VerifyOutcome;
+  try {
+    outcome = await verifyInstall({
+      projectId: result.projectId,
+      projectKey: result.projectKey,
+      projectSecret: result.projectSecret,
+      ingestUrl: ingest,
+      projectRoot: result.projectRoot,
+      // React Native's runtime isn't Node, so don't try to spawn a Node child
+      // there — but still attempt direct ingest so we at least confirm the
+      // server side of the wiring.
+      skipChildProbe: result.projectKind === "react-native",
+    });
+  } catch (err) {
+    console.log(
+      chalk.hex("#ef4444")(
+        `  ✗ Verification crashed: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+    return;
+  }
+
+  if (outcome.kind === "ok") {
+    const via = outcome.method === "child_process" ? "via spawned probe" : "via direct ingest";
+    console.log(
+      chalk.hex("#4ade80")(`  ✓ Pixel verified end-to-end`) +
+        chalk.dim(` (${outcome.latencyMs}ms ${via})`),
+    );
+  } else {
+    console.log(chalk.hex("#ef4444")(`  ✗ Verification failed: ${outcome.reason}`));
+    if (outcome.hint) {
+      console.log(chalk.dim(`    hint: ${outcome.hint}`));
+    }
+    console.log(
+      chalk.dim(
+        `    The install files are written, but no event arrived at the backend. Inspect the project's runtime to see why.`,
+      ),
+    );
+  }
+}
+
+function canVerify(kind: string): boolean {
+  // Python/Go/Ruby SDKs have their own probe paths; not wiring them through
+  // the JS verifier yet. Everything else (browser, node, hybrid frameworks,
+  // electron, even react-native) gets the round-trip check.
+  return kind !== "python" && kind !== "go" && kind !== "ruby";
 }
