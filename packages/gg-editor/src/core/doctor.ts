@@ -32,6 +32,32 @@ export type CheckSeverity = "block" | "required" | "optional" | "info";
 
 export type CheckStatus = "ok" | "missing" | "warn";
 
+/**
+ * Structured install hint. When present, the doctor's interactive flow
+ * can offer to spawn this command after a Y/N confirmation — no copy-
+ * paste, no shell injection (we never run a string through `sh -c`).
+ *
+ * Only attached to checks where the install is a single packaged step
+ * (Homebrew formula, winget id, apt package). Items that need manual
+ * sign-up (API keys), license acceptance (Resolve installer), or
+ * multi-step setup (whisperx + HF_TOKEN) carry a `fix` string instead.
+ */
+export interface InstallableHint {
+  /** Human label shown in the prompt: "Install ffmpeg via Homebrew". */
+  label: string;
+  /** Executable on PATH. */
+  command: string;
+  /** Argument vector — NEVER a shell string. */
+  args: string[];
+  /**
+   * What managed manager this uses. Used by the renderer to decide
+   * whether to show "requires sudo" copy.
+   */
+  manager: "homebrew" | "winget" | "apt" | "pip" | "npm";
+  /** True when the command requires elevated privileges (sudo / admin). */
+  needsSudo?: boolean;
+}
+
 export interface DoctorCheck {
   /** Stable id (also the check key). */
   id: string;
@@ -51,6 +77,12 @@ export interface DoctorCheck {
    * Platform-appropriate (macOS / linux / win32).
    */
   fix?: string;
+  /**
+   * Optional structured install command for items where a single
+   * package-manager invocation does the job. The CLI offers Y/N
+   * confirmation and spawns it directly.
+   */
+  installable?: InstallableHint;
 }
 
 export interface DoctorReport {
@@ -118,6 +150,12 @@ function checkFfmpegProbe(): DoctorCheck {
       "Most tools (transcoding, captions, color grading, silence/filler cuts, transitions, " +
       "audio mixing, GIF/thumbnail generation). ~70% of the toolkit.",
     fix: ok ? undefined : ffmpegInstallHint(),
+    installable: ok
+      ? undefined
+      : buildInstallable({
+          pkg: { darwin: "ffmpeg", linux: "ffmpeg", win32: "Gyan.FFmpeg" },
+          label: "Install ffmpeg",
+        }),
   };
 }
 
@@ -131,6 +169,13 @@ function checkFfprobeProbe(): DoctorCheck {
     detail: ok ? versionLine("ffprobe") : "not on PATH",
     unlocks: "probe_media (fps / duration / codec detection — runs on every input file).",
     fix: ok ? undefined : ffmpegInstallHint(),
+    // ffprobe ships in the same Homebrew/winget/apt package as ffmpeg.
+    installable: ok
+      ? undefined
+      : buildInstallable({
+          pkg: { darwin: "ffmpeg", linux: "ffmpeg", win32: "Gyan.FFmpeg" },
+          label: "Install ffmpeg (includes ffprobe)",
+        }),
   };
 }
 
@@ -205,6 +250,10 @@ function checkPython(): DoctorCheck {
         : platform() === "linux"
           ? "sudo apt install python3   # debian/ubuntu — your distro's package manager otherwise"
           : "winget install Python.Python.3   # or python.org installer",
+    installable: buildInstallable({
+      pkg: { darwin: "python@3.12", linux: "python3", win32: "Python.Python.3" },
+      label: "Install Python 3",
+    }),
   };
 }
 
@@ -294,6 +343,12 @@ function checkWhisperCpp(): DoctorCheck {
       platform() === "darwin"
         ? "brew install whisper-cpp   # then download a model from https://huggingface.co/ggerganov/whisper.cpp"
         : "Build from source: https://github.com/ggml-org/whisper.cpp",
+    // Only Homebrew packages whisper.cpp cleanly. Linux / Windows users
+    // need to build from source — we leave them with the `fix` string.
+    installable: buildInstallable({
+      pkg: { darwin: "whisper-cpp" },
+      label: "Install whisper.cpp (you'll still need to download a model)",
+    }),
   };
 }
 
@@ -338,6 +393,23 @@ function checkWhisperX(): DoctorCheck {
       "pip install whisperx\n" +
       "export HF_TOKEN=hf_...   # https://huggingface.co/settings/tokens\n" +
       "Then accept https://huggingface.co/pyannote/speaker-diarization-3.1 model terms.",
+    // pip install handles the package; HF_TOKEN + license acceptance
+    // remain manual (handled via the `fix` text on the post-install run).
+    installable: hasManager("pip3")
+      ? {
+          label: "Install whisperx (you'll still need HF_TOKEN + accept model terms)",
+          command: "pip3",
+          args: ["install", "--user", "whisperx"],
+          manager: "pip",
+        }
+      : hasManager("pip")
+        ? {
+            label: "Install whisperx (you'll still need HF_TOKEN + accept model terms)",
+            command: "pip",
+            args: ["install", "--user", "whisperx"],
+            manager: "pip",
+          }
+        : undefined,
   };
 }
 
@@ -384,6 +456,67 @@ function ffmpegInstallHint(): string {
     default:
       return "Install ffmpeg from https://ffmpeg.org/download.html";
   }
+}
+
+/**
+ * True when `cmd --version` (or `--help` for managers that don't have
+ * a version flag) exits 0. Cached for the lifetime of the process so we
+ * don't re-spawn the same probe across multiple checks.
+ */
+const _managerCache = new Map<string, boolean>();
+function hasManager(cmd: string): boolean {
+  const cached = _managerCache.get(cmd);
+  if (cached !== undefined) return cached;
+  const r = spawnSync(cmd, ["--version"], { encoding: "utf8" });
+  const ok = r.status === 0;
+  _managerCache.set(cmd, ok);
+  return ok;
+}
+
+/**
+ * Build an InstallableHint for a package whose name matches across the
+ * common managers we support. Returns undefined when no supported
+ * manager is available on this platform — in which case the check just
+ * surfaces a `fix` string instead.
+ */
+function buildInstallable(opts: {
+  pkg: { darwin?: string; linux?: string; win32?: string };
+  label: string;
+}): InstallableHint | undefined {
+  const p = platform();
+  if (p === "darwin" && opts.pkg.darwin && hasManager("brew")) {
+    return {
+      label: opts.label,
+      command: "brew",
+      args: ["install", opts.pkg.darwin],
+      manager: "homebrew",
+    };
+  }
+  if (p === "linux" && opts.pkg.linux && hasManager("apt")) {
+    return {
+      label: opts.label,
+      command: "sudo",
+      args: ["apt", "install", "-y", opts.pkg.linux],
+      manager: "apt",
+      needsSudo: true,
+    };
+  }
+  if (p === "win32" && opts.pkg.win32 && hasManager("winget")) {
+    return {
+      label: opts.label,
+      command: "winget",
+      args: [
+        "install",
+        "--id",
+        opts.pkg.win32,
+        "-e",
+        "--accept-source-agreements",
+        "--accept-package-agreements",
+      ],
+      manager: "winget",
+    };
+  }
+  return undefined;
 }
 
 function isResolveInstalled(): boolean {

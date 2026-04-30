@@ -22,8 +22,16 @@ export type { FfmpegResult, MediaProbe } from "./core/media/ffmpeg.js";
 
 // Doctor / first-run onboarding
 export { isOnboarded, onboardedMarkerPath, runDoctor } from "./core/doctor.js";
-export type { CheckSeverity, CheckStatus, DoctorCheck, DoctorReport } from "./core/doctor.js";
+export type {
+  CheckSeverity,
+  CheckStatus,
+  DoctorCheck,
+  DoctorReport,
+  InstallableHint,
+} from "./core/doctor.js";
 export { renderDoctorReport } from "./core/doctor-render.js";
+export { runDoctorInteractive } from "./core/doctor-runner.js";
+export type { DoctorRunOptions } from "./core/doctor-runner.js";
 
 // System prompt
 export {

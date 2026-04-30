@@ -12,8 +12,8 @@ import {
   runStatus,
   type SupportedAuthProvider,
 } from "./core/auth/index.js";
-import { isOnboarded, onboardedMarkerPath, runDoctor } from "./core/doctor.js";
-import { renderDoctorReport } from "./core/doctor-render.js";
+import { isOnboarded, onboardedMarkerPath } from "./core/doctor.js";
+import { runDoctorInteractive } from "./core/doctor-runner.js";
 import { discoverSkills } from "./core/skills-loader.js";
 import { discoverStyles } from "./core/styles-loader.js";
 import { SKILLS } from "./skills.js";
@@ -54,7 +54,7 @@ USAGE
   ggeditor login     Authenticate
   ggeditor logout    Clear credentials
   ggeditor auth      Show stored credentials
-  ggeditor doctor    Check ffmpeg, host detection, API keys, etc.
+  ggeditor doctor    Walk through environment fixes (--all to view inventory)
 
 Auth lives in ~/.gg/auth.json — the SAME file ggcoder uses, so logging into
 either CLI works for both.
@@ -103,8 +103,9 @@ async function main(): Promise<void> {
     return;
   }
   if (sub === "doctor") {
-    const report = runDoctor();
-    process.stdout.write(renderDoctorReport(report));
+    const all = args.includes("--all") || args.includes("-a");
+    const yes = args.includes("--yes") || args.includes("-y");
+    await runDoctorInteractive({ all, nonInteractive: yes });
     return;
   }
 
@@ -119,11 +120,11 @@ async function main(): Promise<void> {
     fail("ggeditor requires an interactive terminal");
   }
 
-  // First-run onboarding — only when neither the marker nor auth.json
-  // exist. Re-runnable any time via `ggeditor doctor`.
+  // First-run onboarding — only when the marker doesn't exist. Walks
+  // the user through every actionable item, offering Y/N confirms for
+  // anything we know how to install via a package manager.
   if (!isOnboarded()) {
-    const report = runDoctor();
-    process.stdout.write(renderDoctorReport(report, { onboarding: true }));
+    await runDoctorInteractive({ onboarding: true });
     markOnboarded();
   }
 
