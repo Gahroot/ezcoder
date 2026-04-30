@@ -42,6 +42,10 @@ export interface PixelOptions {
   captureConsoleWarnings?: boolean;
   captureUnhandledRejections?: boolean;
   captureUncaughtExceptions?: boolean;
+  /** Capture failed outgoing requests (5xx + thrown). Default: true. */
+  captureNetworkErrors?: boolean;
+  /** Substrings of URLs to skip when capturing network errors. The ingest URL is auto-ignored. */
+  ignoreNetworkUrls?: string[];
 }
 
 export type SinkConfig =

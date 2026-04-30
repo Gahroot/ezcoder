@@ -16,6 +16,10 @@ export interface BrowserPixelOptions {
   captureConsoleWarnings?: boolean;
   captureUnhandledRejections?: boolean;
   captureUncaughtExceptions?: boolean;
+  /** Capture failed outgoing fetch/XHR requests (5xx + network failures). Default: true. */
+  captureNetworkErrors?: boolean;
+  /** Substrings of URLs to skip when capturing network errors. The ingest URL is auto-ignored. */
+  ignoreNetworkUrls?: string[];
 }
 
 let active: BrowserAdapter | null = null;
@@ -24,7 +28,15 @@ export function initPixel(options: BrowserPixelOptions): BrowserAdapter {
   if (active) {
     throw new Error("ez-pixel is already initialized; call closePixel() first");
   }
-  const sink: Sink = options.sink ?? new HttpSink(buildIngestUrl(options.ingestUrl));
+  const ingestFull = buildIngestUrl(options.ingestUrl);
+  const sink: Sink = options.sink ?? new HttpSink(ingestFull);
+  // Auto-ignore the ingest endpoint itself — otherwise reporting a 500
+  // from somewhere else would observe our own POST /ingest and recurse.
+  const ingestOrigin = safeOrigin(ingestFull);
+  const ignoreNetworkUrls = [
+    ...(options.ignoreNetworkUrls ?? []),
+    ...(ingestOrigin ? [ingestOrigin] : []),
+  ];
   active = installBrowserAdapter({
     projectKey: options.projectKey,
     runtime: options.runtime ?? defaultRuntime(),
@@ -33,6 +45,8 @@ export function initPixel(options: BrowserPixelOptions): BrowserAdapter {
     captureConsoleWarnings: options.captureConsoleWarnings ?? false,
     captureUnhandledRejections: options.captureUnhandledRejections ?? true,
     captureUncaughtExceptions: options.captureUncaughtExceptions ?? true,
+    captureNetworkErrors: options.captureNetworkErrors ?? true,
+    ignoreNetworkUrls,
   });
   return active;
 }
@@ -60,6 +74,14 @@ export async function closePixel(): Promise<void> {
 function buildIngestUrl(base?: string): string {
   const url = (base ?? DEFAULT_INGEST_URL).replace(/\/+$/, "");
   return `${url}/ingest`;
+}
+
+function safeOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 
 function defaultRuntime(): string {

@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
+import * as diagnosticsChannel from "node:diagnostics_channel";
 import { parseStack } from "../core/stack.js";
 import { fingerprint } from "../core/fingerprint.js";
 import { captureCodeContext } from "../code-context.js";
 import { EventQueue } from "../core/queue.js";
+import {
+  networkObservationToError,
+  shouldReportNetwork,
+  type NetworkObservation,
+} from "../core/network.js";
 import type { Level, ReportInput, Sink, WireEvent } from "../core/types.js";
 
 export interface NodeAdapterOptions {
@@ -13,6 +19,9 @@ export interface NodeAdapterOptions {
   captureConsoleWarnings: boolean;
   captureUnhandledRejections: boolean;
   captureUncaughtExceptions: boolean;
+  captureNetworkErrors: boolean;
+  /** Substrings of URLs to skip. The ingest URL is auto-ignored. */
+  ignoreNetworkUrls?: string[];
 }
 
 export interface NodeAdapter {
@@ -61,6 +70,15 @@ export function installNodeAdapter(opts: NodeAdapterOptions): NodeAdapter {
 
   if (opts.captureConsoleWarnings) {
     detach.push(patchConsole("warn", (args) => enqueueError(consoleError(args), "warning", false)));
+  }
+
+  if (opts.captureNetworkErrors) {
+    const ignoreUrls = opts.ignoreNetworkUrls ?? [];
+    const onObs = (obs: NetworkObservation) => {
+      if (!shouldReportNetwork(obs)) return;
+      enqueueError(networkObservationToError(obs), "error", false);
+    };
+    detach.push(installUndiciInstrumentation({ onEvent: onObs, ignoreUrls }));
   }
 
   const onBeforeExit = () => {
@@ -130,6 +148,84 @@ function normalize(err: unknown): { type: string; message: string; stackString?:
   } catch {
     return { type: "UnknownError", message: String(err) };
   }
+}
+
+interface UndiciRequestLike {
+  origin?: string;
+  path?: string;
+  method?: string;
+}
+interface UndiciResponseLike {
+  statusCode?: number;
+}
+
+/**
+ * Subscribe to undici's diagnostics_channel events. This is the canonical
+ * Node hook used by Sentry, DataDog, NewRelic, AWS Powertools, and Node's
+ * own internal inspector — and crucially, it covers BOTH `globalThis.fetch`
+ * (built on undici since Node 18) and any library that uses undici clients
+ * directly. Patching `globalThis.fetch` would double-count.
+ */
+function installUndiciInstrumentation(opts: {
+  onEvent: (obs: NetworkObservation) => void;
+  ignoreUrls: string[];
+}): () => void {
+  const requests = new WeakMap<object, { url: string; method: string; start: number }>();
+
+  const onCreate = (msg: unknown): void => {
+    const m = msg as { request?: UndiciRequestLike };
+    const r = m.request;
+    if (!r || typeof r !== "object") return;
+    const url = `${r.origin ?? ""}${r.path ?? ""}`;
+    if (
+      opts.ignoreUrls.length > 0 &&
+      opts.ignoreUrls.some((s) => url.toLowerCase().includes(s.toLowerCase()))
+    ) {
+      return;
+    }
+    requests.set(r as object, { url, method: r.method ?? "GET", start: Date.now() });
+  };
+
+  const onHeaders = (msg: unknown): void => {
+    const m = msg as { request?: UndiciRequestLike; response?: UndiciResponseLike };
+    if (!m.request) return;
+    const meta = requests.get(m.request as object);
+    if (!meta) return;
+    const status = m.response?.statusCode ?? 0;
+    opts.onEvent({
+      url: meta.url,
+      method: meta.method,
+      status,
+      duration_ms: Date.now() - meta.start,
+    });
+    requests.delete(m.request as object);
+  };
+
+  const onError = (msg: unknown): void => {
+    const m = msg as { request?: UndiciRequestLike; error?: unknown };
+    if (!m.request) return;
+    const meta = requests.get(m.request as object);
+    if (!meta) return;
+    const error = m.error instanceof Error ? m.error : new Error(String(m.error));
+    opts.onEvent({
+      url: meta.url,
+      method: meta.method,
+      status: 0,
+      duration_ms: Date.now() - meta.start,
+      error,
+    });
+    requests.delete(m.request as object);
+  };
+
+  diagnosticsChannel.subscribe("undici:request:create", onCreate);
+  diagnosticsChannel.subscribe("undici:request:headers", onHeaders);
+  diagnosticsChannel.subscribe("undici:request:error", onError);
+
+  return () => {
+    diagnosticsChannel.unsubscribe("undici:request:create", onCreate);
+    diagnosticsChannel.unsubscribe("undici:request:headers", onHeaders);
+    diagnosticsChannel.unsubscribe("undici:request:error", onError);
+  };
 }
 
 function consoleError(args: unknown[]): unknown {

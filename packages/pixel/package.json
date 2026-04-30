@@ -19,6 +19,10 @@
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js"
     },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
     "./deno": {
       "types": "./dist/deno.d.ts",
       "import": "./dist/deno.js"
@@ -45,9 +49,19 @@
   "dependencies": {
     "better-sqlite3": "^11.7.0"
   },
+  "peerDependencies": {
+    "react": ">=16.8.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
   },

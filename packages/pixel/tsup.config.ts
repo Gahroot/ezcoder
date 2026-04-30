@@ -25,6 +25,16 @@ export default defineConfig([
     target: "es2020",
   },
   {
+    entry: ["src/react.tsx"],
+    format: ["esm"],
+    dts: true,
+    sourcemap: true,
+    clean: false,
+    platform: "browser",
+    target: "es2020",
+    external: ["react", "@prestyj/pixel/browser"],
+  },
+  {
     entry: { "browser.iife": "src/browser.iife.ts" },
     format: ["iife"],
     globalName: "GGPixel",

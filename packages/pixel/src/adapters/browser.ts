@@ -1,6 +1,12 @@
 import { parseBrowserStack } from "../core/stack-web.js";
 import { fingerprintWeb } from "../core/fingerprint-web.js";
 import { EventQueue } from "../core/queue.js";
+import {
+  installFetchInstrumentation,
+  installXhrInstrumentation,
+  networkObservationToError,
+  shouldReportNetwork,
+} from "../core/network.js";
 import type { Level, ReportInput, Sink, WireEvent } from "../core/types.js";
 
 declare global {
@@ -26,6 +32,9 @@ export interface BrowserAdapterOptions {
   captureConsoleWarnings: boolean;
   captureUnhandledRejections: boolean;
   captureUncaughtExceptions: boolean;
+  captureNetworkErrors: boolean;
+  /** Substrings of URLs to ignore when capturing network errors. The ingest URL is added automatically. */
+  ignoreNetworkUrls?: string[];
 }
 
 export interface BrowserAdapter {
@@ -102,6 +111,39 @@ export function installBrowserAdapter(opts: BrowserAdapterOptions): BrowserAdapt
 
   if (opts.captureConsoleWarnings) {
     detach.push(patchConsole("warn", (args) => enqueueError(consoleError(args), "warning", false)));
+  }
+
+  if (opts.captureNetworkErrors) {
+    const ignoreUrls = opts.ignoreNetworkUrls ?? [];
+    const onObs = (obs: Parameters<typeof shouldReportNetwork>[0]) => {
+      if (!shouldReportNetwork(obs)) return;
+      enqueueError(networkObservationToError(obs), "error", false);
+    };
+    detach.push(installFetchInstrumentation({ onEvent: onObs, ignoreUrls }));
+    detach.push(installXhrInstrumentation({ onEvent: onObs, ignoreUrls }));
+  }
+
+  // Flush remaining buffered events when the page becomes hidden. This is
+  // the same pattern Sentry uses (browser/src/client.ts) and the only
+  // reliable signal for "tab is going away" — `unload` doesn't fire on
+  // mobile Safari and `beforeunload` was retired for back/forward cache.
+  // We listen for both `visibilitychange` (modern) and `pagehide` (Safari
+  // <14.4 fallback). The HttpSink already sets `keepalive: true`, which
+  // lets a single in-flight request survive; this catches the buffered
+  // tail.
+  if (typeof document !== "undefined") {
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") void queue.flush();
+    };
+    const onPageHide = () => {
+      void queue.flush();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+    detach.push(() => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
+    });
   }
 
   return {

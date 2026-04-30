@@ -10,6 +10,12 @@ export function initPixel(options: PixelOptions): NodeAdapter {
     throw new Error("ez-pixel is already initialized; call closePixel() first");
   }
   const sink = buildSink(options.sink);
+  // Auto-ignore the ingest URL — otherwise our own POST /ingest would be
+  // observed by undici diagnostics_channel and trigger recursion.
+  const autoIgnore = options.sink.kind === "http" ? [safeOrigin(options.sink.ingestUrl)] : [];
+  const ignoreNetworkUrls = [...(options.ignoreNetworkUrls ?? []), ...autoIgnore].filter(
+    (s): s is string => typeof s === "string",
+  );
   active = installNodeAdapter({
     projectKey: options.projectKey,
     runtime: options.runtime ?? defaultRuntime(),
@@ -18,8 +24,18 @@ export function initPixel(options: PixelOptions): NodeAdapter {
     captureConsoleWarnings: options.captureConsoleWarnings ?? false,
     captureUnhandledRejections: options.captureUnhandledRejections ?? true,
     captureUncaughtExceptions: options.captureUncaughtExceptions ?? true,
+    captureNetworkErrors: options.captureNetworkErrors ?? true,
+    ignoreNetworkUrls,
   });
   return active;
+}
+
+function safeOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 
 export function reportPixel(input: ReportInput): void {
