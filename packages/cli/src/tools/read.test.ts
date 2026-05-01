@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { createReadTool, BINARY_EXTENSIONS } from "./read.js";
+import type { ReadTracker } from "./read-tracker.js";
 
 describe("createReadTool", () => {
   let tmpDir: string;
@@ -72,35 +73,61 @@ describe("createReadTool", () => {
     expect(result).toBe("     2\tb\n     3\tc");
   });
 
-  it("detects binary files and returns size notice", async () => {
-    const filePath = path.join(tmpDir, "image.png");
+  it("returns an image content block for image files", async () => {
+    // Minimal valid 1×1 PNG — sharp needs a real decodable image to succeed.
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=";
+    const filePath = path.join(tmpDir, "pixel.png");
+    await fs.writeFile(filePath, Buffer.from(pngBase64, "base64"));
+
+    const tool = createReadTool(tmpDir);
+    const result = await tool.execute({ file_path: filePath }, ctx("test-img"));
+
+    expect(typeof result).not.toBe("string");
+    expect(result).toMatchObject({
+      content: [
+        { type: "text", text: expect.stringContaining("Read image file") },
+        { type: "image", mediaType: "image/png", data: expect.any(String) },
+      ],
+    });
+  });
+
+  it("detects non-image binary files and returns size notice", async () => {
+    const filePath = path.join(tmpDir, "archive.zip");
     const buf = Buffer.alloc(128, 0xff);
     await fs.writeFile(filePath, buf);
 
     const tool = createReadTool(tmpDir);
     const result = await tool.execute({ file_path: filePath }, ctx("test-6"));
 
-    expect(result).toBe(`Binary file: ${filePath} (.png, 128 bytes)`);
+    expect(result).toBe(`Binary file: ${filePath} (.zip, 128 bytes)`);
   });
 
-  it("adds resolved path to readFiles set", async () => {
+  it("records the read in the tracker with mtime + hash", async () => {
     const filePath = path.join(tmpDir, "tracked.txt");
     await fs.writeFile(filePath, "content");
 
-    const readFiles = new Set<string>();
+    const readFiles: ReadTracker = new Map();
     const tool = createReadTool(tmpDir, readFiles);
     await tool.execute({ file_path: filePath }, ctx("test-7"));
 
-    expect(readFiles.has(filePath)).toBe(true);
-    expect(readFiles.size).toBe(1);
+    const entry = readFiles.get(filePath);
+    expect(entry).toBeDefined();
+    expect(typeof entry?.mtimeMs).toBe("number");
+    expect(entry?.hash).toMatch(/^[a-f0-9]{64}$/);
   });
 });
 
 describe("BINARY_EXTENSIONS", () => {
   it("contains expected entries", () => {
-    expect(BINARY_EXTENSIONS.has(".png")).toBe(true);
     expect(BINARY_EXTENSIONS.has(".pdf")).toBe(true);
     expect(BINARY_EXTENSIONS.has(".exe")).toBe(true);
     expect(BINARY_EXTENSIONS.has(".wasm")).toBe(true);
+  });
+
+  it("no longer contains image extensions (they are handled as image attachments)", () => {
+    expect(BINARY_EXTENSIONS.has(".png")).toBe(false);
+    expect(BINARY_EXTENSIONS.has(".jpg")).toBe(false);
+    expect(BINARY_EXTENSIONS.has(".webp")).toBe(false);
   });
 });

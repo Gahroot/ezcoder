@@ -1,29 +1,33 @@
 import os from "node:os";
 import type {
   ContentPart,
+  ImageContent,
   Message,
+  StreamEvent,
   StreamOptions,
   StreamResponse,
+  TextContent,
   Tool,
   ToolCall,
+  ToolResultContent,
 } from "../types.js";
 import { ProviderError } from "../errors.js";
 import { StreamResult } from "../utils/event-stream.js";
 import { zodToJsonSchema } from "../utils/zod-to-json-schema.js";
+import { downgradeUnsupportedImages } from "./transform.js";
 
 const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
 
 export function streamOpenAICodex(options: StreamOptions): StreamResult {
-  const result = new StreamResult();
-  runStream(options, result).catch((err) => result.abort(toError(err)));
-  return result;
+  return new StreamResult(runStream(options));
 }
 
-async function runStream(options: StreamOptions, result: StreamResult): Promise<void> {
+async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, StreamResponse> {
   const baseUrl = (options.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
   const url = `${baseUrl}/codex/responses`;
 
-  const { system, input } = toCodexInput(options.messages);
+  const downgraded = downgradeUnsupportedImages(options.messages, options.supportsImages);
+  const { system, input } = toCodexInput(downgraded, { supportsImages: options.supportsImages });
 
   const body: Record<string, unknown> = {
     model: options.model,
@@ -81,6 +85,13 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
         `Ensure your account has an active subscription at https://chatgpt.com/settings`;
     }
 
+    // Friendly hint for codex-mini-latest requiring Pro/Max subscription
+    if (response.status === 404 && text.includes("does not exist")) {
+      message +=
+        `\n\nHint: codex-mini-latest requires an OpenAI Pro ($200/mo) or Max subscription. ` +
+        `GPT-5.4 and GPT-5.4 Mini work with any active ChatGPT plan.`;
+    }
+
     throw new ProviderError("openai", message, {
       statusCode: response.status,
     });
@@ -115,13 +126,13 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
     if (type === "response.output_text.delta") {
       const delta = event.delta as string;
       textAccum += delta;
-      result.push({ type: "text_delta", text: delta });
+      yield { type: "text_delta", text: delta };
     }
 
     // Thinking delta
     if (type === "response.reasoning_summary_text.delta") {
       const delta = event.delta as string;
-      result.push({ type: "thinking_delta", text: delta });
+      yield { type: "thinking_delta", text: delta };
     }
 
     // Tool call started
@@ -144,12 +155,12 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
       for (const [key, tc] of toolCalls) {
         if (key.endsWith(`|${itemId}`)) {
           tc.argsJson += delta;
-          result.push({
+          yield {
             type: "toolcall_delta",
             id: tc.id,
             name: tc.name,
             argsJson: delta,
-          });
+          };
           break;
         }
       }
@@ -182,12 +193,12 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
           } catch {
             /* malformed JSON */
           }
-          result.push({
+          yield {
             type: "toolcall_done",
             id: tc.id,
             name: tc.name,
             args,
-          });
+          };
         }
       }
     }
@@ -236,8 +247,8 @@ async function runStream(options: StreamOptions, result: StreamResult): Promise<
     usage: { inputTokens, outputTokens },
   };
 
-  result.push({ type: "done", stopReason });
-  result.complete(streamResponse);
+  yield { type: "done", stopReason };
+  return streamResponse;
 }
 
 // ── SSE Parser ─────────────────────────────────────────────
@@ -298,7 +309,18 @@ function remapCodexId(id: string, idMap: Map<string, string>): string {
   return mapped;
 }
 
-function toCodexInput(messages: Message[]): { system: string | undefined; input: unknown[] } {
+function codexToolResultText(content: ToolResultContent): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((b): b is TextContent => b.type === "text")
+    .map((b) => b.text)
+    .join("\n");
+}
+
+function toCodexInput(
+  messages: Message[],
+  options?: { supportsImages?: boolean },
+): { system: string | undefined; input: unknown[] } {
   let system: string | undefined;
   const input: unknown[] = [];
   const idMap = new Map<string, string>();
@@ -362,14 +384,35 @@ function toCodexInput(messages: Message[]): { system: string | undefined; input:
     }
 
     if (msg.role === "tool") {
+      const toolImages: ImageContent[] = [];
       for (const result of msg.content) {
         const [callId] = result.toolCallId.includes("|")
           ? result.toolCallId.split("|", 2)
           : [result.toolCallId];
+        const text = codexToolResultText(result.content);
         input.push({
           type: "function_call_output",
           call_id: remapCodexId(callId, idMap),
-          output: result.content,
+          output: text.length > 0 ? text : "(see attached image)",
+        });
+        if (options?.supportsImages !== false && Array.isArray(result.content)) {
+          for (const block of result.content) {
+            if (block.type === "image") toolImages.push(block);
+          }
+        }
+      }
+      if (toolImages.length > 0) {
+        input.push({
+          type: "message",
+          role: "user",
+          content: [
+            { type: "input_text", text: "Attached image(s) from tool result:" },
+            ...toolImages.map((img) => ({
+              type: "input_image",
+              detail: "auto",
+              image_url: `data:${img.mediaType};base64,${img.data}`,
+            })),
+          ],
         });
       }
     }
@@ -388,14 +431,4 @@ function toCodexTools(tools: Tool[]): unknown[] {
     parameters: tool.rawInputSchema ?? zodToJsonSchema(tool.parameters),
     strict: null,
   }));
-}
-
-// ── Error Handling ─────────────────────────────────────────
-
-function toError(err: unknown): ProviderError {
-  if (err instanceof ProviderError) return err;
-  if (err instanceof Error) {
-    return new ProviderError("openai", err.message, { cause: err });
-  }
-  return new ProviderError("openai", String(err));
 }

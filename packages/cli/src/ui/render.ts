@@ -7,10 +7,12 @@ import type { MCPClientManager } from "../core/mcp/index.js";
 import type { AuthStorage } from "../core/auth-storage.js";
 import type { Skill } from "../core/skills.js";
 import { App, type CompletedItem } from "./App.js";
-import { ThemeContext, loadTheme } from "./theme/theme.js";
+import { ThemeContext, SetThemeContext, loadTheme, type ThemeName } from "./theme/theme.js";
 import { detectTheme } from "./theme/detect-theme.js";
 import { AnimationProvider } from "./components/AnimationContext.js";
 import { TerminalSizeProvider } from "./hooks/useTerminalSize.js";
+// Note: DEC 2026 synchronized output (BSU/ESU) is handled natively by Ink 6.8+
+// via its built-in write-synchronized.ts module — no manual wrapping needed.
 
 export interface RenderAppConfig {
   provider: Provider;
@@ -25,12 +27,15 @@ export interface RenderAppConfig {
   accountId?: string;
   cwd: string;
   version: string;
-  theme?: "auto" | "dark" | "light";
+  theme?: "auto" | ThemeName;
   showThinking?: boolean;
   showTokenUsage?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
-  credentialsByProvider?: Record<string, { accessToken: string; accountId?: string }>;
+  credentialsByProvider?: Record<
+    string,
+    { accessToken: string; accountId?: string; baseUrl?: string }
+  >;
   initialHistory?: CompletedItem[];
   sessionsDir?: string;
   sessionPath?: string;
@@ -42,20 +47,39 @@ export interface RenderAppConfig {
   onEnterPlanRef?: { current: (reason?: string) => void };
   onExitPlanRef?: { current: (planPath: string) => Promise<string> };
   skills?: Skill[];
+  initialOverlay?: "pixel";
+  rebuildToolsForCwd?: (cwd: string) => AgentTool[];
+}
+
+/** Stateful theme provider — enables runtime theme switching via useSetTheme(). */
+function ThemeProvider({
+  initial,
+  children,
+}: React.PropsWithChildren<{
+  initial: ThemeName;
+}>) {
+  const [themeName, setThemeName] = React.useState(initial);
+  const theme = React.useMemo(() => loadTheme(themeName), [themeName]);
+  const setTheme = React.useCallback((name: ThemeName) => setThemeName(name), []);
+
+  return React.createElement(
+    SetThemeContext.Provider,
+    { value: setTheme },
+    React.createElement(ThemeContext.Provider, { value: theme }, children),
+  );
 }
 
 export async function renderApp(config: RenderAppConfig): Promise<void> {
   const themeSetting = config.theme ?? "auto";
   const resolvedTheme = themeSetting === "auto" ? await detectTheme() : themeSetting;
-  const theme = loadTheme(resolvedTheme);
 
   // Clear screen + scrollback so old commands don't appear above the TUI
   process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
 
-  const { waitUntilExit, clear } = render(
+  const { waitUntilExit } = render(
     React.createElement(
-      ThemeContext.Provider,
-      { value: theme },
+      ThemeProvider,
+      { initial: resolvedTheme },
       React.createElement(
         TerminalSizeProvider,
         null,
@@ -91,6 +115,8 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             onEnterPlanRef: config.onEnterPlanRef,
             onExitPlanRef: config.onExitPlanRef,
             skills: config.skills,
+            initialOverlay: config.initialOverlay,
+            rebuildToolsForCwd: config.rebuildToolsForCwd,
           }),
         ),
       ),
@@ -111,23 +137,9 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     },
   );
 
-  // Resize handling: debounce Ink's clear() so it only fires once after the
-  // user finishes dragging.  Previously clear() fired on every resize event
-  // (many per drag), causing Ink to lose its line tracking and re-render the
-  // live area at new positions — leaving ghost/duplicate copies in scrollback.
-  // The React-side useTerminalSize hook handles screen clearing and Static
-  // remount via its own 300ms debounce + resizeKey bump.
-  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-  const onResize = () => {
-    if (resizeTimer) clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      clear();
-    }, 300);
-  };
-  process.stdout.on("resize", onResize);
-
+  // Resize handling lives entirely in useTerminalSize: it clears the screen,
+  // bumps resizeKey to remount <Static>, and Ink's own internal resized()
+  // handler (ink/build/ink.js) recalculates layout and re-renders. A second
+  // debounced clear() here was racing with both, leaving partial output.
   await waitUntilExit();
-
-  process.stdout.off("resize", onResize);
-  if (resizeTimer) clearTimeout(resizeTimer);
 }

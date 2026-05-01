@@ -9,6 +9,7 @@ import { createGrepTool } from "./grep.js";
 import { createLsTool } from "./ls.js";
 import { createSubAgentTool } from "./subagent.js";
 import { createWebFetchTool } from "./web-fetch.js";
+import { createWebSearchTool } from "./web-search.js";
 import { createTaskOutputTool } from "./task-output.js";
 import { createTaskStopTool } from "./task-stop.js";
 import { createTasksTool } from "./tasks.js";
@@ -16,6 +17,7 @@ import { createSkillTool } from "./skill.js";
 import { createEnterPlanTool } from "./enter-plan.js";
 import { createExitPlanTool } from "./exit-plan.js";
 import { localOperations, type ToolOperations } from "./operations.js";
+import type { ReadTracker } from "./read-tracker.js";
 import type { AgentDefinition } from "../core/agents.js";
 import type { Skill } from "../core/skills.js";
 
@@ -40,7 +42,7 @@ export interface CreateToolsResult {
 }
 
 export function createTools(cwd: string, opts?: CreateToolsOptions): CreateToolsResult {
-  const readFiles = new Set<string>();
+  const readFiles: ReadTracker = new Map();
   const processManager = new ProcessManager();
   const ops = opts?.operations ?? localOperations;
   const planModeRef = opts?.planModeRef;
@@ -58,6 +60,11 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
     createTaskStopTool(processManager),
     createTasksTool(cwd),
   ];
+
+  // Add web search tool for providers without reliable native web search
+  if (opts?.provider && opts.provider !== "anthropic") {
+    tools.push(createWebSearchTool());
+  }
 
   if (opts?.agents && opts.agents.length > 0 && opts.provider && opts.model) {
     tools.push(createSubAgentTool(cwd, opts.agents, opts.provider, opts.model, planModeRef));
@@ -86,6 +93,7 @@ export { createFindTool } from "./find.js";
 export { createGrepTool } from "./grep.js";
 export { createLsTool } from "./ls.js";
 export { createWebFetchTool } from "./web-fetch.js";
+export { createWebSearchTool } from "./web-search.js";
 export { createTaskOutputTool } from "./task-output.js";
 export { createTaskStopTool } from "./task-stop.js";
 export { createTasksTool } from "./tasks.js";

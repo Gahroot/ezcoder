@@ -8,25 +8,25 @@ import { PARTIAL_BLOCKS, LIGHT_SHADE } from "../constants/figures.js";
 interface FooterProps {
   model: string;
   tokensIn: number;
-  linesAdded?: number;
-  linesRemoved?: number;
   cwd: string;
   gitBranch?: string | null;
   thinkingEnabled?: boolean;
   planMode?: boolean;
+  exitPending?: boolean;
 }
 
 // Model ID → short display name
 const MODEL_SHORT_NAMES: Record<string, string> = {
-  "claude-opus-4-6": "Opus",
+  "claude-opus-4-7": "Opus",
   "claude-sonnet-4-6": "Sonnet",
   "claude-haiku-4-5": "Haiku",
   "claude-haiku-4-5-20251001": "Haiku",
-  "gpt-4.1": "GPT-4.1",
-  "gpt-4.1-mini": "GPT-4.1 Mini",
-  "gpt-4.1-nano": "GPT-4.1 Nano",
-  o3: "o3",
-  "o4-mini": "o4-mini",
+  "gpt-5.5": "GPT-5.5",
+  "gpt-5.5-pro": "GPT-5.5 Pro",
+  "gpt-5.4": "GPT-5.4",
+  "gpt-5.4-mini": "GPT-5.4 Mini",
+  "gpt-5.3-codex": "GPT-5.3 Codex",
+  "codex-mini-latest": "Codex Mini",
 };
 
 function getShortModelName(model: string): string {
@@ -48,12 +48,11 @@ function getContextColor(pct: number, theme: ReturnType<typeof useTheme>): strin
 export function Footer({
   model,
   tokensIn,
-  linesAdded = 0,
-  linesRemoved = 0,
   cwd,
   gitBranch,
   thinkingEnabled,
   planMode,
+  exitPending,
 }: FooterProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
@@ -100,8 +99,6 @@ export function Footer({
   const planText = planMode ? "Plan on" : "Plan off";
   const thinkingText = thinkingEnabled ? "Thinking on" : "Thinking off";
 
-  const hasLines = linesAdded > 0 || linesRemoved > 0;
-
   // Calculate whether everything fits on one line
   const leftLen = displayPath.length + 2 + (gitBranch ? gitBranch.length + 5 : 0);
   const rightLen =
@@ -111,7 +108,6 @@ export function Footer({
     1 +
     3 +
     modelName.length +
-    (hasLines ? 3 + String(linesAdded).length + 2 + String(linesRemoved).length : 0) +
     3 +
     planText.length +
     3 +
@@ -134,20 +130,20 @@ export function Footer({
       <Text color={theme.primary} bold>
         {modelName}
       </Text>
-      {hasLines && (
-        <>
-          {sep}
-          <Text color={theme.success}>+{linesAdded}</Text>
-          <Text color={theme.textDim}>/</Text>
-          <Text color={theme.error}>-{linesRemoved}</Text>
-        </>
-      )}
       {sep}
       <Text color={planMode ? theme.planPrimary : theme.textDim}>{planText}</Text>
       {sep}
       <Text color={thinkingEnabled ? theme.accent : theme.textDim}>{thinkingText}</Text>
     </>
   );
+
+  if (exitPending) {
+    return (
+      <Box paddingLeft={1} paddingRight={1} width={columns}>
+        <Text color={theme.warning}>Press Ctrl+C again to exit</Text>
+      </Box>
+    );
+  }
 
   if (fitsOnOneLine) {
     return (

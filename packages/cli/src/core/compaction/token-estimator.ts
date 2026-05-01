@@ -18,15 +18,22 @@ const MODEL_FAMILY_RATIOS: Record<string, number> = {
   // Moonshot/Kimi: ~2.8 chars/token (multilingual tokenizer)
   kimi: 2.8,
   moonshot: 2.8,
+  // MiniMax: ~3.2 chars/token (Anthropic-compatible tokenizer)
+  minimax: 3.2,
+  // Xiaomi MiMo: ~3.7 chars/token (OpenAI-compatible tokenizer)
+  mimo: 3.7,
 };
 
 /** Default ratio when model family is unknown */
 const DEFAULT_CHARS_PER_TOKEN = 3.5;
 
 const PER_MESSAGE_OVERHEAD = 4; // tokens
+const _MAX_CACHE_SIZE = 1000;
 
 /** Active model name, set via setEstimatorModel(). Used to select the right ratio. */
 let activeModel = "";
+
+const _tokenCacheKeys = new Set<Message>();
 
 /**
  * Set the active model name for token estimation.
@@ -64,7 +71,18 @@ export function estimateMessageTokens(message: Message): number {
         tokens += estimateTokens(JSON.stringify(tc.args));
       } else if ("type" in part && part.type === "tool_result") {
         const tr = part as unknown as ToolResult;
-        tokens += estimateTokens(tr.content);
+        if (typeof tr.content === "string") {
+          tokens += estimateTokens(tr.content);
+        } else {
+          for (const block of tr.content) {
+            if (block.type === "text") {
+              tokens += estimateTokens(block.text);
+            } else {
+              // Image: estimate ~1500 tokens per image (Anthropic rough mean)
+              tokens += 1500;
+            }
+          }
+        }
       }
     }
   }

@@ -2,10 +2,23 @@ node_modules/
 dist/
 *.tgz
 
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Cloudflare wrangler local state
+.wrangler/
+
 # Auth & secrets
 .env
 .env.*
 ~/.ezcoder/
+.ezcoder/
+
+# Scratch / ad-hoc test files
+test_*.mjs
+test_*.js
 
 # OS
 .DS_Store

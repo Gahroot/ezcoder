@@ -53,7 +53,7 @@ const ENV_ALLOWLIST = new Set([
 ]);
 
 function getSafeEnv(): Record<string, string> {
-  const env: Record<string, string> = { TERM: "dumb" };
+  const env: Record<string, string> = { TERM: "dumb", EZ_CODER: "true" };
   for (const key of ENV_ALLOWLIST) {
     if (process.env[key]) env[key] = process.env[key]!;
   }
@@ -128,10 +128,18 @@ export function createBashTool(
           totalBytes += data.length;
           if (totalBytes > MAX_OUTPUT_BYTES) {
             outputCapped = true;
-            // Keep what we have — it'll be truncated by truncateTail anyway
             return;
           }
           chunks.push(data);
+
+          // Stream progress to UI for live output display
+          if (context.onUpdate) {
+            context.onUpdate({
+              type: "bash_progress",
+              output: data.toString("utf-8"),
+              totalBytes,
+            });
+          }
         };
         child.stdout?.on("data", onData);
         child.stderr?.on("data", onData);

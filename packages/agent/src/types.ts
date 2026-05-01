@@ -5,6 +5,7 @@ import type {
   Message,
   ServerToolDefinition,
   StopReason,
+  ToolResultContent,
   Usage,
   StreamOptions,
 } from "@prestyj/ai";
@@ -12,7 +13,7 @@ import type {
 // ── Tool Results ────────────────────────────────────────────
 
 export interface StructuredToolResult {
-  content: string;
+  content: ToolResultContent;
   details?: unknown;
 }
 
@@ -85,10 +86,17 @@ export interface AgentDoneEvent {
 
 export interface AgentRetryEvent {
   type: "retry";
-  reason: "overloaded" | "rate_limit" | "empty_response" | "context_overflow";
+  reason: "overloaded" | "rate_limit" | "empty_response" | "stream_stall" | "overflow_compact";
   attempt: number;
   maxAttempts: number;
   delayMs: number;
+  /** When true, the retry should not be shown to the user (hidden retry). */
+  silent?: boolean;
+}
+
+export interface AgentToolCallDeltaEvent {
+  type: "toolcall_delta";
+  chars: number;
 }
 
 export interface AgentErrorEvent {
@@ -126,6 +134,7 @@ export type AgentEvent =
   | AgentToolCallStartEvent
   | AgentToolCallUpdateEvent
   | AgentToolCallEndEvent
+  | AgentToolCallDeltaEvent
   | AgentServerToolCallEvent
   | AgentServerToolResultEvent
   | AgentSteeringMessageEvent
@@ -152,6 +161,9 @@ export interface AgentOptions {
   signal?: AbortSignal;
   accountId?: string;
   cacheRetention?: StreamOptions["cacheRetention"];
+  /** Whether the target model supports image input. When false, image blocks
+   *  in messages/tool_results are downgraded to text placeholders. Default: true. */
+  supportsImages?: boolean;
   /** Enable provider-native web search. */
   webSearch?: boolean;
   /** Enable server-side compaction (Anthropic only, beta). */
@@ -163,6 +175,8 @@ export interface AgentOptions {
   /** Max consecutive pause_turn continuations before stopping (default: 5).
    *  Prevents infinite loops when server-side tools keep pausing. */
   maxContinuations?: number;
+  /** Maximum messages to keep in context (prevents OOM on long sessions). */
+  maxMessages?: number;
   /**
    * Called before each LLM call. Allows the caller to inspect and transform
    * the messages array (e.g. compaction, truncation). Return the same array

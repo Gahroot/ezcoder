@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
-# sync-upstream.sh — Pull updates from KenKaiii/gg-framework and rebrand
+# sync-upstream.sh — Pull updates from KenKaiii/ezcoder and rebrand
 #
 # Usage:
 #   ./scripts/sync-upstream.sh           # merge upstream/main, rename dirs, fix branding
 #   ./scripts/sync-upstream.sh --dry-run # show what would change without doing it
 #
 # What it does:
-#   1. Fetches upstream (KenKaiii/gg-framework)
+#   1. Fetches upstream (KenKaiii/ezcoder)
 #   2. Merges upstream/main into current branch
-#   3. Renames directories: gg-ai→ai, gg-agent→agent, ggcoder→cli
+#   3. Renames directories: gg-ai→ai, gg-agent→agent, ezcoder→cli, ez-pixel→pixel, ez-pixel-server→pixel-server
 #   4. Fixes npm scope: @kenkaiiii→@prestyj
-#   5. Fixes branding: GG→EZ, ggcoder→ezcoder, ~/.gg/→~/.ezcoder/
+#   5. Fixes branding: GG→EZ, ezcoder→ezcoder, ez-pixel→ez-pixel, ~/.ezcoder/→~/.ezcoder/
 #   6. Commits the rename + branding fixup
 #
 # If the merge has conflicts, it stops and asks you to resolve them first.
@@ -43,7 +43,7 @@ err()   { echo -e "${RED}[sync]${NC} $*"; }
 
 if ! git remote get-url upstream &>/dev/null; then
   info "Adding upstream remote..."
-  git remote add upstream https://github.com/KenKaiii/gg-framework.git
+  git remote add upstream https://github.com/KenKaiii/ezcoder.git
 fi
 
 # ── Step 1: Fetch upstream ─────────────────────────────────
@@ -65,9 +65,9 @@ info "Upstream has $COMMIT_COUNT new commit(s)"
 
 if $DRY_RUN; then
   info "[dry-run] Would merge $COMMIT_COUNT commits from upstream/main"
-  info "[dry-run] Would rename: gg-ai→ai, gg-agent→agent, ggcoder→cli"
+  info "[dry-run] Would rename: gg-ai→ai, gg-agent→agent, ezcoder→cli"
   info "[dry-run] Would fix scope: @kenkaiiii→@prestyj"
-  info "[dry-run] Would fix branding: GG→EZ, ggcoder→ezcoder, ~/.gg/→~/.ezcoder/"
+  info "[dry-run] Would fix branding: GG→EZ, ezcoder→ezcoder, ~/.ezcoder/→~/.ezcoder/"
   git log --oneline "$BASE".."$UPSTREAM"
   exit 0
 fi
@@ -81,7 +81,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 info "Merging upstream/main..."
-if ! git merge upstream/main --no-edit -m "Merge upstream/main (gg-framework)"; then
+if ! git merge upstream/main --no-edit -m "Merge upstream/main (ezcoder)"; then
   warn ""
   warn "Merge conflicts detected!"
   warn "Resolve them, then run: git merge --continue"
@@ -108,9 +108,14 @@ rename_if_exists() {
   fi
 }
 
-rename_if_exists "packages/gg-ai" "packages/ai"
-rename_if_exists "packages/gg-agent" "packages/agent"
-rename_if_exists "packages/ggcoder" "packages/cli"
+rename_if_exists "packages/ai" "packages/ai"
+rename_if_exists "packages/agent" "packages/agent"
+rename_if_exists "packages/cli" "packages/cli"
+rename_if_exists "packages/pixel" "packages/pixel"
+rename_if_exists "packages/pixel-server" "packages/pixel-server"
+rename_if_exists "packages/editor" "packages/editor"
+rename_if_exists "packages/editor-premiere-panel" "packages/editor-premiere-panel"
+rename_if_exists "packages/cli-eyes" "packages/ezcoder-eyes"
 
 # ── Step 4: Fix npm scope and branding ─────────────────────
 
@@ -120,44 +125,72 @@ info "Fixing npm scope and branding..."
 FILES=$(git ls-files -- '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.mjs' ':!pnpm-lock.yaml' ':!node_modules' ':!dist')
 
 # Scope: @kenkaiiii → @prestyj
-# Package names: gg-ai → ai, gg-agent → agent, ggcoder → cli (under @prestyj scope)
-# Directory refs in docs: packages/gg-ai → packages/ai, etc.
-# Config dir: ~/.gg/ → ~/.ezcoder/
-# App name: ggcoder → ezcoder (binary name)
-# Framework name: GG Framework → EZCoder Framework
-# Error class: GGAIError → EZCoderAIError
-# Repo URL: KenKaiii/gg-framework → Gahroot/ezcoder
+# Package names: gg-ai → ai, gg-agent → agent, ezcoder → cli (under @prestyj scope)
+# Directory refs in docs: packages/ai → packages/ai, etc.
+# Config dir: ~/.ezcoder/ → ~/.ezcoder/
+# App name: ezcoder → ezcoder (binary name)
+# Framework name: EZCoder Framework → EZCoder Framework
+# Error class: EZCoderAIError → EZCoderAIError
+# Repo URL: KenKaiii/ezcoder → Gahroot/ezcoder
 
 while IFS= read -r file; do
   [[ -f "$file" ]] || continue
 
   sed -i \
-    -e 's|@kenkaiiii/gg-ai|@prestyj/ai|g' \
-    -e 's|@kenkaiiii/gg-agent|@prestyj/agent|g' \
-    -e 's|@kenkaiiii/ggcoder|@prestyj/cli|g' \
-    -e 's|packages/gg-ai|packages/ai|g' \
-    -e 's|packages/gg-agent|packages/agent|g' \
-    -e 's|packages/ggcoder|packages/cli|g' \
-    -e 's|"gg-framework"|"ezcoder"|g' \
-    -e 's|gg-framework|ezcoder|g' \
-    -e 's|~/.gg/|~/.ezcoder/|g' \
+    -e 's|@prestyj/ai|@prestyj/ai|g' \
+    -e 's|@prestyj/agent|@prestyj/agent|g' \
+    -e 's|@prestyj/cli|@prestyj/cli|g' \
+    -e 's|@prestyj/pixel|@prestyj/pixel|g' \
+    -e 's|@prestyj/pixel-server|@prestyj/pixel-server|g' \
+    -e 's|@prestyj/cli-eyes|@prestyj/ezcoder-eyes|g' \
+    -e 's|@prestyj/editor|@prestyj/editor|g' \
+    -e 's|@prestyj/ez-pixel-go|@prestyj/ez-pixel-go|g' \
+    -e 's|@prestyj/ez-pixel-swift|@prestyj/ez-pixel-swift|g' \
+    -e 's|packages/ai|packages/ai|g' \
+    -e 's|packages/agent|packages/agent|g' \
+    -e 's|packages/cli|packages/cli|g' \
+    -e 's|packages/pixel-server|packages/pixel-server|g' \
+    -e 's|packages/pixel|packages/pixel|g' \
+    -e 's|packages/cli-eyes|packages/ezcoder-eyes|g' \
+    -e 's|packages/editor-premiere-panel|packages/editor-premiere-panel|g' \
+    -e 's|packages/editor|packages/editor|g' \
+    -e 's|"ezcoder"|"ezcoder"|g' \
+    -e 's|ezcoder|ezcoder|g' \
+    -e 's|~/.ezcoder/|~/.ezcoder/|g' \
     -e 's|"\.gg"|".ezcoder"|g' \
-    -e 's|\.gg/|.ezcoder/|g' \
-    -e 's|GGAIError|EZCoderAIError|g' \
-    -e 's|GG Framework|EZCoder Framework|g' \
-    -e 's|KenKaiii/gg-framework|Gahroot/ezcoder|g' \
-    -e 's|kenkaiiii/gg-framework|Gahroot/ezcoder|g' \
+    -e 's|\.ezcoder/|.ezcoder/|g' \
+    -e 's|ezcoder pixel|ezcoder pixel|g' \
+    -e 's|ezcoder|ezcoder|g' \
+    -e 's|ez-pixel|ez-pixel|g' \
+    -e 's|EZ Coder|EZ Coder|g' \
+    -e 's|EZCoder|EZCoder|g' \
+    -e 's|EZCoderAIError|EZCoderAIError|g' \
+    -e 's|EZCoder Framework|EZCoder Framework|g' \
+    -e 's|KenKaiii/ezcoder|Gahroot/ezcoder|g' \
+    -e 's|kenkaiiii/ezcoder|Gahroot/ezcoder|g' \
+    -e 's|github\.com/kenkaiiii/|github.com/Gahroot/|g' \
+    -e 's|Nolan G|Nolan G|g' \
     "$file"
 done <<< "$FILES"
 
 # Fix the CLI binary name in package.json bin field
 if [[ -f "packages/cli/package.json" ]]; then
-  sed -i 's|"ggcoder":|"ezcoder":|g' packages/cli/package.json
+  sed -i 's|"ezcoder":|"ezcoder":|g' packages/cli/package.json
+fi
+
+# Fix the pixel binary name in package.json bin field
+if [[ -f "packages/pixel/package.json" ]]; then
+  sed -i 's|"ez-pixel":|"ez-pixel":|g' packages/pixel/package.json
+fi
+
+# Fix pixel-server wrangler.toml name
+if [[ -f "packages/pixel-server/wrangler.toml" ]]; then
+  sed -i 's|name = "ez-pixel-server"|name = "pixel-server"|g' packages/pixel-server/wrangler.toml
 fi
 
 # Fix the root package.json name
 if [[ -f "package.json" ]]; then
-  sed -i 's|"name": "gg-framework"|"name": "ezcoder"|g' package.json
+  sed -i 's|"name": "ezcoder"|"name": "ezcoder"|g' package.json
 fi
 
 ok "Branding fixes applied."
@@ -181,10 +214,10 @@ else
   git commit -m "$(cat <<'EOF'
 Rebrand upstream merge: rename dirs and fix scope
 
-- Rename: gg-ai→ai, gg-agent→agent, ggcoder→cli
+- Rename: gg-ai→ai, gg-agent→agent, ezcoder→cli, ez-pixel→pixel, ez-pixel-server→pixel-server
 - Scope: @kenkaiiii→@prestyj
-- Branding: GG→EZ, ~/.gg/→~/.ezcoder/
-- Repo: KenKaiii/gg-framework→Gahroot/ezcoder
+- Branding: GG→EZ, EZ Coder→EZ Coder, ezcoder→ezcoder, ez-pixel→ez-pixel, ~/.ezcoder/→~/.ezcoder/
+- Repo: KenKaiii/ezcoder→Gahroot/ezcoder
 EOF
 )"
   ok "Rebrand commit created."
@@ -196,5 +229,5 @@ echo ""
 ok "Upstream sync complete!"
 info "Next steps:"
 info "  1. Run: pnpm install && pnpm build"
-info "  2. Check for any remaining GG references: grep -r 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|GGAIError' packages/ --include='*.ts' --include='*.tsx'"
+info "  2. Check for remaining GG references: grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ezcoder\|ez-pixel\|EZ Coder\|EZCoderAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'"
 info "  3. Test the CLI: pnpm --filter @prestyj/cli build && node packages/cli/dist/cli.js --version"

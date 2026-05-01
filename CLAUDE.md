@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # ezcoder
 
 A modular TypeScript framework for building LLM-powered apps — from raw streaming to full coding agent.
@@ -8,7 +12,11 @@ A modular TypeScript framework for building LLM-powered apps — from raw stream
 |---|---|---|
 | `packages/ai` | `@prestyj/ai` | Unified LLM streaming API |
 | `packages/agent` | `@prestyj/agent` | Agent loop with tool execution |
-| `packages/ezcoder` | `@prestyj/cli` | CLI coding agent |
+| `packages/cli` | `@prestyj/cli` | CLI coding agent |
+| `packages/pixel` | `@prestyj/pixel` | Universal error tracking SDK (Node + Browser + Deno + Workers) |
+| `packages/pixel-server` | (private — Cloudflare Worker) | Ingest backend (Workers + D1) |
+| `packages/pixel-python` | `ez-pixel` (PyPI) | Python error tracking SDK |
+| `packages/ezcoder-eyes` | `@prestyj/ezcoder-eyes` | Perception probes for coding agents (screenshots, logs, APIs) |
 
 **Install**: `npm i -g @prestyj/cli`
 
@@ -72,7 +80,19 @@ packages/
 pnpm build                          # tsc across all packages
 pnpm check                          # tsc --noEmit across all packages
 
-# Per-package
+# Test (Vitest, run mode — no watch)
+pnpm test                                                      # all packages
+pnpm --filter @prestyj/ai test                                 # one package
+pnpm --filter @prestyj/cli exec vitest run path/to/file.test.ts # single file
+pnpm --filter @prestyj/cli exec vitest run -t "test name"      # single test by name
+
+# Lint / format
+pnpm lint                           # eslint across packages/*/src/
+pnpm lint:fix                       # auto-fix
+pnpm format                         # prettier --write
+pnpm format:check                   # prettier --check (CI-style)
+
+# Per-package build
 pnpm --filter @prestyj/ai build
 pnpm --filter @prestyj/agent build
 pnpm --filter @prestyj/cli build
@@ -110,6 +130,45 @@ ezcoder --help                                # verify CLI works
 
 If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
 
+## Publishing pixel-python (PyPI)
+
+`packages/pixel-python` is a Python package — it ships to **PyPI only** (not npm; npm is JS/TS-only). Build backend is `hatchling`, declared in `pyproject.toml`.
+
+### Tooling
+
+- `python3 -m build` — builds sdist + wheel into `dist/`
+- `twine` — uploads to PyPI (handles auth + checks)
+- `pytest` — test runner (tests in `packages/pixel-python/tests/`)
+
+### Steps
+
+From `packages/pixel-python/`:
+
+1. Bump `version` in `pyproject.toml`
+2. Run tests: `python3 -m pytest`
+3. Clean old artifacts: `rm -rf dist/ build/ src/*.egg-info`
+4. Build: `python3 -m build`  → produces `dist/ez_pixel-<ver>-py3-none-any.whl` + `.tar.gz`
+5. Sanity check the wheel: `python3 -m twine check dist/*`
+6. Upload: `python3 -m twine upload dist/*`
+
+### Auth
+
+- PyPI API token required: stored in `~/.pypirc` under `[pypi]` as `username = __token__`, `password = pypi-<token>`
+- Or pass inline: `TWINE_USERNAME=__token__ TWINE_PASSWORD=pypi-<token> python3 -m twine upload dist/*`
+- Tokens are project-scoped — generate at https://pypi.org/manage/account/token/
+
+### Verify
+
+```bash
+pip index versions ez-pixel              # check published versions
+pip install --upgrade ez-pixel           # test install
+python3 -c "import ez_pixel; print(ez_pixel.__name__)"
+```
+
+### Version coupling
+
+`ez-pixel` (PyPI) and `@prestyj/pixel` (npm) are **independent versions** — they speak the same wire format to `pixel-server` but ship on their own cadence. When changing the wire format in `pixel-server`, bump both SDKs and verify compatibility before publishing either.
+
 ## Organization Rules
 
 - Types → `types.ts` in each package
@@ -140,6 +199,46 @@ Fix ALL errors before continuing. Quick fixes:
 - **OAuth-only auth**: no API keys, PKCE OAuth flows, tokens in `~/.ezcoder/auth.json`
 - **Zod schemas**: tool parameters defined with Zod, converted to JSON Schema at provider boundary
 - **Debug logging**: `~/.ezcoder/debug.log` — timestamped log of startup, auth, tool calls, turn completions, errors. Truncated on each CLI restart. Singleton logger in `src/core/logger.ts`
+
+## Pixel — error tracking + auto-fix queue
+
+`@prestyj/pixel` is a drop-in error tracking SDK. Errors flow to a Cloudflare Worker (`pixel-server`) backed by D1. `ezcoder pixel` opens an in-Ink overlay that lists open errors per project and hands each one off to the existing agent loop — same UX as the Task pane.
+
+### CLI
+
+```bash
+ezcoder pixel install          # Detect framework, wire up SDK + .env, register project key
+ezcoder pixel                  # Open the in-Ink overlay (also: Ctrl+E inside running ezcoder)
+ezcoder pixel fix <error_id>   # Fix one error end-to-end (subprocess flow, for non-TTY use)
+ezcoder pixel run              # Auto-fix every open error (non-interactive)
+```
+
+### In-Ink fix flow (the main path)
+
+`Ctrl+E` from inside ezcoder, or `ezcoder pixel`, opens `PixelOverlay`. Keys: `↑↓ navigate · Enter fix one · f fix all · d delete · Esc close`.
+
+When a fix starts, `startPixelFix(errorId)` in `App.tsx` swaps **four** things in lockstep before calling `agentLoop.run(prep.prompt)`:
+
+1. `process.chdir(prep.projectPath)` — for code reading `process.cwd()` directly.
+2. `setCurrentTools(rebuildToolsForCwd(prep.projectPath))` — read/write/edit/bash/find/grep/ls/tasks/sub-agent are all baked with `cwd` at creation, so they MUST be rebuilt; chdir alone is not enough.
+3. System prompt is rebuilt with the new project root (`buildSystemPrompt(prep.projectPath, …)`) and swapped into `messagesRef.current[0]` — this is the only place the model itself learns "where it is".
+4. `setDisplayedCwd(prep.projectPath)` — Banner + Footer read this. Because Banner lives inside Ink's `<Static>`, also bump `staticKey` so Static remounts and re-renders the banner with the new path.
+
+Reset chat state (`setHistory`, `setLiveItems`, `setStaticKey`, screen clear) **AFTER** the chdir is committed — otherwise the old-cwd banner gets written first and you see two banners stacked.
+
+`onDone` in `useAgentLoop` finalizes the fix: `finalizePixelFix(prep)` observes the `fix/pixel-{id}` branch + commits and patches the D1 status to `awaiting_review` or `failed`. Run-all picks up the next open error via the same path.
+
+### Backend
+
+`packages/pixel-server/` — Hono on Workers + D1. Routes:
+- `POST /ingest` — SDK posts events; server dedupes by `(project_id, fingerprint)`. Validated + size-capped + per-project unique-fingerprint cap (10K). CORS-open since the publishable `project_key` is the auth boundary for ingest only.
+- `POST /api/projects` — globally rate-limited (100/hr). Returns `{ id, key, secret }` once on creation; the `secret` is the bearer token for every other `/api/*` call from that project's owner.
+- `GET /api/projects/:id/errors` — bearer-authed (`Authorization: Bearer sk_live_…`); 403 if the secret doesn't own the project.
+- `GET /api/errors/:id` — bearer-authed + cross-project scoped (403 if the bearer's project doesn't own the row).
+- `PATCH /api/errors/:id` — bearer-authed + scoped. Drives `open → in_progress → awaiting_review → merged` (or `failed`).
+- `DELETE /api/errors/:id` — bearer-authed + scoped (used by `d` in the overlay).
+
+`~/.ezcoder/projects.json` stores `{ name, path, secret }` per project. The CLI reads the secret on every management call. Re-run `ezcoder pixel install` to refresh the secret if a mapping is legacy (no `secret` field).
 
 ## Slash Commands
 
@@ -197,20 +296,20 @@ To add a new registry command:
 
 There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.ezcoder/commands/` directory).
 
-## Upstream Sync (KenKaiii/gg-framework)
+## Upstream Sync (KenKaiii/ezcoder)
 
-This repo is a fork of [KenKaiii/gg-framework](https://github.com/KenKaiii/gg-framework). The upstream uses different directory names and npm scope:
+This repo is a fork of [KenKaiii/ezcoder](https://github.com/KenKaiii/ezcoder). The upstream uses different directory names and npm scope:
 
-| Ours (ezcoder) | Upstream (gg-framework) |
+| Ours (ezcoder) | Upstream (ezcoder) |
 |---|---|
-| `packages/ai` | `packages/gg-ai` |
-| `packages/agent` | `packages/gg-agent` |
-| `packages/cli` | `packages/ggcoder` |
+| `packages/ai` | `packages/ai` |
+| `packages/agent` | `packages/agent` |
+| `packages/cli` | `packages/cli` |
 | `@prestyj/*` scope | `@kenkaiiii/*` scope |
-| `~/.ezcoder/` config dir | `~/.gg/` config dir |
-| `EZ Coder` branding | `GG Coder` branding |
-| `EZCoderAIError` | `GGAIError` |
-| `Gahroot/ezcoder` repo | `KenKaiii/gg-framework` repo |
+| `~/.ezcoder/` config dir | `~/.ezcoder/` config dir |
+| `EZ Coder` branding | `EZ Coder` branding |
+| `EZCoderAIError` | `EZCoderAIError` |
+| `Gahroot/ezcoder` repo | `KenKaiii/ezcoder` repo |
 
 ### How to sync
 
@@ -223,9 +322,9 @@ This repo is a fork of [KenKaiii/gg-framework](https://github.com/KenKaiii/gg-fr
 Both do the same thing:
 1. `git fetch upstream`
 2. `git merge upstream/main`
-3. Rename dirs: `gg-ai`→`ai`, `gg-agent`→`agent`, `ggcoder`→`cli`
+3. Rename dirs: `gg-ai`→`ai`, `gg-agent`→`agent`, `ezcoder`→`cli`
 4. Fix npm scope: `@kenkaiiii`→`@prestyj`
-5. Fix branding: GG→EZ, `~/.gg/`→`~/.ezcoder/`, `GGAIError`→`EZCoderAIError`
+5. Fix branding: GG→EZ, `~/.ezcoder/`→`~/.ezcoder/`, `EZCoderAIError`→`EZCoderAIError`
 6. Commit the fixup
 
 ### When merge conflicts happen
@@ -240,9 +339,9 @@ If `git merge upstream/main` hits conflicts:
 ```bash
 pnpm install && pnpm build
 # Verify no remaining upstream branding:
-grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|GGAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
+grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ezcoder\|EZCoderAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
 ```
 
 ### Block art logos
 
-The EZ block art logo (in `Banner.tsx` and `cli.ts`) uses different characters than upstream's GG logo. After syncing, verify the LOGO_LINES arrays still show EZ, not GG. The sync script handles text replacements but cannot detect block art changes — check visually with `ezcoder --help`.
+The EZ block art logo uses different characters than upstream's GG logo. The sync script rewrites the three GG block-art lines (in both literal-Unicode and `\uXXXX` escape forms) to their EZ equivalents wherever they appear (`Banner.tsx`, `cli.ts`, `PlanOverlay.tsx`, `SkillsOverlay.tsx`, `TaskOverlay.tsx`, `agent-home-mode.ts`, `serve-mode.ts`, etc.). After syncing, verify the logos visually with `ezcoder --help` and by triggering plan mode (Ctrl+P) and the skills overlay.

@@ -1,0 +1,10 @@
+name = "pixel-server"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gg-pixel"
+database_id = "8c3cef8f-0a41-4de8-89e0-a35372169748"
+migrations_dir = "migrations"

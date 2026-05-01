@@ -1,2 +1,4 @@
 packages:
   - "packages/*"
+  - "!packages/editor"
+  - "!packages/editor-premiere-panel"
