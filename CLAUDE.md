@@ -231,11 +231,14 @@ Reset chat state (`setHistory`, `setLiveItems`, `setStaticKey`, screen clear) **
 ### Backend
 
 `packages/pixel-server/` — Hono on Workers + D1. Routes:
-- `POST /ingest` — SDK posts events; server dedupes by `(project_id, fingerprint)`.
-- `GET /api/projects/:id/errors` — list (filter by `?status=open` etc).
-- `PATCH /api/errors/:id` — update status/branch (drives the state machine: `open → in_progress → awaiting_review → merged`, or `failed`).
-- `DELETE /api/errors/:id` — hard delete (used by `d` in the overlay).
-- CORS allows any origin since the `project_key` is the auth boundary.
+- `POST /ingest` — SDK posts events; server dedupes by `(project_id, fingerprint)`. Validated + size-capped + per-project unique-fingerprint cap (10K). CORS-open since the publishable `project_key` is the auth boundary for ingest only.
+- `POST /api/projects` — globally rate-limited (100/hr). Returns `{ id, key, secret }` once on creation; the `secret` is the bearer token for every other `/api/*` call from that project's owner.
+- `GET /api/projects/:id/errors` — bearer-authed (`Authorization: Bearer sk_live_…`); 403 if the secret doesn't own the project.
+- `GET /api/errors/:id` — bearer-authed + cross-project scoped (403 if the bearer's project doesn't own the row).
+- `PATCH /api/errors/:id` — bearer-authed + scoped. Drives `open → in_progress → awaiting_review → merged` (or `failed`).
+- `DELETE /api/errors/:id` — bearer-authed + scoped (used by `d` in the overlay).
+
+`~/.ezcoder/projects.json` stores `{ name, path, secret }` per project. The CLI reads the secret on every management call. Re-run `ezcoder pixel install` to refresh the secret if a mapping is legacy (no `secret` field).
 
 ## Slash Commands
 

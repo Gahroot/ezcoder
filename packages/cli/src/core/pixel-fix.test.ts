@@ -18,11 +18,16 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
-function setupProjectMapping(projectId: string, name: string, path: string): void {
+function setupProjectMapping(
+  projectId: string,
+  name: string,
+  path: string,
+  secret = `sk_live_${projectId}_test`,
+): void {
   mkdirSync(join(home, ".ezcoder"), { recursive: true });
   writeFileSync(
     join(home, ".ezcoder", "projects.json"),
-    JSON.stringify({ [projectId]: { name, path } }),
+    JSON.stringify({ [projectId]: { name, path, secret } }),
   );
 }
 
@@ -316,10 +321,11 @@ describe("fixError — orchestration", () => {
     ).rejects.toThrow(/No projects mapping/);
   });
 
-  it("throws when the project_id has no entry in projects.json", async () => {
+  it("throws when no project on this machine owns the error (all secrets reject)", async () => {
+    // proj_OTHER is registered but its secret returns 403/404 against err_abc123.
     setupProjectMapping("proj_OTHER", "x", "/x");
     const { fn: fetchFn } = fakeFetchScript([
-      () => new Response(JSON.stringify(baseError), { status: 200 }),
+      () => new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }),
     ]);
     const { fn: spawnFn } = buildSpawnFn([]);
 
@@ -330,7 +336,27 @@ describe("fixError — orchestration", () => {
         spawnFn,
         inheritStdio: false,
       }),
-    ).rejects.toThrow(/No local mapping for project proj_p1/);
+    ).rejects.toThrow(/not found in any registered project/);
+  });
+
+  it("throws when projects.json has no entries with a stored secret", async () => {
+    // Legacy entries (no secret) — must re-install before management works.
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
+    writeFileSync(
+      join(home, ".ezcoder", "projects.json"),
+      JSON.stringify({ proj_legacy: { name: "x", path: "/x" } }),
+    );
+    const { fn: fetchFn } = fakeFetchScript([]);
+    const { fn: spawnFn } = buildSpawnFn([]);
+
+    await expect(
+      fixError("err_abc123", {
+        homeDir: home,
+        fetchFn,
+        spawnFn,
+        inheritStdio: false,
+      }),
+    ).rejects.toThrow(/No managed projects/);
   });
 });
 

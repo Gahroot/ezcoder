@@ -229,7 +229,7 @@ Estimated effort: ~1 day. Sentry's pattern for reference:
   dashboard knows.
 - **`auto-update.test.ts` drift in ezcoder** — pre-existing test failure,
   expects "Updating" but source says "Ken just shipped". 1-line fix.
-- **`gg-editor` lint errors** — pre-existing in another package, unrelated
+- **`editor` lint errors** — pre-existing in another package, unrelated
   to pixel work. Fix or wave away.
 
 ---

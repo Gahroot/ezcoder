@@ -113,6 +113,8 @@ rename_if_exists "packages/gg-agent" "packages/agent"
 rename_if_exists "packages/ggcoder" "packages/cli"
 rename_if_exists "packages/gg-pixel" "packages/pixel"
 rename_if_exists "packages/gg-pixel-server" "packages/pixel-server"
+rename_if_exists "packages/gg-editor" "packages/editor"
+rename_if_exists "packages/gg-editor-premiere-panel" "packages/editor-premiere-panel"
 rename_if_exists "packages/ggcoder-eyes" "packages/ezcoder-eyes"
 
 # ── Step 4: Fix npm scope and branding ─────────────────────
@@ -141,6 +143,7 @@ while IFS= read -r file; do
     -e 's|@kenkaiiii/gg-pixel|@prestyj/pixel|g' \
     -e 's|@kenkaiiii/gg-pixel-server|@prestyj/pixel-server|g' \
     -e 's|@kenkaiiii/ggcoder-eyes|@prestyj/ezcoder-eyes|g' \
+    -e 's|@kenkaiiii/gg-editor|@prestyj/editor|g' \
     -e 's|@kenkaiiii/ez-pixel-go|@prestyj/ez-pixel-go|g' \
     -e 's|@kenkaiiii/ez-pixel-swift|@prestyj/ez-pixel-swift|g' \
     -e 's|packages/gg-ai|packages/ai|g' \
@@ -149,6 +152,8 @@ while IFS= read -r file; do
     -e 's|packages/gg-pixel-server|packages/pixel-server|g' \
     -e 's|packages/gg-pixel|packages/pixel|g' \
     -e 's|packages/ggcoder-eyes|packages/ezcoder-eyes|g' \
+    -e 's|packages/gg-editor-premiere-panel|packages/editor-premiere-panel|g' \
+    -e 's|packages/gg-editor|packages/editor|g' \
     -e 's|"gg-framework"|"ezcoder"|g' \
     -e 's|gg-framework|ezcoder|g' \
     -e 's|~/.gg/|~/.ezcoder/|g' \

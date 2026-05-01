@@ -83,3 +83,5 @@ export type {
 
 export { install, DEFAULT_INGEST_URL } from "./install.js";
 export type { InstallOptions, InstallResult, PackageManager } from "./install.js";
+export { verifyInstall, isInstallProbeFingerprint } from "./verify.js";
+export type { VerifyOptions, VerifyOutcome } from "./verify.js";

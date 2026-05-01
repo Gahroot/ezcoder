@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/pixel",
-  "version": "4.3.83",
+  "version": "4.3.93",
   "type": "module",
   "description": "Universal error tracking pixel optimized for autonomous coding agents",
   "license": "MIT",
@@ -47,7 +47,18 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0"
+    "@babel/parser": "^7.29.0",
+    "@babel/types": "^7.29.0",
+    "magicast": "^0.5.2",
+    "recast": "^0.23.11"
+  },
+  "peerDependencies": {
+    "better-sqlite3": "^11.7.0 || ^12"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
   },
   "peerDependencies": {
     "react": ">=16.8.0"
@@ -61,6 +72,7 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
+    "better-sqlite3": "^11.7.0",
     "react": "^19.0.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"

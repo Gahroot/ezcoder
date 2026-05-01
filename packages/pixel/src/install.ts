@@ -6,9 +6,16 @@ import {
   mkdirSync,
   readdirSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
+
+import type * as BabelParser from "@babel/parser";
+import type * as BabelTypes from "@babel/types";
+import type * as Recast from "recast";
+
+const nodeRequire = createRequire(import.meta.url);
 
 export const DEFAULT_INGEST_URL = "https://ez-pixel-server.buzzbeamaustralia.workers.dev";
 
@@ -24,8 +31,18 @@ export interface InstallOptions {
 export interface InstallResult {
   projectId: string;
   projectKey: string;
+  /**
+   * Per-project bearer secret returned by the server on creation. Stored in
+   * ~/.ezcoder/projects.json and required for every /api/* call (read/list/patch/
+   * delete). Never leaves the user's machine — never inlined into source.
+   */
+  projectSecret: string;
   projectName: string;
   projectKind: ProjectKind;
+  /** Resolved root of the user's project (the dir containing package.json /
+   *  pyproject.toml / go.mod / Gemfile, depending on kind). Needed by the
+   *  verifier so it can spawn a probe child from the right cwd. */
+  projectRoot: string;
   initFilePath: string;
   envFilePath: string;
   projectsJsonPath: string;
@@ -121,10 +138,13 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
 
   const existing = findMappingByPath(projectsJsonPath, nodeRoot);
   const existingKey = readEnvKey(envFilePath, "GG_PIXEL_KEY");
-  let created: { id: string; key: string };
+  let created: CreatedProject;
   let reused = false;
-  if (existing && existingKey) {
-    created = { id: existing.id, key: existingKey };
+  // Reusing requires *all three* — id, publishable key, and the secret —
+  // because the secret is now mandatory for every management call. If any
+  // is missing (e.g. legacy install before secrets existed), mint fresh.
+  if (existing && existing.secret && existingKey) {
+    created = { id: existing.id, key: existingKey, secret: existing.secret };
     reused = true;
   } else {
     created = await createProject(fetchFn, ingestUrl, projectName);
@@ -151,13 +171,15 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
     writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
   }
 
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, nodeRoot, ingestUrl);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, nodeRoot, created.secret);
 
   return {
     projectId: created.id,
     projectKey: created.key,
+    projectSecret: created.secret,
     projectName,
     projectKind: kind,
+    projectRoot: nodeRoot,
     initFilePath: wired.primaryInitPath,
     envFilePath,
     projectsJsonPath,
@@ -170,21 +192,34 @@ export async function install(opts: InstallOptions = {}): Promise<InstallResult>
   };
 }
 
+interface CreatedProject {
+  id: string;
+  key: string;
+  secret: string;
+}
+
 function findMappingByPath(
   projectsJsonPath: string,
   projectRoot: string,
-): { id: string; name: string; path: string } | null {
+): { id: string; name: string; path: string; secret?: string } | null {
   if (!existsSync(projectsJsonPath)) return null;
-  let map: Record<string, { name: string; path: string }>;
+  let map: Record<string, { name: string; path: string; secret?: string }>;
   try {
     map = JSON.parse(readFileSync(projectsJsonPath, "utf8")) as typeof map;
   } catch {
     return null;
   }
+  // If the same path appears in multiple entries (e.g. legacy entries from a
+  // pre-secret install plus a newer entry from a re-install), prefer the
+  // entry that has a secret — otherwise the install logic falls into the
+  // "no secret stored" branch and mints yet another fresh project.
+  let fallback: { id: string; name: string; path: string; secret?: string } | null = null;
   for (const [id, entry] of Object.entries(map)) {
-    if (entry.path === projectRoot) return { id, ...entry };
+    if (entry.path !== projectRoot) continue;
+    if (entry.secret) return { id, ...entry };
+    if (!fallback) fallback = { id, ...entry };
   }
-  return null;
+  return fallback;
 }
 
 function readEnvKey(envPath: string, key: string): string | null {
@@ -213,7 +248,7 @@ async function createProject(
   fetchFn: typeof fetch,
   ingestUrl: string,
   name: string,
-): Promise<{ id: string; key: string }> {
+): Promise<CreatedProject> {
   const res = await fetchFn(`${ingestUrl}/api/projects`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -222,9 +257,11 @@ async function createProject(
   if (!res.ok) {
     throw new Error(`POST /api/projects failed: ${res.status} ${await safeText(res)}`);
   }
-  const body = (await res.json()) as { id: string; key: string };
-  if (!body.id || !body.key) throw new Error("response missing id/key");
-  return { id: body.id, key: body.key };
+  const body = (await res.json()) as { id: string; key: string; secret: string };
+  if (!body.id || !body.key || !body.secret) {
+    throw new Error("response missing id/key/secret");
+  }
+  return { id: body.id, key: body.key, secret: body.secret };
 }
 
 async function safeText(r: Response): Promise<string> {
@@ -237,7 +274,13 @@ async function safeText(r: Response): Promise<string> {
 
 export function detectPackageManager(projectRoot: string): PackageManager {
   if (existsSync(join(projectRoot, "pnpm-lock.yaml"))) return "pnpm";
-  if (existsSync(join(projectRoot, "bun.lockb"))) return "bun";
+  // Bun 1.2+ defaults to the text-based `bun.lock`; older versions used the
+  // binary `bun.lockb`. Either lockfile means this is a Bun project — falling
+  // through to npm partially mutates `node_modules` in a layout incompatible
+  // with `bun.lock`, leaving the user to rm -rf and re-bun-install to recover.
+  if (existsSync(join(projectRoot, "bun.lock")) || existsSync(join(projectRoot, "bun.lockb"))) {
+    return "bun";
+  }
   if (existsSync(join(projectRoot, "yarn.lock"))) return "yarn";
   return "npm";
 }
@@ -548,15 +591,13 @@ function wireNextjs({ projectRoot, projectKey, ingestUrl }: WiringInput): Wiring
 
 function writeNextInstrumentation(path: string, ingestUrl: string, projectKey?: string): void {
   const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-  if (existing.includes("@prestyj/pixel")) return; // idempotent
-
-  const newContent = existing
-    ? existing + "\n" + nextInstrumentationAppend(ingestUrl, projectKey)
-    : nextInstrumentationStandalone(ingestUrl, projectKey);
-  writeFileSync(path, newContent, "utf8");
+  const cleaned = stripLegacyPixelContent(existing);
+  const block = nextInstrumentationBlock(ingestUrl, projectKey);
+  const next = upsertPixelBlock(cleaned, block);
+  if (next !== existing) writeFileSync(path, next, "utf8");
 }
 
-function nextInstrumentationStandalone(ingestUrl: string, projectKey?: string): string {
+function nextInstrumentationBlock(ingestUrl: string, projectKey?: string): string {
   const fallback = projectKey ? ` ?? ${JSON.stringify(projectKey)}` : "";
   return `// Next.js auto-loads this file on server start. Pixel hooks the
 // uncaughtExceptionMonitor + unhandledRejection events for API routes,
@@ -569,21 +610,7 @@ export async function register() {
       sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },
     });
   }
-}
-`;
-}
-
-function nextInstrumentationAppend(ingestUrl: string, projectKey?: string): string {
-  const fallback = projectKey ? ` ?? ${JSON.stringify(projectKey)}` : "";
-  return `// ez-pixel: server-side error tracking
-import { initPixel } from "@prestyj/pixel";
-if (typeof process !== "undefined" && process.env.NEXT_RUNTIME === "nodejs") {
-  initPixel({
-    projectKey: process.env.GG_PIXEL_KEY${fallback},
-    sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },
-  });
-}
-`;
+}`;
 }
 
 function findNextLayout(projectRoot: string): string | null {
@@ -645,7 +672,165 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   // Strip the .tsx extension for cleanest imports.
   spec = spec.replace(/\.tsx$/, "");
 
-  // 1. Add the import below the existing imports.
+  // Try AST-first so we land <GGPixelClient /> as the first child of <body>
+  // (i.e., a sibling of any auth-gate / provider tree wrapping {children}),
+  // not deeply nested where it would only init after the gate resolves.
+  const astResult = injectClientComponentViaAst(layoutPath, content, spec);
+  if (astResult) return astResult;
+
+  // Fallback: previous regex behaviour. Used when the file doesn't parse as
+  // TSX (extremely rare — would require syntactically broken code) or when
+  // we can't locate the JSX `<body>` element through the AST.
+  return injectClientComponentViaRegex(layoutPath, content, spec);
+}
+
+/**
+ * Parse the layout, find `<body>`, and prepend `<GGPixelClient />` to its
+ * children list. Also adds the import. Uses recast so untouched code stays
+ * byte-identical (only the inserted nodes are reformatted).
+ *
+ * Returns null on any AST issue so the caller can fall back to regex.
+ */
+function injectClientComponentViaAst(
+  layoutPath: string,
+  content: string,
+  importSpec: string,
+): EntryWiringResult | null {
+  let recast: typeof Recast;
+  let bp: typeof BabelParser;
+  let bt: typeof BabelTypes;
+  try {
+    recast = nodeRequire("recast") as typeof Recast;
+    bp = nodeRequire("@babel/parser") as typeof BabelParser;
+    bt = nodeRequire("@babel/types") as typeof BabelTypes;
+  } catch {
+    return null;
+  }
+
+  let ast: ReturnType<typeof recast.parse>;
+  try {
+    ast = recast.parse(content, {
+      parser: {
+        parse: (src: string) =>
+          bp.parse(src, {
+            sourceType: "module",
+            plugins: ["jsx", "typescript"],
+            allowImportExportEverywhere: true,
+            tokens: true,
+          }),
+      },
+    });
+  } catch {
+    return null;
+  }
+
+  const program = (ast as { program: { body: Array<unknown> } }).program;
+  if (!program || !Array.isArray(program.body)) return null;
+
+  const bodyEl = findFirstJsxElementByName(ast, "body");
+  if (!bodyEl) return null; // No <body> — let the regex fallback handle / warn.
+
+  // 1. Prepend <GGPixelClient /> to <body>'s children. Use a JSXText with a
+  //    newline so the output reads naturally even when recast reformats.
+  const newComponent = bt.jsxElement(
+    bt.jsxOpeningElement(bt.jsxIdentifier("GGPixelClient"), [], true),
+    null,
+    [],
+    true,
+  );
+  const leadingText = bt.jsxText("\n        ");
+  const trailingText = bt.jsxText("\n        ");
+  bodyEl.children = [leadingText, newComponent, trailingText, ...bodyEl.children];
+
+  // 2. Insert the import after the last existing import statement.
+  const importDecl = bt.importDeclaration(
+    [bt.importDefaultSpecifier(bt.identifier("GGPixelClient"))],
+    bt.stringLiteral(importSpec),
+  );
+  const body = program.body as Array<{ type: string }>;
+  let insertAt = 0;
+  for (let i = 0; i < body.length; i++) {
+    if (body[i]?.type === "ImportDeclaration") insertAt = i + 1;
+  }
+  body.splice(insertAt, 0, importDecl as unknown as { type: string });
+
+  let out: string;
+  try {
+    out = recast.print(ast).code;
+  } catch {
+    return null;
+  }
+  writeFileSync(layoutPath, out, "utf8");
+  return { kind: "injected", entryPath: layoutPath };
+}
+
+/**
+ * Walks the AST and returns the first JSXElement whose opening name matches.
+ * Uses string type checks rather than babel's typed predicates so we don't
+ * have to coerce loosely-typed walkers through narrow predicate signatures.
+ *
+ * Recast's parsed AST isn't a clean Babel tree — it wraps nodes and attaches
+ * `original`/`tokens`/`loc`/`comments` back-references that share substructure.
+ * A naive recursive walker over `Object.keys` revisits those references and on
+ * real Next.js root layouts (`<html><body>...</body></html>`) blows the stack.
+ * Guard with a `WeakSet` of visited objects, a depth cap, and a skip-list for
+ * the metadata keys that aren't part of the syntactic tree.
+ */
+export function findFirstJsxElementByName(
+  ast: unknown,
+  name: string,
+): { children: unknown[] } | null {
+  let found: { children: unknown[] } | null = null;
+  const seen = new WeakSet<object>();
+  const MAX_DEPTH = 500;
+  const SKIP_KEYS = new Set([
+    "loc",
+    "tokens",
+    "original",
+    "comments",
+    "leadingComments",
+    "trailingComments",
+    "innerComments",
+    "range",
+    "start",
+    "end",
+  ]);
+  function walk(node: unknown, depth: number): void {
+    if (found || !node || typeof node !== "object") return;
+    if (depth > MAX_DEPTH) return;
+    if (seen.has(node as object)) return;
+    seen.add(node as object);
+    if (Array.isArray(node)) {
+      for (const c of node) walk(c, depth + 1);
+      return;
+    }
+    const n = node as Record<string, unknown> & { type?: string };
+    if (n.type === "JSXElement") {
+      const opening = n.openingElement as
+        | { type?: string; name?: { type?: string; name?: string } }
+        | undefined;
+      if (opening?.type === "JSXOpeningElement" && opening.name) {
+        const namedNode = opening.name;
+        if (namedNode.type === "JSXIdentifier" && namedNode.name === name) {
+          found = n as unknown as { children: unknown[] };
+          return;
+        }
+      }
+    }
+    for (const key of Object.keys(n)) {
+      if (SKIP_KEYS.has(key)) continue;
+      walk(n[key], depth + 1);
+    }
+  }
+  walk(ast, 0);
+  return found;
+}
+
+function injectClientComponentViaRegex(
+  layoutPath: string,
+  content: string,
+  spec: string,
+): EntryWiringResult {
   const importLine = `import GGPixelClient from ${JSON.stringify(spec)};`;
   const lines = content.split("\n");
   let insertImportAt = 0;
@@ -654,12 +839,9 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   }
   lines.splice(insertImportAt, 0, importLine);
 
-  // 2. Inject `<GGPixelClient />` inside the body. We look for the last
-  //    `{children}` reference and insert just before it.
   const updated = lines.join("\n");
   const childrenIdx = updated.lastIndexOf("{children}");
   if (childrenIdx === -1) {
-    // Couldn't find {children} — write the import only and warn.
     writeFileSync(layoutPath, updated, "utf8");
     return {
       kind: "skipped",
@@ -673,9 +855,24 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   return { kind: "injected", entryPath: layoutPath };
 }
 
+/**
+ * Adds `@prestyj/pixel` to `serverExternalPackages` in the user's
+ * next.config.{ts,mjs,js,cjs}. Required so Next's bundler doesn't statically
+ * follow `better-sqlite3` (an optional native peer dep) when the SDK is
+ * imported server-side.
+ *
+ * Uses `magicast` (Babel-backed AST surgery) so we handle the long tail of
+ * config shapes the previous regex implementation mangled:
+ *   - wrappers like `withSentryConfig(config)` / `withMDX({...})`
+ *   - object spreads `{ ...baseConfig, foo: bar }`
+ *   - `module.exports = function() { return {...}; }`
+ *   - `satisfies NextConfig`, `as const`, generic type assertions
+ *   - existing arrays containing comments or trailing commas
+ *
+ * Falls back to the original line-injection only when magicast can't load
+ * the config (extremely rare — would require syntactically invalid JS/TS).
+ */
 function patchNextConfig(projectRoot: string): void {
-  // Required so Next's bundler doesn't statically follow better-sqlite3
-  // (a native module) when @prestyj/pixel is imported server-side.
   const candidates = ["next.config.ts", "next.config.mjs", "next.config.js", "next.config.cjs"];
   let configPath: string | null = null;
   for (const c of candidates) {
@@ -694,29 +891,139 @@ function patchNextConfig(projectRoot: string): void {
     );
     return;
   }
-  const content = readFileSync(configPath, "utf8");
-  if (content.includes("@prestyj/pixel")) return;
+  patchNextConfigViaAst(configPath);
+}
+
+const PIXEL_PKG = "@prestyj/pixel";
+
+function patchNextConfigViaAst(configPath: string): void {
+  const original = readFileSync(configPath, "utf8");
+  if (original.includes(PIXEL_PKG)) return; // already wired
+
+  // Lazy require so the rest of install.ts doesn't pay the magicast import
+  // cost for non-Next.js projects. magicast is in `dependencies` so it's
+  // always installed; the require resolves synchronously.
+  let parseModule: (code: string) => MagicastModule;
+  let generateCode: (m: MagicastModule) => { code: string };
+  try {
+    const mod = nodeRequire("magicast") as {
+      parseModule: typeof parseModule;
+      generateCode: typeof generateCode;
+    };
+    parseModule = mod.parseModule;
+    generateCode = mod.generateCode;
+  } catch {
+    return patchNextConfigViaRegex(configPath, original);
+  }
+
+  let module_: MagicastModule;
+  try {
+    module_ = parseModule(original);
+  } catch {
+    return patchNextConfigViaRegex(configPath, original);
+  }
+
+  // Resolve the config object regardless of how it's exported.
+  const cfg = resolveNextConfigObject(module_);
+  if (!cfg) {
+    // Wrapped in a function call we can't unwrap (e.g. defineConfig(() => ({}))
+    // returning a closure). Fall back to regex injection.
+    return patchNextConfigViaRegex(configPath, original);
+  }
+
+  // Add to existing array, or create one. Magicast surfaces array nodes as
+  // proxies that respond to `includes` / `push` regardless of source shape;
+  // we cast through `unknown` because magicast's type surface for nested
+  // values is intentionally loose.
+  type ArrLike = { includes(v: string): boolean; push(v: string): void };
+  const existing = cfg.serverExternalPackages as unknown;
+  const isArrayLike =
+    Array.isArray(existing) ||
+    (typeof existing === "object" &&
+      existing !== null &&
+      (existing as { $type?: string }).$type === "array");
+  if (isArrayLike) {
+    const arr = existing as ArrLike;
+    if (arr.includes(PIXEL_PKG)) return;
+    arr.push(PIXEL_PKG);
+  } else {
+    cfg.serverExternalPackages = [PIXEL_PKG];
+  }
+
+  const out = generateCode(module_).code;
+  if (out !== original) writeFileSync(configPath, out, "utf8");
+}
+
+/**
+ * Walks the magicast module to find the NextConfig object literal, regardless
+ * of whether the user wraps it in `withSomething(...)`, exports as `default`
+ * vs CJS, or assigns to a const first. Returns the proxied object the caller
+ * can mutate, or null if it's a function/expression we can't statically reach.
+ */
+interface MagicastObject {
+  [key: string]: unknown;
+  $type?: string;
+  $args?: unknown[];
+}
+interface MagicastModule {
+  exports: { default?: MagicastObject } & Record<string, MagicastObject | undefined>;
+  $code?: string;
+}
+
+function resolveNextConfigObject(mod: MagicastModule): MagicastObject | null {
+  const root: MagicastObject | undefined =
+    mod.exports.default ?? (mod.exports as MagicastObject | undefined);
+  if (!root) return null;
+  return unwrapWrappers(root);
+}
+
+/**
+ * Many real configs are `withSomething(realConfig)` (Sentry, MDX, PWA, bundle-
+ * analyzer, etc.). Walk into the first object-literal argument we can find.
+ * If the wrapper takes a function (`defineConfig(() => ({...}))`), we bail —
+ * mutating closure bodies via magicast isn't reliable.
+ */
+function unwrapWrappers(node: MagicastObject): MagicastObject | null {
+  let cur = node;
+  for (let i = 0; i < 6; i++) {
+    if (cur.$type === "function-call") {
+      const args = cur.$args ?? [];
+      const objArg = args.find(
+        (a): a is MagicastObject =>
+          typeof a === "object" && a !== null && (a as MagicastObject).$type !== "function-call",
+      );
+      if (!objArg) return null; // function-as-arg → can't mutate safely
+      cur = objArg;
+      continue;
+    }
+    if (cur.$type === "object" || cur.$type === undefined) return cur;
+    return null;
+  }
+  return null;
+}
+
+function patchNextConfigViaRegex(configPath: string, content: string): void {
+  if (content.includes(PIXEL_PKG)) return;
   if (content.includes("serverExternalPackages")) {
     const updated = content.replace(
       /serverExternalPackages\s*:\s*\[([^\]]*)\]/,
       (_match: string, inside: string) => {
         const trimmed = inside.trim();
         const sep = trimmed.length > 0 ? ", " : "";
-        return `serverExternalPackages: [${trimmed}${sep}"@prestyj/pixel"]`;
+        return `serverExternalPackages: [${trimmed}${sep}${JSON.stringify(PIXEL_PKG)}]`;
       },
     );
     if (updated !== content) writeFileSync(configPath, updated, "utf8");
     return;
   }
-  // Inject a fresh `serverExternalPackages` line into the config object.
   const objStart =
-    /(const\s+\w+\s*:\s*NextConfig\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/;
+    /(const\s+\w+\s*(?::\s*\w+)?\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/;
   const m = objStart.exec(content);
   if (m) {
     const insertAt = m.index + m[0].length;
     const updated =
       content.slice(0, insertAt) +
-      `\n  serverExternalPackages: ["@prestyj/pixel"],` +
+      `\n  serverExternalPackages: [${JSON.stringify(PIXEL_PKG)}],` +
       content.slice(insertAt);
     writeFileSync(configPath, updated, "utf8");
   }
@@ -727,15 +1034,22 @@ function wireSveltekit({ projectRoot, projectKey, ingestUrl }: WiringInput): Wir
   const serverPath = join(projectRoot, "src/hooks.server.ts");
   const clientPath = join(projectRoot, "src/hooks.client.ts");
   if (!existsSync(dirname(serverPath))) mkdirSync(dirname(serverPath), { recursive: true });
-  appendOrCreate(
+
+  upsertPixelBlockInFile(
     serverPath,
-    `import { initPixel } from "@prestyj/pixel";\ninitPixel({\n  projectKey: process.env.GG_PIXEL_KEY ?? ${JSON.stringify(projectKey)},\n  sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },\n});\n`,
-    "@prestyj/pixel",
+    `import { initPixel } from "@prestyj/pixel";
+initPixel({
+  projectKey: process.env.GG_PIXEL_KEY ?? ${JSON.stringify(projectKey)},
+  sink: { kind: "http", ingestUrl: ${JSON.stringify(`${ingestUrl}/ingest`)} },
+});`,
   );
-  appendOrCreate(
+  upsertPixelBlockInFile(
     clientPath,
-    `import { initPixel } from "@prestyj/pixel/browser";\ninitPixel({\n  projectKey: ${JSON.stringify(projectKey)},\n  ingestUrl: ${JSON.stringify(ingestUrl)},\n});\n`,
-    "@prestyj/pixel/browser",
+    `import { initPixel } from "@prestyj/pixel/browser";
+initPixel({
+  projectKey: ${JSON.stringify(projectKey)},
+  ingestUrl: ${JSON.stringify(ingestUrl)},
+});`,
   );
   return {
     primaryInitPath: clientPath,
@@ -846,13 +1160,14 @@ function wireElectron({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput):
         "Could not copy ez-pixel browser IIFE bundle — install @prestyj/pixel and re-run.",
       );
     }
-    let patchedAny = false;
+    let wiredAny = false;
     for (const html of htmlFiles) {
-      if (patchRendererHtml(html, rendererInitPath, projectKey, ingestUrl) === "patched") {
-        patchedAny = true;
-      }
+      const r = patchRendererHtml(html, rendererInitPath, projectKey, ingestUrl);
+      // Both "patched" (changed on disk) and "already" (no-op because the
+      // file is up to date with the current key) count as success.
+      if (r === "patched" || r === "already") wiredAny = true;
     }
-    if (!patchedAny) {
+    if (!wiredAny) {
       warnings.push(
         `Found HTML files in ${rendererDir} but couldn't patch any — they may have unusual CSP or no <head>.`,
       );
@@ -873,6 +1188,11 @@ function wireElectron({ projectRoot, pkg, projectKey, ingestUrl }: WiringInput):
       "renderer.ts",
       "renderer.tsx",
       "renderer.js",
+      // `src/renderer.{ts,tsx,js}` is the convention used by multi-window
+      // Electron apps that keep all renderer entries in src/.
+      "src/renderer.ts",
+      "src/renderer.tsx",
+      "src/renderer.js",
       "src/index.tsx",
       "src/index.jsx",
       "src/main.tsx",
@@ -934,7 +1254,10 @@ function resolveMainEntryFromPkg(projectRoot: string, pkg: PackageJson): string 
   ]);
 }
 
-const RENDERER_HTML_DIRS = ["ui", "renderer", "src/renderer", "public", "static"];
+// Directories the installer scans for renderer HTML files. `src` covers the
+// common multi-window Electron pattern where each window has a paired
+// `src/<name>.html` + `src/<name>.ts` entry (shortformed-style apps).
+const RENDERER_HTML_DIRS = ["ui", "renderer", "src/renderer", "src", "public", "static"];
 
 function findRendererHtmlFiles(projectRoot: string): string[] {
   for (const dir of RENDERER_HTML_DIRS) {
@@ -982,6 +1305,11 @@ function copyIifeBundle(projectRoot: string, dest: string): boolean {
   return false;
 }
 
+// HTML comment that delimits the auto-injected ez-pixel block in renderer
+// HTML. Used both to recognise an existing injection (so re-installs replace
+// it instead of stacking) and as the human-readable header on fresh writes.
+const PIXEL_HTML_MARKER = "<!-- ez-pixel: auto-wired by ezcoder pixel install -->";
+
 function patchRendererHtml(
   htmlPath: string,
   iifePath: string,
@@ -994,7 +1322,31 @@ function patchRendererHtml(
   } catch {
     return "not-applicable";
   }
-  if (content.includes("ez-pixel.browser.iife")) return "already";
+
+  // Strip any existing ez-pixel injection (legacy or recent) before re-emitting
+  // with the current key. Detected by the comment marker; conservative match
+  // ends at the first `</script>` after the second injected `<script>` tag.
+  const original = content;
+  const markerIdx = content.indexOf(PIXEL_HTML_MARKER);
+  if (markerIdx !== -1) {
+    // Two consecutive script tags follow the marker. Find the close of the
+    // SECOND one, then eat trailing whitespace/newline.
+    const firstScriptEnd = content.indexOf("</script>", markerIdx);
+    const secondScriptEnd =
+      firstScriptEnd !== -1
+        ? content.indexOf("</script>", firstScriptEnd + "</script>".length)
+        : -1;
+    if (secondScriptEnd !== -1) {
+      let stripEnd = secondScriptEnd + "</script>".length;
+      while (stripEnd < content.length && /\s/.test(content[stripEnd]!)) stripEnd++;
+      // Walk back past leading newline/whitespace before the marker so we
+      // don't leave a blank line in the head.
+      let stripStart = markerIdx;
+      while (stripStart > 0 && /[ \t]/.test(content[stripStart - 1]!)) stripStart--;
+      if (stripStart > 0 && content[stripStart - 1] === "\n") stripStart--;
+      content = content.slice(0, stripStart) + content.slice(stripEnd);
+    }
+  }
 
   const ingestOrigin = new URL(ingestUrl).origin;
   // Match content="..." OR content='...'. Critical: don't use `[^"']` for
@@ -1024,7 +1376,7 @@ function patchRendererHtml(
   );
 
   const relScript = relative(dirname(htmlPath), iifePath).split(sep).join("/");
-  const inject = `\n  <!-- ez-pixel: auto-wired by ezcoder pixel install -->\n  <script src="${relScript}"></script>\n  <script>\n    if (window.GGPixel) GGPixel.initPixel({ projectKey: ${JSON.stringify(projectKey)}, ingestUrl: ${JSON.stringify(ingestUrl)} });\n  </script>\n`;
+  const inject = `\n  ${PIXEL_HTML_MARKER}\n  <script src="${relScript}"></script>\n  <script>\n    if (window.GGPixel) GGPixel.initPixel({ projectKey: ${JSON.stringify(projectKey)}, ingestUrl: ${JSON.stringify(ingestUrl)} });\n  </script>\n`;
   if (/<head[^>]*>/i.test(content)) {
     content = content.replace(/(<head[^>]*>)/i, `$1${inject}`);
   } else if (/<html[^>]*>/i.test(content)) {
@@ -1032,6 +1384,7 @@ function patchRendererHtml(
   } else {
     return "not-applicable";
   }
+  if (content === original) return "already";
   writeFileSync(htmlPath, content, "utf8");
   return "patched";
 }
@@ -1121,14 +1474,127 @@ function pickPath(root: string, candidates: string[]): string | null {
   return null;
 }
 
-function appendOrCreate(filePath: string, snippet: string, marker: string): void {
-  if (existsSync(filePath)) {
-    const existing = readFileSync(filePath, "utf8");
-    if (existing.includes(marker)) return;
-    writeFileSync(filePath, existing + "\n" + snippet, "utf8");
-    return;
+// Wrap an auto-generated snippet between markers so re-installs (which mint
+// a fresh project_id+key+secret when the local mapping is legacy) can replace
+// the previous block in-place instead of bailing on a "looks already wired"
+// check and leaving a stale key behind. User code outside the markers is
+// preserved untouched.
+const PIXEL_MARK_BEGIN = "// >>> ez-pixel auto-generated — do not edit between these markers <<<";
+const PIXEL_MARK_END = "// >>> /ez-pixel <<<";
+
+export function wrapPixelBlock(content: string): string {
+  return `${PIXEL_MARK_BEGIN}\n${content.replace(/\s+$/, "")}\n${PIXEL_MARK_END}\n`;
+}
+
+/**
+ * If `existing` already contains a markered ez-pixel block, replace it with a
+ * freshly-wrapped `block`. Otherwise append the wrapped block to the end of
+ * `existing`. Idempotent when the new block matches the existing one.
+ */
+export function upsertPixelBlock(existing: string, block: string): string {
+  const wrapped = wrapPixelBlock(block);
+  const beginIdx = existing.indexOf(PIXEL_MARK_BEGIN);
+  if (beginIdx !== -1) {
+    const endIdx = existing.indexOf(PIXEL_MARK_END, beginIdx);
+    if (endIdx !== -1) {
+      const after = endIdx + PIXEL_MARK_END.length;
+      const trailNL = existing[after] === "\n" ? 1 : 0;
+      return existing.slice(0, beginIdx) + wrapped + existing.slice(after + trailNL);
+    }
   }
-  writeFileSync(filePath, snippet, "utf8");
+  if (existing.length === 0) return wrapped;
+  const sep = existing.endsWith("\n") ? "" : "\n";
+  return existing + sep + "\n" + wrapped;
+}
+
+function upsertPixelBlockInFile(filePath: string, block: string): void {
+  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+  const cleaned = stripLegacyPixelContent(existing);
+  const next = upsertPixelBlock(cleaned, block);
+  if (next !== existing) writeFileSync(filePath, next, "utf8");
+}
+
+/**
+ * Remove unmarkered ez-pixel content emitted by older versions of the
+ * installer so re-installs don't end up with two `register()` exports
+ * (or two `initPixel(...)` calls) — one legacy + one in the new markered
+ * block. Conservative: only operates outside the marker delimiters.
+ */
+export function stripLegacyPixelContent(content: string): string {
+  if (!content.includes("@prestyj/pixel")) return content;
+
+  const beginIdx = content.indexOf(PIXEL_MARK_BEGIN);
+  const endIdx = beginIdx === -1 ? -1 : content.indexOf(PIXEL_MARK_END, beginIdx);
+  const insideMarkers = (start: number, end: number): boolean =>
+    beginIdx !== -1 && endIdx !== -1 && start >= beginIdx && end <= endIdx + PIXEL_MARK_END.length;
+
+  // Walk the source and collect ranges to delete. Patterns:
+  //   1. `[leading // comment lines] export async function register() { … ez-pixel … }`
+  //      — Next.js `instrumentation.ts` from the pre-marker installer.
+  //   2. `[leading // comment lines] import { initPixel } … initPixel({ … });`
+  //      — SvelteKit hooks from the pre-marker installer.
+  const ranges: Array<{ start: number; end: number }> = [];
+
+  // (1) brace-balanced register() containing @prestyj/pixel.
+  // The capture group is INSIDE the match — comments are part of m[0], not
+  // before it — so blockStart is just m.index (skipping a leading newline if
+  // we anchored on `\n`).
+  const registerRe =
+    /(?:^|\n)((?:[ \t]*\/\/[^\n]*\n)*)[ \t]*export\s+async\s+function\s+register\s*\(\s*\)\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = registerRe.exec(content)) !== null) {
+    const blockStart = m.index + (content[m.index] === "\n" ? 1 : 0);
+    const openBraceIdx = m.index + m[0].length - 1;
+    let depth = 1;
+    let i = openBraceIdx + 1;
+    while (i < content.length && depth > 0) {
+      const ch = content[i];
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+      i++;
+    }
+    if (depth !== 0) continue;
+    const blockEnd = i;
+    const blockText = content.slice(blockStart, blockEnd);
+    if (!blockText.includes("@prestyj/pixel")) continue;
+    if (insideMarkers(blockStart, blockEnd)) continue;
+    const trailingNL = content[blockEnd] === "\n" ? 1 : 0;
+    ranges.push({ start: blockStart, end: blockEnd + trailingNL });
+  }
+
+  // (2) `import { initPixel } from "@prestyj/pixel[/...]"` followed within
+  //     ~2KB by a balanced `initPixel({ … });` call. Same comment-inside-match
+  //     rule as (1).
+  const importRe =
+    /(?:^|\n)((?:[ \t]*\/\/[^\n]*\n)*)[ \t]*import\s*\{\s*initPixel[^}]*\}\s*from\s*"@prestyj\/pixel(?:\/[\w-]+)?"\s*;?\s*\n/g;
+  while ((m = importRe.exec(content)) !== null) {
+    const blockStart = m.index + (content[m.index] === "\n" ? 1 : 0);
+    // Find `initPixel({` after the import statement and brace-match the call.
+    const callIdx = content.indexOf("initPixel(", importRe.lastIndex);
+    if (callIdx === -1 || callIdx - importRe.lastIndex > 2048) continue;
+    const openParen = content.indexOf("(", callIdx);
+    let depth = 1;
+    let i = openParen + 1;
+    while (i < content.length && depth > 0) {
+      const ch = content[i];
+      if (ch === "(" || ch === "{") depth++;
+      else if (ch === ")" || ch === "}") depth--;
+      i++;
+    }
+    if (depth !== 0) continue;
+    // Eat the trailing semicolon + spaces + newline.
+    while (i < content.length && (content[i] === ";" || content[i] === " ")) i++;
+    const trailingNL = content[i] === "\n" ? 1 : 0;
+    const blockEnd = i + trailingNL;
+    if (insideMarkers(blockStart, blockEnd)) continue;
+    ranges.push({ start: blockStart, end: blockEnd });
+  }
+
+  if (ranges.length === 0) return content;
+  ranges.sort((a, b) => b.start - a.start);
+  let out = content;
+  for (const r of ranges) out = out.slice(0, r.start) + out.slice(r.end);
+  return out.replace(/\n{3,}/g, "\n\n");
 }
 
 function injectImport(entryPath: string, initFilePath: string): EntryWiringResult {
@@ -1293,10 +1759,10 @@ async function installGo(ctx: NativeInstallContext): Promise<InstallResult> {
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
   const existingKey = readEnvKey(envFilePath, "GG_PIXEL_KEY");
-  let created: { id: string; key: string };
+  let created: CreatedProject;
   let reused = false;
-  if (existing && existingKey) {
-    created = { id: existing.id, key: existingKey };
+  if (existing && existing.secret && existingKey) {
+    created = { id: existing.id, key: existingKey, secret: existing.secret };
     reused = true;
   } else {
     created = await createProject(fetchFn, ingestUrl, projectName);
@@ -1327,13 +1793,15 @@ func init() {
   );
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, ingestUrl);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, created.secret);
 
   return {
     projectId: created.id,
     projectKey: created.key,
+    projectSecret: created.secret,
     projectName,
     projectKind: "go",
+    projectRoot,
     initFilePath,
     envFilePath,
     projectsJsonPath,
@@ -1375,10 +1843,10 @@ async function installRuby(ctx: NativeInstallContext): Promise<InstallResult> {
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
   const existingKey = readEnvKey(envFilePath, "GG_PIXEL_KEY");
-  let created: { id: string; key: string };
+  let created: CreatedProject;
   let reused = false;
-  if (existing && existingKey) {
-    created = { id: existing.id, key: existingKey };
+  if (existing && existing.secret && existingKey) {
+    created = { id: existing.id, key: existingKey, secret: existing.secret };
     reused = true;
   } else {
     created = await createProject(fetchFn, ingestUrl, projectName);
@@ -1400,13 +1868,15 @@ GGPixel.init(
   );
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, ingestUrl);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, created.secret);
 
   return {
     projectId: created.id,
     projectKey: created.key,
+    projectSecret: created.secret,
     projectName,
     projectKind: "ruby",
+    projectRoot,
     initFilePath,
     envFilePath,
     projectsJsonPath,
@@ -1472,10 +1942,10 @@ async function installPython(ctx: PythonInstallContext): Promise<InstallResult> 
 
   const existing = findMappingByPath(projectsJsonPath, projectRoot);
   const existingKey = readEnvKey(envFilePath, "GG_PIXEL_KEY");
-  let created: { id: string; key: string };
+  let created: CreatedProject;
   let reused = false;
-  if (existing && existingKey) {
-    created = { id: existing.id, key: existingKey };
+  if (existing && existing.secret && existingKey) {
+    created = { id: existing.id, key: existingKey, secret: existing.secret };
     reused = true;
   } else {
     created = await createProject(fetchFn, ingestUrl, projectName);
@@ -1484,19 +1954,21 @@ async function installPython(ctx: PythonInstallContext): Promise<InstallResult> 
   const pm = detectPythonPackageManager(projectRoot);
   const packageInstalled = opts.skipPackageInstall ? false : runPythonInstall(projectRoot, pm);
 
-  const initFilePath = join(projectRoot, "ez_pixel_init.py");
+  const initFilePath = join(projectRoot, "gg_pixel_init.py");
   writeFileSync(initFilePath, renderPythonInitFile(ingestUrl, created.key), "utf8");
 
   writeEnvKey(envFilePath, "GG_PIXEL_KEY", created.key);
-  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, ingestUrl);
+  writeProjectsMapping(projectsJsonPath, created.id, projectName, projectRoot, created.secret);
 
   const entryWiring = wirePythonEntry(projectRoot, initFilePath);
 
   return {
     projectId: created.id,
     projectKey: created.key,
+    projectSecret: created.secret,
     projectName,
     projectKind: "python",
+    projectRoot,
     initFilePath,
     envFilePath,
     projectsJsonPath,
@@ -1558,9 +2030,9 @@ wires into your entry file) registers the global Python error handlers.
 """
 import os
 
-import ez_pixel
+import gg_pixel
 
-ez_pixel.init_pixel(
+gg_pixel.init_pixel(
     project_key=os.environ.get("GG_PIXEL_KEY") or ${JSON.stringify(projectKey)},
     ingest_url=${JSON.stringify(`${ingestUrl}/ingest`)},
 )
@@ -1578,21 +2050,21 @@ function wirePythonEntry(projectRoot: string, initFilePath: string): EntryWiring
     return { kind: "skipped", reason: `unreadable: ${(err as Error).message}` };
   }
 
-  if (content.includes("ez_pixel_init")) {
+  if (content.includes("gg_pixel_init")) {
     return { kind: "already_present", entryPath };
   }
 
-  // Compute import name from the relative path. ez_pixel_init.py at root →
-  // `ez_pixel_init`. For nested, the user can adjust manually.
+  // Compute import name from the relative path. gg_pixel_init.py at root →
+  // `gg_pixel_init`. For nested, the user can adjust manually.
   const fromDir = dirname(entryPath);
   const rel = relative(fromDir, initFilePath).split(sep).join("/");
   let moduleSpec: string;
-  if (rel === "ez_pixel_init.py") {
-    moduleSpec = "ez_pixel_init";
+  if (rel === "gg_pixel_init.py") {
+    moduleSpec = "gg_pixel_init";
   } else if (rel.startsWith("../")) {
     // Init is above the entry — Python imports don't traverse via path,
     // so insert via sys.path manipulation as a fallback.
-    moduleSpec = "ez_pixel_init";
+    moduleSpec = "gg_pixel_init";
   } else {
     // Same-or-deeper directory: use module path.
     moduleSpec = rel.replace(/\.py$/, "").replace(/\//g, ".");
@@ -1645,10 +2117,10 @@ export function writeProjectsMapping(
   projectId: string,
   name: string,
   path: string,
-  ingestUrl?: string,
+  secret?: string,
 ): void {
   mkdirSync(dirname(projectsJsonPath), { recursive: true });
-  let map: Record<string, { name: string; path: string; ingestUrl?: string }> = {};
+  let map: Record<string, { name: string; path: string; secret?: string }> = {};
   if (existsSync(projectsJsonPath)) {
     try {
       map = JSON.parse(readFileSync(projectsJsonPath, "utf8")) as typeof map;
@@ -1656,8 +2128,8 @@ export function writeProjectsMapping(
       // start fresh on corrupt file
     }
   }
-  const entry: { name: string; path: string; ingestUrl?: string } = { name, path };
-  if (ingestUrl) entry.ingestUrl = ingestUrl;
+  const entry: { name: string; path: string; secret?: string } = { name, path };
+  if (secret) entry.secret = secret;
   map[projectId] = entry;
   writeFileSync(projectsJsonPath, `${JSON.stringify(map, null, 2)}\n`, "utf8");
 }

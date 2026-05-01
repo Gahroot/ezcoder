@@ -10,7 +10,10 @@ import {
   writeProjectsMapping,
   renderInitFile,
   wireEntryFile,
+  findFirstJsxElementByName,
 } from "./install.js";
+import { parse as recastParse } from "recast";
+import * as bp from "@babel/parser";
 
 let dir: string;
 beforeEach(() => {
@@ -18,9 +21,15 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-function fakeFetch(response: { id: string; key: string }, status = 201): typeof fetch {
+function fakeFetch(
+  response: { id: string; key: string; secret?: string },
+  status = 201,
+): typeof fetch {
+  // Default a synthetic secret if the test didn't pass one explicitly — keeps
+  // older tests honest without forcing every call site to spell it out.
+  const body = { secret: `sk_live_${response.id}_${"a".repeat(64)}`, ...response };
   return (async () =>
-    new Response(JSON.stringify(response), {
+    new Response(JSON.stringify(body), {
       status,
       headers: { "content-type": "application/json" },
     })) as unknown as typeof fetch;
@@ -41,7 +50,15 @@ describe("install (end-to-end, mocked backend)", () => {
 
       expect(result.projectId).toBe("proj_test");
       expect(result.projectKey).toBe("pk_live_abc");
+      expect(result.projectSecret).toMatch(/^sk_live_/);
       expect(result.projectName).toBe("my-app");
+
+      // Mapping persists the secret so subsequent /api/* calls can authenticate.
+      const mapAfterCreate = JSON.parse(readFileSync(result.projectsJsonPath, "utf8")) as Record<
+        string,
+        { secret?: string }
+      >;
+      expect(mapAfterCreate.proj_test?.secret).toBe(result.projectSecret);
 
       const initContent = readFileSync(result.initFilePath, "utf8");
       expect(initContent).toContain('import { initPixel } from "@prestyj/pixel"');
@@ -54,13 +71,11 @@ describe("install (end-to-end, mocked backend)", () => {
 
       const map = JSON.parse(readFileSync(result.projectsJsonPath, "utf8")) as Record<
         string,
-        { name: string; path: string; ingestUrl?: string }
+        { name: string; path: string; secret?: string }
       >;
-      expect(map.proj_test).toEqual({
-        name: "my-app",
-        path: dir,
-        ingestUrl: "https://ez-pixel-server.buzzbeamaustralia.workers.dev",
-      });
+      expect(map.proj_test?.name).toBe("my-app");
+      expect(map.proj_test?.path).toBe(dir);
+      expect(map.proj_test?.secret).toBe(result.projectSecret);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -124,8 +139,12 @@ describe("detectPackageManager", () => {
     writeFileSync(join(dir, "pnpm-lock.yaml"), "");
     expect(detectPackageManager(dir)).toBe("pnpm");
   });
-  it("detects bun", () => {
+  it("detects bun via legacy bun.lockb", () => {
     writeFileSync(join(dir, "bun.lockb"), "");
+    expect(detectPackageManager(dir)).toBe("bun");
+  });
+  it("detects bun via modern bun.lock (Bun 1.2+)", () => {
+    writeFileSync(join(dir, "bun.lock"), "");
     expect(detectPackageManager(dir)).toBe("bun");
   });
   it("detects yarn", () => {
@@ -169,6 +188,13 @@ describe("writeProjectsMapping", () => {
     writeProjectsMapping(path, "proj_a", "alpha", "/path/to/alpha");
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
       proj_a: { name: "alpha", path: "/path/to/alpha" },
+    });
+  });
+  it("includes the secret when provided", () => {
+    const path = join(dir, ".ezcoder", "projects.json");
+    writeProjectsMapping(path, "proj_a", "alpha", "/a", "sk_live_xyz");
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
+      proj_a: { name: "alpha", path: "/a", secret: "sk_live_xyz" },
     });
   });
   it("merges with existing entries", () => {
@@ -281,15 +307,15 @@ describe("install — project-kind dispatch", () => {
         fetchFn: fakeFetch({ id: "p", key: "k_py" }),
       });
       expect(result.projectKind).toBe("python");
-      expect(result.initFilePath.endsWith("ez_pixel_init.py")).toBe(true);
+      expect(result.initFilePath.endsWith("gg_pixel_init.py")).toBe(true);
       const initContent = readFileSync(result.initFilePath, "utf8");
-      expect(initContent).toContain("import ez_pixel");
+      expect(initContent).toContain("import gg_pixel");
       expect(initContent).toContain('"k_py"');
 
       // Entry should have been wired
       expect(result.entryWiring.kind).toBe("injected");
       const main = readFileSync(join(dir, "main.py"), "utf8");
-      expect(main).toContain("import ez_pixel_init");
+      expect(main).toContain("import gg_pixel_init");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -496,6 +522,559 @@ describe("install — hybrid framework wiring", () => {
   });
 });
 
+describe("install — re-install with a fresh project rewrites stale keys", () => {
+  function setupHome() {
+    const home = mkdtempSync(join(tmpdir(), "ez-pixel-home-"));
+    return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
+  }
+
+  it("Next.js: re-install with a new key replaces the stale fallback inside the marker block", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "myapp", dependencies: { next: "^15.0.0", react: "^19.0.0" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }: { children: React.ReactNode }) {\n  return <html><body>{children}</body></html>;\n}\n`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      // First install — gets old key.
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_first", key: "pk_live_OLD_KEY" }),
+      });
+      const inst1 = readFileSync(join(dir, "instrumentation.ts"), "utf8");
+      expect(inst1).toContain("pk_live_OLD_KEY");
+      expect(inst1).toContain(">>> ez-pixel auto-generated");
+
+      // Simulate the legacy-mapping scenario: blow away the local mapping so the
+      // installer mints a fresh project on the next run.
+      rmSync(join(home, ".ezcoder", "projects.json"));
+      rmSync(join(dir, ".env"));
+
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_second", key: "pk_live_NEW_KEY" }),
+      });
+      const inst2 = readFileSync(join(dir, "instrumentation.ts"), "utf8");
+      expect(inst2).toContain("pk_live_NEW_KEY");
+      expect(inst2).not.toContain("pk_live_OLD_KEY");
+      // Exactly one markered block — no accumulation across installs.
+      const matches = inst2.match(/>>> ez-pixel auto-generated/g) ?? [];
+      expect(matches).toHaveLength(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("SvelteKit: re-install replaces the stale key in hooks.{server,client}.ts", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "myapp", devDependencies: { "@sveltejs/kit": "^2.0.0" } }),
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_first", key: "pk_live_SVK_OLD" }),
+      });
+      const server1 = readFileSync(join(dir, "src/hooks.server.ts"), "utf8");
+      const client1 = readFileSync(join(dir, "src/hooks.client.ts"), "utf8");
+      expect(server1).toContain("pk_live_SVK_OLD");
+      expect(client1).toContain("pk_live_SVK_OLD");
+
+      rmSync(join(home, ".ezcoder", "projects.json"));
+      rmSync(join(dir, ".env"));
+
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_second", key: "pk_live_SVK_NEW" }),
+      });
+      const server2 = readFileSync(join(dir, "src/hooks.server.ts"), "utf8");
+      const client2 = readFileSync(join(dir, "src/hooks.client.ts"), "utf8");
+      expect(server2).toContain("pk_live_SVK_NEW");
+      expect(server2).not.toContain("pk_live_SVK_OLD");
+      expect(client2).toContain("pk_live_SVK_NEW");
+      expect(client2).not.toContain("pk_live_SVK_OLD");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("strips a pre-marker legacy register() so re-install doesn't end up with two exports", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "myapp", dependencies: { next: "^15.0.0", react: "^19.0.0" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }: { children: React.ReactNode }) { return <html><body>{children}</box></html>; }`,
+    );
+    // Hand-write a legacy unmarkered instrumentation.ts (shape produced by
+    // ez-pixel < 4.3.86) BEFORE the install runs.
+    writeFileSync(
+      join(dir, "instrumentation.ts"),
+      `// Next.js auto-loads this file on server start. Pixel hooks the
+// uncaughtExceptionMonitor + unhandledRejection events for API routes,
+// Server Components, and route handlers.
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { initPixel } = await import("@prestyj/pixel");
+    initPixel({
+      projectKey: process.env.GG_PIXEL_KEY ?? "pk_live_OLD",
+      sink: { kind: "http", ingestUrl: "https://x/ingest" },
+    });
+  }
+}
+`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_x", key: "pk_live_NEW" }),
+      });
+      const after = readFileSync(join(dir, "instrumentation.ts"), "utf8");
+      const exports = after.match(/export\s+async\s+function\s+register\s*\(\s*\)/g) ?? [];
+      expect(exports).toHaveLength(1);
+      expect(after).toContain("pk_live_NEW");
+      expect(after).not.toContain("pk_live_OLD");
+      expect(after).toContain(">>> ez-pixel auto-generated");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Electron: re-install replaces the stale key inside renderer HTML and emits no spurious warning", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "myapp",
+        main: "main.js",
+        dependencies: { electron: "^33.0.0" },
+      }),
+    );
+    writeFileSync(join(dir, "main.js"), `const { app } = require("electron");\napp.whenReady();\n`);
+    mkdirSync(join(dir, "ui"), { recursive: true });
+    // Hand-crafted CSP-bearing HTML with two `<script>` tags so the renderer
+    // detector recognises it as patchable.
+    writeFileSync(
+      join(dir, "ui/index.html"),
+      `<!DOCTYPE html><html><head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self';">
+  <title>x</title>
+  <script src="app.js"></script>
+</head><body><div id="root"></div></body></html>`,
+    );
+    // Pre-populate the bundle so the install doesn't warn about the missing IIFE.
+    mkdirSync(join(dir, "node_modules/@prestyj/pixel/dist"), { recursive: true });
+    writeFileSync(
+      join(dir, "node_modules/@prestyj/pixel/dist/browser.iife.global.js"),
+      "/*iife*/",
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_first", key: "pk_live_ELECTRON_OLD" }),
+      });
+      const html1 = readFileSync(join(dir, "ui/index.html"), "utf8");
+      expect(html1).toContain("pk_live_ELECTRON_OLD");
+      // Single ez-pixel marker — no stacking.
+      expect(html1.match(/ez-pixel: auto-wired/g) ?? []).toHaveLength(1);
+
+      // Simulate re-install scenario: drop local mapping + env so installer mints a new project.
+      rmSync(join(home, ".ezcoder", "projects.json"));
+      rmSync(join(dir, ".env"));
+
+      const result = await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_second", key: "pk_live_ELECTRON_NEW" }),
+      });
+      const html2 = readFileSync(join(dir, "ui/index.html"), "utf8");
+      expect(html2).toContain("pk_live_ELECTRON_NEW");
+      expect(html2).not.toContain("pk_live_ELECTRON_OLD");
+      expect(html2.match(/ez-pixel: auto-wired/g) ?? []).toHaveLength(1);
+
+      // No "couldn't patch any" warning — the file IS wired correctly even if
+      // patchRendererHtml didn't change anything (e.g. third re-install).
+      expect(result.warnings.find((w) => w.includes("couldn't patch any"))).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Next.js layout: AST-injects <GGPixelClient /> as a sibling of <body> children, not inside wrappers", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "wrapped-layout", dependencies: { next: "^15", react: "^19" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    // The drjones-style scenario: children are wrapped in an auth-gating
+    // provider tree. The OLD regex would put <GGPixelClient /> inside the
+    // wrapper (so the pixel only inits after auth resolves). AST should
+    // place it as the first child of <body>, BEFORE any wrappers.
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `import { AuthProvider } from "@/auth";
+import { ThemeProvider } from "@/theme";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className="bg-zinc-950">
+        <AuthProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </AuthProvider>
+      </body>
+    </html>
+  );
+}
+`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p", key: "k" }),
+      });
+      const after = readFileSync(join(dir, "app/layout.tsx"), "utf8");
+      // Import landed at the top.
+      expect(after).toContain('import GGPixelClient from "../ez-pixel.client"');
+      // <GGPixelClient /> is rendered.
+      expect(after).toContain("<GGPixelClient />");
+      // Crucially: it appears BEFORE the auth provider opens. (`<GGPixelClient />`
+      // index < `<AuthProvider>` index — both inside <body>.)
+      const pixelIdx = after.indexOf("<GGPixelClient />");
+      const authIdx = after.indexOf("<AuthProvider>");
+      expect(pixelIdx).toBeGreaterThan(after.indexOf("<body"));
+      expect(pixelIdx).toBeLessThan(authIdx);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Next.js layout: preserves byte-for-byte all code recast didn't touch", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "preserve", dependencies: { next: "^15", react: "^19" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    const original = `import type { Metadata } from "next";
+import { Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "Preserve test",
+  description: "Original formatting must survive AST patch",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" className={\`\${geistMono.variable} h-full antialiased\`}>
+      <body className="flex h-full flex-col overflow-hidden" suppressHydrationWarning>
+        {children}
+      </body>
+    </html>
+  );
+}
+`;
+    writeFileSync(join(dir, "app/layout.tsx"), original);
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p", key: "k" }),
+      });
+      const after = readFileSync(join(dir, "app/layout.tsx"), "utf8");
+      // Untouched bits intact:
+      expect(after).toContain('title: "Preserve test"');
+      expect(after).toContain('description: "Original formatting must survive AST patch"');
+      expect(after).toContain("suppressHydrationWarning");
+      expect(after).toContain("Readonly<{");
+      // The template literal in className survived recast intact.
+      expect(after).toContain("`${geistMono.variable} h-full antialiased`");
+      // Pixel landed where it should — first child of body.
+      const pixelIdx = after.indexOf("<GGPixelClient />");
+      const childrenIdx = after.indexOf("{children}");
+      expect(pixelIdx).toBeGreaterThan(0);
+      expect(pixelIdx).toBeLessThan(childrenIdx);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Next.js: AST-patches a wrapped config (e.g. withSomething(config)) without mangling", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "wrapped-app", dependencies: { next: "^15.0.0", react: "^19.0.0" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }: { children: React.ReactNode }) { return <html><body>{children}</body></html>; }`,
+    );
+    // A real-world shape the previous regex implementation mangled: the
+    // config is wrapped by a higher-order helper, has a spread, and uses
+    // `satisfies` instead of a type annotation.
+    writeFileSync(
+      join(dir, "next.config.ts"),
+      `import { withSentryConfig } from "@sentry/nextjs";\nimport baseConfig from "./shared.config";\n\nconst config = {\n  ...baseConfig,\n  serverExternalPackages: ["fs-extra"],\n  reactStrictMode: true,\n} satisfies import("next").NextConfig;\n\nexport default withSentryConfig(config);\n`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p", key: "k" }),
+      });
+      const after = readFileSync(join(dir, "next.config.ts"), "utf8");
+      // Both the existing entry and our new one are present; nothing else got mangled.
+      expect(after).toContain('"@prestyj/pixel"');
+      expect(after).toContain('"fs-extra"');
+      expect(after).toContain("withSentryConfig(config)");
+      expect(after).toContain("...baseConfig");
+      expect(after).toContain("reactStrictMode: true");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Next.js: AST-patches CommonJS config (`module.exports = { ... }`)", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "cjs-next", dependencies: { next: "^14", react: "^18" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }) { return <html><body>{children}</body></html>; }`,
+    );
+    writeFileSync(
+      join(dir, "next.config.js"),
+      `/** @type {import('next').NextConfig} */\nmodule.exports = {\n  reactStrictMode: true,\n};\n`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p", key: "k" }),
+      });
+      const after = readFileSync(join(dir, "next.config.js"), "utf8");
+      expect(after).toContain('"@prestyj/pixel"');
+      expect(after).toContain("reactStrictMode: true");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Next.js: re-install on already-patched config is a no-op (no duplicate entries)", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "x", dependencies: { next: "^15", react: "^19" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }: { children: React.ReactNode }) { return <html><body>{children}</body></html>; }`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p1", key: "k1" }),
+      });
+      const first = readFileSync(join(dir, "next.config.ts"), "utf8");
+      const occurrences = (first.match(/@prestyj\/pixel/g) ?? []).length;
+      expect(occurrences).toBe(1);
+
+      // Re-install (mints a fresh project but next.config patching should be idempotent).
+      rmSync(join(home, ".ezcoder", "projects.json"));
+      rmSync(join(dir, ".env"));
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "p2", key: "k2" }),
+      });
+      const second = readFileSync(join(dir, "next.config.ts"), "utf8");
+      // Still exactly one entry — magicast knows it's already there.
+      const occ2 = (second.match(/@prestyj\/pixel/g) ?? []).length;
+      expect(occ2).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("Electron multi-window: detects HTMLs in src/ and patches each one", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "shortformed-like",
+        main: "main.js",
+        dependencies: { electron: "^33.0.0" },
+      }),
+    );
+    writeFileSync(join(dir, "main.js"), `const { app } = require("electron");\napp.whenReady();\n`);
+    mkdirSync(join(dir, "src"), { recursive: true });
+    // Two HTML windows + a renderer.ts entry — what shortformed-style apps look like.
+    const htmlBody = (title: string) =>
+      `<!DOCTYPE html><html><head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self';">
+  <title>${title}</title>
+  <script src="${title.toLowerCase()}.js"></script>
+</head><body><div id="root"></div></body></html>`;
+    writeFileSync(join(dir, "src/index.html"), htmlBody("Index"));
+    writeFileSync(join(dir, "src/editor.html"), htmlBody("Editor"));
+    writeFileSync(join(dir, "src/renderer.ts"), `console.log("renderer entry");\n`);
+    // Pre-stage the IIFE bundle so install doesn't warn about it missing.
+    mkdirSync(join(dir, "node_modules/@prestyj/pixel/dist"), { recursive: true });
+    writeFileSync(
+      join(dir, "node_modules/@prestyj/pixel/dist/browser.iife.global.js"),
+      "/*iife*/",
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      const result = await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_x", key: "pk_live_MULTI" }),
+      });
+      // Both HTMLs got the marker + the current key.
+      const idx = readFileSync(join(dir, "src/index.html"), "utf8");
+      const ed = readFileSync(join(dir, "src/editor.html"), "utf8");
+      expect(idx).toContain("ez-pixel: auto-wired");
+      expect(idx).toContain("pk_live_MULTI");
+      expect(ed).toContain("ez-pixel: auto-wired");
+      expect(ed).toContain("pk_live_MULTI");
+      // No "couldn't auto-detect renderer entry" warning — the HTML path took
+      // over because src/ is now in RENDERER_HTML_DIRS.
+      expect(
+        result.warnings.find((w) =>
+          w.includes("Could not auto-detect the Electron renderer entry"),
+        ),
+      ).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("findMappingByPath prefers an entry with a secret over a legacy entry at the same path", async () => {
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "myapp" }));
+    const { home, cleanup } = setupHome();
+    try {
+      mkdirSync(join(home, ".ezcoder"), { recursive: true });
+      // Two entries for the same project root: legacy (no secret) THEN one with a secret.
+      // Iteration order shouldn't matter — the secret entry must win and be reused.
+      writeFileSync(
+        join(home, ".ezcoder", "projects.json"),
+        JSON.stringify({
+          proj_legacy: { name: "myapp", path: dir },
+          proj_real: {
+            name: "myapp",
+            path: dir,
+            secret: "sk_live_existing_secret_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          },
+        }),
+      );
+      // Also need an env file so the reuse path validates.
+      writeFileSync(join(dir, ".env"), "GG_PIXEL_KEY=pk_live_existing\n");
+
+      let createCalls = 0;
+      const fetchFn: typeof fetch = (async () => {
+        createCalls++;
+        return new Response(
+          JSON.stringify({ id: "proj_should_not_be_used", key: "pk_x", secret: "sk_x" }),
+          { status: 201 },
+        );
+      }) as unknown as typeof fetch;
+
+      const result = await install({ cwd: dir, homeDir: home, skipPackageInstall: true, fetchFn });
+      expect(createCalls).toBe(0); // No new project minted.
+      expect(result.reused).toBe(true);
+      expect(result.projectId).toBe("proj_real");
+      expect(result.projectSecret).toContain("existing_secret");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("preserves user code outside the marker block on re-install", async () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "myapp", dependencies: { next: "^15.0.0", react: "^19.0.0" } }),
+    );
+    mkdirSync(join(dir, "app"), { recursive: true });
+    writeFileSync(
+      join(dir, "app/layout.tsx"),
+      `export default function RootLayout({ children }: { children: React.ReactNode }) { return <html><body>{children}</body></html>; }`,
+    );
+    const { home, cleanup } = setupHome();
+    try {
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_first", key: "pk_live_OLD" }),
+      });
+      // User adds custom Sentry init *outside* our markered block.
+      const before = readFileSync(join(dir, "instrumentation.ts"), "utf8");
+      const userBlock = `\n// user code: Sentry init\nexport function userHook() { return 42; }\n`;
+      writeFileSync(join(dir, "instrumentation.ts"), before + userBlock, "utf8");
+
+      rmSync(join(home, ".ezcoder", "projects.json"));
+      rmSync(join(dir, ".env"));
+
+      await install({
+        cwd: dir,
+        homeDir: home,
+        skipPackageInstall: true,
+        fetchFn: fakeFetch({ id: "proj_second", key: "pk_live_NEW" }),
+      });
+      const after = readFileSync(join(dir, "instrumentation.ts"), "utf8");
+      expect(after).toContain("pk_live_NEW");
+      expect(after).not.toContain("pk_live_OLD");
+      expect(after).toContain("Sentry init"); // user code untouched
+      expect(after).toContain("userHook"); // user code untouched
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("install — idempotency", () => {
   it("reuses the existing project_id and key when re-running on the same directory", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "myapp" }));
@@ -504,9 +1083,14 @@ describe("install — idempotency", () => {
       let createCalls = 0;
       const countingFetch: typeof fetch = (async () => {
         createCalls++;
-        return new Response(JSON.stringify({ id: "proj_first", key: "pk_live_first" }), {
-          status: 201,
-        });
+        return new Response(
+          JSON.stringify({
+            id: "proj_first",
+            key: "pk_live_first",
+            secret: "sk_live_first",
+          }),
+          { status: 201 },
+        );
       }) as unknown as typeof fetch;
 
       const first = await install({
@@ -551,8 +1135,9 @@ describe("install — idempotency", () => {
       const fetchFn: typeof fetch = (async () => {
         const id = callIds[i];
         const key = callKeys[i];
+        const secret = `sk_live_${id}`;
         i++;
-        return new Response(JSON.stringify({ id, key }), { status: 201 });
+        return new Response(JSON.stringify({ id, key, secret }), { status: 201 });
       }) as unknown as typeof fetch;
 
       await install({ cwd: dir, homeDir: home, skipPackageInstall: true, fetchFn });
@@ -709,5 +1294,52 @@ describe("install — file artifacts on disk", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe("findFirstJsxElementByName", () => {
+  // Use the same recast.parse(...) call wireFramework uses, so the AST has the
+  // recast wrappers + token back-references that previously blew the stack.
+  function parseLayout(src: string): unknown {
+    return recastParse(src, {
+      parser: {
+        parse: (s: string) =>
+          bp.parse(s, {
+            sourceType: "module",
+            plugins: ["jsx", "typescript"],
+            allowImportExportEverywhere: true,
+            tokens: true,
+          }),
+      },
+    });
+  }
+
+  it("finds <body> in a Next.js root layout without crashing or timing out", () => {
+    const layout = `export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className="antialiased">
+        {children}
+      </body>
+    </html>
+  );
+}
+`;
+    const ast = parseLayout(layout);
+    const start = Date.now();
+    const body = findFirstJsxElementByName(ast, "body");
+    const elapsed = Date.now() - start;
+    expect(body).not.toBeNull();
+    expect(Array.isArray(body!.children)).toBe(true);
+    expect(elapsed).toBeLessThan(500);
+  });
+
+  it("returns null when the element isn't present", () => {
+    const layout = `export default function Page() {
+  return <main>{"hi"}</main>;
+}
+`;
+    const ast = parseLayout(layout);
+    expect(findFirstJsxElementByName(ast, "body")).toBeNull();
   });
 });

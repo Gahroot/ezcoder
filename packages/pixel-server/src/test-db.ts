@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import type { Db } from "./types.js";
 
 export interface TestHarness {
@@ -9,11 +10,18 @@ export interface TestHarness {
   close(): void;
 }
 
-const SCHEMA_URL = new URL("../migrations/0001_init.sql", import.meta.url);
+const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations/", import.meta.url));
 
 export function createTestDb(): TestHarness {
   const raw = new Database(":memory:");
-  raw.exec(readFileSync(fileURLToPath(SCHEMA_URL), "utf8"));
+  // Apply every migration in order so the in-memory schema matches what
+  // wrangler applies in dev/prod.
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const f of files) {
+    raw.exec(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+  }
   const db: Db = {
     async one<T>(sql: string, params: unknown[] = []) {
       const stmt = raw.prepare(sql);
