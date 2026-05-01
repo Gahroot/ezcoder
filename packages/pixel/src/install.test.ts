@@ -681,10 +681,7 @@ export async function register() {
     );
     // Pre-populate the bundle so the install doesn't warn about the missing IIFE.
     mkdirSync(join(dir, "node_modules/@prestyj/pixel/dist"), { recursive: true });
-    writeFileSync(
-      join(dir, "node_modules/@prestyj/pixel/dist/browser.iife.global.js"),
-      "/*iife*/",
-    );
+    writeFileSync(join(dir, "node_modules/@prestyj/pixel/dist/browser.iife.global.js"), "/*iife*/");
     const { home, cleanup } = setupHome();
     try {
       await install({
@@ -961,10 +958,7 @@ export default function RootLayout({
     writeFileSync(join(dir, "src/renderer.ts"), `console.log("renderer entry");\n`);
     // Pre-stage the IIFE bundle so install doesn't warn about it missing.
     mkdirSync(join(dir, "node_modules/@prestyj/pixel/dist"), { recursive: true });
-    writeFileSync(
-      join(dir, "node_modules/@prestyj/pixel/dist/browser.iife.global.js"),
-      "/*iife*/",
-    );
+    writeFileSync(join(dir, "node_modules/@prestyj/pixel/dist/browser.iife.global.js"), "/*iife*/");
     const { home, cleanup } = setupHome();
     try {
       const result = await install({
