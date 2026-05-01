@@ -307,7 +307,7 @@ This repo is a fork of [KenKaiii/ezcoder](https://github.com/KenKaiii/ezcoder). 
 | `packages/cli` | `packages/cli` |
 | `@prestyj/*` scope | `@kenkaiiii/*` scope |
 | `~/.ezcoder/` config dir | `~/.ezcoder/` config dir |
-| `EZ Coder` branding | `GG Coder` branding |
+| `EZ Coder` branding | `EZ Coder` branding |
 | `EZCoderAIError` | `EZCoderAIError` |
 | `Gahroot/ezcoder` repo | `KenKaiii/ezcoder` repo |
 

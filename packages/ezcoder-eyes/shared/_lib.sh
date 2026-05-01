@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # _lib.sh — shared helpers for all probes.
-# Probes source this AFTER being copied into .gg/eyes/ as .gg/eyes/_lib.sh.
+# Probes source this AFTER being copied into .ezcoder/eyes/ as .ezcoder/eyes/_lib.sh.
 # Usage at top of probe:
 #   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #   source "$SCRIPT_DIR/_lib.sh"
@@ -15,7 +15,7 @@ eyes_project_root() {
   echo "$PWD"
 }
 
-eyes_root()      { echo "$(eyes_project_root)/.gg/eyes"; }
+eyes_root()      { echo "$(eyes_project_root)/.ezcoder/eyes"; }
 eyes_out_dir()   { local d; d="$(eyes_root)/out";   mkdir -p "$d"; echo "$d"; }
 eyes_state_dir() { local d; d="$(eyes_root)/state"; mkdir -p "$d"; echo "$d"; }
 eyes_bin_dir()   { local d; d="$(eyes_root)/bin";   mkdir -p "$d"; echo "$d"; }

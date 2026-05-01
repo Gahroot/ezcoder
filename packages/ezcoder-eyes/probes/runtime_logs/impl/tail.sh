@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # impl: tail
 # Generic log probe. By convention, up.sh redirects every started process's
-# stdout+stderr into .gg/eyes/out/<service>.log. This probe reads from there OR
+# stdout+stderr into .ezcoder/eyes/out/<service>.log. This probe reads from there OR
 # any arbitrary file path the caller gives it.
 #
 # Usage:
@@ -38,7 +38,7 @@ if [ -z "$FILE" ]; then
     eyes_die "provide --file <path> or --service <name>"
   fi
 fi
-[ -f "$FILE" ] || eyes_die "log file not found: $FILE (did you start the service via .gg/eyes/up.sh?)"
+[ -f "$FILE" ] || eyes_die "log file not found: $FILE (did you start the service via .ezcoder/eyes/up.sh?)"
 
 if [ "$FOLLOW" -eq 1 ]; then
   if [ -n "$PATTERN" ]; then

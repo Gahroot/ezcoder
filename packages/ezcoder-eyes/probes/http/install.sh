@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # http/install.sh [impl]
-# Only one impl (curl). Copies it into .gg/eyes/http.sh.
+# Only one impl (curl). Copies it into .ezcoder/eyes/http.sh.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/../../shared/_lib.sh"

@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gahroot/gg-framework.git",
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
     "directory": "packages/editor-premiere-panel"
   },
   "bin": {

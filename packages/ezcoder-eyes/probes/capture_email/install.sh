@@ -5,7 +5,7 @@
 #
 # After install you must configure your app's SMTP settings:
 #   host=127.0.0.1  port=<smtp_port>  user=""  pass=""  tls=off
-# Ports are written to .gg/eyes/state/mailpit.smtp_port and .gg/eyes/state/mailpit.http_port.
+# Ports are written to .ezcoder/eyes/state/mailpit.smtp_port and .ezcoder/eyes/state/mailpit.http_port.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/../../shared/_lib.sh"
@@ -13,7 +13,7 @@ source "$HERE/../../shared/_lib.sh"
 IMPL="${1:-mailpit}"
 [ "$IMPL" = "mailpit" ] || eyes_die "only 'mailpit' impl is provided"
 
-# Resolve or install binary into .gg/eyes/bin/mailpit
+# Resolve or install binary into .ezcoder/eyes/bin/mailpit
 BIN="$(eyes_bin_dir)/mailpit"
 if [ ! -x "$BIN" ]; then
   if command -v mailpit >/dev/null 2>&1; then

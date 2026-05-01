@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # install.sh <impl> [--as <name>]
-# Installs deps for <impl>, copies impl/<impl>.sh into .gg/eyes/<name>.sh (default "visual").
+# Installs deps for <impl>, copies impl/<impl>.sh into .ezcoder/eyes/<name>.sh (default "visual").
 # Multi-impl projects install once per impl with distinct --as names,
 # e.g. visual-ios / visual-android.
 set -euo pipefail
