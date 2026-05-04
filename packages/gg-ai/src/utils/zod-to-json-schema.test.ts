@@ -80,29 +80,48 @@ describe("zodToJsonSchema", () => {
     expect(result).toHaveProperty("maximum", 100);
   });
 
-  it("forces type:'object' on root discriminated unions (Anthropic compatibility)", () => {
+  it("flattens root discriminated unions (Anthropic disallows oneOf/anyOf at root)", () => {
     const schema = z.discriminatedUnion("action", [
       z.object({ action: z.literal("create"), name: z.string() }),
       z.object({ action: z.literal("delete"), id: z.string() }),
     ]);
     const result = zodToJsonSchema(schema);
-    // Anthropic's tool input_schema validator REQUIRES root type === 'object'.
-    // Without this we get: tools.N.custom.input_schema.type: Field required
+    // Anthropic requires root type='object' AND no oneOf/anyOf/allOf at root.
     expect(result).toHaveProperty("type", "object");
-    // Zod 4 emits oneOf for discriminated unions, anyOf for plain unions.
-    const variants = (result.oneOf ?? result.anyOf) as unknown[] | undefined;
-    expect(variants).toBeTruthy();
-    expect(variants!.length).toBe(2);
+    expect(result).not.toHaveProperty("oneOf");
+    expect(result).not.toHaveProperty("anyOf");
+    expect(result).not.toHaveProperty("allOf");
+    // Discriminator collapses to enum.
+    const props = result.properties as Record<string, Record<string, unknown>>;
+    expect(props.action.enum).toEqual(["create", "delete"]);
+    // All branch fields are present (model gets the full hint).
+    expect(props).toHaveProperty("name");
+    expect(props).toHaveProperty("id");
+    // Required = intersection across branches: only `action` is in every branch.
+    expect(result.required).toEqual(["action"]);
   });
 
-  it("forces type:'object' on root z.union too", () => {
+  it("flattens root z.union too", () => {
     const schema = z.union([
       z.object({ kind: z.literal("a"), value: z.string() }),
       z.object({ kind: z.literal("b"), value: z.number() }),
     ]);
     const result = zodToJsonSchema(schema);
     expect(result).toHaveProperty("type", "object");
-    expect(result.anyOf ?? result.oneOf).toBeTruthy();
+    expect(result).not.toHaveProperty("oneOf");
+    expect(result).not.toHaveProperty("anyOf");
+    const props = result.properties as Record<string, Record<string, unknown>>;
+    expect(props.kind.enum).toEqual(["a", "b"]);
+  });
+
+  it("a property required in only one branch becomes optional in the flat schema", () => {
+    const schema = z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("a"), aOnly: z.string() }),
+      z.object({ kind: z.literal("b"), bOnly: z.string() }),
+    ]);
+    const result = zodToJsonSchema(schema);
+    // Only `kind` is required in BOTH branches.
+    expect(result.required).toEqual(["kind"]);
   });
 
   it("does not override an explicit root type", () => {
