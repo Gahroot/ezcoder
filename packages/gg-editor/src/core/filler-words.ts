@@ -200,6 +200,35 @@ export function keepRangesFromFillers(
 }
 
 /**
+ * From a sorted keep-range list, compute the TIMELINE-space cut points.
+ *
+ * After `import_edl` lands the keep ranges concatenated onto the timeline,
+ * each junction between adjacent keeps becomes a visible cut at the
+ * timeline-relative timestamp = sum of all earlier keep durations.
+ *
+ * Example: keeps = [[0,10], [12,25], [28,40]]
+ *   timeline = [0..10] + [10..23] + [23..35]
+ *   cuts at  =        10s,         23s   (two junctions)
+ *
+ * Why this matters: tools like `add_sfx_to_timeline` and `add_sfx_at_cuts`
+ * place SFX at TIMELINE timestamps. If callers pass SOURCE timestamps from
+ * the transcript, the drift compounds with every cut and the SFX lands
+ * progressively further out of sync (fine for the first ~30s, off by 20+s
+ * by the end of a typical podcast). This helper exists to remove that
+ * footgun.
+ */
+export function keepRangesToTimelineCuts(keeps: KeepRange[]): number[] {
+  if (keeps.length <= 1) return [];
+  const cuts: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < keeps.length - 1; i++) {
+    acc += keeps[i].endSec - keeps[i].startSec;
+    cuts.push(+acc.toFixed(3));
+  }
+  return cuts;
+}
+
+/**
  * Frame-align keep ranges. Rounds INWARD (start ceils, end floors) so
  * cuts never extend into a filler.
  */

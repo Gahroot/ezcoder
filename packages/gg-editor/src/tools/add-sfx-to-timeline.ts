@@ -38,8 +38,12 @@ const AddSfxToTimelineParams = z.object({
     .array(z.number().min(0))
     .min(1)
     .describe(
-      "Timestamps (seconds) where the SFX should fire on the timeline. Same list you'd pass " +
-        "to punch_in / add_sfx_at_cuts. Closer-than-minSpacingSec hits are deduped.",
+      "TIMELINE-space timestamps (seconds) where the SFX should fire. ⚠️ These must be " +
+        "timeline-relative — NOT source-video timestamps from the transcript. After " +
+        "`cut_filler_words` runs, use the `timelineCutPoints` field from its result; passing " +
+        "source-space transcript timestamps causes the SFX to drift further out of sync after " +
+        "every cut (fine for the first ~30 s, off by 20+ s by the end). Closer-than-" +
+        "minSpacingSec hits are deduped.",
     ),
   track: z
     .number()
@@ -97,11 +101,12 @@ export function createAddSfxToTimelineTool(
           // Bundled-name failures often surface via ffmpeg synthesis errors;
           // surface ffmpeg presence in the fix hint when relevant.
           const msg = (e as Error).message;
-          const hint = msg.includes("ffmpeg") || msg.includes("Bundled:")
-            ? checkFfmpeg()
-              ? "use a bundled SFX name or supply a real file path"
-              : "ffmpeg not on PATH \u2014 install ffmpeg or use a literal file path"
-            : "use a bundled SFX name or supply a real file path";
+          const hint =
+            msg.includes("ffmpeg") || msg.includes("Bundled:")
+              ? checkFfmpeg()
+                ? "use a bundled SFX name or supply a real file path"
+                : "ffmpeg not on PATH \u2014 install ffmpeg or use a literal file path"
+              : "use a bundled SFX name or supply a real file path";
           return err(msg, hint);
         }
 

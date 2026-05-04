@@ -20,8 +20,12 @@ const AddSfxAtCutsParams = z.object({
     .array(z.number().min(0))
     .min(1)
     .describe(
-      "Timestamps (seconds) where the SFX should fire. Same list you'd pass to punch_in. " +
-        "Closer-than-minSpacingSec hits are deduped automatically.",
+      "Timestamps (seconds) where the SFX should fire — RELATIVE TO THE INPUT FILE. ⚠️ If the " +
+        "input is a rendered cut (post-`cut_filler_words` / `text_based_cut`), pass the " +
+        "`timelineCutPoints` from that tool's result — NOT source-video transcript timestamps. " +
+        "Source-space points drift further out of sync after every cut (fine for the first " +
+        "~30 s, off by 20+ s by the end of a typical podcast). Closer-than-minSpacingSec hits " +
+        "are deduped automatically.",
     ),
   sfxGainDb: z
     .number()

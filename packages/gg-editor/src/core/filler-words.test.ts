@@ -4,6 +4,7 @@ import {
   detectFillerRanges,
   keepRangesFromFillers,
   keepRangesToFrameRanges,
+  keepRangesToTimelineCuts,
   summarizeFillers,
 } from "./filler-words.js";
 
@@ -197,5 +198,53 @@ describe("summarizeFillers", () => {
     const stats = summarizeFillers(fillers);
     const counts = Object.fromEntries(stats.topFillers.map((f) => [f.text, f.count]));
     expect(counts).toEqual({ um: 1, uh: 1 });
+  });
+});
+
+describe("keepRangesToTimelineCuts", () => {
+  it("emits one cut per junction in TIMELINE space (cumulative keep durations)", () => {
+    // Source: keep [0,10] + filler [10,12] + keep [12,25] + filler [25,28] + keep [28,40]
+    // After import_edl, the timeline = 10s + 13s + 12s = 35s with cuts at 10s and 23s
+    const keeps = [
+      { startSec: 0, endSec: 10 },
+      { startSec: 12, endSec: 25 },
+      { startSec: 28, endSec: 40 },
+    ];
+    expect(keepRangesToTimelineCuts(keeps)).toEqual([10, 23]);
+  });
+
+  it("returns empty when there are zero or one keep ranges", () => {
+    expect(keepRangesToTimelineCuts([])).toEqual([]);
+    expect(keepRangesToTimelineCuts([{ startSec: 0, endSec: 10 }])).toEqual([]);
+  });
+
+  it("compounds the cumulative offset correctly across many small keeps", () => {
+    // Each keep is 5s with 1s of filler between them.
+    // Timeline cuts land at 5, 10, 15, 20.
+    const keeps = [
+      { startSec: 0, endSec: 5 },
+      { startSec: 6, endSec: 11 },
+      { startSec: 12, endSec: 17 },
+      { startSec: 18, endSec: 23 },
+      { startSec: 24, endSec: 29 },
+    ];
+    expect(keepRangesToTimelineCuts(keeps)).toEqual([5, 10, 15, 20]);
+  });
+
+  it("the SOURCE-vs-TIMELINE drift bug — cuts diverge linearly with cumulative removed time", () => {
+    // The bug we're protecting against: agent passes source timestamps to a
+    // timeline tool. After 24s of total filler removed, a source-space cut at
+    // 60s is at timeline 60s - 24s = 36s. By 100s+ the drift is the full 24s.
+    // This test documents the math we're encoding for the agent.
+    const keeps = [
+      { startSec: 0, endSec: 30 }, // 30s kept
+      { startSec: 32, endSec: 60 }, // 28s kept (source 30-32 = 2s filler removed)
+      { startSec: 65, endSec: 100 }, // 35s kept (5s filler removed)
+    ];
+    const timelineCuts = keepRangesToTimelineCuts(keeps);
+    expect(timelineCuts).toEqual([30, 58]); // junction 1 at 30s timeline, junction 2 at 30+28=58s
+    // If the agent had passed SOURCE timestamps (32s and 65s), the second
+    // SFX would have landed at timeline=65s — 7s LATE relative to the actual
+    // junction at 58s. That's the bug.
   });
 });
