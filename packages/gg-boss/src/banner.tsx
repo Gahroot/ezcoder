@@ -7,10 +7,16 @@ interface BossBannerProps {
   subtitle: string;
   /** Third line text (e.g. "↑↓ navigate · enter save"). */
   hint?: string;
+  /**
+   * If true, show the standard chat-mode shortcut row (Ctrl+T tasks). Mirrors
+   * ggcoder's banner where the third row advertises ^T / ^S / ^P. Override
+   * with `hint` for non-chat banners (link picker, task overlay).
+   */
+  showShortcuts?: boolean;
 }
 
 /** Ink banner — for use inside Ink-rendered screens. */
-export function BossBanner({ subtitle, hint }: BossBannerProps): React.ReactElement {
+export function BossBanner({ subtitle, hint, showShortcuts }: BossBannerProps): React.ReactElement {
   return (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
       <Box>
@@ -33,7 +39,20 @@ export function BossBanner({ subtitle, hint }: BossBannerProps): React.ReactElem
       <Box>
         <GradientText text={LOGO_LINES[2]!} />
         <Text>{LOGO_GAP}</Text>
-        <Text color={COLORS.textDim}>{hint ?? ""}</Text>
+        {showShortcuts ? (
+          <Text>
+            <Text color={COLORS.primary}>^T</Text>
+            <Text color={COLORS.textDim}> tasks</Text>
+            <Text color={COLORS.textDim}>{"  "}</Text>
+            <Text color={COLORS.primary}>Tab</Text>
+            <Text color={COLORS.textDim}> scope</Text>
+            <Text color={COLORS.textDim}>{"  "}</Text>
+            <Text color={COLORS.primary}>ESC</Text>
+            <Text color={COLORS.textDim}> interrupt</Text>
+          </Text>
+        ) : (
+          <Text color={COLORS.textDim}>{hint ?? ""}</Text>
+        )}
       </Box>
     </Box>
   );

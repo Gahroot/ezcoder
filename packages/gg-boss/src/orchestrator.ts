@@ -9,7 +9,9 @@ import {
 import type { Message, Provider, ThinkingLevel, Usage } from "@kenkaiiii/gg-ai";
 import { Worker } from "./worker.js";
 import { EventQueue } from "./event-queue.js";
-import { createBossTools } from "./tools.js";
+import { createBossTools, WORKER_PROMPT_BRIEF } from "./tools.js";
+import { createTaskTools } from "./task-tools.js";
+import { tasksStore } from "./tasks-store.js";
 import { buildBossSystemPrompt } from "./boss-system-prompt.js";
 import { bossStore } from "./boss-store.js";
 import {
@@ -57,6 +59,9 @@ export class GGBoss {
   private sessionPath = "";
   /** Last index in the boss's messages array we've persisted to disk. */
   private lastPersistedIndex = 0;
+  /** project → task id currently dispatched to that worker. Used to mark
+   *  the right task done/blocked when the worker_turn_complete event arrives. */
+  private inFlightTaskByProject = new Map<string, string>();
 
   constructor(opts: GGBossOptions) {
     this.opts = opts;
@@ -64,6 +69,7 @@ export class GGBoss {
 
   async initialize(): Promise<void> {
     await this.authStorage.load();
+    await tasksStore.load();
     const loggedInProviders = (await this.authStorage.listProviders()) as Provider[];
 
     bossStore.init({
@@ -92,10 +98,7 @@ export class GGBoss {
     );
 
     const creds = await this.authStorage.resolveCredentials(this.opts.bossProvider);
-    const tools = createBossTools({
-      workers: this.workers,
-      lastSummaries: this.lastSummaries,
-    });
+    const tools = this.buildToolSet();
 
     // Either resume a prior session (load messages from jsonl), or create a
     // new one. Either way we end up with `sessionPath` to persist into.
@@ -168,15 +171,69 @@ export class GGBoss {
     this.turnAc?.abort();
   }
 
+  /** Boss tool set = orchestration tools + task management tools. */
+  private buildToolSet() {
+    const bossTools = createBossTools({
+      workers: this.workers,
+      lastSummaries: this.lastSummaries,
+    });
+    const taskTools = createTaskTools({
+      workers: this.workers,
+      dispatchTaskByDescription: (project, description, fresh, taskId) =>
+        this.dispatchTaskByDescription(project, description, fresh, taskId),
+    });
+    return [...bossTools, ...taskTools];
+  }
+
+  /**
+   * Dispatch a single task to a specific worker, marking it in_progress and
+   * (eventually) done when the worker_turn_complete event arrives. Used by:
+   *  - the dispatch_pending tool (called by the boss agent)
+   *  - the Tasks overlay (when user presses Enter on a task)
+   *
+   * Returns immediately — fire-and-forget like prompt_worker.
+   */
+  async dispatchTaskById(taskId: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+    const task = tasksStore.byId(taskId);
+    if (!task) return { ok: false, reason: "unknown task id" };
+    const w = this.workers.get(task.project);
+    if (!w) return { ok: false, reason: `unknown project: ${task.project}` };
+    if (w.getStatus() === "working") return { ok: false, reason: "worker is busy" };
+    await tasksStore.update(task.id, { status: "in_progress" });
+    return this.dispatchTaskByDescription(
+      task.project,
+      task.description,
+      task.fresh === true,
+      task.id,
+    );
+  }
+
+  /**
+   * Dispatch a task description to a worker. Used by both the task tool and
+   * the overlay (via dispatchTaskById). Tracks the in-flight task id per
+   * project so worker_turn_complete can resolve it back to the right task.
+   */
+  private async dispatchTaskByDescription(
+    project: string,
+    description: string,
+    fresh: boolean,
+    taskId: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    const w = this.workers.get(project);
+    if (!w) return { ok: false, reason: `unknown project: ${project}` };
+    if (w.getStatus() === "working") return { ok: false, reason: "worker is busy" };
+    if (fresh) await w.newSession();
+    this.inFlightTaskByProject.set(project, taskId);
+    await w.prompt(WORKER_PROMPT_BRIEF + description);
+    return { ok: true };
+  }
+
   /**
    * Swap the boss's LLM model. Preserves message history so the conversation
    * continues seamlessly under the new model.
    */
   async switchBossModel(provider: Provider, model: string): Promise<void> {
-    const tools = createBossTools({
-      workers: this.workers,
-      lastSummaries: this.lastSummaries,
-    });
+    const tools = this.buildToolSet();
     const creds = await this.authStorage.resolveCredentials(provider);
     // Capture history minus the system message — Agent re-adds system from options.
     const oldMessages = this.bossAgent.getMessages().filter((m) => m.role !== "system");
@@ -269,10 +326,7 @@ export class GGBoss {
 
   /** Recreate bossAgent with a new message history (used by compact + /clear). */
   private async replaceBossMessages(newMessages: Message[]): Promise<void> {
-    const tools = createBossTools({
-      workers: this.workers,
-      lastSummaries: this.lastSummaries,
-    });
+    const tools = this.buildToolSet();
     const creds = await this.authStorage.resolveCredentials(this.opts.bossProvider);
     // Strip system — Agent re-adds it from `system`.
     const priorMessages = newMessages.filter((m) => m.role !== "system");
@@ -322,6 +376,31 @@ export class GGBoss {
       }
       if (event.kind === "worker_turn_complete") {
         this.lastSummaries.set(event.summary.project, event.summary);
+        // Resolve any in-flight task for this project to its final status.
+        // Boss can still override via update_task — this just gives it a sane
+        // default so the user's overlay-driven dispatches close out cleanly.
+        const taskId = this.inFlightTaskByProject.get(event.summary.project);
+        if (taskId) {
+          this.inFlightTaskByProject.delete(event.summary.project);
+          const task = tasksStore.byId(taskId);
+          if (task && task.status === "in_progress") {
+            const failed = event.summary.toolsUsed.some((t) => !t.ok);
+            await tasksStore.update(taskId, {
+              status: failed ? "blocked" : "done",
+              resultSummary: event.summary.finalText,
+            });
+          }
+        }
+      }
+      if (event.kind === "worker_error") {
+        const taskId = this.inFlightTaskByProject.get(event.project);
+        if (taskId) {
+          this.inFlightTaskByProject.delete(event.project);
+          await tasksStore.update(taskId, {
+            status: "blocked",
+            notes: `Worker error: ${event.message}`,
+          });
+        }
       }
 
       // Auto-compact when over 80% of context — mirrors AgentSession.runLoop.

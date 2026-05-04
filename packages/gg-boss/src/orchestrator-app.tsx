@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Static, Text, render, useApp, useInput } from "ink";
 import { ThemeContext, loadTheme, useTheme } from "@kenkaiiii/ggcoder/ui/theme";
 import {
@@ -36,6 +36,7 @@ import { bossToolFormatters } from "./tool-formatters.js";
 import { projectColor } from "./colors.js";
 import { BOSS_PHRASES } from "./boss-phrases.js";
 import { COLORS, PULSE_COLORS as BOSS_PULSE_COLORS } from "./branding.js";
+import { BossTasksOverlay } from "./boss-tasks-overlay.js";
 import type { GGBoss } from "./orchestrator.js";
 
 interface BannerRow {
@@ -77,11 +78,25 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   // Track the most recent user message so the activity bar's contextual phrase
   // selection has something to riff on (when not using BOSS_PHRASES override).
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
-  const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | null>(null);
+  const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | "tasks" | null>(null);
 
   const staticItems: StaticRow[] = useMemo(
     () => [{ kind: "banner", id: "banner" }, ...state.history],
     [state.history],
+  );
+
+  /**
+   * Just toggles overlay state. We deliberately do NOT clear the screen or
+   * remount Static here — both of those caused the banner to be reprinted to
+   * scrollback on every toggle, leaving multiple banner copies above when the
+   * user scrolls up. Ink's log-update handles live-area swaps cleanly on its
+   * own; the Static block stays put in scrollback as it should.
+   */
+  const toggleOverlay = useCallback(
+    (next: "tasks" | "model-boss" | "model-workers" | null): void => {
+      setOverlay(next);
+    },
+    [],
   );
 
   // ggcoder's double-press pattern: 800ms window. First press shows
@@ -100,11 +115,14 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
     }
   }, [state.flushGeneration, state.pendingFlush.length]);
 
-  // ── ESC interrupt ───────────────────────────────────────
-  // Listen at the App level. When the boss is running, ESC aborts its current
-  // LLM call. When idle, InputArea handles ESC (clear input / clear selection)
-  // and our handler is a no-op since `state.phase !== "working"`.
-  useInput((_input, key) => {
+  // ── App-level keyboard ──────────────────────────────────
+  // ESC: abort current boss call when working (InputArea handles otherwise).
+  // Ctrl+T: toggle the Tasks overlay (matches ggcoder's keybind).
+  useInput((input, key) => {
+    if (key.ctrl && input === "t") {
+      toggleOverlay(overlay === "tasks" ? null : "tasks");
+      return;
+    }
     if (key.escape && state.phase === "working") {
       boss.abort();
     }
@@ -133,14 +151,17 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
         bossStore.appendInfo(formatWorkerList(state.workers), "info");
         return true;
       case "model-boss":
-        setOverlay("model-boss");
+        toggleOverlay("model-boss");
         return true;
       case "model-workers":
-        setOverlay("model-workers");
+        toggleOverlay("model-workers");
         return true;
       case "compact":
         bossStore.appendUser(value);
         await boss.manualCompact();
+        return true;
+      case "tasks":
+        toggleOverlay("tasks");
         return true;
       case "new":
         bossStore.clearHistory();
@@ -156,7 +177,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   const handleModelSelect = (value: string): void => {
     const colon = value.indexOf(":");
     if (colon < 0) {
-      setOverlay(null);
+      toggleOverlay(null);
       return;
     }
     const provider = value.slice(0, colon) as Provider;
@@ -166,7 +187,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
     } else if (overlay === "model-workers") {
       void boss.switchWorkerModel(provider, model);
     }
-    setOverlay(null);
+    toggleOverlay(null);
   };
 
   const handleSubmit = (value: string): void => {
@@ -194,6 +215,19 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
     // Boss is idle → double-press to exit, with footer pending message.
     handleDoubleExit();
   };
+
+  // Tasks overlay is a full-screen view: render Static (pinned banner +
+  // history) then ONLY the overlay below it, no streaming/input/footer. This
+  // mirrors ggcoder's isTaskView pattern — embedding the overlay alongside
+  // the chat chrome makes the input + footer visibly shift on each toggle.
+  if (overlay === "tasks") {
+    return (
+      <Box flexDirection="column">
+        <Static items={staticItems}>{(item) => <StaticRowView key={item.id} row={item} />}</Static>
+        <BossTasksOverlay boss={boss} workers={state.workers} onClose={() => toggleOverlay(null)} />
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column">
@@ -244,10 +278,10 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
         onTab={() => bossStore.cycleScope()}
       />
 
-      {overlay ? (
+      {overlay === "model-boss" || overlay === "model-workers" ? (
         <ModelSelector
           onSelect={handleModelSelect}
-          onCancel={() => setOverlay(null)}
+          onCancel={() => toggleOverlay(null)}
           loggedInProviders={state.loggedInProviders}
           currentModel={overlay === "model-boss" ? state.bossModel : state.workerModel}
           currentProvider={overlay === "model-boss" ? state.bossProvider : state.workerProvider}
@@ -366,7 +400,7 @@ function StaticRowView({ row }: { row: StaticRow }): React.ReactElement | null {
   if (row.kind === "banner") {
     return (
       <Box paddingX={1}>
-        <BossBanner subtitle="Orchestrator" hint="talking to all linked projects from one chat" />
+        <BossBanner subtitle="Orchestrator" showShortcuts />
       </Box>
     );
   }

@@ -20,8 +20,11 @@ export interface BossToolDeps {
  *
  * Lives here (not in the boss system prompt) because it's a worker-side
  * instruction — only seen by the worker, never by the boss.
+ *
+ * Exported so the orchestrator can wrap dispatches that bypass prompt_worker
+ * (Tasks overlay direct dispatch, dispatch_pending tool) with the same brief.
  */
-const WORKER_PROMPT_BRIEF = `You're being driven by gg-boss, an orchestrator. Your tool usage is already visible to it — don't narrate which tools you ran or recap the request.
+export const WORKER_PROMPT_BRIEF = `You're being driven by gg-boss, an orchestrator. Your tool usage is already visible to it — don't narrate which tools you ran or recap the request.
 
 End your response with a tight structured summary. Omit any line that doesn't apply:
 
