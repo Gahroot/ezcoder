@@ -22,6 +22,7 @@ import { Banner } from "./components/Banner.js";
 import type { LazyHost } from "../core/hosts/lazy.js";
 import { saveSession } from "../core/sessions.js";
 import { buildEditorHostBlock, spliceHostBlock } from "../system-prompt.js";
+import { EDITOR_PROMPT_COMMANDS, getEditorPromptCommand } from "../prompt-commands.js";
 
 // Editor brand pulse — amber → orange → rose. Distinct from ggcoder's blue/purple.
 const THINKING_BORDER_COLORS = ["#fbbf24", "#f97316", "#ec4899", "#f97316", "#fbbf24"];
@@ -106,10 +107,36 @@ type HistoryItem =
 
 // Names are bare (no `/` prefix) — ggcoder's slash menu prepends `/` for
 // display. Including a `/` here would render as `//`.
+//
+// Order is intentional, follows the typical creator session arc:
+//   1. Setup       — one-time per channel
+//   2. Workflow    — the main verb ("make me a YouTube video")
+//   3. QA          — audit before ship; diagnose after under-performance
+//   4. Session UI  — model swap, clear scrollback
+//   5. Meta        — help, then quit (always last)
+//
+// Prompt commands (group 1–3) come from `prompt-commands.ts` — looked up by
+// name in the same handleSubmit dispatcher. Local UI commands (group 4–5)
+// are handled inline because they manipulate React state directly.
+function promptCmd(name: string) {
+  const c = EDITOR_PROMPT_COMMANDS.find((x) => x.name === name);
+  if (!c) throw new Error(`gg-editor: missing prompt command '${name}' — check prompt-commands.ts`);
+  return { name: c.name, aliases: c.aliases, description: c.description };
+}
+
 const EDITOR_COMMANDS = [
+  // 1. Setup (one-time per channel)
+  promptCmd("setup-channel"),
+  // 2. Workflow (the main verb)
+  promptCmd("youtube"),
+  // 3. QA — pre-render audit, post-render diagnosis
+  promptCmd("audit"),
+  promptCmd("diagnose"),
+  // 4. Session UI
   { name: "model", aliases: ["m"], description: "switch model" },
-  { name: "help", aliases: ["?"], description: "show available commands" },
   { name: "clear", aliases: [], description: "clear visible history (doesn't reset agent)" },
+  // 5. Meta — help next-to-last, quit always last
+  { name: "help", aliases: ["?"], description: "show available commands" },
   { name: "quit", aliases: ["exit", "q"], description: "exit cleanly" },
 ];
 
@@ -360,17 +387,30 @@ export function App(props: AppProps) {
         return;
       }
       if (value === "/help" || value === "/?") {
+        const fmt = (c: { name: string; aliases: string[]; description: string }) =>
+          `- \`/${c.name}\`${c.aliases.length ? " " + c.aliases.map((a) => `\`/${a}\``).join(" ") : ""} — ${c.description}`;
+        const setup = EDITOR_PROMPT_COMMANDS.filter((c) => c.name === "setup-channel").map(fmt);
+        const workflow = EDITOR_PROMPT_COMMANDS.filter((c) => c.name === "youtube").map(fmt);
+        const qa = EDITOR_PROMPT_COMMANDS.filter((c) =>
+          ["audit", "diagnose"].includes(c.name),
+        ).map(fmt);
         setHistoryItems((items) => [
           ...items,
           {
             id: nextId(),
             kind: "assistant",
             text:
-              "**Slash commands**\n\n" +
+              "**Setup** (one-time per channel)\n\n" +
+              setup.join("\n") +
+              "\n\n**Workflow**\n\n" +
+              workflow.join("\n") +
+              "\n\n**Quality checks**\n\n" +
+              qa.join("\n") +
+              "\n\n**Session**\n\n" +
               "- `/model` `/m` — switch model\n" +
-              "- `/quit` `/exit` `/q` — exit\n" +
               "- `/clear` — clear visible history (doesn't reset agent)\n" +
-              "- `/help` `/?` — this help\n\n" +
+              "- `/help` `/?` — this help\n" +
+              "- `/quit` `/exit` `/q` — exit\n\n" +
               "**Keys**\n\n" +
               "- `Shift-Tab` toggle thinking\n" +
               "- `ESC` interrupt the agent\n" +
@@ -384,6 +424,29 @@ export function App(props: AppProps) {
       if (value === "/model" || value === "/m") {
         setOverlay("model");
         return;
+      }
+
+      // Bundled prompt commands — dispatch to the agent loop with the
+      // command's prompt as the user message. Mirrors ggcoder's pattern.
+      // Args after the command name are appended as "## User Instructions".
+      if (value.startsWith("/")) {
+        const parts = value.slice(1).split(" ");
+        const cmdName = parts[0];
+        const cmdArgs = parts.slice(1).join(" ").trim();
+        const cmd = getEditorPromptCommand(cmdName);
+        if (cmd) {
+          const fullPrompt = cmdArgs
+            ? `${cmd.prompt}\n\n## User Instructions\n\n${cmdArgs}`
+            : cmd.prompt;
+          // Show the user's literal /command invocation in scrollback so the
+          // history stays a faithful transcript; the expanded prompt itself
+          // goes to the agent loop only.
+          lastUserMessageRef.current = value;
+          setLastUserMessage(value);
+          setHistoryItems((items) => [...items, { id: nextId(), kind: "user", text: value }]);
+          void agentLoop.run(fullPrompt);
+          return;
+        }
       }
 
       lastUserMessageRef.current = value;

@@ -608,12 +608,34 @@ def m_import_subtitles(params):
         except Exception:
             pass
 
-    appended = media_pool.AppendToTimeline(items) or []
+    # Anchor the SRT at the timeline's start. AppendToTimeline(items) without
+    # a clip-info dict appends to the END of existing content on the chosen
+    # track — so if the subtitle track already has clips, OR Resolve picks the
+    # video track's tail, the SRT's 0s cue lands at frame N>0 and every cue
+    # past (timelineLength - N) seconds falls past the end of the video and
+    # never renders. Forcing recordFrame=GetStartFrame() pins the SRT to the
+    # start so its internal timecodes line up with the video.
+    start_frame = int(t.GetStartFrame())
+    clip_info = {
+        "mediaPoolItem": items[0],
+        "recordFrame": start_frame,
+    }
+    appended = media_pool.AppendToTimeline([clip_info]) or []
     if not appended:
+        # Fallback to the legacy raw-items form. Some Resolve builds reject the
+        # dict form for subtitle media — if so, the user gets the same
+        # end-append behaviour as before but at least the SRT lands somewhere.
+        appended = media_pool.AppendToTimeline(items) or []
+        if not appended:
+            return {
+                "imported": True,
+                "attached": False,
+                "note": "SRT imported to media pool but auto-attach failed; drag onto subtitle track manually.",
+            }
         return {
             "imported": True,
-            "attached": False,
-            "note": "SRT imported to media pool but auto-attach failed; drag onto subtitle track manually.",
+            "attached": True,
+            "note": "SRT attached at end of timeline (Resolve rejected recordFrame=0). Move the subtitle clip back to frame 0 manually if cues appear past the video end.",
         }
     return {"imported": True, "attached": True}
 
