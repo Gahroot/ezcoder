@@ -77,11 +77,10 @@ export const bossToolFormatters: ToolExecutionFormatters = {
         }
         // Color the badge by project — same project always reads as the same
         // hue across scrollback so the user can scan dispatches at a glance.
+        // (When fresh: true, the "fresh ·" prefix is already in the detail
+        // parens — no need to double up here, was causing line wraps.)
         const project = String(result.match(/"([^"]+)"/)?.[1] ?? "");
-        const color = project ? projectColor(project) : "#60a5fa";
-        if (result.startsWith("Fresh session opened")) {
-          return { text: "dispatched · fresh", color };
-        }
+        const color = project ? projectColor(project) : "#e11d48";
         return { text: "dispatched", color };
       }
       case "get_worker_status": {

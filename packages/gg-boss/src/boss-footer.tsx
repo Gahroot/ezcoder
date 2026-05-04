@@ -2,6 +2,7 @@ import React from "react";
 import { Text, Box } from "ink";
 import { useTheme } from "@kenkaiiii/ggcoder/ui/theme";
 import { getContextWindow } from "@kenkaiiii/ggcoder";
+import { COLORS } from "./branding.js";
 
 const PARTIAL_BLOCKS = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
 const LIGHT_SHADE = "░";
@@ -99,12 +100,12 @@ export function BossFooter({
         <Text color={contextColor}> {contextPct}%</Text>
         {sep}
         <Text color={theme.textDim}>boss </Text>
-        <Text color={theme.primary} bold>
+        <Text color={COLORS.primary} bold>
           {shortModel(bossModel)}
         </Text>
         {sep}
         <Text color={theme.textDim}>workers </Text>
-        <Text color={theme.accent} bold>
+        <Text color={COLORS.accent} bold>
           {shortModel(workerModel)}
         </Text>
       </Box>

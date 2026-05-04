@@ -34,6 +34,8 @@ import type {
 import { BOSS_SLASH_COMMANDS, canonicalName, parseSlash, buildHelpText } from "./slash-commands.js";
 import { bossToolFormatters } from "./tool-formatters.js";
 import { projectColor } from "./colors.js";
+import { BOSS_PHRASES } from "./boss-phrases.js";
+import { COLORS, PULSE_COLORS as BOSS_PULSE_COLORS } from "./branding.js";
 import type { GGBoss } from "./orchestrator.js";
 
 interface BannerRow {
@@ -64,6 +66,17 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   const { exit } = useApp();
   const runStartRef = useRef<number | null>(null);
   runStartRef.current = state.runStartMs;
+  // Live char count of the current streaming text — drives ActivityIndicator's
+  // smooth token-counter animation between turn_end events.
+  const charCountRef = useRef<number>(0);
+  charCountRef.current = state.streaming?.text.length ?? 0;
+  // Accumulated real input tokens across completed turns — used alongside
+  // charCountRef so the counter interpolates smoothly between hard updates.
+  const realTokensAccumRef = useRef<number>(0);
+  realTokensAccumRef.current = state.bossInputTokens;
+  // Track the most recent user message so the activity bar's contextual phrase
+  // selection has something to riff on (when not using BOSS_PHRASES override).
+  const [lastUserMessage, setLastUserMessage] = useState<string>("");
   const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | null>(null);
 
   const staticItems: StaticRow[] = useMemo(
@@ -165,6 +178,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
     }
     // Show the user's literal text in chat history.
     bossStore.appendUser(trimmed);
+    setLastUserMessage(trimmed);
     // Inject the scope pill into the message the boss actually sees, so the
     // user doesn't have to write "for the yaatuber project, …" every prompt.
     const scoped = scopePrefix(state.scope) + trimmed;
@@ -197,10 +211,15 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
             thinkingMs={state.streaming?.thinkingMs ?? 0}
             isThinking={state.activityPhase === "thinking"}
             tokenEstimate={state.bossInputTokens}
+            charCountRef={charCountRef}
+            realTokensAccumRef={realTokensAccumRef}
+            userMessage={lastUserMessage}
             activeToolNames={(state.streaming?.tools ?? [])
               .filter((t) => t.status === "running")
               .map((t) => t.name)}
             retryInfo={state.retryInfo}
+            phrases={BOSS_PHRASES}
+            pulseColors={BOSS_PULSE_COLORS}
           />
         </Box>
       )}
@@ -256,15 +275,16 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
 // ── Scope pill (gg-boss specific) ──────────────────────────
 
 function ScopePill({ scope }: { scope: string }): React.ReactElement {
-  const theme = useTheme();
   const isAll = scope === "all";
-  // "All" → accent (multi-project mode reads as a special state).
+  // "All" → boss accent (fuchsia) so multi-project mode wears the brand.
   // Specific project → its stable project color so the pill matches its
   // appearances elsewhere in the TUI.
-  const bg = isAll ? theme.accent : projectColor(scope);
+  const bg = isAll ? COLORS.accent : projectColor(scope);
   const label = isAll ? "All" : scope;
+  // Black text reads cleanly on every color in the palette — the project hues
+  // are deliberately light/saturated, which is unreadable with white on top.
   return (
-    <Text color="white" backgroundColor={bg} bold>
+    <Text color="black" backgroundColor={bg} bold>
       {` ${label} `}
     </Text>
   );
