@@ -1,37 +1,9 @@
 import type { ToolExecutionFormatters } from "@kenkaiiii/ggcoder/ui";
+import { projectColor } from "./colors.js";
 
 function truncate(s: string, max: number): string {
   if (max <= 1) return "…";
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
-}
-
-/**
- * Hex palette for the prompt_worker inline badge. Picked to look decent in both
- * dark and light themes — saturated enough to read on dim backgrounds, soft
- * enough not to scream.
- */
-const INLINE_COLORS = [
-  "#60a5fa", // blue
-  "#a78bfa", // violet
-  "#4ade80", // green
-  "#fbbf24", // amber
-  "#f472b6", // pink
-  "#22d3ee", // cyan
-  "#fb923c", // orange
-  "#34d399", // emerald
-];
-
-/** Stable hash over a string — same args always pick the same color. */
-function hash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function pickColor(seed: string): string {
-  return INLINE_COLORS[hash(seed) % INLINE_COLORS.length]!;
 }
 
 /**
@@ -103,27 +75,36 @@ export const bossToolFormatters: ToolExecutionFormatters = {
         if (result.includes("Unknown project")) {
           return { text: "unknown project", color: "#f87171" };
         }
-        // "Fresh session opened…" → distinct badge so direction-change
-        // prompts visibly stand out from continuation prompts.
+        // Color the badge by project — same project always reads as the same
+        // hue across scrollback so the user can scan dispatches at a glance.
+        const project = String(result.match(/"([^"]+)"/)?.[1] ?? "");
+        const color = project ? projectColor(project) : "#60a5fa";
         if (result.startsWith("Fresh session opened")) {
-          return { text: "dispatched · fresh", color: pickColor(result) };
+          return { text: "dispatched · fresh", color };
         }
-        // Hash on the result — same prompt → same color, but different prompts
-        // get different colors so successive Prompt Worker rows stay lively.
-        return { text: "dispatched", color: pickColor(result) };
+        return { text: "dispatched", color };
       }
       case "get_worker_status": {
         const parts = result.split(":");
-        return parts.length >= 2 ? parts.slice(1).join(":").trim() : undefined;
+        if (parts.length < 2) return undefined;
+        const status = parts.slice(1).join(":").trim();
+        const project = parts[0]!.trim();
+        return { text: status, color: projectColor(project) };
       }
       case "get_worker_summary": {
         const turnMatch = result.match(/Turn:\s*(\d+)/);
+        const projectMatch = result.match(/Project:\s*(.+)/);
         const toolsMatch = result.match(/Tools used:\s*(.+)/);
         const tools = toolsMatch ? toolsMatch[1] : "";
         const toolCount = tools && tools !== "(no tools used)" ? tools.split(",").length : 0;
         const turn = turnMatch ? `turn ${turnMatch[1]}` : undefined;
         const tCount = toolCount > 0 ? `${toolCount} tool${toolCount === 1 ? "" : "s"}` : undefined;
-        return [turn, tCount].filter(Boolean).join(" · ") || undefined;
+        const summary = [turn, tCount].filter(Boolean).join(" · ");
+        if (!summary) return undefined;
+        const project = projectMatch ? projectMatch[1].trim() : "";
+        return project
+          ? { text: summary, color: projectColor(project) }
+          : { text: summary, color: "#9ca3af" };
       }
       default:
         return undefined;

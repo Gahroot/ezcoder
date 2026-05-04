@@ -33,6 +33,7 @@ import type {
 } from "./boss-store.js";
 import { BOSS_SLASH_COMMANDS, canonicalName, parseSlash, buildHelpText } from "./slash-commands.js";
 import { bossToolFormatters } from "./tool-formatters.js";
+import { projectColor } from "./colors.js";
 import type { GGBoss } from "./orchestrator.js";
 
 interface BannerRow {
@@ -257,9 +258,10 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
 function ScopePill({ scope }: { scope: string }): React.ReactElement {
   const theme = useTheme();
   const isAll = scope === "all";
-  // "All" gets the accent color so it visually pops as the multi-project mode;
-  // specific projects use primary so they read as a normal selection pill.
-  const bg = isAll ? theme.accent : theme.primary;
+  // "All" → accent (multi-project mode reads as a special state).
+  // Specific project → its stable project color so the pill matches its
+  // appearances elsewhere in the TUI.
+  const bg = isAll ? theme.accent : projectColor(scope);
   const label = isAll ? "All" : scope;
   return (
     <Text color="white" backgroundColor={bg} bold>
@@ -297,19 +299,21 @@ function WorkerStatusBar({
   return (
     <Box paddingX={1}>
       {workers.map((w, i) => {
-        const color =
-          w.status === "working"
-            ? theme.accent
-            : w.status === "error"
-              ? theme.error
-              : theme.textDim;
-        const labelColor =
-          w.status === "working" ? theme.text : w.status === "error" ? theme.error : theme.textDim;
+        // Glyph color tracks status. Name color tracks PROJECT — same hue as
+        // the worker event row + scope pill — so each project is instantly
+        // identifiable. Errored workers turn red entirely.
+        const errored = w.status === "error";
+        const glyphColor = errored
+          ? theme.error
+          : w.status === "working"
+            ? projectColor(w.name)
+            : theme.textDim;
+        const nameColor = errored ? theme.error : projectColor(w.name);
         return (
           <React.Fragment key={w.name}>
             {i > 0 && <Text color={theme.textDim}>{"  "}</Text>}
-            <Text color={color}>{WORKER_GLYPH[w.status]} </Text>
-            <Text color={labelColor} bold={w.status === "working"}>
+            <Text color={glyphColor}>{WORKER_GLYPH[w.status]} </Text>
+            <Text color={nameColor} bold={w.status === "working"} dimColor={w.status === "idle"}>
               {w.name}
             </Text>
           </React.Fragment>
@@ -450,7 +454,9 @@ function WorkerEventRow({ item }: { item: WorkerEventItem }): React.ReactElement
       : grade === "UNVERIFIED" || grade === "PARTIAL"
         ? "queued"
         : "done";
-  const headerColor = loaderStatus === "error" ? theme.toolError : theme.toolName;
+  // Errors override the project hue with red; otherwise the project gets its
+  // stable color so successive turns from the same worker visually cluster.
+  const headerColor = loaderStatus === "error" ? theme.toolError : projectColor(item.project);
   const toolSummary =
     total === 0
       ? "no tools"
@@ -525,15 +531,21 @@ function InfoRow({
   text: string;
   level: "info" | "warning" | "error";
 }): React.ReactElement {
-  // Render via AssistantMessage so info text gets the same Markdown rendering
-  // and dot prefix as any other assistant response — keeping the chat visually
-  // consistent.
+  // info → render through AssistantMessage so it gets the dot + Markdown.
   if (level === "info") return <AssistantMessage text={text} />;
+  // warning / error → match the ToolUseLoader chrome so the row reads as a
+  // first-class event (consistent with worker errors / failed tool calls)
+  // rather than bare colored text.
   const theme = useTheme();
   const color = level === "error" ? theme.error : theme.warning;
   return (
-    <Box paddingX={1}>
-      <Text color={color}>{text}</Text>
+    <Box marginTop={1} flexDirection="row">
+      <ToolUseLoader status={level === "error" ? "error" : "queued"} />
+      <Box flexGrow={1}>
+        <Text color={color} wrap="wrap">
+          {text}
+        </Text>
+      </Box>
     </Box>
   );
 }
