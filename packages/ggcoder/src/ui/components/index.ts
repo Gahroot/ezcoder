@@ -21,5 +21,7 @@ export { Markdown } from "./Markdown.js";
 export { ThinkingBlock } from "./ThinkingBlock.js";
 export { ThinkingIndicator } from "./ThinkingIndicator.js";
 export { ActivityIndicator } from "./ActivityIndicator.js";
-export { SlashCommandMenu } from "./SlashCommandMenu.js";
+export { SlashCommandMenu, type SlashCommandInfo } from "./SlashCommandMenu.js";
 export { Banner } from "./Banner.js";
+export { CompactionSpinner, CompactionDone } from "./CompactionNotice.js";
+export type { ActivityPhase, RetryInfo } from "../hooks/useAgentLoop.js";

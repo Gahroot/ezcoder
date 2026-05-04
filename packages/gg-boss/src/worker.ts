@@ -84,6 +84,10 @@ export class Worker {
     await this.session.dispose();
   }
 
+  async switchModel(provider: Provider, model: string): Promise<void> {
+    await this.session.switchModel(provider, model);
+  }
+
   private wireEvents(): void {
     const bus = this.session.eventBus;
 

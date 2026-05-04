@@ -1,28 +1,33 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { Box, Static, Text, render, useApp } from "ink";
-import { ThemeContext, loadTheme } from "@kenkaiiii/ggcoder/ui/theme";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Box, Static, Text, render, useApp, useInput } from "ink";
+import { ThemeContext, loadTheme, useTheme } from "@kenkaiiii/ggcoder/ui/theme";
 import {
+  ActivityIndicator,
   AnimationProvider,
   AssistantMessage,
   InputArea,
+  ModelSelector,
   StreamingArea,
   ToolExecution,
   UserMessage,
-  Spinner,
 } from "@kenkaiiii/ggcoder/ui";
+import { useDoublePress } from "@kenkaiiii/ggcoder/ui/hooks/double-press";
+import type { Provider } from "@kenkaiiii/gg-ai";
 import { TerminalSizeProvider } from "@kenkaiiii/ggcoder/ui/hooks/terminal-size";
-import { BossBanner } from "./banner.js";
 import { BossFooter } from "./boss-footer.js";
-import { COLORS } from "./branding.js";
+import { BossBanner } from "./banner.js";
 import { bossStore, useBossState } from "./boss-store.js";
 import type {
+  AssistantItem,
   HistoryItem,
   StreamingTool,
   StreamingTurn,
   ToolItem,
   WorkerEventItem,
   WorkerErrorItem,
+  WorkerView,
 } from "./boss-store.js";
+import { BOSS_SLASH_COMMANDS, canonicalName, parseSlash, buildHelpText } from "./slash-commands.js";
 import type { GGBoss } from "./orchestrator.js";
 
 interface BannerRow {
@@ -51,46 +56,111 @@ export function BossApp({ boss }: BossAppProps): React.ReactElement {
 function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   const state = useBossState();
   const { exit } = useApp();
-  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runStartRef = useRef<number | null>(null);
+  runStartRef.current = state.runStartMs;
+  const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | null>(null);
 
   const staticItems: StaticRow[] = useMemo(
     () => [{ kind: "banner", id: "banner" }, ...state.history],
     [state.history],
   );
 
-  useEffect(() => {
-    return () => {
-      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-    };
-  }, []);
+  // ggcoder's double-press pattern: 800ms window. First press shows
+  // "Press Ctrl+C again to exit" in the footer; second within 800ms exits.
+  const handleDoubleExit = useDoublePress(
+    (pending) => bossStore.setExitPending(pending),
+    () => exit(),
+  );
 
-  // Two-phase flush: when the orchestrator/worker pushes items into pendingFlush
-  // (which shrinks the live streaming area in phase 1), commit them to history
-  // here on a separate render cycle. Running this in useEffect — AFTER React
-  // has painted the prior render that collapsed the live area — guarantees Ink's
-  // log-update doesn't have to clear a tall live area AND write new Static lines
-  // in the same frame, which is what was clipping long final responses.
+  // Two-phase flush — see boss-store.ts for the rationale. Phase 1 (orchestrator
+  // pushes into pendingFlush, live area shrinks) already happened; phase 2 here
+  // commits to history on the next render so Ink doesn't clip long responses.
   useEffect(() => {
     if (state.pendingFlush.length > 0) {
       bossStore.commitPendingFlush();
     }
   }, [state.flushGeneration, state.pendingFlush.length]);
 
+  // ── ESC interrupt ───────────────────────────────────────
+  // Listen at the App level. When the boss is running, ESC aborts its current
+  // LLM call. When idle, InputArea handles ESC (clear input / clear selection)
+  // and our handler is a no-op since `state.phase !== "working"`.
+  useInput((_input, key) => {
+    if (key.escape && state.phase === "working") {
+      boss.abort();
+    }
+  });
+
+  const handleSlashCommand = async (value: string): Promise<boolean> => {
+    const parsed = parseSlash(value);
+    if (!parsed) return false;
+    const name = canonicalName(parsed.name);
+    if (!name) {
+      bossStore.appendInfo(`Unknown command: /${parsed.name}`, "warning");
+      return true;
+    }
+    switch (name) {
+      case "help":
+        bossStore.appendUser(value);
+        // Render help via an assistant block so Markdown formatting + dot prefix.
+        bossStore.appendInfo(buildHelpText(), "info");
+        return true;
+      case "clear":
+        bossStore.clearHistory();
+        await boss.resetConversation();
+        return true;
+      case "workers":
+        bossStore.appendUser(value);
+        bossStore.appendInfo(formatWorkerList(state.workers), "info");
+        return true;
+      case "model-boss":
+        setOverlay("model-boss");
+        return true;
+      case "model-workers":
+        setOverlay("model-workers");
+        return true;
+      case "quit":
+        exit();
+        return true;
+    }
+    return false;
+  };
+
+  const handleModelSelect = (value: string): void => {
+    const colon = value.indexOf(":");
+    if (colon < 0) {
+      setOverlay(null);
+      return;
+    }
+    const provider = value.slice(0, colon) as Provider;
+    const model = value.slice(colon + 1);
+    if (overlay === "model-boss") {
+      void boss.switchBossModel(provider, model);
+    } else if (overlay === "model-workers") {
+      void boss.switchWorkerModel(provider, model);
+    }
+    setOverlay(null);
+  };
+
   const handleSubmit = (value: string): void => {
     const trimmed = value.trim();
     if (!trimmed) return;
+    if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+      void handleSlashCommand(trimmed);
+      return;
+    }
     bossStore.appendUser(trimmed);
     boss.enqueueUserMessage(trimmed);
   };
 
   const handleAbort = (): void => {
-    if (state.exitPending) {
-      exit();
+    // Ctrl+C while boss is running → single-press abort (matches ggcoder).
+    if (state.phase === "working") {
+      boss.abort();
       return;
     }
-    bossStore.setExitPending(true);
-    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-    exitTimerRef.current = setTimeout(() => bossStore.setExitPending(false), 2000);
+    // Boss is idle → double-press to exit, with footer pending message.
+    handleDoubleExit();
   };
 
   return (
@@ -100,27 +170,117 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
       {state.streaming && (
         <StreamingTurnView turn={state.streaming} isRunning={state.phase === "working"} />
       )}
-      {state.phase === "working" && !state.streaming?.text && !state.streaming?.tools.length && (
-        <ActivityRow />
+      {state.phase === "working" && (
+        <Box marginTop={1}>
+          <ActivityIndicator
+            phase={state.activityPhase}
+            elapsedMs={state.runStartMs ? Date.now() - state.runStartMs : 0}
+            runStartRef={runStartRef as React.RefObject<number>}
+            thinkingMs={state.streaming?.thinkingMs ?? 0}
+            isThinking={state.activityPhase === "thinking"}
+            tokenEstimate={state.bossInputTokens}
+            activeToolNames={(state.streaming?.tools ?? [])
+              .filter((t) => t.status === "running")
+              .map((t) => t.name)}
+            retryInfo={state.retryInfo}
+          />
+        </Box>
       )}
 
       <InputArea
         onSubmit={handleSubmit}
         onAbort={handleAbort}
         disabled={state.phase === "working"}
+        isActive={!overlay}
         cwd={process.cwd()}
-        commands={[]}
+        commands={BOSS_SLASH_COMMANDS}
       />
 
-      <BossFooter
-        workers={state.workers}
-        bossModel={state.bossModel}
-        workerModel={state.workerModel}
-        pendingUserMessages={state.pendingUserMessages}
-        exitPending={state.exitPending}
-      />
+      {overlay ? (
+        <ModelSelector
+          onSelect={handleModelSelect}
+          onCancel={() => setOverlay(null)}
+          loggedInProviders={state.loggedInProviders}
+          currentModel={overlay === "model-boss" ? state.bossModel : state.workerModel}
+          currentProvider={overlay === "model-boss" ? state.bossProvider : state.workerProvider}
+        />
+      ) : (
+        <>
+          <BossFooter
+            bossModel={state.bossModel}
+            workerModel={state.workerModel}
+            tokensIn={state.bossInputTokens}
+            exitPending={state.exitPending}
+          />
+          {/* Hide the worker bar during the exit-confirm prompt so the
+              "Press Ctrl+C again" message is the very last line — matches
+              ggcoder where the Footer always owns the bottom row when pending. */}
+          {!state.exitPending && (
+            <WorkerStatusBar workers={state.workers} pendingMessages={state.pendingUserMessages} />
+          )}
+        </>
+      )}
     </Box>
   );
+}
+
+// ── Worker status row (gg-boss specific) ───────────────────
+
+const WORKER_GLYPH: Record<WorkerView["status"], string> = {
+  idle: "○",
+  working: "●",
+  error: "✗",
+};
+
+function WorkerStatusBar({
+  workers,
+  pendingMessages,
+}: {
+  workers: WorkerView[];
+  pendingMessages: number;
+}): React.ReactElement | null {
+  const theme = useTheme();
+  if (workers.length === 0) return null;
+  return (
+    <Box paddingX={1}>
+      {workers.map((w, i) => {
+        const color =
+          w.status === "working"
+            ? theme.accent
+            : w.status === "error"
+              ? theme.error
+              : theme.textDim;
+        const labelColor =
+          w.status === "working" ? theme.text : w.status === "error" ? theme.error : theme.textDim;
+        return (
+          <React.Fragment key={w.name}>
+            {i > 0 && <Text color={theme.textDim}>{"  "}</Text>}
+            <Text color={color}>{WORKER_GLYPH[w.status]} </Text>
+            <Text color={labelColor} bold={w.status === "working"}>
+              {w.name}
+            </Text>
+          </React.Fragment>
+        );
+      })}
+      {pendingMessages > 0 && (
+        <>
+          <Text color={theme.textDim}>{"   "}</Text>
+          <Text color={theme.warning}>
+            {pendingMessages} message{pendingMessages === 1 ? "" : "s"} queued
+          </Text>
+        </>
+      )}
+    </Box>
+  );
+}
+
+function formatWorkerList(workers: WorkerView[]): string {
+  if (workers.length === 0) return "(no workers linked)";
+  const lines = ["**Linked workers**", ""];
+  for (const w of workers) {
+    lines.push(`- ${w.status === "working" ? "●" : w.status === "error" ? "✗" : "○"} ${w.name}`);
+  }
+  return lines.join("\n");
 }
 
 // ── Row dispatch ───────────────────────────────────────────
@@ -134,12 +294,18 @@ function StaticRowView({ row }: { row: StaticRow }): React.ReactElement | null {
     );
   }
   if (row.kind === "user") return <UserMessage text={row.text} />;
-  if (row.kind === "assistant") return <AssistantMessage text={row.text} />;
+  if (row.kind === "assistant") return <AssistantRow item={row} />;
   if (row.kind === "tool") return <ToolHistoryRow item={row} />;
   if (row.kind === "worker_event") return <WorkerEventRow item={row} />;
   if (row.kind === "worker_error") return <WorkerErrorRow item={row} />;
   if (row.kind === "info") return <InfoRow text={row.text} level={row.level ?? "info"} />;
   return null;
+}
+
+function AssistantRow({ item }: { item: AssistantItem }): React.ReactElement {
+  return (
+    <AssistantMessage text={item.text} thinking={item.thinking} thinkingMs={item.thinkingMs} />
+  );
 }
 
 function ToolHistoryRow({ item }: { item: ToolItem }): React.ReactElement {
@@ -155,9 +321,10 @@ function ToolHistoryRow({ item }: { item: ToolItem }): React.ReactElement {
   );
 }
 
-// ── Worker rows (gg-boss-specific — no ggcoder equivalent) ─
+// ── Worker rows (gg-boss specific) ─────────────────────────
 
 function WorkerEventRow({ item }: { item: WorkerEventItem }): React.ReactElement {
+  const theme = useTheme();
   const tools =
     item.toolsUsed.length > 0
       ? item.toolsUsed.map((t) => (t.ok ? t.name : `${t.name}✗`)).join(", ")
@@ -165,15 +332,15 @@ function WorkerEventRow({ item }: { item: WorkerEventItem }): React.ReactElement
   return (
     <Box paddingX={1} marginTop={1} flexDirection="column">
       <Box>
-        <Text color={COLORS.success}>{"▸ "}</Text>
-        <Text color={COLORS.primary} bold>
+        <Text color={theme.success}>{"▸ "}</Text>
+        <Text color={theme.primary} bold>
           {item.project}
         </Text>
-        <Text color={COLORS.textDim}>{`  turn ${item.turnIndex}  ·  ${tools}`}</Text>
+        <Text color={theme.textDim}>{`  turn ${item.turnIndex}  ·  ${tools}`}</Text>
       </Box>
       {item.finalText && (
         <Box paddingLeft={2}>
-          <Text color={COLORS.textDim}>{item.finalText}</Text>
+          <Text color={theme.textDim}>{item.finalText}</Text>
         </Box>
       )}
     </Box>
@@ -181,17 +348,18 @@ function WorkerEventRow({ item }: { item: WorkerEventItem }): React.ReactElement
 }
 
 function WorkerErrorRow({ item }: { item: WorkerErrorItem }): React.ReactElement {
+  const theme = useTheme();
   return (
     <Box paddingX={1} marginTop={1} flexDirection="column">
       <Box>
-        <Text color={COLORS.error}>{"✗ "}</Text>
-        <Text color={COLORS.error} bold>
+        <Text color={theme.error}>{"✗ "}</Text>
+        <Text color={theme.error} bold>
           {item.project}
         </Text>
-        <Text color={COLORS.textDim}>{"  worker error"}</Text>
+        <Text color={theme.textDim}>{"  worker error"}</Text>
       </Box>
       <Box paddingLeft={2}>
-        <Text color={COLORS.error}>{item.message}</Text>
+        <Text color={theme.error}>{item.message}</Text>
       </Box>
     </Box>
   );
@@ -204,8 +372,12 @@ function InfoRow({
   text: string;
   level: "info" | "warning" | "error";
 }): React.ReactElement {
-  const color =
-    level === "error" ? COLORS.error : level === "warning" ? COLORS.warning : COLORS.textDim;
+  // Render via AssistantMessage so info text gets the same Markdown rendering
+  // and dot prefix as any other assistant response — keeping the chat visually
+  // consistent.
+  if (level === "info") return <AssistantMessage text={text} />;
+  const theme = useTheme();
+  const color = level === "error" ? theme.error : theme.warning;
   return (
     <Box paddingX={1}>
       <Text color={color}>{text}</Text>
@@ -224,7 +396,12 @@ function StreamingTurnView({
 }): React.ReactElement {
   return (
     <Box flexDirection="column">
-      <StreamingArea isRunning={isRunning} streamingText={turn.text} streamingThinking="" />
+      <StreamingArea
+        isRunning={isRunning}
+        streamingText={turn.text}
+        streamingThinking={turn.thinking}
+        thinkingMs={turn.thinkingMs}
+      />
       {turn.tools.map((t) => (
         <StreamingToolRow key={t.toolCallId} tool={t} />
       ))}
@@ -248,15 +425,6 @@ function StreamingToolRow({ tool }: { tool: StreamingTool }): React.ReactElement
   );
 }
 
-function ActivityRow(): React.ReactElement {
-  return (
-    <Box paddingX={1} marginTop={1}>
-      <Spinner />
-      <Text color={COLORS.textDim}> Boss thinking…</Text>
-    </Box>
-  );
-}
-
 // ── Renderer ───────────────────────────────────────────────
 
 export interface RenderBossAppOptions {
@@ -267,7 +435,11 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   waitUntilExit: () => Promise<void>;
   unmount: () => void;
 } {
-  const instance = render(<BossApp boss={opts.boss} />);
+  // Disable Ink's built-in exit-on-Ctrl+C — we need our own double-press
+  // handler in BossApp to drive the "Press Ctrl+C again to exit" footer
+  // message. With this flag true (the default), Ink kills the process on the
+  // very first Ctrl+C and InputArea's onAbort never runs.
+  const instance = render(<BossApp boss={opts.boss} />, { exitOnCtrlC: false });
   return {
     waitUntilExit: async () => {
       await instance.waitUntilExit();

@@ -1,4 +1,6 @@
 import { useSyncExternalStore } from "react";
+import type { ActivityPhase, RetryInfo } from "@kenkaiiii/ggcoder/ui";
+import type { Provider } from "@kenkaiiii/gg-ai";
 import type { WorkerStatus, WorkerTurnSummary } from "./types.js";
 
 let nextId = 1;
@@ -18,6 +20,8 @@ export interface AssistantItem {
   id: string;
   text: string;
   durationMs: number;
+  thinking?: string;
+  thinkingMs?: number;
 }
 
 export interface ToolItem {
@@ -81,8 +85,19 @@ export interface StreamingTool {
 
 export interface StreamingTurn {
   text: string;
+  thinking: string;
+  thinkingMs: number;
   tools: StreamingTool[];
   startedAt: number;
+  thinkingStartedAt: number | null;
+}
+
+export interface CompactionSnapshot {
+  state: "running" | "done";
+  originalCount: number;
+  newCount: number;
+  tokensBefore: number;
+  tokensAfter: number;
 }
 
 // ── Worker view state ──────────────────────────────────────
@@ -97,8 +112,12 @@ export interface WorkerView {
 // ── Top-level state ────────────────────────────────────────
 
 export interface BossUiState {
+  bossProvider: Provider;
   bossModel: string;
+  workerProvider: Provider;
   workerModel: string;
+  /** Providers the user is logged in to — controls which models the picker offers. */
+  loggedInProviders: Provider[];
   history: HistoryItem[];
   /**
    * Two-phase flush queue. Items here have already been REMOVED from the
@@ -112,19 +131,37 @@ export interface BossUiState {
   flushGeneration: number;
   streaming: StreamingTurn | null;
   phase: "idle" | "working";
+  /** Fine-grained phase used by ActivityIndicator. */
+  activityPhase: ActivityPhase;
+  /** Most recent retry (provider overload, rate limit, etc.), null when not retrying. */
+  retryInfo: RetryInfo | null;
+  /** Live compaction status (or recent done-state) for the orchestrator's banner. */
+  compaction: CompactionSnapshot | null;
+  /** Cumulative input tokens from boss turn_end events. Drives footer context bar. */
+  bossInputTokens: number;
+  /** When the current boss turn started (for elapsed display). */
+  runStartMs: number | null;
   workers: WorkerView[];
   pendingUserMessages: number; // queued while boss is busy
   exitPending: boolean;
 }
 
 const initialState: BossUiState = {
+  bossProvider: "anthropic",
   bossModel: "",
+  workerProvider: "anthropic",
   workerModel: "",
+  loggedInProviders: [],
   history: [],
   pendingFlush: [],
   flushGeneration: 0,
   streaming: null,
   phase: "idle",
+  activityPhase: "idle",
+  retryInfo: null,
+  compaction: null,
+  bossInputTokens: 0,
+  runStartMs: null,
   workers: [],
   pendingUserMessages: 0,
   exitPending: false,
@@ -154,16 +191,37 @@ export function useBossState(): BossUiState {
 
 export const bossStore = {
   init(opts: {
+    bossProvider: Provider;
     bossModel: string;
+    workerProvider: Provider;
     workerModel: string;
+    loggedInProviders: Provider[];
     workers: { name: string; cwd: string }[];
   }): void {
     state = {
       ...initialState,
+      bossProvider: opts.bossProvider,
       bossModel: opts.bossModel,
+      workerProvider: opts.workerProvider,
       workerModel: opts.workerModel,
+      loggedInProviders: opts.loggedInProviders,
       workers: opts.workers.map((w) => ({ name: w.name, cwd: w.cwd, status: "idle" })),
     };
+    notify();
+  },
+
+  setBossModel(provider: Provider, model: string): void {
+    state = { ...state, bossProvider: provider, bossModel: model };
+    notify();
+  },
+
+  setWorkerModel(provider: Provider, model: string): void {
+    state = { ...state, workerProvider: provider, workerModel: model };
+    notify();
+  },
+
+  setLoggedInProviders(providers: Provider[]): void {
+    state = { ...state, loggedInProviders: providers };
     notify();
   },
 
@@ -193,17 +251,107 @@ export const bossStore = {
     state = {
       ...state,
       phase: "working",
-      streaming: { text: "", tools: [], startedAt: Date.now() },
+      activityPhase: "waiting",
+      retryInfo: null,
+      runStartMs: Date.now(),
+      streaming: {
+        text: "",
+        thinking: "",
+        thinkingMs: 0,
+        tools: [],
+        startedAt: Date.now(),
+        thinkingStartedAt: null,
+      },
     };
     notify();
   },
 
   appendStreamText(text: string): void {
     if (!state.streaming) return;
+    // If we were thinking, stop the thinking timer and bank elapsed.
+    const thinking = state.streaming.thinking;
+    let thinkingMs = state.streaming.thinkingMs;
+    let thinkingStartedAt = state.streaming.thinkingStartedAt;
+    if (thinkingStartedAt != null) {
+      thinkingMs += Date.now() - thinkingStartedAt;
+      thinkingStartedAt = null;
+    }
     state = {
       ...state,
-      streaming: { ...state.streaming, text: state.streaming.text + text },
+      activityPhase: "generating",
+      streaming: {
+        ...state.streaming,
+        text: state.streaming.text + text,
+        thinking,
+        thinkingMs,
+        thinkingStartedAt,
+      },
     };
+    notify();
+  },
+
+  appendStreamThinking(text: string): void {
+    if (!state.streaming) return;
+    const startedAt = state.streaming.thinkingStartedAt ?? Date.now();
+    state = {
+      ...state,
+      activityPhase: "thinking",
+      streaming: {
+        ...state.streaming,
+        thinking: state.streaming.thinking + text,
+        thinkingStartedAt: startedAt,
+      },
+    };
+    notify();
+  },
+
+  setActivityPhase(phase: ActivityPhase): void {
+    if (state.activityPhase === phase) return;
+    state = { ...state, activityPhase: phase };
+    notify();
+  },
+
+  setRetryInfo(info: RetryInfo | null): void {
+    state = {
+      ...state,
+      retryInfo: info,
+      activityPhase: info ? "retrying" : state.activityPhase,
+    };
+    notify();
+  },
+
+  startCompaction(): void {
+    state = {
+      ...state,
+      compaction: {
+        state: "running",
+        originalCount: 0,
+        newCount: 0,
+        tokensBefore: state.bossInputTokens,
+        tokensAfter: 0,
+      },
+    };
+    notify();
+  },
+
+  endCompaction(originalCount: number, newCount: number): void {
+    const before = state.compaction?.tokensBefore ?? state.bossInputTokens;
+    state = {
+      ...state,
+      compaction: {
+        state: "done",
+        originalCount,
+        newCount,
+        tokensBefore: before,
+        tokensAfter: state.bossInputTokens,
+      },
+    };
+    notify();
+  },
+
+  setBossInputTokens(tokens: number): void {
+    if (state.bossInputTokens === tokens) return;
+    state = { ...state, bossInputTokens: tokens };
     notify();
   },
 
@@ -269,15 +417,25 @@ export const bossStore = {
     if (!state.streaming) return;
     const text = state.streaming.text.trim();
     if (!text) return;
+    const thinking = state.streaming.thinking.trim();
     const item: HistoryItem = {
       kind: "assistant",
       id: id(),
       text,
       durationMs: Date.now() - state.streaming.startedAt,
+      thinking: thinking ? thinking : undefined,
+      thinkingMs: thinking ? state.streaming.thinkingMs : undefined,
     };
     state = {
       ...state,
-      streaming: { ...state.streaming, text: "", startedAt: Date.now() },
+      streaming: {
+        ...state.streaming,
+        text: "",
+        thinking: "",
+        thinkingMs: 0,
+        thinkingStartedAt: null,
+        startedAt: Date.now(),
+      },
       pendingFlush: [...state.pendingFlush, item],
       flushGeneration: state.flushGeneration + 1,
     };
@@ -300,6 +458,42 @@ export const bossStore = {
   },
 
   /**
+   * Called when the user interrupts (ESC / Ctrl+C while running). Stops all
+   * in-flight running tools, queueing them in pendingFlush as errored "Stopped."
+   * entries — matches ggcoder's onAborted behavior so the user sees the same
+   * visual feedback for an aborted run.
+   */
+  interruptStreaming(): void {
+    if (!state.streaming) return;
+    const stoppedItems: HistoryItem[] = [];
+    const remainingTools: StreamingTool[] = [];
+    for (const t of state.streaming.tools) {
+      if (t.status === "running") {
+        stoppedItems.push({
+          kind: "tool",
+          id: id(),
+          toolCallId: t.toolCallId,
+          name: t.name,
+          args: t.args,
+          isError: true,
+          durationMs: 0,
+          result: "Stopped.",
+        });
+      } else {
+        remainingTools.push(t);
+      }
+    }
+    if (stoppedItems.length === 0) return;
+    state = {
+      ...state,
+      streaming: { ...state.streaming, tools: remainingTools },
+      pendingFlush: [...state.pendingFlush, ...stoppedItems],
+      flushGeneration: state.flushGeneration + 1,
+    };
+    notify();
+  },
+
+  /**
    * Tear down the streaming session. By this point, tool_call_end and turn_end
    * handlers have already flushed text + tools into pendingFlush in proper order.
    * Anything left is a final text tail (no tool followed it) — also goes through
@@ -314,11 +508,14 @@ export const bossStore = {
     const items: HistoryItem[] = [];
     const tail = state.streaming.text.trim();
     if (tail) {
+      const thinking = state.streaming.thinking.trim();
       items.push({
         kind: "assistant",
         id: id(),
         text: tail,
         durationMs: Date.now() - state.streaming.startedAt,
+        thinking: thinking ? thinking : undefined,
+        thinkingMs: thinking ? state.streaming.thinkingMs : undefined,
       });
     }
     // Defensive: any running tools without a tool_call_end (shouldn't happen).
@@ -339,6 +536,9 @@ export const bossStore = {
       ...state,
       streaming: null,
       phase: "idle",
+      activityPhase: "idle",
+      retryInfo: null,
+      runStartMs: null,
       pendingFlush: items.length > 0 ? [...state.pendingFlush, ...items] : state.pendingFlush,
       flushGeneration: items.length > 0 ? state.flushGeneration + 1 : state.flushGeneration,
     };
@@ -393,6 +593,24 @@ export const bossStore = {
 
   reset(): void {
     state = initialState;
+    notify();
+  },
+
+  /** /clear handler: wipe history but keep workers, model info, etc. */
+  clearHistory(): void {
+    state = {
+      ...state,
+      history: [],
+      pendingFlush: [],
+      flushGeneration: state.flushGeneration + 1,
+      streaming: null,
+      phase: "idle",
+      activityPhase: "idle",
+      retryInfo: null,
+      compaction: null,
+      bossInputTokens: 0,
+      runStartMs: null,
+    };
     notify();
   },
 };

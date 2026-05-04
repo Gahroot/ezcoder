@@ -141,19 +141,13 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
 
   const ink = renderBossApp({ boss });
 
-  let shuttingDown = false;
-  const shutdown = async (): Promise<void> => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    ink.unmount();
-    await boss.dispose();
-    process.exit(0);
-  };
+  // Don't register process.on("SIGINT") here. Ink puts stdin in raw mode, so
+  // Ctrl+C is delivered as a byte (0x03) to InputArea — not as a process
+  // signal. Registering SIGINT would race InputArea's onAbort and exit
+  // immediately on the first press, breaking the double-press exit flow.
 
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
-
-  // Run boss in background; await Ink unmount.
+  // Run boss in background; await Ink unmount (triggered by useApp().exit()
+  // in BossApp when the user double-presses Ctrl+C).
   const runPromise = boss.run();
   await ink.waitUntilExit();
   await boss.dispose();

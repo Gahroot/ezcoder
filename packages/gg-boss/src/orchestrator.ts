@@ -30,6 +30,8 @@ export class GGBoss {
   private queue = new EventQueue();
   private bossAgent!: Agent;
   private ac = new AbortController();
+  /** Per-turn AbortController so ESC can cancel the current LLM call without killing workers. */
+  private turnAc: AbortController | null = null;
   private running = false;
   private pendingUserMessages = 0;
   private opts: GGBossOptions;
@@ -40,13 +42,17 @@ export class GGBoss {
   }
 
   async initialize(): Promise<void> {
+    await this.authStorage.load();
+    const loggedInProviders = (await this.authStorage.listProviders()) as Provider[];
+
     bossStore.init({
+      bossProvider: this.opts.bossProvider,
       bossModel: this.opts.bossModel,
+      workerProvider: this.opts.workerProvider,
       workerModel: this.opts.workerModel,
+      loggedInProviders,
       workers: this.opts.projects.map((p) => ({ name: p.name, cwd: p.cwd })),
     });
-
-    await this.authStorage.load();
 
     await Promise.all(
       this.opts.projects.map(async (p) => {
@@ -92,6 +98,74 @@ export class GGBoss {
     });
   }
 
+  /**
+   * Abort the boss's current LLM call (e.g. user pressed ESC). Workers and the
+   * orchestrator's run loop keep going. The next event in the queue gets a
+   * fresh AbortController.
+   */
+  abort(): void {
+    this.turnAc?.abort();
+  }
+
+  /**
+   * Swap the boss's LLM model. Preserves message history so the conversation
+   * continues seamlessly under the new model.
+   */
+  async switchBossModel(provider: Provider, model: string): Promise<void> {
+    const tools = createBossTools({
+      workers: this.workers,
+      lastSummaries: this.lastSummaries,
+    });
+    const creds = await this.authStorage.resolveCredentials(provider);
+    // Capture history minus the system message — Agent re-adds system from options.
+    const oldMessages = this.bossAgent.getMessages().filter((m) => m.role !== "system");
+
+    this.opts.bossProvider = provider;
+    this.opts.bossModel = model;
+
+    this.bossAgent = new Agent({
+      provider,
+      model,
+      system: buildBossSystemPrompt(this.opts.projects),
+      tools,
+      apiKey: creds.accessToken,
+      accountId: creds.accountId,
+      signal: this.ac.signal,
+      cacheRetention: "short",
+      priorMessages: oldMessages,
+    });
+
+    bossStore.setBossModel(provider, model);
+  }
+
+  /** Swap every worker's model. Workers keep their per-project sessions. */
+  async switchWorkerModel(provider: Provider, model: string): Promise<void> {
+    await Promise.all([...this.workers.values()].map((w) => w.switchModel(provider, model)));
+    this.opts.workerProvider = provider;
+    this.opts.workerModel = model;
+    bossStore.setWorkerModel(provider, model);
+  }
+
+  /** Wipe boss conversation back to system prompt. Workers are unaffected. */
+  async resetConversation(): Promise<void> {
+    const tools = createBossTools({
+      workers: this.workers,
+      lastSummaries: this.lastSummaries,
+    });
+    const creds = await this.authStorage.resolveCredentials(this.opts.bossProvider);
+    this.bossAgent = new Agent({
+      provider: this.opts.bossProvider,
+      model: this.opts.bossModel,
+      system: buildBossSystemPrompt(this.opts.projects),
+      tools,
+      apiKey: creds.accessToken,
+      accountId: creds.accountId,
+      signal: this.ac.signal,
+      cacheRetention: "short",
+    });
+    bossStore.setBossInputTokens(0);
+  }
+
   async run(): Promise<void> {
     this.running = true;
     while (this.running) {
@@ -108,6 +182,11 @@ export class GGBoss {
 
       const text = formatEventForBoss(event);
       bossStore.startStreaming();
+
+      // Fresh AbortController for this turn so ESC can cancel just this call.
+      this.turnAc = new AbortController();
+      this.bossAgent.setSignal(this.turnAc.signal);
+
       try {
         const stream = this.bossAgent.prompt(text);
         for await (const e of stream) {
@@ -115,21 +194,40 @@ export class GGBoss {
             case "text_delta":
               bossStore.appendStreamText(e.text);
               break;
+            case "thinking_delta":
+              bossStore.appendStreamThinking(e.text);
+              break;
             case "tool_call_start":
               // Flush any preceding text so chronological order is preserved
               // in scrollback (text → tool → text → tool, not text-block then tool-block).
               bossStore.flushPendingText();
               bossStore.startTool(e.toolCallId, e.name, e.args);
+              bossStore.setActivityPhase("tools");
               break;
             case "tool_call_end":
               bossStore.endTool(e.toolCallId, e.isError, e.durationMs, e.result, e.details);
               break;
             case "turn_end":
+              // Latest turn's input tokens IS the current context size (each turn
+              // re-sends the whole conversation), so just track the most recent.
+              if (e.usage?.inputTokens != null) {
+                bossStore.setBossInputTokens(e.usage.inputTokens);
+              }
               // Flush trailing text from this turn. Subsequent turns may add more.
               bossStore.flushPendingText();
               break;
+            case "retry":
+              if (!e.silent) {
+                bossStore.setRetryInfo({
+                  reason: e.reason,
+                  attempt: e.attempt,
+                  maxAttempts: e.maxAttempts,
+                  delayMs: e.delayMs,
+                });
+              }
+              break;
             case "error":
-              bossStore.appendInfo(e.error.message, "error");
+              bossStore.appendInfo(formatProviderError(e.error.message), "error");
               break;
             default:
               break;
@@ -137,11 +235,19 @@ export class GGBoss {
         }
       } catch (err) {
         if (isAbortError(err)) {
+          // Mirror ggcoder's onAborted: convert any in-flight tools to
+          // "Stopped." entries so the user sees the same visual feedback.
+          bossStore.interruptStreaming();
+          if (!this.running) {
+            bossStore.finishStreaming();
+            return;
+          }
+          bossStore.appendInfo("Interrupted by user.", "warning");
           bossStore.finishStreaming();
-          return;
+          continue;
         }
         const message = err instanceof Error ? err.message : String(err);
-        bossStore.appendInfo(message, "error");
+        bossStore.appendInfo(formatProviderError(message), "error");
       }
       bossStore.finishStreaming();
     }
@@ -177,4 +283,39 @@ ${s.finalText || "(empty)"}`;
   }
   return `[event:worker_error] project="${event.project}" timestamp=${event.timestamp}
 ${event.message}`;
+}
+
+/**
+ * Map raw provider error text to a human-friendly hint. Mirrors ggcoder's
+ * pattern in App.tsx so users see the same diagnostic phrasing.
+ */
+function formatProviderError(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("overloaded") || lower.includes("engine_overloaded")) {
+    return `${message}\nHint: provider is under heavy load — try again in a moment.`;
+  }
+  if (
+    lower.includes("insufficient balance") ||
+    lower.includes("quota exceeded") ||
+    lower.includes("recharge")
+  ) {
+    return `${message}\nHint: billing or quota issue — check your account balance.`;
+  }
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("429")
+  ) {
+    return `${message}\nHint: provider rate limit — wait a moment before retrying.`;
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return `${message}\nHint: provider timed out — their servers may be slow.`;
+  }
+  if (
+    lower.includes("does not recognize the requested model") ||
+    (lower.includes("model") && (lower.includes("not exist") || lower.includes("not found")))
+  ) {
+    return `${message}\nHint: use /model to switch, or check that your account has access.`;
+  }
+  return message;
 }
