@@ -104,6 +104,7 @@ const EXPECTED_TOOLS = [
   "verify_thumbnail_promise",
   "write_keyword_captions",
   "add_sfx_at_cuts",
+  "add_sfx_to_timeline",
   "snap_cuts_to_beats",
   "loop_match_short",
   // LLM-driven creator helpers

@@ -31,6 +31,7 @@ import { createFindViralMomentsTool } from "./find-viral-moments.js";
 import { createGenerateYouTubeMetadataTool } from "./generate-youtube-metadata.js";
 import { createWriteKeywordCaptionsTool } from "./write-keyword-captions.js";
 import { createAddSfxAtCutsTool } from "./add-sfx-at-cuts.js";
+import { createAddSfxToTimelineTool } from "./add-sfx-to-timeline.js";
 import { createSnapCutsToBeatsTool } from "./snap-cuts-to-beats.js";
 import { createFaceReframeTool } from "./face-reframe.js";
 import { createComposeLayeredTool } from "./compose-layered.js";
@@ -213,6 +214,7 @@ export function createEditorTools(opts: CreateEditorToolsOptions): AgentTool[] {
     createVerifyThumbnailPromiseTool(cwd),
     createWriteKeywordCaptionsTool(cwd),
     createAddSfxAtCutsTool(cwd),
+    createAddSfxToTimelineTool(host, cwd),
     createSnapCutsToBeatsTool(cwd),
     createLoopMatchShortTool(cwd),
 
@@ -354,6 +356,7 @@ export { createFindViralMomentsTool } from "./find-viral-moments.js";
 export { createGenerateYouTubeMetadataTool } from "./generate-youtube-metadata.js";
 export { createWriteKeywordCaptionsTool } from "./write-keyword-captions.js";
 export { createAddSfxAtCutsTool } from "./add-sfx-at-cuts.js";
+export { createAddSfxToTimelineTool } from "./add-sfx-to-timeline.js";
 export { createSnapCutsToBeatsTool } from "./snap-cuts-to-beats.js";
 export { createFaceReframeTool } from "./face-reframe.js";
 export { createComposeLayeredTool } from "./compose-layered.js";

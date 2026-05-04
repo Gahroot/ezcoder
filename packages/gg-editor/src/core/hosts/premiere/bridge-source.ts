@@ -256,8 +256,11 @@ const METHODS: Record<string, string> = {
     var pi = _findClipBin(base);
     if (!pi) throw new Error("imported item not found: " + base);
     var trackIdx = (P.track || 2) - 1;
-    var track = seq.videoTracks[trackIdx];
-    if (!track) throw new Error("track " + P.track + " does not exist on active sequence.");
+    // mediaKind selects audio vs video track family. Default video for back-compat.
+    var kind = String(P.mediaKind || "video").toLowerCase();
+    var trackList = (kind === "audio") ? seq.audioTracks : seq.videoTracks;
+    var track = trackList[trackIdx];
+    if (!track) throw new Error(kind + " track " + P.track + " does not exist on active sequence.");
     var recordSec = P.recordFrame / fps;
     track.insertClip(pi, recordSec);
     var inserted = null;
@@ -269,7 +272,7 @@ const METHODS: Record<string, string> = {
     return {
       id: String(inserted.nodeId || inserted.name),
       track: P.track || 2,
-      trackKind: "video",
+      trackKind: kind,
       startFrame: _frames(inserted.start, seq),
       endFrame: _frames(inserted.end, seq),
       name: inserted.name

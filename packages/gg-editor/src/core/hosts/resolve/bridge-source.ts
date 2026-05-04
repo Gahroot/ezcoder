@@ -531,9 +531,14 @@ def m_insert_clip_on_track(params):
         raise RuntimeError(f"failed to import {media_path} into media pool")
     item = items[0]
 
+    # mediaKind selects video (1) or audio (2) timeline track. AppendToTimeline
+    # uses this to know which track family to operate on — critical for
+    # SFX/foley insertion onto Fairlight tracks (audio_only=2).
+    media_kind = str(params.get("mediaKind", "video")).lower()
+    media_type = 2 if media_kind == "audio" else 1
     clip_info = {
         "mediaPoolItem": item,
-        "mediaType": 1,  # video
+        "mediaType": media_type,
         "trackIndex": track,
         "recordFrame": record_frame,
     }

@@ -69,12 +69,14 @@ export function createAddSfxAtCutsTool(cwd: string): AgentTool<typeof AddSfxAtCu
   return {
     name: "add_sfx_at_cuts",
     description:
-      `Drop a SFX at each cut point and mix it onto the existing audio. The standard ` +
-      `sound-design polish on every retention-tuned vlog or short. Pass a bundled name and ` +
-      `the synthesiser handles it (no file needed) — available: ${bundledSfxDescriptionList()}. ` +
+      `BAKE SFX into a rendered mp4 — file-only, final-delivery tool. ` +
+      `⚠️ When a host (Resolve / Premiere) is connected, prefer ` +
+      `\`add_sfx_to_timeline\` instead — it places real audio clips on track A3 so ` +
+      `the user hears them on playback and can tune levels in Fairlight. Use this tool ONLY ` +
+      `when host=none OR the user has explicitly asked for a final flat mp4. ` +
+      `Bundled SFX (synthesised on demand): ${bundledSfxDescriptionList()}. ` +
       `Default gain -8 dB sits below voice; optional -3 to -6 dB voice ducking. Video is ` +
-      `copied through untouched. Pair with cut_filler_words / detect_silence for automatic ` +
-      `cut-point feeds.`,
+      `copied through untouched.`,
     parameters: AddSfxAtCutsParams,
     async execute(args, ctx) {
       if (!checkFfmpeg()) return err("ffmpeg not on PATH", "install ffmpeg");
