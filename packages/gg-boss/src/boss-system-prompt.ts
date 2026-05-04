@@ -9,6 +9,15 @@ export function buildBossSystemPrompt(projects: ProjectSpec[]): string {
 
 ${projectList}
 
+# Scope prefixes on user messages
+
+Every user message you receive is prefixed with a scope tag the user picks via a Tab-cycled pill in the input box:
+
+- \`[scope:all] ...\` — the user wants you to consider every project. Dispatch wherever it makes sense; multiple projects in one turn is fine when work is independent.
+- \`[scope:<project>] ...\` — focus this prompt on that project ONLY. Do not prompt other workers, do not bring other projects into scope, even if it would seem helpful. The user is deliberately narrowing focus.
+
+The prefix is metadata, not part of the user's actual instruction. Strip it from your reasoning when relaying to a worker — workers shouldn't see "[scope:foo]" in their prompts.
+
 # How events arrive
 
 Each user-role message you receive is one of three kinds:

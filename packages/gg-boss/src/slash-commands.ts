@@ -11,6 +11,8 @@ export const BOSS_SLASH_COMMANDS: SlashCommandInfo[] = [
   { name: "help", aliases: ["?"], description: "Show available commands" },
   { name: "model-boss", aliases: [], description: "Switch the orchestrator's model" },
   { name: "model-workers", aliases: [], description: "Switch every worker's model" },
+  { name: "compact", aliases: [], description: "Compact the boss's context now" },
+  { name: "new", aliases: ["n"], description: "Start a fresh boss session" },
   { name: "clear", aliases: [], description: "Clear chat history (workers untouched)" },
   { name: "workers", aliases: ["w"], description: "List linked workers and their status" },
   { name: "quit", aliases: ["q", "exit"], description: "Exit gg-boss" },

@@ -5,6 +5,8 @@ import {
   ActivityIndicator,
   AnimationProvider,
   AssistantMessage,
+  CompactionDone,
+  CompactionSpinner,
   InputArea,
   ModelSelector,
   StreamingArea,
@@ -119,6 +121,14 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
       case "model-workers":
         setOverlay("model-workers");
         return true;
+      case "compact":
+        bossStore.appendUser(value);
+        await boss.manualCompact();
+        return true;
+      case "new":
+        bossStore.clearHistory();
+        await boss.newSession();
+        return true;
       case "quit":
         exit();
         return true;
@@ -149,8 +159,12 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
       void handleSlashCommand(trimmed);
       return;
     }
+    // Show the user's literal text in chat history.
     bossStore.appendUser(trimmed);
-    boss.enqueueUserMessage(trimmed);
+    // Inject the scope pill into the message the boss actually sees, so the
+    // user doesn't have to write "for the yaatuber project, …" every prompt.
+    const scoped = scopePrefix(state.scope) + trimmed;
+    boss.enqueueUserMessage(scoped);
   };
 
   const handleAbort = (): void => {
@@ -186,6 +200,15 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
           />
         </Box>
       )}
+      {state.compaction?.state === "running" && <CompactionSpinner />}
+      {state.compaction?.state === "done" && (
+        <CompactionDone
+          originalCount={state.compaction.originalCount}
+          newCount={state.compaction.newCount}
+          tokensBefore={state.compaction.tokensBefore}
+          tokensAfter={state.compaction.tokensAfter}
+        />
+      )}
 
       <InputArea
         onSubmit={handleSubmit}
@@ -194,6 +217,8 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
         isActive={!overlay}
         cwd={process.cwd()}
         commands={BOSS_SLASH_COMMANDS}
+        scopeBadge={<ScopePill scope={state.scope} />}
+        onTab={() => bossStore.cycleScope()}
       />
 
       {overlay ? (
@@ -222,6 +247,31 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
       )}
     </Box>
   );
+}
+
+// ── Scope pill (gg-boss specific) ──────────────────────────
+
+function ScopePill({ scope }: { scope: string }): React.ReactElement {
+  const theme = useTheme();
+  const isAll = scope === "all";
+  // "All" gets the accent color so it visually pops as the multi-project mode;
+  // specific projects use primary so they read as a normal selection pill.
+  const bg = isAll ? theme.accent : theme.primary;
+  const label = isAll ? "All" : scope;
+  return (
+    <Text color="white" backgroundColor={bg} bold>
+      {` ${label} `}
+    </Text>
+  );
+}
+
+/**
+ * Prepend the active scope to the user's message before it reaches the boss.
+ * Boss's system prompt teaches it to interpret these prefixes.
+ */
+function scopePrefix(scope: string): string {
+  if (scope === "all") return "[scope:all] ";
+  return `[scope:${scope}] `;
 }
 
 // ── Worker status row (gg-boss specific) ───────────────────

@@ -15,6 +15,8 @@ interface CliArgs {
   workerProvider: Provider;
   workerModel: string;
   projects: ProjectSpec[];
+  continueRecent?: boolean;
+  resumeSessionId?: string;
 }
 
 function parseProjectSpec(raw: string): ProjectSpec {
@@ -51,6 +53,10 @@ function parseArgs(argv: string[]): CliArgs {
       const v = argv[++i];
       if (!v) throw new Error("--worker-model requires a value");
       args.workerModel = v;
+    } else if (a === "--resume") {
+      const v = argv[++i];
+      if (!v) throw new Error("--resume requires a session id");
+      args.resumeSessionId = v;
     } else if (a === "--help" || a === "-h") {
       printHelpAndExit();
     } else {
@@ -77,6 +83,12 @@ function printHelpAndExit(): never {
       "  " +
       c(COLORS.accent, "ggboss link") +
       c(COLORS.textDim, "                         pick which projects to link (interactive)\n") +
+      "  " +
+      c(COLORS.accent, "ggboss continue") +
+      c(COLORS.textDim, "                     resume the most recent boss session\n") +
+      "  " +
+      c(COLORS.accent, "ggboss --resume <id>") +
+      c(COLORS.textDim, "                resume a specific boss session\n") +
       "  " +
       c(COLORS.accent, "ggboss --project <spec> [...]") +
       c(COLORS.textDim, "       override links with explicit project(s)\n\n") +
@@ -133,6 +145,8 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
     workerProvider: args.workerProvider,
     workerModel: args.workerModel,
     projects: args.projects,
+    continueRecent: args.continueRecent,
+    resumeSessionId: args.resumeSessionId,
   });
 
   await boss.initialize();
@@ -163,7 +177,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const args = parseArgs(argv);
+  // `ggboss continue` is a subcommand alias for "resume the most recent session".
+  // Accept any flags after `continue` as normal flag args.
+  const isContinue = argv[0] === "continue";
+  const args = parseArgs(isContinue ? argv.slice(1) : argv);
+  if (isContinue) args.continueRecent = true;
   await runOrchestrator(args);
 }
 

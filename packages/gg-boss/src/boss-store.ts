@@ -1,10 +1,43 @@
 import { useSyncExternalStore } from "react";
 import type { ActivityPhase, RetryInfo } from "@kenkaiiii/ggcoder/ui";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type {
+  ContentPart,
+  Message,
+  Provider,
+  TextContent,
+  ToolCall,
+  ToolResult,
+} from "@kenkaiiii/gg-ai";
 import type { WorkerStatus, WorkerTurnSummary } from "./types.js";
 
 let nextId = 1;
 const id = (): string => `i${nextId++}`;
+
+function isText(p: ContentPart): p is TextContent {
+  return p.type === "text";
+}
+
+function isToolCall(p: ContentPart): p is ToolCall {
+  return p.type === "tool_call";
+}
+
+function userMessageText(
+  content: string | ({ type: "text"; text: string } | { type: "image" })[],
+): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((c): c is { type: "text"; text: string } => c.type === "text")
+    .map((c) => c.text)
+    .join("");
+}
+
+function toolResultText(content: ToolResult["content"]): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((c): c is TextContent => c.type === "text")
+    .map((c) => c.text)
+    .join("");
+}
 
 // ── History items (rendered in Ink Static) ─────────────────
 
@@ -144,6 +177,11 @@ export interface BossUiState {
   workers: WorkerView[];
   pendingUserMessages: number; // queued while boss is busy
   exitPending: boolean;
+  /**
+   * Scope pill in the input — "all" (default) or a specific worker name.
+   * Cycled with Tab; gets injected into every prompt the user sends.
+   */
+  scope: string;
 }
 
 const initialState: BossUiState = {
@@ -165,6 +203,7 @@ const initialState: BossUiState = {
   workers: [],
   pendingUserMessages: 0,
   exitPending: false,
+  scope: "all",
 };
 
 let state: BossUiState = initialState;
@@ -347,6 +386,16 @@ export const bossStore = {
       },
     };
     notify();
+  },
+
+  cancelCompaction(): void {
+    state = { ...state, compaction: null };
+    notify();
+  },
+
+  /** Read-only accessor for the orchestrator (which lives outside React). */
+  getInputTokens(): number {
+    return state.bossInputTokens;
   },
 
   setBossInputTokens(tokens: number): void {
@@ -585,6 +634,22 @@ export const bossStore = {
     notify();
   },
 
+  setScope(scope: string): void {
+    if (state.scope === scope) return;
+    state = { ...state, scope };
+    notify();
+  },
+
+  /** Cycle scope through ["all", ...worker names]. Wraps around. */
+  cycleScope(): void {
+    const names = ["all", ...state.workers.map((w) => w.name)];
+    if (names.length === 0) return;
+    const idx = names.indexOf(state.scope);
+    const next = names[(idx + 1) % names.length] ?? "all";
+    state = { ...state, scope: next };
+    notify();
+  },
+
   setExitPending(pending: boolean): void {
     if (state.exitPending === pending) return;
     state = { ...state, exitPending: pending };
@@ -593,6 +658,77 @@ export const bossStore = {
 
   reset(): void {
     state = initialState;
+    notify();
+  },
+
+  /**
+   * Rebuild the visible chat history from a persisted Message[] (boss session
+   * resume). Pairs assistant tool_use blocks with their tool_result blocks
+   * so completed tools render in scrollback as if they'd just happened.
+   */
+  restoreHistory(messages: Message[]): void {
+    const toolResults = new Map<string, ToolResult>();
+    for (const m of messages) {
+      if (m.role === "tool") {
+        for (const tr of m.content) toolResults.set(tr.toolCallId, tr);
+      }
+    }
+
+    const items: HistoryItem[] = [];
+    for (const m of messages) {
+      if (m.role === "user") {
+        const text = userMessageText(m.content);
+        if (!text) continue;
+        // Strip the scope prefix the user never typed — only the boss sees it.
+        const cleaned = text.replace(/^\[scope:[^\]]+\]\s*/, "");
+        items.push({ kind: "user", id: id(), text: cleaned, timestamp: Date.now() });
+      } else if (m.role === "assistant") {
+        const parts = Array.isArray(m.content)
+          ? m.content
+          : [{ type: "text", text: m.content } as TextContent];
+        let textBuf = "";
+        for (const p of parts) {
+          if (isText(p)) {
+            textBuf += p.text;
+          } else if (isToolCall(p)) {
+            // Flush any preceding text as a single assistant block first.
+            if (textBuf.trim()) {
+              items.push({
+                kind: "assistant",
+                id: id(),
+                text: textBuf.trim(),
+                durationMs: 0,
+              });
+              textBuf = "";
+            }
+            const result = toolResults.get(p.id);
+            const resultText = result ? toolResultText(result.content) : "";
+            items.push({
+              kind: "tool",
+              id: id(),
+              toolCallId: p.id,
+              name: p.name,
+              args: p.args,
+              isError: result?.isError ?? false,
+              durationMs: 0,
+              result: resultText,
+            });
+          }
+          // thinking / image / server_tool / raw — skipped for restore.
+        }
+        if (textBuf.trim()) {
+          items.push({
+            kind: "assistant",
+            id: id(),
+            text: textBuf.trim(),
+            durationMs: 0,
+          });
+        }
+      }
+      // tool messages handled via the toolResults map above; skip.
+    }
+
+    state = { ...state, history: [...state.history, ...items] };
     notify();
   },
 

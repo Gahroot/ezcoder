@@ -1,11 +1,18 @@
 import { Agent, isAbortError } from "@kenkaiiii/gg-agent";
-import { AuthStorage } from "@kenkaiiii/ggcoder";
-import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import { AuthStorage, compact, getContextWindow, shouldCompact } from "@kenkaiiii/ggcoder";
+import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { Worker } from "./worker.js";
 import { EventQueue } from "./event-queue.js";
 import { createBossTools } from "./tools.js";
 import { buildBossSystemPrompt } from "./boss-system-prompt.js";
 import { bossStore } from "./boss-store.js";
+import {
+  appendMessages,
+  createSession,
+  getMostRecent,
+  getSessionById,
+  loadSession,
+} from "./sessions.js";
 import type { BossEvent, ProjectSpec, WorkerTurnSummary } from "./types.js";
 
 export interface GGBossOptions {
@@ -15,6 +22,10 @@ export interface GGBossOptions {
   workerModel: string;
   workerThinkingLevel?: ThinkingLevel;
   projects: ProjectSpec[];
+  /** Resume a specific boss session by id. Mutually exclusive with continueRecent. */
+  resumeSessionId?: string;
+  /** Resume the most recently used boss session. */
+  continueRecent?: boolean;
 }
 
 /**
@@ -36,6 +47,10 @@ export class GGBoss {
   private pendingUserMessages = 0;
   private opts: GGBossOptions;
   private authStorage = new AuthStorage();
+  /** Path to the boss's per-session jsonl log under ~/.gg/boss/sessions/. */
+  private sessionPath = "";
+  /** Last index in the boss's messages array we've persisted to disk. */
+  private lastPersistedIndex = 0;
 
   constructor(opts: GGBossOptions) {
     this.opts = opts;
@@ -76,6 +91,32 @@ export class GGBoss {
       lastSummaries: this.lastSummaries,
     });
 
+    // Either resume a prior session (load messages from jsonl), or create a
+    // new one. Either way we end up with `sessionPath` to persist into.
+    let priorMessages: Message[] | undefined;
+    if (this.opts.resumeSessionId) {
+      const info = await getSessionById(this.opts.resumeSessionId);
+      if (info) {
+        this.sessionPath = info.path;
+        priorMessages = (await loadSession(info.path)).filter((m) => m.role !== "system");
+      }
+    } else if (this.opts.continueRecent) {
+      const recent = await getMostRecent();
+      if (recent) {
+        this.sessionPath = recent.path;
+        priorMessages = (await loadSession(recent.path)).filter((m) => m.role !== "system");
+      }
+    }
+    if (!this.sessionPath) {
+      const session = await createSession();
+      this.sessionPath = session.filePath;
+    }
+    // Rebuild the visible TUI history from the loaded messages so the chat
+    // shows the prior conversation, not just the agent's hidden context.
+    if (priorMessages && priorMessages.length > 0) {
+      bossStore.restoreHistory(priorMessages);
+    }
+
     this.bossAgent = new Agent({
       provider: this.opts.bossProvider,
       model: this.opts.bossModel,
@@ -85,7 +126,13 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      priorMessages,
     });
+    // Mark every loaded message as already persisted so we only append NEW
+    // turns going forward. The system message is added by Agent's constructor
+    // and we never want to write the system prompt to disk (it's rebuilt each
+    // session from current project list) — so subtract one for it.
+    this.lastPersistedIndex = this.bossAgent.getMessages().length;
   }
 
   enqueueUserMessage(text: string): void {
@@ -146,13 +193,75 @@ export class GGBoss {
     bossStore.setWorkerModel(provider, model);
   }
 
-  /** Wipe boss conversation back to system prompt. Workers are unaffected. */
-  async resetConversation(): Promise<void> {
+  /**
+   * Run a manual compaction now (driven by /compact). Will compact even if the
+   * threshold isn't reached yet — useful for trimming context before a long task.
+   */
+  async manualCompact(): Promise<void> {
+    await this.runCompaction(true);
+  }
+
+  /** Compact only when threshold (default 80%) is exceeded. */
+  private async runCompaction(force: boolean): Promise<void> {
+    const messages = this.bossAgent.getMessages();
+    const contextWindow = getContextWindow(this.opts.bossModel);
+    const tokens = bossStore.getInputTokens();
+    if (!force && !shouldCompact(messages, contextWindow, 0.8, tokens)) return;
+
+    bossStore.startCompaction();
+    try {
+      const creds = await this.authStorage.resolveCredentials(this.opts.bossProvider);
+      const { messages: compactedMessages, result } = await compact(messages, {
+        provider: this.opts.bossProvider,
+        model: this.opts.bossModel,
+        apiKey: creds.accessToken,
+        contextWindow,
+        signal: this.ac.signal,
+      });
+      await this.replaceBossMessages(compactedMessages);
+      // Start a new session file so `ggboss continue` resumes the COMPACTED
+      // history, not the full original. Mirrors ggcoder/AgentSession.compact.
+      const session = await createSession();
+      this.sessionPath = session.filePath;
+      this.lastPersistedIndex = 0;
+      await this.persistNewMessages();
+      bossStore.setBossInputTokens(0);
+      bossStore.endCompaction(result.originalCount, result.newCount);
+    } catch (err) {
+      bossStore.cancelCompaction();
+      if (!isAbortError(err)) {
+        const message = err instanceof Error ? err.message : String(err);
+        bossStore.appendInfo(`Compaction failed: ${message}`, "error");
+      }
+    }
+  }
+
+  /**
+   * Append any boss messages that haven't been written yet to the session log.
+   * Skips the system message (regenerated each session from current project list).
+   */
+  private async persistNewMessages(): Promise<void> {
+    if (!this.sessionPath) return;
+    const all = this.bossAgent.getMessages();
+    const newOnes = all.slice(this.lastPersistedIndex).filter((m) => m.role !== "system");
+    if (newOnes.length === 0) return;
+    try {
+      await appendMessages(this.sessionPath, newOnes);
+      this.lastPersistedIndex = all.length;
+    } catch {
+      // Persistence is best-effort — never crash the run loop on disk errors.
+    }
+  }
+
+  /** Recreate bossAgent with a new message history (used by compact + /clear). */
+  private async replaceBossMessages(newMessages: Message[]): Promise<void> {
     const tools = createBossTools({
       workers: this.workers,
       lastSummaries: this.lastSummaries,
     });
     const creds = await this.authStorage.resolveCredentials(this.opts.bossProvider);
+    // Strip system — Agent re-adds it from `system`.
+    const priorMessages = newMessages.filter((m) => m.role !== "system");
     this.bossAgent = new Agent({
       provider: this.opts.bossProvider,
       model: this.opts.bossModel,
@@ -162,8 +271,29 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      priorMessages,
     });
+  }
+
+  /**
+   * Start a brand-new boss session — fresh agent with no message history,
+   * fresh session file on disk so `ggboss continue` picks up the new chat.
+   * Workers are unaffected.
+   */
+  async newSession(): Promise<void> {
+    const session = await createSession();
+    this.sessionPath = session.filePath;
+    this.lastPersistedIndex = 0;
+    await this.replaceBossMessages([]);
     bossStore.setBossInputTokens(0);
+    // Mark the post-construction message count (just system) as persisted so
+    // we don't try to write it.
+    this.lastPersistedIndex = this.bossAgent.getMessages().length;
+  }
+
+  /** Alias kept for the existing /clear path which used "reset" terminology. */
+  async resetConversation(): Promise<void> {
+    return this.newSession();
   }
 
   async run(): Promise<void> {
@@ -179,6 +309,10 @@ export class GGBoss {
       if (event.kind === "worker_turn_complete") {
         this.lastSummaries.set(event.summary.project, event.summary);
       }
+
+      // Auto-compact when over 80% of context — mirrors AgentSession.runLoop.
+      // Workers handle their own compaction independently (via AgentSession).
+      await this.runCompaction(false);
 
       const text = formatEventForBoss(event);
       bossStore.startStreaming();
@@ -244,12 +378,14 @@ export class GGBoss {
           }
           bossStore.appendInfo("Interrupted by user.", "warning");
           bossStore.finishStreaming();
+          await this.persistNewMessages();
           continue;
         }
         const message = err instanceof Error ? err.message : String(err);
         bossStore.appendInfo(formatProviderError(message), "error");
       }
       bossStore.finishStreaming();
+      await this.persistNewMessages();
     }
   }
 
