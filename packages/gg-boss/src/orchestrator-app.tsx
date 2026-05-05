@@ -599,16 +599,64 @@ function parseStatusGrade(text: string): WorkerStatusGrade | null {
   return match[1].toUpperCase() as WorkerStatusGrade;
 }
 
+interface WorkerTrailer {
+  changed?: string;
+  skipped?: string;
+  verified?: string;
+  notes?: string;
+}
+
 /**
- * Compress the worker's full final-text response down to a single short line.
- * Strips markdown, collapses whitespace, takes the first sentence then hard-caps
- * at `maxLen` so the line never wraps in the MessageResponse gutter. Drops the
- * structured-summary block entirely — its data is shown via the Status badge.
+ * Pull the structured fields out of the worker's reply trailer (appended by
+ * WORKER_PROMPT_BRIEF). Each field is captured up to (but not including) the
+ * next field marker or end-of-text.
+ */
+function parseWorkerTrailer(text: string): WorkerTrailer {
+  const out: WorkerTrailer = {};
+  const grab = (label: string): string | undefined => {
+    // Match "Label: value" up to the next "Label:" line or end. Multi-line.
+    const re = new RegExp(
+      `^\\s*${label}:\\s*([\\s\\S]*?)(?=^\\s*(?:Changed|Skipped|Verified|Notes|Status):|$)`,
+      "im",
+    );
+    const m = re.exec(text);
+    if (!m) return undefined;
+    const v = m[1]!
+      .replace(/```[\s\S]*?```/g, "[code]")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
+    return v.length > 0 ? v : undefined;
+  };
+  out.changed = grab("Changed");
+  out.skipped = grab("Skipped");
+  out.verified = grab("Verified");
+  out.notes = grab("Notes");
+  return out;
+}
+
+function clip(text: string, maxLen: number): string {
+  return text.length <= maxLen ? text : text.slice(0, Math.max(1, maxLen - 1)) + "…";
+}
+
+/**
+ * Build a one-line summary from the trailer. Prefers the substantive fields
+ * (Changed, Verified, Notes) that actually tell the user what happened — not
+ * the worker's preamble like "I'll start by detecting...". Falls back to
+ * first-sentence-of-preamble only when the trailer is empty (non-conforming
+ * worker reply).
  */
 function summarizeFinalText(text: string, maxLen: number): string {
   if (!text) return "";
-  // Drop the structured-summary block (Changed/Skipped/Verified/Notes/Status)
-  // — that data is surfaced via the Status badge + Notes pulled separately.
+  const trailer = parseWorkerTrailer(text);
+  const parts: string[] = [];
+  if (trailer.changed) parts.push(`Changed: ${trailer.changed}`);
+  if (trailer.verified) parts.push(`Verified: ${trailer.verified}`);
+  if (trailer.skipped) parts.push(`Skipped: ${trailer.skipped}`);
+  if (trailer.notes) parts.push(`Notes: ${trailer.notes}`);
+  if (parts.length > 0) return clip(parts.join("  ·  "), maxLen);
+
+  // No trailer — fall back to the first sentence of the response body.
   const beforeSummary = text.split(/^Changed:|^Skipped:|^Verified:|^Notes:|^Status:/im)[0];
   const stripped = beforeSummary
     .replace(/```[\s\S]*?```/g, "[code]")
@@ -621,9 +669,7 @@ function summarizeFinalText(text: string, maxLen: number): string {
     .trim();
   if (!stripped) return "";
   const firstSentence = stripped.match(/^[^.!?\n]+[.!?]/);
-  const candidate = firstSentence ? firstSentence[0] : stripped;
-  if (candidate.length <= maxLen) return candidate;
-  return candidate.slice(0, Math.max(1, maxLen - 1)) + "…";
+  return clip(firstSentence ? firstSentence[0] : stripped, maxLen);
 }
 
 function statusGradeColor(
@@ -669,9 +715,12 @@ function WorkerEventRow({ item }: { item: WorkerEventItem }): React.ReactElement
         ? `${total} tools (${failedCount} failed)`
         : `${total} tool${total === 1 ? "" : "s"}`;
   // MessageResponse uses 6 chars for "  ⎿  " gutter; reserve a few more for
-  // safety (terminal scrollback, "…" suffix). Single-line cap.
-  const summaryMaxLen = Math.max(20, columns - 10);
-  const summary = summarizeFinalText(item.finalText, summaryMaxLen);
+  // safety. Each trailer field renders on its own line so users can scan
+  // Changed / Verified / Notes independently rather than a single squished line.
+  const fieldMaxLen = Math.max(20, columns - 14);
+  const trailer = parseWorkerTrailer(item.finalText);
+  const hasTrailer = !!(trailer.changed || trailer.skipped || trailer.verified || trailer.notes);
+  const fallbackSummary = hasTrailer ? "" : summarizeFinalText(item.finalText, fieldMaxLen);
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box flexDirection="row">
@@ -694,14 +743,65 @@ function WorkerEventRow({ item }: { item: WorkerEventItem }): React.ReactElement
           </Text>
         </Box>
       </Box>
-      {summary && (
-        <MessageResponse>
-          <Text color={theme.textDim} wrap="truncate">
-            {summary}
-          </Text>
-        </MessageResponse>
+      {hasTrailer ? (
+        <>
+          {trailer.changed && (
+            <TrailerLine label="Changed" value={trailer.changed} maxLen={fieldMaxLen} />
+          )}
+          {trailer.verified && (
+            <TrailerLine
+              label="Verified"
+              value={trailer.verified}
+              maxLen={fieldMaxLen}
+              labelColor={theme.success}
+            />
+          )}
+          {trailer.skipped && (
+            <TrailerLine
+              label="Skipped"
+              value={trailer.skipped}
+              maxLen={fieldMaxLen}
+              labelColor={theme.warning}
+            />
+          )}
+          {trailer.notes && (
+            <TrailerLine label="Notes" value={trailer.notes} maxLen={fieldMaxLen} />
+          )}
+        </>
+      ) : (
+        fallbackSummary && (
+          <MessageResponse>
+            <Text color={theme.textDim} wrap="truncate">
+              {fallbackSummary}
+            </Text>
+          </MessageResponse>
+        )
       )}
     </Box>
+  );
+}
+
+function TrailerLine({
+  label,
+  value,
+  maxLen,
+  labelColor,
+}: {
+  label: string;
+  value: string;
+  maxLen: number;
+  labelColor?: string;
+}): React.ReactElement {
+  const theme = useTheme();
+  return (
+    <MessageResponse>
+      <Text wrap="truncate">
+        <Text color={labelColor ?? theme.textDim} bold>
+          {label}:
+        </Text>
+        <Text color={theme.text}>{` ${clip(value, maxLen - label.length - 2)}`}</Text>
+      </Text>
+    </MessageResponse>
   );
 }
 
