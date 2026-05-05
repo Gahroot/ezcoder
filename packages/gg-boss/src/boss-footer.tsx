@@ -35,6 +35,8 @@ interface BossFooterProps {
   /** Total input tokens of the boss's last turn — drives the context bar. */
   tokensIn: number;
   exitPending: boolean;
+  /** Boss extended-thinking level. Falsy when thinking is off. */
+  bossThinkingLevel?: string;
 }
 
 /**
@@ -47,6 +49,7 @@ export function BossFooter({
   workerModel,
   tokensIn,
   exitPending,
+  bossThinkingLevel,
 }: BossFooterProps): React.ReactElement {
   const theme = useTheme();
 
@@ -107,6 +110,10 @@ export function BossFooter({
         <Text color={theme.textDim}>workers </Text>
         <Text color={COLORS.accent} bold>
           {shortModel(workerModel)}
+        </Text>
+        {sep}
+        <Text color={bossThinkingLevel ? theme.accent : theme.textDim}>
+          {bossThinkingLevel ? "Thinking on" : "Thinking off"}
         </Text>
       </Box>
     </Box>

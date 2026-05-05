@@ -27,6 +27,8 @@ import type { BossEvent, ProjectSpec, WorkerTurnSummary } from "./types.js";
 export interface GGBossOptions {
   bossProvider: Provider;
   bossModel: string;
+  /** Boss extended-thinking level. Toggled via Shift+Tab in the TUI. */
+  bossThinkingLevel?: ThinkingLevel;
   workerProvider: Provider;
   workerModel: string;
   workerThinkingLevel?: ThinkingLevel;
@@ -86,6 +88,7 @@ export class GGBoss {
     bossStore.init({
       bossProvider: this.opts.bossProvider,
       bossModel: this.opts.bossModel,
+      bossThinkingLevel: this.opts.bossThinkingLevel,
       workerProvider: this.opts.workerProvider,
       workerModel: this.opts.workerModel,
       loggedInProviders,
@@ -146,6 +149,7 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      thinking: this.opts.bossThinkingLevel,
       priorMessages,
     });
     // Mark every loaded message as already persisted so we only append NEW
@@ -261,6 +265,7 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      thinking: this.opts.bossThinkingLevel,
       priorMessages: oldMessages,
     });
 
@@ -337,6 +342,33 @@ export class GGBoss {
     }
   }
 
+  /**
+   * Toggle the boss's extended-thinking level. Recreates bossAgent with the
+   * new setting (Anthropic SDK reads `thinking` once on construction). Mirrors
+   * ggcoder's Shift+Tab UX. Persists to settings.json so the choice sticks
+   * across restarts.
+   */
+  async setBossThinking(level: ThinkingLevel | undefined): Promise<void> {
+    this.opts.bossThinkingLevel = level;
+    const tools = this.buildToolSet();
+    const creds = await this.authStorage.resolveCredentials(this.opts.bossProvider);
+    const oldMessages = this.bossAgent.getMessages().filter((m) => m.role !== "system");
+    this.bossAgent = new Agent({
+      provider: this.opts.bossProvider,
+      model: this.opts.bossModel,
+      system: buildBossSystemPrompt(this.opts.projects),
+      tools,
+      apiKey: creds.accessToken,
+      accountId: creds.accountId,
+      signal: this.ac.signal,
+      cacheRetention: "short",
+      thinking: level,
+      priorMessages: oldMessages,
+    });
+    bossStore.setBossThinking(level);
+    await saveSettings({ bossThinkingLevel: level });
+  }
+
   /** Recreate bossAgent with a new message history (used by compact + /clear). */
   private async replaceBossMessages(newMessages: Message[]): Promise<void> {
     const tools = this.buildToolSet();
@@ -352,6 +384,7 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      thinking: this.opts.bossThinkingLevel,
       priorMessages,
     });
   }

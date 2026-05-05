@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getAppPaths } from "@kenkaiiii/ggcoder";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 
 export interface BossSettings {
   bossProvider?: Provider;
   bossModel?: string;
+  bossThinkingLevel?: ThinkingLevel;
   workerProvider?: Provider;
   workerModel?: string;
 }

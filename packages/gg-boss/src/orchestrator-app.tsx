@@ -324,6 +324,11 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
             commands={BOSS_SLASH_COMMANDS}
             scopeBadge={<ScopePill scope={state.scope} />}
             onTab={() => bossStore.cycleScope()}
+            onShiftTab={() => {
+              const next = state.bossThinkingLevel ? undefined : "medium";
+              void boss.setBossThinking(next);
+              bossStore.appendInfo(`Thinking ${next ? "on" : "off"}`, "info");
+            }}
           />
 
           {overlay === "model-boss" || overlay === "model-workers" ? (
@@ -341,6 +346,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
                 workerModel={state.workerModel}
                 tokensIn={state.bossInputTokens}
                 exitPending={state.exitPending}
+                bossThinkingLevel={state.bossThinkingLevel}
               />
               {!state.exitPending && (
                 <WorkerStatusBar

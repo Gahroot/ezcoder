@@ -144,6 +144,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   const boss = new GGBoss({
     bossProvider: args.bossProvider ?? settings.bossProvider ?? "anthropic",
     bossModel: args.bossModel ?? settings.bossModel ?? "claude-opus-4-7",
+    bossThinkingLevel: settings.bossThinkingLevel,
     workerProvider: args.workerProvider ?? settings.workerProvider ?? "anthropic",
     workerModel: args.workerModel ?? settings.workerModel ?? "claude-sonnet-4-6",
     projects: args.projects,

@@ -5,6 +5,7 @@ import type {
   Message,
   Provider,
   TextContent,
+  ThinkingLevel,
   ToolCall,
   ToolResult,
 } from "@kenkaiiii/gg-ai";
@@ -165,6 +166,8 @@ export interface WorkerView {
 export interface BossUiState {
   bossProvider: Provider;
   bossModel: string;
+  /** Boss extended-thinking level. undefined = off. Toggled via Shift+Tab. */
+  bossThinkingLevel?: ThinkingLevel;
   workerProvider: Provider;
   workerModel: string;
   /** Providers the user is logged in to — controls which models the picker offers. */
@@ -254,6 +257,7 @@ export const bossStore = {
   init(opts: {
     bossProvider: Provider;
     bossModel: string;
+    bossThinkingLevel?: ThinkingLevel;
     workerProvider: Provider;
     workerModel: string;
     loggedInProviders: Provider[];
@@ -263,6 +267,7 @@ export const bossStore = {
       ...initialState,
       bossProvider: opts.bossProvider,
       bossModel: opts.bossModel,
+      bossThinkingLevel: opts.bossThinkingLevel,
       workerProvider: opts.workerProvider,
       workerModel: opts.workerModel,
       loggedInProviders: opts.loggedInProviders,
@@ -273,6 +278,11 @@ export const bossStore = {
         workStartedAt: null,
       })),
     };
+    notify();
+  },
+
+  setBossThinking(level: ThinkingLevel | undefined): void {
+    state = { ...state, bossThinkingLevel: level };
     notify();
   },
 
