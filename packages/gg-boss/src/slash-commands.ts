@@ -51,8 +51,27 @@ export function buildHelpText(): string {
     lines.push(`- \`/${cmd.name}\`${aliases} — ${cmd.description}`);
   }
   lines.push("");
-  lines.push("**Keys**");
+  lines.push("**Global keybindings**");
+  lines.push("- `Ctrl+T` — open the Tasks pane");
+  lines.push("- `Tab` — switch project scope (All / per-project pill in the input)");
+  lines.push("- `Shift+Tab` — toggle the boss's extended thinking on/off");
   lines.push("- `Esc` — interrupt the boss while it's running");
   lines.push("- `Ctrl+C` (twice) — exit");
+  lines.push("");
+  lines.push("**Inside the Tasks pane (Ctrl+T)**");
+  lines.push("- `↑` / `↓` (or `k` / `j`) — navigate tasks");
+  lines.push("- `r` — run all pending and blocked tasks across idle workers");
+  lines.push("- `d` — delete the selected task");
+  lines.push("- `Esc` — close the Tasks pane");
+  lines.push("");
+  lines.push("**Inside model pickers (`/model-boss`, `/model-workers`)**");
+  lines.push("- `↑` / `↓` — navigate models");
+  lines.push("- `Enter` — select");
+  lines.push("- `Esc` — cancel");
+  lines.push("");
+  lines.push("**Input area**");
+  lines.push("- `↑` / `↓` — recall previous prompts (when input is empty)");
+  lines.push("- `Enter` — send  ·  `Shift+Enter` — newline");
+  lines.push("- `/` — open the slash-command menu (Tab / arrows to pick, Enter to insert)");
   return lines.join("\n");
 }
