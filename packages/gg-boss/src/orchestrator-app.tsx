@@ -84,22 +84,34 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
   const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | "tasks" | null>(null);
 
-  // Terminal title — mirrors ggcoder's useTerminalTitle pattern. OSC 0
-  // sets BOTH the window and tab title in most terminals (Ghostty,
-  // Terminal.app, iTerm2, Kitty). "GG Boss" idle, "● GG Boss" any time the
-  // boss is reasoning OR any worker is running so the user sees activity at
-  // a glance even when ggboss is in the background.
-  const anyWorkerRunning = state.workers.some((w) => w.status === "working");
-  const titleActive = state.phase === "working" || anyWorkerRunning;
+  // Terminal title — dynamically reflects worker activity so the user can
+  // glance at the tab/window from another app and see how many workers are
+  // still running. OSC 0 sets both window and tab title in most modern
+  // terminals (Ghostty, Terminal.app, iTerm2, Kitty).
+  //
+  // States:
+  //   N workers running    "● 5 workers running · GG Boss"
+  //   1 worker running     "● 1 worker running · GG Boss"
+  //   boss thinking only   "● GG Boss"
+  //   idle                 "GG Boss"
+  const workersRunning = state.workers.filter((w) => w.status === "working").length;
   const titlePrevRef = useRef("");
   useEffect(() => {
     if (!stdout) return;
-    const title = titleActive ? "● GG Boss" : "GG Boss";
+    let title: string;
+    if (workersRunning > 0) {
+      const label = `${workersRunning} worker${workersRunning === 1 ? "" : "s"} running`;
+      title = `● ${label} · GG Boss`;
+    } else if (state.phase === "working") {
+      title = "● GG Boss";
+    } else {
+      title = "GG Boss";
+    }
     if (title !== titlePrevRef.current) {
       titlePrevRef.current = title;
       stdout.write(`\x1b]0;${title}\x1b\\`);
     }
-  }, [stdout, titleActive]);
+  }, [stdout, workersRunning, state.phase]);
   useEffect(() => {
     return () => {
       stdout?.write(`\x1b]0;GG Boss\x1b\\`);
