@@ -324,6 +324,12 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
             cwd={process.cwd()}
             commands={BOSS_SLASH_COMMANDS}
             scopeBadge={<ScopePill scope={state.scope} />}
+            // Mouse-tracking escape sequences cause Ghostty to emit phantom
+            // pastes of the system clipboard during high-frequency UI updates
+            // (workers running, shimmer animating). gg-boss's UI updates a lot,
+            // so we forfeit click-to-position-cursor in the input to keep
+            // the clipboard from leaking into the chat field.
+            disableMouseTracking
             onTab={() => bossStore.cycleScope()}
             onShiftTab={() => {
               // Don't appendInfo — Static lives outside the overlay branch, so

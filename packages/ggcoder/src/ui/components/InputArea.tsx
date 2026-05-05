@@ -214,6 +214,17 @@ interface InputAreaProps {
    */
   scopeBadge?: React.ReactNode;
   /**
+   * Skip the SGR mouse-tracking enable/disable dance entirely. Some terminals
+   * (notably Ghostty mid-2026) interpret rapid `\x1b[?1000h` / `\x1b[?1006h`
+   * mode toggles as bracketed-paste boundaries, which makes the terminal
+   * paste whatever's in the system clipboard repeatedly during high-frequency
+   * UI updates (e.g. when workers are running and the input rapidly rerenders).
+   * Setting this to true disables click-to-cursor inside the input but kills
+   * the phantom-paste bug. Default: false (mouse tracking enabled, ggcoder
+   * behaviour preserved).
+   */
+  disableMouseTracking?: boolean;
+  /**
    * Fired when the user presses Tab (outside slash-completion mode). Used by
    * downstream tools (gg-boss) to cycle the scope badge.
    */
@@ -283,6 +294,7 @@ export function InputArea({
   commands = [],
   eyesCount,
   scopeBadge,
+  disableMouseTracking,
   onTab,
 }: InputAreaProps) {
   const theme = useTheme();
@@ -454,6 +466,14 @@ export function InputArea({
 
   useEffect(() => {
     if (!isActive || !internal_eventEmitter) return;
+    // Hard-bail when mouse tracking is disabled at the prop level — used by
+    // gg-boss to avoid the Ghostty phantom-paste bug where rapid mode toggles
+    // get interpreted as bracketed-paste boundaries during high-frequency UI
+    // updates (e.g. workers running, status bar shimmering). Without this we
+    // skip the wrapper install too, so no escape-sequence stripping happens
+    // either — but that's fine, no mouse tracking means no SGR sequences to
+    // strip in the first place.
+    if (disableMouseTracking) return;
 
     // Only enable mouse tracking if there's text — when empty, let the
     // terminal handle clicks natively (e.g., CMD+click to open links).
@@ -646,6 +666,7 @@ export function InputArea({
   // terminal handles CMD+click for links natively, enable when there's text
   // so click-to-cursor works.
   useEffect(() => {
+    if (disableMouseTracking) return;
     const hasText = value.length > 0;
     if (hasText !== hasInputTextRef.current) {
       hasInputTextRef.current = hasText;
