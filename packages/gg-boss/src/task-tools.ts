@@ -83,6 +83,17 @@ export function createTaskTools(deps: TaskToolDeps): AgentTool[] {
     parameters: addTaskParams,
     async execute(args) {
       if (!workers.has(args.project)) return `Unknown project: ${args.project}`;
+      // Deterministic dedup — case-insensitive title match within the same
+      // project blocks duplicates regardless of whether the boss remembered to
+      // list_tasks first. Any existing entry (pending/in_progress/blocked/done)
+      // counts as a hit; the boss should reuse it rather than fork a copy.
+      const titleNorm = args.title.trim().toLowerCase();
+      const existing = tasksStore
+        .list({ project: args.project })
+        .find((t) => t.title.trim().toLowerCase() === titleNorm);
+      if (existing) {
+        return `Task already exists: [${existing.id}] ${existing.project} · ${existing.title} (status: ${existing.status}). Reuse this id with prompt_worker / update_task / dispatch_pending instead of creating a duplicate.`;
+      }
       const t = await tasksStore.add({
         project: args.project,
         title: args.title,

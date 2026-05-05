@@ -63,6 +63,16 @@ export class GGBoss {
   /** project → task id currently dispatched to that worker. Used to mark
    *  the right task done/blocked when the worker_turn_complete event arrives. */
   private inFlightTaskByProject = new Map<string, string>();
+  /**
+   * Auto-chain notices waiting to be delivered to the boss. When the
+   * orchestrator deterministically dispatches the next pending task for a
+   * project (because the boss didn't), the boss has no other way to know it
+   * happened — it'd see "X(working)" in the next event's other_workers
+   * trailer and dismiss it as stale because it remembers receiving X's prior
+   * completion event. We attach an explicit note to the next event so the
+   * boss's mental model stays in sync with reality.
+   */
+  private pendingAutoChainNotices: { project: string; title: string }[] = [];
 
   constructor(opts: GGBossOptions) {
     this.opts = opts;
@@ -430,7 +440,10 @@ export class GGBoss {
         name,
         status: w.getStatus(),
       }));
-      const text = formatEventForBoss(event, workerSnapshot);
+      // Drain any auto-chain notices accumulated since the last event so the
+      // boss is told explicitly which projects we re-dispatched on its behalf.
+      const notices = this.pendingAutoChainNotices.splice(0);
+      const text = formatEventForBoss(event, workerSnapshot, notices);
       bossStore.startStreaming();
 
       // Fresh AbortController for this turn so ESC can cancel just this call.
@@ -531,6 +544,10 @@ export class GGBoss {
       await tasksStore.update(next.id, { status: "pending", notes: undefined });
     }
     await this.dispatchTaskByDescription(project, next.description, next.fresh === true, next.id);
+    // Queue a note for the boss so it knows this project is on a fresh task.
+    // Without this the boss sees "X(working)" in the next event's trailer and
+    // dismisses it as stale.
+    this.pendingAutoChainNotices.push({ project, title: next.title });
   }
 
   async dispose(): Promise<void> {
@@ -584,6 +601,7 @@ function reportedToTaskStatus(
 function formatEventForBoss(
   event: BossEvent,
   workerSnapshot: { name: string; status: string }[],
+  autoChainNotices: { project: string; title: string }[],
 ): string {
   if (event.kind === "user_message") {
     return event.text;
@@ -599,6 +617,14 @@ function formatEventForBoss(
     return others.length > 0 ? `\nother_workers: ${others}` : "";
   };
 
+  // Auto-chain trailer — explicit per-project list so the boss can't dismiss
+  // the trailer's "(working)" entries as stale.
+  const renderAutoChain = (): string => {
+    if (autoChainNotices.length === 0) return "";
+    const lines = autoChainNotices.map((n) => `  - ${n.project}: "${n.title}"`);
+    return `\nauto_dispatched_since_last_event:\n${lines.join("\n")}`;
+  };
+
   if (event.kind === "worker_turn_complete") {
     const s = event.summary;
     const tools =
@@ -608,10 +634,10 @@ function formatEventForBoss(
     return `[event:worker_turn_complete] project="${s.project}" turn=${s.turnIndex} timestamp=${s.timestamp}
 tools_used: ${tools}
 final_text:
-${s.finalText || "(empty)"}${renderOthers(s.project)}`;
+${s.finalText || "(empty)"}${renderOthers(s.project)}${renderAutoChain()}`;
   }
   return `[event:worker_error] project="${event.project}" timestamp=${event.timestamp}
-${event.message}${renderOthers(event.project)}`;
+${event.message}${renderOthers(event.project)}${renderAutoChain()}`;
 }
 
 /**
