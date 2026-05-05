@@ -83,10 +83,9 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   // selection has something to riff on (when not using BOSS_PHRASES override).
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
   const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | "tasks" | null>(null);
-  // Bumped on /clear to remount <Static>, which discards its emitted-id set.
-  // Without this, items already written to the terminal's scrollback persist
-  // after we wipe state.history, leaving the user staring at the cleared rows.
-  const [staticKey, setStaticKey] = useState(0);
+  // Reserved for future Static-remount triggers (e.g. theme switches). Not
+  // currently bumped — /clear no longer touches Static state directly.
+  const [staticKey] = useState(0);
 
   // Terminal title — dynamically reflects worker activity so the user can
   // glance at the tab/window from another app and see how many workers are
@@ -584,17 +583,21 @@ const SHORTCUT_PATTERNS: RegExp[] = [
 function highlightShortcuts(text: string): string {
   if (!text) return text;
   // Mask code spans + fenced blocks so we don't try to re-wrap shortcuts that
-  // are already in backtick territory. Replace with placeholders, run the
-  // regexes, then restore.
+  // are already in backtick territory. The sentinel uses a private-use unicode
+  // codepoint so it can't realistically collide with anything the boss writes.
+  const SENTINEL = "";
   const masks: string[] = [];
   let masked = text.replace(/```[\s\S]*?```|`[^`]+`/g, (m) => {
     const idx = masks.push(m) - 1;
-    return ` MASK${idx} `;
+    return `${SENTINEL}${idx}${SENTINEL}`;
   });
   for (const re of SHORTCUT_PATTERNS) {
     masked = masked.replace(re, (m) => `\`${m}\``);
   }
-  return masked.replace(/ MASK(\d+) /g, (_, i) => masks[Number(i)]!);
+  return masked.replace(
+    new RegExp(`${SENTINEL}(\\d+)${SENTINEL}`, "g"),
+    (_, i) => masks[Number(i)]!,
+  );
 }
 
 function AssistantRow({ item }: { item: AssistantItem }): React.ReactElement {
@@ -635,9 +638,7 @@ function parseStatusGrade(text: string): WorkerStatusGrade | null {
   // mid-text and re-emit it in the trailer). Also accept anything after the
   // grade word — workers occasionally write "Status: INFO — trailing comment"
   // which the previous end-of-line anchor would have rejected.
-  const matches = [
-    ...text.matchAll(/^\s*Status:\s*(DONE|UNVERIFIED|PARTIAL|BLOCKED|INFO)\b/gim),
-  ];
+  const matches = [...text.matchAll(/^\s*Status:\s*(DONE|UNVERIFIED|PARTIAL|BLOCKED|INFO)\b/gim)];
   const last = matches[matches.length - 1];
   if (!last) return null;
   return last[1]!.toUpperCase() as WorkerStatusGrade;

@@ -100,21 +100,53 @@ export function SplashScreen({ caption }: SplashScreenProps): React.ReactElement
     };
   }, []);
 
+  // Re-center on terminal resize. process.stdout.columns/rows are read live
+  // each render and a "resize" event re-renders us so the centring stays
+  // accurate even if the user resizes their window mid-splash.
+  const [size, setSize] = useState(() => ({
+    columns: process.stdout.columns ?? 80,
+    rows: process.stdout.rows ?? 24,
+  }));
+  useEffect(() => {
+    const handler = (): void =>
+      setSize({
+        columns: process.stdout.columns ?? 80,
+        rows: process.stdout.rows ?? 24,
+      });
+    process.stdout.on("resize", handler);
+    return () => {
+      process.stdout.off("resize", handler);
+    };
+  }, []);
+
+  // Splash height: 8 logo rows + 1 spacer + 1 brand line + 1 caption line ≈ 11.
+  // We pad the top with empty rows to push the logo to the vertical centre,
+  // and use Ink's flex `alignItems` for horizontal centring (works even when
+  // the logo is wider than the terminal — flex just clips, no crash).
+  const SPLASH_BLOCK_HEIGHT = SPLASH_LINES.length + 3;
+  const verticalPad = Math.max(0, Math.floor((size.rows - SPLASH_BLOCK_HEIGHT) / 2));
+
   return (
-    <Box flexDirection="column" alignItems="flex-start" paddingTop={1} paddingLeft={2}>
-      <SplashLogo offset={offset} />
-      <Box width={SPLASH_WIDTH} marginTop={1}>
-        <Text color={COLORS.text} bold>
-          {BRAND}
-        </Text>
-        <Text color={COLORS.textDim}> v{VERSION}</Text>
-        <Text color={COLORS.textDim}> · By </Text>
-        <Text color={COLORS.text} bold>
-          {AUTHOR}
-        </Text>
-      </Box>
-      <Box width={SPLASH_WIDTH}>
-        <Text color={COLORS.textDim}>{caption ?? "Spinning up the orchestrator…"}</Text>
+    <Box flexDirection="column" width={size.columns} height={size.rows} alignItems="center">
+      {/* Top spacer fills the available vertical space above the centred block. */}
+      <Box height={verticalPad} flexShrink={0} />
+      <Box flexDirection="column" alignItems="flex-start" flexShrink={0}>
+        <SplashLogo offset={offset} />
+        <Box width={SPLASH_WIDTH} marginTop={1} justifyContent="center">
+          <Text>
+            <Text color={COLORS.text} bold>
+              {BRAND}
+            </Text>
+            <Text color={COLORS.textDim}> v{VERSION}</Text>
+            <Text color={COLORS.textDim}> · By </Text>
+            <Text color={COLORS.text} bold>
+              {AUTHOR}
+            </Text>
+          </Text>
+        </Box>
+        <Box width={SPLASH_WIDTH} justifyContent="center">
+          <Text color={COLORS.textDim}>{caption ?? "Spinning up the orchestrator…"}</Text>
+        </Box>
       </Box>
     </Box>
   );
@@ -127,10 +159,9 @@ export function SplashScreen({ caption }: SplashScreenProps): React.ReactElement
  * has actually completed — so the caller can safely render the main app
  * next without two Ink trees coexisting on screen.
  */
-export function showSplash(opts: {
-  minMs?: number;
-  caption?: string;
-}): { dismiss: () => Promise<void> } {
+export function showSplash(opts: { minMs?: number; caption?: string }): {
+  dismiss: () => Promise<void>;
+} {
   const start = Date.now();
   const instance = render(<SplashScreen caption={opts.caption} />);
   return {
