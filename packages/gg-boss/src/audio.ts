@@ -227,3 +227,13 @@ export function playSplashAudio(): Promise<void> {
 export function playDoneAudio(): Promise<void> {
   return playFile(assetPath("done.mp3"));
 }
+
+/**
+ * Play the all-clear chime. Fires once when the orchestrator transitions
+ * from "had worker activity" to "all idle, nothing in queue, awaiting next
+ * instruction". Distinct from done.mp3 (per-worker completion) — this is
+ * the "everything's wrapped up" signal you want to hear from another room.
+ */
+export function playReadyAudio(): Promise<void> {
+  return playFile(assetPath("ready.mp3"));
+}

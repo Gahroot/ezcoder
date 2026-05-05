@@ -13,7 +13,7 @@ import { createBossTools, WORKER_PROMPT_BRIEF } from "./tools.js";
 import { createTaskTools } from "./task-tools.js";
 import { tasksStore } from "./tasks-store.js";
 import { saveSettings } from "./settings.js";
-import { playDoneAudio } from "./audio.js";
+import { playDoneAudio, playReadyAudio } from "./audio.js";
 import { buildBossSystemPrompt } from "./boss-system-prompt.js";
 import { bossStore } from "./boss-store.js";
 import {
@@ -76,6 +76,15 @@ export class GGBoss {
    * boss's mental model stays in sync with reality.
    */
   private pendingAutoChainNotices: { project: string; title: string }[] = [];
+  /**
+   * "Had any worker activity since the last all-clear chime?" Set true when
+   * a worker_turn_complete or worker_error event arrives, cleared when we
+   * detect the orchestrator has fully wound down (all workers idle, queue
+   * empty, boss turn finished). Drives playReadyAudio so the chime fires
+   * once per workflow instead of every time the boss replies to a chat
+   * message that didn't dispatch any workers.
+   */
+  private hadWorkerActivitySinceReady = false;
 
   constructor(opts: GGBossOptions) {
     this.opts = opts;
@@ -426,6 +435,7 @@ export class GGBoss {
         // finishing in quick succession will layer their sounds, which is
         // fine: it's a chime, not a long jingle.
         void playDoneAudio();
+        this.hadWorkerActivitySinceReady = true;
         this.lastSummaries.set(event.summary.project, event.summary);
         // Resolve any in-flight task for this project to its final status.
         // Boss can still override via update_task — this just gives it a sane
@@ -455,6 +465,7 @@ export class GGBoss {
         }
       }
       if (event.kind === "worker_error") {
+        this.hadWorkerActivitySinceReady = true;
         const taskId = this.inFlightTaskByProject.get(event.project);
         if (taskId) {
           this.inFlightTaskByProject.delete(event.project);
@@ -570,6 +581,17 @@ export class GGBoss {
       // implicitly leaves the project parked.
       if (event.kind === "worker_turn_complete") {
         await this.maybeAutoChain(event.summary.project);
+      }
+
+      // All-clear chime — fires when the orchestrator winds down after a
+      // burst of activity. Conditions: at least one worker event happened
+      // since the last chime, every worker is now idle, and the queue is
+      // drained (no more events queued for the boss). Resets the flag so
+      // the next workflow gets its own chime.
+      const allWorkersIdle = [...this.workers.values()].every((w) => w.getStatus() === "idle");
+      if (this.hadWorkerActivitySinceReady && allWorkersIdle && this.queue.size() === 0) {
+        this.hadWorkerActivitySinceReady = false;
+        void playReadyAudio();
       }
     }
   }
