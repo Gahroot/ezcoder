@@ -359,6 +359,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
 // ── Scope pill (gg-boss specific) ──────────────────────────
 
 function ScopePill({ scope }: { scope: string }): React.ReactElement {
+  const theme = useTheme();
   const isAll = scope === "all";
   // "All" → boss accent (fuchsia) so multi-project mode wears the brand.
   // Specific project → its stable project color so the pill matches its
@@ -368,8 +369,16 @@ function ScopePill({ scope }: { scope: string }): React.ReactElement {
   // Black text reads cleanly on every color in the palette — the project hues
   // are deliberately light/saturated, which is unreadable with white on top.
   return (
-    <Text color="black" backgroundColor={bg} bold>
-      {` ${label} `}
+    <Text>
+      <Text color={theme.textDim}>Project </Text>
+      <Text color="black" backgroundColor={bg} bold>
+        {` ${label} `}
+      </Text>
+      <Text color={theme.textDim}>
+        {"  "}
+        <Text color={theme.primary}>Tab</Text>
+        {" to switch"}
+      </Text>
     </Text>
   );
 }
