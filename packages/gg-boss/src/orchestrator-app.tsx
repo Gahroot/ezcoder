@@ -325,9 +325,12 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
             scopeBadge={<ScopePill scope={state.scope} />}
             onTab={() => bossStore.cycleScope()}
             onShiftTab={() => {
+              // Don't appendInfo — Static lives outside the overlay branch, so
+              // any history row added here renders in scrollback above the
+              // tasks pane and looks like it's inside it. The footer already
+              // shows live "Thinking on/off" — that's the indicator.
               const next = state.bossThinkingLevel ? undefined : "medium";
               void boss.setBossThinking(next);
-              bossStore.appendInfo(`Thinking ${next ? "on" : "off"}`, "info");
             }}
           />
 
