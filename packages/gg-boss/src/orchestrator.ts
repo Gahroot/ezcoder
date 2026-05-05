@@ -430,6 +430,10 @@ export class GGBoss {
         this.pendingUserMessages = Math.max(0, this.pendingUserMessages - 1);
         bossStore.setPendingMessages(this.pendingUserMessages);
       }
+      // Captured so the post-turn auto-chain can tell whether THIS event was
+       // a dispatched task (chain on) vs an ad-hoc prompt_worker like recon
+       // (chain off). Lives outside the `if` so it stays in scope down below.
+      let finishedTaskId: string | null = null;
       if (event.kind === "worker_turn_complete") {
         // Play the completion chime — fire-and-forget. Multiple workers
         // finishing in quick succession will layer their sounds, which is
@@ -441,6 +445,7 @@ export class GGBoss {
         // Boss can still override via update_task — this just gives it a sane
         // default so the user's overlay-driven dispatches close out cleanly.
         const taskId = this.inFlightTaskByProject.get(event.summary.project);
+        finishedTaskId = taskId ?? null;
         if (taskId) {
           this.inFlightTaskByProject.delete(event.summary.project);
           const task = tasksStore.byId(taskId);
@@ -579,7 +584,11 @@ export class GGBoss {
       // DID prompt_worker / dispatch_pending / re-prompt during its turn, the
       // worker is now "working", we skip. So this only kicks in when the boss
       // implicitly leaves the project parked.
-      if (event.kind === "worker_turn_complete") {
+      // Auto-chain ONLY fires when the just-finished event was itself a
+       // dispatched task (had a taskId tracked in inFlightTaskByProject above).
+       // Otherwise we'd hijack ad-hoc prompt_worker calls — e.g. recon prompts
+       // — by dispatching pending backlog tasks the user never asked to run.
+      if (event.kind === "worker_turn_complete" && finishedTaskId) {
         await this.maybeAutoChain(event.summary.project);
       }
 
