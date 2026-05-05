@@ -23,8 +23,10 @@ The tag is metadata. Strip it before relaying to a worker — workers should nev
 Every user-role message is one of:
 
 1. A direct user message — respond to the user.
-2. \`[event:worker_turn_complete]\` — a worker finished a turn. Contains project, turn number, tools used (✓/✗), and the worker's final text.
-3. \`[event:worker_error]\` — a worker hit an error. Diagnose, then retry or surface to the user.
+2. \`[event:worker_turn_complete]\` — a worker finished a turn. Contains project, turn number, tools used (✓/✗), the worker's final text, AND a trailing \`other_workers:\` line listing every other project's current status (e.g. \`other_workers: B(working) C(idle) D(working)\`).
+3. \`[event:worker_error]\` — a worker hit an error. Diagnose, then retry or surface to the user. Same \`other_workers:\` trailer.
+
+**Always read the \`other_workers:\` trailer before deciding "the run is done".** During a parallel dispatch you receive ONE event per finishing worker, in arrival order. It is wrong to treat the event you're processing as "the last one" unless \`other_workers:\` shows every other worker is \`idle\` (or \`error\`). If any are \`working\`, more events are coming — finish your routing for THIS event, then wait.
 
 # Your tools
 

@@ -410,7 +410,16 @@ export class GGBoss {
       // Workers handle their own compaction independently (via AgentSession).
       await this.runCompaction(false);
 
-      const text = formatEventForBoss(event);
+      // Snapshot every worker's status at the moment the event arrives so the
+       // boss reasons from live state, not from its memory of past dispatches.
+       // Without this the boss can hallucinate "all idle" mid-batch — by event
+       // 3 of 5 it has heard 3 completions and may assume the run is over even
+       // though workers 4 and 5 are still active.
+      const workerSnapshot = [...this.workers.entries()].map(([name, w]) => ({
+        name,
+        status: w.getStatus(),
+      }));
+      const text = formatEventForBoss(event, workerSnapshot);
       bossStore.startStreaming();
 
       // Fresh AbortController for this turn so ESC can cancel just this call.
@@ -485,7 +494,28 @@ export class GGBoss {
       }
       bossStore.finishStreaming();
       await this.persistNewMessages();
+
+      // Auto-chain: after the boss finishes processing a worker_turn_complete,
+      // if it didn't dispatch anything for that project (worker is still idle)
+      // AND there are more pending tasks for that project, fire the next one
+      // automatically. The idle check arbitrates with the boss — if the boss
+      // DID prompt_worker / dispatch_pending / re-prompt during its turn, the
+      // worker is now "working", we skip. So this only kicks in when the boss
+      // implicitly leaves the project parked.
+      if (event.kind === "worker_turn_complete") {
+        await this.maybeAutoChain(event.summary.project);
+      }
     }
+  }
+
+  private async maybeAutoChain(project: string): Promise<void> {
+    const worker = this.workers.get(project);
+    if (!worker || worker.getStatus() !== "idle") return;
+    if (this.inFlightTaskByProject.has(project)) return;
+    const next = tasksStore.nextPending(project);
+    if (!next) return;
+    await tasksStore.update(next.id, { status: "in_progress" });
+    await this.dispatchTaskByDescription(project, next.description, next.fresh === true, next.id);
   }
 
   async dispose(): Promise<void> {
@@ -501,10 +531,24 @@ export class GGBoss {
   }
 }
 
-function formatEventForBoss(event: BossEvent): string {
+function formatEventForBoss(
+  event: BossEvent,
+  workerSnapshot: { name: string; status: string }[],
+): string {
   if (event.kind === "user_message") {
     return event.text;
   }
+  // Live worker statuses, formatted as a single trailing line so the boss
+  // always sees who's still running. Excludes the worker the event is FROM
+  // (the boss can read that worker's outcome from the event body itself).
+  const renderOthers = (excludeName: string): string => {
+    const others = workerSnapshot
+      .filter((w) => w.name !== excludeName)
+      .map((w) => `${w.name}(${w.status})`)
+      .join(" ");
+    return others.length > 0 ? `\nother_workers: ${others}` : "";
+  };
+
   if (event.kind === "worker_turn_complete") {
     const s = event.summary;
     const tools =
@@ -514,10 +558,10 @@ function formatEventForBoss(event: BossEvent): string {
     return `[event:worker_turn_complete] project="${s.project}" turn=${s.turnIndex} timestamp=${s.timestamp}
 tools_used: ${tools}
 final_text:
-${s.finalText || "(empty)"}`;
+${s.finalText || "(empty)"}${renderOthers(s.project)}`;
   }
   return `[event:worker_error] project="${event.project}" timestamp=${event.timestamp}
-${event.message}`;
+${event.message}${renderOthers(event.project)}`;
 }
 
 /**
