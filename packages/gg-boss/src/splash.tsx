@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, render } from "ink";
 import { AUTHOR, BRAND, COLORS, GRADIENT, VERSION } from "./branding.js";
-import { playSplashAudio } from "./audio.js";
+import { getSplashAudioDurationMs, playSplashAudio } from "./audio.js";
 
 /**
  * Big ASCII "GG Boss" rendered for the splash. The block characters here are
@@ -170,9 +170,14 @@ export function showSplash(opts: { minMs?: number; caption?: string }): {
   // never sees an audio-related crash on launch.
   void playSplashAudio();
   const instance = render(<SplashScreen caption={opts.caption} />);
+  // Default the minimum visible time to the audio duration so the user
+  // doesn't get dumped into the chat mid-jingle. A small +200ms tail keeps
+  // the last beat from being clipped by terminal-app sound shutdown.
+  const audioDurationMs = getSplashAudioDurationMs();
+  const defaultMinMs = audioDurationMs + 200;
   return {
     dismiss: async () => {
-      const minMs = opts.minMs ?? 900;
+      const minMs = opts.minMs ?? defaultMinMs;
       const elapsed = Date.now() - start;
       const remaining = Math.max(0, minMs - elapsed);
       if (remaining > 0) {
