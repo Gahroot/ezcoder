@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, render } from "ink";
 import { AUTHOR, BRAND, COLORS, GRADIENT, VERSION } from "./branding.js";
+import { playSplashAudio } from "./audio.js";
 
 /**
  * Big ASCII "GG Boss" rendered for the splash. The block characters here are
@@ -163,6 +164,11 @@ export function showSplash(opts: { minMs?: number; caption?: string }): {
   dismiss: () => Promise<void>;
 } {
   const start = Date.now();
+  // Fire-and-forget — never await. If the platform has no working player or
+  // the bundled mp3 is missing, this resolves to nothing and the splash just
+  // plays silently. Errors are swallowed inside playSplashAudio so the user
+  // never sees an audio-related crash on launch.
+  void playSplashAudio();
   const instance = render(<SplashScreen caption={opts.caption} />);
   return {
     dismiss: async () => {
