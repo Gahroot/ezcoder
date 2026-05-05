@@ -563,9 +563,44 @@ function TaskDispatchRow({
   );
 }
 
+/**
+ * Auto-highlight common keyboard shortcuts in any boss-written prose by
+ * wrapping them in backticks before passing to the Markdown renderer (which
+ * styles inline code with a distinctive color/background). Catches things
+ * like Ctrl+T, Shift+Tab, Cmd+K, Esc, F-keys, arrow-key combos. The boss may
+ * already wrap them itself — these regexes deliberately skip text that's
+ * already inside backticks (or fenced blocks) so we don't double-wrap.
+ */
+const SHORTCUT_PATTERNS: RegExp[] = [
+  // Modifier+Key combos: Ctrl+T, Shift+Tab, Cmd+K, Ctrl+Shift+P, Ctrl+C
+  /\b(?:Ctrl|Cmd|Alt|Option|Opt|Shift|Meta|Win|Super)(?:\s*\+\s*(?:Ctrl|Cmd|Alt|Option|Opt|Shift|Meta|Win|Super))*\s*\+\s*(?:Tab|Enter|Esc|Escape|Space|Backspace|Delete|Del|Home|End|PageUp|PageDown|Up|Down|Left|Right|F[1-9]|F1[0-2]|[A-Z0-9]|\/|\?|\.|,|;|=|-)\b/g,
+  // Bare named keys (only when surrounded by clear key context)
+  /\b(?:Ctrl-[A-Z]|F[1-9]|F1[0-2])\b/g,
+];
+
+function highlightShortcuts(text: string): string {
+  if (!text) return text;
+  // Mask code spans + fenced blocks so we don't try to re-wrap shortcuts that
+  // are already in backtick territory. Replace with placeholders, run the
+  // regexes, then restore.
+  const masks: string[] = [];
+  let masked = text.replace(/```[\s\S]*?```|`[^`]+`/g, (m) => {
+    const idx = masks.push(m) - 1;
+    return ` MASK${idx} `;
+  });
+  for (const re of SHORTCUT_PATTERNS) {
+    masked = masked.replace(re, (m) => `\`${m}\``);
+  }
+  return masked.replace(/ MASK(\d+) /g, (_, i) => masks[Number(i)]!);
+}
+
 function AssistantRow({ item }: { item: AssistantItem }): React.ReactElement {
   return (
-    <AssistantMessage text={item.text} thinking={item.thinking} thinkingMs={item.thinkingMs} />
+    <AssistantMessage
+      text={highlightShortcuts(item.text)}
+      thinking={item.thinking}
+      thinkingMs={item.thinkingMs}
+    />
   );
 }
 
