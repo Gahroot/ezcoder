@@ -120,13 +120,21 @@ export function BossTasksOverlay({
       void (async (): Promise<void> => {
         const dispatched: { project: string; title: string }[] = [];
         for (const w of workers) {
-          const next = tasksStore.nextPending(w.name);
+          // nextDispatchable picks pending OR blocked — so blocked tasks get
+          // retried alongside fresh pending ones. Pending is preferred.
+          const next = tasksStore.nextDispatchable(w.name);
           if (!next) continue;
+          // Reset blocked → pending so the dispatch path's in_progress flip
+          // lands on a clean state and not "blocked → in_progress" (which
+          // looks like a status going backwards in the overlay).
+          if (next.status === "blocked") {
+            await tasksStore.update(next.id, { status: "pending", notes: undefined });
+          }
           const res = await boss.dispatchTaskById(next.id);
           if (res.ok) dispatched.push({ project: w.name, title: next.title });
         }
         if (dispatched.length === 0) {
-          bossStore.appendInfo("No pending tasks to run.", "info");
+          bossStore.appendInfo("No pending or blocked tasks to run.", "info");
         } else {
           bossStore.appendTaskDispatch(dispatched);
         }

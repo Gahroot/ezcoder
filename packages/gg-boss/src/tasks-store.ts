@@ -199,6 +199,23 @@ export const tasksStore = {
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
   },
 
+  /**
+   * Find the next dispatchable task — pending OR blocked — for a project.
+   * Used by overlay's "r" (run all) so blocked tasks get retried alongside
+   * pending ones. Pending is preferred (lower priority value); blocked falls
+   * through if there are no pending ones.
+   */
+  nextDispatchable(project: string): BossTask | undefined {
+    const candidates = state.tasks
+      .filter((t) => t.project === project && (t.status === "pending" || t.status === "blocked"))
+      .sort((a, b) => {
+        // Pending before blocked — fresh work first, then retry attempts.
+        if (a.status !== b.status) return a.status === "pending" ? -1 : 1;
+        return a.createdAt.localeCompare(b.createdAt);
+      });
+    return candidates[0];
+  },
+
   /** Test/dev reset — wipes in-memory + disk. */
   async reset(): Promise<void> {
     state = { tasks: [], version: state.version + 1 };

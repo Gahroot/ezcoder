@@ -387,9 +387,20 @@ export class GGBoss {
           this.inFlightTaskByProject.delete(event.summary.project);
           const task = tasksStore.byId(taskId);
           if (task && task.status === "in_progress") {
-            const failed = event.summary.toolsUsed.some((t) => !t.ok);
+            // Use the worker's SELF-REPORTED status from the trailer ("Status:
+            // DONE | UNVERIFIED | PARTIAL | BLOCKED | INFO"). The previous
+            // heuristic "any tool failed → blocked" was way too aggressive —
+            // workers commonly have an incidental bash non-zero (grep with no
+            // match, cd to wrong path) during exploration even when the task
+            // itself was completed cleanly. Self-report is what the boss reads
+            // anyway, so we should mark off the same signal.
+            const reported = parseReportedStatus(event.summary.finalText);
+            const newStatus = reportedToTaskStatus(
+              reported,
+              event.summary.toolsUsed.some((t) => !t.ok),
+            );
             await tasksStore.update(taskId, {
-              status: failed ? "blocked" : "done",
+              status: newStatus,
               resultSummary: event.summary.finalText,
             });
           }
@@ -512,9 +523,13 @@ export class GGBoss {
     const worker = this.workers.get(project);
     if (!worker || worker.getStatus() !== "idle") return;
     if (this.inFlightTaskByProject.has(project)) return;
-    const next = tasksStore.nextPending(project);
+    // Pull pending OR blocked — auto-chain retries blocked tasks too so a
+    // single bad turn doesn't park the whole project. Pending is preferred.
+    const next = tasksStore.nextDispatchable(project);
     if (!next) return;
-    await tasksStore.update(next.id, { status: "in_progress" });
+    if (next.status === "blocked") {
+      await tasksStore.update(next.id, { status: "pending", notes: undefined });
+    }
     await this.dispatchTaskByDescription(project, next.description, next.fresh === true, next.id);
   }
 
@@ -529,6 +544,41 @@ export class GGBoss {
     });
     await Promise.all([...this.workers.values()].map((w) => w.dispose()));
   }
+}
+
+type ReportedStatus = "DONE" | "UNVERIFIED" | "PARTIAL" | "BLOCKED" | "INFO" | null;
+
+/**
+ * Pull the worker's self-reported "Status: X" line out of its final text. The
+ * trailer is appended by every prompt via WORKER_PROMPT_BRIEF, so it should
+ * always be there for task-style runs. Returns null if missing or unrecognised.
+ */
+function parseReportedStatus(finalText: string): ReportedStatus {
+  // Match the LAST "Status: X" line — workers occasionally mention statuses
+  // mid-text and we want the trailer's value, not an example sentence.
+  const matches = [...finalText.matchAll(/^\s*Status:\s*(DONE|UNVERIFIED|PARTIAL|BLOCKED|INFO)\b/gim)];
+  const last = matches[matches.length - 1];
+  if (!last) return null;
+  return last[1]!.toUpperCase() as ReportedStatus;
+}
+
+/**
+ * Map worker self-report to the task plan's status enum. Falls back to the
+ * tool-failure heuristic ONLY when the trailer is missing — that's the only
+ * way to recover useful state for non-compliant workers.
+ */
+function reportedToTaskStatus(
+  reported: ReportedStatus,
+  anyToolFailed: boolean,
+): "done" | "blocked" | "in_progress" | "skipped" {
+  if (reported === "DONE") return "done";
+  if (reported === "INFO") return "done"; // question answered, nothing to retry
+  if (reported === "BLOCKED") return "blocked";
+  // UNVERIFIED / PARTIAL: keep the task as "in_progress" so the boss's next
+  // re-prompt picks it up. Tasks-overlay shows it as the active row.
+  if (reported === "UNVERIFIED" || reported === "PARTIAL") return "in_progress";
+  // No trailer — last-resort heuristic.
+  return anyToolFailed ? "blocked" : "done";
 }
 
 function formatEventForBoss(
