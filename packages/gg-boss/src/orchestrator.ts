@@ -13,6 +13,7 @@ import { createBossTools, WORKER_PROMPT_BRIEF } from "./tools.js";
 import { createTaskTools } from "./task-tools.js";
 import { tasksStore } from "./tasks-store.js";
 import { saveSettings } from "./settings.js";
+import { playDoneAudio } from "./audio.js";
 import { buildBossSystemPrompt } from "./boss-system-prompt.js";
 import { bossStore } from "./boss-store.js";
 import {
@@ -421,6 +422,10 @@ export class GGBoss {
         bossStore.setPendingMessages(this.pendingUserMessages);
       }
       if (event.kind === "worker_turn_complete") {
+        // Play the completion chime — fire-and-forget. Multiple workers
+        // finishing in quick succession will layer their sounds, which is
+        // fine: it's a chime, not a long jingle.
+        void playDoneAudio();
         this.lastSummaries.set(event.summary.project, event.summary);
         // Resolve any in-flight task for this project to its final status.
         // Boss can still override via update_task — this just gives it a sane
@@ -465,10 +470,10 @@ export class GGBoss {
       await this.runCompaction(false);
 
       // Snapshot every worker's status at the moment the event arrives so the
-       // boss reasons from live state, not from its memory of past dispatches.
-       // Without this the boss can hallucinate "all idle" mid-batch — by event
-       // 3 of 5 it has heard 3 completions and may assume the run is over even
-       // though workers 4 and 5 are still active.
+      // boss reasons from live state, not from its memory of past dispatches.
+      // Without this the boss can hallucinate "all idle" mid-batch — by event
+      // 3 of 5 it has heard 3 completions and may assume the run is over even
+      // though workers 4 and 5 are still active.
       const workerSnapshot = [...this.workers.entries()].map(([name, w]) => ({
         name,
         status: w.getStatus(),
@@ -610,7 +615,9 @@ type ReportedStatus = "DONE" | "UNVERIFIED" | "PARTIAL" | "BLOCKED" | "INFO" | n
 function parseReportedStatus(finalText: string): ReportedStatus {
   // Match the LAST "Status: X" line — workers occasionally mention statuses
   // mid-text and we want the trailer's value, not an example sentence.
-  const matches = [...finalText.matchAll(/^\s*Status:\s*(DONE|UNVERIFIED|PARTIAL|BLOCKED|INFO)\b/gim)];
+  const matches = [
+    ...finalText.matchAll(/^\s*Status:\s*(DONE|UNVERIFIED|PARTIAL|BLOCKED|INFO)\b/gim),
+  ];
   const last = matches[matches.length - 1];
   if (!last) return null;
   return last[1]!.toUpperCase() as ReportedStatus;

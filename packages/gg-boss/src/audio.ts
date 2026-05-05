@@ -99,18 +99,20 @@ export function getSplashAudioDurationMs(): number {
 }
 
 /**
- * Resolve the bundled splash.mp3. The build script copies the asset from
- * `assets/` to `dist/` so this path lands inside the published tarball when
- * users `npm i -g`. Falls back to the source location during local dev where
- * the build hasn't happened yet (rare — tsc runs every iteration).
+ * Resolve a bundled audio file by name. The build script copies everything
+ * under `assets/` into `dist/` so the file lands inside the published tarball
+ * when users `npm i -g`. Falls back to the source location during local dev
+ * where dist hasn't been populated yet.
  */
-function splashAssetPath(): string {
+function assetPath(name: string): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const dist = path.join(here, "splash.mp3");
+  const dist = path.join(here, name);
   if (fs.existsSync(dist)) return dist;
-  // Dev fallback: dist/audio.js → ../assets/splash.mp3 in the source tree.
-  const dev = path.join(here, "..", "assets", "splash.mp3");
-  return dev;
+  return path.join(here, "..", "assets", name);
+}
+
+function splashAssetPath(): string {
+  return assetPath("splash.mp3");
 }
 
 /**
@@ -172,8 +174,7 @@ function trySpawn(cmd: string, args: string[]): Promise<boolean> {
  *             is fragmented enough that we don't want to bloat the package
  *             with a bundled player.
  */
-export async function playSplashAudio(): Promise<void> {
-  const file = splashAssetPath();
+async function playFile(file: string): Promise<void> {
   if (!fs.existsSync(file)) return;
   const platform = process.platform;
 
@@ -212,4 +213,17 @@ export async function playSplashAudio(): Promise<void> {
     const ok = await trySpawn(c.cmd, c.args);
     if (ok) return;
   }
+}
+
+export function playSplashAudio(): Promise<void> {
+  return playFile(splashAssetPath());
+}
+
+/**
+ * Play the worker-completion ping. Fires on every `worker_turn_complete`
+ * event so the user gets an audio cue when they're not looking at the
+ * terminal. Fire-and-forget — multiple completions can layer.
+ */
+export function playDoneAudio(): Promise<void> {
+  return playFile(assetPath("done.mp3"));
 }

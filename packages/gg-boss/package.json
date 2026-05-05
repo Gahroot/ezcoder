@@ -1,6 +1,6 @@
 {
   "name": "@kenkaiiii/gg-boss",
-  "version": "4.3.124",
+  "version": "4.3.125",
   "type": "module",
   "description": "Orchestrator agent that drives multiple ggcoder sessions across projects from a single chat",
   "license": "MIT",
@@ -22,7 +22,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && cp assets/splash.mp3 dist/splash.mp3",
+    "build": "tsc && cp -R assets/. dist/",
     "check": "tsc --noEmit",
     "test": "vitest run"
   },
