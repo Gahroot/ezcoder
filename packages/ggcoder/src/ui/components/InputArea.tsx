@@ -1278,6 +1278,17 @@ export function InputArea({
         paddingLeft={1}
         paddingRight={1}
       >
+        {/* Scope badge as a HEADER row inside the bordered box, left-aligned
+            on its own line. Previously the badge sat inline before the prompt
+            arrow on line 1 — but as soon as the input wrapped, the prompt's
+            two-space continuation indent was narrower than the badge, leaving
+            a visible gap on line 2. Putting the badge on its own line keeps
+            the input column flush with the prompt arrow on every line. */}
+        {scopeBadge && (
+          <Box marginBottom={0}>
+            {scopeBadge}
+          </Box>
+        )}
         {images.length > 0 && (
           <Box>
             <Text color={theme.accent}>
@@ -1317,7 +1328,8 @@ export function InputArea({
                   </Text>
                 ) : (
                   <>
-                    {scopeBadge}
+                    {/* scopeBadge lives in the header row above (see top of
+                        bordered box). Only the smaller eyesBadge stays inline. */}
                     {eyesBadge}
                     <Text color={disabled ? theme.textDim : theme.inputPrompt} bold>
                       {PROMPT}
@@ -1555,7 +1567,8 @@ export function InputArea({
 
             return (
               <Box key={i}>
-                {i === 0 ? scopeBadge : null}
+                {/* scopeBadge moved to header row above the bordered box's
+                    input area — keeps continuation lines flush. */}
                 {i === 0 ? eyesBadge : null}
                 <Text color={disabled ? theme.textDim : theme.inputPrompt} bold>
                   {i === 0 ? PROMPT : "  "}
