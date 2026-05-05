@@ -12,6 +12,7 @@ import { EventQueue } from "./event-queue.js";
 import { createBossTools, WORKER_PROMPT_BRIEF } from "./tools.js";
 import { createTaskTools } from "./task-tools.js";
 import { tasksStore } from "./tasks-store.js";
+import { saveSettings } from "./settings.js";
 import { buildBossSystemPrompt } from "./boss-system-prompt.js";
 import { bossStore } from "./boss-store.js";
 import {
@@ -254,6 +255,7 @@ export class GGBoss {
     });
 
     bossStore.setBossModel(provider, model);
+    await saveSettings({ bossProvider: provider, bossModel: model });
   }
 
   /** Swap every worker's model. Workers keep their per-project sessions. */
@@ -262,6 +264,7 @@ export class GGBoss {
     this.opts.workerProvider = provider;
     this.opts.workerModel = model;
     bossStore.setWorkerModel(provider, model);
+    await saveSettings({ workerProvider: provider, workerModel: model });
   }
 
   /**

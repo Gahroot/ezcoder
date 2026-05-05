@@ -53,9 +53,33 @@ async function loadPlan(): Promise<BossTask[]> {
   }
 }
 
+/**
+ * Serialize concurrent persist() calls. With N workers in parallel, multiple
+ * task updates can fire in the same tick — writeFile is NOT atomic and racing
+ * writes leave the file half-overwritten (old bytes past the new content's
+ * end), which then fails JSON.parse and silently returns []. We chain every
+ * persist on this promise so writes happen one at a time.
+ */
+let persistChain: Promise<void> = Promise.resolve();
+
 async function persist(tasks: BossTask[]): Promise<void> {
-  await ensureDir();
-  await fs.writeFile(getPlanPath(), JSON.stringify({ tasks }, null, 2) + "\n", "utf-8");
+  // Capture the current state at call time so each queued write persists the
+  // snapshot it was asked to, even if state mutates further before this
+  // write's turn in the chain.
+  const snapshot = JSON.stringify({ tasks }, null, 2) + "\n";
+  const next = persistChain.then(async () => {
+    await ensureDir();
+    // Atomic write: write to a sibling .tmp then rename. POSIX rename(2) is
+    // atomic on the same filesystem — the destination either has the old
+    // content or the new content, never a half-written mix. Suffix includes
+    // pid so two ggboss processes don't clobber each other's tmp files.
+    const finalPath = getPlanPath();
+    const tmpPath = `${finalPath}.${process.pid}.tmp`;
+    await fs.writeFile(tmpPath, snapshot, "utf-8");
+    await fs.rename(tmpPath, finalPath);
+  });
+  persistChain = next.catch(() => undefined); // keep chain alive on errors
+  await next;
 }
 
 // ── Reactive state ─────────────────────────────────────────

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Static, Text, render, useApp, useInput } from "ink";
+import { Box, Static, Text, render, useApp, useInput, useStdout } from "ink";
 import { ThemeContext, loadTheme, useTheme } from "@kenkaiiii/ggcoder/ui/theme";
 import {
   ActivityIndicator,
@@ -14,6 +14,8 @@ import {
   ToolExecution,
   ToolUseLoader,
   UserMessage,
+  useAnimationActive,
+  useAnimationTick,
 } from "@kenkaiiii/ggcoder/ui";
 import { useDoublePress } from "@kenkaiiii/ggcoder/ui/hooks/double-press";
 import type { Provider } from "@kenkaiiii/gg-ai";
@@ -65,6 +67,8 @@ export function BossApp({ boss }: BossAppProps): React.ReactElement {
 function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   const state = useBossState();
   const { exit } = useApp();
+  const { stdout } = useStdout();
+  const { resizeKey, columns } = useTerminalSize();
   const runStartRef = useRef<number | null>(null);
   runStartRef.current = state.runStartMs;
   // Live char count of the current streaming text — drives ActivityIndicator's
@@ -80,24 +84,54 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
   const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | "tasks" | null>(null);
 
+  // Terminal title — mirrors ggcoder's useTerminalTitle pattern. OSC 0
+  // sets BOTH the window and tab title in most terminals (Ghostty,
+  // Terminal.app, iTerm2, Kitty). "GG Boss" idle, "● GG Boss" any time the
+  // boss is reasoning OR any worker is running so the user sees activity at
+  // a glance even when ggboss is in the background.
+  const anyWorkerRunning = state.workers.some((w) => w.status === "working");
+  const titleActive = state.phase === "working" || anyWorkerRunning;
+  const titlePrevRef = useRef("");
+  useEffect(() => {
+    if (!stdout) return;
+    const title = titleActive ? "● GG Boss" : "GG Boss";
+    if (title !== titlePrevRef.current) {
+      titlePrevRef.current = title;
+      stdout.write(`\x1b]0;${title}\x1b\\`);
+    }
+  }, [stdout, titleActive]);
+  useEffect(() => {
+    return () => {
+      stdout?.write(`\x1b]0;GG Boss\x1b\\`);
+    };
+  }, [stdout]);
+
   const staticItems: StaticRow[] = useMemo(
     () => [{ kind: "banner", id: "banner" }, ...state.history],
     [state.history],
   );
 
   /**
-   * Just toggles overlay state. We deliberately do NOT clear the screen or
-   * remount Static here — both of those caused the banner to be reprinted to
-   * scrollback on every toggle, leaving multiple banner copies above when the
-   * user scrolls up. Ink's log-update handles live-area swaps cleanly on its
-   * own; the Static block stays put in scrollback as it should.
+   * No screen clears, no Static remounts. Just toggle React state.
+   *
+   * Banner is emitted ONCE on initial mount (Static's natural behavior — items
+   * by id are emitted exactly once per Static instance lifetime). It lives in
+   * scrollback forever after that, never re-emitted. So duplicate banners are
+   * structurally impossible.
+   *
+   * The remaining concern is Ink's log-update cursor math when the live area
+   * shrinks (tasks pane → chat chrome). log-update only clears within the
+   * previous frame's footprint at the bottom of the viewport — it cannot
+   * reach into scrollback. So banner + history in scrollback stay intact.
    */
-  const toggleOverlay = useCallback(
-    (next: "tasks" | "model-boss" | "model-workers" | null): void => {
-      setOverlay(next);
-    },
-    [],
-  );
+  const openOverlay = useCallback((next: "tasks" | "model-boss" | "model-workers"): void => {
+    setOverlay(next);
+  }, []);
+
+  const closeOverlay = useCallback((): void => {
+    setOverlay(null);
+  }, []);
+  void stdout;
 
   // ggcoder's double-press pattern: 800ms window. First press shows
   // "Press Ctrl+C again to exit" in the footer; second within 800ms exits.
@@ -120,7 +154,8 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   // Ctrl+T: toggle the Tasks overlay (matches ggcoder's keybind).
   useInput((input, key) => {
     if (key.ctrl && input === "t") {
-      toggleOverlay(overlay === "tasks" ? null : "tasks");
+      if (overlay === "tasks") closeOverlay();
+      else openOverlay("tasks");
       return;
     }
     if (key.escape && state.phase === "working") {
@@ -151,17 +186,17 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
         bossStore.appendInfo(formatWorkerList(state.workers), "info");
         return true;
       case "model-boss":
-        toggleOverlay("model-boss");
+        openOverlay("model-boss");
         return true;
       case "model-workers":
-        toggleOverlay("model-workers");
+        openOverlay("model-workers");
         return true;
       case "compact":
         bossStore.appendUser(value);
         await boss.manualCompact();
         return true;
       case "tasks":
-        toggleOverlay("tasks");
+        openOverlay("tasks");
         return true;
       case "new":
         bossStore.clearHistory();
@@ -177,7 +212,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   const handleModelSelect = (value: string): void => {
     const colon = value.indexOf(":");
     if (colon < 0) {
-      toggleOverlay(null);
+      closeOverlay();
       return;
     }
     const provider = value.slice(0, colon) as Provider;
@@ -187,7 +222,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
     } else if (overlay === "model-workers") {
       void boss.switchWorkerModel(provider, model);
     }
-    toggleOverlay(null);
+    closeOverlay();
   };
 
   const handleSubmit = (value: string): void => {
@@ -216,89 +251,92 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
     handleDoubleExit();
   };
 
-  // Tasks overlay is a full-screen view: render Static (pinned banner +
-  // history) then ONLY the overlay below it, no streaming/input/footer. This
-  // mirrors ggcoder's isTaskView pattern — embedding the overlay alongside
-  // the chat chrome makes the input + footer visibly shift on each toggle.
-  if (overlay === "tasks") {
-    return (
-      <Box flexDirection="column">
-        <Static items={staticItems}>{(item) => <StaticRowView key={item.id} row={item} />}</Static>
-        <BossTasksOverlay boss={boss} workers={state.workers} onClose={() => toggleOverlay(null)} />
-      </Box>
-    );
-  }
-
   return (
-    <Box flexDirection="column">
-      <Static items={staticItems}>{(item) => <StaticRowView key={item.id} row={item} />}</Static>
+    <Box flexDirection="column" width={columns}>
+      {/* Static is mounted ONCE for the lifetime of the app and never remounts
+          on overlay toggles. resizeKey still triggers a remount on terminal
+          resize (which is necessary so the layout recomputes) — that's the
+          only legitimate reason to drop and re-emit the scrollback. */}
+      <Static key={resizeKey} items={staticItems} style={{ width: "100%" }}>
+        {(item) => (
+          <Box key={item.id} flexDirection="column" paddingRight={1}>
+            <StaticRowView row={item} />
+          </Box>
+        )}
+      </Static>
 
-      {state.streaming && (
-        <StreamingTurnView turn={state.streaming} isRunning={state.phase === "working"} />
-      )}
-      {state.phase === "working" && (
-        <Box marginTop={1}>
-          <ActivityIndicator
-            phase={state.activityPhase}
-            elapsedMs={state.runStartMs ? Date.now() - state.runStartMs : 0}
-            runStartRef={runStartRef as React.RefObject<number>}
-            thinkingMs={state.streaming?.thinkingMs ?? 0}
-            isThinking={state.activityPhase === "thinking"}
-            tokenEstimate={state.bossInputTokens}
-            charCountRef={charCountRef}
-            realTokensAccumRef={realTokensAccumRef}
-            userMessage={lastUserMessage}
-            activeToolNames={(state.streaming?.tools ?? [])
-              .filter((t) => t.status === "running")
-              .map((t) => t.name)}
-            retryInfo={state.retryInfo}
-            phrases={BOSS_PHRASES}
-            pulseColors={BOSS_PULSE_COLORS}
-          />
-        </Box>
-      )}
-      {state.compaction?.state === "running" && <CompactionSpinner />}
-      {state.compaction?.state === "done" && (
-        <CompactionDone
-          originalCount={state.compaction.originalCount}
-          newCount={state.compaction.newCount}
-          tokensBefore={state.compaction.tokensBefore}
-          tokensAfter={state.compaction.tokensAfter}
-        />
-      )}
-
-      <InputArea
-        onSubmit={handleSubmit}
-        onAbort={handleAbort}
-        disabled={state.phase === "working"}
-        isActive={!overlay}
-        cwd={process.cwd()}
-        commands={BOSS_SLASH_COMMANDS}
-        scopeBadge={<ScopePill scope={state.scope} />}
-        onTab={() => bossStore.cycleScope()}
-      />
-
-      {overlay === "model-boss" || overlay === "model-workers" ? (
-        <ModelSelector
-          onSelect={handleModelSelect}
-          onCancel={() => toggleOverlay(null)}
-          loggedInProviders={state.loggedInProviders}
-          currentModel={overlay === "model-boss" ? state.bossModel : state.workerModel}
-          currentProvider={overlay === "model-boss" ? state.bossProvider : state.workerProvider}
-        />
+      {overlay === "tasks" ? (
+        <BossTasksOverlay boss={boss} workers={state.workers} onClose={closeOverlay} />
       ) : (
         <>
-          <BossFooter
-            bossModel={state.bossModel}
-            workerModel={state.workerModel}
-            tokensIn={state.bossInputTokens}
-            exitPending={state.exitPending}
+          {state.streaming && (
+            <StreamingTurnView turn={state.streaming} isRunning={state.phase === "working"} />
+          )}
+          {state.phase === "working" && (
+            <Box marginTop={1}>
+              <ActivityIndicator
+                phase={state.activityPhase}
+                elapsedMs={state.runStartMs ? Date.now() - state.runStartMs : 0}
+                runStartRef={runStartRef as React.RefObject<number>}
+                thinkingMs={state.streaming?.thinkingMs ?? 0}
+                isThinking={state.activityPhase === "thinking"}
+                tokenEstimate={state.bossInputTokens}
+                charCountRef={charCountRef}
+                realTokensAccumRef={realTokensAccumRef}
+                userMessage={lastUserMessage}
+                activeToolNames={(state.streaming?.tools ?? [])
+                  .filter((t) => t.status === "running")
+                  .map((t) => t.name)}
+                retryInfo={state.retryInfo}
+                phrases={BOSS_PHRASES}
+                pulseColors={BOSS_PULSE_COLORS}
+              />
+            </Box>
+          )}
+          {state.compaction?.state === "running" && <CompactionSpinner />}
+          {state.compaction?.state === "done" && (
+            <CompactionDone
+              originalCount={state.compaction.originalCount}
+              newCount={state.compaction.newCount}
+              tokensBefore={state.compaction.tokensBefore}
+              tokensAfter={state.compaction.tokensAfter}
+            />
+          )}
+
+          <InputArea
+            onSubmit={handleSubmit}
+            onAbort={handleAbort}
+            disabled={state.phase === "working"}
+            isActive={!overlay}
+            cwd={process.cwd()}
+            commands={BOSS_SLASH_COMMANDS}
+            scopeBadge={<ScopePill scope={state.scope} />}
+            onTab={() => bossStore.cycleScope()}
           />
-          {/* Hide the worker bar during the exit-confirm prompt so the
-              "Press Ctrl+C again" message is the very last line — matches
-              ggcoder where the Footer always owns the bottom row when pending. */}
-          {!state.exitPending && (
-            <WorkerStatusBar workers={state.workers} pendingMessages={state.pendingUserMessages} />
+
+          {overlay === "model-boss" || overlay === "model-workers" ? (
+            <ModelSelector
+              onSelect={handleModelSelect}
+              onCancel={closeOverlay}
+              loggedInProviders={state.loggedInProviders}
+              currentModel={overlay === "model-boss" ? state.bossModel : state.workerModel}
+              currentProvider={overlay === "model-boss" ? state.bossProvider : state.workerProvider}
+            />
+          ) : (
+            <>
+              <BossFooter
+                bossModel={state.bossModel}
+                workerModel={state.workerModel}
+                tokensIn={state.bossInputTokens}
+                exitPending={state.exitPending}
+              />
+              {!state.exitPending && (
+                <WorkerStatusBar
+                  workers={state.workers}
+                  pendingMessages={state.pendingUserMessages}
+                />
+              )}
+            </>
           )}
         </>
       )}
@@ -335,11 +373,61 @@ function scopePrefix(scope: string): string {
 
 // ── Worker status row (gg-boss specific) ───────────────────
 
+const SHIMMER_WIDTH = 3;
 const WORKER_GLYPH: Record<WorkerView["status"], string> = {
   idle: "○",
   working: "●",
   error: "✗",
 };
+
+function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Mount this when (and only when) the shimmer needs to tick. AnimationProvider
+ * stops the global timer when its subscriber count hits zero, so unmounting
+ * this sentinel halts the 10Hz re-render loop while every worker is idle.
+ */
+function AnimationActiveSentinel(): null {
+  useAnimationActive();
+  return null;
+}
+
+/**
+ * Same shimmer pattern used by ggcoder's ActivityIndicator phrases — a bright
+ * highlight band of width `SHIMMER_WIDTH` slides across the text while the
+ * rest stays dim. Driven by the global animation tick.
+ */
+function ShimmerName({
+  name,
+  color,
+  tick,
+}: {
+  name: string;
+  color: string;
+  tick: number;
+}): React.ReactElement {
+  // Cycle covers the name length plus a SHIMMER_WIDTH-wide pre-roll/post-roll
+  // so the bright band fully exits one side before re-entering the other.
+  const cycle = name.length + SHIMMER_WIDTH * 2;
+  const shimmerPos = (tick % cycle) - SHIMMER_WIDTH;
+  return (
+    <Text>
+      {name.split("").map((ch, i) => {
+        const isBright = Math.abs(i - shimmerPos) <= SHIMMER_WIDTH;
+        return (
+          <Text key={i} color={color} bold={isBright} dimColor={!isBright}>
+            {ch}
+          </Text>
+        );
+      })}
+    </Text>
+  );
+}
 
 function WorkerStatusBar({
   workers,
@@ -349,27 +437,36 @@ function WorkerStatusBar({
   pendingMessages: number;
 }): React.ReactElement | null {
   const theme = useTheme();
+  const anyWorking = workers.some((w) => w.status === "working");
+  // Passive tick consumer — when no Sentinel is mounted (no working worker),
+  // the global timer is paused and the tick value stops changing, so this
+  // component doesn't re-render at 10Hz when everything is idle.
+  const tick = useAnimationTick();
+  const now = Date.now();
+
   if (workers.length === 0) return null;
   return (
     <Box paddingX={1}>
+      {anyWorking && <AnimationActiveSentinel />}
       {workers.map((w, i) => {
-        // Glyph color tracks status. Name color tracks PROJECT — same hue as
-        // the worker event row + scope pill — so each project is instantly
-        // identifiable. Errored workers turn red entirely.
         const errored = w.status === "error";
-        const glyphColor = errored
-          ? theme.error
-          : w.status === "working"
-            ? projectColor(w.name)
-            : theme.textDim;
-        const nameColor = errored ? theme.error : projectColor(w.name);
+        const working = w.status === "working";
+        const glyph = WORKER_GLYPH[w.status];
+        const projectHue = projectColor(w.name);
+        const glyphColor = errored ? theme.error : working ? projectHue : theme.textDim;
+        const elapsed = working && w.workStartedAt ? formatElapsed(now - w.workStartedAt) : null;
         return (
           <React.Fragment key={w.name}>
             {i > 0 && <Text color={theme.textDim}>{"  "}</Text>}
-            <Text color={glyphColor}>{WORKER_GLYPH[w.status]} </Text>
-            <Text color={nameColor} bold={w.status === "working"} dimColor={w.status === "idle"}>
-              {w.name}
-            </Text>
+            <Text color={glyphColor}>{glyph} </Text>
+            {working ? (
+              <ShimmerName name={w.name} color={projectHue} tick={tick} />
+            ) : (
+              <Text color={errored ? theme.error : projectHue} dimColor={w.status === "idle"}>
+                {w.name}
+              </Text>
+            )}
+            {elapsed && <Text color={theme.textDim}> {elapsed}</Text>}
           </React.Fragment>
         );
       })}
@@ -410,7 +507,40 @@ function StaticRowView({ row }: { row: StaticRow }): React.ReactElement | null {
   if (row.kind === "worker_event") return <WorkerEventRow item={row} />;
   if (row.kind === "worker_error") return <WorkerErrorRow item={row} />;
   if (row.kind === "info") return <InfoRow text={row.text} level={row.level ?? "info"} />;
+  if (row.kind === "task_dispatch") return <TaskDispatchRow tasks={row.tasks} />;
   return null;
+}
+
+function TaskDispatchRow({
+  tasks,
+}: {
+  tasks: { project: string; title: string }[];
+}): React.ReactElement {
+  const theme = useTheme();
+  const count = tasks.length;
+  return (
+    <Box flexDirection="column" paddingX={1} marginTop={1}>
+      <Text>
+        <Text color={COLORS.primary} bold>
+          {"⏺ "}
+        </Text>
+        <Text color={theme.text} bold>
+          Running {count} task{count === 1 ? "" : "s"}
+          {":"}
+        </Text>
+      </Text>
+      {tasks.map((t, i) => (
+        <Text key={`${t.project}-${i}`}>
+          <Text color={theme.textDim}>{"    • "}</Text>
+          <Text color={projectColor(t.project)} bold>
+            {t.project}
+          </Text>
+          <Text color={theme.textDim}>{": "}</Text>
+          <Text color={theme.text}>{t.title}</Text>
+        </Text>
+      ))}
+    </Box>
+  );
 }
 
 function AssistantRow({ item }: { item: AssistantItem }): React.ReactElement {

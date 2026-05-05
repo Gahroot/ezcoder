@@ -1,7 +1,15 @@
 import { z } from "zod";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { tasksStore, type BossTask, type TaskStatus } from "./tasks-store.js";
+import { bossStore } from "./boss-store.js";
 import type { Worker } from "./worker.js";
+
+/**
+ * Once-per-process flag so we surface the Ctrl+T / r hint a single time per
+ * ggboss session. Repeating it on every add_task would bury the chat in
+ * advice the user already absorbed.
+ */
+let tasksHintShown = false;
 
 export interface TaskToolDeps {
   workers: Map<string, Worker>;
@@ -81,6 +89,16 @@ export function createTaskTools(deps: TaskToolDeps): AgentTool[] {
         description: args.description,
         fresh: args.fresh,
       });
+      // First add_task per session — surface the keybind hint so the user
+      // knows where to find what was just added and how to fire it off.
+      // Subsequent add_tasks stay silent.
+      if (!tasksHintShown) {
+        tasksHintShown = true;
+        bossStore.appendInfo(
+          "Press Ctrl+T to open the Tasks pane, then `r` to run all pending tasks.",
+          "info",
+        );
+      }
       return `Added [${t.id}] ${t.project} · ${t.title}`;
     },
   };

@@ -8,12 +8,14 @@ import { loadLinks } from "./links.js";
 import { runLinkCommand } from "./link-command.js";
 import { COLORS, clearScreen } from "./branding.js";
 import { renderBossApp } from "./orchestrator-app.js";
+import { loadSettings } from "./settings.js";
 
 interface CliArgs {
-  bossProvider: Provider;
-  bossModel: string;
-  workerProvider: Provider;
-  workerModel: string;
+  /** Undefined when not passed on the CLI — settings file then defaults take over. */
+  bossProvider?: Provider;
+  bossModel?: string;
+  workerProvider?: Provider;
+  workerModel?: string;
   projects: ProjectSpec[];
   continueRecent?: boolean;
   resumeSessionId?: string;
@@ -32,10 +34,6 @@ function parseProjectSpec(raw: string): ProjectSpec {
 
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
-    bossProvider: "anthropic",
-    bossModel: "claude-opus-4-7",
-    workerProvider: "anthropic",
-    workerModel: "claude-sonnet-4-6",
     projects: [],
   };
 
@@ -139,11 +137,15 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
       ),
   );
 
+  // Resolve final boss/worker models: CLI flags > saved settings > defaults.
+  // Settings persist user choices made via /model boss / /model workers across
+  // restarts so the user doesn't have to re-pick every session.
+  const settings = await loadSettings();
   const boss = new GGBoss({
-    bossProvider: args.bossProvider,
-    bossModel: args.bossModel,
-    workerProvider: args.workerProvider,
-    workerModel: args.workerModel,
+    bossProvider: args.bossProvider ?? settings.bossProvider ?? "anthropic",
+    bossModel: args.bossModel ?? settings.bossModel ?? "claude-opus-4-7",
+    workerProvider: args.workerProvider ?? settings.workerProvider ?? "anthropic",
+    workerModel: args.workerModel ?? settings.workerModel ?? "claude-sonnet-4-6",
     projects: args.projects,
     continueRecent: args.continueRecent,
     resumeSessionId: args.resumeSessionId,

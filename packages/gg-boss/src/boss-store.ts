@@ -95,13 +95,27 @@ export interface InfoItem {
   level?: "info" | "warning" | "error";
 }
 
+/**
+ * Task-dispatch announcement. Rendered when the user (or boss) fires a batch
+ * of tasks via `r` in the overlay or `dispatch_pending`. Structured (vs plain
+ * info text) so each project name can be drawn in its own projectColor() —
+ * matching the WorkerStatusBar / WorkerEventRow / scope pill conventions.
+ */
+export interface TaskDispatchItem {
+  kind: "task_dispatch";
+  id: string;
+  tasks: { project: string; title: string }[];
+  timestamp: number;
+}
+
 export type HistoryItem =
   | UserItem
   | AssistantItem
   | ToolItem
   | WorkerEventItem
   | WorkerErrorItem
-  | InfoItem;
+  | InfoItem
+  | TaskDispatchItem;
 
 // ── Streaming (current boss turn, rendered live above the input) ────
 
@@ -139,6 +153,10 @@ export interface WorkerView {
   name: string;
   cwd: string;
   status: WorkerStatus;
+  /** When the worker most recently transitioned to "working". Cleared when it
+   *  goes back to idle/error. Drives the elapsed-time readout in the worker
+   *  status bar so users can see "yaatuber working · 1:24" while waiting. */
+  workStartedAt: number | null;
   lastSummary?: WorkerTurnSummary;
 }
 
@@ -244,7 +262,12 @@ export const bossStore = {
       workerProvider: opts.workerProvider,
       workerModel: opts.workerModel,
       loggedInProviders: opts.loggedInProviders,
-      workers: opts.workers.map((w) => ({ name: w.name, cwd: w.cwd, status: "idle" })),
+      workers: opts.workers.map((w) => ({
+        name: w.name,
+        cwd: w.cwd,
+        status: "idle" as WorkerStatus,
+        workStartedAt: null,
+      })),
     };
     notify();
   },
@@ -268,6 +291,18 @@ export const bossStore = {
     state = {
       ...state,
       history: [...state.history, { kind: "user", id: id(), text, timestamp: Date.now() }],
+    };
+    notify();
+  },
+
+  appendTaskDispatch(tasks: { project: string; title: string }[]): void {
+    if (tasks.length === 0) return;
+    state = {
+      ...state,
+      history: [
+        ...state.history,
+        { kind: "task_dispatch", id: id(), tasks, timestamp: Date.now() },
+      ],
     };
     notify();
   },
@@ -597,7 +632,16 @@ export const bossStore = {
   setWorkerStatus(name: string, status: WorkerStatus): void {
     state = {
       ...state,
-      workers: state.workers.map((w) => (w.name === name ? { ...w, status } : w)),
+      workers: state.workers.map((w) => {
+        if (w.name !== name) return w;
+        const nowWorking = status === "working";
+        const wasWorking = w.status === "working";
+        return {
+          ...w,
+          status,
+          workStartedAt: nowWorking ? (wasWorking ? w.workStartedAt : Date.now()) : null,
+        };
+      }),
     };
     notify();
   },
@@ -619,7 +663,9 @@ export const bossStore = {
         },
       ],
       workers: state.workers.map((w) =>
-        w.name === summary.project ? { ...w, status: summary.status, lastSummary: summary } : w,
+        w.name === summary.project
+          ? { ...w, status: summary.status, workStartedAt: null, lastSummary: summary }
+          : w,
       ),
     };
     notify();
@@ -629,7 +675,9 @@ export const bossStore = {
     state = {
       ...state,
       history: [...state.history, { kind: "worker_error", id: id(), project, message, timestamp }],
-      workers: state.workers.map((w) => (w.name === project ? { ...w, status: "error" } : w)),
+      workers: state.workers.map((w) =>
+        w.name === project ? { ...w, status: "error", workStartedAt: null } : w,
+      ),
     };
     notify();
   },
