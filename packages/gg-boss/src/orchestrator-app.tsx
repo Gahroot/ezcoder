@@ -83,6 +83,10 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   // selection has something to riff on (when not using BOSS_PHRASES override).
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
   const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | "tasks" | null>(null);
+  // Bumped on /clear to remount <Static>, which discards its emitted-id set.
+  // Without this, items already written to the terminal's scrollback persist
+  // after we wipe state.history, leaving the user staring at the cleared rows.
+  const [staticKey, setStaticKey] = useState(0);
 
   // Terminal title — dynamically reflects worker activity so the user can
   // glance at the tab/window from another app and see how many workers are
@@ -190,12 +194,14 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
         bossStore.appendInfo(buildHelpText(), "info");
         return true;
       case "clear":
+        // Mirror ggcoder's /clear: ANSI-wipe the terminal (scrollback + visible),
+        // wipe React state, reset the agent, then bump staticKey so <Static>
+        // remounts with a fresh emit-state. Without all four steps the user
+        // still sees the previous chat in their scrollback.
+        stdout?.write("\x1b[2J\x1b[3J\x1b[H");
         bossStore.clearHistory();
         await boss.resetConversation();
-        return true;
-      case "workers":
-        bossStore.appendUser(value);
-        bossStore.appendInfo(formatWorkerList(state.workers), "info");
+        setStaticKey((k) => k + 1);
         return true;
       case "model-boss":
         openOverlay("model-boss");
@@ -206,13 +212,6 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
       case "compact":
         bossStore.appendUser(value);
         await boss.manualCompact();
-        return true;
-      case "tasks":
-        openOverlay("tasks");
-        return true;
-      case "new":
-        bossStore.clearHistory();
-        await boss.newSession();
         return true;
       case "quit":
         exit();
@@ -269,7 +268,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
           on overlay toggles. resizeKey still triggers a remount on terminal
           resize (which is necessary so the layout recomputes) — that's the
           only legitimate reason to drop and re-emit the scrollback. */}
-      <Static key={resizeKey} items={staticItems} style={{ width: "100%" }}>
+      <Static key={`${resizeKey}-${staticKey}`} items={staticItems} style={{ width: "100%" }}>
         {(item) => (
           <Box key={item.id} flexDirection="column" paddingRight={1}>
             <StaticRowView row={item} />
@@ -510,15 +509,6 @@ function WorkerStatusBar({
       )}
     </Box>
   );
-}
-
-function formatWorkerList(workers: WorkerView[]): string {
-  if (workers.length === 0) return "(no workers linked)";
-  const lines = ["**Linked workers**", ""];
-  for (const w of workers) {
-    lines.push(`- ${w.status === "working" ? "●" : w.status === "error" ? "✗" : "○"} ${w.name}`);
-  }
-  return lines.join("\n");
 }
 
 // ── Row dispatch ───────────────────────────────────────────
