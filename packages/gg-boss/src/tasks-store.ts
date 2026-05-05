@@ -123,11 +123,32 @@ function now(): string {
 // ── Public API (used by tools, overlay, orchestrator) ──────
 
 export const tasksStore = {
-  /** Hydrate state from disk on startup. Idempotent. */
+  /**
+   * Hydrate state from disk on startup. Also prunes terminal tasks (done +
+   * skipped) so the overlay doesn't pile up months of completed history, and
+   * resets stale `in_progress` rows back to `pending` — those represent tasks
+   * that were running when ggboss exited, so the worker never finished them
+   * and we don't have a result. Re-runs them next time `r` (or auto-chain)
+   * fires. Persists the cleaned list back to disk if anything changed.
+   */
   async load(): Promise<void> {
-    const tasks = await loadPlan();
-    state = { tasks, version: state.version + 1 };
+    const raw = await loadPlan();
+    const before = raw.length;
+    const cleaned = raw
+      .filter((t) => t.status !== "done" && t.status !== "skipped")
+      .map((t) =>
+        t.status === "in_progress"
+          ? { ...t, status: "pending" as TaskStatus, updatedAt: now() }
+          : t,
+      );
+    state = { tasks: cleaned, version: state.version + 1 };
     notify();
+    // Only write back if we actually changed anything to avoid pointless
+    // touches to the file on every startup.
+    const changed =
+      cleaned.length !== before ||
+      cleaned.some((t, i) => t.status !== raw[i]?.status);
+    if (changed) await persist(cleaned);
   },
 
   /** Synchronous read. Used by boss tools that need to inspect/list. */
