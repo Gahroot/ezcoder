@@ -194,14 +194,17 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
         bossStore.appendInfo(buildHelpText(), "info");
         return true;
       case "clear":
-        // Mirror ggcoder's /clear: ANSI-wipe the terminal (scrollback + visible),
-        // wipe React state, reset the agent, then bump staticKey so <Static>
-        // remounts with a fresh emit-state. Without all four steps the user
-        // still sees the previous chat in their scrollback.
-        stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+        // Reset React state + agent context but DO NOT touch the terminal
+        // (no ANSI clear, no Static remount). Disturbing Ink's log-update
+        // cursor tracking after a render is in flight breaks the live-area
+        // positioning — the input ends up drawn above the messages and new
+        // content scrolls out of sight. The user's prior chat remains in
+        // scrollback (they can scroll up to see it) but the boss starts a
+        // fresh conversation. The info row gives visual confirmation that
+        // the action took effect.
         bossStore.clearHistory();
         await boss.resetConversation();
-        setStaticKey((k) => k + 1);
+        bossStore.appendInfo("Session cleared.", "info");
         return true;
       case "model-boss":
         openOverlay("model-boss");
