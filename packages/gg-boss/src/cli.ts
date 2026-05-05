@@ -10,6 +10,8 @@ import { COLORS, clearScreen } from "./branding.js";
 import { renderBossApp } from "./orchestrator-app.js";
 import { loadSettings } from "./settings.js";
 import { showSplash } from "./splash.js";
+import { initLogger, log } from "./logger.js";
+import { VERSION } from "./branding.js";
 
 interface CliArgs {
   /** Undefined when not passed on the CLI — settings file then defaults take over. */
@@ -143,12 +145,32 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   // Settings persist user choices made via /model boss / /model workers across
   // restarts so the user doesn't have to re-pick every session.
   const settings = await loadSettings();
+  const finalBossProvider = args.bossProvider ?? settings.bossProvider ?? "anthropic";
+  const finalBossModel = args.bossModel ?? settings.bossModel ?? "claude-opus-4-7";
+  const finalWorkerProvider = args.workerProvider ?? settings.workerProvider ?? "anthropic";
+  const finalWorkerModel = args.workerModel ?? settings.workerModel ?? "claude-sonnet-4-6";
+
+  // Open ~/.gg/boss/debug.log in append mode and stamp a startup line so
+  // future tail/grep diagnoses have the full session context up front.
+  initLogger({
+    version: VERSION,
+    bossProvider: finalBossProvider,
+    bossModel: finalBossModel,
+    bossThinking: settings.bossThinkingLevel,
+    workerProvider: finalWorkerProvider,
+    workerModel: finalWorkerModel,
+    projectCount: args.projects.length,
+  });
+  log("INFO", "cli", "linked projects", {
+    projects: args.projects.map((p) => p.name).join(","),
+  });
+
   const boss = new GGBoss({
-    bossProvider: args.bossProvider ?? settings.bossProvider ?? "anthropic",
-    bossModel: args.bossModel ?? settings.bossModel ?? "claude-opus-4-7",
+    bossProvider: finalBossProvider,
+    bossModel: finalBossModel,
     bossThinkingLevel: settings.bossThinkingLevel,
-    workerProvider: args.workerProvider ?? settings.workerProvider ?? "anthropic",
-    workerModel: args.workerModel ?? settings.workerModel ?? "claude-sonnet-4-6",
+    workerProvider: finalWorkerProvider,
+    workerModel: finalWorkerModel,
     projects: args.projects,
     continueRecent: args.continueRecent,
     resumeSessionId: args.resumeSessionId,

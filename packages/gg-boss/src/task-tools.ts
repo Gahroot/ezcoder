@@ -135,10 +135,14 @@ export function createTaskTools(deps: TaskToolDeps): AgentTool[] {
       "Update a task's status and/or notes. Use this after a worker_turn_complete to mark the task DONE / BLOCKED / SKIPPED. The notes field is for boss commentary or blocker reasons.",
     parameters: updateTaskParams,
     async execute(args) {
-      const updated = await tasksStore.update(args.id, {
-        status: args.status as TaskStatus | undefined,
-        notes: args.notes,
-      });
+      // Build the partial WITHOUT undefined keys so that calling update_task
+      // with only `notes` doesn't accidentally wipe out the existing status.
+      // Previously a `{ status: undefined, notes: "…" }` spread was overwriting
+      // status to undefined and blowing up nextDispatchable's filter.
+      const fields: Partial<Pick<BossTask, "status" | "notes">> = {};
+      if (args.status !== undefined) fields.status = args.status as TaskStatus;
+      if (args.notes !== undefined) fields.notes = args.notes;
+      const updated = await tasksStore.update(args.id, fields);
       if (!updated) return `Unknown task id: ${args.id}`;
       return `Updated ${formatTask(updated)}`;
     },

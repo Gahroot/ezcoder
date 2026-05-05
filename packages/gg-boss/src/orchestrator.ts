@@ -14,6 +14,7 @@ import { createTaskTools } from "./task-tools.js";
 import { tasksStore } from "./tasks-store.js";
 import { saveSettings } from "./settings.js";
 import { playDoneAudio, playReadyAudio } from "./audio.js";
+import { log } from "./logger.js";
 import { buildBossSystemPrompt } from "./boss-system-prompt.js";
 import { bossStore } from "./boss-store.js";
 import {
@@ -245,10 +246,17 @@ export class GGBoss {
     taskId: string,
   ): Promise<{ ok: true } | { ok: false; reason: string }> {
     const w = this.workers.get(project);
-    if (!w) return { ok: false, reason: `unknown project: ${project}` };
-    if (w.getStatus() === "working") return { ok: false, reason: "worker is busy" };
+    if (!w) {
+      log("WARN", "dispatch", "unknown project", { project, taskId });
+      return { ok: false, reason: `unknown project: ${project}` };
+    }
+    if (w.getStatus() === "working") {
+      log("WARN", "dispatch", "worker busy", { project, taskId });
+      return { ok: false, reason: "worker is busy" };
+    }
     if (fresh) await w.newSession();
     this.inFlightTaskByProject.set(project, taskId);
+    log("INFO", "dispatch", "task dispatched", { project, taskId, fresh });
     await w.prompt(WORKER_PROMPT_BRIEF + description);
     return { ok: true };
   }
@@ -441,6 +449,12 @@ export class GGBoss {
         void playDoneAudio();
         this.hadWorkerActivitySinceReady = true;
         this.lastSummaries.set(event.summary.project, event.summary);
+        log("INFO", "worker_turn_complete", "worker finished", {
+          project: event.summary.project,
+          turn: event.summary.turnIndex,
+          tools: event.summary.toolsUsed.length,
+          failed: event.summary.toolsUsed.filter((t) => !t.ok).length,
+        });
         // Resolve any in-flight task for this project to its final status.
         // Boss can still override via update_task — this just gives it a sane
         // default so the user's overlay-driven dispatches close out cleanly.
@@ -471,6 +485,7 @@ export class GGBoss {
       }
       if (event.kind === "worker_error") {
         this.hadWorkerActivitySinceReady = true;
+        log("ERROR", "worker_error", event.message, { project: event.project });
         const taskId = this.inFlightTaskByProject.get(event.project);
         if (taskId) {
           this.inFlightTaskByProject.delete(event.project);
@@ -572,6 +587,7 @@ export class GGBoss {
           continue;
         }
         const message = err instanceof Error ? err.message : String(err);
+        log("ERROR", "boss_turn", message);
         bossStore.appendInfo(formatProviderError(message), "error");
       }
       bossStore.finishStreaming();
@@ -600,6 +616,7 @@ export class GGBoss {
       const allWorkersIdle = [...this.workers.values()].every((w) => w.getStatus() === "idle");
       if (this.hadWorkerActivitySinceReady && allWorkersIdle && this.queue.size() === 0) {
         this.hadWorkerActivitySinceReady = false;
+        log("INFO", "all_clear", "all workers idle, queue empty");
         void playReadyAudio();
       }
     }
@@ -607,15 +624,30 @@ export class GGBoss {
 
   private async maybeAutoChain(project: string): Promise<void> {
     const worker = this.workers.get(project);
-    if (!worker || worker.getStatus() !== "idle") return;
-    if (this.inFlightTaskByProject.has(project)) return;
+    if (!worker || worker.getStatus() !== "idle") {
+      log("DEBUG", "auto_chain", "skip — worker not idle", { project });
+      return;
+    }
+    if (this.inFlightTaskByProject.has(project)) {
+      log("DEBUG", "auto_chain", "skip — task already in flight", { project });
+      return;
+    }
     // Pull pending OR blocked — auto-chain retries blocked tasks too so a
     // single bad turn doesn't park the whole project. Pending is preferred.
     const next = tasksStore.nextDispatchable(project);
-    if (!next) return;
+    if (!next) {
+      log("DEBUG", "auto_chain", "skip — no dispatchable tasks", { project });
+      return;
+    }
     if (next.status === "blocked") {
       await tasksStore.update(next.id, { status: "pending", notes: undefined });
     }
+    log("INFO", "auto_chain", "dispatching next task", {
+      project,
+      taskId: next.id,
+      title: next.title,
+      previousStatus: next.status,
+    });
     await this.dispatchTaskByDescription(project, next.description, next.fresh === true, next.id);
     // Queue a note for the boss so it knows this project is on a fresh task.
     // Without this the boss sees "X(working)" in the next event's trailer and

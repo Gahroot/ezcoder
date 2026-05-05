@@ -134,7 +134,18 @@ export const tasksStore = {
   async load(): Promise<void> {
     const raw = await loadPlan();
     const before = raw.length;
-    const cleaned = raw
+    // Backfill missing status — older bug let update_task wipe status to
+    // undefined. Treat any task with no status (or an unrecognised one) as
+    // pending so the user can still run them. Then prune terminals + reset
+    // stale in_progress.
+    const VALID_STATUSES: TaskStatus[] = ["pending", "in_progress", "done", "blocked", "skipped"];
+    const normalized = raw.map((t) => {
+      const status = VALID_STATUSES.includes(t.status as TaskStatus)
+        ? (t.status as TaskStatus)
+        : ("pending" as TaskStatus);
+      return status === t.status ? t : { ...t, status, updatedAt: now() };
+    });
+    const cleaned = normalized
       .filter((t) => t.status !== "done" && t.status !== "skipped")
       .map((t) =>
         t.status === "in_progress"
@@ -146,8 +157,7 @@ export const tasksStore = {
     // Only write back if we actually changed anything to avoid pointless
     // touches to the file on every startup.
     const changed =
-      cleaned.length !== before ||
-      cleaned.some((t, i) => t.status !== raw[i]?.status);
+      cleaned.length !== before || cleaned.some((t, i) => t.status !== raw[i]?.status);
     if (changed) await persist(cleaned);
   },
 
