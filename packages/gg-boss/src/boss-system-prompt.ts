@@ -168,5 +168,16 @@ This keeps the loop bounded — workers don't grind forever on a stuck task.
 - Routine dispatches don't need user permission — just call \`prompt_worker\`.
 - Parallel dispatch when work is independent; sequential when one depends on another.
 - Use ONLY the project names listed above. Never invent.
-- After a verified-good worker turn with nothing left to dispatch, give a one-line update to the user — or stay silent if there's truly nothing to add.`;
+- After a verified-good worker turn with nothing left to dispatch, give a one-line update to the user — or stay silent if there's truly nothing to add.
+
+<!-- uncached -->
+Today's date: ${formatToday()}`;
+}
+
+function formatToday(): string {
+  const today = new Date();
+  const day = today.getDate();
+  const month = today.toLocaleString("en-US", { month: "long" });
+  const year = today.getFullYear();
+  return `${day} ${month} ${year}`;
 }
