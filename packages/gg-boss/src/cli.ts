@@ -9,6 +9,7 @@ import { runLinkCommand } from "./link-command.js";
 import { COLORS, clearScreen } from "./branding.js";
 import { renderBossApp } from "./orchestrator-app.js";
 import { loadSettings } from "./settings.js";
+import { showSplash } from "./splash.js";
 
 interface CliArgs {
   /** Undefined when not passed on the CLI — settings file then defaults take over. */
@@ -129,13 +130,14 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   }
 
   clearScreen();
-  process.stdout.write(
-    chalk.hex(COLORS.textDim)("  Initializing ") +
-      chalk.hex(COLORS.primary)("GG Boss") +
-      chalk.hex(COLORS.textDim)(
-        `…\n  Spinning up ${args.projects.length} worker${args.projects.length === 1 ? "" : "s"}.\n`,
-      ),
-  );
+
+  // Splash — Ink-rendered ASCII logo with shimmering gradient, shown while
+  // the boss spins up its workers. dismiss() blocks until min-visible-time
+  // has elapsed AND Ink has flushed the unmount, so the chat UI never
+  // overlaps with the splash on screen.
+  const splash = showSplash({
+    caption: `Spinning up ${args.projects.length} worker${args.projects.length === 1 ? "" : "s"}…`,
+  });
 
   // Resolve final boss/worker models: CLI flags > saved settings > defaults.
   // Settings persist user choices made via /model boss / /model workers across
@@ -153,6 +155,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   });
 
   await boss.initialize();
+  await splash.dismiss();
 
   clearScreen();
 
