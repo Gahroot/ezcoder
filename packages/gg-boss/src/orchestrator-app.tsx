@@ -594,9 +594,16 @@ type WorkerStatusGrade = "DONE" | "UNVERIFIED" | "PARTIAL" | "BLOCKED" | "INFO";
  * PARTIAL | BLOCKED | INFO). Returns null if the line is missing or invalid.
  */
 function parseStatusGrade(text: string): WorkerStatusGrade | null {
-  const match = text.match(/^\s*Status:\s*(DONE|UNVERIFIED|PARTIAL|BLOCKED|INFO)\s*$/im);
-  if (!match) return null;
-  return match[1].toUpperCase() as WorkerStatusGrade;
+  // Use the LAST occurrence of "Status: X" (some workers explain status
+  // mid-text and re-emit it in the trailer). Also accept anything after the
+  // grade word — workers occasionally write "Status: INFO — trailing comment"
+  // which the previous end-of-line anchor would have rejected.
+  const matches = [
+    ...text.matchAll(/^\s*Status:\s*(DONE|UNVERIFIED|PARTIAL|BLOCKED|INFO)\b/gim),
+  ];
+  const last = matches[matches.length - 1];
+  if (!last) return null;
+  return last[1]!.toUpperCase() as WorkerStatusGrade;
 }
 
 interface WorkerTrailer {

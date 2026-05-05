@@ -180,6 +180,9 @@ export interface BossUiState {
    */
   pendingFlush: HistoryItem[];
   flushGeneration: number;
+  /** Info rows queued by mid-turn tools, flushed when the boss's turn ends.
+   *  See queueEndOfTurnInfo / flushEndOfTurnInfos. */
+  pendingEndOfTurnInfos: { text: string; level: InfoItem["level"] }[];
   streaming: StreamingTurn | null;
   phase: "idle" | "working";
   /** Fine-grained phase used by ActivityIndicator. */
@@ -211,6 +214,7 @@ const initialState: BossUiState = {
   history: [],
   pendingFlush: [],
   flushGeneration: 0,
+  pendingEndOfTurnInfos: [],
   streaming: null,
   phase: "idle",
   activityPhase: "idle",
@@ -311,6 +315,35 @@ export const bossStore = {
     state = {
       ...state,
       history: [...state.history, { kind: "info", id: id(), text, level }],
+    };
+    notify();
+  },
+
+  /**
+   * Queue an info message to be appended AFTER the boss's current turn ends.
+   * Used by tools (like add_task's keybind hint) that fire mid-turn and would
+   * otherwise interleave their announcement between the boss's tool calls,
+   * making it read like the boss issued the message itself.
+   */
+  queueEndOfTurnInfo(text: string, level: InfoItem["level"] = "info"): void {
+    state = { ...state, pendingEndOfTurnInfos: [...state.pendingEndOfTurnInfos, { text, level }] };
+    notify();
+  },
+
+  /** Flush any deferred infos as real history rows. Called from the boss's
+   *  turn_end event handler in the orchestrator. */
+  flushEndOfTurnInfos(): void {
+    if (state.pendingEndOfTurnInfos.length === 0) return;
+    const newRows: InfoItem[] = state.pendingEndOfTurnInfos.map(({ text, level }) => ({
+      kind: "info",
+      id: id(),
+      text,
+      level,
+    }));
+    state = {
+      ...state,
+      history: [...state.history, ...newRows],
+      pendingEndOfTurnInfos: [],
     };
     notify();
   },

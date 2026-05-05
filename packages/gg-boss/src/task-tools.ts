@@ -100,14 +100,14 @@ export function createTaskTools(deps: TaskToolDeps): AgentTool[] {
         description: args.description,
         fresh: args.fresh,
       });
-      // First add_task per session — surface the keybind hint so the user
-      // knows where to find what was just added and how to fire it off.
+      // First add_task per session — defer the keybind hint until the boss's
+      // current turn ends so it doesn't get interleaved between the boss's
+      // tool calls (which read like the boss is making the announcement).
       // Subsequent add_tasks stay silent.
       if (!tasksHintShown) {
         tasksHintShown = true;
-        bossStore.appendInfo(
+        bossStore.queueEndOfTurnInfo(
           "Press Ctrl+T to open the Tasks pane, then `r` to run all pending tasks.",
-          "info",
         );
       }
       return `Added [${t.id}] ${t.project} · ${t.title}`;

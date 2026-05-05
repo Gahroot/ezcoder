@@ -481,6 +481,10 @@ export class GGBoss {
               }
               // Flush trailing text from this turn. Subsequent turns may add more.
               bossStore.flushPendingText();
+              // Flush any tool-queued end-of-turn infos (e.g. add_task's
+              // Ctrl+T hint) so they land AFTER the boss's tool calls, not
+              // interleaved with them.
+              bossStore.flushEndOfTurnInfos();
               break;
             case "retry":
               if (!e.silent) {
