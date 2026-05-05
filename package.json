@@ -5,10 +5,10 @@
   "scripts": {
     "build": "pnpm -r build",
     "check": "pnpm -r check",
-    "lint": "eslint packages/*/src/",
-    "lint:fix": "eslint packages/*/src/ --fix",
-    "format": "prettier --write packages/*/src/",
-    "format:check": "prettier --check packages/*/src/",
+    "lint": "eslint 'packages/*/src/**/*.{ts,tsx}'",
+    "lint:fix": "eslint 'packages/*/src/**/*.{ts,tsx}' --fix",
+    "format": "prettier --write 'packages/*/src/**/*.{ts,tsx,py}'",
+    "format:check": "prettier --check 'packages/*/src/**/*.{ts,tsx}'",
     "test": "pnpm -r test",
     "prepare": "pnpm build"
   },
@@ -22,6 +22,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "better-sqlite3",
       "onnxruntime-node"
     ],
     "overrides": {

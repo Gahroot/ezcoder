@@ -1284,11 +1284,7 @@ export function InputArea({
             two-space continuation indent was narrower than the badge, leaving
             a visible gap on line 2. Putting the badge on its own line keeps
             the input column flush with the prompt arrow on every line. */}
-        {scopeBadge && (
-          <Box marginBottom={0}>
-            {scopeBadge}
-          </Box>
-        )}
+        {scopeBadge && <Box marginBottom={0}>{scopeBadge}</Box>}
         {images.length > 0 && (
           <Box>
             <Text color={theme.accent}>
