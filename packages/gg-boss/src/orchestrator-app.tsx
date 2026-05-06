@@ -422,6 +422,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
                 exitPending={state.exitPending}
                 bossThinkingLevel={state.bossThinkingLevel}
                 updatePending={updatePending}
+                currentRadioStationId={currentRadio}
               />
               {!state.exitPending && (
                 <WorkerStatusBar

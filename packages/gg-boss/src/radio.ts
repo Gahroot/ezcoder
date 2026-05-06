@@ -45,6 +45,12 @@ export const RADIO_STATIONS: readonly RadioStation[] = [
     description: "Eclectic mix — rock, electronica, jazz",
     url: "http://stream.radioparadise.com/mp3-128",
   },
+  {
+    id: "george-fm",
+    name: "George FM",
+    description: "NZ dance + electronic",
+    url: "https://mediaworks.streamguys1.com/george_net_icy",
+  },
 ];
 
 interface PlayerCandidate {
