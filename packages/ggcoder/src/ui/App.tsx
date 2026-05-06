@@ -1157,7 +1157,13 @@ export function App(props: AppProps) {
           if (flushed.length > 0) {
             queueFlush(flushed);
           }
-          const displayText = planStepsRef.current.length > 0 ? stripDoneMarkers(text) : text;
+          // Always strip [DONE:N] markers from displayed text — they're an
+          // internal signal for the plan progress widget, not user-facing.
+          // The earlier `planStepsRef.current.length > 0` gate let markers
+          // leak through after all steps were completed (planStepsRef gets
+          // cleared in onComplete), surfacing as a visible "[DONE:N]" in
+          // the agent's wrap-up turn.
+          const displayText = stripDoneMarkers(text);
           return [
             {
               kind: "assistant",
