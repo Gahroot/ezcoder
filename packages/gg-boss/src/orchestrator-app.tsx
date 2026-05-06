@@ -98,9 +98,11 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   // Seeded from the radio module's module-level state — usually null on
   // launch but resilient to a hot-restart of the React tree.
   const [currentRadio, setCurrentRadio] = useState<string | null>(() => getCurrentStation());
-  // Reserved for future Static-remount triggers (e.g. theme switches). Not
-  // currently bumped — /clear no longer touches Static state directly.
-  const [staticKey] = useState(0);
+  // Bumped on /clear so <Static> remounts and re-emits its (now banner-only)
+  // items into a freshly ANSI-wiped terminal. Mirrors ggcoder's pattern in
+  // App.tsx — without the bump, Static's internal emit-set still thinks
+  // every old chat row is "already rendered" and won't restore them.
+  const [staticKey, setStaticKey] = useState(0);
 
   // Auto-update indicator: true when a newer version of @kenkaiiii/gg-boss
   // is on disk waiting for the next restart. Seeded synchronously from the
@@ -232,16 +234,21 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
         bossStore.appendInfo(buildHelpText(), "info");
         return true;
       case "clear":
-        // Reset React state + agent context but DO NOT touch the terminal
-        // (no ANSI clear, no Static remount). Disturbing Ink's log-update
-        // cursor tracking after a render is in flight breaks the live-area
-        // positioning — the input ends up drawn above the messages and new
-        // content scrolls out of sight. The user's prior chat remains in
-        // scrollback (they can scroll up to see it) but the boss starts a
-        // fresh conversation. The info row gives visual confirmation that
-        // the action took effect.
+        // Mirrors ggcoder's /clear (App.tsx:1632-1659):
+        //   1. ANSI-wipe the terminal (screen + scrollback) so old emitted
+        //      Static rows physically disappear — clearing React state alone
+        //      doesn't touch what Ink already wrote to stdout.
+        //   2. Wipe React-side history + agent message context.
+        //   3. Bump staticKey to force <Static> to remount with a fresh
+        //      emit-set, so the next render re-emits the (now banner-only)
+        //      items into the wiped scrollback.
+        //   4. Drop a "Session cleared." info row in chat as confirmation.
+        // Order matters: ANSI clear before state changes so the sequence
+        // happens cleanly within Ink's next render frame.
+        stdout?.write("\x1b[2J\x1b[3J\x1b[H");
         bossStore.clearHistory();
         await boss.resetConversation();
+        setStaticKey((k) => k + 1);
         bossStore.appendInfo("Session cleared.", "info");
         return true;
       case "model-boss":
