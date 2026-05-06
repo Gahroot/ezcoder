@@ -484,16 +484,18 @@ function WorkerStatusBar({
   const now = Date.now();
 
   if (workers.length === 0) return null;
-  // Render order: working (shimmer + timer) → errored (red name, no timer) →
-  // idle count (single dim "+N idle"). Each slot is separated by a thin
-  // mid-dot so the cluster reads as one bar rather than three.
+  // Render order: working (shimmer + timer) → errored (✗ + name) → idle
+  // count (dim "N idle"). The shimmer + project hue already announce
+  // "active" — no need for a leading ● dot. The errored ✗ stays because
+  // colour alone isn't enough to call out a stuck worker. The idle slot
+  // keeps the ○ as a glyph-only quantifier ("○ 17"). Separator: thin
+  // vertical bar, matching the footer's style.
   const slots: React.ReactElement[] = [];
   for (const w of working) {
     const projectHue = projectColor(w.name);
     const elapsed = w.workStartedAt ? formatElapsed(now - w.workStartedAt) : null;
     slots.push(
       <React.Fragment key={`w-${w.name}`}>
-        <Text color={projectHue}>● </Text>
         <ShimmerName name={w.name} color={projectHue} tick={tick} />
         {elapsed && <Text color={theme.textDim}> {elapsed}</Text>}
       </React.Fragment>,
@@ -502,17 +504,14 @@ function WorkerStatusBar({
   for (const w of errored) {
     slots.push(
       <React.Fragment key={`e-${w.name}`}>
-        <Text color={theme.error}>✗ </Text>
-        <Text color={theme.error}>{w.name}</Text>
+        <Text color={theme.error}>✗ {w.name}</Text>
       </React.Fragment>,
     );
   }
   if (idleCount > 0) {
     slots.push(
       <React.Fragment key="idle">
-        <Text color={theme.textDim}>
-          ○ {idleCount} idle
-        </Text>
+        <Text color={theme.textDim}>○ {idleCount} idle</Text>
       </React.Fragment>,
     );
   }
@@ -521,7 +520,7 @@ function WorkerStatusBar({
       {anyWorking && <AnimationActiveSentinel />}
       {slots.map((slot, i) => (
         <React.Fragment key={i}>
-          {i > 0 && <Text color={theme.textDim}>{"  ·  "}</Text>}
+          {i > 0 && <Text color={theme.border}>{" │ "}</Text>}
           {slot}
         </React.Fragment>
       ))}
