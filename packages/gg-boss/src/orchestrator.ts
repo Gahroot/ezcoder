@@ -675,7 +675,7 @@ type ReportedStatus = "DONE" | "UNVERIFIED" | "PARTIAL" | "BLOCKED" | "INFO" | n
  * trailer is appended by every prompt via WORKER_PROMPT_BRIEF, so it should
  * always be there for task-style runs. Returns null if missing or unrecognised.
  */
-function parseReportedStatus(finalText: string): ReportedStatus {
+export function parseReportedStatus(finalText: string): ReportedStatus {
   // Match the LAST "Status: X" line — workers occasionally mention statuses
   // mid-text and we want the trailer's value, not an example sentence.
   const matches = [
@@ -691,7 +691,7 @@ function parseReportedStatus(finalText: string): ReportedStatus {
  * tool-failure heuristic ONLY when the trailer is missing — that's the only
  * way to recover useful state for non-compliant workers.
  */
-function reportedToTaskStatus(
+export function reportedToTaskStatus(
   reported: ReportedStatus,
   anyToolFailed: boolean,
 ): "done" | "blocked" | "in_progress" | "skipped" {
