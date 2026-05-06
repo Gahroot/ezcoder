@@ -130,7 +130,10 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
   // friendly info row into chat so the user sees the news immediately.
   useEffect(() => {
     startPeriodicUpdateCheck(VERSION, (msg) => {
-      bossStore.appendInfo(msg, "info");
+      // Dedicated update_notice item so the renderer wraps it in a
+      // rounded success-bordered ✨ box. Plain info rows render flat and
+      // disappear into worker chatter.
+      bossStore.appendUpdateNotice(msg);
       setUpdatePending(true);
     });
     return () => stopPeriodicUpdateCheck();
@@ -633,7 +636,26 @@ function StaticRowView({ row }: { row: StaticRow }): React.ReactElement | null {
   if (row.kind === "worker_error") return <WorkerErrorRow item={row} />;
   if (row.kind === "info") return <InfoRow text={row.text} level={row.level ?? "info"} />;
   if (row.kind === "task_dispatch") return <TaskDispatchRow tasks={row.tasks} />;
+  if (row.kind === "update_notice") return <UpdateNoticeRow text={row.text} />;
   return null;
+}
+
+/**
+ * Update-available notice — same visual treatment as ggcoder's update notice
+ * (App.tsx around line 2248): rounded box with success-color border, bold
+ * success-color body, sparkle prefix. Stands out clearly amid worker chatter
+ * so users actually notice when a new gg-boss has shipped.
+ */
+function UpdateNoticeRow({ text }: { text: string }): React.ReactElement {
+  const theme = useTheme();
+  return (
+    <Box marginTop={1} flexShrink={1} borderStyle="round" borderColor={theme.success} paddingX={1}>
+      <Text color={theme.success} bold wrap="wrap">
+        {"✨ "}
+        {text}
+      </Text>
+    </Box>
+  );
 }
 
 function TaskDispatchRow({

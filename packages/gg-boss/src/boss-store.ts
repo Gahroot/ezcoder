@@ -109,6 +109,18 @@ export interface TaskDispatchItem {
   timestamp: number;
 }
 
+/**
+ * Auto-update notice ("Ken just shipped 4.3.x!"). Distinct from a plain
+ * info row so the renderer can wrap it in the success-bordered ✨ box that
+ * ggcoder uses — without this, the update message renders in flat default
+ * text and goes unnoticed amid worker chatter.
+ */
+export interface UpdateNoticeItem {
+  kind: "update_notice";
+  id: string;
+  text: string;
+}
+
 export type HistoryItem =
   | UserItem
   | AssistantItem
@@ -116,7 +128,8 @@ export type HistoryItem =
   | WorkerEventItem
   | WorkerErrorItem
   | InfoItem
-  | TaskDispatchItem;
+  | TaskDispatchItem
+  | UpdateNoticeItem;
 
 // ── Streaming (current boss turn, rendered live above the input) ────
 
@@ -325,6 +338,20 @@ export const bossStore = {
     state = {
       ...state,
       history: [...state.history, { kind: "info", id: id(), text, level }],
+    };
+    notify();
+  },
+
+  /**
+   * Append the eye-catching update-available notice. Distinct kind so the
+   * renderer can give it the rounded green-bordered "✨ ..." box treatment
+   * that mirrors ggcoder's update notice — flat info text gets lost in
+   * worker chatter, this stands out.
+   */
+  appendUpdateNotice(text: string): void {
+    state = {
+      ...state,
+      history: [...state.history, { kind: "update_notice", id: id(), text }],
     };
     notify();
   },
