@@ -1061,13 +1061,33 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   waitUntilExit: () => Promise<void>;
   unmount: () => void;
 } {
-  // We need a forward reference: BossApp's resetUI prop wants to call
-  // instance.clear(), but `instance` doesn't exist until after render() is
+  // We need a forward reference: BossApp's resetUI prop wants to call into
+  // the Ink instance, but `instance` doesn't exist until after render() is
   // invoked. Closing over a holder lets the prop see the instance once it's
   // assigned, without restructuring the whole BossApp tree.
   const ref: { instance: ReturnType<typeof render> | null } = { instance: null };
+  // The published `instance.clear()` is the WRONG primitive here. It calls
+  // log.clear() (good — moves cursor up, erases, sets prevLineCount=0) but
+  // then IMMEDIATELY calls log.sync(lastOutput) which restores prevLineCount
+  // back to the previous frame's height. Net effect: from log-update's view,
+  // the screen still has the old content drawn. Subsequent renders compute
+  // cursor.up() based on that stale count, drift the cursor up over real
+  // content, and produce the "input pushed to top" symptom.
+  //
+  // Reaching into the private `log` reset() is the only way to actually
+  // zero log-update state without log.sync clobbering it back. The cast
+  // is intentional — Ink's public types don't surface this, but the field
+  // exists on every Ink version we support and is stable between releases.
   const resetUI = (): void => {
-    ref.instance?.clear();
+    const inst = ref.instance;
+    if (!inst) return;
+    // 1. ANSI wipe terminal scrollback + viewport.
+    process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+    // 2. Force log-update internal state to zero so the next render writes
+    //    fresh from cursor row 0 instead of trying to undo a phantom prior
+    //    frame.
+    const log = (inst as unknown as { log?: { reset?: () => void } }).log;
+    log?.reset?.();
   };
   const instance = render(<BossApp boss={opts.boss} resetUI={resetUI} />, {
     // Disable Ink's built-in exit-on-Ctrl+C — we need our own double-press
