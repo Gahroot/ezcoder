@@ -1101,7 +1101,6 @@ export function renderBossApp(opts: RenderBossAppOptions): {
     // instance's waitUntilExit (which already resolved on unmount) and
     // exit the CLI immediately after every /clear.
     waitUntilExit: async () => {
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const current = ref.instance;
         if (!current) return;

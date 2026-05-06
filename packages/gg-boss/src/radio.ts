@@ -174,7 +174,8 @@ export function playRadio(stationId: string): PlayResult {
  * platforms we don't recognise.
  */
 function buildInstallHint(): string {
-  const base = "Radio needs a streaming player. Install one of: mpv (recommended), ffplay, mpg123, or vlc.";
+  const base =
+    "Radio needs a streaming player. Install one of: mpv (recommended), ffplay, mpg123, or vlc.";
   switch (process.platform) {
     case "darwin":
       return `${base} On macOS: \`brew install mpv\` (or \`brew install ffmpeg\` for ffplay).`;
