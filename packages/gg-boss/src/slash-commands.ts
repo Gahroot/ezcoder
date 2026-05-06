@@ -12,6 +12,7 @@ export const BOSS_SLASH_COMMANDS: SlashCommandInfo[] = [
   { name: "model-boss", aliases: [], description: "Switch the orchestrator's model" },
   { name: "model-workers", aliases: [], description: "Switch every worker's model" },
   { name: "compact", aliases: [], description: "Compact the boss's context now" },
+  { name: "radio", aliases: [], description: "Stream a free internet radio station" },
   { name: "clear", aliases: [], description: "Clear chat history and terminal" },
   { name: "quit", aliases: ["q", "exit"], description: "Exit gg-boss" },
 ];
@@ -68,6 +69,10 @@ export function buildHelpText(): string {
   lines.push("- `↑` / `↓` — navigate models");
   lines.push("- `Enter` — select");
   lines.push("- `Esc` — cancel");
+  lines.push("");
+  lines.push("**Radio** (`/radio`)");
+  lines.push("- Pick a station to stream while you work, or select `Off` to stop.");
+  lines.push("- Requires `mpv` (recommended), `ffplay`, `mpg123`, or `vlc/cvlc` installed.");
   lines.push("");
   lines.push("**Input area**");
   lines.push("- `↑` / `↓` — recall previous prompts (when input is empty)");

@@ -41,6 +41,8 @@ import { COLORS, PULSE_COLORS as BOSS_PULSE_COLORS } from "./branding.js";
 import { BossTasksOverlay } from "./boss-tasks-overlay.js";
 import type { GGBoss } from "./orchestrator.js";
 import { VERSION } from "./branding.js";
+import { RadioPicker } from "./radio-picker.js";
+import { getCurrentStation, playRadio, stopRadio, RADIO_STATIONS } from "./radio.js";
 import {
   getPendingUpdate,
   startPeriodicUpdateCheck,
@@ -88,7 +90,14 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   // Track the most recent user message so the activity bar's contextual phrase
   // selection has something to riff on (when not using BOSS_PHRASES override).
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
-  const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | "tasks" | null>(null);
+  const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | "tasks" | "radio" | null>(
+    null,
+  );
+  // Track the currently-playing station id so the picker can mark it with *
+  // and so we have a reactive value for any future "now playing" indicator.
+  // Seeded from the radio module's module-level state — usually null on
+  // launch but resilient to a hot-restart of the React tree.
+  const [currentRadio, setCurrentRadio] = useState<string | null>(() => getCurrentStation());
   // Reserved for future Static-remount triggers (e.g. theme switches). Not
   // currently bumped — /clear no longer touches Static state directly.
   const [staticKey] = useState(0);
@@ -166,9 +175,12 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
    * previous frame's footprint at the bottom of the viewport — it cannot
    * reach into scrollback. So banner + history in scrollback stay intact.
    */
-  const openOverlay = useCallback((next: "tasks" | "model-boss" | "model-workers"): void => {
-    setOverlay(next);
-  }, []);
+  const openOverlay = useCallback(
+    (next: "tasks" | "model-boss" | "model-workers" | "radio"): void => {
+      setOverlay(next);
+    },
+    [],
+  );
 
   const closeOverlay = useCallback((): void => {
     setOverlay(null);
@@ -241,6 +253,9 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
       case "compact":
         bossStore.appendUser(value);
         await boss.manualCompact();
+        return true;
+      case "radio":
+        openOverlay("radio");
         return true;
       case "quit":
         exit();
@@ -375,6 +390,28 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
               loggedInProviders={state.loggedInProviders}
               currentModel={overlay === "model-boss" ? state.bossModel : state.workerModel}
               currentProvider={overlay === "model-boss" ? state.bossProvider : state.workerProvider}
+            />
+          ) : overlay === "radio" ? (
+            <RadioPicker
+              currentStationId={currentRadio}
+              onCancel={closeOverlay}
+              onSelect={(value) => {
+                if (value === "off") {
+                  stopRadio();
+                  setCurrentRadio(null);
+                  bossStore.appendInfo("Radio off.", "info");
+                } else {
+                  const result = playRadio(value);
+                  if (result.ok) {
+                    setCurrentRadio(value);
+                    const station = RADIO_STATIONS.find((s) => s.id === value);
+                    bossStore.appendInfo(`Now playing: ${station?.name ?? value}`, "info");
+                  } else {
+                    bossStore.appendInfo(result.error ?? "Radio failed to start.", "warning");
+                  }
+                }
+                closeOverlay();
+              }}
             />
           ) : (
             <>

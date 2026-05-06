@@ -13,6 +13,7 @@ import { showSplash } from "./splash.js";
 import { initLogger, log } from "./logger.js";
 import { VERSION } from "./branding.js";
 import { checkAndAutoUpdate } from "./auto-update.js";
+import { stopRadio } from "./radio.js";
 
 interface CliArgs {
   /** Undefined when not passed on the CLI — settings file then defaults take over. */
@@ -201,6 +202,9 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   const runPromise = boss.run();
   await ink.waitUntilExit();
   await boss.dispose();
+  // Kill any in-flight radio stream before exiting — otherwise the detached
+  // mpv/ffplay child keeps playing after the user closed gg-boss.
+  stopRadio();
   await runPromise.catch(() => {});
   process.exit(0);
 }
