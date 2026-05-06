@@ -37,6 +37,9 @@ interface BossFooterProps {
   exitPending: boolean;
   /** Boss extended-thinking level. Falsy when thinking is off. */
   bossThinkingLevel?: string;
+  /** Auto-updater has installed a newer @kenkaiiii/gg-boss in the background.
+   *  Show a "restart to apply" hint at the end of the footer row. */
+  updatePending?: boolean;
 }
 
 /**
@@ -50,6 +53,7 @@ export function BossFooter({
   tokensIn,
   exitPending,
   bossThinkingLevel,
+  updatePending,
 }: BossFooterProps): React.ReactElement {
   const theme = useTheme();
 
@@ -115,6 +119,14 @@ export function BossFooter({
         <Text color={bossThinkingLevel ? theme.accent : theme.textDim}>
           {bossThinkingLevel ? "Thinking on" : "Thinking off"}
         </Text>
+        {updatePending && (
+          <>
+            {sep}
+            <Text color={theme.success} bold>
+              Update ready. Restart GG Boss.
+            </Text>
+          </>
+        )}
       </Box>
     </Box>
   );

@@ -12,6 +12,7 @@ import { loadSettings } from "./settings.js";
 import { showSplash } from "./splash.js";
 import { initLogger, log } from "./logger.js";
 import { VERSION } from "./branding.js";
+import { checkAndAutoUpdate } from "./auto-update.js";
 
 interface CliArgs {
   /** Undefined when not passed on the CLI — settings file then defaults take over. */
@@ -164,6 +165,13 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   log("INFO", "cli", "linked projects", {
     projects: args.projects.map((p) => p.name).join(","),
   });
+
+  // Auto-update: instantly applies any pending install from the prior run
+  // (background spawn, takes effect next launch) and schedules a fresh
+  // registry check. Returns a one-liner if an install just kicked off so
+  // we can surface it before the splash takes over.
+  const updateMessage = checkAndAutoUpdate(VERSION);
+  if (updateMessage) log("INFO", "auto_update", updateMessage);
 
   const boss = new GGBoss({
     bossProvider: finalBossProvider,

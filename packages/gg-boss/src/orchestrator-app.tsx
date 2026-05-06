@@ -40,6 +40,12 @@ import { BOSS_PHRASES } from "./boss-phrases.js";
 import { COLORS, PULSE_COLORS as BOSS_PULSE_COLORS } from "./branding.js";
 import { BossTasksOverlay } from "./boss-tasks-overlay.js";
 import type { GGBoss } from "./orchestrator.js";
+import { VERSION } from "./branding.js";
+import {
+  getPendingUpdate,
+  startPeriodicUpdateCheck,
+  stopPeriodicUpdateCheck,
+} from "./auto-update.js";
 
 interface BannerRow {
   kind: "banner";
@@ -86,6 +92,27 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
   // Reserved for future Static-remount triggers (e.g. theme switches). Not
   // currently bumped — /clear no longer touches Static state directly.
   const [staticKey] = useState(0);
+
+  // Auto-update indicator: true when a newer version of @kenkaiiii/gg-boss
+  // is on disk waiting for the next restart. Seeded synchronously from the
+  // state file (so we show the indicator immediately if a previous session
+  // queued one) and bumped to true by the periodic check below if a fresh
+  // version drops mid-session.
+  const [updatePending, setUpdatePending] = useState<boolean>(
+    () => getPendingUpdate(VERSION) !== null,
+  );
+
+  // Periodic in-session check — pings npm every hour while the session is
+  // alive. If a newer version arrives, we set updatePending so the worker
+  // bar shows the "✨ Update ready · restart to apply" hint, AND drop a
+  // friendly info row into chat so the user sees the news immediately.
+  useEffect(() => {
+    startPeriodicUpdateCheck(VERSION, (msg) => {
+      bossStore.appendInfo(msg, "info");
+      setUpdatePending(true);
+    });
+    return () => stopPeriodicUpdateCheck();
+  }, []);
 
   // Terminal title — dynamically reflects worker activity so the user can
   // glance at the tab/window from another app and see how many workers are
@@ -357,6 +384,7 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
                 tokensIn={state.bossInputTokens}
                 exitPending={state.exitPending}
                 bossThinkingLevel={state.bossThinkingLevel}
+                updatePending={updatePending}
               />
               {!state.exitPending && (
                 <WorkerStatusBar
