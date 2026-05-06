@@ -641,18 +641,22 @@ function StaticRowView({ row }: { row: StaticRow }): React.ReactElement | null {
 }
 
 /**
- * Update-available notice — same visual treatment as ggcoder's update notice
- * (App.tsx around line 2248): rounded box with success-color border, bold
- * success-color body, sparkle prefix. Stands out clearly amid worker chatter
- * so users actually notice when a new gg-boss has shipped.
+ * Update-available notice — gg-boss brand aesthetic. Rounded box, fuchsia
+ * accent border, crimson primary body text. Mirrors the gradient feel of the
+ * splash + banner so the notice reads as part of gg-boss rather than a
+ * borrowed-green ggcoder element. The ✨ rides the accent so the eye lands
+ * on the highlight first, then reads the primary-colored body.
  */
 function UpdateNoticeRow({ text }: { text: string }): React.ReactElement {
-  const theme = useTheme();
   return (
-    <Box marginTop={1} flexShrink={1} borderStyle="round" borderColor={theme.success} paddingX={1}>
-      <Text color={theme.success} bold wrap="wrap">
-        {"✨ "}
-        {text}
+    <Box marginTop={1} flexShrink={1} borderStyle="round" borderColor={COLORS.accent} paddingX={1}>
+      <Text wrap="wrap">
+        <Text color={COLORS.accent} bold>
+          {"✨ "}
+        </Text>
+        <Text color={COLORS.primary} bold>
+          {text}
+        </Text>
       </Text>
     </Box>
   );
