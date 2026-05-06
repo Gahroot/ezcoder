@@ -1,4 +1,4 @@
-# @kenkaiiii/ggcoder
+![ggcoder](screenshots/ggcoder.png)
 
 <p align="center">
   <strong>The fast, lean coding agent. Four providers. Zero bloat.</strong>
@@ -9,23 +9,18 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <a href="https://youtube.com/@kenkaidoesai"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
   <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
+  <a href="https://github.com/KenKaiii"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
 </p>
 
 The CLI that sits on top of the [GG Framework](../../README.md). Built on [`@kenkaiiii/gg-ai`](../gg-ai/README.md) and [`@kenkaiiii/gg-agent`](../gg-agent/README.md).
 
 ---
 
-## Install
+## 🚀 Run It
 
 ```bash
 npm i -g @kenkaiiii/ggcoder
-```
 
----
-
-## Getting started
-
-```bash
 ggcoder login    # Pick provider, authenticate
 ggcoder          # Start coding
 ```
@@ -34,7 +29,7 @@ OAuth for Anthropic and OpenAI (log in once, auto-refresh). API keys for GLM and
 
 ---
 
-## The system prompt problem
+## 🪶 The system prompt problem
 
 Every token in the system prompt gets processed on **every single turn**. It's not a one-time cost. It's a tax on every request.
 
@@ -54,7 +49,7 @@ GG Coder sends only what the model needs: how to work, what tools it has, and yo
 
 ---
 
-## The MCP problem
+## 🧩 The MCP problem
 
 Same philosophy applies to tools. People collect MCPs like Pokemon. Slack MCP, GitHub MCP, Notion MCP, five different file system MCPs. Every single one injects its tool descriptions into the context. The model now has to figure out which of 40+ tools to use for any given task.
 
@@ -66,7 +61,7 @@ You can still add your own MCPs if you need them. But start with less. You'll ge
 
 ---
 
-## Four providers, one agent
+## 🎛 Four providers, one agent
 
 Switch mid-conversation with `/model`. Not locked to anyone.
 
@@ -79,7 +74,7 @@ Switch mid-conversation with `/model`. Not locked to anyone.
 
 ---
 
-## Slash commands
+## 💬 Slash commands
 
 Everything runs through slash commands inside the session. Not CLI flags.
 
@@ -101,13 +96,13 @@ Everything runs through slash commands inside the session. Not CLI flags.
 
 ---
 
-## Custom commands
+## 🪄 Custom commands
 
 Drop a markdown file in `.gg/commands/` and it becomes a slash command. Your React app gets `/deploy` and `/storybook`. Your API gets `/migrate` and `/seed`. Different projects, different commands.
 
 ---
 
-## Skills
+## 🎒 Skills
 
 Reusable behaviors across projects. Drop `.md` files in:
 
@@ -118,7 +113,7 @@ They get loaded into the system prompt automatically. The agent knows what it ca
 
 ---
 
-## Project guidelines
+## 📋 Project guidelines
 
 Drop a `CLAUDE.md` or `AGENTS.md` in your repo root (or any parent directory). GG Coder picks it up automatically.
 
@@ -126,7 +121,7 @@ Your rules. Your conventions. The agent follows them.
 
 ---
 
-## Tools
+## 🛠 Tools
 
 GG Coder comes with a focused set of tools:
 
@@ -146,13 +141,24 @@ Plus the [Grep MCP](https://grep.dev) for searching across 1M+ public GitHub rep
 
 ---
 
-## Community
+## 👥 Community
 
-- [YouTube @kenkaidoesai](https://youtube.com/@kenkaidoesai) - tutorials and demos
-- [Skool community](https://skool.com/kenkai) - come hang out
+- [YouTube @kenkaidoesai](https://youtube.com/@kenkaidoesai) — tutorials and demos
+- [Skool community](https://skool.com/kenkai) — come hang out
+- [GitHub @KenKaiii](https://github.com/KenKaiii)
 
 ---
 
-## License
+## 📄 License
 
 MIT
+
+---
+
+<p align="center">
+  <strong>Lean prompt. Sharp tools. Real results.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@kenkaiiii/ggcoder"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40kenkaiiii%2Fggcoder-blue?style=for-the-badge" alt="Install"></a>
+</p>
