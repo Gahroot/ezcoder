@@ -7,6 +7,7 @@ import type { MCPClientManager } from "../core/mcp/index.js";
 import type { AuthStorage } from "../core/auth-storage.js";
 import type { Skill } from "../core/skills.js";
 import { App, type CompletedItem } from "./App.js";
+import type { PlanStep } from "../utils/plan-steps.js";
 import { ThemeContext, SetThemeContext, loadTheme, type ThemeName } from "./theme/theme.js";
 import { detectTheme } from "./theme/detect-theme.js";
 import { AnimationProvider } from "./components/AnimationContext.js";
@@ -52,15 +53,67 @@ export interface RenderAppConfig {
 }
 
 /**
- * State that should survive a `/clear` (which unmounts and rebuilds the entire
- * Ink instance). Lives in `renderApp`'s closure so it's preserved across the
- * remount, while everything else (chat history, agent loop, plan steps, etc.)
- * gets reset along with the React tree.
+ * Runtime UI choices that survive every unmount/remount (including `/clear`).
+ * Lives in `renderApp`'s closure so the user's model/provider/thinking
+ * picks aren't lost when an overlay close, plan accept, etc. tears down
+ * the React tree.
  */
 interface RuntimeState {
   model: string;
   provider: Provider;
   thinking?: ThinkingLevel;
+}
+
+/**
+ * Session state that needs to survive unmount/remount for paths that
+ * KEEP the conversation (overlay close, plan reject) — and which we
+ * deliberately wipe for paths that start a fresh session (`/clear`,
+ * plan accept, startTask, pixel fix).
+ *
+ * App.tsx mirrors its in-React state into this object via useEffects,
+ * so when `resetUI` rebuilds the Ink instance, the new App can re-seed
+ * from the latest snapshot. This is the price of using unmount/remount
+ * as our reset mechanism (the only thing that actually escapes Ink's
+ * cumulative live-area drift).
+ */
+type OverlayKind = "model" | "tasks" | "skills" | "plan" | "theme" | "eyes" | "pixel" | null;
+
+export interface SessionStore {
+  messages: Message[];
+  history: CompletedItem[];
+  approvedPlanPath?: string;
+  planSteps: PlanStep[];
+  sessionPath?: string;
+  sessionTitle?: string;
+  sessionTitleGenerated: boolean;
+  /** Which overlay (Tasks, Skills, Plan, Pixel, Eyes, Theme, Model) is open. */
+  overlay?: OverlayKind;
+  /** Plan overlay auto-expand-newest flag (only meaningful when overlay==='plan'). */
+  planAutoExpand?: boolean;
+  /**
+   * Action to run on the next mount (consumed once). Used by paths that
+   * remount AND immediately drive the agent — plan accept / reject,
+   * startTask, etc. The new App reads this on mount, fires the agent,
+   * and clears the field.
+   */
+  pendingAction?: { prompt: string; infoText?: string };
+}
+
+export interface ResetUIOptions {
+  /** Replace messages entirely (e.g. fresh system prompt for `/clear` or plan accept). */
+  messages?: Message[];
+  /** Wipe history, plan steps, session metadata. Applied BEFORE other fields. */
+  wipeSession?: boolean;
+  /** Replace history outright (applied AFTER wipeSession). */
+  history?: CompletedItem[];
+  /** Set the approved plan path on the new mount. */
+  approvedPlanPath?: string;
+  /** Set plan steps (e.g. parsed from the freshly approved plan). */
+  planSteps?: PlanStep[];
+  /** Override session path (e.g. plan accept creates a new session file). */
+  sessionPath?: string;
+  /** Action to fire on the new mount (info banner + agent prompt). */
+  pendingAction?: { prompt: string; infoText?: string };
 }
 
 /** Stateful theme provider — enables runtime theme switching via useSetTheme(). */
@@ -103,8 +156,8 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
   // Clear screen + scrollback so old commands don't appear above the TUI
   process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
 
-  // Runtime state lives in this closure so /clear's unmount-and-rebuild
-  // doesn't lose the user's runtime model/provider/thinking choices.
+  // Runtime state lives in this closure so unmount/remount doesn't lose
+  // the user's runtime model/provider/thinking choices.
   const runtimeState: RuntimeState = {
     model: config.model,
     provider: config.provider,
@@ -115,13 +168,25 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     Object.assign(runtimeState, updates);
   };
 
+  // Session state — App mirrors its React state here via useEffects, so
+  // remounts (overlay close, plan reject) can re-seed from the snapshot
+  // without losing the conversation.
+  const sessionStore: SessionStore = {
+    messages: config.messages,
+    history: config.initialHistory ?? [{ kind: "banner", id: "banner" }],
+    approvedPlanPath: undefined,
+    planSteps: [],
+    sessionPath: config.sessionPath,
+    sessionTitle: undefined,
+    sessionTitleGenerated: false,
+    overlay: config.initialOverlay ?? null,
+    planAutoExpand: false,
+    pendingAction: undefined,
+  };
+
   const ref: { instance: InkInstance | null } = { instance: null };
 
-  // Build the React tree. Called once at startup AND once per /clear remount.
-  // Receives `messages` so /clear can hand in a freshly built [systemPrompt]
-  // while preserving the runtime model/provider/thinking choices captured in
-  // the closure.
-  const buildElement = (initialMessages: Message[]): React.ReactElement =>
+  const buildElement = (): React.ReactElement =>
     React.createElement(
       ThemeProvider,
       { initial: resolvedTheme },
@@ -136,7 +201,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             model: runtimeState.model,
             tools: config.tools,
             webSearch: config.webSearch,
-            messages: initialMessages,
+            messages: sessionStore.messages,
             maxTokens: config.maxTokens,
             thinking: runtimeState.thinking,
             apiKey: config.apiKey,
@@ -149,9 +214,9 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             onSlashCommand: config.onSlashCommand,
             loggedInProviders: config.loggedInProviders,
             credentialsByProvider: config.credentialsByProvider,
-            initialHistory: config.initialHistory,
+            initialHistory: sessionStore.history,
             sessionsDir: config.sessionsDir,
-            sessionPath: config.sessionPath,
+            sessionPath: sessionStore.sessionPath,
             processManager: config.processManager,
             settingsFile: config.settingsFile,
             mcpManager: config.mcpManager,
@@ -164,29 +229,48 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             rebuildToolsForCwd: config.rebuildToolsForCwd,
             resetUI,
             onRuntimeStateChange,
+            sessionStore,
           }),
         ),
       ),
     );
 
-  // Nuke-and-rebuild approach for /clear. Patching Ink's internal frame
-  // tracking (log-update reset, lastOutput cleared, fullStaticOutput dropped)
-  // looks correct for one frame but the live area drifts on subsequent
-  // streaming responses — Ink's cursor math depends on terminal-state
-  // assumptions that ANSI clearing breaks. The only RELIABLE reset is to
-  // tear down the React tree entirely and render a fresh Ink instance.
-  // gg-boss arrived at the same conclusion (see orchestrator-app.tsx).
-  function resetUI(newMessages: Message[]): void {
+  // Nuke-and-rebuild for every path that clears the screen. Patching Ink's
+  // internal frame tracking (log-update reset, lastOutput cleared,
+  // fullStaticOutput dropped) looks correct for one frame but the live area
+  // drifts on subsequent streaming responses — Ink's cursor math depends on
+  // terminal-state assumptions that ANSI clearing breaks. The only RELIABLE
+  // reset is to tear down the React tree entirely and render a fresh Ink
+  // instance. gg-boss arrived at the same conclusion (orchestrator-app.tsx).
+  function resetUI(options?: ResetUIOptions): void {
     const old = ref.instance;
     if (!old) return;
-    // Wipe the terminal first so the old instance's scrollback doesn't
-    // linger above the new instance's banner.
+
+    if (options?.wipeSession) {
+      // Wipe everything session-scoped FIRST. Other options below can then
+      // re-seed specific fields (e.g. plan accept wipes the chat then sets
+      // approvedPlanPath + planSteps for the implementation phase).
+      sessionStore.history = [{ kind: "banner", id: "banner" }];
+      sessionStore.approvedPlanPath = undefined;
+      sessionStore.planSteps = [];
+      sessionStore.sessionTitle = undefined;
+      sessionStore.sessionTitleGenerated = false;
+    }
+    if (options?.messages) sessionStore.messages = options.messages;
+    if (options?.history) sessionStore.history = options.history;
+    if (options?.approvedPlanPath !== undefined) {
+      sessionStore.approvedPlanPath = options.approvedPlanPath;
+    }
+    if (options?.planSteps !== undefined) sessionStore.planSteps = options.planSteps;
+    if (options?.sessionPath !== undefined) sessionStore.sessionPath = options.sessionPath;
+    if (options?.pendingAction) sessionStore.pendingAction = options.pendingAction;
+
     process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
     old.unmount();
-    ref.instance = render(buildElement(newMessages), INK_OPTIONS);
+    ref.instance = render(buildElement(), INK_OPTIONS);
   }
 
-  ref.instance = render(buildElement(config.messages), INK_OPTIONS);
+  ref.instance = render(buildElement(), INK_OPTIONS);
 
   // Loop: when /clear remounts, the OLD instance's waitUntilExit resolves
   // (because unmount() resolves it). We then need to wait on the NEW
