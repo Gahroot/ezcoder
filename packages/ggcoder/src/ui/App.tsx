@@ -531,6 +531,26 @@ export interface AppProps {
   skills?: Skill[];
   initialOverlay?: "pixel";
   rebuildToolsForCwd?: (cwd: string) => AgentTool[];
+  /**
+   * Wired by `renderApp`. Tears down the current Ink instance and renders a
+   * fresh one with the supplied `messages` as the new session's starting
+   * point. Used by `/clear` — patching Ink's internal frame tracking in
+   * place is unreliable (the live area drifts on subsequent streaming
+   * responses); a full unmount/remount is the only consistent reset.
+   * Runtime state (model, provider, thinking) survives via
+   * `onRuntimeStateChange` below.
+   */
+  resetUI?: (messages: Message[]) => void;
+  /**
+   * Wired by `renderApp`. App calls this when the user changes
+   * model/provider/thinking at runtime so those choices survive the
+   * unmount/remount triggered by `/clear`.
+   */
+  onRuntimeStateChange?: (updates: {
+    model?: string;
+    provider?: Provider;
+    thinking?: ThinkingLevel;
+  }) => void;
 }
 
 // ── App Component ──────────────────────────────────────────
@@ -544,7 +564,10 @@ export function App(props: AppProps) {
   // Hoisted before terminal title hook so it can reference them
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [exitPending, setExitPending] = useState(false);
-  const [planMode, setPlanMode] = useState(false);
+  // Initialize from planModeRef (lives outside React in cli.ts) so plan
+  // mode survives /clear's unmount/remount, matching the prior behavior
+  // where /clear didn't toggle plan mode off.
+  const [planMode, setPlanMode] = useState(props.planModeRef?.current ?? false);
   const planModeLocalRef = useRef(false);
   planModeLocalRef.current = planMode;
 
@@ -633,6 +656,22 @@ export function App(props: AppProps) {
     pendingFlushRef.current = [...pendingFlushRef.current, ...items];
     setFlushGeneration((g) => g + 1);
   }, []);
+
+  // Mirror runtime state choices (model/provider/thinking) into renderApp's
+  // closure so /clear's unmount/remount preserves them. Without this, /clear
+  // would reset the user back to the model they launched with.
+  const onRuntimeStateChange = props.onRuntimeStateChange;
+  useEffect(() => {
+    onRuntimeStateChange?.({ model: currentModel });
+  }, [currentModel, onRuntimeStateChange]);
+  useEffect(() => {
+    onRuntimeStateChange?.({ provider: currentProvider });
+  }, [currentProvider, onRuntimeStateChange]);
+  useEffect(() => {
+    onRuntimeStateChange?.({
+      thinking: thinkingEnabled ? (props.thinking ?? "medium") : undefined,
+    });
+  }, [thinkingEnabled, props.thinking, onRuntimeStateChange]);
 
   // Derive credentials for the current provider
   const currentCreds = props.credentialsByProvider?.[currentProvider];
@@ -1629,13 +1668,26 @@ export function App(props: AppProps) {
         process.exit(0);
       }
 
-      // Handle /clear — reset session and clear terminal
+      // Handle /clear — tear down the entire Ink instance and rebuild fresh.
+      // Patching Ink's internal frame tracking in place (log-update reset,
+      // lastOutput cleared, fullStaticOutput dropped, staticKey bump) all
+      // looked correct for one frame but left the live area drifting on
+      // subsequent streaming responses — Ink's cursor math depends on
+      // terminal-state assumptions that ANSI clearing breaks. The reliable
+      // fix is unmount + render again. Runtime state (model, provider,
+      // thinking) survives via renderApp's closure-held `runtimeState`,
+      // mirrored from React state via the useEffects above.
       if (trimmed === "/clear") {
-        // Clear terminal screen + scrollback — needed because Ink's <Static>
-        // writes directly to stdout and can't be removed by clearing React state
+        if (props.resetUI) {
+          void (async () => {
+            const newPrompt = await buildSystemPrompt(props.cwd, props.skills, planMode, undefined);
+            props.resetUI?.([{ role: "system" as const, content: newPrompt }]);
+          })();
+          return;
+        }
+        // Fallback path (resetUI not wired — e.g. tests). Best-effort: clear
+        // React state in place. The Ink-internal drift bug remains here.
         stdout?.write("\x1b[2J\x1b[3J\x1b[H");
-        // Discard any items queued for two-phase flush so they don't leak
-        // into the new session after the Static remount.
         pendingFlushRef.current = [];
         setHistory([{ kind: "banner", id: "banner" }]);
         setLiveItems([]);
@@ -1643,7 +1695,6 @@ export function App(props: AppProps) {
         approvedPlanPathRef.current = undefined;
         planStepsRef.current = [];
         setPlanSteps([]);
-        // Rebuild system prompt without the approved plan
         void (async () => {
           const newPrompt = await buildSystemPrompt(props.cwd, props.skills, planMode, undefined);
           messagesRef.current = [{ role: "system" as const, content: newPrompt }];
@@ -1652,8 +1703,6 @@ export function App(props: AppProps) {
         agentLoop.reset();
         setSessionTitle(undefined);
         sessionTitleGeneratedRef.current = false;
-        // Bump staticKey to force Ink's <Static> to remount, discarding its
-        // internal record of previously rendered items so they don't reappear.
         setStaticKey((k) => k + 1);
         setLiveItems([{ kind: "info", text: "Session cleared.", id: getId() }]);
         return;
