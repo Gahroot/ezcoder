@@ -58,14 +58,10 @@ type StaticRow = BannerRow | HistoryItem;
 interface BossAppProps {
   boss: GGBoss;
   /**
-   * Called from /clear to reset Ink's internal log-update tracking. Without
-   * this, the simple `\x1b[2J\x1b[3J\x1b[H + setStaticKey` dance leaves
-   * log-update with stale prevLineCount + cursor offsets, which then
-   * accumulate position errors on subsequent frames — exactly what we saw
-   * as "input pushed to top, new chats disappear" after /clear.
-   *
-   * The cli wires this to `instance.clear()` from Ink's render() return
-   * value: it writes ANSI clear AND zeroes log-update's frame state.
+   * Called from /clear. Wired in `renderBossApp` to ANSI-wipe the terminal,
+   * unmount the current Ink instance, and render a fresh one — the only
+   * reliable way to reset log-update's internal cursor/line-count tracking
+   * without the drift that manifests as "input pushed upward" after /clear.
    */
   resetUI?: () => void;
 }
@@ -109,12 +105,6 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
   // Seeded from the radio module's module-level state — usually null on
   // launch but resilient to a hot-restart of the React tree.
   const [currentRadio, setCurrentRadio] = useState<string | null>(() => getCurrentStation());
-  // Bumped on /clear so <Static> remounts and re-emits its (now banner-only)
-  // items into a freshly ANSI-wiped terminal. Mirrors ggcoder's pattern in
-  // App.tsx — without the bump, Static's internal emit-set still thinks
-  // every old chat row is "already rendered" and won't restore them.
-  const [staticKey, setStaticKey] = useState(0);
-
   // Auto-update indicator: true when a newer version of @kenkaiiii/gg-boss
   // is on disk waiting for the next restart. Seeded synchronously from the
   // state file (so we show the indicator immediately if a previous session
@@ -248,17 +238,16 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
         bossStore.appendInfo(buildHelpText(), "info");
         return true;
       case "clear":
-        // resetUI() calls Ink's `instance.clear()` which (a) writes the
-        // ANSI screen+scrollback clear and (b) zeroes log-update's internal
-        // prevLineCount/cursor state. The second part is critical — without
-        // it, every subsequent render drifts the cursor up by an
-        // accumulating offset, manifesting as "input keeps pushing to top
-        // and new chats disappear". Bare `\x1b[...J` writes don't fix this
-        // because log-update's tracking lives in JS, not in the terminal.
-        resetUI?.();
+        // Order matters. resetUI() unmounts the old Ink instance and
+        // synchronously renders a fresh one — that first render reads the
+        // bossStore via useBossState(). If we clear the store AFTER resetUI,
+        // the new <Static> emits every old history item into the just-wiped
+        // scrollback, which is exactly the "input pushed upward, subsequent
+        // messages look cleared" symptom. Empty the store first so the new
+        // instance mounts against an empty history.
         bossStore.clearHistory();
+        resetUI?.();
         await boss.resetConversation();
-        setStaticKey((k) => k + 1);
         bossStore.appendInfo("Session cleared.", "info");
         return true;
       case "model-boss":
@@ -329,7 +318,7 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
           on overlay toggles. resizeKey still triggers a remount on terminal
           resize (which is necessary so the layout recomputes) — that's the
           only legitimate reason to drop and re-emit the scrollback. */}
-      <Static key={`${resizeKey}-${staticKey}`} items={staticItems} style={{ width: "100%" }}>
+      <Static key={resizeKey} items={staticItems} style={{ width: "100%" }}>
         {(item) => (
           <Box key={item.id} flexDirection="column" paddingRight={1}>
             <StaticRowView row={item} />
