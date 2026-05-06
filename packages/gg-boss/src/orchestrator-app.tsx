@@ -411,11 +411,6 @@ function scopePrefix(scope: string): string {
 // ── Worker status row (gg-boss specific) ───────────────────
 
 const SHIMMER_WIDTH = 3;
-const WORKER_GLYPH: Record<WorkerView["status"], string> = {
-  idle: "○",
-  working: "●",
-  error: "✗",
-};
 
 function formatElapsed(ms: number): string {
   const total = Math.floor(ms / 1000);
@@ -474,7 +469,14 @@ function WorkerStatusBar({
   pendingMessages: number;
 }): React.ReactElement | null {
   const theme = useTheme();
-  const anyWorking = workers.some((w) => w.status === "working");
+  // Active-first layout: only working and errored workers get named slots.
+  // Idle workers collapse into a single "+N idle" trailer so the bar scales
+  // cleanly from 5 projects to 50. With 4 of 50 projects active, you see
+  // four shimmering names + "+46 idle" instead of fifty repeated glyphs.
+  const working = workers.filter((w) => w.status === "working");
+  const errored = workers.filter((w) => w.status === "error");
+  const idleCount = workers.length - working.length - errored.length;
+  const anyWorking = working.length > 0;
   // Passive tick consumer — when no Sentinel is mounted (no working worker),
   // the global timer is paused and the tick value stops changing, so this
   // component doesn't re-render at 10Hz when everything is idle.
@@ -482,31 +484,47 @@ function WorkerStatusBar({
   const now = Date.now();
 
   if (workers.length === 0) return null;
+  // Render order: working (shimmer + timer) → errored (red name, no timer) →
+  // idle count (single dim "+N idle"). Each slot is separated by a thin
+  // mid-dot so the cluster reads as one bar rather than three.
+  const slots: React.ReactElement[] = [];
+  for (const w of working) {
+    const projectHue = projectColor(w.name);
+    const elapsed = w.workStartedAt ? formatElapsed(now - w.workStartedAt) : null;
+    slots.push(
+      <React.Fragment key={`w-${w.name}`}>
+        <Text color={projectHue}>● </Text>
+        <ShimmerName name={w.name} color={projectHue} tick={tick} />
+        {elapsed && <Text color={theme.textDim}> {elapsed}</Text>}
+      </React.Fragment>,
+    );
+  }
+  for (const w of errored) {
+    slots.push(
+      <React.Fragment key={`e-${w.name}`}>
+        <Text color={theme.error}>✗ </Text>
+        <Text color={theme.error}>{w.name}</Text>
+      </React.Fragment>,
+    );
+  }
+  if (idleCount > 0) {
+    slots.push(
+      <React.Fragment key="idle">
+        <Text color={theme.textDim}>
+          ○ {idleCount} idle
+        </Text>
+      </React.Fragment>,
+    );
+  }
   return (
     <Box paddingX={1}>
       {anyWorking && <AnimationActiveSentinel />}
-      {workers.map((w, i) => {
-        const errored = w.status === "error";
-        const working = w.status === "working";
-        const glyph = WORKER_GLYPH[w.status];
-        const projectHue = projectColor(w.name);
-        const glyphColor = errored ? theme.error : working ? projectHue : theme.textDim;
-        const elapsed = working && w.workStartedAt ? formatElapsed(now - w.workStartedAt) : null;
-        return (
-          <React.Fragment key={w.name}>
-            {i > 0 && <Text color={theme.textDim}>{"  "}</Text>}
-            <Text color={glyphColor}>{glyph} </Text>
-            {working ? (
-              <ShimmerName name={w.name} color={projectHue} tick={tick} />
-            ) : (
-              <Text color={errored ? theme.error : projectHue} dimColor={w.status === "idle"}>
-                {w.name}
-              </Text>
-            )}
-            {elapsed && <Text color={theme.textDim}> {elapsed}</Text>}
-          </React.Fragment>
-        );
-      })}
+      {slots.map((slot, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <Text color={theme.textDim}>{"  ·  "}</Text>}
+          {slot}
+        </React.Fragment>
+      ))}
       {pendingMessages > 0 && (
         <>
           <Text color={theme.textDim}>{"   "}</Text>
