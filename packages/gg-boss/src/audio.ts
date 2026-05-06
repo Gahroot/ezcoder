@@ -44,12 +44,8 @@ function readMp3DurationMs(file: string): number | null {
     const isMpeg1 = versionBits === 0x03;
     if (layerBits !== 0x01) return null; // only Layer III is bundled
     // Bitrate kbps tables for MPEG-1/2 Layer III
-    const BR_V1: number[] = [
-      0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, -1,
-    ];
-    const BR_V2: number[] = [
-      0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, -1,
-    ];
+    const BR_V1: number[] = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, -1];
+    const BR_V2: number[] = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, -1];
     const SR_V1: number[] = [44100, 48000, 32000, -1];
     const SR_V2: number[] = [22050, 24000, 16000, -1];
     const SR_V25: number[] = [11025, 12000, 8000, -1];
