@@ -4,23 +4,35 @@ import path from "node:path";
 import os from "node:os";
 import { tasksStore } from "./tasks-store.js";
 
-// The tasks-store reads getAppPaths().agentDir at runtime via getPlanPath().
-// Override HOME so each test gets an isolated tmp directory and we don't
-// scribble on the user's real ~/.gg/boss/plan.json.
+// The tasks-store reads getAppPaths().agentDir at runtime, which uses
+// os.homedir(). os.homedir() reads HOME on POSIX but USERPROFILE on Windows
+// (with HOMEDRIVE+HOMEPATH as a fallback). Override every variable Node may
+// consult so each test gets an isolated tmp directory regardless of platform —
+// without this, Windows runners scribble on the real C:\Users\<admin>\.gg
+// and tests race on the same shared file.
+const HOME_VARS = ["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"] as const;
 let tmpHome: string;
-let originalHome: string | undefined;
+const originalEnv: Partial<Record<(typeof HOME_VARS)[number], string | undefined>> = {};
 
 beforeEach(async () => {
   tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-boss-test-"));
-  originalHome = process.env.HOME;
+  for (const k of HOME_VARS) originalEnv[k] = process.env[k];
   process.env.HOME = tmpHome;
-  // Reset in-memory state between tests.
+  process.env.USERPROFILE = tmpHome;
+  // os.homedir() on Windows falls back to HOMEDRIVE+HOMEPATH if USERPROFILE
+  // is unset. Set HOMEDRIVE empty so HOMEPATH alone resolves to tmpHome.
+  process.env.HOMEDRIVE = "";
+  process.env.HOMEPATH = tmpHome;
+  // Reset in-memory state AND ensure plan.json is wiped at the new location
+  // so leftover state from a previous test (different tmpHome) can't leak.
   await tasksStore.reset();
 });
 
 afterEach(async () => {
-  if (originalHome !== undefined) process.env.HOME = originalHome;
-  else delete process.env.HOME;
+  for (const k of HOME_VARS) {
+    if (originalEnv[k] !== undefined) process.env[k] = originalEnv[k];
+    else delete process.env[k];
+  }
   await fs.rm(tmpHome, { recursive: true, force: true });
 });
 
