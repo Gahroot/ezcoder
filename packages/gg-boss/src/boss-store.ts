@@ -219,7 +219,17 @@ export interface BossUiState {
    * Cycled with Tab; gets injected into every prompt the user sends.
    */
   scope: string;
+  /**
+   * Active overlay (if any). Lives in the store rather than React state so
+   * it survives the unmount/remount that overlay open/close performs to
+   * escape Ink's live-area drift — same pattern ggcoder adopted across all
+   * its overlays. Without this mirror, opening an overlay would remount the
+   * tree and the new mount would have no overlay set, defeating the toggle.
+   */
+  overlay: BossOverlay | null;
 }
+
+export type BossOverlay = "model-boss" | "model-workers" | "tasks" | "radio";
 
 const initialState: BossUiState = {
   bossProvider: "anthropic",
@@ -242,6 +252,7 @@ const initialState: BossUiState = {
   pendingUserMessages: 0,
   exitPending: false,
   scope: "all",
+  overlay: null,
 };
 
 let state: BossUiState = initialState;
@@ -768,6 +779,18 @@ export const bossStore = {
     notify();
   },
 
+  /**
+   * Set or clear the active overlay. Lives in the store (not React state)
+   * because overlay open/close triggers an Ink unmount/remount to escape
+   * live-area drift — the new mount reads this back to know which overlay
+   * to render. Calling with the same value is a no-op.
+   */
+  setOverlay(next: BossOverlay | null): void {
+    if (state.overlay === next) return;
+    state = { ...state, overlay: next };
+    notify();
+  },
+
   setExitPending(pending: boolean): void {
     if (state.exitPending === pending) return;
     state = { ...state, exitPending: pending };
@@ -864,6 +887,9 @@ export const bossStore = {
       compaction: null,
       bossInputTokens: 0,
       runStartMs: null,
+      // Drop any active overlay so /clear lands on the chat, not back in
+      // the overlay it was invoked from.
+      overlay: null,
     };
     notify();
   },

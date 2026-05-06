@@ -25,6 +25,7 @@ import { BossBanner } from "./banner.js";
 import { bossStore, useBossState } from "./boss-store.js";
 import type {
   AssistantItem,
+  BossOverlay,
   HistoryItem,
   StreamingTool,
   StreamingTurn,
@@ -83,7 +84,7 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
   const state = useBossState();
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const { resizeKey, columns } = useTerminalSize();
+  const { resizeKey, columns, rows } = useTerminalSize();
   const runStartRef = useRef<number | null>(null);
   runStartRef.current = state.runStartMs;
   // Live char count of the current streaming text — drives ActivityIndicator's
@@ -97,9 +98,12 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
   // Track the most recent user message so the activity bar's contextual phrase
   // selection has something to riff on (when not using BOSS_PHRASES override).
   const [lastUserMessage, setLastUserMessage] = useState<string>("");
-  const [overlay, setOverlay] = useState<"model-boss" | "model-workers" | "tasks" | "radio" | null>(
-    null,
-  );
+  // Overlay state lives in bossStore so it survives the unmount/remount
+  // performed by openOverlay/closeOverlay. The new mount reads this back
+  // and renders the same overlay it had pre-remount. See the resetUI
+  // comment in renderBossApp for why we remount instead of just toggling
+  // React state.
+  const overlay = state.overlay;
   // Track the currently-playing station id so the picker can mark it with *
   // and so we have a reactive value for any future "now playing" indicator.
   // Seeded from the radio module's module-level state — usually null on
@@ -169,28 +173,27 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
   );
 
   /**
-   * No screen clears, no Static remounts. Just toggle React state.
-   *
-   * Banner is emitted ONCE on initial mount (Static's natural behavior — items
-   * by id are emitted exactly once per Static instance lifetime). It lives in
-   * scrollback forever after that, never re-emitted. So duplicate banners are
-   * structurally impossible.
-   *
-   * The remaining concern is Ink's log-update cursor math when the live area
-   * shrinks (tasks pane → chat chrome). log-update only clears within the
-   * previous frame's footprint at the bottom of the viewport — it cannot
-   * reach into scrollback. So banner + history in scrollback stay intact.
+   * Opening or closing an overlay shrinks/grows the live area dramatically
+   * (tasks pane → chat chrome, model picker → chat chrome, etc.). Toggling
+   * React state alone leaves Ink's log-update cursor math drifting on the
+   * very next streaming response, surfacing as "input pushed upward, new
+   * chat lines disappear off the top". Mirrors ggcoder's broader fix
+   * (commit 0246c6d): every overlay open/close goes through resetUI which
+   * unmounts the Ink instance and renders a fresh one. The overlay
+   * selection survives via bossStore.overlay.
    */
   const openOverlay = useCallback(
-    (next: "tasks" | "model-boss" | "model-workers" | "radio"): void => {
-      setOverlay(next);
+    (next: BossOverlay): void => {
+      bossStore.setOverlay(next);
+      if (resetUI) resetUI();
     },
-    [],
+    [resetUI],
   );
 
   const closeOverlay = useCallback((): void => {
-    setOverlay(null);
-  }, []);
+    bossStore.setOverlay(null);
+    if (resetUI) resetUI();
+  }, [resetUI]);
   void stdout;
 
   // ggcoder's double-press pattern: 800ms window. First press shows
@@ -311,6 +314,26 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
     // Boss is idle → double-press to exit, with footer pending message.
     handleDoubleExit();
   };
+
+  // Live area = streaming + activity + input (≥3 lines, bordered) + footer +
+  // workerbar. Below ~14 rows we can't fit all of it without log-update
+  // running out of vertical space — at which point Ink's cursor math drifts
+  // and you see "input pushed upward, new output disappears." Render a
+  // friendly resize hint instead so the user knows what's happening rather
+  // than thinking the app is broken. We're already past the static history
+  // mount, so scrollback survives the resize that brings the user back.
+  if (rows < 14) {
+    return (
+      <Box flexDirection="column" width={columns} paddingX={1} marginTop={1}>
+        <Text bold color={COLORS.accent}>
+          {"Terminal too small"}
+        </Text>
+        <Text color={COLORS.primary}>
+          {`Resize to at least 14 rows to use GG Boss (currently ${rows}).`}
+        </Text>
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" width={columns}>
@@ -541,6 +564,7 @@ function WorkerStatusBar({
   pendingMessages: number;
 }): React.ReactElement | null {
   const theme = useTheme();
+  const { columns } = useTerminalSize();
   // Active-first layout: only working and errored workers get named slots.
   // Idle workers collapse into a single "+N idle" trailer so the bar scales
   // cleanly from 5 projects to 50. With 4 of 50 projects active, you see
@@ -587,23 +611,32 @@ function WorkerStatusBar({
       </React.Fragment>,
     );
   }
+  // Hard-pin the bar to a single line: any wrap multiplies live-area height
+  // and Ink's log-update can't redraw a varying-height live area while a
+  // streaming response is mid-flight (the symptom: bordered input duplicates
+  // upward and new chat lines fall off the top). With many workers + a
+  // narrow terminal this would otherwise wrap to two or three lines, so we
+  // truncate at the right edge instead. Width=columns + flexShrink lets the
+  // truncation kick in cleanly inside the parent column layout.
   return (
-    <Box paddingX={1}>
+    <Box paddingX={1} width={columns} flexShrink={1}>
       {anyWorking && <AnimationActiveSentinel />}
-      {slots.map((slot, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && <Text color={theme.border}>{" │ "}</Text>}
-          {slot}
-        </React.Fragment>
-      ))}
-      {pendingMessages > 0 && (
-        <>
-          <Text color={theme.textDim}>{"   "}</Text>
-          <Text color={theme.warning}>
-            {pendingMessages} message{pendingMessages === 1 ? "" : "s"} queued
-          </Text>
-        </>
-      )}
+      <Text wrap="truncate">
+        {slots.map((slot, i) => (
+          <React.Fragment key={i}>
+            {i > 0 && <Text color={theme.border}>{" │ "}</Text>}
+            {slot}
+          </React.Fragment>
+        ))}
+        {pendingMessages > 0 && (
+          <>
+            <Text color={theme.textDim}>{"   "}</Text>
+            <Text color={theme.warning}>
+              {pendingMessages} message{pendingMessages === 1 ? "" : "s"} queued
+            </Text>
+          </>
+        )}
+      </Text>
     </Box>
   );
 }
