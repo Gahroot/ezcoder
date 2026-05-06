@@ -57,22 +57,33 @@ type StaticRow = BannerRow | HistoryItem;
 
 interface BossAppProps {
   boss: GGBoss;
+  /**
+   * Called from /clear to reset Ink's internal log-update tracking. Without
+   * this, the simple `\x1b[2J\x1b[3J\x1b[H + setStaticKey` dance leaves
+   * log-update with stale prevLineCount + cursor offsets, which then
+   * accumulate position errors on subsequent frames — exactly what we saw
+   * as "input pushed to top, new chats disappear" after /clear.
+   *
+   * The cli wires this to `instance.clear()` from Ink's render() return
+   * value: it writes ANSI clear AND zeroes log-update's frame state.
+   */
+  resetUI?: () => void;
 }
 
-export function BossApp({ boss }: BossAppProps): React.ReactElement {
+export function BossApp(props: BossAppProps): React.ReactElement {
   const theme = loadTheme("dark");
   return (
     <TerminalSizeProvider>
       <ThemeContext.Provider value={theme}>
         <AnimationProvider>
-          <BossAppInner boss={boss} />
+          <BossAppInner {...props} />
         </AnimationProvider>
       </ThemeContext.Provider>
     </TerminalSizeProvider>
   );
 }
 
-function BossAppInner({ boss }: BossAppProps): React.ReactElement {
+function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
   const state = useBossState();
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -234,18 +245,14 @@ function BossAppInner({ boss }: BossAppProps): React.ReactElement {
         bossStore.appendInfo(buildHelpText(), "info");
         return true;
       case "clear":
-        // Mirrors ggcoder's /clear (App.tsx:1632-1659):
-        //   1. ANSI-wipe the terminal (screen + scrollback) so old emitted
-        //      Static rows physically disappear — clearing React state alone
-        //      doesn't touch what Ink already wrote to stdout.
-        //   2. Wipe React-side history + agent message context.
-        //   3. Bump staticKey to force <Static> to remount with a fresh
-        //      emit-set, so the next render re-emits the (now banner-only)
-        //      items into the wiped scrollback.
-        //   4. Drop a "Session cleared." info row in chat as confirmation.
-        // Order matters: ANSI clear before state changes so the sequence
-        // happens cleanly within Ink's next render frame.
-        stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+        // resetUI() calls Ink's `instance.clear()` which (a) writes the
+        // ANSI screen+scrollback clear and (b) zeroes log-update's internal
+        // prevLineCount/cursor state. The second part is critical — without
+        // it, every subsequent render drifts the cursor up by an
+        // accumulating offset, manifesting as "input keeps pushing to top
+        // and new chats disappear". Bare `\x1b[...J` writes don't fix this
+        // because log-update's tracking lives in JS, not in the terminal.
+        resetUI?.();
         bossStore.clearHistory();
         await boss.resetConversation();
         setStaticKey((k) => k + 1);
@@ -1054,11 +1061,22 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   waitUntilExit: () => Promise<void>;
   unmount: () => void;
 } {
-  // Disable Ink's built-in exit-on-Ctrl+C — we need our own double-press
-  // handler in BossApp to drive the "Press Ctrl+C again to exit" footer
-  // message. With this flag true (the default), Ink kills the process on the
-  // very first Ctrl+C and InputArea's onAbort never runs.
-  const instance = render(<BossApp boss={opts.boss} />, { exitOnCtrlC: false });
+  // We need a forward reference: BossApp's resetUI prop wants to call
+  // instance.clear(), but `instance` doesn't exist until after render() is
+  // invoked. Closing over a holder lets the prop see the instance once it's
+  // assigned, without restructuring the whole BossApp tree.
+  const ref: { instance: ReturnType<typeof render> | null } = { instance: null };
+  const resetUI = (): void => {
+    ref.instance?.clear();
+  };
+  const instance = render(<BossApp boss={opts.boss} resetUI={resetUI} />, {
+    // Disable Ink's built-in exit-on-Ctrl+C — we need our own double-press
+    // handler in BossApp to drive the "Press Ctrl+C again to exit" footer
+    // message. With this flag true (the default), Ink kills the process on
+    // the very first Ctrl+C and InputArea's onAbort never runs.
+    exitOnCtrlC: false,
+  });
+  ref.instance = instance;
   return {
     waitUntilExit: async () => {
       await instance.waitUntilExit();
