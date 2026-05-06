@@ -1081,13 +1081,33 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   const resetUI = (): void => {
     const inst = ref.instance;
     if (!inst) return;
-    // 1. ANSI wipe terminal scrollback + viewport.
+    // Ink's internal frame-tracking state lives in two places. log-update
+    // (instance.log) tracks `previousLineCount` / `previousOutput` for the
+    // dynamic area's cursor math. Ink's instance ALSO tracks `lastOutput`,
+    // `lastOutputHeight`, `lastOutputToRender`, and `fullStaticOutput` for
+    // resize-clear and re-render decisions. Both must be reset together,
+    // or the next frame computes cursor offsets against stale heights and
+    // pushes the input to the top while clobbering content above.
+    const internals = inst as unknown as {
+      log?: { reset?: () => void };
+      lastOutput?: string;
+      lastOutputToRender?: string;
+      lastOutputHeight?: number;
+      fullStaticOutput?: string;
+    };
+    // 1. ANSI-wipe terminal scrollback + viewport so scrollback's old
+    //    chat history physically disappears.
     process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
-    // 2. Force log-update internal state to zero so the next render writes
-    //    fresh from cursor row 0 instead of trying to undo a phantom prior
-    //    frame.
-    const log = (inst as unknown as { log?: { reset?: () => void } }).log;
-    log?.reset?.();
+    // 2. Zero log-update's internal cursor/line-count tracking.
+    internals.log?.reset?.();
+    // 3. Zero Ink instance's frame-height bookkeeping so the next render
+    //    writes a fresh frame from cursor row 0.
+    internals.lastOutput = "";
+    internals.lastOutputToRender = "";
+    internals.lastOutputHeight = 0;
+    // 4. Drop the accumulated static output buffer — Ink replays this on
+    //    fullscreen-clear paths, so stale content would otherwise re-emerge.
+    internals.fullStaticOutput = "";
   };
   const instance = render(<BossApp boss={opts.boss} resetUI={resetUI} />, {
     // Disable Ink's built-in exit-on-Ctrl+C — we need our own double-press
