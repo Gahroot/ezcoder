@@ -76,6 +76,7 @@ import {
   extractPlanSteps,
   findCompletedMarkers,
   markStepsCompleted,
+  segmentDisplayText,
   stripDoneMarkers,
   type PlanStep,
 } from "../utils/plan-steps.js";
@@ -271,6 +272,13 @@ interface TombstoneItem {
   id: string;
 }
 
+interface StepDoneItem {
+  kind: "step_done";
+  stepNum: number;
+  description: string;
+  id: string;
+}
+
 /** Tools that get aggregated into a single compact group when concurrent. */
 const AGGREGATABLE_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
@@ -308,7 +316,8 @@ export type CompletedItem =
   | SubAgentGroupItem
   | ToolGroupItem
   | PlanTransitionItem
-  | TombstoneItem;
+  | TombstoneItem
+  | StepDoneItem;
 
 /**
  * Cap memory by replacing old items with tiny tombstones. Ink's <Static>
@@ -1157,23 +1166,52 @@ export function App(props: AppProps) {
           if (flushed.length > 0) {
             queueFlush(flushed);
           }
-          // Always strip [DONE:N] markers from displayed text — they're an
-          // internal signal for the plan progress widget, not user-facing.
-          // The earlier `planStepsRef.current.length > 0` gate let markers
-          // leak through after all steps were completed (planStepsRef gets
-          // cleared in onComplete), surfacing as a visible "[DONE:N]" in
-          // the agent's wrap-up turn.
-          const displayText = stripDoneMarkers(text);
-          return [
-            {
+          // Split text on [DONE:N] markers so each marker renders inline as
+          // a styled "✓ Step N: <description>" item at the position the
+          // agent emitted it, instead of vanishing into stripped whitespace.
+          // Falls back to a single assistant item containing the
+          // marker-stripped text when there are no markers (keeps the
+          // common case zero-cost).
+          const segments = segmentDisplayText(text, planStepsRef.current);
+          const items: CompletedItem[] = [];
+          let thinkingAttached = false;
+          for (const seg of segments) {
+            if (seg.kind === "text") {
+              items.push({
+                kind: "assistant",
+                text: stripDoneMarkers(seg.text),
+                // Attach thinking only to the first text segment so we
+                // don't render duplicate ThinkingBlocks when a turn
+                // contains multiple text chunks split by markers.
+                thinking: thinkingAttached ? undefined : thinking,
+                thinkingMs: thinkingAttached ? undefined : thinkingMs,
+                planMode: planModeLocalRef.current,
+                id: getId(),
+              });
+              thinkingAttached = true;
+            } else {
+              items.push({
+                kind: "step_done",
+                stepNum: seg.stepNum,
+                description: seg.description,
+                id: getId(),
+              });
+            }
+          }
+          // No segments at all (text was empty/whitespace, no markers).
+          // Still emit an assistant item so a thinking block renders if
+          // there was thinking content for this turn.
+          if (items.length === 0) {
+            items.push({
               kind: "assistant",
-              text: displayText,
+              text: "",
               thinking,
               thinkingMs,
               planMode: planModeLocalRef.current,
               id: getId(),
-            },
-          ];
+            });
+          }
+          return items;
         });
       }, []),
       onToolStart: useCallback(
@@ -2422,6 +2460,22 @@ export function App(props: AppProps) {
             <Text color={theme.planPrimary} bold wrap="wrap">
               {item.active ? "● " : "● "}
               {item.text}
+            </Text>
+          </Box>
+        );
+      case "step_done":
+        return (
+          <Box key={item.id} marginTop={1} flexShrink={1}>
+            <Text wrap="wrap">
+              <Text color={theme.success} bold>
+                {"✓ "}
+              </Text>
+              <Text color={theme.success} bold>
+                {`Step ${item.stepNum} done`}
+              </Text>
+              {item.description ? (
+                <Text color={theme.textDim}>{` — ${item.description}`}</Text>
+              ) : null}
             </Text>
           </Box>
         );
