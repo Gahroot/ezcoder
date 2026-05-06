@@ -531,17 +531,6 @@ export interface AppProps {
   skills?: Skill[];
   initialOverlay?: "pixel";
   rebuildToolsForCwd?: (cwd: string) => AgentTool[];
-  /**
-   * Wired by `renderApp`. Called from /clear to ANSI-wipe the terminal AND
-   * reset Ink's internal frame-tracking state — `log-update`'s prevLineCount
-   * + cursor, plus the Ink instance's `lastOutput`/`lastOutputHeight`/
-   * `fullStaticOutput` buffers. Without that reset, the live area drifts
-   * upward on every subsequent render because Ink replays its accumulated
-   * static buffer (containing all old history) whenever a render trips its
-   * full-clear path. Bare `\x1b[...J` writes don't fix it because the stale
-   * state lives in JS, not in the terminal.
-   */
-  resetUI?: () => void;
 }
 
 // ── App Component ──────────────────────────────────────────
@@ -645,25 +634,6 @@ export function App(props: AppProps) {
     setFlushGeneration((g) => g + 1);
   }, []);
 
-  // ANSI clear + reset Ink's internal frame buffers. A bare ANSI write leaves
-  // Ink's `fullStaticOutput`/`lastOutput*` buffers stale, so any subsequent
-  // render that trips Ink's full-clear path replays every old history item
-  // back into the terminal — surfacing as "the previous session's content
-  // keeps reappearing on top of new output" (notably after a plan is
-  // approved and implementation begins). resetUI() — wired by renderApp —
-  // does both the ANSI write and the buffer reset; if it isn't wired (e.g.
-  // tests), fall back to the bare write.
-  const resetUIRef = useRef(props.resetUI);
-  resetUIRef.current = props.resetUI;
-  const clearScreen = useCallback(() => {
-    const reset = resetUIRef.current;
-    if (reset) {
-      reset();
-      return;
-    }
-    stdout?.write("\x1b[2J\x1b[3J\x1b[H");
-  }, [stdout]);
-
   // Derive credentials for the current provider
   const currentCreds = props.credentialsByProvider?.[currentProvider];
   const activeApiKey = currentCreds?.accessToken ?? props.apiKey;
@@ -747,7 +717,7 @@ export function App(props: AppProps) {
         // premature "done" status that fires when the agent loop finishes
         planOverlayPendingRef.current = true;
         setTimeout(() => {
-          clearScreen();
+          stdout?.write("\x1b[2J\x1b[3J\x1b[H");
           setPlanAutoExpand(true);
           setOverlay("plan");
           // Don't clear planOverlayPendingRef here — keep it true until
@@ -1661,7 +1631,9 @@ export function App(props: AppProps) {
 
       // Handle /clear — reset session and clear terminal
       if (trimmed === "/clear") {
-        clearScreen();
+        // Clear terminal screen + scrollback — needed because Ink's <Static>
+        // writes directly to stdout and can't be removed by clearing React state
+        stdout?.write("\x1b[2J\x1b[3J\x1b[H");
         // Discard any items queued for two-phase flush so they don't leak
         // into the new session after the Static remount.
         pendingFlushRef.current = [];
@@ -1773,7 +1745,7 @@ export function App(props: AppProps) {
 
       // Handle /plans — open plan pane
       if (trimmed === "/plans") {
-        clearScreen();
+        stdout?.write("\x1b[2J\x1b[3J\x1b[H");
         setPlanAutoExpand(false);
         setOverlay("plan");
         return;
@@ -2343,7 +2315,7 @@ export function App(props: AppProps) {
     (title: string, prompt: string, taskId: string) => {
       setTaskCount(getTaskCount(props.cwd));
       // Reset to a fresh session before sending the task
-      clearScreen();
+      stdout?.write("\x1b[2J\x1b[3J\x1b[H");
       setHistory([{ kind: "banner", id: "banner" }]);
       setLiveItems([]);
       messagesRef.current = messagesRef.current.slice(0, 1);
@@ -2433,7 +2405,7 @@ export function App(props: AppProps) {
           // the chdir would print a banner with the old cwd, then bumping
           // staticKey would print a second banner with the new cwd — leaving
           // two banners stacked in the scrollback.
-          clearScreen();
+          stdout?.write("\x1b[2J\x1b[3J\x1b[H");
           setHistory([{ kind: "banner", id: "banner" }]);
           setLiveItems([]);
           setStaticKey((k) => k + 1);
@@ -2506,7 +2478,7 @@ export function App(props: AppProps) {
           cwd={props.cwd}
           agentRunning={agentLoop.isRunning}
           onClose={() => {
-            clearScreen();
+            stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setTaskCount(getTaskCount(props.cwd));
             setStaticKey((k) => k + 1);
             setOverlay(null);
@@ -2530,7 +2502,7 @@ export function App(props: AppProps) {
           version={props.version}
           agentRunning={agentLoop.isRunning}
           onClose={() => {
-            clearScreen();
+            stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setStaticKey((k) => k + 1);
             setOverlay(null);
           }}
@@ -2550,7 +2522,7 @@ export function App(props: AppProps) {
         <SkillsOverlay
           cwd={props.cwd}
           onClose={() => {
-            clearScreen();
+            stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setStaticKey((k) => k + 1);
             setOverlay(null);
           }}
@@ -2559,7 +2531,7 @@ export function App(props: AppProps) {
         <EyesOverlay
           cwd={props.cwd}
           onClose={() => {
-            clearScreen();
+            stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setEyesCount(
               isEyesActive(props.cwd) ? journalCount({ status: "open" }, props.cwd) : undefined,
             );
@@ -2576,7 +2548,7 @@ export function App(props: AppProps) {
           autoExpandNewest={planAutoExpand}
           onClose={() => {
             planOverlayPendingRef.current = false;
-            clearScreen();
+            stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setStaticKey((k) => k + 1);
             setPlanAutoExpand(false);
             setOverlay(null);
@@ -2600,7 +2572,7 @@ export function App(props: AppProps) {
             );
 
             // Clear session for a fresh context focused on the plan
-            clearScreen();
+            stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setHistory([{ kind: "banner", id: "banner" }]);
             setLiveItems([]);
             setStaticKey((k) => k + 1);
@@ -2643,7 +2615,7 @@ export function App(props: AppProps) {
           }}
           onReject={(planPath, feedback) => {
             planOverlayPendingRef.current = false;
-            clearScreen();
+            stdout?.write("\x1b[2J\x1b[3J\x1b[H");
             setStaticKey((k) => k + 1);
             setPlanAutoExpand(false);
             setOverlay(null);
@@ -2751,15 +2723,15 @@ export function App(props: AppProps) {
             onDownAtEnd={handleFocusTaskBar}
             onShiftTab={handleToggleThinking}
             onToggleTasks={() => {
-              clearScreen();
+              stdout?.write("\x1b[2J\x1b[3J\x1b[H");
               setOverlay("tasks");
             }}
             onToggleSkills={() => {
-              clearScreen();
+              stdout?.write("\x1b[2J\x1b[3J\x1b[H");
               setOverlay("skills");
             }}
             onTogglePixel={() => {
-              clearScreen();
+              stdout?.write("\x1b[2J\x1b[3J\x1b[H");
               setOverlay("pixel");
             }}
             onTogglePlanMode={() => {
