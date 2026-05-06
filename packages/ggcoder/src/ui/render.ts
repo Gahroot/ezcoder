@@ -1,4 +1,6 @@
 import React from "react";
+import path from "node:path";
+import { createRequire } from "node:module";
 import { render } from "ink";
 import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
@@ -69,12 +71,67 @@ function ThemeProvider({
   );
 }
 
+/**
+ * Reach into the Ink instance bound to `stdout` and zero its internal
+ * frame-tracking state. Without this, /clear leaves stale state in three
+ * places that an ANSI wipe can't reach:
+ *   - log-update's prevLineCount/cursor (drives where the next live frame
+ *     gets drawn — stale state pushes the input area higher every render)
+ *   - Ink's lastOutput/lastOutputHeight (drives shouldClearTerminalForFrame
+ *     decisions, including the wasOverflowing/wasFullscreen heuristics)
+ *   - Ink's fullStaticOutput buffer (replayed verbatim whenever Ink trips
+ *     its full-clear path; without resetting, every old history row reappears
+ *     as soon as the live area grows tall enough to overflow the viewport)
+ *
+ * Ink doesn't expose these on its public API; the WeakMap is in a private
+ * submodule that the package exports map blocks from static import. We
+ * resolve it via createRequire (which bypasses the exports check when given
+ * an absolute path) and cache the lookup at startup.
+ */
+function loadInkInstancesRegistry(): WeakMap<NodeJS.WriteStream, unknown> | null {
+  try {
+    const require = createRequire(import.meta.url);
+    const inkBuildDir = path.dirname(require.resolve("ink"));
+    const instancesPath = path.join(inkBuildDir, "instances.js");
+    const mod = require(instancesPath) as { default: WeakMap<NodeJS.WriteStream, unknown> };
+    return mod.default;
+  } catch {
+    return null;
+  }
+}
+
+function makeResetUI(
+  stdout: NodeJS.WriteStream,
+  registry: WeakMap<NodeJS.WriteStream, unknown> | null,
+): () => void {
+  return () => {
+    stdout.write("\x1b[2J\x1b[3J\x1b[H");
+    if (!registry) return;
+    const inst = registry.get(stdout);
+    if (!inst) return;
+    const internals = inst as {
+      log?: { reset?: () => void };
+      lastOutput?: string;
+      lastOutputToRender?: string;
+      lastOutputHeight?: number;
+      fullStaticOutput?: string;
+    };
+    internals.log?.reset?.();
+    internals.lastOutput = "";
+    internals.lastOutputToRender = "";
+    internals.lastOutputHeight = 0;
+    internals.fullStaticOutput = "";
+  };
+}
+
 export async function renderApp(config: RenderAppConfig): Promise<void> {
   const themeSetting = config.theme ?? "auto";
   const resolvedTheme = themeSetting === "auto" ? await detectTheme() : themeSetting;
 
   // Clear screen + scrollback so old commands don't appear above the TUI
   process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+
+  const resetUI = makeResetUI(process.stdout, loadInkInstancesRegistry());
 
   const { waitUntilExit } = render(
     React.createElement(
@@ -117,6 +174,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             skills: config.skills,
             initialOverlay: config.initialOverlay,
             rebuildToolsForCwd: config.rebuildToolsForCwd,
+            resetUI,
           }),
         ),
       ),
