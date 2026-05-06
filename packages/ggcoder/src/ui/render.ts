@@ -272,17 +272,42 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
 
   ref.instance = render(buildElement(), INK_OPTIONS);
 
+  // Terminal resize → full unmount/remount. The TerminalSizeProvider hook
+  // already debounces resize and writes a screen clear at the end of a
+  // drag, but that doesn't reset Ink's log-update internal line-count
+  // tracking — so on the very next render the live area is positioned
+  // against stale cursor state and the input box ends up pinned to the top
+  // of the viewport with new chat lines disappearing off-screen. Same
+  // symptom /clear hit; same fix — tear down the React tree and start
+  // fresh. Debounced 250ms (shorter than the hook's 300ms) so resetUI wins
+  // the race; the hook's pending timer is cancelled by its own useEffect
+  // cleanup when the old instance unmounts.
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  const onTerminalResize = (): void => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeTimer = null;
+      resetUI();
+    }, 250);
+  };
+  process.stdout.on("resize", onTerminalResize);
+
   // Loop: when /clear remounts, the OLD instance's waitUntilExit resolves
   // (because unmount() resolves it). We then need to wait on the NEW
   // instance. If exit was final (no replacement), ref.instance is nulled
   // by unmount and the loop ends.
-  while (true) {
-    const current: InkInstance | null = ref.instance;
-    if (!current) return;
-    await current.waitUntilExit();
-    if (ref.instance === current) {
-      ref.instance = null;
-      return;
+  try {
+    while (true) {
+      const current: InkInstance | null = ref.instance;
+      if (!current) return;
+      await current.waitUntilExit();
+      if (ref.instance === current) {
+        ref.instance = null;
+        return;
+      }
     }
+  } finally {
+    process.stdout.off("resize", onTerminalResize);
+    if (resizeTimer) clearTimeout(resizeTimer);
   }
 }

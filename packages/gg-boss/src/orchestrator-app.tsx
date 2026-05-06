@@ -1142,6 +1142,32 @@ export function renderBossApp(opts: RenderBossAppOptions): {
     exitOnCtrlC: false,
   });
   ref.instance = instance;
+
+  // Terminal resize → full unmount/remount of the Ink instance.
+  //
+  // useTerminalSize already debounces resize events (300ms) and writes a
+  // screen clear at the end of a drag, but that doesn't reset Ink's
+  // log-update internal line-count tracking — so on the very next render
+  // the live area is positioned against stale cursor state and the input
+  // box ends up pinned to the top of the viewport with new chat lines
+  // disappearing off-screen. That's the exact symptom /clear hit, and the
+  // fix is the same: tear down the React tree and start fresh.
+  //
+  // Debounce is 250ms — slightly shorter than the hook's 300ms so resetUI
+  // wins the race. When resetUI's unmount runs, the hook's pending
+  // setTimeout is cleared by its own useEffect cleanup, so we don't
+  // double-fire. State outside React (GGBoss class, bossStore singleton,
+  // overlay) survives.
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  const onTerminalResize = (): void => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeTimer = null;
+      resetUI();
+    }, 250);
+  };
+  process.stdout.on("resize", onTerminalResize);
+
   return {
     // Follow ref.instance through restarts: when /clear nukes the current
     // instance and creates a new one, this promise re-binds to whichever
@@ -1151,17 +1177,27 @@ export function renderBossApp(opts: RenderBossAppOptions): {
     waitUntilExit: async () => {
       while (true) {
         const current = ref.instance;
-        if (!current) return;
+        if (!current) {
+          process.stdout.off("resize", onTerminalResize);
+          if (resizeTimer) clearTimeout(resizeTimer);
+          return;
+        }
         await current.waitUntilExit();
         // If the user ran /clear, ref.instance is now a NEW instance —
         // loop and wait on that one. If exit was final (no replacement),
         // ref.instance was nulled below and the loop ends.
         if (ref.instance === current) {
           ref.instance = null;
+          process.stdout.off("resize", onTerminalResize);
+          if (resizeTimer) clearTimeout(resizeTimer);
           return;
         }
       }
     },
-    unmount: () => ref.instance?.unmount(),
+    unmount: () => {
+      process.stdout.off("resize", onTerminalResize);
+      if (resizeTimer) clearTimeout(resizeTimer);
+      ref.instance?.unmount();
+    },
   };
 }
