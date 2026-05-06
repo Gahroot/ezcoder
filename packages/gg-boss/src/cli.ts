@@ -225,6 +225,28 @@ async function main(): Promise<void> {
   await runOrchestrator(args);
 }
 
+// Process-level error guards. With ~6 workers sharing the same Node process,
+// any uncaught throw or unhandled rejection would otherwise take the whole
+// orchestrator down — losing every worker's in-flight task. We log the
+// failure to ~/.gg/boss/debug.log (already initialized by this point) and
+// keep running. Truly unrecoverable conditions (OOM, native segfault) still
+// kill the process; nothing JS-side can guard against those.
+process.on("uncaughtException", (err) => {
+  const message = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  log("ERROR", "uncaught_exception", message, { stack });
+  // Don't exit. The boss orchestrator and Ink TUI keep running; any worker
+  // that got into a bad state will surface the issue via worker_error events
+  // on its next interaction. This is far less disruptive than dying outright.
+});
+
+process.on("unhandledRejection", (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? reason.stack : undefined;
+  log("ERROR", "unhandled_rejection", message, { stack });
+  // Same rationale as uncaughtException — log and survive.
+});
+
 main().catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(chalk.hex(COLORS.error)(`\ngg-boss failed: ${message}\n`));
