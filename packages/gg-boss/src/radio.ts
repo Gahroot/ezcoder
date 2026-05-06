@@ -160,10 +160,29 @@ export function playRadio(stationId: string): PlayResult {
       // ENOENT or permission — try the next player.
     }
   }
-  log("WARN", "radio", "no compatible player found");
+  log("WARN", "radio", "no compatible player found", { platform: process.platform });
   return {
     ok: false,
-    error:
-      "No streaming player found. Install mpv (recommended): on macOS run `brew install mpv`, on Linux use your package manager, on Windows download from https://mpv.io/. ffplay (ships with ffmpeg), mpg123, or vlc/cvlc also work.",
+    error: buildInstallHint(),
   };
+}
+
+/**
+ * Platform-specific one-line install hint. Picks the most likely working
+ * command for the current OS so the user can copy-paste rather than reading
+ * a wall of generic suggestions. Falls back to the official mpv site for
+ * platforms we don't recognise.
+ */
+function buildInstallHint(): string {
+  const base = "Radio needs a streaming player. Install one of: mpv (recommended), ffplay, mpg123, or vlc.";
+  switch (process.platform) {
+    case "darwin":
+      return `${base} On macOS: \`brew install mpv\` (or \`brew install ffmpeg\` for ffplay).`;
+    case "linux":
+      return `${base} On Linux (Debian/Ubuntu): \`sudo apt install mpv\`. Fedora: \`sudo dnf install mpv\`. Arch: \`sudo pacman -S mpv\`.`;
+    case "win32":
+      return `${base} On Windows: \`winget install mpv.mpv\` (or download from https://mpv.io).`;
+    default:
+      return `${base} See https://mpv.io for platform installation instructions.`;
+  }
 }
