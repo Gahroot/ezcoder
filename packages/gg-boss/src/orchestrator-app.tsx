@@ -1061,53 +1061,30 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   waitUntilExit: () => Promise<void>;
   unmount: () => void;
 } {
-  // We need a forward reference: BossApp's resetUI prop wants to call into
-  // the Ink instance, but `instance` doesn't exist until after render() is
-  // invoked. Closing over a holder lets the prop see the instance once it's
-  // assigned, without restructuring the whole BossApp tree.
+  // Nuke-and-rebuild approach for /clear. Three earlier attempts at patching
+  // Ink's internal frame-tracking state in place all hit the same wall: even
+  // with log-update reset + lastOutput cleared + fullStaticOutput dropped,
+  // the live area drifts after the next streaming response because Ink's
+  // cursor math depends on terminal-state assumptions that ANSI clearing
+  // breaks. The only RELIABLE reset is to teardown the React tree entirely
+  // and render a fresh Ink instance. State outside React (GGBoss class,
+  // bossStore singleton) survives and the new tree picks it up correctly.
   const ref: { instance: ReturnType<typeof render> | null } = { instance: null };
-  // The published `instance.clear()` is the WRONG primitive here. It calls
-  // log.clear() (good — moves cursor up, erases, sets prevLineCount=0) but
-  // then IMMEDIATELY calls log.sync(lastOutput) which restores prevLineCount
-  // back to the previous frame's height. Net effect: from log-update's view,
-  // the screen still has the old content drawn. Subsequent renders compute
-  // cursor.up() based on that stale count, drift the cursor up over real
-  // content, and produce the "input pushed to top" symptom.
-  //
-  // Reaching into the private `log` reset() is the only way to actually
-  // zero log-update state without log.sync clobbering it back. The cast
-  // is intentional — Ink's public types don't surface this, but the field
-  // exists on every Ink version we support and is stable between releases.
   const resetUI = (): void => {
-    const inst = ref.instance;
-    if (!inst) return;
-    // Ink's internal frame-tracking state lives in two places. log-update
-    // (instance.log) tracks `previousLineCount` / `previousOutput` for the
-    // dynamic area's cursor math. Ink's instance ALSO tracks `lastOutput`,
-    // `lastOutputHeight`, `lastOutputToRender`, and `fullStaticOutput` for
-    // resize-clear and re-render decisions. Both must be reset together,
-    // or the next frame computes cursor offsets against stale heights and
-    // pushes the input to the top while clobbering content above.
-    const internals = inst as unknown as {
-      log?: { reset?: () => void };
-      lastOutput?: string;
-      lastOutputToRender?: string;
-      lastOutputHeight?: number;
-      fullStaticOutput?: string;
-    };
-    // 1. ANSI-wipe terminal scrollback + viewport so scrollback's old
-    //    chat history physically disappears.
+    const old = ref.instance;
+    if (!old) return;
+    // Wipe the terminal first so the scrollback that the old instance wrote
+    // doesn't linger above the new instance's banner.
     process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
-    // 2. Zero log-update's internal cursor/line-count tracking.
-    internals.log?.reset?.();
-    // 3. Zero Ink instance's frame-height bookkeeping so the next render
-    //    writes a fresh frame from cursor row 0.
-    internals.lastOutput = "";
-    internals.lastOutputToRender = "";
-    internals.lastOutputHeight = 0;
-    // 4. Drop the accumulated static output buffer — Ink replays this on
-    //    fullscreen-clear paths, so stale content would otherwise re-emerge.
-    internals.fullStaticOutput = "";
+    // Unmount unsubscribes Ink's stdin handlers + tears down the React tree.
+    old.unmount();
+    // Build a fresh Ink instance with totally clean log-update state and
+    // start cursor tracking. BossApp re-mounts and reads the (already
+    // cleared) bossStore, so the chat shows just the banner + "Session
+    // cleared." info row — exactly as the user expects.
+    ref.instance = render(<BossApp boss={opts.boss} resetUI={resetUI} />, {
+      exitOnCtrlC: false,
+    });
   };
   const instance = render(<BossApp boss={opts.boss} resetUI={resetUI} />, {
     // Disable Ink's built-in exit-on-Ctrl+C — we need our own double-press
@@ -1118,9 +1095,26 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   });
   ref.instance = instance;
   return {
+    // Follow ref.instance through restarts: when /clear nukes the current
+    // instance and creates a new one, this promise re-binds to whichever
+    // Ink instance is alive now. Without the loop, we'd wait on the OLD
+    // instance's waitUntilExit (which already resolved on unmount) and
+    // exit the CLI immediately after every /clear.
     waitUntilExit: async () => {
-      await instance.waitUntilExit();
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const current = ref.instance;
+        if (!current) return;
+        await current.waitUntilExit();
+        // If the user ran /clear, ref.instance is now a NEW instance —
+        // loop and wait on that one. If exit was final (no replacement),
+        // ref.instance was nulled below and the loop ends.
+        if (ref.instance === current) {
+          ref.instance = null;
+          return;
+        }
+      }
     },
-    unmount: () => instance.unmount(),
+    unmount: () => ref.instance?.unmount(),
   };
 }
