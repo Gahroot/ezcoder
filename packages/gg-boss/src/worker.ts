@@ -13,6 +13,97 @@ import { log } from "./logger.js";
  * crash gg-boss because that would take down all 6+ workers in the same
  * process.
  */
+/**
+ * Patterns matching context-overflow errors across every provider gg-boss
+ * supports. Each provider phrases this error differently — a single check on
+ * one substring would miss most real cases.
+ *
+ * Provider attribution (with example messages):
+ *  - OpenAI Chat Completions: "This model's maximum context length is 128000 tokens…"
+ *  - OpenAI Responses / Codex: "Your input exceeds the context window of this model"
+ *  - OpenAI structured code:    error.code = "context_length_exceeded"
+ *  - Anthropic (token overflow): "prompt is too long: 213462 tokens > 200000 maximum"
+ *  - Anthropic (HTTP 413 byte):  error.type = "request_too_large"
+ *  - Google / Gemini:            "The input token count (1196265) exceeds the maximum number of tokens allowed"
+ *  - xAI / Grok:                 "This model's maximum prompt length is 131072 but the request contains 537812 tokens"
+ *  - Mistral:                    "Prompt contains X tokens … too large for model with Y maximum context length"
+ *  - Amazon Bedrock:             "input is too long for requested model"
+ *  - OpenRouter:                 "This endpoint's maximum context length is X tokens. However, you requested Y"
+ *  - Groq:                       "Please reduce the length of the messages or completion"
+ *  - DeepSeek / GLM / MiniMax / Moonshot / Xiaomi: OpenAI-compatible — reuse `context_length_exceeded` and the maximum-context-length wording.
+ */
+const CONTEXT_OVERFLOW_PATTERNS: RegExp[] = [
+  /context_length_exceeded/i,
+  /context length exceeded/i,
+  /context window/i, // OpenAI Codex / Responses
+  /maximum context length/i, // OpenAI / OpenRouter / Mistral
+  /prompt is too long/i, // Anthropic
+  /request_too_large/i, // Anthropic HTTP 413
+  /input is too long/i, // Bedrock
+  /input token count.*exceeds the maximum/i, // Gemini
+  /maximum prompt length/i, // xAI / Grok
+  /reduce the length of the messages/i, // Groq
+  /too large for model/i, // Mistral
+  /token limit/i, // generic
+];
+
+const RATE_LIMIT_PATTERNS: RegExp[] = [
+  /rate[ _-]?limit/i,
+  /\b429\b/,
+  /too many requests/i,
+  /tokens per minute/i,
+  /requests per minute/i,
+];
+
+const BILLING_PATTERNS: RegExp[] = [
+  /insufficient balance/i,
+  /insufficient[ _]quota/i,
+  /quota exceeded/i,
+  /quota_exceeded/i,
+  /credit balance/i,
+  /please recharge/i,
+  /payment required/i,
+  /\b402\b/,
+];
+
+const AUTH_PATTERNS: RegExp[] = [
+  /invalid[ _]api[ _]key/i,
+  /unauthorized/i,
+  /\b401\b/,
+  /authentication[ _]failed/i,
+  /please run \/login/i, // Anthropic Claude Code-style hint
+];
+
+function matchesAny(message: string, patterns: RegExp[]): boolean {
+  return patterns.some((p) => p.test(message));
+}
+
+/**
+ * Inspect a raw provider error message and tag it with a clearer, actionable
+ * prefix so the boss can route on intent instead of regexing JSON. Preserves
+ * the original message verbatim after the prefix — helpful for debugging.
+ *
+ * Order matters: context-overflow is checked first because some providers
+ * wrap overflow errors in HTTP 429 envelopes; we want the structural meaning,
+ * not the transport status. Billing comes before auth/rate-limit because
+ * "402 Payment Required" must not be mis-routed as a rate-limit retry.
+ */
+export function classifyWorkerError(message: string): string {
+  if (matchesAny(message, CONTEXT_OVERFLOW_PATTERNS)) {
+    return `[context_overflow] Worker context window exceeded — the conversation is too large to continue. Recovery: call reset_worker(project) to wipe history, then re-prompt with the task. Re-prompting WITHOUT reset will fail the same way.\n\nOriginal: ${message}`;
+  }
+  if (matchesAny(message, BILLING_PATTERNS)) {
+    return `[billing] Provider billing/quota issue. Recovery: surface to the user — they need to top up or switch providers. Do NOT retry.\n\nOriginal: ${message}`;
+  }
+  if (matchesAny(message, AUTH_PATTERNS)) {
+    return `[auth] Provider authentication failed. Recovery: surface to the user — they need to re-login. Do NOT retry.\n\nOriginal: ${message}`;
+  }
+  if (matchesAny(message, RATE_LIMIT_PATTERNS)) {
+    return `[rate_limited] Provider rate limit hit. Recovery: wait ~30s, then re-prompt the same worker (no reset needed).\n\nOriginal: ${message}`;
+  }
+  return message;
+}
+
 function safeBusHandler<T>(
   workerName: string,
   handlerName: string,
@@ -173,11 +264,12 @@ export class Worker {
         }
       })
       .catch((err) => {
-        const message = this.wasCancelled
+        const rawMessage = this.wasCancelled
           ? "Cancelled by boss."
           : err instanceof Error
             ? err.message
             : String(err);
+        const message = this.wasCancelled ? rawMessage : classifyWorkerError(rawMessage);
         this.status = "error";
         this.startedAt = null;
         const ts = new Date().toISOString();
@@ -280,8 +372,9 @@ export class Worker {
     // a worker_error event instead of bubbling up through eventBus.emit
     // and crashing the boss process. The shared single-process model means
     // ANY uncaught throw here would take all workers down with it.
-    const reportError = (message: string): void => {
+    const reportError = (rawMessage: string): void => {
       const ts = new Date().toISOString();
+      const message = classifyWorkerError(rawMessage);
       this.status = "error";
       // Drop any queued stuck pings for this worker — they're stale now that
       // we've terminated the turn with an explicit error.

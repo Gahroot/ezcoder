@@ -166,6 +166,15 @@ The worker has full context of its prior turn (you set fresh=false), so don't re
 
 This keeps the loop bounded — workers don't grind forever on a stuck task.
 
+# Recoverable error tags on worker_error
+
+Worker errors are pre-classified — the message starts with a tag like \`[context_overflow]\`, \`[rate_limited]\`, \`[billing]\`, or \`[auth]\` when recovery is well-defined. Route off the tag, NOT a generic re-prompt:
+
+- \`[context_overflow]\` — conversation outgrew the model's window. Call \`reset_worker(project)\` first, THEN re-prompt with the task. Re-prompting without reset fails the same way. Tell the user briefly that you reset.
+- \`[rate_limited]\` — wait for the next event (~30s of natural delay) or briefly note to user, then re-prompt the same worker. No reset.
+- \`[billing]\` / \`[auth]\` — surface to the user. Do not retry. The user must fix it.
+- Untagged — fall back to the normal BLOCKED handling (one corrective re-prompt, then surface).
+
 # Checking on a stuck or slow worker
 
 The orchestrator's watchdog will queue a \`[event:worker_stuck]\` ping if a worker is silent for too long. **It arrives like every other event — you process it AFTER finishing your current turn.** It does NOT interrupt you. Don't drop what you're doing to chase it; just route it when it's its turn.
