@@ -65,7 +65,7 @@ export async function buildSystemPrompt(
         `You are in PLAN MODE. Research and design an implementation plan before writing any code.\n\n` +
         `### Workflow\n` +
         `1. Explore: read, grep, find, ls to understand the codebase\n` +
-        `2. Research: web_search + web_fetch for docs, mcp__grep__searchGitHub for real code samples\n` +
+        `2. Research: web_search + web_fetch for docs, mcp__kencode-search__searchCode for real code samples (any pattern — APIs, configs, shell, Markdown, project layouts; peek=true for cheap triage)\n` +
         `3. Draft: write the plan to .gg/plans/<name>.md\n` +
         `4. Submit: call exit_plan with the plan path\n\n` +
         `### Rules\n` +
@@ -103,8 +103,14 @@ export async function buildSystemPrompt(
     `## Research & Verification\n\n` +
       `Your training data may be outdated. Do not assume — verify.\n\n` +
       `- **Docs first**: \`web_search\` → \`web_fetch\`.\n` +
-      `- **Real code second**: \`mcp__grep__searchGitHub\` for patterns, UI, library usage, APIs.\n` +
-      `- Applies to everything — APIs, CLI flags, configs, versions. Not just "unfamiliar" code.`,
+      `- **Real code second**: \`mcp__kencode-search__searchCode\` — searches 2M+ public repos. ` +
+      `Use for ANYTHING you can grep: API/library usage, config-file layouts (vite.config.ts, ` +
+      `tsconfig, Dockerfile, GitHub Actions YAML, package.json scripts), shell idioms, build scripts, ` +
+      `Markdown/README structure, error message wording, schema shapes. Filter with \`language\`, ` +
+      `\`repo\` ("owner/name"), \`path\` ("src/components/"). Use \`peek: true\` first for cheap ` +
+      `triage on noisy queries, then call again on the file you want with full context. Regex is ` +
+      `RE2 — no lookahead/lookbehind/backrefs; multi-line patterns need \`(?s)\`.\n` +
+      `- Applies to everything — APIs, CLI flags, configs, versions, conventions. Not just "unfamiliar" code.`,
   );
 
   // 4. Code Quality

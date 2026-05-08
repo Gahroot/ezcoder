@@ -20,8 +20,8 @@ export const TOOL_PROMPT_HINTS: Record<string, string> = {
     "Manage the Ctrl+T task pane (add/list/done/remove). Only when the user explicitly asks. Do NOT auto-run.",
   subagent: "Delegate focused, isolated subtasks (research, parallel exploration).",
   skill: "Invoke a named skill for specialized instructions.",
-  mcp__grep__searchGitHub:
-    "Search real-world code in 1M+ GitHub repos. Single literal pattern per call. Sequential only (rate-limited).",
+  "mcp__kencode-search__searchCode":
+    'Literal/regex search across 2M+ public repos (Sourcegraph). Use for ANY pattern in source: APIs, config layouts (vite.config.ts, package.json), shell idioms, markdown structure, project conventions. Filters: language[], repo ("owner/name"), path. Tip: peek=true returns just paths+counts for cheap triage. Regex is RE2 — no lookahead/lookbehind/backrefs; multi-line needs (?s).',
   enter_plan: "Enter plan mode for read-only research + planning on complex multi-file tasks.",
   exit_plan: "Submit your plan for user review and exit plan mode.",
 };
@@ -41,7 +41,7 @@ export const DEFAULT_TOOL_NAMES: readonly string[] = [
   "tasks",
   "subagent",
   "skill",
-  "mcp__grep__searchGitHub",
+  "mcp__kencode-search__searchCode",
   "enter_plan",
   "exit_plan",
 ];
