@@ -275,6 +275,16 @@ export function useBossState(): BossUiState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+/** Non-React subscription for serve mode (Telegram bridge, etc.). */
+export function subscribeToBossStore(fn: () => void): () => void {
+  return subscribe(fn);
+}
+
+/** Read the current state outside of React. */
+export function getBossState(): BossUiState {
+  return getSnapshot();
+}
+
 // ── Mutations (called by orchestrator/worker) ──────────────
 
 export const bossStore = {

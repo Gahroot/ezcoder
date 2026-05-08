@@ -40,6 +40,10 @@
     "vitest": "^4.1.4",
     "zod": "^4.4.3"
   },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^3.6.0",
+    "ogg-opus-decoder": "^1.6.13"
+  },
   "publishConfig": {
     "access": "public"
   }
