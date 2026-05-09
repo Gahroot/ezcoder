@@ -178,14 +178,14 @@ install → throw → verify in D1.
 ## 4. Cloudflare Workers — same-account caveat
 
 When a user deploys to Cloudflare AND their worker is on the same Cloudflare
-account as the pixel-server (`buzzbeamaustralia` — Ken's account), fetches
-to `https://pixel-server.ngrout70.workers.dev/ingest` get
+account as the pixel-server (`ngrout70`), fetches to
+`https://pixel-server.ngrout70.workers.dev/ingest` get
 **error 1042** (Cloudflare's worker→worker same-account block).
 
 **Fixes:**
 1. **Best**: add a custom domain to `pixel-server` (e.g.
-   `pixel.kenkai.dev`) and update `DEFAULT_INGEST_URL` everywhere.
-2. **For Ken's own apps**: use a Cloudflare Service Binding instead of HTTP
+   `pixel.ngrout.dev`) and update `DEFAULT_INGEST_URL` everywhere.
+2. **For our own apps**: use a Cloudflare Service Binding instead of HTTP
    (`env.PIXEL.fetch(...)` instead of `fetch(url)`).
 
 For users on **different** Cloudflare accounts: no issue (verified via
