@@ -82,9 +82,9 @@ const CLI_VERSION = (_require("../package.json") as { version: string }).version
 
 // ── Logo + gradient (mirrors Banner.tsx) ────────────────────────────
 const LOGO_LINES = [
-  " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-  " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-  " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+  " \u2588\u2580\u2580   \u2584\u2580 ",
+  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
 ];
 const GRADIENT = [
   "#60a5fa",
@@ -861,7 +861,7 @@ async function runDoctor(): Promise<void> {
   if (myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
     console.log(dim("      Running ezcoder with sudo can cause ownership issues."));
-    console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
+    console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.ezcoder"));
   }
   console.log();
 
@@ -1165,9 +1165,9 @@ async function runTelegramSetup(): Promise<void> {
 
   // Banner (matches Banner.tsx)
   const LOGO = [
-    " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-    " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-    " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+    " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+    " \u2588\u2580\u2580   \u2584\u2580 ",
+    " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
   ];
   const GRADIENT = [
     "#60a5fa",
@@ -1328,7 +1328,8 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken = serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const botToken =
+    serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
   const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
@@ -1412,9 +1413,9 @@ async function runAgentHomeLogin(): Promise<void> {
 
   // Banner
   const LOGO = [
-    " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-    " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-    " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+    " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+    " \u2588\u2580\u2580   \u2584\u2580 ",
+    " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
   ];
   function gradientTextLocal(text: string): string {
     let colorIdx = 0;

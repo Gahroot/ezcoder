@@ -210,7 +210,7 @@ interface InputAreaProps {
   /**
    * Locked badge rendered before the prompt arrow on the first visual line.
    * The user cannot delete or edit it — typed text always follows. Used by
-   * downstream tools (gg-boss) to show the active scope/project pill.
+   * downstream tools (ezboss) to show the active scope/project pill.
    */
   scopeBadge?: React.ReactNode;
   /**
@@ -226,7 +226,7 @@ interface InputAreaProps {
   disableMouseTracking?: boolean;
   /**
    * Fired when the user presses Tab (outside slash-completion mode). Used by
-   * downstream tools (gg-boss) to cycle the scope badge.
+   * downstream tools (ezboss) to cycle the scope badge.
    */
   onTab?: () => void;
 }
@@ -467,7 +467,7 @@ export function InputArea({
   useEffect(() => {
     if (!isActive || !internal_eventEmitter) return;
     // Hard-bail when mouse tracking is disabled at the prop level — used by
-    // gg-boss to avoid the Ghostty phantom-paste bug where rapid mode toggles
+    // ezboss to avoid the Ghostty phantom-paste bug where rapid mode toggles
     // get interpreted as bracketed-paste boundaries during high-frequency UI
     // updates (e.g. workers running, status bar shimmering). Without this we
     // skip the wrapper install too, so no escape-sequence stripping happens
@@ -1107,7 +1107,7 @@ export function InputArea({
           setSelectionAnchor(null);
           return;
         }
-        // Outside slash mode, Tab is delegated — used by gg-boss to cycle
+        // Outside slash mode, Tab is delegated — used by ezboss to cycle
         // the scope badge.
         onTab?.();
         return;

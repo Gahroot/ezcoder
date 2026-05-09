@@ -129,14 +129,14 @@ interface ActivityIndicatorProps {
   planTotal?: number;
   /**
    * Override the default phrase library per-phase. Pass any subset — phases
-   * not provided fall back to ezcoder's contextual selectPhrases. gg-boss
+   * not provided fall back to ezcoder's contextual selectPhrases. ezboss
    * uses this to swap in orchestration-themed phrases ("Coordinating workers"
    * vs "Cogitating") so the activity bar reads as a manager, not a coder.
    */
   phrases?: Partial<Record<ActivityPhase, string[]>>;
   /**
    * Override the spinner pulse-color cycle. Defaults to the cool blue/violet
-   * cycle ezcoder uses; gg-boss passes its crimson→fuchsia palette so the
+   * cycle ezcoder uses; ezboss passes its crimson→fuchsia palette so the
    * spinner reads as Boss, not Coder.
    */
   pulseColors?: readonly string[];

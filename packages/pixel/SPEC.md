@@ -1,4 +1,4 @@
-# gg-pixel — Spec (v1, draft)
+# ez-pixel — Spec (v1, draft)
 
 Universal error tracking optimized for autonomous coding agents, not human dashboards.
 
@@ -12,7 +12,7 @@ The key shift vs. Sentry/Bugsnag: **the primary consumer is a coding agent, not 
 
 ## Architecture (4 components)
 
-1. **gg-pixel SDK** — drop-in library per runtime. Captures errors, posts to ingest.
+1. **ez-pixel SDK** — drop-in library per runtime. Captures errors, posts to ingest.
 2. **Ingest backend** — Cloudflare Workers + D1 (free tier). Accepts events, stores in SQLite-shaped DB, exposes management API + SSE stream.
 3. **Web dashboard** — real-time error feed across all projects. Lightweight; not the primary surface.
 4. **`ezcoder pixel`** — global TUI fix-queue runner. Reuses the existing Tasks pane engine. Spawns one agent session per error.
@@ -197,7 +197,7 @@ Dashboard auth deferred to v1.5 (single-user assumed for v1).
 
 ## Onboarding flow (agent-driven)
 
-Skill: `gg-pixel:install` or `ezcoder pixel install` from inside a project dir.
+Skill: `ez-pixel:install` or `ezcoder pixel install` from inside a project dir.
 
 The agent gets a dedicated system prompt and:
 

@@ -1,12 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
 import { renderLoginSelector } from "@prestyj/cli/ui/login";
-import {
-  AuthStorage,
-  loginAnthropic,
-  loginOpenAI,
-  type OAuthCredentials,
-} from "@prestyj/cli/auth";
+import { AuthStorage, loginAnthropic, loginOpenAI, type OAuthCredentials } from "@prestyj/cli/auth";
 import { openBrowser } from "@prestyj/cli/utils/open-browser";
 import { STATIC_KEY_PROVIDERS, type SupportedAuthProvider } from "./types.js";
 

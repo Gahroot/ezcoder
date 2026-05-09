@@ -25,7 +25,7 @@ interface FooterProps {
   hideGitBranch?: boolean;
   /**
    * Render the status label on its own line BELOW the model + tokens row
-   * instead of inline on the left. Used by gg-editor where the host
+   * instead of inline on the left. Used by ezeditor where the host
    * connection status ("Connected to DaVinci Resolve…") is more readable on
    * a dedicated row.
    */
@@ -227,7 +227,7 @@ export function Footer({
 
   // statusBelow layout: model + tokens row, then status row underneath.
   // The left-chunk content (cwd / git) merges into the model row's left side
-  // when present; for gg-editor (hideCwd + hideGitBranch) only the status
+  // when present; for ezeditor (hideCwd + hideGitBranch) only the status
   // line is added.
   if (statusBelow) {
     return (

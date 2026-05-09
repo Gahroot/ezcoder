@@ -37,7 +37,7 @@ export async function extractAtTimes(
   times: number[],
   opts: ExtractOptions = {},
 ): Promise<ExtractedFrame[]> {
-  const dir = opts.outDir ?? mkdtempSync(join(tmpdir(), "gg-editor-frames-"));
+  const dir = opts.outDir ?? mkdtempSync(join(tmpdir(), "ezeditor-frames-"));
   const q = String(opts.quality ?? 4);
   const out: ExtractedFrame[] = [];
 
@@ -70,7 +70,7 @@ export async function extractAtInterval(
   opts: ExtractOptions = {},
 ): Promise<ExtractedFrame[]> {
   if (intervalSec <= 0) throw new Error("intervalSec must be > 0");
-  const dir = opts.outDir ?? mkdtempSync(join(tmpdir(), "gg-editor-frames-"));
+  const dir = opts.outDir ?? mkdtempSync(join(tmpdir(), "ezeditor-frames-"));
   const q = String(opts.quality ?? 4);
   const pattern = join(dir, "frame-%04d.jpg");
 

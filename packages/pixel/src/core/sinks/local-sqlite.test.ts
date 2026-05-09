@@ -22,7 +22,7 @@ const event: WireEvent = {
 
 describe("LocalSqliteSink", () => {
   it("writes events into a fresh sqlite database", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-pixel-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-pixel-"));
     const path = join(dir, "errors.db");
     try {
       const sink = new LocalSqliteSink(path);
@@ -52,7 +52,7 @@ describe("LocalSqliteSink", () => {
   });
 
   it("rejects duplicate event_id (idempotency guard)", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-pixel-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-pixel-"));
     const path = join(dir, "errors.db");
     try {
       const sink = new LocalSqliteSink(path);

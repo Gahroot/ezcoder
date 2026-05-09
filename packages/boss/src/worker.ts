@@ -10,11 +10,11 @@ import { log } from "./logger.js";
  * event instead of cascading up through ezcoder's eventBus.emit and
  * potentially killing the boss process. Worker bus handlers do non-trivial
  * work (state mutations, queue pushes); a bug in any of them must NEVER
- * crash gg-boss because that would take down all 6+ workers in the same
+ * crash ezboss because that would take down all 6+ workers in the same
  * process.
  */
 /**
- * Patterns matching context-overflow errors across every provider gg-boss
+ * Patterns matching context-overflow errors across every provider ezboss
  * supports. Each provider phrases this error differently — a single check on
  * one substring would miss most real cases.
  *

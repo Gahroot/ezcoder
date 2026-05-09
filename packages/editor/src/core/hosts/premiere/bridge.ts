@@ -9,12 +9,12 @@ import { PremiereWsBridge } from "./ws-bridge.js";
 /**
  * Premiere bridge. Three transports, selected lazily on first use:
  *
- *   1. **HTTP** — talks to the gg-editor-premiere-panel CEP extension running
+ *   1. **HTTP** — talks to the ez-editor-premiere-panel CEP extension running
  *      inside Premiere. The CEP panel is the HTTP server; ezeditor is the
  *      client. Required on Windows when the user is on the legacy CEP path.
  *      Per-call latency: ~10-30ms.
  *
- *   2. **WebSocket** — talks to the gg-editor-premiere-panel UXP plugin.
+ *   2. **WebSocket** — talks to the ez-editor-premiere-panel UXP plugin.
  *      UXP plugins **cannot listen on TCP ports**, so the roles are flipped:
  *      ezeditor hosts a localhost WS server, the plugin connects out.
  *      The plugin's hello frame is what we treat as 'health' here.
@@ -158,7 +158,7 @@ export class PremiereBridge {
       if (platform() === "darwin") {
         const t: Transport = {
           kind: "osascript",
-          workDir: mkdtempSync(join(tmpdir(), "gg-editor-premiere-")),
+          workDir: mkdtempSync(join(tmpdir(), "ezeditor-premiere-")),
         };
         this.transport = t;
         return t;

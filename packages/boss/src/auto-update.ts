@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 
 /**
- * gg-boss auto-update — mirrors ezcoder's pattern (packages/cli/src/core/
+ * ezboss auto-update — mirrors ezcoder's pattern (packages/cli/src/core/
  * auto-update.ts) but pinned to @prestyj/boss and with its own state
  * file under ~/.ezcoder/boss/ so it can't fight with ezcoder's checker.
  *

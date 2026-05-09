@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 /**
- * gg-boss CLI is bundled into a single ESM file with every dependency
+ * ezboss CLI is bundled into a single ESM file with every dependency
  * inlined. This is deliberate — the alternative is shipping a published
  * package.json with `dependencies: { @prestyj/cli, ... }`, which then
  * pulls @modelcontextprotocol/sdk → express-rate-limit → ip-address@10.1.0
@@ -16,9 +16,9 @@ import { defineConfig } from "tsup";
  *
  * Reachability requirements (already satisfied):
  *  - ezcoder/utils/image.ts uses dynamic `await import("sharp")` so sharp
- *    isn't pulled in at module init for paths gg-boss touches (boss UI
+ *    isn't pulled in at module init for paths ezboss touches (boss UI
  *    doesn't actually call shrinkToFit).
- *  - external[] below carves out native binaries that gg-boss will never
+ *  - external[] below carves out native binaries that ezboss will never
  *    actually load at runtime, so esbuild leaves them as bare requires.
  *
  * Tradeoffs:
@@ -42,11 +42,11 @@ export default defineConfig({
   // `peerDependencies`. We moved every runtime dep to `devDependencies`,
   // so by default tsup will INLINE all of them — that's the whole point.
   external: [
-    // Native modules that gg-boss never reaches at runtime, but which exist
+    // Native modules that ezboss never reaches at runtime, but which exist
     // somewhere in the transitive ezcoder import graph. Marking them external
     // means esbuild leaves the `import` calls as `require` strings; if the
     // dead-code path ever did fire it'd error clearly rather than ship broken
-    // bytecode. None of these will ever be invoked by gg-boss's flow.
+    // bytecode. None of these will ever be invoked by ezboss's flow.
     "sharp",
     "@huggingface/transformers",
     "onnxruntime-node",

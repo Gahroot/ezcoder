@@ -18,7 +18,7 @@ description: Orchestrator for "make me a YouTube video from this footage" using 
 Look at the input and the user's prompt:
 
 - **Input duration** via `probe_media`. Anything > 5 minutes → assume long-form. Anything ≤ 5 minutes → assume short-form. Both for source > 5 min when prompt is silent.
-- **Brand kit:** read `<cwd>/.gg/brand.json` silently. All render-time tools inherit; don't ask about typography or logos.
+- **Brand kit:** read `<cwd>/.ezcoder/brand.json` silently. All render-time tools inherit; don't ask about typography or logos.
 - **Host check:** call `host_info`. If host=none, tell the user *"No NLE attached — I'll produce standalone mp4s. Open Resolve / Premiere if you want a timeline-native edit you can keep tweaking."* Then proceed with the file-only fallback path (skip steps 2-5 timeline ops; jump to render).
 
 If duration is 4–6 min AND prompt is silent on format, ASK once: *"Long-form, Shorts, or both?"*. One question, then run.

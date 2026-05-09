@@ -35,9 +35,9 @@ import { renderDoctorReport } from "./doctor-render.js";
 import { getPackageVersion } from "./version.js";
 
 const LOGO_LINES = [
-  " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-  " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-  " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+  " \u2588\u2580\u2580   \u2584\u2580 ",
+  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
 ];
 const GRADIENT = [
   "#fbbf24",
@@ -456,7 +456,9 @@ async function promptForSecret(p: PromptHint): Promise<{ ok: boolean }> {
         process.stdout.write(chalk.red(`  \u2717 Failed to save: ${(e as Error).message}\n`));
         return { ok: false };
       }
-      process.stdout.write(chalk.green("  \u2713 Saved to ~/.ezcoder/api-keys.json (chmod 600).\n"));
+      process.stdout.write(
+        chalk.green("  \u2713 Saved to ~/.ezcoder/api-keys.json (chmod 600).\n"),
+      );
       return { ok: true };
     }
     process.stdout.write(dim("  Too many invalid attempts. Cancelled.\n"));

@@ -16,7 +16,7 @@ const ReadTranscriptParams = z.object({
     .optional()
     .describe(
       "Filter to one speaker label (case-insensitive). Only meaningful for transcripts that " +
-        "include speaker labels (whisperx / AssemblyAI / manual). gg-editor's bundled transcribe does not.",
+        "include speaker labels (whisperx / AssemblyAI / manual). ezeditor's bundled transcribe does not.",
     ),
   /** Maximum segments to return inline. Default 50. */
   limit: z.number().int().min(1).optional(),

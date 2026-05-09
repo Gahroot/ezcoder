@@ -24,7 +24,7 @@ function truncateLine(line: string, cols: number, reservedChars = 6): string {
 }
 
 /**
- * Optional formatter that downstream consumers (e.g. gg-editor) can pass to
+ * Optional formatter that downstream consumers (e.g. ezeditor) can pass to
  * customise the per-tool header and inline summary without forking this
  * component. Each fn returns `undefined` to fall back to the built-in
  * behaviour. Same shape applies to running + done states.
@@ -39,7 +39,7 @@ export interface ToolExecutionFormatters {
   formatDetail?: (name: string, args: Record<string, unknown>) => string | undefined;
   /**
    * Override the inline summary at done time. Return a string for the default
-   * dim color, or `{ text, color }` to render in a custom color (e.g. gg-boss
+   * dim color, or `{ text, color }` to render in a custom color (e.g. ezboss
    * uses this to randomise the "dispatched" color per call).
    */
   formatInline?: (name: string, result: string, isError: boolean) => InlineSummary | undefined;
@@ -458,7 +458,7 @@ function toolDisplayName(name: string): string {
     case "tasks":
       return "Task";
     default:
-      // snake_case → Title Case so downstream consumers (gg-editor's 91 tools,
+      // snake_case → Title Case so downstream consumers (ezeditor's 91 tools,
       // future MCP tools, custom tools) get readable names without each
       // having to add an explicit case here. Includes camelCase split too
       // so `cutFillerWords` also formats cleanly.

@@ -2,7 +2,7 @@ import { homedir, platform } from "node:os";
 import { join } from "node:path";
 
 /**
- * Cross-platform paths for the gg-editor Premiere extensions.
+ * Cross-platform paths for the ezeditor Premiere extensions.
  *
  * Two distinct extension formats live side-by-side; users on Premiere 25.6+
  * should prefer UXP (the only path that survives Adobe's September 2026
@@ -20,8 +20,8 @@ import { join } from "node:path";
  * Linux is unsupported on either path — Premiere has no Linux build.
  */
 
-export const BUNDLE_ID = "com.kenkaiiii.gg-editor-premiere-panel";
-export const BUNDLE_ID_UXP = "com.kenkaiiii.gg-editor-premiere-panel.uxp";
+export const BUNDLE_ID = "com.Gahroot.ez-editor-premiere-panel";
+export const BUNDLE_ID_UXP = "com.Gahroot.ez-editor-premiere-panel.uxp";
 
 export function userExtensionsDir(): string {
   switch (platform()) {

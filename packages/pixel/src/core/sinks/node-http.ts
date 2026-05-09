@@ -50,7 +50,7 @@ export class NodeHttpSink extends HttpSink {
     if (result.error || result.status !== 0) {
       // Best-effort. We're already in a fatal handler; can't retry async.
       console.warn(
-        `[gg-pixel] sync emit failed: ${result.error?.message ?? result.stderr ?? "unknown"}`,
+        `[ez-pixel] sync emit failed: ${result.error?.message ?? result.stderr ?? "unknown"}`,
       );
     }
   }

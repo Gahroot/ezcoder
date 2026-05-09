@@ -2,9 +2,9 @@ import chalk from "chalk";
 import type { Provider } from "@prestyj/ai";
 
 const LOGO_LINES = [
-  " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-  " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-  " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+  " \u2588\u2580\u2580   \u2584\u2580 ",
+  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
 ];
 // Defaults — ezcoder branding. ezeditor passes its own palette.
 const DEFAULT_GRADIENT = [

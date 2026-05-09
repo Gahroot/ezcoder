@@ -6,15 +6,17 @@ export const VERSION = pkg.version;
 export const BRAND = "EZ Boss";
 export const AUTHOR = "Nolan Grout";
 
-export const LOGO_LINES: readonly string[] = [" ▄▀▀▀ ▄▀▀▀", " █ ▀█ █ ▀█", " ▀▄▄▀ ▀▄▄▀"];
+// EZ block art — mirrors packages/cli/src/ui/components/Banner.tsx so the
+// EZCoder family shares one logo style across CLI tools.
+export const LOGO_LINES: readonly string[] = [" █▀▀▀ ▀▀▀█", " █▀▀   ▄▀ ", " █▄▄▄ █▄▄▄"];
 
 export const LOGO_GAP = "   ";
 
 /**
  * EZ Boss brand gradient — crimson → fuchsia. Deliberately distinct:
- *   - gg-coder is cool blues/violets
- *   - gg-editor is warm oranges/yellows
- *   - gg-boss is fiery reds/pinks/magentas
+ *   - ezcoder is cool blues/violets
+ *   - ezeditor is warm oranges/yellows
+ *   - ezboss is fiery reds/pinks/magentas
  *
  * Palindromic 12-stop sequence so the banner gradient animates smoothly
  * (read forward, then back).

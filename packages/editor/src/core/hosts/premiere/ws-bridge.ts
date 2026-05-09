@@ -79,8 +79,8 @@ export class PremiereWsBridge {
   constructor(opts: WsBridgeOptions = {}) {
     this.desiredPort =
       opts.port ??
-      (process.env.GG_EDITOR_PREMIERE_PORT
-        ? parseInt(process.env.GG_EDITOR_PREMIERE_PORT, 10)
+      (process.env.EZEDITOR_PREMIERE_PORT
+        ? parseInt(process.env.EZEDITOR_PREMIERE_PORT, 10)
         : DEFAULT_PORT);
     this.host = opts.host ?? DEFAULT_HOST;
     this.fallbackPorts = opts.fallbackPorts ?? FALLBACK_PORTS;
@@ -187,7 +187,7 @@ export class PremiereWsBridge {
     if (msg.kind === "hello") {
       const hello: PanelHealth = {
         ok: true,
-        product: typeof msg.product === "string" ? msg.product : "gg-editor-premiere-panel",
+        product: typeof msg.product === "string" ? msg.product : "ez-editor-premiere-panel",
         port: this.boundPort ?? this.desiredPort,
         kind: msg.panelKind === "cep" ? "cep" : "uxp",
         ...(typeof msg.version === "string" ? { version: msg.version } : {}),

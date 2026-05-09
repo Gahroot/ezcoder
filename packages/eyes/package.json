@@ -1,12 +1,12 @@
 {
   "name": "@prestyj/eyes",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "description": "Project-agnostic perception probes for coding agents — screenshots, logs, APIs, capture sinks",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kenkaiiii/ezcoder.git",
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
     "directory": "packages/eyes"
   },
   "bin": {

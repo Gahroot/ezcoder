@@ -1,12 +1,7 @@
 import React from "react";
 import { render } from "ink";
 import { AnimationProvider } from "@prestyj/cli/ui";
-import {
-  ThemeContext,
-  SetThemeContext,
-  loadTheme,
-  type ThemeName,
-} from "@prestyj/cli/ui/theme";
+import { ThemeContext, SetThemeContext, loadTheme, type ThemeName } from "@prestyj/cli/ui/theme";
 import { detectTheme } from "@prestyj/cli/ui/theme/detect";
 import { TerminalSizeProvider } from "@prestyj/cli/ui/hooks/terminal-size";
 import { App, type AppProps } from "./App.js";

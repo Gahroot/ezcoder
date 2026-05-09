@@ -10,8 +10,8 @@
  *   { "ok": false, "error": "..." }
  *
  * Listens on 127.0.0.1 only — never exposed beyond localhost. The port is
- * fixed (default 7437) so the gg-editor adapter can find it without
- * discovery; override via env GG_EDITOR_PREMIERE_PORT before launching
+ * fixed (default 7437) so the ezeditor adapter can find it without
+ * discovery; override via env EZEDITOR_PREMIERE_PORT before launching
  * Premiere.
  */
 (function () {
@@ -23,7 +23,7 @@
 
   var DEFAULT_PORT = 7437;
   var port = parseInt(
-    (cep_node.process && cep_node.process.env && cep_node.process.env.GG_EDITOR_PREMIERE_PORT) ||
+    (cep_node.process && cep_node.process.env && cep_node.process.env.EZEDITOR_PREMIERE_PORT) ||
       DEFAULT_PORT,
     10,
   );
@@ -102,13 +102,13 @@
 
     if (req.method === "GET" && req.url === "/health") {
       res.writeHead(200);
-      // `kind` lets the gg-editor bridge tell CEP panels apart from a future
+      // `kind` lets the ezeditor bridge tell CEP panels apart from a future
       // UXP panel (both speak the same /rpc protocol). Useful for surfacing
       // the Sept 2026 ExtendScript sunset to users still on CEP.
       res.end(
         JSON.stringify({
           ok: true,
-          product: "gg-editor-premiere-panel",
+          product: "ez-editor-premiere-panel",
           port: port,
           kind: "cep",
         }),

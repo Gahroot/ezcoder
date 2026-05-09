@@ -32,7 +32,7 @@ function report(checks: DoctorCheck[]): DoctorReport {
   return {
     checks,
     ready: checks.every((c) => c.severity !== "required" || c.status === "ok"),
-    markerPath: "/tmp/.gg/onboarded-ezeditor",
+    markerPath: "/tmp/.ezcoder/onboarded-ezeditor",
     onboarded: false,
   };
 }

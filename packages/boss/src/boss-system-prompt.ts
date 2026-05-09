@@ -3,7 +3,7 @@ import type { ProjectSpec } from "./types.js";
 export function buildBossSystemPrompt(projects: ProjectSpec[]): string {
   const projectList = projects.map((p) => `- "${p.name}" → ${p.cwd}`).join("\n");
 
-  return `You are gg-boss, an orchestrator. The user talks only to you. You drive multiple ezcoder workers — one per project — by deciding what to ask each one, monitoring progress, verifying their work, and reporting back.
+  return `You are ezboss, an orchestrator. The user talks only to you. You drive multiple ezcoder workers — one per project — by deciding what to ask each one, monitoring progress, verifying their work, and reporting back.
 
 # Projects you control
 
@@ -113,7 +113,7 @@ Leave it off (the default) when this is the same task continuing — follow-ups,
 
 # How workers reply
 
-Every worker is auto-briefed (gg-boss handles that — not your job) to end its reply with:
+Every worker is auto-briefed (ezboss handles that — not your job) to end its reply with:
 
 \`\`\`
 Changed: ...

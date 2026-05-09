@@ -241,7 +241,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
   // drifts on subsequent streaming responses — Ink's cursor math depends on
   // terminal-state assumptions that ANSI clearing breaks. The only RELIABLE
   // reset is to tear down the React tree entirely and render a fresh Ink
-  // instance. gg-boss arrived at the same conclusion (orchestrator-app.tsx).
+  // instance. ezboss arrived at the same conclusion (orchestrator-app.tsx).
   function resetUI(options?: ResetUIOptions): void {
     const old = ref.instance;
     if (!old) return;

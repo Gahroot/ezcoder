@@ -14,7 +14,7 @@ export const BOSS_SLASH_COMMANDS: SlashCommandInfo[] = [
   { name: "compact", aliases: [], description: "Compact the boss's context now" },
   { name: "clear", aliases: [], description: "Clear chat history and terminal" },
   { name: "radio", aliases: [], description: "Stream a free internet radio station" },
-  { name: "quit", aliases: ["q", "exit"], description: "Exit gg-boss" },
+  { name: "quit", aliases: ["q", "exit"], description: "Exit ezboss" },
 ];
 
 export function isSlashCommand(value: string): boolean {
@@ -45,7 +45,7 @@ export function canonicalName(name: string): string | null {
 }
 
 export function buildHelpText(): string {
-  const lines: string[] = ["**gg-boss commands**", ""];
+  const lines: string[] = ["**ezboss commands**", ""];
   for (const cmd of BOSS_SLASH_COMMANDS) {
     const aliases =
       cmd.aliases.length > 0 ? ` (${cmd.aliases.map((a) => "/" + a).join(", ")})` : "";

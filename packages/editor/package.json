@@ -1,12 +1,12 @@
 {
   "name": "@prestyj/editor",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "description": "CLI video editor agent. Drives DaVinci Resolve and Premiere Pro via API + hotkeys + GUI fallback.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kenkaiiii/ezcoder.git",
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
     "directory": "packages/editor"
   },
   "bin": {

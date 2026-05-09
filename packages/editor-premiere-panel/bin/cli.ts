@@ -14,26 +14,26 @@ import {
 } from "../src/installer.js";
 
 /**
- * `gg-editor-premiere-panel` ships two panels:
+ * `ez-editor-premiere-panel` ships two panels:
  *
  *   - **UXP** (default) — Premiere Pro 25.6+. The only path that survives
  *     Adobe's September 2026 ExtendScript sunset.
  *   - **CEP** (`--cep`) — Legacy ExtendScript-backed panel. Works on Premiere
  *     22+, but Adobe is removing CEP support after Sept 2026.
  *
- * Both can coexist (different bundle ids); the gg-editor bridge prefers the
+ * Both can coexist (different bundle ids); the ezeditor bridge prefers the
  * one that responds first.
  */
 
 function printHelp(): void {
-  process.stdout.write(`gg-editor-premiere-panel — install the gg-editor extension into Adobe Premiere Pro
+  process.stdout.write(`ez-editor-premiere-panel — install the ezeditor extension into Adobe Premiere Pro
 
 USAGE
-  gg-editor-premiere-panel install [--uxp|--cep]   Install the panel (UXP by default)
-  gg-editor-premiere-panel uninstall [--uxp|--cep] Remove a panel (defaults to UXP)
-  gg-editor-premiere-panel status                  Show install state for both panels
-  gg-editor-premiere-panel debug-on                Enable PlayerDebugMode (CEP only)
-  gg-editor-premiere-panel debug-off               Disable PlayerDebugMode (CEP only)
+  ez-editor-premiere-panel install [--uxp|--cep]   Install the panel (UXP by default)
+  ez-editor-premiere-panel uninstall [--uxp|--cep] Remove a panel (defaults to UXP)
+  ez-editor-premiere-panel status                  Show install state for both panels
+  ez-editor-premiere-panel debug-on                Enable PlayerDebugMode (CEP only)
+  ez-editor-premiere-panel debug-off               Disable PlayerDebugMode (CEP only)
 
 PANEL CHOICES
   --uxp   Modern UXP plugin. Requires Premiere Pro 25.6+.
@@ -45,7 +45,7 @@ After UXP install:
   2. In Premiere: Settings → Plugins → check "Enable Developer Mode"
   3. Restart Premiere
   4. Window menu → UXP Plugins → "EZ Editor"
-  5. Click Connect — the panel dials gg-editor's WS server (default port 7437)
+  5. Click Connect — the panel dials ezeditor's WS server (default port 7437)
   6. Now run \`ezeditor --host premiere\`
 
 After CEP install:
@@ -54,7 +54,7 @@ After CEP install:
   3. The panel should show "listening" with a port (default 7437)
   4. Now run \`ezeditor --host premiere\`
 
-The gg-editor CLI hosts a WebSocket server on 127.0.0.1 only — never beyond
+The ezeditor CLI hosts a WebSocket server on 127.0.0.1 only — never beyond
 localhost — that the UXP plugin connects to. (UXP plugins can't open listening
 sockets, so the roles are flipped vs the CEP path where the panel is the server.)
 `);

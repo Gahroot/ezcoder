@@ -412,7 +412,7 @@ export async function runPixelInstall(opts: InstallCliOptions): Promise<void> {
     case "no_entry_found":
       console.log(chalk.hex("#fbbf24")(`  ⚠  Could not auto-detect your entry file.`));
       console.log(chalk.dim(`     Add to the TOP of your entry: `));
-      console.log("       " + chalk.hex("#60a5fa")(`import "./gg-pixel.init.mjs";`));
+      console.log("       " + chalk.hex("#60a5fa")(`import "./ez-pixel.init.mjs";`));
       break;
     case "skipped":
       console.log(chalk.hex("#fbbf24")(`  ⚠  Entry wiring skipped: ${result.entryWiring.reason}`));

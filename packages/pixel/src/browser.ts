@@ -2,11 +2,11 @@ import { installBrowserAdapter, type BrowserAdapter } from "./adapters/browser.j
 import { HttpSink } from "./core/sinks/http.js";
 import type { Sink } from "./core/types.js";
 
-export const DEFAULT_INGEST_URL = "https://gg-pixel-server.buzzbeamaustralia.workers.dev";
+export const DEFAULT_INGEST_URL = "https://pixel-server.buzzbeamaustralia.workers.dev";
 
 export interface BrowserPixelOptions {
   projectKey: string;
-  /** Backend ingest URL. Defaults to the public gg-pixel server. */
+  /** Backend ingest URL. Defaults to the public ez-pixel server. */
   ingestUrl?: string;
   /** Override the runtime label. Default: `browser-<UA short>`. */
   runtime?: string;
@@ -22,7 +22,7 @@ let active: BrowserAdapter | null = null;
 
 export function initPixel(options: BrowserPixelOptions): BrowserAdapter {
   if (active) {
-    throw new Error("gg-pixel is already initialized; call closePixel() first");
+    throw new Error("ez-pixel is already initialized; call closePixel() first");
   }
   const sink: Sink = options.sink ?? new HttpSink(buildIngestUrl(options.ingestUrl));
   active = installBrowserAdapter({

@@ -1,7 +1,7 @@
 /**
  * Bundled sound-effect library.
  *
- * gg-editor's `add_sfx_at_cuts` needs a WAV/MP3 file per hit. Without this
+ * ezeditor's `add_sfx_at_cuts` needs a WAV/MP3 file per hit. Without this
  * module the agent had to either ask the user to supply one or invent a path
  * — both broke the canonical retention pipeline. Now the agent calls
  * `add_sfx_at_cuts(sfx="whoosh", …)` with a bundled name and the resolver

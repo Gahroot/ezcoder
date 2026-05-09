@@ -88,7 +88,7 @@ export class ResolveBridge {
       }
 
       // Write the embedded source to a temp dir on first launch.
-      const dir = mkdtempSync(join(tmpdir(), "gg-editor-resolve-"));
+      const dir = mkdtempSync(join(tmpdir(), "ezeditor-resolve-"));
       const scriptPath = join(dir, "bridge.py");
       writeFileSync(scriptPath, BRIDGE_PY, { encoding: "utf8" });
       this.bridgePath = scriptPath;

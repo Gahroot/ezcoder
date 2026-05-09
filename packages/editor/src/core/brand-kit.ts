@@ -1,7 +1,7 @@
 /**
  * Brand-kit loader.
  *
- * A "brand kit" is a small JSON file at `<cwd>/.gg/brand.json` that holds the
+ * A "brand kit" is a small JSON file at `<cwd>/.ezcoder/brand.json` that holds the
  * channel-level constants every render-time tool wants: logo, intro/outro/
  * watermark video paths, default fonts, colour palette, channel name, CTA
  * text. The loader is opt-in — if the file isn't present, every consumer
@@ -10,7 +10,7 @@
  * Why JSON, not YAML: zero new deps; brand kits are short enough that the
  * JSON line noise doesn't hurt readability.
  *
- * Why separate from styles (`<cwd>/.gg/editor-styles/*.md`): styles modulate
+ * Why separate from styles (`<cwd>/.ezcoder/editor-styles/*.md`): styles modulate
  * the LLM's behaviour (its writing voice, tone, defaults). The brand kit
  * modulates raw render output (which logo to overlay, which font to draw
  * with). They serve different layers and we keep them separate so a user
@@ -56,10 +56,10 @@ export interface BrandKit {
 }
 
 /** Path of the brand-kit file relative to cwd. Stable so docs can quote it. */
-export const BRAND_KIT_PATH = ".gg/brand.json";
+export const BRAND_KIT_PATH = ".ezcoder/brand.json";
 
 /**
- * Load `<cwd>/.gg/brand.json` if present. Returns `null` when the file is
+ * Load `<cwd>/.ezcoder/brand.json` if present. Returns `null` when the file is
  * missing OR malformed — callers should treat absence as "no brand kit
  * configured" and fall back to their normal defaults. Malformed JSON also
  * returns null (we don't want a syntax slip in a config file to break a

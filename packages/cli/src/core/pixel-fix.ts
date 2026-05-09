@@ -53,7 +53,7 @@ export interface FixOptions {
   homeDir?: string;
   fetchFn?: typeof fetch;
   spawnFn?: SpawnFn;
-  ggcoderBin?: string;
+  ezcoderBin?: string;
   inheritStdio?: boolean;
   maxTurns?: number;
 }
@@ -82,7 +82,7 @@ export async function fixError(errorId: string, opts: FixOptions = {}): Promise<
     prompt: buildAgentPrompt(error, branch, project.path),
     systemPrompt: PIXEL_FIX_SYSTEM_PROMPT,
     spawnFn: opts.spawnFn ?? spawn,
-    ggcoderBin: opts.ggcoderBin ?? "ezcoder",
+    ezcoderBin: opts.ezcoderBin ?? "ezcoder",
     inheritStdio: opts.inheritStdio ?? true,
     maxTurns: opts.maxTurns ?? 60,
   });
@@ -409,7 +409,7 @@ interface AgentRunOptions {
   prompt: string;
   systemPrompt: string;
   spawnFn: SpawnFn;
-  ggcoderBin: string;
+  ezcoderBin: string;
   inheritStdio: boolean;
   maxTurns: number;
 }
@@ -424,7 +424,7 @@ async function runAgent(opts: AgentRunOptions): Promise<number> {
       opts.systemPrompt,
       opts.prompt,
     ];
-    const child = opts.spawnFn(opts.ggcoderBin, args, {
+    const child = opts.spawnFn(opts.ezcoderBin, args, {
       cwd: opts.cwd,
       stdio: opts.inheritStdio ? "inherit" : ["ignore", "pipe", "pipe"],
     });

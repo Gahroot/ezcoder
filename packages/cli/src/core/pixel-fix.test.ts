@@ -196,8 +196,8 @@ describe("fixError — orchestration", () => {
     // Status PATCH sequence: in_progress, then awaiting_review
     const patchBodies = fetchCalls.filter((c) => c.method === "PATCH").map((c) => c.url);
     expect(patchBodies).toEqual([
-      "https://gg-pixel-server.buzzbeamaustralia.workers.dev/api/errors/err_abc123",
-      "https://gg-pixel-server.buzzbeamaustralia.workers.dev/api/errors/err_abc123",
+      "https://pixel-server.buzzbeamaustralia.workers.dev/api/errors/err_abc123",
+      "https://pixel-server.buzzbeamaustralia.workers.dev/api/errors/err_abc123",
     ]);
   });
 

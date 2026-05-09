@@ -1,5 +1,5 @@
 /**
- * gg-editor debug logger — optimized for LLM consumption.
+ * ezeditor debug logger — optimized for LLM consumption.
  *
  * Writes to `~/.ezcoder/ezeditor.log`. Append mode across sessions, rotated at
  * MAX_BYTES, one generation kept (`ezeditor.log.1`).

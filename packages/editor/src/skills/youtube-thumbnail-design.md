@@ -79,7 +79,7 @@ Classic creator palette:
 
 At 100 × 56 every additional colour is one fewer "lock-on" point for the eye.
 
-**[primary, brand kit hook]** If `<cwd>/.gg/brand.json` defines `colors.primary`, USE IT for the text outline or the accent. Channel-level colour identity drives recognition in a feed (the viewer recognises the channel's palette before reading the text). Don't pick a new colour every video.
+**[primary, brand kit hook]** If `<cwd>/.ezcoder/brand.json` defines `colors.primary`, USE IT for the text outline or the accent. Channel-level colour identity drives recognition in a feed (the viewer recognises the channel's palette before reading the text). Don't pick a new colour every video.
 
 ---
 
@@ -177,7 +177,7 @@ The default `compose_thumbnail_variants` flow:
 5. **Verify the thumbnail's promise** with `verify_thumbnail_promise(thumbnail=variants[0].path, video=...)` — if the opening 60s doesn't show what the thumbnail promises, surface a red marker and don't ship until the user picks a different frame or recuts the opener.
 6. **Tell the user to run Test & Compare manually.** Suggested copy: *"Upload all three thumbnails to YouTube Studio's Test & Compare. YouTube picks the winner by Watch Time Share over 1–14 days. The agent can't trigger this for you — there's no API."*
 
-**Brand kit integration (auto-applied).** When `<cwd>/.gg/brand.json` exists, `compose_thumbnail` and `compose_thumbnail_variants` already inherit:
+**Brand kit integration (auto-applied).** When `<cwd>/.ezcoder/brand.json` exists, `compose_thumbnail` and `compose_thumbnail_variants` already inherit:
 - `fonts.heading` → used as `fontFile` if not overridden
 - `colors.primary` → used as `outlineColor` if not overridden
 

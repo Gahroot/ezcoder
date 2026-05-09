@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PremiereHttpBridge } from "./http-bridge.js";
 
 /**
- * Stand up a tiny stub HTTP server that mimics the gg-editor-premiere-panel
+ * Stand up a tiny stub HTTP server that mimics the ez-editor-premiere-panel
  * wire protocol. Verifies the bridge:
  *   - probes /health correctly
  *   - sends well-formed POST /rpc bodies

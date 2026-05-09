@@ -4,7 +4,7 @@ import { resolveApiKey } from "./auth/api-keys.js";
 /**
  * Vision shot scoring via OpenAI's chat completions API.
  *
- * Self-contained on purpose — gg-ai is for streaming agent loops; this is a
+ * Self-contained on purpose — ai is for streaming agent loops; this is a
  * one-shot batch call. Keeps the dependency surface small and lets us tune
  * the structured-output prompt independently.
  *

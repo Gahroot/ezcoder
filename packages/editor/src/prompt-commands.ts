@@ -1,12 +1,12 @@
 /**
- * Bundled slash-command prompt templates for gg-editor.
+ * Bundled slash-command prompt templates for ezeditor.
  *
  * Mirrors ezcoder's `core/prompt-commands.ts` pattern: each command name maps
  * to a full prompt that the agent loop executes. When the user types `/X`,
  * the App.tsx slash dispatcher looks up the command, optionally appends any
  * args, and runs the prompt as if it were a normal user message.
  *
- * Why bundled (not custom): these are core gg-editor workflows tied to our
+ * Why bundled (not custom): these are core ezeditor workflows tied to our
  * tool surface (`brand_kit`, `audit_*`, `verify_thumbnail_promise`, etc.).
  * Per-project custom commands could still live in `<cwd>/.ezcoder/commands/*.md`
  * if we wire that loader in later — bundled commands take priority either
@@ -24,10 +24,10 @@ export const EDITOR_PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "setup-channel",
     aliases: ["brand-kit"],
-    description: "Walk through brand-kit setup, write .gg/brand.json",
+    description: "Walk through brand-kit setup, write .ezcoder/brand.json",
     prompt: `# Brand kit setup
 
-Walk the user through configuring their channel's brand kit. The output is a single JSON file at \`<cwd>/.gg/brand.json\` that every render-time tool inherits from.
+Walk the user through configuring their channel's brand kit. The output is a single JSON file at \`<cwd>/.ezcoder/brand.json\` that every render-time tool inherits from.
 
 ## Why this matters
 
@@ -89,13 +89,13 @@ Schema (only include keys the user actually answered):
 }
 \`\`\`
 
-\`channelStyle\` (the niche from question 2) is NOT a brand-kit field — it goes into a separate \`<cwd>/.gg/editor-styles/channel.md\` if the user wants the LLM to consistently match their voice. Offer this as a follow-up after the kit is saved.
+\`channelStyle\` (the niche from question 2) is NOT a brand-kit field — it goes into a separate \`<cwd>/.ezcoder/editor-styles/channel.md\` if the user wants the LLM to consistently match their voice. Offer this as a follow-up after the kit is saved.
 
-After writing \`<cwd>/.gg/brand.json\`:
+After writing \`<cwd>/.ezcoder/brand.json\`:
 1. Show the user the final saved JSON (pretty-printed) so they can sanity-check.
 2. Tell them what's next:
 
-> Brand kit saved to \`.gg/brand.json\`. From now on, every render automatically uses these defaults. Drop your footage in this directory and try:
+> Brand kit saved to \`.ezcoder/brand.json\`. From now on, every render automatically uses these defaults. Drop your footage in this directory and try:
 >
 > \`Make me a YouTube video from <filename>\`
 >
@@ -105,7 +105,7 @@ After writing \`<cwd>/.gg/brand.json\`:
 
 ## Idempotency
 
-If \`<cwd>/.gg/brand.json\` ALREADY exists, read it first. Tell the user what's currently set and ask whether they want to (a) update specific fields, (b) start over, or (c) cancel. Default to update-specific-fields and only ask the relevant questions.
+If \`<cwd>/.ezcoder/brand.json\` ALREADY exists, read it first. Tell the user what's currently set and ask whether they want to (a) update specific fields, (b) start over, or (c) cancel. Default to update-specific-fields and only ask the relevant questions.
 
 ## Constraints
 
@@ -231,7 +231,7 @@ Run the \`youtube-end-to-end\` skill on the footage the user provides. If they d
 
 1. \`read_skill(name="youtube-end-to-end")\` if not already in your context.
 2. \`probe_media(input)\` — duration determines whether to produce long-form, Shorts, or both. Default per the skill: > 5min source → both.
-3. Read \`<cwd>/.gg/brand.json\` if it exists. Mention which fields you'll inherit. If it DOESN'T exist, mention that running \`/setup-channel\` first would mean every future video uses the channel's defaults automatically — but don't block on it.
+3. Read \`<cwd>/.ezcoder/brand.json\` if it exists. Mention which fields you'll inherit. If it DOESN'T exist, mention that running \`/setup-channel\` first would mean every future video uses the channel's defaults automatically — but don't block on it.
 4. Run the canonical pipeline.
 5. Run the pre-render audit chain (\`audit_first_frame\` on Shorts, \`analyze_hook\`, \`verify_thumbnail_promise\`, \`audit_retention_structure\` for long-form).
 6. End with the structured deliverable summary the skill prescribes (long-form path, Shorts paths, 3 candidate titles, 3 thumbnail variants, description, dropped candidates with reasons).

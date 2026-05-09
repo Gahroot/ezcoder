@@ -64,7 +64,7 @@ describe("PremiereWsBridge", () => {
     ws.send(
       JSON.stringify({
         kind: "hello",
-        product: "gg-editor-premiere-panel",
+        product: "ez-editor-premiere-panel",
         panelKind: "uxp",
         version: "0.2.0",
       }),
@@ -72,7 +72,7 @@ describe("PremiereWsBridge", () => {
     const h = await b.health(2000);
     expect(h?.ok).toBe(true);
     expect(h?.kind).toBe("uxp");
-    expect(h?.product).toBe("gg-editor-premiere-panel");
+    expect(h?.product).toBe("ez-editor-premiere-panel");
     expect(h?.version).toBe("0.2.0");
     expect(h?.port).toBe(port);
   });

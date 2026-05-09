@@ -17,9 +17,9 @@ interface BannerProps {
 }
 
 const LOGO_LINES = [
-  " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-  " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-  " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+  " \u2588\u2580\u2580   \u2584\u2580 ",
+  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
 ];
 
 // Warm sunset gradient — amber → orange → red → magenta. Visually distinct

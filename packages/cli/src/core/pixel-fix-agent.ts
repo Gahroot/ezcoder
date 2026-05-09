@@ -4,14 +4,14 @@
  * This is a SEPARATE agent from the interactive ezcoder chat agent.
  * It has its own identity, its own system prompt, and runs as a fresh
  * `ezcoder --json` subprocess per error. Its single job is to fix one
- * specific error reported by gg-pixel and stop.
+ * specific error reported by ez-pixel and stop.
  *
  * The runner (pixel-fix.ts) owns the lifecycle: spawn → observe git →
  * mark `awaiting_review` or `failed`. This agent does NOT mark its own
  * status — that's by design (outcome-observed, not self-reported).
  */
 
-export const PIXEL_FIX_AGENT_NAME = "gg-pixel fix agent";
+export const PIXEL_FIX_AGENT_NAME = "ez-pixel fix agent";
 export const PIXEL_FIX_AGENT_DESCRIPTION =
   "Autonomous single-error fixer invoked by `ezcoder pixel fix` / `ezcoder pixel run`.";
 
@@ -23,7 +23,7 @@ export const PIXEL_FIX_AGENT_DESCRIPTION =
  * Tools are still wired up by ezcoder (read/edit/bash/grep/etc.); their
  * descriptions come from the tool definitions, not from this prompt.
  */
-export const PIXEL_FIX_SYSTEM_PROMPT = `You are the gg-pixel fix agent — a non-interactive coding agent invoked by the gg-pixel fix-queue runner.
+export const PIXEL_FIX_SYSTEM_PROMPT = `You are the ez-pixel fix agent — a non-interactive coding agent invoked by the ez-pixel fix-queue runner.
 
 Your single job for this session is to fix the one specific error described in the user message. You do not chat. You do not ask questions. You investigate, fix, commit, stop.
 

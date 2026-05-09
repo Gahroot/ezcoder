@@ -12,7 +12,7 @@ import type { Message } from "@prestyj/ai";
  * Agent with the prior messages.
  *
  * No multi-session support yet — just "the most recent conversation". Pairs
- * with the `priorMessages` option added to gg-agent.
+ * with the `priorMessages` option added to agent.
  */
 
 export const SESSIONS_DIR = path.join(os.homedir(), ".ezcoder", "editor");

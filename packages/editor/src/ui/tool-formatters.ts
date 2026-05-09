@@ -1,12 +1,12 @@
 /**
- * Per-tool detail + inline-summary formatters for gg-editor's ~91 tools.
+ * Per-tool detail + inline-summary formatters for ezeditor's ~91 tools.
  *
  * ezcoder's ToolExecution component renders every tool as `<Bold>Label</Bold>
  * (detail) — inline_summary` once done. The default behaviour does
  * snake_case → Title Case for the label and shows nothing for detail / inline
  * unless an explicit case exists in `getToolHeaderParts` / `getInlineSummary`.
  *
- * This file plugs gg-editor specifics into that surface via the
+ * This file plugs ezeditor specifics into that surface via the
  * `ToolExecutionFormatters` API. Everything we add here is OPT-IN — returning
  * undefined keeps ezcoder's built-in defaults.
  *
@@ -325,7 +325,7 @@ export function formatGgEditorInline(
   isError: boolean,
 ): string | undefined {
   if (isError) {
-    // gg-editor errors are formatted as "error: <cause>; fix: <next-step>".
+    // ezeditor errors are formatted as "error: <cause>; fix: <next-step>".
     // Strip the "error:" prefix — the dim-red colour already says it's an error.
     const stripped = result.replace(/^error:\s*/, "");
     const firstSegment = stripped.split(";")[0];

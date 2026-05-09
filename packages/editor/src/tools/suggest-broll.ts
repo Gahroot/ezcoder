@@ -70,7 +70,7 @@ const SuggestBrollParams = z.object({
     .string()
     .optional()
     .describe(
-      "Directory to download chosen videos into (relative resolves to cwd). Default '.gg/broll-cache'. " +
+      "Directory to download chosen videos into (relative resolves to cwd). Default '.ezcoder/broll-cache'. " +
         "Ignored when download=false.",
     ),
   model: z

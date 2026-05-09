@@ -1,6 +1,6 @@
-# gg-pixel — Next steps
+# ez-pixel — Next steps
 
-State as of **gg-pixel 4.3.80**. This file is the canonical handoff for any
+State as of **ez-pixel 4.3.80**. This file is the canonical handoff for any
 agent picking up the work — read it before starting anything.
 
 ## Repo layout (source of truth)
@@ -10,9 +10,9 @@ agent picking up the work — read it before starting anything.
 | **JS SDK** (Node + Browser + Deno + Workers) | `packages/pixel/` | All-in-one with subpath exports | `@prestyj/pixel` (published) |
 | **JS backend** | `packages/pixel-server/` | Cloudflare Worker + D1 (the ingest server) | private, deployed |
 | **CLI / runner** | `packages/cli/` | `ezcoder pixel` TUI + agent fix queue | `@prestyj/cli` (published) |
-| **Python SDK** | `packages/pixel-py/` | wheel built at 4.3.68; **NOT yet on PyPI** | `gg-pixel` (PyPI, blocked) |
-| **Rust SDK** | `packages/pixel-rs/` | crate at 4.3.72; **NOT yet on crates.io** | `gg-pixel` (crates, blocked) |
-| **Go SDK** | `packages/pixel-go/` | module; **NOT yet pushed to GitHub** | `github.com/kenkaiiii/gg-pixel-go` (blocked) |
+| **Python SDK** | `packages/pixel-py/` | wheel built at 4.3.68; **NOT yet on PyPI** | `ez-pixel` (PyPI, blocked) |
+| **Rust SDK** | `packages/pixel-rs/` | crate at 4.3.72; **NOT yet on crates.io** | `ez-pixel` (crates, blocked) |
+| **Go SDK** | `packages/pixel-go/` | module; **NOT yet pushed to GitHub** | `github.com/Gahroot/ez-pixel-go` (blocked) |
 | **Ruby SDK** | `packages/pixel-rb/` | gem; **NOT yet on RubyGems** | `gg_pixel` (gem, blocked) |
 | **Swift SDK** | `packages/pixel-swift/` | SPM package; **NOT yet pushed/tagged** | SPM via Git URL (blocked) |
 
@@ -41,7 +41,7 @@ cd packages/pixel-py
 twine upload dist/*  # the .whl + .tar.gz are already built
 ```
 
-After publish, `pip install gg-pixel` works. The Python install path in
+After publish, `pip install ez-pixel` works. The Python install path in
 `ezcoder pixel install` will then work hands-off for Python projects.
 
 ### Rust → crates.io
@@ -53,21 +53,21 @@ cd packages/pixel-rs
 # 3. cargo publish
 ```
 
-After publish, `cargo add gg-pixel` works.
+After publish, `cargo add ez-pixel` works.
 
 ### Go → GitHub (Go modules don't need a registry)
 
 ```bash
 cd packages/pixel-go
-# 1. Create the repo: gh repo create kenkaiiii/gg-pixel-go --public
+# 1. Create the repo: gh repo create Gahroot/ez-pixel-go --public
 # 2. Push the directory contents
 # 3. Tag the version: git tag v4.3.72 && git push --tags
 ```
 
-After: `go get github.com/kenkaiiii/gg-pixel-go@v4.3.72` works.
+After: `go get github.com/Gahroot/ez-pixel-go@v4.3.72` works.
 
 The `ezcoder pixel install` flow already runs `go get
-github.com/kenkaiiii/gg-pixel-go@latest` — so once the repo + tag exist, Go
+github.com/Gahroot/ez-pixel-go@latest` — so once the repo + tag exist, Go
 projects work hands-off.
 
 ### Ruby → RubyGems
@@ -85,12 +85,12 @@ After: `gem install gg_pixel` works.
 
 ```bash
 cd packages/pixel-swift
-# 1. Create the repo: gh repo create kenkaiiii/gg-pixel-swift --public
+# 1. Create the repo: gh repo create Gahroot/ez-pixel-swift --public
 # 2. Push the directory contents
 # 3. Tag: git tag 4.3.72 && git push --tags
 ```
 
-After: users add `.package(url: "https://github.com/kenkaiiii/gg-pixel-swift",
+After: users add `.package(url: "https://github.com/Gahroot/ez-pixel-swift",
 from: "4.3.72")` to their `Package.swift` (or via Xcode → File → Add Packages).
 
 ---
@@ -178,12 +178,12 @@ install → throw → verify in D1.
 ## 4. Cloudflare Workers — same-account caveat
 
 When a user deploys to Cloudflare AND their worker is on the same Cloudflare
-account as the gg-pixel-server (`buzzbeamaustralia` — Ken's account), fetches
-to `https://gg-pixel-server.buzzbeamaustralia.workers.dev/ingest` get
+account as the pixel-server (`buzzbeamaustralia` — Ken's account), fetches
+to `https://pixel-server.buzzbeamaustralia.workers.dev/ingest` get
 **error 1042** (Cloudflare's worker→worker same-account block).
 
 **Fixes:**
-1. **Best**: add a custom domain to `gg-pixel-server` (e.g.
+1. **Best**: add a custom domain to `pixel-server` (e.g.
    `pixel.kenkai.dev`) and update `DEFAULT_INGEST_URL` everywhere.
 2. **For Ken's own apps**: use a Cloudflare Service Binding instead of HTTP
    (`env.PIXEL.fetch(...)` instead of `fetch(url)`).
@@ -201,7 +201,7 @@ runs from the project dir AND there's a local `dist/` with `.map` files.
 **For deployed-and-disconnected scenarios** (dev's machine has no build),
 need server-side symbolication:
 
-1. Add `R2` bucket to `gg-pixel-server` worker
+1. Add `R2` bucket to `pixel-server` worker
 2. New endpoint `POST /api/projects/:id/sourcemaps` (uploads `.map` files,
    stored by `release + filename`)
 3. Browser SDK: send `release` field on each event (e.g.
@@ -221,7 +221,7 @@ Estimated effort: ~1 day. Sentry's pattern for reference:
 - **Notifications** — email / Slack / push when an error lands. Deferred.
 - **Per-project rate limit on the backend** — currently the worker trusts
   any valid `project_key`; a single abused key has no cap.
-- **Multi-tenant auth on the dashboard** — gg-pixel-server has no auth; any
+- **Multi-tenant auth on the dashboard** — pixel-server has no auth; any
   caller with a `project_id` can read errors. Fine for single-user; needed
   before opening to clients.
 - **Drop-telemetry to the backend** — when the SDK retries-then-drops, only
@@ -229,7 +229,7 @@ Estimated effort: ~1 day. Sentry's pattern for reference:
   dashboard knows.
 - **`auto-update.test.ts` drift in ezcoder** — pre-existing test failure,
   expects "Updating" but source says "Ken just shipped". 1-line fix.
-- **`gg-editor` lint errors** — pre-existing in another package, unrelated
+- **`ezeditor` lint errors** — pre-existing in another package, unrelated
   to pixel work. Fix or wave away.
 
 ---

@@ -30,7 +30,7 @@ interface BossTasksOverlayProps {
 }
 
 /**
- * Multi-project task overlay for gg-boss. Read-mostly: tasks are added by the
+ * Multi-project task overlay for ezboss. Read-mostly: tasks are added by the
  * boss agent (via add_task tool), so the overlay is just a backlog viewer with
  * two actions — delete a stuck task, or run all pending across idle workers.
  *

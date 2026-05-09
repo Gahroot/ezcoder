@@ -81,7 +81,7 @@ export function initLogger(meta?: {
   } catch {
     // Separator write failed; not fatal.
   }
-  const parts = ["gg-boss"];
+  const parts = ["ezboss"];
   if (meta?.version) parts[0] += ` v${meta.version}`;
   parts.push("started");
   if (meta?.bossProvider) parts.push(`boss=${meta.bossProvider}/${meta.bossModel ?? "?"}`);

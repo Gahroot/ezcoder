@@ -142,7 +142,7 @@ async function runServeSubcommand(argv: string[]): Promise<void> {
     else if (a === "--worker-model") cliWorkerModel = argv[++i];
     else if (a === "--help" || a === "-h") {
       process.stdout.write(
-        "\nggboss serve — drive the boss from Telegram\n\n" +
+        "\nezboss serve — drive the boss from Telegram\n\n" +
           "Options\n" +
           "  --bot-token <token>   Telegram bot token (or env EZBOSS_TELEGRAM_BOT_TOKEN)\n" +
           "  --user-id <id>        Allowed Telegram user ID (or env EZBOSS_TELEGRAM_USER_ID)\n" +
@@ -277,7 +277,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   await ink.waitUntilExit();
   await boss.dispose();
   // Kill any in-flight radio stream before exiting — otherwise the detached
-  // mpv/ffplay child keeps playing after the user closed gg-boss.
+  // mpv/ffplay child keeps playing after the user closed ezboss.
   stopRadio();
   await runPromise.catch(() => {});
   process.exit(0);
@@ -333,6 +333,6 @@ process.on("unhandledRejection", (reason) => {
 
 main().catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(chalk.hex(COLORS.error)(`\ngg-boss failed: ${message}\n`));
+  process.stderr.write(chalk.hex(COLORS.error)(`\nezboss failed: ${message}\n`));
   process.exit(1);
 });

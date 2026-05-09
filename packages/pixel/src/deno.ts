@@ -2,7 +2,7 @@ import { installDenoAdapter, type DenoAdapter } from "./adapters/deno.js";
 import { HttpSink } from "./core/sinks/http.js";
 import type { Sink } from "./core/types.js";
 
-export const DEFAULT_INGEST_URL = "https://gg-pixel-server.buzzbeamaustralia.workers.dev";
+export const DEFAULT_INGEST_URL = "https://pixel-server.buzzbeamaustralia.workers.dev";
 
 export interface DenoPixelOptions {
   projectKey: string;
@@ -17,7 +17,7 @@ let active: DenoAdapter | null = null;
 
 export function initPixel(options: DenoPixelOptions): DenoAdapter {
   if (active) {
-    throw new Error("gg-pixel is already initialized; call closePixel() first");
+    throw new Error("ez-pixel is already initialized; call closePixel() first");
   }
   const sink: Sink = options.sink ?? new HttpSink(buildIngestUrl(options.ingestUrl));
   active = installDenoAdapter({

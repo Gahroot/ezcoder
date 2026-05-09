@@ -1,4 +1,4 @@
-![gg-boss](screenshots/ezboss.png)
+![ezboss](screenshots/ezboss.png)
 
 <p align="center">
   <strong>One chat. Many ezcoder workers. The boss runs the room.</strong>
@@ -14,14 +14,14 @@
 
 You talk to the boss. The boss drives the workers — one per project — in parallel. Dispatch work, watch them finish, keep a backlog, swap models on the fly. All from one terminal.
 
-Built on [`@prestyj/cli`](../ezcoder/README.md), [`@prestyj/agent`](../gg-agent/README.md) and [`@prestyj/ai`](../gg-ai/README.md). Part of the [EZCoder Framework](../../README.md) monorepo.
+Built on [`@prestyj/cli`](../ezcoder/README.md), [`@prestyj/agent`](../agent/README.md) and [`@prestyj/ai`](../ai/README.md). Part of the [EZCoder Framework](../../README.md) monorepo.
 
 ---
 
 ## 🚀 Run It
 
 ```bash
-# Sign in once with ezcoder — gg-boss reuses the same auth
+# Sign in once with ezcoder — ezboss reuses the same auth
 npm i -g @prestyj/cli
 ezcoder login
 
@@ -77,7 +77,7 @@ ezboss --project ../api --project ../web   # explicit project list
 | <kbd>Shift+Tab</kbd> | Toggle the boss's extended thinking |
 | <kbd>Esc</kbd> | Interrupt the boss mid-turn (workers keep running) |
 | <kbd>Ctrl+T</kbd> | Open the Tasks pane |
-| <kbd>Ctrl+C</kbd> ×2 | Exit gg-boss |
+| <kbd>Ctrl+C</kbd> ×2 | Exit ezboss |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Recall previous prompts (when input is empty) |
 | <kbd>Enter</kbd> | Send · <kbd>Shift+Enter</kbd> newline · `/` opens the slash menu |
 
@@ -103,7 +103,7 @@ Inside the **Tasks pane** (<kbd>Ctrl+T</kbd>):
 | `/compact` | Compact the boss's context now |
 | `/clear` | Clear chat history and terminal |
 | `/radio` | Stream a free internet radio station while you work |
-| `/quit` (`/q`, `/exit`) | Exit gg-boss |
+| `/quit` (`/q`, `/exit`) | Exit ezboss |
 
 ---
 
@@ -164,5 +164,5 @@ MIT
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@prestyj/boss"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40kenkaiiii%2Fgg--boss-blue?style=for-the-badge" alt="Install"></a>
+  <a href="https://www.npmjs.com/package/@prestyj/boss"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40Gahroot%2Fgg--boss-blue?style=for-the-badge" alt="Install"></a>
 </p>

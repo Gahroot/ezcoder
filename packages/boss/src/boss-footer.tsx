@@ -59,7 +59,7 @@ const SHORT_RADIO: Record<string, string> = {
 };
 
 /**
- * Footer for gg-boss that mirrors ezcoder's Footer visual style — context bar
+ * Footer for ezboss that mirrors ezcoder's Footer visual style — context bar
  * with partial-block precision, percent, then BOTH models displayed in the
  * same bold/coloured treatment so neither feels secondary.
  */

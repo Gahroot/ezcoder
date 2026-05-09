@@ -12,9 +12,9 @@
   <a href="https://github.com/KenKaiii"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
 </p>
 
-A coding agent that ships only what the model needs to work — a tiny system prompt, one carefully-chosen MCP, and a focused tool set. Switch between Anthropic, OpenAI, GLM, Moonshot, MiniMax, Xiaomi, DeepSeek, and OpenRouter mid-conversation. Run it on its own, or let [`@prestyj/boss`](../gg-boss/README.md) drive a fleet of `ezcoder` workers across many projects from a single chat.
+A coding agent that ships only what the model needs to work — a tiny system prompt, one carefully-chosen MCP, and a focused tool set. Switch between Anthropic, OpenAI, GLM, Moonshot, MiniMax, Xiaomi, DeepSeek, and OpenRouter mid-conversation. Run it on its own, or let [`@prestyj/boss`](../ezboss/README.md) drive a fleet of `ezcoder` workers across many projects from a single chat.
 
-Built on [`@prestyj/ai`](../gg-ai/README.md) and [`@prestyj/agent`](../gg-agent/README.md). Part of the [EZCoder Framework](../../README.md) monorepo.
+Built on [`@prestyj/ai`](../ai/README.md) and [`@prestyj/agent`](../agent/README.md). Part of the [EZCoder Framework](../../README.md) monorepo.
 
 ---
 
@@ -27,7 +27,7 @@ ezcoder login    # Pick provider, authenticate
 ezcoder          # Start coding
 ```
 
-OAuth for Anthropic and OpenAI (log in once, auto-refresh, no key to leak). API keys for the rest. Up and running in seconds either way. Auth lives in `~/.ezcoder/auth.json` and is shared with `gg-boss`.
+OAuth for Anthropic and OpenAI (log in once, auto-refresh, no key to leak). API keys for the rest. Up and running in seconds either way. Auth lives in `~/.ezcoder/auth.json` and is shared with `ezboss`.
 
 ---
 
@@ -82,9 +82,9 @@ The same conversation, the same tools, the same project context — only the mod
 
 ---
 
-## 🤝 Pair it with gg-boss
+## 🤝 Pair it with ezboss
 
-`ezcoder` is the unit of work. [`gg-boss`](../gg-boss/README.md) is the orchestrator that drives many of them at once.
+`ezcoder` is the unit of work. [`ezboss`](../ezboss/README.md) is the orchestrator that drives many of them at once.
 
 ```bash
 npm i -g @prestyj/boss
@@ -92,7 +92,7 @@ ezboss link    # pick which projects to drive
 ezboss         # one chat, N parallel ezcoder workers
 ```
 
-Inside `gg-boss`, every project gets its own `ezcoder` `AgentSession` running in that project's directory. The boss dispatches work — `prompt_worker(project, "...")` — and each worker uses the **same** focused tool set (read, write, edit, bash, grep, find, ls, web fetch, sub-agents) you'd get running `ezcoder` solo. Workers reply with a tight `Changed / Skipped / Verified / Notes / Status` summary the boss reads, cross-checks, and routes off.
+Inside `ezboss`, every project gets its own `ezcoder` `AgentSession` running in that project's directory. The boss dispatches work — `prompt_worker(project, "...")` — and each worker uses the **same** focused tool set (read, write, edit, bash, grep, find, ls, web fetch, sub-agents) you'd get running `ezcoder` solo. Workers reply with a tight `Changed / Skipped / Verified / Notes / Status` summary the boss reads, cross-checks, and routes off.
 
 Why this works: ezcoder's lean prompt and tight tool set keep each worker cheap and predictable, so the boss can run six or more in parallel without context blow-up. Anything you can do in a single `ezcoder` session — slash commands, skills, MCPs, custom commands, project `CLAUDE.md` rules — works inside the boss too.
 
@@ -211,5 +211,5 @@ MIT
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@prestyj/cli"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40kenkaiiii%2Fggcoder-blue?style=for-the-badge" alt="Install"></a>
+  <a href="https://www.npmjs.com/package/@prestyj/cli"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40Gahroot%2Fezcoder-blue?style=for-the-badge" alt="Install"></a>
 </p>

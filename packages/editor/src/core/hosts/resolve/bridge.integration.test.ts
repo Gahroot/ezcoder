@@ -27,7 +27,7 @@ describe.skipIf(skipReason)("ResolveBridge (integration with fake Resolve)", () 
   beforeAll(() => {
     // Create a fake DaVinciResolveScript module that mimics just enough of
     // the real API for the bridge methods to succeed.
-    fakeModulesDir = mkdtempSync(join(tmpdir(), "gg-editor-fakeres-"));
+    fakeModulesDir = mkdtempSync(join(tmpdir(), "ezeditor-fakeres-"));
     writeFileSync(
       join(fakeModulesDir, "DaVinciResolveScript.py"),
       String.raw`

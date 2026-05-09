@@ -59,7 +59,7 @@ export async function extractEnvelope(
   inputPath: string,
   opts: { signal?: AbortSignal } = {},
 ): Promise<EnvelopeResult> {
-  const dir = mkdtempSync(join(tmpdir(), "gg-editor-env-"));
+  const dir = mkdtempSync(join(tmpdir(), "ezeditor-env-"));
   const pcmPath = join(dir, "audio.pcm");
   await new Promise<void>((resolve, reject) => {
     const child = spawn(

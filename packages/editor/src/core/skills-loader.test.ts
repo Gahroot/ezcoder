@@ -47,8 +47,11 @@ describe("discoverSkills", () => {
   it("loads project skills with extracted description", () => {
     const cwd = tmp("gg-skills-cwd-");
     const home = tmp("gg-skills-home-");
-    mkdirSync(join(cwd, ".gg/editor-skills"), { recursive: true });
-    writeFileSync(join(cwd, ".gg/editor-skills/gamma.md"), "# gamma\n\nProject-only skill body.\n");
+    mkdirSync(join(cwd, ".ezcoder/editor-skills"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".ezcoder/editor-skills/gamma.md"),
+      "# gamma\n\nProject-only skill body.\n",
+    );
     const r = discoverSkills({ cwd, homeDir: home, bundled: BUNDLED });
     const gamma = r.find((s) => s.name === "gamma");
     expect(gamma?.origin).toBe("project");
@@ -58,8 +61,11 @@ describe("discoverSkills", () => {
   it("user skill overrides bundled (last-wins)", () => {
     const cwd = tmp("gg-skills-cwd-");
     const home = tmp("gg-skills-home-");
-    mkdirSync(join(home, ".gg/editor-skills"), { recursive: true });
-    writeFileSync(join(home, ".gg/editor-skills/alpha.md"), "# alpha\n\nUser-overridden alpha.\n");
+    mkdirSync(join(home, ".ezcoder/editor-skills"), { recursive: true });
+    writeFileSync(
+      join(home, ".ezcoder/editor-skills/alpha.md"),
+      "# alpha\n\nUser-overridden alpha.\n",
+    );
     const r = discoverSkills({ cwd, homeDir: home, bundled: BUNDLED });
     const alpha = r.find((s) => s.name === "alpha");
     expect(alpha?.origin).toBe("user");
@@ -69,10 +75,10 @@ describe("discoverSkills", () => {
   it("user wins over project when both define the same name", () => {
     const cwd = tmp("gg-skills-cwd-");
     const home = tmp("gg-skills-home-");
-    mkdirSync(join(cwd, ".gg/editor-skills"), { recursive: true });
-    mkdirSync(join(home, ".gg/editor-skills"), { recursive: true });
-    writeFileSync(join(cwd, ".gg/editor-skills/alpha.md"), "# a\n\nfrom project\n");
-    writeFileSync(join(home, ".gg/editor-skills/alpha.md"), "# a\n\nfrom user\n");
+    mkdirSync(join(cwd, ".ezcoder/editor-skills"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder/editor-skills"), { recursive: true });
+    writeFileSync(join(cwd, ".ezcoder/editor-skills/alpha.md"), "# a\n\nfrom project\n");
+    writeFileSync(join(home, ".ezcoder/editor-skills/alpha.md"), "# a\n\nfrom user\n");
     const r = discoverSkills({ cwd, homeDir: home, bundled: BUNDLED });
     const alpha = r.find((s) => s.name === "alpha");
     expect(alpha?.origin).toBe("user");
@@ -81,10 +87,10 @@ describe("discoverSkills", () => {
   it("reads YAML frontmatter for name + description", () => {
     const cwd = tmp("gg-skills-cwd-");
     const home = tmp("gg-skills-home-");
-    mkdirSync(join(cwd, ".gg/editor-skills"), { recursive: true });
+    mkdirSync(join(cwd, ".ezcoder/editor-skills"), { recursive: true });
     const md =
       '---\nname: my-skill\ndescription: "Use when X happens."\n---\n\n# My Skill\n\nBody.\n';
-    writeFileSync(join(cwd, ".gg/editor-skills/anything.md"), md);
+    writeFileSync(join(cwd, ".ezcoder/editor-skills/anything.md"), md);
     const r = discoverSkills({ cwd, homeDir: home, bundled: BUNDLED });
     const s = r.find((s) => s.name === "my-skill");
     expect(s).toBeTruthy();
@@ -97,9 +103,9 @@ describe("discoverSkills", () => {
   it("frontmatter falls back to filename + body extraction when keys missing", () => {
     const cwd = tmp("gg-skills-cwd-");
     const home = tmp("gg-skills-home-");
-    mkdirSync(join(cwd, ".gg/editor-skills"), { recursive: true });
+    mkdirSync(join(cwd, ".ezcoder/editor-skills"), { recursive: true });
     writeFileSync(
-      join(cwd, ".gg/editor-skills/foo.md"),
+      join(cwd, ".ezcoder/editor-skills/foo.md"),
       "---\nother: stuff\n---\n\nA body line.\n",
     );
     const r = discoverSkills({ cwd, homeDir: home, bundled: BUNDLED });
@@ -110,9 +116,9 @@ describe("discoverSkills", () => {
   it("loads bundle-layout skill (<name>/SKILL.md)", () => {
     const cwd = tmp("gg-skills-cwd-");
     const home = tmp("gg-skills-home-");
-    mkdirSync(join(cwd, ".gg/editor-skills/bundled-name"), { recursive: true });
+    mkdirSync(join(cwd, ".ezcoder/editor-skills/bundled-name"), { recursive: true });
     writeFileSync(
-      join(cwd, ".gg/editor-skills/bundled-name/SKILL.md"),
+      join(cwd, ".ezcoder/editor-skills/bundled-name/SKILL.md"),
       "---\nname: real-name\ndescription: From SKILL.md\n---\n\nBody.\n",
     );
     const r = discoverSkills({ cwd, homeDir: home, bundled: BUNDLED });
@@ -122,7 +128,7 @@ describe("discoverSkills", () => {
     expect(s?.path?.endsWith("SKILL.md")).toBe(true);
   });
 
-  it("discovers from .ezcoder/skills/ as well as legacy .gg/editor-skills/", () => {
+  it("discovers from .ezcoder/skills/ as well as legacy .ezcoder/editor-skills/", () => {
     const cwd = tmp("gg-skills-cwd-");
     const home = tmp("gg-skills-home-");
     mkdirSync(join(cwd, ".ezcoder/skills"), { recursive: true });

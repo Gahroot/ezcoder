@@ -182,7 +182,7 @@ function isWsl(): boolean {
  * (ffplay on WSLg) to ~4s.
  *
  * Security:
- *  - The asset path is containment-checked against the gg-boss install
+ *  - The asset path is containment-checked against the ezboss install
  *    directory before spawning anything. Today's call sites always pass
  *    a hardcoded asset path, but this gate fails closed if a future code
  *    path leaks an attacker-controlled string into `playFile()`.

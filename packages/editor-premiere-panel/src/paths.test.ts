@@ -11,11 +11,11 @@ import {
 
 describe("paths", () => {
   it("BUNDLE_ID is the canonical reverse-DNS string", () => {
-    expect(BUNDLE_ID).toBe("com.kenkaiiii.gg-editor-premiere-panel");
+    expect(BUNDLE_ID).toBe("com.Gahroot.ez-editor-premiere-panel");
   });
 
   it("BUNDLE_ID_UXP is distinct so CEP and UXP can coexist", () => {
-    expect(BUNDLE_ID_UXP).toBe("com.kenkaiiii.gg-editor-premiere-panel.uxp");
+    expect(BUNDLE_ID_UXP).toBe("com.Gahroot.ez-editor-premiere-panel.uxp");
     expect(BUNDLE_ID_UXP).not.toBe(BUNDLE_ID);
   });
 

@@ -1,4 +1,4 @@
-# gg-editor — Roadmap & Outstanding Work
+# ezeditor — Roadmap & Outstanding Work
 
 Living tracking doc. Updated each time something ships.
 
@@ -112,7 +112,7 @@ Legend: `[x]` done · `[~]` partial / stubbed honestly · `[ ]` not started
 - [x] Color tools: `apply_lut`, `set_primary_correction`, `copy_grade` (Resolve only; LUT + CDL is what's actually scriptable; wheels/curves/qualifiers/windows remain manual)
 - [x] Multicam audio sync — v1 first-transient / clap-sync via ffmpeg silencedetect
 - [x] Self-review tool (`review_edit`) — critique edit against stated intent
-- [x] User-extensible skills — `.gg/editor-skills/*.md` (project) + `~/.ezcoder/editor-skills/*.md` (user) layered on top of bundled
+- [x] User-extensible skills — `.ezcoder/editor-skills/*.md` (project) + `~/.ezcoder/editor-skills/*.md` (user) layered on top of bundled
 
 ### Content-creator additions (Tier 3 — closed)
 - [x] `color_match` — vision-derived CDL with confidence gate
@@ -128,7 +128,7 @@ Legend: `[x]` done · `[~]` partial / stubbed honestly · `[ ]` not started
 
 ### Content-creator additions (Tier 4 — closed)
 - [x] Marker query enhancements — `get_markers(color, contains, startFrame, endFrame)`
-- [x] Style presets — `<cwd>/.gg/editor-styles/*.md` + `~/.ezcoder/editor-styles/*.md` (project overrides user); fold into system prompt as Active style presets
+- [x] Style presets — `<cwd>/.ezcoder/editor-styles/*.md` + `~/.ezcoder/editor-styles/*.md` (project overrides user); fold into system prompt as Active style presets
 - [x] Speaker handling — `Transcript.segments[].speaker?: string` schema, `read_transcript(speaker=...)` filter, `detect_speaker_changes` heuristic v1 (silence-gap based; honest about its limits)
 - [x] Round-trip golden tests — EDL + FCPXML structural verification via targeted regex (event count, contiguous record cursor, frame-rate fractions for 23.976/29.97, asset/clip ref integrity)
 
@@ -178,7 +178,7 @@ Legend: `[x]` done · `[~]` partial / stubbed honestly · `[ ]` not started
 - [x] JSX runtime mirroring the macOS bridge methods
 - [x] Cross-platform installer CLI (install/uninstall/status/debug-on/debug-off)
 - [x] Auto-toggles PlayerDebugMode for CSXS 9-12
-- [x] Dual-transport bridge in gg-editor: HTTP (preferred) + osascript (mac fallback)
+- [x] Dual-transport bridge in ezeditor: HTTP (preferred) + osascript (mac fallback)
 - [x] HTTP bridge end-to-end tested with stub server
 - [ ] (v1) ZXP signing for production unsigned-panel-free install
 
@@ -300,7 +300,7 @@ Legend: `[x]` done · `[~]` partial / stubbed honestly · `[ ]` not started
 - [ ] Architecture diagram
 - [ ] Tool reference page (each tool's contract, examples)
 - [ ] Recipe book: silence cut, take selection, color batch, B-roll insertion
-- [ ] Comparison matrix: Resolve API vs Premiere API vs gg-editor abstraction
+- [ ] Comparison matrix: Resolve API vs Premiere API vs ezeditor abstraction
 
 ---
 

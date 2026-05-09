@@ -18,10 +18,10 @@ describe("discoverStyles", () => {
   it("loads project + user styles", () => {
     const cwd = tmp("gg-styles-cwd-");
     const home = tmp("gg-styles-home-");
-    mkdirSync(join(cwd, ".gg/editor-styles"), { recursive: true });
-    mkdirSync(join(home, ".gg/editor-styles"), { recursive: true });
-    writeFileSync(join(cwd, ".gg/editor-styles/voice.md"), "# voice\nproject voice");
-    writeFileSync(join(home, ".gg/editor-styles/format.md"), "# format\nuser format");
+    mkdirSync(join(cwd, ".ezcoder/editor-styles"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder/editor-styles"), { recursive: true });
+    writeFileSync(join(cwd, ".ezcoder/editor-styles/voice.md"), "# voice\nproject voice");
+    writeFileSync(join(home, ".ezcoder/editor-styles/format.md"), "# format\nuser format");
     const r = discoverStyles({ cwd, homeDir: home });
     expect(r.map((s) => s.name).sort()).toEqual(["format", "voice"]);
     expect(r.find((s) => s.name === "voice")?.origin).toBe("project");
@@ -31,10 +31,10 @@ describe("discoverStyles", () => {
   it("project overrides user on name collision (opposite of skills)", () => {
     const cwd = tmp("gg-styles-cwd-");
     const home = tmp("gg-styles-home-");
-    mkdirSync(join(cwd, ".gg/editor-styles"), { recursive: true });
-    mkdirSync(join(home, ".gg/editor-styles"), { recursive: true });
-    writeFileSync(join(cwd, ".gg/editor-styles/x.md"), "project");
-    writeFileSync(join(home, ".gg/editor-styles/x.md"), "user");
+    mkdirSync(join(cwd, ".ezcoder/editor-styles"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder/editor-styles"), { recursive: true });
+    writeFileSync(join(cwd, ".ezcoder/editor-styles/x.md"), "project");
+    writeFileSync(join(home, ".ezcoder/editor-styles/x.md"), "user");
     const r = discoverStyles({ cwd, homeDir: home });
     expect(r).toHaveLength(1);
     expect(r[0].origin).toBe("project");
@@ -43,8 +43,8 @@ describe("discoverStyles", () => {
   it("skips empty files", () => {
     const cwd = tmp("gg-styles-cwd-");
     const home = tmp("gg-styles-home-");
-    mkdirSync(join(home, ".gg/editor-styles"), { recursive: true });
-    writeFileSync(join(home, ".gg/editor-styles/empty.md"), "   \n  \n");
+    mkdirSync(join(home, ".ezcoder/editor-styles"), { recursive: true });
+    writeFileSync(join(home, ".ezcoder/editor-styles/empty.md"), "   \n  \n");
     expect(discoverStyles({ cwd, homeDir: home })).toEqual([]);
   });
 });

@@ -11,7 +11,7 @@
   <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
 </p>
 
-Built on the [EZCoder Framework](../../README.md). Same agent loop ([`@prestyj/agent`](../gg-agent/README.md)) as ezcoder, completely different tool surface — no `bash`, no `read/write/edit`, no general-purpose coder behaviour. Just video.
+Built on the [EZCoder Framework](../../README.md). Same agent loop ([`@prestyj/agent`](../agent/README.md)) as ezcoder, completely different tool surface — no `bash`, no `read/write/edit`, no general-purpose coder behaviour. Just video.
 
 ---
 
@@ -85,7 +85,7 @@ The full transcript stays on disk. The agent only ever pulls slices it actually 
 │       │     ├─ Premiere    osascript + ExtendScript     │
 │       │     └─ None        File-only (ffmpeg/whisper)   │
 │       │                                                 │
-│       └─ Agent loop (gg-agent)                          │
+│       └─ Agent loop (agent)                          │
 │             │                                           │
 │             └─ 59 video-only tools                      │
 │                   ├─ Timeline:  host_info, get_timeline,│
@@ -166,9 +166,9 @@ Token economics for a 50-tool-call edit session: **~3K tokens of tool output**, 
 - That's it — uses the built-in `osascript` + ExtendScript
 
 ### For Premiere (Windows or macOS)
-- Install the companion panel package: `npm i -g @prestyj/editor-premiere-panel && gg-editor-premiere-panel install`
+- Install the companion panel package: `npm i -g @prestyj/editor-premiere-panel && ez-editor-premiere-panel install`
 - Restart Premiere; open `Window → Extensions → EZ Editor`
-- The bridge auto-probes the panel — once it's running, gg-editor uses HTTP transport (faster than osascript)
+- The bridge auto-probes the panel — once it's running, ezeditor uses HTTP transport (faster than osascript)
 - macOS without the panel still works via the built-in osascript fallback
 
 ### For transcription
@@ -192,7 +192,7 @@ The agent ships with three bundled **skills** (recipes) for these, fetched on de
 ### Persistent style presets
 
 For things that should apply to *every* response (your editing voice, default formats, naming conventions): drop a markdown file in either:
-- `<cwd>/.gg/editor-styles/<name>.md` — project-scoped (checked into the repo)
+- `<cwd>/.ezcoder/editor-styles/<name>.md` — project-scoped (checked into the repo)
 - `~/.ezcoder/editor-styles/<name>.md` — user-scoped (your personal default)
 
 Unlike skills (which are read on-demand), styles fold directly into the system prompt as an "Active style presets" section. Project overrides user (opposite of skills) — the reasoning: a project's checked-in style is the one the team agreed on; a user's home preset defers to project conventions.
@@ -200,7 +200,7 @@ Unlike skills (which are read on-demand), styles fold directly into the system p
 ### Custom skills
 
 Drop your own recipes as `.md` files in either:
-- `<cwd>/.gg/editor-skills/<name>.md` — project-scoped
+- `<cwd>/.ezcoder/editor-skills/<name>.md` — project-scoped
 - `~/.ezcoder/editor-skills/<name>.md` — user-scoped
 
 They get listed in the system prompt with the bundled ones (tagged `(project)` / `(user)`) and load via `read_skill(name="<filename-without-md>")`. The first non-heading line of each file is used as the description. User skills override project; project overrides bundled (silent override — the badge in the prompt makes it explicit).

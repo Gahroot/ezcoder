@@ -1,16 +1,16 @@
 {
   "name": "@prestyj/pixel-server",
-  "version": "4.3.85",
+  "version": "4.3.86",
   "private": true,
   "type": "module",
-  "description": "Cloudflare Workers backend for gg-pixel",
+  "description": "Cloudflare Workers backend for ez-pixel",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:local": "wrangler d1 migrations apply gg-pixel --local",
-    "db:remote": "wrangler d1 migrations apply gg-pixel --remote"
+    "db:local": "wrangler d1 migrations apply ez-pixel --local",
+    "db:remote": "wrangler d1 migrations apply ez-pixel --remote"
   },
   "dependencies": {
     "hono": "^4.6.13"

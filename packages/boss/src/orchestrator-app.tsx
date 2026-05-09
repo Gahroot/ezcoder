@@ -397,7 +397,7 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
             scopeBadge={<ScopePill scope={state.scope} />}
             // Mouse-tracking escape sequences cause Ghostty to emit phantom
             // pastes of the system clipboard during high-frequency UI updates
-            // (workers running, shimmer animating). gg-boss's UI updates a lot,
+            // (workers running, shimmer animating). ezboss's UI updates a lot,
             // so we forfeit click-to-position-cursor in the input to keep
             // the clipboard from leaking into the chat field.
             disableMouseTracking
@@ -467,7 +467,7 @@ function BossAppInner({ boss, resetUI }: BossAppProps): React.ReactElement {
   );
 }
 
-// ── Scope pill (gg-boss specific) ──────────────────────────
+// ── Scope pill (ezboss specific) ──────────────────────────
 
 function ScopePill({ scope }: { scope: string }): React.ReactElement {
   const theme = useTheme();
@@ -503,7 +503,7 @@ function scopePrefix(scope: string): string {
   return `[scope:${scope}] `;
 }
 
-// ── Worker status row (gg-boss specific) ───────────────────
+// ── Worker status row (ezboss specific) ───────────────────
 
 const SHIMMER_WIDTH = 3;
 
@@ -663,9 +663,9 @@ function StaticRowView({ row }: { row: StaticRow }): React.ReactElement | null {
 }
 
 /**
- * Update-available notice — gg-boss brand aesthetic. Rounded box, fuchsia
+ * Update-available notice — ezboss brand aesthetic. Rounded box, fuchsia
  * accent border, crimson primary body text. Mirrors the gradient feel of the
- * splash + banner so the notice reads as part of gg-boss rather than a
+ * splash + banner so the notice reads as part of ezboss rather than a
  * borrowed-green ezcoder element. The ✨ rides the accent so the eye lands
  * on the highlight first, then reads the primary-colored body.
  */
@@ -775,7 +775,7 @@ function ToolHistoryRow({ item }: { item: ToolItem }): React.ReactElement {
   );
 }
 
-// ── Worker rows (gg-boss specific) ─────────────────────────
+// ── Worker rows (ezboss specific) ─────────────────────────
 
 type WorkerStatusGrade = "DONE" | "UNVERIFIED" | "PARTIAL" | "BLOCKED" | "INFO";
 

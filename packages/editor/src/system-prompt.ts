@@ -123,7 +123,7 @@ This is the orchestrator path — the single broad ask covers everything from cu
 
 **Decision tree:**
 
-1. **Probe the source** — \`probe_media(input)\` for duration. Check whether \`<cwd>/.gg/brand.json\` exists (see Brand kit section). Read it silently if so; ALL render-time tools should inherit its defaults.
+1. **Probe the source** — \`probe_media(input)\` for duration. Check whether \`<cwd>/.ezcoder/brand.json\` exists (see Brand kit section). Read it silently if so; ALL render-time tools should inherit its defaults.
 2. **Triage long-form vs short-form:**
    - duration > 5 min, prompt silent on format → produce BOTH a long-form cut AND 1–3 Shorts via \`find_viral_moments\`. Default behaviour. Tell the user what you're going to ship before starting; don't ask permission.
    - duration > 5 min, prompt explicit ("long-form only", "just the YouTube version") → only the long-form. Skip Shorts.
@@ -232,7 +232,7 @@ Never ask the host for full timeline state when you only need a few clips. Token
 
 # Brand kit (auto-load)
 
-If \`<cwd>/.gg/brand.json\` exists, treat it as the channel's render-time defaults. Schema (all fields optional, JSON):
+If \`<cwd>/.ezcoder/brand.json\` exists, treat it as the channel's render-time defaults. Schema (all fields optional, JSON):
 
   channelName, logo, watermark, intro, outro: file paths relative to cwd
   fonts: { heading: "path/to/.ttf", body: "path/to/.ttf" }

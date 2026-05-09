@@ -15,7 +15,7 @@ export function createReadSkillTool(skills: SkillSource[]): AgentTool<typeof Rea
       "Read the full content of a skill (recipe). The system prompt lists available skill " +
       "names + one-line descriptions; call this when you decide a skill applies to the user's " +
       "request. Returns the markdown content verbatim. Skills include bundled defaults plus " +
-      "user-defined skills from .gg/editor-skills/*.md (project) and ~/.ezcoder/editor-skills/*.md (user).",
+      "user-defined skills from .ezcoder/editor-skills/*.md (project) and ~/.ezcoder/editor-skills/*.md (user).",
     parameters: ReadSkillParams,
     async execute({ name }) {
       const skill = byName.get(name);

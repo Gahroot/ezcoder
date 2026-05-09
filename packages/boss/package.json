@@ -1,12 +1,12 @@
 {
   "name": "@prestyj/boss",
-  "version": "4.3.156",
+  "version": "4.3.158",
   "type": "module",
   "description": "Orchestrator agent that drives multiple ezcoder sessions across projects from a single chat",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kenkaiiii/ezcoder.git",
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
     "directory": "packages/boss"
   },
   "bin": {

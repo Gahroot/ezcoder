@@ -11,7 +11,7 @@ import { basename, join, resolve as resolvePath } from "node:path";
  *     "Active style" section so every reply respects the user's standing prefs.
  *
  * Layout (last wins on name collisions):
- *   <cwd>/.gg/editor-styles/*.md  (project)
+ *   <cwd>/.ezcoder/editor-styles/*.md  (project)
  *   ~/.ezcoder/editor-styles/*.md      (user)
  *
  * Project overrides user — opposite of skills (where user overrides project).
@@ -33,8 +33,8 @@ export interface DiscoverStylesOptions {
 
 export function discoverStyles(opts: DiscoverStylesOptions): StyleSource[] {
   const home = opts.homeDir ?? homedir();
-  const projectDir = resolvePath(opts.cwd, ".gg/editor-styles");
-  const userDir = resolvePath(home, ".gg/editor-styles");
+  const projectDir = resolvePath(opts.cwd, ".ezcoder/editor-styles");
+  const userDir = resolvePath(home, ".ezcoder/editor-styles");
 
   const user = readStyleDir(userDir, "user");
   const project = readStyleDir(projectDir, "project");

@@ -13,7 +13,7 @@
  *   2. `safeResolveOutputPath()` — sandbox redirect for paths that NLE hosts
  *      (Resolve, Premiere) need to read back. macOS-sandboxed Node writes under
  *      `/var/folders/...` are invisible to the host process, so we transparently
- *      redirect to `~/Documents/gg-editor-out/`. The redirect is reported back
+ *      redirect to `~/Documents/ezeditor-out/`. The redirect is reported back
  *      through tool output so the agent can surface it.
  */
 
@@ -21,7 +21,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, resolve as resolvePath } from "node:path";
 
 /** Default user-visible output directory for sandbox-redirected files. */
-export const USER_OUTPUT_DIR_NAME = "gg-editor-out";
+export const USER_OUTPUT_DIR_NAME = "ezeditor-out";
 
 /** Build the full path of the per-user output directory. */
 export function userOutputDir(): string {

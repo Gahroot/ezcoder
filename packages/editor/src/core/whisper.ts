@@ -34,7 +34,7 @@ export interface TranscriptSegment {
   /**
    * Speaker label, when present. Populated only when the transcript was
    * produced by a tool that does diarization (whisperx, AssemblyAI, manual).
-   * gg-editor's bundled `transcribe` does not produce speaker labels.
+   * ezeditor's bundled `transcribe` does not produce speaker labels.
    */
   speaker?: string;
 }
@@ -363,7 +363,7 @@ export function whisperxJsonToTranscript(
 
 function transcribeWhisperx(inputPath: string, opts: TranscribeOptions): Promise<Transcript> {
   return new Promise((resolve, reject) => {
-    const outDir = mkdtempSync(join(tmpdir(), "gg-editor-whisperx-"));
+    const outDir = mkdtempSync(join(tmpdir(), "ezeditor-whisperx-"));
     const args = [
       inputPath,
       "--model",

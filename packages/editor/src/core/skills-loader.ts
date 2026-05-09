@@ -8,7 +8,7 @@ import type { BundledSkill } from "../skills.js";
  *
  * Priority (last wins on name collisions):
  *   bundled (compiled into the package)
- *   → project (<cwd>/.gg/editor-skills/ OR <cwd>/.ezcoder/skills/)
+ *   → project (<cwd>/.ezcoder/editor-skills/ OR <cwd>/.ezcoder/skills/)
  *   → user    (~/.ezcoder/editor-skills/ OR ~/.ezcoder/skills/)
  *
  * Silent override is the intended behaviour. The system prompt's skill list
@@ -29,10 +29,10 @@ import type { BundledSkill } from "../skills.js";
  * When frontmatter is absent, the skill name falls back to the basename and
  * the description is heuristically extracted from the first non-heading line.
  *
- * Two project / user dirs are searched in order — `.gg/editor-skills/` (the
- * legacy gg-editor location) then `.ezcoder/skills/` (the broader ecosystem
+ * Two project / user dirs are searched in order — `.ezcoder/editor-skills/` (the
+ * legacy ezeditor location) then `.ezcoder/skills/` (the broader ecosystem
  * convention used by ezcoder + skills.sh installs). Same for ~/.ezcoder/. This
- * means a creator who has done `npx skills add kenkaiiii/agent-skills` into
+ * means a creator who has done `npx skills add Gahroot/agent-skills` into
  * `~/.ezcoder/skills/` automatically gets the editor skills too.
  */
 
@@ -54,10 +54,13 @@ export interface DiscoverSkillsOptions {
 export function discoverSkills(opts: DiscoverSkillsOptions): SkillSource[] {
   const home = opts.homeDir ?? homedir();
   const projectDirs = [
-    resolvePath(opts.cwd, ".gg/editor-skills"),
+    resolvePath(opts.cwd, ".ezcoder/editor-skills"),
     resolvePath(opts.cwd, ".ezcoder/skills"),
   ];
-  const userDirs = [resolvePath(home, ".gg/editor-skills"), resolvePath(home, ".ezcoder/skills")];
+  const userDirs = [
+    resolvePath(home, ".ezcoder/editor-skills"),
+    resolvePath(home, ".ezcoder/skills"),
+  ];
 
   const bundled: SkillSource[] = opts.bundled.map((s) => ({
     name: s.name,

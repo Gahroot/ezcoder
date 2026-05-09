@@ -2,7 +2,7 @@
  * HTTP transport for the Premiere bridge.
  *
  * Used on Windows (where there's no osascript) and optionally on macOS when
- * the user has installed the gg-editor-premiere-panel extension.
+ * the user has installed the ez-editor-premiere-panel extension.
  *
  * Two panel runtimes are supported, both speaking the same wire protocol:
  *
@@ -48,8 +48,8 @@ export class PremiereHttpBridge {
   constructor(opts: HttpBridgeOptions = {}) {
     this.port =
       opts.port ??
-      (process.env.GG_EDITOR_PREMIERE_PORT
-        ? parseInt(process.env.GG_EDITOR_PREMIERE_PORT, 10)
+      (process.env.EZEDITOR_PREMIERE_PORT
+        ? parseInt(process.env.EZEDITOR_PREMIERE_PORT, 10)
         : DEFAULT_PORT);
     this.host = opts.host ?? DEFAULT_HOST;
   }

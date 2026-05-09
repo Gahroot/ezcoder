@@ -49,7 +49,7 @@ const distMissing = !existsSync(distPath);
 
 describe.skipIf(distMissing)("Node adapter — real child processes", () => {
   it("captures a real uncaughtException synchronously before the process dies", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-pixel-int-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-pixel-int-"));
     const dbPath = join(dir, "errors.db");
     try {
       const result = await runChild(`
@@ -75,7 +75,7 @@ describe.skipIf(distMissing)("Node adapter — real child processes", () => {
   }, 30_000);
 
   it("captures a real unhandled promise rejection", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-pixel-int-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-pixel-int-"));
     const dbPath = join(dir, "errors.db");
     try {
       const result = await runChild(`
@@ -102,7 +102,7 @@ describe.skipIf(distMissing)("Node adapter — real child processes", () => {
   }, 30_000);
 
   it("flushes async queued events on graceful exit (beforeExit hook)", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-pixel-int-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-pixel-int-"));
     const dbPath = join(dir, "errors.db");
     try {
       // No try/catch around the throw — but it's caught manually before
@@ -129,7 +129,7 @@ describe.skipIf(distMissing)("Node adapter — real child processes", () => {
   }, 30_000);
 
   it("reportPixel preserves the caller's stack when error is provided", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-pixel-int-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-pixel-int-"));
     const dbPath = join(dir, "errors.db");
     try {
       const result = await runChild(`
@@ -162,7 +162,7 @@ describe.skipIf(distMissing)("Node adapter — real child processes", () => {
   }, 30_000);
 
   it("captured events have a unique event_id (uuid)", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-pixel-int-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-pixel-int-"));
     const dbPath = join(dir, "errors.db");
     try {
       const result = await runChild(`
@@ -189,7 +189,7 @@ describe.skipIf(distMissing)("Node adapter — real child processes", () => {
   }, 30_000);
 
   it("does not suppress Node's default crash on uncaughtException", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-pixel-int-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-pixel-int-"));
     const dbPath = join(dir, "errors.db");
     try {
       const result = await runChild(`

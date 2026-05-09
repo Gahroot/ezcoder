@@ -11,7 +11,7 @@ import { platform } from "node:os";
  * `https://claude.ai/oauth/authorize?code=true` and the auth provider responds
  * with "Missing client_id parameter". `rundll32 url.dll,FileProtocolHandler`
  * is the canonical Win32 URL opener: single execve, no shell parsing, no
- * `&` escaping required. (Reproduced against gg-editor 0.6.6 on Windows 11.)
+ * `&` escaping required. (Reproduced against ezeditor 0.6.6 on Windows 11.)
  */
 export function openBrowser(url: string): void {
   const isWin = platform() === "win32";

@@ -38,7 +38,7 @@ export async function stabilize(
   const smoothing = clamp(opts.smoothing ?? 15, 1, 30);
   const zoom = clamp(opts.zoom ?? 0, -10, 10);
 
-  const dir = mkdtempSync(join(tmpdir(), "gg-editor-stab-"));
+  const dir = mkdtempSync(join(tmpdir(), "ezeditor-stab-"));
   const trfPath = join(dir, "transforms.trf");
 
   // Pass 1

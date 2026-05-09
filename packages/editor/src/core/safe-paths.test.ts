@@ -66,7 +66,7 @@ describe("safeResolveOutputPath", () => {
     expect(r.path.endsWith("thumb.jpg")).toBe(true);
   });
 
-  it("redirects /tmp paths to ~/Documents/gg-editor-out", () => {
+  it("redirects /tmp paths to ~/Documents/ezeditor-out", () => {
     const r = safeResolveOutputPath(cwd, "/tmp/grab.jpg");
     expect(r.redirected).toBe(true);
     expect(r.path).toBe(resolvePath(userOutputDir(), "grab.jpg"));
@@ -92,7 +92,7 @@ describe("safeResolveOutputPath", () => {
   });
 
   it("exports a sensible USER_OUTPUT_DIR_NAME constant", () => {
-    expect(USER_OUTPUT_DIR_NAME).toBe("gg-editor-out");
+    expect(USER_OUTPUT_DIR_NAME).toBe("ezeditor-out");
     expect(userOutputDir().endsWith(USER_OUTPUT_DIR_NAME)).toBe(true);
   });
 

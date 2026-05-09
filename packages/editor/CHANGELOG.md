@@ -199,7 +199,7 @@ Close the four tractable items in the post-audit Tier 4 list. Two remain open an
 - **`read_transcript`** — added `speaker` filter (case-insensitive). Only matches when the saved transcript JSON includes speaker labels (whisperx / AssemblyAI / manual). Speaker is now also surfaced in the per-segment compact output when present.
 
 ### Style presets (new feature)
-- New `core/styles-loader.ts` — `discoverStyles({ cwd, homeDir })` walks `<cwd>/.gg/editor-styles/*.md` (project) + `~/.ezcoder/editor-styles/*.md` (user). **Project overrides user** (opposite of skills, by design — a project's checked-in style wins).
+- New `core/styles-loader.ts` — `discoverStyles({ cwd, homeDir })` walks `<cwd>/.ezcoder/editor-styles/*.md` (project) + `~/.ezcoder/editor-styles/*.md` (user). **Project overrides user** (opposite of skills, by design — a project's checked-in style wins).
 - `renderStylesBlock(styles)` produces a markdown section the system-prompt builder embeds verbatim as "Active style presets". Empty when no styles — zero footprint.
 - CLI auto-discovers styles at startup; `buildEditorSystemPrompt` accepts `styles?` for library consumers.
 
@@ -296,7 +296,7 @@ Close the six gaps from the last audit: honest Premiere `set_clip_speed`, Resolv
 - **None adapter** raises `HostUnreachableError` for the three color methods (matches the existing pattern).
 
 ### User-extensible skills
-- New `core/skills-loader.ts` — `discoverSkills({ cwd, homeDir, bundled })` layers `bundled → project (.gg/editor-skills/*.md) → user (~/.ezcoder/editor-skills/*.md)`. Last-wins by name; user overrides project, project overrides bundled.
+- New `core/skills-loader.ts` — `discoverSkills({ cwd, homeDir, bundled })` layers `bundled → project (.ezcoder/editor-skills/*.md) → user (~/.ezcoder/editor-skills/*.md)`. Last-wins by name; user overrides project, project overrides bundled.
 - `read_skill` no longer hard-codes the bundled set — it takes an injected `SkillSource[]`. The tool's enum becomes a string validated at execute time against the active list, so user skills are first-class.
 - System prompt renders the active skill list with `(project)` / `(user)` badges so override layering is visible.
 - README has a new "Custom skills" section.
@@ -361,7 +361,7 @@ First public release. End-to-end functional for the canonical workflows on macOS
 ### Hosts
 - **DaVinci Resolve** adapter — long-lived Python sidecar bridge with JSON-line wire protocol. Methods: `ping`, `get_timeline`, `add_marker`, `append_clip`, `import_timeline`, `render`. Cross-platform (macOS / Linux / Windows). Verified end-to-end via integration tests with a fake `DaVinciResolveScript` module.
 - **Adobe Premiere Pro** adapter — dual-transport bridge:
-  - **HTTP** (preferred) — talks to the [`@prestyj/editor-premiere-panel`](../gg-editor-premiere-panel/README.md) CEP extension. Required on Windows; ~10-30ms per call. Auto-detected on first use.
+  - **HTTP** (preferred) — talks to the [`@prestyj/editor-premiere-panel`](../ez-editor-premiere-panel/README.md) CEP extension. Required on Windows; ~10-30ms per call. Auto-detected on first use.
   - **osascript** (macOS fallback) — spawns AppleScript per call. ~200-500ms per call. Used when the panel isn't running.
   - Methods: `ping`, `get_timeline`, `add_marker`, `append_clip`, `import_timeline`. Render and razor unsupported via live API (use `write_edl` + `import_timeline`).
 - **None** adapter — file-only mode for ffmpeg/whisper-only workflows.

@@ -1,7 +1,7 @@
 /**
  * Shared abort wiring for spawned child processes.
  *
- * Every long-running tool in gg-editor — ffmpeg, whisper.cpp, whisperx,
+ * Every long-running tool in ezeditor — ffmpeg, whisper.cpp, whisperx,
  * Python sidecars (librosa beats, MediaPipe face reframe), Resolve bridge —
  * is wrapped in a Promise that resolves on `child.on("close")`. Without
  * careful abort handling those promises can hang for the duration of the

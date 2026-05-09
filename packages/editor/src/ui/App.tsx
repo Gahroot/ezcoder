@@ -121,7 +121,7 @@ type HistoryItem =
 // are handled inline because they manipulate React state directly.
 function promptCmd(name: string) {
   const c = EDITOR_PROMPT_COMMANDS.find((x) => x.name === name);
-  if (!c) throw new Error(`gg-editor: missing prompt command '${name}' — check prompt-commands.ts`);
+  if (!c) throw new Error(`ezeditor: missing prompt command '${name}' — check prompt-commands.ts`);
   return { name: c.name, aliases: c.aliases, description: c.description };
 }
 

@@ -11,7 +11,7 @@ import { escapeDrawtextValue } from "./compose-thumbnail.js";
 /**
  * generate_outro — render a 3-7s end-screen card from the channel's brand
  * kit (logo + channel name + CTA). Designed for the "every video ends the
- * same way" creator workflow: drop in a `.gg/brand.json` once, then every
+ * same way" creator workflow: drop in a `.ezcoder/brand.json` once, then every
  * outro picks up the right typography / logo / CTA automatically.
  *
  * Implementation is intentionally minimal — one ffmpeg call:
@@ -85,7 +85,7 @@ export function createGenerateOutroTool(cwd: string): AgentTool<typeof GenerateO
     name: "generate_outro",
     description:
       "Render a 3–7s outro card from the channel's brand kit (logo + channel name + CTA). Auto-loads " +
-      "<cwd>/.gg/brand.json — no args needed in the common case. Output is a flat .mp4 ready for " +
+      "<cwd>/.ezcoder/brand.json — no args needed in the common case. Output is a flat .mp4 ready for " +
       "concat_videos to splice onto the end of a main render. Pair with `concat_videos([main, outro])`.",
     parameters: GenerateOutroParams,
     async execute(args, ctx) {

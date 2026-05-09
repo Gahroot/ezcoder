@@ -15,7 +15,7 @@ export interface OAuthLoginCallbacks {
   onStatus: (message: string) => void;
 }
 
-/** All providers gg-editor supports — mirrors ezcoder's set. */
+/** All providers ezeditor supports — mirrors ezcoder's set. */
 export type SupportedAuthProvider =
   | "anthropic"
   | "openai"
