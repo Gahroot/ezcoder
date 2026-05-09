@@ -15,38 +15,58 @@ process.on("unhandledRejection", (reason) => {
   throw reason;
 });
 
-// Drain performance entries to prevent buffer overflow warning from dependencies
+// Drain ALL performance entries to prevent unbounded memory growth.
+// Node emits entries for marks, measures, resource timing (HTTP), DNS, net, etc.
+// Without clearing, these accumulate across every LLM call and tool execution.
 import { PerformanceObserver, performance } from "node:perf_hooks";
-new PerformanceObserver((list) => {
-  for (const entry of list.getEntries()) {
-    if (entry.entryType === "measure") performance.clearMeasures(entry.name);
-    else if (entry.entryType === "mark") performance.clearMarks(entry.name);
-  }
-}).observe({ entryTypes: ["measure", "mark"] });
+{
+  const allTypes = PerformanceObserver.supportedEntryTypes.filter(
+    (t) => t !== "gc" && t !== "function",
+  );
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      switch (entry.entryType) {
+        case "measure":
+          performance.clearMeasures(entry.name);
+          break;
+        case "mark":
+          performance.clearMarks(entry.name);
+          break;
+        case "resource":
+          performance.clearResourceTimings();
+          break;
+      }
+    }
+  }).observe({ entryTypes: allTypes });
+}
 
 import { parseArgs } from "node:util";
 import fs from "node:fs";
 import readline from "node:readline/promises";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { renderApp } from "./ui/render.js";
 import { runJsonMode } from "./modes/json-mode.js";
 import { runRpcMode } from "./modes/rpc-mode.js";
 import { runServeMode } from "./modes/serve-mode.js";
+import { runAgentHomeMode } from "./modes/agent-home-mode.js";
 import { renderLoginSelector } from "./ui/login.js";
 import { renderSessionSelector } from "./ui/sessions.js";
 import type { CompletedItem } from "./ui/App.js";
 import { formatUserError } from "./utils/error-handler.js";
-import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
+import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { ThemeName } from "./ui/theme/theme.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { SessionManager } from "./core/session-manager.js";
-import { ensureAppDirs, getAppPaths } from "./config.js";
+import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
+import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
 import { buildSystemPrompt } from "./system-prompt.js";
+import { isEyesActive, journalCount } from "@kenkaiiii/ggcoder-eyes";
 import { createTools } from "./tools/index.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import { setEstimatorModel } from "./core/compaction/token-estimator.js";
-import { getContextWindow } from "./core/model-registry.js";
+import { getContextWindow, getDefaultModel } from "./core/model-registry.js";
 import { MCPClientManager, getMCPServers } from "./core/mcp/index.js";
 import { discoverAgents } from "./core/agents.js";
 import { discoverSkills } from "./core/skills.js";
@@ -62,9 +82,9 @@ const CLI_VERSION = (_require("../package.json") as { version: string }).version
 
 // ── Logo + gradient (mirrors Banner.tsx) ────────────────────────────
 const LOGO_LINES = [
-  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
-  " \u2588\u2580\u2580   \u2584\u2580 ",
-  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
+  " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
+  " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
+  " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
 ];
 const GRADIENT = [
   "#60a5fa",
@@ -110,17 +130,17 @@ function printHelp(): void {
   console.log(
     gradientLine(LOGO_LINES[0]) +
       gap +
-      primary.bold("EZ Coder") +
+      primary.bold("GG Coder") +
       dim(` v${CLI_VERSION}`) +
       dim(" · By ") +
-      bold("Nolan Grout"),
+      bold("Ken Kai"),
   );
   console.log(gradientLine(LOGO_LINES[1]) + gap + dim("AI coding agent"));
   console.log(gradientLine(LOGO_LINES[2]));
   console.log();
 
   // Usage
-  console.log(primary("Usage:") + "  ezcoder " + dim("[options]") + " " + dim("[prompt]"));
+  console.log(primary("Usage:") + "  ggcoder " + dim("[options]") + " " + dim("[prompt]"));
   console.log();
 
   // Commands
@@ -128,10 +148,13 @@ function printHelp(): void {
   const cmds: [string, string][] = [
     ["login", "Log in to an AI provider (Anthropic, OpenAI)"],
     ["logout", "Log out and clear stored credentials"],
+    ["doctor", "Diagnose and fix auth/config issues"],
     ["sessions", "Browse and resume previous sessions"],
     ["continue", "Resume the most recent session"],
     ["serve", "Start the HTTP/WebSocket API server"],
     ["telegram", "Configure Telegram bot integration"],
+    ["agent-home-login", "Configure Agent Home relay connection"],
+    ["agent-home", "Connect to Agent Home as a remote agent"],
   ];
   for (const [name, desc] of cmds) {
     console.log(`  ${accent(name.padEnd(20))} ${dim(desc)}`);
@@ -143,8 +166,11 @@ function printHelp(): void {
   const opts: [string, string][] = [
     ["-h, --help", "Show this help message"],
     ["-v, --version", "Show version number"],
-    ["--provider <name>", "AI provider (anthropic, openai, glm, moonshot)"],
-    ["--model <name>", "Model to use (e.g. claude-sonnet-4-6, gpt-4.1)"],
+    [
+      "--provider <name>",
+      "AI provider (anthropic, xiaomi, openai, glm, moonshot, minimax, deepseek, openrouter)",
+    ],
+    ["--model <name>", "Model to use (e.g. claude-sonnet-4-6, gpt-5.5)"],
     ["--max-turns <n>", "Maximum agent turns per prompt"],
     ["--system-prompt <text>", "Override the system prompt"],
     ["--json", "JSON output mode (for sub-agents)"],
@@ -164,7 +190,7 @@ function printHelp(): void {
     ["/session", "Switch or create sessions"],
     ["/new", "Start a new session"],
     ["/settings", "Open settings"],
-    ["/quit", "Exit ezcoder"],
+    ["/quit", "Exit ggcoder"],
   ];
   for (const [name, desc] of slashCmds) {
     console.log(`  ${accent(name.padEnd(20))} ${dim(desc)}`);
@@ -190,11 +216,11 @@ function main(): void {
   // Silent auto-update check (throttled, non-blocking on failure)
   const updateMessage = checkAndAutoUpdate(CLI_VERSION);
   if (updateMessage) {
-    console.error(chalk.hex("#60a5fa")(updateMessage));
+    console.error(chalk.bold.hex("#4ade80")(`✨ ${updateMessage}`));
   }
 
   // Intercept --help / -h before anything else so it works with subcommands
-  // (e.g. `ezcoder login --help` or `ezcoder --help`)
+  // (e.g. `ggcoder login --help` or `ggcoder --help`)
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     printHelp();
     process.exit(0);
@@ -202,6 +228,36 @@ function main(): void {
 
   // Handle subcommands before parseArgs
   const subcommand = process.argv[2];
+
+  // Passthrough to @kenkaiiii/ggcoder-eyes CLI. Agents call this from bash as
+  // `ggcoder eyes log rough "..."` etc. — `ggcoder` is guaranteed on PATH
+  // (user launched it), so this avoids depending on nested bin visibility in
+  // global npm/pnpm installs.
+  if (subcommand === "eyes") {
+    let cliPath: string;
+    try {
+      cliPath = _require.resolve("@kenkaiiii/ggcoder-eyes/cli");
+    } catch {
+      process.stderr.write("ggcoder-eyes package not installed\n");
+      process.exit(1);
+    }
+    const r = spawnSync(process.execPath, [cliPath, ...process.argv.slice(3)], {
+      stdio: "inherit",
+    });
+    process.exit(r.status ?? 0);
+  }
+
+  if (subcommand === "pixel") {
+    runPixel().catch((err) => {
+      // Log the full stack — `pixel install` failures are usually bugs in our
+      // own AST/wiring code, and the stack is the only useful diagnostic.
+      log("ERROR", "fatal", err instanceof Error ? (err.stack ?? err.message) : String(err));
+      closeLogger();
+      process.stderr.write(formatUserError(err) + "\n");
+      process.exit(1);
+    });
+    return;
+  }
 
   if (subcommand === "login") {
     runLogin().catch((err) => {
@@ -255,6 +311,35 @@ function main(): void {
     return;
   }
 
+  if (subcommand === "doctor") {
+    runDoctor().catch((err) => {
+      process.stderr.write(formatUserError(err) + "\n");
+      process.exit(1);
+    });
+    return;
+  }
+
+  if (subcommand === "agent-home-login") {
+    runAgentHomeLogin().catch((err) => {
+      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+      closeLogger();
+      process.stderr.write(formatUserError(err) + "\n");
+      process.exit(1);
+    });
+    return;
+  }
+
+  if (subcommand === "agent-home") {
+    process.argv.splice(2, 1);
+    runAgentHome().catch((err) => {
+      log("ERROR", "fatal", err instanceof Error ? err.message : String(err));
+      closeLogger();
+      process.stderr.write(formatUserError(err) + "\n");
+      process.exit(1);
+    });
+    return;
+  }
+
   if (subcommand === "continue") {
     // Remove "continue" so parseArgs handles remaining flags
     process.argv.splice(2, 1);
@@ -289,7 +374,7 @@ function main(): void {
   if (values.json) {
     const message = positionals[0] ?? "";
     const jsonProvider = (values.provider ?? "anthropic") as Provider;
-    const jsonModel = values.model ?? "claude-opus-4-6";
+    const jsonModel = values.model ?? "claude-opus-4-7";
     const maxTurns = values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined;
     const systemPrompt = values["system-prompt"];
     const cwd = process.cwd();
@@ -310,7 +395,7 @@ function main(): void {
   // RPC mode — headless JSON-over-stdio for IDE integrations
   if (values.rpc) {
     const rpcProvider = (values.provider ?? "anthropic") as Provider;
-    const rpcModel = values.model ?? "claude-opus-4-6";
+    const rpcModel = values.model ?? "claude-opus-4-7";
     const systemPrompt = values["system-prompt"];
     const cwd = process.cwd();
     runRpcMode({
@@ -326,32 +411,23 @@ function main(): void {
   }
 
   // Load saved settings for model/provider persistence
-  let savedProvider: "anthropic" | "openai" | "glm" | "moonshot" | undefined;
-  let savedModel: string | undefined;
-  let savedThinkingEnabled = false;
-  let savedTheme: "auto" | "dark" | "light" = "auto";
-  try {
-    const raw = JSON.parse(fs.readFileSync(getAppPaths().settingsFile, "utf-8"));
-    if (raw.defaultProvider) savedProvider = raw.defaultProvider;
-    if (raw.defaultModel) savedModel = raw.defaultModel;
-    if (raw.thinkingEnabled === true) savedThinkingEnabled = true;
-    if (raw.theme === "dark" || raw.theme === "light" || raw.theme === "auto")
-      savedTheme = raw.theme;
-  } catch {
-    // No settings file or invalid JSON — use defaults
-  }
+  const saved = loadSavedSettings();
+  const savedTheme = saved.theme;
 
-  const provider: "anthropic" | "openai" | "glm" | "moonshot" = savedProvider ?? "anthropic";
+  const provider: Provider = saved.provider ?? "anthropic";
 
   function getHardcodedDefault(p: string): string {
-    if (p === "openai") return "gpt-5.3-codex";
+    if (p === "openai") return "gpt-5.5";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
-    return "claude-opus-4-6";
+    if (p === "moonshot") return "kimi-k2.6";
+    if (p === "minimax") return "MiniMax-M2.7";
+    if (p === "deepseek") return "deepseek-v4-pro";
+    if (p === "openrouter") return "qwen/qwen3.6-plus";
+    return "claude-opus-4-7";
   }
 
-  const model: string = savedModel ?? getHardcodedDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = savedThinkingEnabled ? "medium" : undefined;
+  const model: string = saved.model ?? getHardcodedDefault(provider);
+  const thinkingLevel: ThinkingLevel | undefined = saved.thinkingEnabled ? "medium" : undefined;
 
   // Interactive mode (Ink TUI)
   const cwd = process.cwd();
@@ -374,6 +450,22 @@ function main(): void {
 
 // ── Ink TUI ───────────────────────────────────────────────
 
+/**
+ * Bail with a friendly message if stdin isn't a TTY. Ink's raw-mode crash is
+ * cryptic; this catches the common case (piped stdin, API shells, CI).
+ */
+function requireInteractiveTTY(): void {
+  if (process.stdin.isTTY) return;
+  process.stderr.write(
+    chalk.red("ggcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
+      chalk.hex("#6b7280")(
+        "Run ggcoder directly in your terminal (not piped or through an API shell). " +
+          'For headless use try "ggcoder --json \'<prompt>\'" or "ggcoder --rpc".\n',
+      ),
+  );
+  process.exit(1);
+}
+
 async function runInkTUI(opts: {
   provider: Provider;
   model: string;
@@ -381,15 +473,53 @@ async function runInkTUI(opts: {
   thinkingLevel?: ThinkingLevel;
   continueRecent?: boolean;
   resumeSessionPath?: string;
-  theme?: "auto" | "dark" | "light";
+  theme?: "auto" | ThemeName;
+  initialOverlay?: "pixel";
 }): Promise<void> {
-  const { provider, model, cwd } = opts;
+  requireInteractiveTTY();
 
-  // Set model for token estimation accuracy
+  const { cwd } = opts;
+
+  // Resolve auth first so we can pick an active provider the user has
+  // actually logged in with — we must never default to a provider they
+  // haven't authenticated against.
+  const paths = await ensureAppDirs();
+
+  // Wire stream stall diagnostics into the debug log
+  setStreamDiagnostic((phase, data) => {
+    log("INFO", "stream", phase, data as Record<string, unknown>);
+  });
+
+  const authStorage = new AuthStorage(paths.authFile);
+  await authStorage.load();
+
+  const { provider, model, loggedInProviders } = await resolveActiveProvider(
+    authStorage,
+    opts.provider,
+    opts.model,
+  );
+
+  // Preload every logged-in provider's credentials for the model switcher.
+  const credentialsByProvider: Record<
+    string,
+    { accessToken: string; accountId?: string; baseUrl?: string }
+  > = {};
+  for (const p of loggedInProviders) {
+    try {
+      const resolved = await authStorage.resolveCredentials(p);
+      credentialsByProvider[p] = {
+        accessToken: resolved.accessToken,
+        accountId: resolved.accountId,
+        baseUrl: resolved.baseUrl,
+      };
+    } catch {
+      // Token refresh failed — still leave them in loggedInProviders
+    }
+  }
+
+  // Set model for token estimation accuracy (after provider is finalized)
   setEstimatorModel(model);
 
-  // Resolve auth
-  const paths = await ensureAppDirs();
   initLogger(paths.logFile, {
     version: CLI_VERSION,
     provider,
@@ -397,36 +527,13 @@ async function runInkTUI(opts: {
     thinking: opts.thinkingLevel,
   });
 
-  const authStorage = new AuthStorage(paths.authFile);
-  await authStorage.load();
   const creds = await authStorage.resolveCredentials(provider);
 
-  // Detect all logged-in providers and preload their credentials
-  const allProviders: Provider[] = ["anthropic", "openai", "glm", "moonshot"];
-  const loggedInProviders: Provider[] = [];
-  const credentialsByProvider: Record<string, { accessToken: string; accountId?: string }> = {};
-
-  for (const p of allProviders) {
-    const stored = await authStorage.getCredentials(p);
-    if (stored) {
-      loggedInProviders.push(p);
-      try {
-        const resolved = await authStorage.resolveCredentials(p);
-        credentialsByProvider[p] = {
-          accessToken: resolved.accessToken,
-          accountId: resolved.accountId,
-        };
-      } catch {
-        // Token refresh failed — still mark as logged in
-      }
-    }
-  }
-
-  // Ensure project-local .ezcoder directories exist
-  const localEzDir = path.join(cwd, ".ezcoder");
-  await fs.promises.mkdir(path.join(localEzDir, "skills"), { recursive: true });
-  await fs.promises.mkdir(path.join(localEzDir, "commands"), { recursive: true });
-  await fs.promises.mkdir(path.join(localEzDir, "agents"), { recursive: true });
+  // Ensure project-local .gg directories exist
+  const localGGDir = path.join(cwd, ".gg");
+  await fs.promises.mkdir(path.join(localGGDir, "skills"), { recursive: true });
+  await fs.promises.mkdir(path.join(localGGDir, "commands"), { recursive: true });
+  await fs.promises.mkdir(path.join(localGGDir, "agents"), { recursive: true });
 
   // Discover agents and skills
   const agents = await discoverAgents({
@@ -459,6 +566,22 @@ async function runInkTUI(opts: {
     onEnterPlan: (reason) => onEnterPlanRef.current(reason),
     onExitPlan: (planPath) => onExitPlanRef.current(planPath),
   });
+
+  // Rebuilds the cwd-bound tools for a different project root. Used by the
+  // pixel-fix flow so the agent operates in the error's project, not in
+  // wherever ggcoder was launched from.
+  const rebuildToolsForCwd = (newCwd: string) => {
+    const { tools: rebuilt } = createTools(newCwd, {
+      agents,
+      skills,
+      provider,
+      model,
+      planModeRef,
+      onEnterPlan: (reason) => onEnterPlanRef.current(reason),
+      onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+    });
+    return rebuilt;
+  };
 
   // Connect MCP servers
   const mcpManager = new MCPClientManager();
@@ -546,6 +669,21 @@ async function runInkTUI(opts: {
     log("INFO", "session", `New session created`, { path: sessionPath });
   }
 
+  // Eyes startup banner — surface open journal signals from past sessions so the
+  // user isn't relying on reading agent prose to know improvements are pending.
+  if (isEyesActive(cwd)) {
+    const openCount = journalCount({ status: "open" }, cwd);
+    if (openCount > 0) {
+      const s = openCount === 1 ? "" : "s";
+      if (!initialHistory) initialHistory = [];
+      initialHistory.push({
+        kind: "info",
+        text: `👁  Eyes: ${openCount} open improvement signal${s} from recent sessions. Run /eyes-improve to triage.`,
+        id: "eyes-banner",
+      });
+    }
+  }
+
   await renderApp({
     provider,
     model,
@@ -572,6 +710,8 @@ async function runInkTUI(opts: {
     onEnterPlanRef,
     onExitPlanRef,
     skills,
+    initialOverlay: opts.initialOverlay,
+    rebuildToolsForCwd,
   });
 
   closeLogger();
@@ -580,6 +720,7 @@ async function runInkTUI(opts: {
 // ── Login ──────────────────────────────────────────────────
 
 async function runLogin(): Promise<void> {
+  requireInteractiveTTY();
   process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
   const paths = await ensureAppDirs();
   initLogger(paths.logFile, { version: CLI_VERSION });
@@ -624,8 +765,26 @@ async function runLogin(): Promise<void> {
     };
 
     let creds;
-    if (provider === "glm" || provider === "moonshot") {
-      const keyLabel = provider === "glm" ? "Z.AI" : "Moonshot";
+    if (
+      provider === "glm" ||
+      provider === "moonshot" ||
+      provider === "xiaomi" ||
+      provider === "minimax" ||
+      provider === "deepseek" ||
+      provider === "openrouter"
+    ) {
+      const keyLabel =
+        provider === "glm"
+          ? "Z.AI"
+          : provider === "xiaomi"
+            ? "Xiaomi MiMo"
+            : provider === "minimax"
+              ? "MiniMax"
+              : provider === "deepseek"
+                ? "DeepSeek"
+                : provider === "openrouter"
+                  ? "OpenRouter"
+                  : "Moonshot";
       const apiKey = await rl.question(chalk.hex("#60a5fa")(`Paste your ${keyLabel} API key: `));
       if (!apiKey.trim()) {
         console.log(chalk.hex("#ef4444")("No API key provided. Login cancelled."));
@@ -635,6 +794,7 @@ async function runLogin(): Promise<void> {
         accessToken: apiKey.trim(),
         refreshToken: "",
         expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000 * 100, // ~100 years
+        ...(provider === "xiaomi" ? { baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1" } : {}),
       } satisfies OAuthCredentials;
     } else {
       creds =
@@ -648,6 +808,264 @@ async function runLogin(): Promise<void> {
     rl.close();
     closeLogger();
   }
+}
+
+// ── Doctor ─────────────────────────────────────────────────
+
+async function runDoctor(): Promise<void> {
+  process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+
+  const os = await import("node:os");
+  const fsP = await import("node:fs/promises");
+
+  const dim = chalk.hex("#6b7280");
+  const primary = chalk.hex("#60a5fa");
+  const accent = chalk.hex("#a78bfa");
+  const good = chalk.hex("#4ade80");
+  const warn = chalk.hex("#fbbf24");
+  const bad = chalk.hex("#ef4444");
+
+  // ── Banner ──────────────────────────────────────────────────
+  const LOGO = LOGO_LINES;
+  const GAP = "   ";
+  console.log();
+  console.log(
+    `  ${gradientLine(LOGO[0]!)}${GAP}` +
+      primary.bold("GG Coder") +
+      dim(` v${CLI_VERSION}`) +
+      dim(" · By ") +
+      chalk.white.bold("Ken Kai"),
+  );
+  console.log(`  ${gradientLine(LOGO[1]!)}${GAP}` + accent("Doctor"));
+  console.log(`  ${gradientLine(LOGO[2]!)}${GAP}` + dim("Diagnose & Fix"));
+  console.log();
+
+  const home = os.homedir();
+  const ggDir = path.join(home, ".gg");
+  const authFile = path.join(ggDir, "auth.json");
+  const lockFile = authFile + ".lock";
+  const myUid = process.getuid!();
+  let fixed = 0;
+
+  // ── Environment ─────────────────────────────────────────────
+  console.log(accent("  Environment\n"));
+  console.log(dim(`    Home:      ${home}`));
+  console.log(dim(`    $HOME:     ${process.env.HOME ?? "(not set)"}`));
+  console.log(dim(`    Node.js:   ${process.version}`));
+  console.log(dim(`    Platform:  ${process.platform} ${process.arch}`));
+  console.log(dim(`    UID:       ${myUid}  EUID: ${process.geteuid!()}`));
+
+  if (process.env.HOME && process.env.HOME !== home) {
+    console.log(warn("\n    ⚠ $HOME differs from os.homedir() — this can cause auth mismatches"));
+  }
+  if (myUid !== process.geteuid!()) {
+    console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
+    console.log(dim("      Running ggcoder with sudo can cause ownership issues."));
+    console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
+  }
+  console.log();
+
+  // ── Config Directory ────────────────────────────────────────
+  console.log(accent("  Config Directory\n"));
+
+  try {
+    const stat = await fsP.stat(ggDir);
+    const mode = stat.mode & 0o777;
+    console.log(dim(`    Path:  ${ggDir}`));
+    console.log(dim(`    Mode:  0o${mode.toString(8)}  UID: ${stat.uid}`));
+
+    // Fix ownership
+    if (stat.uid !== myUid) {
+      console.log(warn(`    ⚠ Owned by uid ${stat.uid}, expected ${myUid}`));
+      try {
+        await fsP.chown(ggDir, myUid, process.getgid!());
+        console.log(good("    ✓ Fixed directory ownership"));
+        fixed++;
+      } catch {
+        console.log(bad(`    ✗ Cannot fix — try: sudo chown -R $(whoami) ${ggDir}`));
+      }
+    }
+
+    // Fix permissions (should be 0o700)
+    if (mode !== 0o700) {
+      try {
+        await fsP.chmod(ggDir, 0o700);
+        console.log(good("    ✓ Fixed directory permissions → 0o700"));
+        fixed++;
+      } catch {
+        console.log(bad(`    ✗ Cannot fix — try: chmod 700 ${ggDir}`));
+      }
+    }
+  } catch {
+    console.log(warn(`    ${ggDir} missing — creating...`));
+    try {
+      await fsP.mkdir(ggDir, { recursive: true, mode: 0o700 });
+      console.log(good(`    ✓ Created ${ggDir}`));
+      fixed++;
+    } catch (mkErr) {
+      console.log(
+        bad(`    ✗ Cannot create: ${mkErr instanceof Error ? mkErr.message : String(mkErr)}`),
+      );
+      console.log();
+      return;
+    }
+  }
+  console.log();
+
+  // ── Lock File ───────────────────────────────────────────────
+  try {
+    const lockStat = await fsP.stat(lockFile);
+    const ageMs = Date.now() - lockStat.mtimeMs;
+    console.log(accent("  Lock File\n"));
+    console.log(warn(`    ⚠ Stale lock found (age: ${Math.round(ageMs / 1000)}s)`));
+    await fsP.unlink(lockFile);
+    console.log(good("    ✓ Removed"));
+    fixed++;
+    console.log();
+  } catch {
+    // No lock file — good, skip section entirely
+  }
+
+  // ── Auth File ───────────────────────────────────────────────
+  console.log(accent("  Auth File\n"));
+
+  let authData: Record<string, unknown> | null = null;
+  let authNeedsRewrite = false;
+
+  try {
+    const stat = await fsP.stat(authFile);
+    const mode = stat.mode & 0o777;
+    console.log(dim(`    Path:  ${authFile}`));
+    console.log(
+      dim(`    Size:  ${stat.size} bytes  Mode: 0o${mode.toString(8)}  UID: ${stat.uid}`),
+    );
+
+    // Fix ownership
+    if (stat.uid !== myUid) {
+      console.log(warn(`    ⚠ Owned by uid ${stat.uid}, expected ${myUid}`));
+      try {
+        await fsP.chown(authFile, myUid, process.getgid!());
+        console.log(good("    ✓ Fixed file ownership"));
+        fixed++;
+      } catch {
+        console.log(bad(`    ✗ Cannot fix — try: sudo chown $(whoami) ${authFile}`));
+      }
+    }
+
+    // Fix permissions (should be 0o600)
+    if (mode !== 0o600) {
+      try {
+        await fsP.chmod(authFile, 0o600);
+        console.log(good("    ✓ Fixed file permissions → 0o600"));
+        fixed++;
+      } catch {
+        console.log(bad(`    ✗ Cannot fix — try: chmod 600 ${authFile}`));
+      }
+    }
+
+    // Try to read and parse
+    try {
+      const content = await fsP.readFile(authFile, "utf-8");
+      try {
+        authData = JSON.parse(content) as Record<string, unknown>;
+      } catch {
+        console.log(bad("    ✗ Invalid JSON — backing up and resetting"));
+        const backupName = `auth.json.corrupt.${Date.now()}`;
+        await fsP.copyFile(authFile, path.join(ggDir, backupName));
+        await fsP.writeFile(authFile, "{}", { encoding: "utf-8", mode: 0o600 });
+        console.log(good(`    ✓ Corrupt file backed up as ${backupName}`));
+        console.log(dim('      Run "ggcoder login" to re-authenticate'));
+        authData = {};
+        fixed++;
+      }
+    } catch (readErr) {
+      const code = (readErr as NodeJS.ErrnoException).code;
+      if (code === "EACCES") {
+        console.log(bad("    ✗ Permission denied reading auth.json"));
+        console.log(dim(`      Try: sudo chown $(whoami) ${authFile} && chmod 600 ${authFile}`));
+      } else {
+        console.log(
+          bad(`    ✗ Read error: ${readErr instanceof Error ? readErr.message : String(readErr)}`),
+        );
+      }
+    }
+  } catch {
+    console.log(dim(`    Path:  ${authFile}`));
+    console.log(warn('    Not found — run "ggcoder login" to authenticate'));
+  }
+  console.log();
+
+  // ── Credentials ─────────────────────────────────────────────
+  if (authData && Object.keys(authData).length > 0) {
+    console.log(accent("  Credentials\n"));
+
+    for (const p of Object.keys(authData)) {
+      const cred = authData[p] as Record<string, unknown> | undefined;
+      if (!cred || typeof cred !== "object") {
+        console.log(bad(`    ✗ ${p}: invalid entry — removing`));
+        delete authData[p];
+        authNeedsRewrite = true;
+        fixed++;
+        continue;
+      }
+      if (!cred.accessToken || typeof cred.accessToken !== "string") {
+        console.log(bad(`    ✗ ${p}: missing accessToken — removing`));
+        delete authData[p];
+        authNeedsRewrite = true;
+        fixed++;
+        continue;
+      }
+      const token = String(cred.accessToken);
+      const masked = token.slice(0, 8) + "..." + token.slice(-4);
+      const expires =
+        typeof cred.expiresAt === "number" ? new Date(cred.expiresAt).toISOString() : "unknown";
+      const expired = typeof cred.expiresAt === "number" && Date.now() > cred.expiresAt;
+      if (expired) {
+        console.log(warn(`    ⚠ ${p}: ${masked}  expired ${expires}`));
+      } else {
+        console.log(good(`    ✓ ${p}: ${masked}  expires ${expires}`));
+      }
+    }
+
+    if (authNeedsRewrite) {
+      try {
+        await fsP.writeFile(authFile, JSON.stringify(authData, null, 2), {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
+        console.log(good("    ✓ Cleaned up auth.json"));
+      } catch {
+        console.log(bad("    ✗ Failed to write cleaned auth.json"));
+      }
+    }
+    console.log();
+  }
+
+  // ── Temp Files ──────────────────────────────────────────────
+  try {
+    const entries = await fsP.readdir(ggDir);
+    const tmpFiles = entries.filter((e) => e.startsWith("auth.json.") && e.endsWith(".tmp"));
+    if (tmpFiles.length > 0) {
+      console.log(accent("  Temp Files\n"));
+      console.log(warn(`    ⚠ ${tmpFiles.length} orphaned temp file(s) from interrupted writes`));
+      for (const tmp of tmpFiles) {
+        await fsP.unlink(path.join(ggDir, tmp)).catch(() => {});
+      }
+      console.log(good(`    ✓ Removed ${tmpFiles.length} file(s)`));
+      fixed++;
+      console.log();
+    }
+  } catch {
+    // Can't read directory — already flagged above
+  }
+
+  // ── Summary ─────────────────────────────────────────────────
+  if (fixed > 0) {
+    console.log(good(`  ✓ Fixed ${fixed} issue${fixed > 1 ? "s" : ""}.`));
+  } else {
+    console.log(good("  ✓ Everything looks good."));
+  }
+  console.log();
 }
 
 // ── Logout ─────────────────────────────────────────────────
@@ -668,6 +1086,7 @@ async function runLogout(): Promise<void> {
 // ── Sessions ──────────────────────────────────────────────
 
 async function runSessions(): Promise<void> {
+  requireInteractiveTTY();
   process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
   const paths = await ensureAppDirs();
   initLogger(paths.logFile, { version: CLI_VERSION });
@@ -682,33 +1101,21 @@ async function runSessions(): Promise<void> {
     process.exit(0);
   }
 
-  // Load saved settings for provider/model/theme
-  let savedProvider: "anthropic" | "openai" | "glm" | "moonshot" | undefined;
-  let savedModel: string | undefined;
-  let savedThinkingEnabled = false;
-  let savedTheme: "auto" | "dark" | "light" = "auto";
-  try {
-    const raw = JSON.parse(fs.readFileSync(paths.settingsFile, "utf-8"));
-    if (raw.defaultProvider) savedProvider = raw.defaultProvider;
-    if (raw.defaultModel) savedModel = raw.defaultModel;
-    if (raw.thinkingEnabled === true) savedThinkingEnabled = true;
-    if (raw.theme === "dark" || raw.theme === "light" || raw.theme === "auto")
-      savedTheme = raw.theme;
-  } catch {
-    // No settings file — use defaults
-  }
+  const saved2 = loadSavedSettings(paths.settingsFile);
 
-  const provider: "anthropic" | "openai" | "glm" | "moonshot" = savedProvider ?? "anthropic";
+  const provider: Provider = saved2.provider ?? "anthropic";
 
   function getDefault(p: string): string {
-    if (p === "openai") return "gpt-5.3-codex";
+    if (p === "openai") return "gpt-5.5";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
-    return "claude-opus-4-6";
+    if (p === "moonshot") return "kimi-k2.6";
+    if (p === "minimax") return "MiniMax-M2.7";
+    if (p === "deepseek") return "deepseek-v4-pro";
+    return "claude-opus-4-7";
   }
 
-  const model = savedModel ?? getDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = savedThinkingEnabled ? "medium" : undefined;
+  const model = saved2.model ?? getDefault(provider);
+  const thinkingLevel: ThinkingLevel | undefined = saved2.thinkingEnabled ? "medium" : undefined;
 
   closeLogger();
 
@@ -718,7 +1125,7 @@ async function runSessions(): Promise<void> {
     cwd,
     thinkingLevel,
     resumeSessionPath: selectedPath,
-    theme: savedTheme,
+    theme: saved2.theme,
   });
 }
 
@@ -758,9 +1165,9 @@ async function runTelegramSetup(): Promise<void> {
 
   // Banner (matches Banner.tsx)
   const LOGO = [
-    " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
-    " \u2588\u2580\u2580   \u2584\u2580 ",
-    " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
+    " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
+    " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
+    " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
   ];
   const GRADIENT = [
     "#60a5fa",
@@ -791,10 +1198,10 @@ async function runTelegramSetup(): Promise<void> {
   console.log();
   console.log(
     `  ${gradientText(LOGO[0]!)}${GAP}` +
-      chalk.hex("#60a5fa").bold("EZ Coder") +
+      chalk.hex("#60a5fa").bold("GG Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" · By ") +
-      chalk.white.bold("Nolan Grout"),
+      chalk.white.bold("Ken Kai"),
   );
   console.log(`  ${gradientText(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Telegram Setup"));
   console.log(`  ${gradientText(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")("Remote Control"));
@@ -898,7 +1305,7 @@ async function runTelegramSetup(): Promise<void> {
         chalk.hex("#6b7280")("    2. Add the bot to your group\n") +
         chalk.hex("#6b7280")("    3. Send /link in the group to connect it to a project\n\n") +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ezcoder serve\n"),
+        chalk.hex("#6b7280")("    cd your-project && ggcoder serve\n"),
     );
   } finally {
     rl.close();
@@ -921,50 +1328,37 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken =
-    serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
-  const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
+  const botToken = serveValues["bot-token"] ?? process.env.GG_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const userIdStr = serveValues["user-id"] ?? process.env.GG_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
   if (!botToken || !userId || isNaN(userId)) {
     console.error(
       chalk.hex("#ef4444")("Telegram not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ezcoder telegram") +
+        chalk.hex("#60a5fa").bold("ggcoder telegram") +
         " to set up your bot token and user ID.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ezcoder serve --bot-token TOKEN --user-id ID"),
+        chalk.hex("#6b7280")("  ggcoder serve --bot-token TOKEN --user-id ID"),
     );
     process.exit(1);
   }
 
-  // Load saved settings
-  let savedProvider: "anthropic" | "openai" | "glm" | "moonshot" | undefined;
-  let savedModel: string | undefined;
-  let savedThinkingEnabled = false;
-  try {
-    const raw = JSON.parse(fs.readFileSync(getAppPaths().settingsFile, "utf-8"));
-    if (raw.defaultProvider) savedProvider = raw.defaultProvider;
-    if (raw.defaultModel) savedModel = raw.defaultModel;
-    if (raw.thinkingEnabled === true) savedThinkingEnabled = true;
-  } catch {
-    // No settings file
-  }
-
-  const provider: Provider =
-    (serveValues.provider as Provider | undefined) ?? savedProvider ?? "anthropic";
-
-  function getDefault(p: string): string {
-    if (p === "openai") return "gpt-5.3-codex";
-    if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.5";
-    return "claude-opus-4-6";
-  }
-
-  const model = serveValues.model ?? savedModel ?? getDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = savedThinkingEnabled ? "medium" : undefined;
+  const saved3 = loadSavedSettings();
+  const thinkingLevel: ThinkingLevel | undefined = saved3.thinkingEnabled ? "medium" : undefined;
 
   const paths = await ensureAppDirs();
+  const authStorage = new AuthStorage(paths.authFile);
+  await authStorage.load();
+
+  const preferredProvider: Provider =
+    (serveValues.provider as Provider | undefined) ?? saved3.provider ?? "anthropic";
+  const { provider, model } = await resolveActiveProvider(
+    authStorage,
+    preferredProvider,
+    serveValues.model ?? saved3.model,
+  );
+
   initLogger(paths.logFile, {
     version: CLI_VERSION,
     provider,
@@ -983,12 +1377,361 @@ async function runServe(): Promise<void> {
   });
 }
 
+// ── Agent Home Setup ────────────────────────────────────
+
+interface AgentHomeConfig {
+  token: string;
+}
+
+async function loadAgentHomeConfig(): Promise<AgentHomeConfig | null> {
+  try {
+    const raw = await fs.promises.readFile(getAppPaths().agentHomeFile, "utf-8");
+    const data = JSON.parse(raw) as AgentHomeConfig;
+    if (data.token) return data;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveAgentHomeConfig(config: AgentHomeConfig): Promise<void> {
+  const paths = await ensureAppDirs();
+  await fs.promises.writeFile(paths.agentHomeFile, JSON.stringify(config, null, 2), {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+}
+
+async function runAgentHomeLogin(): Promise<void> {
+  process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+  const paths = await ensureAppDirs();
+  initLogger(paths.logFile, { version: CLI_VERSION });
+  log("INFO", "agent-home", "Agent Home login started");
+
+  const existing = await loadAgentHomeConfig();
+
+  // Banner
+  const LOGO = [
+    " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
+    " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
+    " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+  ];
+  function gradientTextLocal(text: string): string {
+    let colorIdx = 0;
+    return text
+      .split("")
+      .map((ch) => {
+        if (ch === " ") return ch;
+        const color = GRADIENT[colorIdx++ % GRADIENT.length]!;
+        return chalk.hex(color)(ch);
+      })
+      .join("");
+  }
+  const GAP = "   ";
+  console.log();
+  console.log(
+    `  ${gradientTextLocal(LOGO[0]!)}${GAP}` +
+      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
+      chalk.hex("#6b7280")(" \u00b7 By ") +
+      chalk.white.bold("Ken Kai"),
+  );
+  console.log(`  ${gradientTextLocal(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Agent Home Setup"));
+  console.log(
+    `  ${gradientTextLocal(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")("Remote Control via iOS"),
+  );
+  console.log();
+
+  if (existing) {
+    console.log(
+      chalk.hex("#6b7280")("  Current config:\n") +
+        chalk.hex("#6b7280")(
+          `    Token:  ${existing.token.slice(0, 8)}...${existing.token.slice(-4)}\n`,
+        ),
+    );
+  }
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  try {
+    console.log(
+      chalk.hex("#a78bfa")("  Auth Token\n") +
+        chalk.hex("#6b7280")(
+          "    Open Agent Home iOS app \u2192 Settings \u2192 Generate SDK Token\n",
+        ) +
+        chalk.hex("#6b7280")("    Copy the token\n"),
+    );
+
+    const tokenPrompt = existing
+      ? chalk.hex("#60a5fa")("  Auth token (enter to keep current): ")
+      : chalk.hex("#60a5fa")("  Auth token: ");
+    const tokenInput = await rl.question(tokenPrompt);
+    const token = tokenInput.trim() || existing?.token;
+
+    if (!token) {
+      console.log(chalk.hex("#ef4444")("\n  No token provided. Setup cancelled."));
+      return;
+    }
+
+    // Save config
+    await saveAgentHomeConfig({ token });
+
+    log("INFO", "agent-home", `Agent Home setup complete`);
+
+    console.log(
+      chalk.hex("#4ade80")(`\n  \u2713 Token saved`) +
+        "\n" +
+        chalk.hex("#4ade80")(`  \u2713 Config saved to ${paths.agentHomeFile}`) +
+        "\n\n" +
+        chalk.hex("#60a5fa")("  To start:\n") +
+        chalk.hex("#6b7280")("    cd your-project && ggcoder agent-home\n"),
+    );
+  } finally {
+    rl.close();
+    closeLogger();
+  }
+}
+
+// ── Agent Home (Run) ────────────────────────────────────
+
+async function runAgentHome(): Promise<void> {
+  const { values: ahValues } = parseArgs({
+    options: {
+      token: { type: "string" },
+      provider: { type: "string" },
+      model: { type: "string" },
+    },
+    strict: true,
+  });
+
+  // Priority: CLI flags > saved config
+  const saved = await loadAgentHomeConfig();
+  const token = ahValues.token ?? saved?.token;
+
+  if (!token) {
+    console.error(
+      chalk.hex("#ef4444")("Agent Home not configured.\n\n") +
+        "Run " +
+        chalk.hex("#60a5fa").bold("ggcoder agent-home-login") +
+        " to set up your token.\n\n" +
+        chalk.hex("#6b7280")("Or provide manually:\n") +
+        chalk.hex("#6b7280")("  ggcoder agent-home --token TOKEN"),
+    );
+    process.exit(1);
+  }
+
+  const saved4 = loadSavedSettings();
+  const thinkingLevel: ThinkingLevel | undefined = saved4.thinkingEnabled ? "medium" : undefined;
+
+  const paths = await ensureAppDirs();
+  const authStorage = new AuthStorage(paths.authFile);
+  await authStorage.load();
+
+  const preferredProvider: Provider =
+    (ahValues.provider as Provider | undefined) ?? saved4.provider ?? "anthropic";
+  const { provider, model } = await resolveActiveProvider(
+    authStorage,
+    preferredProvider,
+    ahValues.model ?? saved4.model,
+  );
+
+  initLogger(paths.logFile, {
+    version: CLI_VERSION,
+    provider,
+    model,
+  });
+
+  setEstimatorModel(model);
+
+  await runAgentHomeMode({
+    provider,
+    model,
+    cwd: process.cwd(),
+    version: CLI_VERSION,
+    thinkingLevel,
+    agentHome: { token },
+  });
+}
+
+// ── Pixel ──────────────────────────────────────────────────
+
+async function runPixel(): Promise<void> {
+  const sub = process.argv[3];
+  const rest = process.argv.slice(4);
+
+  if (sub === "install") {
+    const { runPixelInstall } = await import("./core/pixel.js");
+    const opts = parsePixelInstallArgs(rest);
+    await runPixelInstall(opts);
+    return;
+  }
+
+  if (sub === "fix") {
+    const errorId = rest[0];
+    if (!errorId) {
+      process.stderr.write("Usage: ggcoder pixel fix <error_id>\n");
+      process.exit(1);
+    }
+    const { fixError } = await import("./core/pixel-fix.js");
+    const result = await fixError(errorId);
+    if (result.outcome === "awaiting_review") {
+      console.log(chalk.hex("#4ade80")(`✓ ${result.reason}`));
+    } else {
+      console.log(chalk.hex("#ef4444")(`✗ ${result.reason}`));
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (sub === "run") {
+    const { runQueue } = await import("./core/pixel-fix.js");
+    const result = await runQueue();
+    console.log(
+      chalk.bold(`${result.fixed} fixed · ${result.failed} failed · ${result.total} total`),
+    );
+    if (result.failed > 0) process.exit(1);
+    return;
+  }
+
+  if (sub === "--help" || sub === "-h") {
+    printPixelHelp();
+    return;
+  }
+
+  if (sub === "list") {
+    const { listAllErrors } = await import("./core/pixel.js");
+    await listAllErrors();
+    return;
+  }
+
+  if (sub) {
+    process.stderr.write(`Unknown pixel subcommand: ${sub}\n`);
+    printPixelHelp();
+    process.exit(1);
+  }
+
+  // No subcommand → launch the Ink TUI with the pixel overlay open. The fix
+  // flow runs through the same agent loop as a Task, streaming live in the
+  // chat instead of spawning a subprocess.
+  // Non-TTY (CI, piped) → fall back to text list.
+  if (!process.stdin.isTTY) {
+    const { listAllErrors } = await import("./core/pixel.js");
+    await listAllErrors();
+    return;
+  }
+
+  const saved = loadSavedSettings();
+  const provider: Provider = saved.provider ?? "anthropic";
+  const model: string = saved.model ?? defaultModelFor(provider);
+  await runInkTUI({
+    provider,
+    model,
+    cwd: process.cwd(),
+    thinkingLevel: saved.thinkingEnabled ? "medium" : undefined,
+    theme: saved.theme,
+    initialOverlay: "pixel",
+  });
+}
+
+function defaultModelFor(p: string): string {
+  if (p === "openai") return "gpt-5.5";
+  if (p === "glm") return "glm-5.1";
+  if (p === "moonshot") return "kimi-k2.6";
+  if (p === "minimax") return "MiniMax-M2.7";
+  if (p === "deepseek") return "deepseek-v4-pro";
+  if (p === "openrouter") return "qwen/qwen3.6-plus";
+  return "claude-opus-4-7";
+}
+
+interface ParsedInstall {
+  ingestUrl?: string;
+  name?: string;
+  skipPackageInstall: boolean;
+}
+
+function parsePixelInstallArgs(args: string[]): ParsedInstall {
+  const out: ParsedInstall = { skipPackageInstall: false };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--ingest-url") out.ingestUrl = args[++i];
+    else if (a === "--name") out.name = args[++i];
+    else if (a === "--skip-install") out.skipPackageInstall = true;
+  }
+  return out;
+}
+
+function printPixelHelp(): void {
+  console.log(`ggcoder pixel — error tracking + auto-fix queue
+
+Usage:
+  ggcoder pixel                  List open errors across every registered project
+  ggcoder pixel install          Register the current project and wire up the SDK
+  ggcoder pixel fix <error_id>   Fix one specific error end-to-end
+  ggcoder pixel run              Auto-fix every open error across all projects
+
+  ggcoder pixel install --name <name>      Override the project name
+  ggcoder pixel install --ingest-url <url> Use a custom backend URL
+  ggcoder pixel install --skip-install     Don't run the package manager
+`);
+}
+
 // ── Helpers ────────────────────────────────────────────────
+
+/**
+ * Pick the provider/model to start with. If the preferred provider isn't
+ * one the user is logged into, fall back to the first provider they ARE
+ * logged into (in `allProviders` order). Throws if nothing is logged in.
+ *
+ * This prevents the CLI from crashing with "Not logged in" on startup just
+ * because settings.json remembers a provider the user later logged out of.
+ */
+async function resolveActiveProvider(
+  authStorage: AuthStorage,
+  preferred: Provider,
+  savedModel: string | undefined,
+): Promise<{ provider: Provider; model: string; loggedInProviders: Provider[] }> {
+  const allProviders: Provider[] = [
+    "anthropic",
+    "xiaomi",
+    "openai",
+    "glm",
+    "moonshot",
+    "minimax",
+    "deepseek",
+    "openrouter",
+  ];
+  const loggedInProviders: Provider[] = [];
+  for (const p of allProviders) {
+    if (await authStorage.getCredentials(p)) loggedInProviders.push(p);
+  }
+
+  if (loggedInProviders.length === 0) {
+    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
+  }
+
+  if (loggedInProviders.includes(preferred)) {
+    return {
+      provider: preferred,
+      model: savedModel ?? getDefaultModel(preferred).id,
+      loggedInProviders,
+    };
+  }
+
+  // Preferred provider isn't authenticated — fall back to the first one
+  // that is, and use that provider's default model (the saved model
+  // belonged to a provider the user can no longer reach).
+  const provider = loggedInProviders[0]!;
+  return { provider, model: getDefaultModel(provider).id, loggedInProviders };
+}
 
 function displayName(provider: Provider): string {
   if (provider === "anthropic") return "Anthropic";
+  if (provider === "xiaomi") return "Xiaomi (MiMo)";
   if (provider === "glm") return "Z.AI (GLM)";
   if (provider === "moonshot") return "Moonshot";
+  if (provider === "minimax") return "MiniMax";
+  if (provider === "deepseek") return "DeepSeek";
+  if (provider === "openrouter") return "OpenRouter";
   return "OpenAI";
 }
 
@@ -1009,8 +1752,14 @@ function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
   for (const msg of msgs) {
     if (msg.role === "tool") {
       for (const tr of msg.content) {
+        const text =
+          typeof tr.content === "string"
+            ? tr.content
+            : tr.content
+                .map((b) => (b.type === "text" ? b.text : `[image ${b.mediaType}]`))
+                .join("\n");
         toolResults.set(tr.toolCallId, {
-          content: tr.content,
+          content: text,
           isError: tr.isError ?? false,
         });
       }
@@ -1032,27 +1781,67 @@ function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
         if (content) items.push({ kind: "assistant", text: content, id: `restore-${id++}` });
         continue;
       }
-      // Count block types for debugging
       for (const block of content) {
         blockTypeCounts[block.type] = (blockTypeCounts[block.type] ?? 0) + 1;
       }
-      // Process content blocks in order — text and tool calls
-      const text = extractText(content);
-      if (text) items.push({ kind: "assistant", text, id: `restore-${id++}` });
+      // Pair server_tool_result blocks with their server_tool_call by id
+      // (both live in the same assistant message for provider-side tools).
+      const serverResults = new Map<string, { resultType: string; data: unknown }>();
       for (const block of content) {
-        if (block.type === "tool_call") {
-          const result = toolResults.get(block.id);
-          items.push({
-            kind: "tool_done",
-            name: block.name,
-            args: block.args,
-            result: result?.content ?? "",
-            isError: result?.isError ?? false,
-            durationMs: 0,
-            id: `restore-${id++}`,
+        if (block.type === "server_tool_result") {
+          serverResults.set(block.toolUseId, {
+            resultType: block.resultType,
+            data: block.data,
           });
         }
       }
+      // Walk blocks in order. Buffer consecutive text blocks into a single
+      // assistant item (mirrors live rendering), and flush the buffer before
+      // each tool_call / server_tool_call so chronology is preserved.
+      let textBuf = "";
+      const flushText = () => {
+        if (textBuf) {
+          items.push({ kind: "assistant", text: textBuf, id: `restore-${id++}` });
+          textBuf = "";
+        }
+      };
+      for (const block of content) {
+        switch (block.type) {
+          case "text":
+            if (block.text) textBuf += (textBuf ? "\n" : "") + block.text;
+            break;
+          case "tool_call": {
+            flushText();
+            const result = toolResults.get(block.id);
+            items.push({
+              kind: "tool_done",
+              name: block.name,
+              args: block.args,
+              result: result?.content ?? "",
+              isError: result?.isError ?? false,
+              durationMs: 0,
+              id: `restore-${id++}`,
+            });
+            break;
+          }
+          case "server_tool_call": {
+            flushText();
+            const serverResult = serverResults.get(block.id);
+            items.push({
+              kind: "server_tool_done",
+              name: block.name,
+              input: block.input,
+              resultType: serverResult?.resultType ?? "",
+              data: serverResult?.data ?? null,
+              durationMs: 0,
+              id: `restore-${id++}`,
+            });
+            break;
+          }
+          // thinking, image, raw, server_tool_result: not surfaced in restored history
+        }
+      }
+      flushText();
     }
   }
 

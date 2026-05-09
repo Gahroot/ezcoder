@@ -14,11 +14,11 @@ import { SessionManager, type MessageEntry, type BranchInfo } from "./session-ma
 import { ExtensionLoader } from "./extensions/loader.js";
 import type { ExtensionContext } from "./extensions/types.js";
 import { shouldCompact, compact } from "./compaction/compactor.js";
-import { getContextWindow, MODELS } from "./model-registry.js";
+import { getContextWindow, getModel, MODELS } from "./model-registry.js";
 import { discoverSkills, type Skill } from "./skills.js";
 import { ensureAppDirs } from "../config.js";
 import { buildSystemPrompt } from "../system-prompt.js";
-import { createTools, type ProcessManager } from "../tools/index.js";
+import { createTools, createWebSearchTool, type ProcessManager } from "../tools/index.js";
 import { MCPClientManager, getMCPServers } from "./mcp/index.js";
 import { log } from "./logger.js";
 import { setEstimatorModel } from "./compaction/token-estimator.js";
@@ -92,7 +92,7 @@ export class AgentSession {
     this.model = options.model;
     this.cwd = options.cwd;
     this.baseUrl = options.baseUrl;
-    this.maxTokens = options.maxTokens ?? 16384;
+    this.maxTokens = options.maxTokens ?? getModel(options.model)?.maxOutputTokens ?? 16384;
     this.thinkingLevel = options.thinkingLevel;
     this.customSystemPrompt = options.systemPrompt;
   }
@@ -298,6 +298,7 @@ export class AgentSession {
     let creds = await this.authStorage.resolveCredentials(this.provider);
 
     const runAgentLoop = async (apiKey: string, accountId?: string) => {
+      const modelInfo = getModel(this.model);
       const generator = agentLoop(this.messages, {
         provider: this.provider,
         model: this.model,
@@ -310,7 +311,8 @@ export class AgentSession {
         signal: this.opts.signal,
         accountId,
         cacheRetention: "short",
-        clearToolUses: this.provider === "anthropic",
+        supportsImages: modelInfo?.supportsImages,
+        // clearToolUses disabled — causes model to output unsolicited context summaries
         // Single tool result shouldn't exceed 30% of context window (in chars)
         maxToolResultChars: Math.floor(getContextWindow(this.model) * 3.5 * 0.3),
       });
@@ -331,7 +333,14 @@ export class AgentSession {
         // API-key providers (GLM, Moonshot) have no refresh mechanism — retrying
         // with the same key is pointless. Clear the credential and let the error
         // surface so the user knows to re-login with a valid key.
-        if (this.provider === "glm" || this.provider === "moonshot") {
+        if (
+          this.provider === "glm" ||
+          this.provider === "moonshot" ||
+          this.provider === "minimax" ||
+          this.provider === "xiaomi" ||
+          this.provider === "deepseek" ||
+          this.provider === "openrouter"
+        ) {
           log("WARN", "auth", `Got 401 for ${this.provider} — API key is invalid or revoked`);
           await this.authStorage.clearCredentials(this.provider);
           throw err;
@@ -358,33 +367,47 @@ export class AgentSession {
     setEstimatorModel(model);
     this.eventBus.emit("model_change", { provider: this.provider, model: this.model });
 
-    // Reconnect MCP servers when provider changes (e.g. GLM needs Z.AI tools, others don't)
-    if (provider && provider !== prevProvider && this.mcpManager) {
-      // Remove old MCP tools
-      this.tools = this.tools.filter((t) => !t.name.startsWith("mcp__"));
+    // Update provider-specific tools when provider changes
+    if (provider && provider !== prevProvider) {
+      // Add/remove client-side web_search tool based on provider.
+      // Anthropic has native server-side web search; all other providers need the client tool.
+      const hasWebSearch = this.tools.some((t) => t.name === "web_search");
+      if (this.provider === "anthropic" && hasWebSearch) {
+        // Switching TO anthropic — remove client-side web_search (server-side handles it)
+        this.tools = this.tools.filter((t) => t.name !== "web_search");
+      } else if (this.provider !== "anthropic" && !hasWebSearch) {
+        // Switching FROM anthropic — add client-side web_search
+        this.tools.push(createWebSearchTool());
+      }
 
-      // Disconnect old MCP servers
-      await this.mcpManager.dispose();
+      // Reconnect MCP servers (e.g. GLM needs Z.AI tools, others don't)
+      if (this.mcpManager) {
+        // Remove old MCP tools
+        this.tools = this.tools.filter((t) => !t.name.startsWith("mcp__"));
 
-      // Connect new MCP servers for the new provider
-      try {
-        let apiKey: string | undefined;
-        if (this.provider === "glm") {
-          try {
-            const glmCreds = await this.authStorage.resolveCredentials("glm");
-            apiKey = glmCreds.accessToken;
-          } catch {
-            // GLM not configured — skip Z.AI MCP servers
+        // Disconnect old MCP servers
+        await this.mcpManager.dispose();
+
+        // Connect new MCP servers for the new provider
+        try {
+          let apiKey: string | undefined;
+          if (this.provider === "glm") {
+            try {
+              const glmCreds = await this.authStorage.resolveCredentials("glm");
+              apiKey = glmCreds.accessToken;
+            } catch {
+              // GLM not configured — skip Z.AI MCP servers
+            }
           }
+          const mcpTools = await this.mcpManager.connectAll(getMCPServers(this.provider, apiKey));
+          this.tools.push(...mcpTools);
+        } catch (err) {
+          log(
+            "WARN",
+            "mcp",
+            `MCP reconnection failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
-        const mcpTools = await this.mcpManager.connectAll(getMCPServers(this.provider, apiKey));
-        this.tools.push(...mcpTools);
-      } catch (err) {
-        log(
-          "WARN",
-          "mcp",
-          `MCP reconnection failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
       }
     }
   }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { isContextOverflow, agentLoop } from "./agent-loop.js";
 import type { AgentEvent, AgentResult } from "./types.js";
-import type { Message } from "@prestyj/ai";
+import type { Message, StreamOptions } from "@prestyj/ai";
 
 // ── Mock stream ────────────────────────────────────────────
 
@@ -181,38 +181,70 @@ describe("agentLoop", () => {
     expect(original[1]).toEqual(compacted[1]);
   });
 
-  it("retries once on context overflow when transformContext is provided", async () => {
+  it("calls transformContext with force=true on context overflow, then throws if compaction can't reduce", async () => {
     const overflowErr = new Error("prompt is too long: 250000 tokens > 200000 maximum");
 
-    mockStream
-      .mockReturnValueOnce(mockErrorResult(overflowErr) as unknown as ReturnType<typeof stream>)
-      .mockReturnValueOnce(mockOkResult("Recovered") as unknown as ReturnType<typeof stream>);
+    mockStream.mockReturnValueOnce(
+      mockErrorResult(overflowErr) as unknown as ReturnType<typeof stream>,
+    );
 
     const messages: Message[] = [
       { role: "system", content: "sys" },
       { role: "user", content: "test" },
     ];
 
-    const compacted: Message[] = [
+    // No-op compaction — returns same array, so the loop must give up and throw
+    // after one force-attempt (no retry stream call).
+    const transformContext = vi.fn().mockImplementation((msgs: Message[]) => msgs);
+
+    await expect(
+      collectLoop(messages, {
+        provider: "anthropic",
+        model: "test",
+        transformContext,
+      }),
+    ).rejects.toThrow("prompt is too long");
+
+    const forceCalls = transformContext.mock.calls.filter(
+      (c: unknown[]) => (c[1] as { force?: boolean })?.force === true,
+    );
+    expect(forceCalls.length).toBe(1);
+    // Stream should only have been called once — no retry, since compaction was a no-op
+    expect(mockStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries the turn after force-compaction reduces the messages on context overflow", async () => {
+    const overflowErr = new Error("context_length_exceeded");
+    mockStream
+      .mockReturnValueOnce(mockErrorResult(overflowErr) as unknown as ReturnType<typeof stream>)
+      .mockReturnValueOnce(mockOkResult("recovered") as unknown as ReturnType<typeof stream>);
+
+    const messages: Message[] = [
       { role: "system", content: "sys" },
       { role: "user", content: "test" },
     ];
 
-    const transformContext = vi.fn().mockImplementation(() => compacted);
+    const transformContext = vi
+      .fn()
+      .mockImplementation((msgs: Message[], opts?: { force?: boolean }) => {
+        if (opts?.force && msgs.length > 1) {
+          return msgs.slice(0, msgs.length - 1);
+        }
+        return msgs;
+      });
 
-    const { events, result } = await collectLoop(messages, {
+    const { events } = await collectLoop(messages, {
       provider: "anthropic",
       model: "test",
       transformContext,
     });
 
-    // transformContext called 3 times: pre-call, on overflow, pre-retry
-    expect(transformContext).toHaveBeenCalledTimes(3);
+    expect(events.some((e) => e.type === "retry" && e.reason === "overflow_compact")).toBe(true);
     expect(mockStream).toHaveBeenCalledTimes(2);
-    expect(result.totalTurns).toBe(1);
-
-    const textEvents = events.filter((e) => e.type === "text_delta");
-    expect(textEvents).toHaveLength(1);
+    const forceCalls = transformContext.mock.calls.filter(
+      (c: unknown[]) => (c[1] as { force?: boolean })?.force === true,
+    );
+    expect(forceCalls.length).toBe(1);
   });
 
   it("throws on context overflow when no transformContext is provided", async () => {
@@ -348,6 +380,66 @@ describe("agentLoop", () => {
       collectLoop(messages, { provider: "anthropic", model: "test", transformContext }),
     ).rejects.toThrow("authentication failed");
   });
+
+  it("flips to non-streaming fallback after repeated stream stalls", async () => {
+    vi.useFakeTimers();
+
+    // First 2 calls stall (never yield, never resolve) and abort when signal fires.
+    // 3rd call returns a real response -- we assert it was made with streaming: false.
+    const capturedOpts: StreamOptions[] = [];
+    let callIndex = 0;
+    mockStream.mockImplementation((opts: StreamOptions) => {
+      capturedOpts.push(opts);
+      callIndex++;
+      if (callIndex <= 2) {
+        // Stalling stream: aborts only when the per-attempt signal fires
+        const abortPromise = new Promise<never>((_, reject) => {
+          opts.signal?.addEventListener(
+            "abort",
+            () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            { once: true },
+          );
+        });
+        abortPromise.catch(() => {});
+        return {
+          [Symbol.asyncIterator]: async function* () {
+            yield* [];
+            await abortPromise;
+          },
+          response: abortPromise,
+        } as unknown as ReturnType<typeof stream>;
+      }
+      return mockOkResult("Recovered!") as unknown as ReturnType<typeof stream>;
+    });
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi" },
+    ];
+
+    const loopPromise = collectLoop(messages, { provider: "anthropic", model: "test" });
+
+    // Advance past first-event idle timeout (45s) three times to drive through
+    // the two stalls + their exponential-backoff retry delays.
+    // 1st stall: 45s idle -> abort -> 1s retry delay
+    // 2nd stall: 45s idle -> abort -> 2s retry delay -> flag flips -> 3rd call succeeds
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(50_000);
+    }
+
+    const { events, result } = await loopPromise;
+    vi.useRealTimers();
+
+    expect(mockStream).toHaveBeenCalledTimes(3);
+    // First two calls: streaming mode (flag undefined => default true)
+    expect(capturedOpts[0].streaming).toBeUndefined();
+    expect(capturedOpts[1].streaming).toBeUndefined();
+    // Third call: non-streaming fallback explicitly set
+    expect(capturedOpts[2].streaming).toBe(false);
+
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+    expect(result.totalTurns).toBe(1); // stall retries don't count as turns
+  }, 30_000);
 
   it("respects maxTurns", async () => {
     // Return tool_use to force looping, but cap at 2 turns

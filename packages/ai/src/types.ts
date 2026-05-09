@@ -2,7 +2,16 @@ import type { z } from "zod";
 
 // ── Providers ──────────────────────────────────────────────
 
-export type Provider = "anthropic" | "openai" | "glm" | "moonshot" | "palsu";
+export type Provider =
+  | "anthropic"
+  | "xiaomi"
+  | "openai"
+  | "glm"
+  | "moonshot"
+  | "minimax"
+  | "deepseek"
+  | "openrouter"
+  | "palsu";
 
 // ── Thinking ───────────────────────────────────────────────
 
@@ -38,10 +47,12 @@ export interface ToolCall {
   args: Record<string, unknown>;
 }
 
+export type ToolResultContent = string | (TextContent | ImageContent)[];
+
 export interface ToolResult {
   type: "tool_result";
   toolCallId: string;
-  content: string;
+  content: ToolResultContent;
   isError?: boolean;
 }
 
@@ -168,6 +179,10 @@ export interface ServerToolResultEvent {
   data: unknown;
 }
 
+export interface KeepaliveEvent {
+  type: "keepalive";
+}
+
 export type StreamEvent =
   | TextDeltaEvent
   | ThinkingDeltaEvent
@@ -176,7 +191,8 @@ export type StreamEvent =
   | ServerToolCallEvent
   | ServerToolResultEvent
   | DoneEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | KeepaliveEvent;
 
 // ── Stop Reasons ───────────────────────────────────────────
 
@@ -242,4 +258,14 @@ export interface StreamOptions {
    *  where the default `globalThis.fetch` doesn't support streaming properly.
    *  Passed directly to the underlying provider SDK. */
   fetch?: typeof globalThis.fetch;
+  /** Whether the target model supports image input. When false, image content
+   *  in user messages and tool_result messages is downgraded to a text placeholder
+   *  before being sent to the provider. Default: true. */
+  supportsImages?: boolean;
+  /** Use streaming transport (default: true). When false, providers issue a
+   *  single non-streaming request and synthesize events from the full response.
+   *  The agent loop flips this to `false` as a fallback after repeated stream
+   *  stalls — broken SSE connections (transient CDN / proxy issues) often
+   *  recover when the same request is issued over a plain HTTP request/response. */
+  streaming?: boolean;
 }

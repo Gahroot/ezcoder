@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { agentLoop, type AgentEvent, type AgentTool } from "@prestyj/agent";
-import type { Message, Provider, ThinkingLevel, TextContent, ImageContent } from "@prestyj/ai";
+import { agentLoop, type AgentEvent, type AgentTool } from "@kenkaiiii/gg-agent";
+import { ProviderError } from "@kenkaiiii/gg-ai";
+import type { Message, Provider, ThinkingLevel, TextContent, ImageContent } from "@kenkaiiii/gg-ai";
 
 /** Rough token estimate from message content (~4 chars per token). */
 function estimateTokens(msgs: Message[]): number {
@@ -64,8 +65,11 @@ export interface AgentLoopOptions {
   apiKey?: string;
   baseUrl?: string;
   accountId?: string;
-  /** Resolve fresh credentials before each run (e.g. OAuth token refresh). */
-  resolveCredentials?: () => Promise<{ apiKey: string; accountId?: string }>;
+  /** Resolve fresh credentials before each run (e.g. OAuth token refresh).
+   *  When `forceRefresh` is true, bypass cache and fetch a new token (used on 401 retry). */
+  resolveCredentials?: (opts?: {
+    forceRefresh?: boolean;
+  }) => Promise<{ apiKey: string; accountId?: string }>;
   transformContext?: (
     messages: Message[],
     options?: { force?: boolean },
@@ -75,7 +79,7 @@ export interface AgentLoopOptions {
 export type ActivityPhase = "waiting" | "thinking" | "generating" | "tools" | "retrying" | "idle";
 
 export interface RetryInfo {
-  reason: "overloaded" | "rate_limit" | "empty_response" | "context_overflow";
+  reason: "overloaded" | "rate_limit" | "empty_response" | "stream_stall" | "overflow_compact";
   attempt: number;
   maxAttempts: number;
   delayMs: number;
@@ -103,6 +107,8 @@ export interface UseAgentLoopReturn {
   contextUsed: number;
   activityPhase: ActivityPhase;
   retryInfo: RetryInfo | null;
+  /** Non-null when the agent stopped due to an unrecoverable stream error (e.g. stall retries exhausted). */
+  stallError: string | null;
   elapsedMs: number;
   thinkingMs: number;
   isThinking: boolean;
@@ -111,6 +117,8 @@ export interface UseAgentLoopReturn {
   charCountRef: React.RefObject<number>;
   /** Accumulated real tokens from completed turns */
   realTokensAccumRef: React.RefObject<number>;
+  /** Run start timestamp ref — for smooth elapsed time computation */
+  runStartRef: React.RefObject<number>;
   linesChanged: { added: number; removed: number };
 }
 
@@ -129,6 +137,12 @@ export function useAgentLoop(
       isError: boolean,
       durationMs: number,
       details?: unknown,
+      // Args are included so consumers don't have to look them up via
+      // `activeToolCalls` state — by the time onToolEnd fires, that state
+      // may be stale (the call has already been pulled from the active
+      // list, or React hasn't flushed the update yet). Pass through so
+      // tool-result rendering always has the original args available.
+      args?: Record<string, unknown>,
     ) => void;
     onServerToolCall?: (id: string, name: string, input: unknown) => void;
     onServerToolResult?: (toolUseId: string, resultType: string, data: unknown) => void;
@@ -172,6 +186,7 @@ export function useAgentLoop(
   const [isThinking, setIsThinking] = useState(false);
   const [streamedTokenEstimate, setStreamedTokenEstimate] = useState(0);
   const [retryInfo, setRetryInfo] = useState<RetryInfo | null>(null);
+  const [stallError, setStallError] = useState<string | null>(null);
   const [linesChanged, setLinesChanged] = useState({ added: 0, removed: 0 });
 
   const abortRef = useRef<AbortController | null>(null);
@@ -196,6 +211,8 @@ export function useAgentLoop(
   }, []);
 
   const reset = useCallback(() => {
+    // Abort any running agent loop first — this kills in-flight subagent processes
+    abortRef.current?.abort();
     setCurrentTurn(0);
     setTotalTokens({ input: 0, output: 0 });
     setContextUsed(0);
@@ -224,10 +241,39 @@ export function useAgentLoop(
   const run = useCallback(
     async (userContent: UserContent) => {
       /** Run a single user message through the agent loop. Returns true if aborted. */
-      const runSingle = async (content: UserContent): Promise<boolean> => {
+      const runSingle = async (
+        content: UserContent,
+        credentialOpts?: { forceRefresh?: boolean },
+      ): Promise<boolean> => {
         const ac = new AbortController();
         abortRef.current = ac;
         let wasAborted = false;
+
+        // Throttled streaming text flush — accumulate deltas in refs (zero-cost),
+        // only call setState at ~16ms intervals to avoid saturating the event loop
+        // with React renders during fast token streaming.
+        let streamFlushTimer: ReturnType<typeof setTimeout> | null = null;
+        let streamTextDirty = false;
+        let streamThinkingDirty = false;
+        const STREAM_FLUSH_MS = 16; // ~1 frame at 60fps
+
+        const flushStreamState = () => {
+          streamFlushTimer = null;
+          if (streamTextDirty) {
+            setStreamingText(textVisibleRef.current);
+            streamTextDirty = false;
+          }
+          if (streamThinkingDirty) {
+            setStreamingThinking(thinkingVisibleRef.current);
+            streamThinkingDirty = false;
+          }
+        };
+
+        const scheduleStreamFlush = () => {
+          if (streamFlushTimer === null) {
+            streamFlushTimer = setTimeout(flushStreamState, STREAM_FLUSH_MS);
+          }
+        };
 
         // Reset state
         doneCalledRef.current = false;
@@ -249,6 +295,7 @@ export function useAgentLoop(
         setThinkingMs(0);
         setIsThinking(false);
         setStreamedTokenEstimate(0);
+        setStallError(null);
         setIsRunning(true);
 
         // Start elapsed timer (ticks every 1000ms — less frequent to reduce
@@ -288,7 +335,7 @@ export function useAgentLoop(
           let apiKey = options.apiKey;
           let accountId = options.accountId;
           if (options.resolveCredentials) {
-            const creds = await options.resolveCredentials();
+            const creds = await options.resolveCredentials(credentialOpts);
             apiKey = creds.apiKey;
             accountId = creds.accountId;
           }
@@ -316,15 +363,26 @@ export function useAgentLoop(
               onQueuedStart?.(merged);
               return [{ role: "user" as const, content: merged }];
             },
-            clearToolUses: options.provider === "anthropic",
+            // clearToolUses disabled — causes model to output unsolicited context
+            // summaries ("KEY CONTEXT TO REMEMBER") when it sees gaps from stripped
+            // tool blocks. Normal client-side compaction handles context management.
           });
 
           for await (const event of generator as AsyncIterable<AgentEvent>) {
             switch (event.type) {
               case "text_delta":
+                // First text_delta in a turn — flush any buffered thinking to
+                // the visible display.  This ensures ThinkingBlock only appears
+                // when the model actually produces text output, not on
+                // tool-call-only turns where reasoning models think silently.
+                if (!textVisibleRef.current && thinkingBufferRef.current) {
+                  thinkingVisibleRef.current = thinkingBufferRef.current;
+                  streamThinkingDirty = true;
+                }
                 textVisibleRef.current += event.text;
                 charCountRef.current += event.text.length;
-                setStreamingText(textVisibleRef.current);
+                streamTextDirty = true;
+                scheduleStreamFlush();
                 if (phaseRef.current !== "generating") {
                   freezeThinking();
                   if (phaseRef.current === "retrying") setRetryInfo(null);
@@ -335,9 +393,12 @@ export function useAgentLoop(
 
               case "thinking_delta":
                 thinkingBufferRef.current += event.text;
-                thinkingVisibleRef.current += event.text;
+                // Don't push to thinkingVisibleRef yet — defer display until
+                // we know text output follows.  Reasoning models (MiMo) think
+                // on every turn including tool-call-only turns, which causes a
+                // persistent "Thinking" block in the UI.  The visible ref is
+                // flushed when the first text_delta arrives (see below).
                 charCountRef.current += event.text.length;
-                setStreamingThinking(thinkingVisibleRef.current);
                 if (phaseRef.current !== "thinking") {
                   thinkingStartRef.current = Date.now();
                   setIsThinking(true);
@@ -347,7 +408,31 @@ export function useAgentLoop(
                 }
                 break;
 
+              case "toolcall_delta":
+                // Tool call args being streamed — tick the char counter so the
+                // token estimate updates, and switch to "generating" phase so the
+                // user sees progress instead of a frozen "waiting" spinner.
+                charCountRef.current += event.chars;
+                streamTextDirty = true;
+                scheduleStreamFlush();
+                if (phaseRef.current === "waiting" || phaseRef.current === "thinking") {
+                  if (phaseRef.current === "thinking") freezeThinking();
+                  phaseRef.current = "generating";
+                  setActivityPhase("generating");
+                }
+                break;
+
               case "tool_call_start": {
+                // Flush any pending throttled text BEFORE the tool call renders.
+                // Without this, text accumulated in textVisibleRef since the last
+                // 16ms flush won't appear in the UI until after the tool completes,
+                // making the assistant's message look cut off.
+                if (streamFlushTimer) {
+                  clearTimeout(streamFlushTimer);
+                  streamFlushTimer = null;
+                }
+                flushStreamState();
+
                 freezeThinking();
                 if (phaseRef.current !== "tools") {
                   phaseRef.current = "tools";
@@ -400,6 +485,7 @@ export function useAgentLoop(
                   event.isError,
                   durationMs,
                   event.details,
+                  tc?.args,
                 );
                 // Track lines changed for edit tools
                 if (toolName === "edit" && !event.isError) {
@@ -434,18 +520,52 @@ export function useAgentLoop(
                 // onQueuedStart inside getSteeringMessages callback.
                 break;
 
+              case "error":
+                // Stream error (e.g. stall retries exhausted) — surface to UI
+                // so the user sees a clear failure instead of fake completion.
+                setStallError(event.error.message);
+                break;
+
               case "retry":
-                phaseRef.current = "retrying";
-                setActivityPhase("retrying");
-                setRetryInfo({
-                  reason: event.reason,
-                  attempt: event.attempt,
-                  maxAttempts: event.maxAttempts,
-                  delayMs: event.delayMs,
-                });
+                // The stream restarts from scratch on retry — the provider
+                // will re-emit text from the beginning. Without clearing
+                // the accumulated buffers, the retry's deltas append to the
+                // aborted attempt's partial text, producing a visible
+                // duplicate (e.g. "Now I'll work on this..Now I'll work on this..").
+                if (streamFlushTimer) {
+                  clearTimeout(streamFlushTimer);
+                  streamFlushTimer = null;
+                }
+                textVisibleRef.current = "";
+                thinkingBufferRef.current = "";
+                thinkingVisibleRef.current = "";
+                charCountRef.current = 0;
+                streamTextDirty = false;
+                streamThinkingDirty = false;
+                setStreamingText("");
+                setStreamingThinking("");
+                // Hidden retries (silent) don't update the UI — the user
+                // only sees retry indicators after silent attempts are exhausted.
+                if (!event.silent) {
+                  phaseRef.current = "retrying";
+                  setActivityPhase("retrying");
+                  setStallError(null); // clear any previous error on retry
+                  setRetryInfo({
+                    reason: event.reason,
+                    attempt: event.attempt,
+                    maxAttempts: event.maxAttempts,
+                    delayMs: event.delayMs,
+                  });
+                }
                 break;
 
               case "turn_end": {
+                // Flush any throttled streaming text before processing turn end
+                if (streamFlushTimer) {
+                  clearTimeout(streamFlushTimer);
+                  streamFlushTimer = null;
+                }
+                flushStreamState();
                 setRetryInfo(null);
                 onTurnEnd?.(event.turn, event.stopReason, event.usage);
                 setCurrentTurn(event.turn);
@@ -554,8 +674,21 @@ export function useAgentLoop(
         return wasAborted;
       }; // end runSingle
 
-      // Run the initial message
-      const aborted = await runSingle(userContent);
+      // Run the initial message.
+      // On 401, force-refresh the OAuth token and retry once — the provider may
+      // have revoked the token server-side before the stored expiry.
+      let aborted: boolean;
+      try {
+        aborted = await runSingle(userContent);
+      } catch (err) {
+        if (err instanceof ProviderError && err.statusCode === 401 && options.resolveCredentials) {
+          // Pop the user message we pushed — runSingle will re-push it
+          messages.current.pop();
+          aborted = await runSingle(userContent, { forceRefresh: true });
+        } else {
+          throw err;
+        }
+      }
 
       // Drain the queue: process follow-up messages that arrived after agent_done.
       // Most queued messages are consumed mid-run via getSteeringMessages, but
@@ -615,7 +748,9 @@ export function useAgentLoop(
     contextUsed,
     activityPhase,
     retryInfo,
+    stallError,
     elapsedMs,
+    runStartRef,
     thinkingMs,
     isThinking,
     streamedTokenEstimate,

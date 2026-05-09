@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { AgentTool } from "@prestyj/agent";
@@ -5,15 +6,11 @@ import { resolvePath, rejectSymlink } from "./path-utils.js";
 import { truncateHead } from "./truncate.js";
 import { writeOverflow } from "./overflow.js";
 import { localOperations, type ToolOperations } from "./operations.js";
+import { recordRead, type ReadTracker } from "./read-tracker.js";
+import { IMAGE_EXTENSIONS, IMAGE_MEDIA_TYPES, shrinkToFit } from "../utils/image.js";
 
 export const BINARY_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".bmp",
   ".ico",
-  ".webp",
   ".svg",
   ".mp3",
   ".mp4",
@@ -74,7 +71,7 @@ const ReadParams = z.object({
 
 export function createReadTool(
   cwd: string,
-  readFiles?: Set<string>,
+  readFiles?: ReadTracker,
   ops: ToolOperations = localOperations,
 ): AgentTool<typeof ReadParams> {
   return {
@@ -88,15 +85,54 @@ export function createReadTool(
     async execute({ file_path, offset, limit }) {
       const resolved = resolvePath(cwd, file_path);
       await rejectSymlink(resolved);
-      readFiles?.add(resolved);
       const ext = path.extname(resolved).toLowerCase();
+
+      // Image: read as binary, shrink to fit provider limits, return as
+      // structured content so the model can actually see the pixels.
+      if (IMAGE_EXTENSIONS.has(ext)) {
+        try {
+          const rawBuffer = await fs.readFile(resolved);
+          const mediaType = IMAGE_MEDIA_TYPES[ext] ?? "image/png";
+          const { buffer, mediaType: finalMediaType } = await shrinkToFit(rawBuffer, mediaType);
+          const resizedNote =
+            buffer.length < rawBuffer.length
+              ? ` (resized from ${rawBuffer.length} to ${buffer.length} bytes)`
+              : "";
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Read image file ${resolved} [${finalMediaType}]${resizedNote}`,
+              },
+              { type: "image", mediaType: finalMediaType, data: buffer.toString("base64") },
+            ],
+          };
+        } catch (err: unknown) {
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code === "ENOENT") return `File not found: ${resolved}`;
+          if (code === "EACCES") return `Permission denied: ${resolved}`;
+          const reason = err instanceof Error ? err.message : String(err);
+          return `Could not read image ${resolved}: ${reason}`;
+        }
+      }
 
       if (BINARY_EXTENSIONS.has(ext)) {
         const stat = await ops.stat(resolved);
         return `Binary file: ${resolved} (${ext}, ${stat.size} bytes)`;
       }
 
-      const raw = await ops.readFile(resolved);
+      let raw: string;
+      try {
+        raw = await ops.readFile(resolved);
+      } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") return `File not found: ${resolved}`;
+        if (code === "EACCES") return `Permission denied: ${resolved}`;
+        if (code === "EISDIR") return `Is a directory, not a file: ${resolved}`;
+        throw err;
+      }
+      const stat = await ops.stat(resolved);
+      recordRead(readFiles, resolved, raw, stat.mtimeMs);
       let lines = raw.split("\n");
 
       // Apply offset/limit

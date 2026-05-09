@@ -267,30 +267,46 @@ describe("Agent E2E — compaction (palsu provider)", () => {
     expect(result.totalTurns).toBe(1);
   });
 
-  it("recovers from context overflow via force compaction", async () => {
-    let callCount = 0;
+  it("calls transformContext with force=true on context overflow, then throws if compaction can't reduce", async () => {
     handle = registerPalsuProvider();
-    // First call: factory throws context overflow error
-    // Second call: returns text after compaction
     handle.appendResponses(() => {
-      callCount++;
-      if (callCount === 1) {
-        throw new Error("prompt is too long: 250000 tokens > 200000 maximum");
-      }
-      return palsuText("Recovered after compaction");
+      throw new Error("prompt is too long: 250000 tokens > 200000 maximum");
     });
-    // Need a second response for the retry
-    handle.appendResponses(palsuText("Recovered after compaction"));
+
+    // No-op compaction: returns same array, so the loop should give up after one attempt.
+    const transformContext = vi.fn().mockImplementation((msgs: Message[]) => msgs);
+
+    const agent = new Agent({
+      provider: "palsu",
+      model: "test",
+      system: "sys",
+      transformContext,
+    });
+
+    await expect(agent.prompt("long conversation")).rejects.toThrow("prompt is too long");
+
+    const forceCalls = transformContext.mock.calls.filter(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c: any[]) => c[1]?.force === true,
+    );
+    expect(forceCalls.length).toBe(1);
+  });
+
+  it("retries the turn after force-compaction reduces the message count on context overflow", async () => {
+    handle = registerPalsuProvider();
+    // First call: overflow. Second call: success.
+    handle.appendResponses(() => {
+      throw new Error("context_length_exceeded");
+    });
+    handle.appendResponses(palsuText("recovered"));
 
     const transformContext = vi
       .fn()
       .mockImplementation((msgs: Message[], opts?: { force?: boolean }) => {
-        if (opts?.force) {
-          // Simulate compaction by returning fewer messages
-          return [
-            { role: "system" as const, content: "sys" },
-            { role: "user" as const, content: "compacted" },
-          ];
+        // Simulate compaction only when forced — drop one message so the loop
+        // sees a reduced array and retries the turn.
+        if (opts?.force && msgs.length > 1) {
+          return msgs.slice(0, msgs.length - 1);
         }
         return msgs;
       });
@@ -301,21 +317,14 @@ describe("Agent E2E — compaction (palsu provider)", () => {
       system: "sys",
       transformContext,
     });
-    const events = await collectEvents(agent, "long conversation");
 
-    // Should have a retry event for context overflow
-    expect(events.some((e) => e.type === "retry")).toBe(true);
-    const retryEvent = events.find((e) => e.type === "retry") as {
-      reason: string;
-    };
-    expect(retryEvent.reason).toBe("context_overflow");
-
-    // transformContext should have been called with force: true
+    const result = await agent.prompt("long conversation");
+    expect(result.totalTurns).toBe(1);
     const forceCalls = transformContext.mock.calls.filter(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (c: any[]) => c[1]?.force === true,
     );
-    expect(forceCalls.length).toBeGreaterThan(0);
+    expect(forceCalls.length).toBe(1);
   });
 
   it("compacts mid-flow during multi-turn tool execution", async () => {

@@ -45,6 +45,10 @@ const COMPACTION_USER_PROMPT =
   "Summarize the conversation above into a concise summary following the instructions. Output only the summary, nothing else.";
 
 export interface CompactionResult {
+  /** Whether messages were actually reduced. */
+  compacted: boolean;
+  /** Why compaction was skipped (only set when compacted is false). */
+  reason?: string;
   originalCount: number;
   newCount: number;
   tokensBeforeEstimate: number;
@@ -52,7 +56,22 @@ export interface CompactionResult {
 }
 
 /**
+ * Default token reserve for compaction.
+ * Leaves headroom for the model's next response + system overhead.
+ * Matches the widely-used Pi / Grok-CLI default of 16 384 tokens.
+ */
+export const COMPACTION_RESERVE_TOKENS = 16_384;
+
+/** Minimum messages before compaction is attempted (Mysti uses 4). */
+const COMPACTION_MIN_MESSAGES = 4;
+
+/**
  * Check if compaction should be triggered.
+ *
+ * Uses the reserve-based approach (contextWindow − reserveTokens) used by
+ * Pi, Grok-CLI, OpenClaw, BrowserOS, and most real-world agent frameworks.
+ * A percentage-based threshold is still supported: when both are supplied the
+ * more conservative (lower) limit wins.
  */
 export function shouldCompact(
   messages: Message[],
@@ -60,9 +79,30 @@ export function shouldCompact(
   threshold = 0.8,
   /** Actual API-reported token count — preferred over char-based estimate when available. */
   actualTokens?: number,
+  /** Fixed token reserve subtracted from contextWindow. Defaults to 16 384. */
+  reserveTokens = COMPACTION_RESERVE_TOKENS,
 ): boolean {
+  // Don't attempt compaction with too few messages — compact() would bail
+  // anyway (middleMessages <= 2), but this avoids the spinner + LLM auth dance.
+  // Skip the guard when actualTokens is provided (force-compact / overflow paths
+  // where the caller has precise token info regardless of message count).
+  if (actualTokens == null && messages.length < COMPACTION_MIN_MESSAGES) {
+    log("INFO", "compaction", `Context check: skipping — only ${messages.length} messages`);
+    return false;
+  }
   const estimated = actualTokens ?? estimateConversationTokens(messages);
-  const limit = contextWindow * threshold;
+  const percentageLimit = contextWindow * threshold;
+  // Honor the reserve when it leaves a sensible amount of context. Models
+  // with large output budgets (e.g. Codex Mini at 100K out / 200K ctx) will
+  // hit the API's context_length error if we only compact at the percentage
+  // threshold. When the reserve is pathological (≥ 75% of the window — e.g.
+  // tiny test fixtures or a model whose output budget eats most of the
+  // window), fall back to the percentage threshold alone.
+  const reserveLimit =
+    reserveTokens > 0 && reserveTokens < contextWindow * 0.75
+      ? contextWindow - reserveTokens
+      : percentageLimit;
+  const limit = Math.min(percentageLimit, reserveLimit);
   const source = actualTokens != null ? "actual" : "estimated";
   log("INFO", "compaction", `Context check: ${estimated} ${source} tokens, threshold ${limit}`);
   return estimated > limit;
@@ -180,7 +220,11 @@ function toolCallToText(
  */
 function toolResultToText(tr: ToolResult): string {
   const prefix = tr.isError ? "[Tool Error]" : "[Tool Result]";
-  return `${prefix}\n${truncateString(tr.content, TOOL_RESULT_MAX_CHARS)}`;
+  const text =
+    typeof tr.content === "string"
+      ? tr.content
+      : tr.content.map((b) => (b.type === "text" ? b.text : `[image ${b.mediaType}]`)).join("\n");
+  return `${prefix}\n${truncateString(text, TOOL_RESULT_MAX_CHARS)}`;
 }
 
 /**
@@ -511,6 +555,8 @@ export async function compact(
     return {
       messages: [...messages],
       result: {
+        compacted: false,
+        reason: "too_few_messages",
         originalCount,
         newCount: messages.length,
         tokensBeforeEstimate,
@@ -651,13 +697,22 @@ export async function compact(
     content: `[Previous conversation summary]\n\n${summaryText}${fileTrackingSection}`,
   };
 
+  // Skip the assistant ack when recentMessages starts with an assistant message
+  // to prevent consecutive assistant messages that the Anthropic API rejects.
+  // This happens when findRecentCutPoint backs up from a tool to an assistant.
+  const skipAck = recentMessages.length > 0 && recentMessages[0].role === "assistant";
+
   const newMessages: Message[] = [
     systemMessage,
     summaryMessage,
-    {
-      role: "assistant",
-      content: "Understood — I have the context from what was discussed earlier.",
-    },
+    ...(skipAck
+      ? []
+      : [
+          {
+            role: "assistant" as const,
+            content: "Understood — I have the context from what was discussed earlier.",
+          },
+        ]),
     ...recentMessages,
   ];
 
@@ -669,10 +724,14 @@ export async function compact(
   // Ensure the conversation doesn't end with an assistant message.
   // Some models reject "assistant prefill" — the conversation must end
   // with a user (or tool) message so the LLM can generate a fresh response.
-  // But never pop below 3 messages (system + summary + ack) — removing the
-  // compaction ack would leave only the summary, causing `ezcoder continue`
+  // Never pop below the base messages (system + summary [+ ack]) — removing
+  // those would leave only the summary, causing `ezcoder continue`
   // to restore just 1 message instead of the full session.
-  while (newMessages.length > 3 && newMessages[newMessages.length - 1].role === "assistant") {
+  const minMessages = skipAck ? 2 : 3;
+  while (
+    newMessages.length > minMessages &&
+    newMessages[newMessages.length - 1].role === "assistant"
+  ) {
     newMessages.pop();
   }
 
@@ -695,6 +754,7 @@ export async function compact(
   return {
     messages: newMessages,
     result: {
+      compacted: true,
       originalCount,
       newCount: newMessages.length,
       tokensBeforeEstimate,

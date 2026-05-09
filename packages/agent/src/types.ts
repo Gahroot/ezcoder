@@ -5,6 +5,7 @@ import type {
   Message,
   ServerToolDefinition,
   StopReason,
+  ToolResultContent,
   Usage,
   StreamOptions,
 } from "@prestyj/ai";
@@ -12,7 +13,7 @@ import type {
 // ── Tool Results ────────────────────────────────────────────
 
 export interface StructuredToolResult {
-  content: string;
+  content: ToolResultContent;
   details?: unknown;
 }
 
@@ -85,10 +86,17 @@ export interface AgentDoneEvent {
 
 export interface AgentRetryEvent {
   type: "retry";
-  reason: "overloaded" | "rate_limit" | "empty_response" | "context_overflow";
+  reason: "overloaded" | "rate_limit" | "empty_response" | "stream_stall" | "overflow_compact";
   attempt: number;
   maxAttempts: number;
   delayMs: number;
+  /** When true, the retry should not be shown to the user (hidden retry). */
+  silent?: boolean;
+}
+
+export interface AgentToolCallDeltaEvent {
+  type: "toolcall_delta";
+  chars: number;
 }
 
 export interface AgentErrorEvent {
@@ -126,6 +134,7 @@ export type AgentEvent =
   | AgentToolCallStartEvent
   | AgentToolCallUpdateEvent
   | AgentToolCallEndEvent
+  | AgentToolCallDeltaEvent
   | AgentServerToolCallEvent
   | AgentServerToolResultEvent
   | AgentSteeringMessageEvent
@@ -141,6 +150,8 @@ export interface AgentOptions {
   provider: StreamOptions["provider"];
   model: string;
   system?: string;
+  /** Prior conversation messages (excluding system) to hydrate the Agent on construction. Used for session resume. */
+  priorMessages?: Message[];
   tools?: AgentTool[];
   serverTools?: ServerToolDefinition[];
   maxTurns?: number;
@@ -152,6 +163,9 @@ export interface AgentOptions {
   signal?: AbortSignal;
   accountId?: string;
   cacheRetention?: StreamOptions["cacheRetention"];
+  /** Whether the target model supports image input. When false, image blocks
+   *  in messages/tool_results are downgraded to text placeholders. Default: true. */
+  supportsImages?: boolean;
   /** Enable provider-native web search. */
   webSearch?: boolean;
   /** Enable server-side compaction (Anthropic only, beta). */

@@ -7,7 +7,8 @@ import { MessageResponse } from "./MessageResponse.js";
 import { highlightCode, langFromPath } from "../utils/highlight.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import { computeWordDiff, type WordSegment } from "../utils/word-diff.js";
-import { DASHED_H } from "../constants/figures.js";
+import { DiffFrame } from "./DiffFrame.js";
+import { NoSelect } from "./NoSelect.js";
 
 const MAX_OUTPUT_LINES = 4; // max lines shown per tool result
 
@@ -22,10 +23,35 @@ function truncateLine(line: string, cols: number, reservedChars = 6): string {
   return line.length > max ? line.slice(0, max) + "…" : line;
 }
 
+/**
+ * Optional formatter that downstream consumers (e.g. gg-editor) can pass to
+ * customise the per-tool header and inline summary without forking this
+ * component. Each fn returns `undefined` to fall back to the built-in
+ * behaviour. Same shape applies to running + done states.
+ */
+/** Inline summary is either plain text (uses textDim) or styled with a hex color. */
+export type InlineSummary = string | { text: string; color: string };
+
+export interface ToolExecutionFormatters {
+  /** Override the bold tool label, e.g. "Cut Filler Words". */
+  formatLabel?: (name: string, args: Record<string, unknown>) => string | undefined;
+  /** Override the parenthetical detail, e.g. `"transcript.json"` → `Cut Filler Words(transcript.json)`. */
+  formatDetail?: (name: string, args: Record<string, unknown>) => string | undefined;
+  /**
+   * Override the inline summary at done time. Return a string for the default
+   * dim color, or `{ text, color }` to render in a custom color (e.g. gg-boss
+   * uses this to randomise the "dispatched" color per call).
+   */
+  formatInline?: (name: string, result: string, isError: boolean) => InlineSummary | undefined;
+}
+
 interface ToolRunningProps {
   status: "running";
   name: string;
   args: Record<string, unknown>;
+  /** Live progress output (e.g., bash streaming stdout). */
+  progressOutput?: string;
+  formatters?: ToolExecutionFormatters;
 }
 
 interface ToolDoneProps {
@@ -35,6 +61,7 @@ interface ToolDoneProps {
   result: string;
   isError: boolean;
   details?: unknown;
+  formatters?: ToolExecutionFormatters;
 }
 
 type ToolExecutionProps = ToolRunningProps | ToolDoneProps;
@@ -42,11 +69,50 @@ type ToolExecutionProps = ToolRunningProps | ToolDoneProps;
 /** Tools that use compact one-line summaries instead of showing output. */
 const COMPACT_TOOLS = new Set(["read", "grep", "find", "ls"]);
 
+/** Tools rendered with the server-tool style (spinner + summary, no output). */
+const SERVER_STYLE_TOOLS = new Set(["web_search"]);
+
 export function ToolExecution(props: ToolExecutionProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
 
   if (props.status === "running") {
+    // Server-style tools (web_search) — blinking dot + spinner "Searching..."
+    if (SERVER_STYLE_TOOLS.has(props.name)) {
+      const { label, detail } = applyFormatters(
+        getToolHeaderParts(props.name, props.args),
+        props.name,
+        props.args,
+        props.formatters,
+      );
+      const headerContentWidth = Math.max(10, columns - HEADER_PREFIX);
+      return (
+        <Box flexDirection="column" marginTop={1}>
+          <Box flexDirection="row">
+            <ToolUseLoader status="running" />
+            <Box flexGrow={1} width={headerContentWidth}>
+              <Text wrap="wrap">
+                <Text bold color={theme.toolName}>
+                  {label}
+                </Text>
+                {detail && (
+                  <Text color={theme.text}>
+                    {"("}
+                    <Text color={theme.textDim}>{'"'}</Text>
+                    {detail}
+                    <Text color={theme.textDim}>{'"'}</Text>
+                    {")"}
+                  </Text>
+                )}
+              </Text>
+            </Box>
+          </Box>
+          <MessageResponse>
+            <Spinner label="Searching..." />
+          </MessageResponse>
+        </Box>
+      );
+    }
     // Compact tools get a blinking dot + summary label
     if (COMPACT_TOOLS.has(props.name)) {
       const summary = getCompactRunningLabel(props.name, props.args);
@@ -62,6 +128,30 @@ export function ToolExecution(props: ToolExecutionProps) {
     }
     // Non-compact tools keep the sparkle spinner with a blinking dot prefix
     const { label, detail } = getToolHeaderParts(props.name, props.args);
+
+    // Bash progress streaming — show last 3 lines of live output
+    if (props.name === "bash" && props.progressOutput) {
+      const progLines = props.progressOutput.split("\n").filter(Boolean);
+      const tail = progLines.slice(-3);
+      return (
+        <Box marginTop={1} flexDirection="column">
+          <Box flexDirection="row">
+            <ToolUseLoader status="running" />
+            <Spinner label={detail ? `${label}(${detail})` : label} />
+          </Box>
+          <MessageResponse>
+            <Box flexDirection="column">
+              {tail.map((line, i) => (
+                <Text key={i} color={theme.textDim} wrap="truncate">
+                  {truncateLine(line, columns - 8)}
+                </Text>
+              ))}
+            </Box>
+          </MessageResponse>
+        </Box>
+      );
+    }
+
     return (
       <Box marginTop={1} flexDirection="row">
         <ToolUseLoader status="running" />
@@ -73,6 +163,48 @@ export function ToolExecution(props: ToolExecutionProps) {
   const { name, args, result, isError, details } = props;
   const headerContentWidth = Math.max(10, columns - HEADER_PREFIX);
   const bodyContentWidth = Math.max(10, columns - BODY_PREFIX);
+
+  // Server-style tools (web_search) — match ServerToolExecution done display
+  if (SERVER_STYLE_TOOLS.has(name)) {
+    const { label, detail } = applyFormatters(
+      getToolHeaderParts(name, args),
+      name,
+      args,
+      props.formatters,
+    );
+    const searchCount = (result.match(/^\d+\./gm) ?? []).length;
+    const summaryText = isError
+      ? result.split("\n")[0]
+      : `${searchCount} result${searchCount !== 1 ? "s" : ""}`;
+    return (
+      <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="row">
+          <ToolUseLoader status={isError ? "error" : "done"} />
+          <Box flexGrow={1} width={headerContentWidth}>
+            <Text wrap="wrap">
+              <Text bold color={isError ? theme.toolError : theme.toolName}>
+                {label}
+              </Text>
+              {detail && (
+                <Text color={theme.text}>
+                  {"("}
+                  <Text color={theme.textDim}>{'"'}</Text>
+                  {detail}
+                  <Text color={theme.textDim}>{'"'}</Text>
+                  {")"}
+                </Text>
+              )}
+            </Text>
+          </Box>
+        </Box>
+        <MessageResponse>
+          <Text color={theme.textDim} wrap="wrap">
+            {summaryText}
+          </Text>
+        </MessageResponse>
+      </Box>
+    );
+  }
 
   // Compact tools — one-line summary, no output content
   if (COMPACT_TOOLS.has(name) && !isError) {
@@ -94,7 +226,12 @@ export function ToolExecution(props: ToolExecutionProps) {
   const diffText = editDetails?.diff ?? (result.includes("---") ? result : undefined);
   const isDiff = name === "edit" && !isError && !!diffText;
 
-  const { label, detail } = getToolHeaderParts(name, args);
+  const { label, detail } = applyFormatters(
+    getToolHeaderParts(name, args),
+    name,
+    args,
+    props.formatters,
+  );
   const body = isDiff
     ? buildDiffBody(diffText!, args, columns)
     : buildResultBody(name, result, isError, columns);
@@ -103,7 +240,11 @@ export function ToolExecution(props: ToolExecutionProps) {
 
   // Compact display — no body to show, but show inline summary
   if (!body) {
-    const inline = getInlineSummary(name, result, isError);
+    const inline =
+      props.formatters?.formatInline?.(name, result, isError) ??
+      getInlineSummary(name, result, isError);
+    const inlineText = typeof inline === "string" ? inline : inline?.text;
+    const inlineColor = inline && typeof inline === "object" ? inline.color : theme.textDim;
     return (
       <Box marginTop={1} flexDirection="row">
         <ToolUseLoader status={isError ? "error" : "done"} />
@@ -119,7 +260,7 @@ export function ToolExecution(props: ToolExecutionProps) {
                 {")"}
               </Text>
             )}
-            {inline && <Text color={theme.textDim}> {inline}</Text>}
+            {inlineText && <Text color={inlineColor}> {inlineText}</Text>}
           </Text>
         </Box>
       </Box>
@@ -260,6 +401,11 @@ function getToolHeaderParts(
       const skillName = String(args.skill ?? "");
       return { label: displayName, detail: skillName };
     }
+    case "web_search": {
+      const query = String(args.query ?? "");
+      const trunc = query.length > 60 ? query.slice(0, 57) + "…" : query;
+      return { label: "Web Search", detail: trunc };
+    }
     case "web_fetch": {
       const url = String(args.url ?? "");
       const trunc = url.length > 60 ? url.slice(0, 57) + "…" : url;
@@ -271,17 +417,9 @@ function getToolHeaderParts(
     }
     default: {
       if (name.startsWith("mcp__")) {
-        // Show all args as key: "value" pairs
-        const argParts = Object.entries(args)
-          .filter(([, v]) => v !== undefined && v !== null && v !== "")
-          .map(([k, v]) => {
-            const s = String(v);
-            const truncated = s.length > 40 ? s.slice(0, 37) + "…" : s;
-            return `${k}: "${truncated}"`;
-          });
-        const detail = argParts.join(", ");
-        const truncDetail = detail.length > 80 ? detail.slice(0, 77) + "…" : detail;
-        return { label: displayName, detail: truncDetail };
+        // Pick the most meaningful arg as the detail (skip long blobs)
+        const detail = getMCPDetailArg(args);
+        return { label: displayName, detail };
       }
       return { label: displayName, detail: "" };
     }
@@ -290,11 +428,11 @@ function getToolHeaderParts(
 
 function toolDisplayName(name: string): string {
   if (name.startsWith("mcp__")) {
-    // mcp__grep__searchGitHub → "grep - searchGitHub (MCP)"
+    // mcp__kencode-search__searchCode → "searchCode"
+    // mcp__zai_vision__analyze_image → "analyze_image"
     const parts = name.split("__");
-    const server = parts[1] ?? "mcp";
-    const toolFn = parts[2] ?? "";
-    return `${server} - ${toolFn} (MCP)`;
+    const toolFn = parts[2] ?? parts[1] ?? "mcp";
+    return snakeToTitle(toolFn);
   }
   switch (name) {
     case "bash":
@@ -320,8 +458,79 @@ function toolDisplayName(name: string): string {
     case "tasks":
       return "Task";
     default:
-      return name.charAt(0).toUpperCase() + name.slice(1);
+      // snake_case → Title Case so downstream consumers (gg-editor's 91 tools,
+      // future MCP tools, custom tools) get readable names without each
+      // having to add an explicit case here. Includes camelCase split too
+      // so `cutFillerWords` also formats cleanly.
+      return snakeToTitle(name);
   }
+}
+
+/**
+ * Convert `snake_case` or `camelCase` to `Title Case`.
+ *   read_skill         → Read Skill
+ *   cut_filler_words   → Cut Filler Words
+ *   analyzeHook        → Analyze Hook
+ */
+function snakeToTitle(s: string): string {
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // camelCase → snake_case bridge
+    .split("_")
+    .filter((w) => w.length > 0)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
+ * Apply consumer-supplied formatter overrides on top of the built-in header
+ * parts. Returns a fresh `{label, detail}` with overrides applied.
+ *
+ * Each override is opt-in: returning `undefined` means "use the built-in."
+ * Empty-string is a meaningful override ("hide the detail").
+ */
+function applyFormatters(
+  builtin: { label: string; detail: string },
+  name: string,
+  args: Record<string, unknown>,
+  formatters?: ToolExecutionFormatters,
+): { label: string; detail: string } {
+  if (!formatters) return builtin;
+  const label = formatters.formatLabel?.(name, args);
+  const detail = formatters.formatDetail?.(name, args);
+  return {
+    label: label !== undefined ? label : builtin.label,
+    detail: detail !== undefined ? detail : builtin.detail,
+  };
+}
+
+// ── MCP detail arg extraction ─────────────────────────────
+
+/** Pick the single most meaningful arg for the MCP tool header. */
+function getMCPDetailArg(args: Record<string, unknown>): string {
+  const entries = Object.entries(args).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  if (entries.length === 0) return "";
+
+  // Prefer short, descriptive keys over long blobs
+  const preferred = ["query", "prompt", "url", "path", "pattern", "name", "command", "repo"];
+  let best: [string, unknown] | undefined;
+  for (const key of preferred) {
+    const found = entries.find(([k]) => k.toLowerCase() === key);
+    if (found) {
+      best = found;
+      break;
+    }
+  }
+  // Fall back to shortest non-path string arg
+  if (!best) {
+    best = entries
+      .filter(([, v]) => typeof v === "string")
+      .sort((a, b) => String(a[1]).length - String(b[1]).length)[0];
+  }
+  if (!best) best = entries[0];
+
+  const val = String(best[1]);
+  const truncated = val.length > 50 ? val.slice(0, 47) + "…" : val;
+  return truncated;
 }
 
 // ── Inline summary for compact tools ───────────────────────
@@ -337,8 +546,8 @@ function getInlineSummary(name: string, result: string, isError: boolean): strin
       return `${lines.length} line${lines.length !== 1 ? "s" : ""}`;
     }
     case "write": {
-      const firstLine = result.split("\n")[0];
-      return firstLine;
+      const match = result.match(/^Wrote \d+ lines?/);
+      return match ? match[0] : result.split("\n")[0];
     }
     case "bash": {
       const match = result.match(/^Exit code: (.+)/);
@@ -437,10 +646,17 @@ function buildDiffBody(
   const endIdx = Math.min(numbered.length, lastChangeIdx + 3);
   const focused = numbered.slice(startIdx, endIdx);
 
-  // Compute word-level diffs for adjacent remove/add pairs
+  // Compute word-level diffs for adjacent remove/add pairs.
+  // Skip word-level diff when >40% of characters changed (becomes noise).
+  const CHANGE_THRESHOLD = 0.4;
   for (let i = 0; i < focused.length - 1; i++) {
     if (focused[i].type === "remove" && focused[i + 1].type === "add") {
       const segments = computeWordDiff(focused[i].content, focused[i + 1].content);
+      const totalLen = segments.reduce((sum, s) => sum + s.text.length, 0);
+      const changedLen = segments
+        .filter((s) => s.type !== "unchanged")
+        .reduce((sum, s) => sum + s.text.length, 0);
+      if (totalLen > 0 && changedLen / totalLen > CHANGE_THRESHOLD) continue;
       focused[i] = { ...focused[i], wordSegments: segments.filter((s) => s.type !== "added") };
       focused[i + 1] = {
         ...focused[i + 1],
@@ -449,12 +665,14 @@ function buildDiffBody(
     }
   }
 
-  // Highlight context lines using file extension
+  // Syntax-highlight ALL diff lines (not just context) — added/removed lines
+  // get language-aware coloring overlaid with the diff background colors.
   const filePath = String(args?.file_path ?? "");
   const lang = langFromPath(filePath);
-  const highlighted = focused.map((line) =>
-    line.type === "context" ? { ...line, content: highlightCode(line.content, lang) } : line,
-  );
+  const highlighted = focused.map((line) => ({
+    ...line,
+    content: highlightCode(line.content, lang),
+  }));
 
   const maxLineNo = highlighted.reduce((m, l) => Math.max(m, l.lineNo), 0);
   const padWidth = String(maxLineNo).length;
@@ -464,14 +682,7 @@ function buildDiffBody(
     <DiffLine key={i} line={line} padWidth={padWidth} />
   ));
 
-  // Wrap diff lines in a dashed border frame (top/bottom only)
-  const diffFrame = (
-    <Box key="diff-frame" flexDirection="column">
-      <Text color="#4b5563">{DASHED_H.repeat(40)}</Text>
-      {rendered}
-      <Text color="#4b5563">{DASHED_H.repeat(40)}</Text>
-    </Box>
-  );
+  const diffFrame = <DiffFrame key="diff-frame">{rendered}</DiffFrame>;
 
   return {
     lines: [
@@ -617,57 +828,69 @@ const DiffLine = memo(function DiffLine({
   padWidth: number;
 }) {
   const lineNo = String(line.lineNo).padStart(padWidth, " ");
+  const marker = line.type === "add" ? "+" : line.type === "remove" ? "-" : " ";
 
   if (line.type === "add") {
     const bgColor = "#16a34a";
-    const wordHighlight = "#bbf7d0"; // brighter green for changed words
+    const wordHighlight = "#bbf7d0";
     return (
-      <Text backgroundColor={bgColor} color="#ffffff">
-        {lineNo}
-        {"  "}
-        {line.wordSegments
-          ? line.wordSegments.map((seg, i) =>
-              seg.type === "added" ? (
-                <Text key={i} color={wordHighlight} bold>
-                  {seg.text}
-                </Text>
-              ) : (
-                <Text key={i}>{seg.text}</Text>
-              ),
-            )
-          : line.content}
-      </Text>
+      <Box flexDirection="row">
+        <NoSelect fromLeftEdge>
+          <Text backgroundColor={bgColor} color="#ffffff" dimColor>
+            {lineNo} {marker}{" "}
+          </Text>
+        </NoSelect>
+        <Text backgroundColor={bgColor} color="#ffffff">
+          {line.wordSegments
+            ? line.wordSegments.map((seg, i) =>
+                seg.type === "added" ? (
+                  <Text key={i} color={wordHighlight} bold>
+                    {seg.text}
+                  </Text>
+                ) : (
+                  <Text key={i}>{seg.text}</Text>
+                ),
+              )
+            : line.content}
+        </Text>
+      </Box>
     );
   }
   if (line.type === "remove") {
     const bgColor = "#dc2626";
-    const wordHighlight = "#fecaca"; // brighter red for changed words
+    const wordHighlight = "#fecaca";
     return (
-      <Text backgroundColor={bgColor} color="#ffffff">
-        {lineNo}
-        {"  "}
-        {line.wordSegments
-          ? line.wordSegments.map((seg, i) =>
-              seg.type === "removed" ? (
-                <Text key={i} color={wordHighlight} bold>
-                  {seg.text}
-                </Text>
-              ) : (
-                <Text key={i}>{seg.text}</Text>
-              ),
-            )
-          : line.content}
-      </Text>
+      <Box flexDirection="row">
+        <NoSelect fromLeftEdge>
+          <Text backgroundColor={bgColor} color="#ffffff" dimColor>
+            {lineNo} {marker}{" "}
+          </Text>
+        </NoSelect>
+        <Text backgroundColor={bgColor} color="#ffffff">
+          {line.wordSegments
+            ? line.wordSegments.map((seg, i) =>
+                seg.type === "removed" ? (
+                  <Text key={i} color={wordHighlight} bold>
+                    {seg.text}
+                  </Text>
+                ) : (
+                  <Text key={i}>{seg.text}</Text>
+                ),
+              )
+            : line.content}
+        </Text>
+      </Box>
     );
   }
   return (
-    <Text>
-      <Text color="#6b7280">
-        {lineNo}
-        {"  "}
-      </Text>
-      {line.content}
-    </Text>
+    <Box flexDirection="row">
+      <NoSelect fromLeftEdge>
+        <Text color="#6b7280">
+          {lineNo} {marker}{" "}
+        </Text>
+      </NoSelect>
+      <Text>{line.content}</Text>
+    </Box>
   );
 });
 

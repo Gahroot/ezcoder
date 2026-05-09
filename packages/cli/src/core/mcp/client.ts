@@ -4,6 +4,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { AgentTool } from "@prestyj/agent";
 import { z } from "zod";
+import os from "node:os";
 import { log } from "../logger.js";
 import type { MCPServerConfig } from "./types.js";
 
@@ -11,6 +12,7 @@ interface ConnectedServer {
   name: string;
   client: Client;
   transport: StreamableHTTPClientTransport | SSEClientTransport | StdioClientTransport;
+  lastCallTime: number;
 }
 
 export class MCPClientManager {
@@ -44,15 +46,37 @@ export class MCPClientManager {
     let transport: StreamableHTTPClientTransport | SSEClientTransport | StdioClientTransport;
 
     if (config.command) {
-      // Stdio transport for local processes
+      // Stdio transport for local processes.
+      // cwd is forced to homedir so the user's working directory can't
+      // affect resolution. e.g. running ggcoder from a folder whose
+      // package.json names the same package as the MCP server makes
+      // `npx -y <pkg>` self-resolve to the local source (no built bin
+      // shim) and fail with "command not found".
       transport = new StdioClientTransport({
         command: config.command,
         args: config.args,
         env: { ...process.env, ...config.env } as Record<string, string>,
+        cwd: os.homedir(),
         stderr: "pipe",
       });
+      // Capture stderr so a crashing server doesn't fail silently — when the
+      // child closes the pipe before completing handshake, the SDK throws
+      // the opaque "-32000 Connection closed" but the real cause (stack
+      // trace, missing dep, port conflict) was just printed to stderr.
+      const stderrChunks: string[] = [];
+      transport.stderr?.on("data", (chunk: Buffer | string) => {
+        stderrChunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+      });
       client = new Client({ name: "ezcoder", version: "1.0.0" });
-      await client.connect(transport, { timeout });
+      try {
+        await client.connect(transport, { timeout });
+      } catch (err) {
+        const stderr = stderrChunks.join("").slice(-4000);
+        if (stderr.trim()) {
+          log("WARN", "mcp", `stdio child stderr for "${config.name}"`, { stderr });
+        }
+        throw err;
+      }
     } else {
       // HTTP transport — try StreamableHTTP first, fall back to SSE
       const url = new URL(config.url!);
@@ -79,7 +103,7 @@ export class MCPClientManager {
       }
     }
 
-    this.servers.push({ name: config.name, client, transport });
+    this.servers.push({ name: config.name, client, transport, lastCallTime: 0 });
 
     const { tools } = await client.listTools(undefined, { timeout });
 
@@ -91,6 +115,16 @@ export class MCPClientManager {
         parameters: z.record(z.string(), z.unknown()),
         rawInputSchema: tool.inputSchema as Record<string, unknown>,
         execute: async (args) => {
+          const server = this.servers.find((s) => s.name === config.name);
+          if (server) {
+            const elapsed = Date.now() - server.lastCallTime;
+            const minGap = 2_000;
+            if (elapsed < minGap) {
+              await new Promise((r) => setTimeout(r, minGap - elapsed));
+            }
+            server.lastCallTime = Date.now();
+          }
+
           try {
             const result = await client.callTool(
               { name: tool.name, arguments: args as Record<string, unknown> },
@@ -113,7 +147,11 @@ export class MCPClientManager {
             }
             return texts.join("\n") || "(empty response)";
           } catch (err) {
-            return `MCP tool error: ${err instanceof Error ? err.message : String(err)}`;
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes("Too Many R") || msg.includes("429")) {
+              return "Rate limited — too many requests. Wait a moment before searching again.";
+            }
+            return `MCP tool error: ${msg}`;
           }
         },
       };

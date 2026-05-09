@@ -11,11 +11,13 @@ export interface ModelInfo {
   costTier: "low" | "medium" | "high";
 }
 
+// Provider display order — mirrors `PROVIDERS` in ui/login.tsx so the
+// /model selector and login selector sort models identically.
 export const MODELS: ModelInfo[] = [
   // ── Anthropic ──────────────────────────────────────────
   {
-    id: "claude-opus-4-6",
-    name: "Claude Opus 4.6",
+    id: "claude-opus-4-7",
+    name: "Claude Opus 4.7",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -45,6 +47,46 @@ export const MODELS: ModelInfo[] = [
   },
   // ── OpenAI (Codex) ─────────────────────────────────────
   {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    costTier: "high",
+  },
+  {
+    id: "gpt-5.5-pro",
+    name: "GPT-5.5 Pro",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    costTier: "high",
+  },
+  {
+    id: "gpt-5.4",
+    name: "GPT-5.4",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    costTier: "high",
+  },
+  {
+    id: "gpt-5.4-mini",
+    name: "GPT-5.4 Mini",
+    provider: "openai",
+    contextWindow: 400_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    costTier: "medium",
+  },
+  {
     id: "gpt-5.3-codex",
     name: "GPT-5.3 Codex",
     provider: "openai",
@@ -55,8 +97,8 @@ export const MODELS: ModelInfo[] = [
     costTier: "high",
   },
   {
-    id: "gpt-5.1-codex-mini",
-    name: "GPT-5.1 Codex Mini",
+    id: "codex-mini-latest",
+    name: "Codex Mini",
     provider: "openai",
     contextWindow: 200_000,
     maxOutputTokens: 100_000,
@@ -64,7 +106,18 @@ export const MODELS: ModelInfo[] = [
     supportsImages: true,
     costTier: "low",
   },
-  // ── GLM (Z.AI) ───────────────────────────────────────────
+  // ── Moonshot (Kimi) ────────────────────────────────────
+  {
+    id: "kimi-k2.6",
+    name: "Kimi K2.6",
+    provider: "moonshot",
+    contextWindow: 262_144,
+    maxOutputTokens: 65_536,
+    supportsThinking: true,
+    supportsImages: true,
+    costTier: "medium",
+  },
+  // ── Z.AI (GLM) ─────────────────────────────────────────
   {
     id: "glm-5v-turbo",
     name: "GLM-5V-Turbo",
@@ -90,7 +143,7 @@ export const MODELS: ModelInfo[] = [
     name: "GLM-4.7",
     provider: "glm",
     contextWindow: 200_000,
-    maxOutputTokens: 16_384,
+    maxOutputTokens: 131_072,
     supportsThinking: true,
     supportsImages: false,
     costTier: "low",
@@ -100,20 +153,73 @@ export const MODELS: ModelInfo[] = [
     name: "GLM-4.7 Flash",
     provider: "glm",
     contextWindow: 200_000,
-    maxOutputTokens: 16_384,
+    maxOutputTokens: 131_072,
     supportsThinking: true,
     supportsImages: false,
     costTier: "low",
   },
-  // ── Moonshot (Kimi) ──────────────────────────────────────
+  // ── MiniMax ────────────────────────────────────────────
   {
-    id: "kimi-k2.5",
-    name: "Kimi K2.5",
-    provider: "moonshot",
-    contextWindow: 200_000,
-    maxOutputTokens: 16_384,
+    id: "MiniMax-M2.7",
+    name: "MiniMax M2.7",
+    provider: "minimax",
+    contextWindow: 204_800,
+    maxOutputTokens: 131_072,
     supportsThinking: true,
-    supportsImages: true,
+    supportsImages: false,
+    costTier: "medium",
+  },
+  {
+    id: "MiniMax-M2.7-highspeed",
+    name: "MiniMax M2.7 Highspeed",
+    provider: "minimax",
+    contextWindow: 204_800,
+    maxOutputTokens: 131_072,
+    supportsThinking: true,
+    supportsImages: false,
+    costTier: "medium",
+  },
+  // ── Xiaomi (MiMo) ──────────────────────────────────────
+  {
+    id: "mimo-v2-pro",
+    name: "MiMo-V2-Pro",
+    provider: "xiaomi",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 131_072,
+    supportsThinking: true,
+    supportsImages: false,
+    costTier: "medium",
+  },
+  // ── DeepSeek ───────────────────────────────────────────
+  {
+    id: "deepseek-v4-pro",
+    name: "DeepSeek V4 Pro",
+    provider: "deepseek",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    supportsThinking: true,
+    supportsImages: false,
+    costTier: "high",
+  },
+  {
+    id: "deepseek-v4-flash",
+    name: "DeepSeek V4 Flash",
+    provider: "deepseek",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    supportsThinking: true,
+    supportsImages: false,
+    costTier: "low",
+  },
+  // ── OpenRouter ─────────────────────────────────────────
+  {
+    id: "qwen/qwen3.6-plus",
+    name: "Qwen3.6-Plus",
+    provider: "openrouter",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 65_536,
+    supportsThinking: true,
+    supportsImages: false,
     costTier: "medium",
   },
 ];
@@ -127,9 +233,13 @@ export function getModelsForProvider(provider: Provider): ModelInfo[] {
 }
 
 export function getDefaultModel(provider: Provider): ModelInfo {
-  if (provider === "openai") return MODELS.find((m) => m.id === "gpt-5.3-codex")!;
+  if (provider === "xiaomi") return MODELS.find((m) => m.id === "mimo-v2-pro")!;
+  if (provider === "openai") return MODELS.find((m) => m.id === "gpt-5.5")!;
   if (provider === "glm") return MODELS.find((m) => m.id === "glm-5.1")!;
-  if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k2.5")!;
+  if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k2.6")!;
+  if (provider === "minimax") return MODELS.find((m) => m.id === "MiniMax-M2.7")!;
+  if (provider === "deepseek") return MODELS.find((m) => m.id === "deepseek-v4-pro")!;
+  if (provider === "openrouter") return MODELS.find((m) => m.id === "qwen/qwen3.6-plus")!;
   return MODELS.find((m) => m.id === "claude-sonnet-4-6")!;
 }
 
@@ -149,7 +259,7 @@ export function getSummaryModel(provider: Provider, currentModelId: string): Mod
   if (provider === "anthropic") {
     return MODELS.find((m) => m.id === "claude-sonnet-4-6")!;
   }
-  if (provider === "openai" || provider === "glm") {
+  if (provider === "openai" || provider === "glm" || provider === "deepseek") {
     const low = getModelsForProvider(provider).find((m) => m.costTier === "low");
     if (low) return low;
   }

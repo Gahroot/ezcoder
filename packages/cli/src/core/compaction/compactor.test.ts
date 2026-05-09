@@ -59,13 +59,23 @@ describe("shouldCompact", () => {
 
   it("returns true when over threshold", () => {
     const bigContent = "x".repeat(1000);
-    const messages = [makeMessage("system", bigContent), makeMessage("user", bigContent)];
+    const messages = [
+      makeMessage("system", bigContent),
+      makeMessage("user", bigContent),
+      makeMessage("assistant", bigContent),
+      makeMessage("user", bigContent),
+    ];
     expect(shouldCompact(messages, 500, 0.8)).toBe(true);
   });
 
   it("uses default threshold of 0.8", () => {
     const content = "x".repeat(400);
-    const messages = [makeMessage("user", content)];
+    const messages = [
+      makeMessage("system", content),
+      makeMessage("user", content),
+      makeMessage("assistant", content),
+      makeMessage("user", content),
+    ];
     const estimated = estimateConversationTokens(messages);
     expect(shouldCompact(messages, Math.ceil(estimated / 0.7))).toBe(false);
     expect(shouldCompact(messages, Math.ceil(estimated / 0.9))).toBe(true);
@@ -73,7 +83,12 @@ describe("shouldCompact", () => {
 
   it("handles custom threshold", () => {
     const content = "x".repeat(200);
-    const messages = [makeMessage("user", content)];
+    const messages = [
+      makeMessage("system", content),
+      makeMessage("user", content),
+      makeMessage("assistant", content),
+      makeMessage("user", content),
+    ];
     const estimated = estimateConversationTokens(messages);
     expect(shouldCompact(messages, estimated * 3, 0.5)).toBe(false);
     expect(shouldCompact(messages, estimated, 0.5)).toBe(true);
@@ -89,18 +104,18 @@ describe("shouldCompact", () => {
     }
     const estimated = estimateConversationTokens(messages);
 
-    const opusContext = getContextWindow("claude-opus-4-6");
-    const kimiContext = getContextWindow("kimi-k2.5");
+    const opusContext = getContextWindow("claude-opus-4-7");
+    const kimiContext = getContextWindow("kimi-k2.6");
 
-    // Sanity: Opus has 1M, Kimi has 200k
+    // Sanity: Opus has 1M, Kimi has 256k
     expect(opusContext).toBe(1_000_000);
-    expect(kimiContext).toBe(200_000);
+    expect(kimiContext).toBe(262_144);
 
     // Under Opus (1M): conversation is under 80% threshold (800k) — no compaction
     expect(shouldCompact(messages, opusContext, 0.8)).toBe(false);
     expect(estimated).toBeLessThan(opusContext * 0.8);
 
-    // Under Kimi (200k): same conversation exceeds 80% threshold (160k) — must compact
+    // Under Kimi (256k): same conversation exceeds 80% threshold (~210k) — must compact
     expect(shouldCompact(messages, kimiContext, 0.8)).toBe(true);
     expect(estimated).toBeGreaterThan(kimiContext * 0.8);
   });
@@ -115,12 +130,28 @@ describe("shouldCompact", () => {
 
   it("falls back to char-based estimate when actualTokens is undefined", () => {
     const content = "x".repeat(1000);
-    const messages = [makeMessage("user", content)];
+    // Need >= COMPACTION_MIN_MESSAGES (4) to pass the message count guard
+    const messages = [
+      makeMessage("system", "sys"),
+      makeMessage("user", content),
+      makeMessage("assistant", content),
+      makeMessage("user", content),
+    ];
     const estimated = estimateConversationTokens(messages);
     // Set contextWindow so estimated is just over 80%
     const contextWindow = Math.floor(estimated / 0.85);
     expect(shouldCompact(messages, contextWindow, 0.8)).toBe(true);
     expect(shouldCompact(messages, contextWindow, 0.8, undefined)).toBe(true);
+  });
+
+  it("skips compaction with too few messages when using char-based estimate", () => {
+    const content = "x".repeat(10000);
+    const messages = [makeMessage("user", content)];
+    // Even if estimated tokens exceed threshold, too few messages → skip
+    const contextWindow = 100;
+    expect(shouldCompact(messages, contextWindow, 0.8)).toBe(false);
+    // But with explicit actualTokens, the guard is bypassed
+    expect(shouldCompact(messages, contextWindow, 0.8, 200)).toBe(true);
   });
 });
 
@@ -145,7 +176,7 @@ describe("compaction thresholds across all models", () => {
   }
 
   const modelThresholds: { model: string; contextWindow: number }[] = [
-    { model: "claude-opus-4-6", contextWindow: 1_000_000 },
+    { model: "claude-opus-4-7", contextWindow: 1_000_000 },
     { model: "claude-sonnet-4-6", contextWindow: 1_000_000 },
     { model: "claude-haiku-4-5-20251001", contextWindow: 200_000 },
     { model: "gpt-5.3-codex", contextWindow: 400_000 },
@@ -153,7 +184,7 @@ describe("compaction thresholds across all models", () => {
     { model: "glm-5.1", contextWindow: 204_800 },
     { model: "glm-4.7", contextWindow: 200_000 },
     { model: "glm-4.7-flash", contextWindow: 200_000 },
-    { model: "kimi-k2.5", contextWindow: 200_000 },
+    { model: "kimi-k2.6", contextWindow: 262_144 },
   ];
 
   it("model registry returns correct context windows for all models", () => {
@@ -543,6 +574,8 @@ describe("compact", () => {
     ];
 
     const result = await compact(messages, baseOptions);
+    expect(result.result.compacted).toBe(false);
+    expect(result.result.reason).toBe("too_few_messages");
     expect(result.result.originalCount).toBe(3);
     expect(result.result.newCount).toBe(3);
     expect(result.messages).toHaveLength(3);
@@ -564,6 +597,7 @@ describe("compact", () => {
     const result = await compact(messages, baseOptions);
 
     // Should have: system + summary + assistant ack + recent messages
+    expect(result.result.compacted).toBe(true);
     expect(result.messages.length).toBeLessThan(messages.length);
     expect(result.result.originalCount).toBe(messages.length);
 

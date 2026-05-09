@@ -112,6 +112,8 @@ const ShimmerText: React.FC<{ text: string; color: string; shimmerPos: number }>
 interface ActivityIndicatorProps {
   phase: ActivityPhase;
   elapsedMs: number;
+  /** Run start time ref — for smooth elapsed time on each animation tick. */
+  runStartRef?: React.RefObject<number>;
   thinkingMs: number;
   isThinking: boolean;
   tokenEstimate: number;
@@ -125,18 +127,33 @@ interface ActivityIndicatorProps {
   retryInfo?: RetryInfo | null;
   planDone?: number;
   planTotal?: number;
+  /**
+   * Override the default phrase library per-phase. Pass any subset — phases
+   * not provided fall back to ggcoder's contextual selectPhrases. gg-boss
+   * uses this to swap in orchestration-themed phrases ("Coordinating workers"
+   * vs "Cogitating") so the activity bar reads as a manager, not a coder.
+   */
+  phrases?: Partial<Record<ActivityPhase, string[]>>;
+  /**
+   * Override the spinner pulse-color cycle. Defaults to the cool blue/violet
+   * cycle ggcoder uses; gg-boss passes its crimson→fuchsia palette so the
+   * spinner reads as Boss, not Coder.
+   */
+  pulseColors?: readonly string[];
 }
 
 const RETRY_REASON_LABELS: Record<RetryInfo["reason"], string> = {
   overloaded: "Provider overloaded",
   rate_limit: "Rate limited",
   empty_response: "Empty response",
-  context_overflow: "Context overflow, compacting",
+  stream_stall: "Provider stream stalled",
+  overflow_compact: "Context overflow — compacting",
 };
 
 export function ActivityIndicator({
   phase,
-  elapsedMs,
+  elapsedMs: elapsedMsProp,
+  runStartRef,
   thinkingMs,
   isThinking,
   tokenEstimate,
@@ -148,9 +165,16 @@ export function ActivityIndicator({
   retryInfo,
   planDone = 0,
   planTotal = 0,
+  phrases: phrasesByPhase,
+  pulseColors: pulseColorsOverride,
 }: ActivityIndicatorProps) {
   const theme = useTheme();
   const reducedMotion = useReducedMotion();
+
+  // Smooth elapsed time: compute from runStartRef on each animation tick
+  // instead of using the 1000ms state update (which looks jerky).
+  const elapsedMs =
+    runStartRef?.current && phase !== "idle" ? Date.now() - runStartRef.current : elapsedMsProp;
 
   // Use the global animation tick instead of a local timer.
   // This eliminates a duplicate 100ms setInterval that was causing
@@ -201,20 +225,23 @@ export function ActivityIndicator({
   const spinnerFrame = reducedMotion
     ? 0
     : deriveFrame(tick, SPINNER_INTERVAL, SPINNER_FRAMES.length);
-  const pulseColors = planMode ? PLAN_PULSE_COLORS : PULSE_COLORS;
+  const pulseColors = planMode ? PLAN_PULSE_COLORS : (pulseColorsOverride ?? PULSE_COLORS);
   const colorFrame = deriveFrame(tick, PULSE_INTERVAL, pulseColors.length);
   const ellipsisFrame = deriveFrame(tick, ELLIPSIS_INTERVAL, ELLIPSIS_FRAMES.length);
 
   // Phrase rotation — pick phrases based on phase + user message + active tools, shuffle, rotate
   const toolNamesKey = activeToolNames.sort().join(",");
+  const overridePhrases = phrasesByPhase?.[phase];
   const phrases = useMemo(
     () =>
       shuffleArray(
-        planMode && phase === "waiting"
-          ? PLANNING_PHRASES
-          : selectPhrases(phase, userMessage, activeToolNames),
+        overridePhrases && overridePhrases.length > 0
+          ? overridePhrases
+          : planMode && phase === "waiting"
+            ? PLANNING_PHRASES
+            : selectPhrases(phase, userMessage, activeToolNames),
       ),
-    [phase, userMessage, toolNamesKey, planMode], // activeToolNames captured via stable string key
+    [phase, userMessage, toolNamesKey, planMode, overridePhrases], // activeToolNames captured via stable string key
   );
   const phraseInterval = phase === "waiting" ? WAITING_PHRASE_INTERVAL : OTHER_PHRASE_INTERVAL;
   const phraseIndex = Math.floor((tick * SHIMMER_INTERVAL) / phraseInterval) % phrases.length;

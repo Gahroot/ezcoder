@@ -3,6 +3,7 @@ import type OpenAI from "openai";
 import type {
   CacheRetention,
   ContentPart,
+  ImageContent,
   Message,
   StopReason,
   TextContent,
@@ -10,8 +11,76 @@ import type {
   ThinkingLevel,
   Tool,
   ToolChoice,
+  ToolResultContent,
 } from "../types.js";
 import { zodToJsonSchema } from "../utils/zod-to-json-schema.js";
+
+// ── Shared helpers ─────────────────────────────────────────
+
+const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
+const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
+
+/** Replace image blocks with a text placeholder (deduping consecutive placeholders). */
+function stripImages(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
+  const out: TextContent[] = [];
+  let lastWasPlaceholder = false;
+  for (const block of content) {
+    if (block.type === "image") {
+      if (!lastWasPlaceholder) out.push({ type: "text", text: placeholder });
+      lastWasPlaceholder = true;
+      continue;
+    }
+    out.push(block);
+    lastWasPlaceholder = block.text === placeholder;
+  }
+  return out;
+}
+
+/**
+ * Pre-transform pass: when the target model doesn't support images, replace
+ * image blocks in user messages and tool_result messages with a text placeholder.
+ * Called before provider-specific transforms.
+ */
+export function downgradeUnsupportedImages(
+  messages: Message[],
+  supportsImages: boolean | undefined,
+): Message[] {
+  if (supportsImages !== false) return messages;
+  return messages.map((msg) => {
+    if (msg.role === "user" && Array.isArray(msg.content)) {
+      return { ...msg, content: stripImages(msg.content, NON_VISION_USER_IMAGE_PLACEHOLDER) };
+    }
+    if (msg.role === "tool") {
+      return {
+        ...msg,
+        content: msg.content.map((tr) =>
+          Array.isArray(tr.content)
+            ? {
+                ...tr,
+                content: stripImages(tr.content, NON_VISION_TOOL_IMAGE_PLACEHOLDER),
+              }
+            : tr,
+        ),
+      };
+    }
+    return msg;
+  });
+}
+
+/** Extract concatenated text from tool_result content (array or string). */
+function toolResultText(content: ToolResultContent): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((b): b is TextContent => b.type === "text")
+    .map((b) => b.text)
+    .join("\n");
+}
+
+/** Extract image blocks from tool_result content. Returns empty array for string content. */
+function toolResultImages(content: ToolResultContent): ImageContent[] {
+  if (typeof content === "string") return [];
+  return content.filter((b): b is ImageContent => b.type === "image");
+}
 
 // ── Anthropic Transforms ───────────────────────────────────
 
@@ -24,6 +93,36 @@ export function toAnthropicCacheControl(
   const ttl =
     resolved === "long" && (!baseUrl || baseUrl.includes("api.anthropic.com")) ? "1h" : undefined;
   return { type: "ephemeral", ...(ttl && { ttl }) } as { type: "ephemeral"; ttl?: "1h" };
+}
+
+type AnthropicImageSource = {
+  type: "base64";
+  media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  data: string;
+};
+
+/**
+ * Convert tool_result content to Anthropic's wire format. Strings pass through;
+ * arrays are mapped to Anthropic's (text | image) block format, which
+ * tool_result.content accepts natively.
+ */
+function toAnthropicToolResultContent(
+  content: ToolResultContent,
+):
+  | string
+  | Array<{ type: "text"; text: string } | { type: "image"; source: AnthropicImageSource }> {
+  if (typeof content === "string") return content;
+  return content.map((block) => {
+    if (block.type === "text") return { type: "text" as const, text: block.text };
+    return {
+      type: "image" as const,
+      source: {
+        type: "base64" as const,
+        media_type: block.mediaType as AnthropicImageSource["media_type"],
+        data: block.data,
+      },
+    };
+  });
 }
 
 export function toAnthropicMessages(
@@ -106,6 +205,10 @@ export function toAnthropicMessages(
                 return null as unknown as Anthropic.ContentBlockParam;
               })
               .filter(Boolean);
+      // Skip assistant messages with no content blocks (can happen when all
+      // blocks are filtered — e.g. thinking-only responses from non-Anthropic
+      // providers where signature is missing and text is empty)
+      if (Array.isArray(content) && content.length === 0) continue;
       out.push({ role: "assistant", content });
       continue;
     }
@@ -115,7 +218,7 @@ export function toAnthropicMessages(
         content: msg.content.map((result) => ({
           type: "tool_result" as const,
           tool_use_id: result.toolCallId,
-          content: result.content,
+          content: toAnthropicToolResultContent(result.content),
           is_error: result.isError,
         })),
       });
@@ -194,7 +297,7 @@ export function toAnthropicToolChoice(choice: ToolChoice): Anthropic.ToolChoice 
 }
 
 function supportsAdaptiveThinking(model: string): boolean {
-  return /opus-4-6|sonnet-4-6/.test(model);
+  return /opus-4-7|opus-4-6|sonnet-4-6/.test(model);
 }
 
 export function toAnthropicThinking(
@@ -208,7 +311,7 @@ export function toAnthropicThinking(
 } {
   if (supportsAdaptiveThinking(model)) {
     // Adaptive thinking — model decides when/how much to think.
-    // budget_tokens is deprecated on Opus 4.6 / Sonnet 4.6.
+    // budget_tokens is deprecated on Opus 4.7 / Opus 4.6 / Sonnet 4.6.
     // "max" effort is Opus-only; downgrade to "high" for Sonnet
     let effort: string = level;
     if (level === "max" && !model.includes("opus")) {
@@ -238,23 +341,23 @@ export function toAnthropicThinking(
 // ── OpenAI Transforms ──────────────────────────────────────
 
 /**
- * Remap tool call IDs that don't match OpenAI's expected prefix.
- * Anthropic uses `toolu_*` IDs which OpenAI rejects — we need `call_*` prefixed IDs.
- * The mapping is consistent within a single conversion so assistant tool_call IDs
- * match their corresponding tool result references.
+ * Remap Anthropic `toolu_*` tool call IDs to `call_*` so OpenAI accepts them.
+ * Only Anthropic IDs need remapping — IDs from OpenAI-compatible providers
+ * (Moonshot, GLM, Xiaomi, MiniMax) are passed through unchanged to avoid
+ * breaking the provider's own ID validation.
  */
 function remapToolCallId(id: string, idMap: Map<string, string>): string {
-  if (id.startsWith("call_")) return id;
+  if (!id.startsWith("toolu_")) return id;
   const existing = idMap.get(id);
   if (existing) return existing;
-  const mapped = `call_${id.replace(/^toolu_/, "")}`;
+  const mapped = `call_${id.slice(5)}`;
   idMap.set(id, mapped);
   return mapped;
 }
 
 export function toOpenAIMessages(
   messages: Message[],
-  options?: { provider?: string },
+  options?: { provider?: string; thinking?: boolean; supportsImages?: boolean },
 ): OpenAI.ChatCompletionMessageParam[] {
   const out: OpenAI.ChatCompletionMessageParam[] = [];
   const idMap = new Map<string, string>();
@@ -339,27 +442,57 @@ export function toOpenAIMessages(
               .join("")
           : undefined;
 
+      const contentValue = parts || textParts || null;
+      const hasToolCalls = toolCalls && toolCalls.length > 0;
+      // Skip assistant messages with no content and no tool_calls (can happen
+      // with thinking-only responses) — providers like Xiaomi reject these.
+      if (!contentValue && !hasToolCalls) continue;
+
       const assistantMsg: OpenAI.ChatCompletionAssistantMessageParam = {
         role: "assistant",
-        content: parts || textParts || null,
-        ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
+        content: contentValue,
+        ...(hasToolCalls ? { tool_calls: toolCalls } : {}),
       };
-      // Attach reasoning_content for multi-turn coherence (non-standard field).
-      // Moonshot requires reasoning_content on ALL assistant messages with tool_calls
-      // when thinking is enabled — even if empty.
-      if (thinkingParts || toolCalls?.length) {
-        (assistantMsg as unknown as Record<string, unknown>).reasoning_content =
-          thinkingParts || " ";
+      // Attach reasoning_content for multi-turn thinking coherence (non-standard field).
+      // When thinking content exists, always include it for round-tripping.
+      // When thinking is enabled but no content exists (e.g. after compaction),
+      // Moonshot/Kimi requires reasoning_content on assistant tool_call messages —
+      // default to empty string.  GLM silently hangs on empty values, so skip it there.
+      if (thinkingParts) {
+        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = thinkingParts;
+      } else if (options?.thinking && hasToolCalls && options.provider !== "glm") {
+        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = " ";
       }
       out.push(assistantMsg);
       continue;
     }
     if (msg.role === "tool") {
+      // OpenAI's `tool` role only accepts text. Emit the tool message with the
+      // text content, then (if any tool results carried images and the model
+      // supports vision) a follow-up `user` message carrying image_url blocks.
+      const imageBlocks: OpenAI.ChatCompletionContentPartImage[] = [];
       for (const result of msg.content) {
+        const text = toolResultText(result.content);
+        const images = toolResultImages(result.content);
+        const hasText = text.length > 0;
         out.push({
           role: "tool",
           tool_call_id: remapToolCallId(result.toolCallId, idMap),
-          content: result.content,
+          content: hasText ? text : "(see attached image)",
+        });
+        if (images.length > 0 && options?.supportsImages !== false) {
+          for (const img of images) {
+            imageBlocks.push({
+              type: "image_url",
+              image_url: { url: `data:${img.mediaType};base64,${img.data}` },
+            });
+          }
+        }
+      }
+      if (imageBlocks.length > 0) {
+        out.push({
+          role: "user",
+          content: [{ type: "text", text: "Attached image(s) from tool result:" }, ...imageBlocks],
         });
       }
     }
