@@ -21,7 +21,7 @@ export const TOOL_PROMPT_HINTS: Record<string, string> = {
   subagent: "Delegate focused, isolated subtasks (research, parallel exploration).",
   skill: "Invoke a named skill for specialized instructions.",
   "mcp__kencode-search__searchCode":
-    'Literal/regex search across 2M+ public repos (Sourcegraph). Use for ANY pattern in source: APIs, config layouts (vite.config.ts, package.json), shell idioms, markdown structure, project conventions. Filters: language[], repo ("owner/name"), path. Tip: peek=true returns just paths+counts for cheap triage. Regex is RE2 — no lookahead/lookbehind/backrefs; multi-line needs (?s).',
+    'Literal-text or RE2-regex search across 2M+ public repos. NOT semantic — query the actual code (`useState(`), not "react hooks". Filters: `language: ["TypeScript"]`, `repo: "owner/name"`, `path` (substring). Workflow: `peek: true` → paths+counts for cheap triage; call again narrowed by `repo` + `path` for full snippets. Defaults exclude tests/vendored/generated — set `includeTests` or `includeVendored` to widen. RE2: no lookahead/lookbehind/backrefs; multi-line needs `(?s)`.',
   enter_plan: "Enter plan mode for read-only research + planning on complex multi-file tasks.",
   exit_plan: "Submit your plan for user review and exit plan mode.",
 };
