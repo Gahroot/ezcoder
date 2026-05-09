@@ -26,7 +26,7 @@ export interface VerifyOptions {
   projectKey: string;
   /** Per-project bearer secret used to query the error list. */
   projectSecret: string;
-  /** Backend root, e.g. "https://pixel-server.buzzbeamaustralia.workers.dev" (no trailing /ingest). */
+  /** Backend root, e.g. "https://pixel-server.ngrout70.workers.dev" (no trailing /ingest). */
   ingestUrl: string;
   /** User's project root — the cwd we spawn the probe from for `node_modules` resolution. */
   projectRoot: string;

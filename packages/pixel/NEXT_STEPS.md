@@ -179,7 +179,7 @@ install → throw → verify in D1.
 
 When a user deploys to Cloudflare AND their worker is on the same Cloudflare
 account as the pixel-server (`buzzbeamaustralia` — Ken's account), fetches
-to `https://pixel-server.buzzbeamaustralia.workers.dev/ingest` get
+to `https://pixel-server.ngrout70.workers.dev/ingest` get
 **error 1042** (Cloudflare's worker→worker same-account block).
 
 **Fixes:**

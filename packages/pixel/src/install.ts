@@ -17,7 +17,7 @@ import type * as Recast from "recast";
 
 const nodeRequire = createRequire(import.meta.url);
 
-export const DEFAULT_INGEST_URL = "https://pixel-server.buzzbeamaustralia.workers.dev";
+export const DEFAULT_INGEST_URL = "https://pixel-server.ngrout70.workers.dev";
 
 export interface InstallOptions {
   cwd?: string;

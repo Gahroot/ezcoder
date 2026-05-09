@@ -26,7 +26,7 @@ export interface WorkersPixelOptions {
   runtime?: string;
 }
 
-const DEFAULT_INGEST_URL = "https://pixel-server.buzzbeamaustralia.workers.dev";
+const DEFAULT_INGEST_URL = "https://pixel-server.ngrout70.workers.dev";
 
 const HANDLER_KEYS = ["fetch", "scheduled", "queue", "email", "trace"] as const;
 type HandlerKey = (typeof HANDLER_KEYS)[number];

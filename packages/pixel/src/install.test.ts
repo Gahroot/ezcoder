@@ -63,7 +63,7 @@ describe("install (end-to-end, mocked backend)", () => {
       const initContent = readFileSync(result.initFilePath, "utf8");
       expect(initContent).toContain('import { initPixel } from "@prestyj/pixel"');
       expect(initContent).toContain("process.env.EZCODER_PIXEL_KEY");
-      expect(initContent).toContain('"https://pixel-server.buzzbeamaustralia.workers.dev/ingest"');
+      expect(initContent).toContain('"https://pixel-server.ngrout70.workers.dev/ingest"');
 
       expect(readFileSync(result.envFilePath, "utf8")).toContain("EZCODER_PIXEL_KEY=pk_live_abc");
 

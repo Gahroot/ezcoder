@@ -2,7 +2,7 @@ import { installDenoAdapter, type DenoAdapter } from "./adapters/deno.js";
 import { HttpSink } from "./core/sinks/http.js";
 import type { Sink } from "./core/types.js";
 
-export const DEFAULT_INGEST_URL = "https://pixel-server.buzzbeamaustralia.workers.dev";
+export const DEFAULT_INGEST_URL = "https://pixel-server.ngrout70.workers.dev";
 
 export interface DenoPixelOptions {
   projectKey: string;
