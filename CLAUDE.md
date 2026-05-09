@@ -149,20 +149,20 @@ Fix ALL errors before continuing. Quick fixes:
 
 ## Pixel — error tracking + auto-fix queue
 
-`@kenkaiiii/gg-pixel` is a drop-in error tracking SDK. Errors flow to a Cloudflare Worker (`gg-pixel-server`) backed by D1. `ggcoder pixel` opens an in-Ink overlay that lists open errors per project and hands each one off to the existing agent loop — same UX as the Task pane.
+`@prestyj/pixel` is a drop-in error tracking SDK. Errors flow to a Cloudflare Worker (`gg-pixel-server`) backed by D1. `ezcoder pixel` opens an in-Ink overlay that lists open errors per project and hands each one off to the existing agent loop — same UX as the Task pane.
 
 ### CLI
 
 ```bash
-ggcoder pixel install          # Detect framework, wire up SDK + .env, register project key
-ggcoder pixel                  # Open the in-Ink overlay (also: Ctrl+E inside running ggcoder)
-ggcoder pixel fix <error_id>   # Fix one error end-to-end (subprocess flow, for non-TTY use)
-ggcoder pixel run              # Auto-fix every open error (non-interactive)
+ezcoder pixel install          # Detect framework, wire up SDK + .env, register project key
+ezcoder pixel                  # Open the in-Ink overlay (also: Ctrl+E inside running ezcoder)
+ezcoder pixel fix <error_id>   # Fix one error end-to-end (subprocess flow, for non-TTY use)
+ezcoder pixel run              # Auto-fix every open error (non-interactive)
 ```
 
 ### In-Ink fix flow (the main path)
 
-`Ctrl+E` from inside ggcoder, or `ggcoder pixel`, opens `PixelOverlay`. Keys: `↑↓ navigate · Enter fix one · f fix all · d delete · Esc close`.
+`Ctrl+E` from inside ezcoder, or `ezcoder pixel`, opens `PixelOverlay`. Keys: `↑↓ navigate · Enter fix one · f fix all · d delete · Esc close`.
 
 When a fix starts, `startPixelFix(errorId)` in `App.tsx` swaps **four** things in lockstep before calling `agentLoop.run(prep.prompt)`:
 
@@ -177,7 +177,7 @@ Reset chat state (`setHistory`, `setLiveItems`, `setStaticKey`, screen clear) **
 
 ### Backend
 
-`packages/gg-pixel-server/` — Hono on Workers + D1. Routes:
+`packages/pixel-server/` — Hono on Workers + D1. Routes:
 - `POST /ingest` — SDK posts events; server dedupes by `(project_id, fingerprint)`. Validated + size-capped + per-project unique-fingerprint cap (10K). CORS-open since the publishable `project_key` is the auth boundary for ingest only.
 - `POST /api/projects` — globally rate-limited (100/hr). Returns `{ id, key, secret }` once on creation; the `secret` is the bearer token for every other `/api/*` call from that project's owner.
 - `GET /api/projects/:id/errors` — bearer-authed (`Authorization: Bearer sk_live_…`); 403 if the secret doesn't own the project.
@@ -185,7 +185,7 @@ Reset chat state (`setHistory`, `setLiveItems`, `setStaticKey`, screen clear) **
 - `PATCH /api/errors/:id` — bearer-authed + scoped. Drives `open → in_progress → awaiting_review → merged` (or `failed`).
 - `DELETE /api/errors/:id` — bearer-authed + scoped (used by `d` in the overlay).
 
-`~/.gg/projects.json` stores `{ name, path, secret }` per project. The CLI reads the secret on every management call. Re-run `ggcoder pixel install` to refresh the secret if a mapping is legacy (no `secret` field).
+`~/.ezcoder/projects.json` stores `{ name, path, secret }` per project. The CLI reads the secret on every management call. Re-run `ezcoder pixel install` to refresh the secret if a mapping is legacy (no `secret` field).
 
 ## Slash Commands
 
@@ -243,20 +243,20 @@ To add a new registry command:
 
 There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.ezcoder/commands/` directory).
 
-## Upstream Sync (KenKaiii/gg-framework)
+## Upstream Sync (KenKaiii/ezcoder)
 
-This repo is a fork of [KenKaiii/gg-framework](https://github.com/KenKaiii/gg-framework). The upstream uses different directory names and npm scope:
+This repo is a fork of [KenKaiii/ezcoder](https://github.com/KenKaiii/ezcoder). The upstream uses different directory names and npm scope:
 
-| Ours (ezcoder) | Upstream (gg-framework) |
+| Ours (ezcoder) | Upstream (ezcoder) |
 |---|---|
-| `packages/ai` | `packages/gg-ai` |
-| `packages/agent` | `packages/gg-agent` |
-| `packages/cli` | `packages/ggcoder` |
+| `packages/ai` | `packages/ai` |
+| `packages/agent` | `packages/agent` |
+| `packages/cli` | `packages/cli` |
 | `@prestyj/*` scope | `@kenkaiiii/*` scope |
-| `~/.ezcoder/` config dir | `~/.gg/` config dir |
-| `EZ Coder` branding | `GG Coder` branding |
-| `EZCoderAIError` | `GGAIError` |
-| `Gahroot/ezcoder` repo | `KenKaiii/gg-framework` repo |
+| `~/.ezcoder/` config dir | `~/.ezcoder/` config dir |
+| `EZ Coder` branding | `EZ Coder` branding |
+| `EZCoderAIError` | `EZCoderAIError` |
+| `Gahroot/ezcoder` repo | `KenKaiii/ezcoder` repo |
 
 ### How to sync
 
@@ -269,9 +269,9 @@ This repo is a fork of [KenKaiii/gg-framework](https://github.com/KenKaiii/gg-fr
 Both do the same thing:
 1. `git fetch upstream`
 2. `git merge upstream/main`
-3. Rename dirs: `gg-ai`→`ai`, `gg-agent`→`agent`, `ggcoder`→`cli`
+3. Rename dirs: `gg-ai`→`ai`, `gg-agent`→`agent`, `ezcoder`→`cli`
 4. Fix npm scope: `@kenkaiiii`→`@prestyj`
-5. Fix branding: GG→EZ, `~/.gg/`→`~/.ezcoder/`, `GGAIError`→`EZCoderAIError`
+5. Fix branding: GG→EZ, `~/.ezcoder/`→`~/.ezcoder/`, `EZCoderAIError`→`EZCoderAIError`
 6. Commit the fixup
 
 ### When merge conflicts happen
@@ -286,7 +286,7 @@ If `git merge upstream/main` hits conflicts:
 ```bash
 pnpm install && pnpm build
 # Verify no remaining upstream branding:
-grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ggcoder\|GGAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
+grep -rn 'kenkaiiii\|gg-ai\|gg-agent\|ezcoder\|EZCoderAIError' packages/ --include='*.ts' --include='*.tsx' --include='*.json'
 ```
 
 ### Block art logos

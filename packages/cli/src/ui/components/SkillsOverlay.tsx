@@ -179,7 +179,7 @@ export function SkillsOverlay({ cwd, onClose }: SkillsOverlayProps) {
             {"  No skills found. Add "}
             <Text color={theme.primary}>.md</Text>
             {" files to "}
-            <Text color={theme.primary}>.gg/skills/</Text>
+            <Text color={theme.primary}>.ezcoder/skills/</Text>
           </Text>
           <Text color={theme.textDim}>
             {"  "}

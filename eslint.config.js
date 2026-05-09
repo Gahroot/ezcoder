@@ -29,7 +29,7 @@ export default tseslint.config(
       "**/*.js",
       "**/*.mjs",
       // Python package — not TypeScript.
-      "packages/gg-pixel-py/",
+      "packages/pixel-py/",
     ],
   },
 );

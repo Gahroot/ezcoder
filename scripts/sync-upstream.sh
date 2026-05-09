@@ -152,7 +152,9 @@ rename_if_exists "packages/gg-pixel" "packages/pixel"
 info "Fixing npm scope and branding (sed pass)..."
 
 # Files to process (text only; exclude lockfile / node_modules / dist / .git)
-FILES=$(git ls-files -- '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.mjs' '*.yaml' '*.yml' '*.toml' '*.sh' ':!pnpm-lock.yaml' ':!node_modules' ':!dist')
+# NOTE: scripts/sync-upstream.sh is excluded — otherwise the script rebrands
+# itself mid-run and leaves behind a broken script for the next sync.
+FILES=$(git ls-files -- '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.mjs' '*.yaml' '*.yml' '*.toml' '*.sh' ':!pnpm-lock.yaml' ':!node_modules' ':!dist' ':!scripts/sync-upstream.sh')
 
 # Order rules:
 #   - Longer prefixes BEFORE shorter ones (ggcoder-eyes before ggcoder; gg-pixel-server before gg-pixel; gg-editor-premiere-panel before gg-editor)

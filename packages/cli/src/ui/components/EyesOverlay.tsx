@@ -10,7 +10,7 @@ import {
   updateEntry,
   type JournalEntry,
   type ProbeEntry,
-} from "@kenkaiiii/ggcoder-eyes";
+} from "@prestyj/eyes";
 
 // ── Navigable row model ───────────────────────────────────
 // Flatten probes + signals into a single navigable list so arrow keys and
@@ -59,7 +59,7 @@ function EyesGradientText({ text }: { text: string }) {
 }
 
 // ── CLI resolution ────────────────────────────────────────
-// Find the ggcoder-eyes CLI binary for `verify` action. Works in workspace dev
+// Find the ezcoder-eyes CLI binary for `verify` action. Works in workspace dev
 // installs and in globally-installed npm packages because we resolve through
 // the package graph rather than relying on $PATH.
 
@@ -68,7 +68,7 @@ let cachedCliPath: string | null = null;
 function resolveCli(): string | null {
   if (cachedCliPath) return cachedCliPath;
   try {
-    cachedCliPath = requireFn.resolve("@kenkaiiii/ggcoder-eyes/cli");
+    cachedCliPath = requireFn.resolve("@prestyj/eyes/cli");
     return cachedCliPath;
   } catch {
     return null;
@@ -190,7 +190,7 @@ export function EyesOverlay({ cwd, onClose, onQueueMessage }: EyesOverlayProps) 
     if (input === "v") {
       const cli = resolveCli();
       if (!cli) {
-        setStatus("ggcoder-eyes CLI not found");
+        setStatus("ezcoder-eyes CLI not found");
         return;
       }
       setStatus("verifying…");

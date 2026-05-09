@@ -119,16 +119,6 @@ export const MODELS: ModelInfo[] = [
   },
   // ── Z.AI (GLM) ─────────────────────────────────────────
   {
-    id: "glm-5v-turbo",
-    name: "GLM-5V-Turbo",
-    provider: "glm",
-    contextWindow: 200_000,
-    maxOutputTokens: 131_072,
-    supportsThinking: true,
-    supportsImages: true,
-    costTier: "medium",
-  },
-  {
     id: "glm-5.1",
     name: "GLM-5.1",
     provider: "glm",

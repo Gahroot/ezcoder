@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { agentLoop, type AgentEvent, type AgentTool } from "@kenkaiiii/gg-agent";
-import { ProviderError } from "@kenkaiiii/gg-ai";
-import type { Message, Provider, ThinkingLevel, TextContent, ImageContent } from "@kenkaiiii/gg-ai";
+import { agentLoop, type AgentEvent, type AgentTool } from "@prestyj/agent";
+import { ProviderError } from "@prestyj/ai";
+import type { Message, Provider, ThinkingLevel, TextContent, ImageContent } from "@prestyj/ai";
 
 /** Rough token estimate from message content (~4 chars per token). */
 function estimateTokens(msgs: Message[]): number {

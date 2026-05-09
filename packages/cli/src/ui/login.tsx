@@ -1,12 +1,12 @@
 import chalk from "chalk";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 
 const LOGO_LINES = [
   " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
   " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
   " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
 ];
-// Defaults — ggcoder branding. ggeditor passes its own palette.
+// Defaults — ezcoder branding. ezeditor passes its own palette.
 const DEFAULT_GRADIENT = [
   "#60a5fa",
   "#6da1f9",
@@ -28,7 +28,7 @@ const TEXT = "#e2e8f0";
 const TEXT_DIM = "#64748b";
 
 let _version = "";
-let _brand = "GG Coder";
+let _brand = "EZ Coder";
 let _gradient: string[] = DEFAULT_GRADIENT;
 let _primary = DEFAULT_PRIMARY;
 let _accent = DEFAULT_ACCENT;
@@ -68,7 +68,7 @@ function renderScreen(selectedIndex: number): string {
       chalk.hex(_primary).bold(_brand) +
       (_version ? chalk.hex(TEXT_DIM)(` v${_version}`) : "") +
       chalk.hex(TEXT_DIM)(" · By ") +
-      chalk.hex(TEXT).bold("Ken Kai"),
+      chalk.hex(TEXT).bold("Nolan Grout"),
   );
   lines.push(gradientLine(LOGO_LINES[1]!) + GAP + chalk.hex(_accent)("Login"));
   lines.push(gradientLine(LOGO_LINES[2]!) + GAP + chalk.hex(TEXT_DIM)("Select a provider"));
@@ -91,11 +91,11 @@ function renderScreen(selectedIndex: number): string {
 }
 
 export interface LoginSelectorOptions {
-  /** Brand name shown next to the logo (default: "GG Coder"). */
+  /** Brand name shown next to the logo (default: "EZ Coder"). */
   brand?: string;
   /** Version shown after the brand. */
   version?: string;
-  /** Logo gradient (12 colors recommended). Defaults to ggcoder blue/purple. */
+  /** Logo gradient (12 colors recommended). Defaults to ezcoder blue/purple. */
   gradient?: string[];
   /** Primary color (brand text + selected provider). */
   primary?: string;
@@ -110,7 +110,7 @@ export function renderLoginSelector(
   const opts: LoginSelectorOptions =
     typeof optsOrVersion === "string" ? { version: optsOrVersion } : (optsOrVersion ?? {});
   _version = opts.version ?? "";
-  _brand = opts.brand ?? "GG Coder";
+  _brand = opts.brand ?? "EZ Coder";
   _gradient = opts.gradient && opts.gradient.length > 0 ? opts.gradient : DEFAULT_GRADIENT;
   _primary = opts.primary ?? DEFAULT_PRIMARY;
   _accent = opts.accent ?? DEFAULT_ACCENT;

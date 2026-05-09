@@ -68,7 +68,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     ...(useStreaming ? { stream_options: { include_usage: true } } : {}),
   };
 
-  // Native web search is disabled for OpenAI-compatible providers — ggcoder
+  // Native web search is disabled for OpenAI-compatible providers — ezcoder
   // provides its own web_search/web_fetch tools which handle results properly.
   // Moonshot's $web_search was previously injected here but it returns opaque
   // results and triggers reasoning_content validation errors with thinking mode.
@@ -78,7 +78,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // params may cause errors on other OpenAI-compatible providers like GLM or Xiaomi.
   if (options.provider === "openai" || options.provider === "moonshot") {
     const paramsAny = params as unknown as Record<string, unknown>;
-    paramsAny.prompt_cache_key = "ggcoder";
+    paramsAny.prompt_cache_key = "ezcoder";
 
     // Map cacheRetention to OpenAI's prompt_cache_retention param.
     // "long" → "24h" keeps cached prefixes active up to 24 hours (OpenAI feature).

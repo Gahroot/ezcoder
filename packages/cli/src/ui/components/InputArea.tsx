@@ -133,7 +133,7 @@ function yankPop(): { text: string; start: number; length: number } | null {
 }
 
 // ── Persistent Input History ─────────────────────────────
-const HISTORY_FILE = join(homedir(), ".gg", "input-history.jsonl");
+const HISTORY_FILE = join(homedir(), ".ezcoder", "input-history.jsonl");
 const MAX_HISTORY = 500;
 // Compact when file has 50% more lines than the cap
 const COMPACT_THRESHOLD = MAX_HISTORY + Math.floor(MAX_HISTORY * 0.5);
@@ -155,7 +155,7 @@ function appendHistory(entry: string, history: string[]): void {
   if (history.length > 0 && history[history.length - 1] === entry) return;
 
   try {
-    mkdirSync(join(homedir(), ".gg"), { recursive: true });
+    mkdirSync(join(homedir(), ".ezcoder"), { recursive: true });
     appendFileSync(HISTORY_FILE, JSON.stringify(entry) + "\n");
     lineCountEstimate++;
     if (lineCountEstimate > COMPACT_THRESHOLD) {
@@ -220,7 +220,7 @@ interface InputAreaProps {
    * paste whatever's in the system clipboard repeatedly during high-frequency
    * UI updates (e.g. when workers are running and the input rapidly rerenders).
    * Setting this to true disables click-to-cursor inside the input but kills
-   * the phantom-paste bug. Default: false (mouse tracking enabled, ggcoder
+   * the phantom-paste bug. Default: false (mouse tracking enabled, ezcoder
    * behaviour preserved).
    */
   disableMouseTracking?: boolean;

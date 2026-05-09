@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import { DEFAULT_INGEST_URL } from "@kenkaiiii/gg-pixel";
+import { DEFAULT_INGEST_URL } from "@prestyj/pixel";
 import { fetchPixelEntries, type PixelEntry, type PixelFetchResult } from "../../core/pixel.js";
 import { renderScreen } from "../pixel.js";
 

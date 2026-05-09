@@ -17,11 +17,11 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { playNotificationSound } from "../utils/sound.js";
-import type { Message, Provider, ThinkingLevel, TextContent, ImageContent } from "@kenkaiiii/gg-ai";
+import type { Message, Provider, ThinkingLevel, TextContent, ImageContent } from "@prestyj/ai";
 import { extractImagePaths, type ImageAttachment } from "../utils/image.js";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { useAgentLoop, type UserContent } from "./hooks/useAgentLoop.js";
-import { isEyesActive, journalCount } from "@kenkaiiii/ggcoder-eyes";
+import { isEyesActive, journalCount } from "@prestyj/eyes";
 import { UserMessage } from "./components/UserMessage.js";
 import type { PasteInfo } from "./components/InputArea.js";
 import { AssistantMessage } from "./components/AssistantMessage.js";
@@ -115,7 +115,7 @@ function getProviderErrorHint(message: string): string | null {
     return "You've hit the provider's rate limit. Wait a moment before retrying.";
   }
   if (lower.includes("502") || lower.includes("bad gateway")) {
-    return "The provider returned a server error. This is not a ggcoder issue — try again shortly.";
+    return "The provider returned a server error. This is not a ezcoder issue — try again shortly.";
   }
   if (lower.includes("503") || lower.includes("service unavailable")) {
     return "The provider's service is temporarily unavailable. Try again in a moment.";
@@ -124,7 +124,7 @@ function getProviderErrorHint(message: string): string | null {
     return "The request to the provider timed out. Their servers may be slow — try again.";
   }
   if (lower.includes("500") && lower.includes("internal server error")) {
-    return "The provider experienced an internal error. This is not a ggcoder issue.";
+    return "The provider experienced an internal error. This is not a ezcoder issue.";
   }
   if (
     lower.includes("does not recognize the requested model") ||
@@ -762,7 +762,7 @@ export function App(props: AppProps) {
     return () => stopPeriodicUpdateCheck();
   }, [props.version]);
 
-  // Load custom commands from .gg/commands/
+  // Load custom commands from .ezcoder/commands/
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
   const reloadCustomCommands = useCallback(() => {
     loadCustomCommands(props.cwd).then(setCustomCommands);
@@ -1853,7 +1853,7 @@ export function App(props: AppProps) {
       }
 
       // Open the Eyes pane — read-only review of installed probes + open signals.
-      // Gated by the ggcoder-eyes manifest: in projects without /eyes set up,
+      // Gated by the ezcoder-eyes manifest: in projects without /eyes set up,
       // there's nothing useful to show.
       if (trimmed === "/eyes-view" || trimmed === "/ev") {
         if (!isEyesActive(props.cwd)) {
@@ -1944,7 +1944,7 @@ export function App(props: AppProps) {
         return;
       }
 
-      // Handle prompt-template commands (built-in + custom from .gg/commands/)
+      // Handle prompt-template commands (built-in + custom from .ezcoder/commands/)
       if (trimmed.startsWith("/")) {
         const parts = trimmed.slice(1).split(" ");
         const cmdName = parts[0];
@@ -2027,7 +2027,7 @@ export function App(props: AppProps) {
           } else {
             // GLM models: save image to temp file and instruct model to use vision MCP tool
             const ext = img.mediaType.split("/")[1] ?? "png";
-            const tmpPath = `/tmp/ggcoder-img-${Date.now()}.${ext}`;
+            const tmpPath = `/tmp/ezcoder-img-${Date.now()}.${ext}`;
             try {
               writeFileSync(tmpPath, Buffer.from(img.data, "base64"));
               parts.push({
@@ -3119,7 +3119,7 @@ export function App(props: AppProps) {
               {eyesCount !== undefined && eyesCount > 0 && (
                 <Box paddingLeft={bgTasks.length > 0 ? 2 : 1} paddingRight={1}>
                   <Text color={theme.accent} bold>
-                    {`${eyesCount} eyes signal${eyesCount === 1 ? "" : "s"} · Run /eyes-improve to enhance GG Coder`}
+                    {`${eyesCount} eyes signal${eyesCount === 1 ? "" : "s"} · Run /eyes-improve to enhance EZ Coder`}
                   </Text>
                 </Box>
               )}

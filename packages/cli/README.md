@@ -1,33 +1,33 @@
-![ggcoder](screenshots/ggcoder.png)
+![ezcoder](screenshots/ezcoder.png)
 
 <p align="center">
   <strong>The fast, lean coding agent. Eight providers. Zero bloat.</strong>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@kenkaiiii/ggcoder"><img src="https://img.shields.io/npm/v/@kenkaiiii/ggcoder?style=for-the-badge" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@prestyj/cli"><img src="https://img.shields.io/npm/v/@prestyj/cli?style=for-the-badge" alt="npm version"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <a href="https://youtube.com/@kenkaidoesai"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
   <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
   <a href="https://github.com/KenKaiii"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
 </p>
 
-A coding agent that ships only what the model needs to work — a tiny system prompt, one carefully-chosen MCP, and a focused tool set. Switch between Anthropic, OpenAI, GLM, Moonshot, MiniMax, Xiaomi, DeepSeek, and OpenRouter mid-conversation. Run it on its own, or let [`@kenkaiiii/gg-boss`](../gg-boss/README.md) drive a fleet of `ggcoder` workers across many projects from a single chat.
+A coding agent that ships only what the model needs to work — a tiny system prompt, one carefully-chosen MCP, and a focused tool set. Switch between Anthropic, OpenAI, GLM, Moonshot, MiniMax, Xiaomi, DeepSeek, and OpenRouter mid-conversation. Run it on its own, or let [`@prestyj/boss`](../gg-boss/README.md) drive a fleet of `ezcoder` workers across many projects from a single chat.
 
-Built on [`@kenkaiiii/gg-ai`](../gg-ai/README.md) and [`@kenkaiiii/gg-agent`](../gg-agent/README.md). Part of the [GG Framework](../../README.md) monorepo.
+Built on [`@prestyj/ai`](../gg-ai/README.md) and [`@prestyj/agent`](../gg-agent/README.md). Part of the [EZCoder Framework](../../README.md) monorepo.
 
 ---
 
 ## 🚀 Run It
 
 ```bash
-npm i -g @kenkaiiii/ggcoder
+npm i -g @prestyj/cli
 
-ggcoder login    # Pick provider, authenticate
-ggcoder          # Start coding
+ezcoder login    # Pick provider, authenticate
+ezcoder          # Start coding
 ```
 
-OAuth for Anthropic and OpenAI (log in once, auto-refresh, no key to leak). API keys for the rest. Up and running in seconds either way. Auth lives in `~/.gg/auth.json` and is shared with `gg-boss`.
+OAuth for Anthropic and OpenAI (log in once, auto-refresh, no key to leak). API keys for the rest. Up and running in seconds either way. Auth lives in `~/.ezcoder/auth.json` and is shared with `gg-boss`.
 
 ---
 
@@ -35,7 +35,7 @@ OAuth for Anthropic and OpenAI (log in once, auto-refresh, no key to leak). API 
 
 Every token in the system prompt gets processed on **every single turn**. It's not a one-time cost. It's a tax on every request.
 
-| | **Claude Code / Agent SDK** | **GG Coder** |
+| | **Claude Code / Agent SDK** | **EZ Coder** |
 |---|---|---|
 | System prompt size | ~15,000 tokens | **~1,100 tokens** |
 | Ratio | baseline | **~13x smaller** |
@@ -47,7 +47,7 @@ Every token in the system prompt gets processed on **every single turn**. It's n
 - **Context fills up faster.** ~15,000 tokens sitting in your window permanently. That's ~7.5% of a 200K model gone before you say hello. You hit compaction sooner, lose history faster, and the agent forgets what it was doing.
 - **Higher cost.** Input tokens aren't free. Every cache miss charges you for the full bloat. Smaller prompt = smaller bill.
 
-GG Coder sends only what the model needs: how to work, what tools it has, and your project context. No walls of rules. No formatting instructions. Just signal.
+EZ Coder sends only what the model needs: how to work, what tools it has, and your project context. No walls of rules. No formatting instructions. Just signal.
 
 ---
 
@@ -57,7 +57,7 @@ Same philosophy applies to tools. People collect MCPs like Pokemon. Slack MCP, G
 
 This doesn't help. It confuses the agent. More tool descriptions = more noise = worse tool selection. The model spends tokens reasoning about tools it will never call.
 
-GG Coder ships with one MCP: [Grep](https://grep.dev). That's it. It lets the agent search across 1M+ public GitHub repos to verify implementations against real-world code. Correct API usage, library idioms, production patterns. One tool that actually makes the output better.
+EZ Coder ships with one MCP: [Grep](https://grep.dev). That's it. It lets the agent search across 1M+ public GitHub repos to verify implementations against real-world code. Correct API usage, library idioms, production patterns. One tool that actually makes the output better.
 
 You can still add your own MCPs if you need them. But start with less. You'll get better results.
 
@@ -84,19 +84,19 @@ The same conversation, the same tools, the same project context — only the mod
 
 ## 🤝 Pair it with gg-boss
 
-`ggcoder` is the unit of work. [`gg-boss`](../gg-boss/README.md) is the orchestrator that drives many of them at once.
+`ezcoder` is the unit of work. [`gg-boss`](../gg-boss/README.md) is the orchestrator that drives many of them at once.
 
 ```bash
-npm i -g @kenkaiiii/gg-boss
-ggboss link    # pick which projects to drive
-ggboss         # one chat, N parallel ggcoder workers
+npm i -g @prestyj/boss
+ezboss link    # pick which projects to drive
+ezboss         # one chat, N parallel ezcoder workers
 ```
 
-Inside `gg-boss`, every project gets its own `ggcoder` `AgentSession` running in that project's directory. The boss dispatches work — `prompt_worker(project, "...")` — and each worker uses the **same** focused tool set (read, write, edit, bash, grep, find, ls, web fetch, sub-agents) you'd get running `ggcoder` solo. Workers reply with a tight `Changed / Skipped / Verified / Notes / Status` summary the boss reads, cross-checks, and routes off.
+Inside `gg-boss`, every project gets its own `ezcoder` `AgentSession` running in that project's directory. The boss dispatches work — `prompt_worker(project, "...")` — and each worker uses the **same** focused tool set (read, write, edit, bash, grep, find, ls, web fetch, sub-agents) you'd get running `ezcoder` solo. Workers reply with a tight `Changed / Skipped / Verified / Notes / Status` summary the boss reads, cross-checks, and routes off.
 
-Why this works: ggcoder's lean prompt and tight tool set keep each worker cheap and predictable, so the boss can run six or more in parallel without context blow-up. Anything you can do in a single `ggcoder` session — slash commands, skills, MCPs, custom commands, project `CLAUDE.md` rules — works inside the boss too.
+Why this works: ezcoder's lean prompt and tight tool set keep each worker cheap and predictable, so the boss can run six or more in parallel without context blow-up. Anything you can do in a single `ezcoder` session — slash commands, skills, MCPs, custom commands, project `CLAUDE.md` rules — works inside the boss too.
 
-Run `ggcoder` directly when you're heads-down on one project. Switch to `ggboss` when you want a coordinator on top.
+Run `ezcoder` directly when you're heads-down on one project. Switch to `ezboss` when you want a coordinator on top.
 
 ---
 
@@ -149,7 +149,7 @@ Plus built-in workflows that ship with the binary:
 
 ## 🛠 Tools
 
-GG Coder comes with a focused set of tools. Each one is small, well-described, and earns its place in the prompt.
+EZ Coder comes with a focused set of tools. Each one is small, well-described, and earns its place in the prompt.
 
 | Tool | What it does |
 |---|---|
@@ -169,7 +169,7 @@ Plus the [Grep MCP](https://grep.dev) for searching across 1M+ public GitHub rep
 
 ## 🪄 Custom commands
 
-Drop a markdown file in `.gg/commands/` and it becomes a slash command. Your React app gets `/deploy` and `/storybook`. Your API gets `/migrate` and `/seed`. Different projects, different commands.
+Drop a markdown file in `.ezcoder/commands/` and it becomes a slash command. Your React app gets `/deploy` and `/storybook`. Your API gets `/migrate` and `/seed`. Different projects, different commands.
 
 ---
 
@@ -177,8 +177,8 @@ Drop a markdown file in `.gg/commands/` and it becomes a slash command. Your Rea
 
 Reusable behaviors across projects. Drop `.md` files in:
 
-- `~/.gg/skills/` for global skills (available everywhere)
-- `.gg/skills/` for project-specific skills
+- `~/.ezcoder/skills/` for global skills (available everywhere)
+- `.ezcoder/skills/` for project-specific skills
 
 They get loaded into the system prompt automatically. The agent knows what it can do without you explaining it each session. <kbd>Ctrl+S</kbd> opens a pane to browse and toggle them.
 
@@ -186,7 +186,7 @@ They get loaded into the system prompt automatically. The agent knows what it ca
 
 ## 📋 Project guidelines
 
-Drop a `CLAUDE.md` or `AGENTS.md` in your repo root (or any parent directory). GG Coder picks it up automatically.
+Drop a `CLAUDE.md` or `AGENTS.md` in your repo root (or any parent directory). EZ Coder picks it up automatically.
 
 Your rules. Your conventions. The agent follows them.
 
@@ -211,5 +211,5 @@ MIT
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@kenkaiiii/ggcoder"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40kenkaiiii%2Fggcoder-blue?style=for-the-badge" alt="Install"></a>
+  <a href="https://www.npmjs.com/package/@prestyj/cli"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40kenkaiiii%2Fggcoder-blue?style=for-the-badge" alt="Install"></a>
 </p>

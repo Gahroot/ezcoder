@@ -8,7 +8,7 @@ import {
   isInstallProbeFingerprint,
   verifyInstall,
   type VerifyOutcome,
-} from "@kenkaiiii/gg-pixel";
+} from "@prestyj/pixel";
 
 interface ProjectMapping {
   name: string;
@@ -63,7 +63,7 @@ export interface PixelFetchResult {
 
 export async function fetchPixelEntries(opts: ListOptions = {}): Promise<PixelFetchResult> {
   const home = opts.homeDir ?? homedir();
-  const path = join(home, ".gg", "projects.json");
+  const path = join(home, ".ezcoder", "projects.json");
   const fetchFn = opts.fetchFn ?? fetch;
 
   if (!existsSync(path)) return { entries: [], unreachable: [], unmanaged: [], hasProjects: false };
@@ -188,7 +188,7 @@ function relativizeFile(file: string, projectPath?: string): string {
 
 export async function listAllErrors(opts: ListOptions = {}): Promise<void> {
   const home = opts.homeDir ?? homedir();
-  const path = join(home, ".gg", "projects.json");
+  const path = join(home, ".ezcoder", "projects.json");
   const fetchFn = opts.fetchFn ?? fetch;
 
   if (!existsSync(path)) {
@@ -226,7 +226,7 @@ export async function listAllErrors(opts: ListOptions = {}): Promise<void> {
     if (!project.secret) {
       console.log(
         chalk.hex("#fbbf24")(
-          `⚠ ${project.name}: missing bearer secret — re-run \`ggcoder pixel install\` to refresh management access`,
+          `⚠ ${project.name}: missing bearer secret — re-run \`ezcoder pixel install\` to refresh management access`,
         ),
       );
       continue;
@@ -339,7 +339,7 @@ function printNoProjects(): void {
   console.log("");
   console.log(
     "Run " +
-      chalk.hex("#60a5fa").bold("ggcoder pixel install") +
+      chalk.hex("#60a5fa").bold("ezcoder pixel install") +
       " inside any project to wire it up.",
   );
   console.log("");

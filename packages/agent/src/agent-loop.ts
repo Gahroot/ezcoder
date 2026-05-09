@@ -24,7 +24,7 @@ const DEFAULT_MAX_TURNS = 200;
 /**
  * Lightweight stream diagnostic callback. When set, the agent loop calls this
  * at every phase boundary with timing and state info. This lets the hosting
- * app (ggcoder, come-alive, etc.) log stall diagnostics without the agent
+ * app (ezcoder, come-alive, etc.) log stall diagnostics without the agent
  * package needing fs/process dependencies.
  */
 export type StreamDiagnosticFn = (phase: string, data?: Record<string, unknown>) => void;

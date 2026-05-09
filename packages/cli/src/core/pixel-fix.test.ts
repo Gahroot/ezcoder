@@ -14,7 +14,7 @@ import {
 
 let home: string;
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), "ggcoder-fix-"));
+  home = mkdtempSync(join(tmpdir(), "ezcoder-fix-"));
 });
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
@@ -24,9 +24,9 @@ function setupProjectMapping(
   path: string,
   secret = `sk_live_${projectId}_test`,
 ): void {
-  mkdirSync(join(home, ".gg"), { recursive: true });
+  mkdirSync(join(home, ".ezcoder"), { recursive: true });
   writeFileSync(
-    join(home, ".gg", "projects.json"),
+    join(home, ".ezcoder", "projects.json"),
     JSON.stringify({ [projectId]: { name, path, secret } }),
   );
 }
@@ -165,7 +165,7 @@ describe("fixError — orchestration", () => {
     ]);
 
     const { fn: spawnFn, calls: spawnCalls } = buildSpawnFn([
-      // ggcoder agent run
+      // ezcoder agent run
       () => makeFakeChild(0),
       // git show-ref --verify refs/heads/fix/pixel-err_abc123
       () => makeFakeChild(0),
@@ -186,9 +186,9 @@ describe("fixError — orchestration", () => {
     expect(result.branch).toBe("fix/pixel-err_abc123");
     expect(result.reason).toContain("3 commit");
 
-    // First call to ggcoder uses the right cwd and args
+    // First call to ezcoder uses the right cwd and args
     const ggCall = spawnCalls[0];
-    expect(ggCall?.command).toBe("ggcoder");
+    expect(ggCall?.command).toBe("ezcoder");
     expect(ggCall?.args).toContain("--json");
     expect(ggCall?.args).toContain("--system-prompt");
     expect(ggCall?.options.cwd).toBe("/tmp/demo-app");
@@ -233,7 +233,7 @@ describe("fixError — orchestration", () => {
     ]);
 
     const { fn: spawnFn } = buildSpawnFn([
-      () => makeFakeChild(0), // ggcoder ok
+      () => makeFakeChild(0), // ezcoder ok
       () => makeFakeChild(1), // git show-ref FAIL
     ]);
 
@@ -258,7 +258,7 @@ describe("fixError — orchestration", () => {
     ]);
 
     const { fn: spawnFn } = buildSpawnFn([
-      () => makeFakeChild(0), // ggcoder
+      () => makeFakeChild(0), // ezcoder
       () => makeFakeChild(0), // branch exists
       () => makeFakeChild(0), // main exists
       () => makeFakeChild(0, "0\n"), // 0 commits ahead
@@ -285,7 +285,7 @@ describe("fixError — orchestration", () => {
     ]);
 
     const { fn: spawnFn, calls: spawnCalls } = buildSpawnFn([
-      () => makeFakeChild(0), // ggcoder
+      () => makeFakeChild(0), // ezcoder
       () => makeFakeChild(0), // branch exists
       () => makeFakeChild(1), // main missing
       () => makeFakeChild(0), // master exists
@@ -341,9 +341,9 @@ describe("fixError — orchestration", () => {
 
   it("throws when projects.json has no entries with a stored secret", async () => {
     // Legacy entries (no secret) — must re-install before management works.
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({ proj_legacy: { name: "x", path: "/x" } }),
     );
     const { fn: fetchFn } = fakeFetchScript([]);

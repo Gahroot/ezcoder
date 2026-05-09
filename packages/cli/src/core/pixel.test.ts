@@ -9,7 +9,7 @@ const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), "ggcoder-pixel-"));
+  home = mkdtempSync(join(tmpdir(), "ezcoder-pixel-"));
   logSpy.mockClear();
   errorSpy.mockClear();
 });
@@ -52,16 +52,16 @@ describe("listAllErrors", () => {
   });
 
   it("prints a friendly message when projects.json is empty", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
-    writeFileSync(join(home, ".gg", "projects.json"), "{}");
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
+    writeFileSync(join(home, ".ezcoder", "projects.json"), "{}");
     await listAllErrors({ homeDir: home, fetchFn: fakeFetch({}) });
     expect(output()).toContain("No projects registered");
   });
 
   it("renders a clean state when a project has zero errors", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({ proj_a: project("alpha", "/p/alpha") }),
     );
     await listAllErrors({ homeDir: home, fetchFn: fakeFetch({ proj_a: [] }) });
@@ -72,9 +72,9 @@ describe("listAllErrors", () => {
   });
 
   it("groups errors per project and aggregates a summary", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({
         proj_a: project("alpha", "/p/alpha"),
         proj_b: project("beta", "/p/beta"),
@@ -142,9 +142,9 @@ describe("listAllErrors", () => {
   });
 
   it("prints a per-project error when fetch fails for that project", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({ proj_a: project("alpha", "/p/alpha") }),
     );
     const failingFetch: typeof fetch = (async () =>
@@ -159,9 +159,9 @@ describe("listAllErrors", () => {
   });
 
   it("fetchPixelEntries flattens errors from all projects, grouped and sorted", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({
         proj_a: project("alpha", "/p/a"),
         proj_b: project("beta", "/p/b"),
@@ -220,9 +220,9 @@ describe("listAllErrors", () => {
   });
 
   it("fetchPixelEntries records unreachable projects on fetch failure", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({ proj_a: project("alpha", "/p/a") }),
     );
     const failingFetch: typeof fetch = (async () =>
@@ -234,9 +234,9 @@ describe("listAllErrors", () => {
   });
 
   it("prefers the topmost in_app frame for the location line", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({ proj_a: project("alpha", "/p") }),
     );
     const errors = [
@@ -263,9 +263,9 @@ describe("listAllErrors", () => {
   });
 
   it("sends Authorization: Bearer <secret> on every list request", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({
         proj_a: { name: "alpha", path: "/p/a", secret: "sk_live_secret_a" },
       }),
@@ -286,9 +286,9 @@ describe("listAllErrors", () => {
   });
 
   it("flags projects without a stored secret as unmanaged and skips them", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({
         proj_legacy: { name: "legacy-app", path: "/p/legacy" }, // no secret
         proj_new: project("new-app", "/p/new"),
@@ -304,9 +304,9 @@ describe("listAllErrors", () => {
   });
 
   it("listAllErrors prints a re-install hint for projects with no secret", async () => {
-    mkdirSync(join(home, ".gg"), { recursive: true });
+    mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(
-      join(home, ".gg", "projects.json"),
+      join(home, ".ezcoder", "projects.json"),
       JSON.stringify({
         proj_legacy: { name: "legacy-app", path: "/p/legacy" },
       }),
@@ -315,6 +315,6 @@ describe("listAllErrors", () => {
     const out = output();
     expect(out).toContain("legacy-app");
     expect(out).toContain("missing bearer secret");
-    expect(out).toContain("ggcoder pixel install");
+    expect(out).toContain("ezcoder pixel install");
   });
 });

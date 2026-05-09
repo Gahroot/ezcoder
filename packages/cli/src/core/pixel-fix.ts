@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import chalk from "chalk";
-import { DEFAULT_INGEST_URL } from "@kenkaiiii/gg-pixel";
+import { DEFAULT_INGEST_URL } from "@prestyj/pixel";
 import { PIXEL_FIX_SYSTEM_PROMPT } from "./pixel-fix-agent.js";
 import { tryResolveStack } from "./source-maps.js";
 
@@ -82,7 +82,7 @@ export async function fixError(errorId: string, opts: FixOptions = {}): Promise<
     prompt: buildAgentPrompt(error, branch, project.path),
     systemPrompt: PIXEL_FIX_SYSTEM_PROMPT,
     spawnFn: opts.spawnFn ?? spawn,
-    ggcoderBin: opts.ggcoderBin ?? "ggcoder",
+    ggcoderBin: opts.ggcoderBin ?? "ezcoder",
     inheritStdio: opts.inheritStdio ?? true,
     maxTurns: opts.maxTurns ?? 60,
   });
@@ -124,9 +124,9 @@ export async function runQueue(opts: QueueOptions = {}): Promise<{
   const home = opts.homeDir ?? homedir();
   const log = opts.onProgress ?? ((msg: string) => console.log(msg));
 
-  const projectsPath = join(home, ".gg", "projects.json");
+  const projectsPath = join(home, ".ezcoder", "projects.json");
   if (!existsSync(projectsPath)) {
-    log(chalk.dim("No projects registered. Run `ggcoder pixel install` first."));
+    log(chalk.dim("No projects registered. Run `ezcoder pixel install` first."));
     return { fixed: 0, failed: 0, total: 0 };
   }
   const projects = JSON.parse(readFileSync(projectsPath, "utf8")) as Record<string, ProjectMapping>;
@@ -323,7 +323,7 @@ export function buildAgentPrompt(error: ErrorRow, branch: string, projectDir?: s
 }
 
 /**
- * Walks ~/.gg/projects.json trying each project's bearer secret against
+ * Walks ~/.ezcoder/projects.json trying each project's bearer secret against
  * GET /api/errors/:id until one returns 200. Wrong secrets get 403/404 from
  * the server, so this scan exits as soon as the rightful owner is found.
  *
@@ -336,17 +336,17 @@ async function resolveErrorOwner(
   errorId: string,
   home: string,
 ): Promise<{ error: ErrorRow; project: ProjectMapping; secret: string }> {
-  const projectsPath = join(home, ".gg", "projects.json");
+  const projectsPath = join(home, ".ezcoder", "projects.json");
   if (!existsSync(projectsPath)) {
     throw new Error(
-      `No projects mapping at ${projectsPath} — run \`ggcoder pixel install\` in the project first.`,
+      `No projects mapping at ${projectsPath} — run \`ezcoder pixel install\` in the project first.`,
     );
   }
   const projects = JSON.parse(readFileSync(projectsPath, "utf8")) as Record<string, ProjectMapping>;
   const ownersWithSecret = Object.entries(projects).filter(([, p]) => Boolean(p.secret));
   if (ownersWithSecret.length === 0) {
     throw new Error(
-      "No managed projects on this machine — run `ggcoder pixel install` in the project to refresh management access.",
+      "No managed projects on this machine — run `ezcoder pixel install` in the project to refresh management access.",
     );
   }
   for (const [, project] of ownersWithSecret) {
@@ -360,27 +360,27 @@ async function resolveErrorOwner(
     // 401/403/404 → not this project; keep scanning.
   }
   throw new Error(
-    `Error ${errorId} was not found in any registered project. Ensure the project is installed (\`ggcoder pixel install\`).`,
+    `Error ${errorId} was not found in any registered project. Ensure the project is installed (\`ezcoder pixel install\`).`,
   );
 }
 
 function lookupProjectSecret(home: string, projectId: string): string {
-  const projectsPath = join(home, ".gg", "projects.json");
+  const projectsPath = join(home, ".ezcoder", "projects.json");
   if (!existsSync(projectsPath)) {
     throw new Error(
-      `No projects mapping at ${projectsPath} — run \`ggcoder pixel install\` in the project first.`,
+      `No projects mapping at ${projectsPath} — run \`ezcoder pixel install\` in the project first.`,
     );
   }
   const projects = JSON.parse(readFileSync(projectsPath, "utf8")) as Record<string, ProjectMapping>;
   const project = projects[projectId];
   if (!project) {
     throw new Error(
-      `No local mapping for project ${projectId} in ${projectsPath}. Run \`ggcoder pixel install\` in the project's directory.`,
+      `No local mapping for project ${projectId} in ${projectsPath}. Run \`ezcoder pixel install\` in the project's directory.`,
     );
   }
   if (!project.secret) {
     throw new Error(
-      `Project ${projectId} is missing its bearer secret in ${projectsPath} — re-run \`ggcoder pixel install\` to refresh.`,
+      `Project ${projectId} is missing its bearer secret in ${projectsPath} — re-run \`ezcoder pixel install\` to refresh.`,
     );
   }
   return project.secret;

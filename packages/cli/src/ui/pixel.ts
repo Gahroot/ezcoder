@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_INGEST_URL } from "@kenkaiiii/gg-pixel";
+import { DEFAULT_INGEST_URL } from "@prestyj/pixel";
 import { fetchPixelEntries, type PixelEntry, type PixelFetchResult } from "../core/pixel.js";
 
 const LOGO_LINES = [" ▄▀▀▀ ▄▀▀▀", " █ ▀█ █ ▀█", " ▀▄▄▀ ▀▄▄▀"];
@@ -39,7 +39,7 @@ export type PixelSelection =
   | { kind: "all" };
 
 interface RenderOptions {
-  /** Override the home directory used to look up `~/.gg/projects.json`. */
+  /** Override the home directory used to look up `~/.ezcoder/projects.json`. */
   homeDir?: string;
   ingestUrl?: string;
   fetchFn?: typeof fetch;
@@ -170,10 +170,10 @@ export function renderScreen(
   lines.push(
     gradientLine(LOGO_LINES[0]!) +
       GAP +
-      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#60a5fa").bold("EZ Coder") +
       (version ? chalk.hex(TEXT_DIM)(` v${version}`) : "") +
       chalk.hex(TEXT_DIM)(" · By ") +
-      chalk.hex(TEXT).bold("Ken Kai"),
+      chalk.hex(TEXT).bold("Nolan Grout"),
   );
   lines.push(gradientLine(LOGO_LINES[1]!) + GAP + chalk.hex(PRIMARY)("Pixel"));
   lines.push(gradientLine(LOGO_LINES[2]!) + GAP + chalk.hex(TEXT_DIM)(summarize(data)));
@@ -185,7 +185,7 @@ export function renderScreen(
     lines.push("");
     lines.push(
       "  Run " +
-        chalk.hex(PRIMARY).bold("ggcoder pixel install") +
+        chalk.hex(PRIMARY).bold("ezcoder pixel install") +
         chalk.hex(TEXT_DIM)(" inside any project to wire it up."),
     );
   } else if (data.entries.length === 0) {
@@ -213,7 +213,7 @@ export function renderScreen(
     for (const name of data.unmanaged) {
       lines.push(
         chalk.hex("#fbbf24")(
-          `  ⚠ ${name}: missing bearer secret — re-run \`ggcoder pixel install\``,
+          `  ⚠ ${name}: missing bearer secret — re-run \`ezcoder pixel install\``,
         ),
       );
     }
@@ -448,7 +448,7 @@ function windowEntries(entries: PixelEntry[], selectedIndex: number, maxVisible:
 }
 
 function readProjectSecret(homeDir: string | undefined, projectId: string): string | null {
-  const path = join(homeDir ?? homedir(), ".gg", "projects.json");
+  const path = join(homeDir ?? homedir(), ".ezcoder", "projects.json");
   if (!existsSync(path)) return null;
   try {
     const map = JSON.parse(readFileSync(path, "utf8")) as Record<string, { secret?: string }>;

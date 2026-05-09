@@ -20,7 +20,7 @@ export function useTerminalTitle({ isRunning, sessionTitle }: TerminalTitleOptio
     if (sessionTitle) {
       title = isRunning ? `● ${sessionTitle}` : sessionTitle;
     } else {
-      title = "GG Coder";
+      title = "EZ Coder";
     }
     if (title !== prevTitleRef.current) {
       prevTitleRef.current = title;
@@ -31,7 +31,7 @@ export function useTerminalTitle({ isRunning, sessionTitle }: TerminalTitleOptio
   // Reset title on unmount
   useEffect(() => {
     return () => {
-      stdout?.write(`\x1b]0;GG Coder\x1b\\`);
+      stdout?.write(`\x1b]0;EZ Coder\x1b\\`);
     };
   }, [stdout]);
 }

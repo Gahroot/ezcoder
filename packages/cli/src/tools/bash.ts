@@ -53,7 +53,7 @@ const ENV_ALLOWLIST = new Set([
 ]);
 
 function getSafeEnv(): Record<string, string> {
-  const env: Record<string, string> = { TERM: "dumb", GG_CODER: "true" };
+  const env: Record<string, string> = { TERM: "dumb", EZ_CODER: "true" };
   for (const key of ENV_ALLOWLIST) {
     if (process.env[key]) env[key] = process.env[key]!;
   }

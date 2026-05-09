@@ -2,7 +2,7 @@ import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 import type { ThemeName } from "./ui/theme/theme.js";
 
 export const APP_NAME = "ezcoder";
@@ -191,7 +191,7 @@ async function seedDefaultSkills(skillsDir: string): Promise<void> {
 
 const FIND_SKILLS_MD = `---
 name: find-skills
-description: Discover and install agent skills from the open ecosystem into .gg/skills/. Use when the user asks "how do I do X", "find a skill for X", "is there a skill that can…", or wants to extend the agent with capabilities that already exist elsewhere.
+description: Discover and install agent skills from the open ecosystem into .ezcoder/skills/. Use when the user asks "how do I do X", "find a skill for X", "is there a skill that can…", or wants to extend the agent with capabilities that already exist elsewhere.
 ---
 
 # Find Skills
@@ -208,8 +208,8 @@ Activate this skill when the user:
 
 ## Install location — read this carefully
 
-- **Default: project-local** → \`./.gg/skills/\`. Project-specific skills (React testing, Convex patterns, Next.js conventions, etc.) must live with the project they belong to. A React skill installed globally pollutes every other project.
-- **Global** → \`~/.gg/skills/\`. Only install here if the user **explicitly** asks ("install globally", "across all projects") and the skill is genuinely cross-cutting (e.g. a release-notes generator, a git-hygiene helper).
+- **Default: project-local** → \`./.ezcoder/skills/\`. Project-specific skills (React testing, Convex patterns, Next.js conventions, etc.) must live with the project they belong to. A React skill installed globally pollutes every other project.
+- **Global** → \`~/.ezcoder/skills/\`. Only install here if the user **explicitly** asks ("install globally", "across all projects") and the skill is genuinely cross-cutting (e.g. a release-notes generator, a git-hygiene helper).
 
 When in doubt, install to the project. It is trivial to promote a project skill to global later; harder to unpollute a global namespace.
 
@@ -240,8 +240,8 @@ Skills come in two shapes. gg-coder's loader handles both.
 A single \`SKILL.md\` (or \`<name>.md\`). Install as one flat file:
 
 \`\`\`bash
-mkdir -p .gg/skills
-curl -fsSL <raw-githubusercontent-url> -o .gg/skills/<skill-name>.md
+mkdir -p .ezcoder/skills
+curl -fsSL <raw-githubusercontent-url> -o .ezcoder/skills/<skill-name>.md
 \`\`\`
 
 ### Shape B — directory with supporting files
@@ -249,20 +249,20 @@ curl -fsSL <raw-githubusercontent-url> -o .gg/skills/<skill-name>.md
 A directory containing \`SKILL.md\` plus scripts, reference docs, or assets. Preserve the directory:
 
 \`\`\`bash
-mkdir -p .gg/skills
+mkdir -p .ezcoder/skills
 # Simplest: tarball the repo, extract only the skill path
 curl -fsSL https://github.com/<owner>/<repo>/archive/refs/heads/main.tar.gz \\
-  | tar -xz --strip-components=2 -C .gg/skills <repo>-main/skills/<skill-name>
+  | tar -xz --strip-components=2 -C .ezcoder/skills <repo>-main/skills/<skill-name>
 \`\`\`
 
 If that layout doesn't match the source repo, inspect with \`gh api repos/<owner>/<repo>/contents/<path>\` and fetch individual files via their \`download_url\`.
 
-For global installs, swap \`.gg/skills\` for \`~/.gg/skills\` — but remember the default is project.
+For global installs, swap \`.ezcoder/skills\` for \`~/.ezcoder/skills\` — but remember the default is project.
 
 ## If nothing fits
 
 - Say so honestly — don't fabricate a match.
-- Offer to either (a) complete the task directly this once, or (b) scaffold a new \`./.gg/skills/<name>.md\` based on what the user describes. A minimal skill is just frontmatter plus instructions:
+- Offer to either (a) complete the task directly this once, or (b) scaffold a new \`./.ezcoder/skills/<name>.md\` based on what the user describes. A minimal skill is just frontmatter plus instructions:
 
 \`\`\`markdown
 ---

@@ -54,15 +54,15 @@ import { renderLoginSelector } from "./ui/login.js";
 import { renderSessionSelector } from "./ui/sessions.js";
 import type { CompletedItem } from "./ui/App.js";
 import { formatUserError } from "./utils/error-handler.js";
-import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import type { ThemeName } from "./ui/theme/theme.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { SessionManager } from "./core/session-manager.js";
 import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
-import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
+import { setStreamDiagnostic } from "@prestyj/agent";
 import { buildSystemPrompt } from "./system-prompt.js";
-import { isEyesActive, journalCount } from "@kenkaiiii/ggcoder-eyes";
+import { isEyesActive, journalCount } from "@prestyj/eyes";
 import { createTools } from "./tools/index.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import { setEstimatorModel } from "./core/compaction/token-estimator.js";
@@ -130,17 +130,17 @@ function printHelp(): void {
   console.log(
     gradientLine(LOGO_LINES[0]) +
       gap +
-      primary.bold("GG Coder") +
+      primary.bold("EZ Coder") +
       dim(` v${CLI_VERSION}`) +
       dim(" · By ") +
-      bold("Ken Kai"),
+      bold("Nolan Grout"),
   );
   console.log(gradientLine(LOGO_LINES[1]) + gap + dim("AI coding agent"));
   console.log(gradientLine(LOGO_LINES[2]));
   console.log();
 
   // Usage
-  console.log(primary("Usage:") + "  ggcoder " + dim("[options]") + " " + dim("[prompt]"));
+  console.log(primary("Usage:") + "  ezcoder " + dim("[options]") + " " + dim("[prompt]"));
   console.log();
 
   // Commands
@@ -190,7 +190,7 @@ function printHelp(): void {
     ["/session", "Switch or create sessions"],
     ["/new", "Start a new session"],
     ["/settings", "Open settings"],
-    ["/quit", "Exit ggcoder"],
+    ["/quit", "Exit ezcoder"],
   ];
   for (const [name, desc] of slashCmds) {
     console.log(`  ${accent(name.padEnd(20))} ${dim(desc)}`);
@@ -220,7 +220,7 @@ function main(): void {
   }
 
   // Intercept --help / -h before anything else so it works with subcommands
-  // (e.g. `ggcoder login --help` or `ggcoder --help`)
+  // (e.g. `ezcoder login --help` or `ezcoder --help`)
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     printHelp();
     process.exit(0);
@@ -229,16 +229,16 @@ function main(): void {
   // Handle subcommands before parseArgs
   const subcommand = process.argv[2];
 
-  // Passthrough to @kenkaiiii/ggcoder-eyes CLI. Agents call this from bash as
-  // `ggcoder eyes log rough "..."` etc. — `ggcoder` is guaranteed on PATH
+  // Passthrough to @prestyj/eyes CLI. Agents call this from bash as
+  // `ezcoder eyes log rough "..."` etc. — `ezcoder` is guaranteed on PATH
   // (user launched it), so this avoids depending on nested bin visibility in
   // global npm/pnpm installs.
   if (subcommand === "eyes") {
     let cliPath: string;
     try {
-      cliPath = _require.resolve("@kenkaiiii/ggcoder-eyes/cli");
+      cliPath = _require.resolve("@prestyj/eyes/cli");
     } catch {
-      process.stderr.write("ggcoder-eyes package not installed\n");
+      process.stderr.write("ezcoder-eyes package not installed\n");
       process.exit(1);
     }
     const r = spawnSync(process.execPath, [cliPath, ...process.argv.slice(3)], {
@@ -457,10 +457,10 @@ function main(): void {
 function requireInteractiveTTY(): void {
   if (process.stdin.isTTY) return;
   process.stderr.write(
-    chalk.red("ggcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
+    chalk.red("ezcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
       chalk.hex("#6b7280")(
-        "Run ggcoder directly in your terminal (not piped or through an API shell). " +
-          'For headless use try "ggcoder --json \'<prompt>\'" or "ggcoder --rpc".\n',
+        "Run ezcoder directly in your terminal (not piped or through an API shell). " +
+          'For headless use try "ezcoder --json \'<prompt>\'" or "ezcoder --rpc".\n',
       ),
   );
   process.exit(1);
@@ -530,7 +530,7 @@ async function runInkTUI(opts: {
   const creds = await authStorage.resolveCredentials(provider);
 
   // Ensure project-local .gg directories exist
-  const localGGDir = path.join(cwd, ".gg");
+  const localGGDir = path.join(cwd, ".ezcoder");
   await fs.promises.mkdir(path.join(localGGDir, "skills"), { recursive: true });
   await fs.promises.mkdir(path.join(localGGDir, "commands"), { recursive: true });
   await fs.promises.mkdir(path.join(localGGDir, "agents"), { recursive: true });
@@ -569,7 +569,7 @@ async function runInkTUI(opts: {
 
   // Rebuilds the cwd-bound tools for a different project root. Used by the
   // pixel-fix flow so the agent operates in the error's project, not in
-  // wherever ggcoder was launched from.
+  // wherever ezcoder was launched from.
   const rebuildToolsForCwd = (newCwd: string) => {
     const { tools: rebuilt } = createTools(newCwd, {
       agents,
@@ -831,17 +831,17 @@ async function runDoctor(): Promise<void> {
   console.log();
   console.log(
     `  ${gradientLine(LOGO[0]!)}${GAP}` +
-      primary.bold("GG Coder") +
+      primary.bold("EZ Coder") +
       dim(` v${CLI_VERSION}`) +
       dim(" · By ") +
-      chalk.white.bold("Ken Kai"),
+      chalk.white.bold("Nolan Grout"),
   );
   console.log(`  ${gradientLine(LOGO[1]!)}${GAP}` + accent("Doctor"));
   console.log(`  ${gradientLine(LOGO[2]!)}${GAP}` + dim("Diagnose & Fix"));
   console.log();
 
   const home = os.homedir();
-  const ggDir = path.join(home, ".gg");
+  const ggDir = path.join(home, ".ezcoder");
   const authFile = path.join(ggDir, "auth.json");
   const lockFile = authFile + ".lock";
   const myUid = process.getuid!();
@@ -860,7 +860,7 @@ async function runDoctor(): Promise<void> {
   }
   if (myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
-    console.log(dim("      Running ggcoder with sudo can cause ownership issues."));
+    console.log(dim("      Running ezcoder with sudo can cause ownership issues."));
     console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
   }
   console.log();
@@ -974,7 +974,7 @@ async function runDoctor(): Promise<void> {
         await fsP.copyFile(authFile, path.join(ggDir, backupName));
         await fsP.writeFile(authFile, "{}", { encoding: "utf-8", mode: 0o600 });
         console.log(good(`    ✓ Corrupt file backed up as ${backupName}`));
-        console.log(dim('      Run "ggcoder login" to re-authenticate'));
+        console.log(dim('      Run "ezcoder login" to re-authenticate'));
         authData = {};
         fixed++;
       }
@@ -991,7 +991,7 @@ async function runDoctor(): Promise<void> {
     }
   } catch {
     console.log(dim(`    Path:  ${authFile}`));
-    console.log(warn('    Not found — run "ggcoder login" to authenticate'));
+    console.log(warn('    Not found — run "ezcoder login" to authenticate'));
   }
   console.log();
 
@@ -1198,10 +1198,10 @@ async function runTelegramSetup(): Promise<void> {
   console.log();
   console.log(
     `  ${gradientText(LOGO[0]!)}${GAP}` +
-      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#60a5fa").bold("EZ Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" · By ") +
-      chalk.white.bold("Ken Kai"),
+      chalk.white.bold("Nolan Grout"),
   );
   console.log(`  ${gradientText(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Telegram Setup"));
   console.log(`  ${gradientText(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")("Remote Control"));
@@ -1305,7 +1305,7 @@ async function runTelegramSetup(): Promise<void> {
         chalk.hex("#6b7280")("    2. Add the bot to your group\n") +
         chalk.hex("#6b7280")("    3. Send /link in the group to connect it to a project\n\n") +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ggcoder serve\n"),
+        chalk.hex("#6b7280")("    cd your-project && ezcoder serve\n"),
     );
   } finally {
     rl.close();
@@ -1328,18 +1328,18 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken = serveValues["bot-token"] ?? process.env.GG_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
-  const userIdStr = serveValues["user-id"] ?? process.env.GG_TELEGRAM_USER_ID;
+  const botToken = serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
   if (!botToken || !userId || isNaN(userId)) {
     console.error(
       chalk.hex("#ef4444")("Telegram not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ggcoder telegram") +
+        chalk.hex("#60a5fa").bold("ezcoder telegram") +
         " to set up your bot token and user ID.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ggcoder serve --bot-token TOKEN --user-id ID"),
+        chalk.hex("#6b7280")("  ezcoder serve --bot-token TOKEN --user-id ID"),
     );
     process.exit(1);
   }
@@ -1431,10 +1431,10 @@ async function runAgentHomeLogin(): Promise<void> {
   console.log();
   console.log(
     `  ${gradientTextLocal(LOGO[0]!)}${GAP}` +
-      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#60a5fa").bold("EZ Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" \u00b7 By ") +
-      chalk.white.bold("Ken Kai"),
+      chalk.white.bold("Nolan Grout"),
   );
   console.log(`  ${gradientTextLocal(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Agent Home Setup"));
   console.log(
@@ -1484,7 +1484,7 @@ async function runAgentHomeLogin(): Promise<void> {
         chalk.hex("#4ade80")(`  \u2713 Config saved to ${paths.agentHomeFile}`) +
         "\n\n" +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ggcoder agent-home\n"),
+        chalk.hex("#6b7280")("    cd your-project && ezcoder agent-home\n"),
     );
   } finally {
     rl.close();
@@ -1512,10 +1512,10 @@ async function runAgentHome(): Promise<void> {
     console.error(
       chalk.hex("#ef4444")("Agent Home not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ggcoder agent-home-login") +
+        chalk.hex("#60a5fa").bold("ezcoder agent-home-login") +
         " to set up your token.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ggcoder agent-home --token TOKEN"),
+        chalk.hex("#6b7280")("  ezcoder agent-home --token TOKEN"),
     );
     process.exit(1);
   }
@@ -1569,7 +1569,7 @@ async function runPixel(): Promise<void> {
   if (sub === "fix") {
     const errorId = rest[0];
     if (!errorId) {
-      process.stderr.write("Usage: ggcoder pixel fix <error_id>\n");
+      process.stderr.write("Usage: ezcoder pixel fix <error_id>\n");
       process.exit(1);
     }
     const { fixError } = await import("./core/pixel-fix.js");
@@ -1661,17 +1661,17 @@ function parsePixelInstallArgs(args: string[]): ParsedInstall {
 }
 
 function printPixelHelp(): void {
-  console.log(`ggcoder pixel — error tracking + auto-fix queue
+  console.log(`ezcoder pixel — error tracking + auto-fix queue
 
 Usage:
-  ggcoder pixel                  List open errors across every registered project
-  ggcoder pixel install          Register the current project and wire up the SDK
-  ggcoder pixel fix <error_id>   Fix one specific error end-to-end
-  ggcoder pixel run              Auto-fix every open error across all projects
+  ezcoder pixel                  List open errors across every registered project
+  ezcoder pixel install          Register the current project and wire up the SDK
+  ezcoder pixel fix <error_id>   Fix one specific error end-to-end
+  ezcoder pixel run              Auto-fix every open error across all projects
 
-  ggcoder pixel install --name <name>      Override the project name
-  ggcoder pixel install --ingest-url <url> Use a custom backend URL
-  ggcoder pixel install --skip-install     Don't run the package manager
+  ezcoder pixel install --name <name>      Override the project name
+  ezcoder pixel install --ingest-url <url> Use a custom backend URL
+  ezcoder pixel install --skip-install     Don't run the package manager
 `);
 }
 
@@ -1706,7 +1706,7 @@ async function resolveActiveProvider(
   }
 
   if (loggedInProviders.length === 0) {
-    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
+    throw new Error('Not logged in to any provider. Run "ezcoder login" to authenticate.');
   }
 
   if (loggedInProviders.includes(preferred)) {

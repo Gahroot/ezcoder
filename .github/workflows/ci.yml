@@ -13,7 +13,7 @@ on:
 # We deliberately keep the gg-editor + gg-pixel packages out of the matrix
 # for now — they have heavier native deps (sharp, transformers) that slow CI
 # without buying us much for the framework's release-critical packages
-# (gg-ai, gg-agent, ggcoder, gg-boss).
+# (gg-ai, gg-agent, ezcoder, gg-boss).
 
 jobs:
   test:
@@ -41,25 +41,25 @@ jobs:
 
       - name: Build framework packages
         run: |
-          pnpm --filter @kenkaiiii/gg-ai build
-          pnpm --filter @kenkaiiii/gg-agent build
-          pnpm --filter @kenkaiiii/ggcoder build
-          pnpm --filter @kenkaiiii/gg-boss build
+          pnpm --filter @prestyj/ai build
+          pnpm --filter @prestyj/agent build
+          pnpm --filter @prestyj/cli build
+          pnpm --filter @prestyj/boss build
 
       - name: Typecheck
         run: |
-          pnpm --filter @kenkaiiii/gg-ai check
-          pnpm --filter @kenkaiiii/gg-agent check
-          pnpm --filter @kenkaiiii/ggcoder check
-          pnpm --filter @kenkaiiii/gg-boss check
+          pnpm --filter @prestyj/ai check
+          pnpm --filter @prestyj/agent check
+          pnpm --filter @prestyj/cli check
+          pnpm --filter @prestyj/boss check
 
       - name: Test framework packages
         run: |
-          pnpm --filter @kenkaiiii/gg-ai test
-          pnpm --filter @kenkaiiii/gg-agent test
-          pnpm --filter @kenkaiiii/ggcoder test
-          pnpm --filter @kenkaiiii/gg-boss test
+          pnpm --filter @prestyj/ai test
+          pnpm --filter @prestyj/agent test
+          pnpm --filter @prestyj/cli test
+          pnpm --filter @prestyj/boss test
 
-      - name: ggboss CLI smoke (extra belt-and-braces)
-        run: node packages/gg-boss/dist/cli.js --help
+      - name: ezboss CLI smoke (extra belt-and-braces)
+        run: node packages/boss/dist/cli.js --help
         shell: bash

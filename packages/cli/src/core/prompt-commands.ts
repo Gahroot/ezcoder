@@ -228,7 +228,7 @@ Keep total file under 100 lines. If updating, preserve any custom sections the u
 
 End your reply with this exact notice so the user doesn't miss it:
 
-> ⚠️ CLAUDE.md was created/updated. ggcoder loads it at startup, so **exit and restart ggcoder** (\`/quit\` then run \`ggcoder\` again) before continuing. Without a restart, I won't see the new context.`,
+> ⚠️ CLAUDE.md was created/updated. ezcoder loads it at startup, so **exit and restart ezcoder** (\`/quit\` then run \`ezcoder\` again) before continuing. Without a restart, I won't see the new context.`,
   },
   {
     name: "setup-lint",
@@ -487,19 +487,19 @@ Report that /update is now available with dependency updates, security audits, a
     description: "Set up project perception probes and document them",
     prompt: `# Eyes: Set Up or Expand Project Perception
 
-Build the perception probes this project needs and document them in CLAUDE.md so any future agent can use them. The \`ggcoder eyes\` CLI does the mechanical work (detect, install, verify); your job is **judgment** (which capabilities matter for THIS project) and **prose** (the project-specific triggers in CLAUDE.md). Re-run this command anytime to add or fix probes.
+Build the perception probes this project needs and document them in CLAUDE.md so any future agent can use them. The \`ezcoder eyes\` CLI does the mechanical work (detect, install, verify); your job is **judgment** (which capabilities matter for THIS project) and **prose** (the project-specific triggers in CLAUDE.md). Re-run this command anytime to add or fix probes.
 
 ## Steps
 
-1. \`ggcoder eyes list\` — see what's already installed/verified. **Resume**, don't restart. Skip verified probes; re-run failed ones.
-2. \`ggcoder eyes detect\` — emits JSON of \`{capability: {candidates, primary}}\` for this project.
+1. \`ezcoder eyes list\` — see what's already installed/verified. **Resume**, don't restart. Skip verified probes; re-run failed ones.
+2. \`ezcoder eyes detect\` — emits JSON of \`{capability: {candidates, primary}}\` for this project.
 3. **Pick 3–8 capabilities to install this run.** Heuristics:
    - Universal: \`http\` for any API/backend, \`runtime_logs\` for anything with a server.
    - UI: \`visual\` — for multi-stack projects (e.g. React Native), install all primary candidates with distinct names: \`install visual --impl playwright --as visual-web\`, \`install visual --impl adb --as visual-android\`, \`install visual --impl simctl --as visual-ios\`.
    - Backend with email/webhooks: \`capture_email\`, \`capture_webhook\`.
    - **Always defer** opt-ins: \`load\`, \`chaos\`, \`remote\`, \`apm\` — unless the user explicitly asked.
-4. For each pick: \`ggcoder eyes install <cap> [--impl <name>] [--as <name>]\`. On failure: retry once, then mark and continue — don't abort the whole run.
-5. \`ggcoder eyes verify\` — runs every installed probe's self-test. Some failures (\`adb\` no device, \`simctl\` no booted simulator) are expected; they get recorded.
+4. For each pick: \`ezcoder eyes install <cap> [--impl <name>] [--as <name>]\`. On failure: retry once, then mark and continue — don't abort the whole run.
+5. \`ezcoder eyes verify\` — runs every installed probe's self-test. Some failures (\`adb\` no device, \`simctl\` no booted simulator) are expected; they get recorded.
 6. **Write/update the \`## Eyes\` section in CLAUDE.md** (create CLAUDE.md if missing; do NOT clobber other sections). Use the template below. The triggers are the load-bearing piece — make them project-specific and actionable.
 7. **Report**: list verified ✓ / failed ✗ / deferred. End with the restart notice.
 
@@ -508,21 +508,21 @@ Build the perception probes this project needs and document them in CLAUDE.md so
 \`\`\`markdown
 ## Eyes
 
-Perception probes live in \`.gg/eyes/\`. All headless. Artifacts → \`.gg/eyes/out/\` (gitignored). Invoke probes yourself; don't ask the user to verify what you can verify.
+Perception probes live in \`.ezcoder/eyes/\`. All headless. Artifacts → \`.ezcoder/eyes/out/\` (gitignored). Invoke probes yourself; don't ask the user to verify what you can verify.
 
 ### Available probes
 
 | Need | Run | Then |
 |---|---|---|
-| <one-line need> | \`.gg/eyes/<id>.sh <args>\` | <how to consume the output> |
+| <one-line need> | \`.ezcoder/eyes/<id>.sh <args>\` | <how to consume the output> |
 | ... | ... | ... |
 
 ### When to use these eyes (automatically, without being asked)
 
 Reach for probes ON YOUR OWN INITIATIVE when any of these apply:
 
-- <project-specific trigger 1, e.g. "After editing any \`.tsx\` file under \`src/components/\`, screenshot the affected page with \`.gg/eyes/visual.sh http://localhost:3000/<path>\`.">
-- <trigger 2, e.g. "After adding/modifying a route under \`src/routes/\`, hit it with \`.gg/eyes/http.sh\` and confirm the response shape.">
+- <project-specific trigger 1, e.g. "After editing any \`.tsx\` file under \`src/components/\`, screenshot the affected page with \`.ezcoder/eyes/visual.sh http://localhost:3000/<path>\`.">
+- <trigger 2, e.g. "After adding/modifying a route under \`src/routes/\`, hit it with \`.ezcoder/eyes/http.sh\` and confirm the response shape.">
 - <trigger 3>
 
 If a probe fails or returns unexpected results, investigate the artifact directly before assuming the probe itself is broken.
@@ -543,9 +543,9 @@ If you're about to **guess**, **skip verification**, or **hand-wave** about some
 Wait for the user's choice. **Don't escalate more than once per request** — if the user picked the workaround, don't re-ask in the same turn.
 
 For minor friction (worked around it but wished it were better), don't interrupt — log it for later review:
-- \`ggcoder eyes log rough "<reason>" [--probe <name>]\` — minor friction, you handled it
-- \`ggcoder eyes log wish "<gap>"\` — capability you wished existed
-- \`ggcoder eyes log blocked "<reason>"\` — call this AFTER the user approves an inline-escalation fix, for the audit trail
+- \`ezcoder eyes log rough "<reason>" [--probe <name>]\` — minor friction, you handled it
+- \`ezcoder eyes log wish "<gap>"\` — capability you wished existed
+- \`ezcoder eyes log blocked "<reason>"\` — call this AFTER the user approves an inline-escalation fix, for the audit trail
 
 These accumulate quietly. The user reviews them periodically. Open signals will appear in your context on future turns until they're acked.
 \`\`\`
@@ -561,7 +561,7 @@ The "When to use" triggers are project-specific and the load-bearing piece — w
 
 End your report with:
 
-> ⚠ CLAUDE.md was updated. ggcoder loads CLAUDE.md at startup, so **exit and restart ggcoder** (\`/quit\` then \`ggcoder\` again) before asking me to use these probes. Without a restart, I won't see the new instructions in my context.`,
+> ⚠ CLAUDE.md was updated. ezcoder loads CLAUDE.md at startup, so **exit and restart ezcoder** (\`/quit\` then \`ezcoder\` again) before asking me to use these probes. Without a restart, I won't see the new instructions in my context.`,
   },
   {
     name: "eyes-improve",
@@ -569,31 +569,31 @@ End your report with:
     description: "Triage eyes signals and apply approved probe fixes",
     prompt: `# Eyes Improve: Triage Accumulated Signals
 
-Read the open signals in \`.gg/eyes/journal.jsonl\`, group related ones, propose concrete fixes, and apply what the user approves. This isn't unbounded refactoring — it's incremental probe improvement driven by real use.
+Read the open signals in \`.ezcoder/eyes/journal.jsonl\`, group related ones, propose concrete fixes, and apply what the user approves. This isn't unbounded refactoring — it's incremental probe improvement driven by real use.
 
 ## Steps
 
-1. \`ggcoder eyes log list --status open\` — if zero entries, say "nothing to triage" and stop.
+1. \`ezcoder eyes log list --status open\` — if zero entries, say "nothing to triage" and stop.
 2. **Group** signals by likely fix:
    - Multiple \`rough\` entries naming the same probe / same frustration → one patch to that probe.
-   - \`wish\` entries naming a capability not installed → one \`ggcoder eyes install <cap>\` proposal.
+   - \`wish\` entries naming a capability not installed → one \`ezcoder eyes install <cap>\` proposal.
    - \`blocked\` entries are historical (user already resolved inline) → ack them, no new work.
 3. **Cap at 5 proposals this run.** If more would apply, mention them and stop — they'll resurface next run.
 4. For each group, propose ONE concrete change:
-   - **Probe tweak**: read \`.gg/eyes/<name>.sh\`, show a diff, explain what it fixes.
-   - **New probe**: \`ggcoder eyes install <cap>\` with a one-line justification.
+   - **Probe tweak**: read \`.ezcoder/eyes/<name>.sh\`, show a diff, explain what it fixes.
+   - **New probe**: \`ezcoder eyes install <cap>\` with a one-line justification.
    - **New/updated trigger**: bullet added under \`## Eyes → When to use\` in CLAUDE.md.
 5. Present all proposals as a numbered list with diffs inline. Ask: **"Accept which? Reply with numbers (e.g. '1, 3') or 'none'."**
 6. On user reply:
-   - For accepted: apply the change. Then \`ggcoder eyes log ack <id>\` for every journal entry the proposal covers.
-   - For unmentioned / rejected: \`ggcoder eyes log defer <id>\` so they stop appearing in context every turn. The user can resurrect deferred entries later.
+   - For accepted: apply the change. Then \`ezcoder eyes log ack <id>\` for every journal entry the proposal covers.
+   - For unmentioned / rejected: \`ezcoder eyes log defer <id>\` so they stop appearing in context every turn. The user can resurrect deferred entries later.
 7. **Report**: applied changes (one line each), entries acked, entries deferred.
 
 ## Rules
 
 - **No fishing.** Only act on entries already in the journal. Don't scan the repo for hypothetical gaps.
 - **No scope creep.** "Add a \`--wait-for-selector\` flag to the visual probe" is in scope. "Rewrite the probe in TypeScript" is not.
-- **Preserve user edits.** If \`.gg/eyes/<name>.sh\` has diverged from the shipped impl (user hand-edited), point this out and ask before overwriting.
+- **Preserve user edits.** If \`.ezcoder/eyes/<name>.sh\` has diverged from the shipped impl (user hand-edited), point this out and ask before overwriting.
 - **Be honest about tradeoffs.** If a proposed fix might break existing invocations, say so in the proposal.
 - **Decline when appropriate.** If open signals are all vague or low-value, say so and defer them — don't manufacture fixes.`,
   },
@@ -686,7 +686,7 @@ After research completes, call the enter_plan tool to enter plan mode. Using the
 
    If you cannot find a concrete verification path, ask the user how to verify. Offer 2–3 specific options based on what the researcher found. Do not skip this — the workers cannot ask the user themselves.
 
-3. **Write the plan** to \`.gg/plans/batch.md\` with:
+3. **Write the plan** to \`.ezcoder/plans/batch.md\` with:
    - Summary of research findings
    - Numbered list of work units — each with: title, file list, one-line description
    - The test recipe (or "skip e2e because …")

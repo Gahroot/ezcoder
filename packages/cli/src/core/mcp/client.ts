@@ -48,7 +48,7 @@ export class MCPClientManager {
     if (config.command) {
       // Stdio transport for local processes.
       // cwd is forced to homedir so the user's working directory can't
-      // affect resolution. e.g. running ggcoder from a folder whose
+      // affect resolution. e.g. running ezcoder from a folder whose
       // package.json names the same package as the MCP server makes
       // `npx -y <pkg>` self-resolve to the local source (no built bin
       // shim) and fail with "command not found".

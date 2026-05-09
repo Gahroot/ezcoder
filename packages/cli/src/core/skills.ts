@@ -44,7 +44,7 @@ async function loadSkillsFromDir(dir: string, source: string): Promise<Skill[]> 
   for (const entry of dirents) {
     const entryPath = path.join(dir, entry.name);
 
-    // Flat layout: ~/.gg/skills/foo.md
+    // Flat layout: ~/.ezcoder/skills/foo.md
     if (entry.isFile() && entry.name.endsWith(".md")) {
       try {
         const content = await fs.readFile(entryPath, "utf-8");
@@ -57,7 +57,7 @@ async function loadSkillsFromDir(dir: string, source: string): Promise<Skill[]> 
       continue;
     }
 
-    // Directory layout (skills.sh ecosystem): ~/.gg/skills/foo/SKILL.md
+    // Directory layout (skills.sh ecosystem): ~/.ezcoder/skills/foo/SKILL.md
     if (entry.isDirectory()) {
       const skillFile = path.join(entryPath, "SKILL.md");
       try {
