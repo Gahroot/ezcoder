@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/agent",
-  "version": "4.3.158",
+  "version": "4.3.159",
   "type": "module",
   "description": "Agentic loop system with tool execution for LLMs",
   "license": "MIT",
