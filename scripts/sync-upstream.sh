@@ -215,6 +215,7 @@ while IFS= read -r file; do
     -e 's|GG_CODER|EZ_CODER|g' \
     -e 's|KenKaiii/gg-framework|Gahroot/ezcoder|g' \
     -e 's|kenkaiiii/gg-framework|Gahroot/ezcoder|g' \
+    -e 's|gg-pixel-server\.buzzbeamaustralia\.workers\.dev|pixel-server.ngrout70.workers.dev|g' \
     "$file"
 done <<< "$FILES"
 
@@ -274,9 +275,10 @@ Rebrand upstream merge: rename 9 packages and fix scope
 - Env vars: GG_*→EZCODER_*/EZBOSS_*
 - Repo: KenKaiii/gg-framework→Gahroot/ezcoder
 
-TODO: deploy our own pixel-server worker and replace the hardcoded
-ingest URL in packages/pixel (currently still points at KenKai's
-Cloudflare Worker).
+Pixel ingest URL is rewritten to pixel-server.ngrout70.workers.dev
+(our own Cloudflare Worker) by the rebrand sed pass. The agent-home
+relay URL still points at KenKai's worker — that's an external
+service we don't host, so it's intentionally left alone.
 EOF
 )"
   ok "Rebrand commit created."
