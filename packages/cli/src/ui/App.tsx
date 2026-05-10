@@ -449,7 +449,7 @@ function getTaskCount(cwd: string): number {
   try {
     const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
     const data = readFileSync(
-      join(homedir(), ".gg-tasks", "projects", hash, "tasks.json"),
+      join(homedir(), ".ezcoder-tasks", "projects", hash, "tasks.json"),
       "utf-8",
     );
     const tasks = JSON.parse(data) as { status: string }[];
@@ -469,7 +469,7 @@ function getNextPendingTask(cwd: string): PendingTaskInfo | null {
   try {
     const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
     const data = readFileSync(
-      join(homedir(), ".gg-tasks", "projects", hash, "tasks.json"),
+      join(homedir(), ".ezcoder-tasks", "projects", hash, "tasks.json"),
       "utf-8",
     );
     const tasks = JSON.parse(data) as {
@@ -494,7 +494,7 @@ function getNextPendingTask(cwd: string): PendingTaskInfo | null {
 function markTaskInProgress(cwd: string, taskId: string): void {
   try {
     const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
-    const filePath = join(homedir(), ".gg-tasks", "projects", hash, "tasks.json");
+    const filePath = join(homedir(), ".ezcoder-tasks", "projects", hash, "tasks.json");
     const data = readFileSync(filePath, "utf-8");
     const tasks = JSON.parse(data) as { id: string; status: string }[];
     const updated = tasks.map((t) => (t.id === taskId ? { ...t, status: "in-progress" } : t));

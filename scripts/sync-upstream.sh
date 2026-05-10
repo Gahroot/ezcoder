@@ -199,6 +199,7 @@ while IFS= read -r file; do
     -e 's|\.gg/debug|.ezcoder/debug|g' \
     -e 's|\.gg/settings|.ezcoder/settings|g' \
     -e 's|\.gg/update-state|.ezcoder/update-state|g' \
+    -e 's|\.gg-tasks|.ezcoder-tasks|g' \
     -e 's|GGAIError|EZCoderAIError|g' \
     -e 's|GG Coder by Ken Kai|EZ Coder by Nolan Grout|g' \
     -e 's|GG Framework|EZCoder Framework|g' \

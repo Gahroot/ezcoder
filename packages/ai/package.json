@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/ai",
-  "version": "4.3.159",
+  "version": "4.3.161",
   "type": "module",
   "description": "Unified LLM streaming API for Anthropic and OpenAI",
   "license": "MIT",
