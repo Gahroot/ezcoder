@@ -103,8 +103,13 @@ export async function buildSystemPrompt(
     `## Research & Verification\n\n` +
       `Your training data may be outdated. Do not assume — verify.\n\n` +
       `- **Docs first**: \`web_search\` → \`web_fetch\`.\n` +
-      `- **Real code second**: \`mcp__kencode-search__searchCode\` — literal-text or RE2-regex search across 2M+ public repos. ` +
-      `**Not semantic** — query the actual code (\`useState(\`, \`import { z } from "zod"\`), NOT phrases like "react hooks tutorial".\n` +
+      `- **Real code second**: \`mcp__kencode-search__searchCode\` — literal-text or RE2-regex search across 2M+ public repos. **Not semantic.**\n` +
+      `  - **Concept → query recipe.** If you only have a concept ("karaoke captions", "spring animation"), DO NOT search the concept. Anchor on a literal token a matching file would contain:\n` +
+      `    1. A library import — \`from "remotion"\`, \`import { spring }\`, \`from "@remotion/captions"\`\n` +
+      `    2. A known identifier/prop/hook — \`useVideoConfig\`, \`interpolate(\`, \`<Sequence\`, \`SubtitlePage\`\n` +
+      `    3. A unique config key — \`"defaultExport":\`, \`assetsInclude:\`\n` +
+      `    Bad: \`karaoke word animation subtitle\` → zero hits, every time. Good: \`from "@remotion/captions"\` + \`peek: true\` → real files; then narrow with \`repo\` + \`path\` and read them.\n` +
+      `  - **Filename + topic ≠ query.** \`Page.tsx tiktok\` won't match. Use \`path: "Page.tsx"\` + \`repo: "remotion-dev"\` + a literal token in \`query\`.\n` +
       `  - Filters: \`language: ["TypeScript"]\`, \`repo: "owner/name"\` (substring), \`path: "src/components/"\` (substring), \`matchCase\`, \`useRegexp\`.\n` +
       `  - Workflow: \`peek: true\` first → paths + match counts only (cheap triage). Then call again narrowed by \`repo\` + \`path\` for full snippets. Paginate with \`offset\`.\n` +
       `  - Defaults exclude tests, \`node_modules\`, vendored, build, and generated files — pass \`includeTests: true\` or \`includeVendored: true\` to widen.\n` +
