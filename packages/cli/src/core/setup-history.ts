@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const HISTORY_PATH = path.join(os.homedir(), ".gg", "setup-history.json");
+const HISTORY_PATH = path.join(os.homedir(), ".ezcoder", "setup-history.json");
 
 interface SetupHistoryEntry {
   /** ISO timestamp of the most recent /setup audit for this cwd. */
@@ -20,8 +20,8 @@ type SetupHistory = Record<string, SetupHistoryEntry>;
  * `/setup`. Used to gate the first-time auto-run: we want the audit to fire
  * exactly once per project, not once per session.
  *
- * Stored at `~/.gg/setup-history.json`. Keys are absolute cwd paths. The file
- * is small (one line per project the user has ever opened with ggcoder) and
+ * Stored at `~/.ezcoder/setup-history.json`. Keys are absolute cwd paths. The file
+ * is small (one line per project the user has ever opened with ezcoder) and
  * read/written on session start only \u2014 not in any hot path.
  */
 function readHistory(): SetupHistory {

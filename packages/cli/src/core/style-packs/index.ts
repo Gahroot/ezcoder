@@ -11,7 +11,7 @@ import { PACKS } from "./packs.js";
  * any LanguageId in PACKS).
  */
 export function loadPack(id: LanguageId, cwd: string): string | null {
-  const overridePath = path.join(cwd, ".gg", "styles", `${id}.md`);
+  const overridePath = path.join(cwd, ".ezcoder", "styles", `${id}.md`);
   try {
     const stat = fs.statSync(overridePath);
     if (stat.isFile()) {

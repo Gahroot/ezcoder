@@ -46,7 +46,7 @@ describe("setup-history", () => {
   });
 
   it("tolerates corrupt history files (treats as empty)", async () => {
-    const ggDir = path.join(tmpHome, ".gg");
+    const ggDir = path.join(tmpHome, ".ezcoder");
     fs.mkdirSync(ggDir, { recursive: true });
     fs.writeFileSync(path.join(ggDir, "setup-history.json"), "{ not valid json");
     const { isFirstTimeSetup } = await loadModule();
