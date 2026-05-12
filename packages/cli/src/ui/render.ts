@@ -97,6 +97,14 @@ export interface SessionStore {
    * and clears the field.
    */
   pendingAction?: { prompt: string; infoText?: string };
+  /**
+   * Run-all flags. Survive unmount/remount so the chain (task → resetUI →
+   * new App → task done → next task) keeps running. Without this, the
+   * remount on startTask wipes React state and the next-task pickup in
+   * onDone never fires. Cleared when run-all completes or is aborted.
+   */
+  runAllTasks?: boolean;
+  runAllPixel?: boolean;
 }
 
 export interface ResetUIOptions {
@@ -182,6 +190,8 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     overlay: config.initialOverlay ?? null,
     planAutoExpand: false,
     pendingAction: undefined,
+    runAllTasks: false,
+    runAllPixel: false,
   };
 
   const ref: { instance: InkInstance | null } = { instance: null };

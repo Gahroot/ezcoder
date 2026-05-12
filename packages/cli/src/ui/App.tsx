@@ -622,6 +622,10 @@ export interface AppProps {
     overlay?: "model" | "tasks" | "skills" | "plan" | "theme" | "eyes" | "pixel" | null;
     planAutoExpand?: boolean;
     pendingAction?: { prompt: string; infoText?: string };
+    /** Run-all chain flags — mirrored from React state so they survive the
+     * unmount/remount that startTask / startPixelFix trigger via resetUI. */
+    runAllTasks?: boolean;
+    runAllPixel?: boolean;
   };
 }
 
@@ -684,8 +688,13 @@ export function App(props: AppProps) {
   const [updatePending, setUpdatePending] = useState<boolean>(
     () => getPendingUpdate(props.version) !== null,
   );
-  const [runAllTasks, setRunAllTasks] = useState(false);
-  const runAllTasksRef = useRef(false);
+  // Seed run-all flags from sessionStore so the chain survives the
+  // unmount/remount that startTask / startPixelFix trigger via resetUI.
+  // Without this, the remounted App has runAllTasks=false and onDone
+  // never picks up the next task. (Regression from 0246c6d — unmount/
+  // remount across all panes.)
+  const [runAllTasks, setRunAllTasks] = useState(() => props.sessionStore?.runAllTasks ?? false);
+  const runAllTasksRef = useRef(runAllTasks);
   const startTaskRef = useRef<(title: string, prompt: string, taskId: string) => void>(() => {});
   const runAllPixelRef = useRef(false);
   const currentPixelFixRef = useRef<PreparedPixelFix | null>(null);
@@ -1815,6 +1824,12 @@ export function App(props: AppProps) {
         log("WARN", "agent", "Agent run aborted by user");
         setRunAllTasks(false);
         setRunAllPixel(false);
+        // Mirror immediately — the useEffect that syncs sessionStore
+        // won't run if we unmount before the next render commit.
+        if (props.sessionStore) {
+          props.sessionStore.runAllTasks = false;
+          props.sessionStore.runAllPixel = false;
+        }
         currentPixelFixRef.current = null;
         setDoneStatus(null);
         setLiveItems((prev) => {
@@ -2940,7 +2955,10 @@ export function App(props: AppProps) {
   startTaskRef.current = startTask;
   useEffect(() => {
     runAllTasksRef.current = runAllTasks;
-  }, [runAllTasks]);
+    // Mirror into sessionStore so the flag survives unmount/remount
+    // when startTask triggers resetUI for the NEXT task in the chain.
+    if (props.sessionStore) props.sessionStore.runAllTasks = runAllTasks;
+  }, [runAllTasks, props.sessionStore]);
 
   const startPixelFix = useCallback(
     (errorId: string) => {
@@ -3030,10 +3048,11 @@ export function App(props: AppProps) {
   );
   startPixelFixRef.current = startPixelFix;
 
-  const [runAllPixel, setRunAllPixel] = useState(false);
+  const [runAllPixel, setRunAllPixel] = useState(() => props.sessionStore?.runAllPixel ?? false);
   useEffect(() => {
     runAllPixelRef.current = runAllPixel;
-  }, [runAllPixel]);
+    if (props.sessionStore) props.sessionStore.runAllPixel = runAllPixel;
+  }, [runAllPixel, props.sessionStore]);
 
   const isTaskView = overlay === "tasks";
   const isSkillsView = overlay === "skills";
