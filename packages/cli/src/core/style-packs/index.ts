@@ -6,7 +6,7 @@ import { PACKS } from "./packs.js";
 
 /**
  * Load the style-pack content for a given language. Checks for a per-project
- * override at `<cwd>/.gg/styles/<id>.md` first, falling back to the bundled
+ * override at `<cwd>/.ezcoder/styles/<id>.md` first, falling back to the bundled
  * pack. Returns `null` if neither exists (defensive — should not happen for
  * any LanguageId in PACKS).
  */

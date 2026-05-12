@@ -41,7 +41,7 @@ describe("ezboss CLI smoke", () => {
     const r = await runCli(["--help"]);
     expect(r.code).toBe(0);
     const out = r.stdout + r.stderr;
-    expect(out.toLowerCase()).toContain("gg boss");
+    expect(out.toLowerCase()).toContain("ez boss");
     expect(out.toLowerCase()).toContain("usage");
   });
 

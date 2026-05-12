@@ -74,7 +74,7 @@ describe("renderScreen", () => {
     const out = strip(renderScreen(empty, 0));
     expect(out).toContain("EZ Coder");
     expect(out).toContain("Pixel");
-    expect(out).toContain("By Ken Kai");
+    expect(out).toContain("By Nolan Grout");
   });
 
   it("shows the install hint when no projects are registered", () => {

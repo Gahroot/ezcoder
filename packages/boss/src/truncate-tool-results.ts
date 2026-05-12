@@ -1,7 +1,7 @@
 /**
  * Post-turn tool-result truncation for the LLM message array.
  *
- * gg-boss runs long. Each turn, the boss and every worker accumulate full
+ * ezboss runs long. Each turn, the boss and every worker accumulate full
  * tool results in their `messages` array — `read` of a 50KB file, `bash`
  * with verbose output, `prompt_worker` returning a multi-paragraph summary.
  * Auto-compaction kicks at 80% of context window, but heap pressure builds
@@ -51,7 +51,7 @@ export const TAIL_PROTECTED_MESSAGES = 6;
  * truncation idempotent — calling the function multiple times across turns
  * doesn't re-truncate or stack notices.
  */
-const TRUNCATION_MARKER = "[[gg-boss:truncated]]";
+const TRUNCATION_MARKER = "[[ezboss:truncated]]";
 
 function buildNotice(originalLen: number, keptLen: number): string {
   const omitted = originalLen - keptLen;

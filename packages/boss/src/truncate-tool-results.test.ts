@@ -59,7 +59,7 @@ describe("truncateOversizedToolResults", () => {
     const block = (messages[0] as { content: { content: string }[] }).content[0]!;
     expect(typeof block.content).toBe("string");
     expect((block.content as string).length).toBeLessThan(big.length);
-    expect(block.content as string).toContain("gg-boss:truncated");
+    expect(block.content as string).toContain("ezboss:truncated");
     expect(block.content as string).toContain("50,000");
   });
 
@@ -78,7 +78,7 @@ describe("truncateOversizedToolResults", () => {
     expect(trimmed).toBe(1);
     const blocks = (messages[0] as { content: { content: { type: string; text: string }[] }[] })
       .content[0]!.content;
-    expect(blocks[0]!.text).toContain("gg-boss:truncated");
+    expect(blocks[0]!.text).toContain("ezboss:truncated");
   });
 
   it("is idempotent — second call truncates nothing", () => {
