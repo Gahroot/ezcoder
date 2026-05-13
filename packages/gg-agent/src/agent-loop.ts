@@ -395,6 +395,8 @@ export async function* agentLoop(
           signal: streamController.signal,
           accountId: options.accountId,
           cacheRetention: options.cacheRetention,
+          promptCacheKey: options.promptCacheKey,
+          serviceTier: options.serviceTier,
           supportsImages: options.supportsImages,
           compaction: options.compaction,
           clearToolUses: options.clearToolUses,

@@ -40,6 +40,8 @@ export interface AgentSessionOptions {
   maxTokens?: number;
   thinkingLevel?: ThinkingLevel;
   signal?: AbortSignal;
+  /** Prefix used for provider prompt-cache routing keys. */
+  promptCacheKeyPrefix?: string;
 }
 
 // ── State ──────────────────────────────────────────────────
@@ -311,6 +313,7 @@ export class AgentSession {
         signal: this.opts.signal,
         accountId,
         cacheRetention: "short",
+        promptCacheKey: this.getPromptCacheKey(),
         supportsImages: modelInfo?.supportsImages,
         // clearToolUses disabled — causes model to output unsolicited context summaries
         // Single tool result shouldn't exceed 30% of context window (in chars)
@@ -527,6 +530,11 @@ export class AgentSession {
   /** Replace the abort signal (e.g. after cancellation). */
   setSignal(signal: AbortSignal): void {
     this.opts = { ...this.opts, signal };
+  }
+
+  private getPromptCacheKey(): string | undefined {
+    if (!this.sessionId) return undefined;
+    return `${this.opts.promptCacheKeyPrefix ?? "ggcoder"}:${this.sessionId}`;
   }
 
   async dispose(): Promise<void> {

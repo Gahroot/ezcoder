@@ -78,7 +78,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // params may cause errors on other OpenAI-compatible providers like GLM or Xiaomi.
   if (options.provider === "openai" || options.provider === "moonshot") {
     const paramsAny = params as unknown as Record<string, unknown>;
-    paramsAny.prompt_cache_key = "ggcoder";
+    paramsAny.prompt_cache_key = options.promptCacheKey ?? "ggcoder";
 
     // Map cacheRetention to OpenAI's prompt_cache_retention param.
     // "long" → "24h" keeps cached prefixes active up to 24 hours (OpenAI feature).
@@ -86,6 +86,10 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     if (retention === "long") {
       paramsAny.prompt_cache_retention = "24h";
     }
+  }
+
+  if (options.provider === "openai" && options.serviceTier) {
+    (params as unknown as Record<string, unknown>).service_tier = options.serviceTier;
   }
 
   // Inject custom thinking param for GLM/Moonshot/Xiaomi (not part of OpenAI spec)

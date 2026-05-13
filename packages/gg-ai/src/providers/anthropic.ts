@@ -53,6 +53,8 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   const useStreaming = options.streaming !== false;
 
   const cacheControl = toAnthropicCacheControl(options.cacheRetention, options.baseUrl);
+  const supportsFirstPartyToolExtras =
+    !options.baseUrl || options.baseUrl.includes("api.anthropic.com");
   const downgradedMessages = downgradeUnsupportedImages(options.messages, options.supportsImages);
   const { system: rawSystem, messages } = toAnthropicMessages(downgradedMessages, cacheControl);
 
@@ -95,7 +97,12 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     ...(options.tools?.length || options.serverTools?.length || options.webSearch
       ? {
           tools: [
-            ...(options.tools?.length ? toAnthropicTools(options.tools) : []),
+            ...(options.tools?.length
+              ? toAnthropicTools(options.tools, {
+                  ...(supportsFirstPartyToolExtras && cacheControl ? { cacheControl } : {}),
+                  ...(supportsFirstPartyToolExtras ? { enableFineGrainedToolStreaming: true } : {}),
+                })
+              : []),
             ...(options.serverTools ?? []),
             ...(options.webSearch ? [{ type: "web_search_20250305", name: "web_search" }] : []),
           ] as Anthropic.MessageCreateParams["tools"],

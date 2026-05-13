@@ -240,6 +240,10 @@ export interface StreamOptions {
   signal?: AbortSignal;
   /** Prompt cache retention preference. Providers map this to their supported values. Default: "short". */
   cacheRetention?: CacheRetention;
+  /** Stable per-session cache routing key for providers that support it (OpenAI, Moonshot). */
+  promptCacheKey?: string;
+  /** OpenAI service tier for latency-sensitive requests. Only sent to first-party OpenAI API calls. */
+  serviceTier?: "auto" | "default" | "flex" | "priority";
   /** OpenAI ChatGPT account ID (from OAuth JWT) for codex endpoint */
   accountId?: string;
   /** Enable provider-native web search. Each provider uses its own format:

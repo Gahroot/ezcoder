@@ -43,6 +43,9 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   if (options.tools?.length) {
     body.tools = toCodexTools(options.tools);
   }
+  if (options.promptCacheKey) {
+    body.prompt_cache_key = options.promptCacheKey;
+  }
   if (options.temperature != null && !options.thinking) {
     body.temperature = options.temperature;
   }
@@ -111,6 +114,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   const toolCalls = new Map<string, { id: string; name: string; argsJson: string }>();
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheRead = 0;
 
   for await (const event of parseSSE(response.body)) {
     const type = event.type as string | undefined;
@@ -235,9 +239,14 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     // Response completed
     if (type === "response.completed" || type === "response.done") {
       const resp = event.response as Record<string, unknown> | undefined;
-      const usage = resp?.usage as Record<string, number> | undefined;
+      const usage = resp?.usage as
+        | (Record<string, number> & {
+            input_tokens_details?: { cached_tokens?: number };
+          })
+        | undefined;
       if (usage) {
-        inputTokens = usage.input_tokens ?? 0;
+        cacheRead = usage.input_tokens_details?.cached_tokens ?? 0;
+        inputTokens = (usage.input_tokens ?? 0) - cacheRead;
         outputTokens = usage.output_tokens ?? 0;
       }
     }
@@ -273,7 +282,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       content: contentParts.length > 0 ? contentParts : textAccum || "",
     },
     stopReason,
-    usage: { inputTokens, outputTokens },
+    usage: { inputTokens, outputTokens, ...(cacheRead > 0 && { cacheRead }) },
   };
 
   yield { type: "done", stopReason };
