@@ -169,7 +169,7 @@ Default catalog — pick what applies, drop what doesn't, add stack-specific hun
 
 ## Phase 3: Parallel hunters
 
-Spawn one subagent per active hunter **in a single response** (call the subagent tool N times, where N is whatever Phase 2 picked — do not pad to a fixed number, do not drop hunters Phase 2 selected). Each hunter receives:
+Spawn one subagent per active hunter **in a single response** (call the subagent tool N times **with \`agent: "redteam"\`**, where N is whatever Phase 2 picked — do not pad to a fixed number, do not drop hunters Phase 2 selected). The \`redteam\` agent has the adversarial-mindset persona and exclusion list baked in, so your task description only needs the attack-class scope. Each hunter receives:
 - The full recon output (Sources, Sinks, Assets, Adversary)
 - Its specific attack-class scope
 - The 2026 threat reference at the bottom of this prompt
@@ -183,7 +183,7 @@ Each hunter must:
 
 ## Phase 4: False-positive filter
 
-After hunters complete, spawn one verification subagent per surviving finding **in parallel** (call the subagent tool once per finding in a single response). Each verifier re-checks confidence and applies the hard exclusion list below.
+After hunters complete, spawn one verification subagent per surviving finding **in parallel with \`agent: "skeptic"\`** (call the subagent tool once per finding in a single response). The \`skeptic\` agent starts from "this is a false positive" and tries to disprove the finding — only confirmed findings survive. Pass each verifier the full hunter finding (location, source/sink, exploit scenario, claimed confidence). Drop anything the skeptic returns as DROP; lower severity for DOWNGRADE.
 
 **Hard exclusions — do NOT report these, even if real:**
 - DOS / rate-limiting / memory exhaustion without a clear amplification primitive
