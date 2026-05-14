@@ -13,6 +13,7 @@ import type {
 } from "../types.js";
 import { ProviderError } from "../errors.js";
 import { StreamResult } from "../utils/event-stream.js";
+import { providerDiag } from "../utils/diag.js";
 import { zodToJsonSchema } from "../utils/zod-to-json-schema.js";
 import { downgradeUnsupportedImages } from "./transform.js";
 
@@ -116,9 +117,20 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   let outputTokens = 0;
   let cacheRead = 0;
 
+  // ── Diagnostic: log the first occurrence of each raw SSE event type with
+  // timing, so we can see what Codex sends during the pre-reasoning window
+  // and decide whether earlier signals are available to drive the UI.
+  const diagStart = Date.now();
+  const diagSeen = new Set<string>();
+
   for await (const event of parseSSE(response.body)) {
     const type = event.type as string | undefined;
     if (!type) continue;
+
+    if (!diagSeen.has(type)) {
+      diagSeen.add(type);
+      providerDiag("codex_event_first", { type, sinceStartMs: Date.now() - diagStart });
+    }
 
     if (type === "error") {
       // Codex Responses streams two error shapes:
@@ -166,6 +178,17 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     if (type === "response.reasoning_summary_text.delta") {
       const delta = event.delta as string;
       yield { type: "thinking_delta", text: delta };
+    }
+
+    // Reasoning item started — the model has begun reasoning on the server.
+    // Surface this as an empty thinking_delta so the UI can flip to the
+    // "thinking" phase ~3s before the summary text actually starts streaming.
+    // (Codex emits this at ~1s vs reasoning_summary_text.delta at ~4–10s.)
+    if (type === "response.output_item.added") {
+      const item = event.item as Record<string, unknown>;
+      if (item?.type === "reasoning") {
+        yield { type: "thinking_delta", text: "" };
+      }
     }
 
     // Tool call started

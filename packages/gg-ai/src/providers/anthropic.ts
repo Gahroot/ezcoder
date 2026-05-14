@@ -98,18 +98,35 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     ...(options.topP != null ? { top_p: options.topP } : {}),
     ...(options.stop ? { stop_sequences: options.stop } : {}),
     ...(options.tools?.length || options.serverTools?.length || options.webSearch
-      ? {
-          tools: [
-            ...(options.tools?.length
-              ? toAnthropicTools(options.tools, {
+      ? (() => {
+          // Build the tools array with server-side tools taking precedence over
+          // client tools that share their name. Anthropic rejects duplicate tool
+          // names with a 400, so when both a client `web_search` (from a non-
+          // anthropic provider's tool list left over after a /model switch) and
+          // the native server-side web_search are present, drop the client one.
+          const reservedServerNames = new Set<string>();
+          if (options.webSearch) reservedServerNames.add("web_search");
+          for (const t of options.serverTools ?? []) {
+            const name = (t as { name?: string }).name;
+            if (name) reservedServerNames.add(name);
+          }
+          const clientTools = options.tools?.length
+            ? toAnthropicTools(
+                options.tools.filter((t) => !reservedServerNames.has(t.name)),
+                {
                   ...(supportsFirstPartyToolExtras && cacheControl ? { cacheControl } : {}),
                   ...(supportsFirstPartyToolExtras ? { enableFineGrainedToolStreaming: true } : {}),
-                })
-              : []),
-            ...(options.serverTools ?? []),
-            ...(options.webSearch ? [{ type: "web_search_20250305", name: "web_search" }] : []),
-          ] as Anthropic.MessageCreateParams["tools"],
-        }
+                },
+              )
+            : [];
+          return {
+            tools: [
+              ...clientTools,
+              ...(options.serverTools ?? []),
+              ...(options.webSearch ? [{ type: "web_search_20250305", name: "web_search" }] : []),
+            ] as Anthropic.MessageCreateParams["tools"],
+          };
+        })()
       : {}),
     ...(options.toolChoice && options.tools?.length
       ? { tool_choice: toAnthropicToolChoice(options.toolChoice) }
@@ -239,7 +256,14 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
           }
 
           blocks.set(idx, accum);
-          yield keepalive;
+          // Surface "reasoning started" as an empty thinking_delta the moment
+          // a thinking content block opens, so the UI flips to the thinking
+          // phase before the first delta with real content arrives.
+          if (block.type === "thinking") {
+            yield { type: "thinking_delta", text: "" };
+          } else {
+            yield keepalive;
+          }
           break;
         }
 
