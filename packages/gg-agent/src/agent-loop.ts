@@ -1,3 +1,4 @@
+import { ZodError, prettifyError } from "zod";
 import {
   stream,
   EventStream,
@@ -984,7 +985,17 @@ export async function* agentLoop(
             details = normalized.details;
           } catch (err) {
             isError = true;
-            resultContent = err instanceof Error ? err.message : String(err);
+            if (err instanceof ZodError) {
+              // Zod v4's default `.message` is a JSON dump of `.issues`, which
+              // the model can't act on. Prettify into "field X: expected Y,
+              // received Z" lines so the next call comes back with valid args.
+              resultContent =
+                `Invalid arguments for tool \`${toolCall.name}\`:\n` +
+                prettifyError(err) +
+                "\nRe-issue the call with each field as the correct type.";
+            } else {
+              resultContent = err instanceof Error ? err.message : String(err);
+            }
           }
         }
 
