@@ -34,6 +34,8 @@ export interface CreateToolsOptions {
   onEnterPlan?: (reason?: string) => void;
   /** Callback when the LLM exits plan mode. Returns approval result string. */
   onExitPlan?: (planPath: string) => Promise<string>;
+  /** Callback after write/edit tools successfully mutate a file. */
+  onFileMutated?: (filePath: string) => void | Promise<void>;
   /**
    * Getter for parent's prompt-cache routing key, evaluated lazily at
    * sub-agent spawn time. Returning a stable key from this getter lets every
@@ -58,8 +60,8 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
 
   const tools: AgentTool[] = [
     createReadTool(cwd, readFiles, ops),
-    createWriteTool(cwd, readFiles, ops, planModeRef),
-    createEditTool(cwd, readFiles, ops, planModeRef),
+    createWriteTool(cwd, readFiles, ops, planModeRef, opts?.onFileMutated),
+    createEditTool(cwd, readFiles, ops, planModeRef, opts?.onFileMutated),
     createBashTool(cwd, processManager, ops, planModeRef),
     createFindTool(cwd),
     createGrepTool(cwd, ops),

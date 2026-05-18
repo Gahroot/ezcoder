@@ -105,6 +105,7 @@ export function createEditTool(
   readFiles?: ReadTracker,
   ops: ToolOperations = localOperations,
   planModeRef?: { current: boolean },
+  onFileMutated?: (filePath: string) => void | Promise<void>,
 ): AgentTool<typeof EditParams> {
   return {
     name: "edit",
@@ -286,6 +287,7 @@ export function createEditTool(
       const finalContent = hasCRLF ? working.replace(/\n/g, "\r\n") : working;
       await ops.writeFile(resolved, finalContent);
       await recordWrite(readFiles, resolved, finalContent, ops);
+      await onFileMutated?.(resolved);
       // Partial-apply with a not_found in the mix: recordWrite just refreshed
       // the tracker, but we still want to force a re-read for the next batch
       // because the model's view of at least one region is wrong.

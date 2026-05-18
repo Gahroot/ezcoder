@@ -27,6 +27,10 @@ describe("prompt commands", () => {
     expect(init?.prompt).toContain(
       "Do not duplicate language style packs or generic verification rules",
     );
+    expect(init?.prompt).toContain("Do NOT embed generated symbol maps");
+    expect(init?.prompt).toContain("generated repo maps");
+    expect(init?.prompt).toContain("CLAUDE.md must remain durable, agent-focused project context");
+    expect(init?.prompt).not.toContain("human-authored");
     expect(init?.prompt).not.toContain("one file per component");
     expect(init?.prompt).not.toContain("single responsibility");
     expect(init?.prompt).not.toContain("zero-tolerance code quality checks");

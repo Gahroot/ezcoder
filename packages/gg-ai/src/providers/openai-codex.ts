@@ -77,12 +77,10 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   if (options.temperature != null && !options.thinking) {
     body.temperature = options.temperature;
   }
-  if (options.thinking) {
-    body.reasoning = {
-      effort: options.thinking,
-      summary: "auto",
-    };
-  }
+  body.reasoning = {
+    effort: options.thinking ?? "none",
+    summary: "auto",
+  };
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -220,7 +218,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       const key = outputTextKey(itemId, contentIndex);
       outputTextByPart.set(key, `${outputTextByPart.get(key) ?? ""}${delta}`);
       if (itemId && outputItemTypes.get(itemId) === "reasoning") {
-        yield { type: "thinking_delta", text: delta };
+        if (options.thinking) yield { type: "thinking_delta", text: delta };
       } else {
         textAccum += delta;
         yield { type: "text_delta", text: delta };
@@ -240,7 +238,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
         outputTextByPart.set(key, fullText);
         if (missingText && fullText.startsWith(streamedText)) {
           if (itemId && outputItemTypes.get(itemId) === "reasoning") {
-            yield { type: "thinking_delta", text: missingText };
+            if (options.thinking) yield { type: "thinking_delta", text: missingText };
           } else {
             textAccum += missingText;
             yield { type: "text_delta", text: missingText };
@@ -257,7 +255,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       type === "response.reasoning.delta"
     ) {
       const delta = event.delta as string;
-      yield { type: "thinking_delta", text: delta };
+      if (options.thinking) yield { type: "thinking_delta", text: delta };
     }
 
     // Reasoning item started — the model has begun reasoning on the server.
@@ -271,7 +269,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       if (itemId && itemType) {
         outputItemTypes.set(itemId, itemType);
       }
-      if (itemType === "reasoning") {
+      if (itemType === "reasoning" && options.thinking) {
         yield { type: "thinking_delta", text: "" };
       }
     }

@@ -889,4 +889,38 @@ describe("createEditTool", () => {
     const written = await fs.readFile(filePath, "utf-8");
     expect(written).toBe("line one\r\nline TWO\r\nline three\r\n");
   });
+
+  it("calls mutation callback after successful edits", async () => {
+    const filePath = path.join(tmpDir, "mutated.txt");
+    await fs.writeFile(filePath, "alpha\n");
+    const mutated: string[] = [];
+    const tool = createEditTool(tmpDir, undefined, undefined, undefined, (mutatedPath) => {
+      mutated.push(mutatedPath);
+    });
+
+    await tool.execute(
+      { file_path: "mutated.txt", edits: [{ old_text: "alpha", new_text: "beta" }] },
+      { signal: new AbortController().signal, toolCallId: "test-mutated" },
+    );
+
+    expect(mutated).toEqual([filePath]);
+  });
+
+  it("does not call mutation callback when no edits are written", async () => {
+    const filePath = path.join(tmpDir, "not-mutated.txt");
+    await fs.writeFile(filePath, "alpha\n");
+    const mutated: string[] = [];
+    const tool = createEditTool(tmpDir, undefined, undefined, undefined, (mutatedPath) => {
+      mutated.push(mutatedPath);
+    });
+
+    await expect(
+      tool.execute(
+        { file_path: "not-mutated.txt", edits: [{ old_text: "missing", new_text: "beta" }] },
+        { signal: new AbortController().signal, toolCallId: "test-not-mutated" },
+      ),
+    ).rejects.toThrow("old_text not found");
+
+    expect(mutated).toEqual([]);
+  });
 });

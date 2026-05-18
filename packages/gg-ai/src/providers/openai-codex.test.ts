@@ -72,7 +72,7 @@ describe("streamOpenAICodex", () => {
     });
   });
 
-  it("routes reasoning item output text to thinking deltas", async () => {
+  it("requests no reasoning and suppresses reasoning events when thinking is off", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -103,6 +103,7 @@ describe("streamOpenAICodex", () => {
       ),
     );
 
+    const fetchMock = vi.mocked(fetch);
     const result = streamOpenAICodex({
       provider: "openai",
       model: "gpt-5.5",
@@ -114,6 +115,69 @@ describe("streamOpenAICodex", () => {
     const events = [];
     for await (const event of result) events.push(event);
 
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as Record<
+      string,
+      unknown
+    >;
+    expect(body.reasoning).toEqual({ effort: "none", summary: "auto" });
+    expect(events).not.toContainEqual({ type: "thinking_delta", text: "" });
+    expect(events).not.toContainEqual({ type: "thinking_delta", text: "private reasoning" });
+    expect(events).not.toContainEqual({ type: "text_delta", text: "private reasoning" });
+    expect(events).toContainEqual({ type: "text_delta", text: "visible answer" });
+    await expect(result.response).resolves.toMatchObject({
+      message: { content: [{ type: "text", text: "visible answer" }] },
+    });
+  });
+
+  it("routes reasoning item output text to thinking deltas when thinking is on", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createSseResponse([
+          {
+            type: "response.output_item.added",
+            item: { type: "reasoning", id: "rs_1" },
+          },
+          {
+            type: "response.output_text.delta",
+            item_id: "rs_1",
+            delta: "private reasoning",
+          },
+          {
+            type: "response.output_item.added",
+            item: { type: "message", id: "msg_1" },
+          },
+          {
+            type: "response.output_text.delta",
+            item_id: "msg_1",
+            delta: "visible answer",
+          },
+          {
+            type: "response.completed",
+            response: { usage: { input_tokens: 10, output_tokens: 5 } },
+          },
+        ]),
+      ),
+    );
+
+    const fetchMock = vi.mocked(fetch);
+    const result = streamOpenAICodex({
+      provider: "openai",
+      model: "gpt-5.5",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "token",
+      accountId: "acct",
+      thinking: "high",
+    });
+
+    const events = [];
+    for await (const event of result) events.push(event);
+
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as Record<
+      string,
+      unknown
+    >;
+    expect(body.reasoning).toEqual({ effort: "high", summary: "auto" });
     expect(events).toContainEqual({ type: "thinking_delta", text: "private reasoning" });
     expect(events).not.toContainEqual({ type: "text_delta", text: "private reasoning" });
     expect(events).toContainEqual({ type: "text_delta", text: "visible answer" });
@@ -144,6 +208,7 @@ describe("streamOpenAICodex", () => {
       messages: [{ role: "user", content: "hi" }],
       apiKey: "token",
       accountId: "acct",
+      thinking: "high",
     });
 
     const events = [];

@@ -612,6 +612,11 @@ async function runInkTUI(opts: {
   const onExitPlanRef: { current: (planPath: string) => Promise<string> } = {
     current: () => Promise.resolve("cancelled"),
   };
+  const repoMapChangedFilesRef: { current: Set<string> } = { current: new Set() };
+  const markRepoMapDirty = (root: string, filePath: string): void => {
+    const relativePath = path.relative(root, filePath).split(path.sep).join("/");
+    repoMapChangedFilesRef.current.add(relativePath);
+  };
 
   const { tools, processManager } = createTools(cwd, {
     agents,
@@ -621,6 +626,7 @@ async function runInkTUI(opts: {
     planModeRef,
     onEnterPlan: (reason) => onEnterPlanRef.current(reason),
     onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+    onFileMutated: (filePath) => markRepoMapDirty(cwd, filePath),
   });
 
   // Rebuilds the cwd-bound tools for a different project root. Used by the
@@ -635,6 +641,7 @@ async function runInkTUI(opts: {
       planModeRef,
       onEnterPlan: (reason) => onEnterPlanRef.current(reason),
       onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+      onFileMutated: (filePath) => markRepoMapDirty(newCwd, filePath),
     });
     return rebuilt;
   };
@@ -776,6 +783,7 @@ async function runInkTUI(opts: {
     skills,
     initialOverlay: opts.initialOverlay,
     rebuildToolsForCwd,
+    repoMapChangedFilesRef,
   });
 
   closeLogger();
