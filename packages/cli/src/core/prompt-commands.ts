@@ -14,102 +14,464 @@ export const PROMPT_COMMANDS: PromptCommand[] = [
   {
     name: "scan",
     aliases: [],
-    description: "Find dead code, bugs, and security issues",
-    prompt: `Find quick wins in this codebase. Spawn 5 sub-agents in parallel using the subagent tool (call the subagent tool 5 times in a single response, each with a different task), each focusing on one area. Adapt each area to what's relevant for THIS project's stack and architecture.
+    description: "Find confirmed dead code only",
+    prompt: `# Scan: Confirmed Dead Code Review
 
-**Agent 1 - Performance**: Inefficient algorithms, unnecessary work, missing early returns, blocking operations, things that scale poorly
+Find dead code in this codebase. Do not look for bugs, security issues, performance issues, style issues, or refactors. This command is report-first: do not edit or delete anything until the user chooses an option at the end.
 
-**Agent 2 - Dead Weight**: Unused code, unreachable paths, stale comments/TODOs, obsolete files, imports to nowhere
+## Phase 1: Parallel dead-code search
 
-**Agent 3 - Lurking Bugs**: Unhandled edge cases, missing error handling, resource leaks, race conditions, silent failures
+Spawn exactly 3 sub-agents in parallel using the subagent tool (call the subagent tool 3 times in a single response), each with a different validation angle:
 
-**Agent 4 - Security**: Hardcoded secrets, injection risks, exposed sensitive data, overly permissive access, unsafe defaults
+**Agent 1 - Static Reachability**: Check exports, imports, call sites, route registration, command registration, component usage, tests, package entrypoints, and public API surfaces. Identify candidates only when references appear absent or unreachable.
 
-**Agent 5 - Dependencies & Config**: Unused packages, vulnerable dependencies, misconfigured settings, dead environment variables, orphaned config files
+**Agent 2 - Runtime & Dynamic Usage**: Check dynamic loading, reflection, string-based references, plugin systems, CLI commands, routes, config keys, generated-code hooks, framework conventions, side-effect imports, and files used outside TypeScript import graphs.
 
-## The Only Valid Findings
+**Agent 3 - Historical & Boundary Safety**: Check git history, package manifests, build configs, docs, examples, scripts, CI, release artifacts, and external-facing filenames/API names that may be consumed by users even if unused internally.
 
-A finding is ONLY valid if it falls into one of these categories:
+Each sub-agent must return only candidates with file:line ranges, estimated line counts, validation evidence, and reasons removal may be unsafe. Finding nothing is valid.
 
-1. **Dead** - Code that literally does nothing. Unused, unreachable, no-op.
-2. **Broken** - Will cause errors, crashes, or wrong behavior. Not "might" - WILL.
-3. **Dangerous** - Security holes, data exposure, resource exhaustion.
+## Phase 2: Main-agent validation
 
-That's it. Three categories. If it doesn't fit, don't report it.
+For every candidate, validate it yourself before reporting it:
 
-**NOT valid findings:**
-- "This works but could be cleaner" - NO
-- "Modern best practice suggests..." - NO
-- "This is verbose/repetitive but functional" - NO
-- "You could use X instead of Y" - NO
-- "This isn't how I'd write it" - NO
+1. Search for references with grep/find and language-aware patterns where possible, including exact symbol names, filenames, route names, config keys, CLI command names, test names, and documented examples.
+2. Check exports and package/public entrypoints before marking anything removable.
+3. Check framework conventions and dynamic lookup risks before marking anything removable. Use official docs when a framework/tool convention could imply usage without direct imports.
+4. Check whether removing it would change public API, CLI behavior, routes, config support, migration behavior, generated artifacts, docs examples, tests, or side effects.
+5. For code-level removal tasks, kencode search is secondary: use it only to verify framework/tool conventions or common generated-code patterns that could make code appear unused locally. Do not treat absence from public code search as proof that local code is dead.
+6. If evidence is incomplete, mark safety as Low or drop the finding.
 
-If the code works, isn't dangerous, and does something - leave it alone.
+## What counts as dead code
 
-## Output Format
+Report only code that is validated as one of:
 
-For each finding:
-\`\`\`
-[DEAD/BROKEN/DANGEROUS] file:line - What it is
-Impact: What happens if left unfixed
-\`\`\`
+- **Unused file**: no imports, no entrypoint references, no dynamic/framework usage, no public/exported contract.
+- **Unused export**: exported but not referenced internally or by package entrypoints, and not part of documented/public API.
+- **Unreachable branch**: condition/path cannot execute based on current code and config.
+- **Obsolete artifact**: stale script/config/example/generated artifact no longer referenced by build, docs, package manifests, or CI.
+- **No-op code**: code executes but has no observable effect and no intentional placeholder/documentation purpose.
 
-Finding nothing is a valid outcome. Most codebases don't have easy wins - that's fine.`,
+Do not report:
+- Public APIs, package exports, CLI commands, routes, config keys, migrations, docs examples, tests, generated-code integration points, or plugin hooks unless you can prove they are obsolete.
+- Code only unused in the current test suite.
+- Code that might be used through strings, framework conventions, side effects, or external consumers.
+- Anything you are not confident is safe to remove.
+
+## Safety labels
+
+- **High**: Strong evidence from static references, entrypoints, configs, docs, tests, and dynamic-use checks; removal is likely safe.
+- **Medium**: Probably dead, but one boundary or dynamic-use risk remains; remove only with targeted verification.
+- **Low**: Suspicious but not proven; do not remove without more investigation.
+
+## Final output
+
+Output one concise table, prioritized by safety and impact. No prose before the table.
+
+| Priority | Location | Lines | Dead-code type | Evidence | Safety to remove | Recommended action |
+|---|---|---:|---|---|---|---|
+| P0/P1/P2/P3 | file:line-line | N | unused file/export/branch/artifact/no-op | one sentence | High/Medium/Low | Remove / Investigate / Keep |
+
+Priority guide:
+- **P0**: High-safety removal with meaningful line or complexity reduction.
+- **P1**: High-safety small removal, or Medium-safety meaningful cleanup.
+- **P2**: Medium-safety small cleanup; needs targeted verification.
+- **P3**: Low-safety candidate; keep unless user wants deeper investigation.
+
+Rules:
+- Put High safety rows first, then Medium, then Low.
+- Keep each table cell short.
+- If no confirmed dead code is found, output one row saying none found and set action to \`Keep\`.
+- Do not recommend deletion for Low-safety rows.
+
+After the table, ask exactly:
+
+What should I do?
+A) Create tasks to remove all High-safety dead code
+B) Create tasks to remove only top priorities
+C) Skip
+
+Do not start deleting or editing until the user chooses.
+
+If the user chooses A or B, do not remove code directly. Instead, use the tasks tool to create one task per selected removal or tightly coupled removal group, ordered by dependency and risk. Each task prompt must be standalone and include the exact locations, safety evidence, reference-search requirements, removal instructions, project verification commands, and instructions to prove the removal did not delete used code before marking the task complete. That proof must include fresh local reference searches after editing, relevant project checks/tests, and official-docs or kencode comparison only where framework/tool conventions or generated-code patterns could imply hidden usage. After creating tasks, tell the user exactly: "Tasks created. Press CTRL + T to open the Tasks Pane and press R to run all tasks." Do not begin executing them unless the user explicitly starts a task.`,
   },
   {
     name: "verify",
     aliases: [],
-    description: "Verify code against docs and best practices",
-    prompt: `Verify this codebase against current best practices and official documentation. Spawn 8 sub-agents in parallel using the subagent tool (call the subagent tool 8 times in a single response, each with a different task), each focusing on one category. Each agent must VERIFY findings using real code samples or official docs - no assumptions allowed.
+    description: "Review this codebase against real-world implementations",
+    prompt: `# Verify: Codebase Real-World Check
 
-**Agent 1 - Core Framework**: Detect the main framework, verify usage patterns against official documentation
+Review this codebase's implementation against real-world code, not opinions. Start with changes from this conversation or \`git diff\` / \`git status\`; if there are no relevant changes, choose the most important implemented feature or module in the current project and review that.
 
-**Agent 2 - Dependencies/Libraries**: Check if library APIs being used are current or deprecated. Verify against library documentation
+## Phase 1: Parallel codebase review
 
-**Agent 3 - Language Patterns**: Identify the primary language, verify idioms and patterns are current
+Spawn exactly 3 sub-agents in parallel using the subagent tool (call the subagent tool 3 times in a single response), each with a different focus:
 
-**Agent 4 - Configuration**: Examine build tools, bundlers, linters, and config files. Verify settings against current tool documentation
+**Agent 1 - Implementation Shape**: Identify the main APIs, components, functions, file structure, state flow, and integration points. Return only concrete search anchors and candidate concerns.
 
-**Agent 5 - Security Patterns**: Review auth, data handling, secrets management. Verify against current security guidance and OWASP recommendations
+**Agent 2 - Completeness**: Check whether the implementation appears to miss expected pieces: edge cases, cleanup, error states, validation, tests, configuration, accessibility, migrations, docs, or lifecycle handling. Return only concrete candidate gaps.
 
-**Agent 6 - Testing**: Identify test framework in use, verify testing patterns match current library recommendations
+**Agent 3 - Divergence**: Look for unusual patterns, over-custom code, reinvented utilities, brittle abstractions, or choices that may differ from how mature projects solve the same problem. Return only concrete candidate divergences.
 
-**Agent 7 - API/Data Handling**: Review data fetching, state management, storage patterns. Verify against current patterns and framework docs
+Each sub-agent must include file:line references and suggested literal search anchors for kencode search, such as imports, function names, hooks, props, config keys, or API calls. Do not report subjective style preferences.
 
-**Agent 8 - Error Handling**: Examine error handling patterns, verify they match library documentation
+## Phase 2: Real-world comparison with kencode search
 
-## Agent Workflow
+After the 3 agents return, use \`mcp__kencode-search__searchCode\` yourself to verify or reject their candidates.
 
-Each agent MUST follow this process:
-1. **Identify** - What's relevant in THIS project for your category
-2. **Find** - Locate specific implementations in the codebase
-3. **Verify** - Check against real code or official docs
-4. **Report** - Only report when verified current practice differs from codebase
+Search rules:
+- Use literal code tokens, not conceptual phrases.
+- Prefer imports, framework identifiers, config keys, hook names, component names, and API calls from this codebase.
+- Use \`peek: true\` first when exploring, then fetch narrowed examples with repo/path filters when useful.
+- Compare against multiple real repositories when possible; one repo is weak evidence unless it is an official or canonical implementation.
+- If kencode search is unavailable or returns insufficient evidence, say that in the Evidence column and lower confidence.
 
-## The Only Valid Findings
+## What to classify
 
-A finding is ONLY valid if:
-1. **OUTDATED** - Works but uses old patterns with verified better alternatives
-2. **DEPRECATED** - Uses APIs marked deprecated in current official docs
-3. **INCORRECT** - Implementation contradicts official documentation
+Report only findings that fit one of these:
 
-**NOT valid findings:**
-- "I think there's a better way" without verification - NO
-- "This looks old" without proof - NO
-- Style preferences or subjective improvements - NO
-- Anything not verified via real code or official docs - NO
+1. **Aligned** - The implementation matches consistent real-world practice. No action needed.
+2. **Missing** - Real-world implementations consistently include something this code lacks.
+3. **Divergent** - This code differs from common implementations in a way that likely matters.
+4. **Better Elsewhere** - Real-world implementations solve the same problem more robustly or simply, with evidence.
 
-## Output Format
+Drop anything that is only taste, personal preference, or unsupported by code evidence.
 
-For each finding:
+## Final output
+
+Output one concise table, prioritized by impact. No prose before the table.
+
+| Priority | Type | Location | Finding | Evidence | Recommended action |
+|---|---|---|---|---|---|
+| P0/P1/P2/P3 | Missing/Divergent/Better Elsewhere/Aligned | file:line | one sentence | kencode evidence in one sentence | concrete action or \`None\` |
+
+Priority guide:
+- **P0**: likely bug, data loss, security risk, or broken integration.
+- **P1**: important missing behavior or maintainability risk.
+- **P2**: useful improvement backed by real-world evidence.
+- **P3**: aligned/no-action observations.
+
+Rules:
+- Keep each table cell short.
+- Put action-taking findings before aligned findings.
+- If everything is aligned, output only aligned rows and set every action to \`None\`.
+- If there is not enough evidence for any finding, output one row explaining that verification was inconclusive.
+
+After the table, ask exactly:
+
+Which should I do?
+A) Create tasks to refine and adjust all
+B) Create tasks for just top priorities
+C) Skip
+
+Do not start fixing until the user chooses.
+
+If the user chooses A or B, do not fix directly. Instead, use the tasks tool to create one task per selected finding or tightly coupled finding group, ordered by dependency and priority. Each task prompt must be standalone and include the finding, affected local files/anchors, kencode evidence from the report, instructions to compare the approach with kencode search before editing, implementation instructions, project verification commands, and instructions to compare the final implementation with kencode search again before marking the task complete. After creating tasks, tell the user exactly: "Tasks created. Press CTRL + T to open the Tasks Pane and press R to run all tasks." Do not begin executing them unless the user explicitly starts a task.`,
+  },
+  {
+    name: "expand",
+    aliases: [],
+    description: "Find high-value gaps by comparing this project to current alternatives",
+    prompt: `# Expand: Current Competitive Gap Review
+
+Find high-value gaps by comparing this project to similar, adjacent, and best-in-class repositories/tools/websites/services. This command is project-agnostic: infer what THIS project is before choosing comparisons. This command is report-first: do not edit, install, or implement anything until the user chooses an option at the end.
+
+## Phase 0: Profile this project first
+
+Before external research, inspect the local project and write a private working profile:
+
+- What the project does, who it serves, and how it ships/runs.
+- Core workflows, entrypoints, packages/modules, integrations, and user-facing surfaces.
+- Existing features, security controls, developer tooling, docs, tests, release/ops setup, and architecture patterns.
+- The most relevant comparison categories for THIS project. Do not assume this is an AI-agent app unless the repo proves it.
+
+Use this profile to decide what kinds of external projects are relevant. If the user passed arguments to /expand, treat them as a focus area and prioritize that lens while still validating project relevance.
+
+## Phase 1: Parallel expansion research
+
+Spawn exactly 5 sub-agents in parallel using the subagent tool (call the subagent tool 5 times in a single response). Give each sub-agent the project profile and a different comparison lens. Adapt the lenses to the project, but cover these defaults unless clearly irrelevant:
+
+**Agent 1 - Direct peers & product features**: Find actively maintained projects/tools/services closest to this project. Look for user-facing capabilities, workflows, integrations, onboarding, and monetizable/retention-driving features they have that this project lacks.
+
+**Agent 2 - Security, privacy & recent incidents**: Find recent security/privacy hardening, dependency ecosystem changes, advisories, exploit mitigations, auth/session patterns, sandboxing, supply-chain defenses, and issue/PR fixes from comparable projects that this project should consider.
+
+**Agent 3 - Architecture, code quality & implementation shape**: Compare code organization, APIs, extensibility, agent/runtime loops, data models, concurrency, error handling, configuration, plugin systems, and maintainability patterns. Include cleaner implementation ideas only when they produce concrete user/developer value.
+
+**Agent 4 - Developer experience, ops & release maturity**: Compare tests, CI/CD, docs, examples, templates, telemetry/observability, migrations, upgrade paths, packaging, installation, local dev, debugging, and support workflows.
+
+**Agent 5 - Ecosystem, trends & adjacent inspiration**: Look beyond direct peers to adjacent current tools, libraries, SaaS products, standards, RFCs, framework releases, and recent commits/releases that suggest important missing directions.
+
+Each sub-agent must:
+
+1. Use current sources: prefer repos/releases/commits/docs/articles updated within the last 6 months. Drop old or stale sources unless they are canonical and still actively maintained.
+2. Return only candidates that appear absent or materially weaker in this project.
+3. Include source names/URLs, freshness date (commit/release/article/doc date), and the local search anchors they used or recommend to verify absence.
+4. Separate findings into useful categories for the final report, such as Security, Product, Architecture, Developer Experience, Operations, or Ecosystem.
+5. Avoid generic wishlist items. Every candidate must be grounded in an external comparison and relevant to this project profile.
+
+## Phase 2: Main-agent validation against this repo
+
+For every candidate from the sub-agents, validate it yourself before reporting:
+
+1. Confirm the external source is relevant to this project and fresh enough (normally within 6 months).
+2. Search this repo with grep/find and language-aware anchors to check whether the feature/pattern/control already exists under another name.
+3. Check manifests, docs, configs, package exports, routes, CLI commands, tests, CI, examples, and framework conventions before calling something missing.
+4. Use mcp__kencode-search__searchCode when code-level comparison would clarify whether the external implementation is materially cleaner or more complete. Use literal imports, functions, config keys, CLI flags, route names, or package names — not conceptual phrases.
+5. Drop anything already present, not applicable, too vague, too stale, or unsupported by evidence.
+6. Keep the report short: prioritize the highest-value gaps over completeness.
+
+## What counts as a reportable gap
+
+Report only gaps that are:
+
+- **Missing capability**: A relevant current peer has a feature, integration, workflow, or user-facing behavior this project lacks.
+- **Security/privacy hardening**: A current source addressed a meaningful risk this project has not addressed.
+- **Operational maturity**: A relevant project has CI, release, observability, packaging, migration, or support practices this project lacks.
+- **Developer experience**: A relevant project has docs, examples, tests, debugging, local dev, extension points, or generated commands that would materially improve this project.
+- **Implementation quality**: A comparable codebase handles a shared concern more simply, safely, extensibly, or robustly, and this repo lacks that pattern.
+- **Ecosystem alignment**: A recent framework/API/standard/release changed expectations and this project has not caught up.
+
+Do not report:
+
+- Ideas not tied to a real current source.
+- Things this repo already has, even if named differently.
+- Stale comparisons with no activity in the last 6 months unless canonical and still relevant.
+- Pure taste or style preferences.
+- Massive rewrites unless there is a specific incremental gap to implement.
+- Low-confidence guesses.
+
+## Priority levels
+
+- **P0**: Critical gap: security exposure, data loss risk, broken compatibility, major missing core workflow, or urgent ecosystem change.
+- **P1**: High-value gap: important feature/hardening/DX/ops improvement with strong external evidence and clear fit.
+- **P2**: Useful gap: meaningful but not urgent, or requires a scoped design decision before implementation.
+- **P3**: Exploratory gap: promising but lower confidence or lower immediate impact. Use sparingly.
+
+## Final output
+
+Output separate category sections only for categories with findings. No prose before the first section. Each section must use a table with exactly these 3 columns:
+
+| Repo/tool/source | Feature or gap | Priority |
+|---|---|---|
+| name + fresh date | concise gap, evidence, and why this repo lacks it | P0/P1/P2/P3 |
+
+Rules:
+
+- The table must have exactly 3 columns. Put source URL/date/evidence and local absence proof inside the first two cells, not extra columns.
+- Sort rows by priority within each category: P0, then P1, then P2, then P3.
+- Keep each cell concise but specific enough to be actionable.
+- If no validated gaps are found, output one table row saying no fresh validated gaps were found.
+- Do not include implementation prose after the tables except the options below.
+
+After the tables, ask exactly:
+
+What should I do?
+A) Create tasks for all P0/P1 gaps
+B) Create tasks for only the top priority gap from each category
+C) Skip
+
+Do not start implementing until the user chooses.
+
+If the user chooses A or B, do not implement gaps directly. Instead, use the tasks tool to create one implementation task per selected gap, ordered by dependency and priority.
+
+Each task prompt must be standalone and include:
+
+1. The specific gap, including relevant local files/anchors and source evidence from the /expand report.
+2. Instructions to compare the implementation approach with kencode search before editing, using literal code tokens and current real-world examples.
+3. Instructions to implement the gap in the local codebase.
+4. Instructions to verify correctness after implementation by running project checks and by comparing the final implementation with kencode search again before marking the task complete.
+
+Do not create planning tasks, do not instruct tasks to use planning-only workflows, and do not create or write implementation plans from /expand selections.
+
+After creating tasks, tell the user exactly: "Tasks created. Press CTRL + T to open the Tasks Pane and press R to run all tasks." Do not begin executing them unless the user explicitly starts a task.`,
+  },
+  {
+    name: "bullet-proof",
+    aliases: ["bp"],
+    description: "Defensive security review — audit the project for exploitable weaknesses",
+    prompt: `# Bullet-Proof: Defensive Security Review
+
+You are a defensive security auditor reviewing this codebase to identify exploitable weaknesses so they can be patched before the project ships. Think rigorously about realistic threat scenarios — boundary checks, edge cases, race conditions, trust assumptions, supply-chain risks, agent-mediated paths.
+
+Goal: harden this project against realistic threats. **Report only HIGH CONFIDENCE findings (≥0.8) with a concrete data-flow path that demonstrates exposure.** Better to miss theoretical issues than flood the report with noise.
+
+This command is **dynamic and project-agnostic**. Recon drives everything. Do not assume the stack, the language, the deploy target, or that there is an LLM/agent layer. Read first, decide second.
+
+## Phase 1: Recon — Understand THIS project before auditing anything
+
+Spawn **FOUR recon subagents in parallel** using the subagent tool (call the subagent tool 4 times in a single response). Each has a narrow, independent slice so they can all run at once. **No vulnerabilities flagged in this phase.**
+
+**Recon Agent A — Stack & Deployment.** Read manifests, lockfiles, CI/CD configs, Dockerfile/Helm/Terraform, deploy scripts. Produce:
+- Primary language(s), framework(s), runtimes
+- Deploy target (browser / server / CLI / mobile / desktop / embedded / cloud function / container / serverless / smart contract / firmware / ML pipeline / library / SaaS / self-hosted)
+- How it ships (npm/PyPI/cargo/go modules/app store/binary/Docker image/Helm chart/Terraform)
+- Where it runs (which cloud/host, multi-tenant or single-tenant, network topology if discernible)
+
+**Recon Agent B — Trust Boundaries & Sources.** Walk entry-point code (route handlers, CLI argparse, queue consumers, WebSocket handlers, IPC receivers, MCP server handlers, file/env readers, deserialization entry, plugin loaders). Produce:
+- **Trust boundaries table** — every place untrusted data crosses into the system
+- **Sources table** — for each entry point: location (file:line), input shape, who controls it (anonymous / authenticated user / admin / other service / build-time / env)
+
+**Recon Agent C — Sinks.** Walk dangerous-operation code. Produce a **Sinks table** with location (file:line) and sink type for: shell exec, SQL / NoSQL / LDAP / XPath queries, eval / Function / exec / pickle / yaml.load / Marshal / ObjectInputStream, file write, file include / require with dynamic path, network egress (fetch / requests / http.Get), auth decisions, secret reads, native deserializers, dynamic code load, smart-contract external calls, child_process spawns.
+
+**Recon Agent D — Assets.** Scan for what is worth stealing or destroying. Produce an **Assets table** with location and asset type for: credentials / tokens (config files, env files, KMS, OAuth flows, ~/.{app}/auth.json-style stores), customer/PII data stores, source code with IP value, build/CI secrets, signing keys, model API tokens, on-chain funds / wallets, session state, MCP config files, license keys.
+
+**After all four return, the main agent synthesizes:**
+1. Assemble the four tables (Stack/Deploy, Sources, Sinks, Assets) into the recon report
+2. Add the **Threat model** — concrete to THIS project, derived from the four agents' outputs. Who would realistically target it and what for? (Examples: supply-chain risks affecting downstream users of a library; multi-tenant abuse on a SaaS; untrusted user input on a CLI/mobile app; insider risk with repo access; phishing-based account takeover; coding-agent risks from injected web content; on-chain reentrancy risks for a smart contract.) Be specific.
+3. Note any obvious gaps the four recon agents flagged (areas that need a deeper look in Phase 3)
+
+## Phase 2: Plan the audit — recon drives this
+
+From the recon output, decide which vulnerability classes apply to THIS project. **Skip audits with no entry surface.** A static documentation site does not get a SQLi audit. A Rust embedded firmware project does not get a prompt-injection audit. A Python ML pipeline does get pickle/yaml audits. A library that ships to others gets supply-chain weighted heavily.
+
+Default catalog — pick what applies, drop what doesn't, add stack-specific audits where recon shows a unique surface:
+
+| Audit | Fires when | Audits for |
+|---|---|---|
+| **Injection** | unsanitized input reaches an interpreter | SQLi, command injection, template injection, eval/Function/exec, pickle/yaml.load, NoSQL/LDAP/XPath injection, prompt injection |
+| **AuthN/AuthZ/Session** | any auth, session, or access-control logic exists | broken access control (IDOR, BOLA), JWT alg confusion / alg:none, OAuth state/PKCE/redirect-uri abuse, session fixation, missing rate limit on credential checks, MFA bypass, TOCTOU races |
+| **Secrets & exposure paths** | any secret/credential/token exists | hardcoded keys, logs/errors/debug-file leakage, source maps in published artifacts, telemetry leakage, prototype pollution exposing secrets, \`JSON.stringify(err)\` shapes, env dump in error pages, exposed \`.git\`/\`.env\`/\`.map\` |
+| **Supply chain** | any dependency manager or external code | unpinned deps/actions, postinstall scripts, typosquats, **slopsquats (AI-hallucinated package names registered by malicious parties)**, dependency confusion, lockfile drift, install-time \`curl \\| sh\`, unsigned releases, unverified maintainer takeovers, self-spreading worms (Shai-Hulud family) |
+| **CI/CD & build integrity** | any CI workflow, release pipeline | \`pull_request_target\` + checkout of PR HEAD (Pwn Request), Actions cache poisoning, OIDC token theft from \`/proc\`, self-hosted runner reuse, secret echoes, missing \`permissions:\` block |
+| **SSRF, path traversal, file ops** | any URL/path/file built from input | SSRF to metadata endpoints (IMDSv1), path traversal, zip-slip, symlink races, unrestricted upload, archive extraction outside target dir |
+| **Cloud/infra & misconfig** | any IaC, container, cloud SDK use | overpermissive IAM (\`Action:*\`, \`iam:PassRole:*\`), public buckets, IMDSv1, exposed K8s API/kubelet, presigned URLs without expiry, default creds, debug endpoints in prod, CORS \`origin:*\` + \`credentials:true\` |
+| **Crypto** | any crypto/hashing/signing | weak algos (MD5/SHA1 for auth), missing IV, ECB mode, hardcoded keys, JWT \`alg:none\`, non-constant-time compare on secrets, predictable PRNG for tokens |
+| **Agent surface** | only if recon detected LLM/AI/MCP/coding-agent/tool-calling code | indirect prompt injection via fetched content, MCP tool poisoning, tool-description injection (ToolLeak), system-prompt exposure via tool args, **Rules-File Backdoor (Unicode bidi / zero-width chars hiding instructions in CLAUDE.md / .cursorrules / AGENTS.md)**, malicious CLAUDE.md walking up parent dirs, DNS-exfil via coerced tool calls, RAG / memory / context poisoning, vector-store embedding risks |
+| **Dangerous-sink dataflow (taint)** | Sources × Sinks tables are non-empty | trace each Source through the codebase to every reachable Sink; flag reachable paths with no sanitization between |
+
+**Add stack-specific audits when recon surfaces them**: smart-contract reentrancy/oracle manipulation; mobile IPC / deep links / pasteboard / WebView \`addJavascriptInterface\`; embedded firmware update integrity, debug interfaces left enabled; ML model deserialization, training-data poisoning, MLflow/Triton config exposure.
+
+## Phase 3: Parallel audits
+
+Spawn one subagent per active audit **in a single response** (call the subagent tool N times **with \`agent: "auditor"\`**, where N is whatever Phase 2 picked — do not pad to a fixed number, do not drop audits Phase 2 selected). The \`auditor\` agent has the defensive-review persona and exclusion list baked in, so your task description only needs the vulnerability-class scope. Each auditor receives:
+- The full recon output (Sources, Sinks, Assets, Threat model)
+- Its specific vulnerability-class scope
+- The 2026 threat reference at the bottom of this prompt
+
+Each auditor must:
+1. **Trace data flow** from Sources to Sinks for its class. Not pattern matching.
+2. For every candidate, apply the **untrusted-input vs trusted-input** decision: is the input *actually reachable* by an untrusted source, or is it a settings constant / build-time string / hard-coded value?
+3. Construct a concrete **vulnerability scenario** — describe how the weakness would be triggered (input → system response → resulting exposure). If you can't describe the steps, don't flag it.
+4. Assign **confidence 0.0–1.0**. Drop anything <0.8 before returning.
+5. Be framework-aware: ORM parameterization, auto-escape, memory-safe languages, JSX/template escaping all eliminate entire vuln classes. Don't flag what the framework already handles.
+
+## Phase 4: False-positive filter
+
+After auditors complete, spawn one verification subagent per surviving finding **in parallel with \`agent: "skeptic"\`** (call the subagent tool once per finding in a single response). The \`skeptic\` agent starts from "this is a false positive" and tries to disprove the finding — only confirmed findings survive. Pass each verifier the full audit finding (location, source/sink, vulnerability scenario, claimed confidence). Drop anything the skeptic returns as DROP; lower severity for DOWNGRADE.
+
+**Hard exclusions — do NOT report these, even if real:**
+- DOS / rate-limiting / memory exhaustion without a clear amplification primitive
+- Theoretical race conditions without a demonstrable trigger window
+- Regex-DOS without untrusted-supplied regex
+- Log spoofing / log injection (cosmetic)
+- SSRF where the URL is a settings constant or build-time string
+- Env-var trust (env is server-controlled by definition)
+- Client-side authentication theatre on a server-validated endpoint
+- React/Angular/Vue XSS in non-unsafe-sink paths (\`dangerouslySetInnerHTML\`, \`v-html\`, \`bypassSecurityTrust*\` are the only real ones)
+- Shell-script command injection without an untrusted input path
+- Findings in documentation files, example code, or test fixtures
+- Insecure-by-design dev tooling that doesn't ship to users
+- "Could be improved" style preferences or hardening-best-practice nudges with no demonstrable path
+
+## Phase 5: Report
+
+Output one report. No code edits in this phase.
+
 \`\`\`
-[OUTDATED/DEPRECATED/INCORRECT] file:line - What it is
-Current: How it's implemented now
-Verified: What the correct/current approach is
-Source: URL to official docs or evidence
+# Bullet-Proof Report — [Project name from recon]
+Date: [today's date]
+Threat model: [from recon]
+
+## Exposure Surface Summary
+[1-paragraph summary of the project's realistic exposure profile and where untrusted data enters]
+
+## Sources / Sinks / Assets
+[Compact tables from recon]
+
+## Risk Matrix
+| Severity | Count | Definition |
+|---|---|---|
+| Critical | N | RCE, full auth bypass, credential theft, fund loss |
+| High     | N | privilege escalation, data exposure with auth, supply-chain compromise |
+| Medium   | N | limited-scope info disclosure, weakened crypto, partial bypass |
+
+## Findings
+
+### [BP-001] <title> — Critical
+- Location: path:line
+- Category: <slug>   CWE: CWE-XXX   Confidence: 0.95
+- Exposure surface: <entry point from Sources>
+- Source → Sink: <e.g. \`POST /api/foo body.userId\` → \`subprocess.run(..., shell=True)\`>
+- Vulnerability scenario:
+  1. Untrusted input <specific payload> reaches <source>
+  2. Server processes it as <what>
+  3. Result: <RCE / data exposure / auth bypass>
+- Impact: <blast radius — what is exposed, how far it spreads>
+- Fix: <concrete remediation, code-level>
+
+[…repeat per finding, ordered Critical → High → Medium…]
+
+## What was not flagged
+[1-paragraph: which vulnerability classes returned zero findings, and how many findings the FP filter dropped — so the user sees the work, not just the survivors]
 \`\`\`
 
-No findings is a valid outcome. If implementations match current practices, that's good news.`,
+## Phase 6: Ask before fixing
+
+After the report, ask:
+
+> Which (if any) should I fix? Options:
+> - A) Create tasks for all Critical + High
+> - B) Create tasks for specific findings (give IDs, e.g. "BP-001, BP-004")
+> - C) Create tasks for a category (auth, supply chain, secrets, …)
+> - D) None — report only
+
+**Do not start fixing until the user picks.**
+
+If the user chooses A, B, or C, do not fix directly. Instead, use the tasks tool to create one task per selected finding or tightly coupled finding group, ordered by severity, exploitability, and dependency. Each task prompt must be standalone and include the finding ID, vulnerability scenario, affected local files/anchors, concrete remediation, instructions to compare security-sensitive implementation details with kencode search or authoritative docs before editing, project verification commands, and instructions to compare the final fix with kencode search or authoritative docs again before marking the task complete. After creating tasks, tell the user exactly: "Tasks created. Press CTRL + T to open the Tasks Pane and press R to run all tasks." Do not begin executing them unless the user explicitly starts a task.
+
+## Threat reference (May 2026)
+
+Cite these as needed per audit. Do not dump them into the report — use them to verify whether a candidate is actually reachable.
+
+**OWASP Top 10:2025** — A01 Broken Access Control (now includes SSRF), A02 Misconfig, **A03 Supply Chain Failures (new)**, A05 Injection (now includes prompt injection), **A10 Mishandling Exceptional Conditions (new — fail-open patterns)**.
+
+**OWASP API Security Top 10 (2023)** — BOLA, Broken Auth, BOPLA, SSRF (API7).
+
+**OWASP Top 10 for LLM Apps v2025** — LLM01 Prompt Injection (direct + indirect), LLM02 Sensitive Info Disclosure, LLM03 Supply Chain, LLM04 Data & Model Poisoning, LLM05 Improper Output Handling, LLM06 Excessive Agency, **LLM07 System Prompt Leakage (new)**, **LLM08 Vector & Embedding Weaknesses (new — RAG/embedding-store attacks)**, LLM09 Misinformation, LLM10 Unbounded Consumption.
+
+**OWASP Top 10 for Agents 2026 (ASI01–10)** — Goal hijack, tool misuse, identity/privilege abuse, agentic supply chain, unexpected code exec, memory/context poisoning, inter-agent comms, cascading failures, human-trust exploit, rogue agents.
+
+**Real 2024-2026 incidents — use as grep templates:**
+- tj-actions/changed-files (Mar 14-15 2025, CVE-2025-30066, 23k repos) → unpinned GH Actions, \`uses: foo/bar@main\` / mutable tags, runner-memory secret dumps
+- TanStack Mini Shai-Hulud (May 11 2026, CVE-2026-45321, CVSS 9.6 — 84 versions across 42 \`@tanstack/*\` + UiPath/Mistral/Guardrails/OpenSearch, 169+ packages total, "TeamPCP") → self-spreading npm worm, \`pull_request_target\` + cache poisoning + OIDC token extraction from \`/proc/<pid>/mem\`, persistent \`gh-token-monitor\` daemon
+- Slopsquatting (ongoing 2025-2026, \`react-codeshift\` Jan 2026) → AI coding assistants hallucinate ~20% non-existent package names (open-source models ~21.7%, GPT-4 ~5.2%); malicious parties register the hallucinated names on npm/PyPI. **Verify every package actually existed BEFORE the agent suggested it** — check registry age, download history, author identity
+- XZ Utils (CVE-2024-3094) → unverified maintainer takeovers, multi-year backdoor injection in install scripts
+- Invariant Labs MCP hijack (May 2025) → MCP server returns malicious tool descriptions / crafted issue content
+- Claude Code source-map leak (Mar 2026, 513k LOC) → \`*.map\` files in \`npm pack\` / shipped artifacts
+- Embrace The Red DNS-exfil (Aug 2025) → coding agent coerced into encoding secrets in DNS queries
+- IMDSv1 → AWS creds via SSRF (Mar 2025 campaign) → Terraform missing \`http_tokens = "required"\`
+- GitGuardian 2026 — 28.6M GitHub secret leaks in 2025, 24k inside MCP config files
+
+**Language-specific hot zones — only apply to languages actually present:**
+- **Node/TS**: \`child_process.exec\`/\`execSync\`, \`spawn(..., {shell:true})\`, \`eval\`/\`Function\`, \`vm.runIn*\`, prototype pollution via \`lodash.merge\`/\`Object.assign({}, userJson)\`, \`serialize-javascript\`/\`node-serialize\`, source maps in published packages
+- **Python**: \`pickle.load\`, \`yaml.load\` without \`SafeLoader\`, \`eval\`/\`exec\`, \`subprocess.*(shell=True)\`, \`os.system\`, \`Jinja2(autoescape=False)\`, \`flask.render_template_string(user_input)\`, \`requests(verify=False)\`, \`xml.etree\`/\`lxml\` without \`defusedxml\`
+- **Go**: \`exec.Command("sh", "-c", userInput)\`, \`html/template\` vs \`text/template\` confusion, unbounded \`io.ReadAll\`, race-prone \`map\` access without lock
+- **Rust**: \`unsafe\` blocks with raw pointers, \`Command::new("sh").arg("-c")\`, deserializing untrusted \`bincode\`/\`serde_pickle\`/\`serde_json\` with \`#[serde(deny_unknown_fields)]\` missing
+- **Java/JVM**: \`ObjectInputStream\` deserialization, JNDI lookup (Log4Shell-style), \`Runtime.exec(String)\`, XXE in default XML parsers
+- **Ruby**: \`eval\`/\`instance_eval\`, \`Marshal.load\`, \`YAML.load\` (not \`safe_load\`), \`Kernel#system\` with interpolation, mass assignment
+- **PHP**: \`unserialize\`, \`eval\`, \`assert(string)\`, \`include $userInput\`, \`preg_replace\` /e modifier
+- **C/C++**: unsafe \`strcpy\`/\`sprintf\`/\`gets\`, integer overflows, format strings (\`printf(userInput)\`), use-after-free, double-free
+- **Solidity / EVM**: reentrancy, unchecked external calls, integer over/underflow (pre-0.8), \`tx.origin\` for auth, delegatecall to untrusted, oracle manipulation
+- **Mobile (iOS/Android)**: insecure IPC / deep links / pasteboard, WebView \`addJavascriptInterface\`, exported activities/intents without permission checks, insecure local storage
+
+## Rules
+
+- **Recon first, audits second.** No audit fires without a recon-identified entry surface to justify it.
+- **No pattern-only findings.** Every flag must have a Sources → Sinks path traced through the code.
+- **No "could be improved" recommendations.** Either it's exploitable or it's not in scope.
+- **Strict confidence gate (≥0.8).** Drop everything else, even if it looks suspicious.
+- **Adapt to the stack, always.** The audit catalog and threat reference above are guidance, not a checklist to apply uniformly.
+- **Report only.** Wait for the user to pick what to fix in Phase 6.`,
   },
   {
     name: "research",
@@ -119,7 +481,7 @@ No findings is a valid outcome. If implementations match current practices, that
 
 First, if it's not clear what the project is building, ask me to describe the features, target platform, and any constraints. If you can infer this from the codebase, proceed directly.
 
-Then spawn 6 sub-agents in parallel using the subagent tool (call the subagent tool 6 times in a single response, each with a different task). Every agent must verify ALL recommendations - no training-data assumptions allowed.
+Then spawn 6 sub-agents in parallel using the subagent tool (call the subagent tool 6 times in a single response, each with a different task). Every agent must verify ALL recommendations with current official docs, package registries, releases, or maintained source repositories - no training-data assumptions allowed. Use kencode search for architecture and implementation-shape comparisons where real code examples matter.
 
 **Agent 1 - Project Scan**: Read the current working directory. Catalog what already exists: config files, installed deps, directory structure, language/framework already chosen. Report exactly what's in place.
 
@@ -135,10 +497,11 @@ Then spawn 6 sub-agents in parallel using the subagent tool (call the subagent t
 
 ## Agent Rules
 
-1. Every recommendation MUST be verified - no guessing
-2. Confirm latest stable versions - do not assume version numbers
-3. Pick ONE best option per category - no "you could also use X"
-4. No prose, no hedging, no alternatives lists - decisive answers only
+1. Every recommendation MUST be verified with a source URL/date - no guessing
+2. Confirm latest stable versions from official registries or release pages - do not assume version numbers
+3. Verify CLI flags, config keys, and file formats against official docs before recommending them
+4. Pick ONE best option per category - no "you could also use X"
+5. No prose, no hedging, no alternatives lists - decisive answers only
 
 ## Output
 
@@ -176,20 +539,23 @@ Stack: [framework + language + runtime]
 [URLs used for verification]
 \`\`\`
 
-Write the file, then summarize what was researched.`,
+Write the file, then summarize what was researched and list the verification sources used. If any recommendation could not be verified from current official sources or maintained repos, omit it rather than guessing.`,
   },
   {
     name: "init",
     aliases: [],
     description: "Generate or update CLAUDE.md for this project",
-    prompt: `Generate or update a minimal CLAUDE.md with project structure, guidelines, and quality checks.
+    prompt: `Generate or update a minimal CLAUDE.md with project-specific context only: what this project is, how it is structured, and commands/workflows that are unique to it.
+
+Do NOT add generic agent behavior already covered by the system prompt, including: read before edit/write, re-read after formatters, ask before destructive actions, no fake verification, generic code-quality advice, single-responsibility rules, one-file-per-component rules, or language-style conventions. Include only project-specific overrides or stricter local requirements.
 
 ## Step 1: Check if CLAUDE.md Exists
 
 If CLAUDE.md exists:
 - Read the existing file
 - Preserve custom sections the user may have added
-- Update the structure, quality checks, and organization rules
+- Update only project-specific facts that are stale or missing
+- Remove generic guidance that is already covered by the system prompt unless it is a deliberate project-specific override
 
 If CLAUDE.md does NOT exist:
 - Create a new one from scratch
@@ -207,22 +573,30 @@ Wait for all sub-agents to complete, then synthesize the information.
 ## Step 3: Detect Project Type & Commands
 
 Check for config files:
-- package.json -> JavaScript/TypeScript (extract lint, typecheck, server scripts)
+- package.json -> JavaScript/TypeScript (extract package-manager, build, lint, typecheck, test, format, and server scripts)
 - pyproject.toml or requirements.txt -> Python
 - go.mod -> Go
 - Cargo.toml -> Rust
 
-Extract linting commands, typechecking commands, and server start command (if applicable).
+Extract exact commands that are useful project facts. Verify commands against local package scripts, manifests, Makefiles, CI, or documented project workflows; do not invent commands from convention alone. Do not restate generic "run checks after edits" behavior unless this project requires a stricter command sequence than the system prompt's Verification section.
 
-## Step 4: Generate Project Tree
+## Step 4: Summarize Stable Structure
 
-Create a concise tree structure showing key directories and files with brief descriptions.
+If useful, create a concise structure summary for future agents showing only key stable directories and files with brief descriptions. Do NOT embed generated symbol maps, exhaustive file indexes, generated repo maps, auto-generated directory listings, or large trees in CLAUDE.md.
 
 ## Step 5: Generate or Update CLAUDE.md
 
-Create CLAUDE.md with: project description, project structure tree, organization rules (one file per component, single responsibility), and zero-tolerance code quality checks with the exact commands for this project.
+Create CLAUDE.md with only sections that add project-specific value. Prefer this structure:
 
-Keep total file under 100 lines. If updating, preserve any custom sections the user added.
+- Project name and one-sentence purpose
+- Key packages/apps/modules and what each owns
+- Important project-specific architecture or workflow notes
+- Exact local commands (install/build/check/test/dev/publish/deploy) when they are not obvious from package scripts alone
+- Project-specific constraints that override defaults (for example required publish order, generated-file workflow, auth/secrets storage, deployment caveats)
+
+Avoid generic sections named "Code Quality", "Organization Rules", or "How to Work" unless every bullet is specific to this project. Do not duplicate language style packs or generic verification rules. Do not add generated repo maps, symbol indexes, exhaustive file indexes, or auto-generated project inventories; CLAUDE.md must remain durable, agent-focused project context.
+
+Keep total file under 100 lines. If updating, preserve any custom sections the user added. After writing, re-read CLAUDE.md and confirm it contains only project-specific facts supported by local files.
 
 ## Step 6: Restart Notice
 
@@ -258,7 +632,7 @@ Based on the project type, check if linting/typechecking tools are already confi
 
 ## Step 3: Install Missing Tools (if needed)
 
-Only install what's missing. Use the detected package manager.
+Only install what's missing. Use the detected package manager. Before installing or writing config, verify current recommended setup, CLI flags, and config filenames against official docs for the selected tools.
 
 ## Step 4: Generate /fix Command
 
@@ -296,7 +670,7 @@ Replace [INSERT PROJECT-SPECIFIC COMMANDS] with the actual commands for the dete
 
 ## Step 5: Confirm
 
-Report what was detected, what was installed, and that /fix is now available.`,
+Report what was detected, what official docs or local configs were used to verify it, what was installed, and that /fix is now available.`,
   },
   {
     name: "setup-commit",
@@ -308,9 +682,11 @@ Report what was detected, what was installed, and that /fix is now available.`,
 
 Check for config files and extract the lint/typecheck commands:
 - package.json -> Extract lint, typecheck scripts
-- pyproject.toml -> Use mypy, pylint/ruff
-- go.mod -> Use go vet, gofmt
-- Cargo.toml -> Use cargo clippy, cargo fmt --check
+- pyproject.toml -> Use configured mypy, pylint/ruff commands
+- go.mod -> Use configured go vet/gofmt/staticcheck commands
+- Cargo.toml -> Use configured cargo clippy/fmt commands
+
+Prefer existing project scripts. If you must synthesize a command from tool conventions, verify the current CLI flags against official docs first.
 
 ## Step 2: Generate /commit Command
 
@@ -345,7 +721,7 @@ Keep the command file under 20 lines.
 
 ## Step 3: Confirm
 
-Report that /commit is now available with quality checks and AI-generated commit messages.`,
+Report that /commit is now available with quality checks and AI-generated commit messages, and mention which local scripts/docs verified the commands.`,
   },
   {
     name: "setup-tests",
@@ -359,7 +735,7 @@ Detect the project type, framework, and architecture. Identify all critical busi
 
 ## Step 2: Determine Testing Strategy
 
-Use these tools based on project type (2025-2026 best practices):
+Use these tools based on project type (2025-2026 best practices), but verify current versions, install commands, config files, and runner flags against official docs before installing anything:
 
 | Language | Unit/Integration | E2E | Notes |
 |----------|------------------|-----|-------|
@@ -378,7 +754,7 @@ Spawn 4 sub-agents in parallel using the subagent tool (call the subagent tool 4
 **Agent 3 - Integration Tests**: Create integration tests for APIs, database operations, and service interactions
 **Agent 4 - E2E Tests** (if applicable): Create end-to-end tests for critical user flows
 
-Each agent should create COMPREHENSIVE tests covering all critical code paths - not just samples.
+Each agent should create COMPREHENSIVE tests covering all critical code paths - not just samples. Each agent must verify test framework APIs and helper patterns against official docs or current maintained examples before adding tests.
 
 ## Step 4: Verify and Generate /test Command
 
@@ -411,7 +787,7 @@ Replace placeholders with the actual test commands for this project.
 
 ## Step 5: Report
 
-Summarize what was set up, how many tests were created, and that /test is now available.`,
+Summarize what was set up, how many tests were created, what official docs/current examples verified the setup, and that /test is now available.`,
   },
   {
     name: "setup-update",
@@ -459,7 +835,7 @@ Run a clean install and read ALL output carefully. Look for:
 ## Step 4: Fix Issues
 
 For each warning/deprecation:
-1. Research the recommended replacement or fix
+1. Research the recommended replacement or fix using official changelogs, migration guides, advisories, or package docs
 2. Update code/dependencies accordingly
 3. Re-run installation
 4. Verify no warnings remain
@@ -479,7 +855,7 @@ Replace all placeholders with the actual commands for the detected project type 
 
 ## Step 3: Confirm
 
-Report that /update is now available with dependency updates, security audits, and deprecation fixes.`,
+Report that /update is now available with dependency updates, security audits, and deprecation fixes, and mention that generated update steps require official changelog/migration-guide verification before applying changes.`,
   },
   {
     name: "setup-eyes",
@@ -493,7 +869,7 @@ Build the perception probes this project needs and document them in CLAUDE.md so
 
 1. \`ezcoder eyes list\` — see what's already installed/verified. **Resume**, don't restart. Skip verified probes; re-run failed ones.
 2. \`ezcoder eyes detect\` — emits JSON of \`{capability: {candidates, primary}}\` for this project.
-3. **Pick 3–8 capabilities to install this run.** Heuristics:
+3. **Pick 3–8 capabilities to install this run.** Verify any capability assumptions against \`ezcoder eyes\` help output or official/local CLI docs before installing. Heuristics:
    - Universal: \`http\` for any API/backend, \`runtime_logs\` for anything with a server.
    - UI: \`visual\` — for multi-stack projects (e.g. React Native), install all primary candidates with distinct names: \`install visual --impl playwright --as visual-web\`, \`install visual --impl adb --as visual-android\`, \`install visual --impl simctl --as visual-ios\`.
    - Backend with email/webhooks: \`capture_email\`, \`capture_webhook\`.
@@ -501,7 +877,7 @@ Build the perception probes this project needs and document them in CLAUDE.md so
 4. For each pick: \`ezcoder eyes install <cap> [--impl <name>] [--as <name>]\`. On failure: retry once, then mark and continue — don't abort the whole run.
 5. \`ezcoder eyes verify\` — runs every installed probe's self-test. Some failures (\`adb\` no device, \`simctl\` no booted simulator) are expected; they get recorded.
 6. **Write/update the \`## Eyes\` section in CLAUDE.md** (create CLAUDE.md if missing; do NOT clobber other sections). Use the template below. The triggers are the load-bearing piece — make them project-specific and actionable.
-7. **Report**: list verified ✓ / failed ✗ / deferred. End with the restart notice.
+7. **Report**: list verified ✓ / failed ✗ / deferred, and note which probe self-tests or docs verified the setup. End with the restart notice.
 
 ## CLAUDE.md \`## Eyes\` template
 
@@ -585,9 +961,9 @@ Read the open signals in \`.ezcoder/eyes/journal.jsonl\`, group related ones, pr
    - **New/updated trigger**: bullet added under \`## Eyes → When to use\` in CLAUDE.md.
 5. Present all proposals as a numbered list with diffs inline. Ask: **"Accept which? Reply with numbers (e.g. '1, 3') or 'none'."**
 6. On user reply:
-   - For accepted: apply the change. Then \`ezcoder eyes log ack <id>\` for every journal entry the proposal covers.
+   - For accepted: apply the change. Then run the relevant probe self-test or a focused command that exercises the changed probe/trigger. Then \`ezcoder eyes log ack <id>\` for every journal entry the proposal covers.
    - For unmentioned / rejected: \`ezcoder eyes log defer <id>\` so they stop appearing in context every turn. The user can resurrect deferred entries later.
-7. **Report**: applied changes (one line each), entries acked, entries deferred.
+7. **Report**: applied changes (one line each), verification run, entries acked, entries deferred.
 
 ## Rules
 
@@ -649,7 +1025,9 @@ Review the same changes for efficiency:
 
 Wait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.
 
-When done, briefly summarize what was fixed (or confirm the code was already clean).`,
+Before making any non-trivial pattern/API change, verify the intended approach against local neighboring code first; use kencode search or official docs when the change touches framework APIs, lifecycle behavior, concurrency, cleanup, or other conventions where real-world practice matters.
+
+When done, run relevant project checks/tests, then briefly summarize what was fixed (or confirm the code was already clean) and what verification ran.`,
   },
   {
     name: "batch",
@@ -711,11 +1089,12 @@ For each worker, the task must be fully self-contained. Include:
 \`\`\`
 After you finish implementing the change:
 1. Self-review your diff for code reuse, quality, and efficiency. Search the codebase for existing utilities that could replace new code. Fix any issues found.
-2. Run the project's test suite (check for package.json scripts, Makefile targets, or common commands like npm test, pnpm test, pytest, go test). If tests fail, fix them.
-3. Follow the e2e test recipe above. If it says to skip e2e, skip it.
-4. Commit all changes with a clear message, push the branch, and create a PR with gh pr create. Use a descriptive title.
-5. Switch back to the original branch with git checkout -.
-6. End with exactly: PR: <url> or PR: none — <reason>
+2. For framework/API/config changes, compare the approach with official docs or kencode search examples before finalizing. Do not use kencode for purely local renames or mechanical edits.
+3. Run the project's test suite (check for package.json scripts, Makefile targets, or common commands like npm test, pnpm test, pytest, go test). If tests fail, fix them.
+4. Follow the e2e test recipe above. If it says to skip e2e, skip it.
+5. Commit all changes with a clear message, push the branch, and create a PR with gh pr create. Use a descriptive title.
+6. Switch back to the original branch with git checkout -.
+7. End with exactly: PR: <url> or PR: none — <reason>
 \`\`\`
 
 ## Phase 4: Track Results
@@ -811,7 +1190,7 @@ Don't invent. Don't pad.
 
 After all sub-agents complete, use the **skill** tool to invoke the \`find-skills\` skill. Feed it the aggregated candidate list with search terms. Let find-skills drive discovery across skills.sh, vercel-labs/agent-skills, and anthropics/skills.
 
-For each candidate, record the best 0–1 ecosystem match: skill name, source repo URL. If no fit exists, record "no match". **Do NOT install anything yet.**
+For each candidate, record the best 0–1 ecosystem match: skill name, source repo URL, and enough evidence from the skill README/source to prove it fits this project. If no fit exists, record "no match". **Do NOT install anything yet.**
 
 ## Phase 5: Prioritized recommendation
 
@@ -894,7 +1273,7 @@ Report which are present, missing, or configured below the pack's strictness rec
 
 "Active style packs" refers specifically to the per-language sub-sections inside the **Language Style Packs** section in your system prompt (e.g. \`### TypeScript\`, \`### Python\`, \`### Go\`). It does **NOT** include the cross-cutting \`### Agent-Written Code\` preamble that sits above them — those are guidelines for how code is *written*, not project-scaffolding to audit. It also does **NOT** include Skills (\`.ezcoder/skills/\`) or any other extension category. If the Language Style Packs section is absent or empty, **skip this entire section entirely** — do not substitute Skills or any other concept.
 
-When per-language packs are present, compare the project against each pack's **Tooling** bullet and the system prompt's **Verification** commands:
+When per-language packs are present, compare the project against each pack's **Tooling** bullet and the system prompt's **Verification** commands. For tool recommendations or config semantics, verify against official docs when local files are ambiguous:
 - Tooling: which strict-mode flags or lint-rule presets does the pack recommend that the project is missing? (e.g. \`tsconfig\` missing \`noUncheckedIndexedAccess\`, \`pyproject\` missing \`[tool.ruff]\`, Go project missing \`golangci-lint\` config).
 - Dependencies: list which pack-mentioned libs (Zod, Pydantic, thiserror, anyhow, etc.) the project uses, has an equivalent for, or lacks. **Observation only — no recommendation to install.**
 
@@ -929,15 +1308,16 @@ At the end:
 <N> gaps in hygiene, <N> in tooling, <N> in verify pipeline, <N> in style-pack alignment.
 
 Which (if any) would you like me to fix? Options:
-- A) All [GAP] items that are safe + additive (no overwrites)
-- B) Pick category: hygiene / tooling / verify / style-pack alignment
-- C) Specific items — tell me which
+- A) Create tasks for all [GAP] items that are safe + additive (no overwrites)
+- B) Create tasks for a category: hygiene / tooling / verify / style-pack alignment
+- C) Create tasks for specific items — tell me which
 - D) None — just the report
 \`\`\`
 
 ## Rules
 
 - **Report only.** No edits, no installs, no commits without explicit user confirmation after the report.
+- **Task handoff for fixes.** If the user chooses A, B, or C, do not fix directly. Use the tasks tool to create one standalone task per selected gap or tightly coupled gap group. Each task must include the gap, affected files/configs, safe-additive constraints, implementation instructions, project verification commands, and instructions to verify relevant tool/config semantics against official docs before marking the task complete. Use kencode search only for code-level examples, not as proof of scaffolding requirements. After creating tasks, tell the user exactly: "Tasks created. Press CTRL + T to open the Tasks Pane and press R to run all tasks." Do not begin executing them unless the user explicitly starts a task.
 - **No code refactors recommended.** This audit is about scaffolding/tooling, not code review. Use \`/scan\` or \`/verify\` for code-level findings.
 - **No dependency installations in the report.** Listing them as observations is fine; recommending installation is not — that's the user's call.
 - **Skip empty categories.** If a category has no findings, omit it.

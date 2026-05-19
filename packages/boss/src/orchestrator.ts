@@ -6,7 +6,13 @@ import {
   getContextWindow,
   shouldCompact,
 } from "@prestyj/cli";
-import type { Message, Provider, ThinkingLevel, Usage } from "@prestyj/ai";
+import {
+  formatError,
+  type Message,
+  type Provider,
+  type ThinkingLevel,
+  type Usage,
+} from "@prestyj/ai";
 import { Worker } from "./worker.js";
 import { EventQueue } from "./event-queue.js";
 import { createBossTools, WORKER_PROMPT_BRIEF } from "./tools.js";
@@ -71,6 +77,8 @@ export class GGBoss {
   private authStorage = new AuthStorage();
   /** Path to the boss's per-session jsonl log under ~/.ezcoder/boss/sessions/. */
   private sessionPath = "";
+  /** Stable id for the current boss conversation, used as a provider cache routing key. */
+  private bossSessionId = "";
   /** Last index in the boss's messages array we've persisted to disk. */
   private lastPersistedIndex = 0;
   /** project → task id currently dispatched to that worker. Used to mark
@@ -158,18 +166,21 @@ export class GGBoss {
       const info = await getSessionById(this.opts.resumeSessionId);
       if (info) {
         this.sessionPath = info.path;
+        this.bossSessionId = info.id;
         priorMessages = (await loadSession(info.path)).filter((m) => m.role !== "system");
       }
     } else if (this.opts.continueRecent) {
       const recent = await getMostRecent();
       if (recent) {
         this.sessionPath = recent.path;
+        this.bossSessionId = recent.id;
         priorMessages = (await loadSession(recent.path)).filter((m) => m.role !== "system");
       }
     }
     if (!this.sessionPath) {
       const session = await createSession();
       this.sessionPath = session.filePath;
+      this.bossSessionId = session.id;
     }
     // Rebuild the visible TUI history from the loaded messages so the chat
     // shows the prior conversation, not just the agent's hidden context.
@@ -186,6 +197,7 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      promptCacheKey: this.getBossPromptCacheKey(),
       thinking: this.opts.bossThinkingLevel,
       priorMessages,
     });
@@ -309,6 +321,7 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      promptCacheKey: this.getBossPromptCacheKey(),
       thinking: this.opts.bossThinkingLevel,
       priorMessages: oldMessages,
     });
@@ -351,12 +364,15 @@ export class GGBoss {
         contextWindow,
         signal: this.ac.signal,
       });
-      await this.replaceBossMessages(compactedMessages);
       // Start a new session file so `ezboss continue` resumes the COMPACTED
       // history, not the full original. Mirrors ezcoder/AgentSession.compact.
+      // Set bossSessionId before rebuilding the Agent so its provider cache key
+      // matches the new compacted session.
       const session = await createSession();
       this.sessionPath = session.filePath;
+      this.bossSessionId = session.id;
       this.lastPersistedIndex = 0;
+      await this.replaceBossMessages(compactedMessages);
       await this.persistNewMessages();
       bossStore.setBossInputTokens(0);
       bossStore.endCompaction(result.originalCount, result.newCount);
@@ -438,6 +454,7 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      promptCacheKey: this.getBossPromptCacheKey(),
       thinking: level,
       priorMessages: oldMessages,
     });
@@ -460,6 +477,7 @@ export class GGBoss {
       accountId: creds.accountId,
       signal: this.ac.signal,
       cacheRetention: "short",
+      promptCacheKey: this.getBossPromptCacheKey(),
       thinking: this.opts.bossThinkingLevel,
       priorMessages,
     });
@@ -473,6 +491,7 @@ export class GGBoss {
   async newSession(): Promise<void> {
     const session = await createSession();
     this.sessionPath = session.filePath;
+    this.bossSessionId = session.id;
     this.lastPersistedIndex = 0;
     await this.replaceBossMessages([]);
     bossStore.setBossInputTokens(0);
@@ -484,6 +503,10 @@ export class GGBoss {
   /** Alias kept for the existing /clear path which used "reset" terminology. */
   async resetConversation(): Promise<void> {
     return this.newSession();
+  }
+
+  private getBossPromptCacheKey(): string {
+    return this.bossSessionId ? `ezboss:${this.bossSessionId}` : "ezboss";
   }
 
   async run(): Promise<void> {
@@ -659,7 +682,7 @@ export class GGBoss {
             }
             break;
           case "error":
-            bossStore.appendInfo(formatProviderError(e.error.message), "error");
+            bossStore.appendInfo(formatProviderError(e.error), "error");
             break;
           default:
             break;
@@ -684,7 +707,7 @@ export class GGBoss {
       }
       const message = err instanceof Error ? err.message : String(err);
       log("ERROR", "boss_turn", message);
-      bossStore.appendInfo(formatProviderError(message), "error");
+      bossStore.appendInfo(formatProviderError(err), "error");
     }
     bossStore.finishStreaming();
     // Post-turn heap-pressure relief: truncate oversized tool_result blocks
@@ -1015,33 +1038,12 @@ function computeContextUsed(usage: Usage, provider: Provider): number {
  * Map raw provider error text to a human-friendly hint. Mirrors ezcoder's
  * pattern in App.tsx so users see the same diagnostic phrasing.
  */
-function formatProviderError(message: string): string {
-  const lower = message.toLowerCase();
-  if (lower.includes("overloaded") || lower.includes("engine_overloaded")) {
-    return `${message}\nHint: provider is under heavy load — try again in a moment.`;
-  }
-  if (
-    lower.includes("insufficient balance") ||
-    lower.includes("quota exceeded") ||
-    lower.includes("recharge")
-  ) {
-    return `${message}\nHint: billing or quota issue — check your account balance.`;
-  }
-  if (
-    lower.includes("rate limit") ||
-    lower.includes("too many requests") ||
-    lower.includes("429")
-  ) {
-    return `${message}\nHint: provider rate limit — wait a moment before retrying.`;
-  }
-  if (lower.includes("timeout") || lower.includes("timed out")) {
-    return `${message}\nHint: provider timed out — their servers may be slow.`;
-  }
-  if (
-    lower.includes("does not recognize the requested model") ||
-    (lower.includes("model") && (lower.includes("not exist") || lower.includes("not found")))
-  ) {
-    return `${message}\nHint: use /model to switch, or check that your account has access.`;
-  }
-  return message;
+function formatProviderError(err: unknown): string {
+  const formatted = formatError(err);
+  const message = formatted.message || (err instanceof Error ? err.message : String(err));
+  const lines = [formatted.headline];
+  if (message && message !== formatted.headline) lines.push(message);
+  lines.push(`Hint: ${formatted.guidance}`);
+  if (formatted.requestId) lines.push(`Request ID: ${formatted.requestId}`);
+  return lines.join("\n");
 }

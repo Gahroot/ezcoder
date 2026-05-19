@@ -45,7 +45,12 @@ export type {
 
 // Classes
 export { StreamResult, EventStream } from "./utils/event-stream.js";
-export { EZCoderAIError, ProviderError } from "./errors.js";
+export { EZCoderAIError, ProviderError, formatError, formatErrorForDisplay } from "./errors.js";
+export type { ErrorSource, FormattedError } from "./errors.js";
+
+// Provider-level diagnostics (raw SSE event types, etc.)
+export { setProviderDiagnostic } from "./utils/diag.js";
+export type { ProviderDiagnosticFn } from "./utils/diag.js";
 
 // Palsu provider (testing)
 export {

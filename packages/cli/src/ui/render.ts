@@ -29,7 +29,6 @@ export interface RenderAppConfig {
   cwd: string;
   version: string;
   theme?: "auto" | ThemeName;
-  showThinking?: boolean;
   showTokenUsage?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
@@ -50,6 +49,8 @@ export interface RenderAppConfig {
   skills?: Skill[];
   initialOverlay?: "pixel";
   rebuildToolsForCwd?: (cwd: string) => AgentTool[];
+  repoMapChangedFilesRef?: { current: Set<string> };
+  repoMapReadFilesRef?: { current: Set<string> };
 }
 
 /**
@@ -96,14 +97,42 @@ export interface SessionStore {
    * startTask, etc. The new App reads this on mount, fires the agent,
    * and clears the field.
    */
-  pendingAction?: { prompt: string; infoText?: string };
+  pendingAction?: {
+    prompt: string;
+    infoText?: string;
+    /** Structured event for the post-resetUI banner — renders as a styled
+     *  plan_event item instead of the bland info row. */
+    planEvent?: { event: "approved" | "rejected" | "dismissed"; detail?: string };
+  };
   /**
-   * Run-all flags. Survive unmount/remount so the chain (task → resetUI →
-   * new App → task done → next task) keeps running. Without this, the
-   * remount on startTask wipes React state and the next-task pickup in
-   * onDone never fires. Cleared when run-all completes or is aborted.
+   * True while the agent loop is running. Mirrored by App.tsx so renderApp's
+   * resize handler can skip the unmount/remount that would abort the agent
+   * (useAgentLoop's unmount cleanup calls abortRef.abort()).
+   */
+  isAgentRunning?: boolean;
+  /**
+   * Set whenever a path that would normally `resetUI()` had to fall back to
+   * an in-place update because the agent was running (resize, overlay open/
+   * close). Consumed by App.tsx when the agent goes idle: a deferred
+   * resetUI() runs to clean up any log-update drift that accumulated during
+   * the run. The setTimeout delay lets onDone's two-phase flush commit to
+   * sessionStore.history before the unmount, so the chat isn't lost.
+   */
+  pendingResetUI?: boolean;
+  /**
+   * "Run All" task chaining flag. startTask() calls resetUI() between tasks
+   * (wipeSession + new pendingAction), which unmounts App. Without
+   * mirroring this through sessionStore, the new mount loses the flag and
+   * the onDone callback's auto-chain check (`if (runAllTasksRef.current)`)
+   * is always false on the second task onward.
    */
   runAllTasks?: boolean;
+  /**
+   * Same pattern as `runAllTasks` — pixel fix auto-chaining flag. Survives
+   * the deferred resetUI() that may fire when the agent goes idle (e.g.
+   * after a pane was toggled mid-fix). Without this, the second fix
+   * onward loses the chaining intent.
+   */
   runAllPixel?: boolean;
 }
 
@@ -121,7 +150,13 @@ export interface ResetUIOptions {
   /** Override session path (e.g. plan accept creates a new session file). */
   sessionPath?: string;
   /** Action to fire on the new mount (info banner + agent prompt). */
-  pendingAction?: { prompt: string; infoText?: string };
+  pendingAction?: {
+    prompt: string;
+    infoText?: string;
+    /** Structured event for the post-resetUI banner — renders as a styled
+     *  plan_event item instead of the bland info row. */
+    planEvent?: { event: "approved" | "rejected" | "dismissed"; detail?: string };
+  };
 }
 
 /** Stateful theme provider — enables runtime theme switching via useSetTheme(). */
@@ -157,12 +192,40 @@ const INK_OPTIONS = {
   exitOnCtrlC: false,
 };
 
+// XTMODKEYS "off" — turns off xterm's modifyOtherKeys=2 mode where Shift+Enter,
+// Ctrl+letters, etc. arrive as ESC[27;<mod>;<keycode>~. Some terminals
+// (Terminal.app, tmux passthrough, certain xterm configs) leave this enabled
+// by default, which conflicts with the kitty keyboard protocol we enable
+// above — both modes overlap and the raw CSI 27 bytes leak into Ink's text
+// input. Writing this at startup (and on each screen clear) matches the
+// pattern used by openai/codex (keyboard_modes.rs) and google-gemini/gemini-cli
+// (terminal.ts), which both disable modifyOtherKeys immediately before
+// enabling kitty enhancement flags. Cleared again on exit so we don't leave
+// the terminal in an unusual state.
+const DISABLE_MODIFY_OTHER_KEYS = "\x1b[>4;0m";
+const SCREEN_CLEAR = DISABLE_MODIFY_OTHER_KEYS + "\x1b[2J\x1b[3J\x1b[H";
+
 export async function renderApp(config: RenderAppConfig): Promise<void> {
   const themeSetting = config.theme ?? "auto";
   const resolvedTheme = themeSetting === "auto" ? await detectTheme() : themeSetting;
 
-  // Clear screen + scrollback so old commands don't appear above the TUI
-  process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+  // Clear screen + scrollback so old commands don't appear above the TUI.
+  // Also disables modifyOtherKeys (see DISABLE_MODIFY_OTHER_KEYS).
+  process.stdout.write(SCREEN_CLEAR);
+
+  // Belt-and-suspenders cleanup: tmux can re-enable modifyOtherKeys when it
+  // forwards keyboard mode changes, and Ink's unmount path doesn't touch this
+  // mode (it manages kitty + alternate-screen but not XTMODKEYS). Re-disable
+  // on every exit path so the terminal isn't left generating CSI 27 sequences
+  // that confuse the parent shell.
+  const onProcessExit = (): void => {
+    try {
+      process.stdout.write(DISABLE_MODIFY_OTHER_KEYS);
+    } catch {
+      // stdout may already be torn down; nothing useful to do here.
+    }
+  };
+  process.on("exit", onProcessExit);
 
   // Runtime state lives in this closure so unmount/remount doesn't lose
   // the user's runtime model/provider/thinking choices.
@@ -190,8 +253,6 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     overlay: config.initialOverlay ?? null,
     planAutoExpand: false,
     pendingAction: undefined,
-    runAllTasks: false,
-    runAllPixel: false,
   };
 
   const ref: { instance: InkInstance | null } = { instance: null };
@@ -202,7 +263,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
       { initial: resolvedTheme },
       React.createElement(
         TerminalSizeProvider,
-        null,
+        { isAgentRunning: () => !!sessionStore.isAgentRunning },
         React.createElement(
           AnimationProvider,
           null,
@@ -219,7 +280,6 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             accountId: config.accountId,
             cwd: config.cwd,
             version: config.version,
-            showThinking: config.showThinking,
             showTokenUsage: config.showTokenUsage,
             onSlashCommand: config.onSlashCommand,
             loggedInProviders: config.loggedInProviders,
@@ -237,6 +297,8 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             skills: config.skills,
             initialOverlay: config.initialOverlay,
             rebuildToolsForCwd: config.rebuildToolsForCwd,
+            repoMapChangedFilesRef: config.repoMapChangedFilesRef,
+            repoMapReadFilesRef: config.repoMapReadFilesRef,
             resetUI,
             onRuntimeStateChange,
             sessionStore,
@@ -251,7 +313,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
   // drifts on subsequent streaming responses — Ink's cursor math depends on
   // terminal-state assumptions that ANSI clearing breaks. The only RELIABLE
   // reset is to tear down the React tree entirely and render a fresh Ink
-  // instance. ezboss arrived at the same conclusion (orchestrator-app.tsx).
+  // instance. gg-boss arrived at the same conclusion (orchestrator-app.tsx).
   function resetUI(options?: ResetUIOptions): void {
     const old = ref.instance;
     if (!old) return;
@@ -275,7 +337,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     if (options?.sessionPath !== undefined) sessionStore.sessionPath = options.sessionPath;
     if (options?.pendingAction) sessionStore.pendingAction = options.pendingAction;
 
-    process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+    process.stdout.write(SCREEN_CLEAR);
     old.unmount();
     ref.instance = render(buildElement(), INK_OPTIONS);
   }
@@ -297,6 +359,17 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     if (resizeTimer) clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       resizeTimer = null;
+      // While the agent is running, the full unmount/remount would fire
+      // useAgentLoop's cleanup and abort the in-flight request — so the
+      // agent dies on maximize. Skip the unmount in that case;
+      // useTerminalSize already clears the screen and bumps resizeKey so
+      // <Static> remounts and re-prints the full history. Flag
+      // pendingResetUI so App.tsx fires a deferred resetUI the moment the
+      // agent goes idle, fixing any log-update drift that accumulated.
+      if (sessionStore.isAgentRunning) {
+        sessionStore.pendingResetUI = true;
+        return;
+      }
       resetUI();
     }, 250);
   };
@@ -319,5 +392,14 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
   } finally {
     process.stdout.off("resize", onTerminalResize);
     if (resizeTimer) clearTimeout(resizeTimer);
+    process.off("exit", onProcessExit);
+    // Final cleanup on normal exit — also covered by the "exit" handler,
+    // but writing here ensures the disable lands before Node tears stdout
+    // down on process termination.
+    try {
+      process.stdout.write(DISABLE_MODIFY_OTHER_KEYS);
+    } catch {
+      // ignored
+    }
   }
 }

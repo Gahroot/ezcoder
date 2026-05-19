@@ -1,14 +1,32 @@
-import type { Provider } from "@prestyj/ai";
+import type { Provider, ThinkingLevel } from "@prestyj/ai";
 
 export interface ModelInfo {
   id: string;
   name: string;
   provider: Provider;
   contextWindow: number;
+  /**
+   * ChatGPT Codex transport uses product-specific windows that can differ from
+   * the public API model window. OpenAI OAuth requests include an accountId and
+   * route through `/codex/responses`; API-key requests do not.
+   */
+  codexContextWindow?: number;
   maxOutputTokens: number;
   supportsThinking: boolean;
   supportsImages: boolean;
   costTier: "low" | "medium" | "high";
+  /**
+   * The top reasoning tier this model genuinely uses. Used when thinking is
+   * enabled to pick the strongest setting per model:
+   *   - OpenAI GPT-5.5-era: `xhigh`
+   *   - OpenAI Pro/Codex/old: clamped to what the model accepts
+   *   - Claude Opus 4.7: `xhigh` (mapped to Anthropic's `max` for Opus)
+   *   - Claude Sonnet 4.6 / Haiku 4.5: `high` (no `max` tier)
+   *   - GLM / Moonshot / Xiaomi / MiniMax / Qwen: `high` — binary-thinking
+   *     providers ignore the level on the wire, so the value is cosmetic
+   *   - DeepSeek V4: `xhigh` (DeepSeek maps `xhigh` → its internal `max`)
+   */
+  maxThinkingLevel: ThinkingLevel;
 }
 
 // Provider display order — mirrors `PROVIDERS` in ui/login.tsx so the
@@ -24,6 +42,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: true,
     costTier: "high",
+    maxThinkingLevel: "xhigh",
   },
   {
     id: "claude-sonnet-4-6",
@@ -34,6 +53,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: true,
     costTier: "medium",
+    maxThinkingLevel: "high",
   },
   {
     id: "claude-haiku-4-5-20251001",
@@ -44,6 +64,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: true,
     costTier: "low",
+    maxThinkingLevel: "high",
   },
   // ── OpenAI (Codex) ─────────────────────────────────────
   {
@@ -51,30 +72,24 @@ export const MODELS: ModelInfo[] = [
     name: "GPT-5.5",
     provider: "openai",
     contextWindow: 1_050_000,
+    codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
     costTier: "high",
-  },
-  {
-    id: "gpt-5.5-pro",
-    name: "GPT-5.5 Pro",
-    provider: "openai",
-    contextWindow: 1_050_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportsImages: true,
-    costTier: "high",
+    maxThinkingLevel: "xhigh",
   },
   {
     id: "gpt-5.4",
     name: "GPT-5.4",
     provider: "openai",
     contextWindow: 1_050_000,
+    codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
     costTier: "high",
+    maxThinkingLevel: "xhigh",
   },
   {
     id: "gpt-5.4-mini",
@@ -84,7 +99,8 @@ export const MODELS: ModelInfo[] = [
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
-    costTier: "medium",
+    costTier: "low",
+    maxThinkingLevel: "xhigh",
   },
   {
     id: "gpt-5.3-codex",
@@ -95,16 +111,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: true,
     costTier: "high",
-  },
-  {
-    id: "codex-mini-latest",
-    name: "Codex Mini",
-    provider: "openai",
-    contextWindow: 200_000,
-    maxOutputTokens: 100_000,
-    supportsThinking: true,
-    supportsImages: true,
-    costTier: "low",
+    maxThinkingLevel: "xhigh",
   },
   // ── Moonshot (Kimi) ────────────────────────────────────
   {
@@ -112,10 +119,11 @@ export const MODELS: ModelInfo[] = [
     name: "Kimi K2.6",
     provider: "moonshot",
     contextWindow: 262_144,
-    maxOutputTokens: 65_536,
+    maxOutputTokens: 262_144,
     supportsThinking: true,
     supportsImages: true,
     costTier: "medium",
+    maxThinkingLevel: "high",
   },
   // ── Z.AI (GLM) ─────────────────────────────────────────
   {
@@ -127,6 +135,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: false,
     costTier: "medium",
+    maxThinkingLevel: "high",
   },
   {
     id: "glm-4.7",
@@ -137,6 +146,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: false,
     costTier: "low",
+    maxThinkingLevel: "high",
   },
   {
     id: "glm-4.7-flash",
@@ -147,6 +157,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: false,
     costTier: "low",
+    maxThinkingLevel: "high",
   },
   // ── MiniMax ────────────────────────────────────────────
   {
@@ -158,6 +169,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: false,
     costTier: "medium",
+    maxThinkingLevel: "high",
   },
   {
     id: "MiniMax-M2.7-highspeed",
@@ -168,6 +180,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: false,
     costTier: "medium",
+    maxThinkingLevel: "high",
   },
   // ── Xiaomi (MiMo) ──────────────────────────────────────
   {
@@ -179,6 +192,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: false,
     costTier: "medium",
+    maxThinkingLevel: "high",
   },
   // ── DeepSeek ───────────────────────────────────────────
   {
@@ -186,20 +200,23 @@ export const MODELS: ModelInfo[] = [
     name: "DeepSeek V4 Pro",
     provider: "deepseek",
     contextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
+    maxOutputTokens: 384_000,
     supportsThinking: true,
     supportsImages: false,
     costTier: "high",
+    // DeepSeek V4 maps `xhigh` → its internal `max` tier.
+    maxThinkingLevel: "xhigh",
   },
   {
     id: "deepseek-v4-flash",
     name: "DeepSeek V4 Flash",
     provider: "deepseek",
     contextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
+    maxOutputTokens: 384_000,
     supportsThinking: true,
     supportsImages: false,
     costTier: "low",
+    maxThinkingLevel: "xhigh",
   },
   // ── OpenRouter ─────────────────────────────────────────
   {
@@ -211,6 +228,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: false,
     costTier: "medium",
+    maxThinkingLevel: "high",
   },
 ];
 
@@ -233,9 +251,30 @@ export function getDefaultModel(provider: Provider): ModelInfo {
   return MODELS.find((m) => m.id === "claude-sonnet-4-6")!;
 }
 
-export function getContextWindow(modelId: string): number {
+export interface ContextWindowOptions {
+  provider?: Provider;
+  accountId?: string;
+}
+
+export function usesOpenAICodexTransport(options?: ContextWindowOptions): boolean {
+  return options?.provider === "openai" && Boolean(options.accountId);
+}
+
+export function getContextWindow(modelId: string, options?: ContextWindowOptions): number {
   const model = getModel(modelId);
-  return model?.contextWindow ?? 200_000;
+  if (!model) return 200_000;
+  if (usesOpenAICodexTransport(options) && model.codexContextWindow) {
+    return model.codexContextWindow;
+  }
+  return model.contextWindow;
+}
+
+/**
+ * The strongest thinking level the given model genuinely uses. Falls back to
+ * `"high"` for unknown models since every provider we ship accepts it.
+ */
+export function getMaxThinkingLevel(modelId: string): ThinkingLevel {
+  return getModel(modelId)?.maxThinkingLevel ?? "high";
 }
 
 /**

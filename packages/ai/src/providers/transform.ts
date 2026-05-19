@@ -125,6 +125,21 @@ function toAnthropicToolResultContent(
   });
 }
 
+/**
+ * Anthropic requires tool_use IDs to match `^[a-zA-Z0-9_-]+$`. Codex tool IDs
+ * are composite (`callId|itemId`) and other providers may include dots/colons.
+ * Replace any disallowed characters with `_` and memoize so the assistant's
+ * tool_use ID matches the corresponding tool_result.tool_use_id.
+ */
+function remapAnthropicToolCallId(id: string, idMap: Map<string, string>): string {
+  if (/^[a-zA-Z0-9_-]+$/.test(id)) return id;
+  const existing = idMap.get(id);
+  if (existing) return existing;
+  const mapped = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  idMap.set(id, mapped);
+  return mapped;
+}
+
 export function toAnthropicMessages(
   messages: Message[],
   cacheControl?: { type: "ephemeral"; ttl?: "1h" },
@@ -134,6 +149,7 @@ export function toAnthropicMessages(
 } {
   let systemText: string | undefined;
   const out: Anthropic.MessageParam[] = [];
+  const idMap = new Map<string, string>();
 
   for (const msg of messages) {
     if (msg.role === "system") {
@@ -186,7 +202,7 @@ export function toAnthropicMessages(
                 if (part.type === "tool_call")
                   return {
                     type: "tool_use",
-                    id: part.id,
+                    id: remapAnthropicToolCallId(part.id, idMap),
                     name: part.name,
                     input: part.args,
                   };
@@ -217,7 +233,7 @@ export function toAnthropicMessages(
         role: "user",
         content: msg.content.map((result) => ({
           type: "tool_result" as const,
-          tool_use_id: result.toolCallId,
+          tool_use_id: remapAnthropicToolCallId(result.toolCallId, idMap),
           content: toAnthropicToolResultContent(result.content),
           is_error: result.isError,
         })),
@@ -253,8 +269,9 @@ export function toAnthropicMessages(
     }
   }
 
-  // Build system as block array (supports cache_control).
-  // Split on "<!-- uncached -->" marker: text before is cached, text after is not.
+  // Anthropic supports block-level cache_control. EZ Coder keeps reusable prompt
+  // content before the "<!-- uncached -->" marker and volatile text (currently
+  // the date) after it, so only the reusable prefix receives cache_control.
   let system: Anthropic.TextBlockParam[] | undefined;
   if (systemText) {
     const marker = "<!-- uncached -->";
@@ -280,13 +297,29 @@ export function toAnthropicMessages(
   return { system, messages: out };
 }
 
-export function toAnthropicTools(tools: Tool[]): Anthropic.Tool[] {
-  return tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    input_schema: (tool.rawInputSchema ??
-      zodToJsonSchema(tool.parameters)) as Anthropic.Tool["input_schema"],
-  }));
+export function toAnthropicTools(
+  tools: Tool[],
+  options?: {
+    cacheControl?: { type: "ephemeral"; ttl?: "1h" };
+    enableFineGrainedToolStreaming?: boolean;
+  },
+): Anthropic.Tool[] {
+  return tools.map((tool, index) => {
+    const anthropicTool: Anthropic.Tool & {
+      cache_control?: { type: "ephemeral"; ttl?: "1h" };
+      eager_input_streaming?: boolean;
+    } = {
+      name: tool.name,
+      description: tool.description,
+      input_schema: (tool.rawInputSchema ??
+        zodToJsonSchema(tool.parameters)) as Anthropic.Tool["input_schema"],
+      ...(options?.enableFineGrainedToolStreaming ? { eager_input_streaming: true } : {}),
+    };
+    if (options?.cacheControl && index === tools.length - 1) {
+      anthropicTool.cache_control = options.cacheControl;
+    }
+    return anthropicTool;
+  });
 }
 
 export function toAnthropicToolChoice(choice: ToolChoice): Anthropic.ToolChoice {
@@ -312,9 +345,10 @@ export function toAnthropicThinking(
   if (supportsAdaptiveThinking(model)) {
     // Adaptive thinking — model decides when/how much to think.
     // budget_tokens is deprecated on Opus 4.7 / Opus 4.6 / Sonnet 4.6.
-    // "max" effort is Opus-only; downgrade to "high" for Sonnet
-    let effort: string = level;
-    if (level === "max" && !model.includes("opus")) {
+    // Anthropic's output_config.effort uses "max" as the top tier (Opus-only);
+    // map our "xhigh" → "max", and clamp non-Opus models to "high".
+    let effort: string = level === "xhigh" ? "max" : level;
+    if (effort === "max" && !model.includes("opus")) {
       effort = "high";
     }
     return {
@@ -324,8 +358,8 @@ export function toAnthropicThinking(
     };
   }
 
-  // Legacy budget-based thinking for older models ("max" treated as "high")
-  const effectiveLevel = level === "max" ? "high" : level;
+  // Legacy budget-based thinking for older models ("xhigh" treated as "high")
+  const effectiveLevel = level === "xhigh" ? "high" : level;
   const budgetMap: Record<"low" | "medium" | "high", number> = {
     low: Math.max(1024, Math.floor(maxTokens * 0.25)),
     medium: Math.max(2048, Math.floor(maxTokens * 0.5)),
@@ -367,6 +401,9 @@ export function toOpenAIMessages(
 
   for (const msg of messages) {
     if (msg.role === "system") {
+      // OpenAI-style APIs receive the system prompt literally. They may do
+      // provider-side prefix/key caching, but there is no Anthropic-style
+      // uncached block split here; the marker remains ordinary text.
       out.push({ role: "system", content: msg.content });
       continue;
     }
@@ -519,8 +556,11 @@ export function toOpenAIToolChoice(choice: ToolChoice): OpenAI.ChatCompletionToo
   return { type: "function", function: { name: choice.name } };
 }
 
-export function toOpenAIReasoningEffort(level: ThinkingLevel): "low" | "medium" | "high" {
-  return level === "max" ? "high" : level;
+export function toOpenAIReasoningEffort(
+  level: ThinkingLevel,
+  _model: string,
+): "low" | "medium" | "high" | "xhigh" {
+  return level;
 }
 
 // ── Response Normalization ─────────────────────────────────

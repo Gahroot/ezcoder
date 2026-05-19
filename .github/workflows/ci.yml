@@ -10,7 +10,7 @@ on:
 # typecheck + test + bin-smoke on macOS, Linux, and Windows so we catch
 # platform-specific regressions before they hit npm.
 #
-# We deliberately keep the gg-editor + gg-pixel packages out of the matrix
+# We deliberately keep the gg-editor + ez-pixel packages out of the matrix
 # for now — they have heavier native deps (sharp, transformers) that slow CI
 # without buying us much for the framework's release-critical packages
 # (gg-ai, gg-agent, ezcoder, gg-boss).

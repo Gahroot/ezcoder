@@ -1,3 +1,4 @@
+import { ZodError, prettifyError } from "zod";
 import {
   stream,
   EventStream,
@@ -79,6 +80,56 @@ export function isContextOverflow(err: unknown): boolean {
   );
 }
 
+export interface ContextOverflowDetails {
+  observedTokens?: number;
+  observedLimit?: number;
+}
+
+function parseOverflowNumber(value: string): number {
+  return Number(value.replace(/[,_\s]/g, ""));
+}
+
+/** Extract provider-reported token counts from common context overflow messages. */
+export function extractContextOverflowDetails(err: unknown): ContextOverflowDetails {
+  if (!(err instanceof Error)) return {};
+  const text = err.message;
+  const patterns: Array<{ regex: RegExp; tokensGroup: number; limitGroup: number }> = [
+    // Anthropic/OpenAI-compatible: "203456 tokens > 200000 maximum"
+    {
+      regex: /([\d,_.\s]+)\s*tokens?\s*>\s*([\d,_.\s]+)\s*(?:maximum|max|limit)?/i,
+      tokensGroup: 1,
+      limitGroup: 2,
+    },
+    // OpenAI: "maximum context length is 128000 tokens ... resulted in 130000 tokens"
+    {
+      regex:
+        /maximum context length is\s*([\d,_.\s]+)\s*tokens?[\s\S]*?resulted in\s*([\d,_.\s]+)\s*tokens?/i,
+      tokensGroup: 2,
+      limitGroup: 1,
+    },
+    // Generic: "130000 input tokens exceeds 128000 token limit"
+    {
+      regex:
+        /([\d,_.\s]+)\s*(?:input\s*)?tokens?[\s\S]{0,80}?exceeds?[\s\S]{0,80}?([\d,_.\s]+)\s*(?:token\s*)?(?:limit|maximum|max)/i,
+      tokensGroup: 1,
+      limitGroup: 2,
+    },
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern.regex);
+    if (!match) continue;
+    const observedTokens = parseOverflowNumber(match[pattern.tokensGroup] ?? "");
+    const observedLimit = parseOverflowNumber(match[pattern.limitGroup] ?? "");
+    return {
+      ...(Number.isFinite(observedTokens) && observedTokens > 0 ? { observedTokens } : {}),
+      ...(Number.isFinite(observedLimit) && observedLimit > 0 ? { observedLimit } : {}),
+    };
+  }
+
+  return {};
+}
+
 /**
  * Detect billing/quota errors — these should NOT be retried.
  * GLM returns HTTP 429 with "Insufficient balance" for quota exhaustion.
@@ -122,16 +173,22 @@ export function isToolPairingError(err: unknown): boolean {
 }
 
 /**
- * Distinguish rate-limit (HTTP 429) from server-side overload (HTTP 529).
- * Returns null for errors that should not enter the overload-retry bucket.
- * Both kinds use the same backoff schedule, but the UI shows different copy
- * and the log line records the true cause.
+ * Distinguish rate-limit (HTTP 429), server-side overload (HTTP 529), and
+ * transient provider 5xx/API failures. Returns null for errors that should not
+ * enter the retry bucket. All kinds use the same backoff schedule, but the UI
+ * shows different copy and the log line records the true cause.
  */
-export function classifyOverload(err: unknown): "rate_limit" | "overloaded" | null {
+export function classifyOverload(
+  err: unknown,
+): "rate_limit" | "overloaded" | "provider_error" | null {
   if (!(err instanceof Error)) return null;
   if (isBillingError(err)) return null;
   const msg = err.message.toLowerCase();
+  const errorWithStatus = err as Error & { statusCode?: unknown };
+  const statusCode =
+    typeof errorWithStatus.statusCode === "number" ? errorWithStatus.statusCode : undefined;
   if (
+    statusCode === 429 ||
     msg.includes("rate_limit") ||
     msg.includes("rate limit") ||
     msg.includes("too many requests") ||
@@ -139,8 +196,22 @@ export function classifyOverload(err: unknown): "rate_limit" | "overloaded" | nu
   ) {
     return "rate_limit";
   }
-  if (msg.includes("overloaded") || msg.includes("529")) {
+  if (statusCode === 529 || msg.includes("overloaded") || msg.includes("529")) {
     return "overloaded";
+  }
+  if (
+    statusCode === 500 ||
+    statusCode === 502 ||
+    statusCode === 503 ||
+    statusCode === 504 ||
+    msg.includes("api_error") ||
+    msg.includes("server_error") ||
+    msg.includes("internal server error") ||
+    msg.includes("bad gateway") ||
+    msg.includes("service unavailable") ||
+    msg.includes("gateway timeout")
+  ) {
+    return "provider_error";
   }
   return null;
 }
@@ -164,6 +235,56 @@ export function isMalformedStream(err: unknown): boolean {
   // V8 JSON.parse error messages: "Expected ... in JSON at position N"
   // and "Unexpected token ... in JSON at position N"
   return /\bin JSON at position \d+/i.test(msg);
+}
+
+/**
+ * Detect socket-level transport failures — the remote peer (or an
+ * intermediary) closed the TCP connection mid-stream before the response
+ * finished.  Surfaces as `TypeError: terminated` from undici/fetch, or as
+ * `ECONNRESET` / `socket hang up` / `UND_ERR_SOCKET` from the underlying
+ * Node http layer.  Undici nests the real cause one or more levels deep,
+ * so we walk the `.cause` chain.  Same recovery as a stall: replay the
+ * request, optionally as non-streaming.
+ */
+export function isTransportFailure(err: unknown): boolean {
+  const codes = new Set([
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ECONNABORTED",
+    "ETIMEDOUT",
+    "EPIPE",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "ENOTFOUND",
+    "UND_ERR_SOCKET",
+    "UND_ERR_CONNECT_TIMEOUT",
+    "UND_ERR_HEADERS_TIMEOUT",
+    "UND_ERR_BODY_TIMEOUT",
+    "UND_ERR_RESPONSE_STATUS_CODE",
+    "UND_ERR_REQ_CONTENT_LENGTH_MISMATCH",
+    "UND_ERR_RES_CONTENT_LENGTH_MISMATCH",
+  ]);
+  const messages = [
+    /^terminated$/i,
+    /\bother side closed\b/i,
+    /\bsocket hang up\b/i,
+    /\bfetch failed\b/i,
+    /\bbody timeout error\b/i,
+    /\bsse stream disconnected\b/i,
+    /\bfailed to reconnect sse stream\b/i,
+  ];
+  const seen = new Set<unknown>();
+  let cur: unknown = err;
+  while (cur && typeof cur === "object" && !seen.has(cur)) {
+    seen.add(cur);
+    const e = cur as { code?: unknown; message?: unknown; cause?: unknown };
+    if (typeof e.code === "string" && codes.has(e.code)) return true;
+    if (typeof e.message === "string") {
+      for (const re of messages) if (re.test(e.message)) return true;
+    }
+    cur = e.cause;
+  }
+  return false;
 }
 
 /**
@@ -206,6 +327,8 @@ export async function* agentLoop(
   let emptyResponseRetries = 0;
   let stallRetries = 0;
   let overflowCompactionAttempts = 0;
+  let toolResultTruncationAttempted = false;
+  const invalidToolArgumentCounts = new Map<string, number>();
   // Non-streaming fallback mode. After repeated stream stalls, flip to a
   // plain non-streaming request/response -- often survives broken SSE
   // connections (transient CDN / proxy issues) that streaming retries cannot.
@@ -241,6 +364,14 @@ export async function* agentLoop(
   // unreachability doesn't cause multi-minute hangs, but not so aggressively
   // that slow-but-healthy backends get killed.
   const NON_STREAMING_HARD_TIMEOUT_MS = 300_000; // 5min for full non-streaming response
+  // Runaway tool-call circuit breaker. When a model glitches mid-tool-call it
+  // can emit tens of thousands of toolcall_delta events without ever closing,
+  // burning the entire stall-retry budget (~25 min) on what is clearly a
+  // non-recoverable model error. Cap accumulated arg chars and event count;
+  // exceeding either is a hard, non-retriable failure. Thresholds are generous
+  // enough to allow legitimate large file writes through `write`.
+  const MAX_TOOLCALL_DELTA_CHARS = 1_000_000; // 1 MB of accumulated tool-call args
+  const MAX_TOOLCALL_DELTA_EVENTS = 20_000; // 20k delta events in one stream
 
   try {
     while (turn < maxTurns) {
@@ -312,6 +443,13 @@ export async function* agentLoop(
       // Track event types for diagnostics — shows what arrived before a stall
       const eventTypeCounts: Record<string, number> = {};
       let lastEventType = "";
+      // Runaway tool-call detection — accumulated across all toolcall_delta
+      // events in this stream attempt. When tripped we abort the stream and
+      // bail out without retrying (the model has glitched, retries won't help).
+      let toolcallDeltaChars = 0;
+      let toolcallDeltaCount = 0;
+      let runawayDetected: { kind: "chars" | "events"; chars: number; events: number } | null =
+        null;
       // Track consumer processing time — helps distinguish "API stopped sending"
       // from "our consumer was slow to pull the next event"
       let lastYieldEndTime = Date.now();
@@ -395,9 +533,12 @@ export async function* agentLoop(
           signal: streamController.signal,
           accountId: options.accountId,
           cacheRetention: options.cacheRetention,
+          promptCacheKey: options.promptCacheKey,
+          serviceTier: options.serviceTier,
           supportsImages: options.supportsImages,
           compaction: options.compaction,
           clearToolUses: options.clearToolUses,
+          userAgent: options.userAgent,
           // Flip to non-streaming fallback after repeated stream stalls.
           ...(useNonStreamingFallback ? { streaming: false } : {}),
         });
@@ -411,14 +552,22 @@ export async function* agentLoop(
         hasReceivedEvent = false;
         lastEventTime = Date.now();
         streamCallStart = Date.now();
+        // Reset to streamCallStart so the first event's consumerLag reflects
+        // network/provider latency, not the time spent before stream() returned.
+        lastYieldEndTime = Date.now();
         resetIdleTimer();
         for await (const event of result) {
           // Measure consumer lag: time between finishing previous yield and
-          // receiving this event.  High lag means React rendering is starving
-          // the stream consumer.  Low lag means the API was slow to send.
+          // receiving this event. For event #1 this still includes network/
+          // provider latency; for subsequent events it isolates how long
+          // React/UI rendering held up the next pull.
           const pullTime = Date.now();
           const consumerLag = pullTime - lastYieldEndTime;
-          if (consumerLag > maxConsumerLagMs) maxConsumerLagMs = consumerLag;
+          // Only track mid-stream lag — first event lag is dominated by
+          // server-side TTFB and would mask real UI starvation issues.
+          if (streamEventCount > 0 && consumerLag > maxConsumerLagMs) {
+            maxConsumerLagMs = consumerLag;
+          }
 
           streamEventCount++;
           eventTypeCounts[event.type] = (eventTypeCounts[event.type] ?? 0) + 1;
@@ -497,9 +646,29 @@ export async function* agentLoop(
               data: event.data,
             };
           } else if (event.type === "toolcall_delta") {
+            const chunkChars = event.argsJson?.length ?? 0;
+            toolcallDeltaChars += chunkChars;
+            toolcallDeltaCount++;
+            if (
+              !runawayDetected &&
+              (toolcallDeltaChars > MAX_TOOLCALL_DELTA_CHARS ||
+                toolcallDeltaCount > MAX_TOOLCALL_DELTA_EVENTS)
+            ) {
+              runawayDetected = {
+                kind: toolcallDeltaChars > MAX_TOOLCALL_DELTA_CHARS ? "chars" : "events",
+                chars: toolcallDeltaChars,
+                events: toolcallDeltaCount,
+              };
+              diag("runaway_toolcall_detected", {
+                ...runawayDetected,
+                provider: options.provider,
+                model: options.model,
+              });
+              streamController.abort();
+            }
             yield {
               type: "toolcall_delta" as const,
-              chars: event.argsJson?.length ?? 0,
+              chars: chunkChars,
             };
           }
           lastYieldEndTime = Date.now();
@@ -531,12 +700,46 @@ export async function* agentLoop(
         // MAX_OVERFLOW_COMPACTIONS to avoid loops when compaction can't reduce
         // enough (e.g. single huge user message).
         if (isContextOverflow(err)) {
+          const overflowDetails = extractContextOverflowDetails(err);
+          diag("context_overflow_detected", {
+            ...overflowDetails,
+            error: errMsg.slice(0, 500),
+            messages: messages.length,
+          });
+
+          const overflowToolResultMaxChars = Math.min(
+            options.maxToolResultChars ?? 100_000,
+            100_000,
+          );
+          if (!toolResultTruncationAttempted) {
+            toolResultTruncationAttempted = true;
+            const truncated = truncateOversizedToolResults(messages, overflowToolResultMaxChars);
+            diag("overflow_tool_result_truncation", {
+              truncated,
+              maxChars: overflowToolResultMaxChars,
+            });
+            if (truncated) {
+              yield {
+                type: "retry" as const,
+                reason: "overflow_compact" as const,
+                attempt: overflowCompactionAttempts + 1,
+                maxAttempts: MAX_OVERFLOW_COMPACTIONS,
+                delayMs: 0,
+                ...overflowDetails,
+                silent: true,
+              };
+              turn--;
+              continue;
+            }
+          }
+
           if (options.transformContext && overflowCompactionAttempts < MAX_OVERFLOW_COMPACTIONS) {
             overflowCompactionAttempts++;
             diag("overflow_compact_start", {
               attempt: overflowCompactionAttempts,
               maxAttempts: MAX_OVERFLOW_COMPACTIONS,
               messages: messages.length,
+              ...overflowDetails,
             });
             try {
               const compacted = await options.transformContext(messages, { force: true });
@@ -546,6 +749,7 @@ export async function* agentLoop(
                 diag("overflow_compact_success", {
                   attempt: overflowCompactionAttempts,
                   messages: messages.length,
+                  ...overflowDetails,
                 });
                 yield {
                   type: "retry" as const,
@@ -553,6 +757,7 @@ export async function* agentLoop(
                   attempt: overflowCompactionAttempts,
                   maxAttempts: MAX_OVERFLOW_COMPACTIONS,
                   delayMs: 0,
+                  ...overflowDetails,
                 };
                 turn--;
                 continue;
@@ -561,17 +766,19 @@ export async function* agentLoop(
                 attempt: overflowCompactionAttempts,
                 before: messages.length,
                 after: compacted.length,
+                ...overflowDetails,
               });
             } catch (compactErr) {
               diag("overflow_compact_failed", {
                 error: compactErr instanceof Error ? compactErr.message : String(compactErr),
+                ...overflowDetails,
               });
             }
           }
           yield { type: "error" as const, error: err instanceof Error ? err : new Error(errMsg) };
           throw err;
         }
-        // Overloaded / rate-limited: exponential backoff, retry up to 10 times
+        // Transient provider errors (5xx), overload, and rate-limit: exponential backoff.
         const overloadKind = classifyOverload(err);
         if (overloadRetries < MAX_OVERLOAD_RETRIES && overloadKind) {
           overloadRetries++;
@@ -601,22 +808,53 @@ export async function* agentLoop(
         // Both are transport failures — retry with exponential backoff and flip
         // to non-streaming mode after STALL_RETRIES_BEFORE_NON_STREAMING attempts,
         // since broken SSE often recovers when replayed as plain HTTP.
+        // Runaway tool-call: the model never closed a tool-call block and
+        // blew past the size/count caps. Retrying just reproduces the loop,
+        // so surface a clear error and stop. Checked before the abort branch
+        // since we ourselves aborted the stream to break the runaway.
+        if (runawayDetected) {
+          diag("runaway_toolcall_aborted", {
+            ...runawayDetected,
+            provider: options.provider,
+            model: options.model,
+          });
+          const detail =
+            runawayDetected.kind === "chars"
+              ? `${(runawayDetected.chars / 1024).toFixed(0)} KB of tool-call arguments`
+              : `${runawayDetected.events} tool-call delta events`;
+          yield {
+            type: "error" as const,
+            error: new Error(
+              `The model glitched mid-tool-call and produced ${detail} without closing the call. ` +
+                `This is usually an upstream model bug — try the same request again or switch models. ` +
+                `Your conversation is preserved.`,
+            ),
+          };
+          break;
+        }
         const malformed = isMalformedStream(err);
-        const transportFailure = (idleTimedOut || malformed) && !options.signal?.aborted;
+        const socketDrop = isTransportFailure(err);
+        const transportFailure =
+          (idleTimedOut || malformed || socketDrop) && !options.signal?.aborted;
         if (transportFailure && stallRetries < MAX_STALL_RETRIES) {
           stallRetries++;
+          const cause = malformed
+            ? "malformed_stream"
+            : socketDrop
+              ? "socket_drop"
+              : "stream_stall";
           if (!useNonStreamingFallback && stallRetries >= STALL_RETRIES_BEFORE_NON_STREAMING) {
             useNonStreamingFallback = true;
             diag("non_streaming_fallback_enabled", {
               stallRetries,
               provider: options.provider,
               model: options.model,
-              cause: malformed ? "malformed_stream" : "stream_stall",
+              cause,
             });
           }
           const delayMs = Math.min(STALL_DELAY_MS * 2 ** (stallRetries - 1), 8_000);
           diag("retry", {
-            reason: malformed ? "malformed_stream" : "stream_stall",
+            reason: cause,
             attempt: stallRetries,
             maxAttempts: MAX_STALL_RETRIES,
             delayMs,
@@ -817,6 +1055,7 @@ export async function* agentLoop(
         }
       }
       const eventStream = new EventStream<AgentEvent>();
+      let fatalToolArgumentError: Error | null = null;
 
       // Launch all tool calls in parallel
       const executions = toolCalls.map(async (toolCall) => {
@@ -855,9 +1094,33 @@ export async function* agentLoop(
             const normalized = normalizeToolResult(raw);
             resultContent = normalized.content;
             details = normalized.details;
+            for (const key of invalidToolArgumentCounts.keys()) {
+              if (key.startsWith(`${toolCall.name}:`)) invalidToolArgumentCounts.delete(key);
+            }
           } catch (err) {
             isError = true;
-            resultContent = err instanceof Error ? err.message : String(err);
+            if (err instanceof ZodError) {
+              // Zod v4's default `.message` is a JSON dump of `.issues`, which
+              // the model can't act on. Prettify into "field X: expected Y,
+              // received Z" lines so the next call comes back with valid args.
+              const prettyError = prettifyError(err);
+              const failureKey = `${toolCall.name}:${prettyError}`;
+              const failureCount = (invalidToolArgumentCounts.get(failureKey) ?? 0) + 1;
+              invalidToolArgumentCounts.set(failureKey, failureCount);
+              resultContent =
+                `Invalid arguments for tool \`${toolCall.name}\`:\n` +
+                prettyError +
+                "\nRe-issue the call with each field as the correct type.";
+              if (failureCount >= 3) {
+                fatalToolArgumentError = new Error(
+                  `The model repeatedly issued invalid arguments for tool \`${toolCall.name}\`. ` +
+                    `This is usually an upstream model/tool-calling bug. Your conversation is preserved; ` +
+                    `send another message or switch models to continue.`,
+                );
+              }
+            } else {
+              resultContent = err instanceof Error ? err.message : String(err);
+            }
           }
         }
 
@@ -962,6 +1225,11 @@ export async function* agentLoop(
         messages.push({ role: "tool", content: toolResults });
       }
 
+      if (fatalToolArgumentError) {
+        yield { type: "error" as const, error: fatalToolArgumentError };
+        break;
+      }
+
       // Exit loop after cleaning up aborted tools
       if (toolsAborted) break;
 
@@ -1020,6 +1288,42 @@ function toolResultPreview(content: ToolResultContent): string {
   return content
     .map((block) => (block.type === "text" ? block.text : `[image ${block.mediaType}]`))
     .join("\n");
+}
+
+function truncateToolResultText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const tailChars = Math.min(Math.floor(maxChars * 0.3), 20_000);
+  const headChars = Math.max(maxChars - tailChars, 0);
+  const omitted = text.length - headChars - tailChars;
+  return `${text.slice(0, headChars)}\n\n[... ${omitted} characters omitted after context overflow ...]\n\n${text.slice(-tailChars)}`;
+}
+
+function truncateOversizedToolResults(messages: Message[], maxChars: number): boolean {
+  if (maxChars <= 0) return false;
+  let changed = false;
+  for (const msg of messages) {
+    if (msg.role !== "tool" || !Array.isArray(msg.content)) continue;
+    const results = msg.content as ToolResult[];
+    for (const result of results) {
+      if (typeof result.content === "string") {
+        const truncated = truncateToolResultText(result.content, maxChars);
+        if (truncated !== result.content) {
+          result.content = truncated;
+          changed = true;
+        }
+      } else {
+        for (const block of result.content) {
+          if (block.type !== "text") continue;
+          const truncated = truncateToolResultText(block.text, maxChars);
+          if (truncated !== block.text) {
+            block.text = truncated;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+  return changed;
 }
 
 function extractToolCalls(content: string | ContentPart[]): ToolCall[] {

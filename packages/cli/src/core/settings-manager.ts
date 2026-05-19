@@ -13,7 +13,14 @@ const SettingsSchema = z.object({
   defaultModel: z.string().optional(),
   maxTokens: z.number().int().min(256).default(16384),
   thinkingEnabled: z.boolean().default(false),
-  thinkingLevel: z.enum(["low", "medium", "high", "max"]).optional(),
+  thinkingLevel: z
+    .preprocess(
+      // Legacy "max" → "xhigh" migration for settings files written before
+      // the rename. Matches OpenAI's GPT-5.5-era naming for the top tier.
+      (v) => (v === "max" ? "xhigh" : v),
+      z.enum(["low", "medium", "high", "xhigh"]),
+    )
+    .optional(),
   theme: z
     .enum([
       "auto",
@@ -26,9 +33,7 @@ const SettingsSchema = z.object({
     ])
     .default("auto"),
   showTokenUsage: z.boolean().default(true),
-  showThinking: z.boolean().default(true),
   enabledTools: z.array(z.string()).optional(),
-  buddyEnabled: z.boolean().default(false),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -41,8 +46,6 @@ export const DEFAULT_SETTINGS: Settings = {
   thinkingEnabled: false,
   theme: "auto",
   showTokenUsage: true,
-  showThinking: true,
-  buddyEnabled: false,
 };
 
 // ── Settings Manager ───────────────────────────────────────

@@ -16,6 +16,22 @@ import {
   toOpenAIToolChoice,
   toOpenAITools,
 } from "./transform.js";
+import { normalizePromptCacheKey } from "./prompt-cache-key.js";
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseToolArguments(argsJson: string): Record<string, unknown> {
+  if (!argsJson) return {};
+  try {
+    const parsed = JSON.parse(argsJson) as unknown;
+    const unwrapped = typeof parsed === "string" ? (JSON.parse(parsed) as unknown) : parsed;
+    return isJsonObject(unwrapped) ? unwrapped : {};
+  } catch {
+    return {};
+  }
+}
 
 function createClient(options: StreamOptions): OpenAI {
   return new OpenAI({
@@ -59,7 +75,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     ...(options.topP != null ? { top_p: options.topP } : {}),
     ...(options.stop ? { stop: options.stop } : {}),
     ...(options.thinking && !usesThinkingParam
-      ? { reasoning_effort: toOpenAIReasoningEffort(options.thinking) }
+      ? { reasoning_effort: toOpenAIReasoningEffort(options.thinking, options.model) }
       : {}),
     ...(options.tools?.length ? { tools: toOpenAITools(options.tools) } : {}),
     ...(options.toolChoice && options.tools?.length
@@ -78,7 +94,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // params may cause errors on other OpenAI-compatible providers like GLM or Xiaomi.
   if (options.provider === "openai" || options.provider === "moonshot") {
     const paramsAny = params as unknown as Record<string, unknown>;
-    paramsAny.prompt_cache_key = "ezcoder";
+    paramsAny.prompt_cache_key = normalizePromptCacheKey(options.promptCacheKey ?? "ezcoder");
 
     // Map cacheRetention to OpenAI's prompt_cache_retention param.
     // "long" → "24h" keeps cached prefixes active up to 24 hours (OpenAI feature).
@@ -86,6 +102,10 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     if (retention === "long") {
       paramsAny.prompt_cache_retention = "24h";
     }
+  }
+
+  if (options.provider === "openai" && options.serviceTier) {
+    (params as unknown as Record<string, unknown>).service_tier = options.serviceTier;
   }
 
   // Inject custom thinking param for GLM/Moonshot/Xiaomi (not part of OpenAI spec)
@@ -160,11 +180,21 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       if (details?.cached_tokens) {
         cacheRead = details.cached_tokens;
       }
-      // Kimi K2/K2.5 reports cached_tokens at the top level of usage
-      // rather than nested under prompt_tokens_details.
+      // Vendor-specific cache reporting fields:
+      // - Kimi K2/K2.5 / StepFun: top-level `cached_tokens`
+      // - DeepSeek / SiliconFlow: `prompt_cache_hit_tokens`
+      // OpenAI / Zhipu (GLM) / MiniMax / Qwen / Mistral / xAI all use the
+      // standard `prompt_tokens_details.cached_tokens` handled above.
       const usageAny = chunk.usage as unknown as Record<string, unknown>;
       if (!cacheRead && typeof usageAny.cached_tokens === "number" && usageAny.cached_tokens > 0) {
         cacheRead = usageAny.cached_tokens as number;
+      }
+      if (
+        !cacheRead &&
+        typeof usageAny.prompt_cache_hit_tokens === "number" &&
+        usageAny.prompt_cache_hit_tokens > 0
+      ) {
+        cacheRead = usageAny.prompt_cache_hit_tokens as number;
       }
       // OpenAI's prompt_tokens includes cached tokens; subtract to match
       // Anthropic's convention where inputTokens excludes cache hits.
@@ -240,12 +270,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
 
   // Finalize tool calls
   for (const [, tc] of toolCallAccum) {
-    let args: Record<string, unknown> = {};
-    try {
-      args = JSON.parse(tc.argsJson) as Record<string, unknown>;
-    } catch {
-      // malformed JSON — keep empty
-    }
+    const args = parseToolArguments(tc.argsJson);
     const toolCall: ToolCall = {
       type: "tool_call",
       id: tc.id,
@@ -319,12 +344,7 @@ function* synthesizeEventsFromCompletion(
           argsJson,
         };
       }
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(argsJson) as Record<string, unknown>;
-      } catch {
-        // malformed JSON -- keep empty
-      }
+      const args = parseToolArguments(argsJson);
       yield {
         type: "toolcall_done",
         id: tc.id,
@@ -362,12 +382,7 @@ function completionToResponse(completion: OpenAI.ChatCompletion): StreamResponse
       | undefined;
     if (toolCalls) {
       for (const tc of toolCalls) {
-        let args: Record<string, unknown> = {};
-        try {
-          args = JSON.parse(tc.function?.arguments ?? "{}") as Record<string, unknown>;
-        } catch {
-          // malformed JSON -- keep empty
-        }
+        const args = parseToolArguments(tc.function?.arguments ?? "");
         const toolCall: ToolCall = {
           type: "tool_call",
           id: tc.id,
@@ -391,6 +406,13 @@ function completionToResponse(completion: OpenAI.ChatCompletion): StreamResponse
     if (!cacheRead && typeof usageAny.cached_tokens === "number" && usageAny.cached_tokens > 0) {
       cacheRead = usageAny.cached_tokens as number;
     }
+    if (
+      !cacheRead &&
+      typeof usageAny.prompt_cache_hit_tokens === "number" &&
+      usageAny.prompt_cache_hit_tokens > 0
+    ) {
+      cacheRead = usageAny.prompt_cache_hit_tokens as number;
+    }
     inputTokens = completion.usage.prompt_tokens - cacheRead;
   }
 
@@ -408,22 +430,27 @@ function completionToResponse(completion: OpenAI.ChatCompletion): StreamResponse
 
 function toError(err: unknown, provider: string = "openai"): ProviderError {
   if (err instanceof OpenAI.APIError) {
-    // Include full error body for debugging — GLM/Moonshot use non-standard error shapes
-    let msg = err.message;
     const body = err.error as Record<string, unknown> | undefined;
-    if (body) {
-      // Friendly message for codex-mini-latest requiring Pro/Max subscription
-      const modelName = (body.model as string) || "";
-      const _code = (body.code as string) || "";
-      const message = (body.message as string) || "";
-      if (modelName === "codex-mini-latest" || message.includes("codex-mini-latest")) {
-        msg = `codex-mini-latest requires an OpenAI Pro or Max subscription. You currently have access to GPT-5.4 and GPT-5.4 Mini with your account.`;
-      }
-      // Append raw error body so debug logs capture the exact API response
-      msg += ` | body: ${JSON.stringify(body)}`;
+    const bodyMessage =
+      typeof body?.message === "string" && body.message.trim() ? body.message.trim() : undefined;
+    const modelName = typeof body?.model === "string" ? body.model : "";
+    const cleanMessage = bodyMessage ?? err.message;
+
+    let hint: string | undefined;
+    if (modelName === "codex-mini-latest" || cleanMessage.includes("codex-mini-latest")) {
+      hint =
+        "codex-mini-latest requires an OpenAI Pro or Max subscription. " +
+        "Your account currently has access to GPT-5.4 and GPT-5.4 Mini.";
     }
-    return new ProviderError(provider, msg, {
+
+    const requestId =
+      (err as unknown as { request_id?: string }).request_id ??
+      (typeof body?.request_id === "string" ? body.request_id : undefined);
+
+    return new ProviderError(provider, cleanMessage, {
       statusCode: err.status,
+      ...(requestId ? { requestId } : {}),
+      ...(hint ? { hint } : {}),
       cause: err,
     });
   }

@@ -17,6 +17,7 @@ import { useAgentLoop } from "@prestyj/cli/ui/hooks/agent-loop";
 import { useDoublePress } from "@prestyj/cli/ui/hooks/double-press";
 import { useTheme } from "@prestyj/cli/ui/theme";
 import type { Message, Provider } from "@prestyj/ai";
+import { getMaxThinkingLevel } from "@prestyj/cli/models";
 import type { AgentTool } from "@prestyj/agent";
 import { Banner } from "./components/Banner.js";
 import type { LazyHost } from "../core/hosts/lazy.js";
@@ -121,7 +122,7 @@ type HistoryItem =
 // are handled inline because they manipulate React state directly.
 function promptCmd(name: string) {
   const c = EDITOR_PROMPT_COMMANDS.find((x) => x.name === name);
-  if (!c) throw new Error(`ezeditor: missing prompt command '${name}' — check prompt-commands.ts`);
+  if (!c) throw new Error(`gg-editor: missing prompt command '${name}' — check prompt-commands.ts`);
   return { name: c.name, aliases: c.aliases, description: c.description };
 }
 
@@ -308,7 +309,7 @@ export function App(props: AppProps) {
       maxTokens: 16384,
       apiKey: props.apiKey,
       accountId: props.accountId,
-      thinking: thinkingEnabled ? "medium" : undefined,
+      thinking: thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined,
       // Pull fresh creds before each turn so OAuth refresh + provider swaps
       // via /model both flow through. Without this, an 8h Anthropic token
       // that expires mid-session takes the whole CLI down.
@@ -637,7 +638,7 @@ export function App(props: AppProps) {
           model={currentModel}
           tokensIn={agentLoop.contextUsed}
           cwd={props.cwd}
-          thinkingEnabled={thinkingEnabled}
+          thinkingLevel={thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined}
           hidePlan
           hideCwd
           hideGitBranch

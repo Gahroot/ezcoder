@@ -4,7 +4,7 @@
  * Modelled directly on `@prestyj/cli/ui/login.tsx`'s
  * `renderLoginSelector` so the look matches:
  *
- *   ▄▀▀▀ ▄▀▀▀   EZ Editor v0.6.0 · By Ken Kai
+ *   ▄▀▀▀ ▄▀▀▀   EZ Editor v0.6.0 · By Nolan Grout
  *   █ ▀█ █ ▀█   Doctor
  *   ▀▄▄▀ ▀▄▄▀   Environment check
  *

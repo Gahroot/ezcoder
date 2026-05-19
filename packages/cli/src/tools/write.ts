@@ -16,6 +16,7 @@ export function createWriteTool(
   readFiles?: ReadTracker,
   ops: ToolOperations = localOperations,
   planModeRef?: { current: boolean },
+  onFileMutated?: (filePath: string) => void | Promise<void>,
 ): AgentTool<typeof WriteParams> {
   return {
     name: "write",
@@ -53,6 +54,7 @@ export function createWriteTool(
       }
       await ops.writeFile(resolved, content);
       await recordWrite(readFiles, resolved, content, ops);
+      await onFileMutated?.(resolved);
       const lines = content.split("\n").length;
       return `Wrote ${lines} lines to ${resolved}`;
     },

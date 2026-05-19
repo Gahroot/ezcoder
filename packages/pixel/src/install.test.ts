@@ -305,15 +305,15 @@ describe("install — project-kind dispatch", () => {
         fetchFn: fakeFetch({ id: "p", key: "k_py" }),
       });
       expect(result.projectKind).toBe("python");
-      expect(result.initFilePath.endsWith("gg_pixel_init.py")).toBe(true);
+      expect(result.initFilePath.endsWith("ez_pixel_init.py")).toBe(true);
       const initContent = readFileSync(result.initFilePath, "utf8");
-      expect(initContent).toContain("import gg_pixel");
+      expect(initContent).toContain("import ez_pixel");
       expect(initContent).toContain('"k_py"');
 
       // Entry should have been wired
       expect(result.entryWiring.kind).toBe("injected");
       const main = readFileSync(join(dir, "main.py"), "utf8");
-      expect(main).toContain("import gg_pixel_init");
+      expect(main).toContain("import ez_pixel_init");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -388,7 +388,7 @@ describe("install — hybrid framework wiring", () => {
       expect(clientFile).toContain('"use client"');
       expect(clientFile).toContain("@prestyj/pixel/browser");
       const layout = readFileSync(join(dir, "app/layout.tsx"), "utf8");
-      expect(layout).toContain("GGPixelClient");
+      expect(layout).toContain("EZPixelClient");
       expect(result.secondaryInit?.description).toContain("server instrumentation");
     } finally {
       cleanup();
@@ -716,14 +716,14 @@ export async function register() {
     }
   });
 
-  it("Next.js layout: AST-injects <GGPixelClient /> as a sibling of <body> children, not inside wrappers", async () => {
+  it("Next.js layout: AST-injects <EZPixelClient /> as a sibling of <body> children, not inside wrappers", async () => {
     writeFileSync(
       join(dir, "package.json"),
       JSON.stringify({ name: "wrapped-layout", dependencies: { next: "^15", react: "^19" } }),
     );
     mkdirSync(join(dir, "app"), { recursive: true });
     // The drjones-style scenario: children are wrapped in an auth-gating
-    // provider tree. The OLD regex would put <GGPixelClient /> inside the
+    // provider tree. The OLD regex would put <EZPixelClient /> inside the
     // wrapper (so the pixel only inits after auth resolves). AST should
     // place it as the first child of <body>, BEFORE any wrappers.
     writeFileSync(
@@ -754,12 +754,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       });
       const after = readFileSync(join(dir, "app/layout.tsx"), "utf8");
       // Import landed at the top.
-      expect(after).toContain('import GGPixelClient from "../ez-pixel.client"');
-      // <GGPixelClient /> is rendered.
-      expect(after).toContain("<GGPixelClient />");
-      // Crucially: it appears BEFORE the auth provider opens. (`<GGPixelClient />`
+      expect(after).toContain('import EZPixelClient from "../ez-pixel.client"');
+      // <EZPixelClient /> is rendered.
+      expect(after).toContain("<EZPixelClient />");
+      // Crucially: it appears BEFORE the auth provider opens. (`<EZPixelClient />`
       // index < `<AuthProvider>` index — both inside <body>.)
-      const pixelIdx = after.indexOf("<GGPixelClient />");
+      const pixelIdx = after.indexOf("<EZPixelClient />");
       const authIdx = after.indexOf("<AuthProvider>");
       expect(pixelIdx).toBeGreaterThan(after.indexOf("<body"));
       expect(pixelIdx).toBeLessThan(authIdx);
@@ -817,7 +817,7 @@ export default function RootLayout({
       // The template literal in className survived recast intact.
       expect(after).toContain("`${geistMono.variable} h-full antialiased`");
       // Pixel landed where it should — first child of body.
-      const pixelIdx = after.indexOf("<GGPixelClient />");
+      const pixelIdx = after.indexOf("<EZPixelClient />");
       const childrenIdx = after.indexOf("{children}");
       expect(pixelIdx).toBeGreaterThan(0);
       expect(pixelIdx).toBeLessThan(childrenIdx);

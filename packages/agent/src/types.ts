@@ -86,10 +86,20 @@ export interface AgentDoneEvent {
 
 export interface AgentRetryEvent {
   type: "retry";
-  reason: "overloaded" | "rate_limit" | "empty_response" | "stream_stall" | "overflow_compact";
+  reason:
+    | "overloaded"
+    | "rate_limit"
+    | "provider_error"
+    | "empty_response"
+    | "stream_stall"
+    | "overflow_compact";
   attempt: number;
   maxAttempts: number;
   delayMs: number;
+  /** Provider-reported prompt/context token count, when present in an overflow error. */
+  observedTokens?: number;
+  /** Provider-reported context/token limit, when present in an overflow error. */
+  observedLimit?: number;
   /** When true, the retry should not be shown to the user (hidden retry). */
   silent?: boolean;
 }
@@ -163,6 +173,12 @@ export interface AgentOptions {
   signal?: AbortSignal;
   accountId?: string;
   cacheRetention?: StreamOptions["cacheRetention"];
+  /** Stable per-session cache routing key for providers that support it. */
+  promptCacheKey?: StreamOptions["promptCacheKey"];
+  /** Override the User-Agent sent with OAuth-authenticated Anthropic requests. */
+  userAgent?: StreamOptions["userAgent"];
+  /** OpenAI service tier for latency-sensitive first-party API requests. */
+  serviceTier?: StreamOptions["serviceTier"];
   /** Whether the target model supports image input. When false, image blocks
    *  in messages/tool_results are downgraded to text placeholders. Default: true. */
   supportsImages?: boolean;

@@ -571,7 +571,7 @@ function wireNextjs({ projectRoot, projectKey, ingestUrl }: WiringInput): Wiring
   let entryWiring: EntryWiringResult;
   if (!layoutPath) {
     warnings.push(
-      'Could not auto-wire the Next.js client init — no app/layout.{tsx,jsx} or pages/_app.{tsx,jsx} found. Add `<GGPixelClient />` from "./ez-pixel.client" to your root layout/_app.',
+      'Could not auto-wire the Next.js client init — no app/layout.{tsx,jsx} or pages/_app.{tsx,jsx} found. Add `<EZPixelClient />` from "./ez-pixel.client" to your root layout/_app.',
     );
     entryWiring = { kind: "no_entry_found" };
   } else {
@@ -642,7 +642,7 @@ import { initPixel } from "@prestyj/pixel/browser";
 
 let inited = false;
 
-export default function GGPixelClient() {
+export default function EZPixelClient() {
   useEffect(() => {
     if (inited) return;
     inited = true;
@@ -663,7 +663,7 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   } catch (err) {
     return { kind: "skipped", reason: `unreadable: ${(err as Error).message}` };
   }
-  if (content.includes("GGPixelClient") || content.includes("@prestyj/pixel")) {
+  if (content.includes("EZPixelClient") || content.includes("@prestyj/pixel")) {
     return { kind: "already_present", entryPath: layoutPath };
   }
   const fromDir = dirname(layoutPath);
@@ -672,7 +672,7 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
   // Strip the .tsx extension for cleanest imports.
   spec = spec.replace(/\.tsx$/, "");
 
-  // Try AST-first so we land <GGPixelClient /> as the first child of <body>
+  // Try AST-first so we land <EZPixelClient /> as the first child of <body>
   // (i.e., a sibling of any auth-gate / provider tree wrapping {children}),
   // not deeply nested where it would only init after the gate resolves.
   const astResult = injectClientComponentViaAst(layoutPath, content, spec);
@@ -685,7 +685,7 @@ function injectNextClientComponent(layoutPath: string, clientInitPath: string): 
 }
 
 /**
- * Parse the layout, find `<body>`, and prepend `<GGPixelClient />` to its
+ * Parse the layout, find `<body>`, and prepend `<EZPixelClient />` to its
  * children list. Also adds the import. Uses recast so untouched code stays
  * byte-identical (only the inserted nodes are reformatted).
  *
@@ -730,10 +730,10 @@ function injectClientComponentViaAst(
   const bodyEl = findFirstJsxElementByName(ast, "body");
   if (!bodyEl) return null; // No <body> — let the regex fallback handle / warn.
 
-  // 1. Prepend <GGPixelClient /> to <body>'s children. Use a JSXText with a
+  // 1. Prepend <EZPixelClient /> to <body>'s children. Use a JSXText with a
   //    newline so the output reads naturally even when recast reformats.
   const newComponent = bt.jsxElement(
-    bt.jsxOpeningElement(bt.jsxIdentifier("GGPixelClient"), [], true),
+    bt.jsxOpeningElement(bt.jsxIdentifier("EZPixelClient"), [], true),
     null,
     [],
     true,
@@ -744,7 +744,7 @@ function injectClientComponentViaAst(
 
   // 2. Insert the import after the last existing import statement.
   const importDecl = bt.importDeclaration(
-    [bt.importDefaultSpecifier(bt.identifier("GGPixelClient"))],
+    [bt.importDefaultSpecifier(bt.identifier("EZPixelClient"))],
     bt.stringLiteral(importSpec),
   );
   const body = program.body as Array<{ type: string }>;
@@ -831,7 +831,7 @@ function injectClientComponentViaRegex(
   content: string,
   spec: string,
 ): EntryWiringResult {
-  const importLine = `import GGPixelClient from ${JSON.stringify(spec)};`;
+  const importLine = `import EZPixelClient from ${JSON.stringify(spec)};`;
   const lines = content.split("\n");
   let insertImportAt = 0;
   for (let i = 0; i < lines.length; i++) {
@@ -845,12 +845,12 @@ function injectClientComponentViaRegex(
     writeFileSync(layoutPath, updated, "utf8");
     return {
       kind: "skipped",
-      reason: "added import but couldn't find {children} to render <GGPixelClient />",
+      reason: "added import but couldn't find {children} to render <EZPixelClient />",
     };
   }
   const before = updated.slice(0, childrenIdx);
   const after = updated.slice(childrenIdx);
-  const finalContent = before + "<GGPixelClient />\n        " + after;
+  const finalContent = before + "<EZPixelClient />\n        " + after;
   writeFileSync(layoutPath, finalContent, "utf8");
   return { kind: "injected", entryPath: layoutPath };
 }
@@ -1376,7 +1376,7 @@ function patchRendererHtml(
   );
 
   const relScript = relative(dirname(htmlPath), iifePath).split(sep).join("/");
-  const inject = `\n  ${PIXEL_HTML_MARKER}\n  <script src="${relScript}"></script>\n  <script>\n    if (window.GGPixel) GGPixel.initPixel({ projectKey: ${JSON.stringify(projectKey)}, ingestUrl: ${JSON.stringify(ingestUrl)} });\n  </script>\n`;
+  const inject = `\n  ${PIXEL_HTML_MARKER}\n  <script src="${relScript}"></script>\n  <script>\n    if (window.EZPixel) EZPixel.initPixel({ projectKey: ${JSON.stringify(projectKey)}, ingestUrl: ${JSON.stringify(ingestUrl)} });\n  </script>\n`;
   if (/<head[^>]*>/i.test(content)) {
     content = content.replace(/(<head[^>]*>)/i, `$1${inject}`);
   } else if (/<html[^>]*>/i.test(content)) {
@@ -1770,7 +1770,7 @@ async function installGo(ctx: NativeInstallContext): Promise<InstallResult> {
 
   const packageInstalled = opts.skipPackageInstall ? false : runGoGet(projectRoot);
 
-  const initFilePath = join(projectRoot, "gg_pixel_init.go");
+  const initFilePath = join(projectRoot, "ez_pixel_init.go");
   writeFileSync(
     initFilePath,
     `// ez-pixel init — auto-generated by ezcoder pixel install.
@@ -1778,7 +1778,7 @@ package main
 
 import (
 	"os"
-	gg "github.com/kenkaiiii/gg-pixel-go"
+	gg "github.com/Gahroot/ezcoder/packages/pixel-go"
 )
 
 func init() {
@@ -1810,7 +1810,7 @@ func init() {
     entryWiring: { kind: "no_entry_found" },
     reused,
     warnings: [
-      "Add `defer ggpixel.Recover()` near the top of your main() so panics are captured before the process exits.",
+      "Add `defer ezpixel.Recover()` near the top of your main() so panics are captured before the process exits.",
     ],
   };
 }
@@ -1827,7 +1827,7 @@ function readGoModuleName(projectRoot: string): string | null {
 }
 
 function runGoGet(projectRoot: string): boolean {
-  const result = spawnSync("go", ["get", "github.com/kenkaiiii/gg-pixel-go@latest"], {
+  const result = spawnSync("go", ["get", "github.com/Gahroot/ezcoder/packages/pixel-go@latest"], {
     cwd: projectRoot,
     stdio: "inherit",
   });
@@ -1854,12 +1854,12 @@ async function installRuby(ctx: NativeInstallContext): Promise<InstallResult> {
 
   const packageInstalled = opts.skipPackageInstall ? false : runRubyInstall(projectRoot);
 
-  const initFilePath = join(projectRoot, "gg_pixel_init.rb");
+  const initFilePath = join(projectRoot, "ez_pixel_init.rb");
   writeFileSync(
     initFilePath,
     `# ez-pixel init — auto-generated by ezcoder pixel install.
-require "gg_pixel"
-GGPixel.init(
+require "ez_pixel"
+EZPixel.init(
   project_key: ENV["EZCODER_PIXEL_KEY"] || ${JSON.stringify(created.key)},
   ingest_url: ${JSON.stringify(`${ingestUrl}/ingest`)},
 )
@@ -1885,7 +1885,7 @@ GGPixel.init(
     entryWiring: { kind: "no_entry_found" },
     reused,
     warnings: [
-      `Add \`require "./gg_pixel_init"\` at the top of your entry script (often \`config/application.rb\` for Rails, \`app.rb\` for Sinatra, or your main file).`,
+      `Add \`require "./ez_pixel_init"\` at the top of your entry script (often \`config/application.rb\` for Rails, \`app.rb\` for Sinatra, or your main file).`,
     ],
   };
 }
@@ -1907,10 +1907,10 @@ function runRubyInstall(projectRoot: string): boolean {
     // Append to Gemfile if not present.
     try {
       const content = readFileSync(join(projectRoot, "Gemfile"), "utf8");
-      if (!content.includes("gg_pixel")) {
+      if (!content.includes("ez_pixel")) {
         writeFileSync(
           join(projectRoot, "Gemfile"),
-          content + (content.endsWith("\n") ? "" : "\n") + 'gem "gg_pixel"\n',
+          content + (content.endsWith("\n") ? "" : "\n") + 'gem "ez_pixel"\n',
           "utf8",
         );
       }
@@ -1920,7 +1920,7 @@ function runRubyInstall(projectRoot: string): boolean {
     const r = spawnSync("bundle", ["install"], { cwd: projectRoot, stdio: "inherit" });
     if (r.status === 0) return true;
   }
-  const r2 = spawnSync("gem", ["install", "gg_pixel"], { cwd: projectRoot, stdio: "inherit" });
+  const r2 = spawnSync("gem", ["install", "ez_pixel"], { cwd: projectRoot, stdio: "inherit" });
   return r2.status === 0;
 }
 
@@ -1954,7 +1954,7 @@ async function installPython(ctx: PythonInstallContext): Promise<InstallResult> 
   const pm = detectPythonPackageManager(projectRoot);
   const packageInstalled = opts.skipPackageInstall ? false : runPythonInstall(projectRoot, pm);
 
-  const initFilePath = join(projectRoot, "gg_pixel_init.py");
+  const initFilePath = join(projectRoot, "ez_pixel_init.py");
   writeFileSync(initFilePath, renderPythonInitFile(ingestUrl, created.key), "utf8");
 
   writeEnvKey(envFilePath, "EZCODER_PIXEL_KEY", created.key);
@@ -2030,9 +2030,9 @@ wires into your entry file) registers the global Python error handlers.
 """
 import os
 
-import gg_pixel
+import ez_pixel
 
-gg_pixel.init_pixel(
+ez_pixel.init_pixel(
     project_key=os.environ.get("EZCODER_PIXEL_KEY") or ${JSON.stringify(projectKey)},
     ingest_url=${JSON.stringify(`${ingestUrl}/ingest`)},
 )
@@ -2050,21 +2050,21 @@ function wirePythonEntry(projectRoot: string, initFilePath: string): EntryWiring
     return { kind: "skipped", reason: `unreadable: ${(err as Error).message}` };
   }
 
-  if (content.includes("gg_pixel_init")) {
+  if (content.includes("ez_pixel_init")) {
     return { kind: "already_present", entryPath };
   }
 
-  // Compute import name from the relative path. gg_pixel_init.py at root →
-  // `gg_pixel_init`. For nested, the user can adjust manually.
+  // Compute import name from the relative path. ez_pixel_init.py at root →
+  // `ez_pixel_init`. For nested, the user can adjust manually.
   const fromDir = dirname(entryPath);
   const rel = relative(fromDir, initFilePath).split(sep).join("/");
   let moduleSpec: string;
-  if (rel === "gg_pixel_init.py") {
-    moduleSpec = "gg_pixel_init";
+  if (rel === "ez_pixel_init.py") {
+    moduleSpec = "ez_pixel_init";
   } else if (rel.startsWith("../")) {
     // Init is above the entry — Python imports don't traverse via path,
     // so insert via sys.path manipulation as a fallback.
-    moduleSpec = "gg_pixel_init";
+    moduleSpec = "ez_pixel_init";
   } else {
     // Same-or-deeper directory: use module path.
     moduleSpec = rel.replace(/\.py$/, "").replace(/\//g, ".");

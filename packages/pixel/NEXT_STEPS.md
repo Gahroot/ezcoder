@@ -13,7 +13,7 @@ agent picking up the work — read it before starting anything.
 | **Python SDK** | `packages/pixel-py/` | wheel built at 4.3.68; **NOT yet on PyPI** | `ez-pixel` (PyPI, blocked) |
 | **Rust SDK** | `packages/pixel-rs/` | crate at 4.3.72; **NOT yet on crates.io** | `ez-pixel` (crates, blocked) |
 | **Go SDK** | `packages/pixel-go/` | module; **NOT yet pushed to GitHub** | `github.com/Gahroot/ez-pixel-go` (blocked) |
-| **Ruby SDK** | `packages/pixel-rb/` | gem; **NOT yet on RubyGems** | `gg_pixel` (gem, blocked) |
+| **Ruby SDK** | `packages/pixel-rb/` | gem; **NOT yet on RubyGems** | `ez_pixel` (gem, blocked) |
 | **Swift SDK** | `packages/pixel-swift/` | SPM package; **NOT yet pushed/tagged** | SPM via Git URL (blocked) |
 
 Verified live end-to-end against the deployed worker:
@@ -74,12 +74,12 @@ projects work hands-off.
 
 ```bash
 cd packages/pixel-rb
-gem build gg_pixel.gemspec
-gem push gg_pixel-4.3.72.gem
+gem build ez_pixel.gemspec
+gem push ez_pixel-4.3.72.gem
 # (creates a credential interactively the first time)
 ```
 
-After: `gem install gg_pixel` works.
+After: `gem install ez_pixel` works.
 
 ### Swift → GitHub + tag (SPM consumes Git directly)
 
@@ -112,7 +112,7 @@ current dev environment. Cannot verify a build without those.
 - `Thread.setDefaultUncaughtExceptionHandler` for JVM-level uncaught
 - `OkHttp` for the HTTP sink (or `HttpURLConnection` with no extra deps)
 - Wire format: same JSON as everywhere else
-- Manual API: `GGPixel.init(context, projectKey)` + `GGPixel.report(...)` + `GGPixel.captureException(e)`
+- Manual API: `EZPixel.init(context, projectKey)` + `EZPixel.report(...)` + `EZPixel.captureException(e)`
 
 Add `ezcoder pixel install` detection: `build.gradle` or `build.gradle.kts`
 present → kind = "android".

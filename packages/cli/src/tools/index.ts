@@ -34,6 +34,19 @@ export interface CreateToolsOptions {
   onEnterPlan?: (reason?: string) => void;
   /** Callback when the LLM exits plan mode. Returns approval result string. */
   onExitPlan?: (planPath: string) => Promise<string>;
+  /** Callback after read tool successfully reads a text file. */
+  onFileRead?: (filePath: string) => void | Promise<void>;
+  /** Callback after write/edit tools successfully mutate a file. */
+  onFileMutated?: (filePath: string) => void | Promise<void>;
+  /**
+   * Getter for parent's prompt-cache routing key, evaluated lazily at
+   * sub-agent spawn time. Returning a stable key from this getter lets every
+   * sub-agent spawned by one parent share the same prompt_cache_key prefix —
+   * without it, each child generates a fresh sessionId-derived key and pays a
+   * cold-cache cost on every turn. Lazy because the parent's sessionId is
+   * only assigned after `createTools()` runs during session init.
+   */
+  getCacheKey?: () => string | undefined;
 }
 
 export interface CreateToolsResult {
@@ -48,9 +61,9 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
   const planModeRef = opts?.planModeRef;
 
   const tools: AgentTool[] = [
-    createReadTool(cwd, readFiles, ops),
-    createWriteTool(cwd, readFiles, ops, planModeRef),
-    createEditTool(cwd, readFiles, ops, planModeRef),
+    createReadTool(cwd, readFiles, ops, opts?.onFileRead),
+    createWriteTool(cwd, readFiles, ops, planModeRef, opts?.onFileMutated),
+    createEditTool(cwd, readFiles, ops, planModeRef, opts?.onFileMutated),
     createBashTool(cwd, processManager, ops, planModeRef),
     createFindTool(cwd),
     createGrepTool(cwd, ops),
@@ -67,7 +80,16 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
   }
 
   if (opts?.agents && opts.agents.length > 0 && opts.provider && opts.model) {
-    tools.push(createSubAgentTool(cwd, opts.agents, opts.provider, opts.model, planModeRef));
+    tools.push(
+      createSubAgentTool(
+        cwd,
+        opts.agents,
+        opts.provider,
+        opts.model,
+        planModeRef,
+        opts.getCacheKey,
+      ),
+    );
   }
 
   if (opts?.skills && opts.skills.length > 0) {

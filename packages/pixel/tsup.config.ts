@@ -31,7 +31,7 @@ export default defineConfig([
   {
     entry: { "browser.iife": "src/browser.iife.ts" },
     format: ["iife"],
-    globalName: "GGPixel",
+    globalName: "EZPixel",
     sourcemap: true,
     clean: false,
     platform: "browser",

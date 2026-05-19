@@ -14,6 +14,8 @@ export interface SlashCommandContext {
   branch: (stepsBack?: number) => Promise<string>;
   /** List all branches in the current session. */
   listBranches: () => Promise<string>;
+  /** Show or refresh the dynamic repo map. */
+  repoMap: (action?: "show" | "refresh" | "on" | "off") => Promise<string>;
 }
 
 export interface SlashCommand {
@@ -233,6 +235,20 @@ export function createBuiltinCommands(): SlashCommand[] {
       },
     },
     {
+      name: "map",
+      aliases: [],
+      description: "Show, refresh, or toggle the dynamic repo map",
+      usage: "/map [refresh|on|off]",
+      async execute(args, ctx) {
+        const normalized = args.trim().toLowerCase();
+        if (normalized === "refresh" || normalized === "on" || normalized === "off") {
+          return ctx.repoMap(normalized);
+        }
+        if (normalized.length > 0) return "Usage: /map [refresh|on|off]";
+        return ctx.repoMap("show");
+      },
+    },
+    {
       name: "branch",
       aliases: ["b"],
       description: "Create a branch (rewind and fork the conversation)",
@@ -252,20 +268,6 @@ export function createBuiltinCommands(): SlashCommand[] {
       usage: "/branches",
       async execute(_args, ctx) {
         return ctx.listBranches();
-      },
-    },
-    {
-      name: "buddy",
-      aliases: [],
-      description: "Toggle the buddy companion on/off",
-      usage: "/buddy",
-      async execute(_args, ctx) {
-        const settings = ctx.getSettings() as Record<string, unknown>;
-        const current = !!settings.buddyEnabled;
-        await ctx.setSetting("buddyEnabled", !current);
-        return !current
-          ? "Buddy enabled! Your companion will appear near the prompt."
-          : "Buddy disabled.";
       },
     },
     {

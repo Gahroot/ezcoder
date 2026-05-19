@@ -1,0 +1,63 @@
+{
+  "name": "@prestyj/voice",
+  "version": "4.3.190",
+  "type": "module",
+  "description": "Provider-agnostic realtime voice orchestration for EZ tools and agents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
+    "directory": "packages/voice"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./providers/openai-realtime": {
+      "types": "./dist/providers/openai-realtime.d.ts",
+      "import": "./dist/providers/openai-realtime.js",
+      "require": "./dist/providers/openai-realtime.cjs"
+    },
+    "./providers/openai-codex-realtime": {
+      "types": "./dist/providers/openai-codex-realtime.d.ts",
+      "import": "./dist/providers/openai-codex-realtime.js",
+      "require": "./dist/providers/openai-codex-realtime.cjs"
+    },
+    "./bridges/ezcoder-rpc": {
+      "types": "./dist/bridges/ezcoder-rpc.d.ts",
+      "import": "./dist/bridges/ezcoder-rpc.js",
+      "require": "./dist/bridges/ezcoder-rpc.cjs"
+    },
+    "./bridges/ezboss": {
+      "types": "./dist/bridges/ezboss.d.ts",
+      "import": "./dist/bridges/ezboss.js",
+      "require": "./dist/bridges/ezboss.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@prestyj/agent": "workspace:*",
+    "@prestyj/ai": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

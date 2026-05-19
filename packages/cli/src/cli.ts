@@ -3,7 +3,7 @@
 // long sessions — tool results are capped at 50KB each but accumulate
 // across thousands of turns, and Ink/React state plus the SDK clients
 // share the same heap. 8GB gives ample headroom; --expose-gc is unused
-// today but matches ezboss for consistency. NODE_OPTIONS overrides via
+// today but matches gg-boss for consistency. NODE_OPTIONS overrides via
 // Node's standard flag merge.
 
 // Catch stray abort-related promise rejections that escape the normal error
@@ -67,12 +67,18 @@ import { SessionManager } from "./core/session-manager.js";
 import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
 import { setStreamDiagnostic } from "@prestyj/agent";
+import { setProviderDiagnostic } from "@prestyj/ai";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { isEyesActive, journalCount } from "@prestyj/eyes";
 import { createTools } from "./tools/index.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
+import {
+  createCompactedSessionCheckpoint,
+  formatRestoreInfoText,
+  getRestoredMessagesForDisplay,
+} from "./core/session-compaction.js";
 import { setEstimatorModel } from "./core/compaction/token-estimator.js";
-import { getContextWindow, getDefaultModel } from "./core/model-registry.js";
+import { getContextWindow, getDefaultModel, getMaxThinkingLevel } from "./core/model-registry.js";
 import { MCPClientManager, getMCPServers } from "./core/mcp/index.js";
 import { discoverAgents } from "./core/agents.js";
 import { discoverSkills } from "./core/skills.js";
@@ -88,9 +94,9 @@ const CLI_VERSION = (_require("../package.json") as { version: string }).version
 
 // ── Logo + gradient (mirrors Banner.tsx) ────────────────────────────
 const LOGO_LINES = [
-  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
-  " \u2588\u2580\u2580   \u2584\u2580 ",
-  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
+  " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
+  " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
+  " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
 ];
 const GRADIENT = [
   "#60a5fa",
@@ -361,6 +367,7 @@ function main(): void {
       model: { type: "string" },
       "max-turns": { type: "string" },
       "system-prompt": { type: "string" },
+      "prompt-cache-key": { type: "string" },
     },
     allowPositionals: true,
     strict: true,
@@ -383,6 +390,7 @@ function main(): void {
     const jsonModel = values.model ?? "claude-opus-4-7";
     const maxTurns = values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined;
     const systemPrompt = values["system-prompt"];
+    const promptCacheKey = values["prompt-cache-key"];
     const cwd = process.cwd();
     runJsonMode({
       message,
@@ -391,6 +399,7 @@ function main(): void {
       cwd,
       systemPrompt,
       maxTurns,
+      promptCacheKey,
     }).catch((err: unknown) => {
       process.stderr.write(formatUserError(err) + "\n");
       process.exit(1);
@@ -433,7 +442,9 @@ function main(): void {
   }
 
   const model: string = saved.model ?? getHardcodedDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = saved.thinkingEnabled ? "medium" : undefined;
+  const thinkingLevel: ThinkingLevel | undefined = saved.thinkingEnabled
+    ? getMaxThinkingLevel(model)
+    : undefined;
 
   // Interactive mode (Ink TUI)
   const cwd = process.cwd();
@@ -495,21 +506,28 @@ async function runInkTUI(opts: {
   setStreamDiagnostic((phase, data) => {
     log("INFO", "stream", phase, data as Record<string, unknown>);
   });
+  setProviderDiagnostic((phase, data) => {
+    log("INFO", "provider", phase, data as Record<string, unknown>);
+  });
 
   const authStorage = new AuthStorage(paths.authFile);
   await authStorage.load();
 
-  const { provider, model, loggedInProviders } = await resolveActiveProvider(
-    authStorage,
-    opts.provider,
-    opts.model,
-  );
+  const {
+    provider: preferredProvider,
+    model: preferredModel,
+    loggedInProviders,
+  } = await resolveActiveProvider(authStorage, opts.provider, opts.model);
 
   // Preload every logged-in provider's credentials for the model switcher.
+  // Resolve each one BEFORE picking the active provider, so a dead OAuth
+  // refresh token (preferredProvider expired) doesn't crash startup — we
+  // fall back to whichever other provider actually resolved.
   const credentialsByProvider: Record<
     string,
     { accessToken: string; accountId?: string; baseUrl?: string }
   > = {};
+  const expiredProviders: Provider[] = [];
   for (const p of loggedInProviders) {
     try {
       const resolved = await authStorage.resolveCredentials(p);
@@ -519,8 +537,40 @@ async function runInkTUI(opts: {
         baseUrl: resolved.baseUrl,
       };
     } catch {
-      // Token refresh failed — still leave them in loggedInProviders
+      // Refresh failed (resolveCredentials wipes the bad creds when the
+      // refresh token is dead). Track so we can warn the user, and fall
+      // back to another working provider below.
+      expiredProviders.push(p);
     }
+  }
+
+  // Fall back if the preferred provider didn't resolve. The settings file
+  // is NOT updated — user might re-login to the preferred one later and
+  // expect to come back. This is a per-launch override.
+  let provider = preferredProvider;
+  let model = preferredModel;
+  if (!credentialsByProvider[provider]) {
+    const fallback = loggedInProviders.find((p) => credentialsByProvider[p]);
+    if (!fallback) {
+      throw new Error(
+        'All logged-in providers expired or failed to authenticate. Run "ezcoder login" to re-authenticate.',
+      );
+    }
+    console.warn(
+      chalk.yellow(
+        `⚠ ${displayName(preferredProvider)} session expired — switched to ${displayName(fallback)} for this launch.\n` +
+          `  Run "ezcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
+      ),
+    );
+    provider = fallback;
+    model = getDefaultModel(fallback).id;
+  } else if (expiredProviders.length > 0) {
+    console.warn(
+      chalk.yellow(
+        `⚠ Sessions expired: ${expiredProviders.map(displayName).join(", ")}. ` +
+          `Run "ezcoder login" to re-authenticate.`,
+      ),
+    );
   }
 
   // Set model for token estimation accuracy (after provider is finalized)
@@ -533,7 +583,15 @@ async function runInkTUI(opts: {
     thinking: opts.thinkingLevel,
   });
 
-  const creds = await authStorage.resolveCredentials(provider);
+  // Use the already-resolved credentials from the preload loop — no need
+  // to re-resolve and risk hitting the same dead refresh path again.
+  const cached = credentialsByProvider[provider]!;
+  const creds = {
+    accessToken: cached.accessToken,
+    accountId: cached.accountId,
+    refreshToken: "", // not needed downstream; SDK only uses accessToken
+    expiresAt: Number.POSITIVE_INFINITY,
+  };
 
   // Ensure project-local .gg directories exist
   const localGGDir = path.join(cwd, ".ezcoder");
@@ -551,9 +609,6 @@ async function runInkTUI(opts: {
     projectDir: cwd,
   });
 
-  // Build system prompt & tools (with sub-agent support)
-  const systemPrompt = await buildSystemPrompt(cwd, skills);
-
   // Plan mode refs — shared between tools and UI
   const planModeRef = { current: false };
   const onEnterPlanRef: { current: (reason?: string) => void } = {
@@ -561,6 +616,18 @@ async function runInkTUI(opts: {
   };
   const onExitPlanRef: { current: (planPath: string) => Promise<string> } = {
     current: () => Promise.resolve("cancelled"),
+  };
+  const repoMapChangedFilesRef: { current: Set<string> } = { current: new Set() };
+  const repoMapReadFilesRef: { current: Set<string> } = { current: new Set() };
+  const toRepoMapPath = (root: string, filePath: string): string =>
+    path.relative(root, filePath).split(path.sep).join("/");
+  const markRepoMapRead = (root: string, filePath: string): void => {
+    repoMapReadFilesRef.current.add(toRepoMapPath(root, filePath));
+  };
+  const markRepoMapDirty = (root: string, filePath: string): void => {
+    const relativePath = toRepoMapPath(root, filePath);
+    repoMapChangedFilesRef.current.add(relativePath);
+    repoMapReadFilesRef.current.add(relativePath);
   };
 
   const { tools, processManager } = createTools(cwd, {
@@ -571,6 +638,8 @@ async function runInkTUI(opts: {
     planModeRef,
     onEnterPlan: (reason) => onEnterPlanRef.current(reason),
     onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+    onFileRead: (filePath) => markRepoMapRead(cwd, filePath),
+    onFileMutated: (filePath) => markRepoMapDirty(cwd, filePath),
   });
 
   // Rebuilds the cwd-bound tools for a different project root. Used by the
@@ -585,6 +654,8 @@ async function runInkTUI(opts: {
       planModeRef,
       onEnterPlan: (reason) => onEnterPlanRef.current(reason),
       onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+      onFileRead: (filePath) => markRepoMapRead(newCwd, filePath),
+      onFileMutated: (filePath) => markRepoMapDirty(newCwd, filePath),
     });
     return rebuilt;
   };
@@ -603,6 +674,14 @@ async function runInkTUI(opts: {
       `MCP initialization failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+
+  const systemPrompt = await buildSystemPrompt(
+    cwd,
+    skills,
+    false,
+    undefined,
+    tools.map((tool) => tool.name),
+  );
 
   // Kill all background processes on exit (synchronous — catches all exit paths)
   process.on("exit", () => {
@@ -638,28 +717,41 @@ async function runInkTUI(opts: {
 
         // Auto-compact on load if the restored session exceeds the context window.
         // Without this, huge sessions (1M+ tokens) get loaded into memory and OOM.
-        const contextWindow = getContextWindow(model);
+        const contextWindow = getContextWindow(model, { provider, accountId: creds.accountId });
         if (shouldCompact(messages, contextWindow, 0.8)) {
           log("INFO", "session", `Restored session exceeds context — auto-compacting`);
           const compacted = await compact(messages, {
             provider,
             model,
             apiKey: creds.accessToken,
+            accountId: creds.accountId,
+            baseUrl: cached.baseUrl,
             contextWindow,
           });
-          // Replace messages array contents with compacted messages
+          // Persist compacted continuation to a fresh session so future
+          // `ezcoder continue` starts from the compacted checkpoint instead
+          // of repeatedly restoring the oversized source session.
+          const compactedSession = await createCompactedSessionCheckpoint(sessionManager, {
+            cwd,
+            provider,
+            model,
+            messages: compacted.messages,
+          });
+          sessionPath = compactedSession.path;
           messages.length = 0;
           messages.push(...compacted.messages);
           log("INFO", "session", `Auto-compaction complete`, {
             before: String(compacted.result.originalCount),
             after: String(compacted.result.newCount),
+            path: sessionPath,
           });
         }
 
-        initialHistory = messagesToHistoryItems(loadedMessages);
+        const restoredMessages = getRestoredMessagesForDisplay(messages);
+        initialHistory = messagesToHistoryItems(restoredMessages);
         initialHistory.push({
           kind: "info",
-          text: `↻ Restored session (${loadedMessages.length} messages)`,
+          text: formatRestoreInfoText(loadedMessages.length, restoredMessages.length),
           id: `restore-info`,
         });
       }
@@ -718,6 +810,8 @@ async function runInkTUI(opts: {
     skills,
     initialOverlay: opts.initialOverlay,
     rebuildToolsForCwd,
+    repoMapChangedFilesRef,
+    repoMapReadFilesRef,
   });
 
   closeLogger();
@@ -867,7 +961,7 @@ async function runDoctor(): Promise<void> {
   if (myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
     console.log(dim("      Running ezcoder with sudo can cause ownership issues."));
-    console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.ezcoder"));
+    console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
   }
   console.log();
 
@@ -1121,7 +1215,9 @@ async function runSessions(): Promise<void> {
   }
 
   const model = saved2.model ?? getDefault(provider);
-  const thinkingLevel: ThinkingLevel | undefined = saved2.thinkingEnabled ? "medium" : undefined;
+  const thinkingLevel: ThinkingLevel | undefined = saved2.thinkingEnabled
+    ? getMaxThinkingLevel(model)
+    : undefined;
 
   closeLogger();
 
@@ -1171,9 +1267,9 @@ async function runTelegramSetup(): Promise<void> {
 
   // Banner (matches Banner.tsx)
   const LOGO = [
-    " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
-    " \u2588\u2580\u2580   \u2584\u2580 ",
-    " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
+    " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
+    " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
+    " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
   ];
   const GRADIENT = [
     "#60a5fa",
@@ -1334,8 +1430,7 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken =
-    serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const botToken = serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
   const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
@@ -1352,7 +1447,6 @@ async function runServe(): Promise<void> {
   }
 
   const saved3 = loadSavedSettings();
-  const thinkingLevel: ThinkingLevel | undefined = saved3.thinkingEnabled ? "medium" : undefined;
 
   const paths = await ensureAppDirs();
   const authStorage = new AuthStorage(paths.authFile);
@@ -1365,6 +1459,10 @@ async function runServe(): Promise<void> {
     preferredProvider,
     serveValues.model ?? saved3.model,
   );
+
+  const thinkingLevel: ThinkingLevel | undefined = saved3.thinkingEnabled
+    ? getMaxThinkingLevel(model)
+    : undefined;
 
   initLogger(paths.logFile, {
     version: CLI_VERSION,
@@ -1419,9 +1517,9 @@ async function runAgentHomeLogin(): Promise<void> {
 
   // Banner
   const LOGO = [
-    " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
-    " \u2588\u2580\u2580   \u2584\u2580 ",
-    " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
+    " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
+    " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
+    " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
   ];
   function gradientTextLocal(text: string): string {
     let colorIdx = 0;
@@ -1528,7 +1626,6 @@ async function runAgentHome(): Promise<void> {
   }
 
   const saved4 = loadSavedSettings();
-  const thinkingLevel: ThinkingLevel | undefined = saved4.thinkingEnabled ? "medium" : undefined;
 
   const paths = await ensureAppDirs();
   const authStorage = new AuthStorage(paths.authFile);
@@ -1541,6 +1638,10 @@ async function runAgentHome(): Promise<void> {
     preferredProvider,
     ahValues.model ?? saved4.model,
   );
+
+  const thinkingLevel: ThinkingLevel | undefined = saved4.thinkingEnabled
+    ? getMaxThinkingLevel(model)
+    : undefined;
 
   initLogger(paths.logFile, {
     version: CLI_VERSION,

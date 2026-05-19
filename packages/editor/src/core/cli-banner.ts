@@ -6,7 +6,7 @@
  *
  * Layout (side-by-side, 3 lines):
  *
- *      ▄▀▀▀ ▄▀▀▀    EZ Editor v0.3.0 · By Ken Kai
+ *      ▄▀▀▀ ▄▀▀▀    EZ Editor v0.3.0 · By Nolan Grout
  *      █ ▀█ █ ▀█    <screen>
  *      ▀▄▄▀ ▀▄▄▀    <subtitle>
  *

@@ -84,7 +84,7 @@ export function Banner({ version, model }: BannerProps) {
         <Text color={theme.textDim}> v{version}</Text>
         <Text color={theme.textDim}> · By </Text>
         <Text color={theme.text} bold>
-          Ken Kai
+          Nolan Grout
         </Text>
       </Box>
       <Box>

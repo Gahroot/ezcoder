@@ -20,6 +20,10 @@ import {
   toAnthropicTools,
 } from "./transform.js";
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
 function createClient(options: StreamOptions): Anthropic {
   const isOAuth = options.apiKey?.startsWith("sk-ant-oat");
   return new Anthropic({
@@ -35,7 +39,10 @@ function createClient(options: StreamOptions): Anthropic {
     ...(isOAuth
       ? {
           defaultHeaders: {
-            "user-agent": "claude-cli/2.1.75",
+            // Anthropic's OAuth edge validates the claude-cli version. Callers
+            // (ezcoder) resolve the live version at runtime; the literal here
+            // is the offline fallback for direct gg-ai consumers.
+            "user-agent": options.userAgent ?? "claude-cli/2.1.75 (external, cli)",
             "x-app": "cli",
           },
         }
@@ -53,6 +60,8 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   const useStreaming = options.streaming !== false;
 
   const cacheControl = toAnthropicCacheControl(options.cacheRetention, options.baseUrl);
+  const supportsFirstPartyToolExtras =
+    !options.baseUrl || options.baseUrl.includes("api.anthropic.com");
   const downgradedMessages = downgradeUnsupportedImages(options.messages, options.supportsImages);
   const { system: rawSystem, messages } = toAnthropicMessages(downgradedMessages, cacheControl);
 
@@ -93,13 +102,35 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     ...(options.topP != null ? { top_p: options.topP } : {}),
     ...(options.stop ? { stop_sequences: options.stop } : {}),
     ...(options.tools?.length || options.serverTools?.length || options.webSearch
-      ? {
-          tools: [
-            ...(options.tools?.length ? toAnthropicTools(options.tools) : []),
-            ...(options.serverTools ?? []),
-            ...(options.webSearch ? [{ type: "web_search_20250305", name: "web_search" }] : []),
-          ] as Anthropic.MessageCreateParams["tools"],
-        }
+      ? (() => {
+          // Build the tools array with server-side tools taking precedence over
+          // client tools that share their name. Anthropic rejects duplicate tool
+          // names with a 400, so when both a client `web_search` (from a non-
+          // anthropic provider's tool list left over after a /model switch) and
+          // the native server-side web_search are present, drop the client one.
+          const reservedServerNames = new Set<string>();
+          if (options.webSearch) reservedServerNames.add("web_search");
+          for (const t of options.serverTools ?? []) {
+            const name = (t as { name?: string }).name;
+            if (name) reservedServerNames.add(name);
+          }
+          const clientTools = options.tools?.length
+            ? toAnthropicTools(
+                options.tools.filter((t) => !reservedServerNames.has(t.name)),
+                {
+                  ...(supportsFirstPartyToolExtras && cacheControl ? { cacheControl } : {}),
+                  ...(supportsFirstPartyToolExtras ? { enableFineGrainedToolStreaming: true } : {}),
+                },
+              )
+            : [];
+          return {
+            tools: [
+              ...clientTools,
+              ...(options.serverTools ?? []),
+              ...(options.webSearch ? [{ type: "web_search_20250305", name: "web_search" }] : []),
+            ] as Anthropic.MessageCreateParams["tools"],
+          };
+        })()
       : {}),
     ...(options.toolChoice && options.tools?.length
       ? { tool_choice: toAnthropicToolChoice(options.toolChoice) }
@@ -218,6 +249,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
           if (block.type === "tool_use") {
             accum.toolId = block.id;
             accum.toolName = block.name;
+            accum.input = (block as unknown as { input?: unknown }).input;
           } else if (block.type === "server_tool_use") {
             accum.toolId = (block as unknown as { id: string }).id;
             accum.toolName = (block as unknown as { name: string }).name;
@@ -229,7 +261,14 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
           }
 
           blocks.set(idx, accum);
-          yield keepalive;
+          // Surface "reasoning started" as an empty thinking_delta the moment
+          // a thinking content block opens, so the UI flips to the thinking
+          // phase before the first delta with real content arrives.
+          if (block.type === "thinking") {
+            yield { type: "thinking_delta", text: "" };
+          } else {
+            yield keepalive;
+          }
           break;
         }
 
@@ -277,11 +316,14 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
             });
             yield keepalive;
           } else if (accum.type === "tool_use") {
-            let args: Record<string, unknown> = {};
-            try {
-              args = JSON.parse(accum.argsJson) as Record<string, unknown>;
-            } catch {
-              // malformed JSON — keep empty
+            let args: Record<string, unknown> = isJsonObject(accum.input) ? accum.input : {};
+            if (accum.argsJson) {
+              try {
+                const parsed = JSON.parse(accum.argsJson) as unknown;
+                args = isJsonObject(parsed) ? parsed : {};
+              } catch {
+                // malformed JSON — keep start-block input fallback when available
+              }
             }
             const tc: ToolCall = {
               type: "tool_call",
@@ -510,8 +552,36 @@ function messageToResponse(message: Anthropic.Message): StreamResponse {
 
 function toError(err: unknown): ProviderError {
   if (err instanceof Anthropic.APIError) {
-    return new ProviderError("anthropic", err.message, {
+    // Anthropic exposes request IDs as `requestID` in current SDKs, `request_id`
+    // in older/compat shapes, and sometimes inside the streamed error body.
+    const errorBody = err.error as Record<string, unknown> | undefined;
+    const nestedError = errorBody?.error as Record<string, unknown> | undefined;
+    const requestId =
+      (err as unknown as { requestID?: string | null }).requestID ??
+      (err as unknown as { request_id?: string | null }).request_id ??
+      (typeof errorBody?.request_id === "string" ? errorBody.request_id : undefined) ??
+      (typeof nestedError?.request_id === "string" ? nestedError.request_id : undefined) ??
+      undefined;
+    const bodyMessage =
+      typeof nestedError?.message === "string"
+        ? nestedError.message
+        : typeof errorBody?.message === "string"
+          ? errorBody.message
+          : undefined;
+    const bodyType =
+      typeof nestedError?.type === "string"
+        ? nestedError.type
+        : typeof errorBody?.type === "string"
+          ? errorBody.type
+          : typeof (err as unknown as { type?: unknown }).type === "string"
+            ? ((err as unknown as { type: string }).type as string)
+            : undefined;
+    const message =
+      bodyType && bodyMessage ? `${bodyType}: ${bodyMessage}` : (bodyMessage ?? err.message);
+
+    return new ProviderError("anthropic", message, {
       statusCode: err.status,
+      ...(requestId ? { requestId } : {}),
       cause: err,
     });
   }

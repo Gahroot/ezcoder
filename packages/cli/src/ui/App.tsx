@@ -12,12 +12,19 @@ import {
   navigateTaskBar,
   killTask,
 } from "./stores/taskbar-store.js";
-import crypto, { createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { playNotificationSound } from "../utils/sound.js";
-import type { Message, Provider, ThinkingLevel, TextContent, ImageContent } from "@prestyj/ai";
+import {
+  formatError,
+  type Message,
+  type Provider,
+  type ThinkingLevel,
+  type TextContent,
+  type ImageContent,
+} from "@prestyj/ai";
 import { extractImagePaths, type ImageAttachment } from "../utils/image.js";
 import type { AgentTool } from "@prestyj/agent";
 import { useAgentLoop, type UserContent } from "./hooks/useAgentLoop.js";
@@ -56,8 +63,12 @@ import {
 } from "./components/AnimationContext.js";
 import { useTerminalTitle } from "./hooks/useTerminalTitle.js";
 import { getGitBranch } from "../utils/git.js";
-import { getModel, getContextWindow } from "../core/model-registry.js";
-import { SessionManager, type MessageEntry } from "../core/session-manager.js";
+import { getModel, getContextWindow, getMaxThinkingLevel } from "../core/model-registry.js";
+import { SessionManager } from "../core/session-manager.js";
+import {
+  appendMessagesToSession as appendSessionMessages,
+  createCompactedSessionCheckpoint,
+} from "../core/session-compaction.js";
 import { log } from "../core/logger.js";
 import {
   getPendingUpdate,
@@ -83,6 +94,19 @@ import {
   type LanguageId,
 } from "../core/language-detector.js";
 import { detectVerifyCommands } from "../core/verify-commands.js";
+import {
+  FOCUSED_REPO_MAP_MAX_CHARS,
+  FIRST_TURN_REPO_MAP_MAX_CHARS,
+  buildRepoMap,
+  createRepoMapCache,
+  type RepoMapCache,
+  type RepoMapSnapshot,
+} from "../core/repomap.js";
+import {
+  getLatestUserText,
+  injectRepoMapContextMessages,
+  stripRepoMapContextMessages,
+} from "../core/repomap-context.js";
 import type { Skill } from "../core/skills.js";
 import {
   extractPlanSteps,
@@ -101,51 +125,41 @@ import {
   flushOnTurnEnd,
   flushOverflow,
 } from "./live-item-flush.js";
-import { Buddy } from "./buddy/Buddy.js";
 
-// ── Provider Error Hints ──────────────────────────────────
+/** Where ezcoder bugs should be reported. Surfaced in the guidance line. */
+const GGCODER_BUG_REPORT_URL = "github.com/Gahroot/ezcoder/issues";
 
-/** Detect provider-side errors and return a user-facing hint. */
-function getProviderErrorHint(message: string): string | null {
-  const lower = message.toLowerCase();
-  if (lower.includes("overloaded") || lower.includes("engine_overloaded")) {
-    return "This is a provider-side issue — their servers are under heavy load. Try again in a moment.";
-  }
-  if (
-    lower.includes("insufficient balance") ||
-    lower.includes("no resource package") ||
-    lower.includes("quota exceeded") ||
-    lower.includes("recharge")
-  ) {
-    return "The provider reports a billing or quota issue. Check your account balance or resource package.";
-  }
-  if (
-    lower.includes("rate limit") ||
-    lower.includes("too many requests") ||
-    lower.includes("429")
-  ) {
-    return "You've hit the provider's rate limit. Wait a moment before retrying.";
-  }
-  if (lower.includes("502") || lower.includes("bad gateway")) {
-    return "The provider returned a server error. This is not a ezcoder issue — try again shortly.";
-  }
-  if (lower.includes("503") || lower.includes("service unavailable")) {
-    return "The provider's service is temporarily unavailable. Try again in a moment.";
-  }
-  if (lower.includes("timeout") || lower.includes("timed out")) {
-    return "The request to the provider timed out. Their servers may be slow — try again.";
-  }
-  if (lower.includes("500") && lower.includes("internal server error")) {
-    return "The provider experienced an internal error. This is not a ezcoder issue.";
-  }
-  if (
-    lower.includes("does not recognize the requested model") ||
-    (lower.includes("model") &&
-      (lower.includes("not exist") || lower.includes("not found") || lower.includes("no access")))
-  ) {
-    return "Use /model to switch to a different model, or check that your account has access to the requested model.";
-  }
-  return null;
+/**
+ * Build an ErrorItem from any thrown value. Centralises headline / message /
+ * guidance extraction so every error answers the same question for the user:
+ *   "Should I retry, or is this a ezcoder bug to report?"
+ */
+function toErrorItem(err: unknown, id: string, contextPrefix?: string): ErrorItem {
+  const f = formatError(err);
+  const headline = contextPrefix ? `${contextPrefix} — ${f.headline}` : f.headline;
+  // For ezcoder bugs, swap the generic "see /help" guidance for an actual URL
+  // so users have a clear place to send the report.
+  const guidance =
+    f.source === "ezcoder"
+      ? `This looks like a ezcoder bug — please send it to the dev at ${GGCODER_BUG_REPORT_URL}.`
+      : f.guidance;
+  // Mirror every user-visible error into ~/.ezcoder/debug.log so reports can be
+  // diagnosed even after the terminal scrollback is gone.
+  log("ERROR", "ui-error", headline, {
+    source: f.source,
+    message: f.message,
+    ...(f.provider ? { provider: f.provider } : {}),
+    ...(f.statusCode != null ? { statusCode: String(f.statusCode) } : {}),
+    ...(f.requestId ? { requestId: f.requestId } : {}),
+    ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
+  });
+  return {
+    kind: "error",
+    headline,
+    message: f.message,
+    guidance,
+    id,
+  };
 }
 
 // ── Completed Item Types ───────────────────────────────────
@@ -196,7 +210,12 @@ interface ToolDoneItem {
 
 interface ErrorItem {
   kind: "error";
+  /** Plain-English headline, e.g. "OpenAI returned an error." */
+  headline: string;
+  /** Detailed message body (clean, no JSON). */
   message: string;
+  /** Action line — "Retry, this is an OpenAI issue" / "Report this ezcoder bug …". */
+  guidance: string;
   id: string;
 }
 
@@ -298,6 +317,38 @@ interface PlanTransitionItem {
   id: string;
 }
 
+interface ThinkingTransitionItem {
+  kind: "thinking_transition";
+  active: boolean;
+  id: string;
+}
+
+interface ModelTransitionItem {
+  kind: "model_transition";
+  modelName: string;
+  id: string;
+}
+
+interface ThemeTransitionItem {
+  kind: "theme_transition";
+  themeName: string;
+  id: string;
+}
+
+interface PlanEventItem {
+  kind: "plan_event";
+  event: "approved" | "rejected" | "dismissed";
+  /** Free-form detail (reject feedback, etc.) — quoted in the rendered row. */
+  detail?: string;
+  id: string;
+}
+
+interface StoppedItem {
+  kind: "stopped";
+  text: string;
+  id: string;
+}
+
 interface TombstoneItem {
   kind: "tombstone";
   id: string;
@@ -349,6 +400,11 @@ export type CompletedItem =
   | SubAgentGroupItem
   | ToolGroupItem
   | PlanTransitionItem
+  | ThinkingTransitionItem
+  | ModelTransitionItem
+  | ThemeTransitionItem
+  | PlanEventItem
+  | StoppedItem
   | TombstoneItem
   | StepDoneItem;
 
@@ -552,7 +608,6 @@ export interface AppProps {
   accountId?: string;
   cwd: string;
   version: string;
-  showThinking?: boolean;
   showTokenUsage?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
@@ -573,6 +628,8 @@ export interface AppProps {
   skills?: Skill[];
   initialOverlay?: "pixel";
   rebuildToolsForCwd?: (cwd: string) => AgentTool[];
+  repoMapChangedFilesRef?: { current: Set<string> };
+  repoMapReadFilesRef?: { current: Set<string> };
   /**
    * Wired by `renderApp`. Tears down the current Ink instance and renders
    * a fresh one. Patching Ink's internal frame tracking in place is
@@ -593,7 +650,11 @@ export interface AppProps {
     approvedPlanPath?: string;
     planSteps?: PlanStep[];
     sessionPath?: string;
-    pendingAction?: { prompt: string; infoText?: string };
+    pendingAction?: {
+      prompt: string;
+      infoText?: string;
+      planEvent?: { event: "approved" | "rejected" | "dismissed"; detail?: string };
+    };
   }) => void;
   /**
    * Wired by `renderApp`. App calls this when the user changes
@@ -621,9 +682,13 @@ export interface AppProps {
     sessionTitleGenerated: boolean;
     overlay?: "model" | "tasks" | "skills" | "plan" | "theme" | "eyes" | "pixel" | null;
     planAutoExpand?: boolean;
-    pendingAction?: { prompt: string; infoText?: string };
-    /** Run-all chain flags — mirrored from React state so they survive the
-     * unmount/remount that startTask / startPixelFix trigger via resetUI. */
+    pendingAction?: {
+      prompt: string;
+      infoText?: string;
+      planEvent?: { event: "approved" | "rejected" | "dismissed"; detail?: string };
+    };
+    isAgentRunning?: boolean;
+    pendingResetUI?: boolean;
     runAllTasks?: boolean;
     runAllPixel?: boolean;
   };
@@ -688,15 +753,12 @@ export function App(props: AppProps) {
   const [updatePending, setUpdatePending] = useState<boolean>(
     () => getPendingUpdate(props.version) !== null,
   );
-  // Seed run-all flags from sessionStore so the chain survives the
-  // unmount/remount that startTask / startPixelFix trigger via resetUI.
-  // Without this, the remounted App has runAllTasks=false and onDone
-  // never picks up the next task. (Regression from 0246c6d — unmount/
-  // remount across all panes.)
-  const [runAllTasks, setRunAllTasks] = useState(() => props.sessionStore?.runAllTasks ?? false);
-  const runAllTasksRef = useRef(runAllTasks);
+  // Seed from sessionStore so "Run All" chaining survives the resetUI()
+  // remount that startTask() triggers between tasks.
+  const [runAllTasks, setRunAllTasks] = useState(props.sessionStore?.runAllTasks ?? false);
+  const runAllTasksRef = useRef(props.sessionStore?.runAllTasks ?? false);
   const startTaskRef = useRef<(title: string, prompt: string, taskId: string) => void>(() => {});
-  const runAllPixelRef = useRef(false);
+  const runAllPixelRef = useRef(props.sessionStore?.runAllPixel ?? false);
   const currentPixelFixRef = useRef<PreparedPixelFix | null>(null);
   const startPixelFixRef = useRef<(errorId: string) => void>(() => {});
   const cwdRef = useRef(props.cwd);
@@ -713,13 +775,42 @@ export function App(props: AppProps) {
   const [currentModel, setCurrentModel] = useState(props.model);
   const [currentProvider, setCurrentProvider] = useState(props.provider);
   const [currentTools, setCurrentTools] = useState(props.tools);
+  const currentToolsRef = useRef(props.tools);
   const [thinkingEnabled, setThinkingEnabled] = useState(!!props.thinking);
   const messagesRef = useRef<Message[]>(props.sessionStore?.messages ?? props.messages);
+  const repoMapInjectionEnabledRef = useRef(true);
+  const repoMapDirtyRef = useRef(true);
+  const repoMapMarkdownRef = useRef("");
+  const repoMapSnapshotRef = useRef<RepoMapSnapshot | undefined>(undefined);
+  const repoMapChangedCountRef = useRef(0);
+  const repoMapCacheRef = useRef<RepoMapCache>(createRepoMapCache());
   const [planAutoExpand, setPlanAutoExpand] = useState(props.sessionStore?.planAutoExpand ?? false);
   const approvedPlanPathRef = useRef<string | undefined>(props.sessionStore?.approvedPlanPath);
   const planStepsRef = useRef<PlanStep[]>(props.sessionStore?.planSteps ?? []);
   const [planSteps, setPlanSteps] = useState<PlanStep[]>(props.sessionStore?.planSteps ?? []);
-  const nextIdRef = useRef(0);
+  const planModeStateRef = useRef(planMode);
+  // Stuck-guard for the plan-continuation follow-up nudge. Tracks how many
+  // times we've nudged the agent to continue the same step. Reset whenever a
+  // new [DONE:n] marker advances progress (see onTurnText). Caps at 2 nudges
+  // so a genuinely stuck agent surfaces instead of looping forever.
+  const followUpNudgesRef = useRef<{ step: number; count: number }>({ step: 0, count: 0 });
+  // Seed the per-item ID counter so it doesn't collide with IDs already in
+  // sessionStore.history (which survives remount). Without this, a remount
+  // (resize, overlay toggle, etc.) starts the counter at 0 and new items
+  // generate ids "0", "1", "2"… that collide with the same ids from the
+  // previous mount, triggering React's duplicate-key warning and causing
+  // duplicate/omitted renders.
+  const nextIdRef = useRef(
+    (() => {
+      const hist = props.sessionStore?.history ?? props.initialHistory ?? [];
+      let max = -1;
+      for (const item of hist) {
+        const n = Number(item.id);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+      return max + 1;
+    })(),
+  );
   const sessionManagerRef = useRef(
     props.sessionsDir ? new SessionManager(props.sessionsDir) : null,
   );
@@ -777,9 +868,9 @@ export function App(props: AppProps) {
   }, [currentProvider, onRuntimeStateChange]);
   useEffect(() => {
     onRuntimeStateChange?.({
-      thinking: thinkingEnabled ? (props.thinking ?? "medium") : undefined,
+      thinking: thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined,
     });
-  }, [thinkingEnabled, props.thinking, onRuntimeStateChange]);
+  }, [thinkingEnabled, currentModel, onRuntimeStateChange]);
 
   // Mirror session state into renderApp's closure so resetUI() can re-seed
   // the conversation on remount. Each panel that previously did a bare ANSI
@@ -808,6 +899,10 @@ export function App(props: AppProps) {
   const activeApiKey = currentCreds?.accessToken ?? props.apiKey;
   const activeAccountId = currentCreds?.accountId ?? props.accountId;
   const activeBaseUrl = currentCreds?.baseUrl ?? props.baseUrl;
+  const contextWindowOptions = useMemo(
+    () => ({ provider: currentProvider, accountId: activeAccountId }),
+    [currentProvider, activeAccountId],
+  );
 
   // Load git branch — re-runs whenever the displayed cwd changes (e.g. when
   // a pixel fix moves the agent into a different project root).
@@ -833,13 +928,53 @@ export function App(props: AppProps) {
     reloadCustomCommands();
   }, [reloadCustomCommands]);
 
+  useEffect(() => {
+    currentToolsRef.current = currentTools;
+  }, [currentTools]);
+
   // ── Plan mode wiring ─────────────────────────────────────
   // Sync planModeRef with React state
   useEffect(() => {
+    planModeStateRef.current = planMode;
     if (props.planModeRef) {
       props.planModeRef.current = planMode;
     }
   }, [planMode, props.planModeRef]);
+
+  const rebuildSystemPrompt = useCallback(
+    async (options?: {
+      cwd?: string;
+      planMode?: boolean;
+      approvedPlanPath?: string;
+      clearApprovedPlan?: boolean;
+      activeLanguages?: Set<LanguageId>;
+      tools?: AgentTool[];
+    }): Promise<string> => {
+      const approvedPlanPath = options?.clearApprovedPlan
+        ? undefined
+        : (options?.approvedPlanPath ?? approvedPlanPathRef.current);
+      return buildSystemPrompt(
+        options?.cwd ?? cwdRef.current,
+        props.skills,
+        options?.planMode ?? planModeStateRef.current,
+        approvedPlanPath,
+        (options?.tools ?? currentToolsRef.current).map((tool) => tool.name),
+        options?.activeLanguages ?? injectedLanguagesRef.current,
+      );
+    },
+    [props.skills],
+  );
+
+  const replaceSystemPrompt = useCallback(
+    async (options?: Parameters<typeof rebuildSystemPrompt>[0]): Promise<string> => {
+      const newPrompt = await rebuildSystemPrompt(options);
+      if (messagesRef.current[0]?.role === "system") {
+        messagesRef.current[0] = { role: "system" as const, content: newPrompt };
+      }
+      return newPrompt;
+    },
+    [rebuildSystemPrompt],
+  );
 
   /**
    * Unified "apply detection result" pipeline. Called from three sites:
@@ -886,17 +1021,7 @@ export function App(props: AppProps) {
     }
     injectedLanguagesRef.current = detected;
     try {
-      const newPrompt = await buildSystemPrompt(
-        cwd,
-        props.skills,
-        planMode,
-        approvedPlanPathRef.current,
-        undefined,
-        detected,
-      );
-      if (messagesRef.current[0]?.role === "system") {
-        messagesRef.current[0] = { role: "system" as const, content: newPrompt };
-      }
+      await replaceSystemPrompt({ cwd, activeLanguages: detected });
       const verifyCmds = detectVerifyCommands(cwd, detected);
       const tag = source === "initial" ? "Initial style packs" : "Style pack(s) loaded";
       log("INFO", "language", `${tag}: ${added.join(", ")}`, {
@@ -941,23 +1066,8 @@ export function App(props: AppProps) {
 
   // Rebuild system prompt when plan mode changes
   useEffect(() => {
-    void (async () => {
-      const newPrompt = await buildSystemPrompt(
-        props.cwd,
-        props.skills,
-        planMode,
-        approvedPlanPathRef.current,
-        undefined,
-        injectedLanguagesRef.current,
-      );
-      if (messagesRef.current[0]?.role === "system") {
-        messagesRef.current[0] = {
-          role: "system" as const,
-          content: newPrompt,
-        };
-      }
-    })();
-  }, [planMode, props.cwd, props.skills]);
+    void replaceSystemPrompt({ planMode });
+  }, [planMode, replaceSystemPrompt]);
 
   // Wire onEnterPlan callback ref
   useEffect(() => {
@@ -978,8 +1088,10 @@ export function App(props: AppProps) {
     if (props.onExitPlanRef) {
       props.onExitPlanRef.current = async (planPath: string) => {
         // Deactivate plan mode, store approved plan path, open pane
+        planModeStateRef.current = false;
         setPlanMode(false);
         approvedPlanPathRef.current = planPath;
+        await replaceSystemPrompt({ planMode: false, approvedPlanPath: planPath });
         // Use setTimeout to open pane after the current tool execution completes,
         // so the turn can finish and the UI transitions cleanly
         // Flag that the plan overlay is about to open — suppresses the
@@ -1010,27 +1122,49 @@ export function App(props: AppProps) {
         );
       };
     }
-  }, [props.onExitPlanRef, stdout]);
+  }, [props.onExitPlanRef, replaceSystemPrompt, stdout]);
+
+  const appendMessagesToSession = useCallback(
+    async (sessionPath: string, messages: readonly Message[], startIndex: number) => {
+      const sm = sessionManagerRef.current;
+      if (!sm) return;
+      await appendSessionMessages(sm, sessionPath, messages, startIndex);
+    },
+    [],
+  );
+
+  const persistCompactedSession = useCallback(
+    async (compactedMessages: readonly Message[]): Promise<void> => {
+      const sm = sessionManagerRef.current;
+      if (!sm) return;
+      const session = await createCompactedSessionCheckpoint(sm, {
+        cwd: cwdRef.current,
+        provider: currentProvider,
+        model: currentModel,
+        messages: compactedMessages,
+      });
+      sessionPathRef.current = session.path;
+      persistedIndexRef.current = compactedMessages.length;
+      if (sessionStore) {
+        sessionStore.sessionPath = session.path;
+        sessionStore.messages = [...compactedMessages];
+      }
+      log("INFO", "compaction", "Persisted compacted session checkpoint", { path: session.path });
+    },
+    [currentModel, currentProvider, sessionStore],
+  );
 
   const persistNewMessages = useCallback(async () => {
-    const sm = sessionManagerRef.current;
     const sp = sessionPathRef.current;
-    if (!sm || !sp) return;
+    if (!sp) return;
     const allMsgs = messagesRef.current;
-    for (let i = persistedIndexRef.current; i < allMsgs.length; i++) {
-      const msg = allMsgs[i];
-      if (msg.role === "system") continue;
-      const entry: MessageEntry = {
-        type: "message",
-        id: crypto.randomUUID(),
-        parentId: null,
-        timestamp: new Date().toISOString(),
-        message: msg,
-      };
-      await sm.appendEntry(sp, entry);
-    }
+    await appendMessagesToSession(sp, allMsgs, persistedIndexRef.current);
     persistedIndexRef.current = allMsgs.length;
-  }, []);
+    if (sessionStore) {
+      sessionStore.messages = [...allMsgs];
+      sessionStore.sessionPath = sp;
+    }
+  }, [appendMessagesToSession, sessionStore]);
 
   /**
    * Run the language detector against the current cwd. If the detected set is a
@@ -1058,22 +1192,20 @@ export function App(props: AppProps) {
 
   // ── Compaction ─────────────────────────────────────────
 
-  // Load settings for auto-compaction + buddy
+  // Load settings for auto-compaction
   const settingsRef = useRef<SettingsManager | null>(null);
-  const [buddyEnabled, setBuddyEnabled] = useState(false);
   useEffect(() => {
     if (props.settingsFile) {
       const sm = new SettingsManager(props.settingsFile);
       sm.load().then(() => {
         settingsRef.current = sm;
-        setBuddyEnabled(sm.get("buddyEnabled") ?? false);
       });
     }
   }, [props.settingsFile]);
 
   const compactConversation = useCallback(
     async (messages: Message[]): Promise<Message[]> => {
-      const contextWindow = getContextWindow(currentModel);
+      const contextWindow = getContextWindow(currentModel, contextWindowOptions);
       const tokensBefore = estimateConversationTokens(messages);
       const spinId = getId();
       log("INFO", "compaction", `Running compaction`, {
@@ -1088,15 +1220,21 @@ export function App(props: AppProps) {
       try {
         // Resolve fresh credentials for compaction too
         let compactApiKey = activeApiKey;
+        let compactAccountId = activeAccountId;
+        let compactBaseUrl = activeBaseUrl;
         if (props.authStorage) {
           const creds = await props.authStorage.resolveCredentials(currentProvider);
           compactApiKey = creds.accessToken;
+          compactAccountId = creds.accountId;
+          compactBaseUrl = creds.baseUrl ?? compactBaseUrl;
         }
 
         const result = await compact(messages, {
           provider: currentProvider,
           model: currentModel,
           apiKey: compactApiKey,
+          accountId: compactAccountId,
+          baseUrl: compactBaseUrl,
           contextWindow,
           signal: undefined,
           approvedPlanPath: approvedPlanPathRef.current,
@@ -1131,75 +1269,138 @@ export function App(props: AppProps) {
         // Replace spinner with error
         setLiveItems((prev) =>
           prev.map((item) =>
-            item.id === spinId
-              ? ({ kind: "error", message: `Compaction failed: ${msg}`, id: spinId } as ErrorItem)
-              : item,
+            item.id === spinId ? toErrorItem(err, spinId, "Compaction failed") : item,
           ),
         );
         return messages; // Return unchanged on failure
       }
     },
-    [currentModel, currentProvider, activeApiKey],
+    [
+      currentModel,
+      currentProvider,
+      activeApiKey,
+      activeAccountId,
+      activeBaseUrl,
+      contextWindowOptions,
+      props.authStorage,
+    ],
+  );
+
+  const getRepoMapSignalCount = useCallback((): number => {
+    return (
+      (props.repoMapChangedFilesRef?.current.size ?? 0) +
+      (props.repoMapReadFilesRef?.current.size ?? 0)
+    );
+  }, [props.repoMapChangedFilesRef, props.repoMapReadFilesRef]);
+
+  const getRepoMapBudget = useCallback((): number => {
+    const userTurns = messagesRef.current.filter((message) => message.role === "user").length;
+    const readCount = props.repoMapReadFilesRef?.current.size ?? 0;
+    if (userTurns <= 1 && readCount === 0) return FIRST_TURN_REPO_MAP_MAX_CHARS;
+    if (readCount > 0) return FOCUSED_REPO_MAP_MAX_CHARS;
+    return FOCUSED_REPO_MAP_MAX_CHARS + 1000;
+  }, [props.repoMapReadFilesRef]);
+
+  const refreshRepoMap = useCallback(
+    async (latestUserPrompt?: string): Promise<string> => {
+      const rendered = await buildRepoMap({
+        cwd: cwdRef.current,
+        maxChars: getRepoMapBudget(),
+        changedFiles: [...(props.repoMapChangedFilesRef?.current ?? new Set<string>())],
+        readFiles: [...(props.repoMapReadFilesRef?.current ?? new Set<string>())],
+        focusTerms: latestUserPrompt ? [latestUserPrompt] : [],
+        cache: repoMapCacheRef.current,
+      });
+      repoMapMarkdownRef.current = rendered.markdown;
+      repoMapSnapshotRef.current = rendered.snapshot;
+      repoMapChangedCountRef.current = getRepoMapSignalCount();
+      repoMapDirtyRef.current = false;
+      return rendered.markdown;
+    },
+    [
+      getRepoMapBudget,
+      getRepoMapSignalCount,
+      props.repoMapChangedFilesRef,
+      props.repoMapReadFilesRef,
+    ],
+  );
+
+  const stripRepoMapMessages = useCallback((messages: readonly Message[]): Message[] => {
+    return stripRepoMapContextMessages(messages);
+  }, []);
+
+  const injectRepoMapContext = useCallback(
+    async (messages: Message[]): Promise<Message[]> => {
+      if (!repoMapInjectionEnabledRef.current) return stripRepoMapMessages(messages);
+      const stripped = stripRepoMapMessages(messages);
+      const latestUserPrompt = getLatestUserText(stripped);
+      const signalCount = getRepoMapSignalCount();
+      if (signalCount !== repoMapChangedCountRef.current) repoMapDirtyRef.current = true;
+      if (repoMapDirtyRef.current || !repoMapMarkdownRef.current) {
+        await refreshRepoMap(latestUserPrompt);
+      }
+      if (!repoMapMarkdownRef.current) return stripped;
+      return injectRepoMapContextMessages(stripped, repoMapMarkdownRef.current);
+    },
+    [props.repoMapChangedFilesRef, props.repoMapReadFilesRef, refreshRepoMap, stripRepoMapMessages],
   );
 
   /**
    * transformContext callback for the agent loop.
    * Called before each LLM call and on context overflow.
-   * Checks if auto-compaction is needed and runs it.
-   *
-   * Uses actual API-reported token counts (from previous turn_end) when
-   * available, falling back to the character-based estimate. A 30-second
-   * cooldown prevents repeated compaction — matching the pattern used by
-   * Mysti, openclaw, and other real-world agent frameworks.
+   * Compacts persistent chat only, then injects the dynamic repo map transiently.
    */
   const transformContext = useCallback(
     async (messages: Message[], options?: { force?: boolean }): Promise<Message[]> => {
+      const stripped = stripRepoMapMessages(messages);
       const settings = settingsRef.current;
       const autoCompact = settings?.get("autoCompact") ?? true;
       const threshold = settings?.get("compactThreshold") ?? 0.8;
 
       // Force-compact on context overflow regardless of settings
       if (options?.force) {
-        const result = await compactConversation(messages);
+        const result = await compactConversation(stripped);
+        if (result !== stripped) {
+          messagesRef.current = result;
+          await persistCompactedSession(result);
+        }
         lastCompactionTimeRef.current = Date.now();
-        return result;
+        return injectRepoMapContext(result);
       }
 
-      if (!autoCompact) return messages;
+      if (!autoCompact) return injectRepoMapContext(stripped);
 
       // Time-based cooldown: skip if compaction ran within the last 30 seconds
       if (Date.now() - lastCompactionTimeRef.current < 30_000) {
         log("INFO", "compaction", `Skipping compaction — cooldown active`);
-        return messages;
+        return injectRepoMapContext(stripped);
       }
 
-      const contextWindow = getContextWindow(currentModel);
-      // Reserve = max output budget + ~5K headroom for system prompt + tool
-      // schemas. Otherwise the API rejects requests where the prompt fits the
-      // window but leaves no room for the response (e.g. Codex Mini at 200K
-      // ctx / 100K out — pre-turn estimate may say 160K but a 100K reasoning
-      // response then overflows).
+      const contextWindow = getContextWindow(currentModel, contextWindowOptions);
       const modelInfo = getModel(currentModel);
       const reserveTokens = (modelInfo?.maxOutputTokens ?? 0) + 5_000;
-      // Prefer actual API-reported tokens over char-based estimate, but only
-      // when the token count was recorded AFTER the most recent compaction.
-      // A count from before compaction is stale — it reflects the old context
-      // size and would trigger compaction again immediately for no reason.
       const tokensFresh = lastActualTokensTimestampRef.current > lastCompactionTimeRef.current;
       const actualTokens =
         lastActualTokensRef.current > 0 && tokensFresh ? lastActualTokensRef.current : undefined;
-      if (shouldCompact(messages, contextWindow, threshold, actualTokens, reserveTokens)) {
-        const before = messages.length;
-        const result = await compactConversation(messages);
+      if (shouldCompact(stripped, contextWindow, threshold, actualTokens, reserveTokens)) {
+        const result = await compactConversation(stripped);
+        if (result !== stripped) {
+          messagesRef.current = result;
+          await persistCompactedSession(result);
+        }
         lastCompactionTimeRef.current = Date.now();
-        // If compaction was a no-op (e.g. too few middle messages to summarize),
-        // return the original reference so the agent loop doesn't replace messages.
-        if (result.length === before) return messages;
-        return result;
+        return injectRepoMapContext(result);
       }
-      return messages;
+      return injectRepoMapContext(stripped);
     },
-    [currentModel, compactConversation],
+    [
+      currentModel,
+      compactConversation,
+      contextWindowOptions,
+      injectRepoMapContext,
+      persistCompactedSession,
+      stripRepoMapMessages,
+    ],
   );
 
   // ── Background task bar state (external store) ──────────
@@ -1244,7 +1445,7 @@ export function App(props: AppProps) {
       tools: currentTools,
       webSearch: props.webSearch,
       maxTokens: props.maxTokens,
-      thinking: thinkingEnabled ? (props.thinking ?? "medium") : undefined,
+      thinking: thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined,
       apiKey: activeApiKey,
       baseUrl: activeBaseUrl,
       accountId: activeAccountId,
@@ -1253,6 +1454,7 @@ export function App(props: AppProps) {
     },
     {
       onComplete: useCallback(() => {
+        messagesRef.current = stripRepoMapMessages(messagesRef.current);
         persistNewMessages();
         // Auto-clear plan progress and approved plan when all steps are completed
         const steps = planStepsRef.current;
@@ -1261,19 +1463,7 @@ export function App(props: AppProps) {
           setPlanSteps([]);
           approvedPlanPathRef.current = undefined;
           // Rebuild system prompt to remove the completed plan from context
-          void (async () => {
-            const newPrompt = await buildSystemPrompt(
-              props.cwd,
-              props.skills,
-              planMode,
-              undefined,
-              undefined,
-              injectedLanguagesRef.current,
-            );
-            if (messagesRef.current[0]?.role === "system") {
-              messagesRef.current[0] = { role: "system" as const, content: newPrompt };
-            }
-          })();
+          void replaceSystemPrompt({ clearApprovedPlan: true });
         }
 
         // Generate session title after the first turn (background, best-effort)
@@ -1323,6 +1513,7 @@ export function App(props: AppProps) {
         }
       }, [
         persistNewMessages,
+        stripRepoMapMessages,
         planMode,
         props.cwd,
         props.skills,
@@ -1342,6 +1533,9 @@ export function App(props: AppProps) {
               planStepsRef.current = updated;
               setPlanSteps(updated);
             }
+            // Real progress happened — reset the stuck-guard so the next
+            // step gets its own fresh nudge budget.
+            followUpNudgesRef.current = { step: 0, count: 0 };
           }
         }
 
@@ -1824,12 +2018,6 @@ export function App(props: AppProps) {
         log("WARN", "agent", "Agent run aborted by user");
         setRunAllTasks(false);
         setRunAllPixel(false);
-        // Mirror immediately — the useEffect that syncs sessionStore
-        // won't run if we unmount before the next render commit.
-        if (props.sessionStore) {
-          props.sessionStore.runAllTasks = false;
-          props.sessionStore.runAllPixel = false;
-        }
         currentPixelFixRef.current = null;
         setDoneStatus(null);
         setLiveItems((prev) => {
@@ -1872,7 +2060,7 @@ export function App(props: AppProps) {
             }
             return item;
           });
-          return [...next, { kind: "info", text: "Request was stopped.", id: getId() }];
+          return [...next, { kind: "stopped", text: "Request was stopped.", id: getId() }];
         });
       }, []),
       onQueuedStart: useCallback((content: UserContent) => {
@@ -1902,6 +2090,34 @@ export function App(props: AppProps) {
         setLastUserMessage(displayText);
         setDoneStatus(null);
         setLiveItems([userItem]);
+      }, []),
+      // Inject a "continue with the next step" follow-up when the agent
+      // would otherwise stop mid-plan. The prompt-only instruction wasn't
+      // enough — some models (notably Opus) treat each [DONE:n] as a
+      // natural completion boundary regardless. The stuck-guard caps
+      // nudges per step so a genuinely blocked agent surfaces.
+      getFollowUpMessages: useCallback(() => {
+        const steps = planStepsRef.current;
+        if (steps.length === 0 || !approvedPlanPathRef.current) return null;
+        const next = steps.find((s) => !s.completed);
+        if (!next) return null;
+        const r = followUpNudgesRef.current;
+        if (r.step !== next.step) {
+          r.step = next.step;
+          r.count = 0;
+        }
+        if (r.count >= 2) return null;
+        r.count++;
+        return [
+          {
+            role: "user" as const,
+            content:
+              `Continue with step ${next.step}: ${next.text}. ` +
+              `Emit [DONE:${next.step}] when done, then proceed to step ${next.step + 1} ` +
+              `in the same turn. Only stop when every step in \`## Steps\` is complete ` +
+              `or you genuinely need user input.`,
+          },
+        ];
       }, []),
     },
   );
@@ -1939,8 +2155,8 @@ export function App(props: AppProps) {
       setLiveItems((prev) => [
         ...prev,
         isAbort
-          ? { kind: "info", text: "Auto-setup cancelled.", id: getId() }
-          : { kind: "error", message: msg, id: getId() },
+          ? { kind: "stopped", text: "Auto-setup cancelled.", id: getId() }
+          : toErrorItem(err, getId()),
       ]);
     }
   };
@@ -1965,6 +2181,28 @@ export function App(props: AppProps) {
     setTitleRunning(agentLoop.isRunning);
   }, [agentLoop.isRunning]);
 
+  // Mirror agent running state into sessionStore so renderApp's resize
+  // handler and overlay toggles can skip their unmount/remount while the
+  // agent is in flight (unmounting fires useAgentLoop's cleanup which
+  // aborts the in-flight request). On the running→idle transition,
+  // consume any pendingResetUI flag set during the run by scheduling a
+  // deferred resetUI to clean up accumulated log-update drift. The 100ms
+  // setTimeout lets onDone's two-phase flush commit to sessionStore.history
+  // first, so the chat isn't lost. The cleanup also bails if the user
+  // started a new run before the timer fires, to avoid aborting it.
+  useEffect(() => {
+    if (!sessionStore) return;
+    sessionStore.isAgentRunning = agentLoop.isRunning;
+    if (!agentLoop.isRunning && sessionStore.pendingResetUI) {
+      sessionStore.pendingResetUI = false;
+      const timer = setTimeout(() => {
+        if (sessionStore.isAgentRunning) return;
+        props.resetUI?.();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [agentLoop.isRunning, sessionStore, props.resetUI]);
+
   // Consume sessionStore.pendingAction once on mount. Set by resetUI options
   // for paths that remount AND immediately drive the agent (plan accept,
   // plan reject, startTask, pixel fix). The action survives the unmount
@@ -1975,7 +2213,13 @@ export function App(props: AppProps) {
     if (!action) return;
     pendingActionConsumedRef.current = true;
     if (sessionStore) sessionStore.pendingAction = undefined;
-    if (action.infoText) {
+    if (action.planEvent) {
+      const ev = action.planEvent;
+      setLiveItems((prev) => [
+        ...prev,
+        { kind: "plan_event", event: ev.event, detail: ev.detail, id: getId() },
+      ]);
+    } else if (action.infoText) {
       setLiveItems((prev) => [
         ...prev,
         { kind: "info", text: action.infoText as string, id: getId() },
@@ -1985,7 +2229,7 @@ export function App(props: AppProps) {
     void agentLoop.run(action.prompt).catch((err: unknown) => {
       const errMsg = err instanceof Error ? err.message : String(err);
       log("ERROR", "error", errMsg);
-      setLiveItems((prev) => [...prev, { kind: "error", message: errMsg, id: getId() }]);
+      setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
     });
     // Intentional one-shot: run once on mount, never re-fire on re-render.
   }, []);
@@ -2026,7 +2270,7 @@ export function App(props: AppProps) {
         // external changes between turns and ensures non-writing prompts still
         // surface the badge when packs are newly applicable. No-op if the set
         // has not grown.
-        void applyLanguageDetectionRef.current("input");
+        await applyLanguageDetectionRef.current("input");
       }
 
       // Handle /model directly — open inline selector
@@ -2040,7 +2284,7 @@ export function App(props: AppProps) {
         const compacted = await compactConversation(messagesRef.current);
         if (compacted !== messagesRef.current) {
           messagesRef.current = compacted;
-          persistedIndexRef.current = 0; // Re-persist after compaction
+          await persistCompactedSession(compacted);
         }
         return;
       }
@@ -2062,14 +2306,7 @@ export function App(props: AppProps) {
       if (trimmed === "/clear") {
         if (props.resetUI) {
           void (async () => {
-            const newPrompt = await buildSystemPrompt(
-              props.cwd,
-              props.skills,
-              planMode,
-              undefined,
-              undefined,
-              injectedLanguagesRef.current,
-            );
+            const newPrompt = await rebuildSystemPrompt({ clearApprovedPlan: true });
             props.resetUI?.({
               wipeSession: true,
               messages: [{ role: "system" as const, content: newPrompt }],
@@ -2088,14 +2325,7 @@ export function App(props: AppProps) {
         planStepsRef.current = [];
         setPlanSteps([]);
         void (async () => {
-          const newPrompt = await buildSystemPrompt(
-            props.cwd,
-            props.skills,
-            planMode,
-            undefined,
-            undefined,
-            injectedLanguagesRef.current,
-          );
+          const newPrompt = await rebuildSystemPrompt({ clearApprovedPlan: true });
           messagesRef.current = [{ role: "system" as const, content: newPrompt }];
           persistedIndexRef.current = messagesRef.current.length;
         })();
@@ -2161,37 +2391,52 @@ export function App(props: AppProps) {
         planStepsRef.current = [];
         setPlanSteps([]);
         // Rebuild system prompt without the plan
-        void (async () => {
-          const newPrompt = await buildSystemPrompt(
-            props.cwd,
-            props.skills,
-            planMode,
-            undefined,
-            undefined,
-            injectedLanguagesRef.current,
-          );
-          if (messagesRef.current[0]?.role === "system") {
-            messagesRef.current[0] = { role: "system" as const, content: newPrompt };
-          }
-        })();
-        setLiveItems([{ kind: "info", text: "Approved plan dismissed.", id: getId() }]);
+        void replaceSystemPrompt({ clearApprovedPlan: true });
+        setLiveItems([{ kind: "plan_event", event: "dismissed", id: getId() }]);
         return;
       }
 
-      // Handle /buddy — toggle companion
-      if (trimmed === "/buddy") {
-        const next = !buddyEnabled;
-        setBuddyEnabled(next);
-        if (settingsRef.current) {
-          settingsRef.current.set("buddyEnabled", next);
+      // Handle /map — show, refresh, or toggle dynamic repo map injection
+      if (
+        trimmed === "/map" ||
+        trimmed === "/map refresh" ||
+        trimmed === "/map on" ||
+        trimmed === "/map off"
+      ) {
+        const action = trimmed.slice("/map".length).trim();
+        if (action === "on") {
+          repoMapInjectionEnabledRef.current = true;
+          repoMapDirtyRef.current = true;
+          setLiveItems((prev) => [
+            ...prev,
+            { kind: "info", text: "Dynamic repo map injection is on.", id: getId() },
+          ]);
+          return;
         }
-        setLiveItems((items) => [
-          ...items,
+        if (action === "off") {
+          repoMapInjectionEnabledRef.current = false;
+          messagesRef.current = stripRepoMapMessages(messagesRef.current);
+          setLiveItems((prev) => [
+            ...prev,
+            {
+              kind: "info",
+              text: "Dynamic repo map injection is off for this session.",
+              id: getId(),
+            },
+          ]);
+          return;
+        }
+        if (action === "refresh") repoMapDirtyRef.current = true;
+        const markdown = await refreshRepoMap(getLatestUserText(messagesRef.current));
+        setLiveItems((prev) => [
+          ...prev,
           {
-            kind: "info" as const,
-            text: next
-              ? "Buddy enabled! Your companion will appear near the prompt."
-              : "Buddy disabled.",
+            kind: "info",
+            text: formatRepoMapCommandOutput(
+              repoMapInjectionEnabledRef.current,
+              markdown,
+              action === "refresh",
+            ),
             id: getId(),
           },
         ]);
@@ -2200,12 +2445,16 @@ export function App(props: AppProps) {
 
       // Handle /plans — open plan pane
       if (trimmed === "/plans") {
-        if (props.resetUI && props.sessionStore) {
+        if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
           props.sessionStore.overlay = "plan";
           props.sessionStore.planAutoExpand = false;
           props.resetUI();
         } else {
-          stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+          if (props.sessionStore) {
+            props.sessionStore.overlay = "plan";
+            props.sessionStore.planAutoExpand = false;
+            if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+          }
           setPlanAutoExpand(false);
           setOverlay("plan");
         }
@@ -2255,8 +2504,8 @@ export function App(props: AppProps) {
             setLiveItems((prev) => [
               ...prev,
               isAbort
-                ? { kind: "info", text: "Request was stopped.", id: getId() }
-                : { kind: "error", message: msg, id: getId() },
+                ? { kind: "stopped", text: "Request was stopped.", id: getId() }
+                : toErrorItem(err, getId()),
             ]);
           }
           // Reload custom commands in case a setup command created new ones
@@ -2384,12 +2633,20 @@ export function App(props: AppProps) {
         setLiveItems((prev) => [
           ...prev,
           isAbort
-            ? { kind: "info", text: "Request was stopped.", id: getId() }
-            : { kind: "error", message: msg, id: getId() },
+            ? { kind: "stopped", text: "Request was stopped.", id: getId() }
+            : toErrorItem(err, getId()),
         ]);
       }
     },
-    [agentLoop, props.onSlashCommand, compactConversation],
+    [
+      agentLoop,
+      props.onSlashCommand,
+      compactConversation,
+      rebuildSystemPrompt,
+      replaceSystemPrompt,
+      refreshRepoMap,
+      stripRepoMapMessages,
+    ],
   );
 
   const handleDoubleExit = useDoublePress(setExitPending, () => process.exit(0));
@@ -2409,7 +2666,7 @@ export function App(props: AppProps) {
       log("INFO", "thinking", `Thinking ${next ? "enabled" : "disabled"}`);
       setLiveItems((items) => [
         ...items,
-        { kind: "info", text: `Thinking ${next ? "on" : "off"}`, id: getId() },
+        { kind: "thinking_transition", active: next, id: getId() },
       ]);
       if (props.settingsFile) {
         const sm = new SettingsManager(props.settingsFile);
@@ -2428,6 +2685,11 @@ export function App(props: AppProps) {
       const newModelId = value.slice(colonIdx + 1);
       log("INFO", "model", `Model changed`, { provider: newProvider, model: newModelId });
 
+      const rebuildPromptWithTools = (tools: AgentTool[]) => {
+        currentToolsRef.current = tools;
+        void replaceSystemPrompt({ tools });
+      };
+
       // Handle provider-specific tool changes when provider changes
       setCurrentProvider((prevProvider) => {
         if (newProvider !== prevProvider) {
@@ -2435,14 +2697,16 @@ export function App(props: AppProps) {
           // Anthropic has native server-side web search; all other providers need the client tool.
           setCurrentTools((prev) => {
             const hasWebSearch = prev.some((t) => t.name === "web_search");
+            let next = prev;
             if (newProvider === "anthropic" && hasWebSearch) {
               // Switching TO anthropic — remove client-side web_search (server-side handles it)
-              return prev.filter((t) => t.name !== "web_search");
+              next = prev.filter((t) => t.name !== "web_search");
             } else if (newProvider !== "anthropic" && !hasWebSearch) {
               // Switching FROM anthropic — add client-side web_search
-              return [...prev, createWebSearchTool()];
+              next = [...prev, createWebSearchTool()];
             }
-            return prev;
+            rebuildPromptWithTools(next);
+            return next;
           });
 
           // Reconnect MCP servers
@@ -2467,10 +2731,11 @@ export function App(props: AppProps) {
                 const mcpTools = await props.mcpManager!.connectAll(
                   getMCPServers(newProvider, apiKey),
                 );
-                setCurrentTools((prev) => [
-                  ...prev.filter((t) => !t.name.startsWith("mcp__")),
-                  ...mcpTools,
-                ]);
+                setCurrentTools((prev) => {
+                  const next = [...prev.filter((t) => !t.name.startsWith("mcp__")), ...mcpTools];
+                  rebuildPromptWithTools(next);
+                  return next;
+                });
                 log("INFO", "mcp", `MCP servers reconnected for provider ${newProvider}`);
               } catch (err) {
                 log(
@@ -2479,7 +2744,11 @@ export function App(props: AppProps) {
                   `MCP reconnection failed: ${err instanceof Error ? err.message : String(err)}`,
                 );
                 // Still remove old MCP tools even if reconnection fails
-                setCurrentTools((prev) => prev.filter((t) => !t.name.startsWith("mcp__")));
+                setCurrentTools((prev) => {
+                  const next = prev.filter((t) => !t.name.startsWith("mcp__"));
+                  rebuildPromptWithTools(next);
+                  return next;
+                });
               }
             })();
           }
@@ -2492,7 +2761,7 @@ export function App(props: AppProps) {
       const displayName = modelInfo?.name ?? newModelId;
       setLiveItems((prev) => [
         ...prev,
-        { kind: "info", text: `Switched to ${displayName}`, id: getId() },
+        { kind: "model_transition", modelName: displayName, id: getId() },
       ]);
 
       // Persist model selection for next CLI launch
@@ -2529,10 +2798,7 @@ export function App(props: AppProps) {
         const sm = new SettingsManager(props.settingsFile);
         sm.load().then(() => sm.set("theme", name as Settings["theme"]));
       }
-      setLiveItems((prev) => [
-        ...prev,
-        { kind: "info", text: `Theme switched to: ${name}`, id: getId() },
-      ]);
+      setLiveItems((prev) => [...prev, { kind: "theme_transition", themeName: name, id: getId() }]);
     },
     [switchTheme, props.settingsFile],
   );
@@ -2551,6 +2817,8 @@ export function App(props: AppProps) {
       "research",
       "scan",
       "verify",
+      "expand",
+      "bullet-proof",
       "simplify",
       "compare",
       "batch",
@@ -2707,7 +2975,6 @@ export function App(props: AppProps) {
             text={item.text}
             thinking={item.thinking}
             thinkingMs={item.thinkingMs}
-            showThinking={props.showThinking}
             planMode={item.planMode}
           />
         );
@@ -2757,19 +3024,21 @@ export function App(props: AppProps) {
           />
         );
       case "error": {
-        const providerHint = getProviderErrorHint(item.message);
+        const showMessage = item.message && item.message !== item.headline;
         return (
           <Box key={item.id} marginTop={1} flexDirection="column" flexShrink={1}>
             <Text color={theme.error} wrap="wrap">
               {"✗ "}
-              {item.message}
+              {item.headline}
             </Text>
-            {providerHint && (
+            {showMessage && (
               <Text color={theme.textDim} wrap="wrap">
-                {"  Hint: "}
-                {providerHint}
+                {`  ${item.message}`}
               </Text>
             )}
+            <Text color={theme.textDim} wrap="wrap">
+              {`  → ${item.guidance}`}
+            </Text>
           </Box>
         );
       }
@@ -2802,6 +3071,94 @@ export function App(props: AppProps) {
           <Box key={item.id} marginTop={1} flexShrink={1}>
             <Text color={theme.planPrimary} bold wrap="wrap">
               {item.active ? "● " : "● "}
+              {item.text}
+            </Text>
+          </Box>
+        );
+      case "thinking_transition": {
+        // Borderless. While in liveItems the glyph color cycles through the
+        // shared TRANSITION_COLORS gradient (~500ms per color). Once the item
+        // flushes to <Static>, its last-rendered color sticks — re-renders
+        // don't propagate into scrollback. Cheap: the animation timer is
+        // already running for the activity indicator.
+        const glyphFrame = item.active
+          ? deriveFrame(animTick, 500, THINKING_BORDER_COLORS.length)
+          : 0;
+        const glyphColor = item.active ? THINKING_BORDER_COLORS[glyphFrame] : theme.textDim;
+        return (
+          <Box key={item.id} marginTop={1} flexShrink={1}>
+            <Text color={glyphColor} bold>
+              {"✻ "}
+            </Text>
+            <Text color={item.active ? theme.accent : theme.textDim} bold>
+              {item.active ? "Thinking ON" : "Thinking OFF"}
+            </Text>
+          </Box>
+        );
+      }
+      case "model_transition": {
+        // Same animated-gradient pattern as thinking_transition, distinct
+        // glyph (▸) and primary-blue model name so the two transitions read
+        // as related but different.
+        const glyphFrame = deriveFrame(animTick, 500, THINKING_BORDER_COLORS.length);
+        const glyphColor = THINKING_BORDER_COLORS[glyphFrame];
+        return (
+          <Box key={item.id} marginTop={1} flexShrink={1}>
+            <Text color={glyphColor} bold>
+              {"▸ "}
+            </Text>
+            <Text color={theme.textDim}>{"Switched to "}</Text>
+            <Text color={theme.primary} bold>
+              {item.modelName}
+            </Text>
+          </Box>
+        );
+      }
+      case "theme_transition": {
+        // Same family as model/thinking transitions. The ◐ glyph (half-filled
+        // circle) reads as the light/dark dichotomy.
+        const glyphFrame = deriveFrame(animTick, 500, THINKING_BORDER_COLORS.length);
+        const glyphColor = THINKING_BORDER_COLORS[glyphFrame];
+        return (
+          <Box key={item.id} marginTop={1} flexShrink={1}>
+            <Text color={glyphColor} bold>
+              {"◐ "}
+            </Text>
+            <Text color={theme.textDim}>{"Theme switched to "}</Text>
+            <Text color={theme.primary} bold>
+              {item.themeName}
+            </Text>
+          </Box>
+        );
+      }
+      case "plan_event": {
+        // Plan-domain status changes (approve / reject / dismiss). Uses
+        // theme.planPrimary to match the existing plan_transition family,
+        // distinct from the model/thinking gradient.
+        const label =
+          item.event === "approved"
+            ? "Plan approved"
+            : item.event === "rejected"
+              ? "Plan rejected"
+              : "Plan dismissed";
+        return (
+          <Box key={item.id} marginTop={1} flexShrink={1}>
+            <Text color={theme.planPrimary} bold>
+              {"○ "}
+              {label}
+            </Text>
+            {item.detail ? <Text color={theme.textDim}>{` — "${item.detail}"`}</Text> : null}
+          </Box>
+        );
+      }
+      case "stopped":
+        // Cancellation / abort acknowledgement (ESC, auto-setup cancel, etc.).
+        // Muted dim treatment — this is an ack, not a state change worth a
+        // gradient. Glyph `⊘` reads as "stop" without being alarming.
+        return (
+          <Box key={item.id} marginTop={1} flexShrink={1}>
+            <Text color={theme.textDim} bold>
+              {"⊘ "}
               {item.text}
             </Text>
           </Box>
@@ -2933,8 +3290,8 @@ export function App(props: AppProps) {
           setLiveItems((prev) => [
             ...prev,
             isAbort
-              ? { kind: "info", text: "Request was stopped.", id: getId() }
-              : { kind: "error", message: msg, id: getId() },
+              ? { kind: "stopped", text: "Request was stopped.", id: getId() }
+              : toErrorItem(err, getId()),
           ]);
           setRunAllTasks(false);
         }
@@ -2955,8 +3312,6 @@ export function App(props: AppProps) {
   startTaskRef.current = startTask;
   useEffect(() => {
     runAllTasksRef.current = runAllTasks;
-    // Mirror into sessionStore so the flag survives unmount/remount
-    // when startTask triggers resetUI for the NEXT task in the chain.
     if (props.sessionStore) props.sessionStore.runAllTasks = runAllTasks;
   }, [runAllTasks, props.sessionStore]);
 
@@ -2982,9 +3337,19 @@ export function App(props: AppProps) {
             log("WARN", "pixel", `chdir failed: ${(err as Error).message}`);
           }
           cwdRef.current = prep.projectPath;
+          repoMapDirtyRef.current = true;
+          repoMapMarkdownRef.current = "";
+          repoMapSnapshotRef.current = undefined;
+          repoMapChangedCountRef.current = 0;
+          repoMapCacheRef.current = createRepoMapCache();
+          props.repoMapChangedFilesRef?.current.clear();
+          props.repoMapReadFilesRef?.current.clear();
           setDisplayedCwd(prep.projectPath);
+          let toolsForPixelFix = currentToolsRef.current;
           if (props.rebuildToolsForCwd) {
-            setCurrentTools(props.rebuildToolsForCwd(prep.projectPath));
+            toolsForPixelFix = props.rebuildToolsForCwd(prep.projectPath);
+            currentToolsRef.current = toolsForPixelFix;
+            setCurrentTools(toolsForPixelFix);
           }
           // Pixel-fix swaps the project root — reset injected packs so the
           // new project re-detects from scratch on the next tool call. Also
@@ -2994,14 +3359,13 @@ export function App(props: AppProps) {
           setupHintShownRef.current = false;
           const detectedForPixelFix = detectLanguages(prep.projectPath);
           injectedLanguagesRef.current = detectedForPixelFix;
-          const newSystemPrompt = await buildSystemPrompt(
-            prep.projectPath,
-            props.skills,
-            false,
-            undefined,
-            undefined,
-            detectedForPixelFix,
-          );
+          const newSystemPrompt = await rebuildSystemPrompt({
+            cwd: prep.projectPath,
+            planMode: false,
+            clearApprovedPlan: true,
+            activeLanguages: detectedForPixelFix,
+            tools: toolsForPixelFix,
+          });
 
           // Now that the cwd swap is committed, reset chat. Doing this BEFORE
           // the chdir would print a banner with the old cwd, then bumping
@@ -3040,7 +3404,7 @@ export function App(props: AppProps) {
           log("ERROR", "pixel", msg);
           currentPixelFixRef.current = null;
           setRunAllPixel(false);
-          setLiveItems((prev) => [...prev, { kind: "error", message: msg, id: getId() }]);
+          setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
         }
       })();
     },
@@ -3048,7 +3412,9 @@ export function App(props: AppProps) {
   );
   startPixelFixRef.current = startPixelFix;
 
-  const [runAllPixel, setRunAllPixel] = useState(() => props.sessionStore?.runAllPixel ?? false);
+  // Seed from sessionStore so "Fix All" chaining survives a deferred
+  // resetUI() if it fires between pixel fixes (e.g. user toggled a pane).
+  const [runAllPixel, setRunAllPixel] = useState(props.sessionStore?.runAllPixel ?? false);
   useEffect(() => {
     runAllPixelRef.current = runAllPixel;
     if (props.sessionStore) props.sessionStore.runAllPixel = runAllPixel;
@@ -3066,7 +3432,7 @@ export function App(props: AppProps) {
       {/* History — scrolled up, managed by Ink Static. */}
       <Static
         key={`${resizeKey}-${staticKey}`}
-        items={isOverlayView ? [] : history}
+        items={isOverlayView && !agentLoop.isRunning ? [] : history}
         style={{ width: "100%" }}
       >
         {(item) => (
@@ -3081,13 +3447,15 @@ export function App(props: AppProps) {
           cwd={props.cwd}
           agentRunning={agentLoop.isRunning}
           onClose={() => {
-            if (props.resetUI && props.sessionStore) {
+            if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
               props.sessionStore.overlay = null;
               props.resetUI();
             } else {
-              stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+              if (props.sessionStore) {
+                props.sessionStore.overlay = null;
+                if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+              }
               setTaskCount(getTaskCount(props.cwd));
-              setStaticKey((k) => k + 1);
               setOverlay(null);
             }
           }}
@@ -3110,12 +3478,14 @@ export function App(props: AppProps) {
           version={props.version}
           agentRunning={agentLoop.isRunning}
           onClose={() => {
-            if (props.resetUI && props.sessionStore) {
+            if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
               props.sessionStore.overlay = null;
               props.resetUI();
             } else {
-              stdout?.write("\x1b[2J\x1b[3J\x1b[H");
-              setStaticKey((k) => k + 1);
+              if (props.sessionStore) {
+                props.sessionStore.overlay = null;
+                if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+              }
               setOverlay(null);
             }
           }}
@@ -3135,12 +3505,14 @@ export function App(props: AppProps) {
         <SkillsOverlay
           cwd={props.cwd}
           onClose={() => {
-            if (props.resetUI && props.sessionStore) {
+            if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
               props.sessionStore.overlay = null;
               props.resetUI();
             } else {
-              stdout?.write("\x1b[2J\x1b[3J\x1b[H");
-              setStaticKey((k) => k + 1);
+              if (props.sessionStore) {
+                props.sessionStore.overlay = null;
+                if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+              }
               setOverlay(null);
             }
           }}
@@ -3149,15 +3521,17 @@ export function App(props: AppProps) {
         <EyesOverlay
           cwd={props.cwd}
           onClose={() => {
-            if (props.resetUI && props.sessionStore) {
+            if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
               props.sessionStore.overlay = null;
               props.resetUI();
             } else {
-              stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+              if (props.sessionStore) {
+                props.sessionStore.overlay = null;
+                if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+              }
               setEyesCount(
                 isEyesActive(props.cwd) ? journalCount({ status: "open" }, props.cwd) : undefined,
               );
-              setStaticKey((k) => k + 1);
               setOverlay(null);
             }
           }}
@@ -3171,13 +3545,16 @@ export function App(props: AppProps) {
           autoExpandNewest={planAutoExpand}
           onClose={() => {
             planOverlayPendingRef.current = false;
-            if (props.resetUI && props.sessionStore) {
+            if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
               props.sessionStore.overlay = null;
               props.sessionStore.planAutoExpand = false;
               props.resetUI();
             } else {
-              stdout?.write("\x1b[2J\x1b[3J\x1b[H");
-              setStaticKey((k) => k + 1);
+              if (props.sessionStore) {
+                props.sessionStore.overlay = null;
+                props.sessionStore.planAutoExpand = false;
+                if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+              }
               setPlanAutoExpand(false);
               setOverlay(null);
             }
@@ -3198,14 +3575,10 @@ export function App(props: AppProps) {
                 const steps = extractPlanSteps(planContent);
 
                 // Build the new system prompt with the approved plan baked in.
-                const newPrompt = await buildSystemPrompt(
-                  props.cwd,
-                  props.skills,
-                  false,
-                  planPath,
-                  undefined,
-                  injectedLanguagesRef.current,
-                );
+                const newPrompt = await rebuildSystemPrompt({
+                  planMode: false,
+                  approvedPlanPath: planPath,
+                });
 
                 // Create a new session file BEFORE remount so the new tree
                 // picks it up via sessionStore.sessionPath.
@@ -3230,7 +3603,7 @@ export function App(props: AppProps) {
                     pendingAction: {
                       prompt:
                         "The plan has been approved. Implement it now, following each step in order.",
-                      infoText: "Plan approved — starting fresh session for implementation",
+                      planEvent: { event: "approved" },
                     },
                   });
                   return;
@@ -3264,7 +3637,7 @@ export function App(props: AppProps) {
               } catch (err) {
                 const errMsg = err instanceof Error ? err.message : String(err);
                 log("ERROR", "error", errMsg);
-                setLiveItems((prev) => [...prev, { kind: "error", message: errMsg, id: getId() }]);
+                setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
               }
             })();
           }}
@@ -3281,7 +3654,7 @@ export function App(props: AppProps) {
               props.resetUI({
                 pendingAction: {
                   prompt: rejectionMsg,
-                  infoText: `Plan rejected — "${feedback}"`,
+                  planEvent: { event: "rejected", detail: feedback },
                 },
               });
               return;
@@ -3298,7 +3671,7 @@ export function App(props: AppProps) {
             void agentLoop.run(rejectionMsg).catch((err: unknown) => {
               const errMsg = err instanceof Error ? err.message : String(err);
               log("ERROR", "error", errMsg);
-              setLiveItems((prev) => [...prev, { kind: "error", message: errMsg, id: getId() }]);
+              setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
             });
           }}
         />
@@ -3311,7 +3684,6 @@ export function App(props: AppProps) {
               isRunning={agentLoop.isRunning}
               streamingText={agentLoop.streamingText}
               streamingThinking={agentLoop.streamingThinking}
-              showThinking={props.showThinking}
               thinkingMs={agentLoop.thinkingMs}
               planMode={planMode}
             />
@@ -3339,6 +3711,7 @@ export function App(props: AppProps) {
                 runStartRef={agentLoop.runStartRef}
                 thinkingMs={agentLoop.thinkingMs}
                 isThinking={agentLoop.isThinking}
+                thinkingEnabled={thinkingEnabled}
                 tokenEstimate={agentLoop.streamedTokenEstimate}
                 charCountRef={agentLoop.charCountRef}
                 realTokensAccumRef={agentLoop.realTokensAccumRef}
@@ -3390,29 +3763,44 @@ export function App(props: AppProps) {
             onDownAtEnd={handleFocusTaskBar}
             onShiftTab={handleToggleThinking}
             onToggleTasks={() => {
-              if (props.resetUI && props.sessionStore) {
+              // While the agent is running, skip the screen-clear + staticKey
+              // bump that would otherwise wipe the chat history from scrollback.
+              // Just flip the overlay state — Ink's log-update handles the
+              // live-area transition (chat input → TaskOverlay) natively, and
+              // the chat history above stays in scrollback. When the overlay
+              // closes, the history is still there (banner included).
+              if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
                 props.sessionStore.overlay = "tasks";
                 props.resetUI();
               } else {
-                stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+                if (props.sessionStore) {
+                  props.sessionStore.overlay = "tasks";
+                  if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+                }
                 setOverlay("tasks");
               }
             }}
             onToggleSkills={() => {
-              if (props.resetUI && props.sessionStore) {
+              if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
                 props.sessionStore.overlay = "skills";
                 props.resetUI();
               } else {
-                stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+                if (props.sessionStore) {
+                  props.sessionStore.overlay = "skills";
+                  if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+                }
                 setOverlay("skills");
               }
             }}
             onTogglePixel={() => {
-              if (props.resetUI && props.sessionStore) {
+              if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
                 props.sessionStore.overlay = "pixel";
                 props.resetUI();
               } else {
-                stdout?.write("\x1b[2J\x1b[3J\x1b[H");
+                if (props.sessionStore) {
+                  props.sessionStore.overlay = "pixel";
+                  if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+                }
                 setOverlay("pixel");
               }
             }}
@@ -3452,15 +3840,14 @@ export function App(props: AppProps) {
             <Footer
               model={currentModel}
               tokensIn={agentLoop.contextUsed}
+              contextWindowOptions={contextWindowOptions}
               cwd={displayedCwd}
               gitBranch={gitBranch}
-              thinkingEnabled={thinkingEnabled}
+              thinkingLevel={thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined}
               planMode={planMode}
               exitPending={exitPending}
             />
           )}
-          {/* Buddy companion */}
-          {buddyEnabled && <Buddy phase={agentLoop.activityPhase} />}
           {/* Status row — background tasks, eyes call-to-action, and the
               update-ready indicator all share a single line. Order is
               intentional: active work (bg tasks) first, actionable signals
@@ -3505,4 +3892,16 @@ export function App(props: AppProps) {
       )}
     </Box>
   );
+}
+
+function formatRepoMapCommandOutput(
+  enabled: boolean,
+  markdown: string,
+  refreshed: boolean,
+): string {
+  const status = enabled ? "on" : "off";
+  const prefix = refreshed
+    ? `Dynamic repo map refreshed · injection: ${status}`
+    : `Dynamic repo map · injection: ${status}`;
+  return `${prefix}\n\n${markdown}`;
 }
