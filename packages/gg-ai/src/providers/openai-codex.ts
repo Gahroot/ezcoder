@@ -59,7 +59,6 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     tool_choice: "auto",
     parallel_tool_calls: true,
     include: ["reasoning.encrypted_content"],
-    ...(options.maxTokens ? { max_output_tokens: options.maxTokens } : {}),
   };
 
   if (options.tools?.length) {
@@ -123,6 +122,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       parsed.requestId ??
       response.headers.get("x-request-id") ??
       response.headers.get("openai-request-id") ??
+      response.headers.get("x-oai-request-id") ??
       undefined;
 
     let hint: string | undefined;
@@ -584,8 +584,11 @@ function parseCodexErrorBody(text: string): { message?: string; requestId?: stri
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;
     const error = parsed.error as Record<string, unknown> | undefined;
+    const detail = parsed.detail as unknown;
     const message =
-      (error?.message as string | undefined) ?? (parsed.message as string | undefined);
+      (error?.message as string | undefined) ??
+      (parsed.message as string | undefined) ??
+      (typeof detail === "string" ? detail : undefined);
     const requestId =
       (parsed.request_id as string | undefined) ??
       (error?.request_id as string | undefined) ??

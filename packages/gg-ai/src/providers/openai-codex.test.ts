@@ -72,7 +72,7 @@ describe("streamOpenAICodex", () => {
     });
   });
 
-  it("passes maxTokens as the Responses max_output_tokens cap", async () => {
+  it("does not send an output token cap because the ChatGPT Codex backend rejects it", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -103,9 +103,38 @@ describe("streamOpenAICodex", () => {
       string,
       unknown
     >;
-    expect(body.max_output_tokens).toBe(16384);
+    expect(body.max_output_tokens).toBeUndefined();
+    expect(body.max_completion_tokens).toBeUndefined();
+    expect(body.max_tokens).toBeUndefined();
     await expect(result.response).resolves.toMatchObject({
       usage: { inputTokens: 10, outputTokens: 5 },
+    });
+  });
+
+  it("surfaces JSON detail fields from Codex HTTP errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Unsupported parameter: max_output_tokens" }), {
+            status: 400,
+            headers: { "content-type": "application/json", "x-oai-request-id": "req_123" },
+          }),
+      ),
+    );
+
+    const result = streamOpenAICodex({
+      provider: "openai",
+      model: "gpt-5.5",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "token",
+      accountId: "acct",
+    });
+
+    await expect(result.response).rejects.toMatchObject({
+      message: "Unsupported parameter: max_output_tokens",
+      statusCode: 400,
+      requestId: "req_123",
     });
   });
 
