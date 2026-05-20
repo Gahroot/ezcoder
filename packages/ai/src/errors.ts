@@ -88,6 +88,7 @@ export class ProviderError extends EZCoderAIError {
 const PROVIDER_DISPLAY: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
+  gemini: "Gemini",
   glm: "Z.AI (GLM)",
   moonshot: "Moonshot",
   deepseek: "DeepSeek",

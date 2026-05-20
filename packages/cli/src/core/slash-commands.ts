@@ -155,7 +155,7 @@ export function createBuiltinCommands(): SlashCommand[] {
     },
     {
       name: "model",
-      aliases: ["m"],
+      aliases: ["m", "models"],
       description: "Switch model or list available models",
       usage: "/model [provider:model]",
       async execute(args, ctx) {
