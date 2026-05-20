@@ -3,8 +3,10 @@ import crypto from "node:crypto";
 import { generatePKCE } from "./pkce.js";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types.js";
 
-const CLIENT_ID_ENV = "GGCODER_GEMINI_OAUTH_CLIENT_ID";
-const CLIENT_SECRET_ENV = "GGCODER_GEMINI_OAUTH_CLIENT_SECRET";
+const CLIENT_ID_ENV = "EZCODER_GEMINI_OAUTH_CLIENT_ID";
+const CLIENT_SECRET_ENV = "EZCODER_GEMINI_OAUTH_CLIENT_SECRET";
+const LEGACY_CLIENT_ID_ENV = "GGCODER_GEMINI_OAUTH_CLIENT_ID";
+const LEGACY_CLIENT_SECRET_ENV = "GGCODER_GEMINI_OAUTH_CLIENT_SECRET";
 const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CODE_ASSIST_BASE_URL = "https://cloudcode-pa.googleapis.com";
@@ -140,8 +142,9 @@ export async function refreshGeminiToken(refreshToken: string): Promise<OAuthCre
 }
 
 function getGeminiOAuthClientCredentials(): GeminiOAuthClientCredentials {
-  const clientId = process.env[CLIENT_ID_ENV]?.trim();
-  const clientSecret = process.env[CLIENT_SECRET_ENV]?.trim();
+  const clientId = process.env[CLIENT_ID_ENV]?.trim() ?? process.env[LEGACY_CLIENT_ID_ENV]?.trim();
+  const clientSecret =
+    process.env[CLIENT_SECRET_ENV]?.trim() ?? process.env[LEGACY_CLIENT_SECRET_ENV]?.trim();
   if (!clientId || !clientSecret) {
     throw new Error(`Gemini OAuth requires ${CLIENT_ID_ENV} and ${CLIENT_SECRET_ENV} to be set.`);
   }

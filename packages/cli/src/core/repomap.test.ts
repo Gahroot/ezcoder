@@ -244,7 +244,7 @@ function localFn() {}
     const paths = snapshot.files.map((file) => file.path);
 
     expect(markdown).toContain("Changed: packages/cli/src/core/repomap.ts");
-    expect(markdown).toContain("Other dirty packages: gg-editor(1)");
+    expect(markdown).toContain("Other dirty packages: editor(1)");
     expect(paths[0]).toBe("packages/cli/src/core/repomap.ts");
     expect(paths.every((filePath) => filePath.startsWith("packages/cli/"))).toBe(true);
   });
@@ -348,7 +348,7 @@ function localFn() {}
     const { markdown, snapshot } = await buildRepoMap({
       cwd,
       readFiles: ["packages/cli/src/core/repomap.ts", "packages/cli/src/ui/App.tsx"],
-      focusTerms: ["why is it focused on gg-voice"],
+      focusTerms: ["why is it focused on voice"],
       maxFiles: 10,
       now: new Date("2026-01-01T00:00:00.000Z"),
       listGitChangedFiles: async () => [
@@ -364,7 +364,7 @@ function localFn() {}
     expect(snapshot.changedFiles).toEqual(["packages/cli/src/core/repomap.ts"]);
     expect(paths.every((filePath) => filePath.startsWith("packages/cli/"))).toBe(true);
     expect(markdown).toContain("Changed: packages/cli/src/core/repomap.ts");
-    expect(markdown).toContain("Other dirty packages: gg-voice(3)");
+    expect(markdown).toContain("Other dirty packages: voice(3)");
     expect(markdown).not.toContain("Changed: packages/voice/src/index.ts");
   });
 
@@ -400,7 +400,7 @@ function localFn() {}
     expect(snapshot.changedFiles).toContain("packages/cli/src/core/repomap.ts");
     expect(snapshot.changedFiles).not.toContain("packages/editor/src/core/logger.ts");
     expect(markdown).toContain("Changed: packages/cli/src/core/repomap.ts");
-    expect(markdown).toContain("Other dirty packages: gg-editor(2),gg-boss(1)");
+    expect(markdown).toContain("Other dirty packages: editor(2),boss(1)");
     expect(markdown).not.toContain("Changed: packages/editor/src/core/logger.ts");
     expect(markdown).not.toContain("packages/editor/src/(2)");
     expect(markdown).not.toContain("packages/boss/src/(1)");
@@ -415,14 +415,12 @@ function localFn() {}
     const { snapshot } = await buildRepoMap({
       cwd,
       readFiles: ["packages/cli/src/core/repomap.ts"],
-      focusTerms: ["gg-editor"],
+      focusTerms: ["editor"],
       maxFiles: 10,
       now: new Date("2026-01-01T00:00:00.000Z"),
     });
 
-    expect(snapshot.files.map((file) => file.path)).toContain(
-      "packages/editor/src/core/logger.ts",
-    );
+    expect(snapshot.files.map((file) => file.path)).toContain("packages/editor/src/core/logger.ts");
   });
 
   it("renders only active changed files when restored reads identify the active package", async () => {
@@ -456,7 +454,7 @@ function localFn() {}
     );
 
     expect(markdown).toContain("Changed: packages/cli/src/core/repomap.ts");
-    expect(markdown).toContain("Other dirty packages: gg-ai(1),gg-voice(1)");
+    expect(markdown).toContain("Other dirty packages: ai(1),voice(1)");
     expect(markdown).toContain("Dirs: packages/cli/scripts/(2)");
     expect(markdown).not.toContain("Changed: packages/ai/src/types.ts");
     expect(markdown).not.toContain("packages/ai/src/(4)");

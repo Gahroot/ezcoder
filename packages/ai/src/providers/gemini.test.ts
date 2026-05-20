@@ -64,7 +64,7 @@ describe("streamGemini", () => {
       ],
       toolChoice: "auto",
       thinking: "high",
-      promptCacheKey: "ggcoder:test-session",
+      promptCacheKey: "ezcoder:test-session",
     });
 
     await result.response;
@@ -119,7 +119,7 @@ describe("streamGemini", () => {
         ],
         toolConfig: { functionCallingConfig: { mode: "AUTO" } },
         generationConfig: { thinkingConfig: { includeThoughts: true, thinkingLevel: "HIGH" } },
-        session_id: "ggcoder:test-session",
+        session_id: "ezcoder:test-session",
       },
     });
   });

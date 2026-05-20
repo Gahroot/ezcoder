@@ -4,8 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSourcePathTool } from "./source-path.js";
 
-const OPENSRC_BIN_ENV = "GG_CODER_OPENSRC_BIN";
-const OPENSRC_TEST_ENV = "GG_CODER_OPENSRC_TEST_ENV";
+const OPENSRC_BIN_ENV = "EZ_CODER_OPENSRC_BIN";
+const OPENSRC_TEST_ENV = "EZ_CODER_OPENSRC_TEST_ENV";
 
 function context() {
   return { signal: new AbortController().signal, toolCallId: "test" };

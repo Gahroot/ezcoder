@@ -2,12 +2,13 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { log } from "../core/logger.js";
 
 const SOURCE_PATH_TIMEOUT_MS = 120_000;
 const MAX_STDERR_CHARS = 10_000;
-const OPENSRC_BIN_ENV = "GG_CODER_OPENSRC_BIN";
+const OPENSRC_BIN_ENV = "EZ_CODER_OPENSRC_BIN";
+const LEGACY_OPENSRC_BIN_ENV = "GG_CODER_OPENSRC_BIN";
 
 const SourcePathParams = z.object({
   package: z
@@ -85,7 +86,7 @@ export function createSourcePathTool(cwd: string): AgentTool<typeof SourcePathPa
           });
           finish(
             `Error: could not run bundled opensrc for ${args.package}: ${error.message}. ` +
-              "Try installing ggcoder again or run `npm install -g opensrc`.",
+              "Try installing ezcoder again or run `npm install -g opensrc`.",
           );
         });
 
@@ -128,7 +129,8 @@ export function createSourcePathTool(cwd: string): AgentTool<typeof SourcePathPa
 }
 
 function getBundledOpenSrcBinPath(): string {
-  const override = process.env[OPENSRC_BIN_ENV]?.trim();
+  const override =
+    process.env[OPENSRC_BIN_ENV]?.trim() ?? process.env[LEGACY_OPENSRC_BIN_ENV]?.trim();
   if (override) return override;
 
   const currentDir = path.dirname(fileURLToPath(import.meta.url));

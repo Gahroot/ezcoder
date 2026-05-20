@@ -111,7 +111,7 @@ export function createRepoMapCache(): RepoMapCache {
 
 const IGNORE_PATTERNS = [
   "**/.git/**",
-  "**/.gg/**",
+  "**/.ezcoder/**",
   "**/node_modules/**",
   "**/dist/**",
   "**/build/**",

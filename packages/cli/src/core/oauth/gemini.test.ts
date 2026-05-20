@@ -7,8 +7,8 @@ const originalCodeAssistEndpoint = process.env.CODE_ASSIST_ENDPOINT;
 const originalCodeAssistApiVersion = process.env.CODE_ASSIST_API_VERSION;
 const originalGoogleCloudProject = process.env.GOOGLE_CLOUD_PROJECT;
 const originalGoogleCloudProjectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
-const originalGeminiClientId = process.env.GGCODER_GEMINI_OAUTH_CLIENT_ID;
-const originalGeminiClientSecret = process.env.GGCODER_GEMINI_OAUTH_CLIENT_SECRET;
+const originalGeminiClientId = process.env.EZCODER_GEMINI_OAUTH_CLIENT_ID;
+const originalGeminiClientSecret = process.env.EZCODER_GEMINI_OAUTH_CLIENT_SECRET;
 
 function tokenResponse(): Response {
   return new Response(
@@ -41,8 +41,8 @@ describe("loginGemini", () => {
   beforeEach(() => {
     delete process.env.GOOGLE_CLOUD_PROJECT;
     delete process.env.GOOGLE_CLOUD_PROJECT_ID;
-    process.env.GGCODER_GEMINI_OAUTH_CLIENT_ID = "test-client-id";
-    process.env.GGCODER_GEMINI_OAUTH_CLIENT_SECRET = "test-client-secret";
+    process.env.EZCODER_GEMINI_OAUTH_CLIENT_ID = "test-client-id";
+    process.env.EZCODER_GEMINI_OAUTH_CLIENT_SECRET = "test-client-secret";
   });
 
   afterEach(() => {
@@ -68,14 +68,14 @@ describe("loginGemini", () => {
       process.env.GOOGLE_CLOUD_PROJECT_ID = originalGoogleCloudProjectId;
     }
     if (originalGeminiClientId === undefined) {
-      delete process.env.GGCODER_GEMINI_OAUTH_CLIENT_ID;
+      delete process.env.EZCODER_GEMINI_OAUTH_CLIENT_ID;
     } else {
-      process.env.GGCODER_GEMINI_OAUTH_CLIENT_ID = originalGeminiClientId;
+      process.env.EZCODER_GEMINI_OAUTH_CLIENT_ID = originalGeminiClientId;
     }
     if (originalGeminiClientSecret === undefined) {
-      delete process.env.GGCODER_GEMINI_OAUTH_CLIENT_SECRET;
+      delete process.env.EZCODER_GEMINI_OAUTH_CLIENT_SECRET;
     } else {
-      process.env.GGCODER_GEMINI_OAUTH_CLIENT_SECRET = originalGeminiClientSecret;
+      process.env.EZCODER_GEMINI_OAUTH_CLIENT_SECRET = originalGeminiClientSecret;
     }
     vi.restoreAllMocks();
   });
