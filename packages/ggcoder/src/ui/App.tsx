@@ -60,7 +60,10 @@ import type { PreparedPixelFix } from "../core/pixel-fix.js";
 import { SkillsOverlay } from "./components/SkillsOverlay.js";
 import { EyesOverlay } from "./components/EyesOverlay.js";
 import { ThemeSelector } from "./components/ThemeSelector.js";
-import { BackgroundTasksBar } from "./components/BackgroundTasksBar.js";
+import {
+  BackgroundTasksBar,
+  getFooterStatusLayoutDecision,
+} from "./components/BackgroundTasksBar.js";
 import type { SlashCommandInfo } from "./components/SlashCommandMenu.js";
 import type { ProcessManager } from "../core/process-manager.js";
 import { useTheme, useSetTheme, type ThemeName } from "./theme/theme.js";
@@ -579,6 +582,26 @@ export function shouldHideHistoryForOverlayView(
   // remains in sessionStore and is reprinted after the pane closes. While the
   // agent is running we keep Static mounted because resetUI would abort the run.
   return isOverlayView && !isAgentRunning;
+}
+
+export interface ScrollStabilizationDecision {
+  /** Keep Ink Static mounted with the same key so terminal scrollback is not rewritten. */
+  preserveStatic: boolean;
+  /** New output should still appear normally when the user is at the bottom. */
+  autoFollow: boolean;
+}
+
+export function getScrollStabilizationDecision({
+  isUserScrolled,
+  hasNewOutput,
+}: {
+  isUserScrolled: boolean;
+  hasNewOutput: boolean;
+}): ScrollStabilizationDecision {
+  return {
+    preserveStatic: isUserScrolled && hasNewOutput,
+    autoFollow: !isUserScrolled,
+  };
 }
 
 // flushOnTurnText, flushOnTurnEnd are imported from ./live-item-flush.ts
@@ -4435,6 +4458,12 @@ export function App(props: AppProps) {
   const isSkillsView = overlay === "skills";
   const isPlanView = overlay === "plan";
   const isEyesView = overlay === "eyes";
+  const footerStatusLayout = getFooterStatusLayoutDecision({
+    columns,
+    backgroundTaskCount: bgTasks.length,
+    eyesCount,
+    updatePending,
+  });
   const isPixelView = overlay === "pixel";
   const isOverlayView =
     isTaskView || isGoalView || isSkillsView || isPlanView || isEyesView || isPixelView;
@@ -4866,9 +4895,11 @@ export function App(props: AppProps) {
               update-ready indicator all share a single line. Order is
               intentional: active work (bg tasks) first, actionable signals
               (eyes) next, ambient hint (update ready) last. */}
-          {(bgTasks.length > 0 || (eyesCount !== undefined && eyesCount > 0) || updatePending) && (
-            <Box>
-              {bgTasks.length > 0 && (
+          {(footerStatusLayout.hasBackgroundTasks ||
+            footerStatusLayout.hasEyesSignals ||
+            footerStatusLayout.hasUpdateNotice) && (
+            <Box flexDirection={footerStatusLayout.stack ? "column" : "row"} width={columns}>
+              {footerStatusLayout.hasBackgroundTasks && (
                 <BackgroundTasksBar
                   tasks={bgTasks}
                   focused={taskBarFocused}
@@ -4879,23 +4910,30 @@ export function App(props: AppProps) {
                   onKill={handleTaskKill}
                   onExit={handleTaskBarExit}
                   onNavigate={handleTaskNavigate}
+                  compact={footerStatusLayout.compactBackgroundTasks}
                 />
               )}
-              {eyesCount !== undefined && eyesCount > 0 && (
-                <Box paddingLeft={bgTasks.length > 0 ? 2 : 1} paddingRight={1}>
-                  <Text color={theme.accent} bold>
+              {footerStatusLayout.hasEyesSignals && (
+                <Box
+                  paddingLeft={footerStatusLayout.stack || bgTasks.length === 0 ? 1 : 2}
+                  paddingRight={1}
+                >
+                  <Text color={theme.accent} bold wrap="truncate">
                     {`${eyesCount} eyes signal${eyesCount === 1 ? "" : "s"} · Run /eyes-improve to enhance GG Coder`}
                   </Text>
                 </Box>
               )}
-              {updatePending && (
+              {footerStatusLayout.hasUpdateNotice && (
                 <Box
                   paddingLeft={
-                    bgTasks.length > 0 || (eyesCount !== undefined && eyesCount > 0) ? 2 : 1
+                    footerStatusLayout.stack ||
+                    (!footerStatusLayout.hasBackgroundTasks && !footerStatusLayout.hasEyesSignals)
+                      ? 1
+                      : 2
                   }
                   paddingRight={1}
                 >
-                  <Text color={theme.success} bold>
+                  <Text color={theme.success} bold wrap="truncate">
                     ✨ Update ready · restart to apply
                   </Text>
                 </Box>
