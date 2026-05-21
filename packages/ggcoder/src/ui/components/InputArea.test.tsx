@@ -83,7 +83,9 @@ describe("InputArea pasted slash commands", () => {
       </ThemeContext.Provider>,
     );
 
-    expect(output()).toContain("/help explain [Pasted text #33 +3 lines]");
+    await vi.waitFor(() => {
+      expect(output()).toContain("/help explain [Pasted text #33 +3 lines]");
+    });
     // ANSI escapes are disabled for this captured Ink stream, but this assertion
     // fails on the original regression where the placeholder dropped the prefix.
     expect(output()).toMatch(/❯ \/help explain \[Pasted text #33 \+3 lines\]/);
