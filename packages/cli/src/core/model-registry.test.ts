@@ -1,10 +1,76 @@
 import { describe, expect, it } from "vitest";
 import {
+  MODELS,
   getContextWindow,
   getDefaultModel,
   getModelsForProvider,
   usesOpenAICodexTransport,
 } from "./model-registry.js";
+
+const PROVIDERS = [
+  "anthropic",
+  "openai",
+  "gemini",
+  "moonshot",
+  "glm",
+  "minimax",
+  "xiaomi",
+  "deepseek",
+  "openrouter",
+] as const;
+const THINKING_LEVELS = ["low", "medium", "high", "xhigh"] as const;
+const COST_TIERS = ["low", "medium", "high"] as const;
+
+describe("model registry invariants", () => {
+  it("has unique ids and coherent required metadata for every entry", () => {
+    const ids = new Set<string>();
+
+    for (const model of MODELS) {
+      expect(ids.has(model.id), `${model.id} is duplicated`).toBe(false);
+      ids.add(model.id);
+      expect(model.id, `${model.id} id`).toEqual(expect.any(String));
+      expect(model.name, `${model.id} name`).toEqual(expect.any(String));
+      expect(PROVIDERS, `${model.id} provider`).toContain(model.provider);
+      expect(model.contextWindow, `${model.id} contextWindow`).toBeGreaterThan(0);
+      expect(Number.isInteger(model.contextWindow), `${model.id} contextWindow integer`).toBe(true);
+      expect(model.maxOutputTokens, `${model.id} maxOutputTokens`).toBeGreaterThan(0);
+      expect(Number.isInteger(model.maxOutputTokens), `${model.id} maxOutputTokens integer`).toBe(
+        true,
+      );
+      expect(
+        model.maxOutputTokens,
+        `${model.id} maxOutputTokens <= contextWindow`,
+      ).toBeLessThanOrEqual(model.contextWindow);
+      expect(typeof model.supportsThinking, `${model.id} supportsThinking`).toBe("boolean");
+      expect(typeof model.supportsImages, `${model.id} supportsImages`).toBe("boolean");
+      expect(COST_TIERS, `${model.id} costTier`).toContain(model.costTier);
+      expect(THINKING_LEVELS, `${model.id} maxThinkingLevel`).toContain(model.maxThinkingLevel);
+      if (!model.supportsThinking) {
+        expect(model.maxThinkingLevel, `${model.id} non-thinking max level`).toBe("low");
+      }
+      if (model.codexContextWindow !== undefined) {
+        expect(model.provider, `${model.id} codexContextWindow provider`).toBe("openai");
+        expect(model.codexContextWindow, `${model.id} codexContextWindow`).toBeGreaterThan(0);
+        expect(
+          Number.isInteger(model.codexContextWindow),
+          `${model.id} codexContextWindow integer`,
+        ).toBe(true);
+        expect(
+          model.codexContextWindow,
+          `${model.id} codexContextWindow <= contextWindow`,
+        ).toBeLessThanOrEqual(model.contextWindow);
+      }
+    }
+  });
+
+  it("returns a registered default model for every provider", () => {
+    for (const provider of PROVIDERS) {
+      const defaultModel = getDefaultModel(provider);
+      expect(defaultModel.provider, `${provider} default provider`).toBe(provider);
+      expect(MODELS, `${provider} default registered`).toContain(defaultModel);
+    }
+  });
+});
 
 describe("model registry context windows", () => {
   it("uses the public API context window for OpenAI API-key requests", () => {

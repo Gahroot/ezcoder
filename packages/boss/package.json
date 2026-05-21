@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/boss",
-  "version": "4.3.159",
+  "version": "4.3.160",
   "type": "module",
   "description": "Orchestrator agent that drives multiple ezcoder sessions across projects from a single chat",
   "license": "MIT",
@@ -13,10 +13,7 @@
     "ezboss": "./dist/cli.js"
   },
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+    ".": "./dist/index.js"
   },
   "files": [
     "dist"

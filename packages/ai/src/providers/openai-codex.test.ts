@@ -111,6 +111,59 @@ describe("streamOpenAICodex", () => {
     });
   });
 
+  it("shapes Codex transport request with endpoint, cache headers, reasoning include, and no rejected token caps", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createSseResponse([
+          {
+            type: "response.completed",
+            response: { usage: { input_tokens: 1, output_tokens: 1 } },
+          },
+        ]),
+      ),
+    );
+
+    const fetchMock = vi.mocked(fetch);
+    const result = streamOpenAICodex({
+      provider: "openai",
+      model: "gpt-5.5",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "token",
+      accountId: "acct",
+      maxTokens: 999,
+      promptCacheKey: "session 1",
+      cacheRetention: "long",
+      thinking: "high",
+    });
+
+    for await (const _event of result) {
+      /* consume */
+    }
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(url).toBe("https://chatgpt.com/backend-api/codex/responses");
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer token",
+      "OpenAI-Beta": "responses=experimental",
+      "chatgpt-account-id": "acct",
+      session_id: "session 1",
+      "x-client-request-id": "session 1",
+    });
+    expect(body).toMatchObject({
+      model: "gpt-5.5",
+      stream: true,
+      include: ["reasoning.encrypted_content"],
+      prompt_cache_key: "session 1",
+      prompt_cache_retention: "24h",
+      reasoning: { effort: "high", summary: "auto" },
+    });
+    expect(body.max_output_tokens).toBeUndefined();
+    expect(body.max_completion_tokens).toBeUndefined();
+    expect(body.max_tokens).toBeUndefined();
+  });
+
   it("surfaces JSON detail fields from Codex HTTP errors", async () => {
     vi.stubGlobal(
       "fetch",
