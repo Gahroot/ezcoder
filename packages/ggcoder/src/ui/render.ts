@@ -6,7 +6,7 @@ import type { ProcessManager } from "../core/process-manager.js";
 import type { MCPClientManager } from "../core/mcp/index.js";
 import type { AuthStorage } from "../core/auth-storage.js";
 import type { Skill } from "../core/skills.js";
-import { App, type CompletedItem } from "./App.js";
+import { App, type CompletedItem, type DoneStatus } from "./App.js";
 import type { GoalStatusEntry } from "./components/GoalStatusBar.js";
 import { shutdownGoalWorkers } from "../core/goal-worker.js";
 import type { PlanStep } from "../utils/plan-steps.js";
@@ -96,6 +96,8 @@ export interface SessionStore {
   history: CompletedItem[];
   /** Live, not-yet-flushed rows that must survive overlay/resize remounts. */
   liveItems?: CompletedItem[];
+  /** Transient completion footer (e.g. "✻ Mulled it over for 3s") that is still visible. */
+  doneStatus?: DoneStatus | null;
   approvedPlanPath?: string;
   planSteps: PlanStep[];
   sessionPath?: string;
@@ -263,6 +265,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     messages: config.messages,
     history: config.initialHistory ?? [{ kind: "banner", id: "banner" }],
     liveItems: [],
+    doneStatus: null,
     approvedPlanPath: undefined,
     planSteps: [],
     sessionPath: config.sessionPath,
@@ -345,6 +348,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
       // approvedPlanPath + planSteps for the implementation phase).
       sessionStore.history = [{ kind: "banner", id: "banner" }];
       sessionStore.liveItems = [];
+      sessionStore.doneStatus = null;
       sessionStore.approvedPlanPath = undefined;
       sessionStore.planSteps = [];
       sessionStore.sessionTitle = undefined;

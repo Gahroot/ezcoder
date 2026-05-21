@@ -641,17 +641,40 @@ export interface ScrollStabilizationDecision {
   autoFollow: boolean;
 }
 
+export interface DoneStatus {
+  durationMs: number;
+  toolsUsed: string[];
+  verb: string;
+}
+
 export function getScrollStabilizationDecision({
   isUserScrolled,
   hasNewOutput,
+  hasTallLiveUserMessage = false,
 }: {
   isUserScrolled: boolean;
   hasNewOutput: boolean;
+  hasTallLiveUserMessage?: boolean;
 }): ScrollStabilizationDecision {
+  const shouldStabilize = isUserScrolled || hasTallLiveUserMessage;
   return {
-    preserveStatic: isUserScrolled && hasNewOutput,
-    autoFollow: !isUserScrolled,
+    preserveStatic: shouldStabilize && hasNewOutput,
+    autoFollow: !shouldStabilize,
   };
+}
+
+export function isTallLiveUserMessage(text: string, rows: number): boolean {
+  return text.split("\n").length > Math.max(8, Math.floor(rows * 0.6));
+}
+
+export function getStaticHistoryKey({
+  resizeKey,
+  staticKey,
+}: {
+  resizeKey: number;
+  staticKey: number;
+}): string {
+  return `${resizeKey}-${staticKey}`;
 }
 
 // flushOnTurnText, flushOnTurnEnd are imported from ./live-item-flush.ts
@@ -902,6 +925,7 @@ export interface AppProps {
     messages: Message[];
     history: CompletedItem[];
     liveItems?: CompletedItem[];
+    doneStatus?: DoneStatus | null;
     approvedPlanPath?: string;
     planSteps: PlanStep[];
     sessionPath?: string;
@@ -1004,11 +1028,9 @@ export function App(props: AppProps) {
   const cwdRef = useRef(props.cwd);
   const [displayedCwd, setDisplayedCwd] = useState(props.cwd);
   const [staticKey, setStaticKey] = useState(0);
-  const [doneStatus, setDoneStatus] = useState<{
-    durationMs: number;
-    toolsUsed: string[];
-    verb: string;
-  } | null>(null);
+  const [doneStatus, setDoneStatus] = useState<DoneStatus | null>(
+    props.sessionStore?.doneStatus ?? null,
+  );
   // Suppress "done" status when a plan overlay is about to open
   const planOverlayPendingRef = useRef(false);
   const [gitBranch, setGitBranch] = useState<string | null>(null);
@@ -1163,6 +1185,9 @@ export function App(props: AppProps) {
   useEffect(() => {
     if (sessionStore) sessionStore.liveItems = liveItems;
   }, [liveItems, sessionStore]);
+  useEffect(() => {
+    if (sessionStore) sessionStore.doneStatus = doneStatus;
+  }, [doneStatus, sessionStore]);
   useEffect(() => {
     if (sessionStore) sessionStore.planSteps = planSteps;
   }, [planSteps, sessionStore]);
@@ -4521,7 +4546,7 @@ export function App(props: AppProps) {
     <Box flexDirection="column" width={columns}>
       {/* History — scrolled up, managed by Ink Static. */}
       <Static
-        key={`${resizeKey}-${staticKey}`}
+        key={getStaticHistoryKey({ resizeKey, staticKey })}
         items={
           shouldHideStaticItemsForOverlayView({
             shouldHideHistoryForOverlay,

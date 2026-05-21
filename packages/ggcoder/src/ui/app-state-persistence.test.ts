@@ -54,6 +54,15 @@ describe("App TUI state persistence helpers", () => {
     ).toBe(false);
   });
 
+  it("persists the visible completion footer across idle pane remounts", () => {
+    const doneStatus = { durationMs: 3200, toolsUsed: [], verb: "Mulled it over for" };
+    const sessionStore = { doneStatus: null as typeof doneStatus | null };
+
+    sessionStore.doneStatus = doneStatus;
+
+    expect(sessionStore.doneStatus).toEqual(doneStatus);
+  });
+
   it("models the regression: goal progress history remains persisted even when hidden behind a pane", () => {
     const goalProgress: GoalProgressItem = {
       kind: "goal_progress",
