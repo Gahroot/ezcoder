@@ -8,7 +8,7 @@ import { log } from "../core/logger.js";
 const SOURCE_PATH_TIMEOUT_MS = 120_000;
 const MAX_STDERR_CHARS = 10_000;
 const OPENSRC_BIN_ENV = "EZ_CODER_OPENSRC_BIN";
-const LEGACY_OPENSRC_BIN_ENV = "GG_CODER_OPENSRC_BIN";
+const LEGACY_OPENSRC_BIN_ENV = "EZ_CODER_OPENSRC_BIN";
 
 const SourcePathParams = z.object({
   package: z

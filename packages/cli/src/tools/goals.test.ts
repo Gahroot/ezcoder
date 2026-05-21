@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ToolExecuteResult } from "@kenkaiiii/gg-agent";
+import type { ToolExecuteResult } from "@prestyj/agent";
 import { createGoalsTool } from "./goals.js";
 import { decideGoalNextAction } from "../core/goal-controller.js";
 import { getGoalRun, upsertGoalRun } from "../core/goal-store.js";

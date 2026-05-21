@@ -151,7 +151,7 @@ Fix ALL errors before continuing. Quick fixes:
 
 ## Pixel — error tracking + auto-fix queue
 
-`@prestyj/pixel` is a drop-in error tracking SDK. Errors flow to a Cloudflare Worker (`gg-pixel-server`) backed by D1. `ezcoder pixel` opens an in-Ink overlay that lists open errors per project and hands each one off to the existing agent loop — same UX as the Task pane.
+`@prestyj/pixel` is a drop-in error tracking SDK. Errors flow to a Cloudflare Worker (`ez-pixel-server`) backed by D1. `ezcoder pixel` opens an in-Ink overlay that lists open errors per project and hands each one off to the existing agent loop — same UX as the Task pane.
 
 ### CLI
 

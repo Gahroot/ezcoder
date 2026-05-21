@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { log } from "../core/logger.js";
 import { canCompleteGoalRun, decideGoalNextAction } from "../core/goal-controller.js";
 import {

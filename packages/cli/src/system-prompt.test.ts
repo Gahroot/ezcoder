@@ -180,7 +180,7 @@ describe("buildSystemPrompt", () => {
       "ReferenceSources",
       "DiscoverRepos",
       "SearchCode literal text/RE2 (not semantic)",
-      "Restricted: bash, edit, write except .gg/plans/",
+      "Restricted: bash, edit, write except .ezcoder/plans/",
       "End the plan with exactly `## Steps`",
       "Never claim unrun or failing checks passed",
     ]) {

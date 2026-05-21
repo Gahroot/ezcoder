@@ -81,7 +81,7 @@ beforeEach(async () => {
   child = new FakeChild();
   spawnMock.mockReturnValue(child as unknown as ChildProcess);
   killProcessTreeMock.mockReset();
-  process.argv[1] = "/tmp/fake-ggcoder-cli.js";
+  process.argv[1] = "/tmp/fake-ezcoder-cli.js";
   await seedGoal();
 });
 

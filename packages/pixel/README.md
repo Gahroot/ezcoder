@@ -1,20 +1,20 @@
-# @kenkaiiii/gg-pixel
+# @prestyj/pixel
 
 Universal error tracking pixel optimized for autonomous coding agents.
 
 ## Package surface
 
-- Node entry: `@kenkaiiii/gg-pixel`
-- Browser entry: `@kenkaiiii/gg-pixel/browser`
-- Deno entry: `@kenkaiiii/gg-pixel/deno`
-- Cloudflare Workers entry: `@kenkaiiii/gg-pixel/workers`
-- CLI: `gg-pixel`
+- Node entry: `@prestyj/pixel`
+- Browser entry: `@prestyj/pixel/browser`
+- Deno entry: `@prestyj/pixel/deno`
+- Cloudflare Workers entry: `@prestyj/pixel/workers`
+- CLI: `ez-pixel`
 
 ## Local verification
 
 ```sh
-pnpm --dir packages/gg-pixel run check
-pnpm --dir packages/gg-pixel run test
+pnpm --dir packages/pixel run check
+pnpm --dir packages/pixel run test
 ```
 
 See `SPEC.md` for the wire format and architecture notes.

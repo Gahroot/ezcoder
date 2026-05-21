@@ -134,14 +134,14 @@ async function auditOther(pkgDir, ent) {
     checks: [],
     issues: [],
   };
-  for (const f of ["pyproject.toml", "go.mod", "Cargo.toml", "Package.swift", "gg_pixel.gemspec"])
+  for (const f of ["pyproject.toml", "go.mod", "Cargo.toml", "Package.swift", "ez_pixel.gemspec"])
     if (files.includes(f)) rec.manifests.push(f);
   if (!readme) rec.issues.push("missing README.md");
   if (files.includes("pyproject.toml")) {
     rec.kind = "python";
-    rec.sourceLayout.push("src/gg_pixel", "tests");
-    if (!existsSync(path.join(pkgDir, "src/gg_pixel/__init__.py")))
-      rec.issues.push("missing src/gg_pixel/__init__.py");
+    rec.sourceLayout.push("src/ez_pixel", "tests");
+    if (!existsSync(path.join(pkgDir, "src/ez_pixel/__init__.py")))
+      rec.issues.push("missing src/ez_pixel/__init__.py");
     if (!existsSync(path.join(pkgDir, "tests"))) rec.issues.push("missing tests directory");
     rec.checks.push("pytest suite present");
   }
@@ -159,16 +159,16 @@ async function auditOther(pkgDir, ent) {
   }
   if (files.includes("Package.swift")) {
     rec.kind = "swift";
-    rec.sourceLayout.push("Sources/GGPixel", "Tests/GGPixelTests");
-    if (!existsSync(path.join(pkgDir, "Sources/GGPixel")))
-      rec.issues.push("missing Sources/GGPixel");
+    rec.sourceLayout.push("Sources/EZPixel", "Tests/EZPixelTests");
+    if (!existsSync(path.join(pkgDir, "Sources/EZPixel")))
+      rec.issues.push("missing Sources/EZPixel");
     rec.checks.push("swift test");
   }
-  if (files.includes("gg_pixel.gemspec")) {
+  if (files.includes("ez_pixel.gemspec")) {
     rec.kind = "ruby";
-    rec.sourceLayout.push("lib/gg_pixel.rb");
-    if (!existsSync(path.join(pkgDir, "lib/gg_pixel.rb")))
-      rec.issues.push("missing lib/gg_pixel.rb");
+    rec.sourceLayout.push("lib/ez_pixel.rb");
+    if (!existsSync(path.join(pkgDir, "lib/ez_pixel.rb")))
+      rec.issues.push("missing lib/ez_pixel.rb");
     rec.checks.push("ruby syntax check");
   }
   if (!rec.manifests.length) rec.issues.push("no recognized package manifest");
@@ -196,16 +196,16 @@ async function main() {
   }
   const commands = [
     [
-      existsSync(path.join(root, "packages/gg-pixel-py/.venv/bin/python"))
-        ? path.join(root, "packages/gg-pixel-py/.venv/bin/python")
+      existsSync(path.join(root, "packages/pixel-py/.venv/bin/python"))
+        ? path.join(root, "packages/pixel-py/.venv/bin/python")
         : "python3",
-      ["-m", "pytest", "packages/gg-pixel-py/tests"],
+      ["-m", "pytest", "packages/pixel-py/tests"],
       root,
     ],
-    ["go", ["test", "./..."], path.join(root, "packages/gg-pixel-go")],
-    ["cargo", ["test"], path.join(root, "packages/gg-pixel-rs")],
-    ["swift", ["test"], path.join(root, "packages/gg-pixel-swift")],
-    ["ruby", ["-c", "lib/gg_pixel.rb"], path.join(root, "packages/gg-pixel-rb")],
+    ["go", ["test", "./..."], path.join(root, "packages/pixel-go")],
+    ["cargo", ["test"], path.join(root, "packages/pixel-rs")],
+    ["swift", ["test"], path.join(root, "packages/pixel-swift")],
+    ["ruby", ["-c", "lib/ez_pixel.rb"], path.join(root, "packages/pixel-rb")],
   ];
   for (const [cmd, args, cwd] of commands) result.verification.push(await run(cmd, args, cwd));
   await writeFile(outPath, JSON.stringify(result, null, 2) + "\n");
