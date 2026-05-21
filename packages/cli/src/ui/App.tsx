@@ -273,7 +273,7 @@ export function buildUserContentWithAttachments(
     } else {
       // GLM models: save image to temp file and instruct model to use vision MCP tool
       const ext = img.mediaType.split("/")[1] ?? "png";
-      const tmpPath = `/tmp/ezcoder-img-${Date.now()}.${ext}`
+      const tmpPath = `/tmp/ezcoder-img-${Date.now()}.${ext}`;
       try {
         writeFileSync(tmpPath, Buffer.from(img.data, "base64"));
         parts.push({

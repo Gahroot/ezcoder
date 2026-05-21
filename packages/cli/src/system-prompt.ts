@@ -50,12 +50,11 @@ function renderPlanModeSection(): string {
     `3. Draft: write the plan to .ezcoder/plans/<name>.md\n` +
     `4. Submit: call exit_plan with the plan path\n\n` +
     `### Rules\n` +
-    `- bash, edit, write (except to .ezcoder/plans/), and subagent are restricted\n` +
+    `- Restricted: bash, edit, write except .ezcoder/plans/, and subagent\n` +
     `- Be specific: exact file paths, function names, line numbers\n` +
     `- Note risks and verification criteria\n\n` +
     `### Plan Format\n` +
-    `Plan can have any structure, but it MUST end with a section titled exactly \`## Steps\` ` +
-    `containing a single flat numbered list. This section is parsed by the progress widget — ` +
+    `End the plan with exactly \`## Steps\` containing a single flat numbered list. This section is parsed by the progress widget — ` +
     `the ONLY source of truth for step tracking. Do NOT put numbered lists elsewhere.`
   );
 }

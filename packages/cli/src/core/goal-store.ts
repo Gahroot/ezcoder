@@ -183,7 +183,9 @@ const DEFAULT_PROJECT_DIR_NAME = "projects";
 let writeQueue: Promise<void> = Promise.resolve();
 
 function goalsBaseDir(): string {
-  return process.env[GOALS_BASE_ENV] ?? join(homedir(), ".ezcoder", "goals", DEFAULT_PROJECT_DIR_NAME);
+  return (
+    process.env[GOALS_BASE_ENV] ?? join(homedir(), ".ezcoder", "goals", DEFAULT_PROJECT_DIR_NAME)
+  );
 }
 
 export function normalizeProjectPath(cwd: string): string {
