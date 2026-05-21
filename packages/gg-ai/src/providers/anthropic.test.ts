@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProviderError } from "../errors.js";
 import { streamAnthropic } from "./anthropic.js";
 
+const streamMock = vi.fn();
+
 vi.mock("@anthropic-ai/sdk", () => {
   class APIError extends Error {
     status: number | undefined;
@@ -29,7 +31,7 @@ vi.mock("@anthropic-ai/sdk", () => {
     static nextError: Error | null = null;
     static nextEvents: unknown[] | null = null;
     messages = {
-      stream: () => {
+      stream: streamMock.mockImplementation(() => {
         const error = AnthropicMock.nextError;
         const events = AnthropicMock.nextEvents;
         if (!error && !events) {
@@ -44,11 +46,66 @@ vi.mock("@anthropic-ai/sdk", () => {
           throw error;
         })();
         return Object.assign(iterator, { currentMessage: null });
-      },
+      }),
     };
   }
 
   return { default: AnthropicMock };
+});
+
+describe("streamAnthropic request shaping", () => {
+  it("sends thinking, cache, image, and tool transform params", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const AnthropicMock = Anthropic as unknown as {
+      nextError: Error | null;
+      nextEvents: unknown[] | null;
+    };
+    AnthropicMock.nextError = null;
+    AnthropicMock.nextEvents = [{ type: "message_stop" }];
+
+    const result = streamAnthropic({
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      messages: [
+        { role: "system", content: "stable\n<!-- uncached -->\nnow" },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "see" },
+            { type: "image", mediaType: "image/png", data: "abc" },
+          ],
+        },
+      ],
+      apiKey: "sk-ant-test",
+      thinking: "high",
+      cacheRetention: "short",
+      temperature: 0.7,
+    });
+    for await (const _event of result) {
+      /* consume */
+    }
+
+    const params = streamMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(params).toMatchObject({ thinking: { type: "enabled" }, stream: true });
+    expect(params.temperature).toBeUndefined();
+    expect(params.system).toEqual([
+      { type: "text", text: "stable", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "now" },
+    ]);
+    expect(params.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "see" },
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "abc" },
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+      },
+    ]);
+  });
 });
 
 describe("streamAnthropic error normalization", () => {

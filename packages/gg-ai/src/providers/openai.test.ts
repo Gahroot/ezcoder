@@ -65,6 +65,58 @@ async function collectResponse(provider: Provider, argsJson: string) {
   return { events, response: await result.response };
 }
 
+describe("streamOpenAI request shaping", () => {
+  afterEach(() => {
+    createMock.mockReset();
+  });
+
+  it.each<[Provider, Record<string, unknown>]>([
+    ["openai", { reasoning_effort: "high", prompt_cache_key: "ggcoder", thinking: undefined }],
+    [
+      "glm",
+      { thinking: { type: "enabled" }, reasoning_effort: undefined, prompt_cache_key: undefined },
+    ],
+    [
+      "moonshot",
+      { thinking: { type: "enabled" }, reasoning_effort: undefined, prompt_cache_key: "ggcoder" },
+    ],
+    [
+      "xiaomi",
+      { thinking: { type: "enabled" }, reasoning_effort: undefined, prompt_cache_key: undefined },
+    ],
+  ])("sends provider-specific thinking params for %s", async (provider, expected) => {
+    createMock.mockResolvedValueOnce(createStreamingResult(""));
+    const result = streamOpenAI({
+      provider,
+      model: "test-model",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "token",
+      thinking: "high",
+    });
+    for await (const _event of result) {
+      /* consume */
+    }
+    const params = createMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    for (const [key, value] of Object.entries(expected)) {
+      expect(params[key]).toEqual(value);
+    }
+  });
+
+  it("disables Xiaomi thinking explicitly when thinking is off", async () => {
+    createMock.mockResolvedValueOnce(createStreamingResult(""));
+    const result = streamOpenAI({
+      provider: "xiaomi",
+      model: "test-model",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "token",
+    });
+    for await (const _event of result) {
+      /* consume */
+    }
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({ thinking: { type: "disabled" } });
+  });
+});
+
 describe("streamOpenAI tool argument parsing", () => {
   afterEach(() => {
     createMock.mockReset();
