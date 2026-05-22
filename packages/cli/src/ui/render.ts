@@ -47,6 +47,12 @@ export interface RenderAppConfig {
   mcpManager?: MCPClientManager;
   authStorage?: AuthStorage;
   planModeRef?: { current: boolean };
+  /**
+   * Shared with cli.ts — set true while a task-pane task is driving the
+   * agent so `enter_plan` refuses to activate. Task-pane runs are
+   * unattended and `exit_plan` would block on human plan approval.
+   */
+  taskRunningRef?: { current: boolean };
   onEnterPlanRef?: { current: (reason?: string) => void };
   onExitPlanRef?: { current: (planPath: string) => Promise<string> };
   skills?: Skill[];
@@ -323,6 +329,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             mcpManager: config.mcpManager,
             authStorage: config.authStorage,
             planModeRef: config.planModeRef,
+            taskRunningRef: config.taskRunningRef,
             onEnterPlanRef: config.onEnterPlanRef,
             onExitPlanRef: config.onExitPlanRef,
             skills: config.skills,

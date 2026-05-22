@@ -57,6 +57,34 @@ describe("createEnterPlanTool", () => {
     await tool.execute({}, mockContext);
     expect(called).toBe(true);
   });
+
+  it("refuses to activate while a task-pane task is running", async () => {
+    let called = false;
+    const taskRunningRef = { current: true };
+    const tool = createEnterPlanTool(() => {
+      called = true;
+    }, taskRunningRef);
+
+    const result = resultToString(await tool.execute({ reason: "complex task" }, mockContext));
+
+    expect(called).toBe(false);
+    expect(result).toContain("Error");
+    expect(result).toContain("plan mode is disabled");
+    expect(result).toContain("task-pane");
+  });
+
+  it("activates normally when taskRunningRef is false", async () => {
+    let called = false;
+    const taskRunningRef = { current: false };
+    const tool = createEnterPlanTool(() => {
+      called = true;
+    }, taskRunningRef);
+
+    const result = resultToString(await tool.execute({}, mockContext));
+
+    expect(called).toBe(true);
+    expect(result).toContain("Plan mode activated");
+  });
 });
 
 // ── exit_plan tool ───────────────────────────────────────

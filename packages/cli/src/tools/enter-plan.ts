@@ -10,6 +10,7 @@ const EnterPlanParams = z.object({
 
 export function createEnterPlanTool(
   onEnterPlan: (reason?: string) => void,
+  taskRunningRef?: { current: boolean },
 ): AgentTool<typeof EnterPlanParams> {
   return {
     name: "enter_plan",
@@ -21,6 +22,17 @@ export function createEnterPlanTool(
     parameters: EnterPlanParams,
     executionMode: "sequential",
     async execute({ reason }) {
+      // Plan mode requires human approval of the plan via the plan overlay
+      // (`exit_plan` opens a modal the user accepts/rejects). Task-pane runs
+      // are unattended — there is no human to approve — so entering plan
+      // mode would stall the task forever. Refuse and tell the agent to just
+      // execute the task directly.
+      if (taskRunningRef?.current) {
+        return (
+          "Error: plan mode is disabled during task-pane runs. The task prompt is the plan — " +
+          "execute it directly using edit/write/bash. Do not call enter_plan again in this task."
+        );
+      }
       onEnterPlan(reason);
       return (
         "Plan mode activated. You are now in read-only research mode.\n\n" +

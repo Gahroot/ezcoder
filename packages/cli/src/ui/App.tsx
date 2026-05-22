@@ -1004,6 +1004,12 @@ export interface AppProps {
   mcpManager?: MCPClientManager;
   authStorage?: AuthStorage;
   planModeRef?: { current: boolean };
+  /**
+   * Shared with cli.ts — set true while a task-pane task drives the agent
+   * so `enter_plan` refuses to activate. Unattended task runs would hang
+   * on `exit_plan` waiting for plan approval that never arrives.
+   */
+  taskRunningRef?: { current: boolean };
   onEnterPlanRef?: { current: (reason?: string) => void };
   onExitPlanRef?: { current: (planPath: string) => Promise<string> };
   skills?: Skill[];
@@ -2490,12 +2496,22 @@ export function App(props: AppProps) {
             const next = getNextPendingTask(cwd);
             if (next) {
               markTaskInProgress(cwd, next.id);
+              // startTaskRef.current() re-sets taskRunningRef = true before
+              // the next agent run begins, so the brief clear-then-set is
+              // safe — the agent isn't running in between.
               startTaskRef.current(next.title, next.prompt, next.id);
             } else {
               setRunAllTasks(false);
+              if (props.taskRunningRef) props.taskRunningRef.current = false;
               log("INFO", "tasks", "Run-all complete — no more pending tasks");
             }
           }, 500);
+        } else if (currentTaskIdRef.current) {
+          // Single manual task done — clear the task-running flag so a
+          // subsequent free-form prompt can use plan mode again.
+          if (props.taskRunningRef) props.taskRunningRef.current = false;
+          currentTaskIdRef.current = null;
+          if (props.sessionStore) props.sessionStore.currentTaskId = null;
         }
 
         // Goal loop: after the orchestrator handles a worker/verifier event,
@@ -2544,6 +2560,9 @@ export function App(props: AppProps) {
         setRunAllTasks(false);
         setRunAllPixel(false);
         currentPixelFixRef.current = null;
+        // Clear the task-running flag so a subsequent free-form prompt can
+        // re-enable plan mode. Aborted runs never auto-advance.
+        if (props.taskRunningRef) props.taskRunningRef.current = false;
         // Clear the run-all task id so a subsequent run-all does not
         // mistakenly mark this aborted task as done. The on-disk row stays
         // at `in-progress`, which is the correct truth for an aborted task.
@@ -3822,17 +3841,31 @@ export function App(props: AppProps) {
         `tasks({ action: "done", id: "${shortId}" })`;
       const fullPrompt = prompt + completionHint;
 
-      if (props.resetUI && props.sessionStore) {
-        // Preserve the current system prompt (may differ from the launch
-        // config — e.g. plan mode toggled or skills changed).
-        const sysMsg = messagesRef.current[0];
-        const newMessages: Message[] =
-          sysMsg && sysMsg.role === "system" ? [sysMsg] : messagesRef.current.slice(0, 1);
+      // Task-pane runs are unattended — there is no human to approve a
+      // plan via the plan overlay. Force plan mode off and flag
+      // `taskRunningRef` so `enter_plan` refuses if the agent tries to call
+      // it. Both flags persist across the resetUI() unmount/remount below
+      // because they live in cli.ts-owned refs, not React state.
+      if (props.planModeRef) props.planModeRef.current = false;
+      planModeStateRef.current = false;
+      approvedPlanPathRef.current = undefined;
+      setPlanMode(false);
+      if (props.taskRunningRef) props.taskRunningRef.current = true;
 
+      if (props.resetUI && props.sessionStore) {
         const taskItem: TaskItem = { kind: "task", title, id: String(nextIdRef.current++) };
         const sm = sessionManagerRef.current;
 
         void (async () => {
+          // Rebuild the system prompt without plan mode / approved plan so the
+          // next mount doesn't inherit a stale plan-mode prefix from a prior
+          // user-toggled state. Skills, languages, and cwd are preserved.
+          const taskSysPrompt = await rebuildSystemPrompt({
+            planMode: false,
+            clearApprovedPlan: true,
+          });
+          const newMessages: Message[] = [{ role: "system", content: taskSysPrompt }];
+
           let newSessionPath: string | undefined;
           if (sm) {
             try {

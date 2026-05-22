@@ -32,6 +32,13 @@ export interface CreateToolsOptions {
   operations?: ToolOperations;
   /** Ref for checking plan mode state inside tool execute functions. */
   planModeRef?: { current: boolean };
+  /**
+   * Ref signalling a task-pane task is in flight. While true, `enter_plan`
+   * refuses to activate — there's no human in the loop during task-pane
+   * runs (manual "work on it" or run-all), so plan mode would hang on
+   * `exit_plan` waiting for approval that never comes.
+   */
+  taskRunningRef?: { current: boolean };
   /** Callback when the LLM enters plan mode. */
   onEnterPlan?: (reason?: string) => void;
   /** Callback when the LLM exits plan mode. Returns approval result string. */
@@ -101,7 +108,7 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
   }
 
   if (opts?.onEnterPlan) {
-    tools.push(createEnterPlanTool(opts.onEnterPlan));
+    tools.push(createEnterPlanTool(opts.onEnterPlan, opts.taskRunningRef));
   }
 
   if (opts?.onExitPlan) {

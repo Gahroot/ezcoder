@@ -627,6 +627,11 @@ async function runInkTUI(opts: {
 
   // Plan mode refs — shared between tools and UI
   const planModeRef = { current: false };
+  // Task-mode ref — true while a task-pane task (manual "work on it" or
+  // run-all) is driving the agent. `enter_plan` checks this and refuses,
+  // since task-pane runs are unattended and `exit_plan` would stall waiting
+  // for human approval that never arrives.
+  const taskRunningRef = { current: false };
   const onEnterPlanRef: { current: (reason?: string) => void } = {
     current: () => {},
   };
@@ -652,6 +657,7 @@ async function runInkTUI(opts: {
     provider,
     model,
     planModeRef,
+    taskRunningRef,
     onEnterPlan: (reason) => onEnterPlanRef.current(reason),
     onExitPlan: (planPath) => onExitPlanRef.current(planPath),
     onFileRead: (filePath) => markRepoMapRead(cwd, filePath),
@@ -668,6 +674,7 @@ async function runInkTUI(opts: {
       provider,
       model,
       planModeRef,
+      taskRunningRef,
       onEnterPlan: (reason) => onEnterPlanRef.current(reason),
       onExitPlan: (planPath) => onExitPlanRef.current(planPath),
       onFileRead: (filePath) => markRepoMapRead(newCwd, filePath),
@@ -831,6 +838,7 @@ async function runInkTUI(opts: {
     mcpManager,
     authStorage,
     planModeRef,
+    taskRunningRef,
     onEnterPlanRef,
     onExitPlanRef,
     skills,
