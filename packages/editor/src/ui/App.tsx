@@ -504,7 +504,7 @@ export function App(props: AppProps) {
     const selection = parseModelSelection(value);
     if (!selection) return;
 
-    import("@kenkaiiii/ggcoder/models").then(({ getModel }) => {
+    import("@prestyj/cli/models").then(({ getModel }) => {
       const info = getModel(selection.model);
       const provider = selection.provider ?? info?.provider;
       if (!provider || (info && info.provider !== provider)) return;

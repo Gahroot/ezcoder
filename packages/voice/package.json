@@ -1,13 +1,13 @@
 {
-  "name": "@kenkaiiii/gg-voice",
+  "name": "@prestyj/voice",
   "version": "4.3.193",
   "type": "module",
-  "description": "Provider-agnostic realtime voice orchestration for GG tools and agents",
+  "description": "Provider-agnostic realtime voice orchestration for EZ tools and agents",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kenkaiiii/gg-framework.git",
-    "directory": "packages/gg-voice"
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
+    "directory": "packages/voice"
   },
   "exports": {
     ".": {
@@ -25,15 +25,15 @@
       "import": "./dist/providers/openai-codex-realtime.js",
       "require": "./dist/providers/openai-codex-realtime.cjs"
     },
-    "./bridges/ggcoder-rpc": {
-      "types": "./dist/bridges/ggcoder-rpc.d.ts",
-      "import": "./dist/bridges/ggcoder-rpc.js",
-      "require": "./dist/bridges/ggcoder-rpc.cjs"
+    "./bridges/ezcoder-rpc": {
+      "types": "./dist/bridges/ezcoder-rpc.d.ts",
+      "import": "./dist/bridges/ezcoder-rpc.js",
+      "require": "./dist/bridges/ezcoder-rpc.cjs"
     },
-    "./bridges/ggboss": {
-      "types": "./dist/bridges/ggboss.d.ts",
-      "import": "./dist/bridges/ggboss.js",
-      "require": "./dist/bridges/ggboss.cjs"
+    "./bridges/ezboss": {
+      "types": "./dist/bridges/ezboss.d.ts",
+      "import": "./dist/bridges/ezboss.js",
+      "require": "./dist/bridges/ezboss.cjs"
     }
   },
   "main": "./dist/index.cjs",
@@ -49,8 +49,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kenkaiiii/gg-agent": "workspace:*",
-    "@kenkaiiii/gg-ai": "workspace:*",
+    "@prestyj/agent": "workspace:*",
+    "@prestyj/ai": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {
