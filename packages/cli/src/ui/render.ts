@@ -144,6 +144,13 @@ export interface SessionStore {
    */
   runAllTasks?: boolean;
   /**
+   * Task id (short) of the task currently driving the agent in a run-all
+   * sequence. Mirrored from App so the run-all `onDone` advance can mark
+   * the just-finished task as `done` even when the agent forgets to call
+   * the `tasks` tool. Null when no run-all task is in flight.
+   */
+  currentTaskId?: string | null;
+  /**
    * Same pattern as `runAllTasks` — pixel fix auto-chaining flag. Survives
    * the deferred resetUI() that may fire when the agent goes idle (e.g.
    * after a pane was toggled mid-fix). Without this, the second fix
@@ -274,6 +281,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     overlay: config.initialOverlay ?? null,
     planAutoExpand: false,
     pendingAction: undefined,
+    currentTaskId: null,
     goalStatusEntries: [],
   };
 

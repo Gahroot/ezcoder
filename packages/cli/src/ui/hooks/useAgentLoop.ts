@@ -165,7 +165,9 @@ export function useAgentLoop(
         cacheWrite?: number;
       },
     ) => void;
-    onDone?: (durationMs: number, toolsUsed: string[]) => void;
+    /** `errored` is true when the safety fallback fires after a non-abort throw —
+     *  used by the run-all auto-advance to skip marking the failed task as done. */
+    onDone?: (durationMs: number, toolsUsed: string[], errored?: boolean) => void;
     onAborted?: () => void;
     /** Called when a queued message starts processing (after the previous run completes). */
     onQueuedStart?: (content: UserContent) => void;
@@ -291,6 +293,11 @@ export function useAgentLoop(
         const ac = new AbortController();
         abortRef.current = ac;
         let wasAborted = false;
+        // Distinguishes the safety-fallback `onDone` call after a non-abort throw
+        // from one after a clean stream-end with no agent_done event. The run-all
+        // advance needs this to leave a failed task at `in-progress` instead of
+        // flipping it to done.
+        let runErrored = false;
 
         // Throttled streaming text flush — accumulate deltas in refs (zero-cost),
         // only call setState at ~16ms intervals to avoid saturating the event loop
@@ -742,6 +749,7 @@ export function useAgentLoop(
           const isAbort =
             err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted"));
           if (!isAbort) {
+            runErrored = true;
             throw err;
           }
           wasAborted = true;
@@ -776,9 +784,11 @@ export function useAgentLoop(
             setStreamingThinking("");
             onAborted?.();
           } else if (!doneCalledRef.current) {
-            // Safety fallback — normally agent_done calls onDone in-band
+            // Safety fallback — normally agent_done calls onDone in-band.
+            // Pass `runErrored` so the run-all branch in App.tsx can skip
+            // markTaskDone on the error path (failing task stays at `in-progress`).
             const durationMs = Date.now() - runStartRef.current;
-            onDone?.(durationMs, [...toolsUsedRef.current]);
+            onDone?.(durationMs, [...toolsUsedRef.current], runErrored);
           }
 
           // Notify parent of new messages

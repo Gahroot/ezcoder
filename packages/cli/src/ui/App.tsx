@@ -956,6 +956,25 @@ function markTaskInProgress(cwd: string, taskId: string): void {
   }
 }
 
+/**
+ * Mark a task as done in the on-disk tasks.json. Used by run-all auto-advance
+ * so the in-flight task is recorded as completed even when the agent forgets
+ * to call the `tasks` tool. Errors are swallowed — if the file is missing or
+ * the id is stale, the next auto-advance step still proceeds correctly.
+ */
+function markTaskDone(cwd: string, taskId: string): void {
+  try {
+    const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
+    const filePath = join(homedir(), ".ezcoder-tasks", "projects", hash, "tasks.json");
+    const data = readFileSync(filePath, "utf-8");
+    const tasks = JSON.parse(data) as { id: string; status: string }[];
+    const updated = tasks.map((t) => (t.id === taskId ? { ...t, status: "done" } : t));
+    writeFileSync(filePath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
+  } catch {
+    // ignore
+  }
+}
+
 // ── App Props ──────────────────────────────────────────────
 
 export interface AppProps {
@@ -1056,6 +1075,7 @@ export interface AppProps {
     isAgentRunning?: boolean;
     pendingResetUI?: boolean;
     runAllTasks?: boolean;
+    currentTaskId?: string | null;
     runAllPixel?: boolean;
     goalStatusEntries?: GoalStatusEntry[];
   };
@@ -1131,6 +1151,11 @@ export function App(props: AppProps) {
   // remount that startTask() triggers between tasks.
   const [runAllTasks, setRunAllTasks] = useState(props.sessionStore?.runAllTasks ?? false);
   const runAllTasksRef = useRef(props.sessionStore?.runAllTasks ?? false);
+  // Task id of the run-all task currently driving the agent. Tracked so the
+  // run-all `onDone` auto-advance can mark the just-finished task as done
+  // even when the agent forgets to call the tasks tool. Mirrored through
+  // sessionStore so the value survives the resetUI() remount between tasks.
+  const currentTaskIdRef = useRef<string | null>(props.sessionStore?.currentTaskId ?? null);
   const startTaskRef = useRef<(title: string, prompt: string, taskId: string) => void>(() => {});
   const agentRunningRef = useRef(false);
   const runningGoalIdsRef = useRef<Set<string>>(new Set());
@@ -2428,7 +2453,7 @@ export function App(props: AppProps) {
         },
         [],
       ),
-      onDone: useCallback((durationMs: number, toolsUsed: string[]) => {
+      onDone: useCallback((durationMs: number, toolsUsed: string[], errored?: boolean) => {
         log("INFO", "agent", `Agent done`, {
           duration: `${durationMs}ms`,
           toolsUsed: toolsUsed.join(",") || "none",
@@ -2454,6 +2479,16 @@ export function App(props: AppProps) {
         if (runAllTasksRef.current) {
           setTimeout(() => {
             const cwd = cwdRef.current;
+            // Clean turn: mark the in-flight task done so the row flips to ✓.
+            // Error path: leave it at `in-progress` so the failed task is
+            // visibly distinct from completed ones. The chain still advances
+            // either way — matching how errors were handled before this fix.
+            const finishedId = currentTaskIdRef.current;
+            if (finishedId) {
+              if (!errored) markTaskDone(cwd, finishedId);
+              currentTaskIdRef.current = null;
+              if (props.sessionStore) props.sessionStore.currentTaskId = null;
+            }
             const next = getNextPendingTask(cwd);
             if (next) {
               markTaskInProgress(cwd, next.id);
@@ -2511,6 +2546,11 @@ export function App(props: AppProps) {
         setRunAllTasks(false);
         setRunAllPixel(false);
         currentPixelFixRef.current = null;
+        // Clear the run-all task id so a subsequent run-all does not
+        // mistakenly mark this aborted task as done. The on-disk row stays
+        // at `in-progress`, which is the correct truth for an aborted task.
+        currentTaskIdRef.current = null;
+        if (props.sessionStore) props.sessionStore.currentTaskId = null;
         setDoneStatus(null);
         setLiveItems((prev) => {
           const next = prev.map((item): CompletedItem => {
@@ -3794,7 +3834,14 @@ export function App(props: AppProps) {
               // session creation is best-effort
             }
           }
-          if (props.sessionStore) props.sessionStore.overlay = null;
+          if (props.sessionStore) {
+            props.sessionStore.overlay = null;
+            // Mirror through sessionStore so the post-resetUI remount can
+            // re-seed the ref. markTaskDone() in the run-all onDone branch
+            // reads currentTaskIdRef.current, which is seeded from this.
+            props.sessionStore.currentTaskId = taskId;
+          }
+          currentTaskIdRef.current = taskId;
           props.resetUI?.({
             wipeSession: true,
             messages: newMessages,
@@ -3807,6 +3854,8 @@ export function App(props: AppProps) {
       }
 
       // Fallback path (resetUI not wired — tests).
+      currentTaskIdRef.current = taskId;
+      if (props.sessionStore) props.sessionStore.currentTaskId = taskId;
       setHistory([{ kind: "banner", id: "banner" }]);
       setLiveItems([]);
       messagesRef.current = messagesRef.current.slice(0, 1);
@@ -4485,7 +4534,12 @@ export function App(props: AppProps) {
   startGoalRunRef.current = startGoalRun;
   useEffect(() => {
     runAllTasksRef.current = runAllTasks;
-    if (props.sessionStore) props.sessionStore.runAllTasks = runAllTasks;
+    if (props.sessionStore) {
+      props.sessionStore.runAllTasks = runAllTasks;
+      // Keep currentTaskId in sync with the ref so a sessionStore-seeded
+      // remount picks up the same value the imperative sites wrote.
+      props.sessionStore.currentTaskId = currentTaskIdRef.current;
+    }
   }, [runAllTasks, props.sessionStore]);
 
   useEffect(() => {
