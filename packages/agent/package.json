@@ -1,13 +1,13 @@
 {
-  "name": "@prestyj/agent",
-  "version": "4.3.207",
+  "name": "@kenkaiiii/gg-agent",
+  "version": "4.3.209",
   "type": "module",
   "description": "Agentic loop system with tool execution for LLMs",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gahroot/ezcoder.git",
-    "directory": "packages/agent"
+    "url": "git+https://github.com/kenkaiiii/gg-framework.git",
+    "directory": "packages/gg-agent"
   },
   "exports": {
     ".": {
@@ -28,7 +28,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@prestyj/ai": "workspace:*",
+    "@kenkaiiii/gg-ai": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

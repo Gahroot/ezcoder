@@ -1,16 +1,16 @@
 {
-  "name": "@prestyj/editor-premiere-panel",
-  "version": "0.2.1",
+  "name": "@kenkaiiii/gg-editor-premiere-panel",
+  "version": "0.2.3",
   "type": "module",
-  "description": "Adobe Premiere Pro extension that lets ezeditor drive Premiere. Ships both a UXP plugin (Premiere 25.6+) and a legacy CEP panel (sunset Sept 2026).",
+  "description": "Adobe Premiere Pro extension that lets gg-editor drive Premiere. Ships both a UXP plugin (Premiere 25.6+) and a legacy CEP panel (sunset Sept 2026).",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gahroot/ezcoder.git",
-    "directory": "packages/editor-premiere-panel"
+    "url": "git+https://github.com/kenkaiiii/gg-framework.git",
+    "directory": "packages/gg-editor-premiere-panel"
   },
   "bin": {
-    "ez-editor-premiere-panel": "./dist/bin/cli.js"
+    "gg-editor-premiere-panel": "./dist/bin/cli.js"
   },
   "exports": {
     ".": {
