@@ -45,6 +45,12 @@ describe("prompt commands", () => {
       "Worker agents do implementation after the user explicitly starts the Goal",
     );
     expect(prompt).toContain("Plan first; do not build during initial Goal creation");
+    expect(prompt).toContain("You MUST run every cheap local prerequisite check");
+    expect(prompt).toContain("Do not leave a locally checkable prerequisite as unknown");
+    expect(prompt).toContain("do not mark any prerequisite met unless you have checked it");
+    expect(prompt).toContain(
+      "the goals tool will also run each provided `check_command` before persisting",
+    );
     expect(prompt).toContain("worker agents should build instruments");
     expect(prompt).toContain("after the user starts the Goal");
     expect(prompt).toContain("capture it as a Goal task instead of doing it yourself");

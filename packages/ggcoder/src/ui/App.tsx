@@ -150,6 +150,7 @@ import {
   type GoalTask,
 } from "../core/goal-store.js";
 import { canCompleteGoalRun, decideGoalNextAction } from "../core/goal-controller.js";
+import { runGoalPrerequisiteChecks } from "../core/goal-prerequisites.js";
 import { runGoalVerifierCommand } from "../core/goal-verifier.js";
 import {
   listGoalWorkers,
@@ -776,13 +777,12 @@ export type OverlayPaneKind =
   | "pixel";
 
 export function shouldHideHistoryForOverlayView(
-  _isOverlayView: boolean,
+  isOverlayView: boolean,
   _isAgentRunning: boolean,
 ): boolean {
-  // Ink Static is append-only. Passing [] for overlay panes rewrites the Static
-  // accumulator and can destroy scrollback when the pane closes. Keep history
-  // mounted and let overlays render below it.
-  return false;
+  // Overlay panes are standalone full-screen states. Do not render chat Static
+  // history behind them, otherwise panes appear below the previous transcript.
+  return isOverlayView;
 }
 
 export function shouldStabilizeOverlayPaneRerender({
@@ -797,12 +797,12 @@ export function shouldStabilizeOverlayPaneRerender({
 
 export function shouldHideStaticItemsForOverlayView({
   shouldHideHistoryForOverlay,
-  stabilizeOverlayPaneRerender,
+  stabilizeOverlayPaneRerender: _stabilizeOverlayPaneRerender,
 }: {
   shouldHideHistoryForOverlay: boolean;
   stabilizeOverlayPaneRerender: boolean;
 }): boolean {
-  return shouldHideHistoryForOverlay && !stabilizeOverlayPaneRerender;
+  return shouldHideHistoryForOverlay;
 }
 
 export interface ScrollStabilizationDecision {
@@ -4142,117 +4142,129 @@ export function App(props: AppProps) {
     (run: GoalRun) => {
       runningGoalIdsRef.current.add(run.id);
       void (async () => {
-        if (goalHasBlockingPrerequisites(run)) {
+        const currentRun =
+          (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? run;
+        const prereqCheck = await runGoalPrerequisiteChecks(props.cwd, currentRun);
+        const checkedRun =
+          prereqCheck.checkedCount > 0
+            ? await upsertGoalRun(props.cwd, {
+                ...prereqCheck.run,
+                status: goalHasBlockingPrerequisites(prereqCheck.run) ? "blocked" : "ready",
+              })
+            : currentRun;
+        if (goalHasBlockingPrerequisites(checkedRun)) {
           setOverlay(null);
-          const detail = formatGoalBlockingPrerequisites(run);
+          const detail = formatGoalBlockingPrerequisites(checkedRun);
           await upsertGoalRun(props.cwd, {
-            ...run,
+            ...checkedRun,
             status: "blocked",
-            blockers: Array.from(new Set([...run.blockers, detail])),
+            blockers: Array.from(new Set([...checkedRun.blockers, detail])),
           });
           setGoalCount((await summarizeGoalCounts(props.cwd)).active);
           appendGoalProgress({
             kind: "goal_progress",
             phase: "terminal",
-            title: `Goal blocked: ${run.title}`,
+            title: `Goal blocked: ${checkedRun.title}`,
             detail,
             status: "blocked",
           });
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
           return;
         }
 
-        const decision = decideGoalNextAction(run);
-        await appendGoalDecision(props.cwd, run.id, decision);
+        const decision = decideGoalNextAction(checkedRun);
+        await appendGoalDecision(props.cwd, checkedRun.id, decision);
         if (decision.kind === "terminal") {
-          const terminalProgress = formatGoalTerminalProgress(run);
+          const terminalProgress = formatGoalTerminalProgress(checkedRun);
           if (terminalProgress) {
-            const item = { ...terminalProgress, id: goalTerminalProgressId(run) };
+            const item = { ...terminalProgress, id: goalTerminalProgressId(checkedRun) };
             setLiveItems((prev) =>
-              completedItemsWithDurableGoalTerminalProgress([...prev, item], [run]),
+              completedItemsWithDurableGoalTerminalProgress([...prev, item], [checkedRun]),
             );
           }
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
           return;
         }
         if (decision.kind === "wait") {
           appendGoalProgress({
             kind: "goal_progress",
             phase: "worker_started",
-            title: decision.workerId ? `Goal working: ${run.title}` : `Goal active: ${run.title}`,
+            title: decision.workerId
+              ? `Goal working: ${checkedRun.title}`
+              : `Goal active: ${checkedRun.title}`,
             detail: decision.reason,
             workerId: decision.workerId,
           });
           upsertGoalStatusEntry({
-            runId: run.id,
-            label: run.title,
+            runId: checkedRun.id,
+            label: checkedRun.title,
             phase: decision.workerId ? "worker" : "orchestrating",
             startedAt: Date.now(),
             detail: decision.reason,
             workerId: decision.workerId,
-            goalNumber: goalNumberForRun(run.id),
+            goalNumber: goalNumberForRun(checkedRun.id),
           });
           return;
         }
         if (decision.kind === "complete") {
-          await upsertGoalRun(props.cwd, { ...run, status: "passed" });
+          await upsertGoalRun(props.cwd, { ...checkedRun, status: "passed" });
           setGoalCount((await summarizeGoalCounts(props.cwd)).active);
           appendGoalProgress({
             kind: "goal_progress",
             phase: "terminal",
-            title: `Goal passed: ${run.title}`,
+            title: `Goal passed: ${checkedRun.title}`,
             detail: decision.reason,
             status: "passed",
           });
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
           return;
         }
         if (decision.kind === "run_verifier") {
-          await verifyGoalRun(run);
+          await verifyGoalRun(checkedRun);
           return;
         }
         if (decision.kind === "create_task") {
-          await updateGoalTask(props.cwd, run.id, `auto-${Date.now()}`, {
+          await updateGoalTask(props.cwd, checkedRun.id, `auto-${Date.now()}`, {
             title: decision.title,
             prompt: decision.prompt,
             status: "pending",
           });
           const latestRun =
-            (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? run;
+            (await loadGoalRuns(props.cwd)).find((item) => item.id === checkedRun.id) ?? checkedRun;
           await upsertGoalRun(props.cwd, { ...latestRun, status: "ready" });
-          setTimeout(() => continueGoalRun(run.id), 250);
+          setTimeout(() => continueGoalRun(checkedRun.id), 250);
           return;
         }
         if (decision.kind === "blocked") {
           await upsertGoalRun(props.cwd, {
-            ...run,
+            ...checkedRun,
             status: "blocked",
-            blockers: [...run.blockers, decision.reason],
+            blockers: [...checkedRun.blockers, decision.reason],
           });
           setGoalCount((await summarizeGoalCounts(props.cwd)).active);
           appendGoalProgress({
             kind: "goal_progress",
             phase: "terminal",
-            title: `Goal blocked: ${run.title}`,
+            title: `Goal blocked: ${checkedRun.title}`,
             detail: decision.reason,
             status: "blocked",
           });
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
           return;
         }
         if (decision.kind === "pause") {
           const runWithBlockedTask =
-            (await updateGoalTask(props.cwd, run.id, decision.task.id, {
+            (await updateGoalTask(props.cwd, checkedRun.id, decision.task.id, {
               status: "blocked",
               attempts: decision.attempts,
               lastSummary: "Paused after worker attempt limit.",
-            })) ?? run;
+            })) ?? checkedRun;
           const runWithPauseEvidence =
-            (await appendGoalEvidence(props.cwd, run.id, {
+            (await appendGoalEvidence(props.cwd, checkedRun.id, {
               kind: "summary",
               label: "Goal paused",
               content: decision.reason,
@@ -4267,30 +4279,31 @@ export function App(props: AppProps) {
           appendGoalProgress({
             kind: "goal_progress",
             phase: "terminal",
-            title: `Goal paused: ${run.title}`,
+            title: `Goal paused: ${checkedRun.title}`,
             detail: decision.reason,
             status: "paused",
           });
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
           return;
         }
 
         const runWithAttempt =
-          (await updateGoalTask(props.cwd, run.id, decision.task.id, {
+          (await updateGoalTask(props.cwd, checkedRun.id, decision.task.id, {
             attempts: decision.attempts,
-          })) ?? run;
+          })) ?? checkedRun;
         const worker = await startGoalWorker({
           cwd: props.cwd,
           provider: currentProvider,
           model: currentModel,
-          goalRunId: run.id,
+          goalRunId: checkedRun.id,
           goalTaskId: decision.task.id,
           taskTitle: decision.task.title,
           prompt: decision.task.prompt,
         });
         const latestRun =
-          (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? runWithAttempt;
+          (await loadGoalRuns(props.cwd)).find((item) => item.id === checkedRun.id) ??
+          runWithAttempt;
         await upsertGoalRun(props.cwd, {
           ...latestRun,
           status: "running",
@@ -4313,13 +4326,13 @@ export function App(props: AppProps) {
           status: worker.status,
         });
         upsertGoalStatusEntry({
-          runId: run.id,
+          runId: checkedRun.id,
           label: decision.task.title,
           phase: "worker",
           startedAt: Date.now(),
           detail: "background worker running",
           workerId: worker.id,
-          goalNumber: goalNumberForRun(run.id),
+          goalNumber: goalNumberForRun(checkedRun.id),
         });
       })().catch((err: unknown) => {
         clearGoalStatusEntry(run.id);

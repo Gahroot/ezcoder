@@ -32,27 +32,27 @@ function goalRun(overrides: Partial<GoalRun> = {}): GoalRun {
 }
 
 describe("App TUI state persistence helpers", () => {
-  it("keeps Static history mounted for overlay panes so scrollback is not rewritten", () => {
-    expect(shouldHideHistoryForOverlayView(true, false)).toBe(false);
-    expect(shouldHideHistoryForOverlayView(true, true)).toBe(false);
+  it("hides Static history for overlay panes so they open as standalone views", () => {
+    expect(shouldHideHistoryForOverlayView(true, false)).toBe(true);
+    expect(shouldHideHistoryForOverlayView(true, true)).toBe(true);
     expect(shouldHideHistoryForOverlayView(false, false)).toBe(false);
   });
 
-  it("keeps active Goal pane switches from blanking Static history", () => {
+  it("keeps active Goal pane state standalone even while its polling rerenders", () => {
     const hideHistory = shouldHideHistoryForOverlayView(true, true);
     const stabilizeStatic = shouldStabilizeOverlayPaneRerender({
       overlayPane: "goal",
       isAgentRunning: true,
     });
 
-    expect(hideHistory).toBe(false);
+    expect(hideHistory).toBe(true);
     expect(stabilizeStatic).toBe(true);
     expect(
       shouldHideStaticItemsForOverlayView({
         shouldHideHistoryForOverlay: hideHistory,
         stabilizeOverlayPaneRerender: stabilizeStatic,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("persists the visible completion footer across idle pane remounts", () => {
@@ -64,7 +64,7 @@ describe("App TUI state persistence helpers", () => {
     expect(sessionStore.doneStatus).toEqual(doneStatus);
   });
 
-  it("models the regression: goal progress history remains rendered while a pane is open", () => {
+  it("models the regression: goal progress history is hidden while a pane is open", () => {
     const goalProgress: GoalProgressItem = {
       kind: "goal_progress",
       phase: "terminal",
@@ -81,7 +81,7 @@ describe("App TUI state persistence helpers", () => {
 
     const itemsRenderedDuringGoalPane = shouldHideHistoryForOverlayView(true, false) ? [] : history;
 
-    expect(itemsRenderedDuringGoalPane).toEqual(history);
+    expect(itemsRenderedDuringGoalPane).toEqual([]);
     expect(history).toContain(goalProgress);
   });
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { log } from "../core/logger.js";
 import { canCompleteGoalRun, decideGoalNextAction } from "../core/goal-controller.js";
+import { runGoalPrerequisiteCheckCommand } from "../core/goal-prerequisites.js";
 import {
   appendGoalDecision,
   appendGoalEvidence,
@@ -141,6 +142,49 @@ function asPrerequisiteStatus(value: string | undefined): GoalPrerequisiteStatus
   return "unknown";
 }
 
+function requiresPrerequisiteCheck(
+  status: GoalPrerequisiteStatus,
+  evidence: string | undefined,
+): boolean {
+  return status === "unknown" || (status === "met" && !evidence?.trim());
+}
+
+function uncheckedPrerequisiteInstructions(label: string): string {
+  return `Check ${label} locally and record non-secret evidence before workers can start.`;
+}
+
+async function normalizePrerequisiteInput(
+  cwd: string,
+  item: z.infer<typeof PrerequisiteInput>,
+): Promise<GoalRun["prerequisites"][number]> {
+  const requestedStatus = asPrerequisiteStatus(item.status);
+  const id = item.id ?? randomUUID();
+  if (item.check_command && requiresPrerequisiteCheck(requestedStatus, item.evidence)) {
+    const result = await runGoalPrerequisiteCheckCommand({ cwd, command: item.check_command });
+    return {
+      id,
+      label: item.label,
+      status: result.status,
+      checkCommand: item.check_command,
+      evidence: result.evidence,
+      ...(result.status === "missing" || item.instructions
+        ? { instructions: item.instructions ?? `Make \`${item.check_command}\` pass locally.` }
+        : {}),
+    };
+  }
+  return {
+    id,
+    label: item.label,
+    status: requestedStatus,
+    ...(item.check_command ? { checkCommand: item.check_command } : {}),
+    ...(item.instructions ? { instructions: item.instructions } : {}),
+    ...(item.evidence ? { evidence: item.evidence } : {}),
+    ...(requiresPrerequisiteCheck(requestedStatus, item.evidence) && !item.instructions
+      ? { instructions: uncheckedPrerequisiteInstructions(item.label) }
+      : {}),
+  };
+}
+
 function asTaskStatus(value: string | undefined): GoalTaskStatus {
   if (
     value === "pending" ||
@@ -238,14 +282,11 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
           if (!args.title) return "Error: title is required for create.";
           if (!args.goal) return "Error: goal is required for create.";
           const existing = args.run_id ? await getGoalRun(cwd, args.run_id) : null;
-          const prerequisites = args.prerequisites?.map((item) => ({
-            id: item.id ?? randomUUID(),
-            label: item.label,
-            status: asPrerequisiteStatus(item.status),
-            ...(item.check_command ? { checkCommand: item.check_command } : {}),
-            ...(item.instructions ? { instructions: item.instructions } : {}),
-            ...(item.evidence ? { evidence: item.evidence } : {}),
-          }));
+          const prerequisites = args.prerequisites
+            ? await Promise.all(
+                args.prerequisites.map((item) => normalizePrerequisiteInput(cwd, item)),
+              )
+            : undefined;
           const harness = args.harness?.map((item) => ({
             id: item.id ?? randomUUID(),
             label: item.label,
@@ -330,12 +371,26 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
                 (item) => item.id === prereqId || item.id.startsWith(prereqId),
               )
             : -1;
+          const existingPrerequisite = index >= 0 ? prerequisites[index] : undefined;
           const patch = {
             id: prereqId ?? randomUUID(),
-            label: args.prerequisite_label ?? prereqId ?? "Prerequisite",
+            label:
+              args.prerequisite_label ?? existingPrerequisite?.label ?? prereqId ?? "Prerequisite",
             status: asPrerequisiteStatus(args.prerequisite_status),
             ...(args.instructions ? { instructions: args.instructions } : {}),
             ...(args.summary ? { evidence: args.summary } : {}),
+            ...(asPrerequisiteStatus(args.prerequisite_status) === "met" && !args.summary
+              ? {
+                  instructions:
+                    args.instructions ??
+                    uncheckedPrerequisiteInstructions(
+                      args.prerequisite_label ??
+                        existingPrerequisite?.label ??
+                        prereqId ??
+                        "Prerequisite",
+                    ),
+                }
+              : {}),
           };
           if (index >= 0) {
             prerequisites[index] = {

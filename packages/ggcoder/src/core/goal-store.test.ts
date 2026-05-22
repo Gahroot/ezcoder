@@ -132,8 +132,8 @@ describe("goal store persistence", () => {
     );
   });
 
-  it("marks a run blocked when prerequisites are unknown or missing", async () => {
-    const run = await upsertGoalRun(tmpProject, {
+  it("marks a run blocked when prerequisites are unknown, missing, or met without evidence", async () => {
+    const unknownRun = await upsertGoalRun(tmpProject, {
       title: "Expo audio check",
       goal: "Verify app audio playback programmatically",
       status: "ready",
@@ -142,12 +142,22 @@ describe("goal store persistence", () => {
         { id: "sim", label: "iOS simulator available", status: "unknown" },
       ],
     });
+    const uncheckedMetRun = await upsertGoalRun(tmpProject, {
+      title: "Unchecked tooling",
+      goal: "Prevent lazy prerequisite approval",
+      status: "ready",
+      prerequisites: [{ id: "tooling", label: "Local tooling", status: "met" }],
+    });
 
-    expect(run.status).toBe("blocked");
+    expect(unknownRun.status).toBe("blocked");
+    expect(uncheckedMetRun.status).toBe("blocked");
+    expect(formatGoalBlockingPrerequisites(uncheckedMetRun)).toBe(
+      "Local tooling: Prerequisite is marked met but has no recorded check evidence; verify it locally and record non-secret evidence.",
+    );
 
-    const counts = summarizeGoalCountsFromRuns([run]);
-    expect(counts.blocked).toBe(1);
-    expect(counts.active).toBe(1);
+    const counts = summarizeGoalCountsFromRuns([unknownRun, uncheckedMetRun]);
+    expect(counts.blocked).toBe(2);
+    expect(counts.active).toBe(2);
   });
 
   it("merges stale run snapshots without dropping fresher task and evidence writes", async () => {

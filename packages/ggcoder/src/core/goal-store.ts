@@ -921,7 +921,7 @@ export async function updateGoalTask(
 }
 
 export function isBlockingGoalPrerequisite(item: GoalPrerequisite): boolean {
-  return item.status === "missing" || (item.status === "unknown" && !item.evidence);
+  return item.status !== "met" || !item.evidence?.trim();
 }
 
 export function hasBlockingGoalPrerequisites(prerequisites: readonly GoalPrerequisite[]): boolean {
@@ -933,7 +933,15 @@ export function goalHasBlockingPrerequisites(run: GoalRun): boolean {
 }
 
 export function formatGoalPrerequisiteInstruction(item: GoalPrerequisite): string {
-  return item.instructions?.trim() || "User must provide this prerequisite.";
+  const instructions = item.instructions?.trim();
+  if (instructions) return instructions;
+  if (item.status === "met" && !item.evidence?.trim()) {
+    return "Prerequisite is marked met but has no recorded check evidence; verify it locally and record non-secret evidence.";
+  }
+  if (item.status === "unknown") {
+    return "Check this prerequisite locally and record non-secret evidence before workers can start.";
+  }
+  return "User must provide this prerequisite.";
 }
 
 export function formatGoalBlockingPrerequisiteList(

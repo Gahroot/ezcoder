@@ -267,7 +267,7 @@ describe("goal overlay helpers", () => {
       formatGoalProgressText(
         goalRun({
           prerequisites: [
-            { id: "a", label: "A", status: "met" },
+            { id: "a", label: "A", status: "met", evidence: "checked" },
             { id: "b", label: "B", status: "missing" },
           ],
           tasks: [

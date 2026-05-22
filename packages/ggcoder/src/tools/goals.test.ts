@@ -32,6 +32,55 @@ afterEach(async () => {
 });
 
 describe("goals tool state guards", () => {
+  it("checks runnable prerequisites during create before marking the Goal ready", async () => {
+    await fs.writeFile(path.join(tmpProject, "fixture.txt"), "ready", "utf-8");
+
+    await executeGoals({
+      action: "create",
+      run_id: "checked-create",
+      title: "Checked create",
+      goal: "Do not defer cheap prerequisite checks",
+      prerequisites: [
+        {
+          id: "fixture",
+          label: "Fixture file exists",
+          status: "unknown",
+          check_command: "test -f fixture.txt",
+        },
+      ],
+    });
+
+    const run = await getGoalRun(tmpProject, "checked-create");
+    expect(run?.status).toBe("ready");
+    expect(run?.prerequisites[0]).toMatchObject({
+      id: "fixture",
+      status: "met",
+      checkCommand: "test -f fixture.txt",
+    });
+    expect(run?.prerequisites[0]?.evidence).toContain("exited 0");
+  });
+
+  it("blocks create when a prerequisite has not been checked or evidenced", async () => {
+    const result = await executeGoals({
+      action: "create",
+      run_id: "unchecked-create",
+      title: "Unchecked create",
+      goal: "Do not accept lazy met prereqs",
+      prerequisites: [{ id: "tooling", label: "Local tooling", status: "met" }],
+    });
+
+    const run = await getGoalRun(tmpProject, "unchecked-create");
+    expect(result).toContain("blocked");
+    expect(run?.status).toBe("blocked");
+    expect(run?.prerequisites[0]).toMatchObject({
+      id: "tooling",
+      status: "met",
+      instructions:
+        "Check Local tooling locally and record non-secret evidence before workers can start.",
+    });
+    expect(run?.prerequisites[0]?.evidence).toBeUndefined();
+  });
+
   it("updates an explicit run_id task and evidence when no active goal exists in the caller cwd", async () => {
     const runProject = await fs.mkdtemp(path.join(os.tmpdir(), "goals-tool-explicit-run-project-"));
     try {
