@@ -50,7 +50,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import fs from "node:fs";
 import readline from "node:readline/promises";
-import { execFile, spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { renderApp } from "./ui/render.js";
 import { runJsonMode } from "./modes/json-mode.js";
@@ -71,7 +71,6 @@ import { initLogger, log, closeLogger } from "./core/logger.js";
 import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
 import { setProviderDiagnostic } from "@kenkaiiii/gg-ai";
 import { buildSystemPrompt } from "./system-prompt.js";
-import { isEyesActive, journalCount } from "@kenkaiiii/ggcoder-eyes";
 import { createTools } from "./tools/index.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import {
@@ -97,6 +96,7 @@ import type { OAuthCredentials, OAuthLoginCallbacks } from "./core/oauth/types.j
 import chalk from "chalk";
 import { checkAndAutoUpdate } from "./core/auto-update.js";
 import { parseGoalSyntheticEvent } from "./ui/goal-events.js";
+import type { GoalMode } from "./core/runtime-mode.js";
 
 const _require = createRequire(import.meta.url);
 const CLI_VERSION = (_require("../package.json") as { version: string }).version;
@@ -227,10 +227,8 @@ function printHelp(): void {
   // Keyboard shortcuts
   console.log(primary("Keyboard shortcuts:"));
   const shortcuts: [string, string][] = [
-    ["Ctrl+T", "Toggle task overlay"],
     ["Ctrl+G", "Toggle goal overlay"],
     ["Ctrl+S", "Toggle skills overlay"],
-    ["Ctrl+P", "Toggle plan mode"],
     ["Shift+Tab", "Toggle thinking"],
     ["Shift+Enter", "New line in input"],
   ];
@@ -256,24 +254,6 @@ function main(): void {
 
   // Handle subcommands before parseArgs
   const subcommand = process.argv[2];
-
-  // Passthrough to @kenkaiiii/ggcoder-eyes CLI. Agents call this from bash as
-  // `ggcoder eyes log rough "..."` etc. — `ggcoder` is guaranteed on PATH
-  // (user launched it), so this avoids depending on nested bin visibility in
-  // global npm/pnpm installs.
-  if (subcommand === "eyes") {
-    let cliPath: string;
-    try {
-      cliPath = _require.resolve("@kenkaiiii/ggcoder-eyes/cli");
-    } catch {
-      process.stderr.write("ggcoder-eyes package not installed\n");
-      process.exit(1);
-    }
-    const r = spawnSync(process.execPath, [cliPath, ...process.argv.slice(3)], {
-      stdio: "inherit",
-    });
-    process.exit(r.status ?? 0);
-  }
 
   if (subcommand === "pixel") {
     runPixel().catch((err) => {
@@ -628,14 +608,8 @@ async function runInkTUI(opts: {
     projectDir: cwd,
   });
 
-  // Plan mode refs — shared between tools and UI
-  const planModeRef = { current: false };
-  const onEnterPlanRef: { current: (reason?: string) => void } = {
-    current: () => {},
-  };
-  const onExitPlanRef: { current: (planPath: string) => Promise<string> } = {
-    current: () => Promise.resolve("cancelled"),
-  };
+  // Runtime mode refs — shared between tools and UI
+  const goalModeRef = { current: "off" as GoalMode };
   const repoMapChangedFilesRef: { current: Set<string> } = { current: new Set() };
   const repoMapReadFilesRef: { current: Set<string> } = { current: new Set() };
   const toRepoMapPath = (root: string, filePath: string): string =>
@@ -654,9 +628,7 @@ async function runInkTUI(opts: {
     skills,
     provider,
     model,
-    planModeRef,
-    onEnterPlan: (reason) => onEnterPlanRef.current(reason),
-    onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+    goalModeRef,
     onFileRead: (filePath) => markRepoMapRead(cwd, filePath),
     onFileMutated: (filePath) => markRepoMapDirty(cwd, filePath),
   });
@@ -670,9 +642,7 @@ async function runInkTUI(opts: {
       skills,
       provider,
       model,
-      planModeRef,
-      onEnterPlan: (reason) => onEnterPlanRef.current(reason),
-      onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+      goalModeRef,
       onFileRead: (filePath) => markRepoMapRead(newCwd, filePath),
       onFileMutated: (filePath) => markRepoMapDirty(newCwd, filePath),
     });
@@ -700,6 +670,8 @@ async function runInkTUI(opts: {
     false,
     undefined,
     tools.map((tool) => tool.name),
+    undefined,
+    goalModeRef.current,
   );
 
   // Kill all background processes on exit (synchronous — catches all exit paths)
@@ -795,21 +767,6 @@ async function runInkTUI(opts: {
     log("INFO", "session", `New session created`, { path: sessionPath });
   }
 
-  // Eyes startup banner — surface open journal signals from past sessions so the
-  // user isn't relying on reading agent prose to know improvements are pending.
-  if (isEyesActive(cwd)) {
-    const openCount = journalCount({ status: "open" }, cwd);
-    if (openCount > 0) {
-      const s = openCount === 1 ? "" : "s";
-      if (!initialHistory) initialHistory = [];
-      initialHistory.push({
-        kind: "info",
-        text: `👁  Eyes: ${openCount} open improvement signal${s} from recent sessions. Run /eyes-improve to triage.`,
-        id: "eyes-banner",
-      });
-    }
-  }
-
   await renderApp({
     provider,
     model,
@@ -833,9 +790,7 @@ async function runInkTUI(opts: {
     settingsFile: paths.settingsFile,
     mcpManager,
     authStorage,
-    planModeRef,
-    onEnterPlanRef,
-    onExitPlanRef,
+    goalModeRef,
     skills,
     initialOverlay: opts.initialOverlay,
     rebuildToolsForCwd,
@@ -1753,8 +1708,8 @@ async function runPixel(): Promise<void> {
   }
 
   // No subcommand → launch the Ink TUI with the pixel overlay open. The fix
-  // flow runs through the same agent loop as a Task, streaming live in the
-  // chat instead of spawning a subprocess.
+  // flow runs through the same agent loop, streaming live in the chat instead
+  // of spawning a subprocess.
   // Non-TTY (CI, piped) → fall back to text list.
   if (!process.stdin.isTTY) {
     const { listAllErrors } = await import("./core/pixel.js");

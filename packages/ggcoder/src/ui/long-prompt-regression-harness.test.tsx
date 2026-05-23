@@ -119,7 +119,7 @@ describe("long prompt regression harness", () => {
     );
 
     // Model immediate post-submit terminal churn before any assistant output: a resize/remount
-    // during a short paragraph-break live prompt must not replay Static or collapse blank lines.
+    // during a short paragraph-break live prompt must not replay Static or duplicate the prompt.
     rerender(
       <LongPromptHarness
         history={history}
@@ -138,7 +138,7 @@ describe("long prompt regression harness", () => {
     expect(staticRenders).toEqual(["banner"]);
     expect(count(lastFullScreenFrame, "GG CODER BANNER")).toBe(1);
     expect(count(lastPromptFrame, "❯ This")).toBe(1);
-    expect(scrollback).toMatch(/❯ This\n\s*\n\s*Is\n\s*\n\s*A\n\s*\n\s*Test\.\.\./);
+    expect(scrollback).toContain("❯ This ⏎ Is ⏎ A ⏎ Test...");
     expect(frames.filter((frame) => count(frame, "GG CODER BANNER") > 1)).toEqual([]);
     unmount();
   });

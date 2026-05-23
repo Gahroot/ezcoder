@@ -13,15 +13,13 @@ import { createWebSearchTool } from "./web-search.js";
 import { createSourcePathTool } from "./source-path.js";
 import { createTaskOutputTool } from "./task-output.js";
 import { createTaskStopTool } from "./task-stop.js";
-import { createTasksTool } from "./tasks.js";
 import { createGoalsTool } from "./goals.js";
 import { createSkillTool } from "./skill.js";
-import { createEnterPlanTool } from "./enter-plan.js";
-import { createExitPlanTool } from "./exit-plan.js";
 import { localOperations, type ToolOperations } from "./operations.js";
 import type { ReadTracker } from "./read-tracker.js";
 import type { AgentDefinition } from "../core/agents.js";
 import type { Skill } from "../core/skills.js";
+import type { GoalMode } from "../core/runtime-mode.js";
 
 export interface CreateToolsOptions {
   agents?: AgentDefinition[];
@@ -30,12 +28,8 @@ export interface CreateToolsOptions {
   model?: string;
   /** Custom I/O operations for remote execution (SSH, Docker, etc.). Defaults to local filesystem. */
   operations?: ToolOperations;
-  /** Ref for checking plan mode state inside tool execute functions. */
-  planModeRef?: { current: boolean };
-  /** Callback when the LLM enters plan mode. */
-  onEnterPlan?: (reason?: string) => void;
-  /** Callback when the LLM exits plan mode. Returns approval result string. */
-  onExitPlan?: (planPath: string) => Promise<string>;
+  /** Ref for checking Goal orchestration mode inside tool execute functions. */
+  goalModeRef?: { current: GoalMode };
   /** Callback after read tool successfully reads a text file. */
   onFileRead?: (filePath: string) => void | Promise<void>;
   /** Callback after write/edit tools successfully mutate a file. */
@@ -60,13 +54,13 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
   const readFiles: ReadTracker = new Map();
   const processManager = new ProcessManager();
   const ops = opts?.operations ?? localOperations;
-  const planModeRef = opts?.planModeRef;
+  const goalModeRef = opts?.goalModeRef;
 
   const tools: AgentTool[] = [
     createReadTool(cwd, readFiles, ops, opts?.onFileRead),
-    createWriteTool(cwd, readFiles, ops, planModeRef, opts?.onFileMutated),
-    createEditTool(cwd, readFiles, ops, planModeRef, opts?.onFileMutated),
-    createBashTool(cwd, processManager, ops, planModeRef),
+    createWriteTool(cwd, readFiles, ops, goalModeRef, opts?.onFileMutated),
+    createEditTool(cwd, readFiles, ops, goalModeRef, opts?.onFileMutated),
+    createBashTool(cwd, processManager, ops, goalModeRef),
     createFindTool(cwd),
     createGrepTool(cwd, ops),
     createLsTool(cwd, ops),
@@ -74,8 +68,7 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
     createWebFetchTool(),
     createTaskOutputTool(processManager),
     createTaskStopTool(processManager),
-    createTasksTool(cwd),
-    createGoalsTool(cwd),
+    createGoalsTool(cwd, goalModeRef),
   ];
 
   // Add web search tool for providers without reliable native web search
@@ -90,7 +83,7 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
         opts.agents,
         opts.provider,
         opts.model,
-        planModeRef,
+        goalModeRef,
         opts.getCacheKey,
       ),
     );
@@ -98,14 +91,6 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
 
   if (opts?.skills && opts.skills.length > 0) {
     tools.push(createSkillTool(opts.skills));
-  }
-
-  if (opts?.onEnterPlan) {
-    tools.push(createEnterPlanTool(opts.onEnterPlan));
-  }
-
-  if (opts?.onExitPlan) {
-    tools.push(createExitPlanTool(cwd, opts.onExitPlan));
   }
 
   return { tools, processManager };
@@ -123,10 +108,7 @@ export { createWebSearchTool } from "./web-search.js";
 export { createSourcePathTool } from "./source-path.js";
 export { createTaskOutputTool } from "./task-output.js";
 export { createTaskStopTool } from "./task-stop.js";
-export { createTasksTool } from "./tasks.js";
 export { createGoalsTool } from "./goals.js";
 export { createSkillTool } from "./skill.js";
-export { createEnterPlanTool } from "./enter-plan.js";
-export { createExitPlanTool } from "./exit-plan.js";
 export { ProcessManager } from "../core/process-manager.js";
 export { localOperations, type ToolOperations } from "./operations.js";

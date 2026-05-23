@@ -256,6 +256,37 @@ describe("goal event formatting", () => {
     });
   });
 
+  it("does not leak secret-looking values into synthetic payloads", () => {
+    const secret = "sk-test-1234567890abcdef";
+    const event = formatGoalWorkerCompletionEvent(
+      goalRun({
+        prerequisites: [
+          {
+            id: "api-token",
+            label: "API token",
+            status: "missing",
+            instructions: "Provide API_TOKEN locally; do not paste secret values.",
+          },
+        ],
+        evidence: [
+          {
+            id: "safe-evidence",
+            kind: "summary",
+            label: "Token check",
+            content: `token ${secret} must not appear in synthetic state`,
+            createdAt: "2024-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+      "Check leakage",
+      workerCompletion({ summary: "Recorded non-secret evidence only." }),
+    );
+
+    expect(event).not.toContain(secret);
+    expect(JSON.stringify(parseGoalSyntheticEvent(event)?.goalState)).not.toContain(secret);
+    expect(event).toContain("Provide API_TOKEN locally; do not paste secret values.");
+  });
+
   it("round-trips structured payloads containing quotes and newlines", () => {
     const run = goalRun({
       title: 'Fix "quoted" output',
@@ -378,6 +409,22 @@ describe("goal event formatting", () => {
       status: "done",
       exitCode: 0,
     });
+  });
+
+  it("unescapes quoted fallback headers when structured payloads are missing or corrupt", () => {
+    const parsed = parseGoalSyntheticEvent(
+      `${GOAL_WORKER_EVENT_PREFIX} run_id="run-quoted" goal="Goal with \\ slashes" task_id="task-1" task="Task A" worker="worker-1" status=done exit_code=0\n${GOAL_EVENT_PAYLOAD_PREFIX}{not-json}`,
+    );
+
+    expect(parsed).toMatchObject({
+      kind: "worker",
+      runId: "run-quoted",
+      goal: "Goal with \\ slashes",
+      task: "Task A",
+      status: "done",
+      exitCode: 0,
+    });
+    expect(parsed?.payload).toBeUndefined();
   });
 
   it("continues non-terminal goals that have no active worker or running task", () => {

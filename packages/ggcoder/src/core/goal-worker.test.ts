@@ -95,6 +95,42 @@ afterEach(async () => {
 });
 
 describe("goal worker failure propagation", () => {
+  it("times out hanging workers, kills the process tree, and records timeout evidence", async () => {
+    vi.useFakeTimers();
+    const onComplete = vi.fn();
+    const mod = await import("./goal-worker.js");
+    const record = await mod.startGoalWorker({
+      cwd: tmpProject,
+      provider: "anthropic",
+      model: "claude-test",
+      goalRunId: "goal-a",
+      goalTaskId: "task-a",
+      prompt: "Hang forever",
+      timeoutMs: 10,
+      onComplete,
+    });
+
+    await vi.advanceTimersByTimeAsync(11);
+    child.emit("close", null);
+    await vi.runOnlyPendingTimersAsync();
+    vi.useRealTimers();
+    await flushUntil(() => expect(onComplete).toHaveBeenCalled());
+
+    const run = await getGoalRun(tmpProject, "goal-a");
+    expect(killProcessTreeMock).toHaveBeenCalledWith(4242);
+    expect(record.status).toBe("failed");
+    expect(run?.activeWorkerId).toBeUndefined();
+    expect(run?.tasks[0]).toMatchObject({
+      status: "failed",
+      workerId: record.id,
+      lastSummary: expect.stringContaining("timed out after 10ms"),
+    });
+    expect(run?.evidence.some((item) => item.label === `Worker ${record.id} timeout`)).toBe(true);
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", exitCode: 124, reason: "timeout" }),
+    );
+  });
+
   it("prompts workers with explicit durable Goal context before claiming verification", async () => {
     await start();
     const args = spawnMock.mock.calls[0]?.[1] as string[];
@@ -127,6 +163,22 @@ describe("goal worker failure propagation", () => {
     expect(prompt).toContain("task_id=task-456");
     expect(prompt).toContain("Implement typed handoff");
     expect(prompt).toContain("Do not mark the whole goal complete");
+  });
+
+  it("does not mark empty successful process exit as durable task completion", async () => {
+    const { record, onComplete } = await start();
+
+    child.emit("close", 0);
+    await flushUntil(() => expect(onComplete).toHaveBeenCalled());
+
+    const run = await getGoalRun(tmpProject, "goal-a");
+    expect(record.status).toBe("failed");
+    expect(run?.tasks[0]).toMatchObject({
+      status: "failed",
+      workerId: record.id,
+      lastSummary: expect.stringContaining("without durable proof evidence"),
+    });
+    expect(run?.evidence.some((item) => item.label === `Worker ${record.id} failed`)).toBe(true);
   });
 
   it("marks the task done, persists evidence, and notifies callbacks/subscribers for worker success", async () => {

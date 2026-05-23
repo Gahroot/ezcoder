@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import type { GoalControllerDecision } from "./goal-controller.js";
@@ -29,6 +29,14 @@ export interface GoalVerificationResult {
   exitCode?: number;
   outputPath?: string;
   checkedAt: string;
+}
+
+export interface GoalCompletionAudit {
+  status: GoalVerificationStatus;
+  summary: string;
+  checkedAt: string;
+  verifierCheckedAt?: string;
+  outputPath?: string;
 }
 
 export interface GoalPrerequisite {
@@ -115,6 +123,7 @@ export interface GoalRun {
   tasks: GoalTask[];
   evidence: GoalEvidence[];
   verifier?: GoalVerifier;
+  completionAudit?: GoalCompletionAudit;
   blockers: string[];
   activeWorkerId?: string;
   continueRequestedAt?: string;
@@ -153,6 +162,7 @@ export interface GoalRunInput {
   tasks?: GoalTask[];
   evidence?: GoalEvidence[];
   verifier?: GoalVerifier;
+  completionAudit?: GoalCompletionAudit;
   blockers?: string[];
   activeWorkerId?: string;
   continueRequestedAt?: string;
@@ -415,6 +425,19 @@ function normalizeVerifier(value: unknown): GoalVerifier | undefined {
   };
 }
 
+function normalizeCompletionAudit(value: unknown): GoalCompletionAudit | undefined {
+  if (!isObject(value)) return undefined;
+  return {
+    status: isVerificationStatus(value.status) ? value.status : "unknown",
+    summary: typeof value.summary === "string" ? value.summary : "",
+    checkedAt: typeof value.checkedAt === "string" ? value.checkedAt : nowIso(),
+    ...(optionalString(value.verifierCheckedAt)
+      ? { verifierCheckedAt: optionalString(value.verifierCheckedAt) }
+      : {}),
+    ...(optionalString(value.outputPath) ? { outputPath: optionalString(value.outputPath) } : {}),
+  };
+}
+
 function normalizeRun(value: unknown, fallbackProjectPath: string): GoalRun | null {
   if (!isObject(value)) return null;
   const title = typeof value.title === "string" ? value.title : "Untitled goal";
@@ -458,7 +481,10 @@ function normalizeRun(value: unknown, fallbackProjectPath: string): GoalRun | nu
       ? value.evidence.map(normalizeEvidence).filter((item): item is GoalEvidence => !!item)
       : [],
     ...(normalizeVerifier(value.verifier) ? { verifier: normalizeVerifier(value.verifier) } : {}),
-    blockers: stringArray(value.blockers),
+    ...(normalizeCompletionAudit(value.completionAudit)
+      ? { completionAudit: normalizeCompletionAudit(value.completionAudit) }
+      : {}),
+    blockers: dedupeGoalBlockers(stringArray(value.blockers)),
     ...(optionalString(value.activeWorkerId)
       ? { activeWorkerId: optionalString(value.activeWorkerId) }
       : {}),
@@ -481,12 +507,24 @@ function isActiveGoalRun(run: GoalRun): boolean {
   );
 }
 
-function wouldEraseActiveGoalRuns(
+function omittedActiveGoalRuns(
   previousRuns: readonly GoalRun[],
   nextRuns: readonly GoalRun[],
-): boolean {
-  if (nextRuns.length > 0) return false;
-  return previousRuns.some(isActiveGoalRun);
+): GoalRun[] {
+  const nextIds = new Set(nextRuns.map((run) => run.id));
+  return previousRuns.filter((run) => isActiveGoalRun(run) && !nextIds.has(run.id));
+}
+
+export function dedupeGoalBlockers(blockers: readonly string[]): string[] {
+  return Array.from(new Set(blockers.map((item) => item.trim()).filter(Boolean)));
+}
+
+export function appendGoalBlockers(
+  blockers: readonly string[],
+  nextBlockers: string | readonly string[] | undefined,
+): string[] {
+  const additions = typeof nextBlockers === "string" ? [nextBlockers] : (nextBlockers ?? []);
+  return dedupeGoalBlockers([...blockers, ...additions]);
 }
 
 function deriveRunnableStatus(
@@ -516,38 +554,69 @@ function enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
 async function writeGoalRunsFile(cwd: string, runs: readonly GoalRun[]): Promise<void> {
   const normalizedCwd = normalizeProjectPath(cwd);
   const dir = projectDir(normalizedCwd);
-  await mkdir(dir, { recursive: true });
-  const goalsPath = join(dir, "goals.json");
-  const existingRuns = await readGoalRunsFile(normalizedCwd);
-  if (wouldEraseActiveGoalRuns(existingRuns, runs)) {
-    const timestamp = nowIso();
-    const repairedRuns = existingRuns.map((run) => ({
-      ...run,
-      evidence: [
-        ...run.evidence,
-        createGoalEvidence({
-          kind: "summary",
-          label: "Goal store write rejected",
-          content:
-            "Rejected an attempted empty Goal overwrite while active work was present; preserving existing durable state.",
-          createdAt: timestamp,
-        }),
-      ],
-      updatedAt: timestamp,
-    }));
-    await atomicWriteJson(goalsPath, sortNewestFirst(repairedRuns));
-    await Promise.all(
-      repairedRuns.map((run) => writeGoalProgressJournalFromRun(normalizedCwd, run)),
-    );
-    return;
-  }
-  const sorted = sortNewestFirst([...runs]);
-  await atomicWriteJson(goalsPath, sorted);
-  await atomicWriteJson(join(dir, "meta.json"), {
-    path: normalizedCwd,
-    name: basename(normalizedCwd),
+  await withGoalStoreLock(dir, async () => {
+    await mkdir(dir, { recursive: true });
+    const goalsPath = join(dir, "goals.json");
+    const existingRuns = await readGoalRunsFile(normalizedCwd);
+    const omittedActive = omittedActiveGoalRuns(existingRuns, runs);
+    if (omittedActive.length > 0) {
+      const timestamp = nowIso();
+      const rejectedIds = new Set(omittedActive.map((run) => run.id));
+      const repairedRuns = existingRuns.map((run) =>
+        rejectedIds.has(run.id)
+          ? {
+              ...run,
+              evidence: [
+                ...run.evidence,
+                createGoalEvidence({
+                  kind: "summary",
+                  label: "Goal store write rejected",
+                  content:
+                    "Rejected an attempted Goal overwrite that omitted active work; preserving existing durable state.",
+                  createdAt: timestamp,
+                }),
+              ],
+              updatedAt: timestamp,
+            }
+          : run,
+      );
+      await atomicWriteJson(goalsPath, sortNewestFirst(repairedRuns));
+      await Promise.all(
+        repairedRuns.map((run) => writeGoalProgressJournalFromRun(normalizedCwd, run)),
+      );
+      return;
+    }
+    const sorted = sortNewestFirst([...runs]);
+    await atomicWriteJson(goalsPath, sorted);
+    await atomicWriteJson(join(dir, "meta.json"), {
+      path: normalizedCwd,
+      name: basename(normalizedCwd),
+    });
+    await Promise.all(sorted.map((run) => writeGoalProgressJournalFromRun(normalizedCwd, run)));
   });
-  await Promise.all(sorted.map((run) => writeGoalProgressJournalFromRun(normalizedCwd, run)));
+}
+
+async function withGoalStoreLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+  await mkdir(dir, { recursive: true });
+  const lockPath = join(dir, "goals.lock");
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(lockPath, "wx");
+      await handle.writeFile(`${process.pid}\n${new Date().toISOString()}\n`, "utf-8");
+      await handle.close();
+      try {
+        return await fn();
+      } finally {
+        await rm(lockPath, { force: true });
+      }
+    } catch (err) {
+      await handle?.close().catch(() => undefined);
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() > deadline) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
 }
 
 async function atomicWriteJson(path: string, value: unknown): Promise<void> {
@@ -660,7 +729,8 @@ export function createGoalRun(cwd: string, input: GoalRunInput): GoalRun {
     tasks: input.tasks ?? [],
     evidence: input.evidence ?? [],
     ...(input.verifier ? { verifier: input.verifier } : {}),
-    blockers: input.blockers ?? [],
+    ...(input.completionAudit ? { completionAudit: input.completionAudit } : {}),
+    blockers: dedupeGoalBlockers(input.blockers ?? []),
     ...(input.activeWorkerId ? { activeWorkerId: input.activeWorkerId } : {}),
     ...(input.continueRequestedAt ? { continueRequestedAt: input.continueRequestedAt } : {}),
   };
@@ -760,7 +830,7 @@ export async function reconcileActiveGoalRuns(
       return {
         ...next,
         evidence: [...next.evidence, ...evidence],
-        blockers: [...blockers],
+        blockers: dedupeGoalBlockers([...blockers]),
         updatedAt: timestamp,
       };
     });
@@ -789,7 +859,9 @@ export async function upsertGoalRun(cwd: string, input: GoalRun | GoalRunInput):
           evidencePlan: input.evidencePlan ?? existing.evidencePlan,
           tasks: mergeGoalTasks(existing.tasks, input.tasks),
           evidence: mergeGoalEvidence(existing.evidence, input.evidence),
-          blockers: input.blockers ?? existing.blockers,
+          blockers: input.blockers
+            ? dedupeGoalBlockers(input.blockers)
+            : dedupeGoalBlockers(existing.blockers),
           status: deriveRunnableStatus(
             input.status ?? existing.status,
             input.prerequisites ?? existing.prerequisites,
@@ -1020,6 +1092,11 @@ async function writeGoalProgressJournalFromRun(cwd: string, run: GoalRun): Promi
     run.verifier?.lastResult
       ? `- ${run.verifier.lastResult.status}: ${run.verifier.lastResult.summary}${run.verifier.lastResult.outputPath ? ` (${run.verifier.lastResult.outputPath})` : ""}`
       : `- ${run.verifier?.command ?? "none"}`,
+    "",
+    "## Final completion audit",
+    run.completionAudit
+      ? `- ${run.completionAudit.status}: ${run.completionAudit.summary}${run.completionAudit.outputPath ? ` (${run.completionAudit.outputPath})` : ""}`
+      : "- none",
     "",
     "## Blockers",
     ...(run.blockers.length ? run.blockers.map((item) => `- ${item}`) : ["- none"]),

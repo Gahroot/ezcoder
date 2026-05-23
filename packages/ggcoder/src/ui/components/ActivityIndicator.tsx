@@ -4,7 +4,7 @@ import { useTheme } from "../theme/theme.js";
 import type { ActivityPhase, RetryInfo } from "../hooks/useAgentLoop.js";
 
 import { SPINNER_FRAMES, SPINNER_INTERVAL, REDUCED_MOTION_DOT } from "../spinner-frames.js";
-import { PLANNING_PHRASES, selectPhrases, shuffleArray } from "../activity-phrases.js";
+import { selectPhrases, shuffleArray } from "../activity-phrases.js";
 import {
   useFocusedAnimation,
   deriveFrame,
@@ -24,15 +24,6 @@ const PULSE_COLORS = [
   "#60a5fa", // blue (back)
 ];
 
-const PLAN_PULSE_COLORS = [
-  "#f59e0b", // amber
-  "#fbbf24", // amber light
-  "#f59e0b", // amber
-  "#d97706", // amber dark
-  "#f59e0b", // amber
-  "#fbbf24", // amber light
-  "#d97706", // amber dark
-];
 const PULSE_INTERVAL = 400;
 
 // ── Low-churn liveness ────────────────────────────────────
@@ -258,7 +249,6 @@ interface ActivityIndicatorProps {
   realTokensAccumRef?: React.RefObject<number>;
   userMessage?: string;
   activeToolNames?: string[];
-  planMode?: boolean;
   retryInfo?: RetryInfo | null;
   planDone?: number;
   planTotal?: number;
@@ -300,7 +290,6 @@ export function ActivityIndicator({
   realTokensAccumRef: realTokensAccumRefProp,
   userMessage = "",
   activeToolNames = [],
-  planMode,
   retryInfo,
   planDone = 0,
   planTotal = 0,
@@ -372,11 +361,7 @@ export function ActivityIndicator({
     ? deriveFrame(tick, SPINNER_INTERVAL, SPINNER_FRAMES.length)
     : 0;
   const pulseColors =
-    planMode || !pulseColorsOverride || pulseColorsOverride.length === 0
-      ? planMode
-        ? PLAN_PULSE_COLORS
-        : PULSE_COLORS
-      : pulseColorsOverride;
+    !pulseColorsOverride || pulseColorsOverride.length === 0 ? PULSE_COLORS : pulseColorsOverride;
   const colorFrame = fullAnimationActive
     ? deriveFrame(tick, PULSE_INTERVAL, pulseColors.length)
     : lowChurnActive
@@ -399,11 +384,9 @@ export function ActivityIndicator({
       shuffleArray(
         overridePhrases && overridePhrases.length > 0
           ? overridePhrases
-          : planMode && phase === "waiting"
-            ? PLANNING_PHRASES
-            : selectPhrases(phase, userMessage, activeToolNames, thinkingEnabled),
+          : selectPhrases(phase, userMessage, activeToolNames, thinkingEnabled),
       ),
-    [phase, userMessage, toolNamesKey, planMode, overridePhrases, thinkingEnabled], // activeToolNames captured via stable string key
+    [phase, userMessage, toolNamesKey, overridePhrases, thinkingEnabled], // activeToolNames captured via stable string key
   );
   const phraseInterval = lowChurnActive
     ? LOW_CHURN_PHRASE_INTERVAL

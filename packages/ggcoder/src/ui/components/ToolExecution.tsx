@@ -480,13 +480,6 @@ function getToolHeaderParts(
       return { label: displayName, detail: String(args.id ?? "") };
     case "task_stop":
       return { label: displayName, detail: String(args.id ?? "") };
-    case "enter_plan": {
-      const reason = String(args.reason ?? "");
-      const trunc = reason.length > 50 ? reason.slice(0, 47) + "…" : reason;
-      return { label: displayName, detail: trunc };
-    }
-    case "exit_plan":
-      return { label: displayName, detail: shortenPath(String(args.plan_path ?? "")) };
     case "web_search": {
       const query = String(args.query ?? "");
       const trunc = query.length > 60 ? query.slice(0, 57) + "…" : query;
@@ -556,10 +549,6 @@ function toolDisplayName(name: string): string {
       return "Task Output";
     case "task_stop":
       return "Task Stop";
-    case "enter_plan":
-      return "Enter Plan";
-    case "exit_plan":
-      return "Exit Plan";
     case "source_path":
       return "Source";
     case "tasks":
@@ -677,10 +666,6 @@ function getInlineSummary(name: string, result: string, isError: boolean): strin
     }
     case "task_stop":
       return result.split("\n")[0] || "stopped";
-    case "enter_plan":
-      return "activated";
-    case "exit_plan":
-      return result.split("\n")[0] || "submitted";
     case "tasks": {
       // Extract just the task text from results like 'Task added: "Fix bug" (id: abc…)'
       const quoted = result.match(/"([^"]+)"/);
@@ -935,8 +920,6 @@ function buildResultBody(
       };
     }
     case "task_stop":
-    case "enter_plan":
-    case "exit_plan":
       return null; // compact display with inline summary
     case "tasks": {
       const lines = result.split("\n").filter((l) => l.length > 0);

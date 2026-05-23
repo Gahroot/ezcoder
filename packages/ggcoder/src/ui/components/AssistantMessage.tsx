@@ -11,7 +11,6 @@ interface AssistantMessageProps {
   thinking?: string;
   thinkingMs?: number;
   showThinking?: boolean;
-  planMode?: boolean;
 }
 
 // BLACK_CIRCLE + " " = 2 chars
@@ -22,7 +21,6 @@ export const AssistantMessage = React.memo(function AssistantMessage({
   thinking,
   thinkingMs,
   showThinking = false,
-  planMode,
 }: AssistantMessageProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
@@ -42,7 +40,7 @@ export const AssistantMessage = React.memo(function AssistantMessage({
       {trimmedText && (
         <Box flexDirection="row">
           <Box width={PREFIX_WIDTH} flexShrink={0}>
-            <Text color={planMode ? theme.planPrimary : theme.primary}>{BLACK_CIRCLE + " "}</Text>
+            <Text color={theme.primary}>{BLACK_CIRCLE + " "}</Text>
           </Box>
           <Box flexDirection="column" flexGrow={1} width={contentWidth}>
             <Markdown>{trimmedText}</Markdown>

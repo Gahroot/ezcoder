@@ -1,0 +1,238 @@
+import { describe, expect, it } from "vitest";
+import {
+  createTerminalHistoryPrinter,
+  serializeCompletedItemToTerminalHistory,
+} from "./terminal-history.js";
+import type { CompletedItem } from "./App.js";
+import { loadTheme } from "./theme/theme.js";
+
+const context = {
+  theme: loadTheme("dark"),
+  columns: 80,
+  version: "0.0.0-test",
+  model: "test-model",
+  provider: "openai" as const,
+  cwd: "/tmp/project",
+};
+
+function stripAnsi(value: string): string {
+  const escape = String.fromCharCode(27);
+  return value.replace(new RegExp(`${escape}\\[[0-9;]*m`, "g"), "");
+}
+
+describe("terminal history", () => {
+  it("serializes assistant rows with the existing dot prefix", () => {
+    const item: CompletedItem = {
+      kind: "assistant",
+      text: "Hello **world**",
+      id: "assistant-1",
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toContain("Hello");
+    expect(rendered).toContain("world");
+    expect(rendered).toMatch(/^[⏺●] Hello/);
+  });
+
+  it("serializes user rows as the prompt chip without adding a You label", () => {
+    const item: CompletedItem = {
+      kind: "user",
+      text: "ship it",
+      id: "user-1",
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toContain("❯ ship it");
+    expect(rendered).not.toContain("You");
+  });
+
+  it("collapses typed multiline prompts inside one user row", () => {
+    const item: CompletedItem = {
+      kind: "user",
+      text: "first line\nsecond line\nthird line",
+      id: "user-1",
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toBe("❯ first line ⏎ second line ⏎ third line");
+    expect(rendered.match(/❯/g)).toHaveLength(1);
+  });
+
+  it("collapses pasted multiline prompts to the same single badge as live user rows", () => {
+    const item: CompletedItem = {
+      kind: "user",
+      text: "please read:\nline one\nline two\nthen summarize",
+      pasteInfo: {
+        offset: "please read:\n".length,
+        length: "line one\nline two".length,
+        lineCount: 2,
+      },
+      id: "user-1",
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toContain("❯ please read:");
+    expect(rendered).toContain("[Pasted text #17 +2 lines]");
+    expect(rendered).toContain("then summarize");
+    expect(rendered).not.toContain("line one");
+    expect(rendered).not.toContain("line two");
+    expect(rendered).not.toContain("\nline");
+    expect(rendered.match(/❯/g)).toHaveLength(1);
+  });
+
+  it("serializes tool rows with status dots and the response gutter", () => {
+    const item: CompletedItem = {
+      kind: "tool_done",
+      id: "tool-1",
+      name: "bash",
+      args: { command: "printf hi" },
+      result: "Exit code: 0\nhi",
+      isError: false,
+      durationMs: 1234,
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toMatch(/^[⏺●] Bash\(printf hi\)/);
+    expect(rendered).toContain("  ⎿  hi");
+  });
+
+  it("serializes compact tool rows like the live compact summaries", () => {
+    const item: CompletedItem = {
+      kind: "tool_done",
+      id: "tool-compact-1",
+      name: "grep",
+      args: { pattern: "needle" },
+      result: "src/a.ts:1:needle\nsrc/b.ts:2:needle\n2 matches found",
+      isError: false,
+      durationMs: 1234,
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toMatch(/^[⏺●] Searched for 1 pattern \(2 matches\)$/);
+    expect(rendered).not.toContain("src/a.ts");
+  });
+
+  it("serializes server search rows with quoted detail and response summary", () => {
+    const item: CompletedItem = {
+      kind: "server_tool_done",
+      id: "server-tool-1",
+      name: "web_search",
+      input: { query: "latest docs" },
+      resultType: "search_result",
+      data: {},
+      durationMs: 2400,
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toMatch(/^[⏺●] Web Search\("latest docs"\)/);
+    expect(rendered).toContain("  ⎿  Did 1 search in 2s");
+  });
+
+  it("serializes subagent groups as the live tree panel shape", () => {
+    const item: CompletedItem = {
+      kind: "subagent_group",
+      id: "subagent-1",
+      agents: [
+        {
+          toolCallId: "agent-1",
+          agentName: "bee",
+          task: "Inspect widgets",
+          status: "done",
+          toolUseCount: 2,
+          tokenUsage: { input: 1200, output: 300 },
+          durationMs: 1800,
+        },
+      ],
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toMatch(/^[⏺●] 1 agent completed/);
+    expect(rendered).toContain("└─ ✓ Inspect widgets");
+    expect(rendered).toContain("   ⎿ 1.5k tokens · 2s");
+  });
+
+  it("prints each finalized item id once across remount-style replays", () => {
+    let output = "";
+    const stream = {
+      write(chunk: string) {
+        output += chunk;
+        return true;
+      },
+    } as NodeJS.WriteStream;
+    const printer = createTerminalHistoryPrinter({ stream });
+    const items: CompletedItem[] = [
+      { kind: "banner", id: "banner" },
+      { kind: "user", text: "hello", id: "user-1" },
+    ];
+
+    printer.print(items, context);
+    printer.print(items, context);
+
+    expect(output.match(/GG Coder/g)).toHaveLength(1);
+    expect(output.match(/hello/g)).toHaveLength(1);
+  });
+
+  it("leaves one message-sized blank line after the banner", () => {
+    let output = "";
+    const stream = {
+      write(chunk: string) {
+        output += chunk;
+        return true;
+      },
+    } as NodeJS.WriteStream;
+    const printer = createTerminalHistoryPrinter({ stream });
+
+    printer.print(
+      [
+        { kind: "banner", id: "banner" },
+        { kind: "user", text: "hello", id: "user-1" },
+      ],
+      context,
+    );
+
+    const rendered = stripAnsi(output);
+    expect(rendered).toMatch(/toggle thinking\n\n❯ hello/);
+    expect(rendered).not.toMatch(/toggle thinking\n\n\n❯ hello/);
+  });
+
+  it("prints one leading separator and no trailing blank after finalized rows", () => {
+    let output = "";
+    const stream = {
+      write(chunk: string) {
+        output += chunk;
+        return true;
+      },
+    } as NodeJS.WriteStream;
+    const printer = createTerminalHistoryPrinter({ stream });
+
+    printer.print([{ kind: "assistant", text: "last answer", id: "assistant-1" }], context);
+
+    expect(stripAnsi(output)).toMatch(/^\n[⏺●] last answer\n$/);
+  });
+
+  it("can intentionally clear printed ids for a fresh session", () => {
+    let output = "";
+    const stream = {
+      write(chunk: string) {
+        output += chunk;
+        return true;
+      },
+    } as NodeJS.WriteStream;
+    const printer = createTerminalHistoryPrinter({ stream });
+    const item: CompletedItem = { kind: "user", text: "again", id: "user-1" };
+
+    printer.print([item], context);
+    printer.clear();
+    printer.print([item], context);
+
+    expect(output.match(/again/g)).toHaveLength(2);
+  });
+});

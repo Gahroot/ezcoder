@@ -405,7 +405,7 @@ describe("goal store persistence", () => {
     expect(result.runs.find((item) => item.id === run.id)?.status).toBe("running");
   });
 
-  it("rejects empty saves that would erase active Goal work", async () => {
+  it("rejects saves that omit any active Goal work", async () => {
     await upsertGoalRun(tmpProject, {
       id: "active-run",
       title: "Active",
@@ -423,7 +423,24 @@ describe("goal store persistence", () => {
       ],
     });
 
-    await saveGoalRuns(tmpProject, []);
+    await saveGoalRuns(tmpProject, [
+      {
+        id: "other-run",
+        title: "Other",
+        goal: "Other durable state",
+        status: "ready",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        projectPath: tmpProject,
+        successCriteria: [],
+        prerequisites: [],
+        harness: [],
+        evidencePlan: [],
+        tasks: [],
+        evidence: [],
+        blockers: [],
+      },
+    ]);
     const runs = await loadGoalRuns(tmpProject);
 
     expect(runs).toHaveLength(1);
