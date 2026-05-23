@@ -176,7 +176,7 @@ describe("terminal history", () => {
     printer.print(items, context);
     printer.print(items, context);
 
-    expect(output.match(/GG Coder/g)).toHaveLength(1);
+    expect(output.match(/EZ Coder/g)).toHaveLength(1);
     expect(output.match(/hello/g)).toHaveLength(1);
   });
 

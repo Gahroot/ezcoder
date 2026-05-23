@@ -4,7 +4,7 @@ Date: 2026-05-23
 
 ## Outcome
 
-The remediation pass is complete for the local/source-backed remediation scope and the requested local verifier chain passes. The durable verifier log is stored at `packages/ggcoder/.goal-evidence/goal-remediation-verifier.log`.
+The remediation pass is complete for the local/source-backed remediation scope and the requested local verifier chain passes. The durable verifier log is stored at `packages/cli/.goal-evidence/goal-remediation-verifier.log`.
 
 This report intentionally distinguishes **automated local proof** from **untested provider-backed interactive TUI behavior**. The automated proof covers source contracts, unit/integration tests, local E2E harness behavior, typecheck, lint, format check, and build. It does not prove a live paid/credentialed provider session in the terminal UI.
 
@@ -30,18 +30,18 @@ This report intentionally distinguishes **automated local proof** from **unteste
 ## Commands run
 
 ```sh
-pnpm --filter @kenkaiiii/ggcoder test -- src/core/goal-controller.test.ts src/tools/goals.test.ts src/core/goal-store.test.ts src/core/goal-prerequisites.test.ts src/core/goal-verifier.test.ts src/core/goal-worker.test.ts src/core/goal-worker-dev-server-lifecycle.test.ts src/tools/goal-mode.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts src/ui/goal-overlay.test.ts src/ui/goal-status-bar.test.ts src/system-prompt.test.ts src/core/prompt-commands.test.ts --reporter=dot
-pnpm --filter @kenkaiiii/ggcoder verify:goal:e2e
-pnpm dlx tsx packages/ggcoder/scripts/verify-goal-system-audit.ts
-pnpm --filter @kenkaiiii/ggcoder check
+pnpm --filter @prestyj/cli test -- src/core/goal-controller.test.ts src/tools/goals.test.ts src/core/goal-store.test.ts src/core/goal-prerequisites.test.ts src/core/goal-verifier.test.ts src/core/goal-worker.test.ts src/core/goal-worker-dev-server-lifecycle.test.ts src/tools/goal-mode.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts src/ui/goal-overlay.test.ts src/ui/goal-status-bar.test.ts src/system-prompt.test.ts src/core/prompt-commands.test.ts --reporter=dot
+pnpm --filter @prestyj/cli verify:goal:e2e
+pnpm dlx tsx packages/cli/scripts/verify-goal-system-audit.ts
+pnpm --filter @prestyj/cli check
 pnpm lint
 pnpm format:check
-pnpm --filter @kenkaiiii/ggcoder build
+pnpm --filter @prestyj/cli build
 ```
 
 ## Evidence
 
-- `packages/ggcoder/.goal-evidence/goal-remediation-verifier.log`: full requested verifier chain output, exit code 0.
+- `packages/cli/.goal-evidence/goal-remediation-verifier.log`: full requested verifier chain output, exit code 0.
 - Targeted test phase: 58 files / 704 tests passed.
 - E2E harness: `Goal lifecycle harness passed: prerequisites blocked, evidence planned/blocked, worker and verifier events parsed, verifier fail fixes, ready run verifies, final audit gates completion, complete run completes.`
 - System audit verifier: all source-contract checks passed.
@@ -56,10 +56,10 @@ The automated proof is strong for durable goal state, controller gates, evidence
 Run this only in an environment where provider access is already configured; do not paste secrets into logs or reports.
 
 1. From the package/project root, confirm local automated proof remains green:
-   - `pnpm --filter @kenkaiiii/ggcoder verify:goal:tests`
-   - `pnpm --filter @kenkaiiii/ggcoder verify:goal:e2e`
-   - `pnpm dlx tsx packages/ggcoder/scripts/verify-goal-system-audit.ts`
-2. Start `ggcoder` with an already-authenticated provider/model.
+   - `pnpm --filter @prestyj/cli verify:goal:tests`
+   - `pnpm --filter @prestyj/cli verify:goal:e2e`
+   - `pnpm dlx tsx packages/cli/scripts/verify-goal-system-audit.ts`
+2. Start `ezcoder` with an already-authenticated provider/model.
 3. Type a small reversible `/goal` objective in a disposable temp project.
 4. Open the Goal pane with `/goals` or `Ctrl+G`; press `r` to run/continue.
 5. Observe that a provider-backed worker is launched, durable worker logs/evidence are written under the configured Goal store, and the UI status/overlay updates without duplicate continuation.

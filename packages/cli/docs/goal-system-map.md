@@ -1,16 +1,16 @@
 # /goal system end-to-end map
 
-Audit date: 2026-05-23. Refreshed from source in `packages/ggcoder` on the current working tree. Existing user code changes were preserved; this task only updates this map artifact.
+Audit date: 2026-05-23. Refreshed from source in `packages/cli` on the current working tree. Existing user code changes were preserved; this task only updates this map artifact.
 
 Scope: slash-command invocation (`/goal`, `/g`), setup/coordinator prompts, `goals` tool actions, goal-store persistence, prerequisite checks, controller decisions, UI overlay/status/start/continue flow, worker lifecycle, synthetic events, verifier behavior, pause/resume/recovery, completion/final audit, and tests.
 
 ## A. Invocation and runtime modes
 
-- **Slash command registration.** `/goal` is registered as prompt command `goal` with alias `/g`, description `Create a programmatic goal loop`, and a short setup-only prompt (`packages/ggcoder/src/core/prompt-commands.ts:13-21`). The comments intentionally anchor that setup defines success criteria, evidence plan, verifier, and Goal metadata, then stops (`prompt-commands.ts:18-19`).
-- **Prompt command expansion.** `routePromptCommandInput` in App expands slash commands and appends arguments under `## User Instructions`; `/goal ...` therefore becomes the short Goal setup prompt plus the user objective (`packages/ggcoder/src/ui/App.tsx:229-248`).
+- **Slash command registration.** `/goal` is registered as prompt command `goal` with alias `/g`, description `Create a programmatic goal loop`, and a short setup-only prompt (`packages/cli/src/core/prompt-commands.ts:13-21`). The comments intentionally anchor that setup defines success criteria, evidence plan, verifier, and Goal metadata, then stops (`prompt-commands.ts:18-19`).
+- **Prompt command expansion.** `routePromptCommandInput` in App expands slash commands and appends arguments under `## User Instructions`; `/goal ...` therefore becomes the short Goal setup prompt plus the user objective (`packages/cli/src/ui/App.tsx:229-248`).
 - **App mode switch for `/goal`.** When the submitted command is `goal`, App disables plan mode if needed, sets `goalMode` to `setup`, rebuilds the system prompt, runs the expanded prompt, and restores `goalMode` to `off` afterward (`App.tsx:3137-3210`).
-- **Goal mode plumbing.** `GoalMode` flows from CLI/App into tool construction and `buildSystemPrompt` (`packages/ggcoder/src/cli.ts:634-708`, `App.tsx:1139-1158`, `App.tsx:1495-1554`, `packages/ggcoder/src/system-prompt.ts:183-220`).
-- **Goal pane entry.** `/goals` opens the Goal pane directly (`App.tsx:3101-3102`), and the CLI help lists `/goal`, `/goals`, and `Ctrl+G` for Goal workflows (`packages/ggcoder/src/cli.ts:215-232`).
+- **Goal mode plumbing.** `GoalMode` flows from CLI/App into tool construction and `buildSystemPrompt` (`packages/cli/src/cli.ts:634-708`, `App.tsx:1139-1158`, `App.tsx:1495-1554`, `packages/cli/src/system-prompt.ts:183-220`).
+- **Goal pane entry.** `/goals` opens the Goal pane directly (`App.tsx:3101-3102`), and the CLI help lists `/goal`, `/goals`, and `Ctrl+G` for Goal workflows (`packages/cli/src/cli.ts:215-232`).
 
 ## B. Setup and coordinator system prompts
 
@@ -24,7 +24,7 @@ Scope: slash-command invocation (`/goal`, `/g`), setup/coordinator prompts, `goa
 
 ## C. Goals tool A-Z
 
-- **Tool contract.** `createGoalsTool` exposes durable Goal management for `/goal` and `Ctrl+G`; its description requires success criteria first, prerequisite checks before workers, persisted harness/evidence, standalone worker tasks, final completion audits, and no completion until verifier plus final-audit evidence proves the objective (`packages/ggcoder/src/tools/goals.ts:297-303`).
+- **Tool contract.** `createGoalsTool` exposes durable Goal management for `/goal` and `Ctrl+G`; its description requires success criteria first, prerequisite checks before workers, persisted harness/evidence, standalone worker tasks, final completion audits, and no completion until verifier plus final-audit evidence proves the objective (`packages/cli/src/tools/goals.ts:297-303`).
 - **Actions.** The schema supports `create`, `prerequisite`, `task`, `evidence`, `evidence_plan`, `verify`, `audit`, `status`, `pause`, `resume`, and `complete` (`tools/goals.ts:76-149`).
 - **Create/update.** `create` requires title and goal, optionally updates an existing run, normalizes prerequisites (including running `check_command` when needed), maps harness/evidence-plan/verifier fields, sets blocked status when prerequisites block, persists with `upsertGoalRun`, and appends a create/update decision (`tools/goals.ts:306-374`).
 - **Status.** `status` returns a compact status line for one run or all runs, including prerequisite count, task count, verifier state, audit state, and blocking prerequisite text (`tools/goals.ts:258-279`, `tools/goals.ts:376-384`).
@@ -37,9 +37,9 @@ Scope: slash-command invocation (`/goal`, `/g`), setup/coordinator prompts, `goa
 
 ## D. Goal-store persistence and recovery
 
-- **State model.** `GoalRun` stores id/title/goal/status/timestamps/project path, success criteria, prerequisites, harness, evidence plan, tasks, durable evidence, verifier, optional completion audit, blockers, active worker id, and continuation request timestamp (`packages/ggcoder/src/core/goal-store.ts:7-130`).
+- **State model.** `GoalRun` stores id/title/goal/status/timestamps/project path, success criteria, prerequisites, harness, evidence plan, tasks, durable evidence, verifier, optional completion audit, blockers, active worker id, and continuation request timestamp (`packages/cli/src/core/goal-store.ts:7-130`).
 - **Statuses and evidence types.** Run statuses are `draft`, `blocked`, `ready`, `running`, `verifying`, `passed`, `failed`, `paused`; task statuses are `pending`, `running`, `verifying`, `done`, `failed`, `blocked`; evidence kinds are `log`, `command`, `screenshot`, `file`, `summary` (`goal-store.ts:7-23`).
-- **Storage location.** Goal files live under `~/.gg/goals/projects` unless `GG_GOALS_BASE` overrides it; project paths are normalized and hashed (`goal-store.ts:191-201`, `goal-store.ts:601-607`). Each project directory stores `goals.json`, `meta.json`, and per-run journals under `journals/<runId>.md` (`goal-store.ts:542-577`, `goal-store.ts:1016-1076`).
+- **Storage location.** Goal files live under `~/.ezcoder/goals/projects` unless `GG_GOALS_BASE` overrides it; project paths are normalized and hashed (`goal-store.ts:191-201`, `goal-store.ts:601-607`). Each project directory stores `goals.json`, `meta.json`, and per-run journals under `journals/<runId>.md` (`goal-store.ts:542-577`, `goal-store.ts:1016-1076`).
 - **Normalization.** Reads tolerate malformed/missing fields and normalize verifier results, prerequisites, harness entries, evidence-plan items, tasks, evidence, completion audits, and runs (`goal-store.ts:321-495`).
 - **Write safety.** Writes are serialized through a module-level queue and use temp-file atomic rename (`goal-store.ts:194`, `goal-store.ts:533-583`, `goal-store.ts:700-832`). A guard refuses an empty overwrite while active work exists, preserves active runs, and appends `Goal store write rejected` evidence (`goal-store.ts:501-568`).
 - **Mutation helpers.** `upsertGoalRun` merges with existing runs while preserving created time and merging tasks/evidence (`goal-store.ts:800-832`). `appendGoalDecision`, `appendGoalEvidence`, and `updateGoalTask` provide durable decision/evidence/task mutations, including run-id prefix/discovery support (`goal-store.ts:852-948`).
@@ -49,13 +49,13 @@ Scope: slash-command invocation (`/goal`, `/g`), setup/coordinator prompts, `goa
 
 ## E. Prerequisite checks
 
-- **Command runner.** `runGoalPrerequisiteCheckCommand` runs a shell command in the project cwd, captures up to 500 trailing characters, times out after 15 seconds by default, and returns `met` for exit 0 or `missing` otherwise with non-secret evidence text (`packages/ggcoder/src/core/goal-prerequisites.ts:4-72`).
+- **Command runner.** `runGoalPrerequisiteCheckCommand` runs a shell command in the project cwd, captures up to 500 trailing characters, times out after 15 seconds by default, and returns `met` for exit 0 or `missing` otherwise with non-secret evidence text (`packages/cli/src/core/goal-prerequisites.ts:4-72`).
 - **When checks run.** Setup/tool normalization runs a `check_command` when status is unknown or marked met without evidence (`tools/goals.ts:156-197`). App’s `startGoalRun` reruns needed checks before launching any worker/verifier (`App.tsx:4275-4290`).
 - **Blocking behavior.** If checks leave prerequisites blocking, App marks the run `blocked`, records the blocker, shows terminal Goal progress, and does not start workers (`App.tsx:4290-4310`). `goals resume` likewise refuses to continue while prerequisites block (`tools/goals.ts:660-679`).
 
 ## F. Controller decision engine
 
-- **Decision types.** `GoalControllerDecision` covers `blocked`, `create_task`, `terminal`, `wait`, `start_worker`, `pause`, `run_verifier`, and `complete` (`packages/ggcoder/src/core/goal-controller.ts:16-57`).
+- **Decision types.** `GoalControllerDecision` covers `blocked`, `create_task`, `terminal`, `wait`, `start_worker`, `pause`, `run_verifier`, and `complete` (`packages/cli/src/core/goal-controller.ts:16-57`).
 - **Completion gate.** `canCompleteGoalRun` rejects blocking prerequisites, incomplete tasks, unsatisfied evidence plan, missing verifier evidence, non-pass verifier, and missing/stale/failing final completion audit; only all-done + verifier pass + final audit pass returns ok (`goal-controller.ts:318-349`).
 - **Evidence-plan matching.** Evidence-plan items are satisfied by explicit `ready` plus evidence text, item evidence text, exact passing-verifier command/output path matches, exact durable evidence path matches, or durable evidence content that references the expected command/path. Generic label/description substring matches are no longer part of the source-backed satisfaction path (`goal-controller.ts:108-172`).
 - **Final audit freshness.** `hasFreshGoalCompletionAudit` requires a passing latest verifier, no later non-audit worker evidence after that verifier, a pass audit tied to the same verifier `checkedAt`, audit time not older than verifier time, and no later completion-relevant evidence after the audit (`goal-controller.ts:239-282`).
@@ -65,16 +65,16 @@ Scope: slash-command invocation (`/goal`, `/g`), setup/coordinator prompts, `goa
 
 ## G. UI overlay, status bar, start and continue flow
 
-- **Goal overlay model.** `GoalOverlay` loads `loadGoalRuns(cwd)` every second, sorts newest first, and preserves local state instead of saving an empty list while active work exists (`packages/ggcoder/src/ui/components/GoalOverlay.tsx:857-900`). It displays counts, prerequisite/task/verifier summaries, evidence plan, harness, blockers, recent evidence, and detailed run state (`GoalOverlay.tsx:50-108`, `GoalOverlay.tsx:610-829`).
+- **Goal overlay model.** `GoalOverlay` loads `loadGoalRuns(cwd)` every second, sorts newest first, and preserves local state instead of saving an empty list while active work exists (`packages/cli/src/ui/components/GoalOverlay.tsx:857-900`). It displays counts, prerequisite/task/verifier summaries, evidence plan, harness, blockers, recent evidence, and detailed run state (`GoalOverlay.tsx:50-108`, `GoalOverlay.tsx:610-829`).
 - **Overlay controls.** In the pane: `r` runs/continues the selected Goal, `v` runs verifier, `p` pauses, `x` archives with confirmation, `Enter/d` toggles details, navigation keys scroll/select, and `Esc` closes (`GoalOverlay.tsx:939-1029`, `GoalOverlay.tsx:1173-1199`). App wires these to `startGoalRun`, `verifyGoalRun`, and `pauseGoalRun` (`App.tsx:4893-4911`).
-- **Status bar.** `GoalStatusBar` displays up to three active/failed Goal entries with phases `worker`, `verifier`, `reviewing`, `orchestrating`, and `failed`, elapsed time, shimmer animation for active work, and reconciliation helpers that remove stale entries when no active run/process remains (`packages/ggcoder/src/ui/components/GoalStatusBar.tsx:8-191`).
+- **Status bar.** `GoalStatusBar` displays up to three active/failed Goal entries with phases `worker`, `verifier`, `reviewing`, `orchestrating`, and `failed`, elapsed time, shimmer animation for active work, and reconciliation helpers that remove stale entries when no active run/process remains (`packages/cli/src/ui/components/GoalStatusBar.tsx:8-191`).
 - **Start flow.** `startGoalRun` enters coordinator mode, reloads the run, runs prerequisite checks, blocks if prerequisites remain missing, asks `decideGoalNextAction`, appends the decision, and handles each decision: terminal/complete/wait, run verifier, auto-create task then continue, block/pause, or start a worker (`App.tsx:4275-4477`).
 - **Continue flow.** `continueGoalRun` reconciles active state, gets a fresh controller decision, stops on terminal/blocked/pause with durable state and progress, consumes `continueRequestedAt` when no worker/verifier is active, records `continuation_consumed`, posts progress, and delegates back to `startGoalRun` (`App.tsx:4105-4197`).
 - **Pause from UI.** `pauseGoalRun` stops an active worker if present, marks the run paused, clears active worker state, updates counts/progress/status entries, and leaves continuation stopped until resumed (`App.tsx:4649-4675`).
 
 ## H. Worker lifecycle
 
-- **Worker prompt.** `buildGoalWorkerSystemPrompt` injects cwd/run/task context, instructs workers to follow only the assigned task, keep changes focused, use local/free proof, build needed instruments, record durable evidence/task status with `goals`, clean up worker-owned background processes, and never complete the whole Goal (`packages/ggcoder/src/core/goal-worker.ts:85-95`). Worker child execution is also bounded by a wall-clock timeout that terminates the process tree and records timeout evidence (`goal-worker.ts:297-356`).
+- **Worker prompt.** `buildGoalWorkerSystemPrompt` injects cwd/run/task context, instructs workers to follow only the assigned task, keep changes focused, use local/free proof, build needed instruments, record durable evidence/task status with `goals`, clean up worker-owned background processes, and never complete the whole Goal (`packages/cli/src/core/goal-worker.ts:85-95`). Worker child execution is also bounded by a wall-clock timeout that terminates the process tree and records timeout evidence (`goal-worker.ts:297-356`).
 - **Spawn.** `startGoalWorker` prevents duplicate running workers for the same run, spawns the same CLI in JSON mode with provider/model/max-turns/system prompt, passes the task prompt, writes logs under `<goal project>/workers/<workerId>.ndjson`, marks the task running, and sets `activeWorkerId` (`goal-worker.ts:179-243`).
 - **Streaming evidence.** Worker stdout JSON is logged. Text deltas/errors are summarized; tool-call starts update current activity and append durable log evidence pointing at the worker log; tool-call ends record tool-use success/failure for the synthetic event (`goal-worker.ts:244-291`).
 - **Close/error.** On process close, the worker marks the task done/failed, appends `Worker <id> done|failed` log evidence, clears active worker state, emits completion, and notifies subscribers (`goal-worker.ts:293-341`). Spawn errors mark task failed and append spawn-failure evidence (`goal-worker.ts:343-375`).
@@ -82,17 +82,17 @@ Scope: slash-command invocation (`/goal`, `/g`), setup/coordinator prompts, `goa
 
 ## I. Synthetic Goal events and session recovery
 
-- **Event format.** Worker and verifier completions become synthetic user messages prefixed by `[event:goal_worker_complete]` or `[event:goal_verifier_complete]` plus a `goal_event_payload` JSON line (`packages/ggcoder/src/ui/goal-events.ts:9-14`, `goal-events.ts:246-315`).
+- **Event format.** Worker and verifier completions become synthetic user messages prefixed by `[event:goal_worker_complete]` or `[event:goal_verifier_complete]` plus a `goal_event_payload` JSON line (`packages/cli/src/ui/goal-events.ts:9-14`, `goal-events.ts:246-315`).
 - **Payload.** Payloads include version, kind, run id, goal title, status, exit code, summary, current Goal state snapshot, and worker/verifier-specific fields such as task id, worker log file/tools used, verifier command/output path, fix attempts, and completion guidance (`goal-events.ts:67-99`, `goal-events.ts:222-294`).
 - **Coordinator instructions.** Every synthetic event carries instructions to call `goals status`, inspect durable tasks/verifier/blockers/evidence, and take exactly one next control-loop action without merely narrating or asking the user to open the pane (`goal-events.ts:120-125`).
 - **Parsing.** `parseGoalSyntheticEvent` validates JSON payloads and falls back to header parsing if payload is absent/invalid (`goal-events.ts:317-461`).
 - **Routing.** App’s `runGoalSyntheticEvent` queues the event if another agent turn is running or otherwise enters coordinator mode and runs the event through the agent loop (`App.tsx:4062-4102`). Worker completion subscriptions load the latest run and feed the formatted event into this path (`App.tsx:4208-4273`).
-- **History restore.** CLI/session restore parses synthetic user messages into durable Goal progress cards so restarted sessions show worker/verifier/terminal Goal progress rather than raw event text (`packages/ggcoder/src/cli.ts:1893-1951`, `cli.ts:2008-2015`).
+- **History restore.** CLI/session restore parses synthetic user messages into durable Goal progress cards so restarted sessions show worker/verifier/terminal Goal progress rather than raw event text (`packages/cli/src/cli.ts:1893-1951`, `cli.ts:2008-2015`).
 - **Continuation eligibility.** `shouldContinueGoalRun` only continues non-terminal, non-blocked, non-paused runs with no active worker/running task (`goal-events.ts:463-474`).
 
 ## J. Verifier behavior and final completion
 
-- **Verifier command runner.** `runGoalVerifierCommand` runs the configured shell command in cwd, captures up to 20k trailing output chars, writes a log under `<goal project>/verifiers/<runId>-<startedAt>.log`, times out after 10 minutes by default, kills the verifier process tree on timeout, and classifies pass/failure/spawn-error/timeout (`packages/ggcoder/src/core/goal-verifier.ts:1-112`).
+- **Verifier command runner.** `runGoalVerifierCommand` runs the configured shell command in cwd, captures up to 20k trailing output chars, writes a log under `<goal project>/verifiers/<runId>-<startedAt>.log`, times out after 10 minutes by default, kills the verifier process tree on timeout, and classifies pass/failure/spawn-error/timeout (`packages/cli/src/core/goal-verifier.ts:1-112`).
 - **UI verifier orchestration.** `verifyGoalRun` enters coordinator mode, blocks if no verifier command exists, marks the run `verifying`, records status/progress entries, runs the verifier command with `GG_GOAL_VERIFIER_TIMEOUT_MS` override support, persists last result, appends verifier command evidence and decision, updates counts/status, emits a synthetic verifier event, and schedules continuation after pass/fail (`App.tsx:4497-4627`).
 - **Pass does not equal completion.** A passing verifier initializes `completionAudit` to unknown/pending and only sets status `passed` if `canCompleteGoalRun` already passes; otherwise the run returns to `ready` for final audit/reconciliation (`App.tsx:4561-4586`, `tools/goals.ts:561-599`).
 - **Final audit task.** After a verifier pass, the controller creates `Audit Goal completion evidence` unless a fresh passing audit already exists. The audit prompt is read-only and requires comparing original criteria against actual durable artifacts after the latest verifier pass, then recording `goals action=audit` with `FINAL_AUDIT_PASS` on success (`goal-controller.ts:376-399`, `goal-controller.ts:578-599`).
@@ -107,17 +107,17 @@ Scope: slash-command invocation (`/goal`, `/g`), setup/coordinator prompts, `goa
 
 ## L. Test coverage map
 
-- **Slash-command contract:** `packages/ggcoder/src/core/prompt-commands.test.ts` verifies `/goal` and `/g` plus the short setup prompt contract.
-- **System prompts:** `packages/ggcoder/src/system-prompt.test.ts` covers setup/coordinator identities, restrictions, tool filtering, no plan-mode leakage, and prompt size bounds.
-- **Store:** `packages/ggcoder/src/core/goal-store.test.ts` covers normalization, persistence, summaries, active-run preservation, and reconciliation.
-- **Prerequisites:** `packages/ggcoder/src/core/goal-prerequisites.test.ts` covers command check outcomes/timeouts and check selection.
-- **Controller:** `packages/ggcoder/src/core/goal-controller.test.ts` covers completion gates, decision order, active worker waits, attempt limits, evidence-plan satisfaction/reconciliation, verifier-fix bounds, final audit freshness, and continuation clearing.
-- **Goals tool:** `packages/ggcoder/src/tools/goals.test.ts` covers create/status/prerequisite/task/evidence/evidence_plan/verify/audit/resume/complete behavior and blocking guards.
-- **Lifecycle smoke:** `packages/ggcoder/src/core/goal-lifecycle-smoke.test.ts` exercises a local end-to-end Goal lifecycle through tool actions/controller state.
-- **Worker/verifier:** `packages/ggcoder/src/core/goal-worker.test.ts`, `goal-worker-dev-server-lifecycle.test.ts`, and `goal-verifier.test.ts` cover process lifecycle, log/evidence behavior, dev-server cleanup ownership, verifier output/logging/timeouts/failures.
-- **Synthetic events:** `packages/ggcoder/src/ui/goal-events.test.ts` covers payload formatting/parsing/snapshots/continuation semantics.
-- **UI:** `packages/ggcoder/src/ui/goal-overlay.test.ts`, `goal-status-bar.test.ts`, `goal-lifecycle-orchestration.test.ts`, and `footer-status-layout.test.ts` cover pane rendering/navigation/persistence guards, status entries, lifecycle transitions, and footer layout.
-- **Tool restrictions:** `packages/ggcoder/src/tools/goal-mode.test.ts` covers Goal-mode restrictions for normal editing/process tools.
+- **Slash-command contract:** `packages/cli/src/core/prompt-commands.test.ts` verifies `/goal` and `/g` plus the short setup prompt contract.
+- **System prompts:** `packages/cli/src/system-prompt.test.ts` covers setup/coordinator identities, restrictions, tool filtering, no plan-mode leakage, and prompt size bounds.
+- **Store:** `packages/cli/src/core/goal-store.test.ts` covers normalization, persistence, summaries, active-run preservation, and reconciliation.
+- **Prerequisites:** `packages/cli/src/core/goal-prerequisites.test.ts` covers command check outcomes/timeouts and check selection.
+- **Controller:** `packages/cli/src/core/goal-controller.test.ts` covers completion gates, decision order, active worker waits, attempt limits, evidence-plan satisfaction/reconciliation, verifier-fix bounds, final audit freshness, and continuation clearing.
+- **Goals tool:** `packages/cli/src/tools/goals.test.ts` covers create/status/prerequisite/task/evidence/evidence_plan/verify/audit/resume/complete behavior and blocking guards.
+- **Lifecycle smoke:** `packages/cli/src/core/goal-lifecycle-smoke.test.ts` exercises a local end-to-end Goal lifecycle through tool actions/controller state.
+- **Worker/verifier:** `packages/cli/src/core/goal-worker.test.ts`, `goal-worker-dev-server-lifecycle.test.ts`, and `goal-verifier.test.ts` cover process lifecycle, log/evidence behavior, dev-server cleanup ownership, verifier output/logging/timeouts/failures.
+- **Synthetic events:** `packages/cli/src/ui/goal-events.test.ts` covers payload formatting/parsing/snapshots/continuation semantics.
+- **UI:** `packages/cli/src/ui/goal-overlay.test.ts`, `goal-status-bar.test.ts`, `goal-lifecycle-orchestration.test.ts`, and `footer-status-layout.test.ts` cover pane rendering/navigation/persistence guards, status entries, lifecycle transitions, and footer layout.
+- **Tool restrictions:** `packages/cli/src/tools/goal-mode.test.ts` covers Goal-mode restrictions for normal editing/process tools.
 
 ## M. End-to-end sequence summary
 

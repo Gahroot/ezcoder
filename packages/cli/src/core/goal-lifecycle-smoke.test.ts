@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ToolExecuteResult } from "@kenkaiiii/gg-agent";
+import type { ToolExecuteResult } from "@prestyj/agent";
 import { decideGoalNextAction, canCompleteGoalRun } from "./goal-controller.js";
 import { getGoalRun, loadGoalRuns } from "./goal-store.js";
 import { createGoalsTool } from "../tools/goals.js";
@@ -68,11 +68,11 @@ describe("goal lifecycle smoke", () => {
           mechanism: "test",
           description: "Vitest asserts transitions and JSON persistence",
           status: "planned",
-          command: "pnpm --filter @kenkaiiii/ggcoder test -- goal-lifecycle-smoke",
-          path: "packages/ggcoder/src/core/goal-lifecycle-smoke.test.ts",
+          command: "pnpm --filter @prestyj/cli test -- goal-lifecycle-smoke",
+          path: "packages/cli/src/core/goal-lifecycle-smoke.test.ts",
         },
       ],
-      verifier_command: "pnpm --filter @kenkaiiii/ggcoder test -- goal-lifecycle-smoke",
+      verifier_command: "pnpm --filter @prestyj/cli test -- goal-lifecycle-smoke",
       verifier_description: "Focused local Vitest lifecycle smoke",
     });
     await goals({
@@ -131,7 +131,7 @@ describe("goal lifecycle smoke", () => {
     persisted = await run();
     expect(decideGoalNextAction(persisted)).toEqual({
       kind: "run_verifier",
-      command: "pnpm --filter @kenkaiiii/ggcoder test -- goal-lifecycle-smoke",
+      command: "pnpm --filter @prestyj/cli test -- goal-lifecycle-smoke",
       reason: "All Goal tasks are done; running configured verifier for real completion evidence.",
     });
     expect(persisted.tasks).toEqual([

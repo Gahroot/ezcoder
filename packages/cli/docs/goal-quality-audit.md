@@ -1,25 +1,25 @@
 # /goal Quality Audit
 
 Date: 2026-05-23  
-Scope: deep quality audit of the current `/goal` implementation using `packages/ggcoder/docs/goal-system-map.md` plus direct source inspection. This audit preserves existing user changes and updates only this documentation artifact.
+Scope: deep quality audit of the current `/goal` implementation using `packages/cli/docs/goal-system-map.md` plus direct source inspection. This audit preserves existing user changes and updates only this documentation artifact.
 
 ## Evidence and commands used
 
-- Source map: `packages/ggcoder/docs/goal-system-map.md`.
-- Source inspected: `packages/ggcoder/src/system-prompt.ts`, `src/tools/goals.ts`, `src/core/goal-store.ts`, `src/core/goal-controller.ts`, `src/core/goal-worker.ts`, `src/core/goal-verifier.ts`, `src/ui/goal-events.ts`, `src/ui/App.tsx`.
+- Source map: `packages/cli/docs/goal-system-map.md`.
+- Source inspected: `packages/cli/src/system-prompt.ts`, `src/tools/goals.ts`, `src/core/goal-store.ts`, `src/core/goal-controller.ts`, `src/core/goal-worker.ts`, `src/core/goal-verifier.ts`, `src/ui/goal-events.ts`, `src/ui/App.tsx`.
 - Working tree preservation check: `git status --short` showed many pre-existing modified/untracked files; this audit did not edit implementation files.
-- Test command attempted: `npm --prefix packages/ggcoder test -- --runInBand src/core/goal-controller.test.ts src/tools/goals.test.ts src/core/goal-store.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts` failed because Vitest does not support `--runInBand`.
-- Test command passed: `npm --prefix packages/ggcoder test -- src/core/goal-controller.test.ts src/tools/goals.test.ts src/core/goal-store.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts` — 5 files, 81 tests passed.
+- Test command attempted: `npm --prefix packages/cli test -- --runInBand src/core/goal-controller.test.ts src/tools/goals.test.ts src/core/goal-store.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts` failed because Vitest does not support `--runInBand`.
+- Test command passed: `npm --prefix packages/cli test -- src/core/goal-controller.test.ts src/tools/goals.test.ts src/core/goal-store.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts` — 5 files, 81 tests passed.
 
 ## Current source re-audit update
 
 Re-audited on 2026-05-23 against the current working tree and refreshed docs. Current source shows multiple findings from the original audit have been remediated in implementation and/or test harnesses: setup-quality gating, stronger evidence-plan matching, final audit pass-contract validation, prerequisite command safety, worker timeout handling, verifier process-tree cleanup, active-run overwrite protection, pause/resume hardening, fallback event parsing, and canonical verifier scripts are now present. The durable artifacts to keep current are:
 
-- A-Z source map: `packages/ggcoder/docs/goal-system-map.md`.
+- A-Z source map: `packages/cli/docs/goal-system-map.md`.
 - Gap audit: this file.
-- Remediation plan: `packages/ggcoder/docs/goal-remediation-plan.md`.
-- Remediation report: `packages/ggcoder/docs/goal-remediation-report.md`.
-- Local proof scripts: `pnpm --filter @kenkaiiii/ggcoder verify:goal:tests`, `pnpm --filter @kenkaiiii/ggcoder verify:goal:e2e`, and `pnpm dlx tsx packages/ggcoder/scripts/verify-goal-system-audit.ts`.
+- Remediation plan: `packages/cli/docs/goal-remediation-plan.md`.
+- Remediation report: `packages/cli/docs/goal-remediation-report.md`.
+- Local proof scripts: `pnpm --filter @prestyj/cli verify:goal:tests`, `pnpm --filter @prestyj/cli verify:goal:e2e`, and `pnpm dlx tsx packages/cli/scripts/verify-goal-system-audit.ts`.
 
 Remaining blockers/residual risks after the re-audit:
 
@@ -166,7 +166,7 @@ Remaining blockers/residual risks after the re-audit:
 - Area: setup mode, coordinator mode, tool restrictions
 - Evidence: prompts forbid edit/write/bash/subagent in coordinator and restrict setup (`system-prompt.ts:65-79`). Tool-specific restrictions are covered in `goal-mode.test.ts` per the map, and runtime mode helpers exist, but this audit did not run the full goal-mode restriction suite. The passed subset covered controller/tool/store/events/UI orchestration only.
 - Repro/proof: The command that passed was limited to 5 test files / 81 tests. It did not include `system-prompt.test.ts`, `tools/goal-mode.test.ts`, `goal-worker.test.ts`, `goal-verifier.test.ts`, or overlay/status tests.
-- Recommendation: Add a canonical `/goal` quality CI command that runs all goal-related tests, including prompt restrictions, worker/verifier, overlay/status, and lifecycle smoke. Consider a single script such as `npm --prefix packages/ggcoder test -- src/**/*goal*.test.ts src/tools/goal-mode.test.ts src/system-prompt.test.ts`.
+- Recommendation: Add a canonical `/goal` quality CI command that runs all goal-related tests, including prompt restrictions, worker/verifier, overlay/status, and lifecycle smoke. Consider a single script such as `npm --prefix packages/cli test -- src/**/*goal*.test.ts src/tools/goal-mode.test.ts src/system-prompt.test.ts`.
 - Action status: Fixed in the current working tree by canonical local verifier scripts; see `goal-remediation-report.md`.
 
 ### GQA-015 — No true local end-to-end UI `/goal` smoke was executed in this audit
@@ -175,7 +175,7 @@ Remaining blockers/residual risks after the re-audit:
 - Confidence: High
 - Area: setup mode, UI orchestration, worker lifecycle, verifier, final completion gating
 - Evidence: The passed command executed unit/integration-style tests for controller/tool/store/events/orchestration. It did not launch the CLI/TUI, invoke `/goal`, press Goal pane controls, spawn a real worker, run a verifier, and observe final completion.
-- Repro/proof: `packages/ggcoder/scripts/verify-goal-e2e.ts` exists per repo map, but this audit did not run it. Therefore the full user-facing `/goal -> setup -> run -> worker -> verifier -> audit -> pass` path remains unproven here.
+- Repro/proof: `packages/cli/scripts/verify-goal-e2e.ts` exists per repo map, but this audit did not run it. Therefore the full user-facing `/goal -> setup -> run -> worker -> verifier -> audit -> pass` path remains unproven here.
 - Recommendation: Make `scripts/verify-goal-e2e.ts` the primary quality gate if it is current, or update it to run against a temporary project and `GG_GOALS_BASE`. It should assert durable store contents, worker/verifier logs, synthetic event handling, and final gate behavior.
 - Action status: Fixed in the current working tree by canonical local verifier scripts; see `goal-remediation-report.md`.
 

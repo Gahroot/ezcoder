@@ -1,16 +1,16 @@
 {
-  "name": "@kenkaiiii/ggcoder-eyes",
+  "name": "@prestyj/eyes",
   "version": "0.1.6",
   "type": "module",
   "description": "Project-agnostic perception probes for coding agents — screenshots, logs, APIs, capture sinks",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kenkaiiii/gg-framework.git",
-    "directory": "packages/ggcoder-eyes"
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
+    "directory": "packages/eyes"
   },
   "bin": {
-    "ggcoder-eyes": "./dist/cli.js"
+    "ezcoder-eyes": "./dist/cli.js"
   },
   "exports": {
     ".": {

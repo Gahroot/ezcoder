@@ -375,7 +375,7 @@ describe("goal controller", () => {
               "Assertions prove /goal prompt is short and delegates deep policy to active Goal setup system instructions.",
             status: "planned",
             command:
-              "pnpm --filter @kenkaiiii/ggcoder test -- prompt-commands.test.ts slash-command-images.test.ts",
+              "pnpm --filter @prestyj/cli test -- prompt-commands.test.ts slash-command-images.test.ts",
           },
           {
             id: "context-wiring-evidence",
@@ -384,7 +384,7 @@ describe("goal controller", () => {
             description:
               "Inspect App/render/cli/tools wiring to document exactly which context is shared through refs/session state and which context is isolated to workers.",
             status: "planned",
-            path: "packages/ggcoder/src/ui/App.tsx; packages/ggcoder/src/ui/render.ts; packages/ggcoder/src/cli.ts; packages/ggcoder/src/tools/index.ts",
+            path: "packages/cli/src/ui/App.tsx; packages/cli/src/ui/render.ts; packages/cli/src/cli.ts; packages/cli/src/tools/index.ts",
           },
         ],
         evidence: [
@@ -393,7 +393,7 @@ describe("goal controller", () => {
             kind: "command",
             label: "Focused Goal-mode test coverage command",
             content:
-              "Command passed: pnpm --filter @kenkaiiii/ggcoder test -- system-prompt.test.ts prompt-commands.test.ts goal-mode.test.ts slash-command-images.test.ts footer-status-layout.test.ts goal-lifecycle-orchestration.test.ts",
+              "Command passed: pnpm --filter @prestyj/cli test -- system-prompt.test.ts prompt-commands.test.ts goal-mode.test.ts slash-command-images.test.ts footer-status-layout.test.ts goal-lifecycle-orchestration.test.ts",
             createdAt: "2024-01-01T00:00:00.000Z",
           },
           {

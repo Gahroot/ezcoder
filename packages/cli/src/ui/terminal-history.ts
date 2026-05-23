@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { marked, type Token, type Tokens } from "marked";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 import { getModel } from "../core/model-registry.js";
 import { LANGUAGE_DISPLAY_NAMES, type LanguageId } from "../core/language-detector.js";
 import type { CompletedItem } from "./App.js";
@@ -207,7 +207,7 @@ function renderBanner(context: TerminalHistoryContext): string {
       "",
       ...logo,
       "",
-      `${color(context.theme.primary, "GG Coder", true)}${dim(context, ` v${context.version}`)}`,
+      `${color(context.theme.primary, "EZ Coder", true)}${dim(context, ` v${context.version}`)}`,
       `${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, context.columns))}`,
       `${color(context.theme.primary, "/goal")} ${dim(context, "start goal · ")}${color(context.theme.primary, "Shift+Tab")} ${dim(context, "toggle thinking")}`,
       "",
@@ -216,7 +216,7 @@ function renderBanner(context: TerminalHistoryContext): string {
 
   return block([
     "",
-    `${logo[0]}${GAP}${color(context.theme.primary, "GG Coder", true)}${dim(context, ` v${context.version} · By `)}${color(context.theme.text, "Ken Kai", true)}`,
+    `${logo[0]}${GAP}${color(context.theme.primary, "EZ Coder", true)}${dim(context, ` v${context.version} · By `)}${color(context.theme.text, "Nolan Grout", true)}`,
     `${logo[1]}${GAP}${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, Math.max(10, context.columns - LOGO_WIDTH - GAP.length - stringWidth(modelName) - 2)))}`,
     `${logo[2]}${GAP}${color(context.theme.primary, "/goal")} ${dim(context, "start goal · ")}${color(context.theme.primary, "Shift+Tab")} ${dim(context, "toggle thinking")}`,
     "",

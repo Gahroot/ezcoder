@@ -8,7 +8,7 @@ import type { LanguageId } from "./core/language-detector.js";
 const tempDirs: string[] = [];
 
 async function makeProject(files: Record<string, string> = {}): Promise<string> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ggcoder-system-prompt-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ezcoder-system-prompt-"));
   tempDirs.push(cwd);
   for (const [relativePath, content] of Object.entries(files)) {
     const filePath = path.join(cwd, relativePath);
@@ -89,7 +89,7 @@ describe("buildSystemPrompt", () => {
       new Set<LanguageId>(["typescript"]),
     );
 
-    expect(prompt.startsWith("You are GG Coder by Ken Kai")).toBe(true);
+    expect(prompt.startsWith("You are EZ Coder by Nolan Grout")).toBe(true);
     expect(sectionIndex(prompt, "## How to Talk")).toBeLessThan(
       sectionIndex(prompt, "## How to Work"),
     );
@@ -175,7 +175,7 @@ describe("buildSystemPrompt", () => {
       cwd,
       undefined,
       true,
-      ".gg/plans/approved.md",
+      ".ezcoder/plans/approved.md",
       [
         "read",
         "bash",
@@ -217,7 +217,7 @@ describe("buildSystemPrompt", () => {
       cwd,
       undefined,
       false,
-      ".gg/plans/approved.md",
+      ".ezcoder/plans/approved.md",
       ["read", "bash", "goals", "edit", "write", "subagent"],
       undefined,
       "setup",
@@ -234,7 +234,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Workers are the only actors that implement project changes");
     expect(prompt).not.toContain("## Approved Plan");
     expect(prompt).not.toContain("## Plan Mode (ACTIVE)");
-    expect(prompt).not.toContain("Restricted: bash, edit, write except .gg/plans/");
+    expect(prompt).not.toContain("Restricted: bash, edit, write except .ezcoder/plans/");
   });
 
   it("renders Goal setup mode without plan-mode leakage even when planMode is true", async () => {
@@ -243,7 +243,7 @@ describe("buildSystemPrompt", () => {
       cwd,
       undefined,
       true,
-      ".gg/plans/approved.md",
+      ".ezcoder/plans/approved.md",
       ["read", "goals"],
       undefined,
       "setup",
@@ -287,7 +287,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Workers and UI-driven verifier execution are the only actors");
     expect(prompt).not.toContain("take a first control-loop action before status");
     expect(prompt).not.toContain("## Plan Mode (ACTIVE)");
-    expect(prompt).not.toContain("Restricted: bash, edit, write except .gg/plans/");
+    expect(prompt).not.toContain("Restricted: bash, edit, write except .ezcoder/plans/");
     expect(prompt).not.toContain("## Approved Plan");
   });
 

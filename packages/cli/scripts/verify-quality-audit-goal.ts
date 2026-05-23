@@ -13,11 +13,11 @@ function hasAll(text: string, needles: string[]) {
   return needles.every((needle) => text.includes(needle));
 }
 
-const audit = read("packages/ggcoder/docs/goal-quality-audit.md");
-const compactorTest = read("packages/ggcoder/src/core/compaction/compactor.test.ts");
-const queuedTest = read("packages/ggcoder/src/ui/queued-message.test.ts");
-const systemPromptTest = read("packages/ggcoder/src/system-prompt.test.ts");
-const compactorSource = read("packages/ggcoder/src/core/compaction/compactor.ts");
+const audit = read("packages/cli/docs/goal-quality-audit.md");
+const compactorTest = read("packages/cli/src/core/compaction/compactor.test.ts");
+const queuedTest = read("packages/cli/src/ui/queued-message.test.ts");
+const systemPromptTest = read("packages/cli/src/system-prompt.test.ts");
+const compactorSource = read("packages/cli/src/core/compaction/compactor.ts");
 
 check(
   "required project checks are declared",
@@ -27,7 +27,7 @@ check(
 check(
   "source-backed comparison artifact exists",
   audit.includes("## Evidence sources") && audit.includes("Confidence:") && audit.includes("Action status"),
-  "packages/ggcoder/docs/goal-quality-audit.md must cite sources, confidence, and action status for findings",
+  "packages/cli/docs/goal-quality-audit.md must cite sources, confidence, and action status for findings",
 );
 check(
   "compaction timeout implementation exists",
@@ -42,7 +42,7 @@ check(
 check(
   "queued-message UI regression tests exist",
   queuedTest.includes("queued") && /isActiveItem|onQueuedStart|placeholder|bullet|•/.test(queuedTest),
-  "packages/ggcoder/src/ui/queued-message.test.ts must cover queued placeholder styling/lifecycle regression",
+  "packages/cli/src/ui/queued-message.test.ts must cover queued placeholder styling/lifecycle regression",
 );
 check(
   "system-prompt audit evidence harness exists",
@@ -54,7 +54,7 @@ const targeted = spawnSync(
   "pnpm",
   [
     "--filter",
-    "@kenkaiiii/ggcoder",
+    "@prestyj/cli",
     "exec",
     "vitest",
     "run",
@@ -68,7 +68,7 @@ const targeted = spawnSync(
 check(
   "targeted harnesses pass",
   targeted.status === 0,
-  `command: pnpm --filter @kenkaiiii/ggcoder exec vitest run src/core/compaction/compactor.test.ts src/ui/queued-message.test.ts src/system-prompt.test.ts --reporter=dot\nexit=${targeted.status}\n${(targeted.stdout + targeted.stderr).slice(-2000)}`,
+  `command: pnpm --filter @prestyj/cli exec vitest run src/core/compaction/compactor.test.ts src/ui/queued-message.test.ts src/system-prompt.test.ts --reporter=dot\nexit=${targeted.status}\n${(targeted.stdout + targeted.stderr).slice(-2000)}`,
 );
 
 console.log("Quality audit goal verifier");
@@ -77,6 +77,6 @@ for (const item of checks) {
   if (!item.ok) console.log(`  ${item.detail.replace(/\n/g, "\n  ")}`);
 }
 console.log("\nFinal full-project verifier command (orchestrator must run before completion):");
-console.log("pnpm check && pnpm lint && pnpm format:check && pnpm build && pnpm --filter @kenkaiiii/ggcoder exec vitest run src/core/compaction/compactor.test.ts src/ui/queued-message.test.ts src/system-prompt.test.ts");
+console.log("pnpm check && pnpm lint && pnpm format:check && pnpm build && pnpm --filter @prestyj/cli exec vitest run src/core/compaction/compactor.test.ts src/ui/queued-message.test.ts src/system-prompt.test.ts");
 
 process.exit(checks.every((item) => item.ok) ? 0 : 1);

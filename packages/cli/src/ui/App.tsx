@@ -21,9 +21,9 @@ import {
   type ThinkingLevel,
   type TextContent,
   type ImageContent,
-} from "@kenkaiiii/gg-ai";
+} from "@prestyj/ai";
 import { extractImagePaths, type ImageAttachment } from "../utils/image.js";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { useAgentLoop, type UserContent } from "./hooks/useAgentLoop.js";
 import { UserMessage } from "./components/UserMessage.js";
 import type { PasteInfo } from "./components/InputArea.js";
@@ -170,24 +170,24 @@ import {
 import type { GoalMode } from "../core/runtime-mode.js";
 import { type TerminalHistoryContext, type TerminalHistoryPrinter } from "./terminal-history.js";
 
-/** Where ggcoder bugs should be reported. Surfaced in the guidance line. */
-const GGCODER_BUG_REPORT_URL = "github.com/kenkaiiii/gg-framework/issues";
+/** Where ezcoder bugs should be reported. Surfaced in the guidance line. */
+const GGCODER_BUG_REPORT_URL = "github.com/Gahroot/ezcoder/issues";
 
 /**
  * Build an ErrorItem from any thrown value. Centralises headline / message /
  * guidance extraction so every error answers the same question for the user:
- *   "Should I retry, or is this a ggcoder bug to report?"
+ *   "Should I retry, or is this a ezcoder bug to report?"
  */
 function toErrorItem(err: unknown, id: string, contextPrefix?: string): ErrorItem {
   const f = formatError(err);
   const headline = contextPrefix ? `${contextPrefix} — ${f.headline}` : f.headline;
-  // For ggcoder bugs, swap the generic "see /help" guidance for an actual URL
+  // For ezcoder bugs, swap the generic "see /help" guidance for an actual URL
   // so users have a clear place to send the report.
   const guidance =
-    f.source === "ggcoder"
-      ? `This looks like a ggcoder bug — please send it to the dev at ${GGCODER_BUG_REPORT_URL}.`
+    f.source === "ezcoder"
+      ? `This looks like a ezcoder bug — please send it to the dev at ${GGCODER_BUG_REPORT_URL}.`
       : f.guidance;
-  // Mirror every user-visible error into ~/.gg/debug.log so reports can be
+  // Mirror every user-visible error into ~/.ezcoder/debug.log so reports can be
   // diagnosed even after the terminal scrollback is gone.
   log("ERROR", "ui-error", headline, {
     source: f.source,
@@ -344,7 +344,7 @@ export function buildUserContentWithAttachments(
     } else {
       // GLM models: save image to temp file and instruct model to use vision MCP tool
       const ext = img.mediaType.split("/")[1] ?? "png";
-      const tmpPath = `/tmp/ggcoder-img-${Date.now()}.${ext}`;
+      const tmpPath = `/tmp/ezcoder-img-${Date.now()}.${ext}`;
       try {
         writeFileSync(tmpPath, Buffer.from(img.data, "base64"));
         parts.push({
@@ -423,7 +423,7 @@ interface ErrorItem {
   headline: string;
   /** Detailed message body (clean, no JSON). */
   message: string;
-  /** Action line — "Retry, this is an OpenAI issue" / "Report this ggcoder bug …". */
+  /** Action line — "Retry, this is an OpenAI issue" / "Report this ezcoder bug …". */
   guidance: string;
   id: string;
 }
@@ -1547,7 +1547,7 @@ export function App(props: AppProps) {
     return () => stopPeriodicUpdateCheck();
   }, [props.version]);
 
-  // Load custom commands from .gg/commands/
+  // Load custom commands from .ezcoder/commands/
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
   const reloadCustomCommands = useCallback(() => {
     loadCustomCommands(props.cwd).then(setCustomCommands);
@@ -3054,7 +3054,7 @@ export function App(props: AppProps) {
         return;
       }
 
-      // Handle prompt-template commands (built-in + custom from .gg/commands/)
+      // Handle prompt-template commands (built-in + custom from .ezcoder/commands/)
       const promptCommandRoute = routePromptCommandInput(trimmed, PROMPT_COMMANDS, customCommands);
       if (promptCommandRoute) {
         const { cmdName, cmdArgs, fullPrompt } = promptCommandRoute;

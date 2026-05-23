@@ -385,7 +385,7 @@ Keep total file under 100 lines. If updating, preserve any custom sections the u
 
 End your reply with this exact notice so the user doesn't miss it:
 
-> ⚠️ CLAUDE.md was created/updated. ggcoder loads it at startup, so **exit and restart ggcoder** (\`/quit\` then run \`ggcoder\` again) before continuing. Without a restart, I won't see the new context.`,
+> ⚠️ CLAUDE.md was created/updated. ezcoder loads it at startup, so **exit and restart ezcoder** (\`/quit\` then run \`ezcoder\` again) before continuing. Without a restart, I won't see the new context.`,
   },
   {
     name: "setup-commit",
@@ -405,7 +405,7 @@ Prefer existing project scripts. If you must synthesize a command from tool conv
 
 ## Step 2: Generate /commit Command
 
-Create the directory \`.gg/commands/\` if it doesn't exist, then write \`.gg/commands/commit.md\`:
+Create the directory \`.ezcoder/commands/\` if it doesn't exist, then write \`.ezcoder/commands/commit.md\`:
 
 \`\`\`markdown
 ---
@@ -599,7 +599,7 @@ Report which are present, missing, or configured below the pack's strictness rec
 
 ### 5. Style pack alignment
 
-"Active style packs" refers specifically to the per-language sub-sections inside the **Language Style Packs** section in your system prompt (e.g. \`### TypeScript\`, \`### Python\`, \`### Go\`). It does **NOT** include the cross-cutting \`### Agent-Written Code\` preamble that sits above them — those are guidelines for how code is *written*, not project-scaffolding to audit. It also does **NOT** include Skills (\`.gg/skills/\`) or any other extension category. If the Language Style Packs section is absent or empty, **skip this entire section entirely** — do not substitute Skills or any other concept.
+"Active style packs" refers specifically to the per-language sub-sections inside the **Language Style Packs** section in your system prompt (e.g. \`### TypeScript\`, \`### Python\`, \`### Go\`). It does **NOT** include the cross-cutting \`### Agent-Written Code\` preamble that sits above them — those are guidelines for how code is *written*, not project-scaffolding to audit. It also does **NOT** include Skills (\`.ezcoder/skills/\`) or any other extension category. If the Language Style Packs section is absent or empty, **skip this entire section entirely** — do not substitute Skills or any other concept.
 
 When per-language packs are present, compare the project against each pack's **Tooling** bullet and the system prompt's **Verification** commands. For tool recommendations or config semantics, verify against official docs when local files are ambiguous:
 - Tooling: which strict-mode flags or lint-rule presets does the pack recommend that the project is missing? (e.g. \`tsconfig\` missing \`noUncheckedIndexedAccess\`, \`pyproject\` missing \`[tool.ruff]\`, Go project missing \`golangci-lint\` config).

@@ -10,10 +10,10 @@ Proof boundary: this report records automated local/source-backed proof only. It
 
 This report is source-backed by:
 
-- System map: `packages/ggcoder/docs/goal-system-map.md`.
-- Quality audit: `packages/ggcoder/docs/goal-quality-audit.md`.
-- Verifier harness: `packages/ggcoder/scripts/verify-goal-system-audit.ts`.
-- Verifier log: `packages/ggcoder/.goal-evidence/goal-system-audit-verifier.log`.
+- System map: `packages/cli/docs/goal-system-map.md`.
+- Quality audit: `packages/cli/docs/goal-quality-audit.md`.
+- Verifier harness: `packages/cli/scripts/verify-goal-system-audit.ts`.
+- Verifier log: `packages/cli/.goal-evidence/goal-system-audit-verifier.log`.
 
 ## What works
 
@@ -27,7 +27,7 @@ This report is source-backed by:
 
 ## Issues found
 
-The quality audit documents the main residual issues and risk areas in `packages/ggcoder/docs/goal-quality-audit.md`:
+The quality audit documents the main residual issues and risk areas in `packages/cli/docs/goal-quality-audit.md`:
 
 - Setup completeness is still mostly prompt-governed rather than schema-enforced; a minimal `goals create` can omit criteria/evidence/harness details.
 - Coordinator `goals status` first is prompt-governed; stale synthetic snapshots are mitigated but not fully code-enforced.
@@ -49,10 +49,10 @@ The quality audit documents the main residual issues and risk areas in `packages
 
 ## Improvements/refinements completed in this Goal
 
-- Refreshed the end-to-end `/goal` source map in `packages/ggcoder/docs/goal-system-map.md`.
-- Wrote a contradiction/gap quality audit in `packages/ggcoder/docs/goal-quality-audit.md`.
-- Added/updated the local verifier harness at `packages/ggcoder/scripts/verify-goal-system-audit.ts`.
-- Produced durable verifier output at `packages/ggcoder/.goal-evidence/goal-system-audit-verifier.log`.
+- Refreshed the end-to-end `/goal` source map in `packages/cli/docs/goal-system-map.md`.
+- Wrote a contradiction/gap quality audit in `packages/cli/docs/goal-quality-audit.md`.
+- Added/updated the local verifier harness at `packages/cli/scripts/verify-goal-system-audit.ts`.
+- Produced durable verifier output at `packages/cli/.goal-evidence/goal-system-audit-verifier.log`.
 - Reconciled earlier verifier/source-contract mismatches so the current audit verifier passes.
 - Confirmed targeted Goal tests and package typecheck through the verifier harness.
 
@@ -60,7 +60,7 @@ The quality audit documents the main residual issues and risk areas in `packages
 
 - No provider-backed interactive TUI smoke was proven here: `/goal` typed by a user, Ctrl+G opened, a live provider-backed worker observed in the pane, verifier run from the pane, and final completion observed end-to-end in the terminal UI.
 - External prerequisites for that interactive proof are intentionally blocked from this local report: configured provider credentials/session, network access, provider/model availability, and permission to capture redacted TUI screenshots or logs.
-- `packages/ggcoder/scripts/verify-goal-e2e.ts` is now part of the remediation proof path, but it is a deterministic local harness rather than a live provider/TUI run.
+- `packages/cli/scripts/verify-goal-e2e.ts` is now part of the remediation proof path, but it is a deterministic local harness rather than a live provider/TUI run.
 - GQA-002 remains an accepted residual design risk: coordinator `goals status` first is instructed and tested via orchestration paths, but not enforced by a hard first-tool-call gate.
 
 ## Commands run
@@ -68,16 +68,16 @@ The quality audit documents the main residual issues and risk areas in `packages
 Final report worker command:
 
 ```sh
-pnpm dlx tsx packages/ggcoder/scripts/verify-goal-system-audit.ts
+pnpm dlx tsx packages/cli/scripts/verify-goal-system-audit.ts
 ```
 
-The verifier internally runs the targeted Goal behavior tests and package check described by the harness, including controller/tool/prompt/system-prompt/lifecycle orchestration coverage and `pnpm --filter @kenkaiiii/ggcoder check`.
+The verifier internally runs the targeted Goal behavior tests and package check described by the harness, including controller/tool/prompt/system-prompt/lifecycle orchestration coverage and `pnpm --filter @prestyj/cli check`.
 
 ## Verifier results
 
 Latest verifier result: **PASS** with exit code 0.
 
-Verifier log excerpt from `packages/ggcoder/.goal-evidence/goal-system-audit-verifier.log`:
+Verifier log excerpt from `packages/cli/.goal-evidence/goal-system-audit-verifier.log`:
 
 ```text
 Goal system audit verifier
@@ -98,18 +98,18 @@ Signals checked: source map coverage, contradiction/gap audit artifact, setup-on
 
 ## Artifacts produced
 
-- `packages/ggcoder/docs/goal-system-map.md` — source-backed lifecycle map.
-- `packages/ggcoder/docs/goal-quality-audit.md` — detailed quality findings, recommendations, and not-tested-properly gaps.
-- `packages/ggcoder/docs/goal-system-audit-report.md` — this final user-facing report.
-- `packages/ggcoder/scripts/verify-goal-system-audit.ts` — local/free audit verifier harness.
-- `packages/ggcoder/.goal-evidence/goal-system-audit-verifier.log` — durable verifier output.
+- `packages/cli/docs/goal-system-map.md` — source-backed lifecycle map.
+- `packages/cli/docs/goal-quality-audit.md` — detailed quality findings, recommendations, and not-tested-properly gaps.
+- `packages/cli/docs/goal-system-audit-report.md` — this final user-facing report.
+- `packages/cli/scripts/verify-goal-system-audit.ts` — local/free audit verifier harness.
+- `packages/cli/.goal-evidence/goal-system-audit-verifier.log` — durable verifier output.
 
 ## Remediation update
 
-A subsequent remediation pass is documented in `packages/ggcoder/docs/goal-remediation-report.md`. The requested verifier chain passed and wrote `packages/ggcoder/.goal-evidence/goal-remediation-verifier.log`.
+A subsequent remediation pass is documented in `packages/cli/docs/goal-remediation-report.md`. The requested verifier chain passed and wrote `packages/cli/.goal-evidence/goal-remediation-verifier.log`.
 
 ## Residual risks
 
 The system is materially stronger than a narrative-only `/goal` workflow because completion is gated by durable evidence, verifier results, evidence-plan reconciliation, and a final audit. The highest original risks around fuzzy evidence matching, final-audit contract enforcement, lifecycle cleanup, store preservation, setup completeness, and local E2E verification now have targeted automated coverage. Remaining risk is primarily that this proof path is automated/local rather than a fully interactive TUI session with a provider-backed worker.
 
-Follow-up for operators: run the commands in `packages/ggcoder/docs/goal-remediation-report.md`, then perform the provider-backed interactive proof only in an already-authenticated environment. Record project-relative artifacts and redacted observations only; do not include secrets or environment dumps.
+Follow-up for operators: run the commands in `packages/cli/docs/goal-remediation-report.md`, then perform the provider-backed interactive proof only in an already-authenticated environment. Record project-relative artifacts and redacted observations only; do not include secrets or environment dumps.

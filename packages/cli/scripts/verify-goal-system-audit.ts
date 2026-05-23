@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
-const evidenceDir = "packages/ggcoder/.goal-evidence";
+const evidenceDir = "packages/cli/.goal-evidence";
 mkdirSync(evidenceDir, { recursive: true });
 const logPath = `${evidenceDir}/goal-system-audit-verifier.log`;
 
@@ -17,16 +17,16 @@ function hasAll(text: string, needles: string[]) {
   return needles.every((needle) => text.includes(needle));
 }
 
-const map = read("packages/ggcoder/docs/goal-system-map.md");
-const audit = read("packages/ggcoder/docs/goal-quality-audit.md");
-const promptCommands = read("packages/ggcoder/src/core/prompt-commands.ts");
-const systemPrompt = read("packages/ggcoder/src/system-prompt.ts");
-const goalsTool = read("packages/ggcoder/src/tools/goals.ts");
-const store = read("packages/ggcoder/src/core/goal-store.ts");
-const controller = read("packages/ggcoder/src/core/goal-controller.ts");
-const app = read("packages/ggcoder/src/ui/App.tsx");
-const worker = read("packages/ggcoder/src/core/goal-worker.ts");
-const verifier = read("packages/ggcoder/src/core/goal-verifier.ts");
+const map = read("packages/cli/docs/goal-system-map.md");
+const audit = read("packages/cli/docs/goal-quality-audit.md");
+const promptCommands = read("packages/cli/src/core/prompt-commands.ts");
+const systemPrompt = read("packages/cli/src/system-prompt.ts");
+const goalsTool = read("packages/cli/src/tools/goals.ts");
+const store = read("packages/cli/src/core/goal-store.ts");
+const controller = read("packages/cli/src/core/goal-controller.ts");
+const app = read("packages/cli/src/ui/App.tsx");
+const worker = read("packages/cli/src/core/goal-worker.ts");
+const verifier = read("packages/cli/src/core/goal-verifier.ts");
 
 check(
   "end-to-end surface map exists",
@@ -42,13 +42,13 @@ check(
     "Verifier behavior and final completion",
     "Test coverage map",
   ]),
-  "packages/ggcoder/docs/goal-system-map.md must map invocation, persistence, UI, workers, verifier, completion, and tests",
+  "packages/cli/docs/goal-system-map.md must map invocation, persistence, UI, workers, verifier, completion, and tests",
 );
 
 check(
   "audit artifact captures findings and recommendations",
   hasAll(audit, ["## Evidence and commands used", "## Findings", "Confidence:", "Recommendation:", "Action status"]),
-  "packages/ggcoder/docs/goal-quality-audit.md must provide source-backed findings/recommendations rather than narrative-only proof",
+  "packages/cli/docs/goal-quality-audit.md must provide source-backed findings/recommendations rather than narrative-only proof",
 );
 
 check(
@@ -97,7 +97,7 @@ const targeted = spawnSync(
   "pnpm",
   [
     "--filter",
-    "@kenkaiiii/ggcoder",
+    "@prestyj/cli",
     "test",
     "--",
     "src/core/goal-controller.test.ts",
@@ -119,10 +119,10 @@ const targeted = spawnSync(
 check(
   "targeted /goal behavior tests pass",
   targeted.status === 0,
-  `command: pnpm --filter @kenkaiiii/ggcoder test -- src/core/goal-controller.test.ts src/core/goal-prerequisites.test.ts src/core/goal-store.test.ts src/core/goal-worker.test.ts src/core/goal-verifier.test.ts src/tools/goals.test.ts src/tools/goal-mode.test.ts src/core/prompt-commands.test.ts src/system-prompt.test.ts src/core/goal-lifecycle-smoke.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts --reporter=dot\nexit=${targeted.status}\n${(targeted.stdout + targeted.stderr).slice(-4000)}`,
+  `command: pnpm --filter @prestyj/cli test -- src/core/goal-controller.test.ts src/core/goal-prerequisites.test.ts src/core/goal-store.test.ts src/core/goal-worker.test.ts src/core/goal-verifier.test.ts src/tools/goals.test.ts src/tools/goal-mode.test.ts src/core/prompt-commands.test.ts src/system-prompt.test.ts src/core/goal-lifecycle-smoke.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts --reporter=dot\nexit=${targeted.status}\n${(targeted.stdout + targeted.stderr).slice(-4000)}`,
 );
 
-const typecheck = spawnSync("pnpm", ["--filter", "@kenkaiiii/ggcoder", "check"], {
+const typecheck = spawnSync("pnpm", ["--filter", "@prestyj/cli", "check"], {
   encoding: "utf8",
   stdio: "pipe",
   timeout: 120_000,
@@ -130,7 +130,7 @@ const typecheck = spawnSync("pnpm", ["--filter", "@kenkaiiii/ggcoder", "check"],
 check(
   "package typecheck passes",
   typecheck.status === 0,
-  `command: pnpm --filter @kenkaiiii/ggcoder check\nexit=${typecheck.status}\n${(typecheck.stdout + typecheck.stderr).slice(-4000)}`,
+  `command: pnpm --filter @prestyj/cli check\nexit=${typecheck.status}\n${(typecheck.stdout + typecheck.stderr).slice(-4000)}`,
 );
 
 let output = "Goal system audit verifier\n";

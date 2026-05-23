@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import { messagesToHistoryItems } from "../cli.js";
 import { getRestoredMessagesForDisplay } from "./session-compaction.js";
 import {

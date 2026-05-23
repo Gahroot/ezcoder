@@ -40,7 +40,7 @@ describe("legacy plan mode removal", () => {
     ]);
 
     expect(prompt).not.toContain("Plan Mode (ACTIVE)");
-    expect(prompt).not.toContain("Restricted: bash, edit, write except .gg/plans/");
+    expect(prompt).not.toContain("Restricted: bash, edit, write except .ezcoder/plans/");
     expect(prompt).not.toContain(retiredExitToolName);
     expect(prompt).not.toContain(retiredEnterToolName);
   });
