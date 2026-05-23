@@ -32,6 +32,144 @@ afterEach(async () => {
 });
 
 describe("goals tool state guards", () => {
+  it("checks runnable prerequisites during create before marking the Goal ready", async () => {
+    await fs.writeFile(path.join(tmpProject, "fixture.txt"), "ready", "utf-8");
+
+    await executeGoals({
+      action: "create",
+      run_id: "checked-create",
+      title: "Checked create",
+      goal: "Do not defer cheap prerequisite checks",
+      success_criteria: ["fixture exists"],
+      evidence_plan: [
+        {
+          id: "fixture-proof",
+          label: "Fixture proof",
+          mechanism: "command",
+          description: "Check fixture file",
+          status: "ready",
+          command: "test -f fixture.txt",
+          evidence: "checked",
+        },
+      ],
+      verifier_command: "test -f fixture.txt",
+      prerequisites: [
+        {
+          id: "fixture",
+          label: "Fixture file exists",
+          status: "unknown",
+          check_command: "test -f fixture.txt",
+        },
+      ],
+    });
+
+    const run = await getGoalRun(tmpProject, "checked-create");
+    expect(run?.status).toBe("ready");
+    expect(run?.prerequisites[0]).toMatchObject({
+      id: "fixture",
+      status: "met",
+      checkCommand: "test -f fixture.txt",
+    });
+    expect(run?.prerequisites[0]?.evidence).toContain("exited 0");
+  });
+
+  it("rejects unsafe prerequisite check commands without executing them", async () => {
+    const marker = path.join(tmpProject, "unsafe-marker.txt");
+
+    await executeGoals({
+      action: "create",
+      run_id: "unsafe-prereq",
+      title: "Unsafe prereq",
+      goal: "Unsafe prerequisite commands must not mutate the project",
+      success_criteria: ["unsafe command is blocked"],
+      evidence_plan: [
+        {
+          id: "unsafe-proof",
+          label: "Unsafe command proof",
+          mechanism: "command",
+          description: "Confirm unsafe command was rejected",
+          status: "ready",
+          command: "test ! -e unsafe-marker.txt",
+          evidence: "marker absent",
+        },
+      ],
+      verifier_command: "test ! -e unsafe-marker.txt",
+      prerequisites: [
+        {
+          id: "unsafe",
+          label: "Unsafe check",
+          status: "unknown",
+          check_command: "echo unsafe > unsafe-marker.txt",
+        },
+      ],
+    });
+
+    const run = await getGoalRun(tmpProject, "unsafe-prereq");
+    await expect(fs.stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(run?.status).toBe("blocked");
+    expect(run?.prerequisites[0]).toMatchObject({
+      id: "unsafe",
+      status: "missing",
+      checkCommand: "echo unsafe > unsafe-marker.txt",
+    });
+    expect(run?.prerequisites[0]?.evidence).toContain("rejected as unsafe");
+    expect(run?.prerequisites[0]?.evidence).toContain("Command was not executed");
+  });
+
+  it("blocks create when a prerequisite has not been checked or evidenced", async () => {
+    const result = await executeGoals({
+      action: "create",
+      run_id: "unchecked-create",
+      title: "Unchecked create",
+      goal: "Do not accept lazy met prereqs",
+      success_criteria: ["tooling checked"],
+      evidence_plan: [
+        {
+          id: "tooling-proof",
+          label: "Tooling proof",
+          mechanism: "command",
+          description: "Check tooling",
+          status: "ready",
+          command: "node --version",
+          evidence: "checked",
+        },
+      ],
+      verifier_command: "node --version",
+      prerequisites: [{ id: "tooling", label: "Local tooling", status: "met" }],
+    });
+
+    const run = await getGoalRun(tmpProject, "unchecked-create");
+    expect(result).toContain("blocked");
+    expect(run?.status).toBe("blocked");
+    expect(run?.prerequisites[0]).toMatchObject({
+      id: "tooling",
+      status: "met",
+      instructions:
+        "Check Local tooling locally and record non-secret evidence before workers can start.",
+    });
+    expect(run?.prerequisites[0]?.evidence).toBeUndefined();
+  });
+
+  it("creates minimal goals as draft with setup blockers", async () => {
+    const result = await executeGoals({
+      action: "create",
+      run_id: "minimal-create",
+      title: "Minimal create",
+      goal: "Missing proof gates stay draft",
+    });
+
+    const run = await getGoalRun(tmpProject, "minimal-create");
+    expect(result).toContain("draft");
+    expect(run?.status).toBe("draft");
+    expect(run?.blockers).toEqual(
+      expect.arrayContaining([
+        "Goal setup incomplete: success criteria are required.",
+        "Goal setup incomplete: evidence_plan is required.",
+        "Goal setup incomplete: verifier_command is required.",
+      ]),
+    );
+  });
+
   it("updates an explicit run_id task and evidence when no active goal exists in the caller cwd", async () => {
     const runProject = await fs.mkdtemp(path.join(os.tmpdir(), "goals-tool-explicit-run-project-"));
     try {
@@ -171,6 +309,15 @@ describe("goals tool state guards", () => {
           description: "Run Playwright locally and capture screenshot/log evidence.",
           status: "planned",
         },
+        {
+          id: "file-proof",
+          label: "File artifact proof",
+          mechanism: "file",
+          description: "Inspect a durable generated artifact file.",
+          status: "ready",
+          path: "artifacts/proof.json",
+          evidence: "artifact schema captured",
+        },
       ],
     });
     await executeGoals({
@@ -192,9 +339,79 @@ describe("goals tool state guards", () => {
           mechanism: "browser",
           status: "planned",
         }),
+        expect.objectContaining({
+          id: "file-proof",
+          mechanism: "file",
+          status: "ready",
+          path: "artifacts/proof.json",
+        }),
       ]),
     );
     expect(run?.verifier?.command).toBe("pnpm test:e2e");
+  });
+
+  it("updates evidence-plan items directly for post-verifier reconciliation", async () => {
+    await executeGoals({
+      action: "create",
+      run_id: "goal-evidence-reconcile",
+      title: "Proof reconciliation",
+      goal: "Reconcile proof bookkeeping after verifier pass",
+      success_criteria: ["Verifier pass with evidence-plan ready"],
+      prerequisites: [],
+      evidence_plan: [
+        {
+          id: "slash-proof",
+          label: "/goal slash wrapper evidence",
+          mechanism: "test",
+          description: "Prompt command tests prove slash wrapper behavior.",
+          status: "planned",
+          command: "pnpm --filter @kenkaiiii/ggcoder test -- prompt-commands.test.ts",
+        },
+      ],
+      verifier_command: "pnpm test",
+    });
+    await upsertGoalRun(tmpProject, {
+      id: "goal-evidence-reconcile",
+      title: "Proof reconciliation",
+      goal: "Reconcile proof bookkeeping after verifier pass",
+      status: "blocked",
+      blockers: ["stale evidence-plan mismatch"],
+      verifier: {
+        description: "Full check",
+        command: "pnpm test",
+        lastResult: {
+          status: "pass",
+          summary: "Verifier passed before reconciliation.",
+          checkedAt: "2024-01-01T00:00:00.000Z",
+        },
+      },
+    });
+
+    const result = await executeGoals({
+      action: "evidence_plan",
+      run_id: "goal-evidence-reconcile",
+      evidence_plan_item_id: "slash-proof",
+      evidence_plan_status: "ready",
+      evidence_content: "prompt-commands.test.ts passed as part of focused Goal coverage.",
+    });
+    const run = await getGoalRun(tmpProject, "goal-evidence-reconcile");
+
+    expect(result).toBe(
+      'Evidence-plan item updated for "Proof reconciliation": "/goal slash wrapper evidence" is ready.',
+    );
+    expect(run?.status).toBe("ready");
+    expect(run?.blockers).toEqual([]);
+    expect(run?.evidencePlan[0]).toMatchObject({
+      id: "slash-proof",
+      status: "ready",
+      evidence: "prompt-commands.test.ts passed as part of focused Goal coverage.",
+    });
+    expect(run ? decideGoalNextAction(run) : null).toMatchObject({
+      kind: "create_task",
+      title: "Audit Goal completion evidence",
+      reason:
+        "Verifier passed; creating final read-only completion audit before the Goal can pass (1/3).",
+    });
   });
 
   it("does not complete without passing verifier evidence", async () => {
@@ -206,6 +423,17 @@ describe("goals tool state guards", () => {
       success_criteria: ["Verifier passes"],
       prerequisites: [],
       verifier_command: "pnpm test",
+      evidence_plan: [
+        {
+          id: "verifier-proof",
+          label: "Verifier proof",
+          mechanism: "command",
+          description: "Run verifier command",
+          status: "ready",
+          command: "pnpm test",
+          evidence: "configured",
+        },
+      ],
     });
 
     const result = await executeGoals({ action: "complete", run_id: "goal-a" });
@@ -244,6 +472,80 @@ describe("goals tool state guards", () => {
 
     expect(run?.status).toBe("ready");
     expect(run?.verifier?.lastResult?.status).toBe("pass");
+  });
+
+  it("clears stale transient blockers but waits for final audit when verifier pass satisfies planned evidence", async () => {
+    await executeGoals({
+      action: "create",
+      run_id: "goal-blocked-after-pass",
+      title: "Blocked after pass",
+      goal: "Recover from stale verifier interruption",
+      success_criteria: ["Verifier pass with durable evidence completes"],
+      prerequisites: [],
+      evidence_plan: [
+        {
+          id: "planned-command-proof",
+          label: "Targeted regression tests",
+          mechanism: "test",
+          description: "Run the focused local regression command.",
+          status: "planned",
+          command: "pnpm vitest run src/core/goal-controller.test.ts",
+        },
+        {
+          id: "planned-log-proof",
+          label: "Verifier log artifact",
+          mechanism: "log",
+          description: "Persist the verifier output log.",
+          status: "planned",
+          path: ".goal-evidence/blocked-after-pass.log",
+        },
+      ],
+      verifier_command: "pnpm vitest run src/core/goal-controller.test.ts",
+    });
+    await executeGoals({
+      action: "task",
+      run_id: "goal-blocked-after-pass",
+      task_id: "task-a",
+      task_title: "Done work",
+      task_prompt: "Do the work",
+      task_status: "done",
+    });
+    await upsertGoalRun(tmpProject, {
+      id: "goal-blocked-after-pass",
+      title: "Blocked after pass",
+      goal: "Recover from stale verifier interruption",
+      status: "blocked",
+      blockers: ["Verifier was interrupted; rerun or continue the Goal to verify again."],
+    });
+    await executeGoals({
+      action: "evidence",
+      run_id: "goal-blocked-after-pass",
+      evidence_kind: "log",
+      evidence_label: "Verifier log artifact",
+      evidence_path: ".goal-evidence/blocked-after-pass.log",
+      evidence_content: "Verifier passed after interruption.",
+    });
+
+    const result = await executeGoals({
+      action: "verify",
+      run_id: "goal-blocked-after-pass",
+      verification_status: "pass",
+      summary: "Targeted regression tests passed and wrote Verifier log artifact.",
+      verifier_command: "pnpm vitest run src/core/goal-controller.test.ts",
+      exit_code: 0,
+      output_path: ".goal-evidence/blocked-after-pass.log",
+    });
+    const run = await getGoalRun(tmpProject, "goal-blocked-after-pass");
+
+    expect(result).toBe('Verifier recorded for "Blocked after pass": pass.');
+    expect(run?.status).toBe("ready");
+    expect(run?.blockers).toEqual([]);
+    expect(run?.evidencePlan.map((item) => item.status)).toEqual(["planned", "planned"]);
+    expect(run?.completionAudit).toMatchObject({ status: "unknown" });
+    expect(run ? decideGoalNextAction(run) : null).toMatchObject({
+      kind: "create_task",
+      title: "Audit Goal completion evidence",
+    });
   });
 
   it("records verifier failure as persisted command evidence and keeps the run recoverable", async () => {
@@ -471,7 +773,64 @@ describe("goals tool state guards", () => {
     );
   });
 
-  it("allows completion after all tasks are done and verifier passes", async () => {
+  it("keeps a Goal ready when final audit creates a follow-up worker task", async () => {
+    await executeGoals({
+      action: "create",
+      run_id: "goal-audit-missing",
+      title: "Audit missing report",
+      goal: "Ensure report matches verifier result",
+      success_criteria: ["Report reflects latest verifier pass"],
+      prerequisites: [],
+      verifier_command: "pnpm test",
+    });
+    await executeGoals({
+      action: "task",
+      run_id: "goal-audit-missing",
+      task_id: "report-task",
+      task_title: "Write report",
+      task_prompt: "Write the report",
+      task_status: "done",
+      attempts: 1,
+    });
+    await executeGoals({
+      action: "verify",
+      run_id: "goal-audit-missing",
+      verification_status: "pass",
+      summary: "Verifier passed",
+      exit_code: 0,
+      output_path: "artifacts/verifier.log",
+    });
+
+    await executeGoals({
+      action: "task",
+      run_id: "goal-audit-missing",
+      task_id: "fix-report",
+      task_title: "Fix stale final report",
+      task_prompt: "Update the report to reflect the latest verifier pass.",
+      task_status: "pending",
+      summary: "Final audit found stale report content.",
+    });
+    await executeGoals({
+      action: "audit",
+      run_id: "goal-audit-missing",
+      verification_status: "fail",
+      summary: "FINAL_AUDIT_FAIL report still describes an earlier verifier failure.",
+      output_path: "artifacts/verifier.log",
+    });
+    const run = await getGoalRun(tmpProject, "goal-audit-missing");
+
+    expect(run?.status).toBe("ready");
+    expect(run?.completionAudit).toMatchObject({ status: "fail" });
+    expect(run?.tasks).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "fix-report", status: "pending" })]),
+    );
+    expect(run ? decideGoalNextAction(run) : null).toMatchObject({
+      kind: "start_worker",
+      task: expect.objectContaining({ id: "fix-report" }),
+    });
+  });
+
+  it("allows completion after all tasks are done, verifier passes, and final audit passes", async () => {
     await executeGoals({
       action: "create",
       run_id: "goal-a",
@@ -480,6 +839,17 @@ describe("goals tool state guards", () => {
       success_criteria: ["Task and verifier pass"],
       prerequisites: [],
       verifier_command: "pnpm test",
+      evidence_plan: [
+        {
+          id: "verifier-proof",
+          label: "Verifier proof",
+          mechanism: "command",
+          description: "Run verifier command",
+          status: "ready",
+          command: "pnpm test",
+          evidence: "configured",
+        },
+      ],
     });
     await executeGoals({
       action: "task",
@@ -495,12 +865,35 @@ describe("goals tool state guards", () => {
       verification_status: "pass",
       summary: "Verifier passed",
       exit_code: 0,
+      output_path: "artifacts/verifier.log",
+    });
+    const beforeAudit = await executeGoals({ action: "complete", run_id: "goal-a" });
+    expect(beforeAudit).toBe(
+      "Error: cannot complete goal: Final completion audit status is unknown.",
+    );
+    await executeGoals({
+      action: "task",
+      run_id: "goal-a",
+      task_id: "final-audit",
+      task_title: "Audit Goal completion evidence",
+      task_prompt: "Audit final durable artifacts.",
+      task_status: "done",
+      attempts: 1,
+    });
+    const auditResult = await executeGoals({
+      action: "audit",
+      run_id: "goal-a",
+      verification_status: "pass",
+      summary: `FINAL_AUDIT_PASS verifier_checked_at=${(await getGoalRun(tmpProject, "goal-a"))?.verifier?.lastResult?.checkedAt}; artifacts match verifier output.`,
+      output_path: "artifacts/verifier.log",
     });
 
     const result = await executeGoals({ action: "complete", run_id: "goal-a" });
     const run = await getGoalRun(tmpProject, "goal-a");
 
+    expect(auditResult).toBe('Completion audit recorded for "Complete safely": pass.');
     expect(result).toBe('Goal "Complete safely" is now passed.');
     expect(run?.status).toBe("passed");
+    expect(run?.completionAudit).toMatchObject({ status: "pass" });
   });
 });

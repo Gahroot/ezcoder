@@ -117,11 +117,11 @@ export interface GoalSyntheticEventInfo {
   payload?: GoalSyntheticEventPayload;
 }
 
-const GOAL_ORCHESTRATOR_INSTRUCTIONS = `orchestrator_instructions:
+const GOAL_ORCHESTRATOR_INSTRUCTIONS = `coordinator_instructions:
 1. Call goals({ action: "status", run_id }) before deciding.
-2. Briefly say what the orchestrator is doing so the chat shows progress.
+2. Briefly say what you are doing as the coordinator so the chat shows progress.
 3. Inspect durable tasks, verifier state, blockers, and evidence.
-4. Take exactly one next control-loop action: add/update the next Goal task, run/record verification, pause/block with evidence, or complete only if verifier evidence proves the success criteria.
+4. Take exactly one next control-loop action: add/update the next Goal task, run/record verification, run/record the final completion audit, pause/block with evidence, or complete only if verifier plus final-audit evidence proves the success criteria.
 5. Do not merely narrate and do not ask the user to open the Goal pane.`;
 
 function headerValue(value: string): string {
@@ -286,7 +286,7 @@ export function buildGoalVerifierSyntheticEventPayload(
     fixLimit: DEFAULT_GOAL_VERIFIER_FIX_LIMIT,
     completionGuidance:
       status === "pass"
-        ? "Complete only if goals(status) shows success criteria, required evidence, and verifier output match the original objective exactly."
+        ? "Complete only if goals(status) shows success criteria, required evidence, verifier output, and final completion audit match the original objective exactly. If the final audit is missing or stale, create/run that audit before completion."
         : "Create one bounded fix task with the verifier command, exit code, output path, and failure summary unless the limit or repeated-failure guard is reached.",
     summary: summary.trim() || "(empty)",
     goalState: buildGoalStateSnapshot(run),
@@ -393,8 +393,14 @@ function parsePayload(text: string): GoalSyntheticEventPayload | null {
 }
 
 function quotedField(text: string, field: string): string | undefined {
-  const match = new RegExp(`${field}="([^"]*)"`).exec(text);
-  return match?.[1];
+  const match = new RegExp(`${field}="((?:\\\\.|[^"])*)"`).exec(text);
+  if (!match) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(`"${match[1]}"`);
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return match[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  }
 }
 
 function tokenField(text: string, field: string): string | undefined {

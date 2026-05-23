@@ -132,8 +132,8 @@ describe("goal store persistence", () => {
     );
   });
 
-  it("marks a run blocked when prerequisites are unknown or missing", async () => {
-    const run = await upsertGoalRun(tmpProject, {
+  it("marks a run blocked when prerequisites are unknown, missing, or met without evidence", async () => {
+    const unknownRun = await upsertGoalRun(tmpProject, {
       title: "Expo audio check",
       goal: "Verify app audio playback programmatically",
       status: "ready",
@@ -142,12 +142,60 @@ describe("goal store persistence", () => {
         { id: "sim", label: "iOS simulator available", status: "unknown" },
       ],
     });
+    const uncheckedMetRun = await upsertGoalRun(tmpProject, {
+      title: "Unchecked tooling",
+      goal: "Prevent lazy prerequisite approval",
+      status: "ready",
+      prerequisites: [{ id: "tooling", label: "Local tooling", status: "met" }],
+    });
 
-    expect(run.status).toBe("blocked");
+    expect(unknownRun.status).toBe("blocked");
+    expect(uncheckedMetRun.status).toBe("blocked");
+    expect(formatGoalBlockingPrerequisites(uncheckedMetRun)).toBe(
+      "Local tooling: Prerequisite is marked met but has no recorded check evidence; verify it locally and record non-secret evidence.",
+    );
 
-    const counts = summarizeGoalCountsFromRuns([run]);
-    expect(counts.blocked).toBe(1);
-    expect(counts.active).toBe(1);
+    const counts = summarizeGoalCountsFromRuns([unknownRun, uncheckedMetRun]);
+    expect(counts.blocked).toBe(2);
+    expect(counts.active).toBe(2);
+  });
+
+  it("merges stale run snapshots without dropping fresher task and evidence writes", async () => {
+    const run = await upsertGoalRun(tmpProject, {
+      id: "stale-merge-run",
+      title: "Stale merge",
+      goal: "Keep fresh task metadata",
+      status: "ready",
+      tasks: [createGoalTask({ id: "task-a", title: "Task A", prompt: "Do A" })],
+    });
+    const stale = { ...run, tasks: run.tasks.map((item) => ({ ...item })) };
+
+    await updateGoalTask(tmpProject, run.id, "task-a", {
+      status: "blocked",
+      attempts: 2,
+      lastSummary: "Paused after worker attempt limit.",
+    });
+    await appendGoalEvidence(tmpProject, run.id, {
+      kind: "summary",
+      label: "Goal paused",
+      content: "Attempt limit reached",
+    });
+
+    const persisted = await upsertGoalRun(tmpProject, {
+      ...stale,
+      status: "paused",
+      blockers: ["Attempt limit reached"],
+    });
+
+    expect(persisted.tasks[0]).toMatchObject({
+      id: "task-a",
+      status: "blocked",
+      attempts: 2,
+      lastSummary: "Paused after worker attempt limit.",
+    });
+    expect(persisted.evidence).toEqual(
+      expect.arrayContaining([expect.objectContaining({ label: "Goal paused" })]),
+    );
   });
 
   it("updates task state and appends a new task if given a task input", async () => {
@@ -357,7 +405,7 @@ describe("goal store persistence", () => {
     expect(result.runs.find((item) => item.id === run.id)?.status).toBe("running");
   });
 
-  it("rejects empty saves that would erase active Goal work", async () => {
+  it("rejects saves that omit any active Goal work", async () => {
     await upsertGoalRun(tmpProject, {
       id: "active-run",
       title: "Active",
@@ -375,7 +423,24 @@ describe("goal store persistence", () => {
       ],
     });
 
-    await saveGoalRuns(tmpProject, []);
+    await saveGoalRuns(tmpProject, [
+      {
+        id: "other-run",
+        title: "Other",
+        goal: "Other durable state",
+        status: "ready",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        projectPath: tmpProject,
+        successCriteria: [],
+        prerequisites: [],
+        harness: [],
+        evidencePlan: [],
+        tasks: [],
+        evidence: [],
+        blockers: [],
+      },
+    ]);
     const runs = await loadGoalRuns(tmpProject);
 
     expect(runs).toHaveLength(1);

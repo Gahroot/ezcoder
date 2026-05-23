@@ -4,6 +4,8 @@ import {
   canCompleteGoalRun,
   decideGoalNextAction,
   formatGoalControllerDecision,
+  hasFreshGoalCompletionAudit,
+  hasRequiredGoalEvidence,
   shouldClearGoalContinuation,
 } from "./goal-controller.js";
 
@@ -19,11 +21,47 @@ function goalRun(overrides: Partial<GoalRun> = {}): GoalRun {
     successCriteria: ["Verifier passes"],
     prerequisites: [],
     harness: [],
-    evidencePlan: [],
+    evidencePlan: [
+      {
+        id: "proof",
+        label: "Proof",
+        mechanism: "command",
+        description: "Run verifier",
+        status: "ready",
+        evidence: "verified",
+        command: "npm test",
+      },
+    ],
+    verifier: {
+      description: "Verifier",
+      command: "npm test",
+      lastResult: {
+        status: "pass",
+        summary: "passed",
+        command: "npm test",
+        outputPath: "out.log",
+        checkedAt: "2024-01-01T00:00:02.000Z",
+      },
+    },
     tasks: [],
     evidence: [],
     blockers: [],
     ...overrides,
+  };
+}
+
+function withPassingCompletionAudit(run: GoalRun): GoalRun {
+  const verifier = run.verifier?.lastResult;
+  if (!verifier) throw new Error("run must have verifier result");
+  return {
+    ...run,
+    completionAudit: {
+      status: "pass",
+      summary: `FINAL_AUDIT_PASS verifier_checked_at=${verifier.checkedAt} output=${verifier.outputPath ?? "inline"}`,
+      checkedAt: "2024-01-01T00:00:03.000Z",
+      verifierCheckedAt: verifier.checkedAt,
+      ...(verifier.outputPath ? { outputPath: verifier.outputPath } : {}),
+    },
   };
 }
 
@@ -69,6 +107,80 @@ describe("goal controller", () => {
     ).toMatchObject({ kind: "wait", workerId: "worker-a" });
   });
 
+  it("reproduces blocked-after-pass shape by completing from durable evidence despite stale blocked status and planned items", () => {
+    const run = goalRun({
+      status: "blocked",
+      blockers: ["Verifier was interrupted"],
+      tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
+      evidencePlan: [
+        {
+          id: "targeted-tests",
+          label: "Targeted regression tests",
+          mechanism: "test",
+          description: "Run the focused local regression command.",
+          status: "planned",
+          command: "pnpm vitest run src/core/goal-controller.test.ts",
+        },
+        {
+          id: "verifier-log",
+          label: "Verifier log artifact",
+          mechanism: "log",
+          description: "Persist the verifier output log.",
+          status: "planned",
+          path: ".goal-evidence/blocked-after-pass.log",
+        },
+      ],
+      evidence: [
+        {
+          id: "evidence-targeted-tests",
+          createdAt: "2024-01-01T00:00:00.000Z",
+          kind: "command",
+          label: "Targeted regression tests",
+          content: "pnpm vitest run src/core/goal-controller.test.ts passed",
+        },
+        {
+          id: "evidence-verifier-log",
+          createdAt: "2024-01-01T00:00:01.000Z",
+          kind: "log",
+          label: "Verifier log artifact",
+          path: ".goal-evidence/blocked-after-pass.log",
+          content: "Verifier passed after interruption.",
+        },
+      ],
+      verifier: {
+        description: "Full check",
+        command: "pnpm vitest run src/core/goal-controller.test.ts",
+        lastResult: {
+          status: "pass",
+          summary: "Verifier passed after earlier interruption.",
+          command: "pnpm vitest run src/core/goal-controller.test.ts",
+          outputPath: ".goal-evidence/blocked-after-pass.log",
+          checkedAt: "2024-01-01T00:00:02.000Z",
+        },
+      },
+    });
+
+    expect(canCompleteGoalRun(run)).toEqual({
+      ok: false,
+      reason: "Goal has no final completion audit.",
+    });
+    expect(decideGoalNextAction(run)).toMatchObject({
+      kind: "create_task",
+      title: "Audit Goal completion evidence",
+      reason:
+        "Verifier passed; creating final read-only completion audit before the Goal can pass (1/3).",
+    });
+    const audited = withPassingCompletionAudit(run);
+    expect(canCompleteGoalRun(audited)).toEqual({
+      ok: true,
+      reason: "All tasks are done, verifier evidence passed, and final completion audit passed.",
+    });
+    expect(decideGoalNextAction(audited)).toEqual({
+      kind: "complete",
+      reason: "All tasks are done, verifier evidence passed, and final completion audit passed.",
+    });
+  });
+
   it("treats closure evidence and ready evidence-plan items as satisfied after verifier pass", () => {
     const run = goalRun({
       evidencePlan: [
@@ -86,6 +198,7 @@ describe("goal controller", () => {
           mechanism: "browser",
           description: "Browser closure evidence proves the flow works.",
           status: "planned",
+          evidence: "Browser closure evidence proves the flow works.",
         },
         {
           id: "verifier-output-proof",
@@ -118,18 +231,215 @@ describe("goal controller", () => {
       },
     });
     expect(canCompleteGoalRun(run)).toEqual({
-      ok: true,
-      reason: "All tasks are done and verifier evidence passed.",
+      ok: false,
+      reason: "Goal has no final completion audit.",
     });
-    expect(decideGoalNextAction(run)).toEqual({
+    expect(decideGoalNextAction(run)).toMatchObject({
+      kind: "create_task",
+      title: "Audit Goal completion evidence",
+      reason:
+        "Verifier passed; creating final read-only completion audit before the Goal can pass (1/3).",
+    });
+    const audited = withPassingCompletionAudit(run);
+    expect(canCompleteGoalRun(audited)).toEqual({
+      ok: true,
+      reason: "All tasks are done, verifier evidence passed, and final completion audit passed.",
+    });
+    expect(decideGoalNextAction(audited)).toEqual({
       kind: "complete",
-      reason: "All tasks are done and verifier evidence passed.",
+      reason: "All tasks are done, verifier evidence passed, and final completion audit passed.",
     });
   });
 
-  it("blocks instead of spawning repeated evidence-path workers after verifier success", () => {
+  it("creates bounded evidence reconciliation work after verifier success", () => {
     const decision = decideGoalNextAction(
       goalRun({
+        tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
+        evidencePlan: [
+          {
+            id: "proof",
+            label: "Unmatched proof",
+            mechanism: "browser",
+            description: "Needs screenshot",
+            status: "planned",
+          },
+        ],
+        verifier: {
+          description: "Full check",
+          command: "pnpm test",
+          lastResult: {
+            status: "pass",
+            summary: "tests passed",
+            command: "pnpm test",
+            checkedAt: "2024-01-01T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+    expect(decision).toMatchObject({
+      kind: "create_task",
+      title: "Reconcile Goal evidence plan",
+      reason:
+        "Verifier passed but 1 evidence-plan item(s) still need durable reconciliation (1/2).",
+    });
+    expect(decision.kind === "create_task" ? decision.prompt : "").toContain(
+      "Reconcile bookkeeping only",
+    );
+  });
+
+  it("rejects evidence-plan false positives before final audit", () => {
+    const run = goalRun({
+      tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
+      evidencePlan: [
+        {
+          id: "proof",
+          label: "Screenshot proof",
+          mechanism: "screenshot",
+          description: "Needs a real screenshot artifact.",
+          status: "planned",
+          path: "artifacts/screenshot.png",
+        },
+      ],
+      evidence: [
+        {
+          id: "narrative-only",
+          kind: "summary",
+          label: "Screenshot proof",
+          content: "I looked at the screen and it seemed fine.",
+          createdAt: "2024-01-01T00:00:00.000Z",
+        },
+      ],
+      verifier: {
+        description: "Full check",
+        command: "pnpm test",
+        lastResult: {
+          status: "pass",
+          summary: "tests passed without screenshot path",
+          command: "pnpm test",
+          checkedAt: "2024-01-01T00:00:01.000Z",
+        },
+      },
+    });
+
+    expect(hasRequiredGoalEvidence(run)).toEqual({
+      ok: false,
+      reason: "Goal evidence plan is not satisfied: Screenshot proof.",
+    });
+    expect(decideGoalNextAction(run)).toMatchObject({
+      kind: "create_task",
+      title: "Reconcile Goal evidence plan",
+    });
+  });
+
+  it("does not create zero-item evidence reconciliation before final audit", () => {
+    const run = goalRun({
+      tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
+      evidencePlan: [
+        {
+          id: "proof",
+          label: "Matched proof",
+          mechanism: "test",
+          description: "Matched by verifier output.",
+          status: "planned",
+          command: "pnpm test",
+        },
+      ],
+      verifier: {
+        description: "Full check",
+        command: "pnpm test",
+        lastResult: {
+          status: "pass",
+          summary: "Matched proof passed.",
+          command: "pnpm test",
+          checkedAt: "2024-01-01T00:00:00.000Z",
+        },
+      },
+    });
+
+    expect(decideGoalNextAction(run)).toMatchObject({
+      kind: "create_task",
+      title: "Audit Goal completion evidence",
+    });
+  });
+
+  it("creates reconciliation work for real blocked-after-pass evidence-plan labels", () => {
+    const decision = decideGoalNextAction(
+      goalRun({
+        tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
+        evidencePlan: [
+          {
+            id: "slash-wrapper-evidence",
+            label: "/goal slash wrapper evidence",
+            mechanism: "test",
+            description:
+              "Assertions prove /goal prompt is short and delegates deep policy to active Goal setup system instructions.",
+            status: "planned",
+            command:
+              "pnpm --filter @kenkaiiii/ggcoder test -- prompt-commands.test.ts slash-command-images.test.ts",
+          },
+          {
+            id: "context-wiring-evidence",
+            label: "Context wiring source audit",
+            mechanism: "source",
+            description:
+              "Inspect App/render/cli/tools wiring to document exactly which context is shared through refs/session state and which context is isolated to workers.",
+            status: "planned",
+            path: "packages/ggcoder/src/ui/App.tsx; packages/ggcoder/src/ui/render.ts; packages/ggcoder/src/cli.ts; packages/ggcoder/src/tools/index.ts",
+          },
+        ],
+        evidence: [
+          {
+            id: "focused-tests",
+            kind: "command",
+            label: "Focused Goal-mode test coverage command",
+            content:
+              "Command passed: pnpm --filter @kenkaiiii/ggcoder test -- system-prompt.test.ts prompt-commands.test.ts goal-mode.test.ts slash-command-images.test.ts footer-status-layout.test.ts goal-lifecycle-orchestration.test.ts",
+            createdAt: "2024-01-01T00:00:00.000Z",
+          },
+          {
+            id: "audit",
+            kind: "summary",
+            label: "Goal-mode architecture audit",
+            content:
+              "Inspected runtime-mode.ts, system-prompt.ts, prompt-commands.ts, cli.ts, ui/render.ts, ui/App.tsx, and tools/index.ts.",
+            createdAt: "2024-01-01T00:00:01.000Z",
+          },
+        ],
+        verifier: {
+          description: "Full check",
+          command: "pnpm check && pnpm lint && pnpm format:check && pnpm build",
+          lastResult: {
+            status: "pass",
+            summary: "Focused tests, Goal E2E harness, and quality gates passed.",
+            command: "pnpm check && pnpm lint && pnpm format:check && pnpm build",
+            checkedAt: "2024-01-01T00:00:02.000Z",
+          },
+        },
+      }),
+    );
+    expect(decision).toMatchObject({
+      kind: "create_task",
+      title: "Reconcile Goal evidence plan",
+    });
+    expect(decision.kind === "create_task" ? decision.prompt : "").toContain(
+      "slash-wrapper-evidence / /goal slash wrapper evidence",
+    );
+    expect(decision.kind === "create_task" ? decision.prompt : "").toContain(
+      "context-wiring-evidence / Context wiring source audit",
+    );
+  });
+
+  it("blocks after bounded evidence reconciliation attempts are exhausted", () => {
+    const reconcileTask = {
+      id: "reconcile-a",
+      title: "Reconcile Goal evidence plan",
+      prompt: "Reconcile evidence",
+      status: "done" as const,
+      attempts: 1,
+    };
+    const decision = decideGoalNextAction(
+      goalRun({
+        tasks: [reconcileTask, { ...reconcileTask, id: "reconcile-b" }],
         evidencePlan: [
           {
             id: "proof",
@@ -154,7 +464,7 @@ describe("goal controller", () => {
     expect(decision).toEqual({
       kind: "blocked",
       reason:
-        "Verifier passed, but the Goal evidence plan is still not satisfied; blocking instead of creating repeated evidence-path workers.",
+        "Verifier passed, but the Goal evidence plan is still not satisfied after bounded reconciliation attempts.",
     });
   });
 
@@ -177,6 +487,7 @@ describe("goal controller", () => {
     expect(
       decideGoalNextAction(
         goalRun({
+          verifier: undefined,
           tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
         }),
       ),
@@ -215,16 +526,12 @@ describe("goal controller", () => {
     });
     const prompt = decision.kind === "create_task" ? decision.prompt : "";
     expect(prompt).toContain("iOS simulator screenshot comparison (screenshot)");
-    expect(prompt).toContain("what would prove this goal actually worked end-to-end");
-    expect(prompt).toContain("observable proof paths");
-    expect(prompt).toContain("not narrative-only verification or human visual inspection");
-    expect(prompt).toContain("dev servers");
-    expect(prompt).toContain("browser automation");
-    expect(prompt).toContain("logs");
-    expect(prompt).toContain("generated fixtures");
-    expect(prompt).toContain("source/docs/code-search comparison");
-    expect(prompt).toContain("iOS Simulator screenshots when available");
-    expect(prompt).toContain("image/frame checks");
+    expect(prompt).toContain("goal-specific sensory intent");
+    expect(prompt).toContain("what experience is being observed");
+    expect(prompt).toContain("what failure it catches");
+    expect(prompt).toContain("what signal proves it");
+    expect(prompt).toContain("Build only the proportional instrument needed");
+    expect(prompt).toContain("not use narrative-only verification or human visual inspection");
   });
 
   it("blocks when an evidence plan item requires a true external prerequisite", () => {
@@ -252,19 +559,25 @@ describe("goal controller", () => {
   });
 
   it("creates a harness-building task before verifier execution when instrumentation is missing", () => {
-    expect(
-      decideGoalNextAction(
-        goalRun({
-          tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
-          harness: [{ id: "harness-a", label: "Browser fixture", description: "Create fixture" }],
-          verifier: { description: "Full check", command: "pnpm test:e2e" },
-        }),
-      ),
-    ).toMatchObject({
+    const decision = decideGoalNextAction(
+      goalRun({
+        tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
+        harness: [{ id: "harness-a", label: "Browser fixture", description: "Create fixture" }],
+        verifier: { description: "Full check", command: "pnpm test:e2e" },
+      }),
+    );
+
+    expect(decision).toMatchObject({
       kind: "create_task",
       title: "Build Goal verification harness",
       reason: "Goal harness requires local instrumentation before verification.",
     });
+    const prompt = decision.kind === "create_task" ? decision.prompt : "";
+    expect(prompt).toContain("Build only the missing local/free harness instrumentation");
+    expect(prompt).toContain("intended experience");
+    expect(prompt).toContain("relevant failure modes");
+    expect(prompt).toContain("senses/signals this harness must observe");
+    expect(prompt).toContain("do not default to generic tests");
   });
 
   it("blocks missing prerequisites with exact user instructions", () => {
@@ -393,6 +706,39 @@ describe("goal controller", () => {
     });
   });
 
+  it("rejects spoofed final audit pass summaries", () => {
+    const run = goalRun({
+      tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
+      verifier: {
+        description: "Full check",
+        command: "pnpm test",
+        lastResult: {
+          status: "pass",
+          summary: "passed",
+          checkedAt: "2024-01-01T00:00:02.000Z",
+          outputPath: "artifacts/verifier.log",
+        },
+      },
+      completionAudit: {
+        status: "pass",
+        summary:
+          "FINAL_AUDIT_PASS verifier_checked_at=2024-01-01T00:00:01.000Z artifact=artifacts/verifier.log",
+        checkedAt: "2024-01-01T00:00:03.000Z",
+        verifierCheckedAt: "2024-01-01T00:00:01.000Z",
+        outputPath: "artifacts/verifier.log",
+      },
+    });
+
+    expect(hasFreshGoalCompletionAudit(run)).toEqual({
+      ok: false,
+      reason: "Final completion audit pass summary must include latest verifier_checked_at.",
+    });
+    expect(canCompleteGoalRun(run)).toEqual({
+      ok: false,
+      reason: "Final completion audit pass summary must include latest verifier_checked_at.",
+    });
+  });
+
   it("completes only with all tasks done and pass verifier evidence", () => {
     const run = goalRun({
       tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
@@ -408,12 +754,66 @@ describe("goal controller", () => {
     });
 
     expect(canCompleteGoalRun(run)).toEqual({
+      ok: false,
+      reason: "Goal has no final completion audit.",
+    });
+    expect(decideGoalNextAction(run)).toMatchObject({
+      kind: "create_task",
+      title: "Audit Goal completion evidence",
+      reason:
+        "Verifier passed; creating final read-only completion audit before the Goal can pass (1/3).",
+    });
+    const audited = withPassingCompletionAudit(run);
+    expect(canCompleteGoalRun(audited)).toEqual({
       ok: true,
-      reason: "All tasks are done and verifier evidence passed.",
+      reason: "All tasks are done, verifier evidence passed, and final completion audit passed.",
+    });
+    expect(decideGoalNextAction(audited)).toEqual({
+      kind: "complete",
+      reason: "All tasks are done, verifier evidence passed, and final completion audit passed.",
+    });
+  });
+
+  it("reruns the verifier when a non-audit worker changed evidence after the latest verifier pass", () => {
+    const run = goalRun({
+      tasks: [{ id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 }],
+      evidence: [
+        {
+          id: "post-verifier-worker",
+          kind: "log",
+          label: "Worker fix123 done",
+          content: "Updated final report after the verifier pass.",
+          createdAt: "2024-01-01T00:00:02.000Z",
+        },
+      ],
+      verifier: {
+        description: "Full check",
+        command: "pnpm test",
+        lastResult: {
+          status: "pass",
+          summary: "passed",
+          command: "pnpm test",
+          checkedAt: "2024-01-01T00:00:00.000Z",
+        },
+      },
+      completionAudit: {
+        status: "pass",
+        summary: "FINAL_AUDIT_PASS verifier_checked_at=2024-01-01T00:00:00.000Z",
+        checkedAt: "2024-01-01T00:00:03.000Z",
+        verifierCheckedAt: "2024-01-01T00:00:00.000Z",
+      },
+    });
+
+    expect(hasFreshGoalCompletionAudit(run)).toEqual({
+      ok: false,
+      reason:
+        "Latest verifier result is stale after later Goal worker evidence: Worker fix123 done.",
     });
     expect(decideGoalNextAction(run)).toEqual({
-      kind: "complete",
-      reason: "All tasks are done and verifier evidence passed.",
+      kind: "run_verifier",
+      command: "pnpm test",
+      reason:
+        "Latest verifier result is stale after later Goal worker evidence; rerunning verifier before final completion audit.",
     });
   });
 

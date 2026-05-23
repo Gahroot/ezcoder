@@ -49,6 +49,10 @@ function mergeUserContent(items: UserContent[]): UserContent {
   return parts;
 }
 
+export function shouldRetainThinkingDelta(): boolean {
+  return false;
+}
+
 export interface ActiveToolCall {
   toolCallId: string;
   name: string;
@@ -509,13 +513,12 @@ export function useAgentLoop(
                     sinceRunStartMs: String(firstThinkingArrivedMs),
                   });
                 }
-                thinkingBufferRef.current += event.text;
-                // Stream live to the visible ref so the user sees reasoning as
-                // it generates instead of waiting until text or tool calls
-                // arrive. Buffer is kept separately for persistence at turn_end.
-                thinkingVisibleRef.current += event.text;
-                streamThinkingDirty = true;
-                scheduleStreamFlush();
+                if (shouldRetainThinkingDelta()) {
+                  thinkingBufferRef.current += event.text;
+                  thinkingVisibleRef.current += event.text;
+                  streamThinkingDirty = true;
+                  scheduleStreamFlush();
+                }
                 charCountRef.current += event.text.length;
                 if (phaseRef.current !== "thinking") {
                   thinkingStartRef.current = Date.now();

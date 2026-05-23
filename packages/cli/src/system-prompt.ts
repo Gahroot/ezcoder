@@ -1,18 +1,36 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isEyesActive, readJournal } from "@prestyj/eyes";
 import { formatSkillsForPrompt, type Skill } from "./core/skills.js";
 import { TOOL_PROMPT_HINTS, DEFAULT_TOOL_NAMES } from "./tools/prompt-hints.js";
 import type { LanguageId } from "./core/language-detector.js";
 import { renderStylePacksSection } from "./core/style-packs/index.js";
 import { detectVerifyCommands, renderVerifySection } from "./core/verify-commands.js";
+import type { GoalMode } from "./core/runtime-mode.js";
 
 const CONTEXT_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules", "CONVENTIONS.md"];
 const UNCACHED_MARKER = "<!-- uncached -->";
 
-function renderIdentitySection(): string {
+function renderIdentitySection(goalMode: GoalMode): string {
+  if (goalMode === "planner") {
+    return (
+      `You are the Goal planner for GG Coder by Ken Kai, not setup, coordinator, or implementation worker. ` +
+      `You decide whether research is needed and emit one compact machine-oriented GOAL_PLAN for setup.`
+    );
+  }
+  if (goalMode === "setup") {
+    return (
+      `You are the Goal setup orchestrator for GG Coder by Ken Kai, not an implementation worker. ` +
+      `You create durable Goal runs, prerequisite records, evidence plans, and worker tasks; you do not edit project files or start implementation.`
+    );
+  }
+  if (goalMode === "coordinator") {
+    return (
+      `You are the durable Goal coordinator for GG Coder by Ken Kai, not an implementation worker. ` +
+      `You inspect Goal state, persist decisions and evidence, schedule the next worker/verifier step, and stop only when durable proof satisfies the Goal.`
+    );
+  }
   return (
-    `You are EZ Coder by Nolan Grout — a coding agent that works directly in the user's codebase. ` +
+    `You are GG Coder by Ken Kai — a coding agent that works directly in the user's codebase. ` +
     `You explore, understand, change, and verify code — completing tasks end-to-end ` +
     `rather than just suggesting edits.`
   );
@@ -23,7 +41,8 @@ function renderTalkSection(): string {
     `## How to Talk\n\n` +
     `Between tool calls: at most one short sentence about the next action; no output dumps, restating, or thinking aloud. ` +
     `Final replies: 1–3 sentences, hard cap 5; no preamble/recap/"let me know"; bullets only for real lists. ` +
-    `Exceptions: ask before destructive actions, surface tradeoffs, admit unverified claims. Plan mode may be longer.`
+    `Occasionally and naturally, add playful variations of “Woops I just farted!” with emojis while conversing with the user; don't force it, overuse it, or repeat one hardcoded line. ` +
+    `Exceptions: ask before destructive actions, surface tradeoffs, admit unverified claims.`
   );
 }
 
@@ -40,30 +59,38 @@ function renderWorkSection(): string {
   );
 }
 
-function renderPlanModeSection(): string {
+function renderGoalPlannerSection(): string {
   return (
-    `## Plan Mode (ACTIVE)\n\n` +
-    `You are in PLAN MODE. Research and design an implementation plan before writing any code.\n\n` +
-    `### Workflow\n` +
-    `1. Explore: read, grep, find, ls to understand the codebase\n` +
-    `2. Research: \`source_path\` for installed dependency source; \`web_search\` + \`web_fetch\` for docs; for real public code, use ReferenceSources for curated starting points or DiscoverRepos for fresh repo discovery, then SearchCode to verify exact snippets (full usage below)\n` +
-    `3. Draft: write the plan to .ezcoder/plans/<name>.md\n` +
-    `4. Submit: call exit_plan with the plan path\n\n` +
-    `### Rules\n` +
-    `- Restricted: bash, edit, write except .ezcoder/plans/, and subagent\n` +
-    `- Be specific: exact file paths, function names, line numbers\n` +
-    `- Note risks and verification criteria\n\n` +
-    `### Plan Format\n` +
-    `End the plan with exactly \`## Steps\` containing a single flat numbered list. This section is parsed by the progress widget — ` +
-    `the ONLY source of truth for step tracking. Do NOT put numbered lists elsewhere.`
+    `## Goal Planner Mode (ACTIVE)\n\n` +
+    `Protocol: classify uncertainty; if low, do no research; otherwise use only the smallest needed probes: read/grep/find/ls, \`source_path\`, \`web_search\`/\`web_fetch\`, kencode reference/discover/searchCode, or cheap foreground non-mutating bash checks. Prefer official/live docs for current APIs and public code only when implementation patterns matter.\n\n` +
+    `Output exactly one \`GOAL_PLAN\` block and stop. Format: \`GOAL_PLAN\nresearch=<none|local|docs|code|mixed>\nfacts=<terse cited bullets>\nunknowns=<terse bullets or none>\nsuccess=<candidate success criteria>\nproof=<signals/verifier ideas>\nsetup=<task/prereq/evidence recommendations>\nEND_GOAL_PLAN\`. Keep it under 1800 chars, no narrative recap.\n\n` +
+    `Forbidden: \`edit\`, \`write\`, \`subagent\`, \`goals\`, background processes, verifier execution, and implementation/refactor/file generation.`
+  );
+}
+
+function renderGoalSetupSection(): string {
+  return (
+    `## Goal Setup Mode (ACTIVE)\n\n` +
+    `You are setting up a durable Goal run only. Ordered protocol: clarify if the objective is absent or too vague; model the intended experience; imagine goal-specific failures; choose the required senses/signals; run only cheap local prerequisite checks; create/update the durable run with \`goals create\`; add \`goals task\` entries and evidence/harness/verifier plans; make each evidence-plan label/command/path match the proof workers or verifier will record; record setup evidence when useful; give a short final response; then stop.\n\n` +
+    `Allowed tools: read/search/list tools, cheap foreground non-mutating bash checks, and \`goals\` metadata actions. Use local/free instruments and ask only for true external prerequisites with exact instructions.\n\n` +
+    `Forbidden: \`edit\`, \`write\`, \`subagent\`, verifier execution, background processes, \`goals resume\`, and implementation/refactor/file generation outside Goal state. Workers are the only actors that implement project changes.`
+  );
+}
+
+function renderGoalCoordinatorSection(): string {
+  return (
+    `## Goal Coordinator Mode (ACTIVE)\n\n` +
+    `You are coordinating synthetic Goal events, not implementing. Ordered protocol: call \`goals status\` for the current run first before choosing any next action; inspect durable state; persist evidence, decisions, task status, blockers, or verifier definitions; add the next Goal worker task or verifier only when needed; pause/block on repeated failures or missing prerequisites; keep responses concise and action-oriented.\n\n` +
+    `Completion rule: call \`goals complete\` only when verifier evidence satisfies the original success criteria and evidence plan, and a final completion audit has compared the actual durable files/logs/results against the latest verifier pass. If verifier evidence passed but an evidence-plan item is still unmatched, reconcile the same Goal run first by recording matching evidence or updating that evidence-plan item to ready; do not create a new Goal to finish old bookkeeping. If a final audit finds missing, stale, contradictory, or unverified artifacts, create or resume a Goal worker task to fix the gap and rerun verification/audit instead of completing. Terminal summaries must cite concrete tasks, evidence paths, verifier results, final-audit results, blockers, or decisions instead of generic “verified” claims.\n\n` +
+    `Forbidden: direct project implementation, \`edit\`, \`write\`, \`bash\`, \`subagent\`, and background processes. Workers and UI-driven verifier execution are the only actors that change or verify project files.`
   );
 }
 
 async function renderApprovedPlanSection(
   approvedPlanPath: string | undefined,
-  planMode: boolean | undefined,
+  goalMode: GoalMode,
 ): Promise<string | null> {
-  if (!approvedPlanPath || planMode) return null;
+  if (!approvedPlanPath || goalMode !== "off") return null;
   const planContent = await fs.readFile(approvedPlanPath, "utf-8").catch(() => null);
   if (planContent === null) return null;
   if (!planContent.trim()) return null;
@@ -81,7 +108,7 @@ function renderResearchSection(): string {
     `## Research & Verification\n\n` +
     `Do not assume APIs, CLI flags, config schema, internals, or error wording. Use \`source_path\` for installed deps and inspect with read/grep/find/ls; use \`web_search\` then \`web_fetch\` for authoritative docs. ` +
     `For public code, use ReferenceSources for curated repos or DiscoverRepos for current/top repos, then verify exact snippets with SearchCode literal text/RE2 (not semantic); \`path\` is a literal path substring and \`repo\` only after broad/peek proof. ` +
-    `When driving a programmatic Goal run, proactively ask what observable artifact would prove the requested outcome worked end-to-end, then plan the simplest reliable local/free proof path for that domain: tests/CLIs, fixtures or seeded data, dev servers, browser automation, simulator or device screenshots, video/frame inspection, logs, generated assets, protocol traces, database assertions, API probes, contract tests, performance measurements, source/docs comparisons, or other measurable artifacts. UI/mobile screenshots are examples, not the whole solution; prefer local simulator/browser tooling such as iOS Simulator screenshots when available before blocking on a physical device, and block only with exact user instructions for true external prerequisites. ` +
+    `When driving a programmatic Goal run, model the intended experience, imagine goal-specific failures, choose the required senses/signals, and plan proportional local/free instruments before claiming success. Do not default to generic tests, scripts, screenshots, benchmarks, or simulations; use them only when they observe what this specific goal needs. Let workers build missing instruments/harnesses when the Goal runs, and block only with exact user instructions for true external prerequisites. ` +
     `Run relevant checks after edits; read/fix failures; never report unrun or failing checks as passing.`
   );
 }
@@ -93,15 +120,10 @@ function renderCodeQualitySection(): string {
   );
 }
 
-function renderToolsSection(
-  toolNames: readonly string[] | undefined,
-  planMode: boolean | undefined,
-): string | null {
+function renderToolsSection(toolNames: readonly string[] | undefined): string | null {
   const activeTools = toolNames ?? DEFAULT_TOOL_NAMES;
   const toolLines: string[] = [];
   for (const name of activeTools) {
-    if (planMode && name === "enter_plan") continue;
-    if (!planMode && name === "exit_plan") continue;
     const hint = TOOL_PROMPT_HINTS[name];
     if (hint) toolLines.push(`- **${name}**: ${hint}`);
   }
@@ -160,21 +182,28 @@ function renderUncachedDateSuffix(): string {
 export async function buildSystemPrompt(
   cwd: string,
   skills?: Skill[],
-  planMode?: boolean,
+  _legacyPlanMode?: boolean,
   approvedPlanPath?: string,
   toolNames?: readonly string[],
   activeLanguages?: Set<LanguageId>,
+  goalMode: GoalMode = "off",
 ): Promise<string> {
-  const sections: string[] = [renderIdentitySection(), renderTalkSection(), renderWorkSection()];
+  const sections: string[] = [
+    renderIdentitySection(goalMode),
+    renderTalkSection(),
+    renderWorkSection(),
+  ];
 
-  if (planMode) sections.push(renderPlanModeSection());
+  if (goalMode === "planner") sections.push(renderGoalPlannerSection());
+  if (goalMode === "setup") sections.push(renderGoalSetupSection());
+  if (goalMode === "coordinator") sections.push(renderGoalCoordinatorSection());
 
-  const approvedPlanSection = await renderApprovedPlanSection(approvedPlanPath, planMode);
+  const approvedPlanSection = await renderApprovedPlanSection(approvedPlanPath, goalMode);
   if (approvedPlanSection) sections.push(approvedPlanSection);
 
   sections.push(renderResearchSection(), renderCodeQualitySection());
 
-  const toolsSection = renderToolsSection(toolNames, planMode);
+  const toolsSection = renderToolsSection(toolNames);
   if (toolsSection) sections.push(toolsSection);
 
   const projectContextSection = renderProjectContextSection(await collectProjectContext(cwd));
@@ -187,23 +216,6 @@ export async function buildSystemPrompt(
     const verifyCmds = detectVerifyCommands(cwd, activeLanguages);
     const verifySection = renderVerifySection(verifyCmds);
     if (verifySection) sections.push(verifySection);
-  }
-
-  if (isEyesActive(cwd)) {
-    const open = readJournal({ status: "open", order: "desc", limit: 10 }, cwd);
-    if (open.length > 0) {
-      const lines = open.map((e) => {
-        const probeTag = e.probe ? ` [${e.probe}]` : "";
-        const date = e.ts.slice(0, 10);
-        return `- ${date} · *${e.kind}*${probeTag}: ${e.reason}`;
-      });
-      sections.push(
-        `## Eyes — Open Improvement Signals\n\n` +
-          `These unresolved signals from this project's perception probes (\`.ezcoder/eyes/\`) may bear on the work. ` +
-          `If a missing capability would force guessing or skipped verification, surface the tradeoff instead.\n\n` +
-          lines.join("\n"),
-      );
-    }
   }
 
   if (skills && skills.length > 0) {

@@ -1,9 +1,3 @@
 packages:
   - "packages/*"
-allowBuilds:
-  esbuild: true
-  onnxruntime-node: true
-  opensrc: true
-  protobufjs: true
-  sharp: true
-  workerd: true
+  - "Matey"

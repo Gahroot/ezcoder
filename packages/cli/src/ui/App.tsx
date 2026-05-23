@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Box, Text, Static } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { useTerminalSize } from "./hooks/useTerminalSize.js";
 import { useDoublePress } from "./hooks/useDoublePress.js";
 import {
@@ -12,10 +12,7 @@ import {
   navigateTaskBar,
   killTask,
 } from "./stores/taskbar-store.js";
-import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { playNotificationSound } from "../utils/sound.js";
 import {
   formatError,
@@ -24,11 +21,10 @@ import {
   type ThinkingLevel,
   type TextContent,
   type ImageContent,
-} from "@prestyj/ai";
+} from "@kenkaiiii/gg-ai";
 import { extractImagePaths, type ImageAttachment } from "../utils/image.js";
-import type { AgentTool } from "@prestyj/agent";
+import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { useAgentLoop, type UserContent } from "./hooks/useAgentLoop.js";
-import { isEyesActive, journalCount } from "@prestyj/eyes";
 import { UserMessage } from "./components/UserMessage.js";
 import type { PasteInfo } from "./components/InputArea.js";
 import { AssistantMessage } from "./components/AssistantMessage.js";
@@ -53,12 +49,17 @@ import {
 import { Banner } from "./components/Banner.js";
 import { PlanOverlay } from "./components/PlanOverlay.js";
 import { ModelSelector } from "./components/ModelSelector.js";
-import { TaskOverlay } from "./components/TaskOverlay.js";
 import { GoalOverlay } from "./components/GoalOverlay.js";
 import { PixelOverlay } from "./components/PixelOverlay.js";
+import {
+  buildGoalFinalSummarySections,
+  buildGoalSummaryRows,
+  goalPassedDetail,
+  type GoalSummaryRow,
+  type GoalSummarySection,
+} from "./goal-summary.js";
 import type { PreparedPixelFix } from "../core/pixel-fix.js";
 import { SkillsOverlay } from "./components/SkillsOverlay.js";
-import { EyesOverlay } from "./components/EyesOverlay.js";
 import { ThemeSelector } from "./components/ThemeSelector.js";
 import {
   BackgroundTasksBar,
@@ -142,18 +143,16 @@ import {
   goalHasBlockingPrerequisites,
   loadGoalRuns,
   reconcileActiveGoalRuns,
-  summarizeGoalCounts,
-  summarizeGoalCountsFromRuns,
   updateGoalTask,
   upsertGoalRun,
   type GoalRun,
-  type GoalTask,
 } from "../core/goal-store.js";
 import {
   canCompleteGoalRun,
   decideGoalNextAction,
-  shouldCreateVerifierFixTask,
+  type GoalControllerDecision,
 } from "../core/goal-controller.js";
+import { runGoalPrerequisiteChecks } from "../core/goal-prerequisites.js";
 import { runGoalVerifierCommand } from "../core/goal-verifier.js";
 import {
   listGoalWorkers,
@@ -168,25 +167,27 @@ import {
   isGoalSyntheticEvent,
   parseGoalSyntheticEvent,
 } from "./goal-events.js";
+import type { GoalMode } from "../core/runtime-mode.js";
+import { type TerminalHistoryContext, type TerminalHistoryPrinter } from "./terminal-history.js";
 
-/** Where ezcoder bugs should be reported. Surfaced in the guidance line. */
-const GGCODER_BUG_REPORT_URL = "github.com/Gahroot/ezcoder/issues";
+/** Where ggcoder bugs should be reported. Surfaced in the guidance line. */
+const GGCODER_BUG_REPORT_URL = "github.com/kenkaiiii/gg-framework/issues";
 
 /**
  * Build an ErrorItem from any thrown value. Centralises headline / message /
  * guidance extraction so every error answers the same question for the user:
- *   "Should I retry, or is this a ezcoder bug to report?"
+ *   "Should I retry, or is this a ggcoder bug to report?"
  */
 function toErrorItem(err: unknown, id: string, contextPrefix?: string): ErrorItem {
   const f = formatError(err);
   const headline = contextPrefix ? `${contextPrefix} — ${f.headline}` : f.headline;
-  // For ezcoder bugs, swap the generic "see /help" guidance for an actual URL
+  // For ggcoder bugs, swap the generic "see /help" guidance for an actual URL
   // so users have a clear place to send the report.
   const guidance =
-    f.source === "ezcoder"
-      ? `This looks like a ezcoder bug — please send it to the dev at ${GGCODER_BUG_REPORT_URL}.`
+    f.source === "ggcoder"
+      ? `This looks like a ggcoder bug — please send it to the dev at ${GGCODER_BUG_REPORT_URL}.`
       : f.guidance;
-  // Mirror every user-visible error into ~/.ezcoder/debug.log so reports can be
+  // Mirror every user-visible error into ~/.gg/debug.log so reports can be
   // diagnosed even after the terminal scrollback is gone.
   log("ERROR", "ui-error", headline, {
     source: f.source,
@@ -212,12 +213,6 @@ interface UserItem {
   text: string;
   imageCount?: number;
   pasteInfo?: PasteInfo;
-  id: string;
-}
-
-interface TaskItem {
-  kind: "task";
-  title: string;
   id: string;
 }
 
@@ -250,6 +245,82 @@ export function routePromptCommandInput(
   };
 }
 
+const GOAL_PLANNER_OUTPUT_MAX_CHARS = 2400;
+
+function messageTextContent(message: Message): string {
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .filter((part): part is TextContent => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
+}
+
+export function collectAssistantTextSince(
+  messages: readonly Message[],
+  startIndex: number,
+  maxChars = GOAL_PLANNER_OUTPUT_MAX_CHARS,
+): string {
+  const text = messages
+    .slice(startIndex)
+    .filter((message) => message.role === "assistant")
+    .map(messageTextContent)
+    .join("\n")
+    .trim();
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars).trimEnd() + "\n[planner output truncated]";
+}
+
+export function buildGoalSetupPromptFromPlanner({
+  originalGoalPrompt,
+  plannerOutput,
+}: {
+  originalGoalPrompt: string;
+  plannerOutput: string;
+}): string {
+  const compactPlannerOutput = plannerOutput.trim() || "GOAL_PLAN\nresearch=none\nEND_GOAL_PLAN";
+  return (
+    `${originalGoalPrompt.trim()}\n\n` +
+    `## Goal Planner Output\n\n${compactPlannerOutput}\n\n` +
+    `Use the original objective plus this planner output to create durable Goal setup only. ` +
+    `Do not redo planner research unless the planner output is unusable.`
+  );
+}
+
+export function isGoalPromptCommandName(cmdName: string): boolean {
+  return getPromptCommand(cmdName)?.name === "goal";
+}
+
+export async function runGoalPromptSetupSequence({
+  userContent,
+  fullPrompt,
+  messagesRef,
+  setGoalModeAndPrompt,
+  runAgent,
+  onStage,
+}: {
+  userContent: UserContent;
+  fullPrompt: string;
+  messagesRef: { current: Message[] };
+  setGoalModeAndPrompt: (nextMode: GoalMode) => Promise<void>;
+  runAgent: (content: UserContent) => Promise<void>;
+  onStage?: (text: string) => void;
+}): Promise<void> {
+  onStage?.("GOAL PLANNER STARTED");
+  await setGoalModeAndPrompt("planner");
+  const plannerStartIndex = messagesRef.current.length;
+  await runAgent(userContent);
+  const plannerOutput = collectAssistantTextSince(messagesRef.current, plannerStartIndex);
+  const setupPrompt = buildGoalSetupPromptFromPlanner({
+    originalGoalPrompt: fullPrompt,
+    plannerOutput,
+  });
+  onStage?.("GOAL PLAN CREATED -> PASSING TO SETUP AGENT");
+  await setGoalModeAndPrompt("setup");
+  onStage?.("GOAL SETUP AGENT STARTED");
+  await runAgent(setupPrompt);
+  onStage?.("GOAL SETUP COMPLETE -> OPENING GOAL PANE");
+}
+
 export function buildUserContentWithAttachments(
   text: string,
   inputImages: ImageAttachment[],
@@ -273,7 +344,7 @@ export function buildUserContentWithAttachments(
     } else {
       // GLM models: save image to temp file and instruct model to use vision MCP tool
       const ext = img.mediaType.split("/")[1] ?? "png";
-      const tmpPath = `/tmp/ezcoder-img-${Date.now()}.${ext}`;
+      const tmpPath = `/tmp/ggcoder-img-${Date.now()}.${ext}`;
       try {
         writeFileSync(tmpPath, Buffer.from(img.data, "base64"));
         parts.push({
@@ -293,12 +364,6 @@ export function buildUserContentWithAttachments(
   return parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts;
 }
 
-export interface GoalSummaryRow {
-  label: string;
-  value: string;
-  detail?: string;
-}
-
 export interface GoalProgressItem {
   kind: "goal_progress";
   phase:
@@ -313,6 +378,7 @@ export interface GoalProgressItem {
   title: string;
   detail?: string;
   summaryRows?: GoalSummaryRow[];
+  summarySections?: GoalSummarySection[];
   workerId?: string;
   status?: string;
   id: string;
@@ -325,7 +391,6 @@ interface AssistantItem {
   text: string;
   thinking?: string;
   thinkingMs?: number;
-  planMode?: boolean;
   id: string;
 }
 
@@ -358,7 +423,7 @@ interface ErrorItem {
   headline: string;
   /** Detailed message body (clean, no JSON). */
   message: string;
-  /** Action line — "Retry, this is an OpenAI issue" / "Report this ezcoder bug …". */
+  /** Action line — "Retry, this is an OpenAI issue" / "Report this ggcoder bug …". */
   guidance: string;
   id: string;
 }
@@ -462,6 +527,12 @@ interface PlanTransitionItem {
   id: string;
 }
 
+interface GoalAgentTransitionItem {
+  kind: "goal_agent_transition";
+  text: string;
+  id: string;
+}
+
 interface ThinkingTransitionItem {
   kind: "thinking_transition";
   active: boolean;
@@ -528,7 +599,6 @@ export interface ToolGroupItem {
 
 export type CompletedItem =
   | UserItem
-  | TaskItem
   | GoalItem
   | GoalProgressItem
   | AssistantItem
@@ -549,6 +619,7 @@ export type CompletedItem =
   | SubAgentGroupItem
   | ToolGroupItem
   | PlanTransitionItem
+  | GoalAgentTransitionItem
   | ThinkingTransitionItem
   | ModelTransitionItem
   | ThemeTransitionItem
@@ -558,10 +629,9 @@ export type CompletedItem =
   | StepDoneItem;
 
 /**
- * Cap memory by replacing old items with tiny tombstones. Ink's <Static>
- * tracks rendered items by array length — the array must never shrink, but
- * we can swap out heavy objects for lightweight `{ kind: "tombstone", id }`
- * entries so GC can reclaim the original data.
+ * Cap memory by replacing old finalized rows with tiny tombstones. The full
+ * transcript is already printed into terminal scrollback, so the in-memory copy
+ * only needs enough recent structure to survive remounts and session mirroring.
  */
 const MAX_LIVE_HISTORY = 200;
 function compactHistory(items: CompletedItem[]): CompletedItem[] {
@@ -598,71 +668,71 @@ function formatGoalWorkerFinishedTitle(
   return status === "done" ? `Done: ${taskTitle}` : `Failed: ${taskTitle}`;
 }
 
-function countGoalTasksByStatus(tasks: readonly GoalTask[], status: GoalTask["status"]): number {
-  return tasks.filter((task) => task.status === status).length;
+function goalTerminalProgressId(run: GoalRun): string {
+  return `goal-terminal-${run.id}`;
 }
 
-function firstText(values: readonly (string | undefined)[]): string | undefined {
-  return values.find((value) => value !== undefined && value.trim().length > 0)?.trim();
+function goalTerminalRunIdFromItem(item: CompletedItem): string | undefined {
+  if (item.kind !== "goal_progress" || item.phase !== "terminal") return undefined;
+  if (!item.id.startsWith("goal-terminal-")) return undefined;
+  return item.id.slice("goal-terminal-".length);
 }
 
-function truncateGoalSummary(value: string, maxLength = 90): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 1)}…`;
+function goalProgressMatchesDraft(item: GoalProgressItem, draft: GoalProgressDraft): boolean {
+  return (
+    item.title === draft.title &&
+    item.detail === draft.detail &&
+    item.status === draft.status &&
+    JSON.stringify(item.summaryRows ?? []) === JSON.stringify(draft.summaryRows ?? []) &&
+    JSON.stringify(item.summarySections ?? []) === JSON.stringify(draft.summarySections ?? [])
+  );
 }
 
-export function buildGoalSummaryRows(run: GoalRun): GoalSummaryRow[] {
-  const rows: GoalSummaryRow[] = [];
-  const doneTasks = countGoalTasksByStatus(run.tasks, "done");
-  const failedTasks = countGoalTasksByStatus(run.tasks, "failed");
-  const blockedTasks = countGoalTasksByStatus(run.tasks, "blocked");
-  const taskSuffix = [
-    failedTasks > 0 ? `${failedTasks} failed` : undefined,
-    blockedTasks > 0 ? `${blockedTasks} blocked` : undefined,
-  ].filter((item): item is string => item !== undefined);
-  rows.push({
-    label: "Tasks",
-    value: run.tasks.length > 0 ? `${doneTasks}/${run.tasks.length} done` : "none",
-    ...(taskSuffix.length > 0 ? { detail: taskSuffix.join(", ") } : {}),
-  });
-
-  const verifierResult = run.verifier?.lastResult;
-  const verifierDetail = firstText([verifierResult?.outputPath, run.verifier?.command]);
-  rows.push({
-    label: "Verifier",
-    value: verifierResult?.status ?? (run.verifier?.command ? "ready" : "missing"),
-    ...(verifierDetail ? { detail: truncateGoalSummary(verifierDetail) } : {}),
-  });
-
-  const latestEvidence = run.evidence.at(-1);
-  rows.push({
-    label: "Evidence",
-    value: `${run.evidence.length} recorded`,
-    ...(latestEvidence
-      ? { detail: truncateGoalSummary(latestEvidence.path ?? latestEvidence.label) }
-      : {}),
-  });
-
-  if (run.status === "blocked" || run.status === "paused" || run.blockers.length > 0) {
-    rows.push({
-      label: run.status === "paused" ? "Paused on" : "Blocked on",
-      value: truncateGoalSummary(
-        goalHasBlockingPrerequisites(run)
-          ? formatGoalBlockingPrerequisites(run)
-          : (run.blockers[0] ?? "manual review"),
-        110,
-      ),
-    });
-  } else if (run.successCriteria.length > 0) {
-    rows.push({
-      label: "Criteria",
-      value: `${run.successCriteria.length} checked`,
-      detail: truncateGoalSummary(run.successCriteria[0] ?? "", 80),
-    });
+/**
+ * Reconcile terminal Goal cards that are already visible in this UI session.
+ *
+ * This intentionally does not synthesize missing cards from durable GoalRun
+ * state. Goal terminal cards are event notifications: they should appear when
+ * the terminal event happens in the current UI, not whenever a fresh session
+ * polls old Goal runs from the Goal pane. Callers that just observed a terminal
+ * event append that card first, then use this helper to tombstone stale older
+ * cards for the same run.
+ */
+export function getNextGeneratedItemId(items: readonly Pick<CompletedItem, "id">[]): number {
+  let max = -1;
+  for (const item of items) {
+    const raw = item.id.startsWith("ui-") ? item.id.slice(3) : item.id;
+    const n = Number(raw);
+    if (Number.isInteger(n) && n >= 0 && n > max) max = n;
   }
+  return max + 1;
+}
 
-  return rows.slice(0, 4);
+export function completedItemsWithDurableGoalTerminalProgress(
+  items: readonly CompletedItem[],
+  runs: readonly GoalRun[],
+): CompletedItem[] {
+  const runIds = new Set(runs.map((run) => run.id));
+  const terminalByRun = new Map(
+    runs
+      .map((run) => [run.id, formatGoalTerminalProgress(run)] as const)
+      .filter((entry): entry is readonly [string, GoalProgressDraft] => entry[1] !== null),
+  );
+  if (runIds.size === 0) return items as CompletedItem[];
+
+  let changed = false;
+  const reconciled = items.map((item, index): CompletedItem => {
+    const runId = goalTerminalRunIdFromItem(item);
+    if (!runId || !runIds.has(runId)) return item;
+
+    const draft = terminalByRun.get(runId);
+    if (draft && goalProgressMatchesDraft(item as GoalProgressItem, draft)) return item;
+
+    changed = true;
+    return { kind: "tombstone", id: `tombstone-${item.id}-${index}` };
+  });
+
+  return changed ? reconciled : (items as CompletedItem[]);
 }
 
 export function formatGoalTerminalProgress(run: GoalRun): GoalProgressDraft | null {
@@ -672,8 +742,9 @@ export function formatGoalTerminalProgress(run: GoalRun): GoalProgressDraft | nu
         kind: "goal_progress",
         phase: "terminal",
         title: `Goal passed: ${run.title}`,
-        detail: "Verifier evidence is recorded; auto-continuation stopped.",
+        detail: goalPassedDetail(run),
         summaryRows: buildGoalSummaryRows(run),
+        summarySections: buildGoalFinalSummarySections(run),
         status: run.status,
       };
     case "failed":
@@ -713,24 +784,15 @@ export function formatGoalTerminalProgress(run: GoalRun): GoalProgressDraft | nu
   }
 }
 
-export type OverlayPaneKind =
-  | "model"
-  | "tasks"
-  | "goal"
-  | "skills"
-  | "plan"
-  | "theme"
-  | "eyes"
-  | "pixel";
+export type OverlayPaneKind = "model" | "goal" | "skills" | "plan" | "theme" | "pixel";
 
 export function shouldHideHistoryForOverlayView(
-  _isOverlayView: boolean,
+  isOverlayView: boolean,
   _isAgentRunning: boolean,
 ): boolean {
-  // Ink Static is append-only. Passing [] for overlay panes rewrites the Static
-  // accumulator and can destroy scrollback when the pane closes. Keep history
-  // mounted and let overlays render below it.
-  return false;
+  // Overlay panes are standalone full-screen states. Finalized chat rows are
+  // printed outside Ink, so overlays should never replay transcript UI behind them.
+  return isOverlayView;
 }
 
 export function shouldStabilizeOverlayPaneRerender({
@@ -740,21 +802,121 @@ export function shouldStabilizeOverlayPaneRerender({
   overlayPane: OverlayPaneKind | null;
   isAgentRunning: boolean;
 }): boolean {
-  return isAgentRunning && (overlayPane === "goal" || overlayPane === "plan");
+  return isAgentRunning && overlayPane === "goal";
 }
 
 export function shouldHideStaticItemsForOverlayView({
   shouldHideHistoryForOverlay,
-  stabilizeOverlayPaneRerender,
+  stabilizeOverlayPaneRerender: _stabilizeOverlayPaneRerender,
 }: {
   shouldHideHistoryForOverlay: boolean;
   stabilizeOverlayPaneRerender: boolean;
 }): boolean {
-  return shouldHideHistoryForOverlay && !stabilizeOverlayPaneRerender;
+  return shouldHideHistoryForOverlay;
+}
+
+export interface DoneFlushDecision {
+  showDoneStatus: boolean;
+  flushLiveItems: boolean;
+}
+
+export function getDoneFlushDecision({
+  planOverlayPending,
+  goalMode,
+  goalAutoExpand,
+}: {
+  planOverlayPending: boolean;
+  goalMode: GoalMode;
+  goalAutoExpand: boolean;
+}): DoneFlushDecision {
+  return {
+    showDoneStatus: !(
+      planOverlayPending ||
+      goalMode === "planner" ||
+      goalMode === "setup" ||
+      goalAutoExpand
+    ),
+    flushLiveItems: true,
+  };
+}
+
+export interface GoalSetupPaneTransition {
+  overlay: "goal";
+  goalAutoExpand: true;
+  planAutoExpand: false;
+  suppressDoneStatus: true;
+}
+
+export function getGoalSetupFinishedPaneTransition(): GoalSetupPaneTransition {
+  return {
+    overlay: "goal",
+    goalAutoExpand: true,
+    planAutoExpand: false,
+    suppressDoneStatus: true,
+  };
+}
+
+export function getGoalSetupPaneTransitionAfterRun({
+  isGoalSetupCommand,
+  setupPanePending,
+}: {
+  isGoalSetupCommand: boolean;
+  setupPanePending: boolean;
+}): GoalSetupPaneTransition | null {
+  return isGoalSetupCommand && setupPanePending ? getGoalSetupFinishedPaneTransition() : null;
+}
+
+export function shouldResetUIForSetupPaneTransition({
+  hasResetUI,
+  hasSessionStore,
+}: {
+  hasResetUI: boolean;
+  hasSessionStore: boolean;
+}): boolean {
+  // Opening a review pane is a full-screen state transition. A bare React state
+  // flip hides history in the virtual tree, but it does not reset Ink/log-update's
+  // already-written terminal frame, so the pane can render below prior chat.
+  return hasResetUI && hasSessionStore;
+}
+
+export const shouldResetUIForGoalSetupPaneTransition = shouldResetUIForSetupPaneTransition;
+
+export interface GoalActivationPaneTransition {
+  overlay: null;
+  goalAutoExpand: false;
+  planAutoExpand: false;
+  resetReviewScreen: boolean;
+}
+
+export function getGoalActivationPaneTransition(): GoalActivationPaneTransition {
+  return { overlay: null, goalAutoExpand: false, planAutoExpand: false, resetReviewScreen: true };
+}
+
+export function getGoalContinuationChoiceKey({
+  runId,
+  decision,
+}: {
+  runId: string;
+  decision: GoalControllerDecision;
+}): string {
+  switch (decision.kind) {
+    case "create_task":
+      return `${runId}:create_task:${decision.title}:${decision.prompt}`;
+    case "start_worker":
+    case "pause":
+      return `${runId}:${decision.kind}:${decision.task.id}:${decision.attempts}`;
+    case "run_verifier":
+      return `${runId}:run_verifier:${decision.command}`;
+    case "blocked":
+    case "complete":
+    case "terminal":
+    case "wait":
+      return `${runId}:${decision.kind}:${decision.reason}`;
+  }
 }
 
 export interface ScrollStabilizationDecision {
-  /** Keep Ink Static mounted with the same key so terminal scrollback is not rewritten. */
+  /** Legacy signal for tests that modeled Static replay avoidance. */
   preserveStatic: boolean;
   /** New output should still appear normally when the user is at the bottom. */
   autoFollow: boolean;
@@ -770,16 +932,45 @@ export function getScrollStabilizationDecision({
   isUserScrolled,
   hasNewOutput,
   hasTallLiveUserMessage = false,
+  hasParagraphBreakLiveUserMessage = false,
 }: {
   isUserScrolled: boolean;
   hasNewOutput: boolean;
   hasTallLiveUserMessage?: boolean;
+  hasParagraphBreakLiveUserMessage?: boolean;
 }): ScrollStabilizationDecision {
-  const shouldStabilize = isUserScrolled || hasTallLiveUserMessage;
+  const shouldPreserveStatic =
+    isUserScrolled || hasTallLiveUserMessage || hasParagraphBreakLiveUserMessage;
+  const shouldAutoFollow = !(isUserScrolled || hasTallLiveUserMessage);
   return {
-    preserveStatic: shouldStabilize && hasNewOutput,
-    autoFollow: !shouldStabilize,
+    preserveStatic: shouldPreserveStatic && hasNewOutput,
+    autoFollow: shouldAutoFollow,
   };
+}
+
+export function nextGoalModeAfterAgentDone({
+  currentMode,
+  runningGoalIds,
+  queuedSyntheticEvents,
+  activeContinuationFlights = 0,
+  wasGoalSetupTurn,
+}: {
+  currentMode: GoalMode;
+  runningGoalIds: number;
+  queuedSyntheticEvents: number;
+  activeContinuationFlights?: number;
+  wasGoalSetupTurn?: boolean;
+}): GoalMode {
+  if (wasGoalSetupTurn) return "off";
+  if (currentMode === "planner" || currentMode === "setup") return currentMode;
+  if (queuedSyntheticEvents > 0) return "coordinator";
+  if (activeContinuationFlights > 0) return "coordinator";
+  if (currentMode === "coordinator" && runningGoalIds > 0) return "coordinator";
+  return "off";
+}
+
+export function hasParagraphBreakLiveUserMessage(text: string): boolean {
+  return /\n[ \t]*\n/.test(text);
 }
 
 export function isTallLiveUserMessage(text: string, rows: number): boolean {
@@ -793,10 +984,11 @@ export function getStaticHistoryKey({ resizeKey }: { resizeKey: number }): strin
 // flushOnTurnText, flushOnTurnEnd are imported from ./live-item-flush.ts
 
 /** Check whether an item is still active (running spinner, pending result). */
-function isActiveItem(item: CompletedItem): boolean {
+export function isActiveItem(item: CompletedItem): boolean {
   switch (item.kind) {
     case "tool_start":
     case "server_tool_start":
+    case "queued":
     case "compacting":
       return true;
     case "tool_group":
@@ -809,7 +1001,7 @@ function isActiveItem(item: CompletedItem): boolean {
 }
 
 /**
- * Partition live items into completed (flushable to Static) and still-active.
+ * Partition live items into completed (flushable to finalized history) and still-active.
  * Completed items precede active ones — we flush the longest contiguous prefix
  * of completed items to keep ordering stable.
  */
@@ -865,7 +1057,7 @@ function pickDurationVerb(toolsUsed: string[]): string {
   if (has("bash") && has("grep")) return "Hacked away for";
   if (has("bash") && reading) return "Ran & investigated for";
   if (has("bash")) return "Executed commands for";
-  if (hasAny("tasks", "task-output", "task-stop")) return "Managed tasks for";
+  if (hasAny("task-output", "task-stop")) return "Managed background processes for";
   if (has("grep") && has("read")) return "Investigated for";
   if (has("grep") && has("find")) return "Scoured the codebase for";
   if (has("grep")) return "Searched for";
@@ -892,86 +1084,6 @@ function pickDurationVerb(toolsUsed: string[]): string {
 // ── Animated thinking border ────────────────────────────────
 
 const THINKING_BORDER_COLORS = ["#60a5fa", "#818cf8", "#a78bfa", "#818cf8", "#60a5fa"];
-
-// ── Task count helper ───────────────────────────────────────
-
-function getTaskCount(cwd: string): number {
-  try {
-    const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
-    const data = readFileSync(
-      join(homedir(), ".ezcoder-tasks", "projects", hash, "tasks.json"),
-      "utf-8",
-    );
-    const tasks = JSON.parse(data) as { status: string }[];
-    return tasks.filter((t) => t.status !== "done").length;
-  } catch {
-    return 0;
-  }
-}
-
-interface PendingTaskInfo {
-  id: string;
-  title: string;
-  prompt: string;
-}
-
-function getNextPendingTask(cwd: string): PendingTaskInfo | null {
-  try {
-    const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
-    const data = readFileSync(
-      join(homedir(), ".ezcoder-tasks", "projects", hash, "tasks.json"),
-      "utf-8",
-    );
-    const tasks = JSON.parse(data) as {
-      id: string;
-      title: string;
-      prompt: string;
-      text?: string;
-      status: string;
-    }[];
-    const pending = tasks.find((t) => t.status === "pending");
-    if (!pending) return null;
-    return {
-      id: pending.id,
-      title: pending.title,
-      prompt: pending.prompt || pending.text || pending.title,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function markTaskInProgress(cwd: string, taskId: string): void {
-  try {
-    const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
-    const filePath = join(homedir(), ".ezcoder-tasks", "projects", hash, "tasks.json");
-    const data = readFileSync(filePath, "utf-8");
-    const tasks = JSON.parse(data) as { id: string; status: string }[];
-    const updated = tasks.map((t) => (t.id === taskId ? { ...t, status: "in-progress" } : t));
-    writeFileSync(filePath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * Mark a task as done in the on-disk tasks.json. Used by run-all auto-advance
- * so the in-flight task is recorded as completed even when the agent forgets
- * to call the `tasks` tool. Errors are swallowed — if the file is missing or
- * the id is stale, the next auto-advance step still proceeds correctly.
- */
-function markTaskDone(cwd: string, taskId: string): void {
-  try {
-    const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
-    const filePath = join(homedir(), ".ezcoder-tasks", "projects", hash, "tasks.json");
-    const data = readFileSync(filePath, "utf-8");
-    const tasks = JSON.parse(data) as { id: string; status: string }[];
-    const updated = tasks.map((t) => (t.id === taskId ? { ...t, status: "done" } : t));
-    writeFileSync(filePath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
-  } catch {
-    // ignore
-  }
-}
 
 // ── App Props ──────────────────────────────────────────────
 
@@ -1003,20 +1115,13 @@ export interface AppProps {
   settingsFile?: string;
   mcpManager?: MCPClientManager;
   authStorage?: AuthStorage;
-  planModeRef?: { current: boolean };
-  /**
-   * Shared with cli.ts — set true while a task-pane task drives the agent
-   * so `enter_plan` refuses to activate. Unattended task runs would hang
-   * on `exit_plan` waiting for plan approval that never arrives.
-   */
-  taskRunningRef?: { current: boolean };
-  onEnterPlanRef?: { current: (reason?: string) => void };
-  onExitPlanRef?: { current: (planPath: string) => Promise<string> };
+  goalModeRef?: { current: GoalMode };
   skills?: Skill[];
   initialOverlay?: "pixel" | "goal";
   rebuildToolsForCwd?: (cwd: string) => AgentTool[];
   repoMapChangedFilesRef?: { current: Set<string> };
   repoMapReadFilesRef?: { current: Set<string> };
+  terminalHistoryPrinter?: TerminalHistoryPrinter;
   /**
    * Wired by `renderApp`. Tears down the current Ink instance and renders
    * a fresh one. Patching Ink's internal frame tracking in place is
@@ -1024,7 +1129,7 @@ export interface AppProps {
    * a full unmount/remount is the only consistent reset.
    *
    * Used by every path that previously did a bare ANSI screen clear:
-   * `/clear`, plan accept/reject, overlay open/close, startTask, pixel fix.
+   * `/clear`, plan accept/reject, overlay open/close, pixel fix.
    *
    * Runtime state (model, provider, thinking) survives via
    * `onRuntimeStateChange`; conversation/session state survives via
@@ -1069,19 +1174,20 @@ export interface AppProps {
     sessionPath?: string;
     sessionTitle?: string;
     sessionTitleGenerated: boolean;
-    overlay?: "model" | "tasks" | "goal" | "skills" | "plan" | "theme" | "eyes" | "pixel" | null;
+    overlay?: "model" | "goal" | "skills" | "plan" | "theme" | "pixel" | null;
     planAutoExpand?: boolean;
+    goalAutoExpand?: boolean;
     pendingAction?: {
       prompt: string;
       infoText?: string;
       planEvent?: { event: "approved" | "rejected" | "dismissed"; detail?: string };
     };
+    pendingGoalRun?: GoalRun;
     isAgentRunning?: boolean;
     pendingResetUI?: boolean;
-    runAllTasks?: boolean;
-    currentTaskId?: string | null;
     runAllPixel?: boolean;
     goalStatusEntries?: GoalStatusEntry[];
+    goalMode?: GoalMode;
   };
 }
 
@@ -1090,18 +1196,15 @@ export interface AppProps {
 export function App(props: AppProps) {
   const theme = useTheme();
   const switchTheme = useSetTheme();
-  const { columns, resizeKey } = useTerminalSize();
+  const { write: writeStdout } = useStdout();
+  const { columns } = useTerminalSize();
 
   // Hoisted before terminal title hook so it can reference them
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [exitPending, setExitPending] = useState(false);
-  // Initialize from planModeRef (lives outside React in cli.ts) so plan
-  // mode survives /clear's unmount/remount, matching the prior behavior
-  // where /clear didn't toggle plan mode off.
-  const [planMode, setPlanMode] = useState(props.planModeRef?.current ?? false);
-  const planModeLocalRef = useRef(false);
-  planModeLocalRef.current = planMode;
-
+  const [goalMode, setGoalMode] = useState<GoalMode>(
+    props.sessionStore?.goalMode ?? props.goalModeRef?.current ?? "off",
+  );
   // Terminal title — updated later after agentLoop is created
   // (hoisted here so the hook is always called in the same order)
   const [titleRunning, setTitleRunning] = useState(false);
@@ -1114,14 +1217,11 @@ export function App(props: AppProps) {
     sessionTitle,
   });
 
-  // Items scrolled into Static (history). For restored sessions, seed the
-  // initial array directly — matches how every other Ink chat agent passes
-  // messages to <Static> (cat-code, harness, p90-cli, openai-chatgpt, lms,
-  // gatsby). Ink's Static (build/components/Static.js) starts with index=0
-  // so slice(0) returns the full array regardless of length.
+  // Completed transcript rows are kept as durable session data but are no longer
+  // rendered through Ink history. They are serialized once into real terminal
+  // scrollback via terminalHistoryPrinter, while Ink owns only live rows and
+  // controls. This avoids Static/log-update replay drift on resize/remount.
   const [history, setHistory] = useState<CompletedItem[]>(() => {
-    // sessionStore wins (lives across remount). Falls back to initialHistory
-    // (loaded from a session file at startup), then a fresh banner-only list.
     const stored = props.sessionStore?.history;
     if (stored && stored.length > 0) return stored;
     if (props.initialHistory && props.initialHistory.length > 0) {
@@ -1131,39 +1231,27 @@ export function App(props: AppProps) {
   });
   // Items from the current/last turn — rendered in the live area so they stay visible.
   // Seed from sessionStore so Goal progress/completion rows and other live output
-  // survive pane/overlay/resize remounts before they are flushed to <Static>.
+  // survive pane/overlay/resize remounts before they are finalized.
   const [liveItems, setLiveItems] = useState<CompletedItem[]>(
     () => props.sessionStore?.liveItems ?? [],
   );
   // overlay seeded from sessionStore (lives across remount). Falls back to
   // props.initialOverlay (CLI launched with one), then null.
   const [overlay, setOverlay] = useState<
-    "model" | "tasks" | "goal" | "skills" | "plan" | "theme" | "eyes" | "pixel" | null
+    "model" | "goal" | "skills" | "plan" | "theme" | "pixel" | null
   >(props.sessionStore?.overlay ?? props.initialOverlay ?? null);
-  const [taskCount, setTaskCount] = useState(() => getTaskCount(props.cwd));
-  const [goalCount, setGoalCount] = useState(0);
   const [goalStatusEntries, setGoalStatusEntries] = useState<GoalStatusEntry[]>(
     props.sessionStore?.goalStatusEntries ?? [],
-  );
-  const [eyesCount, setEyesCount] = useState<number | undefined>(() =>
-    isEyesActive(props.cwd) ? journalCount({ status: "open" }, props.cwd) : undefined,
   );
   const [updatePending, setUpdatePending] = useState<boolean>(
     () => getPendingUpdate(props.version) !== null,
   );
-  // Seed from sessionStore so "Run All" chaining survives the resetUI()
-  // remount that startTask() triggers between tasks.
-  const [runAllTasks, setRunAllTasks] = useState(props.sessionStore?.runAllTasks ?? false);
-  const runAllTasksRef = useRef(props.sessionStore?.runAllTasks ?? false);
-  // Task id of the run-all task currently driving the agent. Tracked so the
-  // run-all `onDone` auto-advance can mark the just-finished task as done
-  // even when the agent forgets to call the tasks tool. Mirrored through
-  // sessionStore so the value survives the resetUI() remount between tasks.
-  const currentTaskIdRef = useRef<string | null>(props.sessionStore?.currentTaskId ?? null);
-  const startTaskRef = useRef<(title: string, prompt: string, taskId: string) => void>(() => {});
   const agentRunningRef = useRef(false);
   const runningGoalIdsRef = useRef<Set<string>>(new Set());
   const activeVerifierRunIdsRef = useRef<Set<string>>(new Set());
+  const queuedGoalSyntheticEventsRef = useRef(0);
+  const goalContinuationFlightsRef = useRef<Set<string>>(new Set());
+  const goalContinuationRecentChoicesRef = useRef<Map<string, number>>(new Map());
   const startGoalRunRef = useRef<(run: GoalRun) => void>(() => {});
   const runAllPixelRef = useRef(props.sessionStore?.runAllPixel ?? false);
   const currentPixelFixRef = useRef<PreparedPixelFix | null>(null);
@@ -1175,6 +1263,7 @@ export function App(props: AppProps) {
   );
   // Suppress "done" status when a plan overlay is about to open
   const planOverlayPendingRef = useRef(false);
+  const goalSetupPanePendingRef = useRef(false);
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState(props.model);
   const [currentProvider, setCurrentProvider] = useState(props.provider);
@@ -1189,10 +1278,12 @@ export function App(props: AppProps) {
   const repoMapChangedCountRef = useRef(0);
   const repoMapCacheRef = useRef<RepoMapCache>(createRepoMapCache());
   const [planAutoExpand, setPlanAutoExpand] = useState(props.sessionStore?.planAutoExpand ?? false);
+  const [goalAutoExpand, setGoalAutoExpand] = useState(props.sessionStore?.goalAutoExpand ?? false);
+  const goalAutoExpandRef = useRef(props.sessionStore?.goalAutoExpand ?? false);
   const approvedPlanPathRef = useRef<string | undefined>(props.sessionStore?.approvedPlanPath);
   const planStepsRef = useRef<PlanStep[]>(props.sessionStore?.planSteps ?? []);
   const [planSteps, setPlanSteps] = useState<PlanStep[]>(props.sessionStore?.planSteps ?? []);
-  const planModeStateRef = useRef(planMode);
+  const goalModeStateRef = useRef<GoalMode>(goalMode);
   // Stuck-guard for the plan-continuation follow-up nudge. Tracks how many
   // times we've nudged the agent to continue the same step. Reset whenever a
   // new [DONE:n] marker advances progress (see onTurnText). Caps at 2 nudges
@@ -1200,23 +1291,15 @@ export function App(props: AppProps) {
   const followUpNudgesRef = useRef<{ step: number; count: number }>({ step: 0, count: 0 });
   // Seed the per-item ID counter so it doesn't collide with IDs already in
   // sessionStore.history (which survives remount). Without this, a remount
-  // (resize, overlay toggle, etc.) starts the counter at 0 and new items
-  // generate ids "0", "1", "2"… that collide with the same ids from the
-  // previous mount, triggering React's duplicate-key warning and causing
-  // duplicate/omitted renders.
+  // (resize, overlay toggle, goal pane open, etc.) starts the counter at 0
+  // and new items generate ids "ui-0", "ui-1", "ui-2"… that collide with
+  // the same ids from the previous mount, triggering React's duplicate-key
+  // warning and causing duplicate/omitted renders.
   const nextIdRef = useRef(
-    (() => {
-      const items = [
-        ...(props.sessionStore?.history ?? props.initialHistory ?? []),
-        ...(props.sessionStore?.liveItems ?? []),
-      ];
-      let max = -1;
-      for (const item of items) {
-        const n = Number(item.id);
-        if (Number.isFinite(n) && n > max) max = n;
-      }
-      return max + 1;
-    })(),
+    getNextGeneratedItemId([
+      ...(props.sessionStore?.history ?? props.initialHistory ?? []),
+      ...(props.sessionStore?.liveItems ?? []),
+    ]),
   );
   const sessionManagerRef = useRef(
     props.sessionsDir ? new SessionManager(props.sessionsDir) : null,
@@ -1251,6 +1334,9 @@ export function App(props: AppProps) {
   const triggerAutoSetupRef = useRef<() => Promise<void>>(async () => {});
 
   const getId = () => `ui-${nextIdRef.current++}`;
+  const appendGoalAgentTransition = useCallback((text: string) => {
+    setLiveItems((prev) => [...prev, { kind: "goal_agent_transition", text, id: getId() }]);
+  }, []);
   const appendGoalProgress = useCallback((item: GoalProgressDraft) => {
     setLiveItems((prev) => [...prev, { ...item, id: getId() }]);
   }, []);
@@ -1280,25 +1366,55 @@ export function App(props: AppProps) {
     [props.sessionStore],
   );
 
-  // Two-phase flush: items waiting to be moved to Static history after the
-  // live area has been cleared and Ink has committed the smaller output.
-  const pendingFlushRef = useRef<CompletedItem[]>([]);
-  const [flushGeneration, setFlushGeneration] = useState(0);
+  const sessionStore = props.sessionStore;
 
-  /** Queue items for two-phase flush and signal the drain effect. */
+  const terminalHistoryContextRef = useRef<TerminalHistoryContext>({
+    theme,
+    columns,
+    version: props.version,
+    model: currentModel,
+    provider: currentProvider,
+    cwd: displayedCwd,
+  });
+  useEffect(() => {
+    terminalHistoryContextRef.current = {
+      theme,
+      columns,
+      version: props.version,
+      model: currentModel,
+      provider: currentProvider,
+      cwd: displayedCwd,
+    };
+  }, [theme, columns, props.version, currentModel, currentProvider, displayedCwd]);
+
+  const printHistoryItems = useCallback(
+    (items: readonly CompletedItem[], options?: { force?: boolean }) => {
+      if (!props.terminalHistoryPrinter || items.length === 0) return;
+      props.terminalHistoryPrinter.print(items, terminalHistoryContextRef.current, {
+        ...options,
+        write: writeStdout,
+      });
+    },
+    [props.terminalHistoryPrinter, writeStdout],
+  );
+
+  const pendingHistoryFlushRef = useRef<CompletedItem[]>([]);
+  const [historyFlushGeneration, setHistoryFlushGeneration] = useState(0);
+
   const queueFlush = useCallback(
     (items: CompletedItem[]) => {
-      if (items.length === 0) return;
-      pendingFlushRef.current = [...pendingFlushRef.current, ...items];
-      if (props.sessionStore) {
+      const flushed = trimFlushedItems(items);
+      if (flushed.length === 0) return;
+      pendingHistoryFlushRef.current = [...pendingHistoryFlushRef.current, ...flushed];
+      if (sessionStore) {
         const queuedIds = new Set(items.map((item) => item.id));
-        props.sessionStore.liveItems = (props.sessionStore.liveItems ?? []).filter(
+        sessionStore.liveItems = (sessionStore.liveItems ?? []).filter(
           (item) => !queuedIds.has(item.id),
         );
       }
-      setFlushGeneration((g) => g + 1);
+      setHistoryFlushGeneration((generation) => generation + 1);
     },
-    [props.sessionStore],
+    [sessionStore],
   );
 
   // Mirror runtime state choices (model/provider/thinking) into renderApp's
@@ -1316,11 +1432,26 @@ export function App(props: AppProps) {
     });
   }, [thinkingEnabled, currentModel, onRuntimeStateChange]);
 
+  useEffect(() => {
+    printHistoryItems(history);
+  }, [history, printHistoryItems]);
+
+  useEffect(() => {
+    const flushed = pendingHistoryFlushRef.current;
+    if (flushed.length === 0) return;
+    pendingHistoryFlushRef.current = [];
+    printHistoryItems(flushed);
+    setHistory((prev) => {
+      const next = compactHistory([...prev, ...flushed]);
+      if (sessionStore) sessionStore.history = next;
+      return next;
+    });
+  }, [historyFlushGeneration, printHistoryItems, sessionStore]);
+
   // Mirror session state into renderApp's closure so resetUI() can re-seed
   // the conversation on remount. Each panel that previously did a bare ANSI
-  // screen clear (overlay open/close, plan accept/reject, /clear, startTask)
+  // screen clear (overlay open/close, plan accept/reject, /clear)
   // now goes through resetUI; without these mirrors, the chat would vanish.
-  const sessionStore = props.sessionStore;
   useEffect(() => {
     if (sessionStore) sessionStore.history = history;
   }, [history, sessionStore]);
@@ -1340,8 +1471,15 @@ export function App(props: AppProps) {
     if (sessionStore) sessionStore.overlay = overlay;
   }, [overlay, sessionStore]);
   useEffect(() => {
+    goalAutoExpandRef.current = goalAutoExpand;
+    if (sessionStore) sessionStore.goalAutoExpand = goalAutoExpand;
+  }, [goalAutoExpand, sessionStore]);
+  useEffect(() => {
     if (sessionStore) sessionStore.goalStatusEntries = goalStatusEntries;
   }, [goalStatusEntries, sessionStore]);
+  useEffect(() => {
+    if (sessionStore) sessionStore.goalMode = goalMode;
+  }, [goalMode, sessionStore]);
 
   // pendingAction is consumed via a useEffect AFTER agentLoop is created
   // — see below where useAgentLoop is set up.
@@ -1374,9 +1512,8 @@ export function App(props: AppProps) {
             (worker) => worker.id === workerId && worker.status === "running",
           ),
       }).then(({ runs }) => {
-        const counts = summarizeGoalCountsFromRuns(runs);
         if (cancelled) return;
-        setGoalCount(counts.active);
+        setHistory((prev) => completedItemsWithDurableGoalTerminalProgress(prev, runs));
         setGoalStatusEntries((prev) => {
           const next = reconcileGoalStatusEntriesWithRuns(prev, runs, {
             isWorkerActive: (workerId, run) =>
@@ -1410,7 +1547,7 @@ export function App(props: AppProps) {
     return () => stopPeriodicUpdateCheck();
   }, [props.version]);
 
-  // Load custom commands from .ezcoder/commands/
+  // Load custom commands from .gg/commands/
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
   const reloadCustomCommands = useCallback(() => {
     loadCustomCommands(props.cwd).then(setCustomCommands);
@@ -1423,23 +1560,23 @@ export function App(props: AppProps) {
     currentToolsRef.current = currentTools;
   }, [currentTools]);
 
-  // ── Plan mode wiring ─────────────────────────────────────
-  // Sync planModeRef with React state
+  // ── Runtime mode wiring ──────────────────────────────────
+  // Sync runtime mode refs with React state.
   useEffect(() => {
-    planModeStateRef.current = planMode;
-    if (props.planModeRef) {
-      props.planModeRef.current = planMode;
+    goalModeStateRef.current = goalMode;
+    if (props.goalModeRef) {
+      props.goalModeRef.current = goalMode;
     }
-  }, [planMode, props.planModeRef]);
+  }, [goalMode, props.goalModeRef]);
 
   const rebuildSystemPrompt = useCallback(
     async (options?: {
       cwd?: string;
-      planMode?: boolean;
       approvedPlanPath?: string;
       clearApprovedPlan?: boolean;
       activeLanguages?: Set<LanguageId>;
       tools?: AgentTool[];
+      goalMode?: GoalMode;
     }): Promise<string> => {
       const approvedPlanPath = options?.clearApprovedPlan
         ? undefined
@@ -1447,10 +1584,11 @@ export function App(props: AppProps) {
       return buildSystemPrompt(
         options?.cwd ?? cwdRef.current,
         props.skills,
-        options?.planMode ?? planModeStateRef.current,
+        false,
         approvedPlanPath,
         (options?.tools ?? currentToolsRef.current).map((tool) => tool.name),
         options?.activeLanguages ?? injectedLanguagesRef.current,
+        options?.goalMode ?? goalModeStateRef.current,
       );
     },
     [props.skills],
@@ -1466,6 +1604,30 @@ export function App(props: AppProps) {
     },
     [rebuildSystemPrompt],
   );
+
+  const setGoalModeAndPrompt = useCallback(
+    async (
+      nextMode: GoalMode,
+      options?: Omit<NonNullable<Parameters<typeof rebuildSystemPrompt>[0]>, "goalMode">,
+    ): Promise<void> => {
+      goalModeStateRef.current = nextMode;
+      if (props.goalModeRef) props.goalModeRef.current = nextMode;
+      if (props.sessionStore) props.sessionStore.goalMode = nextMode;
+      setGoalMode(nextMode);
+      await replaceSystemPrompt({ ...options, goalMode: nextMode });
+    },
+    [props.goalModeRef, props.sessionStore, replaceSystemPrompt],
+  );
+
+  const clearGoalModeIfIdle = useCallback((): void => {
+    setTimeout(() => {
+      if (goalModeStateRef.current === "off") return;
+      if (runningGoalIdsRef.current.size > 0) return;
+      if (activeVerifierRunIdsRef.current.size > 0) return;
+      if (queuedGoalSyntheticEventsRef.current > 0) return;
+      void setGoalModeAndPrompt("off");
+    }, 0);
+  }, [setGoalModeAndPrompt]);
 
   /**
    * Unified "apply detection result" pipeline. Called from three sites:
@@ -1555,58 +1717,6 @@ export function App(props: AppProps) {
     void applyLanguageDetectionRef.current("initial");
   }, []);
 
-  // Rebuild system prompt when plan mode changes
-  useEffect(() => {
-    void replaceSystemPrompt({ planMode });
-  }, [planMode, replaceSystemPrompt]);
-
-  // Wire onEnterPlan callback ref
-  useEffect(() => {
-    if (props.onEnterPlanRef) {
-      props.onEnterPlanRef.current = (reason?: string) => {
-        setPlanMode(true);
-        const msg = reason ? `Plan Mode Activated — ${reason}` : "Plan Mode Activated";
-        setLiveItems((prev) => [
-          ...prev,
-          { kind: "plan_transition", text: msg, active: true, id: getId() },
-        ]);
-      };
-    }
-  }, [props.onEnterPlanRef]);
-
-  // Wire onExitPlan callback ref
-  useEffect(() => {
-    if (props.onExitPlanRef) {
-      props.onExitPlanRef.current = async (planPath: string) => {
-        // Deactivate plan mode, store approved plan path, open pane
-        planModeStateRef.current = false;
-        setPlanMode(false);
-        approvedPlanPathRef.current = planPath;
-        await replaceSystemPrompt({ planMode: false, approvedPlanPath: planPath });
-        // Use setTimeout to open pane after the current tool execution completes,
-        // so the turn can finish and the UI transitions cleanly
-        // Flag that the plan overlay is about to open — suppresses the
-        // premature "done" status that fires when the agent loop finishes
-        planOverlayPendingRef.current = true;
-        setTimeout(() => {
-          setPlanAutoExpand(true);
-          setOverlay("plan");
-          // Don't clear planOverlayPendingRef here — keep it true until
-          // the user actually approves/rejects the plan. Clearing it on a
-          // timer causes a race where agent_done fires after the 300ms
-          // timeout but before the user interacts, triggering a premature
-          // completion sound.
-        }, 300);
-        return (
-          "Plan submitted. Exiting plan mode.\n" +
-          "The plan pane is opening for user review.\n" +
-          "Plan saved at: " +
-          planPath
-        );
-      };
-    }
-  }, [props.onExitPlanRef, replaceSystemPrompt]);
-
   const appendMessagesToSession = useCallback(
     async (sessionPath: string, messages: readonly Message[], startIndex: number) => {
       const sm = sessionManagerRef.current;
@@ -1659,7 +1769,7 @@ export function App(props: AppProps) {
    * Other tool kinds skip detection entirely to avoid wasted filesystem stats.
    *
    * No restart required: the system prompt is mutated in place, same mechanism
-   * already used for plan mode + pixel-fix chdir.
+   * used for pixel-fix chdir.
    *
    * Stored in a ref so `onToolEnd` (whose useCallback dep array is intentionally
    * empty to keep agent-loop options stable) can call the freshest version.
@@ -2021,7 +2131,6 @@ export function App(props: AppProps) {
       }, [
         persistNewMessages,
         stripRepoMapMessages,
-        planMode,
         props.cwd,
         props.skills,
         currentProvider,
@@ -2031,6 +2140,10 @@ export function App(props: AppProps) {
         resolveCredentials,
       ]),
       onTurnText: useCallback((text: string, thinking: string, thinkingMs: number) => {
+        if (goalModeStateRef.current === "planner") {
+          return;
+        }
+
         // Track [DONE:n] markers for plan step progress
         if (planStepsRef.current.length > 0) {
           const completed = findCompletedMarkers(text);
@@ -2046,15 +2159,9 @@ export function App(props: AppProps) {
           }
         }
 
-        // Flush all completed items from the previous turn to Static history.
-        // This keeps liveItems bounded per-turn, preventing Ink's live area from
-        // growing unbounded, which makes Ink's live-area re-renders expensive.
-        //
-        // Items are queued in pendingFlushRef (not sent to setHistory directly)
-        // so the Static write happens in a SEPARATE render cycle from the
-        // live-area change — avoiding both Ink cursor-math clipping and the
-        // brief duplicate that occurred when setHistory was nested inside the
-        // setLiveItems updater.
+        // Flush completed rows from the previous turn to finalized terminal
+        // history. Ink keeps only the active turn, preventing live-area growth
+        // and avoiding Static/log-update replay during resize/remount churn.
         setLiveItems((prev) => {
           const flushed = flushOnTurnText(prev);
           if (flushed.length > 0) {
@@ -2079,7 +2186,6 @@ export function App(props: AppProps) {
                 // contains multiple text chunks split by markers.
                 thinking: thinkingAttached ? undefined : thinking,
                 thinkingMs: thinkingAttached ? undefined : thinkingMs,
-                planMode: planModeLocalRef.current,
                 id: getId(),
               });
               thinkingAttached = true;
@@ -2101,7 +2207,6 @@ export function App(props: AppProps) {
               text: "",
               thinking,
               thinkingMs,
-              planMode: planModeLocalRef.current,
               id: getId(),
             });
           }
@@ -2114,9 +2219,8 @@ export function App(props: AppProps) {
           const startedAt = Date.now();
           const animateUntil = startedAt + RUNNING_INDICATOR_ANIMATION_MS;
 
-          // Flush completed items (assistant text, finished tools) to Static
-          // before adding tool UI. Keeping both in the live area makes it tall
-          // and causes Ink's cursor math to clip the top.
+          // Flush completed items (assistant text, finished tools) before adding
+          // tool UI so Ink only owns the active rows.
           setLiveItems((prev) => {
             const { flushed, remaining } = partitionCompleted(prev);
             if (flushed.length > 0) {
@@ -2271,7 +2375,7 @@ export function App(props: AppProps) {
               const next = [...prev];
               next[groupIdx] = { ...group, agents: updatedAgents };
 
-              // Flush completed items to Static to keep the live area small
+              // Flush completed items to finalized history to keep the live area small
               const { flushed, remaining } = partitionCompleted(next);
               if (flushed.length > 0) {
                 queueFlush(flushed);
@@ -2335,7 +2439,7 @@ export function App(props: AppProps) {
                 }
               }
 
-              // Flush completed items to Static to keep the live area small
+              // Flush completed items to finalized history to keep the live area small
               const { flushed, remaining } = partitionCompleted(updated);
               if (flushed.length > 0) {
                 queueFlush(flushed);
@@ -2357,8 +2461,8 @@ export function App(props: AppProps) {
         log("INFO", "server_tool", `Server tool call: ${name}`, { id });
         const startedAt = Date.now();
         const animateUntil = startedAt + RUNNING_INDICATOR_ANIMATION_MS;
-        // Flush completed items (including assistant text) to Static before
-        // adding server tool UI — same rationale as onToolStart.
+        // Flush completed items (including assistant text) before adding server
+        // tool UI — same rationale as onToolStart.
         setLiveItems((prev) => {
           const { flushed, remaining } = partitionCompleted(prev);
           if (flushed.length > 0) {
@@ -2412,7 +2516,7 @@ export function App(props: AppProps) {
               },
             ];
           }
-          // Flush completed items to Static
+          // Flush completed items to finalized history
           const { flushed, remaining } = partitionCompleted(updated);
           if (flushed.length > 0) {
             queueFlush(flushed);
@@ -2445,8 +2549,8 @@ export function App(props: AppProps) {
           lastActualTokensRef.current =
             currentProvider === "anthropic" ? inputContext : inputContext + usage.outputTokens;
           lastActualTokensTimestampRef.current = Date.now();
-          // For tool-only turns (no text), flush completed items to Static so
-          // liveItems doesn't grow unbounded across consecutive tool-only turns.
+          // For tool-only turns (no text), flush completed items to finalized
+          // history so liveItems doesn't grow unbounded across consecutive turns.
           setLiveItems((prev) => {
             const { flushed, remaining } = flushOnTurnEnd(prev, stopReason);
             if (flushed.length > 0) {
@@ -2457,117 +2561,94 @@ export function App(props: AppProps) {
         },
         [],
       ),
-      onDone: useCallback((durationMs: number, toolsUsed: string[], errored?: boolean) => {
-        log("INFO", "agent", `Agent done`, {
-          duration: `${durationMs}ms`,
-          toolsUsed: toolsUsed.join(",") || "none",
-        });
-        // Don't show "done" status when plan overlay is about to open —
-        // the agent loop finished but we're waiting for user plan review
-        if (planOverlayPendingRef.current) return;
-        setDoneStatus({ durationMs, toolsUsed, verb: pickDurationVerb(toolsUsed) });
-        playNotificationSound();
-        // Two-phase flush to avoid Ink text clipping.
-        // Phase 1 (here): clear the live area so Ink commits a render with
-        // the smaller output and updates its internal line counter.
-        // Phase 2 (useEffect below): push items to Static history in a
-        // separate render cycle so the Static write never coincides with
-        // a live-area height change in the same frame.
-        setLiveItems((prev) => {
-          if (prev.length > 0) queueFlush(prev);
-          return [];
-        });
+      onDone: useCallback(
+        (durationMs: number, toolsUsed: string[]) => {
+          log("INFO", "agent", `Agent done`, {
+            duration: `${durationMs}ms`,
+            toolsUsed: toolsUsed.join(",") || "none",
+          });
+          const doneDecision = getDoneFlushDecision({
+            planOverlayPending: planOverlayPendingRef.current,
+            goalMode: goalModeStateRef.current,
+            goalAutoExpand: goalAutoExpandRef.current,
+          });
+          // Don't show "done" status when plan/goal review panes are about to open —
+          // the agent loop finished but we're waiting for user approval/review.
+          // Still flush live transcript rows before the pane remounts; otherwise
+          // setup output remains in ephemeral liveItems and appears to vanish.
+          if (doneDecision.showDoneStatus) {
+            setDoneStatus({ durationMs, toolsUsed, verb: pickDurationVerb(toolsUsed) });
+            playNotificationSound();
+          }
+          // Finalize rows now; the sink writes them outside Ink and then the
+          // live area is cleared, so there is no Static/live repaint race.
+          if (doneDecision.flushLiveItems) {
+            setLiveItems((prev) => {
+              if (prev.length > 0) queueFlush(prev);
+              return [];
+            });
+          }
 
-        // Run-all: auto-start next pending task after a short delay
-        // (allow the two-phase flush to complete first)
-        if (runAllTasksRef.current) {
-          setTimeout(() => {
-            const cwd = cwdRef.current;
-            // Clean turn: mark the in-flight task done so the row flips to ✓.
-            // Error path: leave it at `in-progress` so the failed task is
-            // visibly distinct from completed ones. The chain still advances
-            // either way — matching how errors were handled before this fix.
-            const finishedId = currentTaskIdRef.current;
-            if (finishedId) {
-              if (!errored) markTaskDone(cwd, finishedId);
-              currentTaskIdRef.current = null;
-              if (props.sessionStore) props.sessionStore.currentTaskId = null;
-            }
-            const next = getNextPendingTask(cwd);
-            if (next) {
-              markTaskInProgress(cwd, next.id);
-              // startTaskRef.current() re-sets taskRunningRef = true before
-              // the next agent run begins, so the brief clear-then-set is
-              // safe — the agent isn't running in between.
-              startTaskRef.current(next.title, next.prompt, next.id);
-            } else {
-              setRunAllTasks(false);
-              if (props.taskRunningRef) props.taskRunningRef.current = false;
-              log("INFO", "tasks", "Run-all complete — no more pending tasks");
-            }
-          }, 500);
-        } else if (currentTaskIdRef.current) {
-          // Single manual task done — clear the task-running flag so a
-          // subsequent free-form prompt can use plan mode again.
-          if (props.taskRunningRef) props.taskRunningRef.current = false;
-          currentTaskIdRef.current = null;
-          if (props.sessionStore) props.sessionStore.currentTaskId = null;
-        }
+          const nextGoalMode = nextGoalModeAfterAgentDone({
+            currentMode: goalModeStateRef.current,
+            runningGoalIds: runningGoalIdsRef.current.size,
+            queuedSyntheticEvents: queuedGoalSyntheticEventsRef.current,
+            activeContinuationFlights: goalContinuationFlightsRef.current.size,
+          });
+          if (nextGoalMode !== goalModeStateRef.current) {
+            void setGoalModeAndPrompt(nextGoalMode);
+          }
 
-        // Goal loop: after the orchestrator handles a worker/verifier event,
-        // continue the same Goal automatically until it reaches a terminal state.
-        for (const runId of [...runningGoalIdsRef.current]) {
-          setTimeout(() => continueGoalRun(runId), 500);
-        }
+          // Goal loop: after the orchestrator handles a worker/verifier event,
+          // continue the same Goal automatically until it reaches a terminal state.
+          for (const runId of [...runningGoalIdsRef.current]) {
+            setTimeout(() => continueGoalRun(runId), 500);
+          }
 
-        // Pixel fix: observe branch + commits, patch status, optionally pick
-        // up the next open error if run-all is active.
-        const pendingFix = currentPixelFixRef.current;
-        if (pendingFix) {
-          currentPixelFixRef.current = null;
-          void (async () => {
-            try {
-              const { finalizePixelFix } = await import("../core/pixel-fix.js");
-              const result = await finalizePixelFix(pendingFix);
-              log("INFO", "pixel", `Pixel fix done: ${result.outcome}`, {
-                errorId: pendingFix.errorId,
-                reason: result.reason,
-              });
-            } catch (err) {
-              log("ERROR", "pixel", `Pixel finalize failed: ${(err as Error).message}`);
-            }
+          // Pixel fix: observe branch + commits, patch status, optionally pick
+          // up the next open error if run-all is active.
+          const pendingFix = currentPixelFixRef.current;
+          if (pendingFix) {
+            currentPixelFixRef.current = null;
+            void (async () => {
+              try {
+                const { finalizePixelFix } = await import("../core/pixel-fix.js");
+                const result = await finalizePixelFix(pendingFix);
+                log("INFO", "pixel", `Pixel fix done: ${result.outcome}`, {
+                  errorId: pendingFix.errorId,
+                  reason: result.reason,
+                });
+              } catch (err) {
+                log("ERROR", "pixel", `Pixel finalize failed: ${(err as Error).message}`);
+              }
 
-            if (runAllPixelRef.current) {
-              setTimeout(() => {
-                void (async () => {
-                  const { fetchPixelEntries } = await import("../core/pixel.js");
-                  const data = await fetchPixelEntries();
-                  const next = data.entries.find((e) => e.status === "open");
-                  if (next) {
-                    startPixelFixRef.current(next.errorId);
-                  } else {
-                    setRunAllPixel(false);
-                    log("INFO", "pixel", "Run-all complete — no more open errors");
-                  }
-                })();
-              }, 500);
-            }
-          })();
-        }
-      }, []),
+              if (runAllPixelRef.current) {
+                setTimeout(() => {
+                  void (async () => {
+                    const { fetchPixelEntries } = await import("../core/pixel.js");
+                    const data = await fetchPixelEntries();
+                    const next = data.entries.find((e) => e.status === "open");
+                    if (next) {
+                      startPixelFixRef.current(next.errorId);
+                    } else {
+                      setRunAllPixel(false);
+                      log("INFO", "pixel", "Run-all complete — no more open errors");
+                    }
+                  })();
+                }, 500);
+              }
+            })();
+          }
+        },
+        [setGoalModeAndPrompt],
+      ),
       onAborted: useCallback(() => {
         log("WARN", "agent", "Agent run aborted by user");
-        setRunAllTasks(false);
         setRunAllPixel(false);
         currentPixelFixRef.current = null;
-        // Clear the task-running flag so a subsequent free-form prompt can
-        // re-enable plan mode. Aborted runs never auto-advance.
-        if (props.taskRunningRef) props.taskRunningRef.current = false;
-        // Clear the run-all task id so a subsequent run-all does not
-        // mistakenly mark this aborted task as done. The on-disk row stays
-        // at `in-progress`, which is the correct truth for an aborted task.
-        currentTaskIdRef.current = null;
-        if (props.sessionStore) props.sessionStore.currentTaskId = null;
+        queuedGoalSyntheticEventsRef.current = 0;
+        goalSetupPanePendingRef.current = false;
+        if (goalModeStateRef.current !== "off") void setGoalModeAndPrompt("off");
         setDoneStatus(null);
         setLiveItems((prev) => {
           const next = prev.map((item): CompletedItem => {
@@ -2611,56 +2692,64 @@ export function App(props: AppProps) {
           });
           return [...next, { kind: "stopped", text: "Request was stopped.", id: getId() }];
         });
-      }, []),
-      onQueuedStart: useCallback((content: UserContent) => {
-        // When a queued message starts processing, show it as a UserItem
-        // and flush prior items to history. Synthetic system events are hidden
-        // from the transcript but still routed through the main agent context.
-        const displayText =
-          typeof content === "string"
-            ? content
-            : content
-                .filter((c): c is TextContent => c.type === "text")
-                .map((c) => c.text)
-                .join("\n");
-        if (isGoalSyntheticEvent(displayText)) {
-          const eventInfo = parseGoalSyntheticEvent(displayText);
+      }, [setGoalModeAndPrompt]),
+      onQueuedStart: useCallback(
+        (content: UserContent) => {
+          // When a queued message starts processing, show it as a UserItem
+          // and flush prior items to history. Synthetic system events are hidden
+          // from the transcript but still routed through the main agent context.
+          const displayText =
+            typeof content === "string"
+              ? content
+              : content
+                  .filter((c): c is TextContent => c.type === "text")
+                  .map((c) => c.text)
+                  .join("\n");
+          if (isGoalSyntheticEvent(displayText)) {
+            queuedGoalSyntheticEventsRef.current = Math.max(
+              0,
+              queuedGoalSyntheticEventsRef.current - 1,
+            );
+            void setGoalModeAndPrompt("coordinator");
+            const eventInfo = parseGoalSyntheticEvent(displayText);
+            setLiveItems((prev) => {
+              if (prev.length > 0) queueFlush(prev);
+              return [];
+            });
+            setDoneStatus(null);
+            appendGoalProgress({
+              kind: "goal_progress",
+              phase: "orchestrator_reviewing",
+              title: "Orchestrator reviewing Goal update",
+              detail:
+                eventInfo?.kind === "worker"
+                  ? `Worker ${eventInfo.worker ?? "finished"} reported back${eventInfo.task ? ` on ${eventInfo.task}` : ""}. Inspecting Goal state.`
+                  : `Verifier reported ${eventInfo?.status ?? "status"}. Inspecting evidence and next action.`,
+              workerId: eventInfo?.worker,
+              status: eventInfo?.status,
+            });
+            return;
+          }
+          const imageCount =
+            typeof content === "string"
+              ? undefined
+              : content.filter((c) => c.type === "image").length || undefined;
           setLiveItems((prev) => {
             if (prev.length > 0) queueFlush(prev);
             return [];
           });
+          const userItem: UserItem = {
+            kind: "user",
+            text: displayText,
+            imageCount,
+            id: getId(),
+          };
+          setLastUserMessage(displayText);
           setDoneStatus(null);
-          appendGoalProgress({
-            kind: "goal_progress",
-            phase: "orchestrator_reviewing",
-            title: "Orchestrator reviewing Goal update",
-            detail:
-              eventInfo?.kind === "worker"
-                ? `Worker ${eventInfo.worker ?? "finished"} reported back${eventInfo.task ? ` on ${eventInfo.task}` : ""}. Inspecting Goal state.`
-                : `Verifier reported ${eventInfo?.status ?? "status"}. Inspecting evidence and next action.`,
-            workerId: eventInfo?.worker,
-            status: eventInfo?.status,
-          });
-          return;
-        }
-        const imageCount =
-          typeof content === "string"
-            ? undefined
-            : content.filter((c) => c.type === "image").length || undefined;
-        setLiveItems((prev) => {
-          if (prev.length > 0) queueFlush(prev);
-          return [];
-        });
-        const userItem: UserItem = {
-          kind: "user",
-          text: displayText,
-          imageCount,
-          id: getId(),
-        };
-        setLastUserMessage(displayText);
-        setDoneStatus(null);
-        setLiveItems([userItem]);
-      }, []),
+          setLiveItems([userItem]);
+        },
+        [appendGoalProgress, setGoalModeAndPrompt],
+      ),
       // Inject a "continue with the next step" follow-up when the agent
       // would otherwise stop mid-plan. The prompt-only instruction wasn't
       // enough — some models (notably Opus) treat each [DONE:n] as a
@@ -2731,26 +2820,6 @@ export function App(props: AppProps) {
     }
   };
 
-  // Phase 2 of the two-phase flush: after onDone clears liveItems (phase 1)
-  // and Ink renders the smaller live area (updating its internal line
-  // counter), this effect pushes the stashed items into Static history.
-  // Because the Static write happens in a SEPARATE render cycle from the
-  // live-area shrink, Ink's log-update never needs to erase the old tall
-  // live area AND write Static content in the same frame — avoiding the
-  // cursor-math mismatch that caused text clipping.
-  useEffect(() => {
-    if (pendingFlushRef.current.length > 0) {
-      const items = pendingFlushRef.current;
-      pendingFlushRef.current = [];
-      setHistory((h) => {
-        const next = compactHistory([...h, ...trimFlushedItems(items)]);
-        if (sessionStore) sessionStore.history = next;
-        return next;
-      });
-      if (sessionStore) sessionStore.liveItems = liveItems;
-    }
-  }, [flushGeneration]);
-
   // Sync terminal title with agent loop state
   useEffect(() => {
     setTitleRunning(agentLoop.isRunning);
@@ -2778,16 +2847,26 @@ export function App(props: AppProps) {
     }
   }, [agentLoop.isRunning, sessionStore, props.resetUI]);
 
-  // Consume sessionStore.pendingAction once on mount. Set by resetUI options
-  // for paths that remount AND immediately drive the agent (plan accept,
-  // plan reject, startTask, pixel fix). The action survives the unmount
-  // because it lives in renderApp's closure (sessionStore), not React state.
+  // Consume pending post-remount work once on mount. Set by resetUI options
+  // for paths that remount AND immediately drive work (plan accept/reject,
+  // pixel fix, Goal approval). The work survives the unmount because
+  // it lives in renderApp's closure (sessionStore), not React state.
   useEffect(() => {
     if (pendingActionConsumedRef.current) return;
     const action = sessionStore?.pendingAction;
-    if (!action) return;
+    const pendingGoalRun = sessionStore?.pendingGoalRun;
+    if (!action && !pendingGoalRun) return;
     pendingActionConsumedRef.current = true;
-    if (sessionStore) sessionStore.pendingAction = undefined;
+    if (sessionStore) {
+      sessionStore.pendingAction = undefined;
+      sessionStore.pendingGoalRun = undefined;
+    }
+    setDoneStatus(null);
+    if (pendingGoalRun) {
+      startGoalRunRef.current(pendingGoalRun);
+      return;
+    }
+    if (!action) return;
     if (action.planEvent) {
       const ev = action.planEvent;
       setLiveItems((prev) => [
@@ -2800,7 +2879,6 @@ export function App(props: AppProps) {
         { kind: "info", text: action.infoText as string, id: getId() },
       ]);
     }
-    setDoneStatus(null);
     void agentLoop.run(action.prompt).catch((err: unknown) => {
       const errMsg = err instanceof Error ? err.message : String(err);
       log("ERROR", "error", errMsg);
@@ -2808,17 +2886,6 @@ export function App(props: AppProps) {
     });
     // Intentional one-shot: run once on mount, never re-fire on re-render.
   }, []);
-
-  // Refresh eyes badge count when the agent settles (end of a turn) — a turn
-  // may have logged new rough/wish/blocked signals. Also covers the case where
-  // /eyes was run for the first time (manifest now exists).
-  useEffect(() => {
-    if (!agentLoop.isRunning) {
-      setEyesCount(
-        isEyesActive(props.cwd) ? journalCount({ status: "open" }, props.cwd) : undefined,
-      );
-    }
-  }, [agentLoop.isRunning, props.cwd]);
 
   const handleSubmit = useCallback(
     async (input: string, inputImages: ImageAttachment[] = [], pasteInfo?: PasteInfo) => {
@@ -2882,7 +2949,8 @@ export function App(props: AppProps) {
         }
         // Fallback path (resetUI not wired — e.g. tests). Best-effort: clear
         // React state in place without touching terminal scrollback.
-        pendingFlushRef.current = [];
+        pendingHistoryFlushRef.current = [];
+        props.terminalHistoryPrinter?.clear();
         setHistory([{ kind: "banner", id: "banner" }]);
         setLiveItems([]);
         setDoneStatus(null);
@@ -2904,48 +2972,6 @@ export function App(props: AppProps) {
       // Handle /theme — open theme selector overlay
       if (trimmed === "/theme" || trimmed === "/t") {
         setOverlay("theme");
-        return;
-      }
-
-      // Open the Eyes pane — read-only review of installed probes + open signals.
-      // Gated by the ezcoder-eyes manifest: in projects without /eyes set up,
-      // there's nothing useful to show.
-      if (trimmed === "/eyes-view" || trimmed === "/ev") {
-        if (!isEyesActive(props.cwd)) {
-          setLiveItems((prev) => [
-            ...prev,
-            {
-              kind: "info",
-              text: "Eyes not set up in this project. Run /setup-eyes to get started.",
-              id: getId(),
-            },
-          ]);
-          return;
-        }
-        setOverlay("eyes");
-        return;
-      }
-
-      // Handle /plan — toggle plan mode
-      if (trimmed === "/plan" || trimmed === "/plan on") {
-        setPlanMode(true);
-        setLiveItems((prev) => [
-          ...prev,
-          { kind: "plan_transition", text: "Plan Mode Activated", active: true, id: getId() },
-        ]);
-        return;
-      }
-      if (trimmed === "/plan off") {
-        setPlanMode(false);
-        setLiveItems((prev) => [
-          ...prev,
-          {
-            kind: "plan_transition",
-            text: "Plan Mode Deactivated",
-            active: false,
-            id: getId(),
-          },
-        ]);
         return;
       }
 
@@ -3012,38 +3038,23 @@ export function App(props: AppProps) {
         if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
           props.sessionStore.overlay = "goal";
           props.sessionStore.planAutoExpand = false;
+          props.sessionStore.goalAutoExpand = false;
           props.resetUI();
         } else {
           if (props.sessionStore) {
             props.sessionStore.overlay = "goal";
             props.sessionStore.planAutoExpand = false;
+            props.sessionStore.goalAutoExpand = false;
             if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
           }
           setPlanAutoExpand(false);
+          setGoalAutoExpand(false);
           setOverlay("goal");
         }
         return;
       }
 
-      // Handle /plans — open plan pane
-      if (trimmed === "/plans") {
-        if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
-          props.sessionStore.overlay = "plan";
-          props.sessionStore.planAutoExpand = false;
-          props.resetUI();
-        } else {
-          if (props.sessionStore) {
-            props.sessionStore.overlay = "plan";
-            props.sessionStore.planAutoExpand = false;
-            if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
-          }
-          setPlanAutoExpand(false);
-          setOverlay("plan");
-        }
-        return;
-      }
-
-      // Handle prompt-template commands (built-in + custom from .ezcoder/commands/)
+      // Handle prompt-template commands (built-in + custom from .gg/commands/)
       const promptCommandRoute = routePromptCommandInput(trimmed, PROMPT_COMMANDS, customCommands);
       if (promptCommandRoute) {
         const { cmdName, cmdArgs, fullPrompt } = promptCommandRoute;
@@ -3053,11 +3064,9 @@ export function App(props: AppProps) {
           `Prompt command: /${cmdName}${cmdArgs ? ` (args: ${cmdArgs})` : ""}`,
         );
 
-        // Move live items into history before starting
+        // Move live items into finalized history before starting.
         setLiveItems((prev) => {
-          if (prev.length > 0) {
-            pendingFlushRef.current = [...pendingFlushRef.current, ...prev];
-          }
+          if (prev.length > 0) queueFlush(prev);
           return [];
         });
 
@@ -3081,19 +3090,69 @@ export function App(props: AppProps) {
         setDoneStatus(null);
         setLiveItems([userItem]);
 
+        const isGoalSetupCommand = isGoalPromptCommandName(cmdName);
+
         // Send the full prompt to the agent, with user args appended if provided
         try {
-          await agentLoop.run(userContent);
+          if (isGoalSetupCommand) {
+            goalSetupPanePendingRef.current = true;
+            await runGoalPromptSetupSequence({
+              userContent,
+              fullPrompt,
+              messagesRef,
+              setGoalModeAndPrompt,
+              runAgent: (content) => agentLoop.run(content),
+              onStage: appendGoalAgentTransition,
+            });
+          } else {
+            await agentLoop.run(userContent);
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           log("ERROR", "error", msg);
           const isAbort = msg.includes("aborted") || msg.includes("abort");
+          if (isGoalSetupCommand) goalSetupPanePendingRef.current = false;
           setLiveItems((prev) => [
             ...prev,
             isAbort
               ? { kind: "stopped", text: "Request was stopped.", id: getId() }
               : toErrorItem(err, getId()),
           ]);
+        } finally {
+          if (isGoalSetupCommand) {
+            const paneTransition = getGoalSetupPaneTransitionAfterRun({
+              isGoalSetupCommand,
+              setupPanePending: goalSetupPanePendingRef.current,
+            });
+            goalSetupPanePendingRef.current = false;
+            if (goalModeStateRef.current !== "off") {
+              await setGoalModeAndPrompt("off");
+            }
+            if (paneTransition) {
+              goalAutoExpandRef.current = paneTransition.goalAutoExpand;
+              setTimeout(() => {
+                const resetUI = props.resetUI;
+                const sessionStore = props.sessionStore;
+                if (
+                  shouldResetUIForGoalSetupPaneTransition({
+                    hasResetUI: resetUI !== undefined,
+                    hasSessionStore: sessionStore !== undefined,
+                  }) &&
+                  resetUI &&
+                  sessionStore
+                ) {
+                  sessionStore.overlay = paneTransition.overlay;
+                  sessionStore.goalAutoExpand = paneTransition.goalAutoExpand;
+                  sessionStore.planAutoExpand = paneTransition.planAutoExpand;
+                  resetUI();
+                  return;
+                }
+                setGoalAutoExpand(paneTransition.goalAutoExpand);
+                setPlanAutoExpand(paneTransition.planAutoExpand);
+                setOverlay(paneTransition.overlay);
+              }, 300);
+            }
+          }
         }
         // Reload custom commands in case a setup command created new ones
         reloadCustomCommands();
@@ -3138,11 +3197,8 @@ export function App(props: AppProps) {
         return;
       }
 
-      // Move any remaining live items into history (Static) before starting a
-      // new turn. Must go through queueFlush so flushGeneration bumps and the
-      // drain effect actually runs — mutating pendingFlushRef directly here
-      // stashed items that nothing was signalled to pick up, so they sat in
-      // limbo until some unrelated later code path happened to call queueFlush.
+      // Move any remaining live items into finalized history before starting a
+      // new turn so Ink keeps only active output.
       setLiveItems((prev) => {
         if (prev.length > 0) {
           queueFlush(prev);
@@ -3194,6 +3250,7 @@ export function App(props: AppProps) {
       compactConversation,
       rebuildSystemPrompt,
       replaceSystemPrompt,
+      setGoalModeAndPrompt,
       refreshRepoMap,
       stripRepoMapMessages,
     ],
@@ -3367,21 +3424,11 @@ export function App(props: AppProps) {
       // Project audits / one-shot analysis
       "goal",
       "init",
-      "research",
-      "scan",
-      "verify",
       "expand",
       "bullet-proof",
-      "simplify",
       "compare",
-      "batch",
       // Setup / installers
-      "setup-lint",
-      "setup-tests",
       "setup-commit",
-      "setup-update",
-      "setup-eyes",
-      "eyes-improve",
       "setup-skills",
     ];
     const orderedPromptCommands = promptOrder
@@ -3398,7 +3445,6 @@ export function App(props: AppProps) {
       { name: "compact", aliases: ["c"], description: "Compact conversation" },
       { name: "clear", aliases: [], description: "Clear session and terminal" },
       { name: "theme", aliases: ["t"], description: "Switch theme" },
-      { name: "plans", aliases: [], description: "Open plans pane" },
       ...orderedPromptCommands,
       ...remainingPromptCommands,
       ...customCommands.map((cmd) => ({
@@ -3422,8 +3468,6 @@ export function App(props: AppProps) {
             model={currentModel}
             provider={currentProvider}
             cwd={displayedCwd}
-            taskCount={taskCount}
-            goalCount={goalCount}
           />
         );
       case "user":
@@ -3434,18 +3478,6 @@ export function App(props: AppProps) {
             imageCount={item.imageCount}
             pasteInfo={item.pasteInfo}
           />
-        );
-      case "task":
-        return (
-          <Box key={item.id} marginTop={1}>
-            <Text wrap="wrap">
-              <Text color={theme.success} bold>
-                {"▶ "}
-              </Text>
-              <Text color={theme.textDim}>{"Task: "}</Text>
-              <Text color={theme.success}>{item.title}</Text>
-            </Text>
-          </Box>
         );
       case "goal":
         return (
@@ -3512,6 +3544,22 @@ export function App(props: AppProps) {
                     <Text color={theme.text}>{row.value}</Text>
                     {row.detail ? <Text color={theme.textDim}> · {row.detail}</Text> : null}
                   </Text>
+                ))}
+              </Box>
+            ) : null}
+            {item.summarySections && item.summarySections.length > 0 ? (
+              <Box flexDirection="column" marginTop={1} marginLeft={2} flexShrink={1}>
+                {item.summarySections.map((section) => (
+                  <Box key={section.title} flexDirection="column" marginBottom={1} flexShrink={1}>
+                    <Text color={theme.textDim} bold>
+                      {section.title}
+                    </Text>
+                    {section.lines.map((line, index) => (
+                      <Text key={`${section.title}-${index}`} color={theme.text} wrap="wrap">
+                        {`• ${line}`}
+                      </Text>
+                    ))}
+                  </Box>
                 ))}
               </Box>
             ) : null}
@@ -3600,7 +3648,6 @@ export function App(props: AppProps) {
             text={item.text}
             thinking={item.thinking}
             thinkingMs={item.thinkingMs}
-            planMode={item.planMode}
           />
         );
       case "tool_start":
@@ -3702,6 +3749,15 @@ export function App(props: AppProps) {
             </Text>
           </Box>
         );
+      case "goal_agent_transition":
+        return (
+          <Box key={item.id} marginTop={1} flexShrink={1}>
+            <Text color={theme.success} bold wrap="wrap">
+              {"● "}
+              {item.text}
+            </Text>
+          </Box>
+        );
       case "thinking_transition": {
         const glyphColor = item.active ? THINKING_BORDER_COLORS[0] : theme.textDim;
         return (
@@ -3794,9 +3850,10 @@ export function App(props: AppProps) {
       case "queued":
         return (
           <Box key={item.id} marginTop={1}>
-            <Text color={theme.accent} bold>
-              {"⏳ Queued: "}
+            <Text color={theme.warning} bold>
+              {"• "}
             </Text>
+            <Text color={theme.textDim}>Queued: </Text>
             <Text color={theme.text} wrap="wrap">
               {item.text}
               {item.imageCount
@@ -3831,124 +3888,24 @@ export function App(props: AppProps) {
     }
   };
 
-  // ── Start a task (shared by manual "work on it" and run-all) ──
-  const startTask = useCallback(
-    (title: string, prompt: string, taskId: string) => {
-      setTaskCount(getTaskCount(props.cwd));
-      const shortId = taskId.slice(0, 8);
-      const completionHint =
-        `\n\n---\nWhen you have fully completed this task, call the tasks tool to mark it done:\n` +
-        `tasks({ action: "done", id: "${shortId}" })`;
-      const fullPrompt = prompt + completionHint;
-
-      // Task-pane runs are unattended — there is no human to approve a
-      // plan via the plan overlay. Force plan mode off and flag
-      // `taskRunningRef` so `enter_plan` refuses if the agent tries to call
-      // it. Both flags persist across the resetUI() unmount/remount below
-      // because they live in cli.ts-owned refs, not React state.
-      if (props.planModeRef) props.planModeRef.current = false;
-      planModeStateRef.current = false;
-      approvedPlanPathRef.current = undefined;
-      setPlanMode(false);
-      if (props.taskRunningRef) props.taskRunningRef.current = true;
-
-      if (props.resetUI && props.sessionStore) {
-        const taskItem: TaskItem = { kind: "task", title, id: String(nextIdRef.current++) };
-        const sm = sessionManagerRef.current;
-
-        void (async () => {
-          // Rebuild the system prompt without plan mode / approved plan so the
-          // next mount doesn't inherit a stale plan-mode prefix from a prior
-          // user-toggled state. Skills, languages, and cwd are preserved.
-          const taskSysPrompt = await rebuildSystemPrompt({
-            planMode: false,
-            clearApprovedPlan: true,
-          });
-          const newMessages: Message[] = [{ role: "system", content: taskSysPrompt }];
-
-          let newSessionPath: string | undefined;
-          if (sm) {
-            try {
-              const s = await sm.create(props.cwd, currentProvider, currentModel);
-              newSessionPath = s.path;
-              log("INFO", "tasks", "New session for task", { path: s.path });
-            } catch {
-              // session creation is best-effort
-            }
-          }
-          if (props.sessionStore) {
-            props.sessionStore.overlay = null;
-            // Mirror through sessionStore so the post-resetUI remount can
-            // re-seed the ref. markTaskDone() in the run-all onDone branch
-            // reads currentTaskIdRef.current, which is seeded from this.
-            props.sessionStore.currentTaskId = taskId;
-          }
-          currentTaskIdRef.current = taskId;
-          props.resetUI?.({
-            wipeSession: true,
-            messages: newMessages,
-            history: [{ kind: "banner", id: "banner" }, taskItem],
-            sessionPath: newSessionPath,
-            pendingAction: { prompt: fullPrompt },
-          });
-        })();
-        return;
-      }
-
-      // Fallback path (resetUI not wired — tests).
-      currentTaskIdRef.current = taskId;
-      if (props.sessionStore) props.sessionStore.currentTaskId = taskId;
-      setHistory([{ kind: "banner", id: "banner" }]);
-      setLiveItems([]);
-      messagesRef.current = messagesRef.current.slice(0, 1);
-      agentLoop.reset();
-      persistedIndexRef.current = messagesRef.current.length;
-      const sm = sessionManagerRef.current;
-      if (sm) {
-        void sm.create(props.cwd, currentProvider, currentModel).then((s) => {
-          sessionPathRef.current = s.path;
-          log("INFO", "tasks", "New session for task", { path: s.path });
-        });
-      }
-      const taskItem: TaskItem = { kind: "task", title, id: getId() };
-      setLastUserMessage(title);
-      setDoneStatus(null);
-      setLiveItems([taskItem]);
-      void (async () => {
-        try {
-          await agentLoop.run(fullPrompt);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          log("ERROR", "error", msg);
-          const isAbort = msg.includes("aborted") || msg.includes("abort");
-          setLiveItems((prev) => [
-            ...prev,
-            isAbort
-              ? { kind: "stopped", text: "Request was stopped.", id: getId() }
-              : toErrorItem(err, getId()),
-          ]);
-          setRunAllTasks(false);
-        }
-      })();
-    },
-    [props.cwd, props.resetUI, props.sessionStore, agentLoop, currentProvider, currentModel],
-  );
-
   const openOverlay = useCallback(
-    (kind: "tasks" | "goal" | "skills" | "plan" | "pixel") => {
+    (kind: "goal" | "skills" | "plan" | "pixel") => {
       if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
         props.sessionStore.overlay = kind;
         if (kind !== "plan") props.sessionStore.planAutoExpand = false;
+        if (kind !== "goal") props.sessionStore.goalAutoExpand = false;
         props.resetUI();
       } else {
         if (props.sessionStore) {
           props.sessionStore.overlay = kind;
           if (kind !== "plan") props.sessionStore.planAutoExpand = false;
+          if (kind !== "goal") props.sessionStore.goalAutoExpand = false;
           if (agentLoop.isRunning && kind !== "goal" && kind !== "plan") {
             props.sessionStore.pendingResetUI = true;
           }
         }
         if (kind !== "plan") setPlanAutoExpand(false);
+        if (kind !== "goal") setGoalAutoExpand(false);
         setOverlay(kind);
       }
     },
@@ -3975,6 +3932,9 @@ export function App(props: AppProps) {
           ? `Inspecting worker result${eventInfo.task ? ` for ${eventInfo.task}` : ""}.`
           : `Inspecting verifier result${eventInfo?.status ? ` (${eventInfo.status})` : ""}.`;
       if (agentRunningRef.current) {
+        queuedGoalSyntheticEventsRef.current += 1;
+        void setGoalModeAndPrompt("coordinator");
+        appendGoalAgentTransition("GOAL ORCHESTRATOR QUEUED");
         appendGoalProgress({
           kind: "goal_progress",
           phase: "orchestrator_reviewing",
@@ -3986,6 +3946,7 @@ export function App(props: AppProps) {
         agentLoop.queueMessage(eventText);
         return;
       }
+      appendGoalAgentTransition("GOAL ORCHESTRATOR REVIEWING UPDATE");
       appendGoalProgress({
         kind: "goal_progress",
         phase: "orchestrator_reviewing",
@@ -3996,16 +3957,28 @@ export function App(props: AppProps) {
       });
       setLastUserMessage("");
       setDoneStatus(null);
-      void agentLoop.run(eventText).catch((err: unknown) => {
+      void (async () => {
+        await setGoalModeAndPrompt("coordinator");
+        await agentLoop.run(eventText);
+      })().catch((err: unknown) => {
         log("ERROR", "goal", err instanceof Error ? err.message : String(err));
         setLiveItems((prev) => [...prev, toErrorItem(err, getId(), "Goal")]);
+        clearGoalModeIfIdle();
       });
     },
-    [agentLoop, appendGoalProgress],
+    [
+      agentLoop,
+      appendGoalAgentTransition,
+      appendGoalProgress,
+      clearGoalModeIfIdle,
+      setGoalModeAndPrompt,
+    ],
   );
 
   const continueGoalRun = useCallback(
     (runId: string) => {
+      if (goalContinuationFlightsRef.current.has(runId)) return;
+      goalContinuationFlightsRef.current.add(runId);
       void (async () => {
         const latestRun = await reconcileActiveGoalRuns(props.cwd, {
           isWorkerActive: (workerId) =>
@@ -4016,10 +3989,21 @@ export function App(props: AppProps) {
         if (!latestRun) {
           runningGoalIdsRef.current.delete(runId);
           clearGoalStatusEntry(runId);
+          clearGoalModeIfIdle();
           return;
         }
         const decision = decideGoalNextAction(latestRun);
         if (decision.kind === "wait") return;
+        const choiceKey = getGoalContinuationChoiceKey({ runId: latestRun.id, decision });
+        const now = Date.now();
+        const recentChoiceAt = goalContinuationRecentChoicesRef.current.get(choiceKey);
+        if (recentChoiceAt !== undefined && now - recentChoiceAt < 5000) return;
+        goalContinuationRecentChoicesRef.current.set(choiceKey, now);
+        if (goalContinuationRecentChoicesRef.current.size > 100) {
+          for (const [key, startedAt] of goalContinuationRecentChoicesRef.current) {
+            if (now - startedAt > 60_000) goalContinuationRecentChoicesRef.current.delete(key);
+          }
+        }
         if (
           decision.kind === "terminal" ||
           decision.kind === "blocked" ||
@@ -4047,9 +4031,15 @@ export function App(props: AppProps) {
             content: `terminal=${status}`,
           });
           const terminalProgress = formatGoalTerminalProgress(nextRun);
-          if (terminalProgress) appendGoalProgress(terminalProgress);
+          if (terminalProgress) {
+            const item = { ...terminalProgress, id: goalTerminalProgressId(nextRun) };
+            setLiveItems((prev) =>
+              completedItemsWithDurableGoalTerminalProgress([...prev, item], [nextRun]),
+            );
+          }
           runningGoalIdsRef.current.delete(runId);
           clearGoalStatusEntry(runId);
+          clearGoalModeIfIdle();
           return;
         }
         let runForNextAction = latestRun;
@@ -4067,6 +4057,7 @@ export function App(props: AppProps) {
             continueRequestedAt: undefined,
           });
         }
+        appendGoalAgentTransition("GOAL ORCHESTRATOR CONTINUING");
         appendGoalProgress({
           kind: "goal_progress",
           phase: "continuing",
@@ -4083,14 +4074,26 @@ export function App(props: AppProps) {
           detail: "choosing next step",
         });
         startGoalRunRef.current(runForNextAction);
-      })().catch((err: unknown) => {
-        runningGoalIdsRef.current.delete(runId);
-        clearGoalStatusEntry(runId);
-        log("ERROR", "goal", err instanceof Error ? err.message : String(err));
-        setLiveItems((prev) => [...prev, toErrorItem(err, getId(), "Goal")]);
-      });
+      })()
+        .catch((err: unknown) => {
+          runningGoalIdsRef.current.delete(runId);
+          clearGoalStatusEntry(runId);
+          log("ERROR", "goal", err instanceof Error ? err.message : String(err));
+          setLiveItems((prev) => [...prev, toErrorItem(err, getId(), "Goal")]);
+        })
+        .finally(() => {
+          goalContinuationFlightsRef.current.delete(runId);
+          clearGoalModeIfIdle();
+        });
     },
-    [appendGoalProgress, clearGoalStatusEntry, props.cwd, upsertGoalStatusEntry],
+    [
+      appendGoalAgentTransition,
+      appendGoalProgress,
+      clearGoalModeIfIdle,
+      clearGoalStatusEntry,
+      props.cwd,
+      upsertGoalStatusEntry,
+    ],
   );
 
   const handleGoalWorkerComplete = useCallback(
@@ -4099,7 +4102,7 @@ export function App(props: AppProps) {
         run.tasks.find((task) => task.id === completion.worker.goalTaskId)?.title ??
         completion.worker.goalTaskId;
       const eventText = formatGoalWorkerCompletionEvent(run, taskTitle, completion);
-      void summarizeGoalCounts(completion.worker.cwd).then((counts) => setGoalCount(counts.active));
+      appendGoalAgentTransition("GOAL WORKER COMPLETE -> PASSING TO ORCHESTRATOR");
       appendGoalProgress({
         kind: "goal_progress",
         phase: "worker_finished",
@@ -4132,6 +4135,7 @@ export function App(props: AppProps) {
       );
     },
     [
+      appendGoalAgentTransition,
       appendGoalProgress,
       continueGoalRun,
       goalNumberForRun,
@@ -4163,151 +4167,183 @@ export function App(props: AppProps) {
   const startGoalRun = useCallback(
     (run: GoalRun) => {
       runningGoalIdsRef.current.add(run.id);
+      appendGoalAgentTransition("GOAL ORCHESTRATOR STARTED");
       void (async () => {
-        if (goalHasBlockingPrerequisites(run)) {
-          setOverlay(null);
-          const detail = formatGoalBlockingPrerequisites(run);
+        await setGoalModeAndPrompt("coordinator");
+        const currentRun =
+          (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? run;
+        const prereqCheck = await runGoalPrerequisiteChecks(props.cwd, currentRun);
+        const checkedRun =
+          prereqCheck.checkedCount > 0
+            ? await upsertGoalRun(props.cwd, {
+                ...prereqCheck.run,
+                status: goalHasBlockingPrerequisites(prereqCheck.run) ? "blocked" : "ready",
+              })
+            : currentRun;
+        if (goalHasBlockingPrerequisites(checkedRun)) {
+          const detail = formatGoalBlockingPrerequisites(checkedRun);
           await upsertGoalRun(props.cwd, {
-            ...run,
+            ...checkedRun,
             status: "blocked",
-            blockers: Array.from(new Set([...run.blockers, detail])),
+            blockers: Array.from(new Set([...checkedRun.blockers, detail])),
           });
-          setGoalCount((await summarizeGoalCounts(props.cwd)).active);
           appendGoalProgress({
             kind: "goal_progress",
             phase: "terminal",
-            title: `Goal blocked: ${run.title}`,
+            title: `Goal blocked: ${checkedRun.title}`,
             detail,
             status: "blocked",
           });
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
+          clearGoalModeIfIdle();
           return;
         }
 
-        const decision = decideGoalNextAction(run);
-        await appendGoalDecision(props.cwd, run.id, decision);
+        const decision = decideGoalNextAction(checkedRun);
+        await appendGoalDecision(props.cwd, checkedRun.id, decision);
         if (decision.kind === "terminal") {
-          const terminalProgress = formatGoalTerminalProgress(run);
-          if (terminalProgress) appendGoalProgress(terminalProgress);
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          const terminalProgress = formatGoalTerminalProgress(checkedRun);
+          if (terminalProgress) {
+            const item = { ...terminalProgress, id: goalTerminalProgressId(checkedRun) };
+            setLiveItems((prev) =>
+              completedItemsWithDurableGoalTerminalProgress([...prev, item], [checkedRun]),
+            );
+          }
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
+          clearGoalModeIfIdle();
           return;
         }
         if (decision.kind === "wait") {
           appendGoalProgress({
             kind: "goal_progress",
             phase: "worker_started",
-            title: decision.workerId ? `Goal working: ${run.title}` : `Goal active: ${run.title}`,
+            title: decision.workerId
+              ? `Goal working: ${checkedRun.title}`
+              : `Goal active: ${checkedRun.title}`,
             detail: decision.reason,
             workerId: decision.workerId,
           });
           upsertGoalStatusEntry({
-            runId: run.id,
-            label: run.title,
+            runId: checkedRun.id,
+            label: checkedRun.title,
             phase: decision.workerId ? "worker" : "orchestrating",
             startedAt: Date.now(),
             detail: decision.reason,
             workerId: decision.workerId,
-            goalNumber: goalNumberForRun(run.id),
+            goalNumber: goalNumberForRun(checkedRun.id),
           });
           return;
         }
         if (decision.kind === "complete") {
-          await upsertGoalRun(props.cwd, { ...run, status: "passed" });
-          setGoalCount((await summarizeGoalCounts(props.cwd)).active);
+          await upsertGoalRun(props.cwd, { ...checkedRun, status: "passed" });
           appendGoalProgress({
             kind: "goal_progress",
             phase: "terminal",
-            title: `Goal passed: ${run.title}`,
+            title: `Goal passed: ${checkedRun.title}`,
             detail: decision.reason,
             status: "passed",
           });
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
+          clearGoalModeIfIdle();
           return;
         }
         if (decision.kind === "run_verifier") {
-          await verifyGoalRun(run);
+          await verifyGoalRun(checkedRun);
           return;
         }
         if (decision.kind === "create_task") {
-          await updateGoalTask(props.cwd, run.id, `auto-${Date.now()}`, {
+          await updateGoalTask(props.cwd, checkedRun.id, `auto-${Date.now()}`, {
             title: decision.title,
             prompt: decision.prompt,
             status: "pending",
           });
           const latestRun =
-            (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? run;
+            (await loadGoalRuns(props.cwd)).find((item) => item.id === checkedRun.id) ?? checkedRun;
           await upsertGoalRun(props.cwd, { ...latestRun, status: "ready" });
-          setTimeout(() => continueGoalRun(run.id), 250);
+          setTimeout(() => continueGoalRun(checkedRun.id), 250);
           return;
         }
         if (decision.kind === "blocked") {
           await upsertGoalRun(props.cwd, {
-            ...run,
+            ...checkedRun,
             status: "blocked",
-            blockers: [...run.blockers, decision.reason],
+            blockers: [...checkedRun.blockers, decision.reason],
           });
-          setGoalCount((await summarizeGoalCounts(props.cwd)).active);
           appendGoalProgress({
             kind: "goal_progress",
             phase: "terminal",
-            title: `Goal blocked: ${run.title}`,
+            title: `Goal blocked: ${checkedRun.title}`,
             detail: decision.reason,
             status: "blocked",
           });
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
+          clearGoalModeIfIdle();
           return;
         }
         if (decision.kind === "pause") {
-          await updateGoalTask(props.cwd, run.id, decision.task.id, {
-            status: "blocked",
-            attempts: decision.attempts,
-            lastSummary: "Paused after worker attempt limit.",
-          });
+          const runWithBlockedTask =
+            (await updateGoalTask(props.cwd, checkedRun.id, decision.task.id, {
+              status: "blocked",
+              attempts: decision.attempts,
+              lastSummary: "Paused after worker attempt limit.",
+            })) ?? checkedRun;
+          const runWithPauseEvidence =
+            (await appendGoalEvidence(props.cwd, checkedRun.id, {
+              kind: "summary",
+              label: "Goal paused",
+              content: decision.reason,
+            })) ?? runWithBlockedTask;
           await upsertGoalRun(props.cwd, {
-            ...run,
+            ...runWithPauseEvidence,
             status: "paused",
-            blockers: [...run.blockers, decision.reason],
+            continueRequestedAt: undefined,
+            blockers: Array.from(new Set([...runWithPauseEvidence.blockers, decision.reason])),
           });
-          await appendGoalEvidence(props.cwd, run.id, {
-            kind: "summary",
-            label: "Goal paused",
-            content: decision.reason,
-          });
-          setGoalCount((await summarizeGoalCounts(props.cwd)).active);
           appendGoalProgress({
             kind: "goal_progress",
             phase: "terminal",
-            title: `Goal paused: ${run.title}`,
+            title: `Goal paused: ${checkedRun.title}`,
             detail: decision.reason,
             status: "paused",
           });
-          runningGoalIdsRef.current.delete(run.id);
-          clearGoalStatusEntry(run.id);
+          runningGoalIdsRef.current.delete(checkedRun.id);
+          clearGoalStatusEntry(checkedRun.id);
+          clearGoalModeIfIdle();
           return;
         }
 
-        await updateGoalTask(props.cwd, run.id, decision.task.id, { attempts: decision.attempts });
+        const runWithAttempt =
+          (await updateGoalTask(props.cwd, checkedRun.id, decision.task.id, {
+            attempts: decision.attempts,
+          })) ?? checkedRun;
+        appendGoalAgentTransition("GOAL WORKER STARTED");
         const worker = await startGoalWorker({
           cwd: props.cwd,
           provider: currentProvider,
           model: currentModel,
-          goalRunId: run.id,
+          goalRunId: checkedRun.id,
           goalTaskId: decision.task.id,
           taskTitle: decision.task.title,
           prompt: decision.task.prompt,
         });
+        const latestRun =
+          (await loadGoalRuns(props.cwd)).find((item) => item.id === checkedRun.id) ??
+          runWithAttempt;
         await upsertGoalRun(props.cwd, {
-          ...run,
+          ...latestRun,
           status: "running",
           activeWorkerId: worker.id,
           continueRequestedAt: undefined,
+          tasks: latestRun.tasks.map((item) =>
+            item.id === decision.task.id
+              ? { ...item, status: "running", workerId: worker.id, attempts: decision.attempts }
+              : item,
+          ),
         });
-        setOverlay(null);
-        setGoalCount((await summarizeGoalCounts(props.cwd)).active);
         appendGoalProgress({
           kind: "goal_progress",
           phase: "worker_started",
@@ -4317,16 +4353,17 @@ export function App(props: AppProps) {
           status: worker.status,
         });
         upsertGoalStatusEntry({
-          runId: run.id,
+          runId: checkedRun.id,
           label: decision.task.title,
           phase: "worker",
           startedAt: Date.now(),
           detail: "background worker running",
           workerId: worker.id,
-          goalNumber: goalNumberForRun(run.id),
+          goalNumber: goalNumberForRun(checkedRun.id),
         });
       })().catch((err: unknown) => {
         clearGoalStatusEntry(run.id);
+        clearGoalModeIfIdle();
         log("ERROR", "goal", err instanceof Error ? err.message : String(err));
         setLiveItems((prev) => [...prev, toErrorItem(err, getId(), "Goal")]);
       });
@@ -4335,15 +4372,19 @@ export function App(props: AppProps) {
       props.cwd,
       currentProvider,
       currentModel,
+      appendGoalAgentTransition,
       appendGoalProgress,
+      clearGoalModeIfIdle,
       clearGoalStatusEntry,
       goalNumberForRun,
+      setGoalModeAndPrompt,
       upsertGoalStatusEntry,
     ],
   );
 
   const verifyGoalRun = useCallback(
     async (run: GoalRun) => {
+      await setGoalModeAndPrompt("coordinator");
       if (!run.verifier?.command) {
         await appendGoalEvidence(props.cwd, run.id, {
           kind: "summary",
@@ -4364,6 +4405,7 @@ export function App(props: AppProps) {
         });
         runningGoalIdsRef.current.delete(run.id);
         clearGoalStatusEntry(run.id);
+        clearGoalModeIfIdle();
         return;
       }
 
@@ -4373,6 +4415,7 @@ export function App(props: AppProps) {
         status: "verifying",
         continueRequestedAt: undefined,
       });
+      appendGoalAgentTransition("GOAL VERIFIER STARTED");
       appendGoalProgress({
         kind: "goal_progress",
         phase: "verifier_started",
@@ -4412,17 +4455,23 @@ export function App(props: AppProps) {
               command: run.verifier?.command,
               lastResult: verification,
             },
+            ...(status === "pass"
+              ? {
+                  completionAudit: {
+                    status: "unknown" as const,
+                    summary: "Final completion audit pending for latest verifier result.",
+                    checkedAt: verification.checkedAt,
+                    verifierCheckedAt: verification.checkedAt,
+                    ...(verification.outputPath ? { outputPath: verification.outputPath } : {}),
+                  },
+                }
+              : {}),
           };
           const completionCheck = canCompleteGoalRun(runWithVerifier);
           const verifiedRun = await upsertGoalRun(props.cwd, {
             ...runWithVerifier,
-            continueRequestedAt: undefined,
-            status:
-              status === "pass" && completionCheck.ok
-                ? "passed"
-                : status === "pass"
-                  ? "ready"
-                  : "failed",
+            continueRequestedAt: latestRun.continueRequestedAt,
+            status: status === "pass" && completionCheck.ok ? "passed" : "ready",
           });
           await appendGoalEvidence(props.cwd, run.id, {
             kind: "command",
@@ -4435,20 +4484,7 @@ export function App(props: AppProps) {
             reason: `${failureClass}: verifier exited with code ${verification.exitCode ?? 1}.`,
             content: `outputPath=${outputPath ?? ""}; durationMs=${durationMs}`,
           });
-          if (status === "fail" && shouldCreateVerifierFixTask(latestRun)) {
-            await updateGoalTask(props.cwd, run.id, `fix-${Date.now()}`, {
-              title: "Fix verifier failure",
-              prompt:
-                `Goal verifier failed after ${durationMs}ms. Original goal: ${run.goal}\n\n` +
-                `Verifier command: ${run.verifier?.command}\n\n` +
-                `Failure output:\n${summary.slice(-6000)}\n\nFix the cause, record evidence with the goals tool, and rerun relevant verification.`,
-              status: "pending",
-            });
-            const runWithPendingFix =
-              (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? latestRun;
-            await upsertGoalRun(props.cwd, { ...runWithPendingFix, status: "ready" });
-          }
-          setGoalCount((await summarizeGoalCounts(props.cwd)).active);
+          appendGoalAgentTransition("GOAL VERIFIER COMPLETE -> PASSING TO ORCHESTRATOR");
           appendGoalProgress({
             kind: "goal_progress",
             phase: "verifier_finished",
@@ -4475,23 +4511,27 @@ export function App(props: AppProps) {
           const continuationRun = (await loadGoalRuns(props.cwd)).find(
             (item) => item.id === run.id,
           );
-          if (continuationRun?.continueRequestedAt && status === "pass") {
+          if (continuationRun?.continueRequestedAt || status === "fail" || status === "pass") {
             setTimeout(() => continueGoalRun(run.id), 500);
           }
         })
         .catch((err: unknown) => {
           activeVerifierRunIdsRef.current.delete(run.id);
           clearGoalStatusEntry(run.id);
+          clearGoalModeIfIdle();
           log("ERROR", "goal", err instanceof Error ? err.message : String(err));
           setLiveItems((prev) => [...prev, toErrorItem(err, getId(), "Goal verifier")]);
         });
     },
     [
       props.cwd,
+      appendGoalAgentTransition,
       appendGoalProgress,
+      clearGoalModeIfIdle,
       clearGoalStatusEntry,
       goalNumberForRun,
       runGoalSyntheticEvent,
+      setGoalModeAndPrompt,
       upsertGoalStatusEntry,
     ],
   );
@@ -4501,8 +4541,12 @@ export function App(props: AppProps) {
       void (async () => {
         runningGoalIdsRef.current.delete(run.id);
         if (run.activeWorkerId) await stopGoalWorker(run.activeWorkerId);
-        await upsertGoalRun(props.cwd, { ...run, status: "paused", activeWorkerId: undefined });
-        setGoalCount((await summarizeGoalCounts(props.cwd)).active);
+        const latestRun = (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? run;
+        await upsertGoalRun(props.cwd, {
+          ...latestRun,
+          status: "paused",
+          activeWorkerId: undefined,
+        });
         appendGoalProgress({
           kind: "goal_progress",
           phase: "terminal",
@@ -4511,26 +4555,23 @@ export function App(props: AppProps) {
           status: "paused",
         });
         clearGoalStatusEntry(run.id);
+        clearGoalModeIfIdle();
       })().catch((err: unknown) => {
         log("ERROR", "goal", err instanceof Error ? err.message : String(err));
         setLiveItems((prev) => [...prev, toErrorItem(err, getId(), "Goal")]);
       });
     },
-    [appendGoalProgress, clearGoalStatusEntry, props.cwd],
+    [
+      appendGoalAgentTransition,
+      appendGoalProgress,
+      clearGoalModeIfIdle,
+      clearGoalStatusEntry,
+      props.cwd,
+    ],
   );
 
   // Keep refs in sync for access from stale closures (onDone)
-  startTaskRef.current = startTask;
   startGoalRunRef.current = startGoalRun;
-  useEffect(() => {
-    runAllTasksRef.current = runAllTasks;
-    if (props.sessionStore) {
-      props.sessionStore.runAllTasks = runAllTasks;
-      // Keep currentTaskId in sync with the ref so a sessionStore-seeded
-      // remount picks up the same value the imperative sites wrote.
-      props.sessionStore.currentTaskId = currentTaskIdRef.current;
-    }
-  }, [runAllTasks, props.sessionStore]);
 
   useEffect(() => {
     agentRunningRef.current = agentLoop.isRunning;
@@ -4582,7 +4623,6 @@ export function App(props: AppProps) {
           injectedLanguagesRef.current = detectedForPixelFix;
           const newSystemPrompt = await rebuildSystemPrompt({
             cwd: prep.projectPath,
-            planMode: false,
             clearApprovedPlan: true,
             activeLanguages: detectedForPixelFix,
             tools: toolsForPixelFix,
@@ -4590,6 +4630,8 @@ export function App(props: AppProps) {
 
           // Now that the cwd swap is committed, reset chat. Do not clear the
           // terminal here; terminal clear sequences can erase saved scrollback.
+          pendingHistoryFlushRef.current = [];
+          props.terminalHistoryPrinter?.clear();
           setHistory([{ kind: "banner", id: "banner" }]);
           setLiveItems([]);
           messagesRef.current = messagesRef.current.slice(0, 1);
@@ -4610,10 +4652,10 @@ export function App(props: AppProps) {
           }
 
           const title = `Fix ${errorId.slice(0, 12)}… in ${prep.projectName}`;
-          const taskItem: TaskItem = { kind: "task", title, id: getId() };
+          const goalItem: GoalItem = { kind: "goal", title, id: getId() };
           setLastUserMessage(title);
           setDoneStatus(null);
-          setLiveItems([taskItem]);
+          setLiveItems([goalItem]);
 
           await agentLoop.run(prep.prompt);
         } catch (err) {
@@ -4637,91 +4679,44 @@ export function App(props: AppProps) {
     if (props.sessionStore) props.sessionStore.runAllPixel = runAllPixel;
   }, [runAllPixel, props.sessionStore]);
 
-  const isTaskView = overlay === "tasks";
   const isGoalView = overlay === "goal";
   const isSkillsView = overlay === "skills";
   const isPlanView = overlay === "plan";
-  const isEyesView = overlay === "eyes";
   const footerStatusLayout = getFooterStatusLayoutDecision({
     columns,
     backgroundTaskCount: bgTasks.length,
-    eyesCount,
     updatePending,
   });
   const isPixelView = overlay === "pixel";
-  const isOverlayView =
-    isTaskView || isGoalView || isSkillsView || isPlanView || isEyesView || isPixelView;
-  const shouldHideHistoryForOverlay = shouldHideHistoryForOverlayView(
-    isOverlayView,
-    agentLoop.isRunning,
-  );
-  const stabilizeOverlayPaneRerender = shouldStabilizeOverlayPaneRerender({
-    overlayPane: overlay,
-    isAgentRunning: agentLoop.isRunning,
-  });
-  const staticItems = shouldHideStaticItemsForOverlayView({
-    shouldHideHistoryForOverlay,
-    stabilizeOverlayPaneRerender,
-  })
-    ? []
-    : history;
-
   return (
     <Box flexDirection="column" width={columns}>
-      {/* History — scrolled up, managed by Ink Static. */}
-      <Static
-        key={getStaticHistoryKey({ resizeKey })}
-        items={staticItems}
-        style={{ width: "100%" }}
-      >
-        {(item) => (
-          <Box key={item.id} flexDirection="column" paddingRight={1}>
-            {renderItem(item)}
-          </Box>
-        )}
-      </Static>
-
-      {isTaskView ? (
-        <TaskOverlay
-          cwd={props.cwd}
-          agentRunning={agentLoop.isRunning}
-          onClose={() => {
-            if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
-              props.sessionStore.overlay = null;
-              props.resetUI();
-            } else {
-              if (props.sessionStore) {
-                props.sessionStore.overlay = null;
-                if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
-              }
-              setTaskCount(getTaskCount(props.cwd));
-              setOverlay(null);
-            }
-          }}
-          onWorkOnTask={(title, prompt, taskId) => {
-            setOverlay(null);
-            startTask(title, prompt, taskId);
-          }}
-          onRunAllTasks={() => {
-            setOverlay(null);
-            setRunAllTasks(true);
-            const next = getNextPendingTask(props.cwd);
-            if (next) {
-              markTaskInProgress(props.cwd, next.id);
-              startTask(next.title, next.prompt, next.id);
-            }
-          }}
-        />
-      ) : isGoalView ? (
+      {isGoalView ? (
         <GoalOverlay
           cwd={props.cwd}
           agentRunning={agentLoop.isRunning}
+          autoExpandNewest={goalAutoExpand}
           onClose={() => {
-            void summarizeGoalCounts(props.cwd).then((counts) => setGoalCount(counts.active));
+            goalAutoExpandRef.current = false;
+            setGoalAutoExpand(false);
+            if (props.sessionStore) props.sessionStore.goalAutoExpand = false;
             closeOverlay();
           }}
           onRunGoal={(run) => {
-            setOverlay(null);
+            const paneTransition = getGoalActivationPaneTransition();
+            goalAutoExpandRef.current = paneTransition.goalAutoExpand;
+            setGoalAutoExpand(paneTransition.goalAutoExpand);
+            setPlanAutoExpand(paneTransition.planAutoExpand);
+            if (props.sessionStore) {
+              props.sessionStore.overlay = paneTransition.overlay;
+              props.sessionStore.goalAutoExpand = paneTransition.goalAutoExpand;
+              props.sessionStore.planAutoExpand = paneTransition.planAutoExpand;
+            }
+            if (paneTransition.resetReviewScreen && props.resetUI && props.sessionStore) {
+              props.sessionStore.pendingGoalRun = run;
+              props.resetUI();
+              return;
+            }
+            setOverlay(paneTransition.overlay);
             startGoalRun(run);
           }}
           onVerifyGoal={(run) => {
@@ -4729,6 +4724,46 @@ export function App(props: AppProps) {
           }}
           onPauseGoal={(run) => {
             pauseGoalRun(run);
+          }}
+          onRefineGoal={(run, feedback) => {
+            goalAutoExpandRef.current = true;
+            setGoalAutoExpand(true);
+            void (async () => {
+              try {
+                await setGoalModeAndPrompt("setup");
+                await agentLoop.run(
+                  `Refine Goal run ${run.id} (${run.title}) based on this user feedback. Update durable Goal setup only, then stop and reopen the Goal pane for review.\n\nFeedback: ${feedback}`,
+                );
+              } catch (err) {
+                log("ERROR", "goal", err instanceof Error ? err.message : String(err));
+                setLiveItems((prev) => [...prev, toErrorItem(err, getId(), "Goal")]);
+              } finally {
+                await setGoalModeAndPrompt("off");
+                const paneTransition = getGoalSetupFinishedPaneTransition();
+                goalAutoExpandRef.current = paneTransition.goalAutoExpand;
+                setTimeout(() => {
+                  const resetUI = props.resetUI;
+                  const sessionStore = props.sessionStore;
+                  if (
+                    shouldResetUIForGoalSetupPaneTransition({
+                      hasResetUI: resetUI !== undefined,
+                      hasSessionStore: sessionStore !== undefined,
+                    }) &&
+                    resetUI &&
+                    sessionStore
+                  ) {
+                    sessionStore.overlay = paneTransition.overlay;
+                    sessionStore.goalAutoExpand = paneTransition.goalAutoExpand;
+                    sessionStore.planAutoExpand = paneTransition.planAutoExpand;
+                    resetUI();
+                    return;
+                  }
+                  setGoalAutoExpand(paneTransition.goalAutoExpand);
+                  setPlanAutoExpand(paneTransition.planAutoExpand);
+                  setOverlay(paneTransition.overlay);
+                }, 300);
+              }
+            })();
           }}
         />
       ) : isPixelView ? (
@@ -4775,28 +4810,6 @@ export function App(props: AppProps) {
             }
           }}
         />
-      ) : isEyesView ? (
-        <EyesOverlay
-          cwd={props.cwd}
-          onClose={() => {
-            if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
-              props.sessionStore.overlay = null;
-              props.resetUI();
-            } else {
-              if (props.sessionStore) {
-                props.sessionStore.overlay = null;
-                if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
-              }
-              setEyesCount(
-                isEyesActive(props.cwd) ? journalCount({ status: "open" }, props.cwd) : undefined,
-              );
-              setOverlay(null);
-            }
-          }}
-          onQueueMessage={(msg) => {
-            agentLoop.queueMessage(msg);
-          }}
-        />
       ) : isPlanView ? (
         <PlanOverlay
           cwd={props.cwd}
@@ -4834,7 +4847,6 @@ export function App(props: AppProps) {
 
                 // Build the new system prompt with the approved plan baked in.
                 const newPrompt = await rebuildSystemPrompt({
-                  planMode: false,
                   approvedPlanPath: planPath,
                 });
 
@@ -4871,6 +4883,8 @@ export function App(props: AppProps) {
                 approvedPlanPathRef.current = planPath;
                 planStepsRef.current = steps;
                 setPlanSteps(steps);
+                pendingHistoryFlushRef.current = [];
+                props.terminalHistoryPrinter?.clear();
                 setHistory([{ kind: "banner", id: "banner" }]);
                 setLiveItems([]);
                 setPlanAutoExpand(false);
@@ -4905,8 +4919,8 @@ export function App(props: AppProps) {
             if (props.resetUI && props.sessionStore) {
               props.sessionStore.overlay = null;
               props.sessionStore.planAutoExpand = false;
-              // No wipeSession — keep history, messages, plan mode etc. The
-              // agent picks up the rejection mid-conversation.
+              // No wipeSession — keep history and messages so the agent picks
+              // up the rejection mid-conversation.
               props.resetUI({
                 pendingAction: {
                   prompt: rejectionMsg,
@@ -4932,14 +4946,13 @@ export function App(props: AppProps) {
       ) : (
         <>
           {/* Content area */}
-          <Box flexDirection="column" flexGrow={1} paddingRight={1}>
+          <Box flexDirection="column" paddingRight={1}>
             {liveItems.map((item) => renderItem(item))}
             <StreamingArea
               isRunning={agentLoop.isRunning}
-              streamingText={agentLoop.streamingText}
+              streamingText={goalModeStateRef.current === "planner" ? "" : agentLoop.streamingText}
               streamingThinking={agentLoop.streamingThinking}
               thinkingMs={agentLoop.thinkingMs}
-              planMode={planMode}
             />
           </Box>
 
@@ -4970,7 +4983,6 @@ export function App(props: AppProps) {
                 realTokensAccumRef={agentLoop.realTokensAccumRef}
                 userMessage={lastUserMessage}
                 activeToolNames={agentLoop.activeToolCalls.map((tc) => tc.name)}
-                planMode={planMode}
                 retryInfo={agentLoop.retryInfo}
                 planDone={planSteps.filter((s) => s.completed).length}
                 planTotal={planSteps.length}
@@ -5001,8 +5013,10 @@ export function App(props: AppProps) {
           {/* Queue indicator */}
           {agentLoop.queuedCount > 0 && (
             <Box marginTop={1}>
-              <Text color={theme.accent}>
-                {"⏳ "}
+              <Text color={theme.warning} bold>
+                {"• "}
+              </Text>
+              <Text color={theme.textDim}>
                 {agentLoop.queuedCount} message{agentLoop.queuedCount > 1 ? "s" : ""} queued
               </Text>
             </Box>
@@ -5016,13 +5030,6 @@ export function App(props: AppProps) {
             isActive={!taskBarFocused && !overlay}
             onDownAtEnd={handleFocusTaskBar}
             onShiftTab={handleToggleThinking}
-            onToggleTasks={() => {
-              // Just flip the overlay state — Ink's log-update handles the
-              // live-area transition (chat input → TaskOverlay) natively, and
-              // the chat history above stays in scrollback. When the overlay
-              // closes, the history is still there (banner included).
-              openOverlay("tasks");
-            }}
             onToggleGoal={() => {
               openOverlay("goal");
             }}
@@ -5032,23 +5039,8 @@ export function App(props: AppProps) {
             onTogglePixel={() => {
               openOverlay("pixel");
             }}
-            onTogglePlanMode={() => {
-              const next = !planMode;
-              setPlanMode(next);
-              log("INFO", "plan", `Plan mode ${next ? "enabled" : "disabled"}`);
-              setLiveItems((items) => [
-                ...items,
-                {
-                  kind: "plan_transition",
-                  text: next ? "Plan Mode Activated" : "Plan Mode Deactivated",
-                  active: next,
-                  id: getId(),
-                },
-              ]);
-            }}
             cwd={props.cwd}
             commands={allCommands}
-            eyesCount={eyesCount}
           />
           {overlay === "model" ? (
             <ModelSelector
@@ -5073,19 +5065,16 @@ export function App(props: AppProps) {
                 cwd={displayedCwd}
                 gitBranch={gitBranch}
                 thinkingLevel={thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined}
-                planMode={planMode}
+                goalMode={goalMode}
                 exitPending={exitPending}
               />
               {!exitPending && <GoalStatusBar entries={goalStatusEntries} />}
             </>
           )}
-          {/* Status row — background tasks, eyes call-to-action, and the
-              update-ready indicator all share a single line. Order is
-              intentional: active work (bg tasks) first, actionable signals
-              (eyes) next, ambient hint (update ready) last. */}
-          {(footerStatusLayout.hasBackgroundTasks ||
-            footerStatusLayout.hasEyesSignals ||
-            footerStatusLayout.hasUpdateNotice) && (
+          {/* Status row — background tasks and the update-ready indicator share
+              a single line. Order is intentional: active work first, ambient
+              hints last. */}
+          {(footerStatusLayout.hasBackgroundTasks || footerStatusLayout.hasUpdateNotice) && (
             <Box flexDirection={footerStatusLayout.stack ? "column" : "row"} width={columns}>
               {footerStatusLayout.hasBackgroundTasks && (
                 <BackgroundTasksBar
@@ -5101,23 +5090,10 @@ export function App(props: AppProps) {
                   compact={footerStatusLayout.compactBackgroundTasks}
                 />
               )}
-              {footerStatusLayout.hasEyesSignals && (
-                <Box
-                  paddingLeft={footerStatusLayout.stack || bgTasks.length === 0 ? 1 : 2}
-                  paddingRight={1}
-                >
-                  <Text color={theme.accent} bold wrap="truncate">
-                    {`${eyesCount} eyes signal${eyesCount === 1 ? "" : "s"} · Run /eyes-improve to enhance EZ Coder`}
-                  </Text>
-                </Box>
-              )}
               {footerStatusLayout.hasUpdateNotice && (
                 <Box
                   paddingLeft={
-                    footerStatusLayout.stack ||
-                    (!footerStatusLayout.hasBackgroundTasks && !footerStatusLayout.hasEyesSignals)
-                      ? 1
-                      : 2
+                    footerStatusLayout.stack || !footerStatusLayout.hasBackgroundTasks ? 1 : 2
                   }
                   paddingRight={1}
                 >

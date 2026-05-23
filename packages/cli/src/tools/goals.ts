@@ -2,8 +2,14 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { AgentTool } from "@prestyj/agent";
 import { log } from "../core/logger.js";
-import { canCompleteGoalRun, decideGoalNextAction } from "../core/goal-controller.js";
 import {
+  canCompleteGoalRun,
+  decideGoalNextAction,
+  hasFreshGoalCompletionAudit,
+} from "../core/goal-controller.js";
+import { runGoalPrerequisiteCheckCommand } from "../core/goal-prerequisites.js";
+import {
+  appendGoalBlockers,
   appendGoalDecision,
   appendGoalEvidence,
   createGoalEvidence,
@@ -23,6 +29,7 @@ import {
   type GoalTaskStatus,
   type GoalVerificationStatus,
 } from "../core/goal-store.js";
+import { getActiveGoalMode, type GoalMode } from "../core/runtime-mode.js";
 
 const PrerequisiteInput = z.object({
   id: z.string().optional().describe("Stable prerequisite id"),
@@ -56,6 +63,7 @@ const EvidencePlanInput = z.object({
       "browser",
       "device",
       "source",
+      "file",
       "manual",
     ])
     .describe("How this proof will be gathered"),
@@ -74,7 +82,9 @@ const GoalsParams = z.object({
       "prerequisite",
       "task",
       "evidence",
+      "evidence_plan",
       "verify",
+      "audit",
       "status",
       "pause",
       "resume",
@@ -104,6 +114,11 @@ const GoalsParams = z.object({
     .array(EvidencePlanInput)
     .optional()
     .describe("Planned proof paths for end-to-end verification"),
+  evidence_plan_item_id: z.string().optional().describe("Evidence-plan item id to update"),
+  evidence_plan_status: z
+    .enum(["planned", "ready", "blocked"])
+    .optional()
+    .describe("Updated evidence-plan item status"),
   verifier_command: z.string().optional().describe("Command that verifies the goal end-to-end"),
   verifier_description: z.string().optional().describe("Natural-language verifier description"),
   task_id: z.string().optional().describe("Goal task id to update"),
@@ -140,6 +155,49 @@ function asPrerequisiteStatus(value: string | undefined): GoalPrerequisiteStatus
   return "unknown";
 }
 
+function requiresPrerequisiteCheck(
+  status: GoalPrerequisiteStatus,
+  evidence: string | undefined,
+): boolean {
+  return status === "unknown" || (status === "met" && !evidence?.trim());
+}
+
+function uncheckedPrerequisiteInstructions(label: string): string {
+  return `Check ${label} locally and record non-secret evidence before workers can start.`;
+}
+
+async function normalizePrerequisiteInput(
+  cwd: string,
+  item: z.infer<typeof PrerequisiteInput>,
+): Promise<GoalRun["prerequisites"][number]> {
+  const requestedStatus = asPrerequisiteStatus(item.status);
+  const id = item.id ?? randomUUID();
+  if (item.check_command && requiresPrerequisiteCheck(requestedStatus, item.evidence)) {
+    const result = await runGoalPrerequisiteCheckCommand({ cwd, command: item.check_command });
+    return {
+      id,
+      label: item.label,
+      status: result.status,
+      checkCommand: item.check_command,
+      evidence: result.evidence,
+      ...(result.status === "missing" || item.instructions
+        ? { instructions: item.instructions ?? `Make \`${item.check_command}\` pass locally.` }
+        : {}),
+    };
+  }
+  return {
+    id,
+    label: item.label,
+    status: requestedStatus,
+    ...(item.check_command ? { checkCommand: item.check_command } : {}),
+    ...(item.instructions ? { instructions: item.instructions } : {}),
+    ...(item.evidence ? { evidence: item.evidence } : {}),
+    ...(requiresPrerequisiteCheck(requestedStatus, item.evidence) && !item.instructions
+      ? { instructions: uncheckedPrerequisiteInstructions(item.label) }
+      : {}),
+  };
+}
+
 function asTaskStatus(value: string | undefined): GoalTaskStatus {
   if (
     value === "pending" ||
@@ -167,6 +225,13 @@ function asEvidenceKind(value: string | undefined): GoalEvidenceKind {
   return "summary";
 }
 
+function asEvidencePlanStatus(
+  value: string | undefined,
+): GoalRun["evidencePlan"][number]["status"] {
+  if (value === "ready" || value === "blocked" || value === "planned") return value;
+  return "planned";
+}
+
 function asEvidenceMechanism(value: string | undefined): GoalEvidenceMechanism {
   if (
     value === "command" ||
@@ -179,6 +244,7 @@ function asEvidenceMechanism(value: string | undefined): GoalEvidenceMechanism {
     value === "browser" ||
     value === "device" ||
     value === "source" ||
+    value === "file" ||
     value === "manual"
   ) {
     return value;
@@ -203,10 +269,15 @@ function formatRun(run: GoalRun): string {
     : run.verifier?.command
       ? "verifier configured"
       : "no verifier";
+  const audit = run.completionAudit
+    ? `, final audit ${run.completionAudit.status}`
+    : run.verifier?.lastResult?.status === "pass"
+      ? ", final audit missing"
+      : "";
   const blocker = goalHasBlockingPrerequisites(run)
     ? `\nUser prerequisites: ${formatGoalBlockingPrerequisites(run)}`
     : "";
-  return `[${run.status}] ${run.title} (id: ${run.id.slice(0, 8)}) — ${prereqs}, ${tasks}, ${verifier}${blocker}`;
+  return `[${run.status}] ${run.title} (id: ${run.id.slice(0, 8)}) — ${prereqs}, ${tasks}, ${verifier}${audit}${blocker}`;
 }
 
 function recoverableTaskStatus(status: GoalTaskStatus): boolean {
@@ -214,8 +285,40 @@ function recoverableTaskStatus(status: GoalTaskStatus): boolean {
 }
 
 function statusAfterTaskPatch(run: GoalRun, status: GoalTaskStatus): GoalRunStatus {
-  if (run.status !== "failed" || !recoverableTaskStatus(status)) return run.status;
+  if ((run.status !== "failed" && run.status !== "passed") || !recoverableTaskStatus(status)) {
+    return run.status;
+  }
   return goalHasBlockingPrerequisites(run) ? "blocked" : "ready";
+}
+
+function setupBlockersForRun(
+  run: Pick<GoalRun, "successCriteria" | "evidencePlan" | "verifier">,
+): string[] {
+  const blockers: string[] = [];
+  if (run.successCriteria.length === 0)
+    blockers.push("Goal setup incomplete: success criteria are required.");
+  if (run.evidencePlan.length === 0)
+    blockers.push("Goal setup incomplete: evidence_plan is required.");
+  if (!run.verifier?.command) blockers.push("Goal setup incomplete: verifier_command is required.");
+  return blockers;
+}
+
+function validatePassAuditContract(
+  run: GoalRun,
+  summary: string,
+  outputPath: string | undefined,
+): string | undefined {
+  const verifier = run.verifier?.lastResult;
+  if (!verifier) return "cannot audit completion before a verifier result exists.";
+  if (!summary.startsWith("FINAL_AUDIT_PASS"))
+    return "pass audit summary must start with FINAL_AUDIT_PASS.";
+  if (!summary.includes(`verifier_checked_at=${verifier.checkedAt}`)) {
+    return `pass audit summary must include verifier_checked_at=${verifier.checkedAt}.`;
+  }
+  if (!outputPath && !summary.match(/(?:output|artifact|log|path)=\S+/)) {
+    return "pass audit must include output_path or an output/artifact/log/path reference in the summary.";
+  }
+  return undefined;
 }
 
 async function resolveRun(cwd: string, id?: string): Promise<GoalRun | null> {
@@ -223,27 +326,30 @@ async function resolveRun(cwd: string, id?: string): Promise<GoalRun | null> {
   return getActiveGoalRun(cwd);
 }
 
-export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
+export function createGoalsTool(
+  cwd: string,
+  goalModeRef?: { current: GoalMode },
+): AgentTool<typeof GoalsParams> {
   return {
     name: "goals",
     description:
-      "Manage durable Goal runs for /goal and Ctrl+G workflows. Use this instead of tasks when the user wants a programmatic goal loop: define success criteria first, check prerequisites before launching workers, persist harness/diagnostics/evidence, add standalone worker tasks, and only mark the goal complete when verifier evidence proves the original objective. Do not require paid services or signups without recording a blocker and asking the user for the missing prerequisite.",
+      "Manage durable Goal runs for /goal and Ctrl+G workflows. Use this instead of tasks when the user wants a programmatic goal loop: define success criteria first, check prerequisites before launching workers, persist harness/diagnostics/evidence, add standalone worker tasks, record final completion audits, and only mark the goal complete when verifier plus final-audit evidence proves the original objective. Do not require paid services or signups without recording a blocker and asking the user for the missing prerequisite.",
     parameters: GoalsParams,
     executionMode: "sequential",
     async execute(args) {
+      if (getActiveGoalMode(goalModeRef) === "planner") {
+        return "Error: goals is restricted in Goal planner mode. Emit a compact GOAL_PLAN block only; setup creates durable Goal state.";
+      }
       switch (args.action) {
         case "create": {
           if (!args.title) return "Error: title is required for create.";
           if (!args.goal) return "Error: goal is required for create.";
           const existing = args.run_id ? await getGoalRun(cwd, args.run_id) : null;
-          const prerequisites = args.prerequisites?.map((item) => ({
-            id: item.id ?? randomUUID(),
-            label: item.label,
-            status: asPrerequisiteStatus(item.status),
-            ...(item.check_command ? { checkCommand: item.check_command } : {}),
-            ...(item.instructions ? { instructions: item.instructions } : {}),
-            ...(item.evidence ? { evidence: item.evidence } : {}),
-          }));
+          const prerequisites = args.prerequisites
+            ? await Promise.all(
+                args.prerequisites.map((item) => normalizePrerequisiteInput(cwd, item)),
+              )
+            : undefined;
           const harness = args.harness?.map((item) => ({
             id: item.id ?? randomUUID(),
             label: item.label,
@@ -279,21 +385,35 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
           const missingPrerequisites = formatGoalBlockingPrerequisiteList(nextPrerequisites);
           const hasBlockingPrerequisites =
             missingPrerequisites !== "Goal has no missing user prerequisites.";
+          const draftProbe = {
+            successCriteria: args.success_criteria ?? existing?.successCriteria ?? [],
+            evidencePlan: evidencePlan ?? existing?.evidencePlan ?? [],
+            verifier,
+          };
+          const setupBlockers = setupBlockersForRun(draftProbe);
+          const blockers = Array.from(
+            new Set([
+              ...(args.blockers ?? existing?.blockers ?? []),
+              ...(hasBlockingPrerequisites ? [missingPrerequisites] : []),
+              ...setupBlockers,
+            ]),
+          );
           const run = await upsertGoalRun(cwd, {
             ...(args.run_id ? { id: args.run_id } : {}),
             title: args.title,
             goal: args.goal,
-            status: hasBlockingPrerequisites ? "blocked" : (existing?.status ?? "ready"),
-            successCriteria: args.success_criteria ?? existing?.successCriteria ?? [],
+            status:
+              setupBlockers.length > 0
+                ? "draft"
+                : hasBlockingPrerequisites
+                  ? "blocked"
+                  : (existing?.status ?? "ready"),
+            successCriteria: draftProbe.successCriteria,
             prerequisites: nextPrerequisites,
             harness: harness ?? existing?.harness ?? [],
-            evidencePlan: evidencePlan ?? existing?.evidencePlan ?? [],
+            evidencePlan: draftProbe.evidencePlan,
             ...(verifier ? { verifier } : {}),
-            blockers: hasBlockingPrerequisites
-              ? Array.from(
-                  new Set([...(args.blockers ?? existing?.blockers ?? []), missingPrerequisites]),
-                )
-              : (args.blockers ?? []),
+            blockers,
           });
           await appendGoalDecision(cwd, run.id, {
             kind: args.run_id ? "update" : "create",
@@ -328,12 +448,26 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
                 (item) => item.id === prereqId || item.id.startsWith(prereqId),
               )
             : -1;
+          const existingPrerequisite = index >= 0 ? prerequisites[index] : undefined;
           const patch = {
             id: prereqId ?? randomUUID(),
-            label: args.prerequisite_label ?? prereqId ?? "Prerequisite",
+            label:
+              args.prerequisite_label ?? existingPrerequisite?.label ?? prereqId ?? "Prerequisite",
             status: asPrerequisiteStatus(args.prerequisite_status),
             ...(args.instructions ? { instructions: args.instructions } : {}),
             ...(args.summary ? { evidence: args.summary } : {}),
+            ...(asPrerequisiteStatus(args.prerequisite_status) === "met" && !args.summary
+              ? {
+                  instructions:
+                    args.instructions ??
+                    uncheckedPrerequisiteInstructions(
+                      args.prerequisite_label ??
+                        existingPrerequisite?.label ??
+                        prereqId ??
+                        "Prerequisite",
+                    ),
+                }
+              : {}),
           };
           if (index >= 0) {
             prerequisites[index] = {
@@ -415,6 +549,44 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
           return `Evidence added to "${updated.title}".`;
         }
 
+        case "evidence_plan": {
+          const run = await resolveRun(cwd, args.run_id);
+          if (!run) return "Error: no active goal run found.";
+          const evidencePlanItemId = args.evidence_plan_item_id;
+          if (!evidencePlanItemId) return "Error: evidence_plan_item_id is required.";
+          const evidencePlan = [...run.evidencePlan];
+          const index = evidencePlan.findIndex(
+            (item) => item.id === evidencePlanItemId || item.id.startsWith(evidencePlanItemId),
+          );
+          if (index < 0) {
+            return `Error: no evidence-plan item found matching id "${args.evidence_plan_item_id}".`;
+          }
+          const existing = evidencePlan[index];
+          const status = asEvidencePlanStatus(args.evidence_plan_status);
+          evidencePlan[index] = {
+            ...existing,
+            status,
+            ...(args.instructions ? { instructions: args.instructions } : {}),
+            ...(args.evidence_content || args.summary
+              ? { evidence: args.evidence_content ?? args.summary }
+              : {}),
+            ...(args.evidence_path ? { path: args.evidence_path } : {}),
+          };
+          const canRecoverBlockedRun =
+            run.status === "blocked" && status === "ready" && !goalHasBlockingPrerequisites(run);
+          const updated = await upsertGoalRun(cwd, {
+            ...run,
+            evidencePlan,
+            status: canRecoverBlockedRun ? "ready" : run.status,
+            blockers: canRecoverBlockedRun ? [] : run.blockers,
+          });
+          await appendGoalDecision(cwd, updated.id, {
+            kind: "evidence_plan",
+            reason: `Evidence-plan item ${existing.label} is ${status}.`,
+          });
+          return `Evidence-plan item updated for "${updated.title}": "${existing.label}" is ${status}.`;
+        }
+
         case "verify": {
           const run = await resolveRun(cwd, args.run_id);
           if (!run) return "Error: no active goal run found.";
@@ -438,6 +610,17 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
                 : {}),
               lastResult: result,
             },
+            ...(result.status === "pass"
+              ? {
+                  completionAudit: {
+                    status: "unknown" as const,
+                    summary: "Final completion audit pending for latest verifier result.",
+                    checkedAt: result.checkedAt,
+                    verifierCheckedAt: result.checkedAt,
+                    ...(result.outputPath ? { outputPath: result.outputPath } : {}),
+                  },
+                }
+              : {}),
             evidence: [
               ...run.evidence,
               createGoalEvidence({
@@ -455,12 +638,74 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
               result.status === "pass" && completion.ok
                 ? "passed"
                 : result.status === "pass"
-                  ? "ready"
+                  ? goalHasBlockingPrerequisites(runWithVerifier)
+                    ? "blocked"
+                    : "ready"
                   : result.status === "fail"
-                    ? "ready"
+                    ? goalHasBlockingPrerequisites(runWithVerifier)
+                      ? "blocked"
+                      : "ready"
                     : "verifying",
+            blockers: result.status === "pass" ? [] : run.blockers,
+            activeWorkerId: undefined,
           });
           return `Verifier recorded for "${updated.title}": ${result.status}.`;
+        }
+
+        case "audit": {
+          const run = await resolveRun(cwd, args.run_id);
+          if (!run) return "Error: no active goal run found.";
+          const verifierResult = run.verifier?.lastResult;
+          if (!verifierResult || verifierResult.status !== "pass") {
+            return "Error: cannot audit completion before a passing verifier result exists.";
+          }
+          const auditStatus = asVerificationStatus(args.verification_status);
+          const auditSummary = args.summary ?? "Final completion audit recorded.";
+          const auditOutputPath = args.output_path ?? verifierResult.outputPath;
+          if (auditStatus === "pass") {
+            const contractError = validatePassAuditContract(run, auditSummary, auditOutputPath);
+            if (contractError)
+              return `Error: invalid final completion audit pass contract: ${contractError}`;
+          }
+          const completionAudit = {
+            status: auditStatus,
+            summary: auditSummary,
+            checkedAt: new Date().toISOString(),
+            verifierCheckedAt: verifierResult.checkedAt,
+            ...(auditOutputPath ? { outputPath: auditOutputPath } : {}),
+          };
+          const runWithAudit: GoalRun = {
+            ...run,
+            completionAudit,
+            evidence: [
+              ...run.evidence,
+              createGoalEvidence({
+                kind: "summary",
+                label: `Final completion audit ${completionAudit.status}`,
+                content: completionAudit.summary,
+                ...(completionAudit.outputPath ? { path: completionAudit.outputPath } : {}),
+              }),
+            ],
+          };
+          const auditCheck = hasFreshGoalCompletionAudit(runWithAudit);
+          const completion = canCompleteGoalRun(runWithAudit);
+          const updated = await upsertGoalRun(cwd, {
+            ...runWithAudit,
+            status:
+              completionAudit.status === "pass" && auditCheck.ok && completion.ok
+                ? "passed"
+                : goalHasBlockingPrerequisites(runWithAudit)
+                  ? "blocked"
+                  : "ready",
+            blockers: completionAudit.status === "pass" && auditCheck.ok ? [] : run.blockers,
+            activeWorkerId: undefined,
+          });
+          await appendGoalDecision(cwd, updated.id, {
+            kind: "completion_audit",
+            reason: auditCheck.reason,
+            content: `status=${completionAudit.status}; verifierCheckedAt=${completionAudit.verifierCheckedAt ?? ""}; outputPath=${completionAudit.outputPath ?? ""}`,
+          });
+          return `Completion audit recorded for "${updated.title}": ${completionAudit.status}.`;
         }
 
         case "pause":
@@ -469,8 +714,12 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
           const run = await resolveRun(cwd, args.run_id);
           if (!run) return "Error: no active goal run found.";
           let status: GoalRunStatus;
-          if (args.action === "pause") status = "paused";
-          else if (args.action === "resume") {
+          if (args.action === "pause") {
+            if (run.activeWorkerId || run.tasks.some((task) => task.status === "running")) {
+              return `Error: cannot pause goal while worker ${run.activeWorkerId ?? "task"} is active. Stop the worker first or wait for it to finish.`;
+            }
+            status = "paused";
+          } else if (args.action === "resume") {
             const missing = goalHasBlockingPrerequisites(run)
               ? formatGoalBlockingPrerequisites(run)
               : "";
@@ -478,7 +727,7 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
               const updated = await upsertGoalRun(cwd, {
                 ...run,
                 status: "blocked",
-                blockers: Array.from(new Set([...run.blockers, missing])),
+                blockers: appendGoalBlockers(run.blockers, missing),
                 evidence: [
                   ...run.evidence,
                   createGoalEvidence({
@@ -507,7 +756,25 @@ export function createGoalsTool(cwd: string): AgentTool<typeof GoalsParams> {
               ],
             };
             const decision = decideGoalNextAction(resumed);
-            const updated = await upsertGoalRun(cwd, resumed);
+            const blockedReason = decision.kind === "blocked" ? decision.reason : undefined;
+            const updated = await upsertGoalRun(cwd, {
+              ...resumed,
+              ...(blockedReason
+                ? {
+                    status: "blocked" as const,
+                    continueRequestedAt: undefined,
+                    blockers: appendGoalBlockers(run.blockers, blockedReason),
+                    evidence: [
+                      ...resumed.evidence,
+                      createGoalEvidence({
+                        kind: "summary",
+                        label: "Goal resume blocked",
+                        content: blockedReason,
+                      }),
+                    ],
+                  }
+                : {}),
+            });
             await appendGoalDecision(cwd, updated.id, {
               kind: "resume",
               reason:

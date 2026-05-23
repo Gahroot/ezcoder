@@ -46,10 +46,11 @@ import { PerformanceObserver, performance } from "node:perf_hooks";
   }).observe({ entryTypes: allTypes });
 }
 
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import fs from "node:fs";
 import readline from "node:readline/promises";
-import { execFile, spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { renderApp } from "./ui/render.js";
 import { runJsonMode } from "./modes/json-mode.js";
@@ -58,18 +59,18 @@ import { runServeMode } from "./modes/serve-mode.js";
 import { runAgentHomeMode } from "./modes/agent-home-mode.js";
 import { renderLoginSelector } from "./ui/login.js";
 import { renderSessionSelector } from "./ui/sessions.js";
-import type { CompletedItem } from "./ui/App.js";
+import type { CompletedItem, GoalProgressDraft } from "./ui/App.js";
+import { segmentDisplayText, stripDoneMarkers } from "./utils/plan-steps.js";
 import { formatUserError } from "./utils/error-handler.js";
-import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
+import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import type { ThemeName } from "./ui/theme/theme.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { SessionManager } from "./core/session-manager.js";
 import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
-import { setStreamDiagnostic } from "@prestyj/agent";
-import { setProviderDiagnostic } from "@prestyj/ai";
+import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
+import { setProviderDiagnostic } from "@kenkaiiii/gg-ai";
 import { buildSystemPrompt } from "./system-prompt.js";
-import { isEyesActive, journalCount } from "@prestyj/eyes";
 import { createTools } from "./tools/index.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import {
@@ -94,6 +95,8 @@ import { loginGemini } from "./core/oauth/gemini.js";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./core/oauth/types.js";
 import chalk from "chalk";
 import { checkAndAutoUpdate } from "./core/auto-update.js";
+import { parseGoalSyntheticEvent } from "./ui/goal-events.js";
+import type { GoalMode } from "./core/runtime-mode.js";
 
 const _require = createRequire(import.meta.url);
 const CLI_VERSION = (_require("../package.json") as { version: string }).version;
@@ -152,17 +155,17 @@ function printHelp(): void {
   console.log(
     gradientLine(LOGO_LINES[0]) +
       gap +
-      primary.bold("EZ Coder") +
+      primary.bold("GG Coder") +
       dim(` v${CLI_VERSION}`) +
       dim(" · By ") +
-      bold("Nolan Grout"),
+      bold("Ken Kai"),
   );
   console.log(gradientLine(LOGO_LINES[1]) + gap + dim("AI coding agent"));
   console.log(gradientLine(LOGO_LINES[2]));
   console.log();
 
   // Usage
-  console.log(primary("Usage:") + "  ezcoder " + dim("[options]") + " " + dim("[prompt]"));
+  console.log(primary("Usage:") + "  ggcoder " + dim("[options]") + " " + dim("[prompt]"));
   console.log();
 
   // Commands
@@ -214,7 +217,7 @@ function printHelp(): void {
     ["/session", "Switch or create sessions"],
     ["/new", "Start a new session"],
     ["/settings", "Open settings"],
-    ["/quit", "Exit ezcoder"],
+    ["/quit", "Exit ggcoder"],
   ];
   for (const [name, desc] of slashCmds) {
     console.log(`  ${accent(name.padEnd(20))} ${dim(desc)}`);
@@ -224,10 +227,8 @@ function printHelp(): void {
   // Keyboard shortcuts
   console.log(primary("Keyboard shortcuts:"));
   const shortcuts: [string, string][] = [
-    ["Ctrl+T", "Toggle task overlay"],
     ["Ctrl+G", "Toggle goal overlay"],
     ["Ctrl+S", "Toggle skills overlay"],
-    ["Ctrl+P", "Toggle plan mode"],
     ["Shift+Tab", "Toggle thinking"],
     ["Shift+Enter", "New line in input"],
   ];
@@ -245,7 +246,7 @@ function main(): void {
   }
 
   // Intercept --help / -h before anything else so it works with subcommands
-  // (e.g. `ezcoder login --help` or `ezcoder --help`)
+  // (e.g. `ggcoder login --help` or `ggcoder --help`)
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     printHelp();
     process.exit(0);
@@ -253,24 +254,6 @@ function main(): void {
 
   // Handle subcommands before parseArgs
   const subcommand = process.argv[2];
-
-  // Passthrough to @prestyj/eyes CLI. Agents call this from bash as
-  // `ezcoder eyes log rough "..."` etc. — `ezcoder` is guaranteed on PATH
-  // (user launched it), so this avoids depending on nested bin visibility in
-  // global npm/pnpm installs.
-  if (subcommand === "eyes") {
-    let cliPath: string;
-    try {
-      cliPath = _require.resolve("@prestyj/eyes/cli");
-    } catch {
-      process.stderr.write("ezcoder-eyes package not installed\n");
-      process.exit(1);
-    }
-    const r = spawnSync(process.execPath, [cliPath, ...process.argv.slice(3)], {
-      stdio: "inherit",
-    });
-    process.exit(r.status ?? 0);
-  }
 
   if (subcommand === "pixel") {
     runPixel().catch((err) => {
@@ -488,10 +471,10 @@ function main(): void {
 function requireInteractiveTTY(): void {
   if (process.stdin.isTTY) return;
   process.stderr.write(
-    chalk.red("ezcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
+    chalk.red("ggcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
       chalk.hex("#6b7280")(
-        "Run ezcoder directly in your terminal (not piped or through an API shell). " +
-          'For headless use try "ezcoder --json \'<prompt>\'" or "ezcoder --rpc".\n',
+        "Run ggcoder directly in your terminal (not piped or through an API shell). " +
+          'For headless use try "ggcoder --json \'<prompt>\'" or "ggcoder --rpc".\n',
       ),
   );
   process.exit(1);
@@ -568,13 +551,13 @@ async function runInkTUI(opts: {
     const fallback = loggedInProviders.find((p) => credentialsByProvider[p]);
     if (!fallback) {
       throw new Error(
-        'All logged-in providers expired or failed to authenticate. Run "ezcoder login" to re-authenticate.',
+        'All logged-in providers expired or failed to authenticate. Run "ggcoder login" to re-authenticate.',
       );
     }
     console.warn(
       chalk.yellow(
         `⚠ ${displayName(preferredProvider)} session expired — switched to ${displayName(fallback)} for this launch.\n` +
-          `  Run "ezcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
+          `  Run "ggcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
       ),
     );
     provider = fallback;
@@ -583,7 +566,7 @@ async function runInkTUI(opts: {
     console.warn(
       chalk.yellow(
         `⚠ Sessions expired: ${expiredProviders.map(displayName).join(", ")}. ` +
-          `Run "ezcoder login" to re-authenticate.`,
+          `Run "ggcoder login" to re-authenticate.`,
       ),
     );
   }
@@ -610,7 +593,7 @@ async function runInkTUI(opts: {
   };
 
   // Ensure project-local .gg directories exist
-  const localGGDir = path.join(cwd, ".ezcoder");
+  const localGGDir = path.join(cwd, ".gg");
   await fs.promises.mkdir(path.join(localGGDir, "skills"), { recursive: true });
   await fs.promises.mkdir(path.join(localGGDir, "commands"), { recursive: true });
   await fs.promises.mkdir(path.join(localGGDir, "agents"), { recursive: true });
@@ -625,19 +608,8 @@ async function runInkTUI(opts: {
     projectDir: cwd,
   });
 
-  // Plan mode refs — shared between tools and UI
-  const planModeRef = { current: false };
-  // Task-mode ref — true while a task-pane task (manual "work on it" or
-  // run-all) is driving the agent. `enter_plan` checks this and refuses,
-  // since task-pane runs are unattended and `exit_plan` would stall waiting
-  // for human approval that never arrives.
-  const taskRunningRef = { current: false };
-  const onEnterPlanRef: { current: (reason?: string) => void } = {
-    current: () => {},
-  };
-  const onExitPlanRef: { current: (planPath: string) => Promise<string> } = {
-    current: () => Promise.resolve("cancelled"),
-  };
+  // Runtime mode refs — shared between tools and UI
+  const goalModeRef = { current: "off" as GoalMode };
   const repoMapChangedFilesRef: { current: Set<string> } = { current: new Set() };
   const repoMapReadFilesRef: { current: Set<string> } = { current: new Set() };
   const toRepoMapPath = (root: string, filePath: string): string =>
@@ -656,27 +628,21 @@ async function runInkTUI(opts: {
     skills,
     provider,
     model,
-    planModeRef,
-    taskRunningRef,
-    onEnterPlan: (reason) => onEnterPlanRef.current(reason),
-    onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+    goalModeRef,
     onFileRead: (filePath) => markRepoMapRead(cwd, filePath),
     onFileMutated: (filePath) => markRepoMapDirty(cwd, filePath),
   });
 
   // Rebuilds the cwd-bound tools for a different project root. Used by the
   // pixel-fix flow so the agent operates in the error's project, not in
-  // wherever ezcoder was launched from.
+  // wherever ggcoder was launched from.
   const rebuildToolsForCwd = (newCwd: string) => {
     const { tools: rebuilt } = createTools(newCwd, {
       agents,
       skills,
       provider,
       model,
-      planModeRef,
-      taskRunningRef,
-      onEnterPlan: (reason) => onEnterPlanRef.current(reason),
-      onExitPlan: (planPath) => onExitPlanRef.current(planPath),
+      goalModeRef,
       onFileRead: (filePath) => markRepoMapRead(newCwd, filePath),
       onFileMutated: (filePath) => markRepoMapDirty(newCwd, filePath),
     });
@@ -704,6 +670,8 @@ async function runInkTUI(opts: {
     false,
     undefined,
     tools.map((tool) => tool.name),
+    undefined,
+    goalModeRef.current,
   );
 
   // Kill all background processes on exit (synchronous — catches all exit paths)
@@ -758,7 +726,7 @@ async function runInkTUI(opts: {
               signal: compactionAbort.signal,
             });
             // Persist compacted continuation to a fresh session so future
-            // `ezcoder continue` starts from the compacted checkpoint instead
+            // `ggcoder continue` starts from the compacted checkpoint instead
             // of repeatedly restoring the oversized source session.
             const compactedSession = await createCompactedSessionCheckpoint(sessionManager, {
               cwd,
@@ -799,21 +767,6 @@ async function runInkTUI(opts: {
     log("INFO", "session", `New session created`, { path: sessionPath });
   }
 
-  // Eyes startup banner — surface open journal signals from past sessions so the
-  // user isn't relying on reading agent prose to know improvements are pending.
-  if (isEyesActive(cwd)) {
-    const openCount = journalCount({ status: "open" }, cwd);
-    if (openCount > 0) {
-      const s = openCount === 1 ? "" : "s";
-      if (!initialHistory) initialHistory = [];
-      initialHistory.push({
-        kind: "info",
-        text: `👁  Eyes: ${openCount} open improvement signal${s} from recent sessions. Run /eyes-improve to triage.`,
-        id: "eyes-banner",
-      });
-    }
-  }
-
   await renderApp({
     provider,
     model,
@@ -837,10 +790,7 @@ async function runInkTUI(opts: {
     settingsFile: paths.settingsFile,
     mcpManager,
     authStorage,
-    planModeRef,
-    taskRunningRef,
-    onEnterPlanRef,
-    onExitPlanRef,
+    goalModeRef,
     skills,
     initialOverlay: opts.initialOverlay,
     rebuildToolsForCwd,
@@ -969,17 +919,17 @@ async function runDoctor(): Promise<void> {
   console.log();
   console.log(
     `  ${gradientLine(LOGO[0]!)}${GAP}` +
-      primary.bold("EZ Coder") +
+      primary.bold("GG Coder") +
       dim(` v${CLI_VERSION}`) +
       dim(" · By ") +
-      chalk.white.bold("Nolan Grout"),
+      chalk.white.bold("Ken Kai"),
   );
   console.log(`  ${gradientLine(LOGO[1]!)}${GAP}` + accent("Doctor"));
   console.log(`  ${gradientLine(LOGO[2]!)}${GAP}` + dim("Diagnose & Fix"));
   console.log();
 
   const home = os.homedir();
-  const ggDir = path.join(home, ".ezcoder");
+  const ggDir = path.join(home, ".gg");
   const authFile = path.join(ggDir, "auth.json");
   const lockFile = authFile + ".lock";
   const myUid = process.getuid!();
@@ -998,7 +948,7 @@ async function runDoctor(): Promise<void> {
   }
   if (myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
-    console.log(dim("      Running ezcoder with sudo can cause ownership issues."));
+    console.log(dim("      Running ggcoder with sudo can cause ownership issues."));
     console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
   }
   console.log();
@@ -1112,7 +1062,7 @@ async function runDoctor(): Promise<void> {
         await fsP.copyFile(authFile, path.join(ggDir, backupName));
         await fsP.writeFile(authFile, "{}", { encoding: "utf-8", mode: 0o600 });
         console.log(good(`    ✓ Corrupt file backed up as ${backupName}`));
-        console.log(dim('      Run "ezcoder login" to re-authenticate'));
+        console.log(dim('      Run "ggcoder login" to re-authenticate'));
         authData = {};
         fixed++;
       }
@@ -1129,7 +1079,7 @@ async function runDoctor(): Promise<void> {
     }
   } catch {
     console.log(dim(`    Path:  ${authFile}`));
-    console.log(warn('    Not found — run "ezcoder login" to authenticate'));
+    console.log(warn('    Not found — run "ggcoder login" to authenticate'));
   }
   console.log();
 
@@ -1339,10 +1289,10 @@ async function runTelegramSetup(): Promise<void> {
   console.log();
   console.log(
     `  ${gradientText(LOGO[0]!)}${GAP}` +
-      chalk.hex("#60a5fa").bold("EZ Coder") +
+      chalk.hex("#60a5fa").bold("GG Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" · By ") +
-      chalk.white.bold("Nolan Grout"),
+      chalk.white.bold("Ken Kai"),
   );
   console.log(`  ${gradientText(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Telegram Setup"));
   console.log(`  ${gradientText(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")("Remote Control"));
@@ -1446,7 +1396,7 @@ async function runTelegramSetup(): Promise<void> {
         chalk.hex("#6b7280")("    2. Add the bot to your group\n") +
         chalk.hex("#6b7280")("    3. Send /link in the group to connect it to a project\n\n") +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ezcoder serve\n"),
+        chalk.hex("#6b7280")("    cd your-project && ggcoder serve\n"),
     );
   } finally {
     rl.close();
@@ -1469,19 +1419,18 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken =
-    serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
-  const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
+  const botToken = serveValues["bot-token"] ?? process.env.GG_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const userIdStr = serveValues["user-id"] ?? process.env.GG_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
   if (!botToken || !userId || isNaN(userId)) {
     console.error(
       chalk.hex("#ef4444")("Telegram not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ezcoder telegram") +
+        chalk.hex("#60a5fa").bold("ggcoder telegram") +
         " to set up your bot token and user ID.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ezcoder serve --bot-token TOKEN --user-id ID"),
+        chalk.hex("#6b7280")("  ggcoder serve --bot-token TOKEN --user-id ID"),
     );
     process.exit(1);
   }
@@ -1576,10 +1525,10 @@ async function runAgentHomeLogin(): Promise<void> {
   console.log();
   console.log(
     `  ${gradientTextLocal(LOGO[0]!)}${GAP}` +
-      chalk.hex("#60a5fa").bold("EZ Coder") +
+      chalk.hex("#60a5fa").bold("GG Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" \u00b7 By ") +
-      chalk.white.bold("Nolan Grout"),
+      chalk.white.bold("Ken Kai"),
   );
   console.log(`  ${gradientTextLocal(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Agent Home Setup"));
   console.log(
@@ -1629,7 +1578,7 @@ async function runAgentHomeLogin(): Promise<void> {
         chalk.hex("#4ade80")(`  \u2713 Config saved to ${paths.agentHomeFile}`) +
         "\n\n" +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ezcoder agent-home\n"),
+        chalk.hex("#6b7280")("    cd your-project && ggcoder agent-home\n"),
     );
   } finally {
     rl.close();
@@ -1657,10 +1606,10 @@ async function runAgentHome(): Promise<void> {
     console.error(
       chalk.hex("#ef4444")("Agent Home not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ezcoder agent-home-login") +
+        chalk.hex("#60a5fa").bold("ggcoder agent-home-login") +
         " to set up your token.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ezcoder agent-home --token TOKEN"),
+        chalk.hex("#6b7280")("  ggcoder agent-home --token TOKEN"),
     );
     process.exit(1);
   }
@@ -1717,7 +1666,7 @@ async function runPixel(): Promise<void> {
   if (sub === "fix") {
     const errorId = rest[0];
     if (!errorId) {
-      process.stderr.write("Usage: ezcoder pixel fix <error_id>\n");
+      process.stderr.write("Usage: ggcoder pixel fix <error_id>\n");
       process.exit(1);
     }
     const { fixError } = await import("./core/pixel-fix.js");
@@ -1759,8 +1708,8 @@ async function runPixel(): Promise<void> {
   }
 
   // No subcommand → launch the Ink TUI with the pixel overlay open. The fix
-  // flow runs through the same agent loop as a Task, streaming live in the
-  // chat instead of spawning a subprocess.
+  // flow runs through the same agent loop, streaming live in the chat instead
+  // of spawning a subprocess.
   // Non-TTY (CI, piped) → fall back to text list.
   if (!process.stdin.isTTY) {
     const { listAllErrors } = await import("./core/pixel.js");
@@ -1803,17 +1752,17 @@ function parsePixelInstallArgs(args: string[]): ParsedInstall {
 }
 
 function printPixelHelp(): void {
-  console.log(`ezcoder pixel — error tracking + auto-fix queue
+  console.log(`ggcoder pixel — error tracking + auto-fix queue
 
 Usage:
-  ezcoder pixel                  List open errors across every registered project
-  ezcoder pixel install          Register the current project and wire up the SDK
-  ezcoder pixel fix <error_id>   Fix one specific error end-to-end
-  ezcoder pixel run              Auto-fix every open error across all projects
+  ggcoder pixel                  List open errors across every registered project
+  ggcoder pixel install          Register the current project and wire up the SDK
+  ggcoder pixel fix <error_id>   Fix one specific error end-to-end
+  ggcoder pixel run              Auto-fix every open error across all projects
 
-  ezcoder pixel install --name <name>      Override the project name
-  ezcoder pixel install --ingest-url <url> Use a custom backend URL
-  ezcoder pixel install --skip-install     Don't run the package manager
+  ggcoder pixel install --name <name>      Override the project name
+  ggcoder pixel install --ingest-url <url> Use a custom backend URL
+  ggcoder pixel install --skip-install     Don't run the package manager
 `);
 }
 
@@ -1849,7 +1798,7 @@ async function resolveActiveProvider(
   }
 
   if (loggedInProviders.length === 0) {
-    throw new Error('Not logged in to any provider. Run "ezcoder login" to authenticate.');
+    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
   }
 
   if (loggedInProviders.includes(preferred)) {
@@ -1889,9 +1838,95 @@ function extractText(content: string | Array<{ type: string; text?: string }>): 
     .join("\n");
 }
 
-function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
+function goalCompletionDetail(summary: string): string | undefined {
+  const lines = summary
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && line !== "[agent_done]");
+  const statusLine = lines.find((line) => /^Status:/i.test(line));
+  const changedLine = lines.find((line) =>
+    /^(Changed|Implemented|Fixed|Added|Key findings|Full verifier)/i.test(line),
+  );
+  const verificationLine = lines.find((line) => /^(Verification|Verified|Result):/i.test(line));
+  return statusLine ?? changedLine ?? verificationLine ?? lines[0];
+}
+
+function goalProgressFromSyntheticText(text: string): GoalProgressDraft | null {
+  const eventInfo = parseGoalSyntheticEvent(text.trimStart());
+  if (!eventInfo) return null;
+  const summary = eventInfo.summary ?? "";
+  const terminalStatus = eventInfo.goalState?.status;
+  if (
+    terminalStatus === "passed" ||
+    terminalStatus === "failed" ||
+    terminalStatus === "blocked" ||
+    terminalStatus === "paused"
+  ) {
+    const terminalTitle =
+      terminalStatus === "passed"
+        ? "Goal passed"
+        : terminalStatus === "failed"
+          ? "Goal failed"
+          : terminalStatus === "blocked"
+            ? "Goal blocked"
+            : "Goal paused";
+    return {
+      kind: "goal_progress",
+      phase: "terminal",
+      title: `${terminalTitle}: ${eventInfo.goal ?? "Goal"}`,
+      detail: goalCompletionDetail(summary),
+      status: terminalStatus,
+    };
+  }
+  if (eventInfo.kind === "worker") {
+    const titlePrefix = eventInfo.status === "done" ? "Done" : "Failed";
+    return {
+      kind: "goal_progress",
+      phase: "worker_finished",
+      title: `${titlePrefix}: ${eventInfo.task ?? "Goal worker"}`,
+      detail: goalCompletionDetail(summary),
+      workerId: eventInfo.worker,
+      status: eventInfo.status,
+    };
+  }
+  return {
+    kind: "goal_progress",
+    phase: "verifier_finished",
+    title: `Verifier ${eventInfo.status ?? "finished"}: ${eventInfo.goal ?? "Goal"}`,
+    detail: goalCompletionDetail(summary),
+    status: eventInfo.status,
+  };
+}
+
+export function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
   const items: CompletedItem[] = [];
   let id = 0;
+
+  const pushGoalProgress = (draft: GoalProgressDraft) => {
+    items.push({ ...draft, id: `restore-${id++}` });
+  };
+
+  const pushRestoredAssistantText = (text: string) => {
+    const segments = segmentDisplayText(text, []);
+    if (segments.length === 0) {
+      const stripped = stripDoneMarkers(text);
+      if (stripped) items.push({ kind: "assistant", text: stripped, id: `restore-${id++}` });
+      return;
+    }
+    for (const segment of segments) {
+      if (segment.kind === "text") {
+        const stripped = stripDoneMarkers(segment.text).trimStart();
+        if (stripped) items.push({ kind: "assistant", text: stripped, id: `restore-${id++}` });
+      } else {
+        items.push({
+          kind: "step_done",
+          stepNum: segment.stepNum,
+          description: segment.description,
+          id: `restore-${id++}`,
+        });
+      }
+    }
+  };
 
   // Index tool results by toolCallId for pairing with tool calls
   const toolResults = new Map<string, { content: string; isError: boolean }>();
@@ -1920,11 +1955,17 @@ function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
 
     if (msg.role === "user") {
       const text = extractText(msg.content);
-      if (text) items.push({ kind: "user", text, id: `restore-${id++}` });
+      if (!text) continue;
+      const goalProgress = goalProgressFromSyntheticText(text);
+      if (goalProgress) {
+        pushGoalProgress(goalProgress);
+      } else {
+        items.push({ kind: "user", text, id: `restore-${id++}` });
+      }
     } else if (msg.role === "assistant") {
       const content = msg.content;
       if (typeof content === "string") {
-        if (content) items.push({ kind: "assistant", text: content, id: `restore-${id++}` });
+        if (content) pushRestoredAssistantText(content);
         continue;
       }
       for (const block of content) {
@@ -1947,7 +1988,7 @@ function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
       let textBuf = "";
       const flushText = () => {
         if (textBuf) {
-          items.push({ kind: "assistant", text: textBuf, id: `restore-${id++}` });
+          pushRestoredAssistantText(textBuf);
           textBuf = "";
         }
       };
@@ -2012,4 +2053,6 @@ function openBrowser(url: string): void {
   });
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main();
+}

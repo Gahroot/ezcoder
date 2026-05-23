@@ -202,16 +202,11 @@ interface InputAreaProps {
   isActive?: boolean;
   onDownAtEnd?: () => void;
   onShiftTab?: () => void;
-  onToggleTasks?: () => void;
   onToggleGoal?: () => void;
   onToggleSkills?: () => void;
   onTogglePixel?: () => void;
-  onTogglePlanMode?: () => void;
   cwd: string;
   commands?: SlashCommandInfo[];
-  /** Number of open eyes-journal signals. `undefined` when eyes is inactive in
-   * this project (hides the badge entirely). Zero hides it too. */
-  eyesCount?: number;
   /**
    * Locked badge rendered before the prompt arrow on the first visual line.
    * The user cannot delete or edit it — typed text always follows. Used by
@@ -291,25 +286,16 @@ export function InputArea({
   isActive = true,
   onDownAtEnd,
   onShiftTab,
-  onToggleTasks,
   onToggleGoal,
   onToggleSkills,
   onTogglePixel,
-  onTogglePlanMode,
   cwd,
   commands = [],
-  eyesCount,
   scopeBadge,
   disableMouseTracking,
   onTab,
 }: InputAreaProps) {
   const theme = useTheme();
-  const eyesBadge =
-    eyesCount && eyesCount > 0 ? (
-      <Text color={theme.accent} bold>
-        {`[eyes: ${eyesCount}↗] `}
-      </Text>
-    ) : null;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const cursorRef = useRef(cursor);
@@ -834,12 +820,6 @@ export function InputArea({
         return; // absorb all other keys during search
       }
 
-      // Ctrl+T toggles task overlay — works even while agent is running
-      if (key.ctrl && input === "t") {
-        onToggleTasks?.();
-        return;
-      }
-
       // Ctrl+G toggles goal overlay in normal input mode. In search mode it cancels search above.
       if (key.ctrl && input === "g") {
         onToggleGoal?.();
@@ -855,12 +835,6 @@ export function InputArea({
       // Ctrl+E toggles pixel (errors) overlay
       if (key.ctrl && input === "e") {
         onTogglePixel?.();
-        return;
-      }
-
-      // Ctrl+P toggles plan mode
-      if (key.ctrl && input === "p") {
-        onTogglePlanMode?.();
         return;
       }
 
@@ -1410,9 +1384,6 @@ export function InputArea({
                   </Text>
                 ) : (
                   <>
-                    {/* scopeBadge lives in the header row above (see top of
-                        bordered box). Only the smaller eyesBadge stays inline. */}
-                    {eyesBadge}
                     <Text color={disabled ? theme.textDim : theme.inputPrompt} bold>
                       {PROMPT}
                     </Text>
@@ -1712,9 +1683,6 @@ export function InputArea({
 
             return (
               <Box key={i}>
-                {/* scopeBadge moved to header row above the bordered box's
-                    input area — keeps continuation lines flush. */}
-                {i === 0 ? eyesBadge : null}
                 <Text color={disabled ? theme.textDim : theme.inputPrompt} bold>
                   {i === 0 ? PROMPT : "  "}
                 </Text>

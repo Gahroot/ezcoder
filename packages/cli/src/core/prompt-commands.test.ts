@@ -1,51 +1,80 @@
 import { describe, expect, it } from "vitest";
 import { PROMPT_COMMANDS } from "./prompt-commands.js";
 
-describe("prompt commands", () => {
-  it("defines /goal as a durable loop that discourages report-only worker tasks", () => {
-    const goal = PROMPT_COMMANDS.find((command) => command.name === "goal");
+function getGoalPrompt(): string {
+  const goal = PROMPT_COMMANDS.find((command) => command.name === "goal");
+  expect(goal).toBeDefined();
+  return goal?.prompt ?? "";
+}
 
-    expect(goal).toBeDefined();
+describe("prompt commands", () => {
+  it("defines /goal as a short Goal setup wrapper", () => {
+    const goal = PROMPT_COMMANDS.find((command) => command.name === "goal");
+    const prompt = getGoalPrompt();
+
     expect(goal?.description).toContain("programmatic goal loop");
-    expect(goal?.prompt).toContain("Persist the run with the goals tool");
-    expect(goal?.prompt).toContain("Build a capability/evidence plan before implementation");
-    expect(goal?.prompt).toContain("evidence_plan items");
-    expect(goal?.prompt).toContain("Only ask the user for true external blockers");
-    expect(goal?.prompt).toContain('named "User prerequisites" in the pane');
-    expect(goal?.prompt).toContain(
-      "The user may provide the missing value or instructions in chat",
-    );
-    expect(goal?.prompt).toContain("verify it locally without revealing secrets");
-    expect(goal?.prompt).toContain("Do not require a script for every task");
-    expect(goal?.prompt).toContain("choose the simplest reliable proof");
-    expect(goal?.prompt).toContain("Do not use the normal tasks tool for this workflow");
-    expect(goal?.prompt).toContain("Each Goal task prompt must be standalone");
-    expect(goal?.prompt).toContain('Avoid pure "investigate and report" tasks');
-    expect(goal?.prompt).toContain('goals({ action: "evidence"');
-    expect(goal?.prompt).toContain("creating or updating the next implementation task");
-    expect(goal?.prompt).toContain("briefly say what the orchestrator is doing");
-    expect(goal?.prompt).toContain(
-      "take the next durable control-loop action rather than merely narrating",
-    );
-    expect(goal?.prompt).toContain("only complete after verification passes");
-    expect(goal?.prompt).toContain("give the user a concise final summary in chat");
-    expect(goal?.prompt).toContain("compact 3–4 column table");
+    expect(prompt).toContain("Create a Goal run for the following objective");
+    expect(prompt).toContain("First plan/research only if needed");
+    expect(prompt).toContain("Goal setup will consume that plan");
+    expect(prompt.length).toBeLessThan(240);
+    expect(prompt).not.toContain("Core mindset: goal-specific sensory proof");
+    expect(prompt).not.toContain("Non-negotiable boundary: /goal creates a run");
+    expect(prompt).not.toContain("Do not implement, fix, refactor, edit");
   });
 
-  it("defines /source as a plan-research-adjust-verify command", () => {
-    const source = PROMPT_COMMANDS.find((command) => command.name === "source");
+  it("keeps deep Goal setup policy out of the slash command body", () => {
+    const prompt = getGoalPrompt();
 
-    expect(source).toBeDefined();
-    expect(source?.aliases).toEqual(["depcheck", "depsource"]);
-    expect(source?.description).toContain("Plan, source-check, adjust, and verify");
-    expect(source?.prompt).toContain("# Source: Plan → Research → Adjust → Verify");
-    expect(source?.prompt).toContain("Do a short, private plan");
-    expect(source?.prompt).toContain("call `source_path` before making claims");
-    expect(source?.prompt).toContain("Spawn the research sub-agents in parallel");
-    expect(source?.prompt).toContain("fix all confirmed issues directly");
-    expect(source?.prompt).toContain("Run the relevant project checks");
-    expect(source?.prompt).not.toContain("Do not start implementing until the user chooses");
-    expect(source?.prompt).not.toContain("Report only");
+    for (const snippet of [
+      "1. Intended experience",
+      "2. Failure imagination",
+      "3. Required senses/signals",
+      "4. Proportional instruments",
+      "5. Completion rule",
+    ]) {
+      expect(prompt).not.toContain(snippet);
+    }
+    expect(prompt).not.toContain("Do not default to ordinary tests, generic scripts");
+    expect(prompt).not.toContain("worker agents should build instruments");
+  });
+
+  it("guards /goal against the old generic proof-path bias", () => {
+    const prompt = getGoalPrompt();
+    const forbiddenPhrases = [
+      "the simplest proof paths",
+      "Build a capability/evidence plan before implementation",
+      "choose the simplest reliable proof",
+      "Do not require a script for every task",
+      "what artifact would prove the requested outcome worked end-to-end",
+      "scripts, tests, fixtures, seeded data, app/dev servers, browser automation, screenshots, logs",
+      "ffmpeg, expo, adb, xcrun, playwright",
+    ];
+
+    for (const phrase of forbiddenPhrases) {
+      expect(prompt).not.toContain(phrase);
+    }
+  });
+
+  it("removes retired prompt-template commands", () => {
+    const removedCommandNames = [
+      "scan",
+      "verify",
+      "source",
+      "simplify",
+      "batch",
+      "research",
+      "setup-lint",
+      `setup-${"tests"}`,
+      "setup-update",
+    ];
+    const removedAliases = ["depcheck", "depsource"];
+
+    for (const name of removedCommandNames) {
+      expect(PROMPT_COMMANDS.find((command) => command.name === name)).toBeUndefined();
+    }
+    for (const alias of removedAliases) {
+      expect(PROMPT_COMMANDS.find((command) => command.aliases.includes(alias))).toBeUndefined();
+    }
   });
 
   it("defines /expand as a fresh, repo-validated comparison command", () => {
@@ -57,7 +86,7 @@ describe("prompt commands", () => {
     expect(expand?.prompt).toContain("validate it yourself before reporting");
     expect(expand?.prompt).toContain("The table must have exactly 3 columns");
     expect(expand?.prompt).toContain("Do not start implementing until the user chooses");
-    expect(expand?.prompt).toContain("Do not create planning tasks");
+    expect(expand?.prompt).toContain("Do not create planning-only Goal tasks");
     expect(expand?.prompt).not.toContain("Create an implementation plan first");
     expect(expand?.prompt).not.toContain("create one planning task");
     expect(expand?.prompt).not.toContain("plan mode");

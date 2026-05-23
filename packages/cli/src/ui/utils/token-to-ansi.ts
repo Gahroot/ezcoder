@@ -172,9 +172,8 @@ function tokenToAnsi(
     case "blockquote": {
       const bq = token as Tokens.Blockquote;
       // Pre-wrap paragraph content to fit `columns - 2` (accounting for the
-      // "\u2502 " gutter). Without this, long one-line blockquotes (e.g. the
-      // restart notice emitted by /eyes) get truncated by Ink's Text wrap
-      // when nested ANSI codes confuse its width calculation.
+      // "\u2502 " gutter). Without this, long one-line blockquotes get truncated by
+      // Ink's Text wrap when nested ANSI codes confuse its width calculation.
       const barWidth = 2;
       const wrapWidth = Math.max(20, columns - barWidth);
       const inner = (bq.tokens ?? [])

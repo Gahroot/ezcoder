@@ -16,7 +16,6 @@ interface StreamingAreaProps {
   streamingThinking: string;
   showThinking?: boolean;
   thinkingMs?: number;
-  planMode?: boolean;
 }
 
 export const StreamingArea = memo(function StreamingArea({
@@ -25,7 +24,6 @@ export const StreamingArea = memo(function StreamingArea({
   streamingThinking,
   showThinking = false,
   thinkingMs,
-  planMode,
 }: StreamingAreaProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
@@ -54,7 +52,7 @@ export const StreamingArea = memo(function StreamingArea({
       {trimmedDisplay && (
         <Box flexDirection="row">
           <Box width={PREFIX_WIDTH} flexShrink={0}>
-            <Text color={planMode ? theme.planPrimary : theme.primary}>{BLACK_CIRCLE + " "}</Text>
+            <Text color={theme.primary}>{BLACK_CIRCLE + " "}</Text>
           </Box>
           <Box flexDirection="column" flexGrow={1} width={contentWidth}>
             {/* Stable/unstable split: only re-parses the tail block. */}

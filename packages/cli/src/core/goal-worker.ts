@@ -17,6 +17,7 @@ import {
 } from "./goal-store.js";
 
 const DEFAULT_GOAL_WORKER_MAX_TURNS = 12;
+export const DEFAULT_GOAL_WORKER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_SUMMARY_CHARS = 4000;
 
 export interface GoalWorkerRecord {
@@ -69,6 +70,7 @@ export interface StartGoalWorkerOptions extends GoalWorkerContext {
   systemPrompt?: string;
   parentCacheKey?: string;
   maxTurns?: number;
+  timeoutMs?: number;
   onComplete?: (completion: GoalWorkerCompletion) => void;
 }
 
@@ -243,6 +245,8 @@ export async function startGoalWorker(options: StartGoalWorkerOptions): Promise<
 
   let summary = "";
   let stderr = "";
+  let timedOut = false;
+  let timeout: NodeJS.Timeout | undefined;
   const activeTools = new Map<string, string>();
   const toolsUsed: GoalWorkerToolUse[] = [];
 
@@ -290,12 +294,24 @@ export async function startGoalWorker(options: StartGoalWorkerOptions): Promise<
     logStream.write(JSON.stringify({ type: "stderr", text }) + "\n");
   });
 
+  const timeoutMs = options.timeoutMs ?? DEFAULT_GOAL_WORKER_TIMEOUT_MS;
+  if (timeoutMs > 0) {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      record.status = "failed";
+      if (child.pid) killProcessTree(child.pid);
+      child.kill("SIGTERM");
+    }, timeoutMs);
+    timeout.unref?.();
+  }
+
   child.on("close", (code) => {
     void (async () => {
+      if (timeout) clearTimeout(timeout);
       rl.close();
       logStream.end();
       children.delete(workerId);
-      record.exitCode = code;
+      record.exitCode = timedOut ? 124 : code;
       if (record.status === "stopped") {
         log("INFO", "goal-worker", `Worker ${workerId} stopped`, {
           code: String(code ?? 1),
@@ -304,18 +320,28 @@ export async function startGoalWorker(options: StartGoalWorkerOptions): Promise<
         });
         return;
       }
-      record.status = code === 0 ? "done" : "failed";
-      const finalSummary =
-        summary.trim() || stderr.trim() || (code === 0 ? "Worker completed." : "Worker failed.");
-      const finalCode = code ?? (record.status === "done" ? 0 : 1);
+      const hasDurableProofTool = toolsUsed.some(
+        (tool) => tool.ok && ["goals", "bash", "write", "edit"].includes(tool.name),
+      );
+      const emptySuccessfulExit =
+        code === 0 && !summary.trim() && !stderr.trim() && !hasDurableProofTool;
+      record.status = !timedOut && code === 0 && !emptySuccessfulExit ? "done" : "failed";
+      const finalSummary = timedOut
+        ? `Worker timed out after ${timeoutMs}ms and its process tree was terminated.`
+        : emptySuccessfulExit
+          ? "Worker exited 0 without durable proof evidence or summary; coordinator validation required."
+          : summary.trim() ||
+            stderr.trim() ||
+            (code === 0 ? "Worker completed." : "Worker failed.");
+      const finalCode = timedOut ? 124 : (code ?? (record.status === "done" ? 0 : 1));
       await updateGoalTask(options.cwd, options.goalRunId, options.goalTaskId, {
-        status: code === 0 ? "done" : "failed",
+        status: record.status,
         workerId,
         lastSummary: finalSummary,
       });
       await appendGoalEvidence(options.cwd, options.goalRunId, {
         kind: "log",
-        label: `Worker ${workerId} ${record.status}`,
+        label: timedOut ? `Worker ${workerId} timeout` : `Worker ${workerId} ${record.status}`,
         content: finalSummary,
         path: logFile,
       });
@@ -326,7 +352,7 @@ export async function startGoalWorker(options: StartGoalWorkerOptions): Promise<
         status: record.status,
         exitCode: finalCode,
         toolsUsed: [...toolsUsed],
-        reason: "exit",
+        reason: timedOut ? "timeout" : "exit",
       };
       options.onComplete?.(completion);
       emitGoalWorkerCompletion(completion);

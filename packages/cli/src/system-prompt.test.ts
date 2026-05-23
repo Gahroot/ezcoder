@@ -8,7 +8,7 @@ import type { LanguageId } from "./core/language-detector.js";
 const tempDirs: string[] = [];
 
 async function makeProject(files: Record<string, string> = {}): Promise<string> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ezcoder-system-prompt-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ggcoder-system-prompt-"));
   tempDirs.push(cwd);
   for (const [relativePath, content] of Object.entries(files)) {
     const filePath = path.join(cwd, relativePath);
@@ -31,11 +31,41 @@ function toolsSection(prompt: string): string {
   return next === -1 ? rest : rest.slice(0, next);
 }
 
-function promptSize(prompt: string): { characters: number; lines: number } {
+function promptSize(prompt: string): { characters: number; lines: number; sections: number } {
   return {
     characters: prompt.length,
     lines: prompt.split("\n").length,
+    sections: prompt.match(/^## /gm)?.length ?? 0,
   };
+}
+
+function promptAudit(prompt: string): { size: ReturnType<typeof promptSize>; flags: string[] } {
+  const flags: string[] = [];
+  const obsoleteOrContradictory = [
+    "## Goal Auto-Continuation Events",
+    "[event:goal_worker_complete]",
+    "what observable artifact would prove the requested outcome worked end-to-end",
+    "the simplest reliable local/free proof path",
+    "generic tests, scripts, screenshots, benchmarks, or simulations; use them by default",
+  ];
+
+  for (const phrase of obsoleteOrContradictory) {
+    if (prompt.includes(phrase)) flags.push(`obsolete/contradictory guidance: ${phrase}`);
+  }
+
+  const repeatedSentences = new Map<string, number>();
+  for (const sentence of prompt
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 80)) {
+    repeatedSentences.set(sentence, (repeatedSentences.get(sentence) ?? 0) + 1);
+  }
+  for (const [sentence, count] of repeatedSentences) {
+    if (count > 1) flags.push(`duplicate sentence x${count}: ${sentence}`);
+  }
+
+  return { size: promptSize(prompt), flags };
 }
 
 afterEach(async () => {
@@ -55,11 +85,11 @@ describe("buildSystemPrompt", () => {
       [{ name: "find-skills", description: "Find skills.", content: "", source: "test" }],
       false,
       undefined,
-      ["read", "edit", "web_search", "enter_plan", "exit_plan", "skill"],
+      ["read", "edit", "web_search", "skill"],
       new Set<LanguageId>(["typescript"]),
     );
 
-    expect(prompt.startsWith("You are EZ Coder by Nolan Grout")).toBe(true);
+    expect(prompt.startsWith("You are GG Coder by Ken Kai")).toBe(true);
     expect(sectionIndex(prompt, "## How to Talk")).toBeLessThan(
       sectionIndex(prompt, "## How to Work"),
     );
@@ -71,6 +101,13 @@ describe("buildSystemPrompt", () => {
     );
     expect(prompt).not.toContain("## Goal Auto-Continuation Events");
     expect(prompt).not.toContain("[event:goal_worker_complete]");
+    expect(prompt).toContain("model the intended experience");
+    expect(prompt).toContain("choose the required senses/signals");
+    expect(prompt).toContain("Woops I just farted!");
+    expect(prompt).toContain("don't force it, overuse it, or repeat one hardcoded line");
+    expect(prompt).toContain(
+      "Do not default to generic tests, scripts, screenshots, benchmarks, or simulations",
+    );
     expect(sectionIndex(prompt, "## Code Quality")).toBeLessThan(sectionIndex(prompt, "## Tools"));
     expect(sectionIndex(prompt, "## Tools")).toBeLessThan(
       sectionIndex(prompt, "## Project Context"),
@@ -90,31 +127,19 @@ describe("buildSystemPrompt", () => {
     expect(afterMarker).toMatch(/^Today's date: \d{1,2} [A-Za-z]+ \d{4}$/);
   });
 
-  it("lists exactly available known tools and hides unavailable plan transition tools", async () => {
+  it("lists exactly available known tools", async () => {
     const cwd = await makeProject();
 
-    const normalPrompt = await buildSystemPrompt(cwd, undefined, false, undefined, [
+    const prompt = await buildSystemPrompt(cwd, undefined, false, undefined, [
       "read",
       "web_search",
-      "exit_plan",
       "not_a_tool",
     ]);
-    const normalTools = toolsSection(normalPrompt);
-    expect(normalTools).toContain("**read**");
-    expect(normalTools).toContain("**web_search**");
-    expect(normalTools).not.toContain("**exit_plan**");
-    expect(normalTools).not.toContain("not_a_tool");
-    expect(normalTools).not.toContain("**edit**");
-
-    const planPrompt = await buildSystemPrompt(cwd, undefined, true, undefined, [
-      "read",
-      "enter_plan",
-      "exit_plan",
-    ]);
-    const planTools = toolsSection(planPrompt);
-    expect(planTools).toContain("**read**");
-    expect(planTools).toContain("**exit_plan**");
-    expect(planTools).not.toContain("**enter_plan**");
+    const renderedTools = toolsSection(prompt);
+    expect(renderedTools).toContain("**read**");
+    expect(renderedTools).toContain("**web_search**");
+    expect(renderedTools).not.toContain("not_a_tool");
+    expect(renderedTools).not.toContain("**edit**");
   });
 
   it("places project-context precedence next to project context before style packs", async () => {
@@ -144,6 +169,152 @@ describe("buildSystemPrompt", () => {
     );
   });
 
+  it("renders Goal planner mode as compact research-only instructions", async () => {
+    const cwd = await makeProject({ "AGENTS.md": "Project rules win." });
+    const prompt = await buildSystemPrompt(
+      cwd,
+      undefined,
+      true,
+      ".gg/plans/approved.md",
+      [
+        "read",
+        "bash",
+        "goals",
+        "edit",
+        "write",
+        "subagent",
+        "source_path",
+        "web_search",
+        "web_fetch",
+        "mcp__kencode-search__referenceSources",
+        "mcp__kencode-search__discoverRepos",
+        "mcp__kencode-search__searchCode",
+      ],
+      undefined,
+      "planner",
+    );
+    const firstLine = prompt.split("\n", 1)[0];
+
+    expect(firstLine).toContain("Goal planner");
+    expect(firstLine).toContain("not setup, coordinator, or implementation worker");
+    expect(prompt).toContain("## Goal Planner Mode (ACTIVE)");
+    expect(prompt).toContain("classify uncertainty");
+    expect(prompt).toContain("Output exactly one `GOAL_PLAN` block");
+    expect(prompt).toContain("research=<none|local|docs|code|mixed>");
+    expect(prompt).toContain("`source_path`");
+    expect(prompt).toContain("`web_search`/`web_fetch`");
+    expect(prompt).toContain("kencode reference/discover/searchCode");
+    expect(prompt).toContain("Forbidden: `edit`, `write`, `subagent`, `goals`");
+    expect(prompt).toContain("background processes");
+    expect(prompt).not.toContain("entering plan mode");
+    expect(prompt).not.toContain("## Plan Mode (ACTIVE)");
+    expect(prompt).not.toContain("## Approved Plan");
+  });
+
+  it("renders Goal setup mode as orchestration-only instructions", async () => {
+    const cwd = await makeProject({ "AGENTS.md": "Project rules win." });
+    const prompt = await buildSystemPrompt(
+      cwd,
+      undefined,
+      false,
+      ".gg/plans/approved.md",
+      ["read", "bash", "goals", "edit", "write", "subagent"],
+      undefined,
+      "setup",
+    );
+    const firstLine = prompt.split("\n", 1)[0];
+
+    expect(firstLine).toContain("Goal setup orchestrator");
+    expect(firstLine).toContain("not an implementation worker");
+    expect(firstLine).not.toContain("works directly in the user's codebase");
+    expect(prompt).toContain("## Goal Setup Mode (ACTIVE)");
+    expect(prompt).toContain("create/update the durable run with `goals create`");
+    expect(prompt).toContain("Allowed tools: read/search/list tools");
+    expect(prompt).toContain("Forbidden: `edit`, `write`, `subagent`, verifier execution");
+    expect(prompt).toContain("Workers are the only actors that implement project changes");
+    expect(prompt).not.toContain("## Approved Plan");
+    expect(prompt).not.toContain("## Plan Mode (ACTIVE)");
+    expect(prompt).not.toContain("Restricted: bash, edit, write except .gg/plans/");
+  });
+
+  it("renders Goal setup mode without plan-mode leakage even when planMode is true", async () => {
+    const cwd = await makeProject();
+    const prompt = await buildSystemPrompt(
+      cwd,
+      undefined,
+      true,
+      ".gg/plans/approved.md",
+      ["read", "goals"],
+      undefined,
+      "setup",
+    );
+
+    expect(prompt).toContain("Goal setup orchestrator");
+    expect(prompt).toContain("## Goal Setup Mode (ACTIVE)");
+    expect(prompt).toContain("Forbidden: `edit`, `write`, `subagent`, verifier execution");
+    expect(prompt).not.toContain("entering plan mode");
+    expect(prompt).not.toContain("## Plan Mode (ACTIVE)");
+    expect(prompt).not.toContain("## Approved Plan");
+  });
+
+  it("renders Goal coordinator mode as status-first direct-implementation prohibition", async () => {
+    const cwd = await makeProject();
+    const prompt = await buildSystemPrompt(
+      cwd,
+      undefined,
+      false,
+      undefined,
+      ["read", "goals", "bash"],
+      undefined,
+      "coordinator",
+    );
+    const firstLine = prompt.split("\n", 1)[0];
+
+    expect(firstLine).toContain("durable Goal coordinator");
+    expect(firstLine).toContain("not an implementation worker");
+    expect(firstLine).not.toContain("works directly in the user's codebase");
+    expect(prompt).toContain("## Goal Coordinator Mode (ACTIVE)");
+    expect(prompt).toContain("call `goals status` for the current run first");
+    expect(prompt).toContain("before choosing any next action");
+    expect(prompt).toContain(
+      "Completion rule: call `goals complete` only when verifier evidence satisfies",
+    );
+    expect(prompt).toContain(
+      "a final completion audit has compared the actual durable files/logs/results",
+    );
+    expect(prompt).toContain("create or resume a Goal worker task to fix the gap");
+    expect(prompt).toContain("Forbidden: direct project implementation, `edit`, `write`, `bash`");
+    expect(prompt).toContain("Workers and UI-driven verifier execution are the only actors");
+    expect(prompt).not.toContain("take a first control-loop action before status");
+    expect(prompt).not.toContain("## Plan Mode (ACTIVE)");
+    expect(prompt).not.toContain("Restricted: bash, edit, write except .gg/plans/");
+    expect(prompt).not.toContain("## Approved Plan");
+  });
+
+  it("renders normal mode as direct coding mode without Goal identity or restrictions", async () => {
+    const cwd = await makeProject();
+    const prompt = await buildSystemPrompt(cwd, undefined, false, undefined, [
+      "read",
+      "edit",
+      "write",
+      "bash",
+      "subagent",
+      "goals",
+    ]);
+
+    expect(prompt).toContain("works directly in the user's codebase");
+    expect(prompt).toContain("completing tasks end-to-end");
+    expect(prompt).not.toContain("Goal planner");
+    expect(prompt).not.toContain("Goal setup orchestrator");
+    expect(prompt).not.toContain("durable Goal coordinator");
+    expect(prompt).not.toContain("## Goal Planner Mode (ACTIVE)");
+    expect(prompt).not.toContain("## Goal Setup Mode (ACTIVE)");
+    expect(prompt).not.toContain("## Goal Coordinator Mode (ACTIVE)");
+    expect(prompt).not.toContain("orchestration-only");
+    expect(prompt).not.toContain("Forbidden: direct project implementation");
+    expect(prompt).not.toContain("Workers are the only actors that implement project changes");
+  });
+
   it("preserves critical operating rules concisely", async () => {
     const cwd = await makeProject({ "AGENTS.md": "Project rules win." });
     const prompt = await buildSystemPrompt(cwd, undefined, true, undefined, [
@@ -157,7 +328,6 @@ describe("buildSystemPrompt", () => {
       "mcp__kencode-search__referenceSources",
       "mcp__kencode-search__discoverRepos",
       "mcp__kencode-search__searchCode",
-      "exit_plan",
     ]);
 
     for (const required of [
@@ -180,8 +350,6 @@ describe("buildSystemPrompt", () => {
       "ReferenceSources",
       "DiscoverRepos",
       "SearchCode literal text/RE2 (not semantic)",
-      "Restricted: bash, edit, write except .ezcoder/plans/",
-      "End the plan with exactly `## Steps`",
       "Never claim unrun or failing checks passed",
     ]) {
       expect(prompt).toContain(required);
@@ -209,15 +377,7 @@ describe("buildSystemPrompt", () => {
 
   it("measures representative system prompt sizes", async () => {
     const normalCwd = await makeProject();
-    const normalPrompt = await buildSystemPrompt(normalCwd, undefined, false, undefined, [
-      "read",
-      "edit",
-      "bash",
-      "enter_plan",
-      "exit_plan",
-    ]);
-
-    const planModePrompt = await buildSystemPrompt(normalCwd, undefined, true, undefined, [
+    const normalToolNames = [
       "read",
       "grep",
       "find",
@@ -228,9 +388,22 @@ describe("buildSystemPrompt", () => {
       "mcp__kencode-search__referenceSources",
       "mcp__kencode-search__discoverRepos",
       "mcp__kencode-search__searchCode",
-      "enter_plan",
-      "exit_plan",
-    ]);
+    ];
+    const normalPrompt = await buildSystemPrompt(
+      normalCwd,
+      undefined,
+      false,
+      undefined,
+      normalToolNames,
+    );
+
+    const planModePrompt = await buildSystemPrompt(
+      normalCwd,
+      undefined,
+      true,
+      undefined,
+      normalToolNames,
+    );
 
     const typescriptCwd = await makeProject({
       "AGENTS.md": "Prefer strict TypeScript. Run the focused test before reporting completion.",
@@ -272,26 +445,109 @@ describe("buildSystemPrompt", () => {
         "mcp__kencode-search__referenceSources",
         "mcp__kencode-search__discoverRepos",
         "mcp__kencode-search__searchCode",
-        "enter_plan",
-        "exit_plan",
       ],
       new Set<LanguageId>(["typescript"]),
+    );
+
+    const goalPlannerPrompt = await buildSystemPrompt(
+      normalCwd,
+      undefined,
+      false,
+      undefined,
+      [
+        "read",
+        "bash",
+        "goals",
+        "edit",
+        "write",
+        "subagent",
+        "source_path",
+        "web_search",
+        "web_fetch",
+        "mcp__kencode-search__referenceSources",
+        "mcp__kencode-search__discoverRepos",
+        "mcp__kencode-search__searchCode",
+      ],
+      undefined,
+      "planner",
+    );
+    const goalSetupPrompt = await buildSystemPrompt(
+      normalCwd,
+      undefined,
+      false,
+      undefined,
+      ["read", "bash", "goals", "edit", "write", "subagent"],
+      undefined,
+      "setup",
+    );
+    const goalCoordinatorPrompt = await buildSystemPrompt(
+      normalCwd,
+      undefined,
+      false,
+      undefined,
+      ["read", "goals", "bash", "subagent"],
+      undefined,
+      "coordinator",
     );
 
     const measurements = {
       normal: promptSize(normalPrompt),
       planMode: promptSize(planModePrompt),
+      goalPlanner: promptSize(goalPlannerPrompt),
+      goalSetup: promptSize(goalSetupPrompt),
+      goalCoordinator: promptSize(goalCoordinatorPrompt),
       typescriptProjectContextToolsSkills: promptSize(typescriptPrompt),
     };
 
     console.info(`system prompt size measurements: ${JSON.stringify(measurements)}`);
 
     expect(measurements.normal.characters).toBeLessThan(4_800);
-    expect(measurements.planMode.characters).toBeLessThan(6_500);
+    expect(measurements.planMode.characters).toBeLessThan(4_800);
+    expect(measurements.goalPlanner.characters).toBeLessThan(6_800);
+    expect(measurements.goalSetup.characters).toBeLessThan(6_800);
+    expect(measurements.goalCoordinator.characters).toBeLessThan(6_800);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(9_500);
-    expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
+    expect(measurements.planMode.characters).toBe(measurements.normal.characters);
+    expect(measurements.goalPlanner.characters).toBeGreaterThan(measurements.normal.characters);
+    expect(measurements.goalSetup.characters).toBeGreaterThan(measurements.normal.characters);
+    expect(measurements.goalCoordinator.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
     );
+  });
+
+  it("audits representative prompts for obsolete, duplicate, or contradictory guidance", async () => {
+    const cwd = await makeProject({
+      "AGENTS.md": "Prefer project-specific rules.",
+      "package.json": JSON.stringify({ scripts: { test: "vitest" } }),
+      "tsconfig.json": "{}",
+    });
+    const prompt = await buildSystemPrompt(
+      cwd,
+      [{ name: "find-skills", description: "Find skills.", content: "", source: "test" }],
+      false,
+      undefined,
+      [
+        "read",
+        "edit",
+        "write",
+        "bash",
+        "web_search",
+        "web_fetch",
+        "source_path",
+        "skill",
+        "mcp__kencode-search__referenceSources",
+        "mcp__kencode-search__discoverRepos",
+        "mcp__kencode-search__searchCode",
+      ],
+      new Set<LanguageId>(["typescript"]),
+    );
+
+    const audit = promptAudit(prompt);
+    console.info(`system prompt audit: ${JSON.stringify(audit)}`);
+
+    expect(audit.flags).toEqual([]);
+    expect(audit.size.characters).toBeLessThan(9_500);
+    expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 });

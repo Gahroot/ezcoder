@@ -2,6 +2,7 @@ import React from "react";
 import { Text, Box } from "ink";
 import { useTheme } from "../theme/theme.js";
 import type { PasteInfo } from "./InputArea.js";
+import { getUserMessageDisplayParts } from "../utils/user-message-display.js";
 
 export function UserMessage({
   text,
@@ -14,11 +15,7 @@ export function UserMessage({
 }) {
   const theme = useTheme();
 
-  // Use precise paste boundaries when available
-  const hasPaste = pasteInfo != null && pasteInfo.length > 0;
-  const typedBefore = hasPaste ? text.slice(0, pasteInfo.offset) : "";
-  const typedAfter = hasPaste ? text.slice(pasteInfo.offset + pasteInfo.length) : "";
-  const badge = hasPaste ? `[Pasted text #${pasteInfo.length} +${pasteInfo.lineCount} lines]` : "";
+  const parts = getUserMessageDisplayParts(text, pasteInfo);
 
   return (
     <Box marginTop={1} flexDirection="column">
@@ -27,17 +24,14 @@ export function UserMessage({
           <Text color={theme.inputPrompt} backgroundColor="gray">
             {"❯ "}
           </Text>
-          {hasPaste ? (
-            <>
-              {typedBefore && <Text backgroundColor="gray">{typedBefore} </Text>}
-              <Text dimColor backgroundColor="gray">
-                {badge}
+          {parts.map((part, index) => (
+            <React.Fragment key={index}>
+              {index > 0 ? <Text backgroundColor="gray"> </Text> : null}
+              <Text dimColor={part.kind === "paste"} backgroundColor="gray">
+                {part.text}
               </Text>
-              {typedAfter && <Text backgroundColor="gray"> {typedAfter}</Text>}
-            </>
-          ) : (
-            text
-          )}
+            </React.Fragment>
+          ))}
           {imageCount != null &&
             imageCount > 0 &&
             Array.from({ length: imageCount }, (_, i) => (
