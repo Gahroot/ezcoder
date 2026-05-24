@@ -107,6 +107,6 @@ describe("InputArea pasted slash commands", () => {
     const plain = stripAnsi(output());
     expect(plain).toContain("▄".repeat(100));
     expect(plain).toContain("▀".repeat(100));
-    expect(plain).toContain(" >   Type your message or @path/to/file");
+    expect(plain).toContain(" >   Type your message or / to run a command");
   });
 });

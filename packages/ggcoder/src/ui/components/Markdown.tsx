@@ -253,6 +253,37 @@ function padRightAnsi(text: string, width: number): string {
   return text + " ".repeat(Math.max(0, width - visualWidth(text)));
 }
 
+function RenderWrappedInlineLine({
+  text,
+  color,
+  theme,
+  terminalWidth,
+  bold = false,
+  italic = false,
+}: {
+  text: string;
+  color: string;
+  theme: Theme;
+  terminalWidth: number;
+  bold?: boolean;
+  italic?: boolean;
+}): React.ReactElement {
+  const wrappedLines = useMemo(
+    () => wrapAnsiLines(parseMarkdownToAnsi(text, theme, color), terminalWidth),
+    [text, color, theme, terminalWidth],
+  );
+
+  return (
+    <Box flexDirection="column" width={terminalWidth}>
+      {wrappedLines.map((line, index) => (
+        <Text key={index} bold={bold} italic={italic} color={color} wrap="truncate-end">
+          {line}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
 function RenderTable({
   headers,
   rows,
@@ -604,11 +635,13 @@ function MarkdownDisplay({
         tableRows = [];
       } else {
         addContentBlock(
-          <Box key={key}>
-            <Text wrap="wrap" color={theme.text}>
-              {parseMarkdownToAnsi(line, theme, theme.text)}
-            </Text>
-          </Box>,
+          <RenderWrappedInlineLine
+            key={key}
+            text={line}
+            color={theme.text}
+            theme={theme}
+            terminalWidth={terminalWidth}
+          />,
         );
       }
     } else if (inTable && tableSeparatorMatch) {
@@ -622,11 +655,13 @@ function MarkdownDisplay({
       flushTable(`table-${contentBlocks.length}`);
       if (line.trim().length > 0) {
         addContentBlock(
-          <Box key={key}>
-            <Text wrap="wrap" color={theme.text}>
-              {parseMarkdownToAnsi(line, theme, theme.text)}
-            </Text>
-          </Box>,
+          <RenderWrappedInlineLine
+            key={key}
+            text={line}
+            color={theme.text}
+            theme={theme}
+            terminalWidth={terminalWidth}
+          />,
         );
       }
     } else if (hrMatch) {
@@ -640,11 +675,15 @@ function MarkdownDisplay({
       const headerText = headerMatch[2] ?? "";
       const color = level <= 2 ? theme.link : level === 4 ? theme.textMuted : theme.text;
       addContentBlock(
-        <Box key={key}>
-          <Text bold={level <= 3} italic={level === 4} color={color}>
-            {parseMarkdownToAnsi(headerText, theme, color)}
-          </Text>
-        </Box>,
+        <RenderWrappedInlineLine
+          key={key}
+          text={headerText}
+          color={color}
+          theme={theme}
+          terminalWidth={terminalWidth}
+          bold={level <= 3}
+          italic={level === 4}
+        />,
       );
     } else if (ulMatch) {
       addContentBlock(
@@ -675,11 +714,13 @@ function MarkdownDisplay({
       }
     } else {
       addContentBlock(
-        <Box key={key}>
-          <Text wrap="wrap" color={theme.text}>
-            {parseMarkdownToAnsi(line, theme, theme.text)}
-          </Text>
-        </Box>,
+        <RenderWrappedInlineLine
+          key={key}
+          text={line}
+          color={theme.text}
+          theme={theme}
+          terminalWidth={terminalWidth}
+        />,
       );
     }
   });
@@ -718,7 +759,7 @@ export const Markdown = React.memo(function Markdown({
   if (!text) return null;
 
   return (
-    <Box flexDirection="column" flexShrink={1}>
+    <Box flexDirection="column" width={terminalWidth} flexShrink={1}>
       <MarkdownDisplay
         text={stripUnsafeCharacters(text)}
         isPending={isPending}

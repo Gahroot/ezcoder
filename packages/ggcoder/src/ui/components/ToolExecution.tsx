@@ -195,7 +195,7 @@ export function ToolExecution(props: ToolExecutionProps) {
     }
 
     return (
-      <Box marginTop={1} marginBottom={1} flexDirection="row">
+      <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1} marginBottom={1} flexDirection="row">
         <ToolUseLoader status="running" staticDisplay={staticDisplay} />
         <Spinner label={detail ? `${label}(${detail})` : label} staticDisplay={staticDisplay} />
       </Box>
@@ -219,7 +219,7 @@ export function ToolExecution(props: ToolExecutionProps) {
       ? result.split("\n")[0]
       : `${searchCount} result${searchCount !== 1 ? "s" : ""}`;
     return (
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1}>
         <Box flexDirection="row">
           <ToolUseLoader status={isError ? "error" : "done"} />
           <Box flexGrow={1} width={headerContentWidth}>
@@ -252,7 +252,7 @@ export function ToolExecution(props: ToolExecutionProps) {
   if (COMPACT_TOOLS.has(name) && !isError) {
     const summary = getCompactDoneLabel(name, args, result);
     return (
-      <Box marginTop={1} marginBottom={1} flexDirection="row">
+      <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1} marginBottom={1} flexDirection="row">
         <ToolUseLoader status="done" />
         <Box flexGrow={1} width={headerContentWidth}>
           <Text bold color={theme.toolName} wrap="wrap">
@@ -267,7 +267,7 @@ export function ToolExecution(props: ToolExecutionProps) {
     const { label, detail } = getToolHeaderParts(name, args);
     const inline = getInlineSummary(name, result, isError);
     return (
-      <Box marginTop={1} marginBottom={1} flexDirection="row">
+      <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1} marginBottom={1} flexDirection="row">
         <ToolUseLoader status={isError ? "error" : "done"} />
         <Box flexGrow={1} width={headerContentWidth}>
           <Text wrap="wrap">
@@ -307,7 +307,7 @@ export function ToolExecution(props: ToolExecutionProps) {
     const inlineText = typeof inline === "string" ? inline : inline?.text;
     const inlineColor = inline && typeof inline === "object" ? inline.color : theme.textDim;
     return (
-      <Box marginTop={1} marginBottom={1} flexDirection="row">
+      <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1} marginBottom={1} flexDirection="row">
         <ToolUseLoader status={isError ? "error" : "done"} />
         <Box flexGrow={1} width={headerContentWidth}>
           <Text wrap="wrap">
@@ -332,7 +332,7 @@ export function ToolExecution(props: ToolExecutionProps) {
   const hiddenCount = totalLines - lines.length;
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1}>
       {/* Header: status dot + wrapping content */}
       <Box flexDirection="row">
         <ToolUseLoader status={isError ? "error" : "done"} />

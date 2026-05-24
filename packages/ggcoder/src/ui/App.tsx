@@ -28,7 +28,7 @@ import {
   formatGoalReferencesForPrompt,
 } from "../core/goal-references.js";
 import type { AgentTool } from "@kenkaiiii/gg-agent";
-import { useAgentLoop, type UserContent } from "./hooks/useAgentLoop.js";
+import { useAgentLoop, type StreamSnapshot, type UserContent } from "./hooks/useAgentLoop.js";
 import { UserMessage } from "./components/UserMessage.js";
 import type { PasteInfo } from "./components/InputArea.js";
 import { AssistantMessage } from "./components/AssistantMessage.js";
@@ -1002,7 +1002,7 @@ const GOAL_STATUS_ROWS = 1;
 const COLLAPSED_FOOTER_STATUS_ROWS = 1;
 const MAX_EXPANDED_BACKGROUND_TASK_ROWS = 7;
 
-function isAgentSpacingItem(item: CompletedItem): boolean {
+function isAgentSpacingKind(kind: CompletedItem["kind"]): boolean {
   return [
     "assistant",
     "tool_start",
@@ -1011,7 +1011,85 @@ function isAgentSpacingItem(item: CompletedItem): boolean {
     "server_tool_start",
     "server_tool_done",
     "subagent_group",
-  ].includes(item.kind);
+  ].includes(kind);
+}
+
+function isToolBoundaryKind(kind: CompletedItem["kind"]): boolean {
+  return [
+    "tool_start",
+    "tool_done",
+    "tool_group",
+    "server_tool_start",
+    "server_tool_done",
+    "subagent_group",
+  ].includes(kind);
+}
+
+function isAgentSpacingItem(item: CompletedItem): boolean {
+  return isAgentSpacingKind(item.kind);
+}
+
+export function shouldTopSpaceAfterPrintedAgentBoundary({
+  currentKind,
+  previousLiveItem,
+  lastPendingHistoryItem,
+  lastHistoryItem,
+}: {
+  currentKind: CompletedItem["kind"];
+  previousLiveItem?: CompletedItem;
+  lastPendingHistoryItem?: CompletedItem;
+  lastHistoryItem?: CompletedItem;
+}): boolean {
+  const needsExternalSpacing = ["tool_start", "tool_group", "assistant"].includes(currentKind);
+  if (!needsExternalSpacing) return false;
+  if (previousLiveItem !== undefined) return false;
+  const previousKind = lastPendingHistoryItem?.kind ?? lastHistoryItem?.kind;
+  return previousKind !== undefined && isAgentSpacingKind(previousKind);
+}
+
+export function shouldTopSpaceAssistantAfterToolBoundary({
+  text,
+  previousLiveItem,
+  lastPendingHistoryItem,
+  lastHistoryItem,
+}: {
+  text: string;
+  previousLiveItem?: CompletedItem;
+  lastPendingHistoryItem?: CompletedItem;
+  lastHistoryItem?: CompletedItem;
+}): boolean {
+  if (text.trim().length === 0) return false;
+  if (
+    shouldTopSpaceAfterPrintedAgentBoundary({
+      currentKind: "assistant",
+      previousLiveItem,
+      lastPendingHistoryItem,
+      lastHistoryItem,
+    })
+  ) {
+    return true;
+  }
+  const previousKind = previousLiveItem?.kind;
+  return previousKind !== undefined && isToolBoundaryKind(previousKind);
+}
+
+export function shouldTopSpaceStreamingAssistant({
+  visibleStreamingText,
+  lastLiveItem,
+  lastPendingHistoryItem,
+  lastHistoryItem,
+}: {
+  visibleStreamingText: string;
+  lastLiveItem?: CompletedItem;
+  lastPendingHistoryItem?: CompletedItem;
+  lastHistoryItem?: CompletedItem;
+}): boolean {
+  return shouldTopSpaceAssistantAfterToolBoundary({
+    text: visibleStreamingText,
+    previousLiveItem: lastLiveItem,
+    lastPendingHistoryItem,
+    lastHistoryItem,
+  });
 }
 
 export interface ChatControlsLayoutOptions {
@@ -1096,31 +1174,61 @@ export function isActiveItem(item: CompletedItem): boolean {
  * Completed items precede active ones — we flush the longest contiguous prefix
  * of completed items to keep ordering stable.
  */
-function partitionCompleted(items: CompletedItem[]): {
+export function partitionCompleted(items: CompletedItem[]): {
   flushed: CompletedItem[];
   remaining: CompletedItem[];
 } {
-  // Find the first active item — everything before it is safe to flush
+  // Find the first active item — everything before it is safe to flush as a
+  // single chronological prefix. Splitting assistant text out of that prefix
+  // lets later tool rows print to scrollback above the message that introduced
+  // them, so keep the prefix intact.
   const firstActiveIdx = items.findIndex(isActiveItem);
   if (firstActiveIdx === -1) {
-    // All items are completed. Keep assistant messages in Ink so markdown is
-    // rendered from the first streamed token through completion, matching Gemini.
-    return {
-      flushed: items.filter((item) => item.kind !== "assistant"),
-      remaining: items.filter((item) => item.kind === "assistant"),
-    };
+    return { flushed: items, remaining: [] };
   }
   if (firstActiveIdx === 0) {
     return { flushed: [], remaining: items };
   }
-  const candidates = items.slice(0, firstActiveIdx);
   return {
-    flushed: candidates.filter((item) => item.kind !== "assistant"),
-    remaining: [
-      ...candidates.filter((item) => item.kind === "assistant"),
-      ...items.slice(firstActiveIdx),
-    ],
+    flushed: items.slice(0, firstActiveIdx),
+    remaining: items.slice(firstActiveIdx),
   };
+}
+
+function normalizeAssistantText(text: string): string {
+  return stripDoneMarkers(text).trim();
+}
+
+function isSameAssistantText(item: CompletedItem, text: string): boolean {
+  return item.kind === "assistant" && normalizeAssistantText(item.text) === text;
+}
+
+export function pinStreamingTextBeforeToolBoundary({
+  items,
+  visibleStreamingText,
+  thinking,
+  thinkingMs,
+  makeId,
+}: {
+  items: CompletedItem[];
+  visibleStreamingText: string;
+  thinking: string;
+  thinkingMs: number;
+  makeId: () => string;
+}): CompletedItem[] {
+  const text = normalizeAssistantText(visibleStreamingText);
+  if (text.length === 0) return items;
+  if (items.some((item) => item.kind === "assistant")) return items;
+  return [
+    ...items,
+    {
+      kind: "assistant",
+      text,
+      thinking: thinking.length > 0 ? thinking : undefined,
+      thinkingMs: thinking.length > 0 ? thinkingMs : undefined,
+      id: makeId(),
+    },
+  ];
 }
 
 // ── Duration summary ─────────────────────────────────────
@@ -1563,7 +1671,9 @@ export function App(props: AppProps) {
   // the conversation on remount. Each panel that previously did a bare ANSI
   // screen clear (overlay open/close, plan accept/reject, /clear)
   // now goes through resetUI; without these mirrors, the chat would vanish.
+  const historyRef = useRef(history);
   useEffect(() => {
+    historyRef.current = history;
     if (sessionStore) sessionStore.history = history;
   }, [history, sessionStore]);
   useEffect(() => {
@@ -2326,21 +2436,43 @@ export function App(props: AppProps) {
                 id: getId(),
               });
             }
+            const assistantItems = prev.filter((item) => item.kind === "assistant");
+            const newAssistantText = normalizeAssistantText(text);
+            const duplicatePinnedText =
+              newAssistantText.length > 0 &&
+              [...assistantItems, ...pendingHistoryFlushRef.current, ...historyRef.current].some(
+                (item) => isSameAssistantText(item, newAssistantText),
+              );
+            const nextItems = duplicatePinnedText
+              ? items.filter((item) => !isSameAssistantText(item, newAssistantText))
+              : items;
             const flushablePrev = prev.filter((item) => item.kind !== "assistant");
             if (flushablePrev.length > 0) queueFlush(flushablePrev);
-            return [...prev.filter((item) => item.kind === "assistant"), ...items];
+            return [...assistantItems, ...nextItems];
           });
         },
         [queueFlush],
       ),
       onToolStart: useCallback(
-        (toolCallId: string, name: string, args: Record<string, unknown>) => {
+        (
+          toolCallId: string,
+          name: string,
+          args: Record<string, unknown>,
+          stream: StreamSnapshot,
+        ) => {
           log("INFO", "tool", `Tool call started: ${name}`, { id: toolCallId });
           const startedAt = Date.now();
           const animateUntil = startedAt + RUNNING_INDICATOR_ANIMATION_MS;
 
           const appendToolStart = (prev: CompletedItem[]): CompletedItem[] => {
-            const { flushed, remaining } = partitionCompleted(prev);
+            const visible = pinStreamingTextBeforeToolBoundary({
+              items: prev,
+              visibleStreamingText: stream.text,
+              thinking: stream.thinking,
+              thinkingMs: stream.thinkingMs,
+              makeId: getId,
+            });
+            const { flushed, remaining } = partitionCompleted(visible);
             if (flushed.length > 0) {
               queueFlush(flushed);
             }
@@ -2382,10 +2514,13 @@ export function App(props: AppProps) {
               );
               const prior = reusableGroupIdx === -1 ? [] : prev.slice(0, reusableGroupIdx);
               if (reusableGroupIdx !== -1 && prior.every((item) => !isActiveItem(item))) {
-                if (prior.length > 0) queueFlush(prior);
+                const flushablePrior = prior.filter((item) => item.kind !== "assistant");
+                if (flushablePrior.length > 0) queueFlush(flushablePrior);
+                const pinnedPrior = prior.filter((item) => item.kind === "assistant");
                 const candidates = prev.slice(reusableGroupIdx);
                 const group = candidates[0] as ToolGroupItem;
                 return [
+                  ...pinnedPrior,
                   {
                     ...group,
                     tools: [
@@ -2582,14 +2717,21 @@ export function App(props: AppProps) {
         [],
       ),
       onServerToolCall: useCallback(
-        (id: string, name: string, input: unknown) => {
+        (id: string, name: string, input: unknown, stream: StreamSnapshot) => {
           log("INFO", "server_tool", `Server tool call: ${name}`, { id });
           const startedAt = Date.now();
           const animateUntil = startedAt + RUNNING_INDICATOR_ANIMATION_MS;
           // Flush completed items (including assistant text) before adding server
           // tool UI — same rationale as onToolStart.
           setLiveItems((prev) => {
-            const { flushed, remaining } = partitionCompleted(prev);
+            const visible = pinStreamingTextBeforeToolBoundary({
+              items: prev,
+              visibleStreamingText: stream.text,
+              thinking: stream.thinking,
+              thinkingMs: stream.thinkingMs,
+              makeId: getId,
+            });
+            const { flushed, remaining } = partitionCompleted(visible);
             if (flushed.length > 0) {
               queueFlush(flushed);
             }
@@ -3650,7 +3792,35 @@ export function App(props: AppProps) {
     </Box>
   );
 
-  const renderItem = (item: CompletedItem) => {
+  const renderItem = (item: CompletedItem, index: number, items: CompletedItem[]) => {
+    const previousLiveItem = index > 0 ? items[index - 1] : undefined;
+    const shouldTopSpacePrintedBoundary = shouldTopSpaceAfterPrintedAgentBoundary({
+      currentKind: item.kind,
+      previousLiveItem,
+      lastPendingHistoryItem: pendingHistoryFlushRef.current.at(-1),
+      lastHistoryItem: history.at(-1),
+    });
+    const assistantMarginTop =
+      item.kind === "assistant" &&
+      (shouldTopSpacePrintedBoundary ||
+        shouldTopSpaceAssistantAfterToolBoundary({
+          text: item.text,
+          previousLiveItem,
+          lastPendingHistoryItem: pendingHistoryFlushRef.current.at(-1),
+          lastHistoryItem: history.at(-1),
+        }))
+        ? 1
+        : 0;
+
+    const withPrintedBoundarySpacing = (node: React.ReactNode): React.ReactNode =>
+      shouldTopSpacePrintedBoundary ? (
+        <Box key={`${item.id}-printed-boundary`} flexDirection="column" marginTop={1}>
+          {node}
+        </Box>
+      ) : (
+        node
+      );
+
     switch (item.kind) {
       case "tombstone":
         return null;
@@ -3843,10 +4013,11 @@ export function App(props: AppProps) {
             thinking={item.thinking}
             thinkingMs={item.thinkingMs}
             renderMarkdown={renderMarkdown}
+            marginTop={assistantMarginTop}
           />
         );
       case "tool_start":
-        return (
+        return withPrintedBoundarySpacing(
           <ToolExecution
             key={item.id}
             status="running"
@@ -3854,10 +4025,10 @@ export function App(props: AppProps) {
             args={item.args}
             progressOutput={(item as ToolStartItem).progressOutput}
             animateUntil={item.animateUntil}
-          />
+          />,
         );
       case "tool_done":
-        return (
+        return withPrintedBoundarySpacing(
           <ToolExecution
             key={item.id}
             status="done"
@@ -3866,12 +4037,12 @@ export function App(props: AppProps) {
             result={item.result}
             isError={item.isError}
             details={item.details}
-          />
+          />,
         );
       case "tool_group":
-        return <ToolGroupExecution key={item.id} tools={item.tools} />;
+        return withPrintedBoundarySpacing(<ToolGroupExecution key={item.id} tools={item.tools} />);
       case "server_tool_start":
-        return (
+        return withPrintedBoundarySpacing(
           <ServerToolExecution
             key={item.id}
             status="running"
@@ -3879,10 +4050,10 @@ export function App(props: AppProps) {
             input={item.input}
             startedAt={item.startedAt}
             animateUntil={item.animateUntil}
-          />
+          />,
         );
       case "server_tool_done":
-        return (
+        return withPrintedBoundarySpacing(
           <ServerToolExecution
             key={item.id}
             status="done"
@@ -3890,7 +4061,7 @@ export function App(props: AppProps) {
             input={item.input}
             durationMs={item.durationMs}
             resultType={item.resultType}
-          />
+          />,
         );
       case "error": {
         const showMessage = item.message && item.message !== item.headline;
@@ -4069,7 +4240,9 @@ export function App(props: AppProps) {
           </Box>
         );
       case "subagent_group":
-        return <SubAgentPanel key={item.id} agents={item.agents} aborted={item.aborted} />;
+        return withPrintedBoundarySpacing(
+          <SubAgentPanel key={item.id} agents={item.agents} aborted={item.aborted} />,
+        );
     }
   };
 
@@ -4931,6 +5104,12 @@ export function App(props: AppProps) {
     agentLoop.isRunning &&
     !hasLiveAssistantItem &&
     (visibleStreamingText.trim().length > 0 || liveItems.some(isAgentSpacingItem));
+  const shouldTopSpaceStreamingText = shouldTopSpaceStreamingAssistant({
+    visibleStreamingText,
+    lastLiveItem: liveItems.at(-1),
+    lastPendingHistoryItem: pendingHistoryFlushRef.current.at(-1),
+    lastHistoryItem: history.at(-1),
+  });
 
   return (
     <Box flexDirection="column" width={columns} flexShrink={0} flexGrow={0}>
@@ -5192,13 +5371,12 @@ export function App(props: AppProps) {
           {/* MainContent */}
           <Box
             flexDirection="column"
-            paddingRight={1}
             maxHeight={measuredLiveAreaRows}
             flexGrow={0}
             flexShrink={1}
             overflowY={agentLoop.isRunning ? "hidden" : undefined}
           >
-            {liveItems.map((item) => renderItem(item))}
+            {liveItems.map((item, index, items) => renderItem(item, index, items))}
             <StreamingArea
               isRunning={agentLoop.isRunning}
               streamingText={visibleStreamingText}
@@ -5207,6 +5385,7 @@ export function App(props: AppProps) {
               reserveSpacing={shouldReserveStreamingSpacing}
               renderMarkdown={renderMarkdown}
               availableTerminalHeight={measuredLiveAreaRows}
+              assistantMarginTop={shouldTopSpaceStreamingText ? 1 : 0}
             />
           </Box>
 

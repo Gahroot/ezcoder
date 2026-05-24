@@ -24,6 +24,8 @@ interface ServerToolDoneProps {
 
 type ServerToolExecutionProps = ServerToolRunningProps | ServerToolDoneProps;
 
+const RESPONSE_LEFT_PADDING = 1;
+
 // ToolUseLoader minWidth={2} = 2 chars
 const HEADER_PREFIX = 2;
 
@@ -79,7 +81,7 @@ export function ServerToolExecution(props: ServerToolExecutionProps) {
 
   if (props.status === "running") {
     return (
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1}>
         <Box flexDirection="row">
           <ToolUseLoader status="running" staticDisplay={staticDisplay} />
           <Box flexGrow={1} width={headerContentWidth}>
@@ -97,7 +99,7 @@ export function ServerToolExecution(props: ServerToolExecutionProps) {
   const duration = Math.round(props.durationMs / 1000);
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1}>
       <Box flexDirection="row">
         <ToolUseLoader status={isAborted ? "error" : "done"} />
         <Box flexGrow={1} width={headerContentWidth}>

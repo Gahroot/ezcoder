@@ -32,7 +32,7 @@ describe("terminal history", () => {
 
     expect(rendered).toContain("Hello");
     expect(rendered).toContain("world");
-    expect(rendered).toMatch(/^[⏺●] Hello/);
+    expect(rendered).toMatch(/^ [⏺●] Hello/);
   });
 
   it("hard-wraps long assistant words in durable terminal history", () => {
@@ -127,7 +127,7 @@ describe("terminal history", () => {
 
     const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
 
-    expect(rendered).toMatch(/^[⏺●] Bash\(printf hi\)/);
+    expect(rendered).toMatch(/^ [⏺●] Bash\(printf hi\)/);
     expect(rendered).toContain("  ⎿  hi");
   });
 
@@ -144,7 +144,7 @@ describe("terminal history", () => {
 
     const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
 
-    expect(rendered).toMatch(/^[⏺●] Searched for 1 pattern \(2 matches\)$/);
+    expect(rendered).toMatch(/^ [⏺●] Searched for 1 pattern \(2 matches\)$/);
     expect(rendered).not.toContain("src/a.ts");
   });
 
@@ -172,7 +172,7 @@ describe("terminal history", () => {
 
     const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
 
-    expect(rendered).toMatch(/^[⏺●] Read 2 files$/);
+    expect(rendered).toMatch(/^ [⏺●] Read 2 files$/);
   });
 
   it("serializes server search rows with quoted detail and response summary", () => {
@@ -188,7 +188,7 @@ describe("terminal history", () => {
 
     const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
 
-    expect(rendered).toMatch(/^[⏺●] Web Search\("latest docs"\)/);
+    expect(rendered).toMatch(/^ [⏺●] Web Search\("latest docs"\)/);
     expect(rendered).toContain("  ⎿  Did 1 search in 2s");
   });
 
@@ -211,7 +211,7 @@ describe("terminal history", () => {
 
     const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
 
-    expect(rendered).toMatch(/^[⏺●] 1 agent completed/);
+    expect(rendered).toMatch(/^ [⏺●] 1 agent completed/);
     expect(rendered).toContain("└─ ✓ Inspect widgets");
     expect(rendered).toContain("   ⎿ 1.5k tokens · 2s");
   });
@@ -273,7 +273,7 @@ describe("terminal history", () => {
 
     printer.print([{ kind: "assistant", text: "last answer", id: "assistant-1" }], context);
 
-    expect(stripAnsi(output)).toMatch(/^\n[⏺●] last answer\n$/);
+    expect(stripAnsi(output)).toMatch(/^ [⏺●] last answer\n$/);
   });
 
   it("can intentionally clear printed ids for a fresh session", () => {

@@ -100,6 +100,12 @@ export interface RetryInfo {
 
 export type UserContent = string | (TextContent | ImageContent)[];
 
+export interface StreamSnapshot {
+  text: string;
+  thinking: string;
+  thinkingMs: number;
+}
+
 export interface UseAgentLoopReturn {
   run: (userContent: UserContent) => Promise<void>;
   abort: () => void;
@@ -141,7 +147,12 @@ export function useAgentLoop(
   callbacks?: {
     onComplete?: (newMessages: Message[]) => void;
     onTurnText?: (text: string, thinking: string, thinkingMs: number) => void;
-    onToolStart?: (toolCallId: string, name: string, args: Record<string, unknown>) => void;
+    onToolStart?: (
+      toolCallId: string,
+      name: string,
+      args: Record<string, unknown>,
+      stream: StreamSnapshot,
+    ) => void;
     onToolUpdate?: (toolCallId: string, update: unknown) => void;
     onToolEnd?: (
       toolCallId: string,
@@ -157,7 +168,7 @@ export function useAgentLoop(
       // tool-result rendering always has the original args available.
       args?: Record<string, unknown>,
     ) => void;
-    onServerToolCall?: (id: string, name: string, input: unknown) => void;
+    onServerToolCall?: (id: string, name: string, input: unknown, stream: StreamSnapshot) => void;
     onServerToolResult?: (toolUseId: string, resultType: string, data: unknown) => void;
     onTurnEnd?: (
       turn: number,
@@ -559,7 +570,11 @@ export function useAgentLoop(
                   startTime: Date.now(),
                   updates: [],
                 };
-                onToolStart?.(event.toolCallId, event.name, event.args);
+                onToolStart?.(event.toolCallId, event.name, event.args, {
+                  text: textVisibleRef.current,
+                  thinking: thinkingBufferRef.current,
+                  thinkingMs: thinkingAccumRef.current,
+                });
                 toolsUsedRef.current.add(event.name);
                 activeToolCallsRef.current = [...activeToolCallsRef.current, newTc];
                 setActiveToolCalls(activeToolCallsRef.current);
@@ -622,7 +637,12 @@ export function useAgentLoop(
               }
 
               case "server_tool_call":
-                onServerToolCall?.(event.id, event.name, event.input);
+                flushStreamState();
+                onServerToolCall?.(event.id, event.name, event.input, {
+                  text: textVisibleRef.current,
+                  thinking: thinkingBufferRef.current,
+                  thinkingMs: thinkingAccumRef.current,
+                });
                 break;
 
               case "server_tool_result":

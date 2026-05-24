@@ -381,7 +381,10 @@ function renderAssistant(
     lines.push(color(context.theme.textMuted, label));
     lines.push(dim(context, indent(wrapPlain(thinking.trim(), context.columns - 2), "  ")));
   }
-  const body = markdownToAnsi(text, context).replace(/^\n+|\n+$/g, "");
+  const body = markdownToAnsi(text, {
+    ...context,
+    columns: Math.max(10, context.columns - 4),
+  }).replace(/^\n+|\n+$/g, "");
   if (body.length > 0) {
     lines.push(prefixFirstLine(body, ` ${color(context.theme.primary, BLACK_CIRCLE)} `, "   "));
   }
@@ -874,6 +877,10 @@ function markdownToAnsi(text: string, context: TerminalHistoryContext): string {
     lastLineEmpty = false;
   };
 
+  const addInlineBlock = (rawLine: string, defaultColor = context.theme.text): void => {
+    addBlock(wrapPlain(renderInlineMarkdown(rawLine, context, defaultColor), context.columns));
+  };
+
   const flushTable = (): void => {
     if (tableHeaders.length > 0 && tableRows.length > 0) {
       addBlock(renderMarkdownTable(tableHeaders, tableRows, context));
@@ -919,7 +926,7 @@ function markdownToAnsi(text: string, context: TerminalHistoryContext): string {
         tableHeaders = tableRowMatch[1]?.split("|").map((cell) => cell.trim()) ?? [];
         tableRows = [];
       } else {
-        addBlock(renderInlineMarkdown(line, context, context.theme.text));
+        addInlineBlock(line);
       }
     } else if (inTable && tableSeparatorMatch) {
       // Separator belongs to current table.
@@ -930,29 +937,32 @@ function markdownToAnsi(text: string, context: TerminalHistoryContext): string {
       tableRows.push(cells);
     } else if (inTable) {
       flushTable();
-      if (line.trim()) addBlock(renderInlineMarkdown(line, context, context.theme.text));
+      if (line.trim()) addInlineBlock(line);
     } else if (hrRegex.test(line)) {
       addBlock(chalk.dim("---"));
     } else if (headerMatch) {
       const level = headerMatch[1]?.length ?? 1;
       const headerText = headerMatch[2] ?? "";
-      const rendered = renderInlineMarkdown(
-        headerText,
-        context,
-        level <= 2 ? context.theme.link : context.theme.text,
-      );
-      addBlock(
-        level <= 3 ? chalk.bold(rendered) : chalk.italic(color(context.theme.textMuted, rendered)),
-      );
+      const headerColor = level <= 2 ? context.theme.link : context.theme.text;
+      const rendered = renderInlineMarkdown(headerText, context, headerColor);
+      const styled =
+        level <= 3 ? chalk.bold(rendered) : chalk.italic(color(context.theme.textMuted, rendered));
+      addBlock(wrapPlain(styled, context.columns));
     } else if (ulMatch) {
       const indentSize = (ulMatch[1] ?? "").length + 1;
       addBlock(
-        `${" ".repeat(indentSize)}${ulMatch[2] ?? "-"} ${renderInlineMarkdown(ulMatch[3] ?? "", context, context.theme.text)}`,
+        wrapPlain(
+          `${" ".repeat(indentSize)}${ulMatch[2] ?? "-"} ${renderInlineMarkdown(ulMatch[3] ?? "", context, context.theme.text)}`,
+          context.columns,
+        ),
       );
     } else if (olMatch) {
       const indentSize = (olMatch[1] ?? "").length + 1;
       addBlock(
-        `${" ".repeat(indentSize)}${olMatch[2] ?? "1"}. ${renderInlineMarkdown(olMatch[3] ?? "", context, context.theme.text)}`,
+        wrapPlain(
+          `${" ".repeat(indentSize)}${olMatch[2] ?? "1"}. ${renderInlineMarkdown(olMatch[3] ?? "", context, context.theme.text)}`,
+          context.columns,
+        ),
       );
     } else if (!line.trim()) {
       if (!lastLineEmpty) {
@@ -960,7 +970,7 @@ function markdownToAnsi(text: string, context: TerminalHistoryContext): string {
         lastLineEmpty = true;
       }
     } else {
-      addBlock(renderInlineMarkdown(line, context, context.theme.text));
+      addInlineBlock(line);
     }
   });
 
