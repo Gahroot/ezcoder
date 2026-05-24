@@ -11,6 +11,9 @@ interface AssistantMessageProps {
   thinking?: string;
   thinkingMs?: number;
   showThinking?: boolean;
+  streaming?: boolean;
+  renderMarkdown?: boolean;
+  availableTerminalHeight?: number;
 }
 
 // BLACK_CIRCLE + " " = 2 chars
@@ -21,6 +24,9 @@ export const AssistantMessage = React.memo(function AssistantMessage({
   thinking,
   thinkingMs,
   showThinking = false,
+  streaming = false,
+  renderMarkdown = true,
+  availableTerminalHeight,
 }: AssistantMessageProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
@@ -36,14 +42,24 @@ export const AssistantMessage = React.memo(function AssistantMessage({
 
   return (
     <Box flexDirection="column">
-      {hasThinking && <ThinkingBlock text={thinking!} durationMs={thinkingMs} />}
+      {hasThinking && (
+        <ThinkingBlock text={thinking!} streaming={streaming} durationMs={thinkingMs} />
+      )}
       {trimmedText && (
         <Box flexDirection="row" paddingLeft={1}>
           <Box width={PREFIX_WIDTH} flexShrink={0}>
             <Text color={theme.primary}>{BLACK_CIRCLE + " "}</Text>
           </Box>
           <Box flexDirection="column" flexGrow={1} width={contentWidth}>
-            <Markdown compact>{trimmedText}</Markdown>
+            <Markdown
+              width={contentWidth}
+              compact
+              renderMarkdown={renderMarkdown}
+              isPending={streaming}
+              availableTerminalHeight={availableTerminalHeight}
+            >
+              {trimmedText}
+            </Markdown>
           </Box>
         </Box>
       )}

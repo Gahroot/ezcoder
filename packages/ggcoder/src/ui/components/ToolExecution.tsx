@@ -11,6 +11,7 @@ import { DiffFrame } from "./DiffFrame.js";
 import { NoSelect } from "./NoSelect.js";
 
 const MAX_OUTPUT_LINES = 4; // max lines shown per tool result
+const RESPONSE_LEFT_PADDING = 1;
 
 // ToolUseLoader minWidth={2} = 2 chars
 const HEADER_PREFIX = 2;
@@ -116,7 +117,7 @@ export function ToolExecution(props: ToolExecutionProps) {
       );
       const headerContentWidth = Math.max(10, columns - HEADER_PREFIX);
       return (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginBottom={1}>
           <Box flexDirection="row">
             <ToolUseLoader status="running" staticDisplay={staticDisplay} />
             <Box flexGrow={1} width={headerContentWidth}>
@@ -146,7 +147,7 @@ export function ToolExecution(props: ToolExecutionProps) {
     if (COMPACT_TOOLS.has(props.name)) {
       const summary = getCompactRunningLabel(props.name, props.args);
       return (
-        <Box marginTop={1} marginBottom={1} flexDirection="row">
+        <Box paddingLeft={RESPONSE_LEFT_PADDING} marginBottom={1} flexDirection="row">
           <ToolUseLoader status="running" staticDisplay={staticDisplay} />
           <Text color={theme.toolName} bold>
             {summary}
@@ -157,7 +158,7 @@ export function ToolExecution(props: ToolExecutionProps) {
     if (STATE_TOOLS.has(props.name)) {
       const { label, detail } = getToolHeaderParts(props.name, props.args);
       return (
-        <Box marginTop={1} marginBottom={1} flexDirection="row">
+        <Box paddingLeft={RESPONSE_LEFT_PADDING} marginBottom={1} flexDirection="row">
           <ToolUseLoader status="running" staticDisplay={staticDisplay} />
           <Text color={theme.toolName} bold>
             {label}
@@ -175,7 +176,7 @@ export function ToolExecution(props: ToolExecutionProps) {
       const progLines = props.progressOutput.split("\n").filter(Boolean);
       const tail = progLines.slice(-3);
       return (
-        <Box marginTop={1} flexDirection="column">
+        <Box paddingLeft={RESPONSE_LEFT_PADDING} flexDirection="column">
           <Box flexDirection="row">
             <ToolUseLoader status="running" staticDisplay={staticDisplay} />
             <Spinner label={detail ? `${label}(${detail})` : label} staticDisplay={staticDisplay} />

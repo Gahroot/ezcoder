@@ -37,6 +37,8 @@ interface FooterProps {
    * a dedicated row.
    */
   statusBelow?: boolean;
+  /** False when raw markdown mode is active. */
+  renderMarkdown?: boolean;
 }
 
 // Model ID → short display name
@@ -135,12 +137,14 @@ export function getFooterRightLength({
   modelName,
   goalText,
   thinkingText,
+  renderMarkdown = true,
 }: {
   barWidth: number;
   contextPct: number;
   modelName: string;
   goalText: string;
   thinkingText: string;
+  renderMarkdown?: boolean;
 }): number {
   return (
     barWidth +
@@ -151,6 +155,7 @@ export function getFooterRightLength({
     modelName.length +
     3 +
     goalText.length +
+    (renderMarkdown ? 0 : 3 + "raw markdown".length) +
     3 +
     thinkingText.length
   );
@@ -166,6 +171,7 @@ export function doesFooterFitOnOneLine({
   thinkingLevel,
   goalMode = "off",
   statusBelow,
+  renderMarkdown: _renderMarkdown = true,
 }: {
   columns: number;
   model: string;
@@ -176,6 +182,7 @@ export function doesFooterFitOnOneLine({
   thinkingLevel?: ThinkingLevel;
   goalMode?: GoalMode;
   statusBelow?: boolean;
+  renderMarkdown?: boolean;
 }): boolean {
   if (statusBelow) return false;
   const parts = cwd.split("/").filter(Boolean);
@@ -209,6 +216,7 @@ export function Footer({
   hideCwd,
   hideGitBranch,
   statusBelow,
+  renderMarkdown = true,
 }: FooterProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
@@ -268,6 +276,7 @@ export function Footer({
     modelName,
     goalText,
     thinkingText,
+    renderMarkdown,
   });
   const availableWidth = columns - 2;
   const fitsOnOneLine = doesFooterFitOnOneLine({
@@ -280,6 +289,7 @@ export function Footer({
     thinkingLevel,
     goalMode,
     statusBelow,
+    renderMarkdown,
   });
 
   const maxPath = fitsOnOneLine ? availableWidth - rightLen - 2 : availableWidth;
@@ -309,6 +319,14 @@ export function Footer({
         <Text color={goalActive ? GOAL_COLOR : theme.textDim} bold={goalActive}>
           {goalText}
         </Text>
+      )}
+      {!renderMarkdown && (
+        <>
+          {sep}
+          <Text color={theme.warning} bold>
+            raw markdown
+          </Text>
+        </>
       )}
       {sep}
       {shimmerXhigh ? (

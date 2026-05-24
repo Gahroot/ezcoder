@@ -209,6 +209,7 @@ interface InputAreaProps {
   onToggleGoal?: () => void;
   onToggleSkills?: () => void;
   onTogglePixel?: () => void;
+  onToggleMarkdown?: () => void;
   cwd: string;
   commands?: SlashCommandInfo[];
   /**
@@ -297,6 +298,7 @@ export function InputArea({
   onToggleGoal,
   onToggleSkills,
   onTogglePixel,
+  onToggleMarkdown,
   cwd,
   commands = [],
   scopeBadge,
@@ -844,6 +846,12 @@ export function InputArea({
       // Ctrl+E toggles pixel (errors) overlay
       if (key.ctrl && input === "e") {
         onTogglePixel?.();
+        return;
+      }
+
+      // Ctrl+M toggles rendered/raw markdown mode, matching Gemini's raw markdown affordance.
+      if (key.ctrl && input === "m") {
+        onToggleMarkdown?.();
         return;
       }
 

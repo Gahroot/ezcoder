@@ -6,6 +6,7 @@ import { useTheme } from "../theme/theme.js";
 import { buildToolGroupSummary, type SummarySegment } from "../tool-group-summary.js";
 
 type ToolGroupTool = ToolGroupItem["tools"][number];
+const RESPONSE_LEFT_PADDING = 1;
 
 // ── Components ───────────────────────────────────────────
 
@@ -65,7 +66,7 @@ export function ToolGroupExecution({ tools }: ToolGroupExecutionProps) {
   const labelColor = status === "error" ? theme.toolError : theme.toolName;
 
   return (
-    <Box marginTop={1} marginBottom={1} flexDirection="row">
+    <Box paddingLeft={RESPONSE_LEFT_PADDING} marginBottom={1} flexDirection="row">
       <ToolUseLoader status={status} staticDisplay={staticDisplay} />
       <Box flexGrow={1} flexShrink={1}>
         <Text wrap="wrap">

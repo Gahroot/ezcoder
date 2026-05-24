@@ -1,23 +1,7 @@
 import React, { memo, useMemo } from "react";
-import { Text, Box } from "ink";
-import { useTheme } from "../theme/theme.js";
-import { StreamingMarkdown } from "./Markdown.js";
-import { ThinkingBlock } from "./ThinkingBlock.js";
-import { useTerminalSize } from "../hooks/useTerminalSize.js";
+import { Box } from "ink";
 import { stripDoneMarkers } from "../../utils/plan-steps.js";
-import { BLACK_CIRCLE } from "../constants/figures.js";
-
-// BLACK_CIRCLE + " " = 2 chars
-const PREFIX_WIDTH = 2;
-const MAX_STREAMING_PREVIEW_LINES = 12;
-
-interface StreamingAreaProps {
-  isRunning: boolean;
-  streamingText: string;
-  streamingThinking: string;
-  showThinking?: boolean;
-  thinkingMs?: number;
-}
+import { AssistantMessage } from "./AssistantMessage.js";
 
 interface StreamingTextPreview {
   text: string;
@@ -32,11 +16,22 @@ function estimateWrappedLineCount(text: string, width: number): number {
 
 export function getStreamingTextPreview(text: string, width: number): StreamingTextPreview {
   const safeWidth = Math.max(10, width);
-  if (estimateWrappedLineCount(text, safeWidth) <= MAX_STREAMING_PREVIEW_LINES) {
+  if (estimateWrappedLineCount(text, safeWidth) <= 12) {
     return { text, isTruncated: false };
   }
 
   return { text: "", isTruncated: true };
+}
+
+interface StreamingAreaProps {
+  isRunning: boolean;
+  streamingText: string;
+  streamingThinking: string;
+  showThinking?: boolean;
+  thinkingMs?: number;
+  reserveSpacing?: boolean;
+  renderMarkdown?: boolean;
+  availableTerminalHeight?: number;
 }
 
 export const StreamingArea = memo(function StreamingArea({
@@ -45,55 +40,31 @@ export const StreamingArea = memo(function StreamingArea({
   streamingThinking,
   showThinking = false,
   thinkingMs,
+  reserveSpacing = false,
+  renderMarkdown = true,
+  availableTerminalHeight,
 }: StreamingAreaProps) {
-  const theme = useTheme();
-  const { columns } = useTerminalSize();
-  const contentWidth = Math.max(10, columns - PREFIX_WIDTH - 1);
   const displayText = useMemo(
     () => (streamingText ? stripDoneMarkers(streamingText) : ""),
     [streamingText],
   );
-
-  // Return null when there is nothing to display.  Previously this kept an
-  // empty <Box marginTop={1}> alive while isRunning was true, adding phantom
-  // height to Ink's live area.  When isRunning later flipped to false in a
-  // separate render batch, the live area shrank and Ink's cursor math
-  // miscalculated the rewrite offset — clipping the bottom of the content.
-  // Trim because a streaming turn whose entire content is "[DONE:N]" gets
-  // reduced to a single space by stripDoneMarkers — don't render a lone "⏺".
   const trimmedDisplay = displayText.trim();
-  const preview = useMemo(
-    () => getStreamingTextPreview(trimmedDisplay, contentWidth),
-    [trimmedDisplay, contentWidth],
-  );
   const hasThinking = showThinking && !!streamingThinking;
-  if (!trimmedDisplay && !hasThinking) return null;
+
+  if (!trimmedDisplay && !hasThinking) {
+    return reserveSpacing ? <Box marginBottom={1} /> : null;
+  }
   if (!isRunning && !trimmedDisplay) return null;
 
   return (
-    <Box flexDirection="column">
-      {hasThinking && <ThinkingBlock text={streamingThinking} streaming durationMs={thinkingMs} />}
-
-      {trimmedDisplay && (
-        <Box flexDirection="row" paddingLeft={1}>
-          <Box width={PREFIX_WIDTH} flexShrink={0}>
-            <Text color={theme.primary}>{BLACK_CIRCLE + " "}</Text>
-          </Box>
-          <Box flexDirection="column" flexGrow={1} width={contentWidth}>
-            {preview.isTruncated ? (
-              <Text color={theme.textDim} wrap="wrap">
-                {"… streaming long response; full answer will print once complete."}
-              </Text>
-            ) : null}
-            {/* Stable/unstable split: only re-parses the tail block. */}
-            {preview.text ? (
-              <StreamingMarkdown width={contentWidth} compact>
-                {preview.text}
-              </StreamingMarkdown>
-            ) : null}
-          </Box>
-        </Box>
-      )}
-    </Box>
+    <AssistantMessage
+      text={trimmedDisplay}
+      thinking={streamingThinking}
+      thinkingMs={thinkingMs}
+      showThinking={showThinking}
+      streaming
+      renderMarkdown={renderMarkdown}
+      availableTerminalHeight={availableTerminalHeight}
+    />
   );
 });

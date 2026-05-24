@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Box, Text, useStdout } from "ink";
+import { Box, Text, useStdout, type DOMElement } from "ink";
 import { useTerminalSize } from "./hooks/useTerminalSize.js";
 import { useDoublePress } from "./hooks/useDoublePress.js";
 import {
@@ -995,13 +995,24 @@ export function getStaticHistoryKey({ resizeKey }: { resizeKey: number }): strin
 
 const MIN_LIVE_AREA_ROWS = 3;
 const INPUT_AREA_ROWS = 3;
-const MESSAGE_BODY_ROWS = 1;
 const STATUS_SLOT_ROWS = 2;
 const FOOTER_ONE_LINE_ROWS = 1;
 const FOOTER_TWO_LINE_ROWS = 2;
 const GOAL_STATUS_ROWS = 1;
 const COLLAPSED_FOOTER_STATUS_ROWS = 1;
 const MAX_EXPANDED_BACKGROUND_TASK_ROWS = 7;
+
+function isAgentSpacingItem(item: CompletedItem): boolean {
+  return [
+    "assistant",
+    "tool_start",
+    "tool_done",
+    "tool_group",
+    "server_tool_start",
+    "server_tool_done",
+    "subagent_group",
+  ].includes(item.kind);
+}
 
 export interface ChatControlsLayoutOptions {
   rows: number;
@@ -1092,15 +1103,23 @@ function partitionCompleted(items: CompletedItem[]): {
   // Find the first active item — everything before it is safe to flush
   const firstActiveIdx = items.findIndex(isActiveItem);
   if (firstActiveIdx === -1) {
-    // All items are completed
-    return { flushed: items, remaining: [] };
+    // All items are completed. Keep assistant messages in Ink so markdown is
+    // rendered from the first streamed token through completion, matching Gemini.
+    return {
+      flushed: items.filter((item) => item.kind !== "assistant"),
+      remaining: items.filter((item) => item.kind === "assistant"),
+    };
   }
   if (firstActiveIdx === 0) {
     return { flushed: [], remaining: items };
   }
+  const candidates = items.slice(0, firstActiveIdx);
   return {
-    flushed: items.slice(0, firstActiveIdx),
-    remaining: items.slice(firstActiveIdx),
+    flushed: candidates.filter((item) => item.kind !== "assistant"),
+    remaining: [
+      ...candidates.filter((item) => item.kind === "assistant"),
+      ...items.slice(firstActiveIdx),
+    ],
   };
 }
 
@@ -1347,6 +1366,7 @@ export function App(props: AppProps) {
   const [currentTools, setCurrentTools] = useState(props.tools);
   const currentToolsRef = useRef(props.tools);
   const [thinkingEnabled, setThinkingEnabled] = useState(!!props.thinking);
+  const [renderMarkdown, setRenderMarkdown] = useState(true);
   const messagesRef = useRef<Message[]>(props.sessionStore?.messages ?? props.messages);
   const repoMapInjectionEnabledRef = useRef(true);
   const repoMapDirtyRef = useRef(true);
@@ -2306,9 +2326,9 @@ export function App(props: AppProps) {
                 id: getId(),
               });
             }
-            if (prev.length > 0) queueFlush(prev);
-            queueFlush(items);
-            return [];
+            const flushablePrev = prev.filter((item) => item.kind !== "assistant");
+            if (flushablePrev.length > 0) queueFlush(flushablePrev);
+            return [...prev.filter((item) => item.kind === "assistant"), ...items];
           });
         },
         [queueFlush],
@@ -3082,6 +3102,22 @@ export function App(props: AppProps) {
         return;
       }
 
+      // Handle /markdown — Gemini-style rendered/raw markdown toggle
+      if (trimmed === "/markdown" || trimmed === "/md") {
+        setRenderMarkdown((prev) => {
+          const next = !prev;
+          setLiveItems([
+            {
+              kind: "info",
+              text: next ? "Rendered markdown mode." : "Raw markdown mode.",
+              id: getId(),
+            },
+          ]);
+          return next;
+        });
+        return;
+      }
+
       // Handle /clearplan — dismiss the approved plan
       if (trimmed === "/clearplan") {
         approvedPlanPathRef.current = undefined;
@@ -3586,6 +3622,34 @@ export function App(props: AppProps) {
     ];
   }, [customCommands]);
 
+  const normalizeStatusText = (text: string): string =>
+    text.replace(/\\n/g, "\n").replace(/^\n+|\n+$/g, "");
+
+  const renderStatusMessage = (
+    key: string,
+    glyph: string,
+    content: React.ReactNode,
+    glyphColor = theme.commandColor,
+    options: { bold?: boolean; muted?: boolean } = {},
+  ) => (
+    <Box key={key} flexDirection="row" paddingLeft={1} marginTop={1} flexShrink={1}>
+      <Box width={2} flexShrink={0}>
+        <Text color={glyphColor} bold={options.bold ?? true}>
+          {glyph}
+        </Text>
+      </Box>
+      <Box flexDirection="column" flexGrow={1}>
+        <Text
+          color={options.muted ? theme.textDim : theme.commandColor}
+          bold={options.bold}
+          wrap="wrap"
+        >
+          {content}
+        </Text>
+      </Box>
+    </Box>
+  );
+
   const renderItem = (item: CompletedItem) => {
     switch (item.kind) {
       case "tombstone":
@@ -3778,6 +3842,7 @@ export function App(props: AppProps) {
             text={item.text}
             thinking={item.thinking}
             thinkingMs={item.thinkingMs}
+            renderMarkdown={renderMarkdown}
           />
         );
       case "tool_start":
@@ -3830,30 +3895,28 @@ export function App(props: AppProps) {
       case "error": {
         const showMessage = item.message && item.message !== item.headline;
         return (
-          <Box key={item.id} marginTop={1} flexDirection="column" flexShrink={1}>
-            <Text color={theme.error} wrap="wrap">
-              {"✗ "}
-              {item.headline}
-            </Text>
-            {showMessage && (
-              <Text color={theme.textDim} wrap="wrap">
-                {`  ${item.message}`}
+          <Box key={item.id} flexDirection="row" paddingLeft={1} marginTop={1} flexShrink={1}>
+            <Box width={2} flexShrink={0}>
+              <Text color={theme.error} bold>
+                {"✗ "}
               </Text>
-            )}
-            <Text color={theme.textDim} wrap="wrap">
-              {`  → ${item.guidance}`}
-            </Text>
+            </Box>
+            <Box flexDirection="column" flexGrow={1}>
+              <Text color={theme.error} wrap="wrap">
+                {item.headline}
+              </Text>
+              {showMessage && (
+                <Text color={theme.textDim} wrap="wrap">
+                  {item.message}
+                </Text>
+              )}
+              <Text color={theme.textDim} wrap="wrap">{`→ ${item.guidance}`}</Text>
+            </Box>
           </Box>
         );
       }
       case "info":
-        return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
-            <Text color={theme.commandColor} wrap="wrap">
-              {item.text}
-            </Text>
-          </Box>
-        );
+        return renderStatusMessage(item.id, "○ ", item.text, theme.commandColor, { muted: true });
       case "update_notice":
         return (
           <Box
@@ -3871,64 +3934,57 @@ export function App(props: AppProps) {
           </Box>
         );
       case "plan_transition":
-        return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
-            <Text color={theme.commandColor} bold wrap="wrap">
-              {item.active ? "● " : "● "}
-              {item.text}
-            </Text>
-          </Box>
+        return renderStatusMessage(
+          item.id,
+          "● ",
+          normalizeStatusText(item.text),
+          theme.commandColor,
+          { bold: true },
         );
       case "goal_agent_transition":
-        return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
-            <Text color={theme.commandColor} bold wrap="wrap">
-              {"● "}
-              {item.text}
-            </Text>
-          </Box>
+        return renderStatusMessage(
+          item.id,
+          "● ",
+          normalizeStatusText(item.text),
+          theme.commandColor,
+          { bold: true },
         );
       case "thinking_transition": {
         const glyphColor = item.active ? theme.commandColor : theme.textDim;
-        return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
-            <Text color={glyphColor} bold>
-              {"✻ "}
-            </Text>
-            <Text color={item.active ? theme.commandColor : theme.textDim} bold>
-              {item.active ? "Thinking ON" : "Thinking OFF"}
-            </Text>
-          </Box>
+        return renderStatusMessage(
+          item.id,
+          "✻ ",
+          item.active ? "Thinking ON" : "Thinking OFF",
+          glyphColor,
+          { bold: true, muted: !item.active },
         );
       }
-      case "model_transition": {
-        const glyphColor = theme.commandColor;
-        return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
-            <Text color={glyphColor} bold>
-              {"▸ "}
-            </Text>
+      case "model_transition":
+        return renderStatusMessage(
+          item.id,
+          "▸ ",
+          <>
             <Text color={theme.textDim}>{"Switched to "}</Text>
             <Text color={theme.commandColor} bold>
               {item.modelName}
             </Text>
-          </Box>
+          </>,
+          theme.commandColor,
+          { bold: true },
         );
-      }
-      case "theme_transition": {
-        const glyphColor = theme.commandColor;
-        return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
-            <Text color={glyphColor} bold>
-              {"◐ "}
-            </Text>
+      case "theme_transition":
+        return renderStatusMessage(
+          item.id,
+          "◐ ",
+          <>
             <Text color={theme.textDim}>{"Theme switched to "}</Text>
             <Text color={theme.commandColor} bold>
               {item.themeName}
             </Text>
-          </Box>
+          </>,
+          theme.commandColor,
+          { bold: true },
         );
-      }
       case "plan_event": {
         // Plan-domain status changes (approve / reject / dismiss). Use the
         // command accent so transient TUI status rows share one purple voice.
@@ -3938,27 +3994,27 @@ export function App(props: AppProps) {
             : item.event === "rejected"
               ? "Plan rejected"
               : "Plan dismissed";
-        return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
-            <Text color={theme.commandColor} bold>
-              {"○ "}
-              {label}
-            </Text>
+        return renderStatusMessage(
+          item.id,
+          "○ ",
+          <>
+            <Text>{label}</Text>
             {item.detail ? <Text color={theme.textDim}>{` — "${item.detail}"`}</Text> : null}
-          </Box>
+          </>,
+          theme.commandColor,
+          { bold: true },
         );
       }
       case "stopped":
         // Cancellation / abort acknowledgement (ESC, auto-setup cancel, etc.).
         // Muted dim treatment — this is an ack, not a state change worth a
         // gradient. Glyph `⊘` reads as "stop" without being alarming.
-        return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
-            <Text color={theme.commandColor} bold>
-              {"⊘ "}
-              {item.text}
-            </Text>
-          </Box>
+        return renderStatusMessage(
+          item.id,
+          "⊘ ",
+          normalizeStatusText(item.text),
+          theme.commandColor,
+          { bold: true },
         );
       case "step_done":
         return (
@@ -4821,6 +4877,25 @@ export function App(props: AppProps) {
   const doneStatusVisible =
     !activityVisible && !stallStatusVisible && !!doneStatus && !agentLoop.isRunning;
   const statusSlotVisible = activityVisible || stallStatusVisible || doneStatusVisible;
+  const [controlsHeight, setControlsHeight] = useState(0);
+  const controlsObserverRef = useRef<ResizeObserver | null>(null);
+  const mainControlsRef = useCallback((node: DOMElement | null) => {
+    if (controlsObserverRef.current) {
+      controlsObserverRef.current.disconnect();
+      controlsObserverRef.current = null;
+    }
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const roundedHeight = Math.round(entry.contentRect.height);
+      setControlsHeight((prev) => (roundedHeight !== prev ? roundedHeight : prev));
+    });
+    observer.observe(node as unknown as Element);
+    controlsObserverRef.current = observer;
+  }, []);
+  useEffect(() => () => controlsObserverRef.current?.disconnect(), []);
+
   const footerFitsOnOneLine = doesFooterFitOnOneLine({
     columns,
     model: currentModel,
@@ -4844,12 +4919,21 @@ export function App(props: AppProps) {
     goalStatusEntryCount: goalStatusEntries.length,
     footerFitsOnOneLine,
   });
+  const measuredLiveAreaRows = Math.max(
+    MIN_LIVE_AREA_ROWS,
+    rows - (controlsHeight > 0 ? controlsHeight : chatControlsLayout.controlsRows) - 1,
+  );
   const isPixelView = overlay === "pixel";
+  const hasLiveAssistantItem = liveItems.some((item) => item.kind === "assistant");
   const visibleStreamingText =
-    goalModeStateRef.current === "planner" ? "" : agentLoop.streamingText;
+    goalModeStateRef.current === "planner" || hasLiveAssistantItem ? "" : agentLoop.streamingText;
+  const shouldReserveStreamingSpacing =
+    agentLoop.isRunning &&
+    !hasLiveAssistantItem &&
+    (visibleStreamingText.trim().length > 0 || liveItems.some(isAgentSpacingItem));
 
   return (
-    <Box flexDirection="column" width={columns}>
+    <Box flexDirection="column" width={columns} flexShrink={0} flexGrow={0}>
       {isGoalView ? (
         <GoalOverlay
           cwd={props.cwd}
@@ -5105,16 +5189,11 @@ export function App(props: AppProps) {
         />
       ) : (
         <>
-          {/* Content area */}
+          {/* MainContent */}
           <Box
             flexDirection="column"
             paddingRight={1}
-            minHeight={
-              agentLoop.isRunning && liveItems.length === 0 && !visibleStreamingText.trim()
-                ? MESSAGE_BODY_ROWS
-                : undefined
-            }
-            maxHeight={chatControlsLayout.liveAreaRows}
+            maxHeight={measuredLiveAreaRows}
             flexGrow={0}
             flexShrink={1}
             overflowY={agentLoop.isRunning ? "hidden" : undefined}
@@ -5125,10 +5204,13 @@ export function App(props: AppProps) {
               streamingText={visibleStreamingText}
               streamingThinking={agentLoop.streamingThinking}
               thinkingMs={agentLoop.thinkingMs}
+              reserveSpacing={shouldReserveStreamingSpacing}
+              renderMarkdown={renderMarkdown}
+              availableTerminalHeight={measuredLiveAreaRows}
             />
           </Box>
 
-          <Box flexDirection="column">
+          <Box ref={mainControlsRef} flexDirection="column" flexShrink={0} flexGrow={0}>
             {/* Queue indicator */}
             {agentLoop.queuedCount > 0 && (
               <Box marginTop={1}>
@@ -5188,6 +5270,9 @@ export function App(props: AppProps) {
                     <Text>
                       <Text color={theme.commandColor}>{"⠿ "}</Text>
                       <Text color={theme.textDim}>{"Ready to go.."}</Text>
+                      {!renderMarkdown && (
+                        <Text color={theme.warning}>{" · raw markdown mode"}</Text>
+                      )}
                     </Text>
                   )
                 ) : (
@@ -5213,6 +5298,9 @@ export function App(props: AppProps) {
               }}
               onTogglePixel={() => {
                 openOverlay("pixel");
+              }}
+              onToggleMarkdown={() => {
+                setRenderMarkdown((prev) => !prev);
               }}
               cwd={props.cwd}
               commands={allCommands}
@@ -5242,6 +5330,7 @@ export function App(props: AppProps) {
                   thinkingLevel={thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined}
                   goalMode={goalMode}
                   exitPending={exitPending}
+                  renderMarkdown={renderMarkdown}
                 />
                 {!exitPending && <GoalStatusBar entries={goalStatusEntries} />}
               </>

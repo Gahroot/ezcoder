@@ -118,15 +118,15 @@ function tokenToAnsi(
       const inline = inlineToAnsi(heading.tokens ?? [], theme);
       switch (heading.depth) {
         case 1:
-          return gap + chalk.bold.italic.underline(inline) + "\n\n";
+          return gap + chalk.bold.italic.underline(inline);
         default:
-          return gap + chalk.bold(inline) + "\n\n";
+          return gap + chalk.bold(inline);
       }
     }
 
     case "paragraph": {
       const inline = inlineToAnsi((token as Tokens.Paragraph).tokens ?? [], theme);
-      return gap + wrapAnsi(inline, Math.max(10, columns), { hard: true, wordWrap: true }) + "\n";
+      return gap + wrapAnsi(inline, Math.max(10, columns), { hard: true, wordWrap: true });
     }
 
     case "list": {
@@ -310,7 +310,7 @@ function tokenToAnsi(
       return gap + "---";
 
     case "space":
-      return "\n";
+      return "";
 
     case "html":
     case "def":

@@ -173,7 +173,8 @@ export function flushOverflow<T extends FlushableItem>(
     return { flushed: [], remaining: liveItems };
   }
 
-  return { flushed: liveItems.slice(0, splitAt), remaining: liveItems.slice(splitAt) };
+  const candidates = liveItems.slice(0, splitAt);
+  return { flushed: candidates, remaining: liveItems.slice(splitAt) };
 }
 
 /**
@@ -206,5 +207,8 @@ export function flushOnTurnEnd<T extends FlushableItem>(
     return { flushed: [], remaining: liveItems };
   }
 
-  return { flushed: liveItems, remaining: [] };
+  return {
+    flushed: liveItems,
+    remaining: [],
+  };
 }

@@ -1,5 +1,4 @@
 import chalk from "chalk";
-import { marked, type Token, type Tokens } from "marked";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
 import type { Provider } from "@kenkaiiii/gg-ai";
@@ -9,10 +8,10 @@ import type { CompletedItem } from "./App.js";
 import type { PasteInfo } from "./components/InputArea.js";
 import { BLACK_CIRCLE, RETURN_SYMBOL } from "./constants/figures.js";
 import type { Theme } from "./theme/theme.js";
-import { tokensToAnsi } from "./utils/token-to-ansi.js";
-import { containsMarkdownSyntax } from "./utils/markdown-cache.js";
+import { highlightCode } from "./utils/highlight.js";
 import { getUserMessageDisplayParts } from "./utils/user-message-display.js";
 import { buildToolGroupSummary, segmentsToPlainText } from "./tool-group-summary.js";
+import { stripUnsafeCharacters } from "./utils/text-utils.js";
 
 const LOGO_LINES = [" ▄▀▀▀ ▄▀▀▀", " █ ▀█ █ ▀█", " ▀▄▄▀ ▀▄▄▀"];
 const GRADIENT = [
@@ -33,6 +32,7 @@ const GAP = "   ";
 const LOGO_WIDTH = 9;
 const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 20;
 const MAX_OUTPUT_LINES = 4;
+const RESPONSE_LEFT_PADDING = " ";
 const USER_MESSAGE_BACKGROUND = "#374151";
 const USER_MESSAGE_PREFIX = "> ";
 const USER_MESSAGE_TOP_FILL = "▄";
@@ -67,10 +67,32 @@ export interface TerminalHistoryContext {
   cwd: string;
 }
 
+function isAgentSpacingKind(kind: CompletedItem["kind"]): boolean {
+  return [
+    "assistant",
+    "tool_start",
+    "tool_done",
+    "tool_group",
+    "server_tool_start",
+    "server_tool_done",
+    "subagent_group",
+    "info",
+    "error",
+    "stopped",
+    "plan_transition",
+    "goal_agent_transition",
+    "thinking_transition",
+    "model_transition",
+    "theme_transition",
+    "plan_event",
+  ].includes(kind);
+}
+
 export function createTerminalHistoryPrinter({
   stream = process.stdout,
 }: TerminalHistoryPrinterOptions = {}): TerminalHistoryPrinter {
   const printed = new Set<string>();
+  let previousPrintedKind: CompletedItem["kind"] | null = null;
 
   return {
     print(items, context, options) {
@@ -80,19 +102,25 @@ export function createTerminalHistoryPrinter({
         const output = serializeCompletedItemToTerminalHistory(item, context);
         const endsWithBlankLine = item.kind === "banner";
         const formatted = formatHistoryWrite(output, {
-          leadingSeparator: false,
+          leadingSeparator:
+            previousPrintedKind !== null &&
+            isAgentSpacingKind(previousPrintedKind) &&
+            isAgentSpacingKind(item.kind),
           trailingBlankLine: endsWithBlankLine,
         });
         if (formatted.length === 0) continue;
         printed.add(item.id);
         writeOutput(formatted);
+        previousPrintedKind = item.kind;
       }
     },
     clear() {
       printed.clear();
+      previousPrintedKind = null;
     },
     resetPrinted() {
       printed.clear();
+      previousPrintedKind = null;
     },
     get printedIds() {
       return printed;
@@ -139,7 +167,13 @@ export function serializeCompletedItemToTerminalHistory(
     case "error":
       return renderError(item.headline, item.message, item.guidance, context);
     case "info":
-      return color(context.theme.commandColor, wrapPlain(item.text, context.columns));
+      return renderStatusLine(
+        "○",
+        normalizeStatusText(item.text),
+        context,
+        context.theme.commandColor,
+        false,
+      );
     case "style_pack":
       return renderStylePack(item.added, item.showSetupHint, context);
     case "setup_hint":
@@ -159,29 +193,82 @@ export function serializeCompletedItemToTerminalHistory(
     case "duration":
       return dim(context, `✻ ${item.verb} ${formatDuration(item.durationMs)}`);
     case "plan_transition":
-      return line(context, context.theme.commandColor, `● ${item.text}`, true);
+      return renderStatusLine(
+        "●",
+        normalizeStatusText(item.text),
+        context,
+        context.theme.commandColor,
+        true,
+      );
     case "goal_agent_transition":
-      return line(context, context.theme.commandColor, `● ${item.text}`, true);
+      return renderStatusLine(
+        "●",
+        normalizeStatusText(item.text),
+        context,
+        context.theme.commandColor,
+        true,
+      );
     case "thinking_transition":
-      return line(
+      return renderStatusLine(
+        "✻",
+        item.active ? "Thinking ON" : "Thinking OFF",
         context,
         item.active ? context.theme.commandColor : context.theme.textDim,
-        `✻ ${item.active ? "Thinking ON" : "Thinking OFF"}`,
         true,
       );
     case "model_transition":
-      return `${color(context.theme.commandColor, "▸", true)} ${dim(context, "Switched to ")}${color(context.theme.commandColor, item.modelName, true)}`;
+      return renderStatusLine(
+        "▸",
+        `${dim(context, "Switched to ")}${color(context.theme.commandColor, item.modelName, true)}`,
+        context,
+        context.theme.commandColor,
+        true,
+        true,
+      );
     case "theme_transition":
-      return `${color(context.theme.commandColor, "◐", true)} ${dim(context, "Theme switched to ")}${color(context.theme.commandColor, item.themeName, true)}`;
+      return renderStatusLine(
+        "◐",
+        `${dim(context, "Theme switched to ")}${color(context.theme.commandColor, item.themeName, true)}`,
+        context,
+        context.theme.commandColor,
+        true,
+        true,
+      );
     case "plan_event":
       return renderPlanEvent(item.event, item.detail, context);
     case "stopped":
-      return color(context.theme.commandColor, `⊘ ${item.text}`, true);
+      return renderStatusLine(
+        "⊘",
+        normalizeStatusText(item.text),
+        context,
+        context.theme.commandColor,
+        true,
+      );
     case "step_done":
       return renderStepDone(item.stepNum, item.description, context);
     case "tombstone":
       return "";
   }
+}
+
+function normalizeStatusText(text: string): string {
+  return text.replace(/\\n/g, "\n").replace(/^\n+|\n+$/g, "");
+}
+
+function renderStatusLine(
+  glyph: string,
+  text: string,
+  context: TerminalHistoryContext,
+  glyphColor: string,
+  bold: boolean,
+  textAlreadyStyled = false,
+): string {
+  const prefix = ` ${color(glyphColor, glyph, true)} `;
+  const continuation = "   ";
+  const body = textAlreadyStyled
+    ? text
+    : color(bold ? glyphColor : context.theme.textDim, text, bold);
+  return prefixFirstLine(body, prefix, continuation);
 }
 
 function formatHistoryWrite(
@@ -294,7 +381,7 @@ function renderAssistant(
     lines.push(color(context.theme.textMuted, label));
     lines.push(dim(context, indent(wrapPlain(thinking.trim(), context.columns - 2), "  ")));
   }
-  const body = markdownToAnsi(text, context).trim();
+  const body = markdownToAnsi(text, context).replace(/^\n+|\n+$/g, "");
   if (body.length > 0) {
     lines.push(prefixFirstLine(body, ` ${color(context.theme.primary, BLACK_CIRCLE)} `, "   "));
   }
@@ -723,7 +810,7 @@ function toolHeader(
       )
     : "";
   const suffixText = options.suffix ? dim(context, ` ${options.suffix}`) : "";
-  return `${color(dotColor, BLACK_CIRCLE)} ${color(labelColor, label, true)}${detailText}${suffixText}`;
+  return `${RESPONSE_LEFT_PADDING}${color(dotColor, BLACK_CIRCLE)} ${color(labelColor, label, true)}${detailText}${suffixText}`;
 }
 
 function stateToolHeader(
@@ -743,34 +830,272 @@ function messageResponse(lines: readonly string[], context: TerminalHistoryConte
   if (lines.length === 0) return [];
   const [first, ...rest] = lines;
   return [
-    `${dim(context, `  ${RETURN_SYMBOL}  `)}${first}`,
-    ...rest.map((lineText) => `${dim(context, "     ")}${lineText}`),
+    `${RESPONSE_LEFT_PADDING}${dim(context, `  ${RETURN_SYMBOL}  `)}${first}`,
+    ...rest.map((lineText) => `${RESPONSE_LEFT_PADDING}${dim(context, "     ")}${lineText}`),
   ];
 }
 
 function prefixFirstLine(text: string, firstPrefix: string, nextPrefix: string): string {
   return text
     .split("\n")
-    .map((lineText, index) => `${index === 0 ? firstPrefix : nextPrefix}${lineText}`)
+    .map((lineText, index) => {
+      if (lineText.length === 0) return "";
+      return `${index === 0 ? firstPrefix : nextPrefix}${lineText}`;
+    })
     .join("\n");
 }
 
 function markdownToAnsi(text: string, context: TerminalHistoryContext): string {
-  if (!text.trim()) return "";
-  let tokens: Token[];
-  if (!containsMarkdownSyntax(text)) {
-    tokens = [
-      {
-        type: "paragraph",
-        raw: text,
-        text,
-        tokens: [{ type: "text", raw: text, text }],
-      } as Tokens.Paragraph,
-    ];
-  } else {
-    tokens = marked.lexer(text);
+  const safeText = stripUnsafeCharacters(text);
+  if (!safeText.trim()) return "";
+
+  const lines = safeText.split(/\r?\n/);
+  const headerRegex = /^ *(#{1,4}) +(.*)/;
+  const codeFenceRegex = /^ *(`{3,}|~{3,}) *([\w-]*?) *$/;
+  const ulItemRegex = /^([ \t]*)([-*+]) +(.*)/;
+  const olItemRegex = /^([ \t]*)(\d+)\. +(.*)/;
+  const hrRegex = /^ *([-*_] *){3,} *$/;
+  const tableRowRegex = /^\s*\|(.+)\|\s*$/;
+  const tableSeparatorRegex = /^\s*\|?\s*(:?-+:?)\s*(\|\s*(:?-+:?)\s*)+\|?\s*$/;
+
+  const blocks: string[] = [];
+  let inCodeBlock = false;
+  let codeBlockContent: string[] = [];
+  let codeBlockLang: string | null = null;
+  let codeBlockFence = "";
+  let inTable = false;
+  let tableHeaders: string[] = [];
+  let tableRows: string[][] = [];
+  let lastLineEmpty = true;
+
+  const addBlock = (block: string): void => {
+    if (!block) return;
+    blocks.push(block);
+    lastLineEmpty = false;
+  };
+
+  const flushTable = (): void => {
+    if (tableHeaders.length > 0 && tableRows.length > 0) {
+      addBlock(renderMarkdownTable(tableHeaders, tableRows, context));
+    }
+    inTable = false;
+    tableHeaders = [];
+    tableRows = [];
+  };
+
+  lines.forEach((line, index) => {
+    if (inCodeBlock) {
+      const fenceMatch = line.match(codeFenceRegex);
+      if (
+        fenceMatch &&
+        fenceMatch[1]?.startsWith(codeBlockFence[0] ?? "") &&
+        fenceMatch[1].length >= codeBlockFence.length
+      ) {
+        addBlock(renderMarkdownCodeBlock(codeBlockContent, codeBlockLang, context));
+        inCodeBlock = false;
+        codeBlockContent = [];
+        codeBlockLang = null;
+        codeBlockFence = "";
+      } else {
+        codeBlockContent.push(line);
+      }
+      return;
+    }
+
+    const codeFenceMatch = line.match(codeFenceRegex);
+    const headerMatch = line.match(headerRegex);
+    const ulMatch = line.match(ulItemRegex);
+    const olMatch = line.match(olItemRegex);
+    const tableRowMatch = line.match(tableRowRegex);
+    const tableSeparatorMatch = line.match(tableSeparatorRegex);
+
+    if (codeFenceMatch) {
+      inCodeBlock = true;
+      codeBlockFence = codeFenceMatch[1] ?? "```";
+      codeBlockLang = codeFenceMatch[2] || null;
+    } else if (tableRowMatch && !inTable) {
+      if (index + 1 < lines.length && tableSeparatorRegex.test(lines[index + 1] ?? "")) {
+        inTable = true;
+        tableHeaders = tableRowMatch[1]?.split("|").map((cell) => cell.trim()) ?? [];
+        tableRows = [];
+      } else {
+        addBlock(renderInlineMarkdown(line, context, context.theme.text));
+      }
+    } else if (inTable && tableSeparatorMatch) {
+      // Separator belongs to current table.
+    } else if (inTable && tableRowMatch) {
+      const cells = tableRowMatch[1]?.split("|").map((cell) => cell.trim()) ?? [];
+      while (cells.length < tableHeaders.length) cells.push("");
+      if (cells.length > tableHeaders.length) cells.length = tableHeaders.length;
+      tableRows.push(cells);
+    } else if (inTable) {
+      flushTable();
+      if (line.trim()) addBlock(renderInlineMarkdown(line, context, context.theme.text));
+    } else if (hrRegex.test(line)) {
+      addBlock(chalk.dim("---"));
+    } else if (headerMatch) {
+      const level = headerMatch[1]?.length ?? 1;
+      const headerText = headerMatch[2] ?? "";
+      const rendered = renderInlineMarkdown(
+        headerText,
+        context,
+        level <= 2 ? context.theme.link : context.theme.text,
+      );
+      addBlock(
+        level <= 3 ? chalk.bold(rendered) : chalk.italic(color(context.theme.textMuted, rendered)),
+      );
+    } else if (ulMatch) {
+      const indentSize = (ulMatch[1] ?? "").length + 1;
+      addBlock(
+        `${" ".repeat(indentSize)}${ulMatch[2] ?? "-"} ${renderInlineMarkdown(ulMatch[3] ?? "", context, context.theme.text)}`,
+      );
+    } else if (olMatch) {
+      const indentSize = (olMatch[1] ?? "").length + 1;
+      addBlock(
+        `${" ".repeat(indentSize)}${olMatch[2] ?? "1"}. ${renderInlineMarkdown(olMatch[3] ?? "", context, context.theme.text)}`,
+      );
+    } else if (!line.trim()) {
+      if (!lastLineEmpty) {
+        blocks.push("");
+        lastLineEmpty = true;
+      }
+    } else {
+      addBlock(renderInlineMarkdown(line, context, context.theme.text));
+    }
+  });
+
+  if (inCodeBlock) addBlock(renderMarkdownCodeBlock(codeBlockContent, codeBlockLang, context));
+  if (inTable) flushTable();
+  return blocks.join("\n");
+}
+
+function renderInlineMarkdown(
+  rawText: string,
+  context: TerminalHistoryContext,
+  defaultColor: string,
+): string {
+  const text = rawText;
+  if (!/[*_~`<[]|https?:\/\//.test(text)) return color(defaultColor, text);
+
+  const inlineRegex =
+    /(\*\*\*.*?\*\*\*|\*\*.*?\*\*|\*.*?\*|_.*?_|~~.*?~~|\[.*?\]\(.*?\)|`+.+?`+|<u>.*?<\/u>|https?:\/\/\S+)/g;
+  let result = "";
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = inlineRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) result += color(defaultColor, text.slice(lastIndex, match.index));
+    const fullMatch = match[0];
+    let styledPart = "";
+
+    if (fullMatch.endsWith("***") && fullMatch.startsWith("***") && fullMatch.length > 6) {
+      styledPart = chalk.bold(
+        chalk.italic(renderInlineMarkdown(fullMatch.slice(3, -3), context, defaultColor)),
+      );
+    } else if (fullMatch.endsWith("**") && fullMatch.startsWith("**") && fullMatch.length > 4) {
+      styledPart = chalk.bold(renderInlineMarkdown(fullMatch.slice(2, -2), context, defaultColor));
+    } else if (
+      fullMatch.length > 2 &&
+      ((fullMatch.startsWith("*") && fullMatch.endsWith("*")) ||
+        (fullMatch.startsWith("_") && fullMatch.endsWith("_"))) &&
+      !/\w/.test(text.substring(match.index - 1, match.index)) &&
+      !/\w/.test(text.substring(inlineRegex.lastIndex, inlineRegex.lastIndex + 1)) &&
+      !/\S[./\\]/.test(text.substring(match.index - 2, match.index)) &&
+      !/[./\\]\S/.test(text.substring(inlineRegex.lastIndex, inlineRegex.lastIndex + 2))
+    ) {
+      styledPart = chalk.italic(
+        renderInlineMarkdown(fullMatch.slice(1, -1), context, defaultColor),
+      );
+    } else if (fullMatch.startsWith("~~") && fullMatch.endsWith("~~") && fullMatch.length > 4) {
+      styledPart = chalk.strikethrough(
+        renderInlineMarkdown(fullMatch.slice(2, -2), context, defaultColor),
+      );
+    } else if (fullMatch.startsWith("`") && fullMatch.endsWith("`") && fullMatch.length > 1) {
+      const codeMatch = fullMatch.match(/^(`+)(.+?)\1$/s);
+      if (codeMatch?.[2]) styledPart = color(context.theme.accent, codeMatch[2]);
+    } else if (fullMatch.startsWith("[") && fullMatch.includes("](") && fullMatch.endsWith(")")) {
+      const linkMatch = fullMatch.match(/\[(.*?)\]\((.*?)\)/);
+      if (linkMatch) {
+        const linkText = linkMatch[1] ?? "";
+        const url = linkMatch[2] ?? "";
+        styledPart = `${renderInlineMarkdown(linkText, context, defaultColor)}${color(defaultColor, " (")}${color(context.theme.link, url)}${color(defaultColor, ")")}`;
+      }
+    } else if (fullMatch.startsWith("<u>") && fullMatch.endsWith("</u>") && fullMatch.length > 7) {
+      styledPart = chalk.underline(
+        renderInlineMarkdown(fullMatch.slice(3, -4), context, defaultColor),
+      );
+    } else if (fullMatch.match(/^https?:\/\//)) {
+      styledPart = color(context.theme.link, fullMatch);
+    }
+
+    result += styledPart || color(defaultColor, fullMatch);
+    lastIndex = inlineRegex.lastIndex;
   }
-  return tokensToAnsi(tokens, context.theme, Math.max(20, context.columns - 2));
+
+  if (lastIndex < text.length) result += color(defaultColor, text.slice(lastIndex));
+  return result;
+}
+
+function renderMarkdownCodeBlock(
+  content: string[],
+  lang: string | null,
+  context: TerminalHistoryContext,
+): string {
+  const code = content.join("\n");
+  const lines = code.replace(/\n$/u, "").split(/\r?\n/);
+  const padWidth = String(lines.length).length;
+  return lines
+    .map((line, index) => {
+      const lineNumber = color(context.theme.textDim, String(index + 1).padStart(padWidth, " "));
+      const highlighted = lang ? highlightCode(line, lang) : line;
+      return `${lineNumber} ${highlighted}`;
+    })
+    .join("\n");
+}
+
+function renderMarkdownTable(
+  headers: string[],
+  rows: string[][],
+  context: TerminalHistoryContext,
+): string {
+  const allRows = [headers, ...rows];
+  const columnCount = Math.max(headers.length, ...rows.map((row) => row.length), 1);
+  const widths = Array.from({ length: columnCount }, (_, index) => {
+    return Math.max(
+      3,
+      ...allRows.map((row) =>
+        stringWidth(stripAnsi(renderInlineMarkdown(row[index] ?? "", context, context.theme.text))),
+      ),
+    );
+  });
+  const border = (left: string, middle: string, right: string) =>
+    color(
+      context.theme.border,
+      left + widths.map((width) => "─".repeat(width + 2)).join(middle) + right,
+    );
+  const rowLine = (row: string[], header = false) => {
+    const cells = widths.map((width, index) => {
+      const rendered = renderInlineMarkdown(
+        row[index] ?? "",
+        context,
+        header ? context.theme.link : context.theme.text,
+      );
+      const padded = rendered + " ".repeat(Math.max(0, width - stringWidth(stripAnsi(rendered))));
+      return ` ${header ? chalk.bold(padded) : padded} `;
+    });
+    return (
+      color(context.theme.border, "│") +
+      cells.join(color(context.theme.border, "│")) +
+      color(context.theme.border, "│")
+    );
+  };
+  return [
+    border("┌", "┬", "┐"),
+    rowLine(headers, true),
+    border("├", "┼", "┤"),
+    ...rows.map((row) => rowLine(row)),
+    border("└", "┴", "┘"),
+  ].join("\n");
 }
 
 function formatDuration(ms: number): string {
