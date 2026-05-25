@@ -285,8 +285,9 @@ describe("terminal history", () => {
     const rendered = stripAnsi(output);
 
     expect(rendered).toMatch(
-      /Coordinator update\n\n [·⏺●] Worker started: Audit \/goal role contracts/,
+      /Coordinator update\n\n [⏺●] Worker started: Audit \/goal role contracts/,
     );
+    expect(rendered).not.toContain(" · Worker started");
     expect(rendered).toContain(" · worker worker-1");
     expect(rendered).toContain("  ⎿  Task is running in the background.");
     expect(rendered).not.toContain("↻ Worker started");

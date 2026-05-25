@@ -213,7 +213,7 @@ export function serializeCompletedItemToTerminalHistory(
       );
     case "plan_transition":
       return renderStatusLine(
-        "●",
+        BLACK_CIRCLE,
         normalizeStatusText(item.text),
         context,
         context.theme.commandColor,
@@ -221,7 +221,7 @@ export function serializeCompletedItemToTerminalHistory(
       );
     case "goal_agent_transition":
       return renderStatusLine(
-        "●",
+        BLACK_CIRCLE,
         normalizeStatusText(item.text),
         context,
         context.theme.commandColor,
@@ -633,7 +633,10 @@ function renderGoalProgress(
           : item.phase === "continuing"
             ? context.theme.warning
             : context.theme.primary;
-  const header = `${toolHeader(status, color(labelColor, item.title, true), "", context)}${item.workerId ? dim(context, ` · worker ${item.workerId}`) : ""}`;
+  const header = `${toolHeader(status, color(labelColor, item.title, true), "", context, {
+    dotColor: labelColor,
+    indicator: BLACK_CIRCLE,
+  })}${item.workerId ? dim(context, ` · worker ${item.workerId}`) : ""}`;
   const bodyLines: string[] = [];
   if (item.detail) {
     bodyLines.push(dim(context, wrapPlain(item.detail, context.columns - 8)));
@@ -871,15 +874,16 @@ function toolHeader(
   label: string,
   detail: string,
   context: TerminalHistoryContext,
-  options: { suffix?: string; quoteDetail?: boolean } = {},
+  options: { suffix?: string; quoteDetail?: boolean; dotColor?: string; indicator?: string } = {},
 ): string {
   const dotColor =
-    status === "error"
+    options.dotColor ??
+    (status === "error"
       ? context.theme.error
       : status === "done"
         ? context.theme.success
-        : context.theme.spinnerColor;
-  const indicator = status === "running" ? SPINNER_FRAMES[0] : BLACK_CIRCLE;
+        : context.theme.spinnerColor);
+  const indicator = options.indicator ?? (status === "running" ? SPINNER_FRAMES[0] : BLACK_CIRCLE);
   const labelColor =
     status === "error"
       ? context.theme.error

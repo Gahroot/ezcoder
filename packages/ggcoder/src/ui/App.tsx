@@ -78,6 +78,7 @@ import { useTheme, useSetTheme, type ThemeName } from "./theme/theme.js";
 import { useTerminalTitle } from "./hooks/useTerminalTitle.js";
 import { getGitBranch } from "../utils/git.js";
 import { getModel, getContextWindow, getMaxThinkingLevel } from "../core/model-registry.js";
+import { BLACK_CIRCLE } from "./constants/figures.js";
 import { SessionManager } from "../core/session-manager.js";
 import {
   appendMessagesToSession as appendSessionMessages,
@@ -4031,7 +4032,7 @@ export function App(props: AppProps) {
         return withPrintedBoundarySpacing(
           <Box key={item.id} flexDirection="column" paddingLeft={1} marginTop={1} flexShrink={1}>
             <Box flexDirection="row">
-              <ToolUseLoader status={loaderStatus} staticDisplay />
+              <ToolUseLoader status={loaderStatus} staticDisplay color={color} />
               <Box flexGrow={1} width={headerContentWidth}>
                 <Text wrap="wrap">
                   <Text color={color} bold>
@@ -4255,7 +4256,7 @@ export function App(props: AppProps) {
       case "plan_transition":
         return renderStatusMessage(
           item.id,
-          "● ",
+          `${BLACK_CIRCLE} `,
           normalizeStatusText(item.text),
           theme.commandColor,
           { bold: true },
@@ -4263,7 +4264,7 @@ export function App(props: AppProps) {
       case "goal_agent_transition":
         return renderStatusMessage(
           item.id,
-          "● ",
+          `${BLACK_CIRCLE} `,
           normalizeStatusText(item.text),
           theme.commandColor,
           { bold: true },
