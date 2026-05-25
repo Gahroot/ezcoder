@@ -137,6 +137,7 @@ describe("goal worker failure propagation", () => {
     const systemPromptIndex = args.indexOf("--system-prompt") + 1;
     const prompt = args[systemPromptIndex];
 
+    expect(args).not.toContain("--thinking");
     expect(prompt).toContain(`cwd=${tmpProject}`);
     expect(prompt).toContain("run_id=goal-a");
     expect(prompt).toContain("task_id=task-a");
@@ -150,9 +151,36 @@ describe("goal worker failure propagation", () => {
       "do not default to generic tests, scripts, screenshots, benchmarks, or simulations",
     );
     expect(prompt).toContain("command/file evidence");
+    expect(prompt).toContain("isolated git worktree");
+    expect(prompt).toContain("Do not merge or touch the main checkout");
+    expect(prompt).toContain("candidate packet");
+    expect(prompt).toContain("base SHA");
+    expect(prompt).toContain("diffstat");
+    expect(prompt).toContain("patch path");
+    expect(prompt).toContain("depends_on");
+    expect(prompt).toContain("parallel_group");
+    expect(prompt).toContain("expected_changed_scope");
+    expect(prompt).toContain("merge_strategy");
     expect(prompt).toContain(
       'goals({ action: "evidence" | "task", run_id: "goal-a", task_id: "task-a"',
     );
+  });
+
+  it("passes the active thinking level to the worker CLI when enabled", async () => {
+    const mod = await import("./goal-worker.js");
+
+    await mod.startGoalWorker({
+      cwd: tmpProject,
+      provider: "anthropic",
+      model: "claude-test",
+      thinkingLevel: "xhigh",
+      goalRunId: "goal-a",
+      goalTaskId: "task-a",
+      prompt: "Do deterministic work",
+    });
+
+    const args = spawnMock.mock.calls[0]?.[1] as string[];
+    expect(args).toEqual(expect.arrayContaining(["--thinking", "xhigh"]));
   });
 
   it("exports a testable worker system prompt/context helper", async () => {
@@ -171,6 +199,10 @@ describe("goal worker failure propagation", () => {
     expect(prompt).toContain("Implement typed handoff");
     expect(prompt).toContain("Do not mark the whole goal complete");
     expect(prompt).toContain("do not rely on narrative or human visual inspection");
+    expect(prompt).toContain("isolated git worktree");
+    expect(prompt).toContain("candidate packet");
+    expect(prompt).toContain("depends_on");
+    expect(prompt).toContain("parallel_group");
   });
 
   it("does not mark empty successful process exit as durable task completion", async () => {

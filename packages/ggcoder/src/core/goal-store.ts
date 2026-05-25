@@ -16,6 +16,12 @@ export type GoalRunStatus =
 
 export type GoalTaskStatus = "pending" | "running" | "verifying" | "done" | "failed" | "blocked";
 
+export type GoalTaskMergeStrategy =
+  | "parallel_candidate"
+  | "after_dependencies"
+  | "serial"
+  | "manual";
+
 export type GoalPrerequisiteStatus = "unknown" | "met" | "missing";
 
 export type GoalEvidenceKind = "log" | "command" | "screenshot" | "file" | "summary";
@@ -103,6 +109,10 @@ export interface GoalTask {
   status: GoalTaskStatus;
   workerId?: string;
   attempts: number;
+  dependsOn?: string[];
+  parallelGroup?: string;
+  expectedChangedScope?: string[];
+  mergeStrategy?: GoalTaskMergeStrategy;
   verification?: GoalVerificationResult;
   lastSummary?: string;
 }
@@ -191,6 +201,10 @@ export interface GoalTaskInput {
   status?: GoalTaskStatus;
   workerId?: string;
   attempts?: number;
+  dependsOn?: string[];
+  parallelGroup?: string;
+  expectedChangedScope?: string[];
+  mergeStrategy?: GoalTaskMergeStrategy;
   verification?: GoalVerificationResult;
   lastSummary?: string;
 }
@@ -234,6 +248,10 @@ function mergeGoalTasks(existing: GoalTask[], input: GoalTask[] | undefined): Go
         task.status !== next.status || task.attempts > next.attempts ? task.status : next.status,
       attempts: Math.max(task.attempts, next.attempts),
       workerId: task.workerId ?? next.workerId,
+      dependsOn: task.dependsOn ?? next.dependsOn,
+      parallelGroup: task.parallelGroup ?? next.parallelGroup,
+      expectedChangedScope: task.expectedChangedScope ?? next.expectedChangedScope,
+      mergeStrategy: task.mergeStrategy ?? next.mergeStrategy,
       verification: task.verification ?? next.verification,
       lastSummary: task.lastSummary ?? next.lastSummary,
     };
@@ -317,6 +335,15 @@ function isTaskStatus(value: unknown): value is GoalTaskStatus {
     value === "done" ||
     value === "failed" ||
     value === "blocked"
+  );
+}
+
+function isTaskMergeStrategy(value: unknown): value is GoalTaskMergeStrategy {
+  return (
+    value === "parallel_candidate" ||
+    value === "after_dependencies" ||
+    value === "serial" ||
+    value === "manual"
   );
 }
 
@@ -461,6 +488,14 @@ function normalizeTask(value: unknown): GoalTask | null {
     status: isTaskStatus(value.status) ? value.status : "pending",
     ...(optionalString(value.workerId) ? { workerId: optionalString(value.workerId) } : {}),
     attempts: typeof value.attempts === "number" && value.attempts >= 0 ? value.attempts : 0,
+    ...(stringArray(value.dependsOn).length > 0 ? { dependsOn: stringArray(value.dependsOn) } : {}),
+    ...(optionalString(value.parallelGroup)
+      ? { parallelGroup: optionalString(value.parallelGroup) }
+      : {}),
+    ...(stringArray(value.expectedChangedScope).length > 0
+      ? { expectedChangedScope: stringArray(value.expectedChangedScope) }
+      : {}),
+    ...(isTaskMergeStrategy(value.mergeStrategy) ? { mergeStrategy: value.mergeStrategy } : {}),
     ...(normalizeVerification(value.verification)
       ? { verification: normalizeVerification(value.verification) }
       : {}),
@@ -766,6 +801,12 @@ export function createGoalTask(input: GoalTaskInput): GoalTask {
     status: input.status ?? "pending",
     ...(input.workerId ? { workerId: input.workerId } : {}),
     attempts: input.attempts ?? 0,
+    ...(input.dependsOn && input.dependsOn.length > 0 ? { dependsOn: input.dependsOn } : {}),
+    ...(input.parallelGroup ? { parallelGroup: input.parallelGroup } : {}),
+    ...(input.expectedChangedScope && input.expectedChangedScope.length > 0
+      ? { expectedChangedScope: input.expectedChangedScope }
+      : {}),
+    ...(input.mergeStrategy ? { mergeStrategy: input.mergeStrategy } : {}),
     ...(input.verification ? { verification: input.verification } : {}),
     ...(input.lastSummary ? { lastSummary: input.lastSummary } : {}),
   };

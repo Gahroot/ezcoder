@@ -62,6 +62,10 @@ function cleanLines(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+function rawLines(value: string): string[] {
+  return stripAnsi(value).replace(/\r/g, "\n").split("\n");
+}
+
 function renderLiveQueuedLines(item: Extract<CompletedItem, { kind: "queued" }>): string[] {
   const originalColumns = process.stdout.columns;
   const originalRows = process.stdout.rows;
@@ -86,6 +90,28 @@ function renderHistoryQueuedLines(item: Extract<CompletedItem, { kind: "queued" 
   return cleanLines(serializeCompletedItemToTerminalHistory(item, context));
 }
 
+function renderQueueIndicatorLines(queuedCount: number, marginTop = 1): string[] {
+  return cleanLines(renderQueueIndicatorString(queuedCount, marginTop));
+}
+
+function renderQueueIndicatorString(queuedCount: number, marginTop = 1): string {
+  return renderToString(
+    <ThemeContext.Provider value={theme}>
+      <Box flexDirection="row" paddingLeft={1} marginTop={marginTop} flexShrink={0}>
+        <Box width={2} flexShrink={0}>
+          <Text color={theme.warning} bold>
+            {"• "}
+          </Text>
+        </Box>
+        <Text color={theme.textDim}>
+          {queuedCount} message{queuedCount > 1 ? "s" : ""} queued
+        </Text>
+      </Box>
+    </ThemeContext.Provider>,
+    { columns: TERMINAL_COLUMNS },
+  );
+}
+
 describe("queued message UI invariants", () => {
   it("renders queued placeholders with the same live/history row shape", () => {
     const item = queuedItem();
@@ -100,6 +126,16 @@ describe("queued message UI invariants", () => {
     for (const line of liveLines) {
       expect(stringWidth(line)).toBeLessThanOrEqual(TERMINAL_COLUMNS);
     }
+  });
+
+  it("renders the active queue indicator with the same response gutter", () => {
+    expect(renderQueueIndicatorLines(1)).toEqual([" • 1 message queued"]);
+    expect(renderQueueIndicatorLines(2)).toEqual([" • 2 messages queued"]);
+    expect(rawLines(renderQueueIndicatorString(1, 2)).slice(0, 3)).toEqual([
+      "",
+      "",
+      " • 1 message queued",
+    ]);
   });
 
   it("keeps queued placeholders active so insertion flush removes them from live items", () => {

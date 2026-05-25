@@ -58,11 +58,16 @@ export const Markdown = React.memo(function Markdown({
     [availableTerminalHeight, isPending, renderMarkdown, terminalWidth, text, theme],
   );
 
-  if (!text || renderedLines.length === 0) return null;
+  const visibleLines =
+    availableTerminalHeight !== undefined && renderedLines.length > availableTerminalHeight
+      ? renderedLines.slice(-availableTerminalHeight)
+      : renderedLines;
+
+  if (!text || visibleLines.length === 0) return null;
 
   return (
     <Box flexDirection="column" width={terminalWidth} flexShrink={1}>
-      <RenderAnsiLines lines={renderedLines} />
+      <RenderAnsiLines lines={visibleLines} />
     </Box>
   );
 });

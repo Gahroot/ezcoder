@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getFooterStatusLayoutDecision } from "./components/BackgroundTasksBar.js";
-import { getFooterRightLength, getGoalFooterLabel } from "./components/Footer.js";
+import {
+  getFooterRightLength,
+  getGoalFooterLabel,
+  getThinkingFooterLabel,
+} from "./components/Footer.js";
 
 describe("footer status layout decisions", () => {
   it("keeps a single wide row when footer status indicators are present", () => {
@@ -62,6 +66,16 @@ describe("footer status layout decisions", () => {
 });
 
 describe("main footer Goal mode layout", () => {
+  it("labels the active thinking effort for the footer", () => {
+    expect(getThinkingFooterLabel("medium")).toBe("Thinking medium");
+    expect(getThinkingFooterLabel("high")).toBe("Thinking high");
+    expect(getThinkingFooterLabel("xhigh")).toBe("Thinking xhigh");
+  });
+
+  it("labels thinking off in the footer when no effort is active", () => {
+    expect(getThinkingFooterLabel(undefined)).toBe("Thinking off");
+  });
+
   it("labels Goal mode states compactly", () => {
     expect(getGoalFooterLabel(undefined)).toBe("Goal off");
     expect(getGoalFooterLabel("off")).toBe("Goal off");

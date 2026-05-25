@@ -547,12 +547,6 @@ interface GoalAgentTransitionItem {
   id: string;
 }
 
-interface ThinkingTransitionItem {
-  kind: "thinking_transition";
-  active: boolean;
-  id: string;
-}
-
 interface ModelTransitionItem {
   kind: "model_transition";
   modelName: string;
@@ -592,7 +586,36 @@ interface StepDoneItem {
 }
 
 /** Tools that get aggregated into a single compact group when possible. */
-const AGGREGATABLE_TOOLS = new Set(["read", "grep", "find", "ls"]);
+const AGGREGATABLE_TOOLS = new Set([
+  "read",
+  "grep",
+  "find",
+  "ls",
+  "mcp__kencode-search__searchCode",
+  "mcp__kencode-search__referenceSources",
+  "mcp__kencode-search__discoverRepos",
+]);
+
+const OPENAI_GPT_THINKING_LEVELS: readonly ThinkingLevel[] = ["medium", "high", "xhigh"];
+
+function isOpenAIGptModel(provider: Provider, model: string): boolean {
+  return provider === "openai" && model.startsWith("gpt-");
+}
+
+export function getNextThinkingLevel(
+  provider: Provider,
+  model: string,
+  current: ThinkingLevel | undefined,
+): ThinkingLevel | undefined {
+  if (!isOpenAIGptModel(provider, model)) {
+    return current ? undefined : getMaxThinkingLevel(model);
+  }
+
+  if (!current) return "medium";
+  const index = OPENAI_GPT_THINKING_LEVELS.indexOf(current);
+  if (index === -1) return "medium";
+  return OPENAI_GPT_THINKING_LEVELS[index + 1];
+}
 const RUNNING_INDICATOR_ANIMATION_MS = 1_200;
 
 interface ToolGroupTool {
@@ -634,7 +657,6 @@ export type CompletedItem =
   | ToolGroupItem
   | PlanTransitionItem
   | GoalAgentTransitionItem
-  | ThinkingTransitionItem
   | ModelTransitionItem
   | ThemeTransitionItem
   | PlanEventItem
@@ -1063,6 +1085,19 @@ function isAgentSpacingKind(kind: CompletedItem["kind"]): boolean {
     "server_tool_start",
     "server_tool_done",
     "subagent_group",
+    "info",
+    "error",
+    "stopped",
+    "plan_transition",
+    "goal_agent_transition",
+    "model_transition",
+    "theme_transition",
+    "plan_event",
+    "update_notice",
+    "compacting",
+    "compacted",
+    "style_pack",
+    "setup_hint",
   ].includes(kind);
 }
 
@@ -1093,13 +1128,7 @@ export function shouldTopSpaceAfterPrintedAgentBoundary({
   lastPendingHistoryItem?: CompletedItem;
   lastHistoryItem?: CompletedItem;
 }): boolean {
-  const needsExternalSpacing = [
-    "goal_progress",
-    "tool_start",
-    "tool_group",
-    "assistant",
-    "queued",
-  ].includes(currentKind);
+  const needsExternalSpacing = isAgentSpacingKind(currentKind);
   if (!needsExternalSpacing) return false;
   if (previousLiveItem !== undefined) return false;
   const previousKind = lastPendingHistoryItem?.kind ?? lastHistoryItem?.kind;
@@ -1258,6 +1287,10 @@ function normalizeAssistantText(text: string): string {
   return stripDoneMarkers(text).trim();
 }
 
+function isReasoningMarkerText(text: string): boolean {
+  return /^(?:currentItem\?\.type\s*=+\s*)?["']?reasoning["']?$/u.test(text.trim());
+}
+
 function isSameAssistantText(item: CompletedItem, text: string): boolean {
   return item.kind === "assistant" && normalizeAssistantText(item.text) === text;
 }
@@ -1276,7 +1309,7 @@ export function pinStreamingTextBeforeToolBoundary({
   makeId: () => string;
 }): CompletedItem[] {
   const text = normalizeAssistantText(visibleStreamingText);
-  if (text.length === 0) return items;
+  if (text.length === 0 || isReasoningMarkerText(text)) return items;
   if (items.some((item) => item.kind === "assistant")) return items;
   return [
     ...items,
@@ -1532,7 +1565,7 @@ export function App(props: AppProps) {
   const [currentProvider, setCurrentProvider] = useState(props.provider);
   const [currentTools, setCurrentTools] = useState(props.tools);
   const currentToolsRef = useRef(props.tools);
-  const [thinkingEnabled, setThinkingEnabled] = useState(!!props.thinking);
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel | undefined>(props.thinking);
   const [renderMarkdown, setRenderMarkdown] = useState(true);
   const messagesRef = useRef<Message[]>(props.sessionStore?.messages ?? props.messages);
   const repoMapInjectionEnabledRef = useRef(true);
@@ -1707,10 +1740,19 @@ export function App(props: AppProps) {
     onRuntimeStateChange?.({ provider: currentProvider });
   }, [currentProvider, onRuntimeStateChange]);
   useEffect(() => {
+    if (thinkingLevel && !isOpenAIGptModel(currentProvider, currentModel)) {
+      const maxLevel = getMaxThinkingLevel(currentModel);
+      if (thinkingLevel !== maxLevel) {
+        setThinkingLevel(maxLevel);
+      }
+    }
+  }, [currentProvider, currentModel, thinkingLevel]);
+
+  useEffect(() => {
     onRuntimeStateChange?.({
-      thinking: thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined,
+      thinking: thinkingLevel,
     });
-  }, [thinkingEnabled, currentModel, onRuntimeStateChange]);
+  }, [thinkingLevel, onRuntimeStateChange]);
 
   useEffect(() => {
     printHistoryItems(history);
@@ -2355,7 +2397,7 @@ export function App(props: AppProps) {
       tools: currentTools,
       webSearch: props.webSearch,
       maxTokens: props.maxTokens,
-      thinking: thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined,
+      thinking: thinkingLevel,
       apiKey: activeApiKey,
       baseUrl: activeBaseUrl,
       accountId: activeAccountId,
@@ -3631,20 +3673,19 @@ export function App(props: AppProps) {
   }, [agentLoop, handleDoubleExit]);
 
   const handleToggleThinking = useCallback(() => {
-    setThinkingEnabled((prev) => {
-      const next = !prev;
-      log("INFO", "thinking", `Thinking ${next ? "enabled" : "disabled"}`);
-      setLiveItems((items) => [
-        ...items,
-        { kind: "thinking_transition", active: next, id: getId() },
-      ]);
+    setThinkingLevel((prev) => {
+      const next = getNextThinkingLevel(currentProvider, currentModel, prev);
+      log("INFO", "thinking", next ? `Thinking ${next}` : "Thinking disabled");
       if (props.settingsFile) {
         const sm = new SettingsManager(props.settingsFile);
-        sm.load().then(() => sm.set("thinkingEnabled", next));
+        void sm.load().then(async () => {
+          await sm.set("thinkingEnabled", !!next);
+          if (next) await sm.set("thinkingLevel", next);
+        });
       }
       return next;
     });
-  }, [props.settingsFile]);
+  }, [currentProvider, currentModel, props.settingsFile]);
 
   const handleModelSelect = useCallback(
     (value: string) => {
@@ -3916,7 +3957,7 @@ export function App(props: AppProps) {
         );
       case "goal":
         return (
-          <Box key={item.id} marginTop={1}>
+          <Box key={item.id} paddingLeft={1} marginTop={1}>
             <Text wrap="wrap">
               <Text color={theme.success} bold>
                 {"▶ "}
@@ -3993,27 +4034,63 @@ export function App(props: AppProps) {
         const names = item.added.map((id) => LANGUAGE_DISPLAY_NAMES[id]);
         const headerLabel = item.added.length > 1 ? "STYLE PACKS ACTIVE" : "STYLE PACK ACTIVE";
         return (
-          <Box
-            key={item.id}
-            marginTop={1}
-            flexShrink={1}
-            flexDirection="column"
-            borderStyle="round"
-            borderColor={theme.language}
-            paddingX={1}
-          >
-            <Text wrap="wrap">
-              <Text color={theme.language} bold>
-                {"◆ "}
+          <Box key={item.id} paddingLeft={1} marginTop={1} flexShrink={1}>
+            <Box
+              flexShrink={1}
+              flexDirection="column"
+              borderStyle="round"
+              borderColor={theme.language}
+              paddingX={1}
+            >
+              <Text wrap="wrap">
+                <Text color={theme.language} bold>
+                  {"◆ "}
+                </Text>
+                <Text color={theme.language} bold>
+                  {headerLabel}
+                </Text>
               </Text>
-              <Text color={theme.language} bold>
-                {headerLabel}
+              <Text color={theme.text} bold wrap="wrap">
+                {names.join(", ")}
               </Text>
-            </Text>
-            <Text color={theme.text} bold wrap="wrap">
-              {names.join(", ")}
-            </Text>
-            {item.showSetupHint && (
+              {item.showSetupHint && (
+                <Box marginTop={1}>
+                  <Text wrap="wrap">
+                    <Text color={theme.textMuted}>{"Tip: run "}</Text>
+                    <Text color={theme.language} bold>
+                      {"/setup"}
+                    </Text>
+                    <Text color={theme.textMuted}>
+                      {" to audit this project against the active pack(s)"}
+                    </Text>
+                  </Text>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        );
+      }
+      case "setup_hint":
+        return (
+          <Box key={item.id} paddingLeft={1} marginTop={1} flexShrink={1}>
+            <Box
+              flexShrink={1}
+              flexDirection="column"
+              borderStyle="round"
+              borderColor={theme.language}
+              paddingX={1}
+            >
+              <Text wrap="wrap">
+                <Text color={theme.language} bold>
+                  {"◆ "}
+                </Text>
+                <Text color={theme.language} bold>
+                  {"NO STYLE PACKS DETECTED"}
+                </Text>
+              </Text>
+              <Text color={theme.textMuted} wrap="wrap">
+                {"This directory has no recognized language manifest at its root."}
+              </Text>
               <Box marginTop={1}>
                 <Text wrap="wrap">
                   <Text color={theme.textMuted}>{"Tip: run "}</Text>
@@ -4021,46 +4098,10 @@ export function App(props: AppProps) {
                     {"/setup"}
                   </Text>
                   <Text color={theme.textMuted}>
-                    {" to audit this project against the active pack(s)"}
+                    {" to audit project hygiene or bootstrap a new project from scratch"}
                   </Text>
                 </Text>
               </Box>
-            )}
-          </Box>
-        );
-      }
-      case "setup_hint":
-        return (
-          <Box
-            key={item.id}
-            marginTop={1}
-            flexShrink={1}
-            flexDirection="column"
-            borderStyle="round"
-            borderColor={theme.language}
-            paddingX={1}
-          >
-            <Text wrap="wrap">
-              <Text color={theme.language} bold>
-                {"◆ "}
-              </Text>
-              <Text color={theme.language} bold>
-                {"NO STYLE PACKS DETECTED"}
-              </Text>
-            </Text>
-            <Text color={theme.textMuted} wrap="wrap">
-              {"This directory has no recognized language manifest at its root."}
-            </Text>
-            <Box marginTop={1}>
-              <Text wrap="wrap">
-                <Text color={theme.textMuted}>{"Tip: run "}</Text>
-                <Text color={theme.language} bold>
-                  {"/setup"}
-                </Text>
-                <Text color={theme.textMuted}>
-                  {" to audit project hygiene or bootstrap a new project from scratch"}
-                </Text>
-              </Text>
             </Box>
           </Box>
         );
@@ -4150,18 +4191,13 @@ export function App(props: AppProps) {
         return renderStatusMessage(item.id, "○ ", item.text, theme.commandColor, { muted: true });
       case "update_notice":
         return (
-          <Box
-            key={item.id}
-            marginTop={1}
-            flexShrink={1}
-            borderStyle="round"
-            borderColor={theme.commandColor}
-            paddingX={1}
-          >
-            <Text color={theme.commandColor} bold wrap="wrap">
-              {"✨ "}
-              {item.text}
-            </Text>
+          <Box key={item.id} paddingLeft={1} marginTop={1} flexShrink={1}>
+            <Box flexShrink={1} borderStyle="round" borderColor={theme.commandColor} paddingX={1}>
+              <Text color={theme.commandColor} bold wrap="wrap">
+                {"✨ "}
+                {item.text}
+              </Text>
+            </Box>
           </Box>
         );
       case "plan_transition":
@@ -4180,16 +4216,6 @@ export function App(props: AppProps) {
           theme.commandColor,
           { bold: true },
         );
-      case "thinking_transition": {
-        const glyphColor = item.active ? theme.commandColor : theme.textDim;
-        return renderStatusMessage(
-          item.id,
-          "✻ ",
-          item.active ? "Thinking ON" : "Thinking OFF",
-          glyphColor,
-          { bold: true, muted: !item.active },
-        );
-      }
       case "model_transition":
         return renderStatusMessage(
           item.id,
@@ -4249,7 +4275,7 @@ export function App(props: AppProps) {
         );
       case "step_done":
         return (
-          <Box key={item.id} marginTop={1} flexShrink={1}>
+          <Box key={item.id} paddingLeft={1} marginTop={1} flexShrink={1}>
             <Text wrap="wrap">
               <Text color={theme.success} bold>
                 {"✓ "}
@@ -4298,7 +4324,7 @@ export function App(props: AppProps) {
         );
       case "duration":
         return (
-          <Box key={item.id} marginTop={1}>
+          <Box key={item.id} paddingLeft={1} marginTop={1}>
             <Text color={theme.textDim}>
               {"✻ "}
               {item.verb} {formatDuration(item.durationMs)}
@@ -4743,6 +4769,7 @@ export function App(props: AppProps) {
           cwd: props.cwd,
           provider: currentProvider,
           model: currentModel,
+          thinkingLevel,
           goalRunId: checkedRun.id,
           goalTaskId: decision.task.id,
           taskTitle: decision.task.title,
@@ -4790,6 +4817,7 @@ export function App(props: AppProps) {
       props.cwd,
       currentProvider,
       currentModel,
+      thinkingLevel,
       appendGoalProgress,
       clearGoalModeIfIdle,
       clearGoalStatusEntry,
@@ -5126,7 +5154,7 @@ export function App(props: AppProps) {
     contextWindowOptions,
     cwd: displayedCwd,
     gitBranch,
-    thinkingLevel: thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined,
+    thinkingLevel,
     goalMode,
   });
   const chatControlsLayout = getChatControlsLayoutDecision({
@@ -5184,12 +5212,25 @@ export function App(props: AppProps) {
     agentLoop.isRunning &&
     !hasLiveAssistantItem &&
     (visibleStreamingText.trim().length > 0 || liveItems.some(isAgentSpacingItem));
+  const lastLiveItem = liveItems.at(-1);
+  const lastPendingHistoryItem = pendingHistoryFlushRef.current.at(-1);
+  const lastHistoryItem = history.at(-1);
   const shouldTopSpaceStreamingText = shouldTopSpaceStreamingAssistant({
     visibleStreamingText,
-    lastLiveItem: liveItems.at(-1),
-    lastPendingHistoryItem: pendingHistoryFlushRef.current.at(-1),
-    lastHistoryItem: history.at(-1),
+    lastLiveItem,
+    lastPendingHistoryItem,
+    lastHistoryItem,
   });
+  const visibleQueuedCount = liveItems.filter((item) => item.kind === "queued").length;
+  const hiddenQueuedCount = Math.max(0, agentLoop.queuedCount - visibleQueuedCount);
+  const shouldTopSpaceQueueIndicator =
+    hiddenQueuedCount > 0 &&
+    shouldTopSpaceAfterPrintedAgentBoundary({
+      currentKind: "queued",
+      previousLiveItem: lastLiveItem,
+      lastPendingHistoryItem,
+      lastHistoryItem,
+    });
 
   return (
     <Box flexDirection="column" width={columns} flexShrink={0} flexGrow={0}>
@@ -5449,13 +5490,7 @@ export function App(props: AppProps) {
       ) : (
         <Box flexDirection="column" width={columns} flexShrink={0} flexGrow={0}>
           {/* MainContent */}
-          <Box
-            flexDirection="column"
-            maxHeight={measuredLiveAreaRows}
-            flexGrow={0}
-            flexShrink={1}
-            overflowY="hidden"
-          >
+          <Box flexDirection="column" flexGrow={0} flexShrink={1} overflowY="hidden">
             {liveItems.map((item, index, items) => renderItem(item, index, items))}
             <StreamingArea
               isRunning={agentLoop.isRunning}
@@ -5472,13 +5507,20 @@ export function App(props: AppProps) {
 
           <Box ref={mainControlsRef} flexDirection="column" flexShrink={0} flexGrow={0}>
             {/* Queue indicator */}
-            {agentLoop.queuedCount > 0 && (
-              <Box marginTop={1}>
-                <Text color={theme.warning} bold>
-                  {"• "}
-                </Text>
+            {hiddenQueuedCount > 0 && (
+              <Box
+                flexDirection="row"
+                paddingLeft={1}
+                marginTop={shouldTopSpaceQueueIndicator ? 2 : 1}
+                flexShrink={0}
+              >
+                <Box width={2} flexShrink={0}>
+                  <Text color={theme.warning} bold>
+                    {"• "}
+                  </Text>
+                </Box>
                 <Text color={theme.textDim}>
-                  {agentLoop.queuedCount} message{agentLoop.queuedCount > 1 ? "s" : ""} queued
+                  {hiddenQueuedCount} message{hiddenQueuedCount > 1 ? "s" : ""} queued
                 </Text>
               </Box>
             )}
@@ -5504,7 +5546,7 @@ export function App(props: AppProps) {
                       runStartRef={agentLoop.runStartRef}
                       thinkingMs={agentLoop.thinkingMs}
                       isThinking={agentLoop.isThinking}
-                      thinkingEnabled={thinkingEnabled}
+                      thinkingEnabled={!!thinkingLevel}
                       tokenEstimate={agentLoop.streamedTokenEstimate}
                       charCountRef={agentLoop.charCountRef}
                       realTokensAccumRef={agentLoop.realTokensAccumRef}
@@ -5587,7 +5629,7 @@ export function App(props: AppProps) {
                   contextWindowOptions={contextWindowOptions}
                   cwd={displayedCwd}
                   gitBranch={gitBranch}
-                  thinkingLevel={thinkingEnabled ? getMaxThinkingLevel(currentModel) : undefined}
+                  thinkingLevel={thinkingLevel}
                   goalMode={goalMode}
                   exitPending={exitPending}
                   renderMarkdown={renderMarkdown}

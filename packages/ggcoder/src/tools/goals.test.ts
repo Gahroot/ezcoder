@@ -363,40 +363,65 @@ describe("goals tool state guards", () => {
     expect(referencedAudit).toBe('Completion audit recorded for "Match screenshot": pass.');
   });
 
-  it("preserves task title and prompt when updating task status by id", async () => {
-    const run = await upsertGoalRun(tmpProject, {
-      title: "Research run",
-      goal: "Design the Goal worker metadata fix",
-      status: "ready",
-      tasks: [
+  it("persists typed Goal task DAG metadata and preserves it on status updates", async () => {
+    await executeGoals({
+      action: "create",
+      run_id: "dag-goal",
+      title: "Typed DAG",
+      goal: "Persist Goal task dependency metadata",
+      success_criteria: ["DAG metadata survives updates"],
+      prerequisites: [],
+      verifier_command: "pnpm test",
+      evidence_plan: [
         {
-          id: "research-task",
-          title: "Research and design metadata preservation",
-          prompt: "Inspect goal task updates and propose a durable fix.",
-          status: "pending",
-          attempts: 0,
+          id: "dag-proof",
+          label: "DAG metadata proof",
+          mechanism: "test",
+          description: "Focused tests prove typed Goal task metadata is durable.",
+          status: "ready",
+          evidence: "configured",
         },
       ],
     });
 
-    const result = await executeGoals({
+    const addResult = await executeGoals({
       action: "task",
-      run_id: run.id,
-      task_id: "research-task",
+      run_id: "dag-goal",
+      task_id: "ui-task",
+      task_title: "Build UI candidate",
+      task_prompt: "Build only the UI candidate in an isolated worktree.",
+      task_status: "pending",
+      depends_on: ["schema-task"],
+      parallel_group: "frontend",
+      expected_changed_scope: ["packages/ggcoder/src/ui/**"],
+      merge_strategy: "after_dependencies",
+    });
+    const updateResult = await executeGoals({
+      action: "task",
+      run_id: "dag-goal",
+      task_id: "ui-task",
       task_status: "done",
-      summary: "Design completed",
+      summary: "UI candidate complete",
     });
 
-    const updated = await getGoalRun(tmpProject, run.id);
-    expect(result).toBe('Goal task updated: "Research and design metadata preservation".');
+    const updated = await getGoalRun(tmpProject, "dag-goal");
+    expect(addResult).toBe('Goal task added: "Build UI candidate".');
+    expect(updateResult).toBe('Goal task updated: "Build UI candidate".');
     expect(updated?.tasks[0]).toEqual(
       expect.objectContaining({
-        id: "research-task",
-        title: "Research and design metadata preservation",
-        prompt: "Inspect goal task updates and propose a durable fix.",
+        id: "ui-task",
+        title: "Build UI candidate",
+        prompt: "Build only the UI candidate in an isolated worktree.",
         status: "done",
-        lastSummary: "Design completed",
+        lastSummary: "UI candidate complete",
+        dependsOn: ["schema-task"],
+        parallelGroup: "frontend",
+        expectedChangedScope: ["packages/ggcoder/src/ui/**"],
+        mergeStrategy: "after_dependencies",
       }),
+    );
+    await expect(executeGoals({ action: "status", run_id: "dag-goal" })).resolves.toContain(
+      "DAG: ui-task depends_on=schema-task parallel_group=frontend expected_changed_scope=packages/ggcoder/src/ui/** merge_strategy=after_dependencies",
     );
   });
 

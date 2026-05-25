@@ -101,6 +101,13 @@ import type { GoalMode } from "./core/runtime-mode.js";
 
 const _require = createRequire(import.meta.url);
 const CLI_VERSION = (_require("../package.json") as { version: string }).version;
+const THINKING_LEVELS = new Set<ThinkingLevel>(["low", "medium", "high", "xhigh"]);
+
+export function parseThinkingLevel(value: string | undefined): ThinkingLevel | undefined {
+  if (value === undefined) return undefined;
+  if (THINKING_LEVELS.has(value as ThinkingLevel)) return value as ThinkingLevel;
+  throw new Error(`Invalid --thinking value "${value}". Expected low, medium, high, or xhigh.`);
+}
 
 // ── Logo + gradient (mirrors Banner.tsx) ────────────────────────────
 const LOGO_LINES = [
@@ -199,6 +206,7 @@ function printHelp(): void {
     ["--model <name>", "Model to use (e.g. claude-sonnet-4-6, gpt-5.5)"],
     ["--max-turns <n>", "Maximum agent turns per prompt"],
     ["--system-prompt <text>", "Override the system prompt"],
+    ["--thinking <level>", "Enable thinking level (low, medium, high, xhigh)"],
     ["--json", "JSON output mode (for sub-agents)"],
     ["--rpc", "JSON-RPC mode (for IDE integrations)"],
   ];
@@ -365,6 +373,7 @@ function main(): void {
       "max-turns": { type: "string" },
       "system-prompt": { type: "string" },
       "prompt-cache-key": { type: "string" },
+      thinking: { type: "string" },
     },
     allowPositionals: true,
     strict: true,
@@ -388,6 +397,7 @@ function main(): void {
     const maxTurns = values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined;
     const systemPrompt = values["system-prompt"];
     const promptCacheKey = values["prompt-cache-key"];
+    const thinkingLevel = parseThinkingLevel(values.thinking);
     const cwd = process.cwd();
     runJsonMode({
       message,
@@ -397,6 +407,7 @@ function main(): void {
       systemPrompt,
       maxTurns,
       promptCacheKey,
+      thinkingLevel,
     }).catch((err: unknown) => {
       process.stderr.write(formatUserError(err) + "\n");
       process.exit(1);
@@ -441,7 +452,7 @@ function main(): void {
 
   const model: string = saved.model ?? getHardcodedDefault(provider);
   const thinkingLevel: ThinkingLevel | undefined = saved.thinkingEnabled
-    ? getMaxThinkingLevel(model)
+    ? (saved.thinkingLevel ?? getMaxThinkingLevel(model))
     : undefined;
 
   // Interactive mode (Ink TUI)
@@ -1212,7 +1223,7 @@ async function runSessions(): Promise<void> {
 
   const model = saved2.model ?? getDefault(provider);
   const thinkingLevel: ThinkingLevel | undefined = saved2.thinkingEnabled
-    ? getMaxThinkingLevel(model)
+    ? (saved2.thinkingLevel ?? getMaxThinkingLevel(model))
     : undefined;
 
   closeLogger();
@@ -1457,7 +1468,7 @@ async function runServe(): Promise<void> {
   );
 
   const thinkingLevel: ThinkingLevel | undefined = saved3.thinkingEnabled
-    ? getMaxThinkingLevel(model)
+    ? (saved3.thinkingLevel ?? getMaxThinkingLevel(model))
     : undefined;
 
   initLogger(paths.logFile, {
@@ -1636,7 +1647,7 @@ async function runAgentHome(): Promise<void> {
   );
 
   const thinkingLevel: ThinkingLevel | undefined = saved4.thinkingEnabled
-    ? getMaxThinkingLevel(model)
+    ? (saved4.thinkingLevel ?? getMaxThinkingLevel(model))
     : undefined;
 
   initLogger(paths.logFile, {
@@ -1731,7 +1742,7 @@ async function runPixel(): Promise<void> {
     provider,
     model,
     cwd: process.cwd(),
-    thinkingLevel: saved.thinkingEnabled ? "medium" : undefined,
+    thinkingLevel: saved.thinkingEnabled ? (saved.thinkingLevel ?? "medium") : undefined,
     theme: saved.theme,
     initialOverlay: "pixel",
   });

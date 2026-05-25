@@ -131,6 +131,10 @@ export function getGoalFooterLabel(goalMode: GoalMode | undefined): string {
   return "Goal off";
 }
 
+export function getThinkingFooterLabel(thinkingLevel: ThinkingLevel | undefined): string {
+  return thinkingLevel ? `Thinking ${thinkingLevel}` : "Thinking off";
+}
+
 export function getFooterRightLength({
   barWidth,
   contextPct,
@@ -189,7 +193,7 @@ export function doesFooterFitOnOneLine({
   const displayPath = parts.length > 0 ? parts[parts.length - 1] : cwd;
   const contextPct = getContextPercent(model, tokensIn, contextWindowOptions);
   const modelName = getShortModelName(model);
-  const thinkingText = thinkingLevel ? `Thinking ${thinkingLevel}` : "Thinking off";
+  const thinkingText = getThinkingFooterLabel(thinkingLevel);
   const goalText = getGoalFooterLabel(goalMode);
   const leftLen = displayPath.length + 2 + (gitBranch ? gitBranch.length + 5 : 0);
   const rightLen = getFooterRightLength({
@@ -261,7 +265,7 @@ export function Footer({
 
   // Goal/Thinking labels. Show the actual thinking tier when on (`Thinking xhigh`) so users see what they're
   // paying for. Off is the only state that stays generic.
-  const thinkingText = thinkingLevel ? `Thinking ${thinkingLevel}` : "Thinking off";
+  const thinkingText = getThinkingFooterLabel(thinkingLevel);
   const goalText = getGoalFooterLabel(goalMode);
   const goalActive = goalMode !== "off";
   const thinkingColor = getThinkingColor(thinkingLevel, theme);

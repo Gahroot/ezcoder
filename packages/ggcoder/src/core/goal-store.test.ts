@@ -224,8 +224,18 @@ describe("goal store persistence", () => {
       title: "Run verifier",
       prompt: "Run pnpm test",
       status: "pending",
+      dependsOn: ["task-a"],
+      parallelGroup: "verify",
+      expectedChangedScope: ["packages/ggcoder/src/core/goal-store.ts"],
+      mergeStrategy: "after_dependencies",
     });
     expect(appendedRun?.tasks.map((item) => item.id)).toEqual(["task-a", "task-b"]);
+    expect(appendedRun?.tasks[1]).toMatchObject({
+      dependsOn: ["task-a"],
+      parallelGroup: "verify",
+      expectedChangedScope: ["packages/ggcoder/src/core/goal-store.ts"],
+      mergeStrategy: "after_dependencies",
+    });
   });
 
   it("discovers a run by id even when the caller cwd does not match the project cwd", async () => {

@@ -19,6 +19,10 @@ export interface GoalTaskStateSnapshot {
   status: GoalRun["tasks"][number]["status"];
   attempts: number;
   workerId?: string;
+  dependsOn?: string[];
+  parallelGroup?: string;
+  expectedChangedScope?: string[];
+  mergeStrategy?: GoalRun["tasks"][number]["mergeStrategy"];
 }
 
 export interface GoalPrerequisiteStateSnapshot {
@@ -209,6 +213,12 @@ export function buildGoalStateSnapshot(run: GoalRun): GoalStateSnapshot {
       status: task.status,
       attempts: task.attempts,
       ...(task.workerId ? { workerId: task.workerId } : {}),
+      ...(task.dependsOn?.length ? { dependsOn: task.dependsOn } : {}),
+      ...(task.parallelGroup ? { parallelGroup: task.parallelGroup } : {}),
+      ...(task.expectedChangedScope?.length
+        ? { expectedChangedScope: task.expectedChangedScope }
+        : {}),
+      ...(task.mergeStrategy ? { mergeStrategy: task.mergeStrategy } : {}),
     })),
     evidenceCount: run.evidence.length,
     ...(latestEvidence
@@ -226,7 +236,19 @@ export function buildGoalStateSnapshot(run: GoalRun): GoalStateSnapshot {
 function formatGoalState(snapshot: GoalStateSnapshot): string {
   const tasks =
     snapshot.tasks
-      .map((task) => `- ${task.id}: ${task.status}; attempts=${task.attempts}; title=${task.title}`)
+      .map((task) => {
+        const metadata = [
+          task.dependsOn?.length ? `depends_on=${task.dependsOn.join(",")}` : undefined,
+          task.parallelGroup ? `parallel_group=${task.parallelGroup}` : undefined,
+          task.expectedChangedScope?.length
+            ? `expected_changed_scope=${task.expectedChangedScope.join(",")}`
+            : undefined,
+          task.mergeStrategy ? `merge_strategy=${task.mergeStrategy}` : undefined,
+        ]
+          .filter((item): item is string => item !== undefined)
+          .join("; ");
+        return `- ${task.id}: ${task.status}; attempts=${task.attempts}; title=${task.title}${metadata ? `; ${metadata}` : ""}`;
+      })
       .join("\n") || "(none)";
   const blockers =
     snapshot.blockers.length > 0

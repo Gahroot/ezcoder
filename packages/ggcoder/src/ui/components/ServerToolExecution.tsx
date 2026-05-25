@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Text, Box } from "ink";
 import { useTheme } from "../theme/theme.js";
 import { Spinner } from "./Spinner.js";
@@ -29,42 +29,17 @@ const RESPONSE_LEFT_PADDING = 1;
 // ToolUseLoader minWidth={2} = 2 chars
 const HEADER_PREFIX = 2;
 
-function useStaticAfter(animateUntil: number | undefined): boolean {
-  const [isStatic, setIsStatic] = useState(
-    () => animateUntil == null || Date.now() >= animateUntil,
-  );
-
-  useEffect(() => {
-    if (animateUntil == null) {
-      setIsStatic(true);
-      return undefined;
-    }
-
-    const remainingMs = animateUntil - Date.now();
-    if (remainingMs <= 0) {
-      setIsStatic(true);
-      return undefined;
-    }
-
-    setIsStatic(false);
-    const timer = setTimeout(() => setIsStatic(true), remainingMs);
-    return () => clearTimeout(timer);
-  }, [animateUntil]);
-
-  return isStatic;
-}
-
 export function ServerToolExecution(props: ServerToolExecutionProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
   const { label, detail } = getHeader(props.name, props.input);
-  const staticDisplay = useStaticAfter(props.status === "running" ? props.animateUntil : undefined);
+  const staticDisplay = props.status === "running" ? false : true;
 
   const headerContentWidth = Math.max(10, columns - HEADER_PREFIX);
 
-  const headerContent = (
+  const headerContent = (labelColor: string) => (
     <Text wrap="wrap">
-      <Text bold color={theme.toolName}>
+      <Text bold color={labelColor}>
         {label}
       </Text>
       {detail && (
@@ -83,13 +58,17 @@ export function ServerToolExecution(props: ServerToolExecutionProps) {
     return (
       <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1}>
         <Box flexDirection="row">
-          <ToolUseLoader status="running" staticDisplay={staticDisplay} />
+          <Box width={HEADER_PREFIX} flexShrink={0}>
+            <Spinner staticDisplay={staticDisplay} />
+          </Box>
           <Box flexGrow={1} width={headerContentWidth}>
-            {headerContent}
+            {headerContent(theme.toolName)}
           </Box>
         </Box>
         <MessageResponse>
-          <Spinner label="Searching..." staticDisplay={staticDisplay} />
+          <Text color={theme.textDim} wrap="wrap">
+            Searching...
+          </Text>
         </MessageResponse>
       </Box>
     );
@@ -103,7 +82,7 @@ export function ServerToolExecution(props: ServerToolExecutionProps) {
       <Box flexDirection="row">
         <ToolUseLoader status={isAborted ? "error" : "done"} />
         <Box flexGrow={1} width={headerContentWidth}>
-          {headerContent}
+          {headerContent(isAborted ? theme.error : theme.success)}
         </Box>
       </Box>
       <MessageResponse>

@@ -56,7 +56,6 @@ function PinnedChatHarness({ liveCount }: { liveCount: number }) {
       <Box
         flexDirection="column"
         height={shouldPin ? liveAreaRows : undefined}
-        maxHeight={liveAreaRows}
         justifyContent={shouldPin ? "flex-end" : undefined}
         overflowY={shouldPin ? "hidden" : undefined}
       >
@@ -76,7 +75,7 @@ function PinnedChatHarness({ liveCount }: { liveCount: number }) {
 function UnlatchedChatHarness({ liveCount }: { liveCount: number }) {
   return (
     <Box flexDirection="column" width={40}>
-      <Box flexDirection="column" maxHeight={5} flexShrink={1} overflowY="hidden">
+      <Box flexDirection="column" height={5} flexShrink={1} overflowY="hidden">
         {Array.from({ length: liveCount }, (_, index) => (
           <Text key={index}>LIVE_ROW_{String(index + 1).padStart(2, "0")}</Text>
         ))}
@@ -114,17 +113,9 @@ function AppMeasuredMaxHeightHarness({
   liveCount: number;
   controlsRows: number;
 }) {
-  const rows = 10;
-  const measuredLiveAreaRows = Math.max(3, rows - (controlsRows + 1) - 1);
   return (
     <Box flexDirection="column" width={40} flexShrink={0} flexGrow={0}>
-      <Box
-        flexDirection="column"
-        maxHeight={measuredLiveAreaRows}
-        flexGrow={0}
-        flexShrink={1}
-        overflowY="hidden"
-      >
+      <Box flexDirection="column" flexGrow={0} flexShrink={1} overflowY="hidden">
         {Array.from({ length: liveCount }, (_, index) => (
           <Text key={index}>LIVE_ROW_{String(index + 1).padStart(2, "0")}</Text>
         ))}
@@ -165,6 +156,18 @@ describe("streaming assistant ordering", () => {
         id: "assistant-pinned-1",
       },
     ]);
+  });
+
+  it("does not pin reasoning marker text before tool rows", () => {
+    expect(
+      pinStreamingTextBeforeToolBoundary({
+        items: [],
+        visibleStreamingText: 'currentItem?.type === "reasoning"',
+        thinking: "",
+        thinkingMs: 0,
+        makeId: () => "assistant-pinned-1",
+      }),
+    ).toEqual([]);
   });
 
   it("does not pin duplicate assistant text when a live assistant row already exists", () => {
@@ -283,6 +286,19 @@ describe("streaming assistant spacing", () => {
         visibleStreamingText: "First answer in the conversation.",
       }),
     ).toBe(false);
+  });
+
+  it("top-spaces streaming text after finalized notice rows", () => {
+    expect(
+      shouldTopSpaceStreamingAssistant({
+        visibleStreamingText: "Back to answering after the notice.",
+        lastHistoryItem: {
+          kind: "update_notice",
+          id: "update-notice-1",
+          text: "Ken just pushed a fresh update.",
+        },
+      }),
+    ).toBe(true);
   });
 });
 

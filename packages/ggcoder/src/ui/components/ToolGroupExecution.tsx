@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Text, Box } from "ink";
 import { ToolUseLoader } from "./ToolUseLoader.js";
+import { Spinner } from "./Spinner.js";
 import type { ToolGroupItem } from "../App.js";
 import { useTheme } from "../theme/theme.js";
 import { buildToolGroupSummary, type SummarySegment } from "../tool-group-summary.js";
@@ -26,48 +27,26 @@ interface ToolGroupExecutionProps {
   tools: ToolGroupTool[];
 }
 
-function useStaticAfter(animateUntil: number | undefined): boolean {
-  const [isStatic, setIsStatic] = useState(
-    () => animateUntil == null || Date.now() >= animateUntil,
-  );
-
-  useEffect(() => {
-    if (animateUntil == null) {
-      setIsStatic(true);
-      return undefined;
-    }
-
-    const remainingMs = animateUntil - Date.now();
-    if (remainingMs <= 0) {
-      setIsStatic(true);
-      return undefined;
-    }
-
-    setIsStatic(false);
-    const timer = setTimeout(() => setIsStatic(true), remainingMs);
-    return () => clearTimeout(timer);
-  }, [animateUntil]);
-
-  return isStatic;
-}
-
 export function ToolGroupExecution({ tools }: ToolGroupExecutionProps) {
   const theme = useTheme();
   const allDone = tools.every((t) => t.status === "done");
   const hasError = tools.some((t) => t.isError);
   const status = allDone ? (hasError ? "error" : "done") : "running";
-  const latestAnimateUntil = Math.max(0, ...tools.map((tool) => tool.animateUntil ?? 0));
-  const staticAfterDeadline = useStaticAfter(
-    latestAnimateUntil > 0 ? latestAnimateUntil : undefined,
-  );
-  const staticDisplay = status !== "running" || staticAfterDeadline;
+  const staticDisplay = status !== "running";
 
   const segments = useMemo(() => buildToolGroupSummary(tools, allDone), [tools, allDone]);
-  const labelColor = status === "error" ? theme.toolError : theme.toolName;
+  const labelColor =
+    status === "error" ? theme.error : status === "done" ? theme.success : theme.toolName;
 
   return (
     <Box paddingLeft={RESPONSE_LEFT_PADDING} marginBottom={1} flexDirection="row">
-      <ToolUseLoader status={status} staticDisplay={staticDisplay} />
+      {status === "running" ? (
+        <Box width={2} flexShrink={0}>
+          <Spinner staticDisplay={staticDisplay} />
+        </Box>
+      ) : (
+        <ToolUseLoader status={status} />
+      )}
       <Box flexGrow={1} flexShrink={1}>
         <Text wrap="wrap">
           <SummaryText segments={segments} color={labelColor} />

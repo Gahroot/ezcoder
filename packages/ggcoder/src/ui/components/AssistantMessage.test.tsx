@@ -21,6 +21,10 @@ import {
 } from "../App.js";
 
 const TERMINAL_COLUMNS = 68;
+
+async function flushInkRender(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
 const LONG_STREAMING_TEXT =
   "Here’s some longer random chat text: a tiny story, carefully comparing cloud-flavored notes whether terminal UIs should shimmer, putting a few safe read-only tool calls: listed components, listed functions, listed packages/tests, and checked content width.";
 const LONG_TOOL_QUERY =
@@ -113,13 +117,10 @@ async function renderInteractiveStreamingFrame(): Promise<string[]> {
     </TerminalSizeProvider>,
     {
       stdout,
-      columns: TERMINAL_COLUMNS,
-      rows: 20,
-      interactive: false,
       patchConsole: false,
     },
   );
-  await instance.waitUntilRenderFlush();
+  await flushInkRender();
   instance.unmount();
   await instance.waitUntilExit();
   return linesOf(chunks.join(""));
@@ -140,12 +141,9 @@ async function renderInteractiveElementFrame(element: React.ReactElement): Promi
   } as unknown as NodeJS.WriteStream;
   const instance = render(<TerminalSizeProvider>{element}</TerminalSizeProvider>, {
     stdout,
-    columns: TERMINAL_COLUMNS,
-    rows: 20,
-    interactive: false,
     patchConsole: false,
   });
-  await instance.waitUntilRenderFlush();
+  await flushInkRender();
   instance.unmount();
   await instance.waitUntilExit();
   return stripAnsi(chunks.join("")).replace(/\r/g, "\n");
@@ -183,12 +181,9 @@ async function renderPrintedHistoryThenLiveFrame(liveElement: React.ReactElement
   );
   const instance = render(<TerminalSizeProvider>{liveElement}</TerminalSizeProvider>, {
     stdout,
-    columns: TERMINAL_COLUMNS,
-    rows: 20,
-    interactive: false,
     patchConsole: false,
   });
-  await instance.waitUntilRenderFlush();
+  await flushInkRender();
   instance.unmount();
   await instance.waitUntilExit();
   return stripAnsi(chunks.join("")).replace(/\r/g, "\n");
@@ -266,13 +261,10 @@ async function renderFlushedToolThenAssistantFrame({
     </TerminalSizeProvider>,
     {
       stdout,
-      columns: TERMINAL_COLUMNS,
-      rows: 20,
-      interactive: false,
       patchConsole: false,
     },
   );
-  await instance.waitUntilRenderFlush();
+  await flushInkRender();
   instance.unmount();
   await instance.waitUntilExit();
   return stripAnsi(chunks.join("")).replace(/\r/g, "\n");
@@ -383,7 +375,7 @@ describe("AssistantMessage live layout", () => {
       </>,
     );
     const assistantIndex = frame.indexOf(" ⏺ I’ll inspect the renderer first.");
-    const toolIndex = frame.indexOf(" ⏺ Reading…");
+    const toolIndex = frame.indexOf(" · Reading…");
 
     expect(assistantIndex).toBeGreaterThanOrEqual(0);
     expect(toolIndex).toBeGreaterThanOrEqual(0);
@@ -394,10 +386,10 @@ describe("AssistantMessage live layout", () => {
     const frame = await renderFlushedToolThenAssistantFrame({ historyState: "committed" });
     const physicalLines = frame.split("\n");
 
-    expect(physicalLines).toContain(" ⏺ Read 1 file");
+    expect(physicalLines).toContain(" ⏺ Read 1 file: a.ts");
     expect(physicalLines).toContain(" ⏺ Next I’ll inspect the terminal history serialized output.");
     expect(frame).toContain(
-      " ⏺ Read 1 file\n\n ⏺ Next I’ll inspect the terminal history serialized output.",
+      " ⏺ Read 1 file: a.ts\n\n ⏺ Next I’ll inspect the terminal history serialized output.",
     );
   });
 
@@ -405,10 +397,10 @@ describe("AssistantMessage live layout", () => {
     const frame = await renderFlushedToolThenAssistantFrame({ historyState: "pending" });
     const physicalLines = frame.split("\n");
 
-    expect(physicalLines).toContain(" ⏺ Read 1 file");
+    expect(physicalLines).toContain(" ⏺ Read 1 file: a.ts");
     expect(physicalLines).toContain(" ⏺ Next I’ll inspect the terminal history serialized output.");
     expect(frame).toContain(
-      " ⏺ Read 1 file\n\n ⏺ Next I’ll inspect the terminal history serialized output.",
+      " ⏺ Read 1 file: a.ts\n\n ⏺ Next I’ll inspect the terminal history serialized output.",
     );
   });
 
@@ -419,10 +411,10 @@ describe("AssistantMessage live layout", () => {
     });
     const physicalLines = frame.split("\n");
 
-    expect(physicalLines).toContain(" ⏺ Read 1 file");
+    expect(physicalLines).toContain(" ⏺ Read 1 file: a.ts");
     expect(physicalLines).toContain(" ⏺ Next I’ll inspect the terminal history serialized output.");
     expect(frame).toContain(
-      " ⏺ Read 1 file\n\n ⏺ Next I’ll inspect the terminal history serialized output.",
+      " ⏺ Read 1 file: a.ts\n\n ⏺ Next I’ll inspect the terminal history serialized output.",
     );
   });
 
@@ -438,7 +430,7 @@ describe("AssistantMessage live layout", () => {
       </Box>,
     );
 
-    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n ⏺ Reading…");
+    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n · Reading…");
   });
 
   it("keeps a blank visual row between printed history and active tool groups", async () => {
@@ -458,7 +450,7 @@ describe("AssistantMessage live layout", () => {
       </Box>,
     );
 
-    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n ⏺ Read 1 file");
+    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n ⏺ Read 1 file: a.ts");
   });
 
   it("keeps a blank visual row between printed history and bash progress rows", async () => {
@@ -474,7 +466,7 @@ describe("AssistantMessage live layout", () => {
       </Box>,
     );
 
-    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n ⏺ · Bash(echo hi)");
+    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n · Bash(echo hi)");
   });
 
   it("does not add a second blank row before tool rows that already self-space", async () => {
@@ -482,8 +474,8 @@ describe("AssistantMessage live layout", () => {
       <ToolExecution status="running" name="bash" args={{ command: "echo hi" }} animateUntil={0} />,
     );
 
-    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n ⏺ · Bash(echo hi)");
-    expect(frame).not.toContain("renderer.\n\n\n ⏺ · Bash(echo hi)");
+    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n · Bash(echo hi)");
+    expect(frame).not.toContain("renderer.\n\n\n · Bash(echo hi)");
   });
 
   it("wraps long web_search tool headers and summaries inside the terminal width", () => {

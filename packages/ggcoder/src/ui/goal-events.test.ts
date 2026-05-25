@@ -313,6 +313,10 @@ describe("goal event formatting", () => {
           prompt: "Do work",
           status: "done",
           attempts: 1,
+          dependsOn: ["task-setup"],
+          parallelGroup: "frontend",
+          expectedChangedScope: ["packages/ggcoder/src/ui/**"],
+          mergeStrategy: "after_dependencies",
         },
       ],
       evidence: [
@@ -342,6 +346,15 @@ describe("goal event formatting", () => {
       goalState: expect.objectContaining({
         evidenceCount: 1,
         latestEvidence: expect.objectContaining({ path: "artifacts/goal.log" }),
+        tasks: [
+          expect.objectContaining({
+            id: "task-a",
+            dependsOn: ["task-setup"],
+            parallelGroup: "frontend",
+            expectedChangedScope: ["packages/ggcoder/src/ui/**"],
+            mergeStrategy: "after_dependencies",
+          }),
+        ],
       }),
     });
     expect(parsed?.payload?.kind).toBe("worker");

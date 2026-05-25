@@ -49,6 +49,22 @@ describe("terminal history", () => {
     expect(rendered).toContain("  x");
   });
 
+  it("does not serialize hidden assistant thinking into durable terminal history", () => {
+    const item: CompletedItem = {
+      kind: "assistant",
+      text: "Visible answer",
+      thinking: "private chain of thought",
+      thinkingMs: 1234,
+      id: "assistant-thinking-hidden",
+    };
+
+    const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
+
+    expect(rendered).toContain("Visible answer");
+    expect(rendered).not.toContain("private chain of thought");
+    expect(rendered).not.toContain("Thought");
+  });
+
   it("renders assistant continuation chunks without another response dot", () => {
     const item: CompletedItem = {
       kind: "assistant",
@@ -201,7 +217,7 @@ describe("terminal history", () => {
 
     const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
 
-    expect(rendered).toMatch(/^ [⏺●] Read 2 files$/);
+    expect(rendered).toMatch(/^ [⏺●] Read 2 files: a\.ts, b\.ts$/);
   });
 
   it("serializes server search rows with quoted detail and response summary", () => {
@@ -269,7 +285,7 @@ describe("terminal history", () => {
     const rendered = stripAnsi(output);
 
     expect(rendered).toMatch(
-      /Coordinator update\n\n [⏺●] Worker started: Audit \/goal role contracts/,
+      /Coordinator update\n\n [·⏺●] Worker started: Audit \/goal role contracts/,
     );
     expect(rendered).toContain(" · worker worker-1");
     expect(rendered).toContain("  ⎿  Task is running in the background.");
@@ -295,9 +311,50 @@ describe("terminal history", () => {
 
     const rendered = stripAnsi(serializeCompletedItemToTerminalHistory(item, context));
 
-    expect(rendered).toMatch(/^[⏺●] 1 agent completed/);
-    expect(rendered).toContain("  └─ ✓ Inspect widgets");
-    expect(rendered).toContain("     ⎿ 1.5k tokens · 2s");
+    expect(rendered).toMatch(/^ [⏺●] 1 agent completed/);
+    expect(rendered).toContain("   └─ ✓ Inspect widgets");
+    expect(rendered).toContain("      ⎿ 1.5k tokens · 2s");
+  });
+
+  it("keeps compaction and update notices bordered with spacing after final flush", () => {
+    let output = "";
+    const stream = {
+      write(chunk: string) {
+        output += chunk;
+        return true;
+      },
+    } as NodeJS.WriteStream;
+    const printer = createTerminalHistoryPrinter({ stream });
+
+    printer.print(
+      [
+        {
+          kind: "assistant",
+          text: "Published @kenkaiiii/ggcoder at 4.3.215.",
+          id: "assistant-before-notices",
+        },
+        {
+          kind: "compacted",
+          id: "compacted-notice",
+          originalCount: 279,
+          newCount: 39,
+          tokensBefore: 184000,
+          tokensAfter: 26000,
+        },
+        {
+          kind: "update_notice",
+          id: "update-notice",
+          text: "Ken just pushed a fresh update — 4.3.214 → 4.3.215! I'll grab it on next launch (or run npm install -g @kenkaiiii/ggcoder@latest if you can't wait).",
+        },
+      ],
+      context,
+    );
+
+    const rendered = stripAnsi(output);
+    expect(rendered).toMatch(/4\.3\.215\.\n\n │ ⟳ Conversation compacted/);
+    expect(rendered).toMatch(/86% reduction\n\n ╭─+/);
+    expect(rendered).toContain(" │ ✨ Ken just pushed a fresh update");
+    expect(rendered).toMatch(/╰─+╯\n$/);
   });
 
   it("prints each finalized item id once across remount-style replays", () => {

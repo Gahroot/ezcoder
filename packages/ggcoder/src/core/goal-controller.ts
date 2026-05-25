@@ -384,8 +384,36 @@ function activeTask(run: GoalRun): GoalTask | undefined {
   return run.tasks.find((task) => task.status === "running" || task.status === "verifying");
 }
 
+function recoverableTask(task: GoalTask): boolean {
+  return task.status === "pending" || task.status === "failed";
+}
+
+function taskMatchesDependency(task: GoalTask, dependencyId: string): boolean {
+  return task.id === dependencyId || task.id.startsWith(dependencyId);
+}
+
+function blockedTaskDependencies(run: GoalRun, task: GoalTask): string[] {
+  return (task.dependsOn ?? []).filter((dependencyId) => {
+    const dependency = run.tasks.find((item) => taskMatchesDependency(item, dependencyId));
+    return dependency === undefined || dependency.status !== "done";
+  });
+}
+
 function nextRunnableTask(run: GoalRun): GoalTask | undefined {
-  return run.tasks.find((task) => task.status === "pending" || task.status === "failed");
+  return run.tasks.find(
+    (task) => recoverableTask(task) && blockedTaskDependencies(run, task).length === 0,
+  );
+}
+
+function nextBlockedDependencyTask(
+  run: GoalRun,
+): { task: GoalTask; dependencies: string[] } | undefined {
+  for (const task of run.tasks) {
+    if (!recoverableTask(task)) continue;
+    const dependencies = blockedTaskDependencies(run, task);
+    if (dependencies.length > 0) return { task, dependencies };
+  }
+  return undefined;
 }
 
 export function canCompleteGoalRun(run: GoalRun): GoalCompletionCheck {
@@ -532,6 +560,13 @@ export function formatGoalControllerDecision(decision: GoalControllerDecision): 
       `attempts=${decision.attempts}`,
     );
     if (decision.task.workerId) parts.push(`worker=${decision.task.workerId}`);
+    if (decision.task.dependsOn?.length)
+      parts.push(`depends_on=${decision.task.dependsOn.join(",")}`);
+    if (decision.task.parallelGroup) parts.push(`parallel_group=${decision.task.parallelGroup}`);
+    if (decision.task.expectedChangedScope?.length) {
+      parts.push(`expected_changed_scope=${decision.task.expectedChangedScope.join(",")}`);
+    }
+    if (decision.task.mergeStrategy) parts.push(`merge_strategy=${decision.task.mergeStrategy}`);
   }
   if (decision.kind === "wait" && decision.workerId) parts.push(`worker=${decision.workerId}`);
   if (decision.kind === "run_verifier") parts.push(`verifier=${decision.command}`);
@@ -596,6 +631,23 @@ export function decideGoalNextAction(
       task,
       attempts,
       reason: `Goal task "${task.title}" is ready for worker attempt ${attempts}.`,
+    };
+  }
+
+  const dependencyBlockedTask = nextBlockedDependencyTask(run);
+  if (dependencyBlockedTask) {
+    const missingDependencies = dependencyBlockedTask.dependencies.filter(
+      (dependencyId) => !run.tasks.some((item) => taskMatchesDependency(item, dependencyId)),
+    );
+    if (missingDependencies.length > 0) {
+      return {
+        kind: "blocked",
+        reason: `Goal task "${dependencyBlockedTask.task.title}" depends on missing task(s): ${missingDependencies.join(", ")}.`,
+      };
+    }
+    return {
+      kind: "wait",
+      reason: `Goal task "${dependencyBlockedTask.task.title}" is waiting for dependency task(s): ${dependencyBlockedTask.dependencies.join(", ")}.`,
     };
   }
 

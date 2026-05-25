@@ -216,6 +216,49 @@ describe("goal controller", () => {
     ).toMatchObject({ kind: "wait", workerId: "worker-a" });
   });
 
+  it("waits for typed task dependencies before starting dependent DAG nodes", () => {
+    const schemaTask = {
+      id: "schema-task",
+      title: "Change schema",
+      prompt: "Update schema",
+      status: "pending" as const,
+      attempts: 0,
+      parallelGroup: "model",
+      expectedChangedScope: ["packages/ggcoder/src/core/**"],
+      mergeStrategy: "parallel_candidate" as const,
+    };
+    const uiTask = {
+      id: "ui-task",
+      title: "Change UI",
+      prompt: "Update UI after schema",
+      status: "pending" as const,
+      attempts: 0,
+      dependsOn: ["schema-task"],
+      parallelGroup: "frontend",
+      expectedChangedScope: ["packages/ggcoder/src/ui/**"],
+      mergeStrategy: "after_dependencies" as const,
+    };
+
+    expect(decideGoalNextAction(goalRun({ tasks: [uiTask] }))).toEqual({
+      kind: "blocked",
+      reason: 'Goal task "Change UI" depends on missing task(s): schema-task.',
+    });
+    expect(decideGoalNextAction(goalRun({ tasks: [uiTask, schemaTask] }))).toEqual({
+      kind: "start_worker",
+      task: schemaTask,
+      attempts: 1,
+      reason: 'Goal task "Change schema" is ready for worker attempt 1.',
+    });
+    expect(
+      decideGoalNextAction(goalRun({ tasks: [{ ...schemaTask, status: "done" }, uiTask] })),
+    ).toEqual({
+      kind: "start_worker",
+      task: uiTask,
+      attempts: 1,
+      reason: 'Goal task "Change UI" is ready for worker attempt 1.',
+    });
+  });
+
   it("reproduces blocked-after-pass shape by completing from durable evidence despite stale blocked status and planned items", () => {
     const run = goalRun({
       status: "blocked",

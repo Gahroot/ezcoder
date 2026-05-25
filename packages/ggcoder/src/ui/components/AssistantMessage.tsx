@@ -57,7 +57,6 @@ export const AssistantMessage = React.memo(function AssistantMessage({
     <Box
       flexDirection="column"
       marginTop={marginTop}
-      maxHeight={constrainedHeight}
       overflowY={constrainedHeight ? "hidden" : undefined}
     >
       {hasThinking && (
@@ -74,7 +73,7 @@ export const AssistantMessage = React.memo(function AssistantMessage({
               compact
               renderMarkdown={renderMarkdown}
               isPending={streaming}
-              availableTerminalHeight={availableTerminalHeight}
+              availableTerminalHeight={constrainedHeight}
             >
               {trimmedText}
             </Markdown>
