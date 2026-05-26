@@ -7,6 +7,22 @@ import type { GoalRun } from "./goal-store.js";
 const execFileAsync = promisify(execFile);
 const MAX_GIT_OUTPUT = 2000;
 
+export class GoalWorktreeDirtyError extends Error {
+  readonly dirtyStatus: string;
+
+  constructor(dirtyStatus: string) {
+    super(
+      `Goal workers need a clean working tree before they can start in an isolated worktree. Commit or stash the current changes first. Dirty files:\n${dirtyStatus.slice(0, MAX_GIT_OUTPUT)}`,
+    );
+    this.name = "GoalWorktreeDirtyError";
+    this.dirtyStatus = dirtyStatus;
+  }
+}
+
+export function isGoalWorktreeDirtyError(error: unknown): error is GoalWorktreeDirtyError {
+  return error instanceof GoalWorktreeDirtyError;
+}
+
 export interface GoalWorktreeCommandRunner {
   execFile(
     file: string,
@@ -181,9 +197,7 @@ export async function createGoalWorkerWorktree({
 async function assertCleanProject(runner: GoalWorktreeCommandRunner, cwd: string): Promise<void> {
   const status = await gitStdout(runner, cwd, ["status", "--porcelain"]);
   if (status.length > 0) {
-    throw new Error(
-      `Cannot launch isolated Goal worker from a dirty checkout. Commit or stash integration changes first. Dirty files:\n${status.slice(0, MAX_GIT_OUTPUT)}`,
-    );
+    throw new GoalWorktreeDirtyError(status);
   }
 }
 

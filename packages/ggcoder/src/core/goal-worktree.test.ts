@@ -150,7 +150,7 @@ describe("goal worktree helpers", () => {
         baseRef: "base-sha",
         commandRunner: runner,
       }),
-    ).rejects.toThrow("Cannot launch isolated Goal worker from a dirty checkout");
+    ).rejects.toThrow("Goal workers need a clean working tree");
   });
 
   it("passes integration check when completed worker worktrees are clean", async () => {

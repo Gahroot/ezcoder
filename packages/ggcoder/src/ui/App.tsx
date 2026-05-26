@@ -156,7 +156,11 @@ import {
 import { canCompleteGoalRun, decideGoalNextAction } from "../core/goal-controller.js";
 import { runGoalPrerequisiteChecks } from "../core/goal-prerequisites.js";
 import { runGoalVerifierCommand } from "../core/goal-verifier.js";
-import { checkGoalWorktreeIntegration } from "../core/goal-worktree.js";
+import {
+  checkGoalWorktreeIntegration,
+  isGoalWorktreeDirtyError,
+  type GoalWorktreeDirtyError,
+} from "../core/goal-worktree.js";
 import {
   listGoalWorkers,
   startGoalWorker,
@@ -334,6 +338,18 @@ function buildGoalTaskPromptWithReferences(run: GoalRun, taskPrompt: string): st
   if (taskPrompt.includes("## Goal References (MANDATORY)")) return taskPrompt;
   const references = formatGoalReferencesForPrompt(run.references ?? []);
   return references ? `${references}\n\n${taskPrompt}` : taskPrompt;
+}
+
+export function buildGoalDirtyWorktreeUserPrompt(error: GoalWorktreeDirtyError): string {
+  return (
+    `A Goal worker could not start because the project needs a clean working tree before GG Coder can create an isolated Goal worktree.\n\n` +
+    `Dirty files from \`git status --porcelain\`:\n${error.dirtyStatus}\n\n` +
+    `Explain this clearly to the user in one short message. Ask whether they want you to commit the current changes, stash them, or pause the Goal. Do not run git commit, git stash, or discard changes unless the user explicitly chooses one.`
+  );
+}
+
+export function goalDirtyWorktreeInfoText(): string {
+  return "Goal paused: your working tree has uncommitted changes. Asking whether to commit or stash them before starting isolated Goal workers.";
 }
 
 function goalProgressLoaderStatus(item: GoalProgressItem): "running" | "done" | "error" {
@@ -3615,7 +3631,7 @@ export function App(props: AppProps) {
     return subscribeGoalWorkerCompletions((completion) => {
       void (async () => {
         const latestRun =
-          (await loadGoalRuns(completion.worker.cwd)).find(
+          (await loadGoalRuns(completion.worker.projectPath)).find(
             (item) => item.id === completion.worker.goalRunId,
           ) ?? null;
         if (!latestRun) {
@@ -3839,6 +3855,17 @@ export function App(props: AppProps) {
         clearGoalStatusEntry(run.id);
         clearGoalModeIfIdle();
         log("ERROR", "goal", err instanceof Error ? err.message : String(err));
+        if (isGoalWorktreeDirtyError(err)) {
+          setLiveItems((prev) => [
+            ...prev,
+            { kind: "info", text: goalDirtyWorktreeInfoText(), id: getId() },
+          ]);
+          void agentLoop.run(buildGoalDirtyWorktreeUserPrompt(err)).catch((agentErr: unknown) => {
+            log("ERROR", "goal", agentErr instanceof Error ? agentErr.message : String(agentErr));
+            setLiveItems((prev) => [...prev, toErrorItem(agentErr, getId(), "Goal")]);
+          });
+          return;
+        }
         setLiveItems((prev) => [...prev, toErrorItem(err, getId(), "Goal")]);
       });
     },
@@ -3847,6 +3874,7 @@ export function App(props: AppProps) {
       currentProvider,
       currentModel,
       thinkingLevel,
+      agentLoop,
       appendGoalProgress,
       clearGoalModeIfIdle,
       clearGoalStatusEntry,

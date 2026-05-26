@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GoalRun, GoalTask } from "../core/goal-store.js";
 import { canCompleteGoalRun, decideGoalNextAction } from "../core/goal-controller.js";
+import { GoalWorktreeDirtyError } from "../core/goal-worktree.js";
 import type { CompletedItem } from "./app-items.js";
 import {
   appendGoalProgressDraft,
@@ -10,6 +11,7 @@ import {
   truncateGoalProgressText,
 } from "./goal-progress.js";
 import { nextGoalModeAfterAgentDone } from "./layout-decisions.js";
+import { buildGoalDirtyWorktreeUserPrompt, goalDirtyWorktreeInfoText } from "./App.js";
 
 function goalRun(overrides: Partial<GoalRun> = {}): GoalRun {
   return {
@@ -147,6 +149,19 @@ function applyCompletionAudit(run: GoalRun): GoalRun {
 }
 
 describe("/goal UI orchestration lifecycle", () => {
+  it("turns dirty worktree launch failures into a user choice prompt", () => {
+    const error = new GoalWorktreeDirtyError(" M packages/ggcoder/src/ui/App.tsx\n?? scratch.md");
+
+    expect(goalDirtyWorktreeInfoText()).toContain("working tree has uncommitted changes");
+    const prompt = buildGoalDirtyWorktreeUserPrompt(error);
+    expect(prompt).toContain("needs a clean working tree");
+    expect(prompt).toContain("M packages/ggcoder/src/ui/App.tsx");
+    expect(prompt).toContain("commit the current changes");
+    expect(prompt).toContain("stash them");
+    expect(prompt).toContain("pause the Goal");
+    expect(prompt).toContain("Do not run git commit, git stash, or discard changes");
+  });
+
   it("truncates long Goal progress text before it wraps across the TUI", () => {
     const text =
       "Choosing next Goal step: A-Z /goal system test, refinement, leak-safety, and report";

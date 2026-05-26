@@ -279,13 +279,13 @@ describe("goal worker failure propagation", () => {
         prompt: "Do deterministic work",
         worktreeCommandRunner: runner,
       }),
-    ).rejects.toThrow("Cannot launch isolated Goal worker from a dirty checkout");
+    ).rejects.toThrow("Goal workers need a clean working tree");
 
     const run = await getGoalRun(tmpProject, "goal-a");
     expect(spawnMock).not.toHaveBeenCalled();
     expect(run?.tasks[0]).toMatchObject({
       status: "blocked",
-      lastSummary: expect.stringContaining("dirty checkout"),
+      lastSummary: expect.stringContaining("clean working tree"),
     });
     expect(run?.evidence).toEqual(
       expect.arrayContaining([
