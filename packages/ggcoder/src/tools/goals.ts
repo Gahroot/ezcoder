@@ -288,32 +288,6 @@ function asVerificationStatus(value: string | undefined): GoalVerificationStatus
   return "unknown";
 }
 
-function formatRunReferences(run: GoalRun): string {
-  if (!run.references?.length) return "";
-  const lines = run.references.map(
-    (reference) =>
-      `- ${reference.id}: ${reference.kind}; ${reference.label}${reference.value ? `; value=${reference.value}` : ""}${reference.path ? `; path=${reference.path}` : ""}`,
-  );
-  return `\nReferences:\n${lines.join("\n")}`;
-}
-
-function formatRunTaskDag(run: GoalRun): string {
-  const lines = run.tasks
-    .map((task) => {
-      const metadata = [
-        task.dependsOn?.length ? `depends_on=${task.dependsOn.join(",")}` : undefined,
-        task.parallelGroup ? `parallel_group=${task.parallelGroup}` : undefined,
-        task.expectedChangedScope?.length
-          ? `expected_changed_scope=${task.expectedChangedScope.join(",")}`
-          : undefined,
-        task.mergeStrategy ? `merge_strategy=${task.mergeStrategy}` : undefined,
-      ].filter((item): item is string => item !== undefined);
-      return metadata.length > 0 ? `- DAG: ${task.id} ${metadata.join(" ")}` : undefined;
-    })
-    .filter((item): item is string => item !== undefined);
-  return lines.length > 0 ? `\nTasks:\n${lines.join("\n")}` : "";
-}
-
 function formatRun(run: GoalRun): string {
   const prereqs = run.prerequisites.length
     ? `${run.prerequisites.filter((item) => item.status === "met").length}/${run.prerequisites.length} prereqs met`
@@ -335,7 +309,7 @@ function formatRun(run: GoalRun): string {
   const blocker = goalHasBlockingPrerequisites(run)
     ? `\nUser prerequisites: ${formatGoalBlockingPrerequisites(run)}`
     : "";
-  return `[${run.status}] ${run.title} (id: ${run.id.slice(0, 8)}) — ${prereqs}, ${tasks}, ${verifier}${refs}${audit}${blocker}${formatRunReferences(run)}${formatRunTaskDag(run)}`;
+  return `[${run.status}] ${run.title} (id: ${run.id.slice(0, 8)}) — ${prereqs}, ${tasks}, ${verifier}${refs}${audit}${blocker}`;
 }
 
 function recoverableTaskStatus(status: GoalTaskStatus): boolean {
@@ -347,6 +321,42 @@ function statusAfterTaskPatch(run: GoalRun, status: GoalTaskStatus): GoalRunStat
     return run.status;
   }
   return goalHasBlockingPrerequisites(run) ? "blocked" : "ready";
+}
+
+function resolveTaskDependencyIds(
+  run: GoalRun,
+  dependencies: readonly string[] | undefined,
+  currentTaskId: string,
+): { ok: true; value: string[] } | { ok: false; error: string } {
+  if (!dependencies) return { ok: true, value: [] };
+
+  const resolved: string[] = [];
+  for (const dependency of dependencies) {
+    const trimmed = dependency.trim();
+    if (!trimmed) continue;
+
+    const matches = run.tasks.filter(
+      (task) =>
+        task.id !== currentTaskId &&
+        (task.id === trimmed || task.id.startsWith(trimmed) || task.title === trimmed),
+    );
+    if (matches.length === 0) {
+      return {
+        ok: false,
+        error: `depends_on entry "${trimmed}" does not match an existing task id/prefix. Add dependency tasks first, then reference their id.`,
+      };
+    }
+    if (matches.length > 1) {
+      return {
+        ok: false,
+        error: `depends_on entry "${trimmed}" is ambiguous; use a full task id.`,
+      };
+    }
+    const id = matches[0]?.id;
+    if (id && !resolved.includes(id)) resolved.push(id);
+  }
+
+  return { ok: true, value: resolved };
 }
 
 const SETUP_BLOCKER_PREFIX = "Goal setup incomplete:";
@@ -713,6 +723,8 @@ export function createGoalsTool(
           }
           const taskStatus = asTaskStatus(args.task_status);
           const mergeStrategy = asTaskMergeStrategy(args.merge_strategy);
+          const resolvedDependencies = resolveTaskDependencyIds(run, args.depends_on, taskId);
+          if (!resolvedDependencies.ok) return `Error: ${resolvedDependencies.error}`;
           const updated = await updateGoalTask(storageCwd, run.id, taskId, {
             id: taskId,
             ...(args.task_title ? { title: args.task_title } : {}),
@@ -720,7 +732,7 @@ export function createGoalsTool(
             status: taskStatus,
             ...(args.worker_id ? { workerId: args.worker_id } : {}),
             ...(args.attempts !== undefined ? { attempts: args.attempts } : {}),
-            ...(args.depends_on ? { dependsOn: args.depends_on } : {}),
+            ...(args.depends_on ? { dependsOn: resolvedDependencies.value } : {}),
             ...(args.parallel_group ? { parallelGroup: args.parallel_group } : {}),
             ...(args.expected_changed_scope
               ? { expectedChangedScope: args.expected_changed_scope }

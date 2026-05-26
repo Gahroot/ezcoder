@@ -34,7 +34,6 @@ import { ToolExecution } from "./components/ToolExecution.js";
 import { ToolUseLoader } from "./components/ToolUseLoader.js";
 import { ToolGroupExecution } from "./components/ToolGroupExecution.js";
 import { ServerToolExecution } from "./components/ServerToolExecution.js";
-import { MessageResponse } from "./components/MessageResponse.js";
 import { SubAgentPanel, type SubAgentInfo } from "./components/SubAgentPanel.js";
 import { CompactionSpinner, CompactionDone } from "./components/CompactionNotice.js";
 import type { SubAgentUpdate, SubAgentDetails } from "../tools/subagent.js";
@@ -3019,78 +3018,30 @@ export function App(props: AppProps) {
             pasteInfo={item.pasteInfo}
           />
         );
-      case "goal":
+      case "goal": {
+        const workerSuffix = item.workerId ? ` · worker ${item.workerId}` : "";
+        const text = `▶ Goal: ${item.title}${workerSuffix}`;
         return (
-          <Box key={item.id} paddingLeft={1} marginTop={1}>
-            <Text wrap="wrap">
-              <Text color={theme.success} bold>
-                {"▶ "}
-              </Text>
-              <Text color={theme.textDim}>{"Goal: "}</Text>
-              <Text color={theme.success}>{truncateGoalProgressText(item.title)}</Text>
-              {item.workerId ? <Text color={theme.textDim}> · worker {item.workerId}</Text> : null}
+          <Box key={item.id} paddingLeft={1} marginTop={1} width={columns} flexShrink={1}>
+            <Text color={theme.success} wrap="truncate">
+              {truncateGoalProgressText(text, Math.max(8, columns - 2))}
             </Text>
           </Box>
         );
+      }
       case "goal_progress": {
         const color = goalProgressColor(item, theme);
         const loaderStatus = goalProgressLoaderStatus(item);
-        const hasBody =
-          !!item.detail ||
-          (item.summaryRows !== undefined && item.summaryRows.length > 0) ||
-          (item.summarySections !== undefined && item.summarySections.length > 0);
-        const headerContentWidth = Math.max(10, columns - 3);
+        const suffix = [item.workerId ? `worker ${item.workerId}` : undefined, item.detail]
+          .filter((part): part is string => !!part?.trim())
+          .join(" · ");
+        const text = suffix ? `${item.title} · ${suffix}` : item.title;
         return withPrintedBoundarySpacing(
-          <Box key={item.id} flexDirection="column" paddingLeft={1} marginTop={1} flexShrink={1}>
-            <Box flexDirection="row">
-              <ToolUseLoader status={loaderStatus} staticDisplay color={color} />
-              <Box flexGrow={1} width={headerContentWidth}>
-                <Text wrap="wrap">
-                  <Text color={color} bold>
-                    {truncateGoalProgressText(item.title)}
-                  </Text>
-                  {item.workerId ? (
-                    <Text color={theme.textDim}> · worker {item.workerId}</Text>
-                  ) : null}
-                </Text>
-              </Box>
-            </Box>
-            {hasBody ? (
-              <MessageResponse>
-                <Box flexDirection="column" flexShrink={1}>
-                  {item.detail ? (
-                    <Text color={theme.textDim} wrap="wrap">
-                      {truncateGoalProgressText(item.detail)}
-                    </Text>
-                  ) : null}
-                  {item.summaryRows?.map((row) => (
-                    <Text key={row.label} wrap="truncate">
-                      <Text color={theme.textDim}>{row.label.padEnd(12)}</Text>
-                      <Text color={theme.text}>{truncateGoalProgressText(row.value)}</Text>
-                      {row.detail ? (
-                        <Text color={theme.textDim}> · {truncateGoalProgressText(row.detail)}</Text>
-                      ) : null}
-                    </Text>
-                  ))}
-                  {item.summarySections?.map((section) => (
-                    <Box key={section.title} flexDirection="column" marginTop={1} flexShrink={1}>
-                      <Text color={theme.textDim} bold>
-                        {section.title}
-                      </Text>
-                      {section.lines.map((line, sectionLineIndex) => (
-                        <Text
-                          key={`${section.title}-${sectionLineIndex}`}
-                          color={theme.text}
-                          wrap="wrap"
-                        >
-                          {`• ${truncateGoalProgressText(line)}`}
-                        </Text>
-                      ))}
-                    </Box>
-                  ))}
-                </Box>
-              </MessageResponse>
-            ) : null}
+          <Box key={item.id} flexDirection="row" paddingLeft={1} marginTop={1} width={columns}>
+            <ToolUseLoader status={loaderStatus} staticDisplay color={color} />
+            <Text color={color} bold wrap="truncate">
+              {truncateGoalProgressText(text, Math.max(8, columns - 4))}
+            </Text>
           </Box>,
         );
       }

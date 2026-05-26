@@ -152,7 +152,7 @@ describe("/goal UI orchestration lifecycle", () => {
       "Choosing next Goal step: A-Z /goal system test, refinement, leak-safety, and report";
 
     expect(truncateGoalProgressText(text)).toBe(
-      "Choosing next Goal step: A-Z /goal system test, refinement, leak-safety…",
+      "Choosing next Goal step: A-Z /goal system test, refin…",
     );
   });
 
@@ -293,24 +293,8 @@ describe("/goal UI orchestration lifecycle", () => {
 
     const reconstructedAfterRestore = formatGoalTerminalProgress(blocked);
     expect(reconstructedAfterRestore).toEqual(initiallyVisible);
-    expect(reconstructedAfterRestore?.summaryRows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          label: "Verifier",
-          value: "fail",
-          detail: ".goal-evidence/blocker.log",
-        }),
-        expect.objectContaining({
-          label: "Evidence",
-          value: "1 recorded",
-          detail: ".goal-evidence/blocker.log",
-        }),
-        expect.objectContaining({
-          label: "Blocked on",
-          value: "GOAL BLOCKER verification failed after pane switch",
-        }),
-      ]),
-    );
+    expect(reconstructedAfterRestore).not.toHaveProperty("summaryRows");
+    expect(reconstructedAfterRestore).not.toHaveProperty("summarySections");
   });
 
   it("does not synthesize old terminal Goal messages into fresh UI state", () => {

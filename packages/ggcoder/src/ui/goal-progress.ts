@@ -5,11 +5,7 @@ import {
   type GoalRun,
 } from "../core/goal-store.js";
 import type { GoalWorkerCompletion } from "../core/goal-worker.js";
-import {
-  buildGoalFinalSummarySections,
-  buildGoalSummaryRows,
-  goalPassedDetail,
-} from "./goal-summary.js";
+import { goalPassedDetail } from "./goal-summary.js";
 import type { CompletedItem, GoalProgressDraft, GoalProgressItem } from "./app-items.js";
 
 function summarizeGoalCompletion(summary: string): string | undefined {
@@ -25,12 +21,17 @@ function summarizeGoalCompletion(summary: string): string | undefined {
   return statusLine ?? changedLine ?? verificationLine ?? lines[0];
 }
 
-const GOAL_PROGRESS_TEXT_LIMIT = 72;
+const GOAL_PROGRESS_TEXT_LIMIT = 54;
 
-export function truncateGoalProgressText(text: string): string {
+export function truncateGoalProgressText(
+  text: string,
+  maxLength = GOAL_PROGRESS_TEXT_LIMIT,
+): string {
   const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= GOAL_PROGRESS_TEXT_LIMIT) return normalized;
-  return `${normalized.slice(0, GOAL_PROGRESS_TEXT_LIMIT - 1).trimEnd()}…`;
+  const safeMaxLength = Math.max(1, maxLength);
+  if (normalized.length <= safeMaxLength) return normalized;
+  if (safeMaxLength === 1) return "…";
+  return `${normalized.slice(0, safeMaxLength - 1).trimEnd()}…`;
 }
 
 export function formatGoalWorkerFinishedTitle(
@@ -116,8 +117,6 @@ export function formatGoalTerminalProgress(run: GoalRun): GoalProgressDraft | nu
         phase: "terminal",
         title: `Goal passed: ${run.title}`,
         detail: goalPassedDetail(run),
-        summaryRows: buildGoalSummaryRows(run),
-        summarySections: buildGoalFinalSummarySections(run),
         status: run.status,
       };
     case "failed":
@@ -125,8 +124,7 @@ export function formatGoalTerminalProgress(run: GoalRun): GoalProgressDraft | nu
         kind: "goal_progress",
         phase: "terminal",
         title: `Goal failed: ${run.title}`,
-        detail: "Auto-continuation stopped. Check Goal tasks for the failing step.",
-        summaryRows: buildGoalSummaryRows(run),
+        detail: "Auto-continuation stopped.",
         status: run.status,
       };
     case "blocked":
@@ -136,8 +134,7 @@ export function formatGoalTerminalProgress(run: GoalRun): GoalProgressDraft | nu
         title: `Goal blocked: ${run.title}`,
         detail: goalHasBlockingPrerequisites(run)
           ? formatGoalBlockingPrerequisites(run)
-          : (run.blockers[0] ?? "A prerequisite or missing verifier blocked progress."),
-        summaryRows: buildGoalSummaryRows(run),
+          : (run.blockers[0] ?? "Blocked."),
         status: run.status,
       };
     case "paused":
@@ -145,8 +142,7 @@ export function formatGoalTerminalProgress(run: GoalRun): GoalProgressDraft | nu
         kind: "goal_progress",
         phase: "terminal",
         title: `Goal paused: ${run.title}`,
-        detail: run.blockers[0] ?? "Auto-continuation paused.",
-        summaryRows: buildGoalSummaryRows(run),
+        detail: run.blockers[0] ?? "Paused.",
         status: run.status,
       };
     case "draft":
