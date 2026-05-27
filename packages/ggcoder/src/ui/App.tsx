@@ -375,6 +375,10 @@ export function goalDirtyWorktreeInfoText(): string {
   return "Goal paused: your working tree has uncommitted changes. Asking whether to commit or stash them before starting isolated Goal workers.";
 }
 
+export function goalRunNeedsExplicitContinuationAfterWorker(run: GoalRun | undefined): boolean {
+  return !!run?.continueRequestedAt && !goalHasBlockingPrerequisites(run);
+}
+
 function goalProgressLoaderStatus(item: GoalProgressItem): "running" | "done" | "error" {
   if (item.status === "failed" || item.status === "fail" || item.status === "blocked") {
     return "error";
@@ -3636,10 +3640,7 @@ export function App(props: AppProps) {
         if (activeVerifierRunIdsRef.current.size > 0) return;
         const runs = await loadGoalRuns(completion.worker.projectPath);
         const latestRun = runs.find((item) => item.id === completion.worker.goalRunId);
-        const queued =
-          latestRun && !goalHasBlockingPrerequisites(latestRun)
-            ? latestRun
-            : runs.find((item) => item.continueRequestedAt && !goalHasBlockingPrerequisites(item));
+        const queued = runs.find((item) => goalRunNeedsExplicitContinuationAfterWorker(item));
         if (queued) setTimeout(() => continueGoalRun(queued.id), 750);
       })().catch((err: unknown) =>
         log("ERROR", "goal", err instanceof Error ? err.message : String(err)),

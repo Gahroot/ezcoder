@@ -19,6 +19,7 @@ import { nextGoalModeAfterAgentDone } from "./layout-decisions.js";
 import {
   buildGoalDirtyWorktreeUserPrompt,
   goalDirtyWorktreeInfoText,
+  goalRunNeedsExplicitContinuationAfterWorker,
   shouldRunGoalTaskInMainCheckout,
 } from "./App.js";
 
@@ -232,6 +233,28 @@ describe("/goal UI orchestration lifecycle", () => {
       nextQueuedSyntheticEvents: 2,
       nextGoalMode: "coordinator",
     });
+  });
+
+  it("requires explicit continuation before chaining another Goal worker after completion", () => {
+    const completedRun = goalRun({
+      status: "ready",
+      tasks: [task({ status: "done", attempts: 1 })],
+    });
+
+    expect(goalRunNeedsExplicitContinuationAfterWorker(completedRun)).toBe(false);
+    expect(
+      goalRunNeedsExplicitContinuationAfterWorker({
+        ...completedRun,
+        continueRequestedAt: "2024-01-01T00:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      goalRunNeedsExplicitContinuationAfterWorker({
+        ...completedRun,
+        continueRequestedAt: "2024-01-01T00:00:00.000Z",
+        prerequisites: [{ id: "api", label: "API key", status: "missing" }],
+      }),
+    ).toBe(false);
   });
 
   it("keeps coordinator mode only while Goal continuation work remains", () => {
