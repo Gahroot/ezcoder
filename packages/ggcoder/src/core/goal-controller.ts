@@ -16,6 +16,10 @@ export const DEFAULT_GOAL_VERIFIER_FIX_LIMIT = 5;
 export const APPLY_INTEGRATION_TO_MAIN_TASK_TITLE = "Apply integrated worktree to main";
 export const COMMIT_INTEGRATED_GOAL_CHANGES_TASK_TITLE = "Commit integrated goal changes";
 const FINAL_COMPLETION_AUDIT_TASK_TITLE = "Audit Goal completion evidence";
+const BUILD_GOAL_EVIDENCE_PATH_TASK_TITLE = "Build Goal evidence path";
+const BUILD_GOAL_VERIFICATION_HARNESS_TASK_TITLE = "Build Goal verification harness";
+const DEFINE_GOAL_VERIFIER_TASK_TITLE = "Define Goal verifier";
+const FIX_VERIFIER_FAILURE_TASK_TITLE = "Fix verifier failure";
 const DEFAULT_GOAL_COMPLETION_AUDIT_LIMIT = 3;
 
 export type GoalControllerDecision =
@@ -487,6 +491,48 @@ function recoverableTask(task: GoalTask): boolean {
   return task.status === "pending" || task.status === "failed";
 }
 
+function existingTaskWithTitle(run: GoalRun, title: string): GoalTask | undefined {
+  return run.tasks.find((task) => task.title === title);
+}
+
+function existingBlockedTaskWithTitle(run: GoalRun, title: string): GoalTask | undefined {
+  return run.tasks.find((task) => task.title === title && task.status === "blocked");
+}
+
+function reconcileExistingAutoTaskDecision(
+  task: GoalTask,
+  reason: string,
+): GoalControllerDecision {
+  if (task.status === "running" || task.status === "verifying") {
+    return {
+      kind: "wait",
+      reason: `Goal auto-task "${task.title}" already exists and is ${task.status}; ${reason}`,
+      ...(task.workerId ? { workerId: task.workerId } : {}),
+    };
+  }
+  if (task.status === "pending" || task.status === "failed") {
+    return {
+      kind: "start_worker",
+      task,
+      attempts: task.attempts + 1,
+      reason: `Goal auto-task "${task.title}" already exists; reusing it instead of creating a duplicate. ${reason}`,
+    };
+  }
+  return {
+    kind: "blocked",
+    reason: `Goal auto-task "${task.title}" already exists with status ${task.status}; not creating a duplicate. Reconcile its evidence or update the existing task before continuing. ${reason}`,
+  };
+}
+
+function duplicateAutoTaskDecision(
+  run: GoalRun,
+  title: string,
+  reason: string,
+): GoalControllerDecision | undefined {
+  const existingTask = existingTaskWithTitle(run, title);
+  return existingTask ? reconcileExistingAutoTaskDecision(existingTask, reason) : undefined;
+}
+
 function taskMatchesDependency(task: GoalTask, dependencyId: string): boolean {
   return task.id === dependencyId || task.id.startsWith(dependencyId);
 }
@@ -818,9 +864,15 @@ export function decideGoalNextAction(
           "Verifier passed, but final completion audit did not reconcile the Goal evidence plan after bounded attempts.",
       };
     }
+    const duplicateDecision = duplicateAutoTaskDecision(
+      run,
+      BUILD_GOAL_EVIDENCE_PATH_TASK_TITLE,
+      "Goal evidence plan still requires local instrumentation or exact prerequisite handling before verification.",
+    );
+    if (duplicateDecision) return duplicateDecision;
     return {
       kind: "create_task",
-      title: "Build Goal evidence path",
+      title: BUILD_GOAL_EVIDENCE_PATH_TASK_TITLE,
       prompt: buildEvidencePlanTaskPrompt(run),
       reason:
         "Goal evidence plan requires local instrumentation or exact prerequisite handling before verification.",
@@ -828,9 +880,15 @@ export function decideGoalNextAction(
   }
 
   if (needsHarnessInstrumentation(run)) {
+    const duplicateDecision = duplicateAutoTaskDecision(
+      run,
+      BUILD_GOAL_VERIFICATION_HARNESS_TASK_TITLE,
+      "Goal harness still requires local instrumentation before verification.",
+    );
+    if (duplicateDecision) return duplicateDecision;
     return {
       kind: "create_task",
-      title: "Build Goal verification harness",
+      title: BUILD_GOAL_VERIFICATION_HARNESS_TASK_TITLE,
       prompt: buildHarnessTaskPrompt(run),
       reason: "Goal harness requires local instrumentation before verification.",
     };
@@ -845,10 +903,18 @@ export function decideGoalNextAction(
       };
     }
     const limit = options.verifierFixLimit ?? DEFAULT_GOAL_VERIFIER_FIX_LIMIT;
+    const blockedFixTask = existingBlockedTaskWithTitle(run, FIX_VERIFIER_FAILURE_TASK_TITLE);
+    if (blockedFixTask) {
+      return {
+        kind: "blocked",
+        reason:
+          "A blocked verifier-fix task already exists; not creating another fix worker until the existing blocker is reconciled.",
+      };
+    }
     if (shouldCreateVerifierFixTask(run, limit)) {
       return {
         kind: "create_task",
-        title: "Fix verifier failure",
+        title: FIX_VERIFIER_FAILURE_TASK_TITLE,
         prompt: buildVerifierFailureTaskPrompt(run),
         reason: `Verifier failed; creating bounded fix task ${verifierFixTaskCount(run) + 1}/${limit}.`,
       };
@@ -857,7 +923,7 @@ export function decideGoalNextAction(
       kind: "pause",
       task: {
         id: "verifier-fix-limit",
-        title: "Fix verifier failure",
+        title: FIX_VERIFIER_FAILURE_TASK_TITLE,
         prompt: "Verifier fix attempt limit reached.",
         status: "blocked",
         attempts: limit,
@@ -890,9 +956,15 @@ export function decideGoalNextAction(
     };
   }
 
+  const duplicateDecision = duplicateAutoTaskDecision(
+    run,
+    DEFINE_GOAL_VERIFIER_TASK_TITLE,
+    "No verifier command is configured yet.",
+  );
+  if (duplicateDecision) return duplicateDecision;
   return {
     kind: "create_task",
-    title: "Define Goal verifier",
+    title: DEFINE_GOAL_VERIFIER_TASK_TITLE,
     prompt: buildVerifierTaskPrompt(run),
     reason: "No pending Goal task or verifier command is configured.",
   };

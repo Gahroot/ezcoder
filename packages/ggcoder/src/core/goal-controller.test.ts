@@ -1197,4 +1197,107 @@ describe("goal controller", () => {
       reason: "Attempt limit reached for task Flaky repair.",
     });
   });
+
+  it("does not create duplicate auto evidence or harness tasks", () => {
+    const evidenceTask = {
+      id: "evidence-task",
+      title: "Build Goal evidence path",
+      prompt: "Build proof",
+      status: "done" as const,
+      attempts: 1,
+    };
+    expect(
+      decideGoalNextAction(
+        goalRun({
+          tasks: [evidenceTask],
+          evidencePlan: [
+            {
+              id: "missing-proof",
+              label: "Missing proof",
+              mechanism: "command",
+              description: "Needs a command artifact.",
+              status: "planned",
+              command: "pnpm missing-proof",
+            },
+          ],
+          verifier: { description: "Verifier", command: "pnpm verify" },
+        }),
+      ),
+    ).toEqual({
+      kind: "blocked",
+      reason:
+        'Goal auto-task "Build Goal evidence path" already exists with status done; not creating a duplicate. Reconcile its evidence or update the existing task before continuing. Goal evidence plan still requires local instrumentation or exact prerequisite handling before verification.',
+    });
+
+    const harnessTask = {
+      id: "harness-task",
+      title: "Build Goal verification harness",
+      prompt: "Build harness",
+      status: "blocked" as const,
+      attempts: 1,
+    };
+    expect(
+      decideGoalNextAction(
+        goalRun({
+          tasks: [harnessTask],
+          harness: [{ id: "harness", label: "Harness", description: "Needs instrumentation" }],
+          verifier: { description: "Verifier" },
+        }),
+      ),
+    ).toEqual({
+      kind: "blocked",
+      reason:
+        'Goal auto-task "Build Goal verification harness" already exists with status blocked; not creating a duplicate. Reconcile its evidence or update the existing task before continuing. Goal harness still requires local instrumentation before verification.',
+    });
+  });
+
+  it("reuses existing pending auto tasks instead of creating duplicates", () => {
+    const verifierTask = {
+      id: "verifier-task",
+      title: "Define Goal verifier",
+      prompt: "Define verifier",
+      status: "pending" as const,
+      attempts: 1,
+    };
+
+    expect(
+      decideGoalNextAction(goalRun({ tasks: [verifierTask], verifier: { description: "Verifier" } })),
+    ).toEqual({
+      kind: "start_worker",
+      task: verifierTask,
+      attempts: 2,
+      reason: 'Goal task "Define Goal verifier" is ready for worker attempt 2.',
+    });
+  });
+
+  it("blocks rather than creating another verifier-fix task when one is already blocked", () => {
+    const run = goalRun({
+      tasks: [
+        { id: "task-a", title: "Done", prompt: "Done", status: "done", attempts: 1 },
+        {
+          id: "fix-a",
+          title: "Fix verifier failure",
+          prompt: "Fix it",
+          status: "blocked",
+          attempts: 1,
+        },
+      ],
+      verifier: {
+        description: "Full check",
+        command: "pnpm test",
+        lastResult: {
+          status: "fail",
+          summary: "tests failed",
+          checkedAt: "2024-01-01T00:00:00.000Z",
+          exitCode: 1,
+        },
+      },
+    });
+
+    expect(decideGoalNextAction(run)).toEqual({
+      kind: "blocked",
+      reason:
+        "A blocked verifier-fix task already exists; not creating another fix worker until the existing blocker is reconciled.",
+    });
+  });
 });

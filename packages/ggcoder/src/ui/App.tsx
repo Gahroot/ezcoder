@@ -3783,6 +3783,26 @@ export function App(props: AppProps) {
           return;
         }
         if (decision.kind === "create_task") {
+          const latestRunBeforeCreate =
+            (await loadGoalRuns(props.cwd)).find((item) => item.id === checkedRun.id) ?? checkedRun;
+          const existingSameTitleTask = latestRunBeforeCreate.tasks.find(
+            (item) => item.title === decision.title,
+          );
+          if (existingSameTitleTask) {
+            const runWithExistingTask = await upsertGoalRun(props.cwd, {
+              ...latestRunBeforeCreate,
+              status: "ready",
+            });
+            appendGoalProgress({
+              kind: "goal_progress",
+              phase: "continuing",
+              title: `Goal task already exists: ${decision.title}`,
+              detail: "Reusing the existing Goal task instead of creating a duplicate.",
+              status: "ready",
+            });
+            startGoalRunRef.current(runWithExistingTask);
+            return;
+          }
           await updateGoalTask(props.cwd, checkedRun.id, `auto-${Date.now()}`, {
             title: decision.title,
             prompt: decision.prompt,
