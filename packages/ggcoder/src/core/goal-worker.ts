@@ -17,6 +17,7 @@ import {
 } from "./goal-store.js";
 import {
   createGoalWorkerWorktree,
+  isGoalWorktreeDirtyError,
   type GoalWorktreeCommandRunner,
   type GoalWorktreeCandidate,
 } from "./goal-worktree.js";
@@ -223,7 +224,7 @@ export async function startGoalWorker(options: StartGoalWorkerOptions): Promise<
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await updateGoalTask(projectPath, options.goalRunId, options.goalTaskId, {
-        status: "blocked",
+        status: isGoalWorktreeDirtyError(error) ? "pending" : "blocked",
         workerId,
         lastSummary: message,
       });

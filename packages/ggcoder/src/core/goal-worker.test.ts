@@ -291,7 +291,7 @@ describe("goal worker failure propagation", () => {
     expect(systemPrompt).toContain("main checkout");
   });
 
-  it("blocks a task instead of launching when isolated worktree creation is unsafe", async () => {
+  it("leaves a task retryable when isolated worktree creation only needs a clean checkout", async () => {
     const runner: GoalWorktreeCommandRunner = {
       execFile: vi.fn(async (_file, args) =>
         args[0] === "status"
@@ -316,7 +316,7 @@ describe("goal worker failure propagation", () => {
     const run = await getGoalRun(tmpProject, "goal-a");
     expect(spawnMock).not.toHaveBeenCalled();
     expect(run?.tasks[0]).toMatchObject({
-      status: "blocked",
+      status: "pending",
       lastSummary: expect.stringContaining("clean working tree"),
     });
     expect(run?.evidence).toEqual(
