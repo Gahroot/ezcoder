@@ -25,9 +25,10 @@ function SummaryText({ segments, color }: { segments: SummarySegment[]; color: s
 
 interface ToolGroupExecutionProps {
   tools: ToolGroupTool[];
+  marginTop?: number;
 }
 
-export function ToolGroupExecution({ tools }: ToolGroupExecutionProps) {
+export function ToolGroupExecution({ tools, marginTop = 0 }: ToolGroupExecutionProps) {
   const theme = useTheme();
   const allDone = tools.every((t) => t.status === "done");
   const hasError = tools.some((t) => t.isError);
@@ -39,7 +40,7 @@ export function ToolGroupExecution({ tools }: ToolGroupExecutionProps) {
     status === "error" ? theme.error : status === "done" ? theme.success : theme.toolName;
 
   return (
-    <Box paddingLeft={RESPONSE_LEFT_PADDING} marginBottom={1} flexDirection="row">
+    <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop} flexDirection="row">
       {status === "running" ? (
         <Box width={2} flexShrink={0}>
           <Spinner staticDisplay={staticDisplay} />

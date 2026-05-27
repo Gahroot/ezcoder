@@ -126,6 +126,10 @@ const GoalsParams = z.object({
   path: z.string().optional().describe("Artifact path for an evidence-plan update"),
   verifier_command: z.string().optional().describe("Command that verifies the goal end-to-end"),
   verifier_description: z.string().optional().describe("Natural-language verifier description"),
+  verifier_cwd: z
+    .string()
+    .optional()
+    .describe("Working directory for the verifier command; use a worker worktree path only when the verifier artifact lives there"),
   task_id: z.string().optional().describe("Goal task id to update"),
   task_title: z.string().optional().describe("Short worker task title"),
   task_prompt: z
@@ -564,12 +568,15 @@ export function createGoalsTool(
             ...(item.evidence ? { evidence: item.evidence } : {}),
           }));
           const verifier =
-            args.verifier_command || args.verifier_description
+            args.verifier_command || args.verifier_description || args.verifier_cwd
               ? {
                   description:
                     args.verifier_description ?? existing?.verifier?.description ?? "Goal verifier",
                   ...((args.verifier_command ?? existing?.verifier?.command)
                     ? { command: args.verifier_command ?? existing?.verifier?.command }
+                    : {}),
+                  ...((args.verifier_cwd ?? existing?.verifier?.cwd)
+                    ? { cwd: args.verifier_cwd ?? existing?.verifier?.cwd }
                     : {}),
                   ...(existing?.verifier?.lastResult
                     ? { lastResult: existing.verifier.lastResult }
@@ -908,6 +915,9 @@ export function createGoalsTool(
                 args.verifier_description ?? run.verifier?.description ?? "Goal verifier",
               ...((args.verifier_command ?? run.verifier?.command)
                 ? { command: args.verifier_command ?? run.verifier?.command }
+                : {}),
+              ...((args.verifier_cwd ?? run.verifier?.cwd)
+                ? { cwd: args.verifier_cwd ?? run.verifier?.cwd }
                 : {}),
               lastResult: result,
             },

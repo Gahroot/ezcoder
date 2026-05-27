@@ -139,6 +139,7 @@ export interface GoalEvidence {
 export interface GoalVerifier {
   description: string;
   command?: string;
+  cwd?: string;
   lastResult?: GoalVerificationResult;
 }
 
@@ -558,6 +559,7 @@ function normalizeVerifier(value: unknown): GoalVerifier | undefined {
   return {
     description,
     ...(optionalString(value.command) ? { command: optionalString(value.command) } : {}),
+    ...(optionalString(value.cwd) ? { cwd: optionalString(value.cwd) } : {}),
     ...(normalizeVerification(value.lastResult)
       ? { lastResult: normalizeVerification(value.lastResult) }
       : {}),

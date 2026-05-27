@@ -12,6 +12,7 @@ interface ServerToolRunningProps {
   input: unknown;
   startedAt: number;
   animateUntil?: number;
+  marginTop?: number;
 }
 
 interface ServerToolDoneProps {
@@ -20,6 +21,7 @@ interface ServerToolDoneProps {
   input: unknown;
   durationMs: number;
   resultType?: string;
+  marginTop?: number;
 }
 
 type ServerToolExecutionProps = ServerToolRunningProps | ServerToolDoneProps;
@@ -56,7 +58,11 @@ export function ServerToolExecution(props: ServerToolExecutionProps) {
 
   if (props.status === "running") {
     return (
-      <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1}>
+      <Box
+        flexDirection="column"
+        paddingLeft={RESPONSE_LEFT_PADDING}
+        marginTop={props.marginTop ?? 1}
+      >
         <Box flexDirection="row">
           <Box width={HEADER_PREFIX} flexShrink={0}>
             <Spinner staticDisplay={staticDisplay} />
@@ -78,7 +84,11 @@ export function ServerToolExecution(props: ServerToolExecutionProps) {
   const duration = Math.round(props.durationMs / 1000);
 
   return (
-    <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={1}>
+    <Box
+      flexDirection="column"
+      paddingLeft={RESPONSE_LEFT_PADDING}
+      marginTop={props.marginTop ?? 1}
+    >
       <Box flexDirection="row">
         <ToolUseLoader status={isAborted ? "error" : "done"} />
         <Box flexGrow={1} width={headerContentWidth}>

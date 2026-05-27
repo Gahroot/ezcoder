@@ -426,6 +426,7 @@ describe("AssistantMessage live layout", () => {
           name="read"
           args={{ file_path: "src/a.ts" }}
           animateUntil={0}
+          marginTop={0}
         />
       </Box>,
     );
@@ -437,6 +438,7 @@ describe("AssistantMessage live layout", () => {
     const frame = await renderPrintedHistoryThenLiveFrame(
       <Box marginTop={1} flexDirection="column">
         <ToolGroupExecution
+          marginTop={0}
           tools={[
             {
               toolCallId: "read-1",
@@ -462,6 +464,7 @@ describe("AssistantMessage live layout", () => {
           args={{ command: "echo hi" }}
           progressOutput="hello\nworld"
           animateUntil={0}
+          marginTop={0}
         />
       </Box>,
     );
@@ -469,13 +472,19 @@ describe("AssistantMessage live layout", () => {
     expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n · Bash(echo hi)");
   });
 
-  it("does not add a second blank row before tool rows that already self-space", async () => {
+  it("does not add hidden self-spacing when transcript spacing is not requested", async () => {
     const frame = await renderPrintedHistoryThenLiveFrame(
-      <ToolExecution status="running" name="bash" args={{ command: "echo hi" }} animateUntil={0} />,
+      <ToolExecution
+        status="running"
+        name="bash"
+        args={{ command: "echo hi" }}
+        animateUntil={0}
+        marginTop={0}
+      />,
     );
 
-    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n\n · Bash(echo hi)");
-    expect(frame).not.toContain("renderer.\n\n\n · Bash(echo hi)");
+    expect(frame).toContain(" ⏺ I’ll inspect the relevant UI renderer.\n · Bash(echo hi)");
+    expect(frame).not.toContain("renderer.\n\n · Bash(echo hi)");
   });
 
   it("wraps long web_search tool headers and summaries inside the terminal width", () => {

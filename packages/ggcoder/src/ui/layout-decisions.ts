@@ -190,6 +190,7 @@ function isAgentSpacingKind(kind: CompletedItem["kind"]): boolean {
     "assistant",
     "queued",
     "task",
+    "goal",
     "goal_progress",
     "tool_start",
     "tool_done",
@@ -208,6 +209,8 @@ function isAgentSpacingKind(kind: CompletedItem["kind"]): boolean {
     "update_notice",
     "compacting",
     "compacted",
+    "duration",
+    "step_done",
     "style_pack",
     "setup_hint",
   ].includes(kind);

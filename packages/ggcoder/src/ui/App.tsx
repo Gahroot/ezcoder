@@ -2920,7 +2920,13 @@ export function App(props: AppProps) {
     glyphColor = theme.commandColor,
     options: { bold?: boolean; muted?: boolean; marginTop?: number } = {},
   ) => (
-    <Box key={key} flexDirection="row" paddingLeft={1} marginTop={options.marginTop ?? 1} flexShrink={1}>
+    <Box
+      key={key}
+      flexDirection="row"
+      paddingLeft={1}
+      marginTop={options.marginTop ?? 0}
+      flexShrink={1}
+    >
       <Box width={2} flexShrink={0}>
         <Text color={glyphColor} bold={options.bold ?? true}>
           {glyph}
@@ -2940,25 +2946,31 @@ export function App(props: AppProps) {
 
   const renderItem = (item: CompletedItem, index: number, items: CompletedItem[]) => {
     const previousLiveItem = index > 0 ? items[index - 1] : undefined;
-    const shouldTopSpacePrintedBoundary = shouldTopSpaceAfterPrintedAgentBoundary({
-      currentKind: item.kind,
-      previousLiveItem,
-      lastPendingHistoryItem: pendingHistoryFlushRef.current.at(-1),
-      lastHistoryItem: history.at(-1),
-    });
-    const assistantMarginTop =
-      item.kind === "assistant" &&
-      (shouldTopSpacePrintedBoundary ||
-        shouldTopSpaceAssistantAfterToolBoundary({
-          text: item.text,
-          previousLiveItem,
-          lastPendingHistoryItem: pendingHistoryFlushRef.current.at(-1),
-          lastHistoryItem: history.at(-1),
-        }))
-        ? 1
-        : 0;
-
-    const withPrintedBoundarySpacing = (node: React.ReactNode): React.ReactNode => node;
+    const transcriptMarginTop =
+      item.kind === "assistant"
+        ? shouldTopSpaceAssistantAfterToolBoundary({
+            text: item.text,
+            previousLiveItem,
+            lastPendingHistoryItem: pendingHistoryFlushRef.current.at(-1),
+            lastHistoryItem: history.at(-1),
+          })
+          ? 1
+          : 0
+        : isAgentSpacingItem(item)
+          ? 1
+          : 0;
+    const withTranscriptSpacing = (node: React.ReactNode): React.ReactNode =>
+      transcriptMarginTop > 0 ? (
+        <Box
+          key={`${item.id}-transcript-spacing`}
+          flexDirection="column"
+          marginTop={transcriptMarginTop}
+        >
+          {node}
+        </Box>
+      ) : (
+        node
+      );
 
     switch (item.kind) {
       case "tombstone":
@@ -2985,12 +2997,12 @@ export function App(props: AppProps) {
       case "goal": {
         const workerSuffix = item.workerId ? ` · worker ${item.workerId}` : "";
         const text = `▶ Goal: ${item.title}${workerSuffix}`;
-        return (
-          <Box key={item.id} paddingLeft={1} marginTop={1} width={columns} flexShrink={1}>
+        return withTranscriptSpacing(
+          <Box key={item.id} paddingLeft={1} width={columns} flexShrink={1}>
             <Text color={theme.success} wrap="truncate">
               {truncateGoalProgressText(text, Math.max(8, columns - 2))}
             </Text>
-          </Box>
+          </Box>,
         );
       }
       case "goal_progress": {
@@ -3000,8 +3012,8 @@ export function App(props: AppProps) {
         const titleText = `${item.title}${workerSuffix}`;
         const hasResponseBody =
           !!item.detail || !!item.summaryRows?.length || !!item.summarySections?.length;
-        return withPrintedBoundarySpacing(
-          <Box key={item.id} flexDirection="column" marginTop={1} width={columns}>
+        return withTranscriptSpacing(
+          <Box key={item.id} flexDirection="column" width={columns}>
             <Box flexDirection="row" paddingLeft={1} width={columns}>
               <ToolUseLoader status={loaderStatus} staticDisplay color={color} />
               <Text color={color} bold wrap="truncate">
@@ -3027,7 +3039,11 @@ export function App(props: AppProps) {
                     <Box key={`${item.id}-${section.title}`} flexDirection="column" flexShrink={1}>
                       <Text color={theme.textDim}>{section.title}</Text>
                       {section.lines.map((line, lineIndex) => (
-                        <Text key={`${item.id}-${section.title}-${lineIndex}`} color={theme.text} wrap="wrap">
+                        <Text
+                          key={`${item.id}-${section.title}-${lineIndex}`}
+                          color={theme.text}
+                          wrap="wrap"
+                        >
                           {`• ${line}`}
                         </Text>
                       ))}
@@ -3042,8 +3058,8 @@ export function App(props: AppProps) {
       case "style_pack": {
         const names = item.added.map((id) => LANGUAGE_DISPLAY_NAMES[id]);
         const headerLabel = item.added.length > 1 ? "STYLE PACKS ACTIVE" : "STYLE PACK ACTIVE";
-        return withPrintedBoundarySpacing(
-          <Box key={item.id} paddingLeft={1} marginTop={1} flexShrink={1}>
+        return withTranscriptSpacing(
+          <Box key={item.id} paddingLeft={1} flexShrink={1}>
             <Box
               flexShrink={1}
               flexDirection="column"
@@ -3080,8 +3096,8 @@ export function App(props: AppProps) {
         );
       }
       case "setup_hint":
-        return withPrintedBoundarySpacing(
-          <Box key={item.id} paddingLeft={1} marginTop={1} flexShrink={1}>
+        return withTranscriptSpacing(
+          <Box key={item.id} paddingLeft={1} flexShrink={1}>
             <Box
               flexShrink={1}
               flexDirection="column"
@@ -3115,7 +3131,7 @@ export function App(props: AppProps) {
           </Box>,
         );
       case "assistant":
-        return (
+        return withTranscriptSpacing(
           <AssistantMessage
             key={item.id}
             text={item.text}
@@ -3123,11 +3139,11 @@ export function App(props: AppProps) {
             thinkingMs={item.thinkingMs}
             renderMarkdown={renderMarkdown}
             availableTerminalHeight={measuredLiveAreaRows}
-            marginTop={assistantMarginTop}
-          />
+            marginTop={0}
+          />,
         );
       case "tool_start":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           <ToolExecution
             key={item.id}
             status="running"
@@ -3135,10 +3151,11 @@ export function App(props: AppProps) {
             args={item.args}
             progressOutput={(item as ToolStartItem).progressOutput}
             animateUntil={item.animateUntil}
+            marginTop={0}
           />,
         );
       case "tool_done":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           <ToolExecution
             key={item.id}
             status="done"
@@ -3147,12 +3164,15 @@ export function App(props: AppProps) {
             result={item.result}
             isError={item.isError}
             details={item.details}
+            marginTop={0}
           />,
         );
       case "tool_group":
-        return withPrintedBoundarySpacing(<ToolGroupExecution key={item.id} tools={item.tools} />);
+        return withTranscriptSpacing(
+          <ToolGroupExecution key={item.id} tools={item.tools} marginTop={0} />,
+        );
       case "server_tool_start":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           <ServerToolExecution
             key={item.id}
             status="running"
@@ -3160,10 +3180,11 @@ export function App(props: AppProps) {
             input={item.input}
             startedAt={item.startedAt}
             animateUntil={item.animateUntil}
+            marginTop={0}
           />,
         );
       case "server_tool_done":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           <ServerToolExecution
             key={item.id}
             status="done"
@@ -3171,12 +3192,13 @@ export function App(props: AppProps) {
             input={item.input}
             durationMs={item.durationMs}
             resultType={item.resultType}
+            marginTop={0}
           />,
         );
       case "error": {
         const showMessage = item.message && item.message !== item.headline;
-        return withPrintedBoundarySpacing(
-          <Box key={item.id} flexDirection="row" paddingLeft={1} marginTop={1} flexShrink={1}>
+        return withTranscriptSpacing(
+          <Box key={item.id} flexDirection="row" paddingLeft={1} flexShrink={1}>
             <Box width={2} flexShrink={0}>
               <Text color={theme.error} bold>
                 {"✗ "}
@@ -3197,12 +3219,12 @@ export function App(props: AppProps) {
         );
       }
       case "info":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           renderStatusMessage(item.id, "○ ", item.text, theme.commandColor, { muted: true }),
         );
       case "update_notice":
-        return withPrintedBoundarySpacing(
-          <Box key={item.id} paddingLeft={1} marginTop={1} flexShrink={1}>
+        return withTranscriptSpacing(
+          <Box key={item.id} paddingLeft={1} flexShrink={1}>
             <Box flexShrink={1} borderStyle="round" borderColor={theme.commandColor} paddingX={1}>
               <Text color={theme.commandColor} bold wrap="wrap">
                 {UPDATE_NOTICE_TEXT}
@@ -3211,7 +3233,7 @@ export function App(props: AppProps) {
           </Box>,
         );
       case "plan_transition":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           renderStatusMessage(
             item.id,
             `${BLACK_CIRCLE} `,
@@ -3221,7 +3243,7 @@ export function App(props: AppProps) {
           ),
         );
       case "goal_agent_transition":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           renderStatusMessage(
             item.id,
             `${BLACK_CIRCLE} `,
@@ -3231,7 +3253,7 @@ export function App(props: AppProps) {
           ),
         );
       case "task":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           renderStatusMessage(
             item.id,
             "▸ ",
@@ -3246,7 +3268,7 @@ export function App(props: AppProps) {
           ),
         );
       case "model_transition":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           renderStatusMessage(
             item.id,
             "▸ ",
@@ -3261,7 +3283,7 @@ export function App(props: AppProps) {
           ),
         );
       case "theme_transition":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           renderStatusMessage(
             item.id,
             "◐ ",
@@ -3284,7 +3306,7 @@ export function App(props: AppProps) {
             : item.event === "rejected"
               ? "Plan rejected"
               : "Plan dismissed";
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           renderStatusMessage(
             item.id,
             "○ ",
@@ -3301,18 +3323,14 @@ export function App(props: AppProps) {
         // Cancellation / abort acknowledgement (ESC, auto-setup cancel, etc.).
         // Muted dim treatment — this is an ack, not a state change worth a
         // gradient. Glyph `⊘` reads as "stop" without being alarming.
-        return withPrintedBoundarySpacing(
-          renderStatusMessage(
-            item.id,
-            "⊘ ",
-            normalizeStatusText(item.text),
-            theme.commandColor,
-            { bold: true },
-          ),
+        return withTranscriptSpacing(
+          renderStatusMessage(item.id, "⊘ ", normalizeStatusText(item.text), theme.commandColor, {
+            bold: true,
+          }),
         );
       case "step_done":
-        return (
-          <Box key={item.id} paddingLeft={1} marginTop={1} flexShrink={1}>
+        return withTranscriptSpacing(
+          <Box key={item.id} paddingLeft={1} flexShrink={1}>
             <Text wrap="wrap">
               <Text color={theme.success} bold>
                 {"✓ "}
@@ -3324,14 +3342,14 @@ export function App(props: AppProps) {
                 <Text color={theme.textDim}>{` — ${item.description}`}</Text>
               ) : null}
             </Text>
-          </Box>
+          </Box>,
         );
       case "queued": {
         const suffix = item.imageCount
           ? ` (+${item.imageCount} image${item.imageCount > 1 ? "s" : ""})`
           : "";
-        return withPrintedBoundarySpacing(
-          <Box key={item.id} flexDirection="row" paddingLeft={1} marginTop={1} flexShrink={1}>
+        return withTranscriptSpacing(
+          <Box key={item.id} flexDirection="row" paddingLeft={1} flexShrink={1}>
             <Box width={2} flexShrink={0}>
               <Text color={theme.warning} bold>
                 {"• "}
@@ -3348,29 +3366,32 @@ export function App(props: AppProps) {
         );
       }
       case "compacting":
-        return withPrintedBoundarySpacing(<CompactionSpinner key={item.id} staticDisplay />);
+        return withTranscriptSpacing(
+          <CompactionSpinner key={item.id} staticDisplay marginTop={0} />,
+        );
       case "compacted":
-        return withPrintedBoundarySpacing(
+        return withTranscriptSpacing(
           <CompactionDone
             key={item.id}
             originalCount={item.originalCount}
             newCount={item.newCount}
             tokensBefore={item.tokensBefore}
             tokensAfter={item.tokensAfter}
+            marginTop={0}
           />,
         );
       case "duration":
-        return (
-          <Box key={item.id} paddingLeft={1} marginTop={1}>
+        return withTranscriptSpacing(
+          <Box key={item.id} paddingLeft={1}>
             <Text color={theme.textDim}>
               {"✻ "}
               {item.verb} {formatDuration(item.durationMs)}
             </Text>
-          </Box>
+          </Box>,
         );
       case "subagent_group":
-        return withPrintedBoundarySpacing(
-          <SubAgentPanel key={item.id} agents={item.agents} aborted={item.aborted} />,
+        return withTranscriptSpacing(
+          <SubAgentPanel key={item.id} agents={item.agents} aborted={item.aborted} marginTop={0} />,
         );
     }
   };
@@ -3894,7 +3915,8 @@ export function App(props: AppProps) {
         clearGoalModeIfIdle();
         log("ERROR", "goal", err instanceof Error ? err.message : String(err));
         if (isGoalWorktreeDirtyError(err)) {
-          const latestRun = (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? run;
+          const latestRun =
+            (await loadGoalRuns(props.cwd)).find((item) => item.id === run.id) ?? run;
           const pausedRun = await upsertGoalRun(
             props.cwd,
             buildGoalDirtyWorktreePauseRun(latestRun, err),
@@ -3904,7 +3926,8 @@ export function App(props: AppProps) {
             kind: "goal_progress",
             phase: "terminal",
             title: `Goal paused: ${pausedRun.title}`,
-            detail: "Working tree has uncommitted changes; waiting for the user to choose commit, stash, or pause.",
+            detail:
+              "Working tree has uncommitted changes; waiting for the user to choose commit, stash, or pause.",
             status: "paused",
           });
           setLiveItems((prev) => [
@@ -4012,7 +4035,7 @@ export function App(props: AppProps) {
         goalNumber: goalNumberForRun(run.id),
       });
       void runGoalVerifierCommand({
-        cwd: props.cwd,
+        cwd: run.verifier.cwd ?? props.cwd,
         runId: run.id,
         command: run.verifier.command,
         timeoutMs: verifierTimeoutMs,
@@ -4031,6 +4054,7 @@ export function App(props: AppProps) {
               ...latestRun.verifier,
               description: latestRun.verifier?.description ?? "Goal verifier",
               command: run.verifier?.command,
+              ...(run.verifier?.cwd ? { cwd: run.verifier.cwd } : {}),
               lastResult: verification,
             },
             ...(status === "pass"
@@ -4060,7 +4084,7 @@ export function App(props: AppProps) {
           await appendGoalDecision(props.cwd, run.id, {
             kind: `verifier_${status}`,
             reason: `${failureClass}: verifier exited with code ${verification.exitCode ?? 1}.`,
-            content: `outputPath=${outputPath ?? ""}; durationMs=${durationMs}`,
+            content: `outputPath=${outputPath ?? ""}; cwd=${run.verifier?.cwd ?? props.cwd}; durationMs=${durationMs}`,
           });
           appendGoalProgress({
             kind: "goal_progress",

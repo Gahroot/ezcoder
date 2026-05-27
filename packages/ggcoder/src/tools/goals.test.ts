@@ -441,6 +441,48 @@ describe("goals tool state guards", () => {
     );
   });
 
+  it("persists worker-worktree verifier cwd through setup and verifier results", async () => {
+    await executeGoals({
+      action: "create",
+      run_id: "worktree-verifier-goal",
+      title: "Worktree verifier",
+      goal: "Verify from a worker worktree",
+      success_criteria: ["Verifier runs"],
+      evidence_plan: [
+        {
+          id: "proof",
+          label: "Proof",
+          mechanism: "command",
+          description: "Run worker-built verifier",
+          status: "ready",
+          evidence: "configured",
+        },
+      ],
+      verifier_command: ".goal-evidence/noop/audit.sh",
+      verifier_description: "Worker-built verifier",
+      verifier_cwd: "/tmp/project-goal-worktrees/task-worker",
+    });
+
+    await executeGoals({
+      action: "verify",
+      run_id: "worktree-verifier-goal",
+      verification_status: "pass",
+      summary: "Verifier passed in worker worktree",
+      exit_code: 0,
+    });
+
+    const run = await getGoalRun(tmpProject, "worktree-verifier-goal");
+    expect(run?.verifier).toMatchObject({
+      command: ".goal-evidence/noop/audit.sh",
+      cwd: "/tmp/project-goal-worktrees/task-worker",
+      lastResult: {
+        status: "pass",
+        command: ".goal-evidence/noop/audit.sh",
+        summary: "Verifier passed in worker worktree",
+      },
+    });
+  });
+
   it("rejects passing final audits that omit mandatory Goal references", async () => {
     const reference: GoalReference = {
       id: "image-reference",
