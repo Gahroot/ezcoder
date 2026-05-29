@@ -10,6 +10,7 @@ interface BannerProps {
   model: string;
   provider: Provider;
   cwd: string;
+  taskCount?: number;
 }
 
 const LOGO_LINES = [
@@ -39,7 +40,7 @@ const GAP = "   ";
 const LOGO_WIDTH = 9;
 const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 20; // need ~32 cols for side-by-side
 
-export function Banner({ version, model, cwd }: BannerProps) {
+export function Banner({ version, model, cwd, taskCount }: BannerProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
   const modelInfo = getModel(model);
@@ -73,7 +74,7 @@ export function Banner({ version, model, cwd }: BannerProps) {
             {displayPath}
           </Text>
         </Box>
-        <ShortcutHints />
+        <ShortcutHints taskCount={taskCount} />
       </Box>
     );
   }
@@ -104,17 +105,23 @@ export function Banner({ version, model, cwd }: BannerProps) {
       <Box>
         <GradientText text={LOGO_LINES[2]} shift={shift} />
         <Text>{GAP}</Text>
-        <ShortcutHints />
+        <ShortcutHints taskCount={taskCount} />
       </Box>
     </Box>
   );
 }
 
-function ShortcutHints() {
+function ShortcutHints({ taskCount }: { taskCount?: number }) {
   const theme = useTheme();
 
   return (
     <Box>
+      <Text color={theme.primary}>^T</Text>
+      <Text color={theme.textDim}> tasks</Text>
+      {taskCount !== undefined && taskCount > 0 ? (
+        <Text color={theme.secondary}> ({taskCount})</Text>
+      ) : null}
+      <Text color={theme.textDim}> · </Text>
       <Text color={theme.primary}>/goal</Text>
       <Text color={theme.textDim}> start goal</Text>
       <Text color={theme.textDim}> · </Text>

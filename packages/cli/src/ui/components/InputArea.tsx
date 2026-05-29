@@ -202,6 +202,7 @@ interface InputAreaProps {
   isActive?: boolean;
   onDownAtEnd?: () => void;
   onShiftTab?: () => void;
+  onToggleTasks?: () => void;
   onToggleGoal?: () => void;
   onToggleSkills?: () => void;
   onTogglePixel?: () => void;
@@ -286,6 +287,7 @@ export function InputArea({
   isActive = true,
   onDownAtEnd,
   onShiftTab,
+  onToggleTasks,
   onToggleGoal,
   onToggleSkills,
   onTogglePixel,
@@ -818,6 +820,12 @@ export function InputArea({
           return;
         }
         return; // absorb all other keys during search
+      }
+
+      // Ctrl+T toggles task overlay in normal input mode.
+      if (key.ctrl && input === "t") {
+        onToggleTasks?.();
+        return;
       }
 
       // Ctrl+G toggles goal overlay in normal input mode. In search mode it cancels search above.

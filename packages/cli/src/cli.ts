@@ -213,6 +213,7 @@ function printHelp(): void {
     ["/model", "Switch AI model"],
     ["/goal", "Create a programmatic goal loop"],
     ["/goals", "Open the goal pane"],
+    ["/tasks", "Open the task pane"],
     ["/compact", "Compact conversation context"],
     ["/session", "Switch or create sessions"],
     ["/new", "Start a new session"],
@@ -227,6 +228,7 @@ function printHelp(): void {
   // Keyboard shortcuts
   console.log(primary("Keyboard shortcuts:"));
   const shortcuts: [string, string][] = [
+    ["Ctrl+T", "Toggle task overlay"],
     ["Ctrl+G", "Toggle goal overlay"],
     ["Ctrl+S", "Toggle skills overlay"],
     ["Shift+Tab", "Toggle thinking"],
@@ -488,7 +490,7 @@ async function runInkTUI(opts: {
   continueRecent?: boolean;
   resumeSessionPath?: string;
   theme?: "auto" | ThemeName;
-  initialOverlay?: "pixel";
+  initialOverlay?: "pixel" | "tasks";
 }): Promise<void> {
   requireInteractiveTTY();
 
@@ -1419,7 +1421,8 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken = serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const botToken =
+    serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
   const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 

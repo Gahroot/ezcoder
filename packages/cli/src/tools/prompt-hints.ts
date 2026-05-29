@@ -18,6 +18,8 @@ export const TOOL_PROMPT_HINTS: Record<string, string> = {
   web_search: "Search the web. Use before web_fetch to find pages.",
   task_output: "Read new output from a background process by id.",
   task_stop: "Stop a background process by id.",
+  tasks:
+    "Manage the Ctrl+T task pane. Use only when the user asks to add/list/complete/remove task-list items; do not auto-run tasks.",
   goals:
     "Manage durable Goal runs for /goal and Ctrl+G workflows. Use for Goal setup, coordinator evidence, worker tasks, verifier records, final completion audits, blockers, and completion state.",
   subagent: "Delegate focused, isolated subtasks (research, parallel exploration).",
@@ -43,6 +45,7 @@ export const DEFAULT_TOOL_NAMES: readonly string[] = [
   "web_fetch",
   "task_output",
   "task_stop",
+  "tasks",
   "goals",
   "subagent",
   "skill",

@@ -49,6 +49,7 @@ import {
 import { Banner } from "./components/Banner.js";
 import { PlanOverlay } from "./components/PlanOverlay.js";
 import { ModelSelector } from "./components/ModelSelector.js";
+import { TaskOverlay } from "./components/TaskOverlay.js";
 import { GoalOverlay } from "./components/GoalOverlay.js";
 import { PixelOverlay } from "./components/PixelOverlay.js";
 import {
@@ -137,6 +138,12 @@ import {
   flushOverflow,
 } from "./live-item-flush.js";
 import {
+  getNextPendingTask,
+  getTaskCount,
+  markTaskInProgress,
+  type PendingTaskInfo,
+} from "../core/task-store.js";
+import {
   appendGoalDecision,
   appendGoalEvidence,
   formatGoalBlockingPrerequisites,
@@ -220,6 +227,12 @@ interface GoalItem {
   kind: "goal";
   title: string;
   workerId?: string;
+  id: string;
+}
+
+interface TaskItem {
+  kind: "task";
+  title: string;
   id: string;
 }
 
@@ -600,6 +613,7 @@ export interface ToolGroupItem {
 export type CompletedItem =
   | UserItem
   | GoalItem
+  | TaskItem
   | GoalProgressItem
   | AssistantItem
   | ToolStartItem
@@ -784,7 +798,7 @@ export function formatGoalTerminalProgress(run: GoalRun): GoalProgressDraft | nu
   }
 }
 
-export type OverlayPaneKind = "model" | "goal" | "skills" | "plan" | "theme" | "pixel";
+export type OverlayPaneKind = "model" | "tasks" | "goal" | "skills" | "plan" | "theme" | "pixel";
 
 export function shouldHideHistoryForOverlayView(
   isOverlayView: boolean,
@@ -1117,7 +1131,7 @@ export interface AppProps {
   authStorage?: AuthStorage;
   goalModeRef?: { current: GoalMode };
   skills?: Skill[];
-  initialOverlay?: "pixel" | "goal";
+  initialOverlay?: "pixel" | "goal" | "tasks";
   rebuildToolsForCwd?: (cwd: string) => AgentTool[];
   repoMapChangedFilesRef?: { current: Set<string> };
   repoMapReadFilesRef?: { current: Set<string> };
@@ -1174,7 +1188,7 @@ export interface AppProps {
     sessionPath?: string;
     sessionTitle?: string;
     sessionTitleGenerated: boolean;
-    overlay?: "model" | "goal" | "skills" | "plan" | "theme" | "pixel" | null;
+    overlay?: "model" | "tasks" | "goal" | "skills" | "plan" | "theme" | "pixel" | null;
     planAutoExpand?: boolean;
     goalAutoExpand?: boolean;
     pendingAction?: {
@@ -1185,6 +1199,7 @@ export interface AppProps {
     pendingGoalRun?: GoalRun;
     isAgentRunning?: boolean;
     pendingResetUI?: boolean;
+    runAllTasks?: boolean;
     runAllPixel?: boolean;
     goalStatusEntries?: GoalStatusEntry[];
     goalMode?: GoalMode;
@@ -1238,7 +1253,7 @@ export function App(props: AppProps) {
   // overlay seeded from sessionStore (lives across remount). Falls back to
   // props.initialOverlay (CLI launched with one), then null.
   const [overlay, setOverlay] = useState<
-    "model" | "goal" | "skills" | "plan" | "theme" | "pixel" | null
+    "model" | "tasks" | "goal" | "skills" | "plan" | "theme" | "pixel" | null
   >(props.sessionStore?.overlay ?? props.initialOverlay ?? null);
   const [goalStatusEntries, setGoalStatusEntries] = useState<GoalStatusEntry[]>(
     props.sessionStore?.goalStatusEntries ?? [],
@@ -1246,6 +1261,10 @@ export function App(props: AppProps) {
   const [updatePending, setUpdatePending] = useState<boolean>(
     () => getPendingUpdate(props.version) !== null,
   );
+  const [taskCount, setTaskCount] = useState(() => getTaskCount(props.cwd));
+  const [runAllTasks, setRunAllTasks] = useState(props.sessionStore?.runAllTasks ?? false);
+  const runAllTasksRef = useRef(props.sessionStore?.runAllTasks ?? false);
+  const startTaskRef = useRef<(title: string, prompt: string, taskId: string) => void>(() => {});
   const agentRunningRef = useRef(false);
   const runningGoalIdsRef = useRef<Set<string>>(new Set());
   const activeVerifierRunIdsRef = useRef<Set<string>>(new Set());
@@ -1480,6 +1499,10 @@ export function App(props: AppProps) {
   useEffect(() => {
     if (sessionStore) sessionStore.goalMode = goalMode;
   }, [goalMode, sessionStore]);
+  useEffect(() => {
+    runAllTasksRef.current = runAllTasks;
+    if (sessionStore) sessionStore.runAllTasks = runAllTasks;
+  }, [runAllTasks, sessionStore]);
 
   // pendingAction is consumed via a useEffect AFTER agentLoop is created
   // — see below where useAgentLoop is set up.
@@ -1502,6 +1525,13 @@ export function App(props: AppProps) {
   useEffect(() => {
     getGitBranch(displayedCwd).then(setGitBranch);
   }, [displayedCwd]);
+
+  useEffect(() => {
+    const refreshTaskCount = () => setTaskCount(getTaskCount(props.cwd));
+    refreshTaskCount();
+    const interval = setInterval(refreshTaskCount, 1_000);
+    return () => clearInterval(interval);
+  }, [props.cwd]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2599,6 +2629,24 @@ export function App(props: AppProps) {
             void setGoalModeAndPrompt(nextGoalMode);
           }
 
+          // Run-all task mode: auto-start the next pending task after the current
+          // task agent finishes and live rows have been flushed.
+          if (runAllTasksRef.current) {
+            setTimeout(() => {
+              const cwd = cwdRef.current;
+              const next = getNextPendingTask(cwd);
+              if (next) {
+                markTaskInProgress(cwd, next.id);
+                setTaskCount(getTaskCount(cwd));
+                startTaskRef.current(next.title, next.prompt, next.id);
+              } else {
+                setRunAllTasks(false);
+                setTaskCount(getTaskCount(cwd));
+                log("INFO", "tasks", "Run-all complete — no more pending tasks");
+              }
+            }, 500);
+          }
+
           // Goal loop: after the orchestrator handles a worker/verifier event,
           // continue the same Goal automatically until it reaches a terminal state.
           for (const runId of [...runningGoalIdsRef.current]) {
@@ -2644,6 +2692,7 @@ export function App(props: AppProps) {
       ),
       onAborted: useCallback(() => {
         log("WARN", "agent", "Agent run aborted by user");
+        setRunAllTasks(false);
         setRunAllPixel(false);
         currentPixelFixRef.current = null;
         queuedGoalSyntheticEventsRef.current = 0;
@@ -3030,6 +3079,27 @@ export function App(props: AppProps) {
             id: getId(),
           },
         ]);
+        return;
+      }
+
+      // Handle /tasks — open task pane
+      if (trimmed === "/tasks" || trimmed === "/task") {
+        if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
+          props.sessionStore.overlay = "tasks";
+          props.sessionStore.planAutoExpand = false;
+          props.sessionStore.goalAutoExpand = false;
+          props.resetUI();
+        } else {
+          if (props.sessionStore) {
+            props.sessionStore.overlay = "tasks";
+            props.sessionStore.planAutoExpand = false;
+            props.sessionStore.goalAutoExpand = false;
+            if (agentLoop.isRunning) props.sessionStore.pendingResetUI = true;
+          }
+          setPlanAutoExpand(false);
+          setGoalAutoExpand(false);
+          setOverlay("tasks");
+        }
         return;
       }
 
@@ -3445,6 +3515,7 @@ export function App(props: AppProps) {
       { name: "compact", aliases: ["c"], description: "Compact conversation" },
       { name: "clear", aliases: [], description: "Clear session and terminal" },
       { name: "theme", aliases: ["t"], description: "Switch theme" },
+      { name: "tasks", aliases: ["task"], description: "Open task pane" },
       ...orderedPromptCommands,
       ...remainingPromptCommands,
       ...customCommands.map((cmd) => ({
@@ -3468,6 +3539,7 @@ export function App(props: AppProps) {
             model={currentModel}
             provider={currentProvider}
             cwd={displayedCwd}
+            taskCount={taskCount}
           />
         );
       case "user":
@@ -3489,6 +3561,18 @@ export function App(props: AppProps) {
               <Text color={theme.textDim}>{"Goal: "}</Text>
               <Text color={theme.success}>{item.title}</Text>
               {item.workerId ? <Text color={theme.textDim}> · worker {item.workerId}</Text> : null}
+            </Text>
+          </Box>
+        );
+      case "task":
+        return (
+          <Box key={item.id} marginTop={1}>
+            <Text wrap="wrap">
+              <Text color={theme.primary} bold>
+                {"▶ "}
+              </Text>
+              <Text color={theme.textDim}>{"Task: "}</Text>
+              <Text color={theme.primary}>{item.title}</Text>
             </Text>
           </Box>
         );
@@ -3888,8 +3972,87 @@ export function App(props: AppProps) {
     }
   };
 
+  // ── Start a task (shared by manual Task Pane start and run-all) ──
+  const startTask = useCallback(
+    (title: string, prompt: string, taskId: string) => {
+      setTaskCount(getTaskCount(props.cwd));
+      const shortId = taskId.slice(0, 8);
+      const completionHint =
+        `\n\n---\nWhen you have fully completed this task, call the tasks tool to mark it done:\n` +
+        `tasks({ action: "done", id: "${shortId}" })`;
+      const fullPrompt = prompt + completionHint;
+
+      if (props.resetUI && props.sessionStore) {
+        const sysMsg = messagesRef.current[0];
+        const newMessages: Message[] =
+          sysMsg && sysMsg.role === "system" ? [sysMsg] : messagesRef.current.slice(0, 1);
+        const taskItem: TaskItem = { kind: "task", title, id: getId() };
+        const sm = sessionManagerRef.current;
+
+        void (async () => {
+          let newSessionPath: string | undefined;
+          if (sm) {
+            try {
+              const session = await sm.create(props.cwd, currentProvider, currentModel);
+              newSessionPath = session.path;
+              log("INFO", "tasks", "New session for task", { path: session.path });
+            } catch {
+              // Session creation is best-effort; the agent can still run.
+            }
+          }
+          if (props.sessionStore) props.sessionStore.overlay = null;
+          props.resetUI?.({
+            wipeSession: true,
+            messages: newMessages,
+            history: [{ kind: "banner", id: "banner" }, taskItem],
+            sessionPath: newSessionPath,
+            pendingAction: { prompt: fullPrompt },
+          });
+        })();
+        return;
+      }
+
+      pendingHistoryFlushRef.current = [];
+      props.terminalHistoryPrinter?.clear();
+      setHistory([{ kind: "banner", id: "banner" }]);
+      setLiveItems([]);
+      messagesRef.current = messagesRef.current.slice(0, 1);
+      agentLoop.reset();
+      persistedIndexRef.current = messagesRef.current.length;
+      const sm = sessionManagerRef.current;
+      if (sm) {
+        void sm.create(props.cwd, currentProvider, currentModel).then((session) => {
+          sessionPathRef.current = session.path;
+          log("INFO", "tasks", "New session for task", { path: session.path });
+        });
+      }
+      const taskItem: TaskItem = { kind: "task", title, id: getId() };
+      setLastUserMessage(title);
+      setDoneStatus(null);
+      setLiveItems([taskItem]);
+      void (async () => {
+        try {
+          await agentLoop.run(fullPrompt);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log("ERROR", "error", msg);
+          const isAbort = msg.includes("aborted") || msg.includes("abort");
+          setLiveItems((prev) => [
+            ...prev,
+            isAbort
+              ? { kind: "stopped", text: "Request was stopped.", id: getId() }
+              : toErrorItem(err, getId()),
+          ]);
+          setRunAllTasks(false);
+        }
+      })();
+    },
+    [props.cwd, props.resetUI, props.sessionStore, agentLoop, currentProvider, currentModel],
+  );
+  startTaskRef.current = startTask;
+
   const openOverlay = useCallback(
-    (kind: "goal" | "skills" | "plan" | "pixel") => {
+    (kind: "tasks" | "goal" | "skills" | "plan" | "pixel") => {
       if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
         props.sessionStore.overlay = kind;
         if (kind !== "plan") props.sessionStore.planAutoExpand = false;
@@ -4679,6 +4842,7 @@ export function App(props: AppProps) {
     if (props.sessionStore) props.sessionStore.runAllPixel = runAllPixel;
   }, [runAllPixel, props.sessionStore]);
 
+  const isTaskView = overlay === "tasks";
   const isGoalView = overlay === "goal";
   const isSkillsView = overlay === "skills";
   const isPlanView = overlay === "plan";
@@ -4690,7 +4854,32 @@ export function App(props: AppProps) {
   const isPixelView = overlay === "pixel";
   return (
     <Box flexDirection="column" width={columns}>
-      {isGoalView ? (
+      {isTaskView ? (
+        <TaskOverlay
+          cwd={props.cwd}
+          agentRunning={agentLoop.isRunning}
+          onClose={() => {
+            setTaskCount(getTaskCount(props.cwd));
+            closeOverlay();
+          }}
+          onWorkOnTask={(title, prompt, taskId) => {
+            setOverlay(null);
+            if (props.sessionStore) props.sessionStore.overlay = null;
+            startTask(title, prompt, taskId);
+          }}
+          onRunAllTasks={() => {
+            setOverlay(null);
+            if (props.sessionStore) props.sessionStore.overlay = null;
+            setRunAllTasks(true);
+            const next: PendingTaskInfo | null = getNextPendingTask(props.cwd);
+            if (next) {
+              markTaskInProgress(props.cwd, next.id);
+              setTaskCount(getTaskCount(props.cwd));
+              startTask(next.title, next.prompt, next.id);
+            }
+          }}
+        />
+      ) : isGoalView ? (
         <GoalOverlay
           cwd={props.cwd}
           agentRunning={agentLoop.isRunning}
@@ -5030,6 +5219,9 @@ export function App(props: AppProps) {
             isActive={!taskBarFocused && !overlay}
             onDownAtEnd={handleFocusTaskBar}
             onShiftTab={handleToggleThinking}
+            onToggleTasks={() => {
+              openOverlay("tasks");
+            }}
             onToggleGoal={() => {
               openOverlay("goal");
             }}

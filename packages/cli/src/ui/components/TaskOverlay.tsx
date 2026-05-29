@@ -1,0 +1,377 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Box, Text, useInput } from "ink";
+import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
+import { useTerminalSize } from "../hooks/useTerminalSize.js";
+import { useTheme } from "../theme/theme.js";
+import { loadTasks, saveTasks, type TaskListItem, type TaskStatus } from "../../core/task-store.js";
+
+const TASK_LOGO = [
+  " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
+  " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
+  " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
+];
+
+const GRADIENT = [
+  "#4ade80",
+  "#5ad89a",
+  "#6fd2b4",
+  "#85ccce",
+  "#60a5fa",
+  "#85ccce",
+  "#6fd2b4",
+  "#5ad89a",
+];
+
+const GAP = "   ";
+const LOGO_WIDTH = 9;
+const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 20;
+const MAX_VISIBLE_TASKS = 15;
+
+function TaskGradientText({ text }: { text: string }) {
+  const chars: React.ReactNode[] = [];
+  let colorIdx = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === " ") {
+      chars.push(ch);
+    } else {
+      const color = GRADIENT[colorIdx % GRADIENT.length];
+      chars.push(
+        <Text key={i} color={color}>
+          {ch}
+        </Text>,
+      );
+      colorIdx++;
+    }
+  }
+  return <Text>{chars}</Text>;
+}
+
+interface TaskOverlayProps {
+  cwd: string;
+  onClose: () => void;
+  onWorkOnTask: (title: string, prompt: string, id: string) => void;
+  onRunAllTasks: () => void;
+  agentRunning?: boolean;
+}
+
+function countTasksByStatus(tasks: readonly TaskListItem[], status: TaskStatus): number {
+  return tasks.filter((task) => task.status === status).length;
+}
+
+function displayPathForCwd(cwd: string): string {
+  const home = homedir();
+  return home && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd;
+}
+
+export function TaskOverlay({
+  cwd,
+  onClose,
+  onWorkOnTask,
+  onRunAllTasks,
+  agentRunning,
+}: TaskOverlayProps) {
+  const theme = useTheme();
+  const { columns } = useTerminalSize();
+  const [tasks, setTasks] = useState<TaskListItem[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [mode, setMode] = useState<"normal" | "adding" | "editing">("normal");
+  const [inputText, setInputText] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState("");
+  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showStatus = useCallback((message: string) => {
+    setStatus(message);
+    if (statusTimer.current) clearTimeout(statusTimer.current);
+    statusTimer.current = setTimeout(() => setStatus(""), 2_500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimer.current) clearTimeout(statusTimer.current);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      void loadTasks(cwd).then((loadedTasks) => {
+        if (cancelled) return;
+        setTasks((prev) => {
+          if (JSON.stringify(prev) === JSON.stringify(loadedTasks)) return prev;
+          return loadedTasks;
+        });
+        setLoaded(true);
+      });
+    };
+    load();
+    const interval = setInterval(load, 1_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [cwd]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void saveTasks(cwd, tasks);
+    }, 100);
+  }, [tasks, cwd, loaded]);
+
+  useEffect(() => {
+    if (tasks.length === 0) {
+      setSelectedIndex(0);
+    } else if (selectedIndex >= tasks.length) {
+      setSelectedIndex(tasks.length - 1);
+    }
+  }, [tasks.length, selectedIndex]);
+
+  useInput((input, key) => {
+    if (mode === "adding" || mode === "editing") {
+      if (key.escape) {
+        setMode("normal");
+        setInputText("");
+        return;
+      }
+      if (key.return) {
+        const text = inputText.trim();
+        if (text) {
+          if (mode === "adding") {
+            const newTask: TaskListItem = {
+              id: randomUUID(),
+              title: text,
+              prompt: text,
+              status: "pending",
+              createdAt: new Date().toISOString(),
+            };
+            setTasks((prev) => [...prev, newTask]);
+            setSelectedIndex(tasks.length);
+          } else {
+            setTasks((prev) =>
+              prev.map((task, index) =>
+                index === selectedIndex
+                  ? { ...task, title: text, prompt: task.prompt || text }
+                  : task,
+              ),
+            );
+          }
+        }
+        setMode("normal");
+        setInputText("");
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setInputText((prev) => prev.slice(0, -1));
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        setInputText((prev) => prev + input);
+      }
+      return;
+    }
+
+    if (key.escape) {
+      onClose();
+      return;
+    }
+
+    if (key.upArrow || input === "k") {
+      setSelectedIndex((index) => Math.max(0, index - 1));
+      return;
+    }
+
+    if (key.downArrow || input === "j") {
+      setSelectedIndex((index) => Math.min(tasks.length - 1, index + 1));
+      return;
+    }
+
+    if (input === "a") {
+      setMode("adding");
+      setInputText("");
+      return;
+    }
+
+    if (input === "e" && tasks.length > 0) {
+      const task = tasks[selectedIndex];
+      if (task) {
+        setMode("editing");
+        setInputText(task.title);
+      }
+      return;
+    }
+
+    if (input === "d" && tasks.length > 0) {
+      setTasks((prev) => prev.filter((_, index) => index !== selectedIndex));
+      showStatus("Deleted");
+      return;
+    }
+
+    if (input === "t" && tasks.length > 0) {
+      setTasks((prev) =>
+        prev.map((task, index) => {
+          if (index !== selectedIndex) return task;
+          return { ...task, status: task.status === "done" ? "pending" : "done" };
+        }),
+      );
+      return;
+    }
+
+    if (key.return && tasks.length > 0) {
+      if (agentRunning) {
+        showStatus("Agent is busy — wait for it to finish");
+        return;
+      }
+      const task = tasks[selectedIndex];
+      if (task) {
+        setTasks((prev) =>
+          prev.map((item, index) =>
+            index === selectedIndex ? { ...item, status: "in-progress" } : item,
+          ),
+        );
+        onWorkOnTask(task.title, task.prompt, task.id);
+      }
+      return;
+    }
+
+    if (input === "r") {
+      if (agentRunning) {
+        showStatus("Agent is busy — wait for it to finish");
+        return;
+      }
+      const hasPending = tasks.some((task) => task.status === "pending");
+      if (!hasPending) {
+        showStatus("No pending tasks to run");
+        return;
+      }
+      onRunAllTasks();
+    }
+  });
+
+  const startIdx = Math.max(0, selectedIndex - MAX_VISIBLE_TASKS + 1);
+  const visibleTasks = tasks.slice(startIdx, startIdx + MAX_VISIBLE_TASKS);
+  const displayPath = displayPathForCwd(cwd);
+  const doneCount = countTasksByStatus(tasks, "done");
+  const pendingCount = countTasksByStatus(tasks, "pending");
+  const inProgressCount = countTasksByStatus(tasks, "in-progress");
+
+  return (
+    <Box flexDirection="column">
+      {columns < SIDE_BY_SIDE_MIN ? (
+        <Box flexDirection="column" marginTop={1} marginBottom={1} width={columns}>
+          <TaskGradientText text={TASK_LOGO[0]} />
+          <TaskGradientText text={TASK_LOGO[1]} />
+          <TaskGradientText text={TASK_LOGO[2]} />
+          <Box marginTop={1}>
+            <Text color="#4ade80" bold>
+              Task Pane
+            </Text>
+            {agentRunning ? <Text color="#fbbf24"> (agent running)</Text> : null}
+          </Box>
+          <Text color={theme.textDim} wrap="truncate">
+            {displayPath}
+          </Text>
+          <Text>
+            <Text color="#4ade80">{doneCount} done</Text>
+            <Text color={theme.textDim}> · </Text>
+            <Text color="#fbbf24">{inProgressCount} active</Text>
+            <Text color={theme.textDim}> · </Text>
+            <Text color={theme.text}>{pendingCount} pending</Text>
+          </Text>
+        </Box>
+      ) : (
+        <Box flexDirection="column" marginTop={1} marginBottom={1} width={columns}>
+          <Box>
+            <TaskGradientText text={TASK_LOGO[0]} />
+            <Text>{GAP}</Text>
+            <Text color="#4ade80" bold>
+              Task Pane
+            </Text>
+            {agentRunning ? <Text color="#fbbf24"> (agent running)</Text> : null}
+          </Box>
+          <Box>
+            <TaskGradientText text={TASK_LOGO[1]} />
+            <Text>{GAP}</Text>
+            <Text color={theme.textDim} wrap="truncate">
+              {displayPath}
+            </Text>
+          </Box>
+          <Box>
+            <TaskGradientText text={TASK_LOGO[2]} />
+            <Text>{GAP}</Text>
+            <Text>
+              <Text color="#4ade80">{doneCount} done</Text>
+              <Text color={theme.textDim}> · </Text>
+              <Text color="#fbbf24">{inProgressCount} active</Text>
+              <Text color={theme.textDim}> · </Text>
+              <Text color={theme.text}>{pendingCount} pending</Text>
+            </Text>
+          </Box>
+        </Box>
+      )}
+
+      {tasks.length === 0 && mode === "normal" ? (
+        <Text color={theme.textDim}>
+          {"  No tasks. Press "}
+          <Text color={theme.primary}>a</Text>
+          {" to add one."}
+        </Text>
+      ) : null}
+
+      {visibleTasks.map((task, visibleIndex) => {
+        const realIndex = startIdx + visibleIndex;
+        const selected = realIndex === selectedIndex;
+        const prefix = selected ? "❯ " : "  ";
+        const check = task.status === "done" ? "✓" : task.status === "in-progress" ? "~" : " ";
+        const color = selected
+          ? theme.primary
+          : task.status === "done"
+            ? "#4ade80"
+            : task.status === "in-progress"
+              ? "#fbbf24"
+              : theme.text;
+        return (
+          <Text key={task.id} color={color} bold={selected}>
+            {prefix}[{check}] {task.title}
+          </Text>
+        );
+      })}
+
+      {mode !== "normal" ? (
+        <Box>
+          <Text color={theme.primary}>{mode === "adding" ? " + " : " ✎ "}</Text>
+          <Text>{inputText}</Text>
+          <Text color={theme.textDim}>█</Text>
+        </Box>
+      ) : null}
+
+      {status ? <Text color="#4ade80">{" " + status}</Text> : null}
+
+      <Box marginTop={1}>
+        <Text color={theme.textDim}>
+          <Text color={theme.primary}>↑↓</Text>
+          {" move · ("}
+          <Text color={theme.primary}>a</Text>
+          {")dd · ("}
+          <Text color={theme.primary}>e</Text>
+          {")dit · ("}
+          <Text color={theme.primary}>d</Text>
+          {")elete · ("}
+          <Text color={theme.primary}>t</Text>
+          {")oggle · "}
+          <Text color={theme.primary}>Enter</Text>
+          {" start · ("}
+          <Text color={theme.primary}>r</Text>
+          {")un all · "}
+          <Text color={theme.primary}>ESC</Text>
+          {" close"}
+        </Text>
+      </Box>
+    </Box>
+  );
+}

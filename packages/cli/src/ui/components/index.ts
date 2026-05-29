@@ -19,6 +19,7 @@ export { InputArea } from "./InputArea.js";
 export { Overlay } from "./Overlay.js";
 export { SelectList } from "./SelectList.js";
 export { ModelSelector } from "./ModelSelector.js";
+export { TaskOverlay } from "./TaskOverlay.js";
 export { SessionSelector } from "./SessionSelector.js";
 export { SettingsSelector } from "./SettingsSelector.js";
 export { Markdown } from "./Markdown.js";

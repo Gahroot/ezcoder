@@ -133,6 +133,8 @@ export function serializeCompletedItemToTerminalHistory(
       return renderSubAgentGroup(item.agents, item.aborted, context);
     case "goal":
       return renderGoal(item.title, item.workerId, context);
+    case "task":
+      return renderTask(item.title, context);
     case "goal_progress":
       return renderGoalProgress(item, context);
     case "error":
@@ -221,6 +223,10 @@ function renderBanner(context: TerminalHistoryContext): string {
     `${logo[2]}${GAP}${color(context.theme.primary, "/goal")} ${dim(context, "start goal · ")}${color(context.theme.primary, "Shift+Tab")} ${dim(context, "toggle thinking")}`,
     "",
   ]);
+}
+
+function renderTask(title: string, context: TerminalHistoryContext): string {
+  return `${color(context.theme.primary, "▶", true)} ${dim(context, "Task: ")}${color(context.theme.primary, title)}`;
 }
 
 function renderUser(

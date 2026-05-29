@@ -51,7 +51,7 @@ export interface RenderAppConfig {
   authStorage?: AuthStorage;
   goalModeRef?: { current: GoalMode };
   skills?: Skill[];
-  initialOverlay?: "pixel" | "goal";
+  initialOverlay?: "pixel" | "goal" | "tasks";
   rebuildToolsForCwd?: (cwd: string) => AgentTool[];
   repoMapChangedFilesRef?: { current: Set<string> };
   repoMapReadFilesRef?: { current: Set<string> };
@@ -81,7 +81,7 @@ interface RuntimeState {
  * as our reset mechanism (the only thing that actually escapes Ink's
  * cumulative live-area drift).
  */
-type OverlayKind = "model" | "goal" | "skills" | "plan" | "theme" | "pixel" | null;
+type OverlayKind = "model" | "tasks" | "goal" | "skills" | "plan" | "theme" | "pixel" | null;
 
 export interface SessionStore {
   messages: Message[];
@@ -129,6 +129,10 @@ export interface SessionStore {
    * sessionStore.history before the unmount, so the chat isn't lost.
    */
   pendingResetUI?: boolean;
+  /**
+   * Task mode auto-chaining flag. Survives the visual remount between tasks.
+   */
+  runAllTasks?: boolean;
   /**
    * Pixel fix auto-chaining flag. Survives the deferred resetUI() that may
    * fire when the agent goes idle (e.g. after a pane was toggled mid-fix).
