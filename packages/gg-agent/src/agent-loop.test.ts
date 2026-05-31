@@ -518,6 +518,39 @@ describe("agentLoop", () => {
     expect(result.totalTurns).toBe(2);
   });
 
+  it("emits follow-up review before final agent_done", async () => {
+    mockStream
+      .mockReturnValueOnce(mockOkResult("Draft final") as unknown as ReturnType<typeof stream>)
+      .mockReturnValueOnce(mockOkResult("Reviewed final") as unknown as ReturnType<typeof stream>);
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "test" },
+    ];
+
+    let injected = false;
+    const getFollowUpMessages = vi.fn().mockImplementation(() => {
+      if (injected) return null;
+      injected = true;
+      return [{ role: "user" as const, content: "Ideal?" }];
+    });
+
+    const { events } = await collectLoop(messages, {
+      provider: "anthropic",
+      model: "test",
+      getFollowUpMessages,
+    });
+
+    const followUpIndex = events.findIndex((event) => event.type === "follow_up_message");
+    const doneIndex = events.findIndex((event) => event.type === "agent_done");
+
+    expect(followUpIndex).toBeGreaterThanOrEqual(0);
+    expect(doneIndex).toBeGreaterThan(followUpIndex);
+    expect(
+      messages.some((message) => message.role === "user" && message.content === "Ideal?"),
+    ).toBe(true);
+  });
+
   it("steering takes priority over follow-up at pre-completion", async () => {
     // First call: agent responds (would stop) -> steering fires
     // Second call: agent responds (would stop) -> no steering, no follow-up

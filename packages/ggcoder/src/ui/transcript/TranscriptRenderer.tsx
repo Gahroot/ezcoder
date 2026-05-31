@@ -2,6 +2,7 @@ import React from "react";
 import type { Provider } from "@kenkaiiii/gg-ai";
 import { UserMessage } from "../components/UserMessage.js";
 import { AssistantMessage } from "../components/AssistantMessage.js";
+import { IdealHookMessage } from "../components/IdealHookMessage.js";
 import { CompactionDone, CompactionSpinner } from "../components/CompactionNotice.js";
 import { Banner } from "../components/Banner.js";
 import type { useTheme } from "../theme/theme.js";
@@ -136,6 +137,8 @@ export function renderTranscriptItem({
         />,
       );
     }
+    case "ideal_hook":
+      return withTranscriptSpacing(<IdealHookMessage key={item.id} text={item.text} />);
     case "tool_start":
       return withTranscriptSpacing(<ToolStartRow item={item} />);
     case "tool_done":

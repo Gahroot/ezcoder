@@ -37,6 +37,7 @@ export interface RenderAppConfig {
   version: string;
   theme?: "auto" | ThemeName;
   showTokenUsage?: boolean;
+  idealReviewEnabled?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
   credentialsByProvider?: Record<
@@ -150,6 +151,8 @@ export interface SessionStore {
   goalMode?: GoalMode;
   /** Plan mode display/restriction state. */
   planMode?: boolean;
+  /** Whether pre-final ideal review is enabled for this UI session. */
+  idealReviewEnabled?: boolean;
 }
 
 export interface ResetUIOptions {
@@ -337,6 +340,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     goalStatusEntries: [],
     goalMode: config.goalModeRef?.current ?? "off",
     planMode: config.planModeRef?.current ?? false,
+    idealReviewEnabled: config.idealReviewEnabled ?? true,
   };
 
   const terminalHistoryPrinter = createTerminalHistoryPrinter();
@@ -368,6 +372,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             cwd: config.cwd,
             version: config.version,
             showTokenUsage: config.showTokenUsage,
+            idealReviewEnabled: sessionStore.idealReviewEnabled,
             onSlashCommand: config.onSlashCommand,
             loggedInProviders: config.loggedInProviders,
             credentialsByProvider: config.credentialsByProvider,

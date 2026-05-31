@@ -107,6 +107,7 @@ import type { TerminalHistoryPrinter } from "./terminal-history.js";
 import { buildUserContentWithAttachments } from "./prompt-routing.js";
 import { submitPromptCommand } from "./submit-prompt-command.js";
 import { handleUiSlashCommand } from "./submit-slash-commands.js";
+import { buildIdealReviewMessage, evaluateIdealReview } from "../core/ideal-review.js";
 import { getNextThinkingLevel, isThinkingLevelSupported } from "./thinking-level.js";
 import {
   appendGoalProgressDraft,
@@ -168,6 +169,7 @@ export type {
   GoalProgressItem,
   ToolGroupItem,
 } from "./app-items.js";
+import { IDEAL_HOOK_NOTICE_TEXT } from "./app-items.js";
 export type { DoneStatus } from "./layout-decisions.js";
 export {
   buildGoalSetupPromptFromPlanner,
@@ -248,6 +250,7 @@ export interface AppProps {
   cwd: string;
   version: string;
   showTokenUsage?: boolean;
+  idealReviewEnabled?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
   credentialsByProvider?: Record<
@@ -354,6 +357,7 @@ export interface AppProps {
     goalMode?: GoalMode;
     planMode?: boolean;
     sessionStats?: SessionStats;
+    idealReviewEnabled?: boolean;
   };
 }
 
@@ -513,6 +517,10 @@ export function App(props: AppProps) {
     props.sessionStore?.sessionStats ??
       createSessionStats({ sessionId: props.sessionStore?.sessionId ?? props.sessionId }),
   );
+  const [idealReviewEnabled, setIdealReviewEnabled] = useState(
+    props.sessionStore?.idealReviewEnabled ?? props.idealReviewEnabled ?? true,
+  );
+  const idealReviewEnabledRef = useRef(idealReviewEnabled);
   /** Last actual API-reported input token count (from turn_end). */
   const lastActualTokensRef = useRef(0);
   /** Timestamp (ms) when lastActualTokensRef was last updated by turn_end. */
@@ -545,6 +553,11 @@ export function App(props: AppProps) {
   const appendGoalProgress = useCallback((item: GoalProgressDraft) => {
     setLiveItems((prev) => appendGoalProgressDraft(prev, item, getId));
   }, []);
+
+  useEffect(() => {
+    idealReviewEnabledRef.current = idealReviewEnabled;
+    if (props.sessionStore) props.sessionStore.idealReviewEnabled = idealReviewEnabled;
+  }, [idealReviewEnabled, props.sessionStore]);
   const goalNumberForRun = useCallback(
     (runId: string) =>
       Math.max(1, goalStatusEntries.findIndex((entry) => entry.runId === runId) + 1),
@@ -1016,6 +1029,20 @@ export function App(props: AppProps) {
       projectId: activeProjectId,
       resolveCredentials,
       transformContext,
+      getIdealReviewMessage: (stats) => {
+        if (!idealReviewEnabledRef.current) return null;
+        const decision = evaluateIdealReview(stats);
+        if (!decision.shouldReview) return null;
+        log("INFO", "ideal", "Injecting ideal review before final response", {
+          score: String(decision.score),
+          reasons: decision.reasons.join(", "),
+        });
+        setLiveItems((prev) => [
+          ...prev,
+          { kind: "ideal_hook", text: IDEAL_HOOK_NOTICE_TEXT, id: getId() },
+        ]);
+        return buildIdealReviewMessage(decision.reasons);
+      },
     },
     {
       onComplete: useCallback(() => {
@@ -1968,6 +1995,27 @@ export function App(props: AppProps) {
         await applyLanguageDetectionRef.current("input");
       }
 
+      if (trimmed === "/ideal-on" || trimmed === "/ideal-off") {
+        const next = trimmed === "/ideal-on";
+        setIdealReviewEnabled(next);
+        if (props.settingsFile) {
+          const sm = new SettingsManager(props.settingsFile);
+          await sm.load();
+          await sm.set("idealReviewEnabled", next);
+        }
+        setLiveItems((prev) => [
+          ...prev,
+          {
+            kind: "info",
+            text: next
+              ? "Ideal review enabled. Use /ideal-off to disable it."
+              : "Ideal review disabled. Use /ideal-on to enable it.",
+            id: getId(),
+          },
+        ]);
+        return;
+      }
+
       // /rewind — open the checkpoint picker (needs React state + the store).
       if (trimmed === "/rewind") {
         const store = props.checkpointStore;
@@ -2428,6 +2476,14 @@ export function App(props: AppProps) {
       { name: "clear", aliases: [], description: "Clear session", sectionTitle: "built-in" },
       { name: "theme", aliases: ["t"], description: "Switch theme", sectionTitle: "built-in" },
       {
+        name: idealReviewEnabled ? "ideal-off" : "ideal-on",
+        aliases: [],
+        description: idealReviewEnabled
+          ? "Disable pre-final ideal review"
+          : "Enable pre-final ideal review",
+        sectionTitle: "built-in",
+      },
+      {
         name: "rewind",
         aliases: [],
         description: "Restore files/conversation to a checkpoint",
@@ -2448,7 +2504,7 @@ export function App(props: AppProps) {
         sectionTitle: "built-in",
       },
     ];
-  }, [customCommands]);
+  }, [customCommands, idealReviewEnabled]);
 
   const renderItem = (item: CompletedItem, index: number, items: CompletedItem[]) =>
     renderTranscriptItem({

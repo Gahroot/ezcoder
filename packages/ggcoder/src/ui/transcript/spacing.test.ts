@@ -13,6 +13,8 @@ function itemForKind(kind: CompletedItem["kind"], id: string = kind): CompletedI
       return { kind, id, text: "user" };
     case "assistant":
       return { kind, id, text: "assistant" };
+    case "ideal_hook":
+      return { kind, id, text: "ideal hook" };
     case "queued":
       return { kind, id, text: "queued" };
     case "task":

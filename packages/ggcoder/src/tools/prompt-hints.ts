@@ -13,7 +13,10 @@ export const TOOL_PROMPT_HINTS: Record<string, string> = {
   grep: "Regex search across files. Use for usages, definitions, imports.",
   source_path:
     "Resolve installed package/repo source via opensrc. Use before assuming dependency APIs; inspect returned absolute path with read/grep/find/ls.",
-  web_search: "Search the web. Use before web_fetch to find pages.",
+  web_search:
+    "Search the web. Use before web_fetch to find pages; supports include/exclude_domains and a time_range recency filter.",
+  web_fetch:
+    "Fetch page content as Markdown (or text/html). Pass `urls` to fetch many at once; reads PDFs, follows safe redirects, and prefers a site's /llms.txt for docs.",
   task_output: "Read new output from a background process by id.",
   task_stop: "Stop a background process by id.",
   goals:

@@ -371,6 +371,7 @@ function main(): void {
     model,
     cwd,
     thinkingLevel,
+    idealReviewEnabled: saved.idealReviewEnabled,
     continueRecent,
     resumeSessionPath: values.resume,
     theme: savedTheme,
@@ -393,6 +394,7 @@ async function runInkTUI(opts: {
   resumeSessionPath?: string;
   theme?: "auto" | ThemeName;
   initialOverlay?: "pixel";
+  idealReviewEnabled?: boolean;
 }): Promise<void> {
   requireInteractiveTTY();
 
@@ -730,6 +732,7 @@ async function runInkTUI(opts: {
     skills,
     checkpointStore: checkpointRef.current ?? undefined,
     initialOverlay: opts.initialOverlay,
+    idealReviewEnabled: opts.idealReviewEnabled,
     rebuildToolsForCwd,
     connectInitialMcpTools,
     planCallbacks: planToolCallbacks,
@@ -782,6 +785,7 @@ async function runSessions(): Promise<void> {
     model,
     cwd,
     thinkingLevel,
+    idealReviewEnabled: saved2.idealReviewEnabled,
     resumeSessionPath: selectedPath,
     theme: saved2.theme,
   });

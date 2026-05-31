@@ -126,13 +126,19 @@
   },
   "optionalDependencies": {
     "@huggingface/transformers": "^3.6.0",
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.12",
     "ogg-opus-decoder": "^1.6.13",
-    "playwright": "^1.50.0"
+    "playwright": "^1.50.0",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2",
+    "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@types/hast": "^3.0.4",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
+    "@types/turndown": "^5.0.6",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"

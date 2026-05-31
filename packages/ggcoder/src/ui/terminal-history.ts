@@ -219,6 +219,8 @@ export function serializeCompletedItemToTerminalHistory(
       return renderQueued(item.text, item.imageCount, context);
     case "assistant":
       return renderAssistant(item.text, context, item.continuation);
+    case "ideal_hook":
+      return renderIdealHook(item.text, context);
     case "tool_start":
       if (item.name === "enter_plan") return "";
       return renderToolStart(item.name, item.args, item.progressOutput, context);
@@ -505,6 +507,13 @@ function renderAssistant(
     );
   }
   return lines.join("\n");
+}
+
+function renderIdealHook(text: string, context: TerminalHistoryContext): string {
+  // Same dot prefix + indent as an assistant row, but in the secondary color
+  // (bold) so the ideal-review hook visibly stands apart from normal output.
+  const body = color(context.theme.secondary, text, true);
+  return prefixFirstLine(body, ` ${color(context.theme.secondary, BLACK_CIRCLE)} `, "   ");
 }
 
 function renderPlanModeLogo(_context: TerminalHistoryContext): string {

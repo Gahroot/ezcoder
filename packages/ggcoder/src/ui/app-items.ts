@@ -129,6 +129,21 @@ export interface SetupHintItem {
 
 export const UPDATE_NOTICE_TEXT = "KEN HAS PUSHED A NEW GG CODER UPDATE";
 
+/** Copy shown when the automatic pre-final ideal-review hook engages. */
+export const IDEAL_HOOK_NOTICE_TEXT = "Hook engaged — running an ideal review before finalizing.";
+
+/**
+ * Rendered like an assistant message (same prefix dot, left padding and
+ * spacing) but in a distinct color so it's obvious the ideal-review hook
+ * just took over the turn. Pushed when `getIdealReviewMessage` injects the
+ * review prompt before the agent's final response.
+ */
+export interface IdealHookItem {
+  kind: "ideal_hook";
+  text: string;
+  id: string;
+}
+
 export interface UpdateNoticeItem {
   kind: "update_notice";
   text: string;
@@ -275,6 +290,7 @@ export type CompletedItem =
   | TaskItem
   | GoalProgressItem
   | AssistantItem
+  | IdealHookItem
   | ToolStartItem
   | ToolDoneItem
   | ServerToolStartItem

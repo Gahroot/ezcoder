@@ -11,6 +11,7 @@ export interface TranscriptSpacingItem {
 export const TRANSCRIPT_SPACING_KINDS = [
   "user",
   "assistant",
+  "ideal_hook",
   "queued",
   "task",
   "goal",

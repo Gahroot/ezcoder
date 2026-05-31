@@ -17,6 +17,7 @@ import { SubAgentPanel } from "./components/SubAgentPanel.js";
 import { CompactionDone, CompactionSpinner } from "./components/CompactionNotice.js";
 import { LANGUAGE_DISPLAY_NAMES } from "../core/language-detector.js";
 import { AssistantMessage } from "./components/AssistantMessage.js";
+import { IdealHookMessage } from "./components/IdealHookMessage.js";
 import { UserMessage } from "./components/UserMessage.js";
 import { Banner } from "./components/Banner.js";
 import { SessionSummaryDisplay } from "./components/SessionSummary.js";
@@ -329,6 +330,8 @@ function liveElementFor(item: CompletedItem): React.ReactElement | null {
       return (
         <AssistantMessage text={item.text} thinking={item.thinking} thinkingMs={item.thinkingMs} />
       );
+    case "ideal_hook":
+      return <IdealHookMessage text={item.text} />;
     case "goal":
       return (
         <Box paddingLeft={1} marginTop={1}>
@@ -548,6 +551,11 @@ const parityCaseByKind = {
   banner: { kind: "banner", id: "banner" },
   user: { kind: "user", id: "user-1", text: "hello from user", imageCount: 1 },
   assistant: { kind: "assistant", id: "assistant-1", text: "Hello **world** from assistant" },
+  ideal_hook: {
+    kind: "ideal_hook",
+    id: "ideal-hook-1",
+    text: "Hook engaged \u2014 running an ideal review before finalizing.",
+  },
   goal: { kind: "goal", id: "goal-1", title: "Ship the TUI polish", workerId: "worker-1" },
   task: { kind: "task", id: "task-1", title: "Restore task pane" },
   queued: { kind: "queued", id: "queued-1", text: "next prompt with wrapping words" },
