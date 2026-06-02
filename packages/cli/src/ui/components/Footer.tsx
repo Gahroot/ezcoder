@@ -1,7 +1,6 @@
 import React from "react";
 import { Text, Box } from "ink";
 import type { ThinkingLevel } from "@prestyj/ai";
-import type { GoalMode } from "../../core/runtime-mode.js";
 import { useTheme } from "../theme/theme.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import { getContextWindow, type ContextWindowOptions } from "../../core/model-registry.js";
@@ -16,11 +15,11 @@ interface FooterProps {
   gitBranch?: string | null;
   /**
    * Active thinking tier, or `undefined` when thinking is off. The footer
-   * renders the tier verbatim (`Thinking xhigh`) and color-codes by power.
-   * `xhigh` additionally shimmers to signal it's the top tier.
+   * renders the tier verbatim (`Thinking max`) and color-codes by power.
+   * `xhigh` and `max` additionally shimmer to signal high-power modes.
    */
   thinkingLevel?: ThinkingLevel;
-  goalMode?: GoalMode;
+  planMode?: boolean;
   exitPending?: boolean;
   /** Optional left-side status string (e.g. "Connected · DaVinci Resolve"). */
   statusLabel?: string;
@@ -37,11 +36,13 @@ interface FooterProps {
    * a dedicated row.
    */
   statusBelow?: boolean;
+  /** False when raw markdown mode is active. */
+  renderMarkdown?: boolean;
 }
 
 // Model ID → short display name
 const MODEL_SHORT_NAMES: Record<string, string> = {
-  "claude-opus-4-7": "Opus",
+  "claude-opus-4-8": "Opus",
   "claude-sonnet-4-6": "Sonnet",
   "claude-haiku-4-5": "Haiku",
   "claude-haiku-4-5-20251001": "Haiku",
@@ -73,13 +74,13 @@ function getContextColor(pct: number, theme: ReturnType<typeof useTheme>): strin
 
 // ── Thinking-level visual treatment ─────────────────────────
 //
-// Higher tier = warmer / more saturated color. `xhigh` adds a moving shimmer
-// so the top tier reads as visibly "on full power" at a glance.
+// Higher tier = warmer / more saturated color. `xhigh` and `max` add a moving
+// shimmer so high-power modes read as visibly "on full power" at a glance.
 
-const XHIGH_COLOR = "#db2777"; // hot pink — the visible "max power" tone
-const XHIGH_SHIMMER_COLOR = "#f472b6"; // brighter pink that rides the shimmer
-const GOAL_COLOR = "#22c55e";
-const GOAL_SHIMMER_COLOR = "#86efac";
+const MAX_COLOR = "#db2777"; // hot pink — the visible "max power" tone
+const MAX_SHIMMER_COLOR = "#f472b6"; // brighter pink that rides the shimmer
+const PLAN_COLOR = "#a78bfa";
+const PLAN_SHIMMER_COLOR = "#ddd6fe";
 const SHIMMER_WIDTH = 2;
 
 function getThinkingColor(
@@ -90,7 +91,7 @@ function getThinkingColor(
   if (level === "low") return theme.textMuted;
   if (level === "medium") return theme.accent;
   if (level === "high") return theme.warning;
-  return XHIGH_COLOR; // xhigh
+  return MAX_COLOR; // xhigh / max
 }
 
 /**
@@ -122,25 +123,24 @@ const ShimmerLabel: React.FC<{
   );
 };
 
-export function getGoalFooterLabel(goalMode: GoalMode | undefined): string {
-  if (goalMode === "planner") return "Goal plan";
-  if (goalMode === "setup") return "Goal setup";
-  if (goalMode === "coordinator") return "Goal coord";
-  return "Goal off";
+export function getThinkingFooterLabel(thinkingLevel: ThinkingLevel | undefined): string {
+  return thinkingLevel ? `Thinking ${thinkingLevel}` : "Thinking off";
 }
 
 export function getFooterRightLength({
   barWidth,
   contextPct,
   modelName,
-  goalText,
+  planText = "Plan off",
   thinkingText,
+  renderMarkdown = true,
 }: {
   barWidth: number;
   contextPct: number;
   modelName: string;
-  goalText: string;
+  planText?: string;
   thinkingText: string;
+  renderMarkdown?: boolean;
 }): number {
   return (
     barWidth +
@@ -150,10 +150,52 @@ export function getFooterRightLength({
     3 +
     modelName.length +
     3 +
-    goalText.length +
+    planText.length +
+    (renderMarkdown ? 0 : 3 + "raw markdown".length) +
     3 +
     thinkingText.length
   );
+}
+
+export function doesFooterFitOnOneLine({
+  columns,
+  model,
+  tokensIn,
+  contextWindowOptions,
+  cwd,
+  gitBranch,
+  thinkingLevel,
+  planMode = false,
+  statusBelow,
+  renderMarkdown: _renderMarkdown = true,
+}: {
+  columns: number;
+  model: string;
+  tokensIn: number;
+  contextWindowOptions?: ContextWindowOptions;
+  cwd: string;
+  gitBranch?: string | null;
+  thinkingLevel?: ThinkingLevel;
+  planMode?: boolean;
+  statusBelow?: boolean;
+  renderMarkdown?: boolean;
+}): boolean {
+  if (statusBelow) return false;
+  const parts = cwd.split("/").filter(Boolean);
+  const displayPath = parts.length > 0 ? parts[parts.length - 1] : cwd;
+  const contextPct = getContextPercent(model, tokensIn, contextWindowOptions);
+  const modelName = getShortModelName(model);
+  const thinkingText = getThinkingFooterLabel(thinkingLevel);
+  const planText = planMode ? "Plan on" : "Plan off";
+  const leftLen = displayPath.length + 2 + (gitBranch ? gitBranch.length + 5 : 0);
+  const rightLen = getFooterRightLength({
+    barWidth: 8,
+    contextPct,
+    modelName,
+    planText,
+    thinkingText,
+  });
+  return leftLen + rightLen <= columns - 2;
 }
 
 export function Footer({
@@ -163,13 +205,14 @@ export function Footer({
   cwd,
   gitBranch,
   thinkingLevel,
-  goalMode = "off",
+  planMode = false,
   exitPending,
   statusLabel,
   statusColor,
   hideCwd,
   hideGitBranch,
   statusBelow,
+  renderMarkdown = true,
 }: FooterProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
@@ -212,27 +255,37 @@ export function Footer({
     }
   }
 
-  // Goal/Thinking labels. Show the actual thinking tier when on (`Thinking xhigh`) so users see what they're
+  // Thinking labels. Show the actual thinking tier when on (`Thinking xhigh`) so users see what they're
   // paying for. Off is the only state that stays generic.
-  const thinkingText = thinkingLevel ? `Thinking ${thinkingLevel}` : "Thinking off";
-  const goalText = getGoalFooterLabel(goalMode);
-  const goalActive = goalMode !== "off";
+  const thinkingText = getThinkingFooterLabel(thinkingLevel);
+  const planText = planMode ? "Plan on" : "Plan off";
   const thinkingColor = getThinkingColor(thinkingLevel, theme);
   const reducedMotion = useReducedMotion();
-  const shimmerXhigh = thinkingLevel === "xhigh" && !reducedMotion;
-  const shimmerGoal = goalActive && !reducedMotion;
+  const shimmerMaxPower = (thinkingLevel === "xhigh" || thinkingLevel === "max") && !reducedMotion;
+  const shimmerPlan = planMode && !reducedMotion;
 
   // Calculate whether everything fits on one line
-  const leftLen = displayPath.length + 2 + (gitBranch ? gitBranch.length + 5 : 0);
   const rightLen = getFooterRightLength({
     barWidth,
     contextPct,
     modelName,
-    goalText,
+    planText,
     thinkingText,
+    renderMarkdown,
   });
   const availableWidth = columns - 2;
-  const fitsOnOneLine = leftLen + rightLen <= availableWidth;
+  const fitsOnOneLine = doesFooterFitOnOneLine({
+    columns,
+    model,
+    tokensIn,
+    contextWindowOptions,
+    cwd,
+    gitBranch,
+    thinkingLevel,
+    planMode,
+    statusBelow,
+    renderMarkdown,
+  });
 
   const maxPath = fitsOnOneLine ? availableWidth - rightLen - 2 : availableWidth;
   const truncPath =
@@ -250,24 +303,32 @@ export function Footer({
         {modelName}
       </Text>
       {sep}
-      {shimmerGoal ? (
+      {shimmerPlan ? (
         <ShimmerLabel
-          text={goalText}
-          color={GOAL_COLOR}
-          shimmerColor={GOAL_SHIMMER_COLOR}
+          text={planText}
+          color={PLAN_COLOR}
+          shimmerColor={PLAN_SHIMMER_COLOR}
           active={!exitPending}
         />
       ) : (
-        <Text color={goalActive ? GOAL_COLOR : theme.textDim} bold={goalActive}>
-          {goalText}
+        <Text color={planMode ? PLAN_COLOR : theme.textDim} bold={planMode}>
+          {planText}
         </Text>
       )}
+      {!renderMarkdown && (
+        <>
+          {sep}
+          <Text color={theme.warning} bold>
+            raw markdown
+          </Text>
+        </>
+      )}
       {sep}
-      {shimmerXhigh ? (
+      {shimmerMaxPower ? (
         <ShimmerLabel
           text={thinkingText}
-          color={XHIGH_COLOR}
-          shimmerColor={XHIGH_SHIMMER_COLOR}
+          color={MAX_COLOR}
+          shimmerColor={MAX_SHIMMER_COLOR}
           active={!exitPending}
         />
       ) : (

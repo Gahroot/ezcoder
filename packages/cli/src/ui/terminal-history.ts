@@ -1,19 +1,82 @@
 import chalk from "chalk";
-import { marked, type Token, type Tokens } from "marked";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
 import type { Provider } from "@prestyj/ai";
 import { getModel } from "../core/model-registry.js";
-import { LANGUAGE_DISPLAY_NAMES, type LanguageId } from "../core/language-detector.js";
 import type { CompletedItem } from "./App.js";
+import { HOOK_TONE_COLOR, isPanelReplacedToolItem, type HookTone } from "./app-items.js";
 import type { PasteInfo } from "./components/InputArea.js";
 import { BLACK_CIRCLE, RETURN_SYMBOL } from "./constants/figures.js";
+import { SPINNER_FRAMES } from "./spinner-frames.js";
 import type { Theme } from "./theme/theme.js";
-import { tokensToAnsi } from "./utils/token-to-ansi.js";
-import { containsMarkdownSyntax } from "./utils/markdown-cache.js";
 import { getUserMessageDisplayParts } from "./utils/user-message-display.js";
+import { buildToolGroupSummary } from "./tool-group-summary.js";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { renderMarkdownToAnsiLines } from "./utils/markdown-renderer.js";
+import { detectGraphicsProtocol, encodeInlineImage } from "./utils/terminal-graphics.js";
+import { createHyperlink } from "./utils/hyperlink.js";
+import { supportsHyperlinks } from "./utils/supports-hyperlinks.js";
+import { shouldSeparateTranscriptItems } from "./transcript/spacing.js";
+import {
+  MAX_OUTPUT_LINES,
+  RESPONSE_LEFT_PADDING,
+  USER_MESSAGE_BACKGROUND,
+  USER_MESSAGE_BOTTOM_FILL,
+  USER_MESSAGE_HORIZONTAL_PADDING,
+  USER_MESSAGE_PREFIX,
+  USER_MESSAGE_TOP_FILL,
+  block,
+  color,
+  dim,
+  formatCompactTokens,
+  formatDuration,
+  formatHistoryWrite,
+  gradientLine,
+  indent,
+  stripAnsi,
+  truncatePlain,
+  userChipSegment,
+  wrapPlain,
+} from "./terminal-history-format.js";
+import {
+  renderCompacted,
+  renderCompacting,
+  renderError,
+  renderSetupHint,
+  renderStatusLine,
+  renderStepDone,
+  renderStylePack,
+  renderUpdateNotice,
+} from "./terminal-history-status-renderers.js";
+import {
+  presentDuration,
+  presentInfo,
+  presentModelTransition,
+  presentPlanEvent,
+  presentQueued,
+  presentStopped,
+  presentTask,
+  presentThemeTransition,
+} from "./transcript/presentation.js";
+import { toolTonePalette } from "./transcript/tool-presentation.js";
 
 const LOGO_LINES = [" ▄▀▀▀ ▄▀▀▀", " █ ▀█ █ ▀█", " ▀▄▄▀ ▀▄▄▀"];
+const PLAN_MODE_LOGO = [
+  "▗▄▄▖ ▗▖    ▗▄▖ ▗▖  ▗▖    ▗▖  ▗▖ ▗▄▖ ▗▄▄▄ ▗▄▄▄▖",
+  "▐▌ ▐▌▐▌   ▐▌ ▐▌▐▛▚▖▐▌    ▐▛▚▞▜▌▐▌ ▐▌▐▌  █▐▌",
+  "▐▛▀▘ ▐▌   ▐▛▀▜▌▐▌ ▝▜▌    ▐▌  ▐▌▐▌ ▐▌▐▌  █▐▛▀▀▘",
+  "▐▌   ▐▙▄▄▖▐▌ ▐▌▐▌  ▐▌    ▐▌  ▐▌▝▚▄▞▘▐▙▄▄▀▐▙▄▄▖",
+];
+const PLAN_MODE_GRADIENT = [
+  "#f59e0b",
+  "#fbbf24",
+  "#f59e0b",
+  "#d97706",
+  "#f59e0b",
+  "#fbbf24",
+  "#d97706",
+];
 const GRADIENT = [
   "#60a5fa",
   "#6da1f9",
@@ -30,12 +93,9 @@ const GRADIENT = [
 ];
 const GAP = "   ";
 const LOGO_WIDTH = 9;
-const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 20;
-const MAX_OUTPUT_LINES = 4;
-const USER_MESSAGE_BACKGROUND = "#808080";
-const USER_MESSAGE_TEXT = "#ffffff";
+const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 62;
 const COMPACT_TOOLS = new Set(["read", "grep", "find", "ls", "source_path"]);
-const STATE_TOOLS = new Set(["tasks", "goals"]);
+const STATE_TOOLS = new Set(["tasks"]);
 const SERVER_STYLE_TOOLS = new Set(["web_search"]);
 
 export interface TerminalHistoryPrinter {
@@ -62,36 +122,123 @@ export interface TerminalHistoryContext {
   cwd: string;
 }
 
+// How many recent assistant fingerprints to remember for retry de-dup. A
+// stream retry re-emits the SAME leading paragraphs it just flushed, always
+// adjacent in print order — so a small recency window catches retries while
+// still allowing a genuinely repeated short phrase (e.g. "Done.") to reappear
+// many turns later.
+const ASSISTANT_FINGERPRINT_WINDOW = 16;
+
 export function createTerminalHistoryPrinter({
   stream = process.stdout,
 }: TerminalHistoryPrinterOptions = {}): TerminalHistoryPrinter {
   const printed = new Set<string>();
-  let previousWriteEndedWithBlankLine = false;
+  // Ordered ring of recently printed assistant text fingerprints. The printer
+  // dedupes by item id, but progressive mid-stream flushing assigns a FRESH id
+  // to each flushed paragraph. On a stream stall/overload the agent loop emits
+  // a `retry`, the provider re-streams from scratch, and those same paragraphs
+  // get re-flushed under new ids — so id-dedup alone lets the identical text
+  // print again (N retries => N+1 stacked copies). Fingerprinting the content
+  // suppresses those re-emissions regardless of id.
+  const recentAssistantFingerprints: string[] = [];
+  let previousPrintedKind: CompletedItem["kind"] | null = null;
+
+  const fingerprintOf = (item: CompletedItem): string | null => {
+    if (item.kind !== "assistant") return null;
+    const normalized = item.text.replace(/\s+/g, " ").trim();
+    return normalized.length > 0 ? normalized : null;
+  };
 
   return {
     print(items, context, options) {
       const writeOutput = options?.write ?? ((data: string) => void stream.write(data));
       for (const item of items) {
         if (!options?.force && printed.has(item.id)) continue;
+        // Tool activity is shown live in the pinned LiveToolPanel, not the
+        // scrollback transcript. Skip without touching spacing state so the
+        // surrounding non-tool rows keep their separators.
+        if (isPanelReplacedToolItem(item)) continue;
+        // Retry-driven duplicate: identical assistant text re-flushed under a
+        // new id after a stream restart. Mark the id printed so a later flush of
+        // the same item is a cheap id hit, then skip without writing.
+        const fingerprint = options?.force ? null : fingerprintOf(item);
+        if (fingerprint !== null && recentAssistantFingerprints.includes(fingerprint)) {
+          printed.add(item.id);
+          continue;
+        }
         const output = serializeCompletedItemToTerminalHistory(item, context);
         const endsWithBlankLine = item.kind === "banner";
+        // A continuation assistant chunk is the next paragraph of a response
+        // whose earlier paragraphs were already flushed mid-stream. Re-insert
+        // the blank line that separated them so the reassembled scrollback
+        // matches the whole response (assistant→assistant is otherwise compact).
+        const isContinuationParagraph =
+          item.kind === "assistant" &&
+          item.continuation === true &&
+          previousPrintedKind === "assistant";
         const formatted = formatHistoryWrite(output, {
-          leadingSeparator: !previousWriteEndedWithBlankLine,
+          leadingSeparator:
+            item.kind === "plan_transition"
+              ? false
+              : isContinuationParagraph
+                ? true
+                : shouldSeparateTranscriptItems({
+                    previousKind: previousPrintedKind ?? undefined,
+                    currentKind: item.kind,
+                  }),
           trailingBlankLine: endsWithBlankLine,
+          trailingNewlines: item.kind === "user" ? 1 : undefined,
         });
         if (formatted.length === 0) continue;
         printed.add(item.id);
+        if (fingerprint !== null) {
+          recentAssistantFingerprints.push(fingerprint);
+          if (recentAssistantFingerprints.length > ASSISTANT_FINGERPRINT_WINDOW) {
+            recentAssistantFingerprints.shift();
+          }
+        }
         writeOutput(formatted);
-        previousWriteEndedWithBlankLine = endsWithBlankLine;
+        // Inline image previews render in the Static scrollback region (straight
+        // to the stream, above Ink's live frame). Only emit graphics escapes on
+        // terminals that support them; everything else keeps the text-only line.
+        const previews =
+          (item.kind === "tool_done" || item.kind === "user") && item.imagePreviews
+            ? item.imagePreviews
+            : undefined;
+        if (previews && previews.length > 0) {
+          const protocol = detectGraphicsProtocol();
+          // Indent the image to the message text column (after the `⏺ ` dot),
+          // matching assistant/tool label alignment. Graphics protocols anchor
+          // the image at the cursor column, so leading spaces shift it right.
+          const imageLeftPad = "   ";
+          const canLink = supportsHyperlinks();
+          for (const preview of previews) {
+            if (protocol !== "none") {
+              writeOutput(`\n${imageLeftPad}${encodeInlineImage(preview.base64, protocol)}\n`);
+            }
+            // Clickable "open" affordance — Cmd/Ctrl-click opens the file in the
+            // OS default viewer. The pixels themselves aren't clickable, so the
+            // path is the open handle.
+            if (preview.path && canLink) {
+              const fileUrl = pathToFileURL(preview.path).href;
+              const linkLabel = `↗ ${path.basename(preview.path)}`;
+              const lead = protocol === "none" ? "\n" : "";
+              writeOutput(`${lead}${imageLeftPad}${createHyperlink(fileUrl, linkLabel)}\n`);
+            }
+          }
+        }
+        previousPrintedKind = item.kind;
       }
     },
     clear() {
       printed.clear();
-      previousWriteEndedWithBlankLine = false;
+      recentAssistantFingerprints.length = 0;
+      previousPrintedKind = null;
     },
     resetPrinted() {
       printed.clear();
-      previousWriteEndedWithBlankLine = false;
+      recentAssistantFingerprints.length = 0;
+      previousPrintedKind = null;
     },
     get printedIds() {
       return printed;
@@ -111,10 +258,14 @@ export function serializeCompletedItemToTerminalHistory(
     case "queued":
       return renderQueued(item.text, item.imageCount, context);
     case "assistant":
-      return renderAssistant(item.text, item.thinking, item.thinkingMs, context);
+      return renderAssistant(item.text, context, item.continuation);
+    case "ideal_hook":
+      return renderIdealHook(item.text, item.tone ?? "review", context);
     case "tool_start":
+      if (item.name === "enter_plan") return "";
       return renderToolStart(item.name, item.args, item.progressOutput, context);
     case "tool_done":
+      if (item.name === "enter_plan") return "";
       return renderToolDone(
         item.name,
         item.args,
@@ -131,22 +282,35 @@ export function serializeCompletedItemToTerminalHistory(
       return renderServerToolDone(item.name, item.input, item.resultType, item.durationMs, context);
     case "subagent_group":
       return renderSubAgentGroup(item.agents, item.aborted, context);
-    case "goal":
-      return renderGoal(item.title, item.workerId, context);
-    case "task":
-      return renderTask(item.title, context);
-    case "goal_progress":
-      return renderGoalProgress(item, context);
+    case "task": {
+      const presentation = presentTask(item);
+      return renderStatusLine(
+        presentation.glyph.trim(),
+        `${dim(context, presentation.label ?? "")}${color(context.theme.commandColor, presentation.text, true)}`,
+        context,
+        context.theme.commandColor,
+        presentation.bold,
+        true,
+      );
+    }
     case "error":
       return renderError(item.headline, item.message, item.guidance, context);
-    case "info":
-      return dim(context, wrapPlain(item.text, context.columns));
+    case "info": {
+      const presentation = presentInfo(item);
+      return renderStatusLine(
+        presentation.glyph.trim(),
+        presentation.text,
+        context,
+        context.theme.commandColor,
+        presentation.bold,
+      );
+    }
     case "style_pack":
       return renderStylePack(item.added, item.showSetupHint, context);
     case "setup_hint":
       return renderSetupHint(context);
     case "update_notice":
-      return line(context, context.theme.success, `✨ ${item.text}`, true);
+      return renderUpdateNotice(item.text, context);
     case "compacting":
       return renderCompacting(context);
     case "compacted":
@@ -157,27 +321,60 @@ export function serializeCompletedItemToTerminalHistory(
         item.tokensAfter,
         context,
       );
-    case "duration":
-      return dim(context, `✻ ${item.verb} ${formatDuration(item.durationMs)}`);
+    case "duration": {
+      const presentation = presentDuration(item);
+      return indent(
+        dim(context, `${presentation.glyph}${presentation.text}`),
+        RESPONSE_LEFT_PADDING,
+      );
+    }
+    case "session_summary":
+      return renderSessionSummary(item.summary, context);
     case "plan_transition":
-      return line(context, context.theme.planPrimary, `● ${item.text}`, true);
-    case "goal_agent_transition":
-      return line(context, context.theme.success, `● ${item.text}`, true);
-    case "thinking_transition":
-      return line(
+      return renderPlanModeLogo(context);
+    case "model_transition": {
+      const presentation = presentModelTransition(item);
+      return renderStatusLine(
+        presentation.glyph.trim(),
+        `${dim(context, presentation.label ?? "")}${color(context.theme.commandColor, presentation.text, true)}`,
         context,
-        item.active ? context.theme.accent : context.theme.textDim,
-        `✻ ${item.active ? "Thinking ON" : "Thinking OFF"}`,
+        context.theme.commandColor,
+        presentation.bold,
         true,
       );
-    case "model_transition":
-      return `${color(context.theme.secondary, "▸", true)} ${dim(context, "Switched to ")}${color(context.theme.primary, item.modelName, true)}`;
-    case "theme_transition":
-      return `${color(context.theme.secondary, "◐", true)} ${dim(context, "Theme switched to ")}${color(context.theme.primary, item.themeName, true)}`;
-    case "plan_event":
-      return renderPlanEvent(item.event, item.detail, context);
-    case "stopped":
-      return dim(context, `⊘ ${item.text}`);
+    }
+    case "theme_transition": {
+      const presentation = presentThemeTransition(item);
+      return renderStatusLine(
+        presentation.glyph.trim(),
+        `${dim(context, presentation.label ?? "")}${color(context.theme.commandColor, presentation.text, true)}`,
+        context,
+        context.theme.commandColor,
+        presentation.bold,
+        true,
+      );
+    }
+    case "plan_event": {
+      const presentation = presentPlanEvent(item);
+      return renderStatusLine(
+        presentation.glyph.trim(),
+        `${color(context.theme.commandColor, presentation.text, true)}${presentation.detail ? dim(context, presentation.detail) : ""}`,
+        context,
+        context.theme.commandColor,
+        presentation.bold,
+        true,
+      );
+    }
+    case "stopped": {
+      const presentation = presentStopped(item);
+      return renderStatusLine(
+        presentation.glyph.trim(),
+        presentation.text,
+        context,
+        context.theme.commandColor,
+        presentation.bold,
+      );
+    }
     case "step_done":
       return renderStepDone(item.stepNum, item.description, context);
     case "tombstone":
@@ -185,15 +382,45 @@ export function serializeCompletedItemToTerminalHistory(
   }
 }
 
-function formatHistoryWrite(
-  output: string,
-  options: { leadingSeparator: boolean; trailingBlankLine: boolean },
+function renderSessionSummary(
+  summary: Extract<CompletedItem, { kind: "session_summary" }>["summary"],
+  context: TerminalHistoryContext,
 ): string {
-  const trimmed = output.replace(/\n+$/u, "");
-  if (trimmed.length === 0) return "";
-  const leading = options.leadingSeparator ? "\n" : "";
-  const trailing = options.trailingBlankLine ? "\n\n" : "\n";
-  return `${leading}${trimmed}${trailing}`;
+  const cacheTokens = (summary.usage.cacheRead ?? 0) + (summary.usage.cacheWrite ?? 0);
+  const successRate =
+    summary.tools.totalCalls > 0
+      ? (summary.tools.totalSuccess / summary.tools.totalCalls) * 100
+      : null;
+  const topTools = Object.entries(summary.tools.byName)
+    .sort(([, a], [, b]) => b.calls - a.calls || b.durationMs - a.durationMs)
+    .slice(0, 5)
+    .map(([name, stats]) => `${name} ×${stats.calls}`)
+    .join(", ");
+  const lines = [
+    color(context.theme.secondary, summary.title, true),
+    "",
+    `${color(context.theme.text, "Session", true)}`,
+    summary.sessionId
+      ? `${color(context.theme.link, "ID:")} ${dim(context, summary.sessionId)}`
+      : undefined,
+    `${color(context.theme.link, "Model:")} ${summary.provider}:${summary.model}`,
+    `${color(context.theme.link, "Directory:")} ${dim(context, summary.cwd)}`,
+    "",
+    `${color(context.theme.text, "Usage", true)}`,
+    `${color(context.theme.link, "Wall time:")} ${formatDuration(summary.wallDurationMs)}`,
+    `${color(context.theme.link, "Turns:")} ${summary.turns.toLocaleString()}`,
+    `${color(context.theme.link, "Tokens:")} ${summary.usage.inputTokens.toLocaleString()} in / ${summary.usage.outputTokens.toLocaleString()} out${cacheTokens > 0 ? dim(context, ` / ${cacheTokens.toLocaleString()} cache`) : ""}`,
+    "",
+    `${color(context.theme.text, "Work", true)}`,
+    `${color(context.theme.link, "Tool calls:")} ${summary.tools.totalCalls.toLocaleString()} (${color(context.theme.success, `✓ ${summary.tools.totalSuccess.toLocaleString()}`)} ${color(context.theme.error, `× ${summary.tools.totalFail.toLocaleString()}`)}${successRate == null ? "" : dim(context, ` · ${successRate.toFixed(1)}%`)})`,
+    `${color(context.theme.link, "Top tools:")} ${dim(context, topTools || "none")}`,
+    summary.linesChanged.added > 0 || summary.linesChanged.removed > 0
+      ? `${color(context.theme.link, "Code changes:")} ${color(context.theme.success, `+${summary.linesChanged.added.toLocaleString()}`)} ${color(context.theme.error, `-${summary.linesChanged.removed.toLocaleString()}`)}`
+      : undefined,
+    summary.footer ? "" : undefined,
+    summary.footer ? dim(context, summary.footer) : undefined,
+  ].filter((line): line is string => line !== undefined);
+  return indent(lines.join("\n"), RESPONSE_LEFT_PADDING);
 }
 
 function renderBanner(context: TerminalHistoryContext): string {
@@ -202,7 +429,9 @@ function renderBanner(context: TerminalHistoryContext): string {
   const home = process.env.HOME ?? "";
   const displayPath =
     home && context.cwd.startsWith(home) ? `~${context.cwd.slice(home.length)}` : context.cwd;
-  const logo = LOGO_LINES.map((lineText) => gradientLine(lineText));
+  const logo = LOGO_LINES.map((lineText) => gradientLine(lineText, GRADIENT));
+
+  const shortcuts = `${color(context.theme.primary, "Ctrl+T")} ${dim(context, "tasks · ")}${color(context.theme.primary, "Ctrl+S")} ${dim(context, "skills · ")}${color(context.theme.primary, "Shift+Tab")} ${dim(context, "toggle thinking")}`;
 
   if (context.columns < SIDE_BY_SIDE_MIN) {
     return block([
@@ -211,7 +440,7 @@ function renderBanner(context: TerminalHistoryContext): string {
       "",
       `${color(context.theme.primary, "EZ Coder", true)}${dim(context, ` v${context.version}`)}`,
       `${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, context.columns))}`,
-      `${color(context.theme.primary, "/goal")} ${dim(context, "start goal · ")}${color(context.theme.primary, "Shift+Tab")} ${dim(context, "toggle thinking")}`,
+      shortcuts,
       "",
     ]);
   }
@@ -220,7 +449,7 @@ function renderBanner(context: TerminalHistoryContext): string {
     "",
     `${logo[0]}${GAP}${color(context.theme.primary, "EZ Coder", true)}${dim(context, ` v${context.version} · By `)}${color(context.theme.text, "Nolan Grout", true)}`,
     `${logo[1]}${GAP}${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, Math.max(10, context.columns - LOGO_WIDTH - GAP.length - stringWidth(modelName) - 2)))}`,
-    `${logo[2]}${GAP}${color(context.theme.primary, "/goal")} ${dim(context, "start goal · ")}${color(context.theme.primary, "Shift+Tab")} ${dim(context, "toggle thinking")}`,
+    `${logo[2]}${GAP}${shortcuts}`,
     "",
   ]);
 }
@@ -238,33 +467,37 @@ function renderUser(
   const imageBadges = Array.from({ length: imageCount ?? 0 }, (_, index) =>
     userChipSegment(`[Image #${index + 1}]`, context.theme.accent),
   );
-  const separator = userChipSegment(" ", USER_MESSAGE_TEXT);
+  const userMessageText = context.theme.commandColor;
+  const separator = userChipSegment(" ", userMessageText);
   const content = [
     ...getUserMessageDisplayParts(text, pasteInfo).map((part) =>
-      userChipSegment(part.text, part.kind === "paste" ? context.theme.textDim : USER_MESSAGE_TEXT),
+      userChipSegment(part.text, part.kind === "paste" ? context.theme.textDim : userMessageText),
     ),
     ...imageBadges,
   ]
     .filter((part) => part.length > 0)
     .join(separator);
-  const wrapped = wrapAnsi(
-    content || userChipSegment("(empty)", USER_MESSAGE_TEXT),
-    Math.max(10, context.columns - 2),
-    {
-      hard: true,
-      wordWrap: true,
-    },
+  const messageWidth = Math.max(10, context.columns);
+  const contentWidth = Math.max(
+    1,
+    messageWidth - USER_MESSAGE_HORIZONTAL_PADDING - USER_MESSAGE_PREFIX.length,
   );
-  return wrapped
-    .split("\n")
-    .map((lineText, index) => {
-      const prefix =
-        index === 0
-          ? userChipSegment("❯ ", context.theme.inputPrompt, true)
-          : userChipSegment("  ", USER_MESSAGE_TEXT);
-      return `${prefix}${lineText}`;
-    })
-    .join("\n");
+  const wrapped = wrapAnsi(content || userChipSegment("(empty)", userMessageText), contentWidth, {
+    hard: true,
+    wordWrap: true,
+  });
+  const top = chalk.hex(USER_MESSAGE_BACKGROUND)(USER_MESSAGE_TOP_FILL.repeat(messageWidth));
+  const bottom = chalk.hex(USER_MESSAGE_BACKGROUND)(USER_MESSAGE_BOTTOM_FILL.repeat(messageWidth));
+  const rows = wrapped.split("\n").map((lineText, index) => {
+    const prefix =
+      index === 0
+        ? userChipSegment(USER_MESSAGE_PREFIX, userMessageText, true)
+        : userChipSegment(" ".repeat(USER_MESSAGE_PREFIX.length), userMessageText);
+    const line = `${userChipSegment(" ", userMessageText)}${prefix}${lineText}`;
+    const fillWidth = Math.max(0, messageWidth - stringWidth(stripAnsi(line)));
+    return `${line}${userChipSegment(" ".repeat(fillWidth), userMessageText)}`;
+  });
+  return [top, ...rows, bottom].join("\n");
 }
 
 function renderQueued(
@@ -272,30 +505,51 @@ function renderQueued(
   imageCount: number | undefined,
   context: TerminalHistoryContext,
 ): string {
-  const suffix = imageCount ? ` · ${imageCount} image${imageCount > 1 ? "s" : ""}` : "";
-  return block([
-    `${color(context.theme.warning, "↳ Queued", true)}${dim(context, suffix)}`,
-    indent(wrapPlain(text || "(empty)", context.columns - 2), "  "),
-  ]);
+  const presentation = presentQueued({ kind: "queued", text, imageCount, id: "history-queued" });
+  return prefixFirstLine(
+    wrapPlain(
+      `${dim(context, presentation.label)}${color(context.theme.text, presentation.text)}${color(context.theme.text, presentation.suffix)}`,
+      context.columns - 4,
+    ),
+    ` ${color(context.theme.warning, presentation.glyph.trim(), true)} `,
+    "   ",
+  );
 }
 
 function renderAssistant(
   text: string,
-  thinking: string | undefined,
-  thinkingMs: number | undefined,
   context: TerminalHistoryContext,
+  continuation = false,
 ): string {
   const lines: string[] = [];
-  if (thinking?.trim()) {
-    const label = `✦ Thought${thinkingMs ? ` for ${formatDuration(thinkingMs)}` : ""}`;
-    lines.push(color(context.theme.textMuted, label));
-    lines.push(dim(context, indent(wrapPlain(thinking.trim(), context.columns - 2), "  ")));
-  }
-  const body = markdownToAnsi(text, context).trim();
+  const body = renderMarkdownToAnsiLines({
+    text,
+    theme: context.theme,
+    width: Math.max(10, context.columns - 4),
+  })
+    .join("\n")
+    .replace(/^\n+|\n+$/g, "");
   if (body.length > 0) {
-    lines.push(prefixFirstLine(body, `${color(context.theme.primary, BLACK_CIRCLE)} `, "  "));
+    lines.push(
+      continuation
+        ? indent(body, "   ")
+        : prefixFirstLine(body, ` ${color(context.theme.primary, BLACK_CIRCLE)} `, "   "),
+    );
   }
-  return block(lines);
+  return lines.join("\n");
+}
+
+function renderIdealHook(text: string, tone: HookTone, context: TerminalHistoryContext): string {
+  // Same dot prefix + indent as an assistant row, but in the tone's color
+  // (bold) so each agent hook visibly stands apart from normal output and
+  // from the other hooks.
+  const toneColor = context.theme[HOOK_TONE_COLOR[tone]];
+  const body = color(toneColor, text, true);
+  return prefixFirstLine(body, ` ${color(toneColor, BLACK_CIRCLE)} `, "   ");
+}
+
+function renderPlanModeLogo(_context: TerminalHistoryContext): string {
+  return PLAN_MODE_LOGO.map((line) => ` ${gradientLine(line, PLAN_MODE_GRADIENT)}`).join("\n");
 }
 
 function renderToolStart(
@@ -308,7 +562,7 @@ function renderToolStart(
     const { label, detail } = getToolHeaderParts(name, args);
     return block([
       toolHeader("running", label, detail, context, { quoteDetail: true }),
-      ...messageResponse([dim(context, "· Searching...")], context),
+      ...messageResponse([dim(context, "Searching...")], context),
     ]);
   }
 
@@ -349,6 +603,14 @@ function renderToolDone(
     return toolHeader("done", getCompactDoneLabel(name, args, result), "", context);
   }
 
+  // Screenshot collapses to a single header line, e.g. `Screenshot (image/png)`.
+  // The inline image is appended separately by the printer; the multi-line
+  // "Captured …" text would be redundant above it.
+  if (name === "screenshot" && !isError) {
+    const mediaType = result.match(/\[(image\/[a-z0-9.+-]+)\]/i)?.[1] ?? "image";
+    return toolHeader("done", "Screenshot", mediaType, context);
+  }
+
   if (STATE_TOOLS.has(name)) {
     const { label, detail } = getToolHeaderParts(name, args);
     return stateToolHeader(
@@ -386,27 +648,18 @@ function renderToolGroup(
   }[],
   context: TerminalHistoryContext,
 ): string {
-  const lines = tools.map((tool) => {
-    if (COMPACT_TOOLS.has(tool.name) && tool.status === "running") {
-      return toolHeader("running", getCompactRunningLabel(tool.name, tool.args), "", context);
-    }
-    if (COMPACT_TOOLS.has(tool.name) && tool.status === "done" && !tool.isError) {
-      return toolHeader(
-        "done",
-        getCompactDoneLabel(tool.name, tool.args, tool.result ?? ""),
-        "",
-        context,
-      );
-    }
-    const { label, detail } = getToolHeaderParts(tool.name, tool.args);
-    return toolHeader(
-      tool.status === "done" ? (tool.isError ? "error" : "done") : "running",
-      label,
-      detail,
-      context,
-    );
-  });
-  return block(lines);
+  const allDone = tools.every((tool) => tool.status === "done");
+  const hasError = tools.some((tool) => tool.isError);
+  const status = allDone ? (hasError ? "error" : "done") : "running";
+  return toolHeader(
+    status,
+    renderSummarySegments(buildToolGroupSummary(tools, allDone), context),
+    "",
+    context,
+    {
+      labelAlreadyStyled: true,
+    },
+  );
 }
 
 function renderServerToolStart(
@@ -417,7 +670,7 @@ function renderServerToolStart(
   const { label, detail } = getServerToolHeaderParts(name, input);
   return block([
     toolHeader("running", label, detail, context, { quoteDetail: true }),
-    ...messageResponse([dim(context, "· Searching...")], context),
+    ...messageResponse([dim(context, "Searching...")], context),
   ]);
 }
 
@@ -468,143 +721,6 @@ function renderSubAgentGroup(
   return block(lines);
 }
 
-function renderGoal(
-  title: string,
-  workerId: string | undefined,
-  context: TerminalHistoryContext,
-): string {
-  return `${color(context.theme.success, "▶", true)} ${dim(context, "Goal: ")}${color(context.theme.success, title)}${workerId ? dim(context, ` · worker ${workerId}`) : ""}`;
-}
-
-function renderGoalProgress(
-  item: Extract<CompletedItem, { kind: "goal_progress" }>,
-  context: TerminalHistoryContext,
-): string {
-  const isError = item.status === "failed" || item.status === "fail" || item.status === "blocked";
-  const colorHex = isError
-    ? context.theme.error
-    : item.phase === "worker_finished" || item.phase === "terminal"
-      ? context.theme.success
-      : item.phase === "verifier_finished" || item.phase === "verifier_started"
-        ? context.theme.accent
-        : item.phase === "orchestrator_reviewing" || item.phase === "orchestrator_working"
-          ? context.theme.secondary
-          : item.phase === "continuing"
-            ? context.theme.warning
-            : context.theme.primary;
-  const glyph =
-    item.phase === "worker_finished" || item.phase === "verifier_finished"
-      ? "✓"
-      : item.phase === "terminal"
-        ? item.status === "passed"
-          ? "◆"
-          : "!"
-        : "↻";
-  const lines = [
-    `${color(colorHex, glyph, true)} ${color(colorHex, item.title, true)}${item.workerId ? dim(context, ` · worker ${item.workerId}`) : ""}`,
-  ];
-  if (item.detail) {
-    lines.push(dim(context, indent(wrapPlain(item.detail, context.columns - 2), "  ")));
-  }
-  for (const row of item.summaryRows ?? []) {
-    lines.push(
-      `${dim(context, row.label.padEnd(12))}${color(context.theme.text, row.value)}${row.detail ? dim(context, ` · ${row.detail}`) : ""}`,
-    );
-  }
-  for (const section of item.summarySections ?? []) {
-    lines.push(dim(context, `  ${section.title}`));
-    for (const sectionLine of section.lines) {
-      lines.push(`${color(context.theme.text, "• ")}${color(context.theme.text, sectionLine)}`);
-    }
-  }
-  return block(lines);
-}
-
-function renderError(
-  headline: string,
-  message: string,
-  guidance: string,
-  context: TerminalHistoryContext,
-): string {
-  const lines = [color(context.theme.error, `✗ ${headline}`)];
-  if (message && message !== headline) {
-    lines.push(dim(context, indent(wrapPlain(message, context.columns - 2), "  ")));
-  }
-  lines.push(dim(context, indent(wrapPlain(`→ ${guidance}`, context.columns - 2), "  ")));
-  return block(lines);
-}
-
-function renderStylePack(
-  added: readonly LanguageId[],
-  showSetupHint: boolean,
-  context: TerminalHistoryContext,
-): string {
-  const names = added.map((id) => LANGUAGE_DISPLAY_NAMES[id] ?? id).join(", ");
-  const headerLabel = added.length > 1 ? "STYLE PACKS ACTIVE" : "STYLE PACK ACTIVE";
-  const lines = [
-    `${color(context.theme.language, "◆", true)} ${color(context.theme.language, headerLabel, true)}`,
-    color(context.theme.text, names, true),
-  ];
-  if (showSetupHint) {
-    lines.push(
-      `${dim(context, "Tip: run ")}${color(context.theme.language, "/setup", true)}${dim(context, " to audit this project against the active pack(s)")}`,
-    );
-  }
-  return block(lines);
-}
-
-function renderSetupHint(context: TerminalHistoryContext): string {
-  return block([
-    `${color(context.theme.language, "◆", true)} ${color(context.theme.language, "NO STYLE PACKS DETECTED", true)}`,
-    dim(context, "This directory has no recognized language manifest at its root."),
-    `${dim(context, "Tip: run ")}${color(context.theme.language, "/setup", true)}${dim(context, " to audit project hygiene or bootstrap a new project from scratch")}`,
-  ]);
-}
-
-function renderCompacting(context: TerminalHistoryContext): string {
-  return `${color(context.theme.warning, "·")} ${dim(context, "Compacting conversation")}${dim(context, "...")}`;
-}
-
-function renderCompacted(
-  originalCount: number,
-  newCount: number,
-  tokensBefore: number,
-  tokensAfter: number,
-  context: TerminalHistoryContext,
-): string {
-  const reduction = tokensBefore > 0 ? Math.round((1 - tokensAfter / tokensBefore) * 100) : 0;
-  return block([
-    `${color(context.theme.warning, "⟳")} ${dim(context, "Conversation compacted")}`,
-    dim(
-      context,
-      `  ${originalCount} → ${newCount} messages · ${formatTokenCount(tokensBefore)} → ${formatTokenCount(tokensAfter)} tokens · ${reduction}% reduction`,
-    ),
-  ]);
-}
-
-function renderPlanEvent(
-  event: "approved" | "rejected" | "dismissed",
-  detail: string | undefined,
-  context: TerminalHistoryContext,
-): string {
-  const labels = {
-    approved: "Plan approved",
-    rejected: "Plan rejected",
-    dismissed: "Plan dismissed",
-  } satisfies Record<typeof event, string>;
-  const lines = [color(context.theme.planPrimary, `○ ${labels[event]}`, true)];
-  if (detail) lines[0] += dim(context, ` — "${detail}"`);
-  return block(lines);
-}
-
-function renderStepDone(
-  stepNum: number,
-  description: string,
-  context: TerminalHistoryContext,
-): string {
-  return `${color(context.theme.success, "✓", true)} ${color(context.theme.success, `Step ${stepNum} done`, true)}${description ? dim(context, ` — ${description}`) : ""}`;
-}
-
 function renderServerStyleToolDone(
   name: string,
   args: Record<string, unknown>,
@@ -646,7 +762,7 @@ function renderSubAgentRows(
       : agent.status === "error"
         ? color(context.theme.error, "✗ ", true)
         : "";
-  const taskLine = `${dim(context, branch.padEnd(3))}${taskPrefix}${color(agent.status === "done" ? context.theme.success : context.theme.text, taskDisplay, isRunning)}`;
+  const taskLine = `${dim(context, `   ${branch.padEnd(3)}`)}${taskPrefix}${color(agent.status === "done" ? context.theme.success : context.theme.text, taskDisplay, isRunning)}`;
 
   const totalTokens = agent.tokenUsage ? agent.tokenUsage.input + agent.tokenUsage.output : 0;
   let detail: string;
@@ -664,7 +780,7 @@ function renderSubAgentRows(
     );
   }
 
-  return [taskLine, `${dim(context, `${continuation}${RETURN_SYMBOL} `)}${detail}`];
+  return [taskLine, `${dim(context, `   ${continuation}${RETURN_SYMBOL} `)}${detail}`];
 }
 
 function toolResultPreview(
@@ -716,15 +832,28 @@ function toolHeader(
   label: string,
   detail: string,
   context: TerminalHistoryContext,
-  options: { suffix?: string; quoteDetail?: boolean } = {},
+  options: {
+    suffix?: string;
+    quoteDetail?: boolean;
+    dotColor?: string;
+    indicator?: string;
+    labelAlreadyStyled?: boolean;
+  } = {},
 ): string {
   const dotColor =
+    options.dotColor ??
+    (status === "error"
+      ? context.theme.error
+      : status === "done"
+        ? context.theme.success
+        : context.theme.spinnerColor);
+  const indicator = options.indicator ?? (status === "running" ? SPINNER_FRAMES[0] : BLACK_CIRCLE);
+  const labelColor =
     status === "error"
       ? context.theme.error
       : status === "done"
         ? context.theme.success
-        : context.theme.primary;
-  const labelColor = status === "error" ? context.theme.toolError : context.theme.toolName;
+        : context.theme.toolName;
   const detailText = detail
     ? color(
         context.theme.text,
@@ -732,7 +861,21 @@ function toolHeader(
       )
     : "";
   const suffixText = options.suffix ? dim(context, ` ${options.suffix}`) : "";
-  return `${color(dotColor, BLACK_CIRCLE)} ${color(labelColor, label, true)}${detailText}${suffixText}`;
+  const labelText = options.labelAlreadyStyled ? label : color(labelColor, label, true);
+  return `${RESPONSE_LEFT_PADDING}${color(dotColor, indicator)} ${labelText}${detailText}${suffixText}`;
+}
+
+function renderSummarySegments(
+  segments: ReturnType<typeof buildToolGroupSummary>,
+  context: TerminalHistoryContext,
+): string {
+  return segments
+    .map((segment) =>
+      segment.tone
+        ? color(toolTonePalette(context.theme, segment.tone).primary, segment.text, segment.bold)
+        : color(context.theme.text, segment.text, segment.bold),
+    )
+    .join("");
 }
 
 function stateToolHeader(
@@ -752,42 +895,19 @@ function messageResponse(lines: readonly string[], context: TerminalHistoryConte
   if (lines.length === 0) return [];
   const [first, ...rest] = lines;
   return [
-    `${dim(context, `  ${RETURN_SYMBOL}  `)}${first}`,
-    ...rest.map((lineText) => `${dim(context, "     ")}${lineText}`),
+    `${RESPONSE_LEFT_PADDING}${dim(context, `  ${RETURN_SYMBOL}  `)}${first}`,
+    ...rest.map((lineText) => `${RESPONSE_LEFT_PADDING}${dim(context, "     ")}${lineText}`),
   ];
 }
 
 function prefixFirstLine(text: string, firstPrefix: string, nextPrefix: string): string {
   return text
     .split("\n")
-    .map((lineText, index) => `${index === 0 ? firstPrefix : nextPrefix}${lineText}`)
+    .map((lineText, index) => {
+      if (lineText.length === 0) return "";
+      return `${index === 0 ? firstPrefix : nextPrefix}${lineText}`;
+    })
     .join("\n");
-}
-
-function markdownToAnsi(text: string, context: TerminalHistoryContext): string {
-  if (!text.trim()) return "";
-  let tokens: Token[];
-  if (!containsMarkdownSyntax(text)) {
-    tokens = [
-      {
-        type: "paragraph",
-        raw: text,
-        text,
-        tokens: [{ type: "text", raw: text, text }],
-      } as Tokens.Paragraph,
-    ];
-  } else {
-    tokens = marked.lexer(text);
-  }
-  return tokensToAnsi(tokens, context.theme, Math.max(20, context.columns - 1));
-}
-
-function formatDuration(ms: number): string {
-  const totalSec = Math.round(ms / 1000);
-  if (totalSec < 60) return `${totalSec}s`;
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
 }
 
 function getToolHeaderParts(
@@ -842,7 +962,6 @@ function getToolHeaderParts(
       return { label: displayName, detail: url.length > 60 ? `${url.slice(0, 57)}…` : url };
     }
     case "tasks":
-    case "goals":
       return { label: displayName, detail: String(args.action ?? "") };
     default:
       return { label: displayName, detail: name.startsWith("mcp__") ? getMCPDetailArg(args) : "" };
@@ -885,8 +1004,6 @@ function toolDisplayName(name: string): string {
       return "Source";
     case "tasks":
       return "Task";
-    case "goals":
-      return "Goal";
     default:
       return snakeToTitle(name);
   }
@@ -997,8 +1114,7 @@ function getInlineSummary(name: string, result: string, isError: boolean): strin
       return extractSourcePath(result) ? shortenPath(extractSourcePath(result) ?? "") : "resolved";
     case "task_stop":
       return result.split("\n")[0] ?? "stopped";
-    case "tasks":
-    case "goals": {
+    case "tasks": {
       const quoted = result.match(/"([^"]+)"/)?.[1];
       if (quoted) return quoted.length > 50 ? `${quoted.slice(0, 47)}…` : quoted;
       const firstLine = result.split("\n")[0] ?? "";
@@ -1114,81 +1230,4 @@ function colorCode(
 ): string {
   if (lang === "text") return color(context.theme.text, text);
   return color(context.theme.text, text);
-}
-
-function formatCompactTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function formatTokenCount(n: number): string {
-  if (n >= 1000) {
-    const k = n / 1000;
-    return k >= 10 ? `${Math.round(k)}k` : `${k.toFixed(1)}k`;
-  }
-  return String(n);
-}
-
-function block(lines: readonly string[]): string {
-  return lines.filter((lineText) => lineText.length > 0).join("\n");
-}
-
-function line(
-  context: TerminalHistoryContext,
-  colorHex: string,
-  text: string,
-  bold = false,
-): string {
-  return color(colorHex, wrapPlain(text, context.columns), bold);
-}
-
-function wrapPlain(text: string, width: number): string {
-  return wrapAnsi(text, Math.max(10, width), { hard: true, wordWrap: true });
-}
-
-function indent(text: string, prefix: string): string {
-  return text
-    .split("\n")
-    .map((lineText) => `${prefix}${lineText}`)
-    .join("\n");
-}
-
-function truncatePlain(text: string, width: number): string {
-  const max = Math.max(1, width);
-  if (stringWidth(text) <= max) return text;
-  let result = "";
-  for (const char of text) {
-    if (stringWidth(`${result}${char}…`) > max) break;
-    result += char;
-  }
-  return `${result}…`;
-}
-
-function color(hex: string, text: string, bold = false): string {
-  const styled = chalk.hex(hex)(text);
-  return bold ? chalk.bold(styled) : styled;
-}
-
-function userChipSegment(text: string, foregroundHex: string, bold = false): string {
-  const styled = chalk.bgHex(USER_MESSAGE_BACKGROUND).hex(foregroundHex)(text);
-  return bold ? chalk.bold(styled) : styled;
-}
-
-function dim(context: TerminalHistoryContext, text: string): string {
-  return color(context.theme.textDim, text);
-}
-
-function gradientLine(text: string): string {
-  let colorIndex = 0;
-  let result = "";
-  for (const char of text) {
-    if (char === " ") {
-      result += char;
-      continue;
-    }
-    result += chalk.hex(GRADIENT[colorIndex % GRADIENT.length] ?? GRADIENT[0])(char);
-    colorIndex++;
-  }
-  return result;
 }

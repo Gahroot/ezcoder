@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/pixel",
-  "version": "4.3.99",
+  "version": "4.3.101",
   "type": "module",
   "description": "Universal error tracking pixel optimized for autonomous coding agents",
   "license": "MIT",
@@ -51,7 +51,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.10.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   },

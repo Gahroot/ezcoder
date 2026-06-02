@@ -20,8 +20,8 @@ export interface ModelInfo {
    * enabled to pick the strongest setting per model:
    *   - OpenAI GPT-5.5-era: `xhigh`
    *   - OpenAI Pro/Codex/old: clamped to what the model accepts
-   *   - Claude Opus 4.7: `xhigh` (mapped to Anthropic's `max` for Opus)
-   *   - Claude Sonnet 4.6 / Haiku 4.5: `high` (no `max` tier)
+   *   - Claude Opus 4.8 / 4.7 / 4.6 and Sonnet 4.6: `max`
+   *   - Claude Haiku 4.5: `high` (no adaptive `max` tier)
    *   - GLM / Moonshot / Xiaomi / MiniMax / Qwen: `high` — binary-thinking
    *     providers ignore the level on the wire, so the value is cosmetic
    *   - DeepSeek V4: `xhigh` (DeepSeek maps `xhigh` → its internal `max`)
@@ -34,15 +34,15 @@ export interface ModelInfo {
 export const MODELS: ModelInfo[] = [
   // ── Anthropic ──────────────────────────────────────────
   {
-    id: "claude-opus-4-7",
-    name: "Claude Opus 4.7",
+    id: "claude-opus-4-8",
+    name: "Claude Opus 4.8",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
     costTier: "high",
-    maxThinkingLevel: "xhigh",
+    maxThinkingLevel: "max",
   },
   {
     id: "claude-sonnet-4-6",
@@ -53,7 +53,7 @@ export const MODELS: ModelInfo[] = [
     supportsThinking: true,
     supportsImages: true,
     costTier: "medium",
-    maxThinkingLevel: "high",
+    maxThinkingLevel: "max",
   },
   {
     id: "claude-haiku-4-5-20251001",
@@ -207,14 +207,26 @@ export const MODELS: ModelInfo[] = [
   },
   // ── Xiaomi (MiMo) ──────────────────────────────────────
   {
-    id: "mimo-v2-pro",
-    name: "MiMo-V2-Pro",
+    id: "mimo-v2.5-pro",
+    name: "MiMo-V2.5-Pro",
     provider: "xiaomi",
     contextWindow: 1_000_000,
     maxOutputTokens: 131_072,
     supportsThinking: true,
     supportsImages: false,
     costTier: "medium",
+    maxThinkingLevel: "high",
+  },
+  {
+    id: "mimo-v2.5",
+    name: "MiMo-V2.5",
+    provider: "xiaomi",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 131_072,
+    supportsThinking: true,
+    // MiMo-V2.5 is natively omnimodal (image/audio/video understanding).
+    supportsImages: true,
+    costTier: "low",
     maxThinkingLevel: "high",
   },
   // ── DeepSeek ───────────────────────────────────────────
@@ -264,7 +276,7 @@ export function getModelsForProvider(provider: Provider): ModelInfo[] {
 }
 
 export function getDefaultModel(provider: Provider): ModelInfo {
-  if (provider === "xiaomi") return MODELS.find((m) => m.id === "mimo-v2-pro")!;
+  if (provider === "xiaomi") return MODELS.find((m) => m.id === "mimo-v2.5-pro")!;
   if (provider === "openai") return MODELS.find((m) => m.id === "gpt-5.5")!;
   if (provider === "gemini") return MODELS.find((m) => m.id === "gemini-3.1-flash-lite-preview")!;
   if (provider === "glm") return MODELS.find((m) => m.id === "glm-5.1")!;

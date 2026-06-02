@@ -23,10 +23,10 @@ const CACHE_KEY = `verify-caching-${Date.now()}`;
 
 const TARGETS = [
   {
-    name: "anthropic / claude-opus-4-7",
+    name: "anthropic / claude-opus-4-8",
     options: () => ({
       provider: "anthropic",
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
       apiKey: auth.anthropic.accessToken,
       messages: [
         { role: "system", content: SYSTEM },
@@ -112,10 +112,10 @@ const TARGETS = [
     }),
   },
   {
-    name: "xiaomi / mimo-v2-pro",
+    name: "xiaomi / mimo-v2.5-pro",
     options: () => ({
       provider: "xiaomi",
-      model: "mimo-v2-pro",
+      model: "mimo-v2.5-pro",
       apiKey: auth.xiaomi.accessToken,
       messages: [
         { role: "system", content: SYSTEM },

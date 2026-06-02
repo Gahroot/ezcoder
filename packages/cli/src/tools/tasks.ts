@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import type { AgentTool } from "@prestyj/agent";
 import { log } from "../core/logger.js";
 import { loadTasks, saveTasks, type TaskListItem } from "../core/task-store.js";
@@ -42,7 +42,8 @@ export function createTasksTool(cwd: string): AgentTool<typeof TasksParams> {
       "agent with no context). Write prompts as concise, actionable directives " +
       "with specific file paths — the agent must complete it from the prompt alone. " +
       "When adding multiple tasks, order them by dependency — foundational work " +
-      "first, then core logic, integration, UI, and tests.",
+      "first, then core logic, integration, UI, and tests. " +
+      "Do not use this tool proactively — only manage the task list when the user explicitly requests it.",
     parameters: TasksParams,
     executionMode: "sequential",
     execute({ action, title, prompt, id }) {

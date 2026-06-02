@@ -16,6 +16,31 @@
 
 export type ErrorSource = "provider" | "ezcoder" | "network" | "auth";
 
+/**
+ * Probe a web `Headers` object or a plain header record for the first present
+ * header among `names`. Case-insensitive for plain records. Returns the value
+ * of the first name that resolves to a string, or `undefined`.
+ */
+export function readHeader(headers: unknown, ...names: string[]): string | undefined {
+  if (!headers) return undefined;
+  const getter =
+    typeof (headers as { get?: unknown }).get === "function"
+      ? (name: string): string | undefined => (headers as Headers).get(name) ?? undefined
+      : typeof headers === "object"
+        ? (name: string): string | undefined => {
+            const rec = headers as Record<string, unknown>;
+            const value = rec[name] ?? rec[name.toLowerCase()];
+            return typeof value === "string" ? value : undefined;
+          }
+        : undefined;
+  if (!getter) return undefined;
+  for (const name of names) {
+    const value = getter(name);
+    if (value != null) return value;
+  }
+  return undefined;
+}
+
 export interface FormattedError {
   /** Plain-English headline, e.g. "OpenAI returned an error." */
   headline: string;
@@ -31,6 +56,8 @@ export interface FormattedError {
   statusCode?: number;
   /** Provider request ID, kept for telemetry / debug — not shown by default. */
   requestId?: string;
+  /** Unix seconds when a usage/rate limit resets, when the provider reports it. */
+  resetsAt?: number;
 }
 
 export class EZCoderAIError extends Error {
@@ -58,6 +85,8 @@ export class EZCoderAIError extends Error {
 export class ProviderError extends EZCoderAIError {
   readonly provider: string;
   readonly statusCode?: number;
+  /** Unix seconds when a usage/rate limit resets, when the provider reports it. */
+  readonly resetsAt?: number;
 
   constructor(
     provider: string,
@@ -67,6 +96,7 @@ export class ProviderError extends EZCoderAIError {
       requestId?: string;
       hint?: string;
       cause?: unknown;
+      resetsAt?: number;
     },
   ) {
     super(message, {
@@ -78,6 +108,7 @@ export class ProviderError extends EZCoderAIError {
     this.name = "ProviderError";
     this.provider = provider;
     this.statusCode = options?.statusCode;
+    this.resetsAt = options?.resetsAt;
   }
 }
 
@@ -112,10 +143,48 @@ function providerDisplayName(provider: string): string {
  * a non-empty `headline` and `guidance` so the UI never has to second-guess
  * what to show the user.
  */
+/**
+ * Is this a subscription/plan usage-window exhaustion error (as opposed to a
+ * transient per-minute throttle)? These don't clear with a quick retry — the
+ * user has to wait for the window to reset — so callers must surface them as a
+ * hard stop, not silently retry for minutes. Detected from the canonical
+ * "usage limit reached" message gg-ai stamps onto the ProviderError.
+ */
+export function isUsageLimitError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /usage limit reached/i.test(err.message);
+}
+
+/** Format a unix-seconds reset timestamp for display, e.g. "3:45 PM". */
+function formatResetTime(resetsAt: number): string {
+  const when = new Date(resetsAt * 1000);
+  const sameDay = when.toDateString() === new Date().toDateString();
+  return sameDay
+    ? when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    : when.toLocaleString(undefined, {
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+}
+
 export function formatError(err: unknown): FormattedError {
   if (err instanceof ProviderError) {
     const name = providerDisplayName(err.provider);
     const cleanMessage = cleanProviderMessage(err.message);
+    if (isUsageLimitError(err)) {
+      const resetClause = err.resetsAt ? ` It resets at ${formatResetTime(err.resetsAt)}.` : "";
+      return {
+        headline: `${name} usage limit reached.`,
+        source: "provider",
+        message: `Your ${name} usage is finished.${resetClause}`,
+        provider: err.provider,
+        statusCode: err.statusCode,
+        ...(err.requestId ? { requestId: err.requestId } : {}),
+        ...(err.resetsAt ? { resetsAt: err.resetsAt } : {}),
+        guidance: "Try again once it's back. Your conversation is preserved.",
+      };
+    }
     return {
       headline: `${name} returned an error.`,
       source: "provider",

@@ -24,7 +24,7 @@ export interface PendingTaskInfo {
 }
 
 const DEFAULT_TASKS_BASE = join(homedir(), ".ezcoder", "tasks", "projects");
-const LEGACY_TASKS_BASE = join(homedir(), ".gg-tasks", "projects");
+const LEGACY_TASKS_BASE = join(homedir(), ".ezcoder-tasks", "projects");
 
 function tasksBase(): string {
   return process.env.EZCODER_TASKS_BASE ?? DEFAULT_TASKS_BASE;

@@ -14,8 +14,6 @@ export interface SlashCommandContext {
   branch: (stepsBack?: number) => Promise<string>;
   /** List all branches in the current session. */
   listBranches: () => Promise<string>;
-  /** Show or refresh the dynamic repo map. */
-  repoMap: (action?: "show" | "refresh" | "on" | "off") => Promise<string>;
 }
 
 export interface SlashCommand {
@@ -235,20 +233,6 @@ export function createBuiltinCommands(): SlashCommand[] {
       },
     },
     {
-      name: "map",
-      aliases: [],
-      description: "Show, refresh, or toggle the dynamic repo map",
-      usage: "/map [refresh|on|off]",
-      async execute(args, ctx) {
-        const normalized = args.trim().toLowerCase();
-        if (normalized === "refresh" || normalized === "on" || normalized === "off") {
-          return ctx.repoMap(normalized);
-        }
-        if (normalized.length > 0) return "Usage: /map [refresh|on|off]";
-        return ctx.repoMap("show");
-      },
-    },
-    {
       name: "branch",
       aliases: ["b"],
       description: "Create a branch (rewind and fork the conversation)",
@@ -268,6 +252,16 @@ export function createBuiltinCommands(): SlashCommand[] {
       usage: "/branches",
       async execute(_args, ctx) {
         return ctx.listBranches();
+      },
+    },
+    {
+      name: "rewind",
+      aliases: [],
+      description: "Restore files/conversation to an earlier checkpoint",
+      usage: "/rewind — pick a checkpoint, then code / conversation / both",
+      execute() {
+        // Handled in App.tsx (needs React state); listed here for /help.
+        return "Use /rewind to open the checkpoint picker.";
       },
     },
     {

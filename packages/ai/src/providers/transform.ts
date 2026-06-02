@@ -13,9 +13,125 @@ import type {
   ToolChoice,
   ToolResultContent,
 } from "../types.js";
-import { zodToJsonSchema } from "../utils/zod-to-json-schema.js";
+import { resolveToolSchema, zodToJsonSchema } from "../utils/zod-to-json-schema.js";
 
 // ── Shared helpers ─────────────────────────────────────────
+
+/**
+ * A thinking block is only safe to round-trip to Anthropic as a real `thinking`
+ * block when it carries a genuinely non-empty signature. Empty or whitespace-
+ * only signatures (e.g. from an interrupted stream that never received its
+ * `signature_delta`, or from non-Anthropic providers) would be rejected with
+ * "thinking ... blocks cannot be modified", so they are downgraded to text.
+ */
+function hasValidThinkingSignature(part: ThinkingContent): boolean {
+  return typeof part.signature === "string" && part.signature.trim().length > 0;
+}
+
+/** True for `raw` parts that wrap a thinking / redacted_thinking wire block. */
+function isRawThinking(part: ContentPart): boolean {
+  if (part.type !== "raw") return false;
+  const t = part.data.type;
+  return t === "thinking" || t === "redacted_thinking";
+}
+
+/**
+ * True for content parts that Anthropic treats as position-sensitive reasoning
+ * blocks in the latest assistant message: SIGNED `thinking` blocks and
+ * `redacted_thinking` blocks (round-tripped as opaque `raw`). Unsigned thinking
+ * (e.g. from GLM/OpenAI or an aborted stream) is excluded — it is converted to a
+ * text block on the way out, so it carries no signature for Anthropic to validate
+ * and imposes no positional constraint.
+ */
+function isPositionSensitiveThinking(part: ContentPart): boolean {
+  if (part.type === "thinking") return hasValidThinkingSignature(part);
+  return isRawThinking(part);
+}
+
+/** Map a single assistant content part to its Anthropic wire block (or null to drop). */
+function toAnthropicAssistantPart(
+  part: ContentPart,
+  idMap: Map<string, string>,
+): Anthropic.ContentBlockParam | null {
+  if (part.type === "text") return { type: "text", text: part.text };
+  if (part.type === "thinking") {
+    // Signed thinking round-trips verbatim. Unsigned/invalid-signature thinking
+    // (GLM/OpenAI, or an aborted Anthropic stream) has nothing for Anthropic to
+    // validate and would be rejected as a thinking block, so preserve its
+    // reasoning as a text block instead of discarding it.
+    const sig = part.signature;
+    return sig && sig.trim().length > 0
+      ? { type: "thinking", thinking: part.text, signature: sig }
+      : { type: "text", text: part.text };
+  }
+  if (part.type === "tool_call")
+    return {
+      type: "tool_use",
+      id: remapAnthropicToolCallId(part.id, idMap),
+      name: part.name,
+      input: part.args,
+    };
+  if (part.type === "server_tool_call")
+    return {
+      type: "server_tool_use",
+      id: part.id,
+      name: part.name,
+      input: part.input,
+    } as unknown as Anthropic.ContentBlockParam;
+  if (part.type === "server_tool_result")
+    return part.data as unknown as Anthropic.ContentBlockParam;
+  if (part.type === "raw") return part.data as unknown as Anthropic.ContentBlockParam;
+  // Unknown content type (e.g. image in assistant message) — drop it.
+  return null;
+}
+
+/**
+ * Build an assistant message's Anthropic content blocks.
+ *
+ * Anthropic only validates thinking-block integrity in the LATEST assistant
+ * message. For every earlier turn, keeping signed thinking just makes the
+ * history fragile — any later edit, compaction, or reorder invalidates the
+ * signature and triggers "thinking ... blocks cannot be modified". So thinking
+ * and redacted_thinking are stripped from all but the latest turn (tool_use and
+ * text survive). On the latest turn they are preserved byte-identical (signed)
+ * or downgraded to text (unsigned). This mirrors the AutoGPT / hermes-agent fix.
+ */
+function toAnthropicAssistantContent(
+  content: ContentPart[],
+  isLatest: boolean,
+  idMap: Map<string, string>,
+): Anthropic.ContentBlockParam[] {
+  if (!isLatest) {
+    return content
+      .filter((part) => {
+        if (part.type === "thinking" || isRawThinking(part)) return false;
+        // Anthropic rejects empty text content blocks.
+        if (part.type === "text" && !part.text) return false;
+        return true;
+      })
+      .map((part) => toAnthropicAssistantPart(part, idMap))
+      .filter((b): b is Anthropic.ContentBlockParam => b !== null);
+  }
+
+  // Latest assistant turn: thinking/redacted_thinking blocks are byte-identical
+  // AND position-sensitive (interleaved-thinking-2025-05-14). Dropping a block
+  // that PRECEDES a thinking block shifts that block's index, which the API
+  // rejects, so empty text blocks before the last thinking block are kept;
+  // empty text after it can be dropped safely.
+  const lastThinkingIdx = content.reduce(
+    (last, part, idx) => (isPositionSensitiveThinking(part) ? idx : last),
+    -1 as number,
+  );
+  return content
+    .filter((part, idx) => {
+      // Drop empty, signature-less thinking blocks — nothing to preserve.
+      if (part.type === "thinking" && !hasValidThinkingSignature(part) && !part.text) return false;
+      if (part.type === "text" && !part.text && idx > lastThinkingIdx) return false;
+      return true;
+    })
+    .map((part) => toAnthropicAssistantPart(part, idMap))
+    .filter((b): b is Anthropic.ContentBlockParam => b !== null);
+}
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
 const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
@@ -68,7 +184,7 @@ export function downgradeUnsupportedImages(
 }
 
 /** Extract concatenated text from tool_result content (array or string). */
-function toolResultText(content: ToolResultContent): string {
+export function toolResultText(content: ToolResultContent): string {
   if (typeof content === "string") return content;
   return content
     .filter((b): b is TextContent => b.type === "text")
@@ -151,7 +267,17 @@ export function toAnthropicMessages(
   const out: Anthropic.MessageParam[] = [];
   const idMap = new Map<string, string>();
 
+  // Only the latest assistant message has its thinking blocks validated by
+  // Anthropic; thinking is stripped from all earlier turns (see
+  // toAnthropicAssistantContent).
+  const lastAssistantIdx = messages.reduce(
+    (last, m, i) => (m.role === "assistant" ? i : last),
+    -1 as number,
+  );
+
+  let msgIdx = -1;
   for (const msg of messages) {
+    msgIdx++;
     if (msg.role === "system") {
       systemText = msg.content;
       continue;
@@ -184,43 +310,7 @@ export function toAnthropicMessages(
       const content =
         typeof msg.content === "string"
           ? msg.content
-          : msg.content
-              .filter((part) => {
-                // Strip thinking blocks without a valid signature (e.g. from GLM/OpenAI)
-                // — Anthropic rejects empty signatures
-                if (part.type === "thinking" && !part.signature) return false;
-                // Strip empty text blocks — Anthropic rejects text content blocks
-                // with empty strings (can happen when the model returns tool_use
-                // with an empty companion text block)
-                if (part.type === "text" && !part.text) return false;
-                return true;
-              })
-              .map((part): Anthropic.ContentBlockParam => {
-                if (part.type === "text") return { type: "text", text: part.text };
-                if (part.type === "thinking")
-                  return { type: "thinking", thinking: part.text, signature: part.signature! };
-                if (part.type === "tool_call")
-                  return {
-                    type: "tool_use",
-                    id: remapAnthropicToolCallId(part.id, idMap),
-                    name: part.name,
-                    input: part.args,
-                  };
-                if (part.type === "server_tool_call")
-                  return {
-                    type: "server_tool_use",
-                    id: part.id,
-                    name: part.name,
-                    input: part.input,
-                  } as unknown as Anthropic.ContentBlockParam;
-                if (part.type === "server_tool_result")
-                  return part.data as unknown as Anthropic.ContentBlockParam;
-                if (part.type === "raw") return part.data as unknown as Anthropic.ContentBlockParam;
-                // Unknown content type (e.g. image in assistant message) — skip
-                // by returning a marker that will be filtered out below
-                return null as unknown as Anthropic.ContentBlockParam;
-              })
-              .filter(Boolean);
+          : toAnthropicAssistantContent(msg.content, msgIdx === lastAssistantIdx, idMap);
       // Skip assistant messages with no content blocks (can happen when all
       // blocks are filtered — e.g. thinking-only responses from non-Anthropic
       // providers where signature is missing and text is empty)
@@ -329,8 +419,14 @@ export function toAnthropicToolChoice(choice: ToolChoice): Anthropic.ToolChoice 
   return { type: "tool", name: choice.name };
 }
 
-function supportsAdaptiveThinking(model: string): boolean {
-  return /opus-4-7|opus-4-6|sonnet-4-6/.test(model);
+/**
+ * Anthropic models with built-in adaptive thinking (Opus 4.8/4.7/4.6,
+ * Sonnet 4.6). Matches both dashed (`opus-4-8`) and dotted (`opus-4.8`) forms
+ * so callers don't have to enumerate variants. These models don't need the
+ * `interleaved-thinking` beta header — it's built in.
+ */
+export function isAdaptiveThinkingModel(model: string): boolean {
+  return /opus-4[-.]8|opus-4[-.]7|opus-4[-.]6|sonnet-4[-.]6/.test(model);
 }
 
 export function toAnthropicThinking(
@@ -342,13 +438,13 @@ export function toAnthropicThinking(
   maxTokens: number;
   outputConfig?: { effort: string };
 } {
-  if (supportsAdaptiveThinking(model)) {
+  if (isAdaptiveThinkingModel(model)) {
     // Adaptive thinking — model decides when/how much to think.
-    // budget_tokens is deprecated on Opus 4.7 / Opus 4.6 / Sonnet 4.6.
-    // Anthropic's output_config.effort uses "max" as the top tier (Opus-only);
-    // map our "xhigh" → "max", and clamp non-Opus models to "high".
-    let effort: string = level === "xhigh" ? "max" : level;
-    if (effort === "max" && !model.includes("opus")) {
+    // budget_tokens is deprecated on Opus 4.8 / Opus 4.7 / Opus 4.6 / Sonnet 4.6.
+    // Anthropic's output_config.effort accepts low, medium, high, xhigh, and max.
+    // xhigh is Opus 4.8/4.7-only; max is supported by Opus 4.8/4.7/4.6 and Sonnet 4.6.
+    let effort: string = level;
+    if (effort === "xhigh" && !/opus-4-8|opus-4-7/.test(model)) {
       effort = "high";
     }
     return {
@@ -358,8 +454,8 @@ export function toAnthropicThinking(
     };
   }
 
-  // Legacy budget-based thinking for older models ("xhigh" treated as "high")
-  const effectiveLevel = level === "xhigh" ? "high" : level;
+  // Legacy budget-based thinking for older models ("xhigh"/"max" treated as "high")
+  const effectiveLevel = level === "xhigh" || level === "max" ? "high" : level;
   const budgetMap: Record<"low" | "medium" | "high", number> = {
     low: Math.max(1024, Math.floor(maxTokens * 0.25)),
     medium: Math.max(2048, Math.floor(maxTokens * 0.5)),
@@ -544,7 +640,7 @@ export function toOpenAITools(tools: Tool[]): OpenAI.ChatCompletionTool[] {
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: tool.rawInputSchema ?? zodToJsonSchema(tool.parameters),
+      parameters: resolveToolSchema(tool),
     },
   }));
 }
@@ -560,7 +656,7 @@ export function toOpenAIReasoningEffort(
   level: ThinkingLevel,
   _model: string,
 ): "low" | "medium" | "high" | "xhigh" {
-  return level;
+  return level === "max" ? "xhigh" : level;
 }
 
 // ── Response Normalization ─────────────────────────────────

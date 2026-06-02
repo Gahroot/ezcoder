@@ -21,6 +21,7 @@ export interface SubAgentInfo {
 interface SubAgentPanelProps {
   agents: SubAgentInfo[];
   aborted?: boolean;
+  marginTop?: number;
 }
 
 function formatTokens(n: number): string {
@@ -39,6 +40,7 @@ function formatDuration(ms: number): string {
 
 // Tree-drawing prefix widths (visual characters):
 // "├─ " or "└─ " = 3 chars;  "│  " or "   " = 3 chars;  "⎿ " = 2 chars
+const RESPONSE_LEFT_PADDING = 1;
 const BRANCH_WIDTH = 3; // "├─ " / "└─ "
 const DETAIL_PREFIX_WIDTH = 5; // continuation (3) + "⎿ " (2)
 
@@ -149,7 +151,7 @@ const AgentRow = React.memo(
   },
 );
 
-export function SubAgentPanel({ agents, aborted = false }: SubAgentPanelProps) {
+export function SubAgentPanel({ agents, aborted = false, marginTop = 0 }: SubAgentPanelProps) {
   const { columns } = useTerminalSize();
 
   if (agents.length === 0) return null;
@@ -159,7 +161,7 @@ export function SubAgentPanel({ agents, aborted = false }: SubAgentPanelProps) {
 
   // ToolUseLoader minWidth={2} = 2 chars
   const HEADER_PREFIX = 2;
-  const contentColumns = Math.max(10, columns - HEADER_PREFIX);
+  const contentColumns = Math.max(10, columns - RESPONSE_LEFT_PADDING - HEADER_PREFIX);
 
   const headerText = aborted
     ? `${agents.length} agent${agents.length !== 1 ? "s" : ""} interrupted`
@@ -170,7 +172,7 @@ export function SubAgentPanel({ agents, aborted = false }: SubAgentPanelProps) {
   const dotStatus = aborted ? "error" : allDone ? "done" : "running";
 
   return (
-    <Box marginTop={1} flexDirection="row">
+    <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop} flexDirection="row">
       <ToolUseLoader status={dotStatus} />
       <Box flexDirection="column" flexGrow={1} width={contentColumns}>
         <Text bold wrap="wrap">

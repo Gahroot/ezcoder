@@ -125,17 +125,19 @@ If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
 - OAuth flows → `core/oauth/`, one file per provider
 - Tests → co-located with source files
 
-## Code Quality — Zero Tolerance
+## Code Quality
 
-After editing ANY file, run:
+Run targeted verification that is appropriate to the change before calling work complete. Do not run the full quality suite after every edit by default; reserve it for broad code changes, release work, or when explicitly requested.
+
+For full verification, use:
 
 ```bash
 pnpm check && pnpm lint && pnpm format:check
 ```
 
-After code changes, also run `pnpm build`; otherwise compiled outputs won't take effect.
+After code changes that need compiled outputs, also run `pnpm build`.
 
-Fix ALL errors before continuing. Quick fixes:
+Fix errors from checks you do run before continuing. Quick fixes:
 - `pnpm lint:fix` — auto-fix ESLint issues
 - `pnpm format` — auto-fix Prettier formatting
 - Use `/fix` to run all checks and spawn parallel agents to fix issues
@@ -148,6 +150,43 @@ Fix ALL errors before continuing. Quick fixes:
 - **OAuth-only auth**: no API keys, PKCE OAuth flows, tokens in `~/.ezcoder/auth.json`
 - **Zod schemas**: tool parameters defined with Zod, converted to JSON Schema at provider boundary
 - **Debug logging**: `~/.ezcoder/debug.log` — timestamped log of startup, auth, tool calls, turn completions, errors. Truncated on each CLI restart. Singleton logger in `src/core/logger.ts`
+
+## MCP Servers
+
+`ezcoder mcp` adds and manages Model Context Protocol servers. Configs are stored in the same `{ "mcpServers": { … } }` shape Claude Code uses, so they're portable both directions.
+
+### Scopes & file locations
+
+- **Global** → `~/.ezcoder/mcp.json` — available in all EZ Coder sessions.
+- **Project** → `./.gg/mcp.json` — only the current project root.
+- On a name collision, **project wins**. Provider defaults (e.g. `kencode-search`) stay authoritative — a user server can only add a new name, never override a default.
+
+### Commands
+
+```bash
+ezcoder mcp                              # interactive dashboard (🟢/🔴 status, tool counts, scope)
+ezcoder mcp list                         # list servers with live connection status
+ezcoder mcp get <name>                   # show one server's config (secrets masked)
+ezcoder mcp add <args…>                  # add a server (claude-compatible grammar)
+ezcoder mcp remove <name> [--scope s]    # remove a server
+```
+
+The `add` grammar mirrors `claude mcp add` 1:1 — you can paste a `claude mcp add …` (or `ezcoder mcp add …`) line and the prefix is stripped automatically:
+
+```bash
+ezcoder mcp add --transport http notion https://mcp.notion.com/mcp
+ezcoder mcp add --transport sse asana https://mcp.asana.com/sse
+ezcoder mcp add --env AIRTABLE_API_KEY=key airtable -- npx -y airtable-mcp-server
+```
+
+`--scope user` maps to global; `local`/`project` map to project. Code lives in `core/mcp/` (`store.ts` persistence, `parse-add-command.ts` parser, `client.ts` `connectAllDetailed`/`probe`) and `cli/mcp.ts` + `ui/mcp.tsx`.
+
+### Caveats
+
+- **Connection is startup-only.** MCP connects once at launch (`connectInitialMcpTools` in `cli.ts`). Adding a server via `ezcoder mcp` mid-session won't hot-load it — restart ezcoder.
+- **Pixel chdir flow.** Project-scoped servers load relative to `process.cwd()` at startup. The Pixel fix flow swaps cwd mid-session (`process.chdir` + `rebuildToolsForCwd`); project MCP servers won't follow that swap.
+- **WebSocket transport** is parsed but rejected (no WS client today).
+- **Env var expansion** (`${VAR}`) in `.mcp.json` is NOT expanded in v1 — values pass through literally.
 
 ## Pixel — error tracking + auto-fix queue
 

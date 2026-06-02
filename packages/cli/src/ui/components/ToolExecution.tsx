@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useState } from "react";
+import React, { memo } from "react";
 import { Text, Box } from "ink";
 import { useTheme } from "../theme/theme.js";
 import { Spinner } from "./Spinner.js";
@@ -9,8 +9,10 @@ import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import { computeWordDiff, type WordSegment } from "../utils/word-diff.js";
 import { DiffFrame } from "./DiffFrame.js";
 import { NoSelect } from "./NoSelect.js";
+import { toolAccentColor, toolNameColor } from "../transcript/tool-presentation.js";
 
 const MAX_OUTPUT_LINES = 4; // max lines shown per tool result
+const RESPONSE_LEFT_PADDING = 1;
 
 // ToolUseLoader minWidth={2} = 2 chars
 const HEADER_PREFIX = 2;
@@ -54,6 +56,7 @@ interface ToolRunningProps {
   /** Animate the running indicator until this timestamp, then settle static. */
   animateUntil?: number;
   formatters?: ToolExecutionFormatters;
+  marginTop?: number;
 }
 
 interface ToolDoneProps {
@@ -64,6 +67,7 @@ interface ToolDoneProps {
   isError: boolean;
   details?: unknown;
   formatters?: ToolExecutionFormatters;
+  marginTop?: number;
 }
 
 type ToolExecutionProps = ToolRunningProps | ToolDoneProps;
@@ -75,35 +79,11 @@ const STATE_TOOLS = new Set(["tasks", "goals"]);
 /** Tools rendered with the server-tool style (spinner + summary, no output). */
 const SERVER_STYLE_TOOLS = new Set(["web_search"]);
 
-function useStaticAfter(animateUntil: number | undefined): boolean {
-  const [isStatic, setIsStatic] = useState(
-    () => animateUntil == null || Date.now() >= animateUntil,
-  );
-
-  useEffect(() => {
-    if (animateUntil == null) {
-      setIsStatic(true);
-      return undefined;
-    }
-
-    const remainingMs = animateUntil - Date.now();
-    if (remainingMs <= 0) {
-      setIsStatic(true);
-      return undefined;
-    }
-
-    setIsStatic(false);
-    const timer = setTimeout(() => setIsStatic(true), remainingMs);
-    return () => clearTimeout(timer);
-  }, [animateUntil]);
-
-  return isStatic;
-}
-
 export function ToolExecution(props: ToolExecutionProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
-  const staticDisplay = useStaticAfter(props.status === "running" ? props.animateUntil : undefined);
+  const staticDisplay = props.status === "running" ? false : true;
+  const marginTop = props.marginTop ?? 0;
 
   if (props.status === "running") {
     // Server-style tools (web_search) — blinking dot + spinner "Searching..."
@@ -116,9 +96,11 @@ export function ToolExecution(props: ToolExecutionProps) {
       );
       const headerContentWidth = Math.max(10, columns - HEADER_PREFIX);
       return (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop}>
           <Box flexDirection="row">
-            <ToolUseLoader status="running" staticDisplay={staticDisplay} />
+            <Box width={HEADER_PREFIX} flexShrink={0}>
+              <Spinner staticDisplay={staticDisplay} />
+            </Box>
             <Box flexGrow={1} width={headerContentWidth}>
               <Text wrap="wrap">
                 <Text bold color={theme.toolName}>
@@ -137,7 +119,9 @@ export function ToolExecution(props: ToolExecutionProps) {
             </Box>
           </Box>
           <MessageResponse>
-            <Spinner label="Searching..." staticDisplay={staticDisplay} />
+            <Text color={theme.textDim} wrap="wrap">
+              Searching...
+            </Text>
           </MessageResponse>
         </Box>
       );
@@ -146,9 +130,11 @@ export function ToolExecution(props: ToolExecutionProps) {
     if (COMPACT_TOOLS.has(props.name)) {
       const summary = getCompactRunningLabel(props.name, props.args);
       return (
-        <Box marginTop={1} flexDirection="row">
-          <ToolUseLoader status="running" staticDisplay={staticDisplay} />
-          <Text color={theme.toolName} bold>
+        <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop} flexDirection="row">
+          <Box width={HEADER_PREFIX} flexShrink={0}>
+            <Spinner staticDisplay={staticDisplay} />
+          </Box>
+          <Text color={toolNameColor(theme, props.name)} bold>
             {summary}
           </Text>
         </Box>
@@ -157,9 +143,11 @@ export function ToolExecution(props: ToolExecutionProps) {
     if (STATE_TOOLS.has(props.name)) {
       const { label, detail } = getToolHeaderParts(props.name, props.args);
       return (
-        <Box marginTop={1} flexDirection="row">
-          <ToolUseLoader status="running" staticDisplay={staticDisplay} />
-          <Text color={theme.toolName} bold>
+        <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop} flexDirection="row">
+          <Box width={HEADER_PREFIX} flexShrink={0}>
+            <Spinner staticDisplay={staticDisplay} />
+          </Box>
+          <Text color={toolNameColor(theme, props.name)} bold>
             {label}
           </Text>
           {detail ? <Text color={theme.textDim}> {detail}</Text> : null}
@@ -167,7 +155,7 @@ export function ToolExecution(props: ToolExecutionProps) {
       );
     }
 
-    // Non-compact tools keep the sparkle spinner with a blinking dot prefix
+    // Non-compact tools keep the same status-dot header spacing as completed rows.
     const { label, detail } = getToolHeaderParts(props.name, props.args);
 
     // Bash progress streaming — show last 3 lines of live output
@@ -175,10 +163,14 @@ export function ToolExecution(props: ToolExecutionProps) {
       const progLines = props.progressOutput.split("\n").filter(Boolean);
       const tail = progLines.slice(-3);
       return (
-        <Box marginTop={1} flexDirection="column">
+        <Box paddingLeft={RESPONSE_LEFT_PADDING} flexDirection="column">
           <Box flexDirection="row">
-            <ToolUseLoader status="running" staticDisplay={staticDisplay} />
-            <Spinner label={detail ? `${label}(${detail})` : label} staticDisplay={staticDisplay} />
+            <Box width={HEADER_PREFIX} flexShrink={0}>
+              <Spinner staticDisplay={staticDisplay} />
+            </Box>
+            <Text color={theme.toolName} bold wrap="wrap">
+              {detail ? `${label}(${detail})` : label}
+            </Text>
           </Box>
           <MessageResponse>
             <Box flexDirection="column">
@@ -194,9 +186,13 @@ export function ToolExecution(props: ToolExecutionProps) {
     }
 
     return (
-      <Box marginTop={1} flexDirection="row">
-        <ToolUseLoader status="running" staticDisplay={staticDisplay} />
-        <Spinner label={detail ? `${label}(${detail})` : label} staticDisplay={staticDisplay} />
+      <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop} flexDirection="row">
+        <Box width={HEADER_PREFIX} flexShrink={0}>
+          <Spinner staticDisplay={staticDisplay} />
+        </Box>
+        <Text color={toolNameColor(theme, props.name)} bold wrap="wrap">
+          {detail ? `${label}(${detail})` : label}
+        </Text>
       </Box>
     );
   }
@@ -218,12 +214,12 @@ export function ToolExecution(props: ToolExecutionProps) {
       ? result.split("\n")[0]
       : `${searchCount} result${searchCount !== 1 ? "s" : ""}`;
     return (
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop}>
         <Box flexDirection="row">
           <ToolUseLoader status={isError ? "error" : "done"} />
           <Box flexGrow={1} width={headerContentWidth}>
             <Text wrap="wrap">
-              <Text bold color={isError ? theme.toolError : theme.toolName}>
+              <Text bold color={isError ? theme.error : toolNameColor(theme, name)}>
                 {label}
               </Text>
               {detail && (
@@ -251,10 +247,10 @@ export function ToolExecution(props: ToolExecutionProps) {
   if (COMPACT_TOOLS.has(name) && !isError) {
     const summary = getCompactDoneLabel(name, args, result);
     return (
-      <Box marginTop={1} flexDirection="row">
+      <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop} flexDirection="row">
         <ToolUseLoader status="done" />
         <Box flexGrow={1} width={headerContentWidth}>
-          <Text bold color={theme.toolName} wrap="wrap">
+          <Text bold color={toolNameColor(theme, name)} wrap="wrap">
             {summary}
           </Text>
         </Box>
@@ -266,11 +262,11 @@ export function ToolExecution(props: ToolExecutionProps) {
     const { label, detail } = getToolHeaderParts(name, args);
     const inline = getInlineSummary(name, result, isError);
     return (
-      <Box marginTop={1} flexDirection="row">
+      <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop} flexDirection="row">
         <ToolUseLoader status={isError ? "error" : "done"} />
         <Box flexGrow={1} width={headerContentWidth}>
           <Text wrap="wrap">
-            <Text bold color={isError ? theme.toolError : theme.toolName}>
+            <Text bold color={isError ? theme.error : toolNameColor(theme, name)}>
               {label}
             </Text>
             {detail ? <Text color={theme.textDim}> {detail}</Text> : null}
@@ -296,7 +292,7 @@ export function ToolExecution(props: ToolExecutionProps) {
     ? buildDiffBody(diffText!, args, columns)
     : buildResultBody(name, result, isError, columns);
 
-  const headerColor = isError ? theme.toolError : theme.toolName;
+  const headerColor = isError ? theme.error : toolNameColor(theme, name);
 
   // Compact display — no body to show, but show inline summary
   if (!body) {
@@ -304,9 +300,10 @@ export function ToolExecution(props: ToolExecutionProps) {
       props.formatters?.formatInline?.(name, result, isError) ??
       getInlineSummary(name, result, isError);
     const inlineText = typeof inline === "string" ? inline : inline?.text;
-    const inlineColor = inline && typeof inline === "object" ? inline.color : theme.textDim;
+    const inlineColor =
+      inline && typeof inline === "object" ? inline.color : toolAccentColor(theme, name);
     return (
-      <Box marginTop={1} flexDirection="row">
+      <Box paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop} flexDirection="row">
         <ToolUseLoader status={isError ? "error" : "done"} />
         <Box flexGrow={1} width={headerContentWidth}>
           <Text wrap="wrap">
@@ -331,7 +328,7 @@ export function ToolExecution(props: ToolExecutionProps) {
   const hiddenCount = totalLines - lines.length;
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column" paddingLeft={RESPONSE_LEFT_PADDING} marginTop={marginTop}>
       {/* Header: status dot + wrapping content */}
       <Box flexDirection="row">
         <ToolUseLoader status={isError ? "error" : "done"} />
@@ -553,8 +550,6 @@ function toolDisplayName(name: string): string {
       return "Source";
     case "tasks":
       return "Task";
-    case "goals":
-      return "Goal";
     default:
       // snake_case → Title Case so downstream consumers (ezeditor's 91 tools,
       // future MCP tools, custom tools) get readable names without each

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Text, Box } from "ink";
 import { useTheme } from "../theme/theme.js";
 import { Spinner } from "./Spinner.js";
 import { ToolUseLoader } from "./ToolUseLoader.js";
 import { MessageResponse } from "./MessageResponse.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
+import { toolNameColor } from "../transcript/tool-presentation.js";
 
 interface ServerToolRunningProps {
   status: "running";
@@ -12,6 +13,7 @@ interface ServerToolRunningProps {
   input: unknown;
   startedAt: number;
   animateUntil?: number;
+  marginTop?: number;
 }
 
 interface ServerToolDoneProps {
@@ -20,49 +22,27 @@ interface ServerToolDoneProps {
   input: unknown;
   durationMs: number;
   resultType?: string;
+  marginTop?: number;
 }
 
 type ServerToolExecutionProps = ServerToolRunningProps | ServerToolDoneProps;
 
+const RESPONSE_LEFT_PADDING = 1;
+
 // ToolUseLoader minWidth={2} = 2 chars
 const HEADER_PREFIX = 2;
-
-function useStaticAfter(animateUntil: number | undefined): boolean {
-  const [isStatic, setIsStatic] = useState(
-    () => animateUntil == null || Date.now() >= animateUntil,
-  );
-
-  useEffect(() => {
-    if (animateUntil == null) {
-      setIsStatic(true);
-      return undefined;
-    }
-
-    const remainingMs = animateUntil - Date.now();
-    if (remainingMs <= 0) {
-      setIsStatic(true);
-      return undefined;
-    }
-
-    setIsStatic(false);
-    const timer = setTimeout(() => setIsStatic(true), remainingMs);
-    return () => clearTimeout(timer);
-  }, [animateUntil]);
-
-  return isStatic;
-}
 
 export function ServerToolExecution(props: ServerToolExecutionProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
   const { label, detail } = getHeader(props.name, props.input);
-  const staticDisplay = useStaticAfter(props.status === "running" ? props.animateUntil : undefined);
+  const staticDisplay = props.status === "running" ? false : true;
 
   const headerContentWidth = Math.max(10, columns - HEADER_PREFIX);
 
-  const headerContent = (
+  const headerContent = (labelColor: string) => (
     <Text wrap="wrap">
-      <Text bold color={theme.toolName}>
+      <Text bold color={labelColor}>
         {label}
       </Text>
       {detail && (
@@ -79,15 +59,23 @@ export function ServerToolExecution(props: ServerToolExecutionProps) {
 
   if (props.status === "running") {
     return (
-      <Box flexDirection="column" marginTop={1}>
+      <Box
+        flexDirection="column"
+        paddingLeft={RESPONSE_LEFT_PADDING}
+        marginTop={props.marginTop ?? 0}
+      >
         <Box flexDirection="row">
-          <ToolUseLoader status="running" staticDisplay={staticDisplay} />
+          <Box width={HEADER_PREFIX} flexShrink={0}>
+            <Spinner staticDisplay={staticDisplay} />
+          </Box>
           <Box flexGrow={1} width={headerContentWidth}>
-            {headerContent}
+            {headerContent(toolNameColor(theme, props.name))}
           </Box>
         </Box>
         <MessageResponse>
-          <Spinner label="Searching..." staticDisplay={staticDisplay} />
+          <Text color={theme.textDim} wrap="wrap">
+            Searching...
+          </Text>
         </MessageResponse>
       </Box>
     );
@@ -97,11 +85,15 @@ export function ServerToolExecution(props: ServerToolExecutionProps) {
   const duration = Math.round(props.durationMs / 1000);
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box
+      flexDirection="column"
+      paddingLeft={RESPONSE_LEFT_PADDING}
+      marginTop={props.marginTop ?? 0}
+    >
       <Box flexDirection="row">
         <ToolUseLoader status={isAborted ? "error" : "done"} />
         <Box flexGrow={1} width={headerContentWidth}>
-          {headerContent}
+          {headerContent(isAborted ? theme.error : toolNameColor(theme, props.name))}
         </Box>
       </Box>
       <MessageResponse>

@@ -38,7 +38,7 @@ const GRADIENT = [
 const GAP = "   ";
 // Logo is 9 visible chars wide + GAP (3) = 12 chars before info text
 const LOGO_WIDTH = 9;
-const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 20; // need ~32 cols for side-by-side
+const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 62; // room for the shortcut hint row
 
 export function Banner({ version, model, cwd, taskCount }: BannerProps) {
   const theme = useTheme();
@@ -116,14 +116,11 @@ function ShortcutHints({ taskCount }: { taskCount?: number }) {
 
   return (
     <Box>
-      <Text color={theme.primary}>^T</Text>
+      <Text color={theme.primary}>Ctrl+T</Text>
       <Text color={theme.textDim}> tasks</Text>
-      {taskCount !== undefined && taskCount > 0 ? (
-        <Text color={theme.secondary}> ({taskCount})</Text>
-      ) : null}
       <Text color={theme.textDim}> · </Text>
-      <Text color={theme.primary}>/goal</Text>
-      <Text color={theme.textDim}> start goal</Text>
+      <Text color={theme.primary}>Ctrl+S</Text>
+      <Text color={theme.textDim}> skills</Text>
       <Text color={theme.textDim}> · </Text>
       <Text color={theme.primary}>Shift+Tab</Text>
       <Text color={theme.textDim}> toggle thinking</Text>

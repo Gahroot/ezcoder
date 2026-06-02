@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { Text, Box, useInput, useStdin } from "ink";
+import { Text, Box, useInput, useStdin, useIsScreenReaderEnabled } from "ink";
 import type { EventEmitter } from "events";
 import { useTheme } from "../theme/theme.js";
 import { useFocusedAnimation, deriveFrame } from "./AnimationContext.js";
@@ -7,6 +7,9 @@ import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import type { ImageAttachment } from "../../utils/image.js";
 import { extractImagePaths, readImageFile, getClipboardImage } from "../../utils/image.js";
 import { SlashCommandMenu, filterCommands, type SlashCommandInfo } from "./SlashCommandMenu.js";
+import { TaskPickerMenu } from "./TaskPickerMenu.js";
+import { stripTerminalFocusSequences } from "../utils/terminal-input.js";
+import type { TaskRecord } from "../../core/tasks-store.js";
 import { log } from "../../core/logger.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -21,7 +24,11 @@ import {
 } from "node:fs";
 
 const MAX_VISIBLE_LINES = 12;
-const PROMPT = "❯ ";
+const PROMPT = "> ";
+const PLACEHOLDER = "  Type your message or / to run a command";
+const INPUT_BACKGROUND = "#374151";
+const INPUT_TOP_FILL = "▄";
+const INPUT_BOTTOM_FILL = "▀";
 
 // SGR mouse sequence: ESC [ < button ; col ; row M/m
 // M = press, m = release. Coordinates are 1-based.
@@ -35,14 +42,20 @@ const SGR_MOUSE_RE_G = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
 const ENABLE_MOUSE = "\x1b[?1000h\x1b[?1006h";
 const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1000l";
 
+// Idle window (ms) for the legacy scroll-passthrough release: a short pause
+// reliably spans a wheel gesture before tracking re-arms.
+const SCROLL_PAUSE_MS = 300;
+// Safety net only. In fullscreen, native text selection releases the mouse with
+// NO active timer — the wheel re-arms on the next keystroke instead, so a slow
+// drag is never cut short. This long timer only fires if the user never presses
+// a key afterward (e.g. copies text and switches apps), so the mouse doesn't
+// stay captured forever in that edge case.
+const NATIVE_INTERACTION_SAFETY_MS = 60_000;
+
 // Guard against stray SGR mouse sequences leaking into text input.
 // Some terminals or multiplexers send these even without mouse tracking enabled.
 function isMouseEscapeSequence(input: string): boolean {
   return input.includes("[<") && /\[<\d+;\d+;\d+[Mm]/.test(input);
-}
-
-function stripTerminalFocusSequences(input: string): string {
-  return input.replaceAll("\x1b[I", "").replaceAll("\x1b[O", "");
 }
 
 // Option+Arrow escape sequences — terminals send these as raw input strings
@@ -198,14 +211,26 @@ export interface PasteInfo {
 interface InputAreaProps {
   onSubmit: (value: string, images: ImageAttachment[], paste?: PasteInfo) => void;
   onAbort: () => void;
+  /**
+   * Text to push into the composer from outside (e.g. queued messages restored
+   * after an interrupt). Bumping `nonce` re-triggers injection even when the
+   * text is unchanged. Injected text is appended after any existing draft.
+   */
+  injectText?: { text: string; nonce: number } | null;
   disabled?: boolean;
   isActive?: boolean;
   onDownAtEnd?: () => void;
   onShiftTab?: () => void;
   onToggleTasks?: () => void;
-  onToggleGoal?: () => void;
+  taskPickerOpen?: boolean;
+  tasks?: readonly TaskRecord[];
+  onCloseTaskPicker?: () => void;
+  onStartTask?: (task: TaskRecord) => void;
+  onRunAllTasks?: (task?: TaskRecord) => void;
+  onDeleteTask?: (task: TaskRecord) => void;
   onToggleSkills?: () => void;
   onTogglePixel?: () => void;
+  onToggleMarkdown?: () => void;
   cwd: string;
   commands?: SlashCommandInfo[];
   /**
@@ -230,10 +255,26 @@ interface InputAreaProps {
    * downstream tools (ezboss) to cycle the scope badge.
    */
   onTab?: () => void;
+  /**
+   * Fullscreen alt-screen mode: there is no native scrollback, so mouse-wheel
+   * events must drive the in-app transcript scroll instead of being passed
+   * through to the terminal. When set, wheel-up/down call `onScroll` and mouse
+   * tracking is kept enabled regardless of input text so wheel events arrive.
+   */
+  mouseScroll?: boolean;
+  /**
+   * Called with a signed line delta when the user scrolls the mouse wheel in
+   * fullscreen mode. Positive = scroll UP (older output), negative = DOWN.
+   */
+  onScroll?: (deltaLines: number) => void;
 }
 
-// Border (1 each side) + padding (1 each side) = 4 characters of overhead
-const BOX_OVERHEAD = 4;
+// Lines advanced per mouse-wheel notch in fullscreen transcript scrolling.
+const WHEEL_LINES_PER_NOTCH = 3;
+
+// Padding (1 each side) = 2 characters of overhead. Gemini's composer is borderless
+// except for a zero-height top rule, so wrapping should not reserve border columns.
+const INPUT_HORIZONTAL_OVERHEAD = 2;
 // Minimum content width to prevent zero/negative values that cause infinite
 // re-render loops when Ink tries to wrap text wider than available space.
 const MIN_CONTENT_WIDTH = 10;
@@ -268,7 +309,10 @@ function wrapLine(text: string, contentWidth: number): string[] {
 }
 
 function getVisualLines(text: string, columns: number): string[] {
-  const contentWidth = Math.max(MIN_CONTENT_WIDTH, columns - PROMPT.length - BOX_OVERHEAD);
+  const contentWidth = Math.max(
+    MIN_CONTENT_WIDTH,
+    columns - PROMPT.length - INPUT_HORIZONTAL_OVERHEAD,
+  );
   if (text.length === 0) return [""];
 
   // Split on real newlines first, then wrap each
@@ -283,21 +327,31 @@ function getVisualLines(text: string, columns: number): string[] {
 export function InputArea({
   onSubmit,
   onAbort,
+  injectText,
   disabled = false,
   isActive = true,
   onDownAtEnd,
   onShiftTab,
   onToggleTasks,
-  onToggleGoal,
+  taskPickerOpen = false,
+  tasks = [],
+  onCloseTaskPicker,
+  onStartTask,
+  onRunAllTasks,
+  onDeleteTask,
   onToggleSkills,
   onTogglePixel,
+  onToggleMarkdown,
   cwd,
   commands = [],
   scopeBadge,
   disableMouseTracking,
+  mouseScroll,
+  onScroll,
   onTab,
 }: InputAreaProps) {
   const theme = useTheme();
+  const isScreenReaderEnabled = useIsScreenReaderEnabled();
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const cursorRef = useRef(cursor);
@@ -307,6 +361,21 @@ export function InputArea({
   const historyRef = useRef<string[]>(loadHistory());
   const historyIndexRef = useRef(-1);
   const draftRef = useRef("");
+
+  // ── External text injection (e.g. queued messages restored on interrupt) ──
+  // Append injected text to any existing draft and move the cursor to the end.
+  // Keyed on nonce so repeated injections of identical text still fire.
+  const lastInjectNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!injectText || injectText.text.length === 0) return;
+    if (lastInjectNonceRef.current === injectText.nonce) return;
+    lastInjectNonceRef.current = injectText.nonce;
+    setValue((prev) => {
+      const next = prev.length > 0 ? `${prev}\n\n${injectText.text}` : injectText.text;
+      setCursor(next.length);
+      return next;
+    });
+  }, [injectText]);
 
   // ── Ctrl+R history search state ──────────────────────────
   const [searchMode, setSearchMode] = useState(false);
@@ -333,6 +402,7 @@ export function InputArea({
   const lastEscRef = useRef(0);
   const { columns } = useTerminalSize();
   const [menuIndex, setMenuIndex] = useState(0);
+  const [taskPickerIndex, setTaskPickerIndex] = useState(0);
   const [pasteText, setPasteText] = useState(""); // accumulated pasted content
   const [pasteOffset, setPasteOffset] = useState(0); // where in value the paste starts
   const pasteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -344,11 +414,16 @@ export function InputArea({
     () => (isSlashMode ? filterCommands(commands, slashFilter) : []),
     [isSlashMode, commands, slashFilter],
   );
+  const runnableTasks = useMemo(() => tasks.filter((task) => task.status !== "done"), [tasks]);
 
   // Reset menu index when filter changes
   useEffect(() => {
     setMenuIndex(0);
   }, [slashFilter]);
+
+  useEffect(() => {
+    setTaskPickerIndex((index) => Math.min(index, Math.max(0, runnableTasks.length - 1)));
+  }, [runnableTasks.length]);
 
   // Border color pulse (when idle/waiting for input)
   const borderPulseColors = useMemo(
@@ -506,6 +581,19 @@ export function InputArea({
   // terminal handle CMD+click for opening links natively.
   const hasInputTextRef = useRef(value.length > 0);
 
+  // Fullscreen wheel-scroll routing. Kept in refs so the emit-wrapper effect
+  // (whose deps are intentionally stable) always sees the freshest callback.
+  const mouseScrollRef = useRef(mouseScroll);
+  mouseScrollRef.current = mouseScroll;
+  const onScrollRef = useRef(onScroll);
+  onScrollRef.current = onScroll;
+  // Assigned by the mouse effect; called by the keyboard handler to re-arm
+  // mouse tracking after the user finishes a native text selection (see the
+  // fullscreen selection-mode logic below). Lifting it out of the effect lets
+  // a keystroke — the unambiguous "I'm done selecting" signal — restore the
+  // wheel without a fragile timer that would cut a slow selection short.
+  const reenableMouseRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     if (!isActive || !internal_eventEmitter) return;
     // Hard-bail when mouse tracking is disabled at the prop level — used by
@@ -519,7 +607,9 @@ export function InputArea({
 
     // Only enable mouse tracking if there's text — when empty, let the
     // terminal handle clicks natively (e.g., CMD+click to open links).
-    if (hasInputTextRef.current) {
+    // In fullscreen mode we always enable it so wheel-scroll events arrive even
+    // when the composer is empty (there's no native scrollback to fall back to).
+    if (hasInputTextRef.current || mouseScrollRef.current) {
       process.stdout.write(ENABLE_MOUSE);
     }
 
@@ -531,26 +621,57 @@ export function InputArea({
     const originalEmit = internal_eventEmitter.emit.bind(internal_eventEmitter);
     mouseEmitRef.current.original = originalEmit;
 
-    // Scroll passthrough: when a scroll event is detected, temporarily disable
-    // mouse tracking so the terminal handles scroll natively (scrollback buffer).
-    // Re-enable after a short idle period so click-to-cursor continues to work.
+    // Mouse-release passthrough: when we want the TERMINAL (not the app) to
+    // handle a gesture — native scroll in the legacy model, or native text
+    // selection / CMD+click link-opening in fullscreen — we disable mouse
+    // tracking so the terminal owns the mouse.
     let scrollTimer: ReturnType<typeof setTimeout> | null = null;
     let mouseDisabled = false;
 
+    // Re-arm mouse tracking only when something still needs it: there's input
+    // text to position a cursor in (legacy click-to-cursor), OR we're in
+    // fullscreen where the wheel drives the transcript scroll. Without the
+    // fullscreen clause the mouse would stay dead after the first click and the
+    // wheel would stop scrolling.
     const reenableMouse = () => {
-      if (mouseDisabled && hasInputTextRef.current) {
+      if (scrollTimer) {
+        clearTimeout(scrollTimer);
+        scrollTimer = null;
+      }
+      if (mouseDisabled && (hasInputTextRef.current || mouseScrollRef.current)) {
         process.stdout.write(ENABLE_MOUSE);
         mouseDisabled = false;
       }
     };
+    // Exposed so the keyboard handler can re-arm on the next keystroke.
+    reenableMouseRef.current = reenableMouse;
 
-    const pauseMouseForScroll = () => {
+    // Timed release — used for the legacy scroll-passthrough model where a short
+    // idle reliably means the wheel gesture is over.
+    const pauseMouseTimed = (durationMs: number) => {
       if (!mouseDisabled) {
         process.stdout.write(DISABLE_MOUSE);
         mouseDisabled = true;
       }
       if (scrollTimer) clearTimeout(scrollTimer);
-      scrollTimer = setTimeout(reenableMouse, 300);
+      scrollTimer = setTimeout(reenableMouse, durationMs);
+    };
+    const pauseMouseForScroll = () => pauseMouseTimed(SCROLL_PAUSE_MS);
+
+    // Indefinite release for native selection / link-clicks in fullscreen. NO
+    // timer: a text selection can take as long as the user wants, and a timer
+    // that re-armed mid-drag would abort the selection. The wheel is restored
+    // only when the user presses a key (handled in the keyboard useInput) — an
+    // unambiguous signal that they're done selecting and back to driving the
+    // app. A long safety-net timer guards against a stuck state if no key ever
+    // follows (e.g. they copy and switch windows).
+    const pauseMouseForNativeInteraction = () => {
+      if (!mouseDisabled) {
+        process.stdout.write(DISABLE_MOUSE);
+        mouseDisabled = true;
+      }
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(reenableMouse, NATIVE_INTERACTION_SAFETY_MS);
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -582,10 +703,31 @@ export function InputArea({
           const isMotion = (btnCode & 32) !== 0;
           const isScroll = (btnCode & 64) !== 0;
 
-          // On scroll: disable mouse tracking so the terminal handles it natively,
-          // then re-enable after idle so click-to-cursor keeps working.
+          // On scroll wheel:
           if (isScroll) {
+            // Fullscreen alt-screen: no native scrollback exists, so route the
+            // wheel into the in-app transcript scroll. Wheel-up (button bit 0
+            // clear) scrolls toward older output, wheel-down toward newest.
+            if (mouseScrollRef.current && onScrollRef.current) {
+              const wheelUp = (btnCode & 1) === 0;
+              onScrollRef.current(wheelUp ? WHEEL_LINES_PER_NOTCH : -WHEEL_LINES_PER_NOTCH);
+              continue;
+            }
+            // Legacy scrollback model: disable mouse tracking so the terminal
+            // handles it natively, then re-enable after idle.
             pauseMouseForScroll();
+            continue;
+          }
+
+          // Fullscreen: the wheel is the ONLY gesture we capture. Any other
+          // mouse event means the user wants to interact with the terminal
+          // itself — drag to select/copy text, or CMD+click a link. Release the
+          // mouse so the terminal handles it natively, then re-arm for the
+          // wheel after an idle window. (We trade away composer click-to-cursor
+          // in fullscreen; the keyboard positions the cursor, and copy/paste +
+          // links matter more.)
+          if (mouseScrollRef.current) {
+            pauseMouseForNativeInteraction();
             continue;
           }
 
@@ -695,6 +837,7 @@ export function InputArea({
 
     return () => {
       if (scrollTimer) clearTimeout(scrollTimer);
+      reenableMouseRef.current = () => {};
       process.stdout.write(DISABLE_MOUSE);
       process.removeListener("exit", onProcessExit);
       // Restore original emit
@@ -713,11 +856,13 @@ export function InputArea({
     const hasText = value.length > 0;
     if (hasText !== hasInputTextRef.current) {
       hasInputTextRef.current = hasText;
-      if (isActive) {
+      // In fullscreen mode mouse tracking stays on regardless of input text so
+      // wheel-scroll keeps working with an empty composer — never disable it.
+      if (isActive && !mouseScroll) {
         process.stdout.write(hasText ? ENABLE_MOUSE : DISABLE_MOUSE);
       }
     }
-  }, [value, isActive]);
+  }, [value, isActive, mouseScroll]);
 
   // Helper: delete selected text and return new value + cursor position.
   // Returns null if no selection is active.
@@ -744,8 +889,15 @@ export function InputArea({
       if (!inputWithoutFocusReports && input) return;
       if (isMouseEscapeSequence(inputWithoutFocusReports)) return;
 
+      // A real keystroke is the "I'm done selecting" signal: re-arm mouse
+      // tracking (no-op if it was never released) so the wheel works again.
+      // This is why native selection can take as long as the user wants — it's
+      // ended by intent (a key) rather than a timer that could cut it short.
+      reenableMouseRef.current();
+
       // Reset kill ring accumulation for non-kill keys
       input = inputWithoutFocusReports;
+      const isReturnKey = key.return || input === "\r" || input === "\n";
 
       const isKillKey = key.ctrl && (input === "k" || input === "u" || input === "w");
       if (!isKillKey) lastActionWasKill = false;
@@ -783,7 +935,7 @@ export function InputArea({
           setCursor(savedCursorRef.current);
           return;
         }
-        if (key.return) {
+        if (isReturnKey) {
           // Accept match and submit
           setSearchMode(false);
           return; // fall through to normal submit handling
@@ -822,15 +974,40 @@ export function InputArea({
         return; // absorb all other keys during search
       }
 
-      // Ctrl+T toggles task overlay in normal input mode.
-      if (key.ctrl && input === "t") {
-        onToggleTasks?.();
+      if (taskPickerOpen) {
+        if (key.escape || (key.ctrl && input === "t")) {
+          onCloseTaskPicker?.();
+          return;
+        }
+        if (key.upArrow) {
+          setTaskPickerIndex((i) => Math.max(0, i - 1));
+          return;
+        }
+        if (key.downArrow) {
+          setTaskPickerIndex((i) => Math.min(runnableTasks.length - 1, i + 1));
+          return;
+        }
+        if (input.toLowerCase() === "r") {
+          const task = runnableTasks[Math.min(taskPickerIndex, runnableTasks.length - 1)];
+          onRunAllTasks?.(task);
+          return;
+        }
+        if (input.toLowerCase() === "d") {
+          const task = runnableTasks[Math.min(taskPickerIndex, runnableTasks.length - 1)];
+          if (task) onDeleteTask?.(task);
+          return;
+        }
+        if (isReturnKey) {
+          const task = runnableTasks[Math.min(taskPickerIndex, runnableTasks.length - 1)];
+          if (task) onStartTask?.(task);
+          return;
+        }
         return;
       }
 
-      // Ctrl+G toggles goal overlay in normal input mode. In search mode it cancels search above.
-      if (key.ctrl && input === "g") {
-        onToggleGoal?.();
+      // Ctrl+T toggles task picker
+      if (key.ctrl && input === "t") {
+        onToggleTasks?.();
         return;
       }
 
@@ -846,6 +1023,12 @@ export function InputArea({
         return;
       }
 
+      // Ctrl+M toggles rendered/raw markdown mode, matching Gemini's raw markdown affordance.
+      if (key.ctrl && input === "m") {
+        onToggleMarkdown?.();
+        return;
+      }
+
       if (disabled) {
         if ((key.ctrl && input === "c") || key.escape) {
           onAbort();
@@ -855,7 +1038,7 @@ export function InputArea({
         // Submitted messages will be queued by the parent component.
       }
 
-      if (key.return && (key.shift || key.meta)) {
+      if (isReturnKey && (key.shift || key.meta)) {
         // If there's a selection, replace it with the newline
         const sel = deleteSelection();
         if (sel) {
@@ -869,7 +1052,7 @@ export function InputArea({
         return;
       }
 
-      if (key.return) {
+      if (isReturnKey) {
         // If slash menu is open and a command is selected, fill it in
         if (isSlashMode && filteredCommands.length > 0) {
           const selected = filteredCommands[Math.min(menuIndex, filteredCommands.length - 1)];
@@ -1031,6 +1214,11 @@ export function InputArea({
       }
 
       if (key.upArrow) {
+        if (taskPickerOpen) {
+          setTaskPickerIndex((i) => Math.max(0, i - 1));
+          return;
+        }
+
         // If slash menu is open, navigate it
         if (isSlashMode && filteredCommands.length > 0) {
           setMenuIndex((i) => Math.max(0, i - 1));
@@ -1076,6 +1264,11 @@ export function InputArea({
       }
 
       if (key.downArrow) {
+        if (taskPickerOpen) {
+          setTaskPickerIndex((i) => Math.min(runnableTasks.length - 1, i + 1));
+          return;
+        }
+
         // If slash menu is open, navigate it
         if (isSlashMode && filteredCommands.length > 0) {
           setMenuIndex((i) => Math.min(filteredCommands.length - 1, i + 1));
@@ -1265,7 +1458,10 @@ export function InputArea({
 
   // Calculate visual lines and cap at MAX_VISIBLE_LINES (scroll to cursor)
   const visualLines = getVisualLines(value, columns);
-  const contentWidth = Math.max(MIN_CONTENT_WIDTH, columns - PROMPT.length - BOX_OVERHEAD);
+  const contentWidth = Math.max(
+    MIN_CONTENT_WIDTH,
+    columns - PROMPT.length - INPUT_HORIZONTAL_OVERHEAD,
+  );
 
   // Find which visual line and column the cursor is on
   const cursorLineInfo = useMemo(() => {
@@ -1337,21 +1533,33 @@ export function InputArea({
   // Active selection range (absolute character offsets)
   const selection = getSelectionRange(selectionAnchor, cursor);
 
+  const promptColor = disabled ? theme.textDim : theme.commandColor;
+  const borderColor = disabled ? theme.textDim : borderPulseColors[borderFrame];
+  const backgroundColor = isScreenReaderEnabled ? undefined : INPUT_BACKGROUND;
+  const renderInputEdge = (fill: string): React.ReactNode => (
+    <Box width={columns}>
+      <Text color={backgroundColor ?? borderColor}>{fill.repeat(columns)}</Text>
+    </Box>
+  );
+
+  const renderPromptPrefix = (text: string): React.ReactNode => (
+    <Text color={promptColor} bold backgroundColor={backgroundColor}>
+      {text}
+    </Text>
+  );
+
   return (
-    <Box flexDirection="column" width={columns}>
+    <Box flexDirection="column" width={columns} flexGrow={0} flexShrink={0}>
+      {renderInputEdge(backgroundColor ? INPUT_TOP_FILL : "─")}
       <Box
         flexDirection="column"
-        borderStyle="round"
-        borderColor={disabled ? theme.textDim : borderPulseColors[borderFrame]}
         paddingLeft={1}
         paddingRight={1}
+        flexGrow={0}
+        flexShrink={0}
+        backgroundColor={backgroundColor}
+        width={columns}
       >
-        {/* Scope badge as a HEADER row inside the bordered box, left-aligned
-            on its own line. Previously the badge sat inline before the prompt
-            arrow on line 1 — but as soon as the input wrapped, the prompt's
-            two-space continuation indent was narrower than the badge, leaving
-            a visible gap on line 2. Putting the badge on its own line keeps
-            the input column flush with the prompt arrow on every line. */}
         {scopeBadge && <Box marginBottom={0}>{scopeBadge}</Box>}
         {images.length > 0 && (
           <Box>
@@ -1384,18 +1592,18 @@ export function InputArea({
             }
 
             return (
-              <Box>
+              <Box backgroundColor={backgroundColor} width="100%">
                 {searchMode ? (
-                  <Text color={searchFailed ? theme.error : theme.inputPrompt} bold>
+                  <Text
+                    color={searchFailed ? theme.error : theme.inputPrompt}
+                    bold
+                    backgroundColor={backgroundColor}
+                  >
                     {searchFailed ? "(fail)" : "(i-search)"}
                     {`'${searchQuery}': `}
                   </Text>
                 ) : (
-                  <>
-                    <Text color={disabled ? theme.textDim : theme.inputPrompt} bold>
-                      {PROMPT}
-                    </Text>
-                  </>
+                  renderPromptPrefix(PROMPT)
                 )}
                 {(() => {
                   const beforeCursor = displayStr.slice(0, cursorInDisplay);
@@ -1407,7 +1615,7 @@ export function InputArea({
                       : 0;
                     if (cmdChars >= text.length) {
                       return (
-                        <Text color={theme.commandColor} bold>
+                        <Text color={theme.commandColor} bold backgroundColor={backgroundColor}>
                           {text}
                         </Text>
                       );
@@ -1415,14 +1623,20 @@ export function InputArea({
                     if (cmdChars > 0) {
                       return (
                         <>
-                          <Text color={theme.commandColor} bold>
+                          <Text color={theme.commandColor} bold backgroundColor={backgroundColor}>
                             {text.slice(0, cmdChars)}
                           </Text>
-                          <Text color={theme.text}>{text.slice(cmdChars)}</Text>
+                          <Text color={theme.commandColor} backgroundColor={backgroundColor}>
+                            {text.slice(cmdChars)}
+                          </Text>
                         </>
                       );
                     }
-                    return <Text color={theme.text}>{text}</Text>;
+                    return (
+                      <Text color={theme.commandColor} backgroundColor={backgroundColor}>
+                        {text}
+                      </Text>
+                    );
                   };
                   return renderDisplaySegment(beforeCursor, 0);
                 })()}
@@ -1432,9 +1646,10 @@ export function InputArea({
                   const cursorInCmd = isCommand && cursorInDisplay < commandEndIndex;
                   return (
                     <Text
-                      color={cursorInCmd ? theme.commandColor : theme.text}
+                      color={theme.commandColor}
                       bold={cursorInCmd || undefined}
                       inverse={cursorVisible}
+                      backgroundColor={backgroundColor}
                     >
                       {cursorChar}
                     </Text>
@@ -1461,12 +1676,36 @@ export function InputArea({
                           <Text color={theme.commandColor} bold>
                             {afterCursor.slice(0, cmdChars)}
                           </Text>
-                          <Text color={theme.text}>{afterCursor.slice(cmdChars)}</Text>
+                          <Text color={theme.commandColor} backgroundColor={backgroundColor}>
+                            {afterCursor.slice(cmdChars)}
+                          </Text>
                         </>
                       );
                     }
-                    return <Text color={theme.text}>{afterCursor}</Text>;
+                    return (
+                      <Text color={theme.commandColor} backgroundColor={backgroundColor}>
+                        {afterCursor}
+                      </Text>
+                    );
                   })()}
+              </Box>
+            );
+          }
+
+          if (value.length === 0) {
+            return (
+              <Box backgroundColor={backgroundColor} width="100%">
+                {renderPromptPrefix(PROMPT)}
+                <Text
+                  color={theme.textDim}
+                  inverse={cursorVisible}
+                  backgroundColor={backgroundColor}
+                >
+                  {PLACEHOLDER.slice(0, 1)}
+                </Text>
+                <Text color={theme.textDim} backgroundColor={backgroundColor}>
+                  {PLACEHOLDER.slice(1)}
+                </Text>
               </Box>
             );
           }
@@ -1520,7 +1759,12 @@ export function InputArea({
 
               if (cmdChars >= text.length) {
                 return (
-                  <Text color={theme.commandColor} bold inverse={inv}>
+                  <Text
+                    color={theme.commandColor}
+                    bold
+                    inverse={inv}
+                    backgroundColor={backgroundColor}
+                  >
                     {text}
                   </Text>
                 );
@@ -1528,17 +1772,26 @@ export function InputArea({
               if (cmdChars > 0) {
                 return (
                   <>
-                    <Text color={theme.commandColor} bold inverse={inv}>
+                    <Text
+                      color={theme.commandColor}
+                      bold
+                      inverse={inv}
+                      backgroundColor={backgroundColor}
+                    >
                       {text.slice(0, cmdChars)}
                     </Text>
-                    <Text color={theme.text} inverse={inv}>
+                    <Text
+                      color={theme.commandColor}
+                      inverse={inv}
+                      backgroundColor={backgroundColor}
+                    >
                       {text.slice(cmdChars)}
                     </Text>
                   </>
                 );
               }
               return (
-                <Text color={theme.text} inverse={inv}>
+                <Text color={theme.commandColor} inverse={inv} backgroundColor={backgroundColor}>
                   {text}
                 </Text>
               );
@@ -1589,9 +1842,10 @@ export function InputArea({
                 segments.push(
                   <Text
                     key="cursor"
-                    color={curInCmd ? theme.commandColor : theme.text}
+                    color={theme.commandColor}
                     bold={curInCmd}
                     inverse={cursorVisible}
+                    backgroundColor={backgroundColor}
                   >
                     {cursorChar}
                   </Text>,
@@ -1637,9 +1891,10 @@ export function InputArea({
                 segments.push(
                   <Text
                     key="cursor"
-                    color={curInCmd ? theme.commandColor : theme.text}
+                    color={theme.commandColor}
                     bold={curInCmd}
                     inverse={cursorVisible}
+                    backgroundColor={backgroundColor}
                   >
                     {cursorChar}
                   </Text>,
@@ -1672,9 +1927,10 @@ export function InputArea({
                 segments.push(
                   <Text
                     key="cursor"
-                    color={cursorInCommand ? theme.commandColor : theme.text}
+                    color={theme.commandColor}
                     bold={cursorInCommand}
                     inverse={cursorVisible}
+                    backgroundColor={backgroundColor}
                   >
                     {charUnderCursor}
                   </Text>,
@@ -1690,20 +1946,32 @@ export function InputArea({
             }
 
             return (
-              <Box key={i}>
-                <Text color={disabled ? theme.textDim : theme.inputPrompt} bold>
-                  {i === 0 ? PROMPT : "  "}
-                </Text>
+              <Box key={i} backgroundColor={backgroundColor} width="100%">
+                {renderPromptPrefix(i === 0 ? PROMPT : "  ")}
                 {segments}
               </Box>
             );
           });
         })()}
       </Box>
-      {/* Slash command menu — shown below the input box */}
-      {isSlashMode && filteredCommands.length > 0 && (
-        <SlashCommandMenu commands={commands} filter={slashFilter} selectedIndex={menuIndex} />
-      )}
+      {renderInputEdge(backgroundColor ? INPUT_BOTTOM_FILL : "─")}
+      {taskPickerOpen ? (
+        <Box paddingRight={2}>
+          <TaskPickerMenu
+            tasks={tasks}
+            selectedIndex={taskPickerIndex}
+            width={Math.max(20, columns)}
+          />
+        </Box>
+      ) : isSlashMode && filteredCommands.length > 0 ? (
+        <Box paddingRight={2}>
+          <SlashCommandMenu
+            commands={filteredCommands}
+            selectedIndex={menuIndex}
+            width={Math.max(20, columns)}
+          />
+        </Box>
+      ) : null}
     </Box>
   );
 }
