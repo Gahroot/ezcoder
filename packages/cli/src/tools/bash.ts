@@ -7,10 +7,32 @@ import { writeOverflow } from "./overflow.js";
 import { localOperations, type ToolOperations } from "./operations.js";
 import { getSafeToolEnv } from "./safe-env.js";
 import { isReadOnlyCommand } from "./read-only-bash.js";
-import { isPlanModeActive, planModeRestriction } from "../core/runtime-mode.js";
+import {
+  getActiveGoalMode,
+  goalModeBashRestriction,
+  isPlanModeActive,
+  planModeRestriction,
+  type GoalMode,
+} from "../core/runtime-mode.js";
 
 const DEFAULT_TIMEOUT = 120_000; // 120 seconds
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024; // 10 MB — cap buffered output to prevent OOM
+
+function isPlanModeRef(value: unknown): value is { current: boolean } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { current?: unknown }).current === "boolean"
+  );
+}
+
+function isGoalModeRef(value: unknown): value is { current: GoalMode } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { current?: unknown }).current === "string"
+  );
+}
 
 const BashParams = z.object({
   command: z.string().describe("The bash command to execute"),
@@ -33,8 +55,11 @@ export function createBashTool(
   cwd: string,
   processManager: ProcessManager,
   ops: ToolOperations = localOperations,
-  planModeRef?: { current: boolean },
+  planModeRefArg?: { current: boolean } | { current: GoalMode },
+  goalModeRefArg?: { current: GoalMode },
 ): AgentTool<typeof BashParams> {
+  const planModeRef = isPlanModeRef(planModeRefArg) ? planModeRefArg : undefined;
+  const goalModeRef = isGoalModeRef(planModeRefArg) ? planModeRefArg : goalModeRefArg;
   return {
     name: "bash",
     description:
@@ -48,6 +73,13 @@ export function createBashTool(
     parameters: BashParams,
     executionMode: "sequential",
     async execute({ command, timeout: timeoutMs, run_in_background }, context) {
+      const goalModeRestriction = goalModeBashRestriction(
+        getActiveGoalMode(goalModeRef),
+        run_in_background === true,
+      );
+      if (goalModeRestriction) {
+        return goalModeRestriction;
+      }
       if (isPlanModeActive(planModeRef) && !isReadOnlyCommand(command)) {
         return planModeRestriction("bash");
       }

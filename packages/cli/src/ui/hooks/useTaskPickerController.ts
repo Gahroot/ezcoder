@@ -4,8 +4,8 @@ import {
   loadTasksSync,
   markTaskInProgress,
   saveTasksSync,
-  type TaskRecord,
-} from "../../core/tasks-store.js";
+  type TaskListItem,
+} from "../../core/task-store.js";
 
 interface UseTaskPickerControllerOptions {
   displayedCwd: string;
@@ -15,13 +15,13 @@ interface UseTaskPickerControllerOptions {
 
 interface TaskPickerController {
   open: boolean;
-  tasks: TaskRecord[];
+  tasks: TaskListItem[];
   close: () => void;
   openPicker: () => void;
   toggle: () => void;
-  start: (task: TaskRecord) => void;
-  runAll: (task?: TaskRecord) => void;
-  deleteTask: (task: TaskRecord) => void;
+  start: (task: TaskListItem) => void;
+  runAll: (task?: TaskListItem) => void;
+  deleteTask: (task: TaskListItem) => void;
 }
 
 export function useTaskPickerController({
@@ -30,7 +30,7 @@ export function useTaskPickerController({
   onRunAllTasksChange,
 }: UseTaskPickerControllerOptions): TaskPickerController {
   const [open, setOpen] = useState(false);
-  const [tasks, setTasks] = useState<TaskRecord[]>(() => loadTasksSync(displayedCwd));
+  const [tasks, setTasks] = useState<TaskListItem[]>(() => loadTasksSync(displayedCwd));
 
   const refresh = useCallback(() => setTasks(loadTasksSync(displayedCwd)), [displayedCwd]);
   const close = useCallback(() => setOpen(false), []);
@@ -46,7 +46,7 @@ export function useTaskPickerController({
   }, [displayedCwd]);
 
   const start = useCallback(
-    (task: TaskRecord) => {
+    (task: TaskListItem) => {
       setOpen(false);
       markTaskInProgress(displayedCwd, task.id);
       refresh();
@@ -56,7 +56,7 @@ export function useTaskPickerController({
   );
 
   const runAll = useCallback(
-    (task?: TaskRecord) => {
+    (task?: TaskListItem) => {
       setOpen(false);
       onRunAllTasksChange(true);
       const selected = task
@@ -71,7 +71,7 @@ export function useTaskPickerController({
   );
 
   const deleteTask = useCallback(
-    (task: TaskRecord) => {
+    (task: TaskListItem) => {
       const nextTasks = loadTasksSync(displayedCwd).filter((candidate) => candidate.id !== task.id);
       saveTasksSync(displayedCwd, nextTasks);
       setTasks(nextTasks);

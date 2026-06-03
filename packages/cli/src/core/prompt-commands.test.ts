@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import { PROMPT_COMMANDS } from "./prompt-commands.js";
 
 describe("prompt commands", () => {
-  it("no longer defines the /goal command", () => {
-    expect(PROMPT_COMMANDS.find((command) => command.name === "goal")).toBeUndefined();
-    expect(PROMPT_COMMANDS.find((command) => command.aliases.includes("g"))).toBeUndefined();
+  it("defines the /goal command for durable Goal setup", () => {
+    const goal = PROMPT_COMMANDS.find((command) => command.name === "goal");
+
+    expect(goal).toBeDefined();
+    expect(goal?.aliases).toContain("g");
+    expect(goal?.prompt).toContain("Create a Goal run");
+    expect(goal?.prompt).toContain("durable Goal state");
   });
 
   it("hands setup/bullet-proof fixes off to the tasks tool, not a Goal", () => {

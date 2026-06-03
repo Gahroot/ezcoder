@@ -5,13 +5,35 @@ import type { AgentTool } from "@prestyj/agent";
 import type { AgentDefinition } from "../core/agents.js";
 import { log } from "../core/logger.js";
 import { truncateTail } from "./truncate.js";
-import { isPlanModeActive, planModeRestriction } from "../core/runtime-mode.js";
+import {
+  getActiveGoalMode,
+  goalModeSubagentRestriction,
+  isPlanModeActive,
+  planModeRestriction,
+  type GoalMode,
+} from "../core/runtime-mode.js";
 
 const SUB_AGENT_MAX_TURNS = 10;
 const SUB_AGENT_MAX_OUTPUT_CHARS = 100_000; // ~25k tokens, matches other tool limits
 const SUB_AGENT_MAX_OUTPUT_LINES = 500;
 const SUB_AGENT_MAX_STDERR_CHARS = 10_000; // Cap stderr to prevent unbounded growth
 const SUB_AGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minute hard timeout
+
+function isPlanModeRef(value: unknown): value is { current: boolean } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { current?: unknown }).current === "boolean"
+  );
+}
+
+function isGoalModeRef(value: unknown): value is { current: GoalMode } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { current?: unknown }).current === "string"
+  );
+}
 
 const SubAgentParams = z.object({
   task: z.string().describe("The task to delegate to the sub-agent"),
@@ -38,9 +60,18 @@ export function createSubAgentTool(
   agents: AgentDefinition[],
   parentProvider: string,
   parentModel: string,
-  getParentCacheKey?: () => string | undefined,
-  planModeRef?: { current: boolean },
+  getParentCacheKeyOrGoalModeRef?: (() => string | undefined) | { current: GoalMode },
+  planModeRefArg?: { current: boolean },
+  goalModeRefArg?: { current: GoalMode },
 ): AgentTool<typeof SubAgentParams> {
+  const getParentCacheKey =
+    typeof getParentCacheKeyOrGoalModeRef === "function"
+      ? getParentCacheKeyOrGoalModeRef
+      : undefined;
+  const goalModeRef = isGoalModeRef(getParentCacheKeyOrGoalModeRef)
+    ? getParentCacheKeyOrGoalModeRef
+    : goalModeRefArg;
+  const planModeRef = isPlanModeRef(planModeRefArg) ? planModeRefArg : undefined;
   const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
   const agentDesc = agentList
     ? `\n\nAvailable named agents:\n${agentList}`
@@ -59,6 +90,10 @@ export function createSubAgentTool(
     // sequential, so this only fans out when every call in the turn is parallel.
     executionMode: "parallel",
     async execute(args, context) {
+      const goalMode = getActiveGoalMode(goalModeRef);
+      if (goalMode !== "off") {
+        return goalModeSubagentRestriction(goalMode);
+      }
       if (isPlanModeActive(planModeRef)) {
         return planModeRestriction("subagent");
       }

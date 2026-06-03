@@ -3,6 +3,7 @@ import type { DOMElement } from "ink";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import type { ContextWindowOptions } from "../../core/model-registry.js";
 import type { TaskRecord } from "../../core/tasks-store.js";
+import type { GoalRun } from "../../core/goal-store.js";
 import type { SlashCommandInfo } from "./SlashCommandMenu.js";
 import type { ImageAttachment } from "../../utils/image.js";
 import type { CompletedItem } from "../app-items.js";
@@ -15,6 +16,8 @@ import { ChatLivePane } from "./ChatLivePane.js";
 import { TranscriptViewport } from "./TranscriptViewport.js";
 import { QueueIndicator } from "./QueueIndicator.js";
 import { InputArea, type PasteInfo } from "./InputArea.js";
+import { GoalOverlay } from "./GoalOverlay.js";
+import { GoalStatusBar, type GoalStatusEntry } from "./GoalStatusBar.js";
 import { FooterStatusRow } from "./FooterStatusRow.js";
 import type { LiveToolEntry } from "./LiveToolPanel.js";
 import type { ActivityPhase, RetryInfo } from "../hooks/useAgentLoop.js";
@@ -30,6 +33,7 @@ interface ChatInputControls {
   onToggleTasks: () => void;
   onToggleSkills: () => void;
   onTogglePixel: () => void;
+  onToggleGoal: () => void;
   onToggleMarkdown: () => void;
   cwd: string;
   commands: SlashCommandInfo[];
@@ -45,6 +49,17 @@ interface TaskPickerControls {
   onStart: (task: TaskRecord) => void;
   onRunAll: (task?: TaskRecord) => void;
   onDelete: (task: TaskRecord) => void;
+}
+
+interface GoalPaneControls {
+  cwd: string;
+  autoExpandNewest: boolean;
+  statusEntries: readonly GoalStatusEntry[];
+  onClose: () => void;
+  onRunGoal: (run: GoalRun) => void;
+  onVerifyGoal: (run: GoalRun) => void;
+  onPauseGoal: (run: GoalRun) => void;
+  onRefineGoal: (run: GoalRun, feedback: string) => void;
 }
 
 interface ChatScreenProps {
@@ -95,6 +110,7 @@ interface ChatScreenProps {
   formatDuration: (durationMs: number) => string;
   inputControls: ChatInputControls;
   taskPicker: TaskPickerControls;
+  goalPane: GoalPaneControls;
   overlay: string | null;
   onModelSelect: (modelId: string) => void;
   onModelCancel: () => void;
@@ -164,6 +180,7 @@ export function ChatScreen({
   formatDuration,
   inputControls,
   taskPicker,
+  goalPane,
   overlay,
   onModelSelect,
   onModelCancel,
@@ -209,6 +226,19 @@ export function ChatScreen({
           streamingContinuation={streamingContinuation}
         />
       )}
+
+      {overlay === "goal" ? (
+        <GoalOverlay
+          cwd={goalPane.cwd}
+          agentRunning={isRunning}
+          autoExpandNewest={goalPane.autoExpandNewest}
+          onClose={goalPane.onClose}
+          onRunGoal={goalPane.onRunGoal}
+          onVerifyGoal={goalPane.onVerifyGoal}
+          onPauseGoal={goalPane.onPauseGoal}
+          onRefineGoal={goalPane.onRefineGoal}
+        />
+      ) : null}
 
       <ChatControls controlsRef={controlsRef}>
         <QueueIndicator
@@ -259,12 +289,14 @@ export function ChatScreen({
           onDeleteTask={taskPicker.onDelete}
           onToggleSkills={inputControls.onToggleSkills}
           onTogglePixel={inputControls.onTogglePixel}
+          onToggleGoal={inputControls.onToggleGoal}
           onToggleMarkdown={inputControls.onToggleMarkdown}
           cwd={inputControls.cwd}
           commands={inputControls.commands}
           mouseScroll={inputControls.mouseScroll}
           onScroll={inputControls.onScroll}
         />
+        <GoalStatusBar entries={goalPane.statusEntries} />
         <ChatFooterPane
           overlay={overlay}
           onModelSelect={onModelSelect}

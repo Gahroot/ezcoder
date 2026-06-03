@@ -113,11 +113,12 @@ export function Banner({ version, model, cwd, taskCount }: BannerProps) {
 
 function ShortcutHints({ taskCount }: { taskCount?: number }) {
   const theme = useTheme();
+  const taskLabel = taskCount && taskCount > 0 ? ` tasks (${taskCount})` : " tasks";
 
   return (
     <Box>
       <Text color={theme.primary}>Ctrl+T</Text>
-      <Text color={theme.textDim}> tasks</Text>
+      <Text color={theme.textDim}>{taskLabel}</Text>
       <Text color={theme.textDim}> · </Text>
       <Text color={theme.primary}>Ctrl+S</Text>
       <Text color={theme.textDim}> skills</Text>

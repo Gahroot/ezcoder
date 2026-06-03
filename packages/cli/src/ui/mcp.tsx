@@ -316,7 +316,11 @@ export function renderScopeSelector(version: string, cwd: string): Promise<MCPSc
     version,
     subtitle: "Choose a scope",
     items: [
-      { label: "Global (all EZ Coder sessions)", value: "global", description: "~/.ezcoder/mcp.json" },
+      {
+        label: "Global (all EZ Coder sessions)",
+        value: "global",
+        description: "~/.ezcoder/mcp.json",
+      },
       { label: `This project (${cwd})`, value: "project", description: "./.gg/mcp.json" },
     ],
   });

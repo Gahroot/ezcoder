@@ -72,6 +72,7 @@ import { buildSystemPrompt } from "./system-prompt.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
 import { createTools } from "./tools/index.js";
 import { CheckpointStore } from "./core/checkpoint-store.js";
+import type { GoalMode } from "./core/runtime-mode.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import {
   createCompactedSessionCheckpoint,
@@ -514,6 +515,7 @@ async function runInkTUI(opts: {
 
   // Runtime mode refs — shared between tools and UI
   const planModeRef = { current: false };
+  const goalModeRef: { current: GoalMode } = { current: "off" };
   const planToolCallbacks: {
     onEnterPlan?: (reason?: string) => void | Promise<void>;
     onExitPlan?: (planPath: string) => Promise<string>;
@@ -531,6 +533,7 @@ async function runInkTUI(opts: {
     provider,
     model,
     planModeRef,
+    goalModeRef,
     onPreFileMutation,
     onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
     onExitPlan: (planPath) =>
@@ -547,6 +550,7 @@ async function runInkTUI(opts: {
       provider,
       model,
       planModeRef,
+      goalModeRef,
       onPreFileMutation,
       onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
       onExitPlan: (planPath) =>
@@ -577,6 +581,7 @@ async function runInkTUI(opts: {
     tools.map((tool) => tool.name),
     undefined,
     provider,
+    goalModeRef.current,
   );
 
   // Kill all background processes on exit (synchronous — catches all exit paths)
@@ -717,6 +722,7 @@ async function runInkTUI(opts: {
     mcpManager,
     authStorage,
     planModeRef,
+    goalModeRef,
     skills,
     checkpointStore: checkpointRef.current ?? undefined,
     initialOverlay: opts.initialOverlay,

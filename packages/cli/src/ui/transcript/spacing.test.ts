@@ -19,6 +19,10 @@ function itemForKind(kind: CompletedItem["kind"], id: string = kind): CompletedI
       return { kind, id, text: "queued" };
     case "task":
       return { kind, id, title: "task" };
+    case "goal_agent_transition":
+      return { kind, id, text: "Goal setup finished" };
+    case "goal_progress":
+      return { kind, id, phase: "terminal", title: "Goal passed: test" };
     case "tool_start":
       return { kind, id, toolCallId: id, name: "read", args: {}, startedAt: 0, animateUntil: 0 };
     case "tool_done":

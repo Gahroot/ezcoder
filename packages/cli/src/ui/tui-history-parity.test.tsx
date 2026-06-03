@@ -20,6 +20,7 @@ import { UserMessage } from "./components/UserMessage.js";
 import { Banner } from "./components/Banner.js";
 import { SessionSummaryDisplay } from "./components/SessionSummary.js";
 import { PlanModeLogo } from "./components/PlanModeLogo.js";
+import { GoalProgressRow } from "./transcript/MiscRows.js";
 
 const TERMINAL_COLUMNS = 68;
 const theme = loadTheme("dark");
@@ -265,6 +266,14 @@ function liveElementFor(item: CompletedItem): React.ReactElement | null {
         theme,
         { bold: true },
       );
+    case "goal_agent_transition":
+      return renderStatusLive("◆ ", item.text, theme.commandColor, theme, { bold: true });
+    case "goal_progress":
+      return (
+        <Box paddingLeft={1} flexShrink={1}>
+          <GoalProgressRow item={item} />
+        </Box>
+      );
     case "queued":
       return renderQueuedLiveItem(item, theme);
     case "tool_start":
@@ -454,6 +463,20 @@ const parityCaseByKind = {
     text: "Hook engaged \u2014 running an ideal review before finalizing.",
   },
   task: { kind: "task", id: "task-1", title: "Restore task pane" },
+  goal_agent_transition: {
+    kind: "goal_agent_transition",
+    id: "goal-agent-transition-1",
+    text: "Goal setup is ready for review.",
+  },
+  goal_progress: {
+    kind: "goal_progress",
+    id: "goal-progress-1",
+    phase: "terminal",
+    title: "Goal passed: Restore workflow",
+    detail: "Verifier evidence and final audit passed.",
+    status: "passed",
+    summaryRows: [{ label: "Verifier", value: "pass", detail: ".ezcoder/goals/verifier.log" }],
+  },
   queued: { kind: "queued", id: "queued-1", text: "next prompt with wrapping words" },
   tool_start: {
     kind: "tool_start",

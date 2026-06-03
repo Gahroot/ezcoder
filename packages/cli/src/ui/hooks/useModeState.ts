@@ -4,6 +4,7 @@ import type { AgentTool } from "@prestyj/agent";
 import { buildSystemPrompt } from "../../system-prompt.js";
 import type { LanguageId } from "../../core/language-detector.js";
 import type { Skill } from "../../core/skills.js";
+import type { GoalMode } from "../../core/runtime-mode.js";
 
 /** Options accepted by {@link useModeState.rebuildSystemPrompt}. */
 export interface RebuildSystemPromptOptions {
@@ -18,12 +19,15 @@ export interface RebuildSystemPromptOptions {
 /** Minimal session-store surface the mode state mirrors into for remount survival. */
 interface ModeSessionStore {
   planMode?: boolean;
+  goalMode?: GoalMode;
 }
 
 interface UseModeStateOptions {
   initialPlanMode: boolean;
+  initialGoalMode?: GoalMode;
   skills: Skill[] | undefined;
   planModeRef?: { current: boolean };
+  goalModeRef?: { current: GoalMode };
   sessionStore?: ModeSessionStore;
   // External refs the system prompt is rebuilt from (owned by App).
   cwdRef: MutableRefObject<string>;
@@ -37,10 +41,13 @@ interface UseModeStateOptions {
 
 export interface ModeState {
   planMode: boolean;
+  goalMode: GoalMode;
   planModeStateRef: MutableRefObject<boolean>;
+  goalModeStateRef: MutableRefObject<GoalMode>;
   rebuildSystemPrompt: (options?: RebuildSystemPromptOptions) => Promise<string>;
   replaceSystemPrompt: (options?: RebuildSystemPromptOptions) => Promise<string>;
   setPlanModeAndPrompt: (nextMode: boolean) => Promise<void>;
+  setGoalModeAndPrompt: (nextMode: GoalMode) => Promise<void>;
 }
 
 /**
@@ -50,8 +57,10 @@ export interface ModeState {
  */
 export function useModeState({
   initialPlanMode,
+  initialGoalMode = "off",
   skills,
   planModeRef,
+  goalModeRef,
   sessionStore,
   cwdRef,
   currentToolsRef,
@@ -61,12 +70,19 @@ export function useModeState({
   messagesRef,
 }: UseModeStateOptions): ModeState {
   const [planMode, setPlanMode] = useState(initialPlanMode);
+  const [goalMode, setGoalMode] = useState<GoalMode>(initialGoalMode);
   const planModeStateRef = useRef(planMode);
+  const goalModeStateRef = useRef<GoalMode>(goalMode);
 
   useEffect(() => {
     planModeStateRef.current = planMode;
     if (planModeRef) planModeRef.current = planMode;
   }, [planMode, planModeRef]);
+
+  useEffect(() => {
+    goalModeStateRef.current = goalMode;
+    if (goalModeRef) goalModeRef.current = goalMode;
+  }, [goalMode, goalModeRef]);
 
   const rebuildSystemPrompt = useCallback(
     async (options?: RebuildSystemPromptOptions): Promise<string> => {
@@ -81,6 +97,7 @@ export function useModeState({
         (options?.tools ?? currentToolsRef.current).map((tool) => tool.name),
         options?.activeLanguages ?? injectedLanguagesRef.current,
         providerRef.current,
+        goalModeStateRef.current,
       );
     },
     [skills, approvedPlanPathRef, cwdRef, currentToolsRef, providerRef, injectedLanguagesRef],
@@ -108,11 +125,25 @@ export function useModeState({
     [planModeRef, sessionStore, replaceSystemPrompt],
   );
 
+  const setGoalModeAndPrompt = useCallback(
+    async (nextMode: GoalMode): Promise<void> => {
+      goalModeStateRef.current = nextMode;
+      if (goalModeRef) goalModeRef.current = nextMode;
+      if (sessionStore) sessionStore.goalMode = nextMode;
+      setGoalMode(nextMode);
+      await replaceSystemPrompt();
+    },
+    [goalModeRef, sessionStore, replaceSystemPrompt],
+  );
+
   return {
     planMode,
+    goalMode,
     planModeStateRef,
+    goalModeStateRef,
     rebuildSystemPrompt,
     replaceSystemPrompt,
     setPlanModeAndPrompt,
+    setGoalModeAndPrompt,
   };
 }

@@ -5,7 +5,12 @@ import type { AgentTool } from "@prestyj/agent";
 import { resolvePath, rejectSymlink } from "./path-utils.js";
 import { localOperations, type ToolOperations } from "./operations.js";
 import { assertFresh, recordWrite, type ReadTracker } from "./read-tracker.js";
-import { isPlanModeActive } from "../core/runtime-mode.js";
+import {
+  getActiveGoalMode,
+  goalModeMutationRestriction,
+  isPlanModeActive,
+  type GoalMode,
+} from "../core/runtime-mode.js";
 
 type MutationCallback = (filePath: string) => void | Promise<void>;
 
@@ -21,6 +26,14 @@ function isPlanModeRef(value: unknown): value is { current: boolean } {
   );
 }
 
+function isGoalModeRef(value: unknown): value is { current: GoalMode } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { current?: unknown }).current === "string"
+  );
+}
+
 const WriteParams = z.object({
   file_path: z.string().describe("The file path to write to"),
   content: z.string().describe("The content to write"),
@@ -30,13 +43,17 @@ export function createWriteTool(
   cwd: string,
   readFiles?: ReadTracker,
   ops: ToolOperations = localOperations,
-  planModeRefOrOnFileMutated?: { current: boolean } | MutationCallback,
+  planModeRefOrOnFileMutated?: { current: boolean } | { current: GoalMode } | MutationCallback,
   onFileMutated?: MutationCallback,
   onPreFileMutation?: MutationCallback,
+  goalModeRefArg?: { current: GoalMode },
 ): AgentTool<typeof WriteParams> {
   const planModeRef = isPlanModeRef(planModeRefOrOnFileMutated)
     ? planModeRefOrOnFileMutated
     : undefined;
+  const goalModeRef = isGoalModeRef(planModeRefOrOnFileMutated)
+    ? planModeRefOrOnFileMutated
+    : goalModeRefArg;
   const mutationCallback = isMutationCallback(planModeRefOrOnFileMutated)
     ? planModeRefOrOnFileMutated
     : onFileMutated;
@@ -50,6 +67,11 @@ export function createWriteTool(
     async execute({ file_path, content }) {
       const resolved = resolvePath(cwd, file_path);
       await rejectSymlink(resolved);
+
+      const goalMode = getActiveGoalMode(goalModeRef);
+      if (goalMode !== "off") {
+        return goalModeMutationRestriction("write", goalMode);
+      }
 
       if (isPlanModeActive(planModeRef)) {
         const plansDir = path.join(cwd, ".ezcoder", "plans");

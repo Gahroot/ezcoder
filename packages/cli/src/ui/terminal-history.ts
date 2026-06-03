@@ -51,6 +51,7 @@ import {
 } from "./terminal-history-status-renderers.js";
 import {
   presentDuration,
+  presentGoalAgentTransition,
   presentInfo,
   presentModelTransition,
   presentPlanEvent,
@@ -61,7 +62,7 @@ import {
 } from "./transcript/presentation.js";
 import { toolTonePalette } from "./transcript/tool-presentation.js";
 
-const LOGO_LINES = [" ▄▀▀▀ ▄▀▀▀", " █ ▀█ █ ▀█", " ▀▄▄▀ ▀▄▄▀"];
+const LOGO_LINES = [" █▀▀▀ ▀▀▀█", " █▀▀   ▄▀", " █▄▄▄ █▄▄▄"];
 const PLAN_MODE_LOGO = [
   "▗▄▄▖ ▗▖    ▗▄▖ ▗▖  ▗▖    ▗▖  ▗▖ ▗▄▖ ▗▄▄▄ ▗▄▄▄▖",
   "▐▌ ▐▌▐▌   ▐▌ ▐▌▐▛▚▖▐▌    ▐▛▚▞▜▌▐▌ ▐▌▐▌  █▐▌",
@@ -293,6 +294,18 @@ export function serializeCompletedItemToTerminalHistory(
         true,
       );
     }
+    case "goal_agent_transition": {
+      const presentation = presentGoalAgentTransition(item);
+      return renderStatusLine(
+        presentation.glyph.trim(),
+        presentation.text,
+        context,
+        context.theme.secondary,
+        presentation.bold,
+      );
+    }
+    case "goal_progress":
+      return renderGoalProgress(item, context);
     case "error":
       return renderError(item.headline, item.message, item.guidance, context);
     case "info": {
@@ -454,8 +467,43 @@ function renderBanner(context: TerminalHistoryContext): string {
   ]);
 }
 
-function renderTask(title: string, context: TerminalHistoryContext): string {
-  return `${color(context.theme.primary, "▶", true)} ${dim(context, "Task: ")}${color(context.theme.primary, title)}`;
+function renderGoalProgress(
+  item: Extract<CompletedItem, { kind: "goal_progress" }>,
+  context: TerminalHistoryContext,
+): string {
+  const isError = item.status === "failed" || item.status === "fail" || item.status === "blocked";
+  const itemColor = isError
+    ? context.theme.error
+    : item.phase === "worker_finished" || item.phase === "terminal"
+      ? context.theme.success
+      : item.phase === "verifier_started" || item.phase === "verifier_finished"
+        ? context.theme.accent
+        : item.phase === "orchestrator_reviewing" || item.phase === "orchestrator_working"
+          ? context.theme.secondary
+          : item.phase === "continuing"
+            ? context.theme.warning
+            : context.theme.primary;
+  const glyph =
+    item.phase === "worker_finished" || item.phase === "verifier_finished"
+      ? "✓"
+      : item.phase === "terminal"
+        ? item.status === "passed"
+          ? "◆"
+          : "!"
+        : "↻";
+  const lines = [
+    `${color(itemColor, `${glyph} ${item.title}`, true)}${item.workerId ? dim(context, ` · worker ${item.workerId}`) : ""}`,
+    item.detail ? dim(context, `  ${item.detail}`) : undefined,
+    ...(item.summaryRows ?? []).map(
+      (row) =>
+        `  ${dim(context, row.label.padEnd(10))}${color(context.theme.text, row.value)}${row.detail ? dim(context, ` · ${row.detail}`) : ""}`,
+    ),
+    ...(item.summarySections ?? []).flatMap((section) => [
+      `  ${dim(context, section.title)}`,
+      ...section.lines.map((line) => `  ${color(context.theme.text, `• ${line}`)}`),
+    ]),
+  ].filter((line): line is string => line !== undefined);
+  return indent(lines.join("\n"), RESPONSE_LEFT_PADDING);
 }
 
 function renderUser(

@@ -7,6 +7,7 @@ import type { MCPClientManager } from "../core/mcp/index.js";
 import type { AuthStorage } from "../core/auth-storage.js";
 import type { Skill } from "../core/skills.js";
 import type { CheckpointStore } from "../core/checkpoint-store.js";
+import type { GoalMode } from "../core/runtime-mode.js";
 import { App, type CompletedItem, type DoneStatus } from "./App.js";
 import { createTerminalHistoryPrinter } from "./terminal-history.js";
 import type { PlanStep } from "../utils/plan-steps.js";
@@ -49,6 +50,7 @@ export interface RenderAppConfig {
   mcpManager?: MCPClientManager;
   authStorage?: AuthStorage;
   planModeRef?: { current: boolean };
+  goalModeRef?: { current: GoalMode };
   skills?: Skill[];
   checkpointStore?: CheckpointStore;
   initialOverlay?: "pixel";
@@ -143,6 +145,8 @@ export interface SessionStore {
   runAllPixel?: boolean;
   /** Plan mode display/restriction state. */
   planMode?: boolean;
+  /** Goal orchestration mode display/restriction state. */
+  goalMode?: GoalMode;
   /** Whether pre-final ideal review is enabled for this UI session. */
   idealReviewEnabled?: boolean;
 }
@@ -335,6 +339,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     planAutoExpand: false,
     pendingAction: undefined,
     planMode: config.planModeRef?.current ?? false,
+    goalMode: config.goalModeRef?.current ?? "off",
     idealReviewEnabled: config.idealReviewEnabled ?? true,
   };
 
@@ -380,6 +385,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             mcpManager: config.mcpManager,
             authStorage: config.authStorage,
             planModeRef: config.planModeRef,
+            goalModeRef: config.goalModeRef,
             skills: config.skills,
             checkpointStore: config.checkpointStore,
             initialOverlay: config.initialOverlay,

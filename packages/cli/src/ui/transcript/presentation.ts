@@ -4,6 +4,7 @@ import { formatDuration } from "../duration-format.js";
 import type {
   DurationItem,
   ErrorItem,
+  GoalAgentTransitionItem,
   InfoItem,
   ModelTransitionItem,
   PlanEventItem,
@@ -106,6 +107,10 @@ export function presentInfo(item: InfoItem): StatusPresentation {
 
 export function presentTask(item: TaskItem): StatusPresentation {
   return { glyph: "▸ ", label: "Task: ", text: item.title, bold: true };
+}
+
+export function presentGoalAgentTransition(item: GoalAgentTransitionItem): StatusPresentation {
+  return { glyph: "◆ ", text: normalizeTranscriptStatusText(item.text), bold: true };
 }
 
 export function presentPlanTransition(item: PlanTransitionItem): StatusPresentation {

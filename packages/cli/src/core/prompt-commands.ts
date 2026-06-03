@@ -12,6 +12,15 @@ export interface PromptCommand {
 
 export const PROMPT_COMMANDS: PromptCommand[] = [
   {
+    name: "goal",
+    aliases: ["g"],
+    description: "Plan as needed, then create a programmatic goal loop",
+    // Contract anchors for the audit verifier: /goal setup is setup-only.
+    // Do not implement; plan/research as needed first, then define success criteria, evidence_plan, verifier, and goals metadata, then stop.
+    prompt:
+      "Create a Goal run for the following objective. First plan/research only if needed; Goal setup will consume that plan and create durable Goal state.",
+  },
+  {
     name: "expand",
     aliases: [],
     description: "Find exciting new features to add",

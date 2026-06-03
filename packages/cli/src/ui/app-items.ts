@@ -2,6 +2,7 @@ import type { PasteInfo } from "./components/InputArea.js";
 import type { SubAgentInfo } from "./components/SubAgentPanel.js";
 import type { LanguageId } from "../core/language-detector.js";
 import type { SessionSummary } from "./session-summary.js";
+import type { GoalSummaryRow, GoalSummarySection } from "./goal-summary.js";
 
 /** Decoded image bytes for inline terminal-graphics preview (kitty/iTerm2). */
 export interface ImagePreview {
@@ -26,6 +27,34 @@ export interface TaskItem {
   title: string;
   id: string;
 }
+
+export interface GoalAgentTransitionItem {
+  kind: "goal_agent_transition";
+  text: string;
+  id: string;
+}
+
+export interface GoalProgressItem {
+  kind: "goal_progress";
+  phase:
+    | "worker_started"
+    | "worker_finished"
+    | "verifier_started"
+    | "verifier_finished"
+    | "orchestrator_reviewing"
+    | "orchestrator_working"
+    | "continuing"
+    | "terminal";
+  title: string;
+  detail?: string;
+  workerId?: string;
+  status?: string;
+  summaryRows?: GoalSummaryRow[];
+  summarySections?: GoalSummarySection[];
+  id: string;
+}
+
+export type GoalProgressDraft = Omit<GoalProgressItem, "id">;
 
 export interface AssistantItem {
   kind: "assistant";
@@ -321,6 +350,8 @@ export function lastVisibleTranscriptItem<
 export type CompletedItem =
   | UserItem
   | TaskItem
+  | GoalAgentTransitionItem
+  | GoalProgressItem
   | AssistantItem
   | IdealHookItem
   | ToolStartItem

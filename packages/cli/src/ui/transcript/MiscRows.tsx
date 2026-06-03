@@ -4,6 +4,7 @@ import { useTheme } from "../theme/theme.js";
 import type {
   DurationItem,
   ErrorItem,
+  GoalProgressItem,
   QueuedItem,
   SetupHintItem,
   StepDoneItem,
@@ -158,6 +159,75 @@ export function StepDoneRow({ item }: { item: StepDoneItem }) {
           <Text color={theme.accent}>{presentation.description}</Text>
         ) : null}
       </Text>
+    </Box>
+  );
+}
+
+function goalProgressColor(item: GoalProgressItem, theme: ReturnType<typeof useTheme>): string {
+  if (item.status === "failed" || item.status === "fail" || item.status === "blocked") {
+    return theme.error;
+  }
+  if (item.phase === "worker_finished" || item.phase === "terminal") return theme.success;
+  if (item.phase === "verifier_started" || item.phase === "verifier_finished") return theme.accent;
+  if (item.phase === "orchestrator_reviewing" || item.phase === "orchestrator_working") {
+    return theme.secondary;
+  }
+  if (item.phase === "continuing") return theme.warning;
+  return theme.primary;
+}
+
+export function GoalProgressRow({ item }: { item: GoalProgressItem }) {
+  const theme = useTheme();
+  const color = goalProgressColor(item, theme);
+  const glyph =
+    item.phase === "worker_finished" || item.phase === "verifier_finished"
+      ? "✓ "
+      : item.phase === "terminal"
+        ? item.status === "passed"
+          ? "◆ "
+          : "! "
+        : "↻ ";
+  return (
+    <Box flexDirection="column" flexShrink={1}>
+      <Text wrap="wrap">
+        <Text color={color} bold>
+          {glyph}
+          {item.title}
+        </Text>
+        {item.workerId ? <Text color={theme.textDim}> · worker {item.workerId}</Text> : null}
+      </Text>
+      {item.detail ? (
+        <Text color={theme.textDim} wrap="wrap">
+          {`  ${item.detail}`}
+        </Text>
+      ) : null}
+      {item.summaryRows && item.summaryRows.length > 0 ? (
+        <Box flexDirection="column" marginTop={1} marginLeft={2} flexShrink={1}>
+          {item.summaryRows.map((row) => (
+            <Text key={row.label} wrap="truncate">
+              <Text color={theme.textDim}>{row.label.padEnd(10)}</Text>
+              <Text color={theme.text}>{row.value}</Text>
+              {row.detail ? <Text color={theme.textDim}> · {row.detail}</Text> : null}
+            </Text>
+          ))}
+        </Box>
+      ) : null}
+      {item.summarySections && item.summarySections.length > 0 ? (
+        <Box flexDirection="column" marginTop={1} marginLeft={2} flexShrink={1}>
+          {item.summarySections.map((section) => (
+            <Box key={section.title} flexDirection="column" marginBottom={1} flexShrink={1}>
+              <Text color={theme.textDim} bold>
+                {section.title}
+              </Text>
+              {section.lines.map((line, index) => (
+                <Text key={`${section.title}-${index}`} color={theme.text} wrap="wrap">
+                  {`• ${line}`}
+                </Text>
+              ))}
+            </Box>
+          ))}
+        </Box>
+      ) : null}
     </Box>
   );
 }

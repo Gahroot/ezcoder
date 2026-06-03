@@ -13,6 +13,7 @@ import { getTranscriptItemMarginTop } from "./spacing.js";
 import {
   DurationRow,
   ErrorRow,
+  GoalProgressRow,
   QueuedRow,
   SetupHintRow,
   StepDoneRow,
@@ -20,6 +21,7 @@ import {
   UpdateNoticeRow,
 } from "./MiscRows.js";
 import {
+  presentGoalAgentTransition,
   presentInfo,
   presentModelTransition,
   presentPlanEvent,
@@ -166,6 +168,12 @@ export function renderTranscriptItem({
       return null;
     case "task":
       return withTranscriptSpacing(<StatusRow id={item.id} presentation={presentTask(item)} />);
+    case "goal_agent_transition":
+      return withTranscriptSpacing(
+        <StatusRow id={item.id} presentation={presentGoalAgentTransition(item)} />,
+      );
+    case "goal_progress":
+      return withTranscriptSpacing(<GoalProgressRow item={item} />);
     case "model_transition":
       return withTranscriptSpacing(
         <StatusRow id={item.id} presentation={presentModelTransition(item)} />,
