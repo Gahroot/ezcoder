@@ -1,3 +1,14 @@
 packages:
   - "packages/*"
   - "Matey"
+
+# pnpm 10+ reads these settings from pnpm-workspace.yaml, not the package.json
+# "pnpm" key. They mirror that key so the committed lockfile stays reproducible
+# under --frozen-lockfile (CI) and the ink patches actually apply on install.
+overrides:
+  global-agent: ^4.1.3
+  ip-address: ^10.1.1
+
+patchedDependencies:
+  ink@6.8.0: patches/ink@6.8.0.patch
+  ink@7.0.2: patches/ink@7.0.2.patch
