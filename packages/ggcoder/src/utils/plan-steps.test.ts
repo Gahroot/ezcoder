@@ -48,6 +48,33 @@ describe("extractPlanSteps", () => {
     ]);
   });
 
+  it("recognises common step-section heading synonyms", () => {
+    for (const heading of [
+      "## Implementation Steps",
+      "### Steps",
+      "## Steps to implement",
+      "## Tasks",
+    ]) {
+      const plan = [heading, "1. First real step here.", "2. Second real step here."].join("\n");
+      expect(extractPlanSteps(plan)).toEqual([
+        { step: 1, text: "First real step here.", completed: false },
+        { step: 2, text: "Second real step here.", completed: false },
+      ]);
+    }
+  });
+
+  it("does not treat broad container or essay headings as a step section", () => {
+    for (const heading of [
+      // `## Plan` is a container heading that often holds non-task numbered
+      // lists (design decisions, risks) — must NOT be scraped as steps.
+      "## Plan",
+      "## Step-by-step rationale for the design",
+    ]) {
+      const plan = [heading, "1. We chose X because Y."].join("\n");
+      expect(extractPlanSteps(plan)).toEqual([]);
+    }
+  });
+
   it("renumbers steps sequentially and skips sub-items / snippets", () => {
     const plan = [
       "## Steps",
@@ -73,6 +100,18 @@ describe("plan step display markers", () => {
     expect(segmentDisplayText("[DONE:6]All set.", steps)).toEqual([
       { kind: "done", stepNum: 6, description: "Ship the final response" },
       { kind: "text", text: "All set." },
+    ]);
+  });
+
+  it("consumes backticks the model wrapped around a DONE marker", () => {
+    expect(stripDoneMarkers("`[DONE:6]`")).toBe("");
+    expect(stripDoneMarkers("Done `[DONE:6]` next")).toBe("Done next");
+  });
+
+  it("drops orphan-backtick fragments left by a wrapped DONE marker", () => {
+    expect(segmentDisplayText("`[DONE:6]`\n\nStep 7 next", steps)).toEqual([
+      { kind: "done", stepNum: 6, description: "Ship the final response" },
+      { kind: "text", text: "\n\nStep 7 next" },
     ]);
   });
 });
