@@ -709,14 +709,24 @@ export function toOpenAIMessages(
       // `[{text}, {video_url}]` carrying the uploaded `ms://<id>` reference —
       // mirroring the official Kimi read-media tool. The provider uploads the
       // clip and stamps `fileId` before this transform runs.
+      //
+      // Every OTHER OpenAI-compatible video model (e.g. Xiaomi MiMo-V2.5)
+      // rejects video inside a `tool` message ("`text` is not set", verified
+      // against the live API) — it accepts `video_url` only in `user` content.
+      // So those videos are carried out the same way images are: a follow-up
+      // `user` message after the tool result. Tool results only ever carry
+      // video when the active model is video-capable (the read tool returns
+      // native video solely for such models, and `stream()` rejects stray video
+      // for text-only models), so no extra capability guard is needed here.
       const isMoonshot = options?.provider === "moonshot";
-      const imageBlocks: OpenAI.ChatCompletionContentPartImage[] = [];
+      const followUpMediaBlocks: OpenAI.ChatCompletionContentPart[] = [];
+      let followUpHasVideo = false;
       for (const result of msg.content) {
         const text = toolResultText(result.content);
         const images = toolResultImages(result.content);
-        const videos = isMoonshot ? toolResultVideos(result.content) : [];
+        const videos = toolResultVideos(result.content);
         const hasText = text.length > 0;
-        if (videos.length > 0) {
+        if (isMoonshot && videos.length > 0) {
           const parts: OpenAI.ChatCompletionContentPartText[] = [];
           if (hasText) parts.push({ type: "text", text });
           const videoParts = videos.map((v) => {
@@ -735,21 +745,35 @@ export function toOpenAIMessages(
         out.push({
           role: "tool",
           tool_call_id: remapToolCallId(result.toolCallId, idMap),
-          content: hasText ? text : "(see attached image)",
+          content: hasText ? text : "(see attached media)",
         });
         if (images.length > 0 && options?.supportsImages !== false) {
           for (const img of images) {
-            imageBlocks.push({
+            followUpMediaBlocks.push({
               type: "image_url",
               image_url: { url: `data:${img.mediaType};base64,${img.data}` },
             });
           }
         }
+        // Non-Moonshot video models: deliver the clip in a follow-up user
+        // message as an inline base64 `video_url` (the shape MiMo accepts).
+        if (!isMoonshot && videos.length > 0) {
+          for (const v of videos) {
+            followUpMediaBlocks.push({
+              type: "video_url",
+              video_url: { url: `data:${v.mediaType};base64,${v.data}` },
+            } as unknown as OpenAI.ChatCompletionContentPart);
+            followUpHasVideo = true;
+          }
+        }
       }
-      if (imageBlocks.length > 0) {
+      if (followUpMediaBlocks.length > 0) {
+        const label = followUpHasVideo
+          ? "Attached media from tool result:"
+          : "Attached image(s) from tool result:";
         out.push({
           role: "user",
-          content: [{ type: "text", text: "Attached image(s) from tool result:" }, ...imageBlocks],
+          content: [{ type: "text", text: label }, ...followUpMediaBlocks],
         });
       }
     }

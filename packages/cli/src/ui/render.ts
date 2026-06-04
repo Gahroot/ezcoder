@@ -55,6 +55,7 @@ export interface RenderAppConfig {
   checkpointStore?: CheckpointStore;
   initialOverlay?: "pixel";
   rebuildToolsForCwd?: (cwd: string) => AgentTool[];
+  rebuildReadTool?: (model: string) => AgentTool;
   connectInitialMcpTools?: () => Promise<AgentTool[]>;
   planCallbacks?: {
     onEnterPlan?: (reason?: string) => void | Promise<void>;
@@ -417,6 +418,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             checkpointStore: config.checkpointStore,
             initialOverlay: config.initialOverlay,
             rebuildToolsForCwd: config.rebuildToolsForCwd,
+            rebuildReadTool: config.rebuildReadTool,
             connectInitialMcpTools: config.connectInitialMcpTools,
             planCallbacks: config.planCallbacks,
             terminalHistoryPrinter,

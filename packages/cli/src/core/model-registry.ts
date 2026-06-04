@@ -22,6 +22,8 @@ export interface ModelInfo {
    *   - Moonshot/Kimi: 100 MB (file-service upload cap)
    *   - MiniMax: 50 MB (Anthropic-compatible base64 inline cap)
    *   - Gemini: 20 MB (inlineData per-request cap)
+   *   - Xiaomi (MiMo): ~36 MB raw — the API caps the base64 STRING at 50 MB,
+   *     and base64 inflates bytes by ~4/3, so 36 MB raw ≈ 48 MB encoded.
    * Only meaningful when `supportsVideo` is true.
    */
   maxVideoBytes?: number;
@@ -224,6 +226,8 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "high",
   },
   // ── Xiaomi (MiMo) ──────────────────────────────────────
+  // Pro series: text-only coding/agentic flagship. The legacy mimo-v2-pro
+  // auto-routes to v2.5 on 2026-06-01 and is fully deprecated by 2026-06-30.
   {
     id: "mimo-v2.5-pro",
     name: "MiMo-V2.5-Pro",
@@ -236,6 +240,9 @@ export const MODELS: ModelInfo[] = [
     costTier: "medium",
     maxThinkingLevel: "high",
   },
+  // Omni series: native full-modal understanding (image + audio + video).
+  // Video/image ride the OpenAI-compatible transport as base64 data URLs
+  // (`video_url`/`image_url`), which the shared transform already emits.
   {
     id: "mimo-v2.5",
     name: "MiMo-V2.5",
@@ -246,6 +253,7 @@ export const MODELS: ModelInfo[] = [
     // MiMo-V2.5 is natively omnimodal (image/audio/video understanding).
     supportsImages: true,
     supportsVideo: true,
+    maxVideoBytes: 36 * 1024 * 1024,
     costTier: "low",
     maxThinkingLevel: "high",
   },

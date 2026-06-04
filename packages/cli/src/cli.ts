@@ -527,7 +527,7 @@ async function runInkTUI(opts: {
   const onPreFileMutation = (filePath: string): Promise<void> =>
     checkpointRef.current?.recordPreMutation(filePath) ?? Promise.resolve();
 
-  const { tools, processManager } = createTools(cwd, {
+  const { tools, processManager, rebuildReadTool } = createTools(cwd, {
     agents,
     skills,
     provider,
@@ -728,6 +728,7 @@ async function runInkTUI(opts: {
     initialOverlay: opts.initialOverlay,
     idealReviewEnabled: opts.idealReviewEnabled,
     rebuildToolsForCwd,
+    rebuildReadTool,
     connectInitialMcpTools,
     planCallbacks: planToolCallbacks,
   });
