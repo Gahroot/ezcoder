@@ -18,8 +18,12 @@ A modular TypeScript framework for building LLM-powered apps — from raw stream
 ## Models & Multimodal
 
 The MiniMax provider defaults to **MiniMax M3** (1M context, image + video). Video-capable
-models are Gemini 3.x, Kimi K2.6, and MiniMax M3 — these accept native video blocks (gg-ai's
-`VideoContent`). Video attachments are supported in the chat input (drag, paste, or type a path);
+models are Gemini 3.x, Kimi K2.6, MiniMax M3, and Xiaomi **MiMo-V2.5** (the omnimodal model;
+the coding-focused MiMo-V2.5-Pro is text-only) — these accept native video blocks (gg-ai's
+`VideoContent`). MiMo-V2.5 rides the OpenAI-compatible transport: video/image are sent as
+base64 data URLs (`video_url`/`image_url`), and its base64 payload cap is 50 MB (so the
+registry's `maxVideoBytes` is ~36 MB raw to stay under it after base64 inflation). Video
+attachments are supported in the chat input (drag, paste, or type a path);
 for non-video models the video is saved to a temp file and the model is told to inspect it with
 ffmpeg/its tools (mirrors the GLM image fallback). The `supportsVideo` capability flag lives in
 `packages/ggcoder/src/core/model-registry.ts`.
