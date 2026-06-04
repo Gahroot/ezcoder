@@ -81,7 +81,7 @@ function renderPlanModeSection(): string {
     `### Rules\n` +
     `- Do not implement yet: no code edits outside \`.ezcoder/plans/\`, no mutating bash (read-only shell for exploration is allowed), no subagent, no task orchestration.\n` +
     `- Be specific: list exact file paths, functions, dependencies, risks, and verification criteria.\n` +
-    `- End the plan with a \`## Steps\` section: a flat, ordered, numbered list (\`1.\`, \`2.\`, …) of concrete implementation steps to execute after approval. Each step is one actionable unit of work — not a design note, question, or rejected alternative. This section is the single source of truth for post-approval progress tracking, so only put real, doable steps here.\n` +
+    `- ALWAYS end the plan with a heading written exactly as \`## Steps\` (this literal heading is required — not \`## Plan\`, \`## Implementation\`, or any other variant), followed by a flat, ordered, numbered list (\`1.\`, \`2.\`, …) of concrete implementation steps to execute after approval. Each step is one actionable unit of work — not a design note, question, or rejected alternative. This section is the single source of truth for post-approval progress tracking, so only put real, doable steps here.\n` +
     `- Keep investigating until the plan is actionable, then stop after \`exit_plan\`.`
   );
 }
@@ -121,10 +121,10 @@ async function renderApprovedPlanSection(
   const planContent = await fs.readFile(approvedPlanPath, "utf-8").catch(() => null);
   if (planContent === null) return null;
   if (!planContent.trim()) return null;
-  // The `[DONE:n]` progress contract only applies when the plan has a
-  // canonical `## Steps` section (the same source `extractPlanSteps` reads).
+  // The `[DONE:n]` progress contract only applies when `extractPlanSteps`
+  // actually finds a step section (a `## Steps` heading or a close synonym).
   // Without it there are no tracked steps, so instructing the model to march
-  // through `## Steps` and emit `[DONE:n]` would push it to fabricate progress
+  // through the steps and emit `[DONE:n]` would push it to fabricate progress
   // against content that isn't a task list.
   const hasSteps = extractPlanSteps(planContent).length > 0;
   const stepInstruction = hasSteps
