@@ -1,5 +1,12 @@
 # @kenkaiiii/gg-core
 
+## 4.6.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @kenkaiiii/gg-ai@4.6.0
+
 ## 4.5.0
 
 ### Patch Changes
