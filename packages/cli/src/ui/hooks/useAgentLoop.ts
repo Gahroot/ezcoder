@@ -231,8 +231,14 @@ export function useAgentLoop(
       },
     ) => void;
     /** `errored` is true when the safety fallback fires after a non-abort throw —
-     *  used by the run-all auto-advance to skip marking the failed task as done. */
-    onDone?: (durationMs: number, toolsUsed: string[], errored?: boolean) => void;
+     *  used by the run-all auto-advance to skip marking the failed task as done.
+     *  `runStats` carries per-run tool counts + token total for the vital-signs line. */
+    onDone?: (
+      durationMs: number,
+      toolsUsed: string[],
+      runStats?: { counts: Record<string, number>; tokens: number },
+      errored?: boolean,
+    ) => void;
     onAborted?: () => void;
     /** Called when a queued message starts processing (after the previous run completes). */
     onQueuedStart?: (content: UserContent) => void;
@@ -283,6 +289,7 @@ export function useAgentLoop(
   const thinkingVisibleRef = useRef("");
   const runStartRef = useRef(0);
   const toolsUsedRef = useRef<Set<string>>(new Set());
+  const toolCountsRef = useRef<Map<string, number>>(new Map());
   const idealReviewStatsRef = useRef<IdealReviewStats>({
     changedLines: 0,
     toolCalls: 0,
@@ -472,6 +479,7 @@ export function useAgentLoop(
           messages: String(messages.current.length),
         });
         toolsUsedRef.current = new Set();
+        toolCountsRef.current = new Map();
         idealReviewStatsRef.current = {
           changedLines: 0,
           toolCalls: 0,
@@ -756,6 +764,10 @@ export function useAgentLoop(
                   thinkingMs: thinkingAccumRef.current,
                 });
                 toolsUsedRef.current.add(event.name);
+                toolCountsRef.current.set(
+                  event.name,
+                  (toolCountsRef.current.get(event.name) ?? 0) + 1,
+                );
                 activeToolCallsRef.current = [...activeToolCallsRef.current, newTc];
                 setActiveToolCalls(activeToolCallsRef.current);
                 break;
@@ -849,6 +861,25 @@ export function useAgentLoop(
                   thinking: thinkingBufferRef.current,
                   thinkingMs: thinkingAccumRef.current,
                 });
+                // A server tool (e.g. Anthropic's native web_search) does NOT
+                // end the turn — the model keeps streaming text afterwards into
+                // the SAME turn. onServerToolCall just pinned the pre-tool text
+                // to scrollback, so the buffer must be reset here (mirroring a
+                // turn boundary). Without this the post-tool text appends to the
+                // already-pinned text, so turn_end re-renders the whole thing
+                // (visible duplicate) and the two blocks are concatenated with
+                // no separator ("…bundling.Researched the landscape").
+                if (streamFlushTimer) {
+                  clearTimeout(streamFlushTimer);
+                  streamFlushTimer = null;
+                }
+                textVisibleRef.current = "";
+                thinkingBufferRef.current = "";
+                thinkingVisibleRef.current = "";
+                streamTextDirty = false;
+                streamThinkingDirty = false;
+                setStreamingText("");
+                setStreamingThinking("");
                 break;
 
               case "server_tool_result":
@@ -966,7 +997,10 @@ export function useAgentLoop(
                 setActivityPhase("idle");
                 // Call onDone HERE (not in finally) so its state updates
                 // (doneStatus, flushing items to Static) are batched too.
-                onDone?.(Date.now() - runStartRef.current, [...toolsUsedRef.current]);
+                onDone?.(Date.now() - runStartRef.current, [...toolsUsedRef.current], {
+                  counts: Object.fromEntries(toolCountsRef.current),
+                  tokens: realTokensAccumRef.current,
+                });
                 doneCalledRef.current = true;
                 break;
             }
@@ -1014,7 +1048,15 @@ export function useAgentLoop(
             // Pass `runErrored` so the run-all branch in App.tsx can skip
             // markTaskDone on the error path (failing task stays at `in-progress`).
             const durationMs = Date.now() - runStartRef.current;
-            onDone?.(durationMs, [...toolsUsedRef.current], runErrored);
+            onDone?.(
+              durationMs,
+              [...toolsUsedRef.current],
+              {
+                counts: Object.fromEntries(toolCountsRef.current),
+                tokens: realTokensAccumRef.current,
+              },
+              runErrored,
+            );
           }
 
           // Notify parent of new messages

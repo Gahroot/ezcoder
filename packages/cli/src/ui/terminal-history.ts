@@ -677,16 +677,16 @@ function renderToolDone(
 
   const { label, detail } = getToolHeaderParts(name, args);
   const inline = getInlineSummary(name, result, isError);
-  const suffix =
-    inline.length > 0 && toolResultPreview(name, result, isError, context).length === 0
-      ? inline
-      : "";
-  const header = toolHeader(isError ? "error" : "done", label, detail, context, { suffix });
   const preview = toolResultPreview(name, result, isError, context);
-  if (name === "edit" && !isError) {
-    const diff = extractDiff(result);
-    if (diff)
-      return block([header, ...messageResponse(renderDiffPreview(diff, args, context), context)]);
+  const editDiff = name === "edit" && !isError ? extractDiff(result) : undefined;
+  const hasBody = preview.length > 0 || editDiff !== undefined;
+  const suffix = inline.length > 0 && preview.length === 0 ? inline : "";
+  // Chips only ride the header when there is a body; the no-body bash path
+  // already surfaces the exit code via its inline suffix (matches live render).
+  const chip = hasBody ? renderHeaderChip(name, result, isError, context) : "";
+  const header = toolHeader(isError ? "error" : "done", label, detail, context, { suffix }) + chip;
+  if (editDiff !== undefined) {
+    return block([header, ...messageResponse(renderDiffPreview(editDiff, args, context), context)]);
   }
   return block(preview.length > 0 ? [header, ...messageResponse(preview, context)] : [header]);
 }
@@ -1208,6 +1208,32 @@ function getServerToolHeaderParts(name: string, input: unknown): { label: string
 
 function getBashExitCode(result: string): string {
   return result.match(/^Exit code: (.+)/)?.[1]?.trim() ?? "0";
+}
+
+function renderHeaderChip(
+  name: string,
+  result: string,
+  isError: boolean,
+  context: TerminalHistoryContext,
+): string {
+  if (name === "bash" && !isError) {
+    const exitMatch = result.split("\n")[0]?.match(/^Exit code: (.+)/);
+    if (!exitMatch) return "";
+    const code = exitMatch[1].trim();
+    const ok = code === "0";
+    return color(ok ? context.theme.success : context.theme.error, ok ? "  ✓ 0" : `  ✗ ${code}`);
+  }
+  if (name === "edit" && !isError) {
+    const diff = extractDiff(result);
+    if (!diff) return "";
+    const added = (diff.match(/^\+[^+]/gm) ?? []).length;
+    const removed = (diff.match(/^-[^-]/gm) ?? []).length;
+    if (added === 0 && removed === 0) return "";
+    const addedPart = added > 0 ? color(context.theme.success, `  +${added}`) : "";
+    const removedPart = removed > 0 ? color(context.theme.error, `  −${removed}`) : "";
+    return `${addedPart}${removedPart}`;
+  }
+  return "";
 }
 
 function extractDiff(result: string): string | undefined {
