@@ -1229,7 +1229,7 @@ async function resolveActiveProvider(
   ];
   const loggedInProviders: Provider[] = [];
   for (const p of allProviders) {
-    if (await authStorage.getCredentials(p)) loggedInProviders.push(p);
+    if (await authStorage.hasProviderAuth(p)) loggedInProviders.push(p);
   }
 
   if (loggedInProviders.length === 0) {
