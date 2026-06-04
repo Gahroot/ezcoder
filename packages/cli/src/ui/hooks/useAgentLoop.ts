@@ -353,6 +353,7 @@ export function useAgentLoop(
   const reset = useCallback(() => {
     // Abort any running agent loop first — this kills in-flight subagent processes
     abortRef.current?.abort();
+    setIsRunning(false);
     setCurrentTurn(0);
     setTotalTokens({ input: 0, output: 0 });
     setContextUsed(0);
@@ -364,6 +365,8 @@ export function useAgentLoop(
     setThinkingMs(0);
     setIsThinking(false);
     setStreamedTokenEstimate(0);
+    setRetryInfo(null);
+    setStallError(null);
     queueRef.current = [];
     setQueuedCount(0);
   }, []);

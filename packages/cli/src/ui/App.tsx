@@ -2424,6 +2424,9 @@ export function App(props: AppProps) {
     void agentLoop.run(action.prompt).catch((err: unknown) => {
       const errMsg = err instanceof Error ? err.message : String(err);
       log("ERROR", "error", errMsg);
+      if (agentLoop.isRunning) {
+        agentLoop.reset();
+      }
       setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
     });
     // Intentional one-shot: run once on mount, never re-fire on re-render.
@@ -2697,6 +2700,12 @@ export function App(props: AppProps) {
         const msg = err instanceof Error ? err.message : String(err);
         log("ERROR", "error", msg);
         const isAbort = msg.includes("aborted") || msg.includes("abort");
+        // If the agent loop threw but left isRunning in a stale true state
+        // (can happen when the finally block hasn't been processed by React
+        // yet), reset it so the user isn't deadlocked with a non-working UI.
+        if (agentLoop.isRunning) {
+          agentLoop.reset();
+        }
         setLiveItems((prev) => [
           ...prev,
           isAbort
@@ -3111,6 +3120,9 @@ export function App(props: AppProps) {
       setDoneStatus(null);
       setLiveItems([taskItem]);
       void agentLoop.run(fullPrompt).catch((err: unknown) => {
+        if (agentLoop.isRunning) {
+          agentLoop.reset();
+        }
         setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
       });
     },
@@ -3709,6 +3721,9 @@ export function App(props: AppProps) {
     void agentLoop.run(rejectionMsg).catch((err: unknown) => {
       const errMsg = err instanceof Error ? err.message : String(err);
       log("ERROR", "error", errMsg);
+      if (agentLoop.isRunning) {
+        agentLoop.reset();
+      }
       setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
     });
   };
