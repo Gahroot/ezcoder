@@ -20,7 +20,7 @@ import {
 } from "./stores/taskbar-store.js";
 import { playNotificationSound } from "../utils/sound.js";
 import { type Message, type Provider, type ThinkingLevel, type TextContent } from "@prestyj/ai";
-import { downscaleForPreview, extractImagePaths, type ImageAttachment } from "../utils/image.js";
+import { downscaleForPreview, extractMediaPaths, type ImageAttachment } from "../utils/image.js";
 import type { AgentTool } from "@prestyj/agent";
 import { useAgentLoop, type StreamSnapshot, type UserContent } from "./hooks/useAgentLoop.js";
 import { useTranscriptHistory } from "./hooks/useTranscriptHistory.js";
@@ -77,7 +77,7 @@ import {
   type PlanStep,
 } from "../utils/plan-steps.js";
 import type { MCPClientManager } from "../core/mcp/index.js";
-import { getMCPServers } from "../core/mcp/index.js";
+import { getAllMcpServers } from "../core/mcp/index.js";
 import type { AuthStorage } from "../core/auth-storage.js";
 import {
   trimFlushedItems,
@@ -1168,6 +1168,8 @@ export function App(props: AppProps) {
       tools: currentTools,
       webSearch: props.webSearch,
       maxTokens: props.maxTokens,
+      supportsImages: getModel(currentModel)?.supportsImages ?? true,
+      supportsVideo: getModel(currentModel)?.supportsVideo ?? false,
       thinking: thinkingLevel,
       apiKey: activeApiKey,
       baseUrl: activeBaseUrl,
@@ -1676,6 +1678,20 @@ export function App(props: AppProps) {
           log("INFO", "server_tool", `Server tool call: ${name}`, { id });
           const startedAt = Date.now();
           const animateUntil = startedAt + RUNNING_INDICATOR_ANIMATION_MS;
+          // Feed the pinned LiveToolPanel so provider-side tools (Anthropic's
+          // native web_search) appear in the same rolling window as client
+          // tools. `input` carries the tool args (e.g. { query }) the row reads.
+          setLiveToolFeed((prev) =>
+            [
+              ...prev,
+              {
+                id,
+                name,
+                args: (input ?? {}) as Record<string, unknown>,
+                status: "running" as const,
+              },
+            ].slice(-(LIVE_TOOL_PANEL_ROWS * 2)),
+          );
           // Flush completed items (including assistant text) before adding server
           // tool UI — same rationale as onToolStart.
           setLiveItems((prev) => {
@@ -1709,6 +1725,13 @@ export function App(props: AppProps) {
       onServerToolResult: useCallback(
         (toolUseId: string, resultType: string, data: unknown) => {
           log("INFO", "server_tool", `Server tool result`, { toolUseId, resultType });
+          // Mark the panel entry done. Aborts never reach here (handled in
+          // onAborted), so a result that arrives is always a normal completion.
+          setLiveToolFeed((prev) =>
+            prev.map((entry) =>
+              entry.id === toolUseId ? { ...entry, status: "done" as const } : entry,
+            ),
+          );
           setLiveItems((prev) => {
             let updated: CompletedItem[];
             const startIdx = prev.findIndex(
@@ -1933,10 +1956,15 @@ export function App(props: AppProps) {
             typeof content === "string"
               ? undefined
               : content.filter((c) => c.type === "image").length || undefined;
+          const videoCount =
+            typeof content === "string"
+              ? undefined
+              : content.filter((c) => c.type === "video").length || undefined;
           const userItem: UserItem = {
             kind: "user",
             text: displayText,
             imageCount,
+            videoCount,
             id: getId(),
           };
           setLastUserMessage(displayText);
@@ -2564,9 +2592,17 @@ export function App(props: AppProps) {
 
       // ── Build user content (shared by normal + queued paths) ──
       const hasImages = inputImages.length > 0;
+      const imageCount = inputImages.filter((img) => img.kind === "image").length;
+      const videoCount = inputImages.filter((img) => img.kind === "video").length;
       const modelInfo = getModel(currentModel);
       const modelSupportsImages = modelInfo?.supportsImages ?? true;
-      const userContent = buildUserContentWithAttachments(input, inputImages, modelSupportsImages);
+      const modelSupportsVideo = modelInfo?.supportsVideo ?? false;
+      const userContent = buildUserContentWithAttachments(
+        input,
+        inputImages,
+        modelSupportsImages,
+        modelSupportsVideo,
+      );
 
       // ── Queue message if agent is already running ──
       if (agentLoop.isRunning) {
@@ -2578,23 +2614,24 @@ export function App(props: AppProps) {
         agentLoop.queueMessage(userContent, input);
         let displayText = input;
         if (hasImages) {
-          const { cleanText } = await extractImagePaths(input, props.cwd);
+          const { cleanText } = await extractMediaPaths(input, props.cwd);
           displayText = cleanText;
         }
         const queuedItem: QueuedItem = {
           kind: "queued",
           text: displayText,
-          imageCount: hasImages ? inputImages.length : undefined,
+          imageCount: imageCount > 0 ? imageCount : undefined,
+          videoCount: videoCount > 0 ? videoCount : undefined,
           id: getId(),
         };
         setLiveItems((prev) => [...prev, queuedItem]);
         return;
       }
 
-      // Build display text — strip image paths, show badges instead
+      // Build display text — strip image/video paths, show badges instead
       let displayText = input;
       if (hasImages) {
-        const { cleanText } = await extractImagePaths(input, props.cwd);
+        const { cleanText } = await extractMediaPaths(input, props.cwd);
         displayText = cleanText;
       }
       let imagePreviews: ImagePreview[] | undefined;
@@ -2612,7 +2649,8 @@ export function App(props: AppProps) {
       const userItem: UserItem = {
         kind: "user",
         text: displayText,
-        imageCount: hasImages ? inputImages.length : undefined,
+        imageCount: imageCount > 0 ? imageCount : undefined,
+        videoCount: videoCount > 0 ? videoCount : undefined,
         imagePreviews,
         pasteInfo,
         id: getId(),
@@ -2742,8 +2780,14 @@ export function App(props: AppProps) {
             return next;
           });
 
-          // Reconnect MCP servers
-          if (props.mcpManager) {
+          // Reconnect MCP servers ONLY when the resolved server set actually
+          // changes. GLM is the only provider with a different set (Z.AI
+          // servers), so a switch that doesn't involve GLM on either side
+          // keeps the identical set — tearing down a live stdio child (e.g.
+          // kencode-search) and re-spawning `npx` there only risks a failed
+          // re-spawn that would silently drop the tools.
+          const glmInvolved = newProvider === "glm" || prevProvider === "glm";
+          if (props.mcpManager && glmInvolved) {
             void (async () => {
               // Disconnect old MCP servers
               await props.mcpManager!.dispose();
@@ -2761,9 +2805,11 @@ export function App(props: AppProps) {
                 apiKey = props.credentialsByProvider?.["glm"]?.accessToken;
               }
               try {
-                const mcpTools = await props.mcpManager!.connectAll(
-                  getMCPServers(newProvider, apiKey),
-                );
+                // Use getAllMcpServers so user-configured servers (from
+                // ~/.ezcoder/mcp.json and ./.gg/mcp.json) survive the reconnect —
+                // getMCPServers returns provider defaults only.
+                const servers = await getAllMcpServers(newProvider, apiKey, props.cwd);
+                const mcpTools = await props.mcpManager!.connectAll(servers);
                 setCurrentTools((prev) => {
                   const next = [...prev.filter((t) => !t.name.startsWith("mcp__")), ...mcpTools];
                   rebuildPromptWithTools(next);

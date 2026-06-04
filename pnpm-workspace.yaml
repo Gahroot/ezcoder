@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "Matey"
+  - "experiments/*"
 
 # pnpm 10+ reads these settings from pnpm-workspace.yaml, not the package.json
 # "pnpm" key. They mirror that key so the committed lockfile stays reproducible

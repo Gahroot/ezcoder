@@ -1,0 +1,14 @@
+{
+  "name": "prompt-bench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "tsx run.ts"
+  },
+  "dependencies": {
+    "@prestyj/agent": "workspace:*",
+    "@prestyj/ai": "workspace:*",
+    "@prestyj/cli": "workspace:*",
+    "zod": "^4.0.0"
+  }
+}

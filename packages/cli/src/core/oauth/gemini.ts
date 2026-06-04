@@ -7,6 +7,15 @@ const CLIENT_ID_ENV = "EZCODER_GEMINI_OAUTH_CLIENT_ID";
 const CLIENT_SECRET_ENV = "EZCODER_GEMINI_OAUTH_CLIENT_SECRET";
 const LEGACY_CLIENT_ID_ENV = "GGCODER_GEMINI_OAUTH_CLIENT_ID";
 const LEGACY_CLIENT_SECRET_ENV = "GGCODER_GEMINI_OAUTH_CLIENT_SECRET";
+// Public "installed application" OAuth client shipped with the official Gemini CLI.
+// Unlike the OpenAI/Anthropic flows (pure PKCE, no secret), Google's token endpoint
+// requires a client_secret for the installed-app authorization_code / refresh_token
+// grants — so it must be embedded to support local login like the other providers.
+// This is the published gemini-cli installed-app secret (non-confidential by design);
+// the env vars above override it for users who bring their own Google Cloud client.
+const DEFAULT_CLIENT_ID =
+  "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
+const DEFAULT_CLIENT_SECRET = "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";
 const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CODE_ASSIST_BASE_URL = "https://cloudcode-pa.googleapis.com";
@@ -142,12 +151,14 @@ export async function refreshGeminiToken(refreshToken: string): Promise<OAuthCre
 }
 
 function getGeminiOAuthClientCredentials(): GeminiOAuthClientCredentials {
-  const clientId = process.env[CLIENT_ID_ENV]?.trim() ?? process.env[LEGACY_CLIENT_ID_ENV]?.trim();
+  const clientId =
+    process.env[CLIENT_ID_ENV]?.trim() ??
+    process.env[LEGACY_CLIENT_ID_ENV]?.trim() ??
+    DEFAULT_CLIENT_ID;
   const clientSecret =
-    process.env[CLIENT_SECRET_ENV]?.trim() ?? process.env[LEGACY_CLIENT_SECRET_ENV]?.trim();
-  if (!clientId || !clientSecret) {
-    throw new Error(`Gemini OAuth requires ${CLIENT_ID_ENV} and ${CLIENT_SECRET_ENV} to be set.`);
-  }
+    process.env[CLIENT_SECRET_ENV]?.trim() ??
+    process.env[LEGACY_CLIENT_SECRET_ENV]?.trim() ??
+    DEFAULT_CLIENT_SECRET;
   return { clientId, clientSecret };
 }
 
