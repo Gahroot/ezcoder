@@ -435,7 +435,7 @@ export interface AppProps {
   rebuildReadTool?: (model: string) => AgentTool;
   connectInitialMcpTools?: () => Promise<AgentTool[]>;
   planCallbacks?: {
-    onEnterPlan?: (reason?: string) => void | Promise<void>;
+    onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
     onExitPlan?: (planPath: string) => Promise<string>;
   };
   terminalHistoryPrinter?: TerminalHistoryPrinter;
@@ -611,6 +611,10 @@ export function App(props: AppProps) {
   const [runAllTasks, setRunAllTasks] = useState(props.sessionStore?.runAllTasks ?? false);
   const runAllTasksRef = useRef(props.sessionStore?.runAllTasks ?? false);
   const startTaskRef = useRef<(title: string, prompt: string, taskId: string) => void>(() => {});
+  // True while a task-pane task (single or run-all) is executing. Used to
+  // suppress the interactive plan-mode approval pane, which would otherwise
+  // stall an unattended task run waiting for the user to approve a plan.
+  const taskRunningRef = useRef(false);
   const runAllPixelRef = useRef(props.sessionStore?.runAllPixel ?? false);
   const currentPixelFixRef = useRef<PreparedPixelFix | null>(null);
   const startPixelFixRef = useRef<(errorId: string) => void>(() => {});
@@ -1855,6 +1859,9 @@ export function App(props: AppProps) {
             duration: `${durationMs}ms`,
             toolsUsed: toolsUsed.join(",") || "none",
           });
+          // The task run (if any) is finished. Run-all re-arms this below when it
+          // auto-starts the next task.
+          taskRunningRef.current = false;
           const doneDecision = getDoneFlushDecision({
             planOverlayPending: planOverlayPendingRef.current,
           });
@@ -3137,6 +3144,7 @@ export function App(props: AppProps) {
   const startTask = useCallback(
     (title: string, prompt: string, taskId: string) => {
       const taskCwd = cwdRef.current;
+      taskRunningRef.current = true;
       const shortId = taskId.slice(0, 8);
       const completionHint =
         `\n\n---\nWhen you have fully completed this task, call the tasks tool to mark it done:\n` +
@@ -3479,12 +3487,17 @@ export function App(props: AppProps) {
   };
 
   const handleEnterPlanMode = useCallback(
-    async (reason?: string): Promise<void> => {
+    async (reason?: string): Promise<boolean> => {
+      // During an unattended task run, plan mode would open an approval pane and
+      // block the loop waiting on the user. Tasks are meant to run end-to-end, so
+      // decline plan mode and let the agent implement directly.
+      if (taskRunningRef.current) return false;
       await setPlanModeAndPrompt(true);
       setLiveItems((prev) => [
         ...prev,
         { kind: "plan_transition", text: reason ?? "", id: getId(), active: true },
       ]);
+      return true;
     },
     [setPlanModeAndPrompt],
   );

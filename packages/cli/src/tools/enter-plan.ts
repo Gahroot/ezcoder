@@ -9,7 +9,7 @@ const EnterPlanParams = z.object({
 });
 
 export function createEnterPlanTool(
-  onEnterPlan: (reason?: string) => void | Promise<void>,
+  onEnterPlan: (reason?: string) => boolean | void | Promise<boolean | void>,
 ): AgentTool<typeof EnterPlanParams> {
   return {
     name: "enter_plan",
@@ -20,7 +20,16 @@ export function createEnterPlanTool(
     parameters: EnterPlanParams,
     executionMode: "sequential",
     async execute({ reason }) {
-      await onEnterPlan(reason);
+      const entered = await onEnterPlan(reason);
+      // The host can decline plan mode (e.g. during an unattended task run where
+      // an approval pane would stall the loop). When declined, tell the agent to
+      // skip planning and implement the task directly.
+      if (entered === false) {
+        return (
+          "Plan mode is unavailable during a task run. Skip planning and implement " +
+          "the task directly: make the code changes, verify them, and mark the task done."
+        );
+      }
       return (
         "Plan mode activated. You are now in read-only research mode.\n\n" +
         "Allowed actions:\n" +

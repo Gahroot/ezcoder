@@ -517,7 +517,7 @@ async function runInkTUI(opts: {
   const planModeRef = { current: false };
   const goalModeRef: { current: GoalMode } = { current: "off" };
   const planToolCallbacks: {
-    onEnterPlan?: (reason?: string) => void | Promise<void>;
+    onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
     onExitPlan?: (planPath: string) => Promise<string>;
   } = {};
 

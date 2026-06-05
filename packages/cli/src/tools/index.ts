@@ -37,8 +37,12 @@ export interface CreateToolsOptions {
   planModeRef?: { current: boolean };
   /** Ref for checking Goal orchestration mode inside tool execute functions. */
   goalModeRef?: { current: GoalMode };
-  /** Callback when the LLM enters plan mode. */
-  onEnterPlan?: (reason?: string) => void | Promise<void>;
+  /**
+   * Callback when the LLM enters plan mode. Returns false when the host declines
+   * plan mode (e.g. during an unattended task run), so the tool can tell the
+   * agent to implement directly instead of waiting for plan approval.
+   */
+  onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
   /** Callback when the LLM submits a plan for review. */
   onExitPlan?: (planPath: string) => Promise<string>;
   /** Callback after read tool successfully reads a text file. */

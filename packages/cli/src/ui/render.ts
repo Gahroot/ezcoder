@@ -58,7 +58,7 @@ export interface RenderAppConfig {
   rebuildReadTool?: (model: string) => AgentTool;
   connectInitialMcpTools?: () => Promise<AgentTool[]>;
   planCallbacks?: {
-    onEnterPlan?: (reason?: string) => void | Promise<void>;
+    onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
     onExitPlan?: (planPath: string) => Promise<string>;
   };
 }
