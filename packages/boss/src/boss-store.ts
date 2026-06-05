@@ -145,7 +145,7 @@ export type InfoItem = BossInfoItem;
 export type TaskDispatchItem = BossTaskDispatchItem;
 
 /**
- * Auto-update notice ("Ken just shipped 4.3.x!"). Distinct from a plain
+ * Auto-update notice ("Nolan just shipped 4.3.x!"). Distinct from a plain
  * info row so the renderer can wrap it in the success-bordered ✨ box that
  * ezcoder uses — without this, the update message renders in flat default
  * text and goes unnoticed amid worker chatter.

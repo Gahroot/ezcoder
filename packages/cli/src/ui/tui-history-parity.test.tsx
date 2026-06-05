@@ -561,7 +561,7 @@ const parityCaseByKind = {
   update_notice: {
     kind: "update_notice",
     id: "update-notice",
-    text: "Ken just pushed a fresh update — 4.3.214 → 4.3.215! I'll grab it on next launch (or run npm install -g @prestyj/cli@latest if you can't wait).",
+    text: "Nolan just pushed a fresh update — 4.3.214 → 4.3.215! I'll grab it on next launch (or run npm install -g @prestyj/cli@latest if you can't wait).",
   },
   compacting: { kind: "compacting", id: "compacting" },
   compacted: {

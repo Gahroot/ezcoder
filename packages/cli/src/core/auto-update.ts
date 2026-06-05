@@ -150,7 +150,7 @@ export function checkAndAutoUpdate(currentVersion: string): string | null {
         if (info.updateCommand) {
           // Run update in background — takes effect next launch
           performUpdateInBackground(info.updateCommand);
-          message = `Ken just shipped ${state.latestVersion}! Installing in the background — takes effect next launch.`;
+          message = `Nolan just shipped ${state.latestVersion}! Installing in the background — takes effect next launch.`;
 
           writeState({
             ...state,
@@ -248,7 +248,7 @@ export function startPeriodicUpdateCheck(
         });
 
         onUpdate(
-          `Ken just pushed a fresh update — ${currentVersion} → ${latestVersion}! I'll grab it on next launch (or run ${info.updateCommand} if you can't wait).`,
+          `Nolan just pushed a fresh update — ${currentVersion} → ${latestVersion}! I'll grab it on next launch (or run ${info.updateCommand} if you can't wait).`,
         );
 
         // Stop checking once we've notified

@@ -127,7 +127,7 @@ export interface SetupHintItem {
   id: string;
 }
 
-export const UPDATE_NOTICE_TEXT = "KEN HAS PUSHED A NEW GG CODER UPDATE";
+export const UPDATE_NOTICE_TEXT = "NOLAN HAS PUSHED A NEW EZ CODER UPDATE";
 
 /** Copy shown when the automatic pre-final ideal-review hook engages. */
 export const IDEAL_HOOK_NOTICE_TEXT = "Hook engaged — running an ideal review before finalizing.";

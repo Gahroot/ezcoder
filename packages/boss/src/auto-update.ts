@@ -146,7 +146,7 @@ export function checkAndAutoUpdate(currentVersion: string): string | null {
         const info = detectInstallInfo();
         if (info.updateCommand) {
           performUpdateInBackground(info.updateCommand);
-          message = `Ken just shipped ${state.latestVersion}! Installing in the background — takes effect next launch.`;
+          message = `Nolan just shipped ${state.latestVersion}! Installing in the background — takes effect next launch.`;
           writeState({
             ...state,
             lastCheckedAt: Date.now(),
@@ -232,7 +232,7 @@ export function startPeriodicUpdateCheck(
           updatePending: true,
         });
         onUpdate(
-          `Ken just pushed a fresh update — ${currentVersion} → ${latestVersion}! Restart ezboss to grab it (or run ${info.updateCommand} if you can't wait).`,
+          `Nolan just pushed a fresh update — ${currentVersion} → ${latestVersion}! Restart ezboss to grab it (or run ${info.updateCommand} if you can't wait).`,
         );
         stopPeriodicUpdateCheck();
       })

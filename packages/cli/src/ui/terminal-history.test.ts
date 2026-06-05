@@ -311,7 +311,7 @@ describe("terminal history", () => {
         {
           kind: "update_notice",
           id: "update-notice",
-          text: "Ken just pushed a fresh update — 4.3.214 → 4.3.215! I'll grab it on next launch (or run npm install -g @prestyj/cli@latest if you can't wait).",
+          text: "Nolan just pushed a fresh update — 4.3.214 → 4.3.215! I'll grab it on next launch (or run npm install -g @prestyj/cli@latest if you can't wait).",
         },
       ],
       context,
@@ -320,8 +320,8 @@ describe("terminal history", () => {
     const rendered = stripAnsi(output);
     expect(rendered).toMatch(/4\.3\.215\.\n\n │ ⟳ Conversation compacted/);
     expect(rendered).toMatch(/86% reduction\n\n ╭─+/);
-    expect(rendered).toContain(" │ KEN HAS PUSHED A NEW GG CODER UPDATE");
-    expect(rendered).not.toContain("Ken just pushed a fresh update");
+    expect(rendered).toContain(" │ NOLAN HAS PUSHED A NEW EZ CODER UPDATE");
+    expect(rendered).not.toContain("Nolan just pushed a fresh update");
     expect(rendered).toMatch(/╰─+╯\n$/);
   });
 
