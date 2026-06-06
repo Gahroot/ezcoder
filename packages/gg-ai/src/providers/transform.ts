@@ -37,6 +37,41 @@ function isRawThinking(part: ContentPart): boolean {
 }
 
 /**
+ * Content block `type`s Anthropic accepts as message input. A `raw` part can
+ * originate from another provider (e.g. the OpenAI Codex provider round-trips its
+ * encrypted reasoning item as `{ type: "raw", data: { type: "reasoning", … } }`).
+ * Switching such a session to an Anthropic model would otherwise forward that
+ * foreign block verbatim and Anthropic rejects it ("Input tag 'reasoning' … does
+ * not match any of the expected tags"). Raw blocks whose wire type isn't in this
+ * set are dropped on the way out.
+ */
+const ANTHROPIC_INPUT_BLOCK_TYPES = new Set<string>([
+  "bash_code_execution_tool_result",
+  "code_execution_tool_result",
+  "connector_text",
+  "container_upload",
+  "document",
+  "image",
+  "mid_conv_system",
+  "redacted_thinking",
+  "search_result",
+  "server_tool_use",
+  "text",
+  "text_editor_code_execution_tool_result",
+  "thinking",
+  "tool_result",
+  "tool_search_tool_result",
+  "tool_use",
+  "web_fetch_tool_result",
+  "web_search_tool_result",
+]);
+
+/** True for a `raw` part Anthropic will accept as an input content block. */
+function isAnthropicCompatibleRaw(part: Extract<ContentPart, { type: "raw" }>): boolean {
+  return ANTHROPIC_INPUT_BLOCK_TYPES.has(part.data.type as string);
+}
+
+/**
  * True for content parts that Anthropic treats as position-sensitive reasoning
  * blocks in the latest assistant message: SIGNED `thinking` blocks and
  * `redacted_thinking` blocks (round-tripped as opaque `raw`). Unsigned thinking
@@ -81,7 +116,10 @@ function toAnthropicAssistantPart(
     } as unknown as Anthropic.ContentBlockParam;
   if (part.type === "server_tool_result")
     return part.data as unknown as Anthropic.ContentBlockParam;
-  if (part.type === "raw") return part.data as unknown as Anthropic.ContentBlockParam;
+  if (part.type === "raw")
+    return isAnthropicCompatibleRaw(part)
+      ? (part.data as unknown as Anthropic.ContentBlockParam)
+      : null;
   // Unknown content type (e.g. image in assistant message) — drop it.
   return null;
 }

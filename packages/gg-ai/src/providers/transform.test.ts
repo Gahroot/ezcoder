@@ -126,6 +126,26 @@ describe("Anthropic transform", () => {
     expect(content.map((b) => b.type)).toEqual(["text", "redacted_thinking", "tool_use"]);
   });
 
+  it("drops foreign raw blocks (e.g. Codex reasoning) Anthropic would reject", () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "raw",
+            data: { type: "reasoning", id: "rs_1", encrypted_content: "abc", summary: [] },
+          },
+          { type: "text", text: "answer" },
+          { type: "tool_call", id: "toolu_3", name: "read_file", args: { filePath: "c.ts" } },
+        ],
+      },
+    ];
+
+    const { messages: out } = toAnthropicMessages(messages);
+    const content = out[0]?.content as unknown as Array<Record<string, unknown>>;
+    expect(content.map((b) => b.type)).toEqual(["text", "tool_use"]);
+  });
+
   it("still strips empty text blocks when no thinking block is present", () => {
     const messages: Message[] = [
       {
