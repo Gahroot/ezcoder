@@ -12,7 +12,7 @@ import {
   serverResetDelayMs,
 } from "./agent-loop.js";
 import type { AgentEvent, AgentResult, AgentTool } from "./types.js";
-import type { Message, StreamOptions } from "@prestyj/ai";
+import type { Message, StreamEvent, StreamOptions } from "@prestyj/ai";
 
 // ── Mock stream ────────────────────────────────────────────
 
@@ -773,6 +773,127 @@ describe("agentLoop", () => {
     expect(events.some((e) => e.type === "agent_done")).toBe(true);
     expect(result.totalTurns).toBe(1); // stall retries don't count as turns
   }, 30_000);
+
+  it("retries when a stalled stream ignores abort", async () => {
+    vi.useFakeTimers();
+    try {
+      let callIndex = 0;
+      mockStream.mockImplementation(() => {
+        callIndex++;
+        if (callIndex === 1) {
+          const pendingNext = new Promise<IteratorResult<StreamEvent>>(() => {});
+          return {
+            [Symbol.asyncIterator]: () => ({
+              next: () => pendingNext,
+            }),
+            response: new Promise(() => {}),
+          } as unknown as ReturnType<typeof stream>;
+        }
+        return mockOkResult("Recovered!") as unknown as ReturnType<typeof stream>;
+      });
+
+      const loopPromise = collectLoop(
+        [
+          { role: "system", content: "sys" },
+          { role: "user", content: "hi" },
+        ],
+        { provider: "anthropic", model: "test" },
+      );
+
+      await vi.advanceTimersByTimeAsync(50_000);
+
+      const { events, result } = await loopPromise;
+      expect(mockStream).toHaveBeenCalledTimes(2);
+      expect(events.some((e) => e.type === "retry" && e.reason === "stream_stall")).toBe(true);
+      expect(events.some((e) => e.type === "agent_done")).toBe(true);
+      expect(result.totalTurns).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("exits when caller aborts a stream that ignores abort", async () => {
+    const controller = new AbortController();
+    const returnIterator = vi.fn(async () => ({ done: true as const, value: undefined }));
+    mockStream.mockReturnValueOnce({
+      [Symbol.asyncIterator]: () => ({
+        next: () => new Promise<IteratorResult<StreamEvent>>(() => {}),
+        return: returnIterator,
+      }),
+      response: new Promise(() => {}),
+    } as unknown as ReturnType<typeof stream>);
+
+    const loopPromise = collectLoop(
+      [
+        { role: "system", content: "sys" },
+        { role: "user", content: "hi" },
+      ],
+      { provider: "anthropic", model: "test", signal: controller.signal },
+    );
+
+    await Promise.resolve();
+    controller.abort();
+
+    const { events, result } = await loopPromise;
+    expect(returnIterator).toHaveBeenCalledOnce();
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+    expect(result.totalTurns).toBe(1);
+  });
+
+  it("exits when caller aborts a tool that ignores abort", async () => {
+    const controller = new AbortController();
+    mockStream.mockReturnValueOnce({
+      [Symbol.asyncIterator]: async function* () {
+        yield* [];
+      },
+      response: Promise.resolve({
+        message: {
+          role: "assistant" as const,
+          content: [{ type: "tool_call" as const, id: "t1", name: "hang", args: {} }],
+        },
+        stopReason: "tool_use",
+        usage: { inputTokens: 50, outputTokens: 25 },
+      }),
+    } as unknown as ReturnType<typeof stream>);
+
+    const gen = agentLoop(
+      [
+        { role: "system", content: "sys" },
+        { role: "user", content: "hi" },
+      ],
+      {
+        provider: "anthropic",
+        model: "test",
+        signal: controller.signal,
+        tools: [
+          {
+            name: "hang",
+            description: "hanging test tool",
+            parameters: emptyParams,
+            execute: () => new Promise<string>(() => {}),
+          },
+        ],
+      },
+    );
+
+    const events: AgentEvent[] = [];
+    while (true) {
+      const next = await gen.next();
+      if (next.done) throw new Error("agent loop ended before tool started");
+      events.push(next.value);
+      if (next.value.type === "tool_call_start") break;
+    }
+
+    controller.abort();
+    while (true) {
+      const next = await gen.next();
+      if (next.done) break;
+      events.push(next.value);
+    }
+
+    expect(events.some((e) => e.type === "tool_call_start")).toBe(true);
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+  });
 
   it("runs parallel tools concurrently by default", async () => {
     const firstStarted = deferred();

@@ -86,10 +86,11 @@ function renderPlanModeSection(): string {
   );
 }
 
-function renderGoalPlannerSection(): string {
+function renderGoalPlannerSection(hasKencode: boolean): string {
+  const kencodeProbe = hasKencode ? "kencode reference/discover/searchCode, or " : "";
   return (
     `## Goal Planner Mode (ACTIVE)\n\n` +
-    `Protocol: classify uncertainty; if low, do no research; otherwise use only the smallest needed probes: read/grep/find/ls, \`source_path\`, \`web_search\`/\`web_fetch\`, kencode reference/discover/searchCode, or cheap foreground non-mutating bash checks. Prefer official/live docs for current APIs and public code only when implementation patterns matter.\n\n` +
+    `Protocol: classify uncertainty; if low, do no research; otherwise use only the smallest needed probes: read/grep/find/ls, \`source_path\`, \`web_search\`/\`web_fetch\`, ${kencodeProbe}cheap foreground non-mutating bash checks. Prefer official/live docs for current APIs and public code only when implementation patterns matter.\n\n` +
     `Output exactly one \`GOAL_PLAN\` block and stop. Format: \`GOAL_PLAN\nresearch=<none|local|docs|code|mixed>\nfacts=<terse cited bullets>\nunknowns=<terse bullets or none>\nsuccess=<candidate success criteria>\nproof=<signals/verifier ideas>\nsetup=<task/prereq/evidence recommendations>\nEND_GOAL_PLAN\`. Keep it under 1800 chars, no narrative recap.\n\n` +
     `Forbidden: \`edit\`, \`write\`, \`subagent\`, \`goals\`, background processes, verifier execution, and implementation/refactor/file generation.`
   );
@@ -139,14 +140,25 @@ async function renderApprovedPlanSection(
   );
 }
 
-function renderResearchSection(): string {
+function renderResearchSection(hasKencode: boolean): string {
+  // Only advertise the kencode public-code search tools when they actually
+  // connected. Otherwise the model is told to call tools that aren't in its
+  // toolMap and every attempt fails with "Unknown tool: mcp__kencode-search__*".
+  const publicCodeSentence = hasKencode
+    ? `For public code, use ReferenceSources for curated repos or DiscoverRepos for current/top repos, then verify exact snippets with SearchCode literal text/RE2 (not semantic); \`path\` is a literal path substring and \`repo\` only after broad/peek proof. `
+    : `For public code patterns, prefer official/live docs via \`web_search\`/\`web_fetch\`. `;
   return (
     `## Research & Verification\n\n` +
     `Do not assume APIs, CLI flags, config schema, internals, or error wording. Use \`source_path\` for installed deps and inspect with read/grep/find/ls; use \`web_search\` then \`web_fetch\` for authoritative docs. ` +
-    `For public code, use ReferenceSources for curated repos or DiscoverRepos for current/top repos, then verify exact snippets with SearchCode literal text/RE2 (not semantic); \`path\` is a literal path substring and \`repo\` only after broad/peek proof. ` +
+    publicCodeSentence +
     `When driving a programmatic Goal run, model the intended experience, choose proportional local/free proof, and block only with exact user instructions for true external prerequisites. ` +
     `Run targeted checks when they are relevant to the change; read/fix failures; never report unrun or failing checks as passing.`
   );
+}
+
+/** Whether any kencode-search MCP tool is in the active tool set. */
+function hasKencodeSearch(toolNames: readonly string[]): boolean {
+  return toolNames.some((name) => name.startsWith("mcp__kencode-search__"));
 }
 
 function renderCodeQualitySection(): string {
@@ -233,6 +245,8 @@ export async function buildSystemPrompt(
   provider?: Provider,
   goalMode: GoalMode = "off",
 ): Promise<string> {
+  const hasKencode = hasKencodeSearch(toolNames ?? DEFAULT_TOOL_NAMES);
+
   const sections: string[] = [
     renderIdentitySection(provider, goalMode),
     renderTalkSection(),
@@ -240,14 +254,14 @@ export async function buildSystemPrompt(
   ];
 
   if (planMode && goalMode === "off") sections.push(renderPlanModeSection());
-  if (goalMode === "planner") sections.push(renderGoalPlannerSection());
+  if (goalMode === "planner") sections.push(renderGoalPlannerSection(hasKencode));
   if (goalMode === "setup") sections.push(renderGoalSetupSection());
   if (goalMode === "coordinator") sections.push(renderGoalCoordinatorSection());
 
   const approvedPlanSection = await renderApprovedPlanSection(approvedPlanPath, goalMode);
   if (approvedPlanSection) sections.push(approvedPlanSection);
 
-  sections.push(renderResearchSection(), renderCodeQualitySection());
+  sections.push(renderResearchSection(hasKencode), renderCodeQualitySection());
 
   const toolsSection = renderToolsSection(toolNames);
   if (toolsSection) sections.push(toolsSection);

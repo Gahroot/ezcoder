@@ -244,6 +244,52 @@ describe("buildSystemPrompt", () => {
     expect(tools.length).toBeLessThan(950);
   });
 
+  it("omits kencode research guidance when the kencode tools are not connected", async () => {
+    const cwd = await makeProject();
+    const prompt = await buildSystemPrompt(cwd, undefined, false, undefined, [
+      "read",
+      "web_search",
+      "web_fetch",
+      "source_path",
+    ]);
+
+    // No kencode tool in the set → don't tell the model to call ReferenceSources/
+    // DiscoverRepos/SearchCode (they aren't in its toolMap → "Unknown tool").
+    expect(prompt).not.toContain("ReferenceSources");
+    expect(prompt).not.toContain("DiscoverRepos");
+    expect(prompt).not.toContain("SearchCode literal text/RE2");
+    // The research section still exists, with a docs-first fallback.
+    expect(prompt).toContain("Do not assume APIs");
+    expect(prompt).toContain("For public code patterns, prefer official/live docs");
+  });
+
+  it("drops the kencode probe from the goal planner section when the tools are absent", async () => {
+    const cwd = await makeProject();
+    const withKencode = await buildSystemPrompt(
+      cwd,
+      undefined,
+      false,
+      undefined,
+      ["read", "mcp__kencode-search__searchCode"],
+      undefined,
+      undefined,
+      "planner",
+    );
+    const withoutKencode = await buildSystemPrompt(
+      cwd,
+      undefined,
+      false,
+      undefined,
+      ["read"],
+      undefined,
+      undefined,
+      "planner",
+    );
+
+    expect(withKencode).toContain("kencode reference/discover/searchCode");
+    expect(withoutKencode).not.toContain("kencode reference/discover/searchCode");
+  });
+
   it("measures representative system prompt sizes", async () => {
     const normalCwd = await makeProject();
     const normalToolNames = [

@@ -9,6 +9,7 @@ import {
   type Usage,
   type ContentPart,
   type AssistantMessage,
+  type StreamEvent,
   isHardBillingMessage,
 } from "@prestyj/ai";
 import type {
@@ -338,27 +339,60 @@ export function isTransportFailure(err: unknown): boolean {
   return false;
 }
 
+function createAbortError(): Error {
+  return new DOMException("Aborted", "AbortError");
+}
+
+function abortablePromise<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(createAbortError());
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const cleanup = (): void => signal.removeEventListener("abort", onAbort);
+    const resolveOnce = (value: T): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const rejectOnce = (err: unknown): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err instanceof Error ? err : new Error(String(err)));
+    };
+    const onAbort = (): void => rejectOnce(createAbortError());
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolveOnce, rejectOnce);
+  });
+}
+
 /**
  * Promise-returning sleep that rejects with AbortError if `signal` fires.
  * Used by retry backoffs so ESC/Ctrl+C cancel immediately instead of having
  * to wait out the full delay (up to 30s per overload retry × 10 retries).
  */
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(new DOMException("Aborted", "AbortError"));
-  }
+  if (signal?.aborted) return Promise.reject(createAbortError());
+
   return new Promise<void>((resolve, reject) => {
-    let onAbort: (() => void) | null = null;
     const timer = setTimeout(() => {
-      if (onAbort) signal?.removeEventListener("abort", onAbort);
+      signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
-    onAbort = () => {
+    const onAbort = (): void => {
       clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
+      reject(createAbortError());
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+function closeIterator<T>(iterator: AsyncIterator<T> | null): void {
+  if (!iterator?.return) return;
+  Promise.resolve(iterator.return()).catch(() => {});
 }
 
 export async function* agentLoop(
@@ -572,6 +606,7 @@ export async function* agentLoop(
         idleTimedOut = true;
         streamController.abort();
       }, hardTimeoutMs);
+      let streamIterator: AsyncIterator<StreamEvent> | null = null;
 
       try {
         diag("stream_call", { nonStreaming: useNonStreamingFallback });
@@ -617,7 +652,16 @@ export async function* agentLoop(
         // network/provider latency, not the time spent before stream() returned.
         lastYieldEndTime = Date.now();
         resetIdleTimer();
-        for await (const event of result) {
+        streamIterator = result[Symbol.asyncIterator]();
+        while (true) {
+          // Race each pull against our local abort signal. Some SDK streams can
+          // ignore an aborted fetch before the first byte arrives; without this
+          // the idle/hard timers fire but the harness remains stuck awaiting
+          // `next()`, so Esc/Ctrl+C cannot release the UI.
+          const next = await abortablePromise(streamIterator.next(), streamController.signal);
+          if (next.done) break;
+          const event = next.value;
+
           // Measure consumer lag: time between finishing previous yield and
           // receiving this event. For event #1 this still includes network/
           // provider latency; for subsequent events it isolates how long
@@ -751,8 +795,9 @@ export async function* agentLoop(
           maxConsumerLagMs,
           eventTypes: eventTypeCounts,
         });
-        response = await result.response;
+        response = await abortablePromise(result.response, streamController.signal);
       } catch (err) {
+        if (streamController.signal.aborted) closeIterator(streamIterator);
         const errMsg = err instanceof Error ? err.message : String(err);
         diag("stream_error", {
           error: errMsg.slice(0, 200),
@@ -1296,7 +1341,10 @@ async function executeSingleToolCall(
           });
         },
       };
-      const raw = await tool.execute(parsed, ctx);
+      const raw = await abortablePromise(
+        Promise.resolve().then(() => tool.execute(parsed, ctx)),
+        ctx.signal,
+      );
       const normalized = normalizeToolResult(raw);
       resultContent = normalized.content;
       details = normalized.details;

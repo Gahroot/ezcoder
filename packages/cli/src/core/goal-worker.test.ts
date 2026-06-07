@@ -141,7 +141,9 @@ describe("goal worker failure propagation", () => {
     expect(prompt).toContain("run_id=goal-a");
     expect(prompt).toContain("task_id=task-a");
     expect(prompt).toContain("create needed scripts/fixtures/harnesses");
-    expect(prompt).toContain("source_path/docs/kencode real-code research when relevant");
+    expect(prompt).toContain(
+      "source_path/docs and — only when the kencode search tools are actually available — real-code research",
+    );
     expect(prompt).toContain("command/file evidence");
     expect(prompt).toContain(
       'goals({ action: "evidence" | "task", run_id: "goal-a", task_id: "task-a"',

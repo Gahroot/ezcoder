@@ -161,7 +161,14 @@ export class AgentSession {
     this.tools = tools;
     this.processManager = processManager;
 
-    // Connect MCP servers (non-blocking — failures are logged and skipped)
+    // Connect MCP servers (non-blocking — failures are logged and skipped).
+    // Child sessions (subagents and goal workers run via `--json` mode) get the
+    // provider defaults only — NOT user-configured servers. The defaults now
+    // resolve kencode-search to the locally installed bin instead of a flaky
+    // `npx` cold-spawn, so research tools are reliable here. We deliberately
+    // skip user servers: a single `/expand` fans out 5 parallel subagents, and
+    // cold-spawning every user MCP server (e.g. npx-based remotes) per
+    // short-lived child would be slow and could hammer rate-limited endpoints.
     this.mcpManager = new MCPClientManager();
     try {
       let apiKey: string | undefined;

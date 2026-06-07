@@ -69,7 +69,7 @@ For every candidate from the sub-agents, validate it yourself before reporting:
 1. Confirm the external source is relevant to this project and fresh enough (normally within 6 months).
 2. Search this repo with grep/find and language-aware anchors to confirm the feature is not already present under another name.
 3. Check routes, CLI commands, UI surfaces, package exports, config, docs, and examples before calling a feature missing.
-4. Use mcp__kencode-search__searchCode when a code-level look clarifies how peers actually ship the feature. Use literal imports, functions, config keys, CLI flags, route names, or package names — not conceptual phrases.
+4. If the mcp__kencode-search__searchCode tool is available, use it when a code-level look clarifies how peers actually ship the feature (literal imports, functions, config keys, CLI flags, route names, or package names — not conceptual phrases). Skip this step if the tool isn't connected.
 5. Drop anything already present, irrelevant, too vague, too stale, or that is not a real user-facing feature.
 6. Merge duplicates and keep only the most exciting 5–10 features.
 
@@ -411,6 +411,8 @@ Report that /commit is now available with quality checks and AI-generated commit
     aliases: [],
     description: "Compare real-world code",
     prompt: `Compare the code you just created or modified in this conversation against real-world implementations using the \`mcp__kencode-search__searchCode\` tool.
+
+First confirm the \`mcp__kencode-search__searchCode\` tool is actually available in this session. If it is not (calling it returns "Unknown tool"), stop and report that real-code comparison is unavailable because the kencode-search MCP server isn't connected — do not retry the call repeatedly.
 
 You already know what you just built. For each file you created or modified, use \`mcp__kencode-search__searchCode\` to search for how real projects implement the same patterns. Look at the specific APIs, hooks, functions, and architecture you used.
 

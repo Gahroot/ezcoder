@@ -573,6 +573,12 @@ async function runInkTUI(opts: {
     return initialMcpConnectPromise;
   };
 
+  // Kick the connect off eagerly so the kencode-search (and any other) MCP
+  // servers are booting during TUI mount instead of only after first paint.
+  // The App's effect awaits this same memoized promise and swaps in the tools
+  // + rebuilds the system prompt once it resolves. Errors are surfaced there.
+  void connectInitialMcpTools().catch(() => {});
+
   const systemPrompt = await buildSystemPrompt(
     cwd,
     skills,

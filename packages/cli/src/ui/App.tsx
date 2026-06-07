@@ -956,7 +956,24 @@ export function App(props: AppProps) {
     void props
       .connectInitialMcpTools()
       .then((mcpTools) => {
-        if (cancelled || mcpTools.length === 0) return;
+        if (cancelled) return;
+        if (mcpTools.length === 0) {
+          // No MCP tools connected (e.g. kencode-search failed to boot). The
+          // system prompt was built without them, so the model is never told
+          // to call tools it doesn't have — but flag it so the user knows
+          // public-code research is degraded this session.
+          log("WARN", "mcp", "No MCP tools connected at startup");
+          setLiveItems((prev) => [
+            ...prev,
+            {
+              kind: "info",
+              text: "Research tools (kencode-search) didn't connect — public-code search is unavailable this session.",
+              id: getId(),
+            },
+          ]);
+          return;
+        }
+        log("INFO", "mcp", `MCP tools ready: ${mcpTools.length} tool(s)`);
         setCurrentTools((prev) => {
           const next = [...prev.filter((tool) => !tool.name.startsWith("mcp__")), ...mcpTools];
           currentToolsRef.current = next;
