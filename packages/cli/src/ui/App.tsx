@@ -409,6 +409,7 @@ export interface AppProps {
   version: string;
   showTokenUsage?: boolean;
   idealReviewEnabled?: boolean;
+  autoApprovePlans?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
   credentialsByProvider?: Record<
@@ -518,6 +519,8 @@ export interface AppProps {
     goalStatusEntries?: GoalStatusEntry[];
     sessionStats?: SessionStats;
     idealReviewEnabled?: boolean;
+    autoApprovePlans?: boolean;
+    taskRunning?: boolean;
   };
 }
 
@@ -614,7 +617,7 @@ export function App(props: AppProps) {
   // True while a task-pane task (single or run-all) is executing. Used to
   // suppress the interactive plan-mode approval pane, which would otherwise
   // stall an unattended task run waiting for the user to approve a plan.
-  const taskRunningRef = useRef(false);
+  const taskRunningRef = useRef(props.sessionStore?.taskRunning ?? false);
   const runAllPixelRef = useRef(props.sessionStore?.runAllPixel ?? false);
   const currentPixelFixRef = useRef<PreparedPixelFix | null>(null);
   const startPixelFixRef = useRef<(errorId: string) => void>(() => {});
@@ -688,6 +691,10 @@ export function App(props: AppProps) {
     props.sessionStore?.idealReviewEnabled ?? props.idealReviewEnabled ?? true,
   );
   const idealReviewEnabledRef = useRef(idealReviewEnabled);
+  const [autoApprovePlansEnabled, setAutoApprovePlansEnabled] = useState(
+    props.sessionStore?.autoApprovePlans ?? props.autoApprovePlans ?? true,
+  );
+  const autoApprovePlansEnabledRef = useRef(autoApprovePlansEnabled);
   /** Last actual API-reported input token count (from turn_end). */
   const lastActualTokensRef = useRef(0);
   /** Timestamp (ms) when lastActualTokensRef was last updated by turn_end. */
@@ -715,10 +722,22 @@ export function App(props: AppProps) {
 
   const getId = () => `ui-${nextIdRef.current++}`;
 
+  // Single predicate for "no human is present to approve a plan": task-list
+  // runs (single + run-all, via taskRunningRef) and pixel-fix runs (single +
+  // run-all-pixel, via currentPixelFixRef). Every autonomous context routes
+  // through here so future ones only update one place.
+  const isUnattendedRun = (): boolean =>
+    taskRunningRef.current || currentPixelFixRef.current !== null;
+
   useEffect(() => {
     idealReviewEnabledRef.current = idealReviewEnabled;
     if (props.sessionStore) props.sessionStore.idealReviewEnabled = idealReviewEnabled;
   }, [idealReviewEnabled, props.sessionStore]);
+
+  useEffect(() => {
+    autoApprovePlansEnabledRef.current = autoApprovePlansEnabled;
+    if (props.sessionStore) props.sessionStore.autoApprovePlans = autoApprovePlansEnabled;
+  }, [autoApprovePlansEnabled, props.sessionStore]);
 
   const sessionStore = props.sessionStore;
 
@@ -1879,6 +1898,7 @@ export function App(props: AppProps) {
           // The task run (if any) is finished. Run-all re-arms this below when it
           // auto-starts the next task.
           taskRunningRef.current = false;
+          if (props.sessionStore) props.sessionStore.taskRunning = false;
           const doneDecision = getDoneFlushDecision({
             planOverlayPending: planOverlayPendingRef.current,
           });
@@ -2475,6 +2495,12 @@ export function App(props: AppProps) {
     if (sessionStore) {
       sessionStore.pendingAction = undefined;
     }
+    // Re-arm the task-running flag after the remount: startTask sets it but the
+    // resetUI() remount drops the plain ref, so without this an unattended task
+    // run would look interactive (and stall on plan-mode approval).
+    if (sessionStore?.taskRunning) {
+      taskRunningRef.current = true;
+    }
     setDoneStatus(null);
     if (action.planEvent) {
       const ev = action.planEvent;
@@ -2534,6 +2560,27 @@ export function App(props: AppProps) {
             text: next
               ? "Ideal review enabled. Use /ideal-off to disable it."
               : "Ideal review disabled. Use /ideal-on to enable it.",
+            id: getId(),
+          },
+        ]);
+        return;
+      }
+
+      if (trimmed === "/autoplan-on" || trimmed === "/autoplan-off") {
+        const next = trimmed === "/autoplan-on";
+        setAutoApprovePlansEnabled(next);
+        if (props.settingsFile) {
+          const sm = new SettingsManager(props.settingsFile);
+          await sm.load();
+          await sm.set("autoApprovePlans", next);
+        }
+        setLiveItems((prev) => [
+          ...prev,
+          {
+            kind: "info",
+            text: next
+              ? "Auto-approve plans enabled — unattended runs approve plans and keep going. Use /autoplan-off to disable."
+              : "Auto-approve plans disabled — unattended runs decline plan mode instead. Use /autoplan-on to enable.",
             id: getId(),
           },
         ]);
@@ -3051,6 +3098,14 @@ export function App(props: AppProps) {
         sectionTitle: "built-in",
       },
       {
+        name: autoApprovePlansEnabled ? "autoplan-off" : "autoplan-on",
+        aliases: [],
+        description: autoApprovePlansEnabled
+          ? "Disable auto-approving plans in unattended runs"
+          : "Enable auto-approving plans in unattended runs",
+        sectionTitle: "built-in",
+      },
+      {
         name: "rewind",
         aliases: [],
         description: "Restore files/conversation to a checkpoint",
@@ -3071,7 +3126,7 @@ export function App(props: AppProps) {
         sectionTitle: "built-in",
       },
     ];
-  }, [customCommands, idealReviewEnabled]);
+  }, [customCommands, idealReviewEnabled, autoApprovePlansEnabled]);
 
   const renderItem = (item: CompletedItem, index: number, items: CompletedItem[]) =>
     renderTranscriptItem({
@@ -3162,6 +3217,7 @@ export function App(props: AppProps) {
     (title: string, prompt: string, taskId: string) => {
       const taskCwd = cwdRef.current;
       taskRunningRef.current = true;
+      if (props.sessionStore) props.sessionStore.taskRunning = true;
       const shortId = taskId.slice(0, 8);
       const completionHint =
         `\n\n---\nWhen you have fully completed this task, call the tasks tool to mark it done:\n` +
@@ -3505,10 +3561,12 @@ export function App(props: AppProps) {
 
   const handleEnterPlanMode = useCallback(
     async (reason?: string): Promise<boolean> => {
-      // During an unattended task run, plan mode would open an approval pane and
-      // block the loop waiting on the user. Tasks are meant to run end-to-end, so
-      // decline plan mode and let the agent implement directly.
-      if (taskRunningRef.current) return false;
+      // During an unattended run with auto-approve disabled, plan mode would open
+      // an approval pane and stall the loop waiting on a human. Decline plan mode
+      // so the agent implements directly. When auto-approve is enabled we DO allow
+      // plan mode — handleExitPlanMode auto-approves the plan in place and the run
+      // keeps going, preserving the explore→plan→implement process.
+      if (isUnattendedRun() && !autoApprovePlansEnabledRef.current) return false;
       await setPlanModeAndPrompt(true);
       setLiveItems((prev) => [
         ...prev,
@@ -3520,7 +3578,38 @@ export function App(props: AppProps) {
   );
 
   const handleExitPlanMode = useCallback(
-    async (_planPath: string): Promise<string> => {
+    async (planPath: string): Promise<string> => {
+      // Unattended run + auto-approve enabled: approve the plan IN PLACE (no
+      // remount, no message wipe) so the appended task-completion hint survives
+      // and run-all can advance. Swap the system prompt from "Plan Mode (ACTIVE)"
+      // to the "Approved Plan" + step-tracking section, surface an auditable
+      // transcript row, and tell the model to implement now.
+      if (isUnattendedRun() && autoApprovePlansEnabledRef.current) {
+        log("INFO", "plan", "Plan auto-approved during unattended run", { planPath });
+        let steps: PlanStep[] = [];
+        try {
+          const planContent = await import("node:fs/promises").then(({ readFile }) =>
+            readFile(planPath, "utf-8"),
+          );
+          steps = extractPlanSteps(planContent);
+        } catch {
+          // Plan with no readable steps still proceeds (just no step widget).
+        }
+        approvedPlanPathRef.current = planPath;
+        planStepsRef.current = steps;
+        setPlanSteps(steps);
+        await setPlanModeAndPrompt(false);
+        await replaceSystemPrompt({ approvedPlanPath: planPath, planMode: false });
+        setLiveItems((prev) => [
+          ...prev,
+          { kind: "plan_event", event: "auto-approved", detail: planPath, id: getId() },
+        ]);
+        return (
+          `Plan auto-approved (unattended run). The approved plan is at ${planPath}. ` +
+          `Implement it now, following each step in order.`
+        );
+      }
+
       await setPlanModeAndPrompt(false);
       planOverlayPendingRef.current = true;
       setPlanAutoExpand(true);
@@ -3531,7 +3620,7 @@ export function App(props: AppProps) {
       setOverlay("plan");
       return "Plan submitted for user review. Wait for the user to approve, reject, or dismiss it before implementing.";
     },
-    [props.sessionStore, setPlanModeAndPrompt],
+    [props.sessionStore, setPlanModeAndPrompt, replaceSystemPrompt],
   );
 
   useEffect(() => {
@@ -3539,6 +3628,32 @@ export function App(props: AppProps) {
     props.planCallbacks.onEnterPlan = handleEnterPlanMode;
     props.planCallbacks.onExitPlan = handleExitPlanMode;
   }, [handleEnterPlanMode, handleExitPlanMode, props.planCallbacks]);
+
+  // Toggle auto-approve-plans (Ctrl+O / /autoplan-on|off). Persists the setting
+  // so it survives restarts and pushes a transient info row for feedback.
+  const handleToggleAutoApprove = useCallback(() => {
+    const next = !autoApprovePlansEnabledRef.current;
+    setAutoApprovePlansEnabled(next);
+    if (props.settingsFile) {
+      const sm = new SettingsManager(props.settingsFile);
+      void sm
+        .load()
+        .then(() => sm.set("autoApprovePlans", next))
+        .catch(() => {
+          /* persistence is best-effort */
+        });
+    }
+    setLiveItems((prev) => [
+      ...prev,
+      {
+        kind: "info",
+        text: next
+          ? "Auto-approve plans enabled — unattended runs approve plans and keep going. Use /autoplan-off to disable."
+          : "Auto-approve plans disabled — unattended runs decline plan mode instead. Use /autoplan-on to enable.",
+        id: getId(),
+      },
+    ]);
+  }, [props.settingsFile]);
 
   const handleCloseGoalOverlay = () => {
     if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
@@ -3925,6 +4040,7 @@ export function App(props: AppProps) {
             onTogglePixel: () => openOverlay("pixel"),
             onToggleGoal: () => openOverlay("goal"),
             onToggleMarkdown: () => setRenderMarkdown((prev) => !prev),
+            onToggleAutoApprove: handleToggleAutoApprove,
             cwd: props.cwd,
             commands: allCommands,
             mouseScroll: props.fullscreen,

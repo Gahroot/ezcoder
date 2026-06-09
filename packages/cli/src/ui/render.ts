@@ -35,6 +35,7 @@ export interface RenderAppConfig {
   theme?: "auto" | ThemeName;
   showTokenUsage?: boolean;
   idealReviewEnabled?: boolean;
+  autoApprovePlans?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
   credentialsByProvider?: Record<
@@ -150,6 +151,13 @@ export interface SessionStore {
   goalMode?: GoalMode;
   /** Whether pre-final ideal review is enabled for this UI session. */
   idealReviewEnabled?: boolean;
+  /** Whether plans auto-approve during unattended runs. */
+  autoApprovePlans?: boolean;
+  /**
+   * True while a task-list run is executing. Mirrored here so it survives the
+   * resetUI() remount between startTask and the pendingAction consume effect.
+   */
+  taskRunning?: boolean;
 }
 
 export interface ResetUIOptions {
@@ -369,6 +377,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     planMode: config.planModeRef?.current ?? false,
     goalMode: config.goalModeRef?.current ?? "off",
     idealReviewEnabled: config.idealReviewEnabled ?? true,
+    autoApprovePlans: config.autoApprovePlans ?? true,
   };
 
   const terminalHistoryPrinter = createTerminalHistoryPrinter();
@@ -401,6 +410,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             version: config.version,
             showTokenUsage: config.showTokenUsage,
             idealReviewEnabled: sessionStore.idealReviewEnabled,
+            autoApprovePlans: sessionStore.autoApprovePlans,
             onSlashCommand: config.onSlashCommand,
             loggedInProviders: config.loggedInProviders,
             credentialsByProvider: config.credentialsByProvider,

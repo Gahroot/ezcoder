@@ -232,6 +232,7 @@ interface InputAreaProps {
   onTogglePixel?: () => void;
   onToggleGoal?: () => void;
   onToggleMarkdown?: () => void;
+  onToggleAutoApprove?: () => void;
   cwd: string;
   commands?: SlashCommandInfo[];
   /**
@@ -344,6 +345,7 @@ export function InputArea({
   onTogglePixel,
   onToggleGoal,
   onToggleMarkdown,
+  onToggleAutoApprove,
   cwd,
   commands = [],
   scopeBadge,
@@ -1034,6 +1036,13 @@ export function InputArea({
       // Ctrl+M toggles rendered/raw markdown mode, matching Gemini's raw markdown affordance.
       if (key.ctrl && input === "m") {
         onToggleMarkdown?.();
+        return;
+      }
+
+      // Ctrl+O toggles auto-approve-plans for unattended runs. Placed before the
+      // `disabled` early-return so it works mid-run like the other Ctrl toggles.
+      if (key.ctrl && input === "o") {
+        onToggleAutoApprove?.();
         return;
       }
 

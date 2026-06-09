@@ -58,6 +58,7 @@ export interface SavedSettings {
   thinkingLevel?: ThinkingLevel;
   theme: "auto" | ThemeName;
   idealReviewEnabled: boolean;
+  autoApprovePlans: boolean;
 }
 
 const VALID_PROVIDERS = new Set<Provider>([
@@ -83,6 +84,7 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     thinkingEnabled: false,
     theme: "auto",
     idealReviewEnabled: true,
+    autoApprovePlans: true,
   };
   try {
     const raw = JSON.parse(fsSync.readFileSync(filePath, "utf-8"));
@@ -99,6 +101,7 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     if (isValidThinkingLevel(raw.thinkingLevel)) result.thinkingLevel = raw.thinkingLevel;
     if (typeof raw.theme === "string" && isValidThemeSetting(raw.theme)) result.theme = raw.theme;
     if (raw.idealReviewEnabled === false) result.idealReviewEnabled = false;
+    if (raw.autoApprovePlans === false) result.autoApprovePlans = false;
   } catch {
     // No settings file or invalid JSON — use defaults
   }

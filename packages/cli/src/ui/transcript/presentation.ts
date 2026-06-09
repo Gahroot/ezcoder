@@ -130,6 +130,7 @@ export function presentPlanEvent(item: PlanEventItem): StatusPresentation {
     approved: "Plan approved",
     rejected: "Plan rejected",
     dismissed: "Plan dismissed",
+    "auto-approved": "Plan auto-approved",
   } satisfies Record<PlanEventItem["event"], string>;
   return {
     glyph: "○ ",

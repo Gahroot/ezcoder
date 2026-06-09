@@ -266,7 +266,7 @@ export interface ThemeTransitionItem {
 
 export interface PlanEventItem {
   kind: "plan_event";
-  event: "approved" | "rejected" | "dismissed";
+  event: "approved" | "rejected" | "dismissed" | "auto-approved";
   /** Free-form detail (reject feedback, etc.) — quoted in the rendered row. */
   detail?: string;
   id: string;

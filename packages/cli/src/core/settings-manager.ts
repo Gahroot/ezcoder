@@ -37,6 +37,7 @@ const SettingsSchema = z.object({
     .default("auto"),
   showTokenUsage: z.boolean().default(true),
   idealReviewEnabled: z.boolean().default(true),
+  autoApprovePlans: z.boolean().default(true),
   enabledTools: z.array(z.string()).optional(),
 });
 
@@ -51,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "auto",
   showTokenUsage: true,
   idealReviewEnabled: true,
+  autoApprovePlans: true,
 };
 
 // ── Settings Manager ───────────────────────────────────────

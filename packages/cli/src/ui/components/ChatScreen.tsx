@@ -35,6 +35,7 @@ interface ChatInputControls {
   onTogglePixel: () => void;
   onToggleGoal: () => void;
   onToggleMarkdown: () => void;
+  onToggleAutoApprove: () => void;
   cwd: string;
   commands: SlashCommandInfo[];
   /** Fullscreen alt-screen: route mouse-wheel to the transcript scroll. */
@@ -291,6 +292,7 @@ export function ChatScreen({
           onTogglePixel={inputControls.onTogglePixel}
           onToggleGoal={inputControls.onToggleGoal}
           onToggleMarkdown={inputControls.onToggleMarkdown}
+          onToggleAutoApprove={inputControls.onToggleAutoApprove}
           cwd={inputControls.cwd}
           commands={inputControls.commands}
           mouseScroll={inputControls.mouseScroll}

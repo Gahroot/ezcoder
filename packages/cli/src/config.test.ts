@@ -33,4 +33,19 @@ describe("loadSavedSettings", () => {
 
     expect(settings.idealReviewEnabled).toBe(false);
   });
+
+  it("defaults auto-approve plans to enabled", () => {
+    const settings = loadSavedSettings(tempSettingsPath());
+
+    expect(settings.autoApprovePlans).toBe(true);
+  });
+
+  it("honors an explicit auto-approve plans disable", () => {
+    const settingsPath = tempSettingsPath();
+    fs.writeFileSync(settingsPath, JSON.stringify({ autoApprovePlans: false }), "utf-8");
+
+    const settings = loadSavedSettings(settingsPath);
+
+    expect(settings.autoApprovePlans).toBe(false);
+  });
 });
