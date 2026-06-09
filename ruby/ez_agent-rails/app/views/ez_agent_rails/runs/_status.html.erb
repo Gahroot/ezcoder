@@ -1,0 +1,4 @@
+<%# locals: status_id (String), kind (:retry | :error | :done), message (String) %>
+<div id="<%= status_id %>" class="ez-agent-status ez-agent-status--<%= kind %>" data-kind="<%= kind %>">
+  <%= message %>
+</div>

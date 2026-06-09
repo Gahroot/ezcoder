@@ -1,0 +1,17 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+# The gem itself — brings in its runtime deps (`ez_agent`, `rails`).
+gemspec
+
+# Local-dev path deps mirroring the workspace (the published gem declares
+# `ez_agent` as a real dependency; here we point at the sibling gems so specs
+# run against the working tree).
+gem "ez_llm", path: "../ez_llm"
+gem "ez_agent", path: "../ez_agent"
+
+group :development, :test do
+  gem "rspec-rails", "~> 7.0"
+  gem "sqlite3", ">= 1.4"
+end

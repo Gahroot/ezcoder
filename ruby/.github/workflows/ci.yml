@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor is 3.2 (lowest Ruby with Data.define, our one hard requirement);
+        # ceiling is the latest stable. Test the full supported range.
+        ruby: ["3.2", "3.3", "3.4", "4.0.5"]
+    name: Ruby ${{ matrix.ruby }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: ez_llm specs
+        run: bundle exec rspec ez_llm/spec
+      - name: ez_agent specs
+        run: bundle exec rspec ez_agent/spec

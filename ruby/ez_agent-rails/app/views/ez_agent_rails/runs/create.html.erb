@@ -1,0 +1,10 @@
+<%#
+  Wrapped in the active-run turbo-frame so the demo's prompt form (which targets
+  `ez_agent_active_run`) swaps this freshly created run's frame into the page.
+  The `_run` partial then `turbo_stream_from`s itself and live-renders events.
+  Standalone / API callers can ignore the frame — its inner content is identical
+  to runs/show.
+%>
+<turbo-frame id="ez_agent_active_run">
+  <%= render "ez_agent_rails/runs/run", run: @run %>
+</turbo-frame>

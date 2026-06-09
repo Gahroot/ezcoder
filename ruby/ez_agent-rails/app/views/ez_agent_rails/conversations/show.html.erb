@@ -1,0 +1,41 @@
+<%# locals: @conversation (EZAgentRails::Conversation), @run (EZAgentRails::Run, nil) %>
+<% content_for :title, "EZ Agent · #{@conversation.title.presence || "Conversation ##{@conversation.id}"}" %>
+
+<section class="ez-agent-chat">
+  <header class="ez-agent-chat__header">
+    <h1><%= @conversation.title.presence || "Conversation ##{@conversation.id}" %></h1>
+    <%= link_to "← All conversations", ez_agent_routes.conversations_path, class: "ez-agent-link" %>
+  </header>
+
+  <%# Persisted history (user turns, assistant answers, tool results). %>
+  <div class="ez-agent-messages" id="<%= dom_id(@conversation, :messages) %>">
+    <% if @conversation.messages.empty? %>
+      <p class="ez-agent-empty">No messages yet — ask the agent something below.</p>
+    <% else %>
+      <%= render partial: "ez_agent_rails/conversations/message",
+                 collection: @conversation.messages.order(:position), as: :message %>
+    <% end %>
+  </div>
+
+  <%#
+    The active run renders here. The prompt form targets this frame, so posting a
+    prompt swaps in the freshly created run's frame — which `turbo_stream_from`s
+    itself and live-renders streamed text, tool calls, confirmation prompts, and
+    the Stop button as the RunJob produces events.
+  %>
+  <turbo-frame id="ez_agent_active_run" class="ez-agent-active-run">
+    <% if @run %>
+      <%= render "ez_agent_rails/runs/run", run: @run %>
+    <% end %>
+  </turbo-frame>
+
+  <%= form_with url: ez_agent_routes.conversation_runs_path(@conversation),
+                method: :post, data: { turbo_frame: "ez_agent_active_run" },
+                class: "ez-agent-prompt" do |f| %>
+    <div class="ez-agent-prompt__inner">
+      <%= f.text_area :prompt, rows: 2, required: true,
+                      class: "ez-agent-prompt__input", placeholder: "Ask the agent…" %>
+      <%= f.submit "Send", class: "ez-agent-prompt__send" %>
+    </div>
+  <% end %>
+</section>

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= content_for?(:title) ? yield(:title) : "EZ Agent" %></title>
+
+    <%#
+      Action Cable mount point for Turbo Streams. The host app must mount
+      `ActionCable.server` here (the spec dummy mounts it at /cable). Turbo's
+      cable consumer reads this meta to find the websocket.
+    %>
+    <%= action_cable_meta_tag %>
+
+    <%#
+      Turbo, loaded as an ES module from the engine (served out of the
+      turbo-rails gem). No bundler / importmap / build step required. A host app
+      that already ships Hotwire can drop this and the asset route.
+    %>
+    <script type="module" src="<%= ez_agent_routes.turbo_js_path %>"></script>
+
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: #f6f7f9; color: #1b1f24;
+      }
+      .ez-agent-app { max-width: 760px; margin: 0 auto; padding: 24px 16px 96px; }
+      .ez-agent-chat__header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .ez-agent-chat__header h1 { font-size: 20px; margin: 0 0 12px; }
+      .ez-agent-link { color: #2563eb; text-decoration: none; font-size: 13px; }
+      .ez-agent-link:hover { text-decoration: underline; }
+
+      .ez-agent-messages { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+      .ez-agent-empty { color: #6b7280; font-style: italic; }
+      .ez-agent-message { padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid #e5e7eb; }
+      .ez-agent-message--user { background: #eef2ff; border-color: #c7d2fe; }
+      .ez-agent-message--assistant { background: #fff; }
+      .ez-agent-message--tool { background: #f0fdf4; border-color: #bbf7d0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .ez-agent-message__role { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; margin-bottom: 4px; }
+      .ez-agent-message__body p { margin: 0 0 6px; white-space: pre-wrap; }
+      .ez-agent-tool-line { margin: 2px 0; }
+
+      turbo-frame { display: block; }
+      .ez-agent-run { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin: 12px 0; }
+      .ez-agent-run__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .ez-agent-status { font-size: 12px; color: #6b7280; }
+      .ez-agent-status--error { color: #b91c1c; }
+      .ez-agent-status--done { color: #15803d; }
+      .ez-agent-stream { white-space: pre-wrap; margin-top: 6px; }
+      .ez-agent-delta--thinking { color: #9ca3af; font-style: italic; }
+
+      .ez-agent-tool { border: 1px dashed #d1d5db; border-radius: 8px; padding: 8px; margin: 8px 0; background: #fafafa; }
+      .ez-agent-tool__header { display: flex; gap: 8px; font-size: 12px; color: #374151; }
+      .ez-agent-tool__name { font-weight: 600; }
+      .ez-agent-tool__args, .ez-agent-tool__result { margin: 6px 0 0; font-size: 12px; overflow-x: auto; }
+
+      .ez-agent-confirm { border: 1px solid #fbbf24; background: #fffbeb; border-radius: 8px; padding: 10px; margin: 8px 0; }
+      .ez-agent-confirm__header { display: flex; gap: 8px; font-size: 13px; }
+      .ez-agent-confirm__name { font-weight: 600; }
+      .ez-agent-confirm__actions { display: flex; gap: 8px; margin-top: 8px; }
+      .ez-agent-confirm__actions form { margin: 0; }
+
+      .ez-agent-prompt { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #e5e7eb; padding: 12px 16px; }
+      .ez-agent-prompt__inner { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; }
+      .ez-agent-prompt__input { flex: 1; resize: vertical; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; }
+      button, .ez-agent-prompt__send { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; background: #2563eb; color: #fff; font: inherit; }
+      button.ez-agent-stop, button.ez-agent-confirm__deny { background: #dc2626; }
+      button.ez-agent-confirm__always { background: #6b7280; }
+      .ez-agent-new { display: flex; gap: 8px; margin: 16px 0; }
+      .ez-agent-new input[type=text] { flex: 1; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; }
+      .ez-agent-conversations { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+      .ez-agent-conversations a { display: block; padding: 10px 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; text-decoration: none; color: inherit; }
+    </style>
+  </head>
+  <body>
+    <main class="ez-agent-app"><%= yield %></main>
+  </body>
+</html>

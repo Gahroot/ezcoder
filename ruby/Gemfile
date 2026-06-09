@@ -1,0 +1,22 @@
+# Gems-monorepo root Gemfile.
+#
+# Mirrors ezcoder's pnpm workspace: two gemspecs in one repo, wired together
+# locally via `path:` deps (the Ruby equivalent of `workspace:*`). Publish in
+# dependency order — `ez_llm` first, then `ez_agent`.
+source "https://rubygems.org"
+
+# ez_llm — standalone, zero framework deps (mirrors @prestyj/ai).
+gemspec path: "ez_llm", name: "ez_llm"
+
+# ez_agent — depends only on ez_llm (mirrors @prestyj/agent). The path dep is
+# the local-dev edge; the published gem declares `ez_llm` as a real dependency.
+gemspec path: "ez_agent", name: "ez_agent"
+
+# ez_agent-rails — Rails engine adapter (mirrors a framework binding package).
+# Depends on `ez_agent` (wired locally above) plus `rails`, which resolves from
+# rubygems. The published gem declares both as real dependencies.
+gemspec path: "ez_agent-rails", name: "ez_agent-rails"
+
+group :development, :test do
+  gem "rspec", "~> 3.13"
+end

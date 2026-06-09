@@ -1,0 +1,33 @@
+<%# locals: run (EZAgentRails::Run) %>
+<%#
+  Subscribe the page to the run's per-run Turbo stream. From here on every agent
+  event the RunJob produces is appended/replaced into the containers below with
+  no custom JS. `turbo_stream_from run` matches the streamable the Broadcaster
+  targets (`Turbo::StreamsChannel.broadcast_*_to(run, ...)`).
+%>
+<%= turbo_stream_from run %>
+
+<div id="<%= dom_id(run) %>" class="ez-agent-run" data-run-id="<%= run.id %>">
+  <div class="ez-agent-run__bar">
+    <div id="<%= run_status_target(run) %>" class="ez-agent-status" data-kind="<%= run.status %>">
+      <%= run.status %>
+    </div>
+    <%# Cooperative cancellation: stamps the run's `aborted_at` so an in-flight
+        RunJob stops at its next boundary. Routed through the mounted engine so
+        it works in-request and in out-of-band Turbo broadcasts alike. Only shown
+        while the run is live (a finished run has nothing to stop). %>
+    <% if run.running? %>
+      <%= button_to "Stop", ez_agent_routes.stop_run_path(run), method: :post,
+                    class: "ez-agent-stop", form: { class: "ez-agent-stop" } %>
+    <% end %>
+  </div>
+  <div id="<%= run_tools_target(run) %>" class="ez-agent-tools">
+    <%# Re-render any still-pending confirmations so a reload shows live prompts. %>
+    <% run.tool_confirmations.where(status: "pending").order(:id).each do |confirmation| %>
+      <%= render "ez_agent_rails/runs/tool_confirmation",
+                 frame_id: run_confirmation_target(run, confirmation),
+                 confirmation: confirmation %>
+    <% end %>
+  </div>
+  <div id="<%= run_stream_target(run) %>" class="ez-agent-stream"></div>
+</div>

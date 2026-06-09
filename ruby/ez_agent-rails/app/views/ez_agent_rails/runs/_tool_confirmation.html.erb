@@ -1,0 +1,37 @@
+<%# locals: frame_id (String), confirmation (EZAgentRails::ToolConfirmation) %>
+<%#
+  One human-in-the-loop approval card. While the gate is parked the row is
+  `pending` and we render Approve / Deny / Always buttons that POST the user's
+  decision to ToolConfirmationsController#update; the blocked RunJob polls the
+  row and unblocks the moment one is clicked. Once resolved we re-render the same
+  frame (via Broadcaster#confirm_resolved) showing the recorded verdict instead.
+
+  Routes are built through EZAgentRails::Engine.routes.url_helpers (rather than
+  bare *_path helpers) so the mount prefix is present whether this partial is
+  rendered in an engine request OR an out-of-band Turbo broadcast.
+%>
+<% routes = EZAgentRails::Engine.routes.url_helpers %>
+<turbo-frame id="<%= frame_id %>" class="ez-agent-confirm"
+             data-tool-name="<%= confirmation.tool_name %>"
+             data-confirmation-id="<%= confirmation.id %>"
+             data-status="<%= confirmation.status %>">
+  <div class="ez-agent-confirm__header">
+    <span class="ez-agent-confirm__name"><%= confirmation.tool_name %></span>
+    <span class="ez-agent-confirm__prompt">
+      <%= confirmation.pending? ? "needs your approval" : "#{confirmation.status.humanize.downcase} by you" %>
+    </span>
+  </div>
+
+  <pre class="ez-agent-confirm__args"><%= JSON.pretty_generate(confirmation.args) rescue confirmation.args.to_s %></pre>
+
+  <% if confirmation.pending? %>
+    <div class="ez-agent-confirm__actions">
+      <%= button_to "Approve", routes.confirmation_path(confirmation),
+                    params: { decision: "allow" }, class: "ez-agent-confirm__approve" %>
+      <%= button_to "Deny", routes.confirmation_path(confirmation),
+                    params: { decision: "deny" }, class: "ez-agent-confirm__deny" %>
+      <%= button_to "Always", routes.confirmation_path(confirmation),
+                    params: { decision: "always_allow" }, class: "ez-agent-confirm__always" %>
+    </div>
+  <% end %>
+</turbo-frame>

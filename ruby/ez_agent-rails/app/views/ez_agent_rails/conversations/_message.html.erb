@@ -1,0 +1,5 @@
+<%# locals: message (EZAgentRails::Message) %>
+<div class="ez-agent-message ez-agent-message--<%= message.role %>" data-role="<%= message.role %>">
+  <div class="ez-agent-message__role"><%= message.role %></div>
+  <div class="ez-agent-message__body"><%= ez_agent_message_body(message) %></div>
+</div>

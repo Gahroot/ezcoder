@@ -1,0 +1,8 @@
+<%# locals: frame_id (String), name (String), args_json (String) %>
+<turbo-frame id="<%= frame_id %>" class="ez-agent-tool" data-tool-name="<%= name %>" data-state="running">
+  <div class="ez-agent-tool__header">
+    <span class="ez-agent-tool__name"><%= name %></span>
+    <span class="ez-agent-tool__state">running…</span>
+  </div>
+  <pre class="ez-agent-tool__args"><%= args_json %></pre>
+</turbo-frame>

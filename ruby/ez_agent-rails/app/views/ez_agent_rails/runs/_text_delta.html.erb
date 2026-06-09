@@ -1,0 +1,2 @@
+<%# locals: text (String), kind (:text_delta | :thinking_delta) %>
+<span class="ez-agent-delta ez-agent-delta--<%= kind.to_s.sub("_delta", "") %>"><%= text %></span>

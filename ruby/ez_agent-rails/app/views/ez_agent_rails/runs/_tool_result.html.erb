@@ -1,0 +1,10 @@
+<%# locals: frame_id, name, result (String), is_error (Boolean), duration_ms (Integer) %>
+<turbo-frame id="<%= frame_id %>" class="ez-agent-tool" data-tool-name="<%= name %>"
+             data-state="<%= is_error ? "error" : "done" %>">
+  <div class="ez-agent-tool__header">
+    <span class="ez-agent-tool__name"><%= name %></span>
+    <span class="ez-agent-tool__state"><%= is_error ? "error" : "done" %></span>
+    <% if duration_ms %><span class="ez-agent-tool__duration"><%= duration_ms %>ms</span><% end %>
+  </div>
+  <pre class="ez-agent-tool__result"><%= result %></pre>
+</turbo-frame>

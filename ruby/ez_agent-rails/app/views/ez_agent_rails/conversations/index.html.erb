@@ -1,0 +1,30 @@
+<%# locals: @conversations (Array<EZAgentRails::Conversation>) %>
+<% content_for :title, "EZ Agent · Conversations" %>
+
+<section class="ez-agent-index">
+  <header class="ez-agent-chat__header">
+    <h1>EZ Agent — demo chat</h1>
+  </header>
+
+  <%= form_with url: ez_agent_routes.conversations_path, method: :post, class: "ez-agent-new" do |f| %>
+    <%= f.fields_for :conversation do |c| %>
+      <%= c.text_field :title, placeholder: "New conversation title (optional)" %>
+    <% end %>
+    <%= f.submit "Start" %>
+  <% end %>
+
+  <% if @conversations.any? %>
+    <ul class="ez-agent-conversations">
+      <% @conversations.each do |conversation| %>
+        <li>
+          <%= link_to ez_agent_routes.conversation_path(conversation) do %>
+            <strong><%= conversation.title.presence || "Conversation ##{conversation.id}" %></strong>
+            <span class="ez-agent-link"><%= conversation.messages.count %> messages</span>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="ez-agent-empty">No conversations yet. Start one above.</p>
+  <% end %>
+</section>

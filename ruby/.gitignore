@@ -1,0 +1,9 @@
+*.gem
+.bundle/
+vendor/bundle/
+Gemfile.lock
+/tmp/
+.rspec_status
+coverage/
+*.log
+.DS_Store

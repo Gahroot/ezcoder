@@ -1,0 +1,11 @@
+test:
+  adapter: sqlite3
+  # A FILE-backed DB (not ":memory:") on purpose: the HITL specs drive the RunJob
+  # in one thread while a web request resolves the confirmation in another, and
+  # those threads use different pool connections. In-memory SQLite gives each
+  # connection its own empty database, so the threads would never see each other's
+  # rows; a shared file (with WAL set in rails_helper) makes committed writes
+  # visible across connections.
+  database: db/test.sqlite3
+  pool: 5
+  timeout: 5000
