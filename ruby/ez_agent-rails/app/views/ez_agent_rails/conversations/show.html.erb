@@ -40,7 +40,7 @@
 
       <%# ── Demo Mode banner ──────────────────────────────── %>
       <div class="ez-agent-demo-banner" id="ez-agent-demo-banner">
-        🎮 Demo Mode active — a sample prompt will auto-fill below.
+        <i data-lucide="play-circle"></i> Demo Mode active — a sample prompt will auto-fill below.
       </div>
 
       <%#
@@ -99,7 +99,7 @@
 
           <%# ── Drop zone overlay (visible on dragover) ─────────── %>
           <div class="ez-agent-drop-zone" data-file-upload-target="dropZone">
-            <span class="ez-agent-drop-zone__icon">📎</span>
+            <span class="ez-agent-drop-zone__icon"><i data-lucide="paperclip"></i></span>
             <span class="ez-agent-drop-zone__text">Drop files here</span>
           </div>
 
@@ -108,7 +108,7 @@
             <button type="button" class="ez-agent-prompt__attach"
                     data-file-upload-target="attachBtn"
                     title="Attach files">
-              📎
+              <i data-lucide="paperclip"></i>
             </button>
             <input type="file" name="files[]" class="ez-agent-file-input"
                    multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.sh,.sql"

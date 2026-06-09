@@ -66,7 +66,7 @@ module EZAgentRails
         tag.details(class: "ez-agent-tool__card", open: !collapsed) do
           tag.summary(class: "ez-agent-tool__summary") do
             safe_join([
-              tag.span("🔧", class: "ez-agent-tool__icon"),
+              tag.span(content_tag(:i, "", data: { lucide: "wrench" }), class: "ez-agent-tool__icon"),
               tag.span(name, class: "ez-agent-tool__name"),
               tag.span("invoked", class: "ez-agent-tool__badge ez-agent-tool__badge--running"),
               tag.span(class: "ez-agent-tool__chevron") { "" }
@@ -90,7 +90,7 @@ module EZAgentRails
       result_text = EZLLM::Types.tool_result_text(block[:content]).to_s
       collapsed = result_text.length > 500
 
-      icon = is_error ? "❌" : "✅"
+      icon_name = is_error ? "circle-x" : "circle-check"
       badge_kind = is_error ? "error" : "done"
       badge_label = is_error ? "failed" : "completed"
 
@@ -98,7 +98,7 @@ module EZAgentRails
         tag.details(class: "ez-agent-tool__card", open: !collapsed) do
           tag.summary(class: "ez-agent-tool__summary") do
             safe_join([
-              tag.span(icon, class: "ez-agent-tool__icon"),
+              tag.span(content_tag(:i, "", data: { lucide: icon_name }), class: "ez-agent-tool__icon"),
               tag.span("tool result", class: "ez-agent-tool__name"),
               tag.span(badge_label, class: "ez-agent-tool__badge ez-agent-tool__badge--#{badge_kind}"),
               tag.span(class: "ez-agent-tool__chevron") { "" }

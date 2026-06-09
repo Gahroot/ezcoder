@@ -61,15 +61,15 @@ module EZAgentRails
 
     # Emoji icon per provider for the message badge.
     PROVIDER_ICONS = {
-      "anthropic" => "🟣",
-      "openai"    => "🟢",
-      "gemini"    => "🔵",
-      "moonshot"  => "🌙",
-      "glm"       => "🧊",
-      "minimax"   => "🔷",
-      "xiaomi"    => "📱",
-      "deepseek"  => "🐋",
-      "openrouter" => "🔀"
+      "anthropic" => "circle",
+      "openai"    => "circle",
+      "gemini"    => "circle",
+      "moonshot"  => "moon",
+      "glm"       => "box",
+      "minimax"   => "diamond",
+      "xiaomi"    => "smartphone",
+      "deepseek"  => "anchor",
+      "openrouter" => "shuffle"
     }.freeze
 
     # Render a small provider badge for an assistant message.
@@ -77,11 +77,12 @@ module EZAgentRails
       provider = message.provider_name
       return "" unless provider
 
-      icon  = PROVIDER_ICONS[provider] || "🤖"
+      icon_name = PROVIDER_ICONS[provider] || "bot"
       label = PROVIDER_DISPLAY[provider] || provider.titleize
       model = message.model_name
       text  = model ? "#{label} #{model}" : label
-      content_tag(:span, "#{icon} #{text}", class: "ez-agent-provider-badge")
+      icon_tag = content_tag(:i, "", data: { lucide: icon_name })
+      content_tag(:span, "#{icon_tag} #{text}".html_safe, class: "ez-agent-provider-badge")
     end
 
     # ── Diagnostics helpers ─────────────────────────────────
@@ -96,7 +97,7 @@ module EZAgentRails
                      end
 
       content_tag(:div, class: "ez-agent-diagnostics", data: { controller: "diagnostics" }) do
-        toggle = content_tag(:button, "📊 Diagnostics", type: "button",
+        toggle = content_tag(:button, "#{content_tag(:i, '', data: { lucide: 'bar-chart-3' })} Diagnostics".html_safe, type: "button",
                              class: "ez-agent-diagnostics__toggle",
                              data: { action: "click->diagnostics#toggle" })
         body   = content_tag(:div, class: "ez-agent-diagnostics__body",

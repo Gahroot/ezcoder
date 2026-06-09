@@ -1,7 +1,7 @@
 // diagnostics Stimulus controller
 //
 // Toggles the diagnostics body panel open/closed when the user clicks the
-// "📊 Diagnostics" button.
+// "Diagnostics" button (with Lucide bar-chart-3 icon).
 //
 // Usage (Stimulus):
 //   import { Controller } from "@hotwired/stimulus"

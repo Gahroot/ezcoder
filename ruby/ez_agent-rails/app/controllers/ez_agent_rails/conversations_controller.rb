@@ -59,9 +59,9 @@ module EZAgentRails
     # Build provider status array for the welcome screen cards.
     def build_provider_status
       icons = {
-        "anthropic" => "🟣", "openai" => "🟢", "gemini" => "🔵",
-        "moonshot" => "🌙", "glm" => "🧊", "minimax" => "🔷",
-        "xiaomi" => "📱", "deepseek" => "🐋", "openrouter" => "🔀"
+        "anthropic" => "circle", "openai" => "circle", "gemini" => "circle",
+        "moonshot" => "moon", "glm" => "box", "minimax" => "diamond",
+        "xiaomi" => "smartphone", "deepseek" => "anchor", "openrouter" => "shuffle"
       }
       EZLLM::ProviderRegistry.list.map do |provider|
         creds = EZAgentRails.credentials_for(provider)
@@ -70,7 +70,7 @@ module EZAgentRails
         {
           name: provider.to_s,
           display_name: provider.to_s.titleize,
-          icon: icons[provider.to_s] || "🤖",
+          icon: icons[provider.to_s] || "bot",
           configured: configured,
           model_count: models.length
         }

@@ -17,7 +17,7 @@
              data-status="<%= confirmation.status %>">
   <details class="ez-agent-tool__card ez-agent-tool__card--confirm" open>
     <summary class="ez-agent-tool__summary">
-      <span class="ez-agent-tool__icon">⚠️</span>
+      <span class="ez-agent-tool__icon"><i data-lucide="triangle-alert"></i></span>
       <span class="ez-agent-tool__name"><%= confirmation.tool_name %></span>
       <span class="ez-agent-tool__badge ez-agent-tool__badge--<%= confirmation.pending? ? "pending" : confirmation.status %>">
         <%= confirmation.pending? ? "approval needed" : confirmation.status.humanize.downcase %>
@@ -32,11 +32,11 @@
 
       <% if confirmation.pending? %>
         <div class="ez-agent-confirm__actions">
-          <%= button_to "✅ Approve", routes.confirmation_path(confirmation),
+          <%= button_to "#{content_tag(:i, '', data: { lucide: 'check' })} Approve".html_safe, routes.confirmation_path(confirmation),
                         params: { decision: "allow" }, class: "ez-agent-confirm__approve" %>
-          <%= button_to "❌ Deny", routes.confirmation_path(confirmation),
+          <%= button_to "#{content_tag(:i, '', data: { lucide: 'x' })} Deny".html_safe, routes.confirmation_path(confirmation),
                         params: { decision: "deny" }, class: "ez-agent-confirm__deny" %>
-          <%= button_to "🔄 Always", routes.confirmation_path(confirmation),
+          <%= button_to "#{content_tag(:i, '', data: { lucide: 'refresh-cw' })} Always".html_safe, routes.confirmation_path(confirmation),
                         params: { decision: "always_allow" }, class: "ez-agent-confirm__always" %>
         </div>
       <% end %>

@@ -7,7 +7,7 @@
 <div class="ez-agent-main">
   <turbo-frame id="ez_agent_main">
     <div class="ez-agent-welcome">
-      <div class="ez-agent-welcome__icon">🤖</div>
+      <div class="ez-agent-welcome__icon"><i data-lucide="bot"></i></div>
       <h1 class="ez-agent-welcome__title">Welcome to EZ Agent</h1>
       <p class="ez-agent-welcome__subtitle">
         Your AI coding assistant. Start a new chat or pick a conversation from the sidebar.
@@ -17,7 +17,7 @@
         <div class="ez-agent-welcome__providers">
           <% @provider_status.each do |provider| %>
             <div class="ez-agent-provider-card">
-              <span class="ez-agent-provider-card__icon"><%= provider[:icon] %></span>
+              <span class="ez-agent-provider-card__icon"><i data-lucide="<%= provider[:icon] %>"></i></span>
               <div class="ez-agent-provider-card__info">
                 <div class="ez-agent-provider-card__name"><%= provider[:display_name] %></div>
                 <div class="ez-agent-provider-card__meta">

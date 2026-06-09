@@ -311,7 +311,7 @@ module EZAgentRails
         else
           size = att["size"] ? h.number_to_human_size(att["size"]) : ""
           h.content_tag(:div, class: "ez-agent-message__attachment ez-agent-message__attachment--file") do
-            h.content_tag(:span, "📄", class: "ez-agent-message__attachment-icon") +
+            h.content_tag(:span, h.content_tag(:i, "", data: { lucide: "file" }), class: "ez-agent-message__attachment-icon") +
             h.content_tag(:span, name, class: "ez-agent-message__attachment-name") +
             h.content_tag(:span, size, class: "ez-agent-message__attachment-size")
           end
