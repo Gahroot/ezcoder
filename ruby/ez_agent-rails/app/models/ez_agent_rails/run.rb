@@ -12,6 +12,12 @@ module EZAgentRails
                foreign_key: :conversation_id,
                inverse_of: :runs
 
+    has_many :messages,
+             class_name: "EZAgentRails::Message",
+             foreign_key: :run_id,
+             inverse_of: :run,
+             dependent: :nullify
+
     has_many :tool_confirmations,
              class_name: "EZAgentRails::ToolConfirmation",
              foreign_key: :run_id,
@@ -49,6 +55,7 @@ module EZAgentRails
     def record_result(result)
       record_usage(result.total_usage)
       self.status = "succeeded"
+      self.started_at ||= created_at
       save!
       self
     end
@@ -60,6 +67,7 @@ module EZAgentRails
     def record_failure(error)
       self.error_message = error.respond_to?(:message) ? error.message : error.to_s
       self.status = "failed"
+      self.started_at ||= created_at
       save!
       self
     end
@@ -85,8 +93,44 @@ module EZAgentRails
       record_usage(result&.total_usage)
       self.aborted_at ||= Time.current
       self.status = "aborted"
+      self.started_at ||= created_at
       save!
       self
+    end
+
+    # ── Diagnostics ──────────────────────────────────────────
+
+    # Record a retry event. Increments the counter and appends to turn_latencies.
+    def record_retry!(reason)
+      self.retry_count = (retry_count || 0) + 1
+      self.stall_count = (stall_count || 0) + 1 if reason.to_s == "stream_stall"
+      save!
+    end
+
+    # Record a turn's latency. Appends { turn:, latency_ms: } to turn_latencies.
+    def record_turn_latency!(turn, latency_ms)
+      self.turn_latencies = (turn_latencies || []).to_a + [{ "turn" => turn, "latency_ms" => latency_ms }]
+      save!
+    end
+
+    # Mark the run as started (called at the beginning of RunJob#drive).
+    def mark_started!
+      update!(started_at: Time.current) unless started_at
+    end
+
+    # Total wall-clock milliseconds for this run, if started_at is set.
+    # @return [Integer, nil]
+    def total_latency_ms
+      return nil unless started_at
+
+      finish = aborted_at || updated_at
+      ((finish - started_at) * 1000).to_i
+    end
+
+    # Number of turns from turn_latencies, or 0.
+    # @return [Integer]
+    def total_turns_display
+      (turn_latencies || []).length
     end
   end
 end

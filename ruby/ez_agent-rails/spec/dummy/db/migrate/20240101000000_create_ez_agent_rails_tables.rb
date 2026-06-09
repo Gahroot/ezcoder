@@ -8,6 +8,7 @@ class CreateEZAgentRailsTables < ActiveRecord::Migration[7.1]
       t.string :title
       t.string :provider
       t.string :model
+      t.integer :message_count, null: false, default: 0
 
       t.timestamps
     end
