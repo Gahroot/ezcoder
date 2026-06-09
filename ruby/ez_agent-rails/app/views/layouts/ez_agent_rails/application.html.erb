@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js" defer></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
 
     <style>
       /* ══════════════════════════════════════════════════════
@@ -215,6 +216,8 @@
       }
       .ez-agent-theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-focus); transform: scale(1.05); }
       .ez-agent-theme-toggle:active { transform: scale(0.95); }
+      [data-theme="light"] .ez-agent-theme-toggle .lucide-sun { display: none; }
+      [data-theme="dark"] .ez-agent-theme-toggle .lucide-moon { display: none; }
 
       /* ── Demo Mode toggle button ──────────────────────── */
       .ez-agent-demo-toggle {
@@ -227,6 +230,8 @@
       }
       .ez-agent-demo-toggle:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-focus); transform: scale(1.05); }
       .ez-agent-demo-toggle:active { transform: scale(0.95); }
+      /* ── Lucide icon defaults ─────────────────────────── */
+      svg.lucide { width: 1em; height: 1em; vertical-align: -0.125em; flex-shrink: 0; }
       .ez-agent-demo-toggle--active {
         background: var(--accent); color: var(--text-inverse); border-color: var(--accent);
         box-shadow: 0 0 0 2px rgba(79,110,247,0.25);
@@ -642,8 +647,7 @@
         function applyTheme(theme) {
           root.setAttribute("data-theme", theme);
           localStorage.setItem(KEY, theme);
-          var btn = document.querySelector(".ez-agent-theme-toggle");
-          if (btn) btn.textContent = theme === "dark" ? "☀️" : "🌙";
+          // Lucide icons are toggled via CSS [data-theme] selectors — no JS swap needed
           // Swap highlight.js theme for code blocks
           var hl = document.querySelector('link[href*="highlight.js"]');
           if (hl) {
@@ -739,6 +743,25 @@
             }
           });
           observer.observe(document.body, { childList: true, subtree: true });
+
+          // Lucide icons: create on load and re-create on DOM mutations
+          function initLucideIcons(root) {
+            if (typeof lucide !== "undefined") lucide.createIcons({ nodes: root ? [root] : undefined });
+          }
+          initLucideIcons();
+          var lucideObserver = new MutationObserver(function (mutations) {
+            for (var m = 0; m < mutations.length; m++) {
+              var nodes = mutations[m].addedNodes;
+              for (var n = 0; n < nodes.length; n++) {
+                var node = nodes[n];
+                if (node.nodeType !== 1) continue;
+                var hasIcons = (node.matches && node.matches("[data-lucide]"));
+                var children = node.querySelectorAll ? node.querySelectorAll("[data-lucide]") : [];
+                if (hasIcons || children.length) initLucideIcons();
+              }
+            }
+          });
+          lucideObserver.observe(document.body, { childList: true, subtree: true });
         });
       })();
     </script>
@@ -901,7 +924,8 @@
               } else {
                 var icon = document.createElement("span");
                 icon.className = "ez-agent-file-preview__icon";
-                icon.textContent = "📄";
+                var fileSvg = lucide && lucide.icons && lucide.icons.file ? lucide.createElement(lucide.icons.file) : null;
+                if (fileSvg) { icon.appendChild(fileSvg); } else { icon.textContent = "📄"; }
                 item.appendChild(icon);
               }
 
