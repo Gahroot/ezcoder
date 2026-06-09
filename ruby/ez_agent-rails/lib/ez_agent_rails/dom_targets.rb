@@ -46,5 +46,25 @@ module EZAgentRails
     def status(run)
       "#{dom_id(run)}_status"
     end
+
+    # The action button area (Stop while running, Regenerate after terminal).
+    def actions(run)
+      "#{dom_id(run)}_actions"
+    end
+
+    # ── Conversation-level targets ────────────────────────
+
+    # The messages container in the conversation show view.
+    def messages(conversation)
+      "#{ActionView::RecordIdentifier.dom_id(conversation)}_messages"
+    end
+
+    # The streaming message placeholder inside the messages container.
+    # During a run, text deltas are appended here via conversation-level
+    # Turbo Stream broadcasts. On completion the placeholder is replaced
+    # with the persisted message.
+    def streaming_message(conversation)
+      "#{ActionView::RecordIdentifier.dom_id(conversation)}_streaming_message"
+    end
   end
 end

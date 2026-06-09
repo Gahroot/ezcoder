@@ -17,8 +17,22 @@ module EZAgentRails
       DomTargets.status(run)
     end
 
+    def run_actions_target(run)
+      DomTargets.actions(run)
+    end
+
     def run_confirmation_target(run, confirmation)
       DomTargets.confirmation_frame(run, confirmation.id)
+    end
+
+    # Conversation-level streaming targets ────────────────
+
+    def messages_target(conversation)
+      DomTargets.messages(conversation)
+    end
+
+    def streaming_message_target(conversation)
+      DomTargets.streaming_message(conversation)
     end
 
     # Engine URL helpers resolved through the mounted Engine's route set, so the
@@ -28,6 +42,83 @@ module EZAgentRails
     # `*_path` helpers are not in scope). Used by the confirm partial's buttons.
     def ez_agent_routes
       EZAgentRails::Engine.routes.url_helpers
+    end
+
+    # ── Provider badge helpers ─────────────────────────────
+
+    # Provider display name for the badge on assistant messages.
+    PROVIDER_DISPLAY = {
+      "anthropic" => "Claude",
+      "openai"    => "GPT",
+      "gemini"    => "Gemini",
+      "moonshot"  => "Kimi",
+      "glm"       => "GLM",
+      "minimax"   => "MiniMax",
+      "xiaomi"    => "MiMo",
+      "deepseek"  => "DeepSeek",
+      "openrouter" => "OpenRouter"
+    }.freeze
+
+    # Emoji icon per provider for the message badge.
+    PROVIDER_ICONS = {
+      "anthropic" => "🟣",
+      "openai"    => "🟢",
+      "gemini"    => "🔵",
+      "moonshot"  => "🌙",
+      "glm"       => "🧊",
+      "minimax"   => "🔷",
+      "xiaomi"    => "📱",
+      "deepseek"  => "🐋",
+      "openrouter" => "🔀"
+    }.freeze
+
+    # Render a small provider badge for an assistant message.
+    def provider_badge(message)
+      provider = message.provider_name
+      return "" unless provider
+
+      icon  = PROVIDER_ICONS[provider] || "🤖"
+      label = PROVIDER_DISPLAY[provider] || provider.titleize
+      model = message.model_name
+      text  = model ? "#{label} #{model}" : label
+      content_tag(:span, "#{icon} #{text}", class: "ez-agent-provider-badge")
+    end
+
+    # ── Diagnostics helpers ─────────────────────────────────
+
+    # Render the diagnostics panel for a completed run.
+    def diagnostics_panel(run)
+      return "" unless run
+
+      turn_latencies = run.turn_latencies || []
+      avg_latency = if turn_latencies.any?
+                       (turn_latencies.sum { |t| t["latency_ms"].to_i } / turn_latencies.length).round
+                     end
+
+      content_tag(:div, class: "ez-agent-diagnostics", data: { controller: "diagnostics" }) do
+        toggle = content_tag(:button, "📊 Diagnostics", type: "button",
+                             class: "ez-agent-diagnostics__toggle",
+                             data: { action: "click->diagnostics#toggle" })
+        body   = content_tag(:div, class: "ez-agent-diagnostics__body",
+                             data: { diagnostics_target: "body" }) do
+          rows = [
+            ["Turns",        run.total_turns_display],
+            ["Input tokens",  number_with_delimiter(run.input_tokens)],
+            ["Output tokens", number_with_delimiter(run.output_tokens)],
+            ["Avg latency",   avg_latency ? "#{avg_latency}ms" : "—"],
+            ["Retries",       run.retry_count.to_s],
+            ["Stream stalls", run.stall_count.to_s],
+            ["Total time",    run.total_latency_ms ? "#{run.total_latency_ms}ms" : "—"]
+          ]
+          rows.map do |label, value|
+            content_tag(:div, class: "ez-agent-diagnostics__row") do
+              content_tag(:span, label, class: "ez-agent-diagnostics__label") +
+              content_tag(:span, value, class: "ez-agent-diagnostics__value")
+            end
+          end.join.html_safe
+        end
+        toggle + body
+      end
     end
   end
 end

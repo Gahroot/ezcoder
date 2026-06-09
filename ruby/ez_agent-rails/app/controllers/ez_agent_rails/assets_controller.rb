@@ -21,5 +21,19 @@ module EZAgentRails
       expires_in 1.year, public: true
       send_file path, type: "text/javascript", disposition: "inline"
     end
+
+    # GET /provider_selector.js
+    def provider_selector_js
+      path = EZAgentRails::Engine.root.join("app/javascript/controllers/provider_selector_controller.js")
+      expires_in 1.year, public: true
+      send_file path, type: "text/javascript", disposition: "inline"
+    end
+
+    # GET /diagnostics.js
+    def diagnostics_js
+      path = EZAgentRails::Engine.root.join("app/javascript/controllers/diagnostics_controller.js")
+      expires_in 1.year, public: true
+      send_file path, type: "text/javascript", disposition: "inline"
+    end
   end
 end

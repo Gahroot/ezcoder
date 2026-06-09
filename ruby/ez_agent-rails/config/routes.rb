@@ -1,10 +1,12 @@
 # frozen_string_literal: true
 
 EZAgentRails::Engine.routes.draw do
+  root "conversations#index"
+
   # The bundled demo chat UI. `index` lists conversations, `show` is the live
   # chat page (message history + prompt form + the active run's Turbo stream),
   # `create` starts a new conversation. The UI is Hotwire-only — no JS build.
-  resources :conversations, only: [:index, :show, :create] do
+  resources :conversations, only: [:index, :show, :create, :destroy] do
     # Kick off a background run for a conversation, then show it. The page
     # subscribes to the run's Turbo stream (`turbo_stream_from run`) and watches
     # the RunJob's events arrive live.
@@ -15,6 +17,8 @@ EZAgentRails::Engine.routes.draw do
   # runs with zero asset pipeline / build step (the demo layout loads it as an
   # ES module). Host apps that already ship Hotwire don't need this.
   get "turbo.js", to: "assets#turbo", as: :turbo_js
+  get "provider_selector.js", to: "assets#provider_selector_js", as: :provider_selector_js
+  get "diagnostics.js", to: "assets#diagnostics_js", as: :diagnostics_js
 
   # `stop` stamps the run's `aborted_at` so a RunJob driving the loop in another
   # process cancels at its next boundary (cooperative cancellation).
