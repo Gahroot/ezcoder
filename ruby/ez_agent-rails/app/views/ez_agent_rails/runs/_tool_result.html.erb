@@ -1,10 +1,22 @@
 <%# locals: frame_id, name, result (String), is_error (Boolean), duration_ms (Integer) %>
+<% collapsed = result.to_s.length > 500 %>
 <turbo-frame id="<%= frame_id %>" class="ez-agent-tool" data-tool-name="<%= name %>"
              data-state="<%= is_error ? "error" : "done" %>">
-  <div class="ez-agent-tool__header">
-    <span class="ez-agent-tool__name"><%= name %></span>
-    <span class="ez-agent-tool__state"><%= is_error ? "error" : "done" %></span>
-    <% if duration_ms %><span class="ez-agent-tool__duration"><%= duration_ms %>ms</span><% end %>
-  </div>
-  <pre class="ez-agent-tool__result"><%= result %></pre>
+  <details class="ez-agent-tool__card" <%= "open" unless collapsed %>>
+    <summary class="ez-agent-tool__summary">
+      <span class="ez-agent-tool__icon"><%= is_error ? "❌" : "✅" %></span>
+      <span class="ez-agent-tool__name"><%= name %></span>
+      <span class="ez-agent-tool__badge ez-agent-tool__badge--<%= is_error ? "error" : "done" %>"><%= is_error ? "failed" : "completed" %></span>
+      <% if duration_ms %><span class="ez-agent-tool__duration"><%= duration_ms %>ms</span><% end %>
+      <span class="ez-agent-tool__chevron"></span>
+    </summary>
+    <div class="ez-agent-tool__body">
+      <% if result.present? %>
+        <div class="ez-agent-tool__section">
+          <div class="ez-agent-tool__section-label"><%= is_error ? "Error" : "Result" %></div>
+          <pre class="ez-agent-tool__pre"><%= result %></pre>
+        </div>
+      <% end %>
+    </div>
+  </details>
 </turbo-frame>

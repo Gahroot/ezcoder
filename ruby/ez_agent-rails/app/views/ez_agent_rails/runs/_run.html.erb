@@ -13,13 +13,12 @@
       <%= run.status %>
     </div>
     <%# Cooperative cancellation: stamps the run's `aborted_at` so an in-flight
-        RunJob stops at its next boundary. Routed through the mounted engine so
-        it works in-request and in out-of-band Turbo broadcasts alike. Only shown
-        while the run is live (a finished run has nothing to stop). %>
-    <% if run.running? %>
-      <%= button_to "Stop", ez_agent_routes.stop_run_path(run), method: :post,
-                    class: "ez-agent-stop", form: { class: "ez-agent-stop" } %>
-    <% end %>
+        RunJob stops at its next boundary.  After a terminal state the button
+        morphs into Regenerate — both rendered from the _actions partial so a
+        Turbo broadcast can swap the area without client-side JS. %>
+    <div id="<%= run_actions_target(run) %>" class="ez-agent-run__actions">
+      <%= render "ez_agent_rails/runs/actions", run: run %>
+    </div>
   </div>
   <div id="<%= run_tools_target(run) %>" class="ez-agent-tools">
     <%# Re-render any still-pending confirmations so a reload shows live prompts. %>

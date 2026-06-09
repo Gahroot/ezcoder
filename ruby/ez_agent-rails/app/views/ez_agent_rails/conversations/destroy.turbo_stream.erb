@@ -1,0 +1,12 @@
+<%= turbo_stream.remove dom_id(@conversation, :sidebar) %>
+<%= turbo_stream.action :replace, "ez_agent_main" do %>
+  <turbo-frame id="ez_agent_main">
+    <div class="ez-agent-welcome">
+      <div class="ez-agent-welcome__icon">🤖</div>
+      <h1 class="ez-agent-welcome__title">Welcome to EZ Agent</h1>
+      <p class="ez-agent-welcome__subtitle">
+        Your AI coding assistant. Start a new chat or pick a conversation from the sidebar.
+      </p>
+    </div>
+  </turbo-frame>
+<% end %>

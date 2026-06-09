@@ -1,0 +1,42 @@
+<%# locals: conversations (ActiveRecord::Relation), active_conversation (Conversation, nil) %>
+<% active_id = active_conversation&.id %>
+
+<aside class="ez-agent-sidebar">
+  <div class="ez-agent-sidebar__header">
+    <div class="ez-agent-sidebar__brand">
+      <span class="ez-agent-sidebar__brand-icon">🤖</span>
+      <h2>EZ Agent</h2>
+    </div>
+    <div class="ez-agent-sidebar__actions">
+      <%= button_to "＋", ez_agent_routes.conversations_path,
+          method: :post,
+          class: "ez-agent-sidebar__new",
+          title: "New Chat",
+          form: { class: "ez-agent-sidebar__new-form",
+                  data: { turbo_frame: "_top" } } %>
+      <button type="button"
+              class="ez-agent-demo-toggle"
+              onclick="window.toggleDemoMode()"
+              title="Toggle Demo Mode — auto-fills and sends sample prompts"
+              aria-label="Toggle Demo Mode"
+              id="ez-agent-demo-toggle">🎮</button>
+      <button type="button"
+              class="ez-agent-theme-toggle"
+              onclick="window.toggleTheme()"
+              title="Toggle dark/light theme"
+              aria-label="Toggle theme">🌙</button>
+    </div>
+  </div>
+
+  <nav class="ez-agent-sidebar__list">
+    <% if conversations.any? %>
+      <% conversations.each do |conversation| %>
+        <%= render "ez_agent_rails/conversations/sidebar_item",
+                   conversation: conversation,
+                   active: conversation.id == active_id %>
+      <% end %>
+    <% else %>
+      <p class="ez-agent-sidebar__empty">No conversations yet</p>
+    <% end %>
+  </nav>
+</aside>

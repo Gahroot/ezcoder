@@ -1,41 +1,155 @@
-<%# locals: @conversation (EZAgentRails::Conversation), @run (EZAgentRails::Run, nil) %>
-<% content_for :title, "EZ Agent · #{@conversation.title.presence || "Conversation ##{@conversation.id}"}" %>
+<%# locals: @conversation (EZAgentRails::Conversation), @run (EZAgentRails::Run, nil), @conversations (ActiveRecord::Relation) %>
+<% content_for :title, "EZ Agent · #{@conversation.display_title}" %>
 
-<section class="ez-agent-chat">
-  <header class="ez-agent-chat__header">
-    <h1><%= @conversation.title.presence || "Conversation ##{@conversation.id}" %></h1>
-    <%= link_to "← All conversations", ez_agent_routes.conversations_path, class: "ez-agent-link" %>
-  </header>
+<%= render "ez_agent_rails/conversations/sidebar",
+           conversations: @conversations, active_conversation: @conversation %>
 
-  <%# Persisted history (user turns, assistant answers, tool results). %>
-  <div class="ez-agent-messages" id="<%= dom_id(@conversation, :messages) %>">
-    <% if @conversation.messages.empty? %>
-      <p class="ez-agent-empty">No messages yet — ask the agent something below.</p>
-    <% else %>
-      <%= render partial: "ez_agent_rails/conversations/message",
-                 collection: @conversation.messages.order(:position), as: :message %>
-    <% end %>
-  </div>
+<div class="ez-agent-main">
+  <turbo-frame id="ez_agent_main">
+    <%#
+      Subscribe to the conversation-level Turbo Stream. Text deltas from an active
+      run are broadcast_appended into the streaming message container below, giving
+      the user a real-time view of the assistant's response inside the messages area.
+      When the run completes the streaming container is replaced with the persisted
+      message and a fresh empty container is appended for the next run.
 
-  <%#
-    The active run renders here. The prompt form targets this frame, so posting a
-    prompt swaps in the freshly created run's frame — which `turbo_stream_from`s
-    itself and live-renders streamed text, tool calls, confirmation prompts, and
-    the Stop button as the RunJob produces events.
-  %>
-  <turbo-frame id="ez_agent_active_run" class="ez-agent-active-run">
-    <% if @run %>
-      <%= render "ez_agent_rails/runs/run", run: @run %>
-    <% end %>
-  </turbo-frame>
+      Placed inside the turbo-frame so the subscription is set up when the page is
+      loaded via turbo-frame navigation (sidebar clicks) — not just full page loads.
+    %>
+    <%= turbo_stream_from @conversation %>
+    <div class="ez-agent-main-inner">
+      <header class="ez-agent-chat__header">
+        <h1><%= @conversation.display_title %></h1>
 
-  <%= form_with url: ez_agent_routes.conversation_runs_path(@conversation),
-                method: :post, data: { turbo_frame: "ez_agent_active_run" },
-                class: "ez-agent-prompt" do |f| %>
-    <div class="ez-agent-prompt__inner">
-      <%= f.text_area :prompt, rows: 2, required: true,
-                      class: "ez-agent-prompt__input", placeholder: "Ask the agent…" %>
-      <%= f.submit "Send", class: "ez-agent-prompt__send" %>
+        <%# ── Provider / Model selector ─────────────────────── %>
+        <div class="ez-agent-provider-selector"
+             data-controller="provider-selector"
+             data-provider-selector-models-by-provider-value="<%= @models_by_provider.to_json %>">
+          <select class="ez-agent-provider-selector__provider"
+                  data-provider-selector-target="provider">
+            <% @available_providers.each do |provider| %>
+              <option value="<%= provider %>"
+                      <%= "selected" if provider.to_s == @default_provider %>><%= provider.to_s.titleize %></option>
+            <% end %>
+          </select>
+          <select class="ez-agent-provider-selector__model"
+                  data-provider-selector-target="model">
+          </select>
+        </div>
+      </header>
+
+      <%# ── Demo Mode banner ──────────────────────────────── %>
+      <div class="ez-agent-demo-banner" id="ez-agent-demo-banner">
+        🎮 Demo Mode active — a sample prompt will auto-fill below.
+      </div>
+
+      <%#
+        Persisted history (user turns, assistant answers, tool results) plus a
+        streaming placeholder at the bottom. During a run the Broadcaster
+        broadcasts text deltas into the streaming container via the conversation
+        stream. When the run finishes the placeholder is replaced with the
+        persisted message.
+      %>
+      <div class="ez-agent-messages" id="<%= dom_id(@conversation, :messages) %>"
+           data-controller="auto-scroll">
+        <% if @conversation.messages.empty? && !@run&.running? %>
+          <p id="<%= messages_target(@conversation) %>_empty"
+             class="ez-agent-empty">No messages yet — ask the agent something below.</p>
+        <% end %>
+        <%= render partial: "ez_agent_rails/conversations/message",
+                   collection: @conversation.messages.order(:position), as: :message %>
+        <div id="<%= streaming_message_target(@conversation) %>"
+             class="ez-agent-streaming-message<%= ' ez-agent-skeleton' if @run&.running? %>">
+          <% if @run&.running? %>
+            <div class="ez-agent-skeleton__line"></div>
+            <div class="ez-agent-skeleton__line"></div>
+            <div class="ez-agent-skeleton__line"></div>
+          <% end %>
+        </div>
+      </div>
+
+      <%#
+        The active run renders here. The prompt form targets this frame, so posting a
+        prompt swaps in the freshly created run's frame — which `turbo_stream_from`s
+        itself and live-renders tool calls, confirmation prompts, and the Stop button
+        as the RunJob produces events. Text deltas stream into the messages area above
+        via the conversation-level Turbo Stream.
+      %>
+      <turbo-frame id="ez_agent_active_run" class="ez-agent-active-run">
+        <% if @run %>
+          <%= render "ez_agent_rails/runs/run", run: @run %>
+        <% end %>
+      </turbo-frame>
+
+      <%# ── Diagnostics panel (for last completed run) ──────── %>
+      <% if @run && !@run.running? %>
+        <%= diagnostics_panel(@run) %>
+      <% end %>
+
+      <%= form_with url: ez_agent_routes.conversation_runs_path(@conversation),
+                    method: :post, multipart: true,
+                    data: { turbo_frame: "ez_agent_active_run" },
+                    class: "ez-agent-prompt" do |f| %>
+        <div class="ez-agent-prompt__inner" data-controller="file-upload">
+          <input type="hidden" name="provider" value="<%= @default_provider %>">
+          <input type="hidden" name="model" value="<%= @default_model %>">
+
+          <%# ── File preview strip ──────────────────────────────── %>
+          <div class="ez-agent-file-preview" data-file-upload-target="preview"></div>
+
+          <%# ── Drop zone overlay (visible on dragover) ─────────── %>
+          <div class="ez-agent-drop-zone" data-file-upload-target="dropZone">
+            <span class="ez-agent-drop-zone__icon">📎</span>
+            <span class="ez-agent-drop-zone__text">Drop files here</span>
+          </div>
+
+          <%# ── Prompt input row ─────────────────────────────────── %>
+          <div class="ez-agent-prompt__row">
+            <button type="button" class="ez-agent-prompt__attach"
+                    data-file-upload-target="attachBtn"
+                    title="Attach files">
+              📎
+            </button>
+            <input type="file" name="files[]" class="ez-agent-file-input"
+                   multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.sh,.sql"
+                   data-file-upload-target="fileInput">
+            <%= f.text_area :prompt, rows: 2,
+                            class: "ez-agent-prompt__input", placeholder: "Ask the agent…",
+                            data: { file_upload_target: "textInput" } %>
+            <%= f.submit "Send", class: "ez-agent-prompt__send",
+                         data: { file_upload_target: "submitBtn" } %>
+          </div>
+        </div>
+      <% end %>
     </div>
-  <% end %>
-</section>
+  </turbo-frame>
+</div>
+
+<%# ── Demo Mode auto-send ──────────────────────────────────── %>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var DEMO_KEY = "ez-agent-demo-mode";
+    var DEMO_PROMPTS = [
+      "What's the weather going to be like in Paris this Saturday? I'm planning a picnic.",
+      "I'm building a developer CLI tool. Should I use Rust or Go? Help me compare them for this use case.",
+      "Generate an image of a cyberpunk cityscape at night with neon lights reflecting off wet streets. Make it cinematic."
+    ];
+    var demoIndex = 0;
+
+    if (localStorage.getItem(DEMO_KEY) === "on") {
+      var banner = document.getElementById("ez-agent-demo-banner");
+      if (banner) banner.classList.add("ez-agent-demo-banner--active");
+
+      var input = document.querySelector("textarea[name='prompt']");
+      var submitBtn = document.querySelector(".ez-agent-prompt__send");
+      if (input && submitBtn && !input.value) {
+        var prompt = DEMO_PROMPTS[demoIndex % DEMO_PROMPTS.length];
+        demoIndex++;
+        input.value = prompt;
+        input.style.height = "auto";
+        input.style.height = input.scrollHeight + "px";
+        input.focus();
+      }
+    }
+  });
+</script>

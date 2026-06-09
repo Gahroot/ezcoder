@@ -1,5 +1,32 @@
 <%# locals: message (EZAgentRails::Message) %>
-<div class="ez-agent-message ez-agent-message--<%= message.role %>" data-role="<%= message.role %>">
-  <div class="ez-agent-message__role"><%= message.role %></div>
+<div class="ez-agent-message ez-agent-message--<%= message.role %>" data-role="<%= message.role %>"<%= ' data-controller="markdown"'.html_safe if message.role == "assistant" %>>
+  <div class="ez-agent-message__role">
+    <%= message.role %>
+    <% if message.role == "assistant" && message.provider_name.present? %>
+      <%= provider_badge(message) %>
+    <% end %>
+  </div>
+  <% if message.file_attachments.present? && message.file_attachments.any? %>
+    <div class="ez-agent-message__attachments">
+      <% message.file_attachments.each do |att| %>
+        <% if att["content_type"].to_s.start_with?("image/") %>
+          <div class="ez-agent-message__attachment ez-agent-message__attachment--image">
+            <% if att["path"].present? && File.exist?(att["path"].to_s) %>
+              <img src="data:<%= att["content_type"] %>;base64,<%= Base64.strict_encode64(File.binread(att["path"])) %>"
+                   alt="<%= att["name"] %>"
+                   class="ez-agent-message__attachment-img">
+            <% end %>
+            <span class="ez-agent-message__attachment-name"><%= att["name"] %></span>
+          </div>
+        <% else %>
+          <div class="ez-agent-message__attachment ez-agent-message__attachment--file">
+            <span class="ez-agent-message__attachment-icon">📄</span>
+            <span class="ez-agent-message__attachment-name"><%= att["name"] %></span>
+            <span class="ez-agent-message__attachment-size"><%= number_to_human_size(att["size"]) %></span>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  <% end %>
   <div class="ez-agent-message__body"><%= ez_agent_message_body(message) %></div>
 </div>

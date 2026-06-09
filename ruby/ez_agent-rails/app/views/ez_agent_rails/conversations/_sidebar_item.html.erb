@@ -1,0 +1,23 @@
+<%# locals: conversation (EZAgentRails::Conversation), active: false %>
+<% is_active = active || false %>
+<div class="ez-agent-sidebar__item<%= ' ez-agent-sidebar__item--active' if is_active %>"
+     id="<%= dom_id(conversation, :sidebar) %>">
+  <%= link_to ez_agent_routes.conversation_path(conversation),
+      class: "ez-agent-sidebar__link",
+      data: { turbo_frame: "ez_agent_main" } do %>
+    <div class="ez-agent-sidebar__title"><%= conversation.display_title %></div>
+    <% if conversation.preview_text.present? %>
+      <div class="ez-agent-sidebar__preview"><%= conversation.preview_text %></div>
+    <% end %>
+    <div class="ez-agent-sidebar__meta">
+      <span class="ez-agent-sidebar__time"><%= time_ago_in_words(conversation.updated_at) %> ago</span>
+      <span class="ez-agent-sidebar__count"><%= conversation.message_count %> msgs</span>
+    </div>
+  <% end %>
+  <%= button_to "×", ez_agent_routes.conversation_path(conversation),
+      method: :delete,
+      class: "ez-agent-sidebar__delete",
+      form: { class: "ez-agent-sidebar__delete-form" },
+      title: "Delete conversation",
+      data: { turbo_frame: "_top" } %>
+</div>

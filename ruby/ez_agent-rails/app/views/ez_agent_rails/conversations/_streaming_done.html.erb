@@ -1,0 +1,8 @@
+<%# locals: message (EZAgentRails::Message), target_id (String) %>
+<%#
+  Swaps the live streaming placeholder for the persisted assistant message once a
+  run finishes. A fresh empty streaming container is appended immediately after
+  so the next run can broadcast into it without a full page reload.
+%>
+<%= render "ez_agent_rails/conversations/message", message: message %>
+<div id="<%= target_id %>" class="ez-agent-streaming-message"></div>

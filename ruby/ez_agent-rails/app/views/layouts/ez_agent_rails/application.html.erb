@@ -1,81 +1,940 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><%= content_for?(:title) ? yield(:title) : "EZ Agent" %></title>
 
-    <%#
-      Action Cable mount point for Turbo Streams. The host app must mount
-      `ActionCable.server` here (the spec dummy mounts it at /cable). Turbo's
-      cable consumer reads this meta to find the websocket.
-    %>
     <%= action_cable_meta_tag %>
 
-    <%#
-      Turbo, loaded as an ES module from the engine (served out of the
-      turbo-rails gem). No bundler / importmap / build step required. A host app
-      that already ships Hotwire can drop this and the asset route.
-    %>
     <script type="module" src="<%= ez_agent_routes.turbo_js_path %>"></script>
+    <script src="<%= ez_agent_routes.provider_selector_js_path %>"></script>
+    <script src="<%= ez_agent_routes.diagnostics_js_path %>"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js" defer></script>
 
     <style>
-      :root { color-scheme: light dark; }
-      * { box-sizing: border-box; }
+      /* ══════════════════════════════════════════════════════
+         Design Tokens — CSS Custom Properties
+         ══════════════════════════════════════════════════════ */
+      :root, [data-theme="light"] {
+        --bg-primary: #f8f9fc;
+        --bg-secondary: #ffffff;
+        --bg-sidebar: #fafbfd;
+        --bg-hover: #f1f3f9;
+        --bg-user-bubble: #eef2ff;
+        --bg-assistant-bubble: #ffffff;
+        --bg-surface: #f4f5f9;
+        --bg-code: #f6f8fa;
+        --bg-tool: #f9fafb;
+        --bg-tool-confirm: #fffbeb;
+        --bg-confirm-summary: rgba(251,191,36,0.06);
+        --bg-confirm-summary-hover: rgba(251,191,36,0.12);
+        --bg-diagnostics: #fafbfd;
+        --bg-badge: #f3f4f6;
+        --bg-input: #ffffff;
+        --bg-skeleton: #e8eaf0;
+        --border: #e2e5ee;
+        --border-subtle: #edf0f7;
+        --border-user: #c7d2fe;
+        --border-focus: #93a4f7;
+        --border-confirm: #fbbf24;
+        --text-primary: #1a1d2e;
+        --text-secondary: #6b7294;
+        --text-muted: #9ca3c0;
+        --text-inverse: #ffffff;
+        --accent: #4f6ef7;
+        --accent-hover: #3d5ae5;
+        --accent-active: #2e4bd4;
+        --success: #16a34a;
+        --success-bg: #dcfce7;
+        --success-text: #166534;
+        --error: #dc2626;
+        --error-bg: #fee2e2;
+        --error-text: #991b1b;
+        --error-hover: #b91c1c;
+        --warning: #f59e0b;
+        --warning-bg: #fef3c7;
+        --warning-text: #92400e;
+        --info-bg: #dbeafe;
+        --info-text: #1e40af;
+        --pending-bg: #fef3c7;
+        --pending-text: #92400e;
+        --approved-bg: #dcfce7;
+        --approved-text: #166534;
+        --denied-bg: #fee2e2;
+        --denied-text: #991b1b;
+        --purple: #7c3aed;
+        --purple-hover: #6d28d9;
+        --shadow-xs: 0 1px 2px rgba(0,0,0,.03);
+        --shadow-sm: 0 1px 3px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.03);
+        --shadow-md: 0 4px 12px rgba(0,0,0,.06);
+        --shadow-lg: 0 8px 24px rgba(0,0,0,.08);
+        --radius-xs: 6px;
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+        --radius-xl: 20px;
+        --radius-full: 9999px;
+        --transition-fast: 150ms ease;
+        --transition: 200ms ease;
+        --transition-slow: 300ms ease;
+        --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+        --color-scheme: light;
+      }
+
+      [data-theme="dark"] {
+        --bg-primary: #0f1117;
+        --bg-secondary: #181b25;
+        --bg-sidebar: #13151e;
+        --bg-hover: #1e2130;
+        --bg-user-bubble: #1c2541;
+        --bg-assistant-bubble: #1e2030;
+        --bg-surface: #1a1d28;
+        --bg-code: #1a1d24;
+        --bg-tool: #1e2030;
+        --bg-tool-confirm: #2a2418;
+        --bg-confirm-summary: rgba(251,191,36,0.08);
+        --bg-confirm-summary-hover: rgba(251,191,36,0.14);
+        --bg-diagnostics: #1e2030;
+        --bg-badge: #2a2d3e;
+        --bg-input: #1e2030;
+        --bg-skeleton: #252838;
+        --border: #2a2d3e;
+        --border-subtle: #22253a;
+        --border-user: #2d3b66;
+        --border-focus: #4f6ef7;
+        --border-confirm: #6b5a20;
+        --text-primary: #e4e8f7;
+        --text-secondary: #8b90a8;
+        --text-muted: #5c6080;
+        --text-inverse: #0f1117;
+        --accent: #6b8aff;
+        --accent-hover: #8ba3ff;
+        --accent-active: #a0b5ff;
+        --success: #22c55e;
+        --success-bg: #14532d;
+        --success-text: #86efac;
+        --error: #ef4444;
+        --error-bg: #7f1d1d;
+        --error-text: #fca5a5;
+        --error-hover: #dc2626;
+        --warning: #fbbf24;
+        --warning-bg: #451a03;
+        --warning-text: #fcd34d;
+        --info-bg: #1e3a5f;
+        --info-text: #93c5fd;
+        --pending-bg: #451a03;
+        --pending-text: #fcd34d;
+        --approved-bg: #14532d;
+        --approved-text: #86efac;
+        --denied-bg: #7f1d1d;
+        --denied-text: #fca5a5;
+        --purple: #8b5cf6;
+        --purple-hover: #7c3aed;
+        --shadow-xs: 0 1px 2px rgba(0,0,0,.15);
+        --shadow-sm: 0 1px 3px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.12);
+        --shadow-md: 0 4px 12px rgba(0,0,0,.3);
+        --shadow-lg: 0 8px 24px rgba(0,0,0,.4);
+        --color-scheme: dark;
+      }
+
+      /* ── Reset & base ────────────────────────────────── */
+      *, *::before, *::after { box-sizing: border-box; }
       body {
         margin: 0;
-        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-        background: #f6f7f9; color: #1b1f24;
+        font: 15px/1.6 var(--font-sans);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        color-scheme: var(--color-scheme);
+        transition: background-color var(--transition), color var(--transition);
       }
-      .ez-agent-app { max-width: 760px; margin: 0 auto; padding: 24px 16px 96px; }
+      a { color: var(--accent); }
+      a:hover { color: var(--accent-hover); }
+
+      /* ── Smooth theme transitions ────────────────────── */
+      .ez-agent-app,
+      .ez-agent-sidebar,
+      .ez-agent-main,
+      .ez-agent-prompt,
+      .ez-agent-message,
+      .ez-agent-run,
+      .ez-agent-tool__card,
+      .ez-agent-diagnostics,
+      .ez-agent-provider-badge,
+      .ez-agent-md code:not(pre code),
+      .ez-agent-md pre,
+      .ez-agent-md blockquote,
+      .ez-agent-md th,
+      .ez-agent-file-preview__item,
+      .ez-agent-message__attachment {
+        transition: background-color var(--transition), color var(--transition), border-color var(--transition), box-shadow var(--transition);
+      }
+
+      /* ── App layout ──────────────────────────────────── */
+      .ez-agent-app { display: flex; height: 100vh; overflow: hidden; }
+
+      /* ── Sidebar ─────────────────────────────────────── */
+      .ez-agent-sidebar {
+        width: 280px; min-width: 280px;
+        border-right: 1px solid var(--border);
+        background: var(--bg-sidebar);
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      .ez-agent-sidebar__header {
+        padding: 16px; border-bottom: 1px solid var(--border);
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      }
+      .ez-agent-sidebar__brand { display: flex; align-items: center; gap: 8px; margin: 0; }
+      .ez-agent-sidebar__brand h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+      .ez-agent-sidebar__brand-icon { font-size: 18px; }
+      .ez-agent-sidebar__actions { display: flex; align-items: center; gap: 4px; }
+      .ez-agent-sidebar__new {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 6px 12px; border-radius: var(--radius-sm);
+        background: var(--accent); color: var(--text-inverse);
+        text-decoration: none; font-size: 13px; font-weight: 500;
+        border: 0; cursor: pointer;
+        transition: background var(--transition-fast), transform var(--transition-fast);
+      }
+      .ez-agent-sidebar__new:hover { background: var(--accent-hover); transform: translateY(-1px); }
+      .ez-agent-sidebar__new:active { transform: translateY(0); }
+      .ez-agent-sidebar__new-form { margin: 0; padding: 0; display: inline; }
+
+      /* ── Theme toggle button ─────────────────────────── */
+      .ez-agent-theme-toggle {
+        width: 34px; height: 34px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border); border-radius: var(--radius-sm);
+        background: var(--bg-secondary); color: var(--text-secondary);
+        cursor: pointer; font-size: 16px; flex-shrink: 0;
+        transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+      }
+      .ez-agent-theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-focus); transform: scale(1.05); }
+      .ez-agent-theme-toggle:active { transform: scale(0.95); }
+
+      /* ── Demo Mode toggle button ──────────────────────── */
+      .ez-agent-demo-toggle {
+        width: 34px; height: 34px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--border); border-radius: var(--radius-sm);
+        background: var(--bg-secondary); color: var(--text-secondary);
+        cursor: pointer; font-size: 16px; flex-shrink: 0;
+        transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+      }
+      .ez-agent-demo-toggle:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-focus); transform: scale(1.05); }
+      .ez-agent-demo-toggle:active { transform: scale(0.95); }
+      .ez-agent-demo-toggle--active {
+        background: var(--accent); color: var(--text-inverse); border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(79,110,247,0.25);
+      }
+      .ez-agent-demo-toggle--active:hover { background: var(--accent-hover); color: var(--text-inverse); }
+
+      /* ── Demo Mode banner ─────────────────────────────── */
+      .ez-agent-demo-banner {
+        display: none;
+        padding: 6px 12px;
+        background: var(--info-bg); color: var(--info-text);
+        font-size: 12px; font-weight: 500;
+        text-align: center; border-radius: var(--radius-sm);
+        margin: 0 0 8px;
+        animation: ez-agent-demo-pulse 2s ease-in-out infinite;
+      }
+      .ez-agent-demo-banner--active { display: block; }
+      @keyframes ez-agent-demo-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+      /* ── Sidebar list ────────────────────────────────── */
+      .ez-agent-sidebar__list { flex: 1; overflow-y: auto; padding: 8px; }
+      .ez-agent-sidebar__item { position: relative; border-radius: var(--radius-sm); margin-bottom: 2px; }
+      .ez-agent-sidebar__item--active { background: var(--bg-user-bubble); border-left: 3px solid var(--accent); }
+      .ez-agent-sidebar__item--active .ez-agent-sidebar__title { color: var(--accent); font-weight: 600; }
+      .ez-agent-sidebar__link { display: block; padding: 10px 12px; text-decoration: none; color: inherit; border-radius: var(--radius-sm); }
+      .ez-agent-sidebar__link:hover { background: var(--bg-hover); }
+      .ez-agent-sidebar__title { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+      .ez-agent-sidebar__preview { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+      .ez-agent-sidebar__meta { display: flex; gap: 8px; font-size: 11px; color: var(--text-muted); }
+      .ez-agent-sidebar__count { margin-left: auto; }
+      .ez-agent-sidebar__empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 24px 12px; }
+      .ez-agent-sidebar__delete {
+        position: absolute; top: 8px; right: 8px;
+        width: 22px; height: 22px; border: 0; background: transparent;
+        color: var(--text-muted); font-size: 16px; cursor: pointer;
+        border-radius: var(--radius-xs);
+        display: flex; align-items: center; justify-content: center;
+        opacity: 0; transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+      }
+      .ez-agent-sidebar__item:hover .ez-agent-sidebar__delete { opacity: 1; }
+      .ez-agent-sidebar__delete:hover { color: var(--error); background: var(--error-bg); }
+      .ez-agent-sidebar__delete-form { margin: 0; padding: 0; }
+
+      /* ── Main content ────────────────────────────────── */
+      .ez-agent-main { flex: 1; overflow-y: auto; padding: 24px 16px 96px; }
+      .ez-agent-main-inner { max-width: 760px; margin: 0 auto; }
+
+      /* ── Empty / Welcome state ───────────────────────── */
+      .ez-agent-empty-state {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        height: 100%; color: var(--text-secondary);
+      }
+      .ez-agent-empty-state h2 { font-size: 24px; margin: 0 0 8px; color: var(--text-primary); }
+      .ez-agent-empty-state p { margin: 0; font-size: 15px; }
+
+      /* ── Welcome screen ──────────────────────────────── */
+      .ez-agent-welcome {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; height: 100%; padding: 40px 24px;
+      }
+      .ez-agent-welcome__icon { font-size: 48px; margin-bottom: 16px; opacity: 0.9; }
+      .ez-agent-welcome__title {
+        font-size: 28px; font-weight: 700; color: var(--text-primary);
+        margin: 0 0 8px; letter-spacing: -0.02em;
+      }
+      .ez-agent-welcome__subtitle {
+        font-size: 15px; color: var(--text-secondary); margin: 0 0 32px; text-align: center; max-width: 420px;
+      }
+      .ez-agent-welcome__providers { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; width: 100%; max-width: 640px; }
+      .ez-agent-provider-card {
+        display: flex; align-items: center; gap: 12px;
+        padding: 14px 16px; border-radius: var(--radius-md);
+        background: var(--bg-secondary); border: 1px solid var(--border);
+        box-shadow: var(--shadow-xs);
+        transition: box-shadow var(--transition), border-color var(--transition), transform var(--transition-fast);
+      }
+      .ez-agent-provider-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-focus); transform: translateY(-2px); }
+      .ez-agent-provider-card__icon { font-size: 24px; flex-shrink: 0; }
+      .ez-agent-provider-card__info { display: flex; flex-direction: column; min-width: 0; }
+      .ez-agent-provider-card__name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+      .ez-agent-provider-card__meta { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+      .ez-agent-provider-card__dot {
+        width: 8px; height: 8px; border-radius: var(--radius-full); flex-shrink: 0;
+      }
+      .ez-agent-provider-card__dot--configured { background: var(--success); box-shadow: 0 0 6px rgba(22,163,74,0.4); }
+      .ez-agent-provider-card__dot--missing { background: var(--text-muted); }
+      .ez-agent-welcome__hint {
+        margin-top: 28px; font-size: 13px; color: var(--text-muted);
+        display: flex; align-items: center; gap: 6px;
+      }
+
+      /* ── Chat header ─────────────────────────────────── */
       .ez-agent-chat__header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-      .ez-agent-chat__header h1 { font-size: 20px; margin: 0 0 12px; }
-      .ez-agent-link { color: #2563eb; text-decoration: none; font-size: 13px; }
+      .ez-agent-chat__header h1 { font-size: 20px; margin: 0 0 12px; font-weight: 700; letter-spacing: -0.01em; }
+      .ez-agent-link { color: var(--accent); text-decoration: none; font-size: 13px; }
       .ez-agent-link:hover { text-decoration: underline; }
 
-      .ez-agent-messages { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
-      .ez-agent-empty { color: #6b7280; font-style: italic; }
-      .ez-agent-message { padding: 10px 12px; border-radius: 10px; background: #fff; border: 1px solid #e5e7eb; }
-      .ez-agent-message--user { background: #eef2ff; border-color: #c7d2fe; }
-      .ez-agent-message--assistant { background: #fff; }
-      .ez-agent-message--tool { background: #f0fdf4; border-color: #bbf7d0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .ez-agent-message__role { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; margin-bottom: 4px; }
+      /* ── Messages ────────────────────────────────────── */
+      .ez-agent-messages { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; max-height: 60vh; overflow-y: auto; scroll-behavior: smooth; }
+      .ez-agent-empty { color: var(--text-muted); font-style: italic; }
+
+      .ez-agent-message {
+        padding: 12px 16px;
+        border-radius: var(--radius-lg);
+        background: var(--bg-assistant-bubble);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-xs);
+        transition: background-color var(--transition), border-color var(--transition), box-shadow var(--transition);
+      }
+      .ez-agent-message--user {
+        background: var(--bg-user-bubble); border-color: var(--border-user);
+        border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+      }
+      .ez-agent-message--assistant {
+        border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm);
+      }
+      .ez-agent-message--tool { background: var(--bg-tool); border-color: var(--border); font-family: var(--font-mono); }
+      .ez-agent-message__role { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); margin-bottom: 4px; display: flex; align-items: center; }
       .ez-agent-message__body p { margin: 0 0 6px; white-space: pre-wrap; }
       .ez-agent-tool-line { margin: 2px 0; }
 
+      /* ── Markdown-rendered assistant messages ──────── */
+      .ez-agent-md { white-space: normal; }
+      .ez-agent-md p { margin: 0 0 8px; }
+      .ez-agent-md p:last-child { margin-bottom: 0; }
+      .ez-agent-md ul, .ez-agent-md ol { margin: 4px 0 8px; padding-left: 20px; }
+      .ez-agent-md li { margin-bottom: 2px; }
+      .ez-agent-md h1, .ez-agent-md h2, .ez-agent-md h3, .ez-agent-md h4 { margin: 12px 0 6px; font-weight: 600; }
+      .ez-agent-md h1 { font-size: 1.3em; }
+      .ez-agent-md h2 { font-size: 1.15em; }
+      .ez-agent-md h3 { font-size: 1.05em; }
+      .ez-agent-md blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--text-muted); color: var(--text-secondary); background: var(--bg-surface); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+      .ez-agent-md code:not(pre code) { padding: 1px 5px; background: var(--bg-surface); border-radius: var(--radius-xs); font-size: 0.9em; font-family: var(--font-mono); }
+      .ez-agent-md pre { margin: 8px 0; padding: 12px; background: var(--bg-code); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow-x: auto; font-size: 13px; line-height: 1.45; }
+      .ez-agent-md pre code { padding: 0; background: transparent; border-radius: 0; font-size: inherit; }
+      .ez-agent-md table { border-collapse: collapse; margin: 8px 0; width: 100%; font-size: 13px; }
+      .ez-agent-md th, .ez-agent-md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+      .ez-agent-md th { background: var(--bg-surface); font-weight: 600; }
+      .ez-agent-md a { color: var(--accent); text-decoration: none; }
+      .ez-agent-md a:hover { text-decoration: underline; }
+      .ez-agent-md hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
+      .ez-agent-md img { max-width: 100%; border-radius: var(--radius-sm); }
+
+      /* ── Run ─────────────────────────────────────────── */
       turbo-frame { display: block; }
-      .ez-agent-run { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin: 12px 0; }
+      .ez-agent-run {
+        background: var(--bg-secondary); border: 1px solid var(--border);
+        border-radius: var(--radius-md); padding: 12px; margin: 12px 0;
+        box-shadow: var(--shadow-xs);
+      }
       .ez-agent-run__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-      .ez-agent-status { font-size: 12px; color: #6b7280; }
-      .ez-agent-status--error { color: #b91c1c; }
-      .ez-agent-status--done { color: #15803d; }
+      .ez-agent-status { font-size: 12px; color: var(--text-secondary); }
+      .ez-agent-status--error { color: var(--error); }
+      .ez-agent-status--done { color: var(--success); }
       .ez-agent-stream { white-space: pre-wrap; margin-top: 6px; }
-      .ez-agent-delta--thinking { color: #9ca3af; font-style: italic; }
+      .ez-agent-streaming-message { min-height: 0; }
+      .ez-agent-delta--thinking { color: var(--text-muted); font-style: italic; }
 
-      .ez-agent-tool { border: 1px dashed #d1d5db; border-radius: 8px; padding: 8px; margin: 8px 0; background: #fafafa; }
-      .ez-agent-tool__header { display: flex; gap: 8px; font-size: 12px; color: #374151; }
-      .ez-agent-tool__name { font-weight: 600; }
-      .ez-agent-tool__args, .ez-agent-tool__result { margin: 6px 0 0; font-size: 12px; overflow-x: auto; }
+      /* ── Loading skeleton ────────────────────────────── */
+      .ez-agent-skeleton {
+        position: relative; overflow: hidden;
+        background: var(--bg-surface); border-radius: var(--radius-md);
+        min-height: 48px; padding: 16px;
+      }
+      .ez-agent-skeleton::after {
+        content: ""; position: absolute; inset: 0;
+        background: linear-gradient(90deg, transparent 0%, var(--bg-hover) 40%, var(--bg-hover) 60%, transparent 100%);
+        background-size: 200% 100%;
+        animation: ez-agent-shimmer 1.5s ease-in-out infinite;
+      }
+      .ez-agent-skeleton__line {
+        height: 12px; border-radius: var(--radius-full);
+        background: var(--border-subtle); margin-bottom: 10px;
+      }
+      .ez-agent-skeleton__line:last-child { width: 60%; margin-bottom: 0; }
+      @keyframes ez-agent-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-      .ez-agent-confirm { border: 1px solid #fbbf24; background: #fffbeb; border-radius: 8px; padding: 10px; margin: 8px 0; }
-      .ez-agent-confirm__header { display: flex; gap: 8px; font-size: 13px; }
-      .ez-agent-confirm__name { font-weight: 600; }
-      .ez-agent-confirm__actions { display: flex; gap: 8px; margin-top: 8px; }
+      /* ── Tool call visualization ─────────────────────── */
+      .ez-agent-tool { margin: 6px 0; }
+      .ez-agent-message--tool-call, .ez-agent-message--tool-result { padding: 0; border: 0; background: transparent; box-shadow: none; }
+
+      .ez-agent-tool__card {
+        border: 1px solid var(--border); border-radius: var(--radius-md);
+        background: var(--bg-tool); overflow: hidden;
+        transition: border-color var(--transition-fast), background var(--transition-fast);
+      }
+      .ez-agent-tool__card:hover { border-color: var(--text-muted); }
+      .ez-agent-tool__card--confirm { border-color: var(--border-confirm); background: var(--bg-tool-confirm); }
+      .ez-agent-tool__card--confirm:hover { border-color: var(--warning); }
+
+      .ez-agent-tool__summary {
+        display: flex; align-items: center; gap: 8px;
+        padding: 10px 12px; cursor: pointer; user-select: none;
+        font-size: 13px; list-style: none;
+      }
+      .ez-agent-tool__summary::-webkit-details-marker { display: none; }
+      .ez-agent-tool__summary::marker { display: none; content: ""; }
+      .ez-agent-tool__summary:hover { background: var(--bg-hover); }
+      .ez-agent-tool__card--confirm .ez-agent-tool__summary { background: var(--bg-confirm-summary); }
+      .ez-agent-tool__card--confirm .ez-agent-tool__summary:hover { background: var(--bg-confirm-summary-hover); }
+
+      .ez-agent-tool__icon { font-size: 15px; flex-shrink: 0; }
+      .ez-agent-tool__name { font-weight: 600; color: var(--text-primary); font-family: var(--font-mono); font-size: 13px; }
+      .ez-agent-tool__badge { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: var(--radius-full); font-size: 11px; font-weight: 500; line-height: 1.6; }
+      .ez-agent-tool__badge--running { background: var(--info-bg); color: var(--info-text); }
+      .ez-agent-tool__badge--done { background: var(--success-bg); color: var(--success-text); }
+      .ez-agent-tool__badge--error { background: var(--error-bg); color: var(--error-text); }
+      .ez-agent-tool__badge--pending { background: var(--pending-bg); color: var(--pending-text); animation: ez-agent-pulse 2s ease-in-out infinite; }
+      .ez-agent-tool__badge--approved { background: var(--approved-bg); color: var(--approved-text); }
+      .ez-agent-tool__badge--denied { background: var(--denied-bg); color: var(--denied-text); }
+      @keyframes ez-agent-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+      .ez-agent-tool__duration { font-size: 11px; color: var(--text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+      .ez-agent-tool__chevron { font-size: 10px; color: var(--text-muted); margin-left: auto; transition: transform var(--transition-fast); }
+      details[open] > .ez-agent-tool__summary .ez-agent-tool__chevron::after { content: "▲"; }
+      details:not([open]) > .ez-agent-tool__summary .ez-agent-tool__chevron::after { content: "▼"; }
+
+      .ez-agent-tool__body { padding: 0 12px 10px; }
+      .ez-agent-tool__section { margin-top: 4px; }
+      .ez-agent-tool__section-label { font-size: 11px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+      .ez-agent-tool__pre {
+        margin: 0; padding: 8px 10px;
+        background: var(--bg-code); border: 1px solid var(--border);
+        border-radius: var(--radius-sm); font-size: 12px; line-height: 1.5;
+        overflow-x: auto; color: var(--text-primary);
+        font-family: var(--font-mono); max-height: 300px;
+        overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+      }
+
+      /* ── Confirmation actions ────────────────────────── */
+      .ez-agent-confirm { margin: 6px 0; }
+      .ez-agent-confirm__actions { display: flex; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-confirm); }
       .ez-agent-confirm__actions form { margin: 0; }
+      button.ez-agent-confirm__approve { background: var(--success); }
+      button.ez-agent-confirm__approve:hover { background: #15803d; }
+      button.ez-agent-confirm__deny { background: var(--error); }
+      button.ez-agent-confirm__deny:hover { background: var(--error-hover); }
+      button.ez-agent-confirm__always { background: var(--text-secondary); }
+      button.ez-agent-confirm__always:hover { background: var(--text-primary); }
 
-      .ez-agent-prompt { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #e5e7eb; padding: 12px 16px; }
-      .ez-agent-prompt__inner { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; }
-      .ez-agent-prompt__input { flex: 1; resize: vertical; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; }
-      button, .ez-agent-prompt__send { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; background: #2563eb; color: #fff; font: inherit; }
-      button.ez-agent-stop, button.ez-agent-confirm__deny { background: #dc2626; }
-      button.ez-agent-confirm__always { background: #6b7280; }
+      /* ── Prompt area ─────────────────────────────────── */
+      .ez-agent-prompt {
+        position: fixed; left: 0; right: 0; bottom: 0;
+        background: var(--bg-secondary); border-top: 1px solid var(--border);
+        padding: 12px 16px;
+        box-shadow: 0 -2px 12px rgba(0,0,0,0.04);
+      }
+      .ez-agent-prompt__inner { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; position: relative; }
+      .ez-agent-prompt__input {
+        flex: 1; resize: vertical; padding: 10px 14px;
+        border: 1px solid var(--border); border-radius: var(--radius-md);
+        font: inherit; background: var(--bg-input); color: var(--text-primary);
+        transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+      }
+      .ez-agent-prompt__input:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(79,110,247,0.15); }
+      .ez-agent-prompt__input::placeholder { color: var(--text-muted); }
+      button, .ez-agent-prompt__send {
+        cursor: pointer; border: 0; border-radius: var(--radius-sm);
+        padding: 8px 16px; background: var(--accent); color: var(--text-inverse);
+        font: inherit; font-weight: 500;
+        transition: background var(--transition-fast), transform var(--transition-fast);
+      }
+      button:hover, .ez-agent-prompt__send:hover { background: var(--accent-hover); }
+      button:active, .ez-agent-prompt__send:active { transform: scale(0.97); }
+      button.ez-agent-stop { background: var(--error); }
+      button.ez-agent-stop:hover { background: var(--error-hover); }
+      button.ez-agent-regenerate { background: var(--purple); }
+      button.ez-agent-regenerate:hover { background: var(--purple-hover); }
+      .ez-agent-run__actions { display: inline-flex; }
+      .ez-agent-status--aborted { color: var(--error); font-weight: 500; }
+      .ez-agent-status--retry { color: var(--warning); font-weight: 500; }
       .ez-agent-new { display: flex; gap: 8px; margin: 16px 0; }
-      .ez-agent-new input[type=text] { flex: 1; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; }
-      .ez-agent-conversations { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-      .ez-agent-conversations a { display: block; padding: 10px 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; text-decoration: none; color: inherit; }
+      .ez-agent-new input[type=text] { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; background: var(--bg-input); color: var(--text-primary); }
+
+      /* ── Provider / Model selector ──────────────────── */
+      .ez-agent-provider-selector { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+      .ez-agent-provider-selector__provider,
+      .ez-agent-provider-selector__model {
+        padding: 5px 8px; border: 1px solid var(--border);
+        border-radius: var(--radius-sm); font: inherit; font-size: 13px;
+        background: var(--bg-input); color: var(--text-primary);
+      }
+      .ez-agent-provider-selector__provider { min-width: 120px; }
+      .ez-agent-provider-selector__model { min-width: 180px; }
+
+      /* ── Provider badge on assistant messages ────────── */
+      .ez-agent-provider-badge {
+        display: inline-block; margin-left: 8px;
+        padding: 1px 6px; border-radius: var(--radius-xs);
+        background: var(--bg-badge); font-size: 10px;
+        font-weight: 500; color: var(--text-primary);
+        vertical-align: middle; white-space: nowrap;
+      }
+
+      /* ── Diagnostics panel ──────────────────────────── */
+      .ez-agent-diagnostics {
+        margin: 8px 0 16px; border: 1px solid var(--border);
+        border-radius: var(--radius-md); background: var(--bg-diagnostics);
+        overflow: hidden;
+      }
+      .ez-agent-diagnostics__toggle {
+        width: 100%; text-align: left; padding: 8px 12px;
+        background: none; border: 0; font: inherit; font-size: 13px;
+        font-weight: 500; color: var(--text-primary); cursor: pointer;
+        display: flex; align-items: center; gap: 4px;
+        transition: background var(--transition-fast);
+      }
+      .ez-agent-diagnostics__toggle:hover { background: var(--bg-hover); }
+      .ez-agent-diagnostics--collapsed .ez-agent-diagnostics__body { display: none; }
+      .ez-agent-diagnostics__body { padding: 0 12px 10px; }
+      .ez-agent-diagnostics__row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; border-bottom: 1px solid var(--border-subtle); }
+      .ez-agent-diagnostics__row:last-child { border-bottom: 0; }
+      .ez-agent-diagnostics__label { color: var(--text-secondary); }
+      .ez-agent-diagnostics__value { font-weight: 500; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+      /* ── File upload UI ──────────────────────────────── */
+      .ez-agent-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); pointer-events: none; }
+      .ez-agent-prompt__row { display: flex; gap: 6px; align-items: flex-end; }
+      .ez-agent-prompt__row .ez-agent-prompt__input { flex: 1; }
+      .ez-agent-prompt__attach {
+        width: 38px; height: 38px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; background: var(--bg-surface); color: var(--text-primary);
+        flex-shrink: 0; border: 1px solid var(--border);
+        transition: background var(--transition-fast), border-color var(--transition-fast);
+      }
+      .ez-agent-prompt__attach:hover { background: var(--bg-hover); border-color: var(--border-focus); }
+
+      .ez-agent-file-preview { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; }
+      .ez-agent-file-preview:empty { display: none; }
+      .ez-agent-file-preview + .ez-agent-prompt__row { margin-top: 8px; }
+      .ez-agent-file-preview__item {
+        position: relative; border: 1px solid var(--border);
+        border-radius: var(--radius-sm); overflow: hidden;
+        background: var(--bg-secondary); display: flex;
+        align-items: center; gap: 6px; padding: 6px 10px;
+        font-size: 12px; max-width: 240px;
+      }
+      .ez-agent-file-preview__item--image { padding: 4px; }
+      .ez-agent-file-preview__thumb { width: 36px; height: 36px; object-fit: cover; border-radius: var(--radius-xs); flex-shrink: 0; }
+      .ez-agent-file-preview__info { display: flex; flex-direction: column; min-width: 0; }
+      .ez-agent-file-preview__name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+      .ez-agent-file-preview__size { color: var(--text-muted); font-size: 11px; }
+      .ez-agent-file-preview__remove {
+        position: absolute; top: 2px; right: 2px;
+        width: 20px; height: 20px; border-radius: var(--radius-full);
+        border: 0; background: rgba(0,0,0,.55); color: #fff;
+        font-size: 12px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        line-height: 1; padding: 0;
+        transition: background var(--transition-fast);
+      }
+      .ez-agent-file-preview__remove:hover { background: var(--error); }
+
+      .ez-agent-drop-zone {
+        display: none; position: absolute; inset: 0; z-index: 20;
+        background: rgba(79,110,247,.08); border: 2px dashed var(--accent);
+        border-radius: var(--radius-md);
+        flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+        pointer-events: none;
+      }
+      .ez-agent-drop-zone--active { display: flex; }
+      .ez-agent-drop-zone__icon { font-size: 28px; }
+      .ez-agent-drop-zone__text { font-size: 14px; font-weight: 500; color: var(--accent); }
+
+      /* ── Attachment display in messages ──────────────── */
+      .ez-agent-message__attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+      .ez-agent-message__attachment {
+        display: flex; align-items: center; gap: 6px;
+        border: 1px solid var(--border); border-radius: var(--radius-sm);
+        padding: 6px 10px; font-size: 12px;
+        background: var(--bg-surface); max-width: 280px;
+      }
+      .ez-agent-message__attachment--image { flex-direction: column; align-items: flex-start; padding: 4px; }
+      .ez-agent-message__attachment-img { max-width: 240px; max-height: 180px; border-radius: var(--radius-xs); object-fit: contain; }
+      .ez-agent-message__attachment-icon { font-size: 16px; flex-shrink: 0; }
+      .ez-agent-message__attachment-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ez-agent-message__attachment-size { color: var(--text-muted); font-size: 11px; }
+
+      /* ── Keyboard shortcut hint ──────────────────────── */
+      .ez-agent-shortcuts {
+        display: flex; gap: 12px; justify-content: center;
+        margin-top: 12px; font-size: 12px; color: var(--text-muted);
+      }
+      .ez-agent-shortcuts kbd {
+        display: inline-block; padding: 1px 5px;
+        border: 1px solid var(--border); border-radius: 4px;
+        background: var(--bg-surface); font-family: var(--font-mono);
+        font-size: 11px; line-height: 1.4;
+      }
+
     </style>
   </head>
   <body>
-    <main class="ez-agent-app"><%= yield %></main>
+    <div class="ez-agent-app"><%= yield %></div>
+
+    <%#
+      Theme toggle + keyboard shortcuts.
+      Theme: reads localStorage, falls back to system preference.
+      Ctrl+L: clear current chat (navigate to conversations index).
+    %>
+    <script>
+      (function () {
+        var KEY = "ez-agent-theme";
+        var root = document.documentElement;
+
+        function getPreferred() {
+          var saved = localStorage.getItem(KEY);
+          if (saved === "dark" || saved === "light") return saved;
+          return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+
+        function applyTheme(theme) {
+          root.setAttribute("data-theme", theme);
+          localStorage.setItem(KEY, theme);
+          var btn = document.querySelector(".ez-agent-theme-toggle");
+          if (btn) btn.textContent = theme === "dark" ? "☀️" : "🌙";
+          // Swap highlight.js theme for code blocks
+          var hl = document.querySelector('link[href*="highlight.js"]');
+          if (hl) {
+            hl.href = theme === "dark"
+              ? "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
+              : "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css";
+          }
+        }
+
+        window.toggleTheme = function () {
+          var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+          applyTheme(next);
+        };
+
+        // Apply on load
+        applyTheme(getPreferred());
+
+        // Keyboard shortcuts
+        document.addEventListener("keydown", function (e) {
+          // Ctrl+L / Cmd+L → navigate to conversations list
+          if ((e.ctrlKey || e.metaKey) && e.key === "l") {
+            e.preventDefault();
+            // Derive the mount prefix from the current URL path
+            var path = window.location.pathname;
+            var base = path.replace(/\/conversations(\/.*)?$/, "");
+            window.location.href = base + "/conversations";
+          }
+        });
+
+        // ── Demo Mode ──────────────────────────────────────
+        var DEMO_KEY = "ez-agent-demo-mode";
+        var DEMO_PROMPTS = [
+          "What's the weather going to be like in Paris this Saturday? I'm planning a picnic.",
+          "I'm building a developer CLI tool. Should I use Rust or Go? Help me compare them for this use case.",
+          "Generate an image of a cyberpunk cityscape at night with neon lights reflecting off wet streets. Make it cinematic."
+        ];
+        var demoIndex = 0;
+
+        function getDemoMode() {
+          return localStorage.getItem(DEMO_KEY) === "on";
+        }
+
+        function applyDemoMode(active) {
+          var btn = document.getElementById("ez-agent-demo-toggle");
+          if (btn) {
+            btn.classList.toggle("ez-agent-demo-toggle--active", active);
+            btn.title = active
+              ? "Demo Mode ON — click to deactivate"
+              : "Toggle Demo Mode — auto-fills and sends sample prompts";
+          }
+          document.querySelectorAll(".ez-agent-demo-banner").forEach(function (el) {
+            el.classList.toggle("ez-agent-demo-banner--active", active);
+          });
+        }
+
+        window.toggleDemoMode = function () {
+          var next = !getDemoMode();
+          localStorage.setItem(DEMO_KEY, next ? "on" : "off");
+          applyDemoMode(next);
+          if (next) fillDemoPrompt();
+        };
+
+        function fillDemoPrompt() {
+          if (!getDemoMode()) return;
+          var input = document.querySelector("textarea[name='prompt']");
+          if (!input) return;
+          var prompt = DEMO_PROMPTS[demoIndex % DEMO_PROMPTS.length];
+          demoIndex++;
+          input.value = prompt;
+          input.style.height = "auto";
+          input.style.height = input.scrollHeight + "px";
+          input.focus();
+        }
+
+        // Apply demo mode state on load
+        applyDemoMode(getDemoMode());
+
+        // Skeleton removal: when streaming content arrives, remove skeleton state
+        document.addEventListener("DOMContentLoaded", function () {
+          var streamingContainers = document.querySelectorAll(".ez-agent-streaming-message");
+          streamingContainers.forEach(function (container) {
+            if (container.children.length > 0) {
+              container.classList.remove("ez-agent-skeleton");
+            }
+          });
+          // Watch for content in streaming containers
+          var observer = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+              var target = mutations[i].target;
+              if (target.classList && target.classList.contains("ez-agent-streaming-message") && target.children.length > 0) {
+                target.classList.remove("ez-agent-skeleton");
+              }
+            }
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+        });
+      })();
+    </script>
+
+    <%#
+      Markdown rendering initializer.
+    %>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        function waitForDeps(cb) {
+          if (typeof marked !== "undefined" && typeof hljs !== "undefined") return cb();
+          setTimeout(function () { waitForDeps(cb); }, 50);
+        }
+
+        waitForDeps(function () {
+          marked.use({
+            gfm: true,
+            breaks: true,
+            renderer: {
+              code: function (token) {
+                var code = token.text || "";
+                var lang = (token.lang || "").trim();
+                var highlighted;
+                if (lang && hljs.getLanguage(lang)) {
+                  try { highlighted = hljs.highlight(code, { language: lang }).value; }
+                  catch (e) { highlighted = code; }
+                } else {
+                  highlighted = hljs.highlightAuto(code).value;
+                }
+                var cls = lang ? "hljs language-" + lang : "hljs";
+                return '<pre><code class="' + cls + '">' + highlighted + "</code></pre>";
+              }
+            }
+          });
+
+          function renderMarkdown(el) {
+            var raw = el.getAttribute("data-markdown-text");
+            if (!raw) return;
+            el.innerHTML = marked.parse(raw);
+          }
+
+          function renderAll(root) {
+            var els = (root || document).querySelectorAll(".ez-agent-md[data-markdown-text]");
+            for (var i = 0; i < els.length; i++) renderMarkdown(els[i]);
+          }
+
+          renderAll();
+
+          var observer = new MutationObserver(function (mutations) {
+            for (var m = 0; m < mutations.length; m++) {
+              var nodes = mutations[m].addedNodes;
+              for (var n = 0; n < nodes.length; n++) {
+                var node = nodes[n];
+                if (node.nodeType !== 1) continue;
+                if (node.matches && node.matches(".ez-agent-md[data-markdown-text]")) renderMarkdown(node);
+                var children = node.querySelectorAll ? node.querySelectorAll(".ez-agent-md[data-markdown-text]") : [];
+                for (var c = 0; c < children.length; c++) renderMarkdown(children[c]);
+              }
+            }
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+        });
+      });
+    </script>
+
+    <%#
+      File upload controller.
+    %>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll("[data-controller='file-upload']").forEach(function (el) {
+          var fileInput   = el.querySelector("[data-file-upload-target='fileInput']");
+          var preview     = el.querySelector("[data-file-upload-target='preview']");
+          var dropZone    = el.querySelector("[data-file-upload-target='dropZone']");
+          var attachBtn   = el.querySelector("[data-file-upload-target='attachBtn']");
+          var textInput   = el.querySelector("[data-file-upload-target='textInput']");
+          var submitBtn   = el.querySelector("[data-file-upload-target='submitBtn']");
+          if (!fileInput || !preview) return;
+
+          var dragCounter = 0;
+          var files = [];
+
+          if (attachBtn) {
+            attachBtn.addEventListener("click", function () { fileInput.click(); });
+          }
+
+          fileInput.addEventListener("change", function () {
+            addFiles(fileInput.files);
+            fileInput.value = "";
+          });
+
+          var promptEl = el.closest(".ez-agent-prompt") || el;
+          promptEl.addEventListener("dragenter", function (e) {
+            e.preventDefault(); dragCounter++;
+            if (dropZone) dropZone.classList.add("ez-agent-drop-zone--active");
+          });
+          promptEl.addEventListener("dragover", function (e) { e.preventDefault(); });
+          promptEl.addEventListener("dragleave", function (e) {
+            e.preventDefault(); dragCounter--;
+            if (dragCounter <= 0 && dropZone) {
+              dragCounter = 0;
+              dropZone.classList.remove("ez-agent-drop-zone--active");
+            }
+          });
+          promptEl.addEventListener("drop", function (e) {
+            e.preventDefault(); dragCounter = 0;
+            if (dropZone) dropZone.classList.remove("ez-agent-drop-zone--active");
+            if (e.dataTransfer && e.dataTransfer.files.length) {
+              addFiles(e.dataTransfer.files);
+            }
+          });
+
+          var form = el.closest("form");
+          if (form) {
+            form.addEventListener("submit", function () {
+              if (files.length === 0) return;
+              var dt = new DataTransfer();
+              files.forEach(function (f) { dt.items.add(f); });
+              fileInput.files = dt.files;
+            });
+          }
+
+          /* ── Enter sends / Shift+Enter newline ──────── */
+          if (textInput) {
+            textInput.addEventListener("keydown", function (e) {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (submitBtn) submitBtn.click();
+              }
+            });
+          }
+
+          function addFiles(fileList) {
+            for (var i = 0; i < fileList.length; i++) {
+              files.push(fileList[i]);
+            }
+            renderPreviews();
+          }
+
+          function removeFile(index) {
+            files.splice(index, 1);
+            renderPreviews();
+          }
+
+          function renderPreviews() {
+            preview.innerHTML = "";
+            files.forEach(function (file, idx) {
+              var item = document.createElement("div");
+              item.className = "ez-agent-file-preview__item";
+
+              var isImage = file.type && file.type.indexOf("image/") === 0;
+              if (isImage) item.classList.add("ez-agent-file-preview__item--image");
+
+              if (isImage) {
+                var thumb = document.createElement("img");
+                thumb.className = "ez-agent-file-preview__thumb";
+                thumb.src = URL.createObjectURL(file);
+                thumb.onload = function () { URL.revokeObjectURL(thumb.src); };
+                item.appendChild(thumb);
+              } else {
+                var icon = document.createElement("span");
+                icon.className = "ez-agent-file-preview__icon";
+                icon.textContent = "📄";
+                item.appendChild(icon);
+              }
+
+              var info = document.createElement("div");
+              info.className = "ez-agent-file-preview__info";
+              var name = document.createElement("span");
+              name.className = "ez-agent-file-preview__name";
+              name.textContent = file.name;
+              var size = document.createElement("span");
+              size.className = "ez-agent-file-preview__size";
+              size.textContent = formatSize(file.size);
+              info.appendChild(name);
+              info.appendChild(size);
+              item.appendChild(info);
+
+              var removeBtn = document.createElement("button");
+              removeBtn.type = "button";
+              removeBtn.className = "ez-agent-file-preview__remove";
+              removeBtn.textContent = "✕";
+              removeBtn.addEventListener("click", function () { removeFile(idx); });
+              item.appendChild(removeBtn);
+
+              preview.appendChild(item);
+            });
+          }
+
+          function formatSize(bytes) {
+            if (bytes < 1024) return bytes + " B";
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+            return (bytes / 1048576).toFixed(1) + " MB";
+          }
+        });
+      });
+    </script>
   </body>
 </html>

@@ -1,30 +1,44 @@
-<%# locals: @conversations (Array<EZAgentRails::Conversation>) %>
+<%# locals: @conversations, @provider_status %>
 <% content_for :title, "EZ Agent · Conversations" %>
 
-<section class="ez-agent-index">
-  <header class="ez-agent-chat__header">
-    <h1>EZ Agent — demo chat</h1>
-  </header>
+<%= render "ez_agent_rails/conversations/sidebar",
+           conversations: @conversations, active_conversation: nil %>
 
-  <%= form_with url: ez_agent_routes.conversations_path, method: :post, class: "ez-agent-new" do |f| %>
-    <%= f.fields_for :conversation do |c| %>
-      <%= c.text_field :title, placeholder: "New conversation title (optional)" %>
-    <% end %>
-    <%= f.submit "Start" %>
-  <% end %>
+<div class="ez-agent-main">
+  <turbo-frame id="ez_agent_main">
+    <div class="ez-agent-welcome">
+      <div class="ez-agent-welcome__icon">🤖</div>
+      <h1 class="ez-agent-welcome__title">Welcome to EZ Agent</h1>
+      <p class="ez-agent-welcome__subtitle">
+        Your AI coding assistant. Start a new chat or pick a conversation from the sidebar.
+      </p>
 
-  <% if @conversations.any? %>
-    <ul class="ez-agent-conversations">
-      <% @conversations.each do |conversation| %>
-        <li>
-          <%= link_to ez_agent_routes.conversation_path(conversation) do %>
-            <strong><%= conversation.title.presence || "Conversation ##{conversation.id}" %></strong>
-            <span class="ez-agent-link"><%= conversation.messages.count %> messages</span>
+      <% if @provider_status.present? %>
+        <div class="ez-agent-welcome__providers">
+          <% @provider_status.each do |provider| %>
+            <div class="ez-agent-provider-card">
+              <span class="ez-agent-provider-card__icon"><%= provider[:icon] %></span>
+              <div class="ez-agent-provider-card__info">
+                <div class="ez-agent-provider-card__name"><%= provider[:display_name] %></div>
+                <div class="ez-agent-provider-card__meta">
+                  <span class="ez-agent-provider-card__dot <%= provider[:configured] ? 'ez-agent-provider-card__dot--configured' : 'ez-agent-provider-card__dot--missing' %>"></span>
+                  <% if provider[:configured] %>
+                    Ready · <%= provider[:model_count] %> models
+                  <% else %>
+                    No API key
+                  <% end %>
+                </div>
+              </div>
+            </div>
           <% end %>
-        </li>
+        </div>
       <% end %>
-    </ul>
-  <% else %>
-    <p class="ez-agent-empty">No conversations yet. Start one above.</p>
-  <% end %>
-</section>
+
+      <div class="ez-agent-shortcuts">
+        <span><kbd>Enter</kbd> Send</span>
+        <span><kbd>Shift</kbd>+<kbd>Enter</kbd> New line</span>
+        <span><kbd>Ctrl</kbd>+<kbd>L</kbd> Clear chat</span>
+      </div>
+    </div>
+  </turbo-frame>
+</div>
