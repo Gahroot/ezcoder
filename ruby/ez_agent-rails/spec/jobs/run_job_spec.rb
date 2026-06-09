@@ -19,7 +19,9 @@ RSpec.describe EZAgentRails::RunJob, type: :job do
     )
 
     described_class.perform_now(run.id, "Summarize the repo")
-    turbo_streams = capture_turbo_stream_broadcasts(run)
+    # Text deltas stream into the conversation; status/tool events into the run.
+    conv_turbo = capture_turbo_stream_broadcasts(conversation)
+    run_turbo  = capture_turbo_stream_broadcasts(run)
 
     run.reload
     conversation.reload
@@ -43,18 +45,22 @@ RSpec.describe EZAgentRails::RunJob, type: :job do
     expect(run).to be_succeeded
     expect(run.error_message).to be_nil
 
-    # (d) Turbo broadcasts were emitted for text_delta and agent_done
-    actions = turbo_streams.map { |el| el["action"] }
-    expect(actions).to include("append")  # text_delta appended to the stream target
-    expect(actions).to include("replace") # agent_done replaced the status line
+    # (d) Turbo broadcasts: text_delta appends into the conversation,
+    #     user_message appends into the conversation,
+    #     agent_done replaces the status on the run.
+    conv_actions = conv_turbo.map { |el| el["action"] }
+    expect(conv_actions).to include("append")  # text_delta + user_message
 
-    text_append = turbo_streams.find do |el|
-      el["action"] == "append" && el["target"] == EZAgentRails::DomTargets.stream(run)
+    text_append = conv_turbo.find do |el|
+      el["action"] == "append" && el["target"] == EZAgentRails::DomTargets.streaming_message(conversation)
     end
     expect(text_append).to be_present
     expect(text_append.to_s).to include("Hello from the agent")
 
-    done_status = turbo_streams.find do |el|
+    run_actions = run_turbo.map { |el| el["action"] }
+    expect(run_actions).to include("replace") # agent_done replaced the status line
+
+    done_status = run_turbo.find do |el|
       el["action"] == "replace" && el["target"] == EZAgentRails::DomTargets.status(run)
     end
     expect(done_status).to be_present

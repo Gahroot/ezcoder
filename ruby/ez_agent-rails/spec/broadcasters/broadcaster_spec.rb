@@ -25,19 +25,23 @@ RSpec.describe EZAgentRails::Broadcaster do
     )
   end
 
-  it "appends streamed text to the stream target and replaces the status on done" do
+  it "appends streamed text to the conversation streaming target and replaces the status on done" do
     FakeProvider.text("streamed words")
 
     drive_loop(EZAgentRails::Broadcaster.new(run))
-    turbo = capture_turbo_stream_broadcasts(run)
 
-    append = turbo.find do |el|
-      el["action"] == "append" && el["target"] == EZAgentRails::DomTargets.stream(run)
+    # Text deltas now stream into the conversation's messages area.
+    conv_turbo = capture_turbo_stream_broadcasts(conversation)
+    append = conv_turbo.find do |el|
+      el["action"] == "append" &&
+        el["target"] == EZAgentRails::DomTargets.streaming_message(conversation)
     end
     expect(append).to be_present
     expect(append.to_s).to include("streamed words")
 
-    status = turbo.find do |el|
+    # Status still broadcasts on the per-run stream.
+    run_turbo = capture_turbo_stream_broadcasts(run)
+    status = run_turbo.find do |el|
       el["action"] == "replace" && el["target"] == EZAgentRails::DomTargets.status(run)
     end
     expect(status).to be_present

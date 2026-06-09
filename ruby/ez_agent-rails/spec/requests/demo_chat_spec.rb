@@ -114,4 +114,13 @@ RSpec.describe "EZAgentRails demo chat", type: :request do
     expect(response.media_type).to eq("text/javascript")
     expect(response.body).to include("Turbo")
   end
+
+  it "serves the provider-selector controller from the engine" do
+    get "/ez_agent/provider_selector.js"
+
+    expect(response).to have_http_status(:ok)
+    expect(response.media_type).to eq("text/javascript")
+    expect(response.body).to include("provider-selector")
+    expect(response.body).to include("models-by-provider")
+  end
 end
