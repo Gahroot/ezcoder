@@ -186,7 +186,7 @@ function isWsl(): boolean {
  *    directory before spawning anything. Today's call sites always pass
  *    a hardcoded asset path, but this gate fails closed if a future code
  *    path leaks an attacker-controlled string into `playFile()`.
- *  - The path is passed via `GGBOSS_AUDIO_PATH` env var, never string-
+ *  - The path is passed via `EZBOSS_AUDIO_PATH` env var, never string-
  *    interpolated into the PowerShell command. WSLENV lists the var name
  *    so it actually crosses the WSL→Windows process boundary (custom
  *    env vars don't propagate by default — that's a real WSL gotcha,
@@ -221,7 +221,7 @@ async function tryPlayOnWindowsHost(file: string): Promise<boolean> {
     const script = [
       "Add-Type -AssemblyName presentationCore;",
       "$p = New-Object System.Windows.Media.MediaPlayer;",
-      "$p.Open([uri]$env:GGBOSS_AUDIO_PATH);",
+      "$p.Open([uri]$env:EZBOSS_AUDIO_PATH);",
       "$p.Play();",
       // Same reason as the win32 branch: MediaPlayer is async, so we have
       // to keep powershell.exe alive long enough to actually emit audio.
@@ -238,10 +238,10 @@ async function tryPlayOnWindowsHost(file: string): Promise<boolean> {
             stdio: "ignore",
             env: {
               ...process.env,
-              GGBOSS_AUDIO_PATH: winPath,
+              EZBOSS_AUDIO_PATH: winPath,
               // WSLENV propagates listed vars across the WSL→Windows boundary.
               // Append rather than replace so we don't clobber existing rules.
-              WSLENV: (process.env.WSLENV ? process.env.WSLENV + ":" : "") + "GGBOSS_AUDIO_PATH",
+              WSLENV: (process.env.WSLENV ? process.env.WSLENV + ":" : "") + "EZBOSS_AUDIO_PATH",
             },
           },
         );

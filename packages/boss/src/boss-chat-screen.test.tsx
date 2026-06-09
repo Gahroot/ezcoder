@@ -29,7 +29,7 @@ describe("BossChatScreen", () => {
     expect(workerStatus).toBeGreaterThan(footer);
   });
 
-  it("reserves the shared gg-coder live response slot after submit", () => {
+  it("reserves the shared ez-coder live response slot after submit", () => {
     const rowsSource = readFileSync(new URL("./boss-transcript-rows.tsx", import.meta.url), "utf8");
 
     expect(rowsSource).toContain("<ChatLivePane");
@@ -40,7 +40,7 @@ describe("BossChatScreen", () => {
     expect(appSource).not.toContain("bossStore.commitLiveItem(userItem)");
   });
 
-  it("passes boss running state into the shared gg-coder input", () => {
+  it("passes boss running state into the shared ez-coder input", () => {
     expect(source).toContain("disabled={isRunning}");
     expect(appSource).toContain('isRunning={state.phase === "working"}');
   });

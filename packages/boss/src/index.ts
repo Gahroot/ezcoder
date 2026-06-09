@@ -1,4 +1,4 @@
-export { GGBoss } from "./orchestrator.js";
+export { EzBoss } from "./orchestrator.js";
 export { EventQueue } from "./event-queue.js";
 export { Worker } from "./worker.js";
 export { buildBossSystemPrompt } from "./boss-system-prompt.js";

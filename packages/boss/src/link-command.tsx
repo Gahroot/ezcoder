@@ -18,7 +18,7 @@ function sourceBadge(sources: ProjectSource[]): { label: string; color: string }
   // Fixed-width 5-char badges so names stay aligned across rows.
   if (sources.length > 1) return { label: "[mix]", color: COLORS.success };
   const only = sources[0];
-  if (only === "ezcoder") return { label: "[gg ]", color: COLORS.accent };
+  if (only === "ezcoder") return { label: "[ez ]", color: COLORS.accent };
   if (only === "claude-code") return { label: "[cc ]", color: COLORS.warning };
   if (only === "codex") return { label: "[cx ]", color: COLORS.primary };
   return { label: "[?? ]", color: COLORS.textDim };

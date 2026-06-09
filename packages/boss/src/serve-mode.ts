@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { getAppPaths, MODELS, type ModelInfo } from "@prestyj/cli";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { setStreamDiagnostic } from "@prestyj/agent";
-import { GGBoss } from "./orchestrator.js";
+import { EzBoss } from "./orchestrator.js";
 import { loadLinks } from "./links.js";
 import { tasksStore } from "./tasks-store.js";
 import { saveSettings } from "./settings.js";
@@ -24,7 +24,7 @@ import { VERSION, BRAND, AUTHOR, LOGO_LINES, LOGO_GAP, GRADIENT, COLORS } from "
  * `ezboss serve` — drive the orchestrator from Telegram.
  *
  * Mirrors `ezcoder serve` shape (long-poll bot, allowedUserId gate) but instead
- * of one-AgentSession-per-chat, there's a single GGBoss instance. The user's
+ * of one-AgentSession-per-chat, there's a single EzBoss instance. The user's
  * linked projects (from `~/.ezcoder/boss/links.json`) are spun up as workers at
  * boot, just like `ezboss` interactive mode.
  *
@@ -199,7 +199,7 @@ export async function runBossServeMode(options: BossServeOptions): Promise<void>
     allowedUserId: options.telegram.userId,
   });
 
-  const boss = new GGBoss({
+  const boss = new EzBoss({
     bossProvider: options.bossProvider,
     bossModel: options.bossModel,
     bossThinkingLevel: options.bossThinkingLevel,

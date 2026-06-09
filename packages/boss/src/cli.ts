@@ -8,7 +8,7 @@ import path from "node:path";
 import chalk from "chalk";
 import type { Provider } from "@prestyj/ai";
 import { setStreamDiagnostic } from "@prestyj/agent";
-import { GGBoss } from "./orchestrator.js";
+import { EzBoss } from "./orchestrator.js";
 import type { ProjectSpec } from "./types.js";
 import { loadLinks } from "./links.js";
 import { runLinkCommand } from "./link-command.js";
@@ -257,7 +257,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   const updateMessage = checkAndAutoUpdate(VERSION);
   if (updateMessage) log("INFO", "auto_update", updateMessage);
 
-  const boss = new GGBoss({
+  const boss = new EzBoss({
     bossProvider: finalBossProvider,
     bossModel: finalBossModel,
     bossThinkingLevel: settings.bossThinkingLevel,
@@ -286,7 +286,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   await ink.waitUntilExit();
   await boss.dispose();
   // Kill any in-flight radio stream before exiting — otherwise the detached
-  // mpv/ffplay child keeps playing after the user closed gg-boss.
+  // mpv/ffplay child keeps playing after the user closed ez-boss.
   stopRadio();
   await runPromise.catch(() => {});
   process.exit(0);
@@ -342,6 +342,6 @@ process.on("unhandledRejection", (reason) => {
 
 main().catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(chalk.hex(COLORS.error)(`\ngg-boss failed: ${message}\n`));
+  process.stderr.write(chalk.hex(COLORS.error)(`\nez-boss failed: ${message}\n`));
   process.exit(1);
 });

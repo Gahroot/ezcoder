@@ -23,9 +23,9 @@ import { AUTHOR, BRAND, COLORS, GRADIENT, LOGO_GAP, LOGO_LINES, VERSION } from "
 import { parseStatusGrade } from "./boss-transcript-rows.js";
 import { projectColor } from "./colors.js";
 
-type GGCoderCompletedItem = Parameters<typeof serializeCompletedItemToTerminalHistory>[0];
+type EzCoderCompletedItem = Parameters<typeof serializeCompletedItemToTerminalHistory>[0];
 type BossToolInlineSummary = string | { text: string; color: string };
-type BossGGCoderHistoryItem = Extract<
+type BossEzCoderHistoryItem = Extract<
   BossDisplayItem,
   {
     kind:
@@ -118,7 +118,7 @@ export function serializeBossItemToTerminalHistory(
     case "update_notice":
       return renderUpdateNotice(item, context);
     default:
-      return serializeCompletedItemToTerminalHistory(toGGCoderCompletedItem(item), context);
+      return serializeCompletedItemToTerminalHistory(toEzCoderCompletedItem(item), context);
   }
 }
 
@@ -232,7 +232,7 @@ function renderTaskDispatch(
   return lines.join("\n");
 }
 
-function toGGCoderCompletedItem(item: BossGGCoderHistoryItem): GGCoderCompletedItem {
+function toEzCoderCompletedItem(item: BossEzCoderHistoryItem): EzCoderCompletedItem {
   switch (item.kind) {
     case "user":
       return { kind: "user", id: item.id, text: item.text };

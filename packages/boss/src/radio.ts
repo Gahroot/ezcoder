@@ -155,7 +155,7 @@ function isWsl(): boolean {
  *    that constructs a station object outside the constant array.
  *  - Scheme is enforced as http/https so a future entry can't slip a
  *    file:// or javascript: URL through.
- *  - The URL is passed via GGBOSS_RADIO_URL env, never string-interpolated
+ *  - The URL is passed via EZBOSS_RADIO_URL env, never string-interpolated
  *    into the PowerShell -Command argument. WSLENV lists the var so it
  *    actually crosses the WSL→Windows process boundary (custom env vars
  *    don't propagate by default — powershell.exe just sees them as empty
@@ -170,7 +170,7 @@ function tryPlayOnWindowsHost(station: RadioStation): ChildProcess | null {
     "Add-Type -AssemblyName presentationCore;",
     "Add-Type -AssemblyName WindowsBase;",
     "$p = New-Object System.Windows.Media.MediaPlayer;",
-    "$p.Open([uri]$env:GGBOSS_RADIO_URL);",
+    "$p.Open([uri]$env:EZBOSS_RADIO_URL);",
     "$p.Play();",
     "[System.Windows.Threading.Dispatcher]::Run();",
   ].join(" ");
@@ -183,8 +183,8 @@ function tryPlayOnWindowsHost(station: RadioStation): ChildProcess | null {
         stdio: "ignore",
         env: {
           ...process.env,
-          GGBOSS_RADIO_URL: station.url,
-          WSLENV: (process.env.WSLENV ? process.env.WSLENV + ":" : "") + "GGBOSS_RADIO_URL",
+          EZBOSS_RADIO_URL: station.url,
+          WSLENV: (process.env.WSLENV ? process.env.WSLENV + ":" : "") + "EZBOSS_RADIO_URL",
         },
       },
     );

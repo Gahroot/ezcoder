@@ -5,7 +5,7 @@ import { useTasksState, tasksStore, type BossTask, type TaskStatus } from "./tas
 import { bossStore } from "./boss-store.js";
 import { projectColor } from "./colors.js";
 import { COLORS } from "./branding.js";
-import type { GGBoss } from "./orchestrator.js";
+import type { EzBoss } from "./orchestrator.js";
 import type { WorkerView } from "./boss-store.js";
 
 function statusGlyph(status: TaskStatus): string {
@@ -24,7 +24,7 @@ function statusGlyph(status: TaskStatus): string {
 }
 
 interface BossTasksOverlayProps {
-  boss: GGBoss;
+  boss: EzBoss;
   workers: WorkerView[];
   onClose: () => void;
 }

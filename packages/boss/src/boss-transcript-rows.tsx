@@ -108,9 +108,9 @@ export function BossTranscriptRow({
 }
 
 /**
- * Update-available notice — gg-boss brand aesthetic. Rounded box, fuchsia
+ * Update-available notice — ez-boss brand aesthetic. Rounded box, fuchsia
  * accent border, crimson primary body text. Mirrors the gradient feel of the
- * splash + banner so the notice reads as part of gg-boss rather than a
+ * splash + banner so the notice reads as part of ez-boss rather than a
  * borrowed-green ezcoder element. The ✨ rides the accent so the eye lands
  * on the highlight first, then reads the primary-colored body.
  */

@@ -23,14 +23,14 @@ export interface DiscoveredProject {
  * show a combined badge.
  */
 export async function discoverProjects(): Promise<DiscoveredProject[]> {
-  const [gg, cc, cx] = await Promise.all([
-    discoverGgcoderProjects(),
+  const [ez, cc, cx] = await Promise.all([
+    discoverEzcoderProjects(),
     discoverClaudeProjects(),
     discoverCodexProjects(),
   ]);
 
   const byPath = new Map<string, DiscoveredProject>();
-  for (const p of [...gg, ...cc, ...cx]) {
+  for (const p of [...ez, ...cc, ...cx]) {
     const existing = byPath.get(p.path);
     if (!existing) {
       byPath.set(p.path, p);
@@ -69,7 +69,7 @@ function mergeSources(a: ProjectSource[], b: ProjectSource[]): ProjectSource[] {
  * (slashes → underscores); we decode it back and verify the directory still
  * exists on disk.
  */
-async function discoverGgcoderProjects(): Promise<DiscoveredProject[]> {
+async function discoverEzcoderProjects(): Promise<DiscoveredProject[]> {
   const sessionsDir = getAppPaths().sessionsDir;
   let entries: string[];
   try {
@@ -101,7 +101,7 @@ async function discoverGgcoderProjects(): Promise<DiscoveredProject[]> {
 /**
  * Scan ~/.claude/projects/. Claude Code's directory encoding replaces every
  * "/" with "-", which is genuinely ambiguous — a real dash in a path component
- * (e.g. "gg-coder") collides with the separator. So we extract the cwd from
+ * (e.g. "ez-coder") collides with the separator. So we extract the cwd from
  * the JSONL events themselves; Claude writes it into user/assistant records.
  * Falls back to a best-effort dash decode only if no event carries a cwd.
  */

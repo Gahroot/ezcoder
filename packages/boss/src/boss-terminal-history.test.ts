@@ -41,7 +41,7 @@ describe("boss terminal history", () => {
     expect(writes).toHaveLength(2);
   });
 
-  it("serializes shared chat rows with gg-coder finalized-history chrome", () => {
+  it("serializes shared chat rows with ez-coder finalized-history chrome", () => {
     const user: BossDisplayItem = { kind: "user", id: "u1", text: "Ship it", timestamp: 1 };
     const assistant: BossDisplayItem = {
       kind: "assistant",
@@ -71,7 +71,7 @@ describe("boss terminal history", () => {
     expect(toolOutput).toContain("  ⎿  hi");
   });
 
-  it("matches gg-coder spacing between assistant and boss tool rows", () => {
+  it("matches ez-coder spacing between assistant and boss tool rows", () => {
     const writes: string[] = [];
     const printer = createBossTerminalHistoryPrinter();
     const items: BossDisplayItem[] = [

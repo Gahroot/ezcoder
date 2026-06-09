@@ -1,34 +1,34 @@
 import type { JsonObject, VoiceBridgeCommand, VoiceBridgeEvent, VoiceTool } from "../types.js";
 
-export interface GGBossPromptTarget {
+export interface EzBossPromptTarget {
   enqueueUserMessage(text: string): Promise<void> | void;
 }
 
-export interface GGBossBridge {
+export interface EzBossBridge {
   send(command: VoiceBridgeCommand, signal?: AbortSignal): Promise<VoiceBridgeEvent>;
   toTool(): VoiceTool;
 }
 
-export function createGGBossBridge(target: GGBossPromptTarget): GGBossBridge {
+export function createEzBossBridge(target: EzBossPromptTarget): EzBossBridge {
   return {
     async send(command, signal): Promise<VoiceBridgeEvent> {
       throwIfAborted(signal);
       if (command.type !== "prompt") {
         return {
           type: "error",
-          error: `Unsupported GGBoss bridge command: ${command.type}`,
+          error: `Unsupported EzBoss bridge command: ${command.type}`,
         };
       }
       await target.enqueueUserMessage(command.text);
       return { type: "task_dispatch", text: command.text };
     },
     toTool(): VoiceTool {
-      return createSendToGGBossTool(this);
+      return createSendToEzBossTool(this);
     },
   };
 }
 
-export function createRelayGGBossTool(
+export function createRelayEzBossTool(
   send: (command: VoiceBridgeCommand) => Promise<JsonObject>,
 ): VoiceTool {
   return {
@@ -51,7 +51,7 @@ export function createRelayGGBossTool(
   };
 }
 
-function createSendToGGBossTool(bridge: GGBossBridge): VoiceTool {
+function createSendToEzBossTool(bridge: EzBossBridge): VoiceTool {
   return {
     name: "send_to_ezboss",
     description: "Send a prompt to an in-process EZ Boss orchestrator.",
@@ -75,6 +75,6 @@ function createSendToGGBossTool(bridge: GGBossBridge): VoiceTool {
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
-    throw new Error("GGBoss bridge command aborted");
+    throw new Error("EzBoss bridge command aborted");
   }
 }

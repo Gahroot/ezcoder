@@ -6,14 +6,14 @@ import { BossModelSelector } from "./boss-model-selector.js";
 import { BossTasksOverlay } from "./boss-tasks-overlay.js";
 import { BossWorkerStatusRow } from "./boss-worker-status-row.js";
 import { RadioPicker } from "./radio-picker.js";
-import type { GGBoss } from "./orchestrator.js";
+import type { EzBoss } from "./orchestrator.js";
 import type { BossOverlay, BossUiState, WorkerView } from "./boss-store.js";
 import type { BOSS_SLASH_COMMANDS } from "./slash-commands.js";
 import type { RADIO_STATIONS } from "./radio.js";
 import type { useTheme } from "@prestyj/cli/ui/theme";
 
 interface BossChatScreenProps {
-  boss: GGBoss;
+  boss: EzBoss;
   columns: number;
   state: BossUiState;
   overlay: BossOverlay | null;
