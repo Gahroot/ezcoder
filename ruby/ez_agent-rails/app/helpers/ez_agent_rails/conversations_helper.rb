@@ -88,7 +88,11 @@ module EZAgentRails
       tool_call_id = block[:tool_call_id].to_s
       is_error = block[:is_error] || false
       result_text = EZLLM::Types.tool_result_text(block[:content]).to_s
-      collapsed = result_text.length > 500
+
+      # Split out source chips from knowledge base tool results.
+      sources = extract_source_chips(result_text)
+      display_text = sources ? result_text.split("--- Sources ---").first.strip : result_text
+      collapsed = display_text.length > 500
 
       icon_name = is_error ? "circle-x" : "circle-check"
       badge_kind = is_error ? "error" : "done"
@@ -107,10 +111,48 @@ module EZAgentRails
           tag.div(class: "ez-agent-tool__body") do
             tag.div(class: "ez-agent-tool__section") do
               tag.div("Output", class: "ez-agent-tool__section-label") +
-              tag.pre(result_text, class: "ez-agent-tool__pre")
-            end
+              tag.pre(display_text, class: "ez-agent-tool__pre")
+            end +
+            (sources ? render_source_chips(sources) : "").html_safe
           end
         end
+      end
+    end
+
+    # Parse the --- Sources --- JSON block appended by SearchKnowledge.
+    # Returns an Array of Hashes or nil if absent.
+    # @api private
+    def extract_source_chips(result_text)
+      return nil unless result_text.include?("--- Sources ---")
+      json_str = result_text.split("--- Sources ---").last.strip
+      parsed = JSON.parse(json_str)
+      parsed.is_a?(Array) ? parsed : nil
+    rescue JSON::ParserError, StandardError
+      nil
+    end
+
+    # Render source chips from parsed source data.
+    # Each source has: id, href, title, description.
+    # @api private
+    def render_source_chips(sources)
+      return "" if sources.nil? || sources.empty?
+
+      tag.div(class: "ez-source-chips") do
+        safe_join(sources.map { |s| render_single_source_chip(source: s) })
+      end
+    end
+
+    # @api private
+    def render_single_source_chip(source:)
+      href = source["href"].to_s
+      title = source["title"].to_s
+      description = source["description"].to_s
+
+      tag.a(href: href, class: "ez-source-chip", title: description, target: "_blank", rel: "noopener") do
+        safe_join([
+          content_tag(:i, "", data: { lucide: "file-text" }),
+          content_tag(:span, title, class: "ez-source-chip__title")
+        ])
       end
     end
 

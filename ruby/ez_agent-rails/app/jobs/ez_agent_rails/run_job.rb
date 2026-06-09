@@ -128,6 +128,7 @@ module EZAgentRails
         provider: run.provider.to_sym,
         model: run.model,
         tools: config.tools,
+        system: config.system_prompt,
         fence_untrusted: config.fence_untrusted,
         approval: build_approval_gate(run, broadcaster, cancellation, config)
       )

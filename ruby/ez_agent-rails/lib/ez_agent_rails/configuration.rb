@@ -24,6 +24,9 @@ module EZAgentRails
     # @return [Array]
     attr_accessor :tools
 
+    # @return [String, nil] optional system prompt prepended to every conversation.
+    attr_accessor :system_prompt
+
     # Wrap the output of tools marked `untrusted!` before it enters history.
     # @return [Boolean]
     attr_accessor :fence_untrusted
@@ -49,6 +52,7 @@ module EZAgentRails
       @default_provider = (ENV["EZ_AGENT_PROVIDER"] || "anthropic").to_sym
       @default_model = ENV["EZ_AGENT_MODEL"] || "claude-sonnet-4-20250514"
       @tools = []
+      @system_prompt = nil
       @fence_untrusted = false
       @approval_enabled = false
       @approval_poll_interval = EZAgentRails::RailsApprovalGate::DEFAULT_POLL_INTERVAL

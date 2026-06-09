@@ -1,11 +1,11 @@
 <%# locals: @conversation (EZAgentRails::Conversation), @run (EZAgentRails::Run, nil), @conversations (ActiveRecord::Relation) %>
 <% content_for :title, "EZ Agent · #{@conversation.display_title}" %>
 
+<turbo-frame id="ez_agent_main">
 <%= render "ez_agent_rails/conversations/sidebar",
            conversations: @conversations, active_conversation: @conversation %>
 
 <div class="ez-agent-main">
-  <turbo-frame id="ez_agent_main">
     <%#
       Subscribe to the conversation-level Turbo Stream. Text deltas from an active
       run are broadcast_appended into the streaming message container below, giving
@@ -122,8 +122,8 @@
         </div>
       <% end %>
     </div>
-  </turbo-frame>
-</div>
+  </div>
+</turbo-frame>
 
 <%# ── Demo Mode auto-send ──────────────────────────────────── %>
 <script>

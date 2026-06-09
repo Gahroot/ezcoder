@@ -1,11 +1,11 @@
 <%# locals: @conversations, @provider_status %>
 <% content_for :title, "EZ Agent · Conversations" %>
 
+<turbo-frame id="ez_agent_main">
 <%= render "ez_agent_rails/conversations/sidebar",
            conversations: @conversations, active_conversation: nil %>
 
 <div class="ez-agent-main">
-  <turbo-frame id="ez_agent_main">
     <div class="ez-agent-welcome">
       <div class="ez-agent-welcome__icon"><i data-lucide="bot"></i></div>
       <h1 class="ez-agent-welcome__title">Welcome to EZ Agent</h1>
@@ -40,5 +40,5 @@
         <span><kbd>Ctrl</kbd>+<kbd>L</kbd> Clear chat</span>
       </div>
     </div>
-  </turbo-frame>
-</div>
+  </div>
+</turbo-frame>

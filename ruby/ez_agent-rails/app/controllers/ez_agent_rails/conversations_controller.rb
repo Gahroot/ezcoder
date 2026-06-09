@@ -43,6 +43,7 @@ module EZAgentRails
     def destroy
       @conversation = Conversation.find(params[:id])
       @conversation.destroy
+      @conversations = Conversation.includes(:messages).order(updated_at: :desc)
 
       respond_to do |format|
         format.turbo_stream { render :destroy }
