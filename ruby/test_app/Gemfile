@@ -1,0 +1,9 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+# ez_llm — the provider registry + model registry we're wiring up.
+gemspec path: "../ez_llm", name: "ez_llm"
+
+# webrick for serving the config page in development
+gem "webrick", "~> 1.8"
