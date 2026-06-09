@@ -8,6 +8,7 @@
   <a href="https://www.npmjs.com/package/@prestyj/cli"><img src="https://img.shields.io/npm/v/@prestyj/cli?style=for-the-badge&label=ezcoder" alt="ezcoder npm version"></a>
   <a href="https://www.npmjs.com/package/@prestyj/boss"><img src="https://img.shields.io/npm/v/@prestyj/boss?style=for-the-badge&label=ezboss" alt="ezboss npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <a href="https://prestyj.com"><img src="https://img.shields.io/badge/Website-prestyj.com-2563EB?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Website"></a>
   <a href="https://youtube.com/@kenkaidoesai"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
   <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
 </p>
@@ -50,6 +51,30 @@ npm i -g @prestyj/boss     # Multi-project orchestrator (ezboss)
 
 ---
 
+## Ruby port
+
+The reusable core also ships as a **project-agnostic Ruby gem set** — add a gem,
+define tools as Ruby classes that wrap your own code, and get a streaming,
+multi-turn, tool-calling agent in any Ruby context (Rails, Sinatra, a CLI, a
+worker, plain Ruby). Zero framework dependencies in core. See [`ruby/`](ruby/README.md).
+
+| Gem | Mirrors | Role |
+|---|---|---|
+| [`ez_llm`](ruby/ez_llm) | `@prestyj/ai` | Unified streaming + providers + events. Depends only on `net/http` + `json` + `zeitwerk`. |
+| [`ez_agent`](ruby/ez_agent) | `@prestyj/agent` | The agent loop + tool execution + hardening. Depends only on `ez_llm`. |
+| [`ez_agent-rails`](ruby/ez_agent-rails) | — | Mountable Rails engine: ActiveRecord persistence, an off-request job, live Hotwire/Turbo streaming (ActionCable fallback), a human-in-the-loop approval gate, an install generator, and a bundled demo chat UI. |
+
+```ruby
+# Gemfile
+gem "ez_agent-rails"
+```
+
+```bash
+rails g ez_agent_rails:install && rails db:migrate   # migration + initializer + engine mount
+```
+
+---
+
 ## For developers
 
 ```bash
@@ -61,10 +86,19 @@ pnpm build
 
 TypeScript 5.9 + pnpm workspaces + Ink 6 + React 19 + Vitest 4 + Zod v4
 
+The Ruby port lives under [`ruby/`](ruby/README.md) (Ruby >= 3.2):
+
+```bash
+cd ruby/ez_llm        && bundle exec rspec   # core: streaming + providers
+cd ruby/ez_agent      && bundle exec rspec   # core: agent loop + tools
+cd ruby/ez_agent-rails && bundle exec rspec  # Rails engine adapter (end-to-end)
+```
+
 ---
 
 ## Community
 
+- [prestyj.com](https://prestyj.com) - website
 - [YouTube @kenkaidoesai](https://youtube.com/@kenkaidoesai) - tutorials and demos
 - [Skool community](https://skool.com/kenkai) - come hang out
 
