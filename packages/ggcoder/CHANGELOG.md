@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 4.8.1
+
+### Patch Changes
+
+- Fix ENOSPC crash when session transcript writes fail (disk full) — persistence now fails soft with a one-time warning instead of killing the live session. Add automatic session transcript pruning via new `sessionRetentionDays` setting (default 30 days, 0 disables).
+  - @kenkaiiii/gg-ai@4.8.1
+  - @kenkaiiii/gg-agent@4.8.1
+  - @kenkaiiii/gg-core@4.8.1
+
 ## 4.8.0
 
 ### Patch Changes
