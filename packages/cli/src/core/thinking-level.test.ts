@@ -14,6 +14,20 @@ describe("thinking-level helpers", () => {
     expect(getNextThinkingLevel("openai", "gpt-5.5", "xhigh")).toBeUndefined();
   });
 
+  it("cycles Claude Fable 5 through all tiers including xhigh and max", () => {
+    expect(getSupportedThinkingLevels("anthropic", "claude-fable-5")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    expect(getNextThinkingLevel("anthropic", "claude-fable-5", undefined)).toBe("low");
+    expect(getNextThinkingLevel("anthropic", "claude-fable-5", "high")).toBe("xhigh");
+    expect(getNextThinkingLevel("anthropic", "claude-fable-5", "xhigh")).toBe("max");
+    expect(getNextThinkingLevel("anthropic", "claude-fable-5", "max")).toBeUndefined();
+  });
+
   it("cycles Anthropic adaptive Opus models through max, including xhigh", () => {
     expect(getSupportedThinkingLevels("anthropic", "claude-opus-4-8")).toEqual([
       "low",

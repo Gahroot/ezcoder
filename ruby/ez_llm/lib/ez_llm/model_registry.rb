@@ -30,6 +30,10 @@ module EZLLM
 
     MODELS = [
       # ── Anthropic ──────────────────────────────────────────
+      Model.new(id: "claude-fable-5", name: "Claude Fable 5", provider: :anthropic,
+                context_window: 1_000_000, max_output_tokens: 128_000,
+                supports_thinking: true, supports_images: true, supports_video: false,
+                cost_tier: :high, max_thinking_level: :max),
       Model.new(id: "claude-opus-4-8", name: "Claude Opus 4.8", provider: :anthropic,
                 context_window: 1_000_000, max_output_tokens: 128_000,
                 supports_thinking: true, supports_images: true, supports_video: false,

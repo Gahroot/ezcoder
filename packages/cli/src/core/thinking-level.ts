@@ -2,7 +2,7 @@ import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { getMaxThinkingLevel } from "./model-registry.js";
 
 const OPENAI_GPT_THINKING_LEVELS: readonly ThinkingLevel[] = ["medium", "high", "xhigh"];
-const ANTHROPIC_OPUS_48_47_THINKING_LEVELS: readonly ThinkingLevel[] = [
+const ANTHROPIC_XHIGH_THINKING_LEVELS: readonly ThinkingLevel[] = [
   "low",
   "medium",
   "high",
@@ -20,12 +20,12 @@ function isOpenAIGptModel(provider: Provider, model: string): boolean {
   return provider === "openai" && model.startsWith("gpt-");
 }
 
-function isAnthropicOpus48Or47Model(provider: Provider, model: string): boolean {
-  return provider === "anthropic" && /opus-4-8|opus-4-7/.test(model);
+function isAnthropicXhighModel(provider: Provider, model: string): boolean {
+  return provider === "anthropic" && /fable-5|opus-4-8|opus-4-7/.test(model);
 }
 
 function isAnthropicAdaptiveModel(provider: Provider, model: string): boolean {
-  return provider === "anthropic" && /opus-4-8|opus-4-7|opus-4-6|sonnet-4-6/.test(model);
+  return provider === "anthropic" && /fable-5|opus-4-8|opus-4-7|opus-4-6|sonnet-4-6/.test(model);
 }
 
 export function getSupportedThinkingLevels(
@@ -34,8 +34,8 @@ export function getSupportedThinkingLevels(
 ): readonly ThinkingLevel[] {
   const maxLevel = getMaxThinkingLevel(model);
   if (isAnthropicAdaptiveModel(provider, model)) {
-    const levels = isAnthropicOpus48Or47Model(provider, model)
-      ? ANTHROPIC_OPUS_48_47_THINKING_LEVELS
+    const levels = isAnthropicXhighModel(provider, model)
+      ? ANTHROPIC_XHIGH_THINKING_LEVELS
       : ANTHROPIC_ADAPTIVE_THINKING_LEVELS;
     const maxIndex = levels.indexOf(maxLevel);
     if (maxIndex === -1) return ["low", "medium", "high"];
