@@ -4,27 +4,29 @@
 <aside class="ez-agent-sidebar">
   <div class="ez-agent-sidebar__header">
     <div class="ez-agent-sidebar__brand">
-      <span class="ez-agent-sidebar__brand-icon">🤖</span>
+      <span class="ez-agent-sidebar__brand-icon"><i data-lucide="bot"></i></span>
       <h2>EZ Agent</h2>
     </div>
     <div class="ez-agent-sidebar__actions">
-      <%= button_to "＋", ez_agent_routes.conversations_path,
+      <%= button_to ez_agent_routes.conversations_path,
           method: :post,
           class: "ez-agent-sidebar__new",
           title: "New Chat",
           form: { class: "ez-agent-sidebar__new-form",
-                  data: { turbo_frame: "_top" } } %>
+                  data: { turbo_frame: "_top" } } do %>
+        <i data-lucide="plus"></i>
+      <% end %>
       <button type="button"
               class="ez-agent-demo-toggle"
               onclick="window.toggleDemoMode()"
               title="Toggle Demo Mode — auto-fills and sends sample prompts"
               aria-label="Toggle Demo Mode"
-              id="ez-agent-demo-toggle">🎮</button>
+              id="ez-agent-demo-toggle"><i data-lucide="play-circle"></i></button>
       <button type="button"
               class="ez-agent-theme-toggle"
               onclick="window.toggleTheme()"
               title="Toggle dark/light theme"
-              aria-label="Toggle theme">🌙</button>
+              aria-label="Toggle theme"><i data-lucide="moon"></i><i data-lucide="sun"></i></button>
     </div>
   </div>
 
