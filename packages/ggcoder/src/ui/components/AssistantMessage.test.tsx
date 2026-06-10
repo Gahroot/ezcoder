@@ -9,11 +9,12 @@ import { ToolExecution } from "./ToolExecution.js";
 import { ToolGroupExecution } from "./ToolGroupExecution.js";
 import { ServerToolExecution } from "./ServerToolExecution.js";
 import { TerminalSizeProvider } from "../hooks/useTerminalSize.js";
+import type * as figures from "../constants/figures.js";
 
 // BLACK_CIRCLE is platform-dependent (⏺ on macOS, ● elsewhere); pin it so
 // the hardcoded frame expectations pass on Linux/Windows CI too.
 vi.mock("../constants/figures.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../constants/figures.js")>()),
+  ...(await importOriginal<typeof figures>()),
   BLACK_CIRCLE: "\u23FA",
 }));
 import {

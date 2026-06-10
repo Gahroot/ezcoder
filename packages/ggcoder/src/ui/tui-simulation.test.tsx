@@ -8,11 +8,12 @@ import { ChatLivePane } from "./components/ChatLivePane.js";
 import { TerminalSizeProvider } from "./hooks/useTerminalSize.js";
 import { renderTranscriptItem } from "./transcript/TranscriptRenderer.js";
 import { loadTheme, ThemeContext } from "./theme/theme.js";
+import type * as figures from "./constants/figures.js";
 
 // BLACK_CIRCLE is platform-dependent (⏺ on macOS, ● elsewhere); pin it so
 // the hardcoded frame expectations pass on Linux/Windows CI too.
 vi.mock("./constants/figures.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./constants/figures.js")>()),
+  ...(await importOriginal<typeof figures>()),
   BLACK_CIRCLE: "\u23FA",
 }));
 
