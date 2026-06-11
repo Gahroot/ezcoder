@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 4.8.4
+
+### Patch Changes
+
+- Fix footer jumps and scrollback whitespace/duplication in the scrollback-mode TUI. The patched Ink now folds transcript flushes atomically into frame writes (insertBeforeFrame), anchors the frame bottom with reclaimable pad debt while the agent runs, clips frames to terminal height, and repaints in place (cursor home + eraseDown) for bottom-pinned idle height changes like the slash-command menu — so the footer stays pinned, responses have no phantom gaps, and scrollback receives no duplicate banner/prompt copies.
+  - @kenkaiiii/gg-ai@4.8.4
+  - @kenkaiiii/gg-agent@4.8.4
+  - @kenkaiiii/gg-core@4.8.4
+
 ## 4.8.3
 
 ### Patch Changes
