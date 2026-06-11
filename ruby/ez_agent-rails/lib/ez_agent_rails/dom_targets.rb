@@ -47,7 +47,7 @@ module EZAgentRails
       "#{dom_id(run)}_status"
     end
 
-    # The action button area (Stop while running, Regenerate after terminal).
+    # The action button area (Stop while running, cleared after terminal states).
     def actions(run)
       "#{dom_id(run)}_actions"
     end
