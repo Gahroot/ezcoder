@@ -89,7 +89,7 @@ module EZAgentRails
       nil
     end
 
-    # Swap the action button area from Stop → Regenerate (or vice-versa).
+    # Clear the action button area (removes the Stop button on terminal states).
     # Called by {RunJob} in its `ensure` block so the UI always reflects the
     # run's final state regardless of how it ended.
     #
@@ -149,8 +149,8 @@ module EZAgentRails
       when :retry           then status(:retry, retry_message(event))
       when :error           then status(:error, EventPayload.error_message(event.error))
       when :agent_done
-        status(:done, done_message(event))
         streaming_done
+        remove_run_card
       end
     end
 
@@ -222,6 +222,16 @@ module EZAgentRails
       )
     end
 
+    # On success the run card (status bar + actions) is removed entirely — the
+    # persisted assistant message is indicator enough. Failures and aborts keep
+    # their status line so the user sees what went wrong.
+    def remove_run_card
+      Turbo::StreamsChannel.broadcast_remove_to(
+        @run,
+        target: DomTargets.root(@run)
+      )
+    end
+
     def status(kind, message)
       Turbo::StreamsChannel.broadcast_replace_to(
         @run,
@@ -253,19 +263,6 @@ module EZAgentRails
 
     def retry_message(event)
       "Retrying (#{event.reason}) — attempt #{event.attempt}/#{event.max_attempts}"
-    end
-
-    def done_message(event)
-      usage = event.total_usage
-      parts = ["Completed #{event.total_turns} #{pluralize(event.total_turns, 'turn')}"]
-      if usage
-        parts << "#{usage.input_tokens} in / #{usage.output_tokens} out tokens"
-      end
-      parts.join(" · ")
-    end
-
-    def pluralize(count, word)
-      count == 1 ? word : "#{word}s"
     end
 
     def pretty_json(value)

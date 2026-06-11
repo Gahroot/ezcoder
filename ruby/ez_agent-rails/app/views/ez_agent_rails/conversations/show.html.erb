@@ -76,7 +76,10 @@
         via the conversation-level Turbo Stream.
       %>
       <turbo-frame id="ez_agent_active_run" class="ez-agent-active-run">
-        <% if @run %>
+        <%# Succeeded runs render nothing — the persisted assistant message is
+            indicator enough. Running/failed/aborted runs keep their card so the
+            user can stop them or see what went wrong. %>
+        <% if @run && !@run.succeeded? %>
           <%= render "ez_agent_rails/runs/run", run: @run %>
         <% end %>
       </turbo-frame>
@@ -127,7 +130,7 @@
 
 <%# ── Demo Mode auto-send ──────────────────────────────────── %>
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
+  (window.ezAgentReady || function (fn) { document.addEventListener("DOMContentLoaded", fn); })(function () {
     var DEMO_KEY = "ez-agent-demo-mode";
     var DEMO_PROMPTS = [
       "What's the weather going to be like in Paris this Saturday? I'm planning a picnic.",

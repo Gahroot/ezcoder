@@ -65,6 +65,27 @@ describe("prompt commands", () => {
     expect(expand?.prompt).not.toContain("planning-only Goal tasks");
   });
 
+  it("defines /raise-floor as an inward, app-wide-first, tasks-handoff floor audit", () => {
+    const raiseFloor = PROMPT_COMMANDS.find((command) => command.name === "raise-floor");
+
+    expect(raiseFloor).toBeDefined();
+    expect(raiseFloor?.aliases).toContain("floor");
+    expect(raiseFloor?.prompt).toContain("Raise the Floor");
+    expect(raiseFloor?.prompt).toContain("inward counterpart to /expand");
+    expect(raiseFloor?.prompt).toContain("app-wide first, specific features second");
+    expect(raiseFloor?.prompt).toContain("first-run scenario");
+    expect(raiseFloor?.prompt).toContain("`tasks` tool");
+    expect(raiseFloor?.prompt).toContain("Press Ctrl+T to open the task list");
+    expect(raiseFloor?.prompt).toContain(
+      "use kencode to reference working code. /commit when done.",
+    );
+    expect(raiseFloor?.prompt).toContain("A) Add tasks for all floor-raising fixes");
+    expect(raiseFloor?.prompt).toContain("B) Add tasks for the app-wide fixes only");
+    expect(raiseFloor?.prompt).toContain("D) None — report only");
+    expect(raiseFloor?.prompt).toContain("Do not start implementing until the user chooses");
+    expect(raiseFloor?.prompt).not.toContain("Create a Goal");
+  });
+
   it("keeps /init focused on project-specific CLAUDE.md content", () => {
     const init = PROMPT_COMMANDS.find((command) => command.name === "init");
 

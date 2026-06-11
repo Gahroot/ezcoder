@@ -13,9 +13,9 @@
       <%= run.status %>
     </div>
     <%# Cooperative cancellation: stamps the run's `aborted_at` so an in-flight
-        RunJob stops at its next boundary.  After a terminal state the button
-        morphs into Regenerate — both rendered from the _actions partial so a
-        Turbo broadcast can swap the area without client-side JS. %>
+        RunJob stops at its next boundary.  After a terminal state the area is
+        cleared — rendered from the _actions partial so a Turbo broadcast can
+        swap it without client-side JS. %>
     <div id="<%= run_actions_target(run) %>" class="ez-agent-run__actions">
       <%= render "ez_agent_rails/runs/actions", run: run %>
     </div>

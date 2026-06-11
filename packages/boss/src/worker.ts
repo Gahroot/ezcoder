@@ -428,6 +428,20 @@ export class Worker {
     );
 
     bus.on(
+      "thinking_delta",
+      safeBusHandler<{ text: string }>(
+        this.name,
+        "thinking_delta",
+        () => {
+          // Fable/Opus can spend minutes in hidden extended-thinking. Treat that
+          // as liveness so the boss watchdog doesn't cancel an active model run.
+          this.lastEventAt = Date.now();
+        },
+        reportError,
+      ),
+    );
+
+    bus.on(
       "tool_call_start",
       safeBusHandler<{ toolCallId: string; name: string }>(
         this.name,

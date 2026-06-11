@@ -44,6 +44,17 @@ module EZAgentRails
       EZAgentRails::Engine.routes.url_helpers
     end
 
+    # Fingerprinted URL for an engine-served JS asset. Appends a content digest
+    # (`?v=<digest>`) so the URL changes whenever the file changes — letting the
+    # browser cache the asset for a year while still picking up edits immediately.
+    # `name` is an {EZAgentRails::AssetsController::ASSETS} key; `path_helper` is
+    # the matching route helper symbol (e.g. `:provider_selector_js_path`).
+    def ez_agent_asset_path(name, path_helper)
+      base = ez_agent_routes.public_send(path_helper)
+      digest = EZAgentRails::AssetsController.digest_for(name)
+      digest ? "#{base}?v=#{digest}" : base
+    end
+
     # ── Provider badge helpers ─────────────────────────────
 
     # Provider display name for the badge on assistant messages.

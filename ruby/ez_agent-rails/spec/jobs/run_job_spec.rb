@@ -47,7 +47,7 @@ RSpec.describe EZAgentRails::RunJob, type: :job do
 
     # (d) Turbo broadcasts: text_delta appends into the conversation,
     #     user_message appends into the conversation,
-    #     agent_done replaces the status on the run.
+    #     agent_done removes the transient run card.
     conv_actions = conv_turbo.map { |el| el["action"] }
     expect(conv_actions).to include("append")  # text_delta + user_message
 
@@ -58,13 +58,12 @@ RSpec.describe EZAgentRails::RunJob, type: :job do
     expect(text_append.to_s).to include("Hello from the agent")
 
     run_actions = run_turbo.map { |el| el["action"] }
-    expect(run_actions).to include("replace") # agent_done replaced the status line
+    expect(run_actions).to include("remove") # agent_done removed the run card
 
-    done_status = run_turbo.find do |el|
-      el["action"] == "replace" && el["target"] == EZAgentRails::DomTargets.status(run)
+    removed_run = run_turbo.find do |el|
+      el["action"] == "remove" && el["target"] == EZAgentRails::DomTargets.root(run)
     end
-    expect(done_status).to be_present
-    expect(done_status.to_s).to include("Completed 1 turn")
+    expect(removed_run).to be_present
   end
 
   it "marks the run failed (not stuck running) when the loop raises" do

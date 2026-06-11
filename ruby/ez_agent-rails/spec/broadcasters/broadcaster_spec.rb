@@ -25,7 +25,7 @@ RSpec.describe EZAgentRails::Broadcaster do
     )
   end
 
-  it "appends streamed text to the conversation streaming target and replaces the status on done" do
+  it "appends streamed text to the conversation streaming target and removes the run card on done" do
     FakeProvider.text("streamed words")
 
     drive_loop(EZAgentRails::Broadcaster.new(run))
@@ -39,13 +39,13 @@ RSpec.describe EZAgentRails::Broadcaster do
     expect(append).to be_present
     expect(append.to_s).to include("streamed words")
 
-    # Status still broadcasts on the per-run stream.
+    # Successful runs remove the transient run card; the persisted assistant
+    # message is the completion indicator.
     run_turbo = capture_turbo_stream_broadcasts(run)
-    status = run_turbo.find do |el|
-      el["action"] == "replace" && el["target"] == EZAgentRails::DomTargets.status(run)
+    removal = run_turbo.find do |el|
+      el["action"] == "remove" && el["target"] == EZAgentRails::DomTargets.root(run)
     end
-    expect(status).to be_present
-    expect(status.to_s).to include("Completed")
+    expect(removal).to be_present
   end
 
   it "renders a tool call as an appended frame then replaces it when it ends" do

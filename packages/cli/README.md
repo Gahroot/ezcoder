@@ -138,6 +138,7 @@ Plus built-in workflows that ship with the binary:
 
 ```bash
 /expand        # Compare against current alternatives and report gaps
+/raise-floor   # Audit existing features and make them just work
 /bullet-proof  # Run a defensive security review
 /init          # Generate CLAUDE.md for your project
 /setup-commit  # Generate a /commit command with quality checks

@@ -103,6 +103,106 @@ If the user chooses A or B, do not implement directly. First call the enter_plan
 If the user chooses C, ask what they would like — pick specific features by rank, refine or re-scope the list, or skip — and do not implement anything until they say so.`,
   },
   {
+    name: "raise-floor",
+    aliases: ["floor"],
+    description: "Make existing features just work — raise the floor",
+    prompt: `# Raise the Floor: Make Existing Features Just Work
+
+This is the inward counterpart to /expand. /expand raises the CEILING with net-new features; /raise-floor raises the FLOOR on features that ALREADY exist. The goal is to make the project too good to fail — results-focused. A feature is not done when it can technically do something; it is done when a real user gets the result without having to learn it, configure it, or babysit it. Hunt the gap between what a feature CAN do (ceiling) and how easily a real user gets value from it on first use (floor), and close that gap.
+
+This command is **app-wide first, specific features second**, and project-agnostic — profile THIS project before judging it. It is report-first: the only deliverable is a ranked report, after which you hand the fixes off as tasks. Do not edit, install, or implement anything until the user chooses an option at the end.
+
+If the user passed arguments to /raise-floor, treat them as a focus area: narrow the audit to that feature/surface, but still run the app-wide lens within it and apply the full rubric.
+
+**Out of scope** — exclude these unless an item is the direct reason a user can't get value from an existing feature: net-new capabilities (that's /expand), security audits (that's /bullet-proof), and pure refactors / code-quality cleanup / test coverage / CI / ops/DX hygiene.
+
+## The floor rubric
+
+Score every surface against these. A low score on any dimension is a "sagging floor" finding:
+
+- **Zero-config** — works on first run with sensible defaults; no required setup, flags, or tuning to get value.
+- **Discoverability** — a user can find and trigger it without reading source or docs.
+- **End-to-end completeness** — it finishes the job instead of stopping halfway and leaving manual steps for the human.
+- **Failure & edges** — empty / missing / error / slow / offline states are handled with a clear message and a recovery path, not crashes, silence, or confusion.
+- **Results visible** — the user can see it worked and receives the payoff, with feedback/progress — not left guessing.
+- **Time-to-first-value** — few steps between invoking it and the payoff; no hidden prerequisites.
+- **Self-explaining** — empty states, inline hints, and defaults teach the feature in place, so the human doesn't have to learn it elsewhere.
+
+## Phase 0: Profile + inventory (main agent)
+
+Inspect the local project and write a short private working profile: what it is, who its users are, how they actually use it. Then inventory the real user-facing surfaces — commands, routes, screens, flows, exported APIs — and the features that already exist. Derive this from actual code and config, not from README claims.
+
+## Phase 1: Parallel floor audit — app-wide first
+
+Spawn subagents in parallel using the subagent tool (call the subagent tool multiple times in a single response).
+
+**Agent 1 — App-wide floor (always include this one; it is the priority lens).** Audit the whole-product basics that gate every feature: first-run / onboarding / empty-project state, global defaults and required configuration, cross-cutting empty / loading / error states, global discoverability (can users find what already exists?), consistency of feedback and results across the app, and the path from install to first real result.
+
+**Then one subagent per major feature area** from the inventory (cap the total at 6 subagents). Each audits its feature against the full rubric, walking the real code path.
+
+Each subagent must:
+
+1. Walk the actual code path for its surface — entry point through to the result the user gets.
+2. Return only **floor findings**: existing capability that works but is hard to use, incomplete, hidden, silent on failure, or that needs the human to do the system's job.
+3. For EVERY finding, give a concrete **first-run scenario** grounded in the code: a real user does X, expects Y, but instead gets Z or must manually do W. No scenario, no finding.
+4. Cite the local file:line anchors that prove the floor sags (the missing default, the unhandled state, the manual step, the absent feedback).
+5. Score the finding on the rubric and estimate fix cost (small / medium / large).
+
+## Phase 2: Validate against the repo (main agent)
+
+For every candidate:
+
+1. Open the cited code and confirm the floor sag is real and not already handled elsewhere (a default, fallback, or empty state the subagent missed).
+2. Confirm it is an existing-feature floor issue — not a net-new feature, security finding, or pure refactor. Drop out-of-scope items.
+3. Confirm the first-run scenario actually holds against the code. Drop anything you can't ground.
+4. Merge duplicates. Rank by **leverage = (users affected × how badly the floor sags) ÷ fix cost**.
+
+## Phase 3: Report
+
+Output the report. **App-wide findings first**, then per-feature, each ranked by leverage. Start with one line: project name + a one-sentence summary of where the floor sags most. Then a single table:
+
+| ID | Scope | Floor gap + first-run scenario | Fix (what "just works" looks like) + file anchors | Leverage |
+|---|---|---|---|---|
+| RF-001 | app-wide | what sags + user does X, expects Y, gets Z | the default/empty-state/feedback/completion to add + path:line | high |
+
+Use IDs like RF-001. App-wide rows lead, then features.
+
+After the table, ask exactly:
+
+What should I do?
+A) Add tasks for all floor-raising fixes
+B) Add tasks for the app-wide fixes only
+C) Add tasks for specific findings (give IDs, e.g. "RF-001, RF-004")
+D) None — report only
+
+Do not start implementing until the user chooses.
+
+## Phase 4: Hand off as tasks
+
+If the user chooses A, B, or C, do not fix directly. Add one task per selected finding (or tightly coupled group) using the \`tasks\` tool (action=add), ordered by leverage and dependency, **app-wide first**. Each task needs a short title and a standalone prompt that includes:
+
+- the finding ID and the first-run scenario it fixes,
+- the affected local files/anchors,
+- what "just works" looks like — the default / empty-state / feedback / completion the fix must deliver,
+- the project's verification commands.
+
+End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
+
+use kencode to reference working code. /commit when done.
+
+After adding the tasks, tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and run them." Do not begin executing them unless the user explicitly says so.
+
+If the user chooses D, stop after the report.
+
+## Rules
+
+- **App-wide first, specific features second** — in both the audit and the report.
+- **Existing features only.** Net-new capability is /expand; security is /bullet-proof; pure refactors/tooling are out of scope.
+- **No finding without a concrete, code-grounded first-run scenario.** No "could be polished" nudges.
+- **Report-first.** No edits, installs, or commits until the user picks an option.
+- **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
+  },
+  {
     name: "bullet-proof",
     aliases: ["bp"],
     description: "Audit exploitable weaknesses",

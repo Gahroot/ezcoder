@@ -1,22 +1,15 @@
 <%# locals: run (EZAgentRails::Run) %>
 <%#
-  Cooperative-stop button that morphs into a Regenerate button once the run
-  reaches a terminal state.  Broadcast-replaced by the Broadcaster via
-  DomTargets.actions(run) so the swap works over Turbo Streams without
-  any client-side JS.
+  Cooperative-stop button shown only while the run is in flight; once the run
+  reaches a terminal state the area is broadcast-replaced (via
+  DomTargets.actions(run)) with nothing, keeping the chat footer clean.
 
   Routes are built through EZAgentRails::Engine.routes.url_helpers (rather than
   the ez_agent_routes helper) so the mount prefix is present whether this partial
   is rendered in an engine request OR an out-of-band Turbo broadcast.
 %>
-<% routes = EZAgentRails::Engine.routes.url_helpers %>
 <% if run.running? %>
+  <% routes = EZAgentRails::Engine.routes.url_helpers %>
   <%= button_to "Stop", routes.stop_run_path(run), method: :post,
                 class: "ez-agent-stop", form: { class: "ez-agent-stop" } %>
-<% else %>
-  <%= button_to "Regenerate", routes.conversation_runs_path(run.conversation),
-                method: :post,
-                class: "ez-agent-regenerate",
-                form: { class: "ez-agent-regenerate",
-                        data: { turbo_frame: "ez_agent_active_run" } } %>
 <% end %>

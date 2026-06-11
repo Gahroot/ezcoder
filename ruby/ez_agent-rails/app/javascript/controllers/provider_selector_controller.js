@@ -26,13 +26,6 @@
     );
     if (!providerSelect || !modelSelect) return;
 
-    // Walk up to the nearest form so we can update hidden inputs.
-    var form = el.closest("form");
-
-    function hiddenInput(name) {
-      return form ? form.querySelector("input[name='" + name + "']") : null;
-    }
-
     function modelsForProvider(provider) {
       return modelsByProvider[provider] || [];
     }
@@ -62,11 +55,22 @@
       syncHiddenInputs();
     }
 
+    // Update every matching hidden input across the document. The provider/model
+    // selects live in the page header, OUTSIDE the prompt <form> that carries the
+    // hidden inputs — so scoping to a closest("form") would find nothing and the
+    // selection would never reach the backend.
+    function setHiddenInputs(name, value) {
+      var inputs = document.querySelectorAll(
+        "input[type='hidden'][name='" + name + "']"
+      );
+      for (var i = 0; i < inputs.length; i++) {
+        inputs[i].value = value;
+      }
+    }
+
     function syncHiddenInputs() {
-      var pi = hiddenInput("provider");
-      var mi = hiddenInput("model");
-      if (pi) pi.value = providerSelect.value;
-      if (mi) mi.value = modelSelect.value;
+      setHiddenInputs("provider", providerSelect.value);
+      setHiddenInputs("model", modelSelect.value);
     }
 
     providerSelect.addEventListener("change", function () {

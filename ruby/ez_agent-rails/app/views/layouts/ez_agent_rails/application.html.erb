@@ -7,9 +7,9 @@
 
     <%= action_cable_meta_tag %>
 
-    <script type="module" src="<%= ez_agent_routes.turbo_js_path %>"></script>
-    <script src="<%= ez_agent_routes.provider_selector_js_path %>"></script>
-    <script src="<%= ez_agent_routes.diagnostics_js_path %>"></script>
+    <script type="module" src="<%= ez_agent_asset_path("turbo", :turbo_js_path) %>"></script>
+    <script src="<%= ez_agent_asset_path("provider_selector", :provider_selector_js_path) %>"></script>
+    <script src="<%= ez_agent_asset_path("diagnostics", :diagnostics_js_path) %>"></script>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
@@ -67,8 +67,6 @@
         --approved-text: #166534;
         --denied-bg: #fee2e2;
         --denied-text: #991b1b;
-        --purple: #7c3aed;
-        --purple-hover: #6d28d9;
         --shadow-xs: 0 1px 2px rgba(0,0,0,.03);
         --shadow-sm: 0 1px 3px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.03);
         --shadow-md: 0 4px 12px rgba(0,0,0,.06);
@@ -134,8 +132,6 @@
         --approved-text: #86efac;
         --denied-bg: #7f1d1d;
         --denied-text: #fca5a5;
-        --purple: #8b5cf6;
-        --purple-hover: #7c3aed;
         --shadow-xs: 0 1px 2px rgba(0,0,0,.15);
         --shadow-sm: 0 1px 3px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.12);
         --shadow-md: 0 4px 12px rgba(0,0,0,.3);
@@ -528,8 +524,6 @@
       button:active, .ez-agent-prompt__send:active { transform: scale(0.97); }
       button.ez-agent-stop { background: var(--error); }
       button.ez-agent-stop:hover { background: var(--error-hover); }
-      button.ez-agent-regenerate { background: var(--purple); }
-      button.ez-agent-regenerate:hover { background: var(--purple-hover); }
       .ez-agent-run__actions { display: inline-flex; }
       .ez-agent-status--aborted { color: var(--error); font-weight: 500; }
       .ez-agent-status--retry { color: var(--warning); font-weight: 500; }
@@ -755,16 +749,39 @@
         // Apply demo mode state on load
         applyDemoMode(getDemoMode());
 
-        // Skeleton removal: when streaming content arrives, remove skeleton state
-        document.addEventListener("DOMContentLoaded", function () {
-          var streamingContainers = document.querySelectorAll(".ez-agent-streaming-message");
-          streamingContainers.forEach(function (container) {
-            if (container.children.length > 0) {
-              container.classList.remove("ez-agent-skeleton");
-            }
+        // ── Turbo-aware ready helper ───────────────────────
+        // DOMContentLoaded fires only on the first full document parse. This UI is
+        // driven by Turbo: full visits fire `turbo:load`, and sidebar conversation
+        // links target the `ez_agent_main` frame (the prompt form targets the
+        // `ez_agent_active_run` frame) — both fire `turbo:frame-load`, NOT
+        // `turbo:load`. Bind all three so initializers re-run after every kind of
+        // navigation. Each initializer is idempotent, so the first-load double-run
+        // (initial call + turbo:load) is harmless.
+        window.ezAgentReady = function (fn) {
+          document.addEventListener("turbo:load", fn);
+          document.addEventListener("turbo:frame-load", fn);
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", fn);
+          } else {
+            fn();
+          }
+        };
+
+        var skeletonObserver = null;
+        var lucideObserver = null;
+
+        function initLucideIcons() {
+          if (typeof lucide !== "undefined") lucide.createIcons();
+        }
+
+        window.ezAgentReady(function () {
+          // Skeleton removal: when streaming content arrives, drop skeleton state.
+          document.querySelectorAll(".ez-agent-streaming-message").forEach(function (container) {
+            if (container.children.length > 0) container.classList.remove("ez-agent-skeleton");
           });
-          // Watch for content in streaming containers
-          var observer = new MutationObserver(function (mutations) {
+
+          if (skeletonObserver) skeletonObserver.disconnect();
+          skeletonObserver = new MutationObserver(function (mutations) {
             for (var i = 0; i < mutations.length; i++) {
               var target = mutations[i].target;
               if (target.classList && target.classList.contains("ez-agent-streaming-message") && target.children.length > 0) {
@@ -772,14 +789,12 @@
               }
             }
           });
-          observer.observe(document.body, { childList: true, subtree: true });
+          skeletonObserver.observe(document.body, { childList: true, subtree: true });
 
-          // Lucide icons: create on load and re-create on DOM mutations
-          function initLucideIcons(root) {
-            if (typeof lucide !== "undefined") lucide.createIcons({ nodes: root ? [root] : undefined });
-          }
+          // Lucide icons: render now and re-render as streamed nodes arrive.
           initLucideIcons();
-          var lucideObserver = new MutationObserver(function (mutations) {
+          if (lucideObserver) lucideObserver.disconnect();
+          lucideObserver = new MutationObserver(function (mutations) {
             for (var m = 0; m < mutations.length; m++) {
               var nodes = mutations[m].addedNodes;
               for (var n = 0; n < nodes.length; n++) {
@@ -800,13 +815,13 @@
       Markdown rendering initializer.
     %>
     <script>
-      document.addEventListener("DOMContentLoaded", function () {
-        function waitForDeps(cb) {
-          if (typeof marked !== "undefined" && typeof hljs !== "undefined") return cb();
-          setTimeout(function () { waitForDeps(cb); }, 50);
-        }
+      (function () {
+        var configured = false;
+        var mdObserver = null;
 
-        waitForDeps(function () {
+        function configureMarked() {
+          if (configured) return;
+          configured = true;
           marked.use({
             gfm: true,
             breaks: true,
@@ -826,21 +841,31 @@
               }
             }
           });
+        }
 
-          function renderMarkdown(el) {
-            var raw = el.getAttribute("data-markdown-text");
-            if (!raw) return;
-            el.innerHTML = marked.parse(raw);
+        function renderMarkdown(el) {
+          if (el.dataset.ezMdRendered === "1") return;
+          var raw = el.getAttribute("data-markdown-text");
+          if (!raw) return;
+          el.innerHTML = marked.parse(raw);
+          el.dataset.ezMdRendered = "1";
+        }
+
+        function renderAll(root) {
+          var els = (root || document).querySelectorAll(".ez-agent-md[data-markdown-text]");
+          for (var i = 0; i < els.length; i++) renderMarkdown(els[i]);
+        }
+
+        function start() {
+          // marked + highlight.js load via deferred CDN <script>; poll until ready.
+          if (typeof marked === "undefined" || typeof hljs === "undefined") {
+            return setTimeout(start, 50);
           }
-
-          function renderAll(root) {
-            var els = (root || document).querySelectorAll(".ez-agent-md[data-markdown-text]");
-            for (var i = 0; i < els.length; i++) renderMarkdown(els[i]);
-          }
-
+          configureMarked();
           renderAll();
 
-          var observer = new MutationObserver(function (mutations) {
+          if (mdObserver) mdObserver.disconnect();
+          mdObserver = new MutationObserver(function (mutations) {
             for (var m = 0; m < mutations.length; m++) {
               var nodes = mutations[m].addedNodes;
               for (var n = 0; n < nodes.length; n++) {
@@ -852,17 +877,22 @@
               }
             }
           });
-          observer.observe(document.body, { childList: true, subtree: true });
-        });
-      });
+          mdObserver.observe(document.body, { childList: true, subtree: true });
+        }
+
+        window.ezAgentReady(start);
+      })();
     </script>
 
     <%#
       File upload controller.
     %>
     <script>
-      document.addEventListener("DOMContentLoaded", function () {
+      window.ezAgentReady(function () {
         document.querySelectorAll("[data-controller='file-upload']").forEach(function (el) {
+          // Idempotent: turbo:load re-runs this on every visit; bind each form once.
+          if (el.dataset.ezFileUploadBound === "1") return;
+          el.dataset.ezFileUploadBound = "1";
           var fileInput   = el.querySelector("[data-file-upload-target='fileInput']");
           var preview     = el.querySelector("[data-file-upload-target='preview']");
           var dropZone    = el.querySelector("[data-file-upload-target='dropZone']");

@@ -221,6 +221,33 @@ export function isThinkingBlockError(err: unknown): boolean {
 }
 
 /**
+ * Opaque, detail-free provider failure messages. Some OpenAI-compatible
+ * providers (e.g. Xiaomi MiMo) return these with a 4xx status for what is
+ * actually a transient server-side fault — a plain retry clears it. There is
+ * nothing actionable in the message for the user or the agent, so treating it
+ * as a hard client error just makes the user manually retry. Matched as the
+ * ENTIRE (trimmed) message so real 400s like "invalid request: messages..."
+ * never qualify.
+ */
+const OPAQUE_PROVIDER_MESSAGES = new Set([
+  "request error",
+  "internal error",
+  "unknown error",
+  "server error",
+  "an error occurred",
+  "something went wrong",
+]);
+
+function isOpaqueProviderMessage(message: string): boolean {
+  return OPAQUE_PROVIDER_MESSAGES.has(
+    message
+      .trim()
+      .replace(/[.!]+$/, "")
+      .toLowerCase(),
+  );
+}
+
+/**
  * Distinguish rate-limit (HTTP 429), server-side overload (HTTP 529), and
  * transient provider 5xx/API failures. Returns null for errors that should not
  * enter the retry bucket. All kinds use the same backoff schedule, but the UI
@@ -263,6 +290,11 @@ export function classifyOverload(
     msg.includes("service unavailable") ||
     msg.includes("gateway timeout")
   ) {
+    return "provider_error";
+  }
+  // Opaque failures with no actionable detail (any provider, any status) —
+  // retry them like a transient 5xx instead of surfacing immediately.
+  if (isOpaqueProviderMessage(err.message)) {
     return "provider_error";
   }
   return null;
@@ -421,7 +453,9 @@ export async function* agentLoop(
   let useNonStreamingFallback = false;
   const MAX_OVERLOAD_RETRIES = 10;
   const MAX_EMPTY_RESPONSE_RETRIES = 2;
-  const MAX_STALL_RETRIES = 5;
+  // Match the provider-transient retry budget: Anthropic/Fable stalls are usually
+  // upstream stream/transport failures, not an agent state problem.
+  const MAX_STALL_RETRIES = 10;
   const MAX_OVERFLOW_COMPACTIONS = 2;
   // After this many streaming stalls in a row, switch to non-streaming mode
   // for the remaining stall retries. Keeps the first two retries fast (the
@@ -458,8 +492,8 @@ export async function* agentLoop(
   const NON_STREAMING_HARD_TIMEOUT_MS = 300_000; // 5min for full non-streaming response
   // Runaway tool-call circuit breaker. When a model glitches mid-tool-call it
   // can emit tens of thousands of toolcall_delta events without ever closing,
-  // burning the entire stall-retry budget (~25 min) on what is clearly a
-  // non-recoverable model error. Cap accumulated arg chars and event count;
+  // burning the entire stall-retry budget on what is clearly a non-recoverable
+  // model error. Cap accumulated arg chars and event count;
   // exceeding either is a hard, non-retriable failure. Thresholds are generous
   // enough to allow legitimate large file writes through `write`.
   const MAX_TOOLCALL_DELTA_CHARS = 1_000_000; // 1 MB of accumulated tool-call args

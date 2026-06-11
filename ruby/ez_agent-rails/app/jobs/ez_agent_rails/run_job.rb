@@ -46,9 +46,8 @@ module EZAgentRails
         broadcaster.call(failure_event(e))
         raise
       ensure
-        # Regardless of how the run ended (success, abort, or failure), swap
-        # the Stop button → Regenerate so the user can re-run from the same
-        # conversation state.
+        # Regardless of how the run ended (success, abort, or failure), clear
+        # the Stop button so the UI reflects the terminal state.
         broadcaster&.run_finished
       end
     end

@@ -3064,6 +3064,7 @@ export function App(props: AppProps) {
       // Project audits / one-shot analysis
       "init",
       "expand",
+      "raise-floor",
       "bullet-proof",
       "compare",
       // Setup / installers

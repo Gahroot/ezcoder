@@ -198,6 +198,25 @@ describe("classifyOverload", () => {
     ).toBe("overloaded");
   });
 
+  it("retries opaque provider failures even with a 4xx status (Xiaomi 'Request Error')", () => {
+    expect(
+      classifyOverload(new ProviderError("xiaomi", "Request Error", { statusCode: 400 })),
+    ).toBe("provider_error");
+    expect(classifyOverload(new ProviderError("glm", "Internal error.", {}))).toBe(
+      "provider_error",
+    );
+  });
+
+  it("does not retry real 4xx client errors with actionable messages", () => {
+    expect(
+      classifyOverload(
+        new ProviderError("xiaomi", "invalid request: messages[2] is malformed", {
+          statusCode: 400,
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it("does not treat a usage-window 429 as a retriable rate limit", () => {
     expect(
       classifyOverload(
@@ -805,6 +824,42 @@ describe("agentLoop", () => {
       const { events, result } = await loopPromise;
       expect(mockStream).toHaveBeenCalledTimes(2);
       expect(events.some((e) => e.type === "retry" && e.reason === "stream_stall")).toBe(true);
+      expect(events.some((e) => e.type === "agent_done")).toBe(true);
+      expect(result.totalTurns).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the full ten-attempt budget for repeated Anthropic/Fable transport stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      let callIndex = 0;
+      mockStream.mockImplementation(() => {
+        callIndex++;
+        if (callIndex <= 10) {
+          return mockErrorResult(
+            Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
+          ) as unknown as ReturnType<typeof stream>;
+        }
+        return mockOkResult("Recovered after Fable stall") as unknown as ReturnType<typeof stream>;
+      });
+
+      const loopPromise = collectLoop(
+        [
+          { role: "system", content: "sys" },
+          { role: "user", content: "hi" },
+        ],
+        { provider: "anthropic", model: "claude-fable-5" },
+      );
+
+      await vi.advanceTimersByTimeAsync(70_000);
+
+      const { events, result } = await loopPromise;
+      const retries = events.filter((e) => e.type === "retry" && e.reason === "stream_stall");
+      expect(mockStream).toHaveBeenCalledTimes(11);
+      expect(retries).toHaveLength(10);
+      expect(retries.at(-1)).toMatchObject({ attempt: 10, maxAttempts: 10 });
       expect(events.some((e) => e.type === "agent_done")).toBe(true);
       expect(result.totalTurns).toBe(1);
     } finally {
