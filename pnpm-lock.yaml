@@ -9,9 +9,6 @@ overrides:
   ip-address: ^10.1.1
 
 patchedDependencies:
-  ink@6.8.0:
-    hash: 2cc234db3e6221cf3cae705a141f22cfde2bf2e9acbe46e210b343f8c3d9ef61
-    path: patches/ink@6.8.0.patch
   ink@7.0.2:
     hash: c093b542a6016d76c2dd97256fc9c48e09eb7aaf9b0b0f637ec683d2d5fe70b5
     path: patches/ink@7.0.2.patch
@@ -199,8 +196,8 @@ importers:
         specifier: ^5.6.2
         version: 5.6.2
       ink:
-        specifier: 6.8.0
-        version: 6.8.0(patch_hash=2cc234db3e6221cf3cae705a141f22cfde2bf2e9acbe46e210b343f8c3d9ef61)(@types/react@19.2.14)(react@19.2.5)
+        specifier: npm:@kenkaiiii/ink@6.8.0-gg.1
+        version: '@kenkaiiii/ink@6.8.0-gg.1(@types/react@19.2.14)(react@19.2.5)'
       react:
         specifier: ^19.2.5
         version: 19.2.5
@@ -423,8 +420,8 @@ importers:
         specifier: ^7.0.5
         version: 7.0.5
       ink:
-        specifier: 6.8.0
-        version: 6.8.0(patch_hash=2cc234db3e6221cf3cae705a141f22cfde2bf2e9acbe46e210b343f8c3d9ef61)(@types/react@19.2.14)(react@19.2.5)
+        specifier: npm:@kenkaiiii/ink@6.8.0-gg.1
+        version: '@kenkaiiii/ink@6.8.0-gg.1(@types/react@19.2.14)(react@19.2.5)'
       lowlight:
         specifier: ^3.3.0
         version: 3.3.0
@@ -2023,6 +2020,19 @@ packages:
 
   '@kenkaiiii/agent-home-sdk@0.3.8':
     resolution: {integrity: sha512-RH/5ZsqRgHWLqjQcjpvclK1tUrItRUTbJzoubFvyK2cT2YGjotrPIu+1+54eZdhR/oH8Bk77KRnjAw5SOBRbcw==}
+
+  '@kenkaiiii/ink@6.8.0-gg.1':
+    resolution: {integrity: sha512-eafGEGHH4tf6PFY0fqlBcw7EYlVFdSC+GpcndQuZFVAOkXZPvoDsn/0QEGx06Z2YkEz1xD7yBqIJdaTLZiwgCQ==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@types/react': '>=19.0.0'
+      react: '>=19.0.0'
+      react-devtools-core: '>=6.1.2'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      react-devtools-core:
+        optional: true
 
   '@malept/cross-spawn-promise@2.0.0':
     resolution: {integrity: sha512-1DpKU0Z5ThltBwjNySMC14g0CkbyhCaz9FkhxqNsZI6uAPJXFS8cMXlBKo26FJ8ZuW6S9GCMcR9IO5k2X5/9Fg==}
@@ -3946,19 +3956,6 @@ packages:
 
   ini@1.3.8:
     resolution: {integrity: sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew==}
-
-  ink@6.8.0:
-    resolution: {integrity: sha512-sbl1RdLOgkO9isK42WCZlJCFN9hb++sX9dsklOvfd1YQ3bQ2AiFu12Q6tFlr0HvEUvzraJntQCCpfEoUe9DSzA==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      '@types/react': '>=19.0.0'
-      react: '>=19.0.0'
-      react-devtools-core: '>=6.1.2'
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-      react-devtools-core:
-        optional: true
 
   ink@7.0.2:
     resolution: {integrity: sha512-cnkE2SsDC/gieJ+BD8+gWpXrZPMInv7agBYN5gcKVlQZYp+IKa/FKM5bp1OIuJFp3ZIuRK7ZNxY4MZR3tUzyfQ==}
@@ -7119,6 +7116,40 @@ snapshots:
 
   '@kenkaiiii/agent-home-sdk@0.3.8': {}
 
+  '@kenkaiiii/ink@6.8.0-gg.1(@types/react@19.2.14)(react@19.2.5)':
+    dependencies:
+      '@alcalzone/ansi-tokenize': 0.2.5
+      ansi-escapes: 7.3.0
+      ansi-styles: 6.2.3
+      auto-bind: 5.0.1
+      chalk: 5.6.2
+      cli-boxes: 3.0.0
+      cli-cursor: 4.0.0
+      cli-truncate: 5.2.0
+      code-excerpt: 4.0.0
+      es-toolkit: 1.46.1
+      indent-string: 5.0.0
+      is-in-ci: 2.0.0
+      patch-console: 2.0.0
+      react: 19.2.5
+      react-reconciler: 0.33.0(react@19.2.5)
+      scheduler: 0.27.0
+      signal-exit: 3.0.7
+      slice-ansi: 8.0.0
+      stack-utils: 2.0.6
+      string-width: 8.2.1
+      terminal-size: 4.0.1
+      type-fest: 5.6.0
+      widest-line: 6.0.0
+      wrap-ansi: 9.0.2
+      ws: 8.20.0
+      yoga-layout: 3.2.1
+    optionalDependencies:
+      '@types/react': 19.2.14
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@malept/cross-spawn-promise@2.0.0':
     dependencies:
       cross-spawn: 7.0.6
@@ -9549,40 +9580,6 @@ snapshots:
   inherits@2.0.4: {}
 
   ini@1.3.8: {}
-
-  ink@6.8.0(patch_hash=2cc234db3e6221cf3cae705a141f22cfde2bf2e9acbe46e210b343f8c3d9ef61)(@types/react@19.2.14)(react@19.2.5):
-    dependencies:
-      '@alcalzone/ansi-tokenize': 0.2.5
-      ansi-escapes: 7.3.0
-      ansi-styles: 6.2.3
-      auto-bind: 5.0.1
-      chalk: 5.6.2
-      cli-boxes: 3.0.0
-      cli-cursor: 4.0.0
-      cli-truncate: 5.2.0
-      code-excerpt: 4.0.0
-      es-toolkit: 1.46.1
-      indent-string: 5.0.0
-      is-in-ci: 2.0.0
-      patch-console: 2.0.0
-      react: 19.2.5
-      react-reconciler: 0.33.0(react@19.2.5)
-      scheduler: 0.27.0
-      signal-exit: 3.0.7
-      slice-ansi: 8.0.0
-      stack-utils: 2.0.6
-      string-width: 8.2.1
-      terminal-size: 4.0.1
-      type-fest: 5.6.0
-      widest-line: 6.0.0
-      wrap-ansi: 9.0.2
-      ws: 8.20.0
-      yoga-layout: 3.2.1
-    optionalDependencies:
-      '@types/react': 19.2.14
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   ink@7.0.2(patch_hash=c093b542a6016d76c2dd97256fc9c48e09eb7aaf9b0b0f637ec683d2d5fe70b5)(@types/react@19.2.14)(react@19.2.5):
     dependencies:

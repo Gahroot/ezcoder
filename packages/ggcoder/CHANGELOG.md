@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 4.8.5
+
+### Patch Changes
+
+- Ship the patched Ink rendering engine to npm installs. The TUI's footer-anchor and scrollback fixes live in a patched ink build that pnpm's patchedDependencies only applied inside the workspace — npm users silently got vanilla ink. ggcoder's ink dependency is now an npm alias to the published @kenkaiiii/ink fork, so every install (npm, pnpm, yarn, bun) gets the fixed renderer with no install scripts.
+  - @kenkaiiii/gg-ai@4.8.5
+  - @kenkaiiii/gg-agent@4.8.5
+  - @kenkaiiii/gg-core@4.8.5
+
 ## 4.8.4
 
 ### Patch Changes
