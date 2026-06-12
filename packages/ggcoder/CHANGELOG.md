@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 4.8.6
+
+### Patch Changes
+
+- Fix message vanish on slash-command submit: queueFlush now mirrors flushed rows into sessionStore.history synchronously so the patched ink's bottom-pinned repaint (menu close, resize) redraws from a current transcript. Also track /theme switches live so closure-level repaint serializers always use the active theme, not the startup theme.
+  - @kenkaiiii/gg-ai@4.8.6
+  - @kenkaiiii/gg-agent@4.8.6
+  - @kenkaiiii/gg-core@4.8.6
+
 ## 4.8.5
 
 ### Patch Changes

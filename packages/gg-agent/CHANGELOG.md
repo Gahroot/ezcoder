@@ -1,5 +1,11 @@
 # @kenkaiiii/gg-agent
 
+## 4.8.6
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@4.8.6
+
 ## 4.8.5
 
 ### Patch Changes
