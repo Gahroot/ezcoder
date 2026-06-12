@@ -86,6 +86,28 @@ describe("prompt commands", () => {
     expect(raiseFloor?.prompt).not.toContain("Create a Goal");
   });
 
+  it("defines /elon as a subtractive, add-back-required, tasks-handoff deletion audit", () => {
+    const elon = PROMPT_COMMANDS.find((command) => command.name === "elon");
+
+    expect(elon).toBeDefined();
+    expect(elon?.aliases).toContain("delete");
+    expect(elon?.description).toContain("earns its place");
+    expect(elon?.prompt).toContain("Deletion Algorithm");
+    expect(elon?.prompt).toContain("SUBTRACTIVE sibling");
+    expect(elon?.prompt).toContain("app-wide first, specific surfaces second");
+    expect(elon?.prompt).toContain("required predicted add-back");
+    expect(elon?.prompt).toContain("bullshit-detector");
+    expect(elon?.prompt).toContain("simplification leverage");
+    expect(elon?.prompt).toContain("deletion ledger");
+    expect(elon?.prompt).toContain("`tasks` tool");
+    expect(elon?.prompt).toContain("Press Ctrl+T to open the task list");
+    expect(elon?.prompt).toContain("use kencode to reference working code. /commit when done.");
+    expect(elon?.prompt).toContain("A) Add tasks for all confirmed deletions");
+    expect(elon?.prompt).toContain("D) None — report only");
+    expect(elon?.prompt).toContain("Do not delete or start implementing until the user chooses");
+    expect(elon?.prompt).not.toContain("Create a Goal");
+  });
+
   it("keeps /init focused on project-specific CLAUDE.md content", () => {
     const init = PROMPT_COMMANDS.find((command) => command.name === "init");
 

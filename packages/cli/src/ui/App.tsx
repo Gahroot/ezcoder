@@ -3065,6 +3065,7 @@ export function App(props: AppProps) {
       "init",
       "expand",
       "raise-floor",
+      "elon",
       "bullet-proof",
       "compare",
       // Setup / installers

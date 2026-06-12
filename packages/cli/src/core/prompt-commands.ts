@@ -203,6 +203,118 @@ If the user chooses D, stop after the report.
 - **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
   },
   {
+    name: "elon",
+    aliases: ["delete"],
+    description: "Delete dead weight until only what earns its place remains",
+    prompt: `# /elon: The Deletion Algorithm
+
+This is the SUBTRACTIVE sibling of /expand and /raise-floor. /expand raises the ceiling (net-new features); /raise-floor raises the floor (make existing features work); /elon SHRINKS THE SURFACE — it hunts the features, screens, flags, dependencies, abstraction layers, and half-built complexity that nobody uses, that make the product overwhelming, and that should be deleted so only what earns its place remains. The target is the user's real pain: "there's so much going on it's overwhelming and never gets used."
+
+This applies Elon Musk's 5-step algorithm, IN ORDER, because the whole point is that people skip to step 3 and optimize things that should not exist:
+
+1. **Make the requirement less dumb** — for every candidate, ask whose requirement this is and whether it is still real. Kill anonymous requirements ("it's here because someone added it once" → nobody remembers why).
+2. **Delete the part or process** — remove the feature/screen/flag/dependency/layer entirely.
+3. **Simplify** — only what survives deletion.
+4. **Accelerate** — only what survived simplification.
+5. **Automate** — last, never first.
+
+/elon lives in steps 1-2. It NEVER recommends simplifying, accelerating, or automating something before asking whether it should be deleted outright. If a subagent proposes "optimize X", reframe it as "delete X — and if not, why does X earn its place?"
+
+This command is **app-wide first, specific surfaces second**, and project-agnostic — profile THIS project before judging it. It is report-first: the only deliverable is a single ranked deletion ledger, after which you hand the deletions off as tasks. **Do not delete, edit, install, or implement anything until the user confirms by choosing an option at the end.**
+
+If the user passed arguments to /elon, treat them as a focus area: narrow the hunt to that feature/surface, but still apply the full algorithm within it.
+
+**Out of scope** — exclude these unless an item is the direct reason the product is bloated: net-new capabilities (that's /expand), making a kept feature work better (that's /raise-floor), and security findings (that's /bullet-proof). /elon only proposes REMOVAL.
+
+## The required predicted add-back (the bullshit-detector)
+
+Musk's rule: "if you're not adding ~10% back, you didn't delete enough" — and its inverse is the real safety mechanism. **Every single deletion row MUST carry a predicted add-back**: the small piece of the deleted thing that was doing real work and must return so dependents still function. State it BEFORE deleting, grounded in code. There are three flavors:
+
+- **Zero add-back** — genuinely dead. Nothing reads it, no caller, no test references it. Cleanest, highest-leverage deletions.
+- **Fold-in add-back** — the surface goes, but one essential behavior survives by merging into something simpler (e.g. delete a 12-toggle settings screen → add back ONE smart default at onboarding).
+- **Seam add-back** — deleting a layer/dependency means re-implementing inline the one thing it actually did (e.g. drop a date library → add back a 4-line formatter).
+
+**The add-back is the bullshit-detector:** if a candidate's predicted add-back is large, vague, or "we'd basically rebuild it", that is the signal the requirement was REAL — do NOT recommend deletion; mark it KEEP and move on. Only a zero/small/well-scoped add-back confirms dead weight. A row with no predicted add-back is invalid and must be dropped. This is what stops /elon from recommending reckless deletions: every row must prove that what comes back is smaller than what leaves.
+
+## Phase 0: Profile + inventory (main agent)
+
+Inspect the local project and write a short private working profile: what it is, who its users are, how they actually use it. Then inventory the real surface — user-facing surfaces (commands, routes, screens, flows, exported APIs) AND internal complexity (dependencies, config flags, feature toggles, abstraction layers, half-built or dead features). Derive this from actual code and config, not from README claims. The job is to find what to remove, so map breadth.
+
+## Phase 1: Parallel deletion hunt — app-wide first
+
+Spawn subagents in parallel using the subagent tool (call the subagent tool multiple times in a single response).
+
+**Agent 1 — App-wide bloat (always include this one; it is the priority lens).** Audit the whole-product overwhelm: too many entry points / menu items / screens competing for attention, features that exist but are effectively never reached, redundant ways to do the same thing, configuration surface a user must wade through, and the gap between what the product offers and the small core users actually use. This lens directly answers "so much going on, never gets used."
+
+**Then one subagent per major area** from the inventory (cap the total at 6 subagents). Split between user-facing surfaces and internal complexity (dead deps, config flags, abstraction layers, unfinished features).
+
+Each subagent must:
+
+1. Walk the actual code path for its area and find DELETION CANDIDATES — capability, screen, flag, dependency, layer, or dead/unfinished feature that is unused, rarely used, redundant, or pure overwhelm.
+2. For EVERY candidate, gather **deletion evidence** grounded in code: who calls it, what imports it, what tests reference it, whether it's reachable, how often it's plausibly used. Cite file:line anchors that prove it's dead weight (no callers, write-only state, unreachable branch, duplicate path).
+3. For EVERY candidate, predict **what breaks if removed** and the **required predicted add-back** (zero / fold-in / seam) — see the rubric above. If the add-back is large or vague, mark the candidate KEEP with the reason, do not propose deletion.
+4. Apply step 1 of the algorithm: name whose requirement the thing served and whether it's still real. Flag anonymous/forgotten requirements as strong deletion candidates.
+5. Estimate **removal risk** (low / medium / high) from blast radius (call sites, public API exposure, data/migration implications) and **surface removed** (how much complexity/overwhelm leaves).
+
+## Phase 2: Validate against the repo (main agent)
+
+For every candidate:
+
+1. Open the cited code and confirm it is genuinely dead weight — not something reached by a path the subagent missed (a dynamic import, a route table, a public export, a config-driven call, a test).
+2. Confirm the predicted add-back is honest and small. If validating reveals the add-back is actually large or load-bearing, drop the row to KEEP — the requirement was real.
+3. Confirm it is a REMOVAL candidate — not a net-new feature (/expand), a make-it-work fix (/raise-floor), or a security issue (/bullet-proof). Drop out-of-scope items.
+4. Merge duplicates. Rank by **simplification leverage = (surface removed × how rarely used) ÷ removal risk**.
+
+## Phase 3: The deletion ledger (report)
+
+Output the report. **App-wide deletions first**, then per-area, each ranked by leverage. Start with one line: project name + a one-sentence summary of where the product is most bloated. Then a single table:
+
+| ID | Delete candidate | Why it's dead weight (evidence + file:line) | What breaks + required predicted add-back | Removal risk | Leverage |
+|---|---|---|---|---|---|
+| EL-001 | app-wide: settings screen w/ 12 toggles | 9 toggles write-only, never read after save (path:line) | nothing user-visible; fold-in: keep 1 default applied at onboarding | low | high |
+
+Use IDs like EL-001. App-wide rows lead, then areas. **Every row's add-back cell is mandatory** and must say zero / fold-in / seam with the specific behavior that returns. Rows whose validation showed a large add-back are NOT listed as deletions — optionally list them in a short "Kept — requirement is real" note below the table so the user sees what you deliberately did not cut.
+
+The ledger rows are structured so a later empirical mode can run them: each row implies a delete action and a verify (the project's own build/check/test as the "does it break?" oracle), with the predicted add-back as the minimal fix to reach for first. Do not run that loop now — this is report-only.
+
+After the table, ask exactly:
+
+What should I do?
+A) Add tasks for all confirmed deletions
+B) Add tasks for the app-wide deletions only
+C) Add tasks for specific deletions (give IDs, e.g. "EL-001, EL-004")
+D) None — report only
+
+Do not delete or start implementing until the user chooses.
+
+## Phase 4: Hand off as tasks
+
+If the user chooses A, B, or C, do not delete directly. Add one task per selected deletion (or tightly coupled group) using the \`tasks\` tool (action=add), ordered by leverage and dependency, **app-wide first**. Each task needs a short title and a standalone prompt that includes:
+
+- the deletion ID and exactly what to remove (files/symbols/flags/deps + anchors),
+- the required add-back to implement so dependents still function (the zero/fold-in/seam from the ledger),
+- the blast radius to clean up (call sites, imports, tests, docs, config),
+- the project's verification commands to prove nothing broke after removal.
+
+End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
+
+use kencode to reference working code. /commit when done.
+
+After adding the tasks, tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and run them." Do not begin executing them unless the user explicitly says so.
+
+If the user chooses D, stop after the report.
+
+## Rules
+
+- **Removal only.** /elon proposes deletions, never additions or fixes. Net-new is /expand; make-it-work is /raise-floor; security is /bullet-proof.
+- **Algorithm order is law.** Requirement → delete → (later) simplify/accelerate/automate. Never recommend optimizing something before asking whether to delete it.
+- **Every row carries a required predicted add-back.** A large or vague add-back means KEEP — do not propose the deletion. No add-back = invalid row, drop it.
+- **App-wide first, specific areas second** — in both the hunt and the ledger.
+- **No deletion without code-grounded evidence** that the thing is dead weight (no callers / write-only / unreachable / redundant). No "feels bloated" nudges.
+- **Report-first. No deletions, edits, installs, or commits until the user picks an option.**
+- **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
+  },
+  {
     name: "bullet-proof",
     aliases: ["bp"],
     description: "Audit exploitable weaknesses",
