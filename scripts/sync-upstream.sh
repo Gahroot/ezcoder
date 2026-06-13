@@ -103,6 +103,7 @@ replace_in_tracked_text_files() {
   while IFS= read -r file; do
     [[ -f "$file" ]] || continue
     sed "${SED_INPLACE[@]}" \
+      -e 's|@kenkaiiii/gg-core|@prestyj/core|g' \
       -e 's|@kenkaiiii/gg-ai|@prestyj/ai|g' \
       -e 's|@kenkaiiii/gg-agent|@prestyj/agent|g' \
       -e 's|@kenkaiiii/ggcoder-eyes|@prestyj/eyes|g' \
@@ -113,6 +114,7 @@ replace_in_tracked_text_files() {
       -e 's|@kenkaiiii/gg-pixel-server|@prestyj/pixel-server|g' \
       -e 's|@kenkaiiii/gg-pixel|@prestyj/pixel|g' \
       -e 's|@kenkaiiii/gg-voice|@prestyj/voice|g' \
+      -e 's|packages/gg-core|packages/core|g' \
       -e 's|packages/gg-ai|packages/ai|g' \
       -e 's|packages/gg-agent|packages/agent|g' \
       -e 's|packages/ggcoder-eyes|packages/eyes|g' \
@@ -231,6 +233,7 @@ main() {
   fi
 
   info "Renaming directories..."
+  rename_if_exists "packages/gg-core" "packages/core"
   rename_if_exists "packages/gg-ai" "packages/ai"
   rename_if_exists "packages/gg-agent" "packages/agent"
   rename_if_exists "packages/ggcoder-eyes" "packages/eyes"
