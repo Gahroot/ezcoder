@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  GGAIError,
+  EZCoderAIError,
   ProviderError,
   VideoUnsupportedError,
   formatError,
@@ -95,7 +95,7 @@ describe("VideoUnsupportedError", () => {
   it("renders headline + guidance only (no bug-report framing)", () => {
     const out = formatErrorForDisplay(new VideoUnsupportedError());
     expect(out).toContain("This model can't analyze video.");
-    expect(out).not.toContain("ggcoder bug");
+    expect(out).not.toContain("ezcoder bug");
   });
 });
 
@@ -108,7 +108,7 @@ describe("formatErrorForDisplay", () => {
       [
         "Anthropic returned an error.",
         "  overloaded_error: Overloaded",
-        "  \u2192 Anthropic's servers are overloaded right now. Retry in a moment \u2014 not a ggcoder issue.",
+        "  \u2192 Anthropic's servers are overloaded right now. Retry in a moment \u2014 not a ezcoder issue.",
       ].join("\n"),
     );
   });
@@ -121,7 +121,7 @@ describe("formatErrorForDisplay", () => {
       [
         "OpenAI returned an error.",
         "  server_error: something broke",
-        "  \u2192 This is an error from OpenAI, not ggcoder. Retry \u2014 if it keeps happening, check status.openai.com.",
+        "  \u2192 This is an error from OpenAI, not ezcoder. Retry \u2014 if it keeps happening, check status.openai.com.",
       ].join("\n"),
     );
   });
@@ -150,29 +150,29 @@ describe("formatErrorForDisplay", () => {
       [
         "Gemini returned an error.",
         "  quota exceeded",
-        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a ggcoder issue.",
+        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a ezcoder issue.",
       ].join("\n"),
     );
   });
 
-  it("classifies a network GGAIError without a ggcoder bug headline", () => {
-    const out = formatErrorForDisplay(new GGAIError("fetch failed", { source: "network" }));
+  it("classifies a network EZCoderAIError without a ezcoder bug headline", () => {
+    const out = formatErrorForDisplay(new EZCoderAIError("fetch failed", { source: "network" }));
     expect(out).toBe(
       [
         "Network error \u2014 couldn't reach the provider.",
         "  fetch failed",
-        "  \u2192 Check your internet connection. Not a ggcoder issue \u2014 retry shortly.",
+        "  \u2192 Check your internet connection. Not a ezcoder issue \u2014 retry shortly.",
       ].join("\n"),
     );
   });
 
-  it("falls back to the ggcoder-bug headline for unknown errors", () => {
+  it("falls back to the ezcoder-bug headline for unknown errors", () => {
     const out = formatErrorForDisplay(new Error("Cannot read property 'foo' of undefined"));
     expect(out).toBe(
       [
-        "ggcoder hit an unexpected error.",
+        "ezcoder hit an unexpected error.",
         "  Cannot read property 'foo' of undefined",
-        "  \u2192 This looks like a ggcoder bug \u2014 please report it to the developer (see /help).",
+        "  \u2192 This looks like a ezcoder bug \u2014 please report it to the developer (see /help).",
       ].join("\n"),
     );
   });

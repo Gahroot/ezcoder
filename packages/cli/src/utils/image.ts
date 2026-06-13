@@ -114,7 +114,7 @@ export async function compressVideoToFit(
   // audio track gets a fixed slice, the rest goes to video (floored).
   const totalKbps = Math.floor(((targetBytes * 8) / durationSec / 1000) * 0.9);
   const videoKbps = Math.max(COMPRESS_MIN_VIDEO_KBPS, totalKbps - COMPRESS_AUDIO_KBPS);
-  const outPath = path.join(os.tmpdir(), `ggcoder-compressed-${Date.now()}.mp4`);
+  const outPath = path.join(os.tmpdir(), `ezcoder-compressed-${Date.now()}.mp4`);
 
   try {
     await execFileAsync(
@@ -535,7 +535,7 @@ export function getClipboardImage(): Promise<ImageAttachment | null> {
       const mediaType = isPng ? "image/png" : "image/tiff";
 
       // Write clipboard image to temp file, then read as base64
-      const tmpPath = `/tmp/ggcoder-clipboard-${Date.now()}.${ext}`;
+      const tmpPath = `/tmp/ezcoder-clipboard-${Date.now()}.${ext}`;
       const writeScript = [
         `set imgData to the clipboard as «class ${clipClass}»`,
         `set filePath to POSIX file "${tmpPath}"`,

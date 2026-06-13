@@ -1,2 +1,2 @@
-// Moved to @kenkaiiii/gg-core.
-export { withFileLock } from "@kenkaiiii/gg-core";
+// Moved to @prestyj/core.
+export { withFileLock } from "@prestyj/core";

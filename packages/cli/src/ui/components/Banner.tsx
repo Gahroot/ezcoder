@@ -3,7 +3,7 @@ import { Box, Text } from "ink";
 import { useTheme } from "../theme/theme.js";
 import { getModel } from "../../core/model-registry.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 
 interface BannerProps {
   version: string;
@@ -72,13 +72,13 @@ export function Banner({ version, model, cwd }: BannerProps) {
   );
 
   // Narrow (stacked) info — mirrors terminal-history.ts: brand line omits
-  // "· By Ken Kai", path is truncated to the full terminal width.
+  // "· By Nolan Grout", path is truncated to the full terminal width.
   const stackedInfo = (
     <Box flexDirection="column">
       <Box>
         <Text>{LEFT_PAD}</Text>
         <Text color={theme.primary} bold>
-          GG Coder
+          EZ Coder
         </Text>
         <Text color={theme.textDim}> v{version}</Text>
       </Box>
@@ -97,17 +97,17 @@ export function Banner({ version, model, cwd }: BannerProps) {
     </Box>
   );
 
-  // Side-by-side info — includes "· By Ken Kai".
+  // Side-by-side info — includes "· By Nolan Grout".
   const sideInfo = (
     <Box flexDirection="column">
       <Box>
         <Text color={theme.primary} bold>
-          GG Coder
+          EZ Coder
         </Text>
         <Text color={theme.textDim}> v{version}</Text>
         <Text color={theme.textDim}> · By </Text>
         <Text color={theme.text} bold>
-          Ken Kai
+          Nolan Grout
         </Text>
       </Box>
       <Box>

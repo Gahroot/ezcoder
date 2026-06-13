@@ -17,10 +17,10 @@ const CLEAR_HOME = "\x1b[2J\x1b[H";
 
 function bannerLines(version: string, subtitle: string): string[] {
   return renderLogoBlock([
-    chalk.hex(PRIMARY).bold("GG Coder") +
+    chalk.hex(PRIMARY).bold("EZ Coder") +
       chalk.hex(TEXT_DIM)(` v${version}`) +
       chalk.hex(TEXT_DIM)(" · By ") +
-      chalk.hex(TEXT).bold("Ken Kai"),
+      chalk.hex(TEXT).bold("Nolan Grout"),
     chalk.hex(ACCENT)("MCP Servers"),
     chalk.hex(TEXT_DIM)(subtitle),
   ]);
@@ -281,7 +281,7 @@ export function renderScopeSelector(version: string, cwd: string): Promise<MCPSc
     version,
     subtitle: "Choose a scope",
     items: [
-      { label: "Global (all GG Coder sessions)", value: "global", description: "~/.gg/mcp.json" },
+      { label: "Global (all EZ Coder sessions)", value: "global", description: "~/.ezcoder/mcp.json" },
       { label: `This project (${cwd})`, value: "project", description: "./.gg/mcp.json" },
     ],
   });

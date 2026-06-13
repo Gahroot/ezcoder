@@ -1,25 +1,25 @@
 // The file-writer logger core (open/log/rotate/close) now lives in
-// @kenkaiiii/gg-core. This module keeps ggcoder's "ggcoder"-branded startup
+// @prestyj/core. This module keeps ezcoder's "ezcoder"-branded startup
 // line and the EventBus bridge (`attachToEventBus`), which needs the gg-agent
 // `EventBus` type and therefore must stay out of the UI-free core.
-import { openLog, log, registerLogCleanup } from "@kenkaiiii/gg-core";
+import { openLog, log, registerLogCleanup } from "@prestyj/core";
 import type { EventBus } from "./event-bus.js";
 
-export { log, getSessionId, closeLogger } from "@kenkaiiii/gg-core";
+export { log, getSessionId, closeLogger } from "@prestyj/core";
 
 type LogLevel = "INFO" | "ERROR" | "WARN";
 
 /**
- * Initialize the debug logger for ggcoder. Opens the shared log file in append
- * mode (via gg-core) and writes a one-time "ggcoder started …" line tagged with
+ * Initialize the debug logger for ezcoder. Opens the shared log file in append
+ * mode (via gg-core) and writes a one-time "ezcoder started …" line tagged with
  * the session id. No-op if already initialized.
  */
 export function initLogger(
   filePath: string,
   meta?: { version?: string; provider?: string; model?: string; thinking?: string },
 ): void {
-  if (!openLog(filePath, "ggcoder")) return;
-  const parts = ["ggcoder"];
+  if (!openLog(filePath, "ezcoder")) return;
+  const parts = ["ezcoder"];
   if (meta?.version) parts[0] += ` v${meta.version}`;
   parts.push("started");
   if (meta?.provider) parts.push(`provider=${meta.provider}`);

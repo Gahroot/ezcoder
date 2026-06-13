@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 
 // Resolve the package version by walking up from this module to the nearest
 // package.json. A bare `require("../../package.json")` breaks when this module
 // is re-bundled into a sibling package (e.g. gg-boss), where the relative path
-// no longer points at ggcoder's manifest — so it crashes the CLI. Walking up
+// no longer points at ezcoder's manifest — so it crashes the CLI. Walking up
 // from import.meta.url always finds a valid manifest and never throws.
 function resolveCliVersion(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
@@ -112,10 +112,10 @@ export function clearVisibleScreen(): void {
 export function requireInteractiveTTY(): void {
   if (process.stdin.isTTY) return;
   process.stderr.write(
-    chalk.red("ggcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
+    chalk.red("ezcoder needs an interactive terminal — your stdin isn't a TTY.\n") +
       chalk.hex("#6b7280")(
-        "Run ggcoder directly in your terminal (not piped or through an API shell). " +
-          'For headless use try "ggcoder --json \'<prompt>\'" or "ggcoder --rpc".\n',
+        "Run ezcoder directly in your terminal (not piped or through an API shell). " +
+          'For headless use try "ezcoder --json \'<prompt>\'" or "ezcoder --rpc".\n',
       ),
   );
   process.exit(1);

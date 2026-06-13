@@ -1,8 +1,8 @@
-// Moved to @kenkaiiii/gg-core.
+// Moved to @prestyj/core.
 export {
   loginKimi,
   refreshKimiToken,
   kimiCodeBaseUrl,
   kimiCodingHeaders,
   isKimiCodingEndpoint,
-} from "@kenkaiiii/gg-core";
+} from "@prestyj/core";

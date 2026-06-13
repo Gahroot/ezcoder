@@ -1,13 +1,13 @@
 {
-  "name": "@kenkaiiii/gg-ai",
+  "name": "@prestyj/ai",
   "version": "4.10.1",
   "type": "module",
   "description": "Unified LLM streaming API for Anthropic, OpenAI, and Gemini",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kenkaiiii/gg-framework.git",
-    "directory": "packages/gg-ai"
+    "url": "git+https://github.com/Gahroot/ezcoder.git",
+    "directory": "packages/ai"
   },
   "exports": {
     ".": {

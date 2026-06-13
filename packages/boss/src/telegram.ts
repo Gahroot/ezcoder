@@ -1,4 +1,4 @@
-// Moved to @kenkaiiii/gg-core. Shim keeps `../core/telegram.js` imports working.
+// Moved to @prestyj/core. Shim keeps `../core/telegram.js` imports working.
 export {
   TelegramBot,
   type TelegramConfig,
@@ -6,4 +6,4 @@ export {
   type InlineButton,
   type TelegramMessage,
   type TelegramVoiceMessage,
-} from "@kenkaiiii/gg-core";
+} from "@prestyj/core";

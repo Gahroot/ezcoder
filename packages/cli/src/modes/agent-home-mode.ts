@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { AgentHomeClient, type AgentSession as AHSession } from "@kenkaiiii/agent-home-sdk";
 import { AgentSession } from "../core/agent-session.js";
-import { isAbortError } from "@kenkaiiii/gg-agent";
+import { isAbortError } from "@prestyj/agent";
 import chalk from "chalk";
 import { formatUserError } from "../utils/error-handler.js";
 import { log, closeLogger } from "../core/logger.js";
@@ -79,10 +79,10 @@ const HANDLED_COMMANDS = new Set([
 ]);
 
 /**
- * Agent Home mode: run ggcoder as an Agent Home agent.
+ * Agent Home mode: run ezcoder as an Agent Home agent.
  *
  * Connects to the Agent Home relay via WebSocket and bridges
- * messages between the iOS app and the ggcoder agent loop.
+ * messages between the iOS app and the ezcoder agent loop.
  * Each Agent Home session maps to its own AgentSession.
  */
 export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<void> {
@@ -97,8 +97,8 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     relayUrl: AGENT_HOME_RELAY_URL,
     token: options.agentHome.token,
     agent: {
-      id: "ggcoder",
-      name: "GG Coder",
+      id: "ezcoder",
+      name: "EZ Coder",
       description: `AI coding agent — ${options.model}`,
     },
   });
@@ -201,7 +201,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     const modelInfo = MODELS.find((m) => m.id === currentModel);
 
     let text = "";
-    text += `**GG Coder**\n`;
+    text += `**EZ Coder**\n`;
     text += `Project: **${path.basename(currentCwd)}** \u00b7 Model: **${modelInfo?.name ?? currentModel}**\n\n`;
 
     text += `**Commands**\n`;
@@ -507,7 +507,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     const state = await getOrCreateSession(targetSessionId);
 
     if (state.isProcessing) {
-      stream.error("GG Coder is still processing a previous message. Please wait.");
+      stream.error("EZ Coder is still processing a previous message. Please wait.");
       return;
     }
 
@@ -619,10 +619,10 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
 
     console.log();
     for (const row of renderLogoBlock([
-      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#60a5fa").bold("EZ Coder") +
         chalk.hex("#6b7280")(` v${options.version}`) +
         chalk.hex("#6b7280")(" \u00b7 By ") +
-        chalk.white.bold("Ken Kai"),
+        chalk.white.bold("Nolan Grout"),
       chalk.hex("#a78bfa")(modelName),
       chalk.hex("#6b7280")(displayPath),
     ])) {
@@ -633,7 +633,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
       chalk.hex("#6b7280")("  Mode      ") +
         chalk.hex("#a78bfa")("Agent Home") +
         chalk.hex("#6b7280")("  \u00b7  Agent ") +
-        chalk.white("GG Coder"),
+        chalk.white("EZ Coder"),
     );
     console.log();
     console.log(chalk.hex("#6b7280")("  Connecting to relay..."));

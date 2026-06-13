@@ -1,7 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { agentLoop, type AgentEvent } from "@kenkaiiii/gg-agent";
-import type { Message } from "@kenkaiiii/gg-ai";
+import { agentLoop, type AgentEvent } from "@prestyj/agent";
+import type { Message } from "@prestyj/ai";
 import type { CliConfig } from "./types.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createTools } from "./tools/index.js";
@@ -35,7 +35,7 @@ export async function runInteractive(config: CliConfig): Promise<void> {
   const paths = await ensureAppDirs();
 
   // Ensure project-local .gg directories exist
-  const localGGDir = path.join(cwd, ".gg");
+  const localGGDir = path.join(cwd, ".ezcoder");
   await fs.mkdir(path.join(localGGDir, "skills"), { recursive: true });
   await fs.mkdir(path.join(localGGDir, "commands"), { recursive: true });
   await fs.mkdir(path.join(localGGDir, "agents"), { recursive: true });

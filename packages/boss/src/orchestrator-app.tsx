@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, render, useApp, useInput, useStdout } from "ink";
-import { ThemeContext, loadTheme, useTheme } from "@kenkaiiii/ggcoder/ui/theme";
-import { AnimationProvider } from "@kenkaiiii/ggcoder/ui";
-import { useDoublePress } from "@kenkaiiii/ggcoder/ui/hooks/double-press";
-import type { Provider } from "@kenkaiiii/gg-ai";
-import { getNextThinkingLevel } from "@kenkaiiii/gg-core";
-import { TerminalSizeProvider, useTerminalSize } from "@kenkaiiii/ggcoder/ui/hooks/terminal-size";
+import { ThemeContext, loadTheme, useTheme } from "@prestyj/cli/ui/theme";
+import { AnimationProvider } from "@prestyj/cli/ui";
+import { useDoublePress } from "@prestyj/cli/ui/hooks/double-press";
+import type { Provider } from "@prestyj/ai";
+import { getNextThinkingLevel } from "@prestyj/core";
+import { TerminalSizeProvider, useTerminalSize } from "@prestyj/cli/ui/hooks/terminal-size";
 import { BossChatScreen } from "./boss-chat-screen.js";
 import { bossStore, getBossState, useBossState } from "./boss-store.js";
 import type { BossOverlay } from "./boss-store.js";
@@ -79,7 +79,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   // Seeded from the radio module's module-level state — usually null on
   // launch but resilient to a hot-restart of the React tree.
   const [currentRadio, setCurrentRadio] = useState<string | null>(() => getCurrentStation());
-  // Auto-update indicator: true when a newer version of @kenkaiiii/gg-boss
+  // Auto-update indicator: true when a newer version of @prestyj/boss
   // is on disk waiting for the next restart. Seeded synchronously from the
   // state file (so we show the indicator immediately if a previous session
   // queued one) and bumped to true by the periodic check below if a fresh
@@ -109,10 +109,10 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   // terminals (Ghostty, Terminal.app, iTerm2, Kitty).
   //
   // States:
-  //   N workers running    "● 5 workers running · GG Boss"
-  //   1 worker running     "● 1 worker running · GG Boss"
-  //   boss thinking only   "● GG Boss"
-  //   idle                 "GG Boss"
+  //   N workers running    "● 5 workers running · EZ Boss"
+  //   1 worker running     "● 1 worker running · EZ Boss"
+  //   boss thinking only   "● EZ Boss"
+  //   idle                 "EZ Boss"
   const workersRunning = state.workers.filter((w) => w.status === "working").length;
   const titlePrevRef = useRef("");
   useEffect(() => {
@@ -120,11 +120,11 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
     let title: string;
     if (workersRunning > 0) {
       const label = `${workersRunning} worker${workersRunning === 1 ? "" : "s"} running`;
-      title = `● ${label} · GG Boss`;
+      title = `● ${label} · EZ Boss`;
     } else if (state.phase === "working") {
-      title = "● GG Boss";
+      title = "● EZ Boss";
     } else {
-      title = "GG Boss";
+      title = "EZ Boss";
     }
     if (title !== titlePrevRef.current) {
       titlePrevRef.current = title;
@@ -133,7 +133,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   }, [stdout, workersRunning, state.phase]);
   useEffect(() => {
     return () => {
-      stdout?.write(`\x1b]0;GG Boss\x1b\\`);
+      stdout?.write(`\x1b]0;EZ Boss\x1b\\`);
     };
   }, [stdout]);
 
@@ -163,7 +163,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
    * (tasks pane → chat chrome, model picker → chat chrome, etc.). Toggling
    * React state alone leaves Ink's log-update cursor math drifting on the
    * very next streaming response, surfacing as "input pushed upward, new
-   * chat lines disappear off the top". Mirrors ggcoder's broader fix
+   * chat lines disappear off the top". Mirrors ezcoder's broader fix
    * (commit 0246c6d): every overlay open/close goes through resetUI which
    * unmounts the Ink instance and renders a fresh one. The overlay
    * selection survives via bossStore.overlay.
@@ -198,7 +198,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   }, [scheduleOverlayReset]);
   void stdout;
 
-  // ggcoder's double-press pattern: 800ms window. First press shows
+  // ezcoder's double-press pattern: 800ms window. First press shows
   // "Press Ctrl+C again to exit" in the footer; second within 800ms exits.
   const handleDoubleExit = useDoublePress(
     (pending) => bossStore.setExitPending(pending),
@@ -212,7 +212,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   }, [state.flushGeneration, state.pendingFlush.length]);
 
   const handleAbort = useCallback((): void => {
-    // Ctrl+C while boss is running → single-press abort (matches ggcoder).
+    // Ctrl+C while boss is running → single-press abort (matches ezcoder).
     if (state.phase === "working") {
       boss.abort();
       return;
@@ -346,7 +346,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
           {"Terminal too small"}
         </Text>
         <Text color={COLORS.primary}>
-          {`Resize to at least 14 rows to use GG Boss (currently ${rows}).`}
+          {`Resize to at least 14 rows to use EZ Boss (currently ${rows}).`}
         </Text>
       </Box>
     );
@@ -484,7 +484,7 @@ export interface RenderBossAppOptions {
 }
 
 const INK_OPTIONS = {
-  // Match ggcoder's keyboard setup: enable kitty keyboard so Ink can decode
+  // Match ezcoder's keyboard setup: enable kitty keyboard so Ink can decode
   // enhanced key events, but keep exitOnCtrlC false so our handlers receive it.
   kittyKeyboard: {
     mode: "enabled" as const,
@@ -493,7 +493,7 @@ const INK_OPTIONS = {
   exitOnCtrlC: false,
 };
 
-// Match ggcoder's terminal keyboard hygiene. Some terminals/tmux sessions leave
+// Match ezcoder's terminal keyboard hygiene. Some terminals/tmux sessions leave
 // xterm modifyOtherKeys enabled, which makes ordinary keys arrive as CSI 27
 // escape sequences that Ink/InputArea won't treat as text.
 const DISABLE_MODIFY_OTHER_KEYS = "\x1b[>4;0m";

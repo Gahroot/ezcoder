@@ -103,14 +103,14 @@ describe("streamOpenAI request shaping", () => {
   });
 
   it.each<[Provider, Record<string, unknown>]>([
-    ["openai", { reasoning_effort: "high", prompt_cache_key: "ggcoder", thinking: undefined }],
+    ["openai", { reasoning_effort: "high", prompt_cache_key: "ezcoder", thinking: undefined }],
     [
       "glm",
       { thinking: { type: "enabled" }, reasoning_effort: undefined, prompt_cache_key: undefined },
     ],
     [
       "moonshot",
-      { thinking: { type: "enabled" }, reasoning_effort: undefined, prompt_cache_key: "ggcoder" },
+      { thinking: { type: "enabled" }, reasoning_effort: undefined, prompt_cache_key: "ezcoder" },
     ],
     [
       "xiaomi",

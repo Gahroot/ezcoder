@@ -1,4 +1,4 @@
-// Moved to @kenkaiiii/gg-core. Shim keeps `../core/voice-transcriber.js`
+// Moved to @prestyj/core. Shim keeps `../core/voice-transcriber.js`
 // imports working.
 export {
   setProgressCallback,
@@ -8,4 +8,4 @@ export {
   isModelLoaded,
   transcribeVoice,
   type ProgressCallback,
-} from "@kenkaiiii/gg-core";
+} from "@prestyj/core";

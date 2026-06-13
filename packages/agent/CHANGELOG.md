@@ -1,10 +1,10 @@
-# @kenkaiiii/gg-agent
+# @prestyj/agent
 
 ## 4.10.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.10.1
+- @prestyj/ai@4.10.1
 
 ## 4.10.0
 
@@ -17,113 +17,113 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.10.0
+  - @prestyj/ai@4.10.0
 
 ## 4.9.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.9.1
+- @prestyj/ai@4.9.1
 
 ## 4.9.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.9.0
+- @prestyj/ai@4.9.0
 
 ## 4.8.7
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.8.7
+- @prestyj/ai@4.8.7
 
 ## 4.8.6
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.8.6
+- @prestyj/ai@4.8.6
 
 ## 4.8.5
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.8.5
+- @prestyj/ai@4.8.5
 
 ## 4.8.4
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.8.4
+- @prestyj/ai@4.8.4
 
 ## 4.8.3
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.8.3
+- @prestyj/ai@4.8.3
 
 ## 4.8.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.8.2
+- @prestyj/ai@4.8.2
 
 ## 4.8.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.8.1
+- @prestyj/ai@4.8.1
 
 ## 4.8.0
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.8.0
+  - @prestyj/ai@4.8.0
 
 ## 4.7.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.7.0
+- @prestyj/ai@4.7.0
 
 ## 4.6.3
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.6.3
+  - @prestyj/ai@4.6.3
 
 ## 4.6.2
 
 ### Patch Changes
 
-- Fix OpenAI OAuth account switching by adding prompt=login to authorize URL. Previously, re-running `ggcoder login` with OpenAI would silently re-approve the cached browser session, preventing users from switching accounts.
+- Fix OpenAI OAuth account switching by adding prompt=login to authorize URL. Previously, re-running `ezcoder login` with OpenAI would silently re-approve the cached browser session, preventing users from switching accounts.
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.6.2
+  - @prestyj/ai@4.6.2
 
 ## 4.6.1
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.6.1
+  - @prestyj/ai@4.6.1
 
 ## 4.6.0
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.6.0
+  - @prestyj/ai@4.6.0
 
 ## 4.5.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.5.0
+- @prestyj/ai@4.5.0
 
 ## 4.4.0
 
 ### Patch Changes
 
 - Updated dependencies [9e381ad]
-  - @kenkaiiii/gg-ai@4.4.0
+  - @prestyj/ai@4.4.0

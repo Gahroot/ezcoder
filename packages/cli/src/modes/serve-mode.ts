@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { AgentSession } from "../core/agent-session.js";
-import { isAbortError } from "@kenkaiiii/gg-agent";
+import { isAbortError } from "@prestyj/agent";
 import { TelegramBot, type TelegramMessage, type TelegramVoiceMessage } from "../core/telegram.js";
 import { transcribeVoice, isModelLoaded, setProgressCallback } from "../core/voice-transcriber.js";
 import chalk from "chalk";
@@ -28,7 +28,7 @@ export interface ServeModeOptions {
 }
 
 // ── Serve Config ───────────────────────────────────────────
-// Maps Telegram chatId → project path. Stored at ~/.gg/serve.json.
+// Maps Telegram chatId → project path. Stored at ~/.ezcoder/serve.json.
 // DMs use chatId of the private chat. Groups use the group chatId.
 
 interface ServeConfig {
@@ -58,7 +58,7 @@ async function saveConfig(config: ServeConfig): Promise<void> {
 // ── Project Discovery ──────────────────────────────────────
 
 /**
- * Scan ~/.gg/sessions/ to find all project directories that have sessions.
+ * Scan ~/.ezcoder/sessions/ to find all project directories that have sessions.
  * Returns decoded absolute paths sorted alphabetically.
  */
 async function discoverProjects(): Promise<string[]> {
@@ -101,7 +101,7 @@ interface ChatState {
 }
 
 /**
- * Serve mode: run ggcoder controlled via Telegram.
+ * Serve mode: run ezcoder controlled via Telegram.
  *
  * - DMs to bot → default project (CWD where serve was started)
  * - Groups → linked projects via /link <path>
@@ -300,7 +300,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     const currentModel = state?.session.getState().model ?? options.model;
     const modelInfo = MODELS.find((m) => m.id === currentModel);
 
-    let text = `*ggcoder* — remote coding agent\n\n`;
+    let text = `*ezcoder* — remote coding agent\n\n`;
     text += `Project: \`${path.basename(projectPath)}\`\n`;
     text += `Model: *${modelInfo?.name ?? currentModel}*\n\n`;
 
@@ -329,7 +329,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
       }
     }
 
-    // Custom commands from .gg/commands/
+    // Custom commands from .ezcoder/commands/
     const customCmds = await loadCustomCommands(projectPath);
     if (customCmds.length > 0) {
       text += `\n*Custom Commands*\n`;
@@ -366,7 +366,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     const groupName = chatTitle ?? "this group";
     await bot.send(
       chatId,
-      `*ggcoder* joined *${groupName}*\n\n` +
+      `*ezcoder* joined *${groupName}*\n\n` +
         `Send /link to connect to a project\n` +
         `Send /help for all commands`,
     );
@@ -606,7 +606,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
       return;
     }
 
-    // ── Forward to ggcoder slash commands ──
+    // ── Forward to ezcoder slash commands ──
 
     if (!TELEGRAM_COMMANDS.has(cmd)) {
       const projectPath = resolveProjectPath(chatId);
@@ -615,7 +615,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
       if (state.isProcessing) {
         await bot.send(
           chatId,
-          "ggcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
+          "ezcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
         );
         return;
       }
@@ -651,7 +651,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     if (state?.isProcessing) {
       await bot.send(
         chatId,
-        "ggcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
+        "ezcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
       );
       return;
     }
@@ -706,7 +706,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     if (state.isProcessing) {
       await bot.send(
         chatId,
-        "ggcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
+        "ezcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
       );
       return;
     }
@@ -746,10 +746,10 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     // GG logo with gradient (matches the interactive TUI banner)
     console.log();
     for (const row of renderLogoBlock([
-      chalk.hex("#60a5fa").bold("GG Coder") +
+      chalk.hex("#60a5fa").bold("EZ Coder") +
         chalk.hex("#6b7280")(` v${options.version}`) +
         chalk.hex("#6b7280")(" · By ") +
-        chalk.white.bold("Ken Kai"),
+        chalk.white.bold("Nolan Grout"),
       chalk.hex("#a78bfa")(modelName),
       chalk.hex("#6b7280")(displayPath),
     ])) {

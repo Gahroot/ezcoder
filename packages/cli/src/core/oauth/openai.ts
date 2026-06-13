@@ -1,2 +1,2 @@
-// Moved to @kenkaiiii/gg-core.
-export { loginOpenAI, refreshOpenAIToken } from "@kenkaiiii/gg-core";
+// Moved to @prestyj/core.
+export { loginOpenAI, refreshOpenAIToken } from "@prestyj/core";

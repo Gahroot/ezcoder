@@ -1,9 +1,9 @@
-import { AuthStorage } from "@kenkaiiii/ggcoder";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import { AuthStorage } from "@prestyj/cli";
+import type { Provider } from "@prestyj/ai";
 
 /**
  * Credential loader for the bench. Uses the CLI's own `AuthStorage` so OAuth
- * tokens are refreshed on demand (the raw `~/.gg/auth.json` accessToken can be
+ * tokens are refreshed on demand (the raw `~/.ezcoder/auth.json` accessToken can be
  * invalidated mid-run, especially for the OpenAI/ChatGPT codex backend).
  */
 export interface BenchAuth {
@@ -31,7 +31,7 @@ export const TARGETS: ModelTarget[] = [
 export async function loadAuth(authKey: string): Promise<BenchAuth> {
   const creds = await storage.resolveCredentials(authKey).catch((err: unknown) => {
     throw new Error(
-      `Could not resolve credentials for "${authKey}" (run: ggcoder login). ` +
+      `Could not resolve credentials for "${authKey}" (run: ezcoder login). ` +
         (err instanceof Error ? err.message : String(err)),
     );
   });

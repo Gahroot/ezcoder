@@ -6,7 +6,7 @@ import type { LanguageId } from "./core/language-detector.js";
 import { renderStylePacksSection } from "./core/style-packs/index.js";
 import { detectVerifyCommands, renderVerifySection } from "./core/verify-commands.js";
 import { extractPlanSteps } from "./utils/plan-steps.js";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 
 const CONTEXT_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules", "CONVENTIONS.md"];
 const UNCACHED_MARKER = "<!-- uncached -->";
@@ -14,11 +14,11 @@ const UNCACHED_MARKER = "<!-- uncached -->";
 /**
  * The agent's product identity. Anthropic models run as "Claude Code" (matching
  * the Claude Code identity Anthropic's OAuth tokens require in the system
- * prompt); every other provider runs as GG Coder. Keeping this dynamic avoids a
+ * prompt); every other provider runs as EZ Coder. Keeping this dynamic avoids a
  * contradictory double identity when streaming through Anthropic.
  */
 function productName(provider: Provider | undefined): string {
-  return provider === "anthropic" ? "Claude Code" : "GG Coder by Ken Kai";
+  return provider === "anthropic" ? "Claude Code" : "EZ Coder by Nolan Grout";
 }
 
 function renderIdentitySection(provider: Provider | undefined): string {
@@ -58,9 +58,9 @@ function renderPlanModeSection(): string {
     `## Plan Mode (ACTIVE)\n\n` +
     `You are in PLAN MODE. Research and design an implementation plan before writing implementation code.\n\n` +
     `### Plan-mode flow\n` +
-    `Explore with read/search/docs tools and read-only bash (e.g. \`git log\`, \`git diff\`, \`grep\`, \`wc -l\`, \`find\`, \`cat\`), draft a structured markdown plan at \`.gg/plans/<name>.md\`, then call \`exit_plan\` with that path for user review.\n\n` +
+    `Explore with read/search/docs tools and read-only bash (e.g. \`git log\`, \`git diff\`, \`grep\`, \`wc -l\`, \`find\`, \`cat\`), draft a structured markdown plan at \`.ezcoder/plans/<name>.md\`, then call \`exit_plan\` with that path for user review.\n\n` +
     `### Rules\n` +
-    `- Do not implement yet: no code edits outside \`.gg/plans/\`, no mutating bash (read-only shell for exploration is allowed), no subagent, no task orchestration.\n` +
+    `- Do not implement yet: no code edits outside \`.ezcoder/plans/\`, no mutating bash (read-only shell for exploration is allowed), no subagent, no task orchestration.\n` +
     `- Be specific: list exact file paths, functions, dependencies, risks, and verification criteria.\n` +
     `- ALWAYS end the plan with a heading written exactly as \`## Steps\` (this literal heading is required — not \`## Plan\`, \`## Implementation\`, or any other variant), followed by a flat, ordered, numbered list (\`1.\`, \`2.\`, …) of concrete implementation steps to execute after approval. Each step is one actionable unit of work — not a design note, question, or rejected alternative. This section is the single source of truth for post-approval progress tracking, so only put real, doable steps here.\n` +
     `- Keep investigating until the plan is actionable, then stop after \`exit_plan\`.`
@@ -173,7 +173,7 @@ function renderUncachedDateSuffix(): string {
  *   Pass `tools.map(t => t.name)` from the session so the prompt reflects
  *   exactly what the model can call. Defaults to the full built-in set.
  * @param provider — the active LLM provider. Drives the product identity
- *   (`anthropic` → "Claude Code", everything else → "GG Coder").
+ *   (`anthropic` → "Claude Code", everything else → "EZ Coder").
  */
 export async function buildSystemPrompt(
   cwd: string,

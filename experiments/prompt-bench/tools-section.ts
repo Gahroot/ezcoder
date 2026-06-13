@@ -14,7 +14,7 @@
  *
  * We score whether the model picks the RIGHT tool for each task.
  */
-import { Agent, type AgentEvent } from "@kenkaiiii/gg-agent";
+import { Agent, type AgentEvent } from "@prestyj/agent";
 import { loadAuth } from "./auth.js";
 import { createSandbox, type TrajectoryEntry } from "./sandbox.js";
 
@@ -25,7 +25,7 @@ interface ToolsVariant {
 }
 
 const BASE_PROMPT =
-  "You are GG Coder, a coding agent working in the user's codebase. Use the available tools to complete the task.";
+  "You are EZ Coder, a coding agent working in the user's codebase. Use the available tools to complete the task.";
 
 function w(s: string): number {
   return s.trim() ? s.trim().split(/\s+/).length : 0;

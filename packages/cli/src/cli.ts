@@ -57,17 +57,17 @@ import { runServeMode } from "./modes/serve-mode.js";
 import { runAgentHomeMode } from "./modes/agent-home-mode.js";
 import { renderSessionSelector } from "./ui/sessions.js";
 import type { CompletedItem } from "./ui/app-items.js";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { segmentDisplayText, stripDoneMarkers } from "./utils/plan-steps.js";
 import { formatUserError } from "./utils/error-handler.js";
-import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import type { ThemeName } from "./ui/theme/theme.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { SessionManager } from "./core/session-manager.js";
 import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
-import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
-import { setProviderDiagnostic } from "@kenkaiiii/gg-ai";
+import { setStreamDiagnostic } from "@prestyj/agent";
+import { setProviderDiagnostic } from "@prestyj/ai";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
 import { createTools } from "./tools/index.js";
@@ -126,7 +126,7 @@ function printHelp(): void {
   // Banner — matches the interactive TUI banner layout
   console.log();
   for (const row of renderLogoBlock([
-    primary.bold("GG Coder") + dim(` v${CLI_VERSION}`) + dim(" · By ") + bold("Ken Kai"),
+    primary.bold("EZ Coder") + dim(` v${CLI_VERSION}`) + dim(" · By ") + bold("Nolan Grout"),
     dim("AI coding agent"),
   ])) {
     console.log(row);
@@ -134,7 +134,7 @@ function printHelp(): void {
   console.log();
 
   // Usage
-  console.log(primary("Usage:") + "  ggcoder " + dim("[options]") + " " + dim("[prompt]"));
+  console.log(primary("Usage:") + "  ezcoder " + dim("[options]") + " " + dim("[prompt]"));
   console.log();
 
   // Commands
@@ -187,7 +187,7 @@ function printHelp(): void {
     ["/session", "Switch or create sessions"],
     ["/new", "Start a new session"],
     ["/settings", "Open settings"],
-    ["/quit", "Exit ggcoder"],
+    ["/quit", "Exit ezcoder"],
   ];
   for (const [name, desc] of slashCmds) {
     console.log(`  ${accent(name.padEnd(20))} ${dim(desc)}`);
@@ -451,13 +451,13 @@ async function runInkTUI(opts: {
     const fallback = loggedInProviders.find((p) => credentialsByProvider[p]);
     if (!fallback) {
       throw new Error(
-        'All logged-in providers expired or failed to authenticate. Run "ggcoder login" to re-authenticate.',
+        'All logged-in providers expired or failed to authenticate. Run "ezcoder login" to re-authenticate.',
       );
     }
     console.warn(
       chalk.yellow(
         `⚠ ${displayName(preferredProvider)} session expired — switched to ${displayName(fallback)} for this launch.\n` +
-          `  Run "ggcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
+          `  Run "ezcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
       ),
     );
     provider = fallback;
@@ -466,7 +466,7 @@ async function runInkTUI(opts: {
     console.warn(
       chalk.yellow(
         `⚠ Sessions expired: ${expiredProviders.map(displayName).join(", ")}. ` +
-          `Run "ggcoder login" to re-authenticate.`,
+          `Run "ezcoder login" to re-authenticate.`,
       ),
     );
   }
@@ -493,7 +493,7 @@ async function runInkTUI(opts: {
   };
 
   // Ensure project-local .gg directories exist
-  const localGGDir = path.join(cwd, ".gg");
+  const localGGDir = path.join(cwd, ".ezcoder");
   await fs.promises.mkdir(path.join(localGGDir, "skills"), { recursive: true });
   await fs.promises.mkdir(path.join(localGGDir, "commands"), { recursive: true });
   await fs.promises.mkdir(path.join(localGGDir, "agents"), { recursive: true });
@@ -540,7 +540,7 @@ async function runInkTUI(opts: {
 
   // Rebuilds the cwd-bound tools for a different project root. Used by the
   // pixel-fix flow so the agent operates in the error's project, not in
-  // wherever ggcoder was launched from.
+  // wherever ezcoder was launched from.
   const rebuildToolsForCwd = (newCwd: string) => {
     activeLspManager?.shutdownAll();
     const { tools: rebuilt, lspManager: rebuiltLspManager } = createTools(newCwd, {
@@ -642,7 +642,7 @@ async function runInkTUI(opts: {
               signal: compactionAbort.signal,
             });
             // Persist compacted continuation to a fresh session so future
-            // `ggcoder continue` starts from the compacted checkpoint instead
+            // `ezcoder continue` starts from the compacted checkpoint instead
             // of repeatedly restoring the oversized source session.
             const compactedSession = await createCompactedSessionCheckpoint(sessionManager, {
               cwd,
@@ -698,7 +698,7 @@ async function runInkTUI(opts: {
   }
 
   // Prune old session transcripts in the background — they're append-only
-  // JSONL and can reach 100MB+ each, so without cleanup ~/.gg/sessions grows
+  // JSONL and can reach 100MB+ each, so without cleanup ~/.ezcoder/sessions grows
   // unbounded and eventually fills the disk. Fire-and-forget: pruning must
   // never delay or break startup. The active session is explicitly protected.
   {
@@ -846,10 +846,10 @@ async function runTelegramSetup(): Promise<void> {
   // Banner
   console.log();
   for (const row of renderLogoBlock([
-    chalk.hex("#60a5fa").bold("GG Coder") +
+    chalk.hex("#60a5fa").bold("EZ Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" · By ") +
-      chalk.white.bold("Ken Kai"),
+      chalk.white.bold("Nolan Grout"),
     chalk.hex("#a78bfa")("Telegram Setup"),
     chalk.hex("#6b7280")("Remote Control"),
   ])) {
@@ -955,7 +955,7 @@ async function runTelegramSetup(): Promise<void> {
         chalk.hex("#6b7280")("    2. Add the bot to your group\n") +
         chalk.hex("#6b7280")("    3. Send /link in the group to connect it to a project\n\n") +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ggcoder serve\n"),
+        chalk.hex("#6b7280")("    cd your-project && ezcoder serve\n"),
     );
   } finally {
     rl.close();
@@ -978,18 +978,18 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken = serveValues["bot-token"] ?? process.env.GG_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
-  const userIdStr = serveValues["user-id"] ?? process.env.GG_TELEGRAM_USER_ID;
+  const botToken = serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
   if (!botToken || !userId || isNaN(userId)) {
     console.error(
       chalk.hex("#ef4444")("Telegram not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ggcoder telegram") +
+        chalk.hex("#60a5fa").bold("ezcoder telegram") +
         " to set up your bot token and user ID.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ggcoder serve --bot-token TOKEN --user-id ID"),
+        chalk.hex("#6b7280")("  ezcoder serve --bot-token TOKEN --user-id ID"),
     );
     process.exit(1);
   }
@@ -1066,10 +1066,10 @@ async function runAgentHomeLogin(): Promise<void> {
   // Banner
   console.log();
   for (const row of renderLogoBlock([
-    chalk.hex("#60a5fa").bold("GG Coder") +
+    chalk.hex("#60a5fa").bold("EZ Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" \u00b7 By ") +
-      chalk.white.bold("Ken Kai"),
+      chalk.white.bold("Nolan Grout"),
     chalk.hex("#a78bfa")("Agent Home Setup"),
     chalk.hex("#6b7280")("Remote Control via iOS"),
   ])) {
@@ -1119,7 +1119,7 @@ async function runAgentHomeLogin(): Promise<void> {
         chalk.hex("#4ade80")(`  \u2713 Config saved to ${paths.agentHomeFile}`) +
         "\n\n" +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ggcoder agent-home\n"),
+        chalk.hex("#6b7280")("    cd your-project && ezcoder agent-home\n"),
     );
   } finally {
     rl.close();
@@ -1147,10 +1147,10 @@ async function runAgentHome(): Promise<void> {
     console.error(
       chalk.hex("#ef4444")("Agent Home not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ggcoder agent-home-login") +
+        chalk.hex("#60a5fa").bold("ezcoder agent-home-login") +
         " to set up your token.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ggcoder agent-home --token TOKEN"),
+        chalk.hex("#6b7280")("  ezcoder agent-home --token TOKEN"),
     );
     process.exit(1);
   }
@@ -1225,7 +1225,7 @@ async function resolveActiveProvider(
   }
 
   if (loggedInProviders.length === 0) {
-    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
+    throw new Error('Not logged in to any provider. Run "ezcoder login" to authenticate.');
   }
 
   if (loggedInProviders.includes(preferred)) {

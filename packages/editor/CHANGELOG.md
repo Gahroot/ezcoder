@@ -5,173 +5,173 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.10.1
-  - @kenkaiiii/gg-ai@4.10.1
-  - @kenkaiiii/gg-agent@4.10.1
+  - @prestyj/cli@4.10.1
+  - @prestyj/ai@4.10.1
+  - @prestyj/agent@4.10.1
 
 ## 0.7.26
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.10.0
-  - @kenkaiiii/gg-agent@4.10.0
-  - @kenkaiiii/ggcoder@4.10.0
+  - @prestyj/ai@4.10.0
+  - @prestyj/agent@4.10.0
+  - @prestyj/cli@4.10.0
 
 ## 0.7.25
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.9.1
-  - @kenkaiiii/gg-ai@4.9.1
-  - @kenkaiiii/gg-agent@4.9.1
+  - @prestyj/cli@4.9.1
+  - @prestyj/ai@4.9.1
+  - @prestyj/agent@4.9.1
 
 ## 0.7.24
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.9.0
-  - @kenkaiiii/gg-ai@4.9.0
-  - @kenkaiiii/gg-agent@4.9.0
+  - @prestyj/cli@4.9.0
+  - @prestyj/ai@4.9.0
+  - @prestyj/agent@4.9.0
 
 ## 0.7.23
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.8.7
-  - @kenkaiiii/gg-ai@4.8.7
-  - @kenkaiiii/gg-agent@4.8.7
+  - @prestyj/cli@4.8.7
+  - @prestyj/ai@4.8.7
+  - @prestyj/agent@4.8.7
 
 ## 0.7.22
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.8.6
-  - @kenkaiiii/gg-ai@4.8.6
-  - @kenkaiiii/gg-agent@4.8.6
+  - @prestyj/cli@4.8.6
+  - @prestyj/ai@4.8.6
+  - @prestyj/agent@4.8.6
 
 ## 0.7.21
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.8.5
-  - @kenkaiiii/gg-ai@4.8.5
-  - @kenkaiiii/gg-agent@4.8.5
+  - @prestyj/cli@4.8.5
+  - @prestyj/ai@4.8.5
+  - @prestyj/agent@4.8.5
 
 ## 0.7.20
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.8.4
-  - @kenkaiiii/gg-ai@4.8.4
-  - @kenkaiiii/gg-agent@4.8.4
+  - @prestyj/cli@4.8.4
+  - @prestyj/ai@4.8.4
+  - @prestyj/agent@4.8.4
 
 ## 0.7.19
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.8.3
-  - @kenkaiiii/gg-ai@4.8.3
-  - @kenkaiiii/gg-agent@4.8.3
+  - @prestyj/cli@4.8.3
+  - @prestyj/ai@4.8.3
+  - @prestyj/agent@4.8.3
 
 ## 0.7.18
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.8.2
-  - @kenkaiiii/gg-ai@4.8.2
-  - @kenkaiiii/gg-agent@4.8.2
+  - @prestyj/cli@4.8.2
+  - @prestyj/ai@4.8.2
+  - @prestyj/agent@4.8.2
 
 ## 0.7.17
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.8.1
-  - @kenkaiiii/gg-ai@4.8.1
-  - @kenkaiiii/gg-agent@4.8.1
+  - @prestyj/cli@4.8.1
+  - @prestyj/ai@4.8.1
+  - @prestyj/agent@4.8.1
 
 ## 0.7.16
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.8.0
-  - @kenkaiiii/gg-agent@4.8.0
-  - @kenkaiiii/ggcoder@4.8.0
+  - @prestyj/ai@4.8.0
+  - @prestyj/agent@4.8.0
+  - @prestyj/cli@4.8.0
 
 ## 0.7.15
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.7.0
-  - @kenkaiiii/gg-ai@4.7.0
-  - @kenkaiiii/gg-agent@4.7.0
+  - @prestyj/cli@4.7.0
+  - @prestyj/ai@4.7.0
+  - @prestyj/agent@4.7.0
 
 ## 0.7.14
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.6.3
-  - @kenkaiiii/gg-agent@4.6.3
-  - @kenkaiiii/ggcoder@4.6.3
+  - @prestyj/ai@4.6.3
+  - @prestyj/agent@4.6.3
+  - @prestyj/cli@4.6.3
 
 ## 0.7.13
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.6.2
-  - @kenkaiiii/gg-agent@4.6.2
-  - @kenkaiiii/ggcoder@4.6.2
+  - @prestyj/ai@4.6.2
+  - @prestyj/agent@4.6.2
+  - @prestyj/cli@4.6.2
 
 ## 0.7.12
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.6.1
-  - @kenkaiiii/gg-agent@4.6.1
-  - @kenkaiiii/ggcoder@4.6.1
+  - @prestyj/ai@4.6.1
+  - @prestyj/agent@4.6.1
+  - @prestyj/cli@4.6.1
 
 ## 0.7.11
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.6.0
-  - @kenkaiiii/ggcoder@4.6.0
-  - @kenkaiiii/gg-agent@4.6.0
+  - @prestyj/ai@4.6.0
+  - @prestyj/cli@4.6.0
+  - @prestyj/agent@4.6.0
 
 ## 0.7.10
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.5.0
-  - @kenkaiiii/gg-ai@4.5.0
-  - @kenkaiiii/gg-agent@4.5.0
+  - @prestyj/cli@4.5.0
+  - @prestyj/ai@4.5.0
+  - @prestyj/agent@4.5.0
 
 ## 0.7.9
 
 ### Patch Changes
 
 - Updated dependencies [9e381ad]
-  - @kenkaiiii/gg-ai@4.4.0
-  - @kenkaiiii/ggcoder@4.4.0
-  - @kenkaiiii/gg-agent@4.4.0
+  - @prestyj/ai@4.4.0
+  - @prestyj/cli@4.4.0
+  - @prestyj/agent@4.4.0
 
-All notable changes to `@kenkaiiii/gg-editor` are tracked here.
+All notable changes to `@prestyj/editor` are tracked here.
 
 ## [Unreleased] — Cleanup: remove unused execution modes
 
@@ -405,7 +405,7 @@ Close the four tractable items in the post-audit Tier 4 list. Two remain open an
 
 ### Style presets (new feature)
 
-- New `core/styles-loader.ts` — `discoverStyles({ cwd, homeDir })` walks `<cwd>/.gg/editor-styles/*.md` (project) + `~/.gg/editor-styles/*.md` (user). **Project overrides user** (opposite of skills, by design — a project's checked-in style wins).
+- New `core/styles-loader.ts` — `discoverStyles({ cwd, homeDir })` walks `<cwd>/.gg/editor-styles/*.md` (project) + `~/.ezcoder/editor-styles/*.md` (user). **Project overrides user** (opposite of skills, by design — a project's checked-in style wins).
 - `renderStylesBlock(styles)` produces a markdown section the system-prompt builder embeds verbatim as "Active style presets". Empty when no styles — zero footprint.
 - CLI auto-discovers styles at startup; `buildEditorSystemPrompt` accepts `styles?` for library consumers.
 
@@ -516,7 +516,7 @@ Close the six gaps from the last audit: honest Premiere `set_clip_speed`, Resolv
 
 ### User-extensible skills
 
-- New `core/skills-loader.ts` — `discoverSkills({ cwd, homeDir, bundled })` layers `bundled → project (.gg/editor-skills/*.md) → user (~/.gg/editor-skills/*.md)`. Last-wins by name; user overrides project, project overrides bundled.
+- New `core/skills-loader.ts` — `discoverSkills({ cwd, homeDir, bundled })` layers `bundled → project (.gg/editor-skills/*.md) → user (~/.ezcoder/editor-skills/*.md)`. Last-wins by name; user overrides project, project overrides bundled.
 - `read_skill` no longer hard-codes the bundled set — it takes an injected `SkillSource[]`. The tool's enum becomes a string validated at execute time against the active list, so user skills are first-class.
 - System prompt renders the active skill list with `(project)` / `(user)` badges so override layering is visible.
 - README has a new "Custom skills" section.
@@ -593,7 +593,7 @@ First public release. End-to-end functional for the canonical workflows on macOS
 
 - **DaVinci Resolve** adapter — long-lived Python sidecar bridge with JSON-line wire protocol. Methods: `ping`, `get_timeline`, `add_marker`, `append_clip`, `import_timeline`, `render`. Cross-platform (macOS / Linux / Windows). Verified end-to-end via integration tests with a fake `DaVinciResolveScript` module.
 - **Adobe Premiere Pro** adapter — dual-transport bridge:
-  - **HTTP** (preferred) — talks to the [`@kenkaiiii/gg-editor-premiere-panel`](../gg-editor-premiere-panel/README.md) CEP extension. Required on Windows; ~10-30ms per call. Auto-detected on first use.
+  - **HTTP** (preferred) — talks to the [`@prestyj/editor-premiere-panel`](../ez-editor-premiere-panel/README.md) CEP extension. Required on Windows; ~10-30ms per call. Auto-detected on first use.
   - **osascript** (macOS fallback) — spawns AppleScript per call. ~200-500ms per call. Used when the panel isn't running.
   - Methods: `ping`, `get_timeline`, `add_marker`, `append_clip`, `import_timeline`. Render and razor unsupported via live API (use `write_edl` + `import_timeline`).
 - **None** adapter — file-only mode for ffmpeg/whisper-only workflows.
@@ -620,7 +620,7 @@ First public release. End-to-end functional for the canonical workflows on macOS
 
 ### Ink TUI
 
-- Standalone (no ggcoder dependency).
+- Standalone (no ezcoder dependency).
 - `<Static>` history + dynamic live area for streaming.
 - Animated sparkle spinner.
 - Compact tool-call rendering with status icons + truncated results.
@@ -632,7 +632,7 @@ First public release. End-to-end functional for the canonical workflows on macOS
 
 - Auto-detects open NLE on launch.
 - Flags: `--host`, `--cwd`, `--provider`, `--model`, `--api-key`, `--no-tui`.
-- One-shot mode: `ggeditor "<prompt>"`.
+- One-shot mode: `ezeditor "<prompt>"`.
 - Clean SIGINT shutdown — kills Python/Premiere bridges.
 
 ### Tests
@@ -647,7 +647,7 @@ First public release. End-to-end functional for the canonical workflows on macOS
 - **`--dry-run` mode** — host-mutating tools (cut_at, ripple_delete, add_marker, append_clip, import_edl, render) return a `{dryRun:true,skipped:...,args:...}` sentinel instead of executing. File writes (EDL, FCPXML) and analysis tools still run normally. System prompt informs the agent of the mode so it can warn the user. Propagates through Director-Executor mode.
 - **TUI footer** — running totals: turns, tool calls, input/output tokens. Optional model badge. Yellow `DRY-RUN` badge when active. Updates per `turn_end` event from the agent.
 - **Slash command autocomplete** — typing `/` opens a popover above the input. Up/Down cycles matches; Tab autocompletes; Enter submits the highlighted command. Falls through to input history when the menu is closed.
-- **OAuth login + shared credentials** — `ggeditor login` runs the same PKCE flow as ggcoder (Anthropic + OpenAI) or prompts for an API key (GLM / Moonshot). Credentials live in `~/.gg/auth.json` — the SAME file ggcoder uses. If you've already logged in via ggcoder, ggeditor picks those credentials up automatically with auto-refresh on expiry. No env vars, no `--api-key` flag (removed). New subcommands: `ggeditor login [--provider <p>]`, `ggeditor logout [provider]`, `ggeditor auth`.
+- **OAuth login + shared credentials** — `ezeditor login` runs the same PKCE flow as ezcoder (Anthropic + OpenAI) or prompts for an API key (GLM / Moonshot). Credentials live in `~/.ezcoder/auth.json` — the SAME file ezcoder uses. If you've already logged in via ezcoder, ezeditor picks those credentials up automatically with auto-refresh on expiry. No env vars, no `--api-key` flag (removed). New subcommands: `ezeditor login [--provider <p>]`, `ezeditor logout [provider]`, `ezeditor auth`.
 - Resolve bridge verified end-to-end via fake `DaVinciResolveScript` integration test.
 
 ### Director-Executor mode (opt-in)
@@ -662,7 +662,7 @@ First public release. End-to-end functional for the canonical workflows on macOS
 
 - Cut/ripple-delete on Resolve genuinely unsupported by the host API; agent falls back to `write_edl` + `import_edl`.
 - Render unsupported on Premiere via script (requires AME integration); use File → Export.
-- Premiere on Windows requires the companion `@kenkaiiii/gg-editor-premiere-panel` package (one-time install + restart Premiere).
+- Premiere on Windows requires the companion `@prestyj/editor-premiere-panel` package (one-time install + restart Premiere).
 - Vision scoring requires `OPENAI_API_KEY`.
 - Local whisper.cpp requires `modelPath` argument; falls back to OpenAI API if not set.
 

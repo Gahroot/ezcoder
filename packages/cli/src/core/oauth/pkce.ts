@@ -1,2 +1,2 @@
-// Moved to @kenkaiiii/gg-core.
-export { generatePKCE } from "@kenkaiiii/gg-core";
+// Moved to @prestyj/core.
+export { generatePKCE } from "@prestyj/core";

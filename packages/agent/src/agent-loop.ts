@@ -10,7 +10,7 @@ import {
   type ContentPart,
   type AssistantMessage,
   isHardBillingMessage,
-} from "@kenkaiiii/gg-ai";
+} from "@prestyj/ai";
 import type {
   AgentEvent,
   AgentOptions,
@@ -26,7 +26,7 @@ const DEFAULT_MAX_TURNS = 300;
 /**
  * Lightweight stream diagnostic callback. When set, the agent loop calls this
  * at every phase boundary with timing and state info. This lets the hosting
- * app (ggcoder, come-alive, etc.) log stall diagnostics without the agent
+ * app (ezcoder, come-alive, etc.) log stall diagnostics without the agent
  * package needing fs/process dependencies.
  */
 export type StreamDiagnosticFn = (phase: string, data?: Record<string, unknown>) => void;
@@ -147,7 +147,7 @@ export function isBillingError(err: unknown): boolean {
   // provider set (DeepSeek, OpenRouter, ...). Never retriable.
   const statusCode = (err as Error & { statusCode?: unknown }).statusCode;
   if (statusCode === 402) return true;
-  // Shared marker list (single source of truth in @kenkaiiii/gg-ai) so the
+  // Shared marker list (single source of truth in @prestyj/ai) so the
   // provider boundary and this classifier can't drift apart.
   return isHardBillingMessage(err.message);
 }

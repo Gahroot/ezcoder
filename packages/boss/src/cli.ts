@@ -6,9 +6,9 @@
 // shebang flags with the env var.
 import path from "node:path";
 import chalk from "chalk";
-import type { Provider } from "@kenkaiiii/gg-ai";
-import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
-import { AuthStorage, getDefaultModel, getModel } from "@kenkaiiii/gg-core";
+import type { Provider } from "@prestyj/ai";
+import { setStreamDiagnostic } from "@prestyj/agent";
+import { AuthStorage, getDefaultModel, getModel } from "@prestyj/core";
 import { GGBoss } from "./orchestrator.js";
 import type { ProjectSpec } from "./types.js";
 import { loadLinks } from "./links.js";
@@ -83,32 +83,32 @@ function printHelpAndExit(): never {
   const c = (color: string, text: string): string => chalk.hex(color)(text);
   process.stdout.write(
     "\n" +
-      c(COLORS.primary, "GG Boss") +
-      c(COLORS.textDim, " — orchestrator that drives multiple ggcoder workers from one chat.\n\n") +
+      c(COLORS.primary, "EZ Boss") +
+      c(COLORS.textDim, " — orchestrator that drives multiple ezcoder workers from one chat.\n\n") +
       c(COLORS.text, "Usage\n") +
       "  " +
-      c(COLORS.accent, "ggboss") +
+      c(COLORS.accent, "ezboss") +
       c(
         COLORS.textDim,
         "                              start orchestrator using linked projects\n",
       ) +
       "  " +
-      c(COLORS.accent, "ggboss link") +
+      c(COLORS.accent, "ezboss link") +
       c(COLORS.textDim, "                         pick which projects to link (interactive)\n") +
       "  " +
-      c(COLORS.accent, "ggboss telegram") +
+      c(COLORS.accent, "ezboss telegram") +
       c(COLORS.textDim, "                     configure Telegram bot integration\n") +
       "  " +
-      c(COLORS.accent, "ggboss serve") +
+      c(COLORS.accent, "ezboss serve") +
       c(COLORS.textDim, "                        run the boss over Telegram (no TUI)\n") +
       "  " +
-      c(COLORS.accent, "ggboss continue") +
+      c(COLORS.accent, "ezboss continue") +
       c(COLORS.textDim, "                     resume the most recent boss session\n") +
       "  " +
-      c(COLORS.accent, "ggboss --resume <id>") +
+      c(COLORS.accent, "ezboss --resume <id>") +
       c(COLORS.textDim, "                resume a specific boss session\n") +
       "  " +
-      c(COLORS.accent, "ggboss --project <spec> [...]") +
+      c(COLORS.accent, "ezboss --project <spec> [...]") +
       c(COLORS.textDim, "       override links with explicit project(s)\n\n") +
       c(COLORS.text, "Options\n") +
       "  " +
@@ -130,12 +130,12 @@ function printHelpAndExit(): never {
   process.exit(0);
 }
 
-// ── `ggboss serve` ────────────────────────────────────────────
+// ── `ezboss serve` ────────────────────────────────────────────
 //
 // Runs the orchestrator headless and bridges it to Telegram. Resolves the bot
-// token + user ID from CLI flags > env > saved config (`ggboss telegram`).
+// token + user ID from CLI flags > env > saved config (`ezboss telegram`).
 // Boss/worker provider+model resolution mirrors interactive mode so the user
-// doesn't have to repeat themselves between `ggboss` and `ggboss serve`.
+// doesn't have to repeat themselves between `ezboss` and `ezboss serve`.
 async function runServeSubcommand(argv: string[]): Promise<void> {
   let cliBotToken: string | undefined;
   let cliUserId: string | undefined;
@@ -149,13 +149,13 @@ async function runServeSubcommand(argv: string[]): Promise<void> {
     else if (a === "--worker-model") cliWorkerModel = argv[++i];
     else if (a === "--help" || a === "-h") {
       process.stdout.write(
-        "\nggboss serve — drive the boss from Telegram\n\n" +
+        "\nezboss serve — drive the boss from Telegram\n\n" +
           "Options\n" +
-          "  --bot-token <token>   Telegram bot token (or env GG_BOSS_TELEGRAM_BOT_TOKEN)\n" +
-          "  --user-id <id>        Allowed Telegram user ID (or env GG_BOSS_TELEGRAM_USER_ID)\n" +
+          "  --bot-token <token>   Telegram bot token (or env EZBOSS_TELEGRAM_BOT_TOKEN)\n" +
+          "  --user-id <id>        Allowed Telegram user ID (or env EZBOSS_TELEGRAM_USER_ID)\n" +
           "  --boss-model <id>     Override boss model\n" +
           "  --worker-model <id>   Override worker model\n\n" +
-          "Run `ggboss telegram` first to save credentials interactively.\n\n",
+          "Run `ezboss telegram` first to save credentials interactively.\n\n",
       );
       process.exit(0);
     } else {
@@ -164,18 +164,18 @@ async function runServeSubcommand(argv: string[]): Promise<void> {
   }
 
   const saved = await loadBossTelegramConfig();
-  const botToken = cliBotToken ?? process.env.GG_BOSS_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
-  const userIdStr = cliUserId ?? process.env.GG_BOSS_TELEGRAM_USER_ID;
+  const botToken = cliBotToken ?? process.env.EZBOSS_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const userIdStr = cliUserId ?? process.env.EZBOSS_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
   if (!botToken || !userId || isNaN(userId)) {
     process.stderr.write(
       chalk.hex(COLORS.error)("Telegram not configured.\n\n") +
         "Run " +
-        chalk.hex(COLORS.primary).bold("ggboss telegram") +
+        chalk.hex(COLORS.primary).bold("ezboss telegram") +
         " to set up your bot token and user ID.\n\n" +
         chalk.hex(COLORS.textDim)("Or provide manually:\n") +
-        chalk.hex(COLORS.textDim)("  ggboss serve --bot-token TOKEN --user-id ID\n"),
+        chalk.hex(COLORS.textDim)("  ezboss serve --bot-token TOKEN --user-id ID\n"),
     );
     process.exit(1);
   }
@@ -217,7 +217,7 @@ function bossDefaultModel(provider: Provider): string {
 
 /**
  * Resolve boss + worker provider/model against the providers the user is
- * actually logged in with. Mirrors ggcoder's `resolveActiveProvider`: never
+ * actually logged in with. Mirrors ezcoder's `resolveActiveProvider`: never
  * fail just because the *saved* provider isn't authenticated — fall back to a
  * logged-in one for this launch. Settings on disk are left untouched, so a
  * later re-login to the preferred provider restores the preference. Only
@@ -241,7 +241,7 @@ async function resolveBossAuth(input: {
   const loggedIn = ALL_PROVIDERS.filter((p) => stored.includes(p));
 
   if (loggedIn.length === 0) {
-    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
+    throw new Error('Not logged in to any provider. Run "ezcoder login" to authenticate.');
   }
 
   const fallback = loggedIn[0]!;
@@ -277,7 +277,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
         "\n" +
           chalk.hex(COLORS.warning)("No linked projects.") +
           chalk.hex(COLORS.textDim)(" Run ") +
-          chalk.hex(COLORS.accent)("ggboss link") +
+          chalk.hex(COLORS.accent)("ezboss link") +
           chalk.hex(COLORS.textDim)(" to choose, or pass ") +
           chalk.hex(COLORS.accent)("--project") +
           chalk.hex(COLORS.textDim)(".\n\n"),
@@ -307,7 +307,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   const preferredWorkerModel = args.workerModel ?? settings.workerModel ?? "claude-sonnet-4-6";
 
   // Fall back to a logged-in provider instead of crashing when the saved
-  // boss/worker provider isn't authenticated (matches ggcoder startup).
+  // boss/worker provider isn't authenticated (matches ezcoder startup).
   const {
     bossProvider: finalBossProvider,
     bossModel: finalBossModel,
@@ -329,7 +329,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
     });
   }
 
-  // Open ~/.gg/boss/debug.log in append mode and stamp a startup line so
+  // Open ~/.ezcoder/boss/debug.log in append mode and stamp a startup line so
   // future tail/grep diagnoses have the full session context up front.
   initLogger({
     version: VERSION,
@@ -407,7 +407,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // `ggboss continue` is a subcommand alias for "resume the most recent session".
+  // `ezboss continue` is a subcommand alias for "resume the most recent session".
   // Accept any flags after `continue` as normal flag args.
   const isContinue = argv[0] === "continue";
   const args = parseArgs(isContinue ? argv.slice(1) : argv);
@@ -418,7 +418,7 @@ async function main(): Promise<void> {
 // Process-level error guards. With ~6 workers sharing the same Node process,
 // any uncaught throw or unhandled rejection would otherwise take the whole
 // orchestrator down — losing every worker's in-flight task. We log the
-// failure to ~/.gg/boss/debug.log (already initialized by this point) and
+// failure to ~/.ezcoder/boss/debug.log (already initialized by this point) and
 // keep running. Truly unrecoverable conditions (OOM, native segfault) still
 // kill the process; nothing JS-side can guard against those.
 process.on("uncaughtException", (err) => {

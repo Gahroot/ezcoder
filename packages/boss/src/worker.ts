@@ -1,10 +1,10 @@
-import { AgentSession } from "@kenkaiiii/ggcoder";
+import { AgentSession } from "@prestyj/cli";
 import {
   classifyProviderError,
   type Message,
   type Provider,
   type ThinkingLevel,
-} from "@kenkaiiii/gg-ai";
+} from "@prestyj/ai";
 import type { EventQueue } from "./event-queue.js";
 import type { ToolUseSummary, WorkerStatus, WorkerTurnSummary } from "./types.js";
 import { bossStore } from "./boss-store.js";
@@ -12,14 +12,14 @@ import { log } from "./logger.js";
 
 /**
  * Wrap a sync event-bus handler so any thrown error becomes a worker_error
- * event instead of cascading up through ggcoder's eventBus.emit and
+ * event instead of cascading up through ezcoder's eventBus.emit and
  * potentially killing the boss process. Worker bus handlers do non-trivial
  * work (state mutations, queue pushes); a bug in any of them must NEVER
  * crash gg-boss because that would take down all 6+ workers in the same
  * process.
  */
 /**
- * Provider-error classification moved to @kenkaiiii/gg-ai
+ * Provider-error classification moved to @prestyj/ai
  * (`classifyProviderError`) so provider-wording changes are a one-file edit
  * next to `formatError` / `isHardBillingMessage`. Re-exported under the
  * historical name so existing callers and tests in gg-boss are unchanged.
@@ -116,7 +116,7 @@ export class Worker {
       cwd: opts.cwd,
       thinkingLevel: opts.thinkingLevel,
       signal: opts.signal,
-      promptCacheKeyPrefix: `ggboss-worker:${opts.name}`,
+      promptCacheKeyPrefix: `ezboss-worker:${opts.name}`,
     });
   }
 

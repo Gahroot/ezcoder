@@ -9,7 +9,7 @@ import { loginAnthropic } from "../core/oauth/anthropic.js";
 import { loginOpenAI } from "../core/oauth/openai.js";
 import { loginGemini } from "../core/oauth/gemini.js";
 import { loginKimi } from "../core/oauth/kimi.js";
-import { MOONSHOT_OAUTH_KEY } from "@kenkaiiii/gg-core";
+import { MOONSHOT_OAUTH_KEY } from "@prestyj/core";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "../core/oauth/types.js";
 import {
   CLI_VERSION,
@@ -148,10 +148,10 @@ export async function runDoctor(): Promise<void> {
   // ── Banner ──────────────────────────────────────────────────
   console.log();
   for (const row of renderLogoBlock([
-    primary.bold("GG Coder") +
+    primary.bold("EZ Coder") +
       dim(` v${CLI_VERSION}`) +
       dim(" · By ") +
-      chalk.white.bold("Ken Kai"),
+      chalk.white.bold("Nolan Grout"),
     accent("Doctor"),
     dim("Diagnose & Fix"),
   ])) {
@@ -160,7 +160,7 @@ export async function runDoctor(): Promise<void> {
   console.log();
 
   const home = os.homedir();
-  const ggDir = path.join(home, ".gg");
+  const ggDir = path.join(home, ".ezcoder");
   const authFile = path.join(ggDir, "auth.json");
   const lockFile = authFile + ".lock";
   const myUid = process.getuid!();
@@ -179,7 +179,7 @@ export async function runDoctor(): Promise<void> {
   }
   if (myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
-    console.log(dim("      Running ggcoder with sudo can cause ownership issues."));
+    console.log(dim("      Running ezcoder with sudo can cause ownership issues."));
     console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
   }
   console.log();
@@ -293,7 +293,7 @@ export async function runDoctor(): Promise<void> {
         await fsP.copyFile(authFile, path.join(ggDir, backupName));
         await fsP.writeFile(authFile, "{}", { encoding: "utf-8", mode: 0o600 });
         console.log(good(`    ✓ Corrupt file backed up as ${backupName}`));
-        console.log(dim('      Run "ggcoder login" to re-authenticate'));
+        console.log(dim('      Run "ezcoder login" to re-authenticate'));
         authData = {};
         fixed++;
       }
@@ -310,7 +310,7 @@ export async function runDoctor(): Promise<void> {
     }
   } catch {
     console.log(dim(`    Path:  ${authFile}`));
-    console.log(warn('    Not found — run "ggcoder login" to authenticate'));
+    console.log(warn('    Not found — run "ezcoder login" to authenticate'));
   }
   console.log();
 

@@ -1,4 +1,4 @@
-import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { Provider, ThinkingLevel } from "@prestyj/ai";
 
 export interface ModelInfo {
   id: string;

@@ -1,2 +1,2 @@
-// Moved to @kenkaiiii/gg-core.
-export { getClaudeCodeVersion, getClaudeCliUserAgent } from "@kenkaiiii/gg-core";
+// Moved to @prestyj/core.
+export { getClaudeCodeVersion, getClaudeCliUserAgent } from "@prestyj/core";

@@ -1,3 +1,3 @@
-// Moved to @kenkaiiii/gg-core. Shim keeps relative imports + the
-// `@kenkaiiii/ggcoder/auth` subpath resolving unchanged.
-export type { OAuthCredentials, OAuthLoginCallbacks } from "@kenkaiiii/gg-core";
+// Moved to @prestyj/core. Shim keeps relative imports + the
+// `@prestyj/cli/auth` subpath resolving unchanged.
+export type { OAuthCredentials, OAuthLoginCallbacks } from "@prestyj/core";

@@ -1,10 +1,10 @@
 import path from "node:path";
-import { getAppPaths } from "@kenkaiiii/gg-core";
-import { openLog, log, closeLogger as coreCloseLogger } from "@kenkaiiii/gg-core";
+import { getAppPaths } from "@prestyj/core";
+import { openLog, log, closeLogger as coreCloseLogger } from "@prestyj/core";
 
 /**
- * Boss debug log — uses the shared file-writer core in @kenkaiiii/gg-core so the
- * format is grep-compatible across the framework. Lives at ~/.gg/boss/debug.log;
+ * Boss debug log — uses the shared file-writer core in @prestyj/core so the
+ * format is grep-compatible across the framework. Lives at ~/.ezcoder/boss/debug.log;
  * the core rotates at 10 MB and keeps one generation (`debug.log.1`) so a
  * session that's just been rotated still has its trailing context recoverable.
  *
@@ -12,13 +12,13 @@ import { openLog, log, closeLogger as coreCloseLogger } from "@kenkaiiii/gg-core
  *   [<iso-ts>] [sid=<8 hex>] [<LEVEL>] [<category>] <message> [k=v k=v …]
  *
  * Tail it live during a session:
- *   tail -f ~/.gg/boss/debug.log
+ *   tail -f ~/.ezcoder/boss/debug.log
  *
  * Filter to the current session:
- *   grep "sid=$(grep -oE 'sid=[a-f0-9]+' ~/.gg/boss/debug.log | tail -1 | cut -d= -f2)" ~/.gg/boss/debug.log
+ *   grep "sid=$(grep -oE 'sid=[a-f0-9]+' ~/.ezcoder/boss/debug.log | tail -1 | cut -d= -f2)" ~/.ezcoder/boss/debug.log
  */
 
-export { log, getSessionId } from "@kenkaiiii/gg-core";
+export { log, getSessionId } from "@prestyj/core";
 
 export function getLogPath(): string {
   return path.join(getAppPaths().agentDir, "boss", "debug.log");

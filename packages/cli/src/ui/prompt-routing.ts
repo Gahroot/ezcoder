@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import type { TextContent, ImageContent, VideoContent } from "@kenkaiiii/gg-ai";
+import type { TextContent, ImageContent, VideoContent } from "@prestyj/ai";
 import type { ImageAttachment } from "../utils/image.js";
 import { VIDEO_MEDIA_TYPES } from "../utils/image.js";
 import { PROMPT_COMMANDS } from "../core/prompt-commands.js";
@@ -38,7 +38,7 @@ function resolveVideoPath(img: ImageAttachment): string | null {
   if (!img.data) return null;
   const ext =
     Object.entries(VIDEO_MEDIA_TYPES).find(([, mt]) => mt === img.mediaType)?.[0] ?? ".mp4";
-  const tmpPath = `/tmp/ggcoder-video-${Date.now()}${ext}`;
+  const tmpPath = `/tmp/ezcoder-video-${Date.now()}${ext}`;
   try {
     writeFileSync(tmpPath, Buffer.from(img.data, "base64"));
     return tmpPath;
@@ -96,7 +96,7 @@ export function buildUserContentWithAttachments(
     } else {
       // GLM models: save image to temp file and instruct model to use vision MCP tool
       const ext = img.mediaType.split("/")[1] ?? "png";
-      const tmpPath = `/tmp/ggcoder-img-${Date.now()}.${ext}`;
+      const tmpPath = `/tmp/ezcoder-img-${Date.now()}.${ext}`;
       try {
         writeFileSync(tmpPath, Buffer.from(img.data, "base64"));
         parts.push({

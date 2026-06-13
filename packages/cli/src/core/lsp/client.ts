@@ -94,7 +94,7 @@ export class LspClient {
       {
         processId: process.pid,
         rootUri,
-        workspaceFolders: [{ uri: rootUri, name: "ggcoder" }],
+        workspaceFolders: [{ uri: rootUri, name: "ezcoder" }],
         initializationOptions: this.initializationOptions,
         capabilities: {
           textDocument: {

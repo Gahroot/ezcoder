@@ -16,7 +16,7 @@ export interface AppPaths {
 }
 
 export function getAppPaths(): AppPaths {
-  const agentDir = path.join(os.homedir(), ".gg");
+  const agentDir = path.join(os.homedir(), ".ezcoder");
   return {
     agentDir,
     sessionsDir: path.join(agentDir, "sessions"),

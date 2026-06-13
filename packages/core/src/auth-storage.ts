@@ -172,7 +172,7 @@ export class AuthStorage {
             "WARN",
             "auth",
             "Kimi OAuth credential is no longer valid — falling back to the Moonshot API key. " +
-              'Run "ggcoder login" and choose Kimi OAuth to restore OAuth auth.',
+              'Run "ezcoder login" and choose Kimi OAuth to restore OAuth auth.',
           );
           return this.data["moonshot"];
         }
@@ -304,7 +304,7 @@ async function atomicWriteFile(filePath: string, content: string): Promise<void>
 export class NotLoggedInError extends Error {
   provider: string;
   constructor(provider: string) {
-    super(`Not logged in to ${provider}. Run "ggcoder login" to authenticate.`);
+    super(`Not logged in to ${provider}. Run "ezcoder login" to authenticate.`);
     this.name = "NotLoggedInError";
     this.provider = provider;
   }

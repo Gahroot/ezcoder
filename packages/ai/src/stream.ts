@@ -1,5 +1,5 @@
 import type { Message, StreamOptions } from "./types.js";
-import { GGAIError, VideoUnsupportedError } from "./errors.js";
+import { EZCoderAIError, VideoUnsupportedError } from "./errors.js";
 import type { StreamResult } from "./utils/event-stream.js";
 import { streamAnthropic } from "./providers/anthropic.js";
 import { streamOpenAI } from "./providers/openai.js";
@@ -11,7 +11,7 @@ import { providerRegistry } from "./provider-registry.js";
 const GLM_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
 
 /**
- * User-Agent the Kimi For Coding endpoint requires to recognize ggcoder as a
+ * User-Agent the Kimi For Coding endpoint requires to recognize ezcoder as a
  * coding agent. The endpoint gates solely on this header; the version is
  * overridable via KIMI_CODE_VERSION for forward compatibility.
  */
@@ -124,7 +124,7 @@ providerRegistry.register("minimax", {
 export function stream(options: StreamOptions): StreamResult {
   const entry = providerRegistry.get(options.provider);
   if (!entry) {
-    throw new GGAIError(
+    throw new EZCoderAIError(
       `Unknown provider: "${options.provider}". Registered: ${providerRegistry.list().join(", ")}`,
     );
   }

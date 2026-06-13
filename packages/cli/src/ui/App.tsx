@@ -24,9 +24,9 @@ import {
   type Provider,
   type ThinkingLevel,
   type TextContent,
-} from "@kenkaiiii/gg-ai";
+} from "@prestyj/ai";
 import { downscaleForPreview, extractMediaPaths, type ImageAttachment } from "../utils/image.js";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { useAgentLoop, type StreamSnapshot, type UserContent } from "./hooks/useAgentLoop.js";
 import { useTranscriptHistory } from "./hooks/useTranscriptHistory.js";
 import type { PasteInfo } from "./components/InputArea.js";
@@ -675,7 +675,7 @@ export function App(props: AppProps) {
     return () => stopPeriodicUpdateCheck();
   }, [props.version]);
 
-  // Load custom commands from .gg/commands/
+  // Load custom commands from .ezcoder/commands/
   const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
   const reloadCustomCommands = useCallback(() => {
     loadCustomCommands(props.cwd).then(setCustomCommands);
@@ -1910,7 +1910,7 @@ export function App(props: AppProps) {
       model: currentModel,
       cwd: displayedCwd,
       footer: sessionStatsRef.current.sessionId
-        ? `To resume this session: ggcoder --resume ${sessionStatsRef.current.sessionId}`
+        ? `To resume this session: ezcoder --resume ${sessionStatsRef.current.sessionId}`
         : undefined,
     });
     setDoneStatus(null);
@@ -2015,7 +2015,7 @@ export function App(props: AppProps) {
             ...prev,
             {
               kind: "info",
-              text: "No checkpoints yet \u2014 edit a file through ggcoder first.",
+              text: "No checkpoints yet \u2014 edit a file through ezcoder first.",
               id: getId(),
             },
           ]);
@@ -2289,7 +2289,7 @@ export function App(props: AppProps) {
       const newModelId = value.slice(colonIdx + 1);
       log("INFO", "model", `Model changed`, { provider: newProvider, model: newModelId });
       // Keep the ref in sync before any prompt rebuild so the identity (Claude
-      // Code vs GG Coder) reflects the newly selected provider immediately.
+      // Code vs EZ Coder) reflects the newly selected provider immediately.
       currentProviderRef.current = newProvider;
 
       const rebuildPromptWithTools = (tools: AgentTool[]) => {
@@ -2342,7 +2342,7 @@ export function App(props: AppProps) {
               }
               try {
                 // Use getAllMcpServers so user-configured servers (from
-                // ~/.gg/mcp.json and ./.gg/mcp.json) survive the reconnect —
+                // ~/.ezcoder/mcp.json and ./.gg/mcp.json) survive the reconnect —
                 // getMCPServers returns provider defaults only.
                 const servers = await getAllMcpServers(newProvider, apiKey, props.cwd);
                 const mcpTools = await props.mcpManager!.connectAll(servers);
@@ -2515,7 +2515,7 @@ export function App(props: AppProps) {
       {
         name: "quit",
         aliases: ["q", "exit"],
-        description: "Exit ggcoder",
+        description: "Exit ezcoder",
         sectionTitle: "built-in",
       },
     ];

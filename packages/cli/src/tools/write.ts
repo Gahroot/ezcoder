@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { resolvePath, rejectSymlink } from "./path-utils.js";
 import { localOperations, type ToolOperations } from "./operations.js";
 import { assertFresh, recordWrite, type ReadTracker } from "./read-tracker.js";
@@ -56,10 +56,10 @@ export function createWriteTool(
       await rejectSymlink(resolved);
 
       if (isPlanModeActive(planModeRef)) {
-        const plansDir = path.join(cwd, ".gg", "plans");
+        const plansDir = path.join(cwd, ".ezcoder", "plans");
         const relative = path.relative(plansDir, resolved);
         if (relative.startsWith("..") || path.isAbsolute(relative)) {
-          return `Error: write is restricted in plan mode. You can only write to .gg/plans/. Got: ${file_path}`;
+          return `Error: write is restricted in plan mode. You can only write to .ezcoder/plans/. Got: ${file_path}`;
         }
         await fs.mkdir(plansDir, { recursive: true });
       }

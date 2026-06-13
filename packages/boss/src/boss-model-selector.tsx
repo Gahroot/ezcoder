@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { Box, Text, useInput } from "ink";
-import type { Provider } from "@kenkaiiii/gg-ai";
-import { MODELS } from "@kenkaiiii/gg-core";
-import { useTerminalSize } from "@kenkaiiii/ggcoder/ui/hooks/terminal-size";
-import { useTheme } from "@kenkaiiii/ggcoder/ui/theme";
+import type { Provider } from "@prestyj/ai";
+import { MODELS } from "@prestyj/core";
+import { useTerminalSize } from "@prestyj/cli/ui/hooks/terminal-size";
+import { useTheme } from "@prestyj/cli/ui/theme";
 
 interface BossModelSelectorProps {
   onSelect: (modelId: string) => void;
@@ -171,7 +171,7 @@ function BossModelSelectList({
 }
 
 /**
- * GG Boss supports the same model registry as GG Coder. Unlike GG Coder's
+ * EZ Boss supports the same model registry as EZ Coder. Unlike EZ Coder's
  * shared picker, Boss deliberately shows the full registry instead of hiding
  * models behind the currently logged-in provider list: boss/worker switches can
  * be prepared from CLI settings, and a missing credential should fail with the
