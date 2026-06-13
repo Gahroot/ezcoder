@@ -37,6 +37,7 @@ const SettingsSchema = z.object({
     .default("auto"),
   showTokenUsage: z.boolean().default(true),
   idealReviewEnabled: z.boolean().default(true),
+  autoApprovePlans: z.boolean().default(true),
   /** Append LSP diagnostics to edit/write tool results. */
   lspDiagnostics: z.boolean().default(true),
   enabledTools: z.array(z.string()).optional(),
@@ -55,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "auto",
   showTokenUsage: true,
   idealReviewEnabled: true,
+  autoApprovePlans: true,
   lspDiagnostics: true,
   sessionRetentionDays: 30,
 };

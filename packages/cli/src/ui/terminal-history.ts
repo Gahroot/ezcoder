@@ -51,6 +51,7 @@ import {
 } from "./terminal-history-status-renderers.js";
 import {
   presentDuration,
+  presentGoalAgentTransition,
   presentInfo,
   presentModelTransition,
   presentPlanEvent,
@@ -61,14 +62,7 @@ import {
 } from "./transcript/presentation.js";
 import { toolTonePalette } from "./transcript/tool-presentation.js";
 
-const LOGO_LINES = [
-  " ██████╗  ██████╗ ",
-  "██╔════╝ ██╔════╝ ",
-  "██║  ███╗██║  ███╗",
-  "██║   ██║██║   ██║",
-  "╚██████╔╝╚██████╔╝",
-  " ╚═════╝  ╚═════╝",
-];
+const LOGO_LINES = [" █▀▀▀ ▀▀▀█", " █▀▀   ▄▀", " █▄▄▄ █▄▄▄"];
 const PLAN_MODE_LOGO = [
   "▗▄▄▖ ▗▖    ▗▄▖ ▗▖  ▗▖    ▗▖  ▗▖ ▗▄▖ ▗▄▄▄ ▗▄▄▄▖",
   "▐▌ ▐▌▐▌   ▐▌ ▐▌▐▛▚▖▐▌    ▐▛▚▞▜▌▐▌ ▐▌▐▌  █▐▌",
@@ -99,11 +93,11 @@ const GRADIENT = [
   "#6da1f9",
 ];
 const GAP = "   ";
-const LOGO_WIDTH = 17;
+const LOGO_WIDTH = 9;
 const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 62;
-// Row index in the (taller) logo block where each info line is placed so the
-// text column reads vertically centered beside the art.
-const INFO_ANCHOR_ROW = 1;
+// Row index in the logo block where each info line is placed. The EZ art is
+// 3 rows tall, so info lines sit one-per-row beside it from the top.
+const INFO_ANCHOR_ROW = 0;
 const COMPACT_TOOLS = new Set(["read", "grep", "find", "ls", "source_path"]);
 const STATE_TOOLS = new Set(["tasks"]);
 const SERVER_STYLE_TOOLS = new Set(["web_search"]);
@@ -308,6 +302,18 @@ export function serializeCompletedItemToTerminalHistory(
         true,
       );
     }
+    case "goal_agent_transition": {
+      const presentation = presentGoalAgentTransition(item);
+      return renderStatusLine(
+        presentation.glyph.trim(),
+        presentation.text,
+        context,
+        context.theme.secondary,
+        presentation.bold,
+      );
+    }
+    case "goal_progress":
+      return renderGoalProgress(item, context);
     case "error":
       return renderError(item.headline, item.message, item.guidance, context);
     case "info": {
@@ -444,9 +450,7 @@ function renderBanner(context: TerminalHistoryContext): string {
   const home = process.env.HOME ?? "";
   const displayPath =
     home && context.cwd.startsWith(home) ? `~${context.cwd.slice(home.length)}` : context.cwd;
-  const logo = LOGO_LINES.map(
-    (lineText) => `${RESPONSE_LEFT_PADDING}${gradientLine(lineText, GRADIENT)}`,
-  );
+  const logo = LOGO_LINES.map((lineText) => gradientLine(lineText, GRADIENT));
 
   const shortcuts = `${color(context.theme.primary, "Ctrl+T")} ${dim(context, "tasks · ")}${color(context.theme.primary, "Ctrl+S")} ${dim(context, "skills · ")}${color(context.theme.primary, "Shift+Tab")} ${dim(context, "toggle thinking")}`;
 
@@ -455,9 +459,9 @@ function renderBanner(context: TerminalHistoryContext): string {
       "",
       ...logo,
       "",
-      `${RESPONSE_LEFT_PADDING}${color(context.theme.primary, "EZ Coder", true)}${dim(context, ` v${context.version}`)}`,
-      `${RESPONSE_LEFT_PADDING}${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, context.columns))}`,
-      `${RESPONSE_LEFT_PADDING}${shortcuts}`,
+      `${color(context.theme.primary, "EZ Coder", true)}${dim(context, ` v${context.version}`)}`,
+      `${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, context.columns))}`,
+      shortcuts,
       "",
     ]);
   }
@@ -477,6 +481,45 @@ function renderBanner(context: TerminalHistoryContext): string {
   });
 
   return block(["", ...rows, ""]);
+}
+
+function renderGoalProgress(
+  item: Extract<CompletedItem, { kind: "goal_progress" }>,
+  context: TerminalHistoryContext,
+): string {
+  const isError = item.status === "failed" || item.status === "fail" || item.status === "blocked";
+  const itemColor = isError
+    ? context.theme.error
+    : item.phase === "worker_finished" || item.phase === "terminal"
+      ? context.theme.success
+      : item.phase === "verifier_started" || item.phase === "verifier_finished"
+        ? context.theme.accent
+        : item.phase === "orchestrator_reviewing" || item.phase === "orchestrator_working"
+          ? context.theme.secondary
+          : item.phase === "continuing"
+            ? context.theme.warning
+            : context.theme.primary;
+  const glyph =
+    item.phase === "worker_finished" || item.phase === "verifier_finished"
+      ? "✓"
+      : item.phase === "terminal"
+        ? item.status === "passed"
+          ? "◆"
+          : "!"
+        : "↻";
+  const lines = [
+    `${color(itemColor, `${glyph} ${item.title}`, true)}${item.workerId ? dim(context, ` · worker ${item.workerId}`) : ""}`,
+    item.detail ? dim(context, `  ${item.detail}`) : undefined,
+    ...(item.summaryRows ?? []).map(
+      (row) =>
+        `  ${dim(context, row.label.padEnd(10))}${color(context.theme.text, row.value)}${row.detail ? dim(context, ` · ${row.detail}`) : ""}`,
+    ),
+    ...(item.summarySections ?? []).flatMap((section) => [
+      `  ${dim(context, section.title)}`,
+      ...section.lines.map((line) => `  ${color(context.theme.text, `• ${line}`)}`),
+    ]),
+  ].filter((line): line is string => line !== undefined);
+  return indent(lines.join("\n"), RESPONSE_LEFT_PADDING);
 }
 
 function renderUser(

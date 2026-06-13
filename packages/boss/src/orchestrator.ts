@@ -52,7 +52,7 @@ function normalizeBossThinkingLevel(
     : getNextThinkingLevel(provider, model, undefined);
 }
 
-export interface GGBossOptions {
+export interface EzBossOptions {
   bossProvider: Provider;
   bossModel: string;
   /** Boss extended-thinking level. Toggled via Shift+Tab in the TUI. */
@@ -74,7 +74,7 @@ export interface GGBossOptions {
  *
  * UI state is mirrored into bossStore — components subscribe via useBossState().
  */
-export class GGBoss {
+export class EzBoss {
   private workers = new Map<string, Worker>();
   private lastSummaries = new Map<string, WorkerTurnSummary>();
   private queue = new EventQueue();
@@ -84,7 +84,7 @@ export class GGBoss {
   private turnAc: AbortController | null = null;
   private running = false;
   private pendingUserMessages = 0;
-  private opts: GGBossOptions;
+  private opts: EzBossOptions;
   private authStorage = new AuthStorage();
   /** Path to the boss's per-session jsonl log under ~/.ezcoder/boss/sessions/. */
   private sessionPath = "";
@@ -132,7 +132,7 @@ export class GGBoss {
    */
   private stuckPushedAt = new Map<string, number | null>();
 
-  constructor(opts: GGBossOptions) {
+  constructor(opts: EzBossOptions) {
     this.opts = {
       ...opts,
       bossThinkingLevel: normalizeBossThinkingLevel(

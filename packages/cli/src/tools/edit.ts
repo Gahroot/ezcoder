@@ -14,7 +14,13 @@ import {
 } from "./edit-diff.js";
 import { localOperations, type ToolOperations } from "./operations.js";
 import { assertFresh, recordWrite, type ReadTracker } from "./read-tracker.js";
-import { isPlanModeActive, planModeRestriction } from "../core/runtime-mode.js";
+import {
+  getActiveGoalMode,
+  goalModeMutationRestriction,
+  isPlanModeActive,
+  planModeRestriction,
+  type GoalMode,
+} from "../core/runtime-mode.js";
 
 type MutationCallback = (filePath: string) => void | Promise<void>;
 
@@ -30,6 +36,14 @@ function isPlanModeRef(value: unknown): value is { current: boolean } {
     typeof value === "object" &&
     value !== null &&
     typeof (value as { current?: unknown }).current === "boolean"
+  );
+}
+
+function isGoalModeRef(value: unknown): value is { current: GoalMode } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { current?: unknown }).current === "string"
   );
 }
 
@@ -132,14 +146,18 @@ export function createEditTool(
   cwd: string,
   readFiles?: ReadTracker,
   ops: ToolOperations = localOperations,
-  planModeRefOrOnFileMutated?: { current: boolean } | MutationCallback,
+  planModeRefOrOnFileMutated?: { current: boolean } | { current: GoalMode } | MutationCallback,
   onFileMutated?: MutationCallback,
   onPreFileMutation?: MutationCallback,
   getDiagnostics?: DiagnosticsProvider,
+  goalModeRefArg?: { current: GoalMode },
 ): AgentTool<typeof EditParams> {
   const planModeRef = isPlanModeRef(planModeRefOrOnFileMutated)
     ? planModeRefOrOnFileMutated
     : undefined;
+  const goalModeRef = isGoalModeRef(planModeRefOrOnFileMutated)
+    ? planModeRefOrOnFileMutated
+    : goalModeRefArg;
   const mutationCallback = isMutationCallback(planModeRefOrOnFileMutated)
     ? planModeRefOrOnFileMutated
     : onFileMutated;
@@ -154,6 +172,10 @@ export function createEditTool(
     parameters: EditParams,
     executionMode: "sequential",
     async execute({ file_path, edits, atomic = false }) {
+      const goalMode = getActiveGoalMode(goalModeRef);
+      if (goalMode !== "off") {
+        return goalModeMutationRestriction("edit", goalMode);
+      }
       if (isPlanModeActive(planModeRef)) {
         return planModeRestriction("edit");
       }

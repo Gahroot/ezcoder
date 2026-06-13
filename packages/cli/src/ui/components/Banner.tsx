@@ -10,15 +10,13 @@ interface BannerProps {
   model: string;
   provider: Provider;
   cwd: string;
+  taskCount?: number;
 }
 
 const LOGO_LINES = [
-  " \u2588\u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2588\u2588\u2588\u2588\u2557 ",
-  "\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d ",
-  "\u2588\u2588\u2551  \u2588\u2588\u2588\u2557\u2588\u2588\u2551  \u2588\u2588\u2588\u2557",
-  "\u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2551   \u2588\u2588\u2551",
-  "\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d",
-  " \u255a\u2550\u2550\u2550\u2550\u2550\u255d  \u255a\u2550\u2550\u2550\u2550\u2550\u255d",
+  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+  " \u2588\u2580\u2580   \u2584\u2580 ",
+  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
 ];
 
 // Extended gradient with reverse path for smooth animation loop
@@ -37,16 +35,12 @@ const GRADIENT = [
   "#6da1f9",
 ];
 
-// One-space left pad to match the terminal-history banner (RESPONSE_LEFT_PADDING).
-const LEFT_PAD = " ";
 const GAP = "   ";
-// Logo is 17 visible chars wide; below this width the info column would
-// collide with the art, so we stack it underneath instead. The threshold
-// mirrors terminal-history.ts SIDE_BY_SIDE_MIN (LOGO_WIDTH + GAP + 62).
-const LOGO_WIDTH = 17;
-const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 62;
+// Logo is 9 visible chars wide + GAP (3) = 12 chars before info text
+const LOGO_WIDTH = 9;
+const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 62; // room for the shortcut hint row
 
-export function Banner({ version, model, cwd }: BannerProps) {
+export function Banner({ version, model, cwd, taskCount }: BannerProps) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
   const modelInfo = getModel(model);
@@ -60,47 +54,36 @@ export function Banner({ version, model, cwd }: BannerProps) {
   // visual duplicates on terminal resize.
   const shift = 0;
 
-  const logo = (
-    <Box flexDirection="column" flexShrink={0}>
-      {LOGO_LINES.map((line, i) => (
-        <Box key={i}>
-          <Text>{LEFT_PAD}</Text>
-          <GradientText text={line} shift={shift} />
+  // At narrow widths, stack logo above info instead of side-by-side
+  if (columns < SIDE_BY_SIDE_MIN) {
+    return (
+      <Box flexDirection="column" marginTop={1} marginBottom={1} width={columns}>
+        <GradientText text={LOGO_LINES[0]} shift={shift} />
+        <GradientText text={LOGO_LINES[1]} shift={shift} />
+        <GradientText text={LOGO_LINES[2]} shift={shift} />
+        <Box marginTop={1}>
+          <Text color={theme.primary} bold>
+            EZ Coder
+          </Text>
+          <Text color={theme.textDim}> v{version}</Text>
         </Box>
-      ))}
-    </Box>
-  );
+        <Box>
+          <Text color={theme.secondary}>{modelName}</Text>
+          <Text color={theme.textDim}>{"  "}</Text>
+          <Text color={theme.textDim} wrap="truncate">
+            {displayPath}
+          </Text>
+        </Box>
+        <ShortcutHints taskCount={taskCount} />
+      </Box>
+    );
+  }
 
-  // Narrow (stacked) info — mirrors terminal-history.ts: brand line omits
-  // "· By Nolan Grout", path is truncated to the full terminal width.
-  const stackedInfo = (
-    <Box flexDirection="column">
+  return (
+    <Box flexDirection="column" marginTop={1} marginBottom={1} width={columns}>
       <Box>
-        <Text>{LEFT_PAD}</Text>
-        <Text color={theme.primary} bold>
-          EZ Coder
-        </Text>
-        <Text color={theme.textDim}> v{version}</Text>
-      </Box>
-      <Box>
-        <Text>{LEFT_PAD}</Text>
-        <Text color={theme.secondary}>{modelName}</Text>
-        <Text color={theme.textDim}>{"  "}</Text>
-        <Text color={theme.textDim} wrap="truncate">
-          {displayPath}
-        </Text>
-      </Box>
-      <Box>
-        <Text>{LEFT_PAD}</Text>
-        <ShortcutHints />
-      </Box>
-    </Box>
-  );
-
-  // Side-by-side info — includes "· By Nolan Grout".
-  const sideInfo = (
-    <Box flexDirection="column">
-      <Box>
+        <GradientText text={LOGO_LINES[0]} shift={shift} />
+        <Text>{GAP}</Text>
         <Text color={theme.primary} bold>
           EZ Coder
         </Text>
@@ -111,45 +94,31 @@ export function Banner({ version, model, cwd }: BannerProps) {
         </Text>
       </Box>
       <Box>
+        <GradientText text={LOGO_LINES[1]} shift={shift} />
+        <Text>{GAP}</Text>
         <Text color={theme.secondary}>{modelName}</Text>
         <Text color={theme.textDim}>{"  "}</Text>
         <Text color={theme.textDim} wrap="truncate">
           {displayPath}
         </Text>
       </Box>
-      <ShortcutHints />
-    </Box>
-  );
-
-  // At narrow widths, stack the info block under the logo.
-  if (columns < SIDE_BY_SIDE_MIN) {
-    return (
-      <Box flexDirection="column" marginTop={1} marginBottom={1} width={columns}>
-        {logo}
-        <Box marginTop={1}>{stackedInfo}</Box>
-      </Box>
-    );
-  }
-
-  // Side-by-side: logo on the left, info column vertically centered beside it.
-  return (
-    <Box flexDirection="row" marginTop={1} marginBottom={1} width={columns}>
-      {logo}
-      <Text>{GAP}</Text>
-      <Box flexDirection="column" justifyContent="center">
-        {sideInfo}
+      <Box>
+        <GradientText text={LOGO_LINES[2]} shift={shift} />
+        <Text>{GAP}</Text>
+        <ShortcutHints taskCount={taskCount} />
       </Box>
     </Box>
   );
 }
 
-function ShortcutHints() {
+function ShortcutHints({ taskCount }: { taskCount?: number }) {
   const theme = useTheme();
+  const taskLabel = taskCount && taskCount > 0 ? ` tasks (${taskCount})` : " tasks";
 
   return (
     <Box>
       <Text color={theme.primary}>Ctrl+T</Text>
-      <Text color={theme.textDim}> tasks</Text>
+      <Text color={theme.textDim}>{taskLabel}</Text>
       <Text color={theme.textDim}> · </Text>
       <Text color={theme.primary}>Ctrl+S</Text>
       <Text color={theme.textDim}> skills</Text>

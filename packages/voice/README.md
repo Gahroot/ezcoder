@@ -60,7 +60,7 @@ Use confirmation policies such as `"always"` or `"destructive"` for high-risk vo
 
 `@prestyj/voice/bridges/ezcoder-rpc` maps the voice bridge command surface to existing `ezcoder rpc` NDJSON commands such as `prompt`, `get_state`, `abort`, `new_session`, and `switch_model`.
 
-`@prestyj/voice/bridges/ezboss` can wrap an in-process `GGBoss.enqueueUserMessage(text)` target or expose a relay-backed `send_to_ezboss` tool.
+`@prestyj/voice/bridges/ezboss` can wrap an in-process `EzBoss.enqueueUserMessage(text)` target or expose a relay-backed `send_to_ezboss` tool.
 
 ## Expo and mobile limitations
 

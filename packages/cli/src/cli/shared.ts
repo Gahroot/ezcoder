@@ -7,7 +7,7 @@ import type { Provider } from "@prestyj/ai";
 
 // Resolve the package version by walking up from this module to the nearest
 // package.json. A bare `require("../../package.json")` breaks when this module
-// is re-bundled into a sibling package (e.g. gg-boss), where the relative path
+// is re-bundled into a sibling package (e.g. ezboss), where the relative path
 // no longer points at ezcoder's manifest — so it crashes the CLI. Walking up
 // from import.meta.url always finds a valid manifest and never throws.
 function resolveCliVersion(): string {
@@ -32,20 +32,17 @@ export const CLI_VERSION = resolveCliVersion();
 
 // ── Logo + gradient (mirrors terminal-history.ts banner) ────────────
 export const LOGO_LINES = [
-  " \u2588\u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2588\u2588\u2588\u2588\u2557 ",
-  "\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d \u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d ",
-  "\u2588\u2588\u2551  \u2588\u2588\u2588\u2557\u2588\u2588\u2551  \u2588\u2588\u2588\u2557",
-  "\u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2551   \u2588\u2588\u2551",
-  "\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d",
-  " \u255a\u2550\u2550\u2550\u2550\u2550\u255d  \u255a\u2550\u2550\u2550\u2550\u2550\u255d",
+  " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
+  " \u2588\u2580\u2580   \u2584\u2580 ",
+  " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
 ];
 
 // Visible width of the logo block (glyph columns) and the gap before titles.
-export const LOGO_WIDTH = 17;
+export const LOGO_WIDTH = 9;
 export const LOGO_GAP = "   ";
-// Row index in the logo block where the title lines begin, so a 3-line title
-// block reads vertically centered beside the 6-line art.
-export const LOGO_TITLE_ANCHOR_ROW = 1;
+// Row index in the logo block where the title lines begin. The EZ art is
+// 3 rows tall, so titles align one-per-row beside it from the top.
+export const LOGO_TITLE_ANCHOR_ROW = 0;
 
 const GRADIENT = [
   "#60a5fa",
@@ -83,8 +80,8 @@ export function gradientLine(text: string): string {
 }
 
 /**
- * Render the GG logo with up to three title lines placed beside the
- * vertically-centered rows of the (6-line) art. Returns one string per output
+ * Render the EZ logo with up to three title lines placed beside the
+ * rows of the (3-line) art. Returns one string per output
  * row. `titleLines` are already-colored strings (brand, page name, subtitle).
  */
 export function renderLogoBlock(

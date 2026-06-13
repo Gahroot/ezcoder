@@ -405,7 +405,7 @@ Close the four tractable items in the post-audit Tier 4 list. Two remain open an
 
 ### Style presets (new feature)
 
-- New `core/styles-loader.ts` — `discoverStyles({ cwd, homeDir })` walks `<cwd>/.gg/editor-styles/*.md` (project) + `~/.ezcoder/editor-styles/*.md` (user). **Project overrides user** (opposite of skills, by design — a project's checked-in style wins).
+- New `core/styles-loader.ts` — `discoverStyles({ cwd, homeDir })` walks `<cwd>/.ezcoder/editor-styles/*.md` (project) + `~/.ezcoder/editor-styles/*.md` (user). **Project overrides user** (opposite of skills, by design — a project's checked-in style wins).
 - `renderStylesBlock(styles)` produces a markdown section the system-prompt builder embeds verbatim as "Active style presets". Empty when no styles — zero footprint.
 - CLI auto-discovers styles at startup; `buildEditorSystemPrompt` accepts `styles?` for library consumers.
 

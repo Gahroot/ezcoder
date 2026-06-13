@@ -3,7 +3,7 @@
 // long sessions — tool results are capped at 50KB each but accumulate
 // across thousands of turns, and Ink/React state plus the SDK clients
 // share the same heap. 8GB gives ample headroom; --expose-gc is unused
-// today but matches gg-boss for consistency. NODE_OPTIONS overrides via
+// today but matches ez-boss for consistency. NODE_OPTIONS overrides via
 // Node's standard flag merge.
 
 // Catch stray abort-related promise rejections that escape the normal error
@@ -72,6 +72,7 @@ import { buildSystemPrompt } from "./system-prompt.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
 import { createTools } from "./tools/index.js";
 import { CheckpointStore } from "./core/checkpoint-store.js";
+import type { GoalMode } from "./core/runtime-mode.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import {
   createCompactedSessionCheckpoint,
@@ -364,6 +365,7 @@ function main(): void {
     cwd,
     thinkingLevel,
     idealReviewEnabled: saved.idealReviewEnabled,
+    autoApprovePlans: saved.autoApprovePlans,
     lspDiagnostics: saved.lspDiagnostics,
     continueRecent,
     resumeSessionPath: values.resume,
@@ -388,6 +390,7 @@ async function runInkTUI(opts: {
   theme?: "auto" | ThemeName;
   initialOverlay?: "pixel";
   idealReviewEnabled?: boolean;
+  autoApprovePlans?: boolean;
   lspDiagnostics?: boolean;
 }): Promise<void> {
   requireInteractiveTTY();
@@ -510,8 +513,9 @@ async function runInkTUI(opts: {
 
   // Runtime mode refs — shared between tools and UI
   const planModeRef = { current: false };
+  const goalModeRef: { current: GoalMode } = { current: "off" };
   const planToolCallbacks: {
-    onEnterPlan?: (reason?: string) => void | Promise<void>;
+    onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
     onExitPlan?: (planPath: string) => Promise<string>;
   } = {};
 
@@ -527,6 +531,7 @@ async function runInkTUI(opts: {
     provider,
     model,
     planModeRef,
+    goalModeRef,
     onPreFileMutation,
     lspDiagnostics: opts.lspDiagnostics,
     onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
@@ -549,6 +554,7 @@ async function runInkTUI(opts: {
       provider,
       model,
       planModeRef,
+      goalModeRef,
       onPreFileMutation,
       lspDiagnostics: opts.lspDiagnostics,
       onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
@@ -573,6 +579,12 @@ async function runInkTUI(opts: {
     return initialMcpConnectPromise;
   };
 
+  // Kick the connect off eagerly so the kencode-search (and any other) MCP
+  // servers are booting during TUI mount instead of only after first paint.
+  // The App's effect awaits this same memoized promise and swaps in the tools
+  // + rebuilds the system prompt once it resolves. Errors are surfaced there.
+  void connectInitialMcpTools().catch(() => {});
+
   const systemPrompt = await buildSystemPrompt(
     cwd,
     skills,
@@ -581,6 +593,7 @@ async function runInkTUI(opts: {
     tools.map((tool) => tool.name),
     undefined,
     provider,
+    goalModeRef.current,
   );
 
   // Kill all background processes on exit (synchronous — catches all exit paths)
@@ -745,10 +758,12 @@ async function runInkTUI(opts: {
     mcpManager,
     authStorage,
     planModeRef,
+    goalModeRef,
     skills,
     checkpointStore: checkpointRef.current ?? undefined,
     initialOverlay: opts.initialOverlay,
     idealReviewEnabled: opts.idealReviewEnabled,
+    autoApprovePlans: opts.autoApprovePlans,
     rebuildToolsForCwd,
     rebuildReadTool,
     connectInitialMcpTools,
@@ -803,6 +818,7 @@ async function runSessions(): Promise<void> {
     cwd,
     thinkingLevel,
     idealReviewEnabled: saved2.idealReviewEnabled,
+    autoApprovePlans: saved2.autoApprovePlans,
     lspDiagnostics: saved2.lspDiagnostics,
     resumeSessionPath: selectedPath,
     theme: saved2.theme,
@@ -978,7 +994,8 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken = serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const botToken =
+    serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
   const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 

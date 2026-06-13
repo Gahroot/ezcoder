@@ -7,6 +7,7 @@ import { renderStylePacksSection } from "./core/style-packs/index.js";
 import { detectVerifyCommands, renderVerifySection } from "./core/verify-commands.js";
 import { extractPlanSteps } from "./utils/plan-steps.js";
 import type { Provider } from "@prestyj/ai";
+import type { GoalMode } from "./core/runtime-mode.js";
 
 const CONTEXT_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules", "CONVENTIONS.md"];
 const UNCACHED_MARKER = "<!-- uncached -->";
@@ -21,8 +22,26 @@ function productName(provider: Provider | undefined): string {
   return provider === "anthropic" ? "Claude Code" : "EZ Coder by Nolan Grout";
 }
 
-function renderIdentitySection(provider: Provider | undefined): string {
+function renderIdentitySection(provider: Provider | undefined, goalMode: GoalMode): string {
   const name = productName(provider);
+  if (goalMode === "planner") {
+    return (
+      `You are the Goal planner for ${name}, not setup, coordinator, or implementation worker. ` +
+      `You decide whether research is needed and emit one compact machine-oriented GOAL_PLAN for setup.`
+    );
+  }
+  if (goalMode === "setup") {
+    return (
+      `You are the Goal setup orchestrator for ${name}, not an implementation worker. ` +
+      `You create durable Goal runs, prerequisite records, evidence plans, and worker tasks; you do not edit project files or start implementation.`
+    );
+  }
+  if (goalMode === "coordinator") {
+    return (
+      `You are the durable Goal coordinator for ${name}, not an implementation worker. ` +
+      `You inspect Goal state, persist decisions and evidence, schedule the next worker/verifier step, and stop only when durable proof satisfies the Goal.`
+    );
+  }
   return (
     `You are ${name} — a coding agent that works directly in the user's codebase. ` +
     `You explore, understand, change, and verify code — completing tasks end-to-end ` +
@@ -67,10 +86,39 @@ function renderPlanModeSection(): string {
   );
 }
 
+function renderGoalPlannerSection(hasKencode: boolean): string {
+  const kencodeProbe = hasKencode ? "kencode reference/discover/searchCode, or " : "";
+  return (
+    `## Goal Planner Mode (ACTIVE)\n\n` +
+    `Protocol: classify uncertainty; if low, do no research; otherwise use only the smallest needed probes: read/grep/find/ls, \`source_path\`, \`web_search\`/\`web_fetch\`, ${kencodeProbe}cheap foreground non-mutating bash checks. Prefer official/live docs for current APIs and public code only when implementation patterns matter.\n\n` +
+    `Output exactly one \`GOAL_PLAN\` block and stop. Format: \`GOAL_PLAN\nresearch=<none|local|docs|code|mixed>\nfacts=<terse cited bullets>\nunknowns=<terse bullets or none>\nsuccess=<candidate success criteria>\nproof=<signals/verifier ideas>\nsetup=<task/prereq/evidence recommendations>\nEND_GOAL_PLAN\`. Keep it under 1800 chars, no narrative recap.\n\n` +
+    `Forbidden: \`edit\`, \`write\`, \`subagent\`, \`goals\`, background processes, verifier execution, and implementation/refactor/file generation.`
+  );
+}
+
+function renderGoalSetupSection(): string {
+  return (
+    `## Goal Setup Mode (ACTIVE)\n\n` +
+    `You are setting up a durable Goal run only. Ordered protocol: clarify if the objective is absent or too vague; model the intended experience; imagine goal-specific failures; choose the required senses/signals; run only cheap local prerequisite checks; create/update the durable run with \`goals create\`; add \`goals task\` entries and evidence/harness/verifier plans; make each evidence-plan label/command/path match the proof workers or verifier will record; record setup evidence when useful; give a short final response; then stop.\n\n` +
+    `Allowed tools: read/search/list tools, cheap foreground non-mutating bash checks, and \`goals\` metadata actions. Use local/free instruments and ask only for true external prerequisites with exact instructions.\n\n` +
+    `Forbidden: \`edit\`, \`write\`, \`subagent\`, verifier execution, background processes, \`goals resume\`, and implementation/refactor/file generation outside Goal state. Workers are the only actors that implement project changes.`
+  );
+}
+
+function renderGoalCoordinatorSection(): string {
+  return (
+    `## Goal Coordinator Mode (ACTIVE)\n\n` +
+    `You are coordinating synthetic Goal events, not implementing. Ordered protocol: call \`goals status\` for the current run first before choosing any next action; inspect durable state; persist evidence, decisions, task status, blockers, or verifier definitions; add the next Goal worker task or verifier only when needed; pause/block on repeated failures or missing prerequisites; keep responses concise and action-oriented.\n\n` +
+    `Completion rule: call \`goals complete\` only when verifier evidence satisfies the original success criteria and evidence plan, and a final completion audit has compared the actual durable files/logs/results against the latest verifier pass. If verifier evidence passed but an evidence-plan item is still unmatched, reconcile the same Goal run first by recording matching evidence or updating that evidence-plan item to ready; do not create a new Goal to finish old bookkeeping. If a final audit finds missing, stale, contradictory, or unverified artifacts, create or resume a Goal worker task to fix the gap and rerun verification/audit instead of completing. Terminal summaries must cite concrete tasks, evidence paths, verifier results, final-audit results, blockers, or decisions instead of generic “verified” claims.\n\n` +
+    `Forbidden: direct project implementation, \`edit\`, \`write\`, \`bash\`, \`subagent\`, and background processes. Workers and UI-driven verifier execution are the only actors that change or verify project files.`
+  );
+}
+
 async function renderApprovedPlanSection(
   approvedPlanPath: string | undefined,
+  goalMode: GoalMode,
 ): Promise<string | null> {
-  if (!approvedPlanPath) return null;
+  if (!approvedPlanPath || goalMode !== "off") return null;
   const planContent = await fs.readFile(approvedPlanPath, "utf-8").catch(() => null);
   if (planContent === null) return null;
   if (!planContent.trim()) return null;
@@ -92,13 +140,25 @@ async function renderApprovedPlanSection(
   );
 }
 
-function renderResearchSection(): string {
+function renderResearchSection(hasKencode: boolean): string {
+  // Only advertise the kencode public-code search tools when they actually
+  // connected. Otherwise the model is told to call tools that aren't in its
+  // toolMap and every attempt fails with "Unknown tool: mcp__kencode-search__*".
+  const publicCodeSentence = hasKencode
+    ? `For public code, use ReferenceSources for curated repos or DiscoverRepos for current/top repos, then verify exact snippets with SearchCode literal text/RE2 (not semantic); \`path\` is a literal path substring and \`repo\` only after broad/peek proof. `
+    : `For public code patterns, prefer official/live docs via \`web_search\`/\`web_fetch\`. `;
   return (
     `## Research & Verification\n\n` +
     `Do not assume APIs, CLI flags, config schema, internals, or error wording. Use \`source_path\` for installed deps and inspect with read/grep/find/ls; use \`web_search\` then \`web_fetch\` for authoritative docs. ` +
-    `For public code, use ReferenceSources for curated repos or DiscoverRepos for current/top repos, then verify exact snippets with SearchCode literal text/RE2 (not semantic); \`path\` is a literal path substring and \`repo\` only after broad/peek proof. ` +
+    publicCodeSentence +
+    `When driving a programmatic Goal run, model the intended experience, choose proportional local/free proof, and block only with exact user instructions for true external prerequisites. ` +
     `Run targeted checks when they are relevant to the change; read/fix failures; never report unrun or failing checks as passing.`
   );
+}
+
+/** Whether any kencode-search MCP tool is in the active tool set. */
+function hasKencodeSearch(toolNames: readonly string[]): boolean {
+  return toolNames.some((name) => name.startsWith("mcp__kencode-search__"));
 }
 
 function renderCodeQualitySection(): string {
@@ -183,19 +243,25 @@ export async function buildSystemPrompt(
   toolNames?: readonly string[],
   activeLanguages?: Set<LanguageId>,
   provider?: Provider,
+  goalMode: GoalMode = "off",
 ): Promise<string> {
+  const hasKencode = hasKencodeSearch(toolNames ?? DEFAULT_TOOL_NAMES);
+
   const sections: string[] = [
-    renderIdentitySection(provider),
+    renderIdentitySection(provider, goalMode),
     renderTalkSection(),
     renderWorkSection(),
   ];
 
-  if (planMode) sections.push(renderPlanModeSection());
+  if (planMode && goalMode === "off") sections.push(renderPlanModeSection());
+  if (goalMode === "planner") sections.push(renderGoalPlannerSection(hasKencode));
+  if (goalMode === "setup") sections.push(renderGoalSetupSection());
+  if (goalMode === "coordinator") sections.push(renderGoalCoordinatorSection());
 
-  const approvedPlanSection = await renderApprovedPlanSection(approvedPlanPath);
+  const approvedPlanSection = await renderApprovedPlanSection(approvedPlanPath, goalMode);
   if (approvedPlanSection) sections.push(approvedPlanSection);
 
-  sections.push(renderResearchSection(), renderCodeQualitySection());
+  sections.push(renderResearchSection(hasKencode), renderCodeQualitySection());
 
   const toolsSection = renderToolsSection(toolNames);
   if (toolsSection) sections.push(toolsSection);

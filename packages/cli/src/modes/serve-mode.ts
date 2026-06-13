@@ -743,7 +743,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     const displayPath =
       home && options.cwd.startsWith(home) ? "~" + options.cwd.slice(home.length) : options.cwd;
 
-    // GG logo with gradient (matches the interactive TUI banner)
+    // EZ logo with gradient (matches the interactive TUI banner)
     console.log();
     for (const row of renderLogoBlock([
       chalk.hex("#60a5fa").bold("EZ Coder") +

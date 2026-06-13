@@ -12,7 +12,7 @@ import type { BossOverlay } from "./boss-store.js";
 import { BOSS_SLASH_COMMANDS, canonicalName, parseSlash, buildHelpText } from "./slash-commands.js";
 import { projectColor } from "./colors.js";
 import { COLORS } from "./branding.js";
-import type { GGBoss } from "./orchestrator.js";
+import type { EzBoss } from "./orchestrator.js";
 import { VERSION } from "./branding.js";
 import { BossStreamingTurnView } from "./boss-transcript-rows.js";
 import { createBossTerminalHistoryPrinter } from "./boss-terminal-history.js";
@@ -25,7 +25,7 @@ import {
 } from "./auto-update.js";
 
 interface BossAppProps {
-  boss: GGBoss;
+  boss: EzBoss;
   terminalHistoryPrinter?: ReturnType<typeof createBossTerminalHistoryPrinter>;
   /**
    * Called from /clear. Wired in `renderBossApp` to ANSI-wipe the terminal,
@@ -480,7 +480,7 @@ function formatBossDuration(durationMs: number): string {
 // ── Renderer ───────────────────────────────────────────────
 
 export interface RenderBossAppOptions {
-  boss: GGBoss;
+  boss: EzBoss;
 }
 
 const INK_OPTIONS = {
@@ -524,7 +524,7 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   // the live area drifts after the next streaming response because Ink's
   // cursor math depends on terminal-state assumptions that ANSI clearing
   // breaks. The only RELIABLE reset is to teardown the React tree entirely
-  // and render a fresh Ink instance. State outside React (GGBoss class,
+  // and render a fresh Ink instance. State outside React (EzBoss class,
   // bossStore singleton) survives and the new tree picks it up correctly.
   const ref: { instance: ReturnType<typeof render> | null } = { instance: null };
   const resetUI = (reason: BossResetUiReason = "viewport"): void => {
@@ -593,7 +593,7 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   // Debounce is 250ms — slightly shorter than the hook's 300ms so resetUI
   // wins the race. When resetUI's unmount runs, the hook's pending
   // setTimeout is cleared by its own useEffect cleanup, so we don't
-  // double-fire. State outside React (GGBoss class, bossStore singleton,
+  // double-fire. State outside React (EzBoss class, bossStore singleton,
   // overlay) survives.
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
   let resizeListenerEnabled = false;

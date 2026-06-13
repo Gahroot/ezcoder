@@ -25,6 +25,8 @@ import { localOperations, type ToolOperations } from "./operations.js";
 import type { ReadTracker } from "./read-tracker.js";
 import type { AgentDefinition } from "../core/agents.js";
 import type { Skill } from "../core/skills.js";
+import type { GoalMode } from "../core/runtime-mode.js";
+import { createGoalsTool } from "./goals.js";
 
 export interface CreateToolsOptions {
   agents?: AgentDefinition[];
@@ -35,8 +37,14 @@ export interface CreateToolsOptions {
   operations?: ToolOperations;
   /** Ref for checking plan mode inside tool execute functions. */
   planModeRef?: { current: boolean };
-  /** Callback when the LLM enters plan mode. */
-  onEnterPlan?: (reason?: string) => void | Promise<void>;
+  /** Ref for checking Goal orchestration mode inside tool execute functions. */
+  goalModeRef?: { current: GoalMode };
+  /**
+   * Callback when the LLM enters plan mode. Returns false when the host declines
+   * plan mode (e.g. during an unattended task run), so the tool can tell the
+   * agent to implement directly instead of waiting for plan approval.
+   */
+  onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
   /** Callback when the LLM submits a plan for review. */
   onExitPlan?: (planPath: string) => Promise<string>;
   /** Callback after read tool successfully reads a text file. */
@@ -92,6 +100,13 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
   const processManager = new ProcessManager();
   const ops = opts?.operations ?? localOperations;
   const planModeRef = opts?.planModeRef;
+  const goalModeRef = opts?.goalModeRef;
+
+  // Enable native video returns from the read tool for any video-capable model
+  // (Kimi/Moonshot, Gemini, MiniMax), each with its own per-model byte cap that
+  // drives auto-compression. Non-video models get `undefined` — video falls back
+  // to the plain binary-file notice, never offered to models that can't watch it.
+  const videoByteLimit = opts?.model ? getVideoByteLimit(opts.model) : undefined;
 
   // LSP diagnostics only make sense against the local filesystem — remote
   // operations (SSH/Docker) would point local language servers at paths that
@@ -103,11 +118,6 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
         lspManager.diagnosticsAfterWrite(filePath, content)
     : undefined;
 
-  // Enable native video returns from the read tool for any video-capable model
-  // (Kimi/Moonshot, Gemini, MiniMax), each with its own per-model byte cap that
-  // drives auto-compression. Non-video models get `undefined` — video falls back
-  // to the plain binary-file notice, never offered to models that can't watch it.
-  const videoByteLimit = opts?.model ? getVideoByteLimit(opts.model) : undefined;
   const tools: AgentTool[] = [
     createReadTool(cwd, readFiles, ops, opts?.onFileRead, videoByteLimit),
     createWriteTool(
@@ -118,6 +128,7 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
       opts?.onFileMutated,
       opts?.onPreFileMutation,
       getDiagnostics,
+      goalModeRef,
     ),
     createEditTool(
       cwd,
@@ -127,8 +138,9 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
       opts?.onFileMutated,
       opts?.onPreFileMutation,
       getDiagnostics,
+      goalModeRef,
     ),
-    createBashTool(cwd, processManager, ops, planModeRef),
+    createBashTool(cwd, processManager, ops, planModeRef, goalModeRef),
     createFindTool(cwd),
     createGrepTool(cwd, ops),
     createLsTool(cwd, ops),
@@ -138,6 +150,7 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
     createTaskSendTool(processManager),
     createTaskStopTool(processManager),
     createTasksTool(cwd),
+    createGoalsTool(cwd, goalModeRef),
     createScreenshotTool(cwd),
   ];
 
@@ -155,6 +168,7 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
         opts.model,
         opts.getCacheKey,
         planModeRef,
+        goalModeRef,
       ),
     );
   }
@@ -195,6 +209,7 @@ export { createSkillTool } from "./skill.js";
 export { createScreenshotTool } from "./screenshot.js";
 export { createEnterPlanTool } from "./enter-plan.js";
 export { createExitPlanTool } from "./exit-plan.js";
+export { createGoalsTool } from "./goals.js";
 export { ProcessManager } from "../core/process-manager.js";
 export { LspManager } from "../core/lsp/manager.js";
 export { localOperations, type ToolOperations } from "./operations.js";
