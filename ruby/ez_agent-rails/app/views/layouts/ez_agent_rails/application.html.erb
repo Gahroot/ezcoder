@@ -767,46 +767,16 @@
           }
         };
 
-        var skeletonObserver = null;
-        var lucideObserver = null;
-
-        function initLucideIcons() {
-          if (typeof lucide !== "undefined") lucide.createIcons();
-        }
-
+        // Skeleton clear + icon render on each navigation. The live DOM observer
+        // that re-renders streamed content (markdown, icons, skeleton) lives in
+        // the single rAF-batched observer in the dynamic-content initializer
+        // below — keeping all per-mutation work in ONE place avoids the repeated
+        // whole-document icon rescans that made long streamed responses janky.
         window.ezAgentReady(function () {
-          // Skeleton removal: when streaming content arrives, drop skeleton state.
           document.querySelectorAll(".ez-agent-streaming-message").forEach(function (container) {
             if (container.children.length > 0) container.classList.remove("ez-agent-skeleton");
           });
-
-          if (skeletonObserver) skeletonObserver.disconnect();
-          skeletonObserver = new MutationObserver(function (mutations) {
-            for (var i = 0; i < mutations.length; i++) {
-              var target = mutations[i].target;
-              if (target.classList && target.classList.contains("ez-agent-streaming-message") && target.children.length > 0) {
-                target.classList.remove("ez-agent-skeleton");
-              }
-            }
-          });
-          skeletonObserver.observe(document.body, { childList: true, subtree: true });
-
-          // Lucide icons: render now and re-render as streamed nodes arrive.
-          initLucideIcons();
-          if (lucideObserver) lucideObserver.disconnect();
-          lucideObserver = new MutationObserver(function (mutations) {
-            for (var m = 0; m < mutations.length; m++) {
-              var nodes = mutations[m].addedNodes;
-              for (var n = 0; n < nodes.length; n++) {
-                var node = nodes[n];
-                if (node.nodeType !== 1) continue;
-                var hasIcons = (node.matches && node.matches("[data-lucide]"));
-                var children = node.querySelectorAll ? node.querySelectorAll("[data-lucide]") : [];
-                if (hasIcons || children.length) initLucideIcons();
-              }
-            }
-          });
-          lucideObserver.observe(document.body, { childList: true, subtree: true });
+          if (typeof lucide !== "undefined") lucide.createIcons();
         });
       })();
     </script>
@@ -817,7 +787,8 @@
     <script>
       (function () {
         var configured = false;
-        var mdObserver = null;
+        var ready = false;
+        var observer = null;
 
         function configureMarked() {
           if (configured) return;
@@ -851,33 +822,83 @@
           el.dataset.ezMdRendered = "1";
         }
 
-        function renderAll(root) {
-          var els = (root || document).querySelectorAll(".ez-agent-md[data-markdown-text]");
-          for (var i = 0; i < els.length; i++) renderMarkdown(els[i]);
+        // ── Single rAF-batched DOM observer ───────────────
+        // Turbo streams one node per streamed token. Doing markdown parsing, a
+        // full lucide.createIcons() rescan, and skeleton checks synchronously on
+        // every append is what made long responses janky (and caused repeated
+        // whole-document icon rescans during multi-tool runs). Instead we record
+        // what changed and flush at most once per animation frame: markdown only
+        // for newly-added nodes, ONE icon pass only when a placeholder actually
+        // appeared, and one skeleton check.
+        var mdQueue = [];
+        var needLucide = false;
+        var needSkeleton = false;
+        var scheduled = false;
+
+        function schedule() {
+          if (scheduled) return;
+          scheduled = true;
+          (window.requestAnimationFrame || function (f) { return setTimeout(f, 16); })(flush);
+        }
+
+        function flush() {
+          scheduled = false;
+          if (needSkeleton) {
+            needSkeleton = false;
+            document.querySelectorAll(".ez-agent-streaming-message").forEach(function (c) {
+              if (c.children.length > 0) c.classList.remove("ez-agent-skeleton");
+            });
+          }
+          if (ready && mdQueue.length) {
+            var q = mdQueue; mdQueue = [];
+            for (var i = 0; i < q.length; i++) renderMarkdown(q[i]);
+          }
+          if (needLucide) {
+            needLucide = false;
+            if (typeof lucide !== "undefined") lucide.createIcons();
+          }
+        }
+
+        function scan(node) {
+          if (node.nodeType !== 1) return;
+          if (node.matches && node.matches(".ez-agent-md[data-markdown-text]")) mdQueue.push(node);
+          if (node.querySelectorAll) {
+            var md = node.querySelectorAll(".ez-agent-md[data-markdown-text]");
+            for (var i = 0; i < md.length; i++) mdQueue.push(md[i]);
+          }
+          if ((node.matches && node.matches("[data-lucide]")) ||
+              (node.querySelector && node.querySelector("[data-lucide]"))) {
+            needLucide = true;
+          }
+        }
+
+        function observe() {
+          if (observer) return; // one observer for the page lifetime (document.body survives Turbo swaps)
+          observer = new MutationObserver(function (mutations) {
+            for (var m = 0; m < mutations.length; m++) {
+              var t = mutations[m].target;
+              if (t && t.classList && t.classList.contains("ez-agent-streaming-message") && t.children.length > 0) {
+                needSkeleton = true;
+              }
+              var nodes = mutations[m].addedNodes;
+              for (var n = 0; n < nodes.length; n++) scan(nodes[n]);
+            }
+            schedule();
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
         }
 
         function start() {
-          // marked + highlight.js load via deferred CDN <script>; poll until ready.
+          observe();
+          // marked + highlight.js load via deferred CDN <script>; poll until ready,
+          // then render whatever is already on the page for this navigation.
           if (typeof marked === "undefined" || typeof hljs === "undefined") {
             return setTimeout(start, 50);
           }
           configureMarked();
-          renderAll();
-
-          if (mdObserver) mdObserver.disconnect();
-          mdObserver = new MutationObserver(function (mutations) {
-            for (var m = 0; m < mutations.length; m++) {
-              var nodes = mutations[m].addedNodes;
-              for (var n = 0; n < nodes.length; n++) {
-                var node = nodes[n];
-                if (node.nodeType !== 1) continue;
-                if (node.matches && node.matches(".ez-agent-md[data-markdown-text]")) renderMarkdown(node);
-                var children = node.querySelectorAll ? node.querySelectorAll(".ez-agent-md[data-markdown-text]") : [];
-                for (var c = 0; c < children.length; c++) renderMarkdown(children[c]);
-              }
-            }
-          });
-          mdObserver.observe(document.body, { childList: true, subtree: true });
+          ready = true;
+          var els = document.querySelectorAll(".ez-agent-md[data-markdown-text]");
+          for (var i = 0; i < els.length; i++) renderMarkdown(els[i]);
         }
 
         window.ezAgentReady(start);

@@ -24,10 +24,22 @@ module EZAgentRails
   class Broadcaster
     PARTIAL_ROOT = "ez_agent_rails/runs"
 
+    # Coalesce streamed text/thinking deltas before broadcasting. The loop yields
+    # one delta per model token; rendering the _text_delta partial and pushing a
+    # Turbo Stream frame for every token floods Action Cable and the browser. We
+    # buffer deltas on the (single, synchronous) job thread and flush at most one
+    # frame per FLUSH_INTERVAL_MS, or once FLUSH_BYTES have accumulated, or
+    # whenever a non-text event must render (so order is always preserved).
+    FLUSH_BYTES = 80
+    FLUSH_INTERVAL_MS = 60
+
     # @param run [EZAgentRails::Run]
     def initialize(run)
       @run = run
       @tool_names = {}
+      @delta_buffer = +""
+      @delta_kind = nil
+      @last_flush_ms = nil
     end
 
     # Fan one event out to both transports. Unknown event types still get the
@@ -85,6 +97,9 @@ module EZAgentRails
     #
     # @return [void]
     def run_aborted
+      # Stop unwinds the loop outside the event stream, so emit any buffered text
+      # before the stopped status replaces the run card.
+      flush_deltas
       status(:aborted, "Run stopped.")
       nil
     end
@@ -144,13 +159,19 @@ module EZAgentRails
       case event.type
       when :text_delta     then append_text(event.text, :text_delta)
       when :thinking_delta then append_text(event.text, :thinking_delta)
-      when :tool_call_start then tool_call_start(event)
-      when :tool_call_end   then tool_call_end(event)
-      when :retry           then status(:retry, retry_message(event))
-      when :error           then status(:error, EventPayload.error_message(event.error))
-      when :agent_done
-        streaming_done
-        remove_run_card
+      else
+        # Any non-text event renders into the thread; flush buffered deltas first
+        # so streamed text never appears after the tool call / status it preceded.
+        flush_deltas
+        case event.type
+        when :tool_call_start then tool_call_start(event)
+        when :tool_call_end   then tool_call_end(event)
+        when :retry           then status(:retry, retry_message(event))
+        when :error           then status(:error, EventPayload.error_message(event.error))
+        when :agent_done
+          streaming_done
+          remove_run_card
+        end
       end
     end
 
@@ -164,6 +185,29 @@ module EZAgentRails
     def append_text(text, kind)
       return if text.nil? || text.empty?
 
+      # A kind switch (text ↔ thinking) renders a differently-styled span, so the
+      # pending run of the previous kind must flush before the new kind buffers.
+      flush_deltas if @delta_kind && @delta_kind != kind
+      @delta_kind = kind
+      @delta_buffer << text
+      @last_flush_ms ||= monotonic_ms
+
+      if @delta_buffer.bytesize >= FLUSH_BYTES || (monotonic_ms - @last_flush_ms) >= FLUSH_INTERVAL_MS
+        flush_deltas
+      end
+    end
+
+    # Broadcast the buffered deltas as a single appended span and reset the buffer.
+    # Safe to call when empty (no-op). Called on size/time thresholds, on a kind
+    # switch, and before any non-text event renders.
+    def flush_deltas
+      return if @delta_buffer.empty?
+
+      text = @delta_buffer
+      kind = @delta_kind
+      @delta_buffer = +""
+      @last_flush_ms = monotonic_ms
+
       conversation = @run.conversation
       Turbo::StreamsChannel.broadcast_append_to(
         conversation,
@@ -171,6 +215,10 @@ module EZAgentRails
         partial: "#{PARTIAL_ROOT}/text_delta",
         locals: { text: text, kind: kind }
       )
+    end
+
+    def monotonic_ms
+      (Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).to_i
     end
 
     def tool_call_start(event)
