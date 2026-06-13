@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 4.10.1
+
+### Patch Changes
+
+- Fix `ggcoder continue` resuming the newest-created session instead of the one you last spoke in (now sorts by last-message activity), and fix inline-image scrollback corruption (base64 spew, duplicated lines, and misaligned images) by bailing the shrink-backfill text repaint when the transcript contains an image.
+  - @kenkaiiii/gg-ai@4.10.1
+  - @kenkaiiii/gg-agent@4.10.1
+  - @kenkaiiii/gg-core@4.10.1
+
 ## 4.10.0
 
 ### Minor Changes
