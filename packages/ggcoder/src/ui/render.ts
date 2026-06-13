@@ -9,6 +9,7 @@ import type { AuthStorage } from "../core/auth-storage.js";
 import type { Skill } from "../core/skills.js";
 import type { CheckpointStore } from "../core/checkpoint-store.js";
 import { App, type CompletedItem, type DoneStatus } from "./App.js";
+import { itemHasImagePreviews } from "./app-items.js";
 import { createTerminalHistoryPrinter } from "./terminal-history.js";
 import type { PlanStep } from "../utils/plan-steps.js";
 import { ThemeContext, SetThemeContext, loadTheme, type ThemeName } from "./theme/theme.js";
@@ -473,6 +474,14 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
   const buildShrinkBackfill = (needRows: number): string | undefined => {
     const history = sessionStore.history;
     if (needRows <= 0 || !history || history.length === 0) return undefined;
+    // Inline images can't be faithfully reconstructed by this text-only repaint:
+    // a graphics escape carries its base64 payload with zero newlines but many
+    // visual rows, so wrapAnsi hard-wraps the payload into literal base64 text
+    // and the rebuilt row count never matches the screen. Bailing here makes ink
+    // fall back to its non-erasing cursor-up pad consume, which reclaims the gap
+    // WITHOUT an eraseDown repaint — leaving the already-drawn image untouched on
+    // screen instead of wiping it or shoving the transcript out of alignment.
+    if (history.some(itemHasImagePreviews)) return undefined;
     let collected = "";
     try {
       createTerminalHistoryPrinter().print(
