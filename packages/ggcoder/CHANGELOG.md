@@ -1,5 +1,24 @@
 # @kenkaiiii/ggcoder
 
+## 4.9.0
+
+### Minor Changes
+
+- Add LSP inline diagnostics to the edit/write tools. Successful edits now append
+  compiler-grade error diagnostics (`Diagnostics in src/a.ts (informational …):
+L42:7 Type 'string' is not assignable …`) so the model self-corrects type errors
+  in the same turn. `typescript-language-server` + `typescript` ship bundled, so
+  TS/JS diagnostics work for every user with zero setup; Python/Go/Rust/C servers
+  are auto-detected from the project or PATH when present. Servers spawn lazily,
+  are time-budgeted, and degrade silently — output is byte-identical when no server
+  is available. Opt out with `"lspDiagnostics": false` in `~/.gg/settings.json`.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@4.9.0
+- @kenkaiiii/gg-agent@4.9.0
+- @kenkaiiii/gg-core@4.9.0
+
 ## 4.8.7
 
 ### Patch Changes
