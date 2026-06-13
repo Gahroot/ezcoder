@@ -28,10 +28,16 @@ const THINKING_HEADER_ROWS = 2;
 // Per-block decoration not captured by the wrapped body: the top-spacing margin
 // plus the response prefix line allowance.
 const BLOCK_OVERHEAD_ROWS = 1;
-// Conservative allowance for non-text live rows (tool headers, step markers,
-// info/error lines). These are normally flushed to scrollback quickly, but
-// estimate generously while they linger so the clamp engages early.
-const NON_TEXT_ROW_ESTIMATE = 3;
+// Allowance for non-text live rows (tool headers, step markers, info/error
+// lines). Most render a single visible row and are flushed to scrollback
+// quickly. This estimate is intentionally NOT biased high: an over-count fixes
+// the live area to the full budget while the real content is shorter, which
+// bottom-anchors that content and leaves a block of blank rows above it (most
+// visible when slash-command info rows linger before they flush). An
+// under-count is harmless — the patched Ink renderer's clipFrameToTerminalHeight
+// caps the whole frame at rows-2 (below the jump-to-top threshold) using the
+// REAL rendered height, so it is the authoritative overflow backstop.
+const NON_TEXT_ROW_ESTIMATE = 1;
 
 /**
  * Estimate the total rendered height (in terminal rows) of the live area:
