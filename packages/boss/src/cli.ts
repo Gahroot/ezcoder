@@ -6,9 +6,10 @@
 // shebang flags with the env var.
 import path from "node:path";
 import chalk from "chalk";
-import type { Provider } from "@prestyj/ai";
-import { setStreamDiagnostic } from "@prestyj/agent";
-import { EzBoss } from "./orchestrator.js";
+import type { Provider } from "@kenkaiiii/gg-ai";
+import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
+import { AuthStorage, getDefaultModel, getModel } from "@kenkaiiii/gg-core";
+import { GGBoss } from "./orchestrator.js";
 import type { ProjectSpec } from "./types.js";
 import { loadLinks } from "./links.js";
 import { runLinkCommand } from "./link-command.js";
@@ -82,32 +83,32 @@ function printHelpAndExit(): never {
   const c = (color: string, text: string): string => chalk.hex(color)(text);
   process.stdout.write(
     "\n" +
-      c(COLORS.primary, "EZ Boss") +
-      c(COLORS.textDim, " — orchestrator that drives multiple ezcoder workers from one chat.\n\n") +
+      c(COLORS.primary, "GG Boss") +
+      c(COLORS.textDim, " — orchestrator that drives multiple ggcoder workers from one chat.\n\n") +
       c(COLORS.text, "Usage\n") +
       "  " +
-      c(COLORS.accent, "ezboss") +
+      c(COLORS.accent, "ggboss") +
       c(
         COLORS.textDim,
         "                              start orchestrator using linked projects\n",
       ) +
       "  " +
-      c(COLORS.accent, "ezboss link") +
+      c(COLORS.accent, "ggboss link") +
       c(COLORS.textDim, "                         pick which projects to link (interactive)\n") +
       "  " +
-      c(COLORS.accent, "ezboss telegram") +
+      c(COLORS.accent, "ggboss telegram") +
       c(COLORS.textDim, "                     configure Telegram bot integration\n") +
       "  " +
-      c(COLORS.accent, "ezboss serve") +
+      c(COLORS.accent, "ggboss serve") +
       c(COLORS.textDim, "                        run the boss over Telegram (no TUI)\n") +
       "  " +
-      c(COLORS.accent, "ezboss continue") +
+      c(COLORS.accent, "ggboss continue") +
       c(COLORS.textDim, "                     resume the most recent boss session\n") +
       "  " +
-      c(COLORS.accent, "ezboss --resume <id>") +
+      c(COLORS.accent, "ggboss --resume <id>") +
       c(COLORS.textDim, "                resume a specific boss session\n") +
       "  " +
-      c(COLORS.accent, "ezboss --project <spec> [...]") +
+      c(COLORS.accent, "ggboss --project <spec> [...]") +
       c(COLORS.textDim, "       override links with explicit project(s)\n\n") +
       c(COLORS.text, "Options\n") +
       "  " +
@@ -129,12 +130,12 @@ function printHelpAndExit(): never {
   process.exit(0);
 }
 
-// ── `ezboss serve` ────────────────────────────────────────────
+// ── `ggboss serve` ────────────────────────────────────────────
 //
 // Runs the orchestrator headless and bridges it to Telegram. Resolves the bot
-// token + user ID from CLI flags > env > saved config (`ezboss telegram`).
+// token + user ID from CLI flags > env > saved config (`ggboss telegram`).
 // Boss/worker provider+model resolution mirrors interactive mode so the user
-// doesn't have to repeat themselves between `ezboss` and `ezboss serve`.
+// doesn't have to repeat themselves between `ggboss` and `ggboss serve`.
 async function runServeSubcommand(argv: string[]): Promise<void> {
   let cliBotToken: string | undefined;
   let cliUserId: string | undefined;
@@ -148,13 +149,13 @@ async function runServeSubcommand(argv: string[]): Promise<void> {
     else if (a === "--worker-model") cliWorkerModel = argv[++i];
     else if (a === "--help" || a === "-h") {
       process.stdout.write(
-        "\nezboss serve — drive the boss from Telegram\n\n" +
+        "\nggboss serve — drive the boss from Telegram\n\n" +
           "Options\n" +
-          "  --bot-token <token>   Telegram bot token (or env EZBOSS_TELEGRAM_BOT_TOKEN)\n" +
-          "  --user-id <id>        Allowed Telegram user ID (or env EZBOSS_TELEGRAM_USER_ID)\n" +
+          "  --bot-token <token>   Telegram bot token (or env GG_BOSS_TELEGRAM_BOT_TOKEN)\n" +
+          "  --user-id <id>        Allowed Telegram user ID (or env GG_BOSS_TELEGRAM_USER_ID)\n" +
           "  --boss-model <id>     Override boss model\n" +
           "  --worker-model <id>   Override worker model\n\n" +
-          "Run `ezboss telegram` first to save credentials interactively.\n\n",
+          "Run `ggboss telegram` first to save credentials interactively.\n\n",
       );
       process.exit(0);
     } else {
@@ -163,27 +164,29 @@ async function runServeSubcommand(argv: string[]): Promise<void> {
   }
 
   const saved = await loadBossTelegramConfig();
-  const botToken = cliBotToken ?? process.env.EZBOSS_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
-  const userIdStr = cliUserId ?? process.env.EZBOSS_TELEGRAM_USER_ID;
+  const botToken = cliBotToken ?? process.env.GG_BOSS_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const userIdStr = cliUserId ?? process.env.GG_BOSS_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
   if (!botToken || !userId || isNaN(userId)) {
     process.stderr.write(
       chalk.hex(COLORS.error)("Telegram not configured.\n\n") +
         "Run " +
-        chalk.hex(COLORS.primary).bold("ezboss telegram") +
+        chalk.hex(COLORS.primary).bold("ggboss telegram") +
         " to set up your bot token and user ID.\n\n" +
         chalk.hex(COLORS.textDim)("Or provide manually:\n") +
-        chalk.hex(COLORS.textDim)("  ezboss serve --bot-token TOKEN --user-id ID\n"),
+        chalk.hex(COLORS.textDim)("  ggboss serve --bot-token TOKEN --user-id ID\n"),
     );
     process.exit(1);
   }
 
   const settings = await loadSettings();
-  const bossProvider = settings.bossProvider ?? "anthropic";
-  const bossModel = cliBossModel ?? settings.bossModel ?? "claude-opus-4-8";
-  const workerProvider = settings.workerProvider ?? "anthropic";
-  const workerModel = cliWorkerModel ?? settings.workerModel ?? "claude-sonnet-4-6";
+  const { bossProvider, bossModel, workerProvider, workerModel } = await resolveBossAuth({
+    bossProvider: settings.bossProvider ?? "anthropic",
+    bossModel: cliBossModel ?? settings.bossModel ?? "claude-opus-4-8",
+    workerProvider: settings.workerProvider ?? "anthropic",
+    workerModel: cliWorkerModel ?? settings.workerModel ?? "claude-sonnet-4-6",
+  });
 
   await runBossServeMode({
     bossProvider,
@@ -195,6 +198,77 @@ async function runServeSubcommand(argv: string[]): Promise<void> {
   });
 }
 
+const ALL_PROVIDERS: Provider[] = [
+  "anthropic",
+  "openai",
+  "xiaomi",
+  "gemini",
+  "glm",
+  "moonshot",
+  "minimax",
+  "deepseek",
+  "openrouter",
+];
+
+/** Boss wants the strongest model; on anthropic that's Opus, else the provider default. */
+function bossDefaultModel(provider: Provider): string {
+  return provider === "anthropic" ? "claude-opus-4-8" : getDefaultModel(provider).id;
+}
+
+/**
+ * Resolve boss + worker provider/model against the providers the user is
+ * actually logged in with. Mirrors ggcoder's `resolveActiveProvider`: never
+ * fail just because the *saved* provider isn't authenticated — fall back to a
+ * logged-in one for this launch. Settings on disk are left untouched, so a
+ * later re-login to the preferred provider restores the preference. Only
+ * throws when NOTHING is logged in.
+ */
+async function resolveBossAuth(input: {
+  bossProvider: Provider;
+  bossModel: string;
+  workerProvider: Provider;
+  workerModel: string;
+}): Promise<{
+  bossProvider: Provider;
+  bossModel: string;
+  workerProvider: Provider;
+  workerModel: string;
+  fellBack: boolean;
+}> {
+  const auth = new AuthStorage();
+  await auth.load();
+  const stored = await auth.listProviders();
+  const loggedIn = ALL_PROVIDERS.filter((p) => stored.includes(p));
+
+  if (loggedIn.length === 0) {
+    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
+  }
+
+  const fallback = loggedIn[0]!;
+  const resolve = (
+    preferredProvider: Provider,
+    preferredModel: string,
+    defaultFor: (p: Provider) => string,
+  ): { provider: Provider; model: string } => {
+    const provider = loggedIn.includes(preferredProvider) ? preferredProvider : fallback;
+    // Keep the saved model only if it belongs to the resolved provider.
+    const modelFits = getModel(preferredModel)?.provider === provider;
+    return { provider, model: modelFits ? preferredModel : defaultFor(provider) };
+  };
+
+  const boss = resolve(input.bossProvider, input.bossModel, bossDefaultModel);
+  const worker = resolve(input.workerProvider, input.workerModel, (p) => getDefaultModel(p).id);
+  const fellBack = boss.provider !== input.bossProvider || worker.provider !== input.workerProvider;
+
+  return {
+    bossProvider: boss.provider,
+    bossModel: boss.model,
+    workerProvider: worker.provider,
+    workerModel: worker.model,
+    fellBack,
+  };
+}
+
 async function runOrchestrator(args: CliArgs): Promise<void> {
   if (args.projects.length === 0) {
     const links = await loadLinks();
@@ -203,7 +277,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
         "\n" +
           chalk.hex(COLORS.warning)("No linked projects.") +
           chalk.hex(COLORS.textDim)(" Run ") +
-          chalk.hex(COLORS.accent)("ezboss link") +
+          chalk.hex(COLORS.accent)("ggboss link") +
           chalk.hex(COLORS.textDim)(" to choose, or pass ") +
           chalk.hex(COLORS.accent)("--project") +
           chalk.hex(COLORS.textDim)(".\n\n"),
@@ -227,12 +301,35 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   // Settings persist user choices made via /model boss / /model workers across
   // restarts so the user doesn't have to re-pick every session.
   const settings = await loadSettings();
-  const finalBossProvider = args.bossProvider ?? settings.bossProvider ?? "anthropic";
-  const finalBossModel = args.bossModel ?? settings.bossModel ?? "claude-opus-4-8";
-  const finalWorkerProvider = args.workerProvider ?? settings.workerProvider ?? "anthropic";
-  const finalWorkerModel = args.workerModel ?? settings.workerModel ?? "claude-sonnet-4-6";
+  const preferredBossProvider = args.bossProvider ?? settings.bossProvider ?? "anthropic";
+  const preferredBossModel = args.bossModel ?? settings.bossModel ?? "claude-opus-4-8";
+  const preferredWorkerProvider = args.workerProvider ?? settings.workerProvider ?? "anthropic";
+  const preferredWorkerModel = args.workerModel ?? settings.workerModel ?? "claude-sonnet-4-6";
 
-  // Open ~/.ezcoder/boss/debug.log in append mode and stamp a startup line so
+  // Fall back to a logged-in provider instead of crashing when the saved
+  // boss/worker provider isn't authenticated (matches ggcoder startup).
+  const {
+    bossProvider: finalBossProvider,
+    bossModel: finalBossModel,
+    workerProvider: finalWorkerProvider,
+    workerModel: finalWorkerModel,
+    fellBack,
+  } = await resolveBossAuth({
+    bossProvider: preferredBossProvider,
+    bossModel: preferredBossModel,
+    workerProvider: preferredWorkerProvider,
+    workerModel: preferredWorkerModel,
+  });
+  if (fellBack) {
+    log("INFO", "cli", "provider fallback", {
+      preferredBoss: preferredBossProvider,
+      boss: finalBossProvider,
+      preferredWorker: preferredWorkerProvider,
+      worker: finalWorkerProvider,
+    });
+  }
+
+  // Open ~/.gg/boss/debug.log in append mode and stamp a startup line so
   // future tail/grep diagnoses have the full session context up front.
   initLogger({
     version: VERSION,
@@ -257,7 +354,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   const updateMessage = checkAndAutoUpdate(VERSION);
   if (updateMessage) log("INFO", "auto_update", updateMessage);
 
-  const boss = new EzBoss({
+  const boss = new GGBoss({
     bossProvider: finalBossProvider,
     bossModel: finalBossModel,
     bossThinkingLevel: settings.bossThinkingLevel,
@@ -286,7 +383,7 @@ async function runOrchestrator(args: CliArgs): Promise<void> {
   await ink.waitUntilExit();
   await boss.dispose();
   // Kill any in-flight radio stream before exiting — otherwise the detached
-  // mpv/ffplay child keeps playing after the user closed ez-boss.
+  // mpv/ffplay child keeps playing after the user closed gg-boss.
   stopRadio();
   await runPromise.catch(() => {});
   process.exit(0);
@@ -310,7 +407,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // `ezboss continue` is a subcommand alias for "resume the most recent session".
+  // `ggboss continue` is a subcommand alias for "resume the most recent session".
   // Accept any flags after `continue` as normal flag args.
   const isContinue = argv[0] === "continue";
   const args = parseArgs(isContinue ? argv.slice(1) : argv);
@@ -321,7 +418,7 @@ async function main(): Promise<void> {
 // Process-level error guards. With ~6 workers sharing the same Node process,
 // any uncaught throw or unhandled rejection would otherwise take the whole
 // orchestrator down — losing every worker's in-flight task. We log the
-// failure to ~/.ezcoder/boss/debug.log (already initialized by this point) and
+// failure to ~/.gg/boss/debug.log (already initialized by this point) and
 // keep running. Truly unrecoverable conditions (OOM, native segfault) still
 // kill the process; nothing JS-side can guard against those.
 process.on("uncaughtException", (err) => {
@@ -342,6 +439,6 @@ process.on("unhandledRejection", (reason) => {
 
 main().catch((err) => {
   const message = err instanceof Error ? err.message : String(err);
-  process.stderr.write(chalk.hex(COLORS.error)(`\nez-boss failed: ${message}\n`));
+  process.stderr.write(chalk.hex(COLORS.error)(`\ngg-boss failed: ${message}\n`));
   process.exit(1);
 });

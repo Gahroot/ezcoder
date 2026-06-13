@@ -1,14 +1,15 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import chalk from "chalk";
-import { getAppPaths, MODELS, type ModelInfo } from "@prestyj/cli";
-import type { Provider, ThinkingLevel } from "@prestyj/ai";
-import { setStreamDiagnostic } from "@prestyj/agent";
-import { EzBoss } from "./orchestrator.js";
+import { getAppPaths } from "@kenkaiiii/ggcoder";
+import { MODELS, type ModelInfo } from "@kenkaiiii/gg-core";
+import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
+import { GGBoss } from "./orchestrator.js";
 import { loadLinks } from "./links.js";
 import { tasksStore } from "./tasks-store.js";
 import { saveSettings } from "./settings.js";
-import { transcribeVoice, isModelLoaded, setProgressCallback } from "./voice-transcriber.js";
+import { transcribeVoice, isModelLoaded, setProgressCallback } from "@kenkaiiii/gg-core";
 import {
   subscribeToBossStore,
   getBossState,
@@ -16,17 +17,17 @@ import {
   type HistoryItem,
   type BossUiState,
 } from "./boss-store.js";
-import { TelegramBot, type TelegramMessage, type TelegramVoiceMessage } from "./telegram.js";
+import { TelegramBot, type TelegramMessage, type TelegramVoiceMessage } from "@kenkaiiii/gg-core";
 import { initLogger, log, closeLogger } from "./logger.js";
 import { VERSION, BRAND, AUTHOR, LOGO_LINES, LOGO_GAP, GRADIENT, COLORS } from "./branding.js";
 
 /**
- * `ezboss serve` — drive the orchestrator from Telegram.
+ * `ggboss serve` — drive the orchestrator from Telegram.
  *
- * Mirrors `ezcoder serve` shape (long-poll bot, allowedUserId gate) but instead
- * of one-AgentSession-per-chat, there's a single EzBoss instance. The user's
- * linked projects (from `~/.ezcoder/boss/links.json`) are spun up as workers at
- * boot, just like `ezboss` interactive mode.
+ * Mirrors `ggcoder serve` shape (long-poll bot, allowedUserId gate) but instead
+ * of one-AgentSession-per-chat, there's a single GGBoss instance. The user's
+ * linked projects (from `~/.gg/boss/links.json`) are spun up as workers at
+ * boot, just like `ggboss` interactive mode.
  *
  * Bridge model:
  *  - Telegram text → boss.enqueueUserMessage(text). The boss's run loop picks
@@ -178,14 +179,14 @@ export async function runBossServeMode(options: BossServeOptions): Promise<void>
     log("INFO", "stream", phase, data as Record<string, unknown>);
   });
 
-  // Load linked projects — same path as interactive `ezboss`. Without links
+  // Load linked projects — same path as interactive `ggboss`. Without links
   // the boss has nothing to manage, so bail with a clear error.
   const links = await loadLinks();
   if (links.projects.length === 0) {
     console.error(
       chalk.hex(COLORS.error)("No linked projects.\n") +
         chalk.hex(COLORS.textDim)("Run ") +
-        chalk.hex(COLORS.accent)("ezboss link") +
+        chalk.hex(COLORS.accent)("ggboss link") +
         chalk.hex(COLORS.textDim)(" first to choose which projects the boss should manage."),
     );
     process.exit(1);
@@ -199,7 +200,7 @@ export async function runBossServeMode(options: BossServeOptions): Promise<void>
     allowedUserId: options.telegram.userId,
   });
 
-  const boss = new EzBoss({
+  const boss = new GGBoss({
     bossProvider: options.bossProvider,
     bossModel: options.bossModel,
     bossThinkingLevel: options.bossThinkingLevel,
@@ -498,7 +499,7 @@ export async function runBossServeMode(options: BossServeOptions): Promise<void>
 
   // ── Voice notes ──────────────────────────────────────────────
   //
-  // Mirrors `ezcoder serve`: download the OGG Opus blob from Telegram, decode
+  // Mirrors `ggcoder serve`: download the OGG Opus blob from Telegram, decode
   // + transcribe locally with Whisper-tiny.en, then route the transcribed text
   // through the same scope-prefix path as a typed message. Whisper model is
   // ~75MB and downloaded on first use; we surface that as a one-time hint so
@@ -540,7 +541,7 @@ export async function runBossServeMode(options: BossServeOptions): Promise<void>
       log("ERROR", "voice", message);
       // Common failure: optional dep missing on user's install.
       const hint = /Cannot find module|Cannot resolve|MODULE_NOT_FOUND/.test(message)
-        ? "\n\nVoice transcription needs the optional `@huggingface/transformers` and `ogg-opus-decoder` packages. Reinstall with `npm i -g @prestyj/boss` and ensure optional deps installed."
+        ? "\n\nVoice transcription needs the optional `@huggingface/transformers` and `ogg-opus-decoder` packages. Reinstall with `npm i -g @kenkaiiii/gg-boss` and ensure optional deps installed."
         : "";
       await bot.send(chatId, `_Voice transcription failed: ${message}_${hint}`);
     }
@@ -589,7 +590,7 @@ export async function runBossServeMode(options: BossServeOptions): Promise<void>
 
 function buildTelegramHelpText(): string {
   return [
-    "*EZ Boss* — orchestrator over Telegram",
+    "*GG Boss* — orchestrator over Telegram",
     "",
     "*Commands*",
     "/scope (/s) — switch project focus (All / per-worker)",

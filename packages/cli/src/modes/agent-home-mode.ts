@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Provider, ThinkingLevel } from "@prestyj/ai";
+import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { AgentHomeClient, type AgentSession as AHSession } from "@kenkaiiii/agent-home-sdk";
 import { AgentSession } from "../core/agent-session.js";
-import { isAbortError } from "@prestyj/agent";
+import { isAbortError } from "@kenkaiiii/gg-agent";
 import chalk from "chalk";
 import { formatUserError } from "../utils/error-handler.js";
 import { log, closeLogger } from "../core/logger.js";
@@ -12,6 +12,7 @@ import { MODELS, getContextWindow } from "../core/model-registry.js";
 import { estimateConversationTokens } from "../core/compaction/token-estimator.js";
 import { PROMPT_COMMANDS } from "../core/prompt-commands.js";
 import { loadCustomCommands } from "../core/custom-commands.js";
+import { renderLogoBlock } from "../cli/shared.js";
 
 export const AGENT_HOME_RELAY_URL = "wss://agent-home-relay.buzzbeamaustralia.workers.dev/ws";
 
@@ -78,10 +79,10 @@ const HANDLED_COMMANDS = new Set([
 ]);
 
 /**
- * Agent Home mode: run ezcoder as an Agent Home agent.
+ * Agent Home mode: run ggcoder as an Agent Home agent.
  *
  * Connects to the Agent Home relay via WebSocket and bridges
- * messages between the iOS app and the ezcoder agent loop.
+ * messages between the iOS app and the ggcoder agent loop.
  * Each Agent Home session maps to its own AgentSession.
  */
 export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<void> {
@@ -96,8 +97,8 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     relayUrl: AGENT_HOME_RELAY_URL,
     token: options.agentHome.token,
     agent: {
-      id: "ezcoder",
-      name: "EZ Coder",
+      id: "ggcoder",
+      name: "GG Coder",
       description: `AI coding agent — ${options.model}`,
     },
   });
@@ -200,7 +201,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     const modelInfo = MODELS.find((m) => m.id === currentModel);
 
     let text = "";
-    text += `**EZ Coder**\n`;
+    text += `**GG Coder**\n`;
     text += `Project: **${path.basename(currentCwd)}** \u00b7 Model: **${modelInfo?.name ?? currentModel}**\n\n`;
 
     text += `**Commands**\n`;
@@ -506,7 +507,7 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     const state = await getOrCreateSession(targetSessionId);
 
     if (state.isProcessing) {
-      stream.error("EZ Coder is still processing a previous message. Please wait.");
+      stream.error("GG Coder is still processing a previous message. Please wait.");
       return;
     }
 
@@ -616,55 +617,23 @@ export async function runAgentHomeMode(options: AgentHomeModeOptions): Promise<v
     const displayPath =
       home && options.cwd.startsWith(home) ? "~" + options.cwd.slice(home.length) : options.cwd;
 
-    const LOGO = [
-      " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-      " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-      " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
-    ];
-    const GRADIENT = [
-      "#60a5fa",
-      "#6da1f9",
-      "#7a9df7",
-      "#8799f5",
-      "#9495f3",
-      "#a18ff1",
-      "#a78bfa",
-      "#a18ff1",
-      "#9495f3",
-      "#8799f5",
-      "#7a9df7",
-      "#6da1f9",
-    ];
-
-    function gradientText(text: string): string {
-      let colorIdx = 0;
-      return text
-        .split("")
-        .map((ch) => {
-          if (ch === " ") return ch;
-          const color = GRADIENT[colorIdx++ % GRADIENT.length]!;
-          return chalk.hex(color)(ch);
-        })
-        .join("");
-    }
-
-    const GAP = "   ";
     console.log();
-    console.log(
-      `  ${gradientText(LOGO[0]!)}${GAP}` +
-        chalk.hex("#60a5fa").bold("EZ Coder") +
+    for (const row of renderLogoBlock([
+      chalk.hex("#60a5fa").bold("GG Coder") +
         chalk.hex("#6b7280")(` v${options.version}`) +
         chalk.hex("#6b7280")(" \u00b7 By ") +
-        chalk.white.bold("Nolan Grout"),
-    );
-    console.log(`  ${gradientText(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")(modelName));
-    console.log(`  ${gradientText(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")(displayPath));
+        chalk.white.bold("Ken Kai"),
+      chalk.hex("#a78bfa")(modelName),
+      chalk.hex("#6b7280")(displayPath),
+    ])) {
+      console.log(row);
+    }
     console.log();
     console.log(
       chalk.hex("#6b7280")("  Mode      ") +
         chalk.hex("#a78bfa")("Agent Home") +
         chalk.hex("#6b7280")("  \u00b7  Agent ") +
-        chalk.white("EZ Coder"),
+        chalk.white("GG Coder"),
     );
     console.log();
     console.log(chalk.hex("#6b7280")("  Connecting to relay..."));

@@ -1,5 +1,6 @@
-import type { AgentTool } from "@prestyj/agent";
+import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { ProcessManager } from "../core/process-manager.js";
+import { LspManager } from "../core/lsp/manager.js";
 import { createReadTool } from "./read.js";
 import { getVideoByteLimit } from "../core/model-registry.js";
 import { createWriteTool } from "./write.js";
@@ -14,6 +15,7 @@ import { createWebSearchTool } from "./web-search.js";
 import { createSourcePathTool } from "./source-path.js";
 import { createTaskOutputTool } from "./task-output.js";
 import { createTaskStopTool } from "./task-stop.js";
+import { createTaskSendTool } from "./task-send.js";
 import { createTasksTool } from "./tasks.js";
 import { createSkillTool } from "./skill.js";
 import { createScreenshotTool } from "./screenshot.js";
@@ -23,8 +25,6 @@ import { localOperations, type ToolOperations } from "./operations.js";
 import type { ReadTracker } from "./read-tracker.js";
 import type { AgentDefinition } from "../core/agents.js";
 import type { Skill } from "../core/skills.js";
-import type { GoalMode } from "../core/runtime-mode.js";
-import { createGoalsTool } from "./goals.js";
 
 export interface CreateToolsOptions {
   agents?: AgentDefinition[];
@@ -35,14 +35,8 @@ export interface CreateToolsOptions {
   operations?: ToolOperations;
   /** Ref for checking plan mode inside tool execute functions. */
   planModeRef?: { current: boolean };
-  /** Ref for checking Goal orchestration mode inside tool execute functions. */
-  goalModeRef?: { current: GoalMode };
-  /**
-   * Callback when the LLM enters plan mode. Returns false when the host declines
-   * plan mode (e.g. during an unattended task run), so the tool can tell the
-   * agent to implement directly instead of waiting for plan approval.
-   */
-  onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
+  /** Callback when the LLM enters plan mode. */
+  onEnterPlan?: (reason?: string) => void | Promise<void>;
   /** Callback when the LLM submits a plan for review. */
   onExitPlan?: (planPath: string) => Promise<string>;
   /** Callback after read tool successfully reads a text file. */
@@ -64,6 +58,12 @@ export interface CreateToolsOptions {
    * only assigned after `createTools()` runs during session init.
    */
   getCacheKey?: () => string | undefined;
+  /**
+   * Append LSP diagnostics to edit/write results (default true). Servers are
+   * resolved from the project/PATH only and spawn lazily on the first edit of
+   * a matching file — disabling this is a pure opt-out, not a capability loss.
+   */
+  lspDiagnostics?: boolean;
 }
 
 export interface CreateToolsResult {
@@ -79,6 +79,12 @@ export interface CreateToolsResult {
    * system prompt.
    */
   rebuildReadTool: (model: string) => AgentTool;
+  /**
+   * Language-server pool backing edit/write diagnostics. Present only when
+   * enabled and running against the local filesystem; callers wire
+   * `shutdownAll()` into their exit/cleanup paths alongside processManager.
+   */
+  lspManager?: LspManager;
 }
 
 export function createTools(cwd: string, opts?: CreateToolsOptions): CreateToolsResult {
@@ -86,14 +92,22 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
   const processManager = new ProcessManager();
   const ops = opts?.operations ?? localOperations;
   const planModeRef = opts?.planModeRef;
-  const goalModeRef = opts?.goalModeRef;
+
+  // LSP diagnostics only make sense against the local filesystem — remote
+  // operations (SSH/Docker) would point local language servers at paths that
+  // don't exist here. Lazy: no server spawns until the first matching edit.
+  const lspEnabled = (opts?.lspDiagnostics ?? true) && ops === localOperations;
+  const lspManager = lspEnabled ? new LspManager(cwd) : undefined;
+  const getDiagnostics = lspManager
+    ? (filePath: string, content: string): Promise<string> =>
+        lspManager.diagnosticsAfterWrite(filePath, content)
+    : undefined;
 
   // Enable native video returns from the read tool for any video-capable model
   // (Kimi/Moonshot, Gemini, MiniMax), each with its own per-model byte cap that
   // drives auto-compression. Non-video models get `undefined` — video falls back
   // to the plain binary-file notice, never offered to models that can't watch it.
   const videoByteLimit = opts?.model ? getVideoByteLimit(opts.model) : undefined;
-
   const tools: AgentTool[] = [
     createReadTool(cwd, readFiles, ops, opts?.onFileRead, videoByteLimit),
     createWriteTool(
@@ -103,7 +117,7 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
       planModeRef,
       opts?.onFileMutated,
       opts?.onPreFileMutation,
-      goalModeRef,
+      getDiagnostics,
     ),
     createEditTool(
       cwd,
@@ -112,18 +126,18 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
       planModeRef,
       opts?.onFileMutated,
       opts?.onPreFileMutation,
-      goalModeRef,
+      getDiagnostics,
     ),
-    createBashTool(cwd, processManager, ops, planModeRef, goalModeRef),
+    createBashTool(cwd, processManager, ops, planModeRef),
     createFindTool(cwd),
     createGrepTool(cwd, ops),
     createLsTool(cwd, ops),
     createSourcePathTool(cwd),
     createWebFetchTool(),
     createTaskOutputTool(processManager),
+    createTaskSendTool(processManager),
     createTaskStopTool(processManager),
     createTasksTool(cwd),
-    createGoalsTool(cwd, goalModeRef),
     createScreenshotTool(cwd),
   ];
 
@@ -141,7 +155,6 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
         opts.model,
         opts.getCacheKey,
         planModeRef,
-        goalModeRef,
       ),
     );
   }
@@ -161,7 +174,7 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
   const rebuildReadTool = (model: string): AgentTool =>
     createReadTool(cwd, readFiles, ops, opts?.onFileRead, getVideoByteLimit(model));
 
-  return { tools, processManager, rebuildReadTool };
+  return { tools, processManager, rebuildReadTool, lspManager };
 }
 
 export { createReadTool } from "./read.js";
@@ -175,12 +188,13 @@ export { createWebFetchTool } from "./web-fetch.js";
 export { createWebSearchTool } from "./web-search.js";
 export { createSourcePathTool } from "./source-path.js";
 export { createTaskOutputTool } from "./task-output.js";
+export { createTaskSendTool } from "./task-send.js";
 export { createTaskStopTool } from "./task-stop.js";
 export { createTasksTool } from "./tasks.js";
 export { createSkillTool } from "./skill.js";
 export { createScreenshotTool } from "./screenshot.js";
 export { createEnterPlanTool } from "./enter-plan.js";
 export { createExitPlanTool } from "./exit-plan.js";
-export { createGoalsTool } from "./goals.js";
 export { ProcessManager } from "../core/process-manager.js";
+export { LspManager } from "../core/lsp/manager.js";
 export { localOperations, type ToolOperations } from "./operations.js";

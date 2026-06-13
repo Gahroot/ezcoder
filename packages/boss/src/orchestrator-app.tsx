@@ -1,18 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, render, useApp, useInput, useStdout } from "ink";
-import { ThemeContext, loadTheme, useTheme } from "@prestyj/cli/ui/theme";
-import { AnimationProvider } from "@prestyj/cli/ui";
-import { useDoublePress } from "@prestyj/cli/ui/hooks/double-press";
-import type { Provider } from "@prestyj/ai";
-import { getNextThinkingLevel } from "@prestyj/cli";
-import { TerminalSizeProvider, useTerminalSize } from "@prestyj/cli/ui/hooks/terminal-size";
+import { ThemeContext, loadTheme, useTheme } from "@kenkaiiii/ggcoder/ui/theme";
+import { AnimationProvider } from "@kenkaiiii/ggcoder/ui";
+import { useDoublePress } from "@kenkaiiii/ggcoder/ui/hooks/double-press";
+import type { Provider } from "@kenkaiiii/gg-ai";
+import { getNextThinkingLevel } from "@kenkaiiii/gg-core";
+import { TerminalSizeProvider, useTerminalSize } from "@kenkaiiii/ggcoder/ui/hooks/terminal-size";
 import { BossChatScreen } from "./boss-chat-screen.js";
 import { bossStore, getBossState, useBossState } from "./boss-store.js";
 import type { BossOverlay } from "./boss-store.js";
 import { BOSS_SLASH_COMMANDS, canonicalName, parseSlash, buildHelpText } from "./slash-commands.js";
 import { projectColor } from "./colors.js";
 import { COLORS } from "./branding.js";
-import type { EzBoss } from "./orchestrator.js";
+import type { GGBoss } from "./orchestrator.js";
 import { VERSION } from "./branding.js";
 import { BossStreamingTurnView } from "./boss-transcript-rows.js";
 import { createBossTerminalHistoryPrinter } from "./boss-terminal-history.js";
@@ -25,7 +25,7 @@ import {
 } from "./auto-update.js";
 
 interface BossAppProps {
-  boss: EzBoss;
+  boss: GGBoss;
   terminalHistoryPrinter?: ReturnType<typeof createBossTerminalHistoryPrinter>;
   /**
    * Called from /clear. Wired in `renderBossApp` to ANSI-wipe the terminal,
@@ -79,7 +79,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   // Seeded from the radio module's module-level state — usually null on
   // launch but resilient to a hot-restart of the React tree.
   const [currentRadio, setCurrentRadio] = useState<string | null>(() => getCurrentStation());
-  // Auto-update indicator: true when a newer version of @prestyj/boss
+  // Auto-update indicator: true when a newer version of @kenkaiiii/gg-boss
   // is on disk waiting for the next restart. Seeded synchronously from the
   // state file (so we show the indicator immediately if a previous session
   // queued one) and bumped to true by the periodic check below if a fresh
@@ -109,10 +109,10 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   // terminals (Ghostty, Terminal.app, iTerm2, Kitty).
   //
   // States:
-  //   N workers running    "● 5 workers running · EZ Boss"
-  //   1 worker running     "● 1 worker running · EZ Boss"
-  //   boss thinking only   "● EZ Boss"
-  //   idle                 "EZ Boss"
+  //   N workers running    "● 5 workers running · GG Boss"
+  //   1 worker running     "● 1 worker running · GG Boss"
+  //   boss thinking only   "● GG Boss"
+  //   idle                 "GG Boss"
   const workersRunning = state.workers.filter((w) => w.status === "working").length;
   const titlePrevRef = useRef("");
   useEffect(() => {
@@ -120,11 +120,11 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
     let title: string;
     if (workersRunning > 0) {
       const label = `${workersRunning} worker${workersRunning === 1 ? "" : "s"} running`;
-      title = `● ${label} · EZ Boss`;
+      title = `● ${label} · GG Boss`;
     } else if (state.phase === "working") {
-      title = "● EZ Boss";
+      title = "● GG Boss";
     } else {
-      title = "EZ Boss";
+      title = "GG Boss";
     }
     if (title !== titlePrevRef.current) {
       titlePrevRef.current = title;
@@ -133,7 +133,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   }, [stdout, workersRunning, state.phase]);
   useEffect(() => {
     return () => {
-      stdout?.write(`\x1b]0;EZ Boss\x1b\\`);
+      stdout?.write(`\x1b]0;GG Boss\x1b\\`);
     };
   }, [stdout]);
 
@@ -163,7 +163,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
    * (tasks pane → chat chrome, model picker → chat chrome, etc.). Toggling
    * React state alone leaves Ink's log-update cursor math drifting on the
    * very next streaming response, surfacing as "input pushed upward, new
-   * chat lines disappear off the top". Mirrors ezcoder's broader fix
+   * chat lines disappear off the top". Mirrors ggcoder's broader fix
    * (commit 0246c6d): every overlay open/close goes through resetUI which
    * unmounts the Ink instance and renders a fresh one. The overlay
    * selection survives via bossStore.overlay.
@@ -198,7 +198,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   }, [scheduleOverlayReset]);
   void stdout;
 
-  // ezcoder's double-press pattern: 800ms window. First press shows
+  // ggcoder's double-press pattern: 800ms window. First press shows
   // "Press Ctrl+C again to exit" in the footer; second within 800ms exits.
   const handleDoubleExit = useDoublePress(
     (pending) => bossStore.setExitPending(pending),
@@ -212,7 +212,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   }, [state.flushGeneration, state.pendingFlush.length]);
 
   const handleAbort = useCallback((): void => {
-    // Ctrl+C while boss is running → single-press abort (matches ezcoder).
+    // Ctrl+C while boss is running → single-press abort (matches ggcoder).
     if (state.phase === "working") {
       boss.abort();
       return;
@@ -223,7 +223,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
 
   // ── App-level keyboard ──────────────────────────────────
   // Ctrl+T toggles the Tasks overlay globally. Ctrl+C is handled here only
-  // while an overlay owns focus; in the chat view the shared ez-coder InputArea
+  // while an overlay owns focus; in the chat view the shared gg-coder InputArea
   // owns Ctrl+C/ESC, so a single press cannot hit two abort/exit handlers.
   useInput((input, key) => {
     if (key.ctrl && input === "c" && overlay) {
@@ -346,7 +346,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
           {"Terminal too small"}
         </Text>
         <Text color={COLORS.primary}>
-          {`Resize to at least 14 rows to use EZ Boss (currently ${rows}).`}
+          {`Resize to at least 14 rows to use GG Boss (currently ${rows}).`}
         </Text>
       </Box>
     );
@@ -434,7 +434,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   );
 }
 
-// ── Scope pill (ezboss specific) ──────────────────────────
+// ── Scope pill (gg-boss specific) ──────────────────────────
 
 function ScopePill({ scope }: { scope: string }): React.ReactElement {
   const theme = useTheme();
@@ -480,11 +480,11 @@ function formatBossDuration(durationMs: number): string {
 // ── Renderer ───────────────────────────────────────────────
 
 export interface RenderBossAppOptions {
-  boss: EzBoss;
+  boss: GGBoss;
 }
 
 const INK_OPTIONS = {
-  // Match ezcoder's keyboard setup: enable kitty keyboard so Ink can decode
+  // Match ggcoder's keyboard setup: enable kitty keyboard so Ink can decode
   // enhanced key events, but keep exitOnCtrlC false so our handlers receive it.
   kittyKeyboard: {
     mode: "enabled" as const,
@@ -493,7 +493,7 @@ const INK_OPTIONS = {
   exitOnCtrlC: false,
 };
 
-// Match ezcoder's terminal keyboard hygiene. Some terminals/tmux sessions leave
+// Match ggcoder's terminal keyboard hygiene. Some terminals/tmux sessions leave
 // xterm modifyOtherKeys enabled, which makes ordinary keys arrive as CSI 27
 // escape sequences that Ink/InputArea won't treat as text.
 const DISABLE_MODIFY_OTHER_KEYS = "\x1b[>4;0m";
@@ -524,7 +524,7 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   // the live area drifts after the next streaming response because Ink's
   // cursor math depends on terminal-state assumptions that ANSI clearing
   // breaks. The only RELIABLE reset is to teardown the React tree entirely
-  // and render a fresh Ink instance. State outside React (EzBoss class,
+  // and render a fresh Ink instance. State outside React (GGBoss class,
   // bossStore singleton) survives and the new tree picks it up correctly.
   const ref: { instance: ReturnType<typeof render> | null } = { instance: null };
   const resetUI = (reason: BossResetUiReason = "viewport"): void => {
@@ -534,7 +534,7 @@ export function renderBossApp(opts: RenderBossAppOptions): {
     old.unmount();
 
     if (reason === "resize-redraw") {
-      // A resize malformed the visible frame at the old width. Match ez-coder:
+      // A resize malformed the visible frame at the old width. Match gg-coder:
       // full screen clear, reset terminal-history dedupe, then repaint the
       // durable transcript once before mounting fresh live controls.
       terminalHistoryPrinter.resetPrinted();
@@ -593,7 +593,7 @@ export function renderBossApp(opts: RenderBossAppOptions): {
   // Debounce is 250ms — slightly shorter than the hook's 300ms so resetUI
   // wins the race. When resetUI's unmount runs, the hook's pending
   // setTimeout is cleared by its own useEffect cleanup, so we don't
-  // double-fire. State outside React (EzBoss class, bossStore singleton,
+  // double-fire. State outside React (GGBoss class, bossStore singleton,
   // overlay) survives.
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
   let resizeListenerEnabled = false;

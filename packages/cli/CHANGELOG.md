@@ -1,0 +1,211 @@
+# @kenkaiiii/ggcoder
+
+## 4.10.1
+
+### Patch Changes
+
+- Fix `ggcoder continue` resuming the newest-created session instead of the one you last spoke in (now sorts by last-message activity), and fix inline-image scrollback corruption (base64 spew, duplicated lines, and misaligned images) by bailing the shrink-backfill text repaint when the transcript contains an image.
+  - @kenkaiiii/gg-ai@4.10.1
+  - @kenkaiiii/gg-agent@4.10.1
+  - @kenkaiiii/gg-core@4.10.1
+
+## 4.10.0
+
+### Minor Changes
+
+- Update Kimi to K2.7 (`kimi-k2.7-code`) as the Moonshot default model, replacing Kimi K2.6 across the registry, CLI, login UI, and docs.
+
+  Harden Kimi OAuth token refresh so it no longer silently falls back to a paid Moonshot API key: refresh reuses the existing refresh token when the server doesn't rotate it, tokens are renewed proactively before expiry (60s skew), `baseUrl` is preserved across refreshes, and a genuinely-dead OAuth credential now logs a warning instead of switching billing silently.
+
+### Patch Changes
+
+- Updated dependencies
+  - @kenkaiiii/gg-ai@4.10.0
+  - @kenkaiiii/gg-agent@4.10.0
+  - @kenkaiiii/gg-core@4.10.0
+
+## 4.9.1
+
+### Patch Changes
+
+- Fix blank rows being reserved above short live content during streaming. The
+  live-area height estimate over-counted non-text rows (slash-command info lines,
+  tool/step markers), which falsely clamped the live area to its full budget and
+  bottom-anchored the content — leaving a block of empty rows above it until the
+  rows flushed to history. The estimate is now biased low; Ink's
+  clipFrameToTerminalHeight remains the authoritative overflow backstop.
+  - @kenkaiiii/gg-ai@4.9.1
+  - @kenkaiiii/gg-agent@4.9.1
+  - @kenkaiiii/gg-core@4.9.1
+
+## 4.9.0
+
+### Minor Changes
+
+- Add LSP inline diagnostics to the edit/write tools. Successful edits now append
+  compiler-grade error diagnostics (`Diagnostics in src/a.ts (informational …):
+L42:7 Type 'string' is not assignable …`) so the model self-corrects type errors
+  in the same turn. `typescript-language-server` + `typescript` ship bundled, so
+  TS/JS diagnostics work for every user with zero setup; Python/Go/Rust/C servers
+  are auto-detected from the project or PATH when present. Servers spawn lazily,
+  are time-budgeted, and degrade silently — output is byte-identical when no server
+  is available. Opt out with `"lspDiagnostics": false` in `~/.gg/settings.json`.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@4.9.0
+- @kenkaiiii/gg-agent@4.9.0
+- @kenkaiiii/gg-core@4.9.0
+
+## 4.8.7
+
+### Patch Changes
+
+- Fix the intermittent blank-row block appearing right before the agent's final response: the patched ink's bottom-anchor pad debt left over from a run-end frame shrink is now reclaimed when the anchor deactivates (ink fork 6.8.0-gg.2). Also: oversized flushed assistant prefixes leave live state immediately, and null-rendering items no longer inflate the live-area clamp estimate.
+  - @kenkaiiii/gg-ai@4.8.7
+  - @kenkaiiii/gg-agent@4.8.7
+  - @kenkaiiii/gg-core@4.8.7
+
+## 4.8.6
+
+### Patch Changes
+
+- Fix message vanish on slash-command submit: queueFlush now mirrors flushed rows into sessionStore.history synchronously so the patched ink's bottom-pinned repaint (menu close, resize) redraws from a current transcript. Also track /theme switches live so closure-level repaint serializers always use the active theme, not the startup theme.
+  - @kenkaiiii/gg-ai@4.8.6
+  - @kenkaiiii/gg-agent@4.8.6
+  - @kenkaiiii/gg-core@4.8.6
+
+## 4.8.5
+
+### Patch Changes
+
+- Ship the patched Ink rendering engine to npm installs. The TUI's footer-anchor and scrollback fixes live in a patched ink build that pnpm's patchedDependencies only applied inside the workspace — npm users silently got vanilla ink. ggcoder's ink dependency is now an npm alias to the published @kenkaiiii/ink fork, so every install (npm, pnpm, yarn, bun) gets the fixed renderer with no install scripts.
+  - @kenkaiiii/gg-ai@4.8.5
+  - @kenkaiiii/gg-agent@4.8.5
+  - @kenkaiiii/gg-core@4.8.5
+
+## 4.8.4
+
+### Patch Changes
+
+- Fix footer jumps and scrollback whitespace/duplication in the scrollback-mode TUI. The patched Ink now folds transcript flushes atomically into frame writes (insertBeforeFrame), anchors the frame bottom with reclaimable pad debt while the agent runs, clips frames to terminal height, and repaints in place (cursor home + eraseDown) for bottom-pinned idle height changes like the slash-command menu — so the footer stays pinned, responses have no phantom gaps, and scrollback receives no duplicate banner/prompt copies.
+  - @kenkaiiii/gg-ai@4.8.4
+  - @kenkaiiii/gg-agent@4.8.4
+  - @kenkaiiii/gg-core@4.8.4
+
+## 4.8.3
+
+### Patch Changes
+
+- Fix oversized pinned assistant items being cut off in the live area: flush tall finalized items (cumulative over the pinned set) to scrollback, and keep the height-clamp slice from starting on a blank line so the ⏺ prefix stays aligned.
+  - @kenkaiiii/gg-ai@4.8.3
+  - @kenkaiiii/gg-agent@4.8.3
+  - @kenkaiiii/gg-core@4.8.3
+
+## 4.8.2
+
+### Patch Changes
+
+- Fix TUI scrollback corruption from streaming markdown tables and inline images: table-aware live-region row estimation, pending-table height clamping and partial-row hold-back in the markdown renderer, and fixed-height inline image blocks so Ink's live-frame erase math stays in sync (no more orphaned ⏺ rows).
+  - @kenkaiiii/gg-ai@4.8.2
+  - @kenkaiiii/gg-agent@4.8.2
+  - @kenkaiiii/gg-core@4.8.2
+
+## 4.8.1
+
+### Patch Changes
+
+- Fix ENOSPC crash when session transcript writes fail (disk full) — persistence now fails soft with a one-time warning instead of killing the live session. Add automatic session transcript pruning via new `sessionRetentionDays` setting (default 30 days, 0 disables).
+  - @kenkaiiii/gg-ai@4.8.1
+  - @kenkaiiii/gg-agent@4.8.1
+  - @kenkaiiii/gg-core@4.8.1
+
+## 4.8.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @kenkaiiii/gg-ai@4.8.0
+  - @kenkaiiii/gg-core@4.8.0
+  - @kenkaiiii/gg-agent@4.8.0
+
+## 4.7.0
+
+### Minor Changes
+
+- Add `task_send` tool for interactive control of background processes. Background processes started with `run_in_background` now spawn with a stdin pipe, and the agent can answer prompts, drive REPLs, and feed scaffolders via `task_send` (with optional Enter/EOF), pairing with the existing `task_output`/`task_stop` tools.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@4.7.0
+- @kenkaiiii/gg-agent@4.7.0
+- @kenkaiiii/gg-core@4.7.0
+
+## 4.6.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @kenkaiiii/gg-ai@4.6.3
+  - @kenkaiiii/gg-agent@4.6.3
+  - @kenkaiiii/gg-core@4.6.3
+
+## 4.6.2
+
+### Patch Changes
+
+- Fix OpenAI OAuth account switching by adding prompt=login to authorize URL. Previously, re-running `ggcoder login` with OpenAI would silently re-approve the cached browser session, preventing users from switching accounts.
+- Updated dependencies
+  - @kenkaiiii/gg-core@4.6.2
+  - @kenkaiiii/gg-ai@4.6.2
+  - @kenkaiiii/gg-agent@4.6.2
+
+## 4.6.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @kenkaiiii/gg-ai@4.6.1
+  - @kenkaiiii/gg-agent@4.6.1
+  - @kenkaiiii/gg-core@4.6.1
+
+## 4.6.0
+
+### Minor Changes
+
+- Add Xiaomi MiMo-V2.5 models with native video analysis. The text-only
+  `mimo-v2.5-pro` is now the Xiaomi default, and the omnimodal `mimo-v2.5`
+  supports native image and video understanding. Video read through the read
+  tool is now delivered to MiMo (and other non-Moonshot OpenAI-compatible video
+  models) in a follow-up user message as inline base64 `video_url`, the shape
+  the API accepts — fixing the fallback where the model resorted to ffmpeg frame
+  extraction. The read tool is also rebuilt on model switch so its video
+  capability tracks the active model.
+
+### Patch Changes
+
+- Updated dependencies
+  - @kenkaiiii/gg-ai@4.6.0
+  - @kenkaiiii/gg-agent@4.6.0
+  - @kenkaiiii/gg-core@4.6.0
+
+## 4.5.0
+
+### Minor Changes
+
+- Add native video analysis for Kimi K2.6, Gemini, and MiniMax. Attached and read videos are sent to the model in its required format (Kimi file-service upload, Gemini inlineData, MiniMax base64), with per-model size caps and automatic ffmpeg compression for oversized clips. Non-video models now show a clean "this model can't analyze video" message instead of an opaque provider error, and Kimi OAuth login was fixed to pass the coding-endpoint client identity.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@4.5.0
+- @kenkaiiii/gg-agent@4.5.0
+- @kenkaiiii/gg-core@4.5.0
+
+## 4.4.0
+
+### Patch Changes
+
+- Updated dependencies [9e381ad]
+  - @kenkaiiii/gg-core@4.4.0
+  - @kenkaiiii/gg-ai@4.4.0
+  - @kenkaiiii/gg-agent@4.4.0

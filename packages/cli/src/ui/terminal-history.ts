@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
-import type { Provider } from "@prestyj/ai";
+import type { Provider } from "@kenkaiiii/gg-ai";
 import { getModel } from "../core/model-registry.js";
 import type { CompletedItem } from "./App.js";
 import { HOOK_TONE_COLOR, isPanelReplacedToolItem, type HookTone } from "./app-items.js";
@@ -14,7 +14,7 @@ import { buildToolGroupSummary } from "./tool-group-summary.js";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { renderMarkdownToAnsiLines } from "./utils/markdown-renderer.js";
-import { detectGraphicsProtocol, encodeInlineImage } from "./utils/terminal-graphics.js";
+import { detectGraphicsProtocol, encodeInlineImageBlock } from "./utils/terminal-graphics.js";
 import { createHyperlink } from "./utils/hyperlink.js";
 import { supportsHyperlinks } from "./utils/supports-hyperlinks.js";
 import { shouldSeparateTranscriptItems } from "./transcript/spacing.js";
@@ -51,7 +51,6 @@ import {
 } from "./terminal-history-status-renderers.js";
 import {
   presentDuration,
-  presentGoalAgentTransition,
   presentInfo,
   presentModelTransition,
   presentPlanEvent,
@@ -62,7 +61,14 @@ import {
 } from "./transcript/presentation.js";
 import { toolTonePalette } from "./transcript/tool-presentation.js";
 
-const LOGO_LINES = [" █▀▀▀ ▀▀▀█", " █▀▀   ▄▀", " █▄▄▄ █▄▄▄"];
+const LOGO_LINES = [
+  " ██████╗  ██████╗ ",
+  "██╔════╝ ██╔════╝ ",
+  "██║  ███╗██║  ███╗",
+  "██║   ██║██║   ██║",
+  "╚██████╔╝╚██████╔╝",
+  " ╚═════╝  ╚═════╝",
+];
 const PLAN_MODE_LOGO = [
   "▗▄▄▖ ▗▖    ▗▄▖ ▗▖  ▗▖    ▗▖  ▗▖ ▗▄▖ ▗▄▄▄ ▗▄▄▄▖",
   "▐▌ ▐▌▐▌   ▐▌ ▐▌▐▛▚▖▐▌    ▐▛▚▞▜▌▐▌ ▐▌▐▌  █▐▌",
@@ -93,8 +99,11 @@ const GRADIENT = [
   "#6da1f9",
 ];
 const GAP = "   ";
-const LOGO_WIDTH = 9;
+const LOGO_WIDTH = 17;
 const SIDE_BY_SIDE_MIN = LOGO_WIDTH + GAP.length + 62;
+// Row index in the (taller) logo block where each info line is placed so the
+// text column reads vertically centered beside the art.
+const INFO_ANCHOR_ROW = 1;
 const COMPACT_TOOLS = new Set(["read", "grep", "find", "ls", "source_path"]);
 const STATE_TOOLS = new Set(["tasks"]);
 const SERVER_STYLE_TOOLS = new Set(["web_search"]);
@@ -215,7 +224,12 @@ export function createTerminalHistoryPrinter({
           const canLink = supportsHyperlinks();
           for (const preview of previews) {
             if (protocol !== "none") {
-              writeOutput(`\n${imageLeftPad}${encodeInlineImage(preview.base64, protocol)}\n`);
+              // Fixed-height block whose newline count equals its visual rows —
+              // a raw escape (many rows, zero newlines) desyncs Ink's live-frame
+              // erase math and strands orphaned rows around the image.
+              writeOutput(
+                `\n${encodeInlineImageBlock(preview.base64, protocol, { leftPad: imageLeftPad })}\n`,
+              );
             }
             // Clickable "open" affordance — Cmd/Ctrl-click opens the file in the
             // OS default viewer. The pixels themselves aren't clickable, so the
@@ -294,18 +308,6 @@ export function serializeCompletedItemToTerminalHistory(
         true,
       );
     }
-    case "goal_agent_transition": {
-      const presentation = presentGoalAgentTransition(item);
-      return renderStatusLine(
-        presentation.glyph.trim(),
-        presentation.text,
-        context,
-        context.theme.secondary,
-        presentation.bold,
-      );
-    }
-    case "goal_progress":
-      return renderGoalProgress(item, context);
     case "error":
       return renderError(item.headline, item.message, item.guidance, context);
     case "info": {
@@ -442,7 +444,9 @@ function renderBanner(context: TerminalHistoryContext): string {
   const home = process.env.HOME ?? "";
   const displayPath =
     home && context.cwd.startsWith(home) ? `~${context.cwd.slice(home.length)}` : context.cwd;
-  const logo = LOGO_LINES.map((lineText) => gradientLine(lineText, GRADIENT));
+  const logo = LOGO_LINES.map(
+    (lineText) => `${RESPONSE_LEFT_PADDING}${gradientLine(lineText, GRADIENT)}`,
+  );
 
   const shortcuts = `${color(context.theme.primary, "Ctrl+T")} ${dim(context, "tasks · ")}${color(context.theme.primary, "Ctrl+S")} ${dim(context, "skills · ")}${color(context.theme.primary, "Shift+Tab")} ${dim(context, "toggle thinking")}`;
 
@@ -451,59 +455,28 @@ function renderBanner(context: TerminalHistoryContext): string {
       "",
       ...logo,
       "",
-      `${color(context.theme.primary, "EZ Coder", true)}${dim(context, ` v${context.version}`)}`,
-      `${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, context.columns))}`,
-      shortcuts,
+      `${RESPONSE_LEFT_PADDING}${color(context.theme.primary, "GG Coder", true)}${dim(context, ` v${context.version}`)}`,
+      `${RESPONSE_LEFT_PADDING}${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, context.columns))}`,
+      `${RESPONSE_LEFT_PADDING}${shortcuts}`,
       "",
     ]);
   }
 
-  return block([
-    "",
-    `${logo[0]}${GAP}${color(context.theme.primary, "EZ Coder", true)}${dim(context, ` v${context.version} · By `)}${color(context.theme.text, "Nolan Grout", true)}`,
-    `${logo[1]}${GAP}${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, Math.max(10, context.columns - LOGO_WIDTH - GAP.length - stringWidth(modelName) - 2)))}`,
-    `${logo[2]}${GAP}${shortcuts}`,
-    "",
-  ]);
-}
+  // Info lines rendered beside the (taller) logo. They're anchored starting at
+  // INFO_ANCHOR_ROW so the text column sits vertically centered next to the art.
+  const infoLines = [
+    `${color(context.theme.primary, "GG Coder", true)}${dim(context, ` v${context.version} · By `)}${color(context.theme.text, "Ken Kai", true)}`,
+    `${color(context.theme.secondary, modelName)}  ${dim(context, truncatePlain(displayPath, Math.max(10, context.columns - LOGO_WIDTH - GAP.length - stringWidth(modelName) - 2)))}`,
+    shortcuts,
+  ];
 
-function renderGoalProgress(
-  item: Extract<CompletedItem, { kind: "goal_progress" }>,
-  context: TerminalHistoryContext,
-): string {
-  const isError = item.status === "failed" || item.status === "fail" || item.status === "blocked";
-  const itemColor = isError
-    ? context.theme.error
-    : item.phase === "worker_finished" || item.phase === "terminal"
-      ? context.theme.success
-      : item.phase === "verifier_started" || item.phase === "verifier_finished"
-        ? context.theme.accent
-        : item.phase === "orchestrator_reviewing" || item.phase === "orchestrator_working"
-          ? context.theme.secondary
-          : item.phase === "continuing"
-            ? context.theme.warning
-            : context.theme.primary;
-  const glyph =
-    item.phase === "worker_finished" || item.phase === "verifier_finished"
-      ? "✓"
-      : item.phase === "terminal"
-        ? item.status === "passed"
-          ? "◆"
-          : "!"
-        : "↻";
-  const lines = [
-    `${color(itemColor, `${glyph} ${item.title}`, true)}${item.workerId ? dim(context, ` · worker ${item.workerId}`) : ""}`,
-    item.detail ? dim(context, `  ${item.detail}`) : undefined,
-    ...(item.summaryRows ?? []).map(
-      (row) =>
-        `  ${dim(context, row.label.padEnd(10))}${color(context.theme.text, row.value)}${row.detail ? dim(context, ` · ${row.detail}`) : ""}`,
-    ),
-    ...(item.summarySections ?? []).flatMap((section) => [
-      `  ${dim(context, section.title)}`,
-      ...section.lines.map((line) => `  ${color(context.theme.text, `• ${line}`)}`),
-    ]),
-  ].filter((line): line is string => line !== undefined);
-  return indent(lines.join("\n"), RESPONSE_LEFT_PADDING);
+  const rows = logo.map((logoLine, i) => {
+    const infoIndex = i - INFO_ANCHOR_ROW;
+    const info = infoIndex >= 0 && infoIndex < infoLines.length ? infoLines[infoIndex] : undefined;
+    return info === undefined ? logoLine : `${logoLine}${GAP}${info}`;
+  });
+
+  return block(["", ...rows, ""]);
 }
 
 function renderUser(
@@ -1210,6 +1183,13 @@ function getBashExitCode(result: string): string {
   return result.match(/^Exit code: (.+)/)?.[1]?.trim() ?? "0";
 }
 
+/**
+ * At-a-glance header chip mirroring the live ToolExecution chips:
+ *   - bash → exit-code chip (`✓ 0` / `✗ N`)
+ *   - edit → diff-stat chip (`+a −r`)
+ * Returns "" when no chip applies. Spacing (two leading spaces per segment)
+ * matches the live renderer so live/history parity holds.
+ */
 function renderHeaderChip(
   name: string,
   result: string,

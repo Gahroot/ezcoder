@@ -126,6 +126,26 @@ describe("Anthropic transform", () => {
     expect(content.map((b) => b.type)).toEqual(["text", "redacted_thinking", "tool_use"]);
   });
 
+  it("drops foreign raw blocks (e.g. Codex reasoning) Anthropic would reject", () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "raw",
+            data: { type: "reasoning", id: "rs_1", encrypted_content: "abc", summary: [] },
+          },
+          { type: "text", text: "answer" },
+          { type: "tool_call", id: "toolu_3", name: "read_file", args: { filePath: "c.ts" } },
+        ],
+      },
+    ];
+
+    const { messages: out } = toAnthropicMessages(messages);
+    const content = out[0]?.content as unknown as Array<Record<string, unknown>>;
+    expect(content.map((b) => b.type)).toEqual(["text", "tool_use"]);
+  });
+
   it("still strips empty text blocks when no thinking block is present", () => {
     const messages: Message[] = [
       {
@@ -420,6 +440,17 @@ describe("toAnthropicThinking", () => {
     expect(toAnthropicThinking("max", MAX_TOKENS, "claude-sonnet-4-6").outputConfig).toEqual({
       effort: "max",
     });
+  });
+
+  it("treats Fable 5 and Mythos 5 as adaptive thinking models (max, xhigh clamps to high)", () => {
+    for (const model of ["claude-fable-5", "claude-mythos-5"]) {
+      const result = toAnthropicThinking("max", MAX_TOKENS, model);
+      expect(result.outputConfig).toEqual({ effort: "max" });
+      expect((result.thinking as { type: string }).type).toBe("adaptive");
+      expect(toAnthropicThinking("xhigh", MAX_TOKENS, model).outputConfig).toEqual({
+        effort: "high",
+      });
+    }
   });
 });
 

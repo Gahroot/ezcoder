@@ -10,10 +10,10 @@ const execFileAsync = promisify(execFile);
 /**
  * Lazy `sharp` resolver — sharp is a hefty native module (libvips). Loading
  * it at module init pulls it into every consumer's bundle, which forces
- * downstream packages that don't actually need image manipulation (ezboss)
+ * downstream packages that don't actually need image manipulation (gg-boss)
  * to either ship it or break their bundlers. By gating the require behind
  * a function called only by the image-handling helpers, we let unused code
- * paths skip the import entirely — which lets ezboss tsup-bundle cleanly
+ * paths skip the import entirely — which lets gg-boss tsup-bundle cleanly
  * without `sharp` in its dependency tree.
  *
  * Cached after first call so repeated image operations don't re-hit the
@@ -114,7 +114,7 @@ export async function compressVideoToFit(
   // audio track gets a fixed slice, the rest goes to video (floored).
   const totalKbps = Math.floor(((targetBytes * 8) / durationSec / 1000) * 0.9);
   const videoKbps = Math.max(COMPRESS_MIN_VIDEO_KBPS, totalKbps - COMPRESS_AUDIO_KBPS);
-  const outPath = path.join(os.tmpdir(), `ezcoder-compressed-${Date.now()}.mp4`);
+  const outPath = path.join(os.tmpdir(), `ggcoder-compressed-${Date.now()}.mp4`);
 
   try {
     await execFileAsync(
@@ -535,7 +535,7 @@ export function getClipboardImage(): Promise<ImageAttachment | null> {
       const mediaType = isPng ? "image/png" : "image/tiff";
 
       // Write clipboard image to temp file, then read as base64
-      const tmpPath = `/tmp/ezcoder-clipboard-${Date.now()}.${ext}`;
+      const tmpPath = `/tmp/ggcoder-clipboard-${Date.now()}.${ext}`;
       const writeScript = [
         `set imgData to the clipboard as «class ${clipClass}»`,
         `set filePath to POSIX file "${tmpPath}"`,

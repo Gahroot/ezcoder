@@ -1,7 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { agentLoop, type AgentEvent } from "@prestyj/agent";
-import type { Message } from "@prestyj/ai";
+import { agentLoop, type AgentEvent } from "@kenkaiiii/gg-agent";
+import type { Message } from "@kenkaiiii/gg-ai";
 import type { CliConfig } from "./types.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createTools } from "./tools/index.js";
@@ -27,7 +27,6 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import { getContextWindow } from "./core/model-registry.js";
-import type { GoalMode } from "./core/runtime-mode.js";
 
 export async function runInteractive(config: CliConfig): Promise<void> {
   const { provider, model, cwd } = config;
@@ -35,23 +34,21 @@ export async function runInteractive(config: CliConfig): Promise<void> {
   // Load auth & ensure dirs
   const paths = await ensureAppDirs();
 
-  // Ensure project-local .ezcoder directories exist
-  const localEzDir = path.join(cwd, ".ezcoder");
-  await fs.mkdir(path.join(localEzDir, "skills"), { recursive: true });
-  await fs.mkdir(path.join(localEzDir, "commands"), { recursive: true });
-  await fs.mkdir(path.join(localEzDir, "agents"), { recursive: true });
+  // Ensure project-local .gg directories exist
+  const localGGDir = path.join(cwd, ".gg");
+  await fs.mkdir(path.join(localGGDir, "skills"), { recursive: true });
+  await fs.mkdir(path.join(localGGDir, "commands"), { recursive: true });
+  await fs.mkdir(path.join(localGGDir, "agents"), { recursive: true });
 
   // Discover skills and create tools before building the prompt so tool names are accurate.
   const skills = await discoverSkills({
     globalSkillsDir: paths.skillsDir,
     projectDir: cwd,
   });
-  const goalModeRef: { current: GoalMode } = { current: "off" };
-  const { tools, processManager } = createTools(cwd, {
+  const { tools, processManager, lspManager } = createTools(cwd, {
     skills,
     provider,
     model,
-    goalModeRef,
   });
   const systemPrompt =
     config.systemPrompt ??
@@ -63,9 +60,11 @@ export async function runInteractive(config: CliConfig): Promise<void> {
       tools.map((tool) => tool.name),
       undefined,
       provider,
-      goalModeRef.current,
     ));
-  process.on("exit", () => processManager.shutdownAll());
+  process.on("exit", () => {
+    processManager.shutdownAll();
+    lspManager?.shutdownAll();
+  });
   const authStorage = new AuthStorage(paths.authFile);
   await authStorage.load();
 

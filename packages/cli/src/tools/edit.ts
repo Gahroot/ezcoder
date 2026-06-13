@@ -1,6 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
-import type { AgentTool } from "@prestyj/agent";
+import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { resolvePath, rejectSymlink } from "./path-utils.js";
 import {
   fuzzyFindText,
@@ -14,15 +14,12 @@ import {
 } from "./edit-diff.js";
 import { localOperations, type ToolOperations } from "./operations.js";
 import { assertFresh, recordWrite, type ReadTracker } from "./read-tracker.js";
-import {
-  getActiveGoalMode,
-  goalModeMutationRestriction,
-  isPlanModeActive,
-  planModeRestriction,
-  type GoalMode,
-} from "../core/runtime-mode.js";
+import { isPlanModeActive, planModeRestriction } from "../core/runtime-mode.js";
 
 type MutationCallback = (filePath: string) => void | Promise<void>;
+
+/** Post-write diagnostics provider (LSP). Non-empty results are appended to successful tool output. */
+type DiagnosticsProvider = (filePath: string, content: string) => Promise<string>;
 
 function isMutationCallback(value: unknown): value is MutationCallback {
   return typeof value === "function";
@@ -33,14 +30,6 @@ function isPlanModeRef(value: unknown): value is { current: boolean } {
     typeof value === "object" &&
     value !== null &&
     typeof (value as { current?: unknown }).current === "boolean"
-  );
-}
-
-function isGoalModeRef(value: unknown): value is { current: GoalMode } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { current?: unknown }).current === "string"
   );
 }
 
@@ -143,17 +132,14 @@ export function createEditTool(
   cwd: string,
   readFiles?: ReadTracker,
   ops: ToolOperations = localOperations,
-  planModeRefOrOnFileMutated?: { current: boolean } | { current: GoalMode } | MutationCallback,
+  planModeRefOrOnFileMutated?: { current: boolean } | MutationCallback,
   onFileMutated?: MutationCallback,
   onPreFileMutation?: MutationCallback,
-  goalModeRefArg?: { current: GoalMode },
+  getDiagnostics?: DiagnosticsProvider,
 ): AgentTool<typeof EditParams> {
   const planModeRef = isPlanModeRef(planModeRefOrOnFileMutated)
     ? planModeRefOrOnFileMutated
     : undefined;
-  const goalModeRef = isGoalModeRef(planModeRefOrOnFileMutated)
-    ? planModeRefOrOnFileMutated
-    : goalModeRefArg;
   const mutationCallback = isMutationCallback(planModeRefOrOnFileMutated)
     ? planModeRefOrOnFileMutated
     : onFileMutated;
@@ -168,10 +154,6 @@ export function createEditTool(
     parameters: EditParams,
     executionMode: "sequential",
     async execute({ file_path, edits, atomic = false }) {
-      const goalMode = getActiveGoalMode(goalModeRef);
-      if (goalMode !== "off") {
-        return goalModeMutationRestriction("edit", goalMode);
-      }
       if (isPlanModeActive(planModeRef)) {
         return planModeRestriction("edit");
       }
@@ -345,6 +327,9 @@ export function createEditTool(
       const diff = generateDiff(originalNormalized, working, relPath);
       const changed = working !== originalNormalized;
 
+      // LSP diagnostics for the just-written content. Best-effort enhancement:
+      // any failure (or an opted-out provider) leaves output identical to today.
+      let diagnosticsNote = "";
       if (changed) {
         const finalContent = hasCRLF ? working.replace(/\n/g, "\r\n") : working;
         // Snapshot the pre-mutation on-disk state for /rewind before writing.
@@ -356,6 +341,13 @@ export function createEditTool(
         // next edit (including retries of the skipped ones) validates against an
         // accurate snapshot. No invalidation — the failure message already
         // carries the closest match and a bounded re-read hint.
+        if (getDiagnostics) {
+          try {
+            diagnosticsNote = await getDiagnostics(resolved, finalContent);
+          } catch {
+            // Diagnostics must never break a successful edit.
+          }
+        }
       }
 
       if (failures.length === 0) {
@@ -370,7 +362,7 @@ export function createEditTool(
           edits.length > 1
             ? `Successfully applied ${edits.length} edits to ${relPath}.`
             : `Successfully replaced text in ${relPath}.`;
-        return { content: summary, details: { diff } };
+        return { content: summary + diagnosticsNote, details: { diff } };
       }
 
       // Partial success — the loud header is deliberate: the model has to know
@@ -379,7 +371,8 @@ export function createEditTool(
       const content =
         `Applied ${successCount} of ${edits.length} edits to ${relPath}.\n` +
         `${failures.length} ${noun} skipped — re-issue ONLY these (the rest are already done, do not redo them):\n\n` +
-        formatFailures();
+        formatFailures() +
+        diagnosticsNote;
       return { content, details: { diff } };
     },
   };

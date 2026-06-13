@@ -3,18 +3,18 @@
  *
  * Every error users see should answer one question: "is this me or them?"
  * That answer drives whether they retry, switch model, log in, or report a
- * ezcoder bug. The `FormattedError` shape captures it in plain English:
+ * ggcoder bug. The `FormattedError` shape captures it in plain English:
  *
  *   ✗ OpenAI returned an error.
  *     An error occurred while processing your request...
- *     → This is an OpenAI issue, not ezcoder. Retry — if it persists, check status.openai.com.
+ *     → This is an OpenAI issue, not ggcoder. Retry — if it persists, check status.openai.com.
  *
- *   ✗ ezcoder hit an unexpected error.
+ *   ✗ ggcoder hit an unexpected error.
  *     Cannot read property 'foo' of undefined
- *     → This is a ezcoder bug — please report it.
+ *     → This is a ggcoder bug — please report it.
  */
 
-export type ErrorSource = "provider" | "ezcoder" | "network" | "auth" | "capability";
+export type ErrorSource = "provider" | "ggcoder" | "network" | "auth" | "capability";
 
 /**
  * Probe a web `Headers` object or a plain header record for the first present
@@ -60,7 +60,7 @@ export interface FormattedError {
   resetsAt?: number;
 }
 
-export class EZCoderAIError extends Error {
+export class GGAIError extends Error {
   readonly source: ErrorSource;
   readonly requestId?: string;
   readonly hint?: string;
@@ -75,8 +75,8 @@ export class EZCoderAIError extends Error {
     },
   ) {
     super(message, { cause: options?.cause });
-    this.name = "EZCoderAIError";
-    this.source = options?.source ?? "ezcoder";
+    this.name = "GGAIError";
+    this.source = options?.source ?? "ggcoder";
     this.requestId = options?.requestId;
     this.hint = options?.hint;
   }
@@ -87,14 +87,14 @@ export class EZCoderAIError extends Error {
  * left in history after switching from a video model to a text-only one). A
  * clean, user-facing capability error — not a bug, not a provider outage.
  */
-export class VideoUnsupportedError extends EZCoderAIError {
+export class VideoUnsupportedError extends GGAIError {
   constructor() {
     super("This model can't analyze video.", { source: "capability" });
     this.name = "VideoUnsupportedError";
   }
 }
 
-export class ProviderError extends EZCoderAIError {
+export class ProviderError extends GGAIError {
   readonly provider: string;
   readonly statusCode?: number;
   /** Unix seconds when a usage/rate limit resets, when the provider reports it. */
@@ -210,10 +210,36 @@ function formatResetTime(resetsAt: number): string {
       });
 }
 
+/**
+ * Anthropic's Claude Mythos models are invitation-only (Project Glasswing) —
+ * unapproved accounts get a bare `not_found_error` from the API. Detect that
+ * case so we can explain the access model instead of echoing the raw error.
+ */
+function isMythosAccessError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("mythos") &&
+    (lower.includes("not_found") || lower.includes("not found") || lower.includes("no access"))
+  );
+}
+
 export function formatError(err: unknown): FormattedError {
   if (err instanceof ProviderError) {
     const name = providerDisplayName(err.provider);
     const cleanMessage = cleanProviderMessage(err.message);
+    if (isMythosAccessError(cleanMessage)) {
+      return {
+        headline: "Claude Mythos 5 is invitation-only.",
+        source: "provider",
+        message:
+          "Your Anthropic account isn't approved for Project Glasswing, so the API reports the model as not found.",
+        provider: err.provider,
+        statusCode: err.statusCode,
+        ...(err.requestId ? { requestId: err.requestId } : {}),
+        guidance:
+          "Request access via your Anthropic account team (see platform.claude.com/docs/en/about-claude/models/overview), or switch to claude-fable-5 with /model — same underlying model, generally available.",
+      };
+    }
     if (isUsageLimitError(err)) {
       const resetClause = err.resetsAt ? ` It resets at ${formatResetTime(err.resetsAt)}.` : "";
       return {
@@ -238,7 +264,7 @@ export function formatError(err: unknown): FormattedError {
     };
   }
 
-  if (err instanceof EZCoderAIError) {
+  if (err instanceof GGAIError) {
     return finaliseBySource(err.source, err.message, err.requestId, err.hint);
   }
 
@@ -247,7 +273,7 @@ export function formatError(err: unknown): FormattedError {
     return finaliseBySource(source, err.message, undefined, undefined);
   }
 
-  return finaliseBySource("ezcoder", String(err), undefined, undefined);
+  return finaliseBySource("ggcoder", String(err), undefined, undefined);
 }
 
 function finaliseBySource(
@@ -262,7 +288,7 @@ function finaliseBySource(
         headline: "Network error — couldn't reach the provider.",
         source,
         message,
-        guidance: hint ?? "Check your internet connection. Not a ezcoder issue — retry shortly.",
+        guidance: hint ?? "Check your internet connection. Not a ggcoder issue — retry shortly.",
         ...(requestId ? { requestId } : {}),
       };
     case "auth":
@@ -270,7 +296,7 @@ function finaliseBySource(
         headline: "Authentication issue.",
         source,
         message,
-        guidance: hint ?? "Run `ezcoder login` to refresh your credentials.",
+        guidance: hint ?? "Run `ggcoder login` to refresh your credentials.",
         ...(requestId ? { requestId } : {}),
       };
     case "provider":
@@ -292,13 +318,13 @@ function finaliseBySource(
           "Only Kimi, Gemini, MiniMax, and MiMo-V2.5 can analyze video. Switch with /model.",
         ...(requestId ? { requestId } : {}),
       };
-    case "ezcoder":
+    case "ggcoder":
       return {
-        headline: "ezcoder hit an unexpected error.",
+        headline: "ggcoder hit an unexpected error.",
         source,
         message,
         guidance:
-          hint ?? "This looks like a ezcoder bug — please report it to the developer (see /help).",
+          hint ?? "This looks like a ggcoder bug — please report it to the developer (see /help).",
         ...(requestId ? { requestId } : {}),
       };
   }
@@ -350,14 +376,14 @@ function inferSource(err: Error): ErrorSource {
   ) {
     return "auth";
   }
-  return "ezcoder";
+  return "ggcoder";
 }
 
 /**
  * Build the action line for a provider error: tells the user whether to
  * retry, switch model, check billing, or whether it's serious enough to
  * report. Always frames the source plainly ("This is an OpenAI issue") so
- * the user knows to NOT report it to the ezcoder dev.
+ * the user knows to NOT report it to the ggcoder dev.
  */
 function providerGuidance(
   provider: string | undefined,
@@ -369,10 +395,10 @@ function providerGuidance(
   const lower = message.toLowerCase();
 
   if (statusCode === 401 || lower.includes("unauthorized") || lower.includes("invalid api key")) {
-    return `Authentication failed with ${name}. Run \`ezcoder login\` to refresh your credentials.`;
+    return `Authentication failed with ${name}. Run \`ggcoder login\` to refresh your credentials.`;
   }
   if (lower.includes("overloaded") || lower.includes("engine_overloaded")) {
-    return `${name}'s servers are overloaded right now. Retry in a moment — not a ezcoder issue.`;
+    return `${name}'s servers are overloaded right now. Retry in a moment — not a ggcoder issue.`;
   }
   if (
     lower.includes("insufficient balance") ||
@@ -380,16 +406,16 @@ function providerGuidance(
     lower.includes("recharge") ||
     lower.includes("no resource package")
   ) {
-    return `Your ${name} account has a billing or quota issue — check your balance. Not a ezcoder issue.`;
+    return `Your ${name} account has a billing or quota issue — check your balance. Not a ggcoder issue.`;
   }
   if (statusCode === 429 || lower.includes("rate limit") || lower.includes("too many requests")) {
-    return `${name} rate limit hit. Wait a moment then retry — not a ezcoder issue.`;
+    return `${name} rate limit hit. Wait a moment then retry — not a ggcoder issue.`;
   }
   if (statusCode === 502 || lower.includes("bad gateway")) {
-    return `${name} returned a bad gateway. Retry — this is on their side, not ezcoder.`;
+    return `${name} returned a bad gateway. Retry — this is on their side, not ggcoder.`;
   }
   if (statusCode === 503 || lower.includes("service unavailable")) {
-    return `${name} is temporarily unavailable. Retry shortly — not a ezcoder issue.`;
+    return `${name} is temporarily unavailable. Retry shortly — not a ggcoder issue.`;
   }
   if (
     statusCode === 500 ||
@@ -397,11 +423,11 @@ function providerGuidance(
     (lower.includes("500") && lower.includes("internal server error"))
   ) {
     return status
-      ? `This is an error from ${name}, not ezcoder. Retry — if it keeps happening, check ${status}.`
-      : `This is an error from ${name}, not ezcoder. Retry — if it keeps happening, try a different model with /model.`;
+      ? `This is an error from ${name}, not ggcoder. Retry — if it keeps happening, check ${status}.`
+      : `This is an error from ${name}, not ggcoder. Retry — if it keeps happening, try a different model with /model.`;
   }
   if (lower.includes("timeout") || lower.includes("timed out")) {
-    return `Request to ${name} timed out. Their servers may be slow — retry. Not a ezcoder issue.`;
+    return `Request to ${name} timed out. Their servers may be slow — retry. Not a ggcoder issue.`;
   }
   if (
     lower.includes("does not recognize the requested model") ||
@@ -414,6 +440,6 @@ function providerGuidance(
     return `Context window for this ${name} model is full. Run /compact to shrink history, or start a new session.`;
   }
   return status
-    ? `This is an error from ${name}, not ezcoder. Retry — if it persists, check ${status}.`
-    : `This is an error from ${name}, not ezcoder. Retry — if it persists, try a different model with /model.`;
+    ? `This is an error from ${name}, not ggcoder. Retry — if it persists, check ${status}.`
+    : `This is an error from ${name}, not ggcoder. Retry — if it persists, try a different model with /model.`;
 }

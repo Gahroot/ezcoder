@@ -1,5 +1,5 @@
-import { agentLoop, isAbortError, type AgentEvent, type AgentTool } from "@prestyj/agent";
-import { ProviderError, type Message, type Provider, type ThinkingLevel } from "@prestyj/ai";
+import { agentLoop, isAbortError, type AgentEvent, type AgentTool } from "@kenkaiiii/gg-agent";
+import { ProviderError, type Message, type Provider, type ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { EventBus } from "./event-bus.js";
 import {
   SlashCommandRegistry,
@@ -20,7 +20,12 @@ import { getContextWindow, getModel, MODELS } from "./model-registry.js";
 import { discoverSkills, type Skill } from "./skills.js";
 import { ensureAppDirs } from "../config.js";
 import { buildSystemPrompt } from "../system-prompt.js";
-import { createTools, createWebSearchTool, type ProcessManager } from "../tools/index.js";
+import {
+  createTools,
+  createWebSearchTool,
+  type LspManager,
+  type ProcessManager,
+} from "../tools/index.js";
 import { MCPClientManager, getMCPServers, getAllMcpServers } from "./mcp/index.js";
 import { log } from "./logger.js";
 import { setEstimatorModel } from "./compaction/token-estimator.js";
@@ -54,7 +59,7 @@ export interface AgentSessionOptions {
   /**
    * If true, this session does NOT create a `.jsonl` session file or persist
    * any messages. Used by subagent spawns (`--json` mode) so their transcripts
-   * don't leak into `ezcoder continue` for the parent project. Subagent runs
+   * don't leak into `ggcoder continue` for the parent project. Subagent runs
    * are one-shot, NDJSON-streamed to the parent over stdout, and have no
    * resumable identity.
    */
@@ -88,6 +93,7 @@ export class AgentSession {
   private skills: Skill[] = [];
   private cacheKeyLogged = false;
   private processManager?: ProcessManager;
+  private lspManager?: LspManager;
   private mcpManager?: MCPClientManager;
   private provider: Provider;
   private model: string;
@@ -132,11 +138,11 @@ export class AgentSession {
     // Session manager
     this.sessionManager = new SessionManager(paths.sessionsDir);
 
-    // Ensure project-local .ezcoder directories exist
-    const localEzDir = path.join(this.cwd, ".ezcoder");
-    await fs.mkdir(path.join(localEzDir, "skills"), { recursive: true });
-    await fs.mkdir(path.join(localEzDir, "commands"), { recursive: true });
-    await fs.mkdir(path.join(localEzDir, "agents"), { recursive: true });
+    // Ensure project-local .gg directories exist
+    const localGGDir = path.join(this.cwd, ".gg");
+    await fs.mkdir(path.join(localGGDir, "skills"), { recursive: true });
+    await fs.mkdir(path.join(localGGDir, "commands"), { recursive: true });
+    await fs.mkdir(path.join(localGGDir, "agents"), { recursive: true });
 
     // Discover skills
     this.skills = await discoverSkills({
@@ -149,26 +155,21 @@ export class AgentSession {
       globalAgentsDir: paths.agentsDir,
       projectDir: this.cwd,
     });
-    const { tools, processManager } = createTools(this.cwd, {
+    const { tools, processManager, lspManager } = createTools(this.cwd, {
       agents,
       skills: this.skills,
       provider: this.provider,
       model: this.model,
+      lspDiagnostics: this.settingsManager.get("lspDiagnostics"),
       // Lazy — sessionId isn't assigned yet when createTools() runs, so we
       // must defer reading the cache key until the sub-agent actually fires.
       getCacheKey: () => this.getPromptCacheKey(),
     });
     this.tools = tools;
     this.processManager = processManager;
+    this.lspManager = lspManager;
 
-    // Connect MCP servers (non-blocking — failures are logged and skipped).
-    // Child sessions (subagents and goal workers run via `--json` mode) get the
-    // provider defaults only — NOT user-configured servers. The defaults now
-    // resolve kencode-search to the locally installed bin instead of a flaky
-    // `npx` cold-spawn, so research tools are reliable here. We deliberately
-    // skip user servers: a single `/expand` fans out 5 parallel subagents, and
-    // cold-spawning every user MCP server (e.g. npx-based remotes) per
-    // short-lived child would be slow and could hammer rate-limited endpoints.
+    // Connect MCP servers (non-blocking — failures are logged and skipped)
     this.mcpManager = new MCPClientManager();
     try {
       let apiKey: string | undefined;
@@ -205,7 +206,7 @@ export class AgentSession {
 
     // Load or create session. Transient sessions (subagent spawns) never
     // touch the session store — sessionPath stays empty and persistMessage
-    // is a no-op so their transcripts can't pollute `ezcoder continue`.
+    // is a no-op so their transcripts can't pollute `ggcoder continue`.
     if (this.opts.transient) {
       this.lastPersistedIndex = this.messages.length;
     } else if (this.opts.sessionId) {
@@ -250,7 +251,7 @@ export class AgentSession {
           }
         }
 
-        // Add custom commands from .ezcoder/commands/
+        // Add custom commands from .gg/commands/
         const customCmds = await loadCustomCommands(cwd);
         if (customCmds.length > 0) {
           lines.push("");
@@ -519,7 +520,7 @@ export class AgentSession {
 
     this.messages = result.messages;
 
-    // Persist compacted messages to a new session file so `ezcoder continue`
+    // Persist compacted messages to a new session file so `ggcoder continue`
     // picks up the compacted state instead of the full original history.
     const session = await this.sessionManager.create(this.cwd, this.provider, this.model);
     this.sessionId = session.id;
@@ -633,7 +634,7 @@ export class AgentSession {
   private getPromptCacheKey(): string | undefined {
     if (this.opts.promptCacheKey) return this.opts.promptCacheKey;
     if (!this.sessionId) return undefined;
-    return `${this.opts.promptCacheKeyPrefix ?? "ezcoder"}:${this.sessionId}`;
+    return `${this.opts.promptCacheKeyPrefix ?? "ggcoder"}:${this.sessionId}`;
   }
 
   /** Stable cache-routing key for downstream sub-agent processes. */
@@ -643,6 +644,7 @@ export class AgentSession {
 
   async dispose(): Promise<void> {
     this.processManager?.shutdownAll();
+    this.lspManager?.shutdownAll();
     await this.mcpManager?.dispose();
     await this.extensionLoader.deactivateAll();
     this.eventBus.removeAllListeners();

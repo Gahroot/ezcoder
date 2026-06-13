@@ -1,16 +1,16 @@
 {
-  "name": "@prestyj/editor",
-  "version": "0.7.8",
+  "name": "@kenkaiiii/gg-editor",
+  "version": "0.7.27",
   "type": "module",
   "description": "CLI video editor agent. Drives DaVinci Resolve and Premiere Pro via API + hotkeys + GUI fallback.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gahroot/ezcoder.git",
-    "directory": "packages/editor"
+    "url": "git+https://github.com/kenkaiiii/gg-framework.git",
+    "directory": "packages/gg-editor"
   },
   "bin": {
-    "ezeditor": "./dist/cli.js"
+    "ggeditor": "./dist/cli.js"
   },
   "exports": {
     ".": {
@@ -29,9 +29,9 @@
     "test": "node scripts/build-skills.mjs && vitest run"
   },
   "dependencies": {
-    "@prestyj/agent": "workspace:*",
-    "@prestyj/ai": "workspace:*",
-    "@prestyj/cli": "workspace:*",
+    "@kenkaiiii/gg-agent": "workspace:*",
+    "@kenkaiiii/gg-ai": "workspace:*",
+    "@kenkaiiii/ggcoder": "workspace:*",
     "chalk": "^5.6.2",
     "ink": "^7.0.2",
     "react": "^19.2.5",

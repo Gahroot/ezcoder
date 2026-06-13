@@ -69,7 +69,7 @@ function createClient(options: StreamOptions): OpenAI {
 }
 
 export function streamOpenAI(options: StreamOptions): StreamResult {
-  return new StreamResult(runStream(options));
+  return new StreamResult(runStream(options), options.signal);
 }
 
 async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, StreamResponse> {
@@ -87,7 +87,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // Moonshot/Kimi requires video uploaded to the file service and referenced by
   // `ms://<id>` — inline base64 is rejected. Kimi's endpoint also only accepts
   // the resulting `video_url` part inside a tool result (not user content), so
-  // ezcoder routes attached video through the read tool. This uploads every
+  // ggcoder routes attached video through the read tool. This uploads every
   // video part (in user OR tool-result content) and caches the id so multi-turn
   // sessions don't re-upload. Done in-place before the transform.
   if (options.provider === "moonshot") {
@@ -127,7 +127,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     ...(useStreaming ? { stream_options: { include_usage: true } } : {}),
   };
 
-  // Native web search is disabled for OpenAI-compatible providers — ezcoder
+  // Native web search is disabled for OpenAI-compatible providers — ggcoder
   // provides its own web_search/web_fetch tools which handle results properly.
   // Moonshot's $web_search was previously injected here but it returns opaque
   // results and triggers reasoning_content validation errors with thinking mode.
@@ -137,7 +137,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // params may cause errors on other OpenAI-compatible providers like GLM or Xiaomi.
   if (options.provider === "openai" || options.provider === "moonshot") {
     const paramsAny = params as unknown as Record<string, unknown>;
-    paramsAny.prompt_cache_key = normalizePromptCacheKey(options.promptCacheKey ?? "ezcoder");
+    paramsAny.prompt_cache_key = normalizePromptCacheKey(options.promptCacheKey ?? "ggcoder");
 
     // Map cacheRetention to OpenAI's prompt_cache_retention param.
     // "long" → "24h" keeps cached prefixes active up to 24 hours (OpenAI feature).
@@ -209,67 +209,79 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   let outputTokens = 0;
   let cacheRead = 0;
   let finishReason: string | null = null;
+  let receivedAnyChunk = false;
 
-  for await (const chunk of stream) {
-    const choice = chunk.choices?.[0];
+  try {
+    for await (const chunk of stream) {
+      receivedAnyChunk = true;
+      const choice = chunk.choices?.[0];
 
-    if (chunk.usage) {
-      ({ inputTokens, outputTokens, cacheRead } = extractOpenAIUsage(chunk.usage));
-    }
-
-    if (!choice) continue;
-
-    if (choice.finish_reason) {
-      finishReason = choice.finish_reason;
-    }
-
-    const delta = choice.delta;
-
-    // Reasoning/thinking delta (GLM, Moonshot, Xiaomi MiMo, DeepSeek)
-    // Always accumulate reasoning_content for round-tripping in multi-turn
-    // conversations (models like DeepSeek Reasoner require it on assistant
-    // messages).  Only yield thinking_delta to the UI when thinking is enabled
-    // — reasoning models like MiMo always return reasoning_content even when
-    // thinking is "off", which would cause a permanent "Thinking" indicator.
-    const reasoningContent = (delta as Record<string, unknown>).reasoning_content;
-    if (typeof reasoningContent === "string" && reasoningContent) {
-      thinkingAccum += reasoningContent;
-      if (options.thinking) {
-        yield { type: "thinking_delta", text: reasoningContent };
+      if (chunk.usage) {
+        ({ inputTokens, outputTokens, cacheRead } = extractOpenAIUsage(chunk.usage));
       }
-    }
 
-    // Text delta
-    if (delta.content) {
-      textAccum += delta.content;
-      yield { type: "text_delta", text: delta.content };
-    }
+      if (!choice) continue;
 
-    // Tool call deltas
-    if (delta.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        let accum = toolCallAccum.get(tc.index);
-        if (!accum) {
-          accum = {
-            id: tc.id ?? "",
-            name: tc.function?.name ?? "",
-            argsJson: "",
-          };
-          toolCallAccum.set(tc.index, accum);
-        }
-        if (tc.id) accum.id = tc.id;
-        if (tc.function?.name) accum.name = tc.function.name;
-        if (tc.function?.arguments) {
-          accum.argsJson += tc.function.arguments;
-          yield {
-            type: "toolcall_delta",
-            id: accum.id,
-            name: accum.name,
-            argsJson: tc.function.arguments,
-          };
+      if (choice.finish_reason) {
+        finishReason = choice.finish_reason;
+      }
+
+      const delta = choice.delta;
+
+      // Reasoning/thinking delta (GLM, Moonshot, Xiaomi MiMo, DeepSeek)
+      // Always accumulate reasoning_content for round-tripping in multi-turn
+      // conversations (models like DeepSeek Reasoner require it on assistant
+      // messages).  Only yield thinking_delta to the UI when thinking is enabled
+      // — reasoning models like MiMo always return reasoning_content even when
+      // thinking is "off", which would cause a permanent "Thinking" indicator.
+      const reasoningContent = (delta as Record<string, unknown>).reasoning_content;
+      if (typeof reasoningContent === "string" && reasoningContent) {
+        thinkingAccum += reasoningContent;
+        if (options.thinking) {
+          yield { type: "thinking_delta", text: reasoningContent };
         }
       }
+
+      // Text delta
+      if (delta.content) {
+        textAccum += delta.content;
+        yield { type: "text_delta", text: delta.content };
+      }
+
+      // Tool call deltas
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          let accum = toolCallAccum.get(tc.index);
+          if (!accum) {
+            accum = {
+              id: tc.id ?? "",
+              name: tc.function?.name ?? "",
+              argsJson: "",
+            };
+            toolCallAccum.set(tc.index, accum);
+          }
+          if (tc.id) accum.id = tc.id;
+          if (tc.function?.name) accum.name = tc.function.name;
+          if (tc.function?.arguments) {
+            accum.argsJson += tc.function.arguments;
+            yield {
+              type: "toolcall_delta",
+              id: accum.id,
+              name: accum.name,
+              argsJson: tc.function.arguments,
+            };
+          }
+        }
+      }
     }
+  } catch (err) {
+    throw toError(err, providerName);
+  }
+
+  if (!receivedAnyChunk) {
+    throw new ProviderError(providerName, "Stream ended without producing any chunks.", {
+      statusCode: 504,
+    });
   }
 
   // Finalize thinking content (GLM, Moonshot, Xiaomi reasoning_content)

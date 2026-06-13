@@ -1,6 +1,6 @@
 import React from "react";
 import { Text, Box } from "ink";
-import type { ThinkingLevel } from "@prestyj/ai";
+import type { ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { useTheme } from "../theme/theme.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import { getContextWindow, type ContextWindowOptions } from "../../core/model-registry.js";
@@ -43,6 +43,7 @@ interface FooterProps {
 // Model ID → short display name
 const MODEL_SHORT_NAMES: Record<string, string> = {
   "claude-fable-5": "Fable",
+  "claude-mythos-5": "Mythos",
   "claude-opus-4-8": "Opus",
   "claude-sonnet-4-6": "Sonnet",
   "claude-haiku-4-5": "Haiku",

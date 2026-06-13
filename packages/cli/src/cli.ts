@@ -3,7 +3,7 @@
 // long sessions — tool results are capped at 50KB each but accumulate
 // across thousands of turns, and Ink/React state plus the SDK clients
 // share the same heap. 8GB gives ample headroom; --expose-gc is unused
-// today but matches ez-boss for consistency. NODE_OPTIONS overrides via
+// today but matches gg-boss for consistency. NODE_OPTIONS overrides via
 // Node's standard flag merge.
 
 // Catch stray abort-related promise rejections that escape the normal error
@@ -57,22 +57,21 @@ import { runServeMode } from "./modes/serve-mode.js";
 import { runAgentHomeMode } from "./modes/agent-home-mode.js";
 import { renderSessionSelector } from "./ui/sessions.js";
 import type { CompletedItem } from "./ui/app-items.js";
-import type { AgentTool } from "@prestyj/agent";
+import type { AgentTool } from "@kenkaiiii/gg-agent";
 import { segmentDisplayText, stripDoneMarkers } from "./utils/plan-steps.js";
 import { formatUserError } from "./utils/error-handler.js";
-import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
+import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import type { ThemeName } from "./ui/theme/theme.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { SessionManager } from "./core/session-manager.js";
 import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
-import { setStreamDiagnostic } from "@prestyj/agent";
-import { setProviderDiagnostic } from "@prestyj/ai";
+import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
+import { setProviderDiagnostic } from "@kenkaiiii/gg-ai";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
 import { createTools } from "./tools/index.js";
 import { CheckpointStore } from "./core/checkpoint-store.js";
-import type { GoalMode } from "./core/runtime-mode.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import {
   createCompactedSessionCheckpoint,
@@ -92,10 +91,9 @@ import { runLogin, runLogout, runDoctor } from "./cli/auth.js";
 import { runMcp } from "./cli/mcp.js";
 import {
   CLI_VERSION,
-  LOGO_LINES,
   clearVisibleScreen,
   displayName,
-  gradientLine,
+  renderLogoBlock,
   requireInteractiveTTY,
 } from "./cli/shared.js";
 import { discoverAgents } from "./core/agents.js";
@@ -124,24 +122,19 @@ function printHelp(): void {
   const primary = chalk.hex("#60a5fa");
   const accent = chalk.hex("#a78bfa");
   const bold = chalk.bold;
-  const gap = "   ";
 
-  // Banner — matches the Ink Banner component layout
+  // Banner — matches the interactive TUI banner layout
   console.log();
-  console.log(
-    gradientLine(LOGO_LINES[0]) +
-      gap +
-      primary.bold("EZ Coder") +
-      dim(` v${CLI_VERSION}`) +
-      dim(" · By ") +
-      bold("Nolan Grout"),
-  );
-  console.log(gradientLine(LOGO_LINES[1]) + gap + dim("AI coding agent"));
-  console.log(gradientLine(LOGO_LINES[2]));
+  for (const row of renderLogoBlock([
+    primary.bold("GG Coder") + dim(` v${CLI_VERSION}`) + dim(" · By ") + bold("Ken Kai"),
+    dim("AI coding agent"),
+  ])) {
+    console.log(row);
+  }
   console.log();
 
   // Usage
-  console.log(primary("Usage:") + "  ezcoder " + dim("[options]") + " " + dim("[prompt]"));
+  console.log(primary("Usage:") + "  ggcoder " + dim("[options]") + " " + dim("[prompt]"));
   console.log();
 
   // Commands
@@ -194,7 +187,7 @@ function printHelp(): void {
     ["/session", "Switch or create sessions"],
     ["/new", "Start a new session"],
     ["/settings", "Open settings"],
-    ["/quit", "Exit ezcoder"],
+    ["/quit", "Exit ggcoder"],
   ];
   for (const [name, desc] of slashCmds) {
     console.log(`  ${accent(name.padEnd(20))} ${dim(desc)}`);
@@ -349,7 +342,7 @@ function main(): void {
     if (p === "openai") return "gpt-5.5";
     if (p === "gemini") return "gemini-3.1-flash-lite-preview";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.6";
+    if (p === "moonshot") return "kimi-k2.7-code";
     if (p === "minimax") return "MiniMax-M3";
     if (p === "deepseek") return "deepseek-v4-pro";
     if (p === "openrouter") return "qwen/qwen3.6-plus";
@@ -371,7 +364,7 @@ function main(): void {
     cwd,
     thinkingLevel,
     idealReviewEnabled: saved.idealReviewEnabled,
-    autoApprovePlans: saved.autoApprovePlans,
+    lspDiagnostics: saved.lspDiagnostics,
     continueRecent,
     resumeSessionPath: values.resume,
     theme: savedTheme,
@@ -395,7 +388,7 @@ async function runInkTUI(opts: {
   theme?: "auto" | ThemeName;
   initialOverlay?: "pixel";
   idealReviewEnabled?: boolean;
-  autoApprovePlans?: boolean;
+  lspDiagnostics?: boolean;
 }): Promise<void> {
   requireInteractiveTTY();
 
@@ -458,13 +451,13 @@ async function runInkTUI(opts: {
     const fallback = loggedInProviders.find((p) => credentialsByProvider[p]);
     if (!fallback) {
       throw new Error(
-        'All logged-in providers expired or failed to authenticate. Run "ezcoder login" to re-authenticate.',
+        'All logged-in providers expired or failed to authenticate. Run "ggcoder login" to re-authenticate.',
       );
     }
     console.warn(
       chalk.yellow(
         `⚠ ${displayName(preferredProvider)} session expired — switched to ${displayName(fallback)} for this launch.\n` +
-          `  Run "ezcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
+          `  Run "ggcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
       ),
     );
     provider = fallback;
@@ -473,7 +466,7 @@ async function runInkTUI(opts: {
     console.warn(
       chalk.yellow(
         `⚠ Sessions expired: ${expiredProviders.map(displayName).join(", ")}. ` +
-          `Run "ezcoder login" to re-authenticate.`,
+          `Run "ggcoder login" to re-authenticate.`,
       ),
     );
   }
@@ -500,7 +493,7 @@ async function runInkTUI(opts: {
   };
 
   // Ensure project-local .gg directories exist
-  const localGGDir = path.join(cwd, ".ezcoder");
+  const localGGDir = path.join(cwd, ".gg");
   await fs.promises.mkdir(path.join(localGGDir, "skills"), { recursive: true });
   await fs.promises.mkdir(path.join(localGGDir, "commands"), { recursive: true });
   await fs.promises.mkdir(path.join(localGGDir, "agents"), { recursive: true });
@@ -517,9 +510,8 @@ async function runInkTUI(opts: {
 
   // Runtime mode refs — shared between tools and UI
   const planModeRef = { current: false };
-  const goalModeRef: { current: GoalMode } = { current: "off" };
   const planToolCallbacks: {
-    onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
+    onEnterPlan?: (reason?: string) => void | Promise<void>;
     onExitPlan?: (planPath: string) => Promise<string>;
   } = {};
 
@@ -529,35 +521,41 @@ async function runInkTUI(opts: {
   const onPreFileMutation = (filePath: string): Promise<void> =>
     checkpointRef.current?.recordPreMutation(filePath) ?? Promise.resolve();
 
-  const { tools, processManager, rebuildReadTool } = createTools(cwd, {
+  const { tools, processManager, rebuildReadTool, lspManager } = createTools(cwd, {
     agents,
     skills,
     provider,
     model,
     planModeRef,
-    goalModeRef,
     onPreFileMutation,
+    lspDiagnostics: opts.lspDiagnostics,
     onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
     onExitPlan: (planPath) =>
       planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
   });
 
+  // The active LSP pool follows the active tool set — rebuilds (pixel chdir)
+  // shut the old pool down and swap in the new one.
+  let activeLspManager = lspManager;
+
   // Rebuilds the cwd-bound tools for a different project root. Used by the
   // pixel-fix flow so the agent operates in the error's project, not in
-  // wherever ezcoder was launched from.
+  // wherever ggcoder was launched from.
   const rebuildToolsForCwd = (newCwd: string) => {
-    const { tools: rebuilt } = createTools(newCwd, {
+    activeLspManager?.shutdownAll();
+    const { tools: rebuilt, lspManager: rebuiltLspManager } = createTools(newCwd, {
       agents,
       skills,
       provider,
       model,
       planModeRef,
-      goalModeRef,
       onPreFileMutation,
+      lspDiagnostics: opts.lspDiagnostics,
       onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
       onExitPlan: (planPath) =>
         planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
     });
+    activeLspManager = rebuiltLspManager;
     return rebuilt;
   };
 
@@ -575,12 +573,6 @@ async function runInkTUI(opts: {
     return initialMcpConnectPromise;
   };
 
-  // Kick the connect off eagerly so the kencode-search (and any other) MCP
-  // servers are booting during TUI mount instead of only after first paint.
-  // The App's effect awaits this same memoized promise and swaps in the tools
-  // + rebuilds the system prompt once it resolves. Errors are surfaced there.
-  void connectInitialMcpTools().catch(() => {});
-
   const systemPrompt = await buildSystemPrompt(
     cwd,
     skills,
@@ -589,12 +581,12 @@ async function runInkTUI(opts: {
     tools.map((tool) => tool.name),
     undefined,
     provider,
-    goalModeRef.current,
   );
 
   // Kill all background processes on exit (synchronous — catches all exit paths)
   process.on("exit", () => {
     processManager.shutdownAll();
+    activeLspManager?.shutdownAll();
     mcpManager.dispose().catch(() => {});
   });
 
@@ -650,7 +642,7 @@ async function runInkTUI(opts: {
               signal: compactionAbort.signal,
             });
             // Persist compacted continuation to a fresh session so future
-            // `ezcoder continue` starts from the compacted checkpoint instead
+            // `ggcoder continue` starts from the compacted checkpoint instead
             // of repeatedly restoring the oversized source session.
             const compactedSession = await createCompactedSessionCheckpoint(sessionManager, {
               cwd,
@@ -705,6 +697,29 @@ async function runInkTUI(opts: {
     checkpointRef.current = new CheckpointStore({ sessionId, cwd });
   }
 
+  // Prune old session transcripts in the background — they're append-only
+  // JSONL and can reach 100MB+ each, so without cleanup ~/.gg/sessions grows
+  // unbounded and eventually fills the disk. Fire-and-forget: pruning must
+  // never delay or break startup. The active session is explicitly protected.
+  {
+    const { sessionRetentionDays } = loadSavedSettings(paths.settingsFile);
+    if (sessionRetentionDays > 0) {
+      const keepPaths = sessionPath ? [sessionPath] : [];
+      void sessionManager
+        .pruneOldSessions({ maxAgeDays: sessionRetentionDays, keepPaths })
+        .then(({ deletedFiles, freedBytes }) => {
+          if (deletedFiles > 0) {
+            log("INFO", "session", `Pruned old sessions`, {
+              deletedFiles: String(deletedFiles),
+              freedMB: (freedBytes / 1024 / 1024).toFixed(1),
+              retentionDays: String(sessionRetentionDays),
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }
+
   await renderApp({
     provider,
     model,
@@ -730,12 +745,10 @@ async function runInkTUI(opts: {
     mcpManager,
     authStorage,
     planModeRef,
-    goalModeRef,
     skills,
     checkpointStore: checkpointRef.current ?? undefined,
     initialOverlay: opts.initialOverlay,
     idealReviewEnabled: opts.idealReviewEnabled,
-    autoApprovePlans: opts.autoApprovePlans,
     rebuildToolsForCwd,
     rebuildReadTool,
     connectInitialMcpTools,
@@ -771,7 +784,7 @@ async function runSessions(): Promise<void> {
     if (p === "openai") return "gpt-5.5";
     if (p === "gemini") return "gemini-3.1-flash-lite-preview";
     if (p === "glm") return "glm-5.1";
-    if (p === "moonshot") return "kimi-k2.6";
+    if (p === "moonshot") return "kimi-k2.7-code";
     if (p === "minimax") return "MiniMax-M3";
     if (p === "deepseek") return "deepseek-v4-pro";
     return "claude-opus-4-8";
@@ -790,7 +803,7 @@ async function runSessions(): Promise<void> {
     cwd,
     thinkingLevel,
     idealReviewEnabled: saved2.idealReviewEnabled,
-    autoApprovePlans: saved2.autoApprovePlans,
+    lspDiagnostics: saved2.lspDiagnostics,
     resumeSessionPath: selectedPath,
     theme: saved2.theme,
   });
@@ -830,48 +843,18 @@ async function runTelegramSetup(): Promise<void> {
 
   const existing = await loadTelegramConfig();
 
-  // Banner (matches Banner.tsx)
-  const LOGO = [
-    " \u2584\u2580\u2580\u2580 \u2584\u2580\u2580\u2580",
-    " \u2588 \u2580\u2588 \u2588 \u2580\u2588",
-    " \u2580\u2584\u2584\u2580 \u2580\u2584\u2584\u2580",
-  ];
-  const GRADIENT = [
-    "#60a5fa",
-    "#6da1f9",
-    "#7a9df7",
-    "#8799f5",
-    "#9495f3",
-    "#a18ff1",
-    "#a78bfa",
-    "#a18ff1",
-    "#9495f3",
-    "#8799f5",
-    "#7a9df7",
-    "#6da1f9",
-  ];
-  function gradientText(text: string): string {
-    let colorIdx = 0;
-    return text
-      .split("")
-      .map((ch) => {
-        if (ch === " ") return ch;
-        const color = GRADIENT[colorIdx++ % GRADIENT.length]!;
-        return chalk.hex(color)(ch);
-      })
-      .join("");
-  }
-  const GAP = "   ";
+  // Banner
   console.log();
-  console.log(
-    `  ${gradientText(LOGO[0]!)}${GAP}` +
-      chalk.hex("#60a5fa").bold("EZ Coder") +
+  for (const row of renderLogoBlock([
+    chalk.hex("#60a5fa").bold("GG Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" · By ") +
-      chalk.white.bold("Nolan Grout"),
-  );
-  console.log(`  ${gradientText(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Telegram Setup"));
-  console.log(`  ${gradientText(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")("Remote Control"));
+      chalk.white.bold("Ken Kai"),
+    chalk.hex("#a78bfa")("Telegram Setup"),
+    chalk.hex("#6b7280")("Remote Control"),
+  ])) {
+    console.log(row);
+  }
   console.log();
 
   if (existing) {
@@ -972,7 +955,7 @@ async function runTelegramSetup(): Promise<void> {
         chalk.hex("#6b7280")("    2. Add the bot to your group\n") +
         chalk.hex("#6b7280")("    3. Send /link in the group to connect it to a project\n\n") +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ezcoder serve\n"),
+        chalk.hex("#6b7280")("    cd your-project && ggcoder serve\n"),
     );
   } finally {
     rl.close();
@@ -995,19 +978,18 @@ async function runServe(): Promise<void> {
 
   // Priority: CLI flags > env vars > saved config
   const saved = await loadTelegramConfig();
-  const botToken =
-    serveValues["bot-token"] ?? process.env.EZCODER_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
-  const userIdStr = serveValues["user-id"] ?? process.env.EZCODER_TELEGRAM_USER_ID;
+  const botToken = serveValues["bot-token"] ?? process.env.GG_TELEGRAM_BOT_TOKEN ?? saved?.botToken;
+  const userIdStr = serveValues["user-id"] ?? process.env.GG_TELEGRAM_USER_ID;
   const userId = userIdStr ? parseInt(userIdStr, 10) : saved?.userId;
 
   if (!botToken || !userId || isNaN(userId)) {
     console.error(
       chalk.hex("#ef4444")("Telegram not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ezcoder telegram") +
+        chalk.hex("#60a5fa").bold("ggcoder telegram") +
         " to set up your bot token and user ID.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ezcoder serve --bot-token TOKEN --user-id ID"),
+        chalk.hex("#6b7280")("  ggcoder serve --bot-token TOKEN --user-id ID"),
     );
     process.exit(1);
   }
@@ -1082,18 +1064,17 @@ async function runAgentHomeLogin(): Promise<void> {
   const existing = await loadAgentHomeConfig();
 
   // Banner
-  const LOGO = LOGO_LINES;
-  const GAP = "   ";
   console.log();
-  console.log(
-    `  ${gradientLine(LOGO[0]!)}${GAP}` +
-      chalk.hex("#60a5fa").bold("EZ Coder") +
+  for (const row of renderLogoBlock([
+    chalk.hex("#60a5fa").bold("GG Coder") +
       chalk.hex("#6b7280")(` v${CLI_VERSION}`) +
       chalk.hex("#6b7280")(" \u00b7 By ") +
-      chalk.white.bold("Nolan Grout"),
-  );
-  console.log(`  ${gradientLine(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")("Agent Home Setup"));
-  console.log(`  ${gradientLine(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")("Remote Control via iOS"));
+      chalk.white.bold("Ken Kai"),
+    chalk.hex("#a78bfa")("Agent Home Setup"),
+    chalk.hex("#6b7280")("Remote Control via iOS"),
+  ])) {
+    console.log(row);
+  }
   console.log();
 
   if (existing) {
@@ -1138,7 +1119,7 @@ async function runAgentHomeLogin(): Promise<void> {
         chalk.hex("#4ade80")(`  \u2713 Config saved to ${paths.agentHomeFile}`) +
         "\n\n" +
         chalk.hex("#60a5fa")("  To start:\n") +
-        chalk.hex("#6b7280")("    cd your-project && ezcoder agent-home\n"),
+        chalk.hex("#6b7280")("    cd your-project && ggcoder agent-home\n"),
     );
   } finally {
     rl.close();
@@ -1166,10 +1147,10 @@ async function runAgentHome(): Promise<void> {
     console.error(
       chalk.hex("#ef4444")("Agent Home not configured.\n\n") +
         "Run " +
-        chalk.hex("#60a5fa").bold("ezcoder agent-home-login") +
+        chalk.hex("#60a5fa").bold("ggcoder agent-home-login") +
         " to set up your token.\n\n" +
         chalk.hex("#6b7280")("Or provide manually:\n") +
-        chalk.hex("#6b7280")("  ezcoder agent-home --token TOKEN"),
+        chalk.hex("#6b7280")("  ggcoder agent-home --token TOKEN"),
     );
     process.exit(1);
   }
@@ -1244,7 +1225,7 @@ async function resolveActiveProvider(
   }
 
   if (loggedInProviders.length === 0) {
-    throw new Error('Not logged in to any provider. Run "ezcoder login" to authenticate.');
+    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
   }
 
   if (loggedInProviders.includes(preferred)) {

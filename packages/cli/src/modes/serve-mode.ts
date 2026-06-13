@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Provider, ThinkingLevel } from "@prestyj/ai";
+import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { AgentSession } from "../core/agent-session.js";
-import { isAbortError } from "@prestyj/agent";
+import { isAbortError } from "@kenkaiiii/gg-agent";
 import { TelegramBot, type TelegramMessage, type TelegramVoiceMessage } from "../core/telegram.js";
 import { transcribeVoice, isModelLoaded, setProgressCallback } from "../core/voice-transcriber.js";
 import chalk from "chalk";
@@ -13,6 +13,7 @@ import { MODELS, getContextWindow } from "../core/model-registry.js";
 import { estimateConversationTokens } from "../core/compaction/token-estimator.js";
 import { PROMPT_COMMANDS } from "../core/prompt-commands.js";
 import { loadCustomCommands } from "../core/custom-commands.js";
+import { renderLogoBlock } from "../cli/shared.js";
 
 export interface ServeModeOptions {
   provider: Provider;
@@ -27,7 +28,7 @@ export interface ServeModeOptions {
 }
 
 // ── Serve Config ───────────────────────────────────────────
-// Maps Telegram chatId → project path. Stored at ~/.ezcoder/serve.json.
+// Maps Telegram chatId → project path. Stored at ~/.gg/serve.json.
 // DMs use chatId of the private chat. Groups use the group chatId.
 
 interface ServeConfig {
@@ -57,7 +58,7 @@ async function saveConfig(config: ServeConfig): Promise<void> {
 // ── Project Discovery ──────────────────────────────────────
 
 /**
- * Scan ~/.ezcoder/sessions/ to find all project directories that have sessions.
+ * Scan ~/.gg/sessions/ to find all project directories that have sessions.
  * Returns decoded absolute paths sorted alphabetically.
  */
 async function discoverProjects(): Promise<string[]> {
@@ -100,7 +101,7 @@ interface ChatState {
 }
 
 /**
- * Serve mode: run ezcoder controlled via Telegram.
+ * Serve mode: run ggcoder controlled via Telegram.
  *
  * - DMs to bot → default project (CWD where serve was started)
  * - Groups → linked projects via /link <path>
@@ -299,7 +300,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     const currentModel = state?.session.getState().model ?? options.model;
     const modelInfo = MODELS.find((m) => m.id === currentModel);
 
-    let text = `*ezcoder* — remote coding agent\n\n`;
+    let text = `*ggcoder* — remote coding agent\n\n`;
     text += `Project: \`${path.basename(projectPath)}\`\n`;
     text += `Model: *${modelInfo?.name ?? currentModel}*\n\n`;
 
@@ -328,7 +329,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
       }
     }
 
-    // Custom commands from .ezcoder/commands/
+    // Custom commands from .gg/commands/
     const customCmds = await loadCustomCommands(projectPath);
     if (customCmds.length > 0) {
       text += `\n*Custom Commands*\n`;
@@ -365,7 +366,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     const groupName = chatTitle ?? "this group";
     await bot.send(
       chatId,
-      `*ezcoder* joined *${groupName}*\n\n` +
+      `*ggcoder* joined *${groupName}*\n\n` +
         `Send /link to connect to a project\n` +
         `Send /help for all commands`,
     );
@@ -605,7 +606,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
       return;
     }
 
-    // ── Forward to ezcoder slash commands ──
+    // ── Forward to ggcoder slash commands ──
 
     if (!TELEGRAM_COMMANDS.has(cmd)) {
       const projectPath = resolveProjectPath(chatId);
@@ -614,7 +615,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
       if (state.isProcessing) {
         await bot.send(
           chatId,
-          "ezcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
+          "ggcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
         );
         return;
       }
@@ -650,7 +651,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     if (state?.isProcessing) {
       await bot.send(
         chatId,
-        "ezcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
+        "ggcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
       );
       return;
     }
@@ -705,7 +706,7 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     if (state.isProcessing) {
       await bot.send(
         chatId,
-        "ezcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
+        "ggcoder is still processing. Wait for the current task to finish, or send /cancel to interrupt.",
       );
       return;
     }
@@ -742,50 +743,18 @@ export async function runServeMode(options: ServeModeOptions): Promise<void> {
     const displayPath =
       home && options.cwd.startsWith(home) ? "~" + options.cwd.slice(home.length) : options.cwd;
 
-    // EZ logo with gradient (matches Banner.tsx)
-    const LOGO = [
-      " \u2588\u2580\u2580\u2580 \u2580\u2580\u2580\u2588",
-      " \u2588\u2580\u2580   \u2584\u2580 ",
-      " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
-    ];
-    const GRADIENT = [
-      "#60a5fa",
-      "#6da1f9",
-      "#7a9df7",
-      "#8799f5",
-      "#9495f3",
-      "#a18ff1",
-      "#a78bfa",
-      "#a18ff1",
-      "#9495f3",
-      "#8799f5",
-      "#7a9df7",
-      "#6da1f9",
-    ];
-
-    function gradientText(text: string): string {
-      let colorIdx = 0;
-      return text
-        .split("")
-        .map((ch) => {
-          if (ch === " ") return ch;
-          const color = GRADIENT[colorIdx++ % GRADIENT.length]!;
-          return chalk.hex(color)(ch);
-        })
-        .join("");
-    }
-
-    const GAP = "   ";
+    // GG logo with gradient (matches the interactive TUI banner)
     console.log();
-    console.log(
-      `  ${gradientText(LOGO[0]!)}${GAP}` +
-        chalk.hex("#60a5fa").bold("EZ Coder") +
+    for (const row of renderLogoBlock([
+      chalk.hex("#60a5fa").bold("GG Coder") +
         chalk.hex("#6b7280")(` v${options.version}`) +
         chalk.hex("#6b7280")(" · By ") +
-        chalk.white.bold("Nolan Grout"),
-    );
-    console.log(`  ${gradientText(LOGO[1]!)}${GAP}` + chalk.hex("#a78bfa")(modelName));
-    console.log(`  ${gradientText(LOGO[2]!)}${GAP}` + chalk.hex("#6b7280")(displayPath));
+        chalk.white.bold("Ken Kai"),
+      chalk.hex("#a78bfa")(modelName),
+      chalk.hex("#6b7280")(displayPath),
+    ])) {
+      console.log(row);
+    }
     console.log();
     console.log(
       chalk.hex("#6b7280")("  Mode      ") +

@@ -6,9 +6,9 @@
     "bench": "tsx run.ts"
   },
   "dependencies": {
-    "@prestyj/agent": "workspace:*",
-    "@prestyj/ai": "workspace:*",
-    "@prestyj/cli": "workspace:*",
+    "@kenkaiiii/gg-agent": "workspace:*",
+    "@kenkaiiii/gg-ai": "workspace:*",
+    "@kenkaiiii/ggcoder": "workspace:*",
     "zod": "^4.0.0"
   }
 }

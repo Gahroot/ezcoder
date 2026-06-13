@@ -9,14 +9,13 @@ import { loginAnthropic } from "../core/oauth/anthropic.js";
 import { loginOpenAI } from "../core/oauth/openai.js";
 import { loginGemini } from "../core/oauth/gemini.js";
 import { loginKimi } from "../core/oauth/kimi.js";
-import { MOONSHOT_OAUTH_KEY } from "../core/auth-storage.js";
+import { MOONSHOT_OAUTH_KEY } from "@kenkaiiii/gg-core";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "../core/oauth/types.js";
 import {
   CLI_VERSION,
-  LOGO_LINES,
   clearVisibleScreen,
   displayName,
-  gradientLine,
+  renderLogoBlock,
   openBrowser,
   requireInteractiveTTY,
 } from "./shared.js";
@@ -147,22 +146,21 @@ export async function runDoctor(): Promise<void> {
   const bad = chalk.hex("#ef4444");
 
   // ── Banner ──────────────────────────────────────────────────
-  const LOGO = LOGO_LINES;
-  const GAP = "   ";
   console.log();
-  console.log(
-    `  ${gradientLine(LOGO[0]!)}${GAP}` +
-      primary.bold("EZ Coder") +
+  for (const row of renderLogoBlock([
+    primary.bold("GG Coder") +
       dim(` v${CLI_VERSION}`) +
       dim(" · By ") +
-      chalk.white.bold("Nolan Grout"),
-  );
-  console.log(`  ${gradientLine(LOGO[1]!)}${GAP}` + accent("Doctor"));
-  console.log(`  ${gradientLine(LOGO[2]!)}${GAP}` + dim("Diagnose & Fix"));
+      chalk.white.bold("Ken Kai"),
+    accent("Doctor"),
+    dim("Diagnose & Fix"),
+  ])) {
+    console.log(row);
+  }
   console.log();
 
   const home = os.homedir();
-  const ggDir = path.join(home, ".ezcoder");
+  const ggDir = path.join(home, ".gg");
   const authFile = path.join(ggDir, "auth.json");
   const lockFile = authFile + ".lock";
   const myUid = process.getuid!();
@@ -181,7 +179,7 @@ export async function runDoctor(): Promise<void> {
   }
   if (myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
-    console.log(dim("      Running ezcoder with sudo can cause ownership issues."));
+    console.log(dim("      Running ggcoder with sudo can cause ownership issues."));
     console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
   }
   console.log();
@@ -295,7 +293,7 @@ export async function runDoctor(): Promise<void> {
         await fsP.copyFile(authFile, path.join(ggDir, backupName));
         await fsP.writeFile(authFile, "{}", { encoding: "utf-8", mode: 0o600 });
         console.log(good(`    ✓ Corrupt file backed up as ${backupName}`));
-        console.log(dim('      Run "ezcoder login" to re-authenticate'));
+        console.log(dim('      Run "ggcoder login" to re-authenticate'));
         authData = {};
         fixed++;
       }
@@ -312,7 +310,7 @@ export async function runDoctor(): Promise<void> {
     }
   } catch {
     console.log(dim(`    Path:  ${authFile}`));
-    console.log(warn('    Not found — run "ezcoder login" to authenticate'));
+    console.log(warn('    Not found — run "ggcoder login" to authenticate'));
   }
   console.log();
 

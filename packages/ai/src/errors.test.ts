@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  EZCoderAIError,
+  GGAIError,
   ProviderError,
   VideoUnsupportedError,
   formatError,
@@ -55,6 +55,31 @@ describe("formatError usage limit", () => {
   });
 });
 
+describe("formatError Mythos access", () => {
+  it("explains invite-only access for a Mythos not_found_error", () => {
+    const formatted = formatError(
+      new ProviderError("anthropic", "not_found_error: model: claude-mythos-5", {
+        statusCode: 404,
+      }),
+    );
+    expect(formatted.headline).toBe("Claude Mythos 5 is invitation-only.");
+    expect(formatted.message).toContain("Project Glasswing");
+    expect(formatted.guidance).toContain(
+      "platform.claude.com/docs/en/about-claude/models/overview",
+    );
+    expect(formatted.guidance).toContain("claude-fable-5");
+  });
+
+  it("does not hijack not_found errors for other models", () => {
+    const formatted = formatError(
+      new ProviderError("anthropic", "not_found_error: model: claude-opus-9", {
+        statusCode: 404,
+      }),
+    );
+    expect(formatted.headline).toBe("Anthropic returned an error.");
+  });
+});
+
 describe("VideoUnsupportedError", () => {
   it("formats as a clean capability error naming video-capable models", () => {
     const f = formatError(new VideoUnsupportedError());
@@ -70,7 +95,7 @@ describe("VideoUnsupportedError", () => {
   it("renders headline + guidance only (no bug-report framing)", () => {
     const out = formatErrorForDisplay(new VideoUnsupportedError());
     expect(out).toContain("This model can't analyze video.");
-    expect(out).not.toContain("ezcoder bug");
+    expect(out).not.toContain("ggcoder bug");
   });
 });
 
@@ -83,7 +108,7 @@ describe("formatErrorForDisplay", () => {
       [
         "Anthropic returned an error.",
         "  overloaded_error: Overloaded",
-        "  \u2192 Anthropic's servers are overloaded right now. Retry in a moment \u2014 not a ezcoder issue.",
+        "  \u2192 Anthropic's servers are overloaded right now. Retry in a moment \u2014 not a ggcoder issue.",
       ].join("\n"),
     );
   });
@@ -96,7 +121,7 @@ describe("formatErrorForDisplay", () => {
       [
         "OpenAI returned an error.",
         "  server_error: something broke",
-        "  \u2192 This is an error from OpenAI, not ezcoder. Retry \u2014 if it keeps happening, check status.openai.com.",
+        "  \u2192 This is an error from OpenAI, not ggcoder. Retry \u2014 if it keeps happening, check status.openai.com.",
       ].join("\n"),
     );
   });
@@ -125,29 +150,29 @@ describe("formatErrorForDisplay", () => {
       [
         "Gemini returned an error.",
         "  quota exceeded",
-        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a ezcoder issue.",
+        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a ggcoder issue.",
       ].join("\n"),
     );
   });
 
-  it("classifies a network EZCoderAIError without a ezcoder bug headline", () => {
-    const out = formatErrorForDisplay(new EZCoderAIError("fetch failed", { source: "network" }));
+  it("classifies a network GGAIError without a ggcoder bug headline", () => {
+    const out = formatErrorForDisplay(new GGAIError("fetch failed", { source: "network" }));
     expect(out).toBe(
       [
         "Network error \u2014 couldn't reach the provider.",
         "  fetch failed",
-        "  \u2192 Check your internet connection. Not a ezcoder issue \u2014 retry shortly.",
+        "  \u2192 Check your internet connection. Not a ggcoder issue \u2014 retry shortly.",
       ].join("\n"),
     );
   });
 
-  it("falls back to the ezcoder-bug headline for unknown errors", () => {
+  it("falls back to the ggcoder-bug headline for unknown errors", () => {
     const out = formatErrorForDisplay(new Error("Cannot read property 'foo' of undefined"));
     expect(out).toBe(
       [
-        "ezcoder hit an unexpected error.",
+        "ggcoder hit an unexpected error.",
         "  Cannot read property 'foo' of undefined",
-        "  \u2192 This looks like a ezcoder bug \u2014 please report it to the developer (see /help).",
+        "  \u2192 This looks like a ggcoder bug \u2014 please report it to the developer (see /help).",
       ].join("\n"),
     );
   });

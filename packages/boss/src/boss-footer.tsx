@@ -1,9 +1,9 @@
 import React from "react";
 import { Text, Box } from "ink";
-import type { ThinkingLevel } from "@prestyj/ai";
-import { useTheme } from "@prestyj/cli/ui/theme";
-import { useTerminalSize } from "@prestyj/cli/ui/hooks/terminal-size";
-import { getContextWindow } from "@prestyj/cli";
+import type { ThinkingLevel } from "@kenkaiiii/gg-ai";
+import { useTheme } from "@kenkaiiii/ggcoder/ui/theme";
+import { useTerminalSize } from "@kenkaiiii/ggcoder/ui/hooks/terminal-size";
+import { getContextWindow } from "@kenkaiiii/gg-core";
 import { COLORS } from "./branding.js";
 
 const PARTIAL_BLOCKS = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
@@ -11,6 +11,8 @@ const LIGHT_SHADE = "░";
 const BAR_WIDTH = 8;
 
 const SHORT_MODELS: Record<string, string> = {
+  "claude-fable-5": "Fable",
+  "claude-mythos-5": "Mythos",
   "claude-opus-4-8": "Opus",
   "claude-sonnet-4-6": "Sonnet",
   "claude-haiku-4-5": "Haiku",
@@ -60,7 +62,7 @@ interface BossFooterProps {
   exitPending: boolean;
   /** Boss extended-thinking level. Falsy when thinking is off. */
   bossThinkingLevel?: ThinkingLevel;
-  /** Auto-updater has installed a newer @prestyj/boss in the background. */
+  /** Auto-updater has installed a newer @kenkaiiii/gg-boss in the background. */
   updatePending?: boolean;
   /** id of the currently-playing radio station, or null when the radio is off. */
   currentRadioStationId?: string | null;
@@ -103,7 +105,7 @@ export function getBossFooterScopeLabel(scope: string): string {
   return scope === "all" ? "all projects" : scope;
 }
 
-/** Footer matching ezcoder's structure: left context label, right status cluster. */
+/** Footer matching ggcoder's structure: left context label, right status cluster. */
 export function BossFooter({
   bossModel,
   workerModel,
@@ -134,7 +136,7 @@ export function BossFooter({
   const radioName = currentRadioStationId
     ? (SHORT_RADIO[currentRadioStationId] ?? currentRadioStationId)
     : null;
-  const updateText = updatePending ? "Update ready. Restart EZ Boss." : null;
+  const updateText = updatePending ? "Update ready. Restart GG Boss." : null;
   const leftText = getBossFooterScopeLabel(scope);
 
   const barChars = renderContextBar({

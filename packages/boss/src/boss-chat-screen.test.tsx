@@ -11,7 +11,7 @@ const modelSelectorSource = readFileSync(
 );
 
 describe("BossChatScreen", () => {
-  it("keeps EZ Coder chat layout order", () => {
+  it("keeps GG Coder chat layout order", () => {
     const layout = source.indexOf("<ChatLayout");
     const live = source.indexOf("{livePane}");
     const controls = source.indexOf("<ChatControls");
@@ -29,7 +29,7 @@ describe("BossChatScreen", () => {
     expect(workerStatus).toBeGreaterThan(footer);
   });
 
-  it("reserves the shared ez-coder live response slot after submit", () => {
+  it("reserves the shared gg-coder live response slot after submit", () => {
     const rowsSource = readFileSync(new URL("./boss-transcript-rows.tsx", import.meta.url), "utf8");
 
     expect(rowsSource).toContain("<ChatLivePane");
@@ -40,7 +40,7 @@ describe("BossChatScreen", () => {
     expect(appSource).not.toContain("bossStore.commitLiveItem(userItem)");
   });
 
-  it("passes boss running state into the shared ez-coder input", () => {
+  it("passes boss running state into the shared gg-coder input", () => {
     expect(source).toContain("disabled={isRunning}");
     expect(appSource).toContain('isRunning={state.phase === "working"}');
   });
@@ -70,17 +70,17 @@ describe("BossChatScreen", () => {
     expect(appSource).toContain('if (getBossState().phase === "working") return;');
   });
 
-  it("uses a Boss-owned full EZ Coder model selector", () => {
+  it("uses a Boss-owned full GG Coder model selector", () => {
     expect(source).toContain("<BossModelSelector");
     expect(source).not.toContain("loggedInProviders={state.loggedInProviders}");
-    expect(modelSelectorSource).toContain('import { MODELS } from "@prestyj/cli"');
+    expect(modelSelectorSource).toContain('import { MODELS } from "@kenkaiiii/gg-core"');
     expect(modelSelectorSource).toContain("MODELS.map");
     expect(modelSelectorSource).toContain("function BossModelSelectList");
     expect(modelSelectorSource).toContain("stripTerminalFocusSequences");
     expect(modelSelectorSource).not.toContain("loggedInProviders");
   });
 
-  it("supports EZ Coder-style model aliases and keeps radio opening through the overlay reset", () => {
+  it("supports GG Coder-style model aliases and keeps radio opening through the overlay reset", () => {
     expect(slashSource).toContain('aliases: ["m", "model", "models"]');
     expect(appSource).toContain('case "model-boss":');
     expect(appSource).toContain('openOverlay("radio")');

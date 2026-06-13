@@ -9,9 +9,8 @@ import {
   type Usage,
   type ContentPart,
   type AssistantMessage,
-  type StreamEvent,
   isHardBillingMessage,
-} from "@prestyj/ai";
+} from "@kenkaiiii/gg-ai";
 import type {
   AgentEvent,
   AgentOptions,
@@ -27,7 +26,7 @@ const DEFAULT_MAX_TURNS = 300;
 /**
  * Lightweight stream diagnostic callback. When set, the agent loop calls this
  * at every phase boundary with timing and state info. This lets the hosting
- * app (ezcoder, come-alive, etc.) log stall diagnostics without the agent
+ * app (ggcoder, come-alive, etc.) log stall diagnostics without the agent
  * package needing fs/process dependencies.
  */
 export type StreamDiagnosticFn = (phase: string, data?: Record<string, unknown>) => void;
@@ -148,7 +147,7 @@ export function isBillingError(err: unknown): boolean {
   // provider set (DeepSeek, OpenRouter, ...). Never retriable.
   const statusCode = (err as Error & { statusCode?: unknown }).statusCode;
   if (statusCode === 402) return true;
-  // Shared marker list (single source of truth in @prestyj/ai) so the
+  // Shared marker list (single source of truth in @kenkaiiii/gg-ai) so the
   // provider boundary and this classifier can't drift apart.
   return isHardBillingMessage(err.message);
 }
@@ -221,33 +220,6 @@ export function isThinkingBlockError(err: unknown): boolean {
 }
 
 /**
- * Opaque, detail-free provider failure messages. Some OpenAI-compatible
- * providers (e.g. Xiaomi MiMo) return these with a 4xx status for what is
- * actually a transient server-side fault — a plain retry clears it. There is
- * nothing actionable in the message for the user or the agent, so treating it
- * as a hard client error just makes the user manually retry. Matched as the
- * ENTIRE (trimmed) message so real 400s like "invalid request: messages..."
- * never qualify.
- */
-const OPAQUE_PROVIDER_MESSAGES = new Set([
-  "request error",
-  "internal error",
-  "unknown error",
-  "server error",
-  "an error occurred",
-  "something went wrong",
-]);
-
-function isOpaqueProviderMessage(message: string): boolean {
-  return OPAQUE_PROVIDER_MESSAGES.has(
-    message
-      .trim()
-      .replace(/[.!]+$/, "")
-      .toLowerCase(),
-  );
-}
-
-/**
  * Distinguish rate-limit (HTTP 429), server-side overload (HTTP 529), and
  * transient provider 5xx/API failures. Returns null for errors that should not
  * enter the retry bucket. All kinds use the same backoff schedule, but the UI
@@ -290,11 +262,6 @@ export function classifyOverload(
     msg.includes("service unavailable") ||
     msg.includes("gateway timeout")
   ) {
-    return "provider_error";
-  }
-  // Opaque failures with no actionable detail (any provider, any status) —
-  // retry them like a transient 5xx instead of surfacing immediately.
-  if (isOpaqueProviderMessage(err.message)) {
     return "provider_error";
   }
   return null;
@@ -371,60 +338,27 @@ export function isTransportFailure(err: unknown): boolean {
   return false;
 }
 
-function createAbortError(): Error {
-  return new DOMException("Aborted", "AbortError");
-}
-
-function abortablePromise<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(createAbortError());
-
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const cleanup = (): void => signal.removeEventListener("abort", onAbort);
-    const resolveOnce = (value: T): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(value);
-    };
-    const rejectOnce = (err: unknown): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(err instanceof Error ? err : new Error(String(err)));
-    };
-    const onAbort = (): void => rejectOnce(createAbortError());
-
-    signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(resolveOnce, rejectOnce);
-  });
-}
-
 /**
  * Promise-returning sleep that rejects with AbortError if `signal` fires.
  * Used by retry backoffs so ESC/Ctrl+C cancel immediately instead of having
  * to wait out the full delay (up to 30s per overload retry × 10 retries).
  */
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) return Promise.reject(createAbortError());
-
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
   return new Promise<void>((resolve, reject) => {
+    let onAbort: (() => void) | null = null;
     const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
-    const onAbort = (): void => {
+    onAbort = () => {
       clearTimeout(timer);
-      reject(createAbortError());
+      reject(new DOMException("Aborted", "AbortError"));
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-function closeIterator<T>(iterator: AsyncIterator<T> | null): void {
-  if (!iterator?.return) return;
-  Promise.resolve(iterator.return()).catch(() => {});
 }
 
 export async function* agentLoop(
@@ -453,9 +387,7 @@ export async function* agentLoop(
   let useNonStreamingFallback = false;
   const MAX_OVERLOAD_RETRIES = 10;
   const MAX_EMPTY_RESPONSE_RETRIES = 2;
-  // Match the provider-transient retry budget: Anthropic/Fable stalls are usually
-  // upstream stream/transport failures, not an agent state problem.
-  const MAX_STALL_RETRIES = 10;
+  const MAX_STALL_RETRIES = 5;
   const MAX_OVERFLOW_COMPACTIONS = 2;
   // After this many streaming stalls in a row, switch to non-streaming mode
   // for the remaining stall retries. Keeps the first two retries fast (the
@@ -492,8 +424,8 @@ export async function* agentLoop(
   const NON_STREAMING_HARD_TIMEOUT_MS = 300_000; // 5min for full non-streaming response
   // Runaway tool-call circuit breaker. When a model glitches mid-tool-call it
   // can emit tens of thousands of toolcall_delta events without ever closing,
-  // burning the entire stall-retry budget on what is clearly a non-recoverable
-  // model error. Cap accumulated arg chars and event count;
+  // burning the entire stall-retry budget (~25 min) on what is clearly a
+  // non-recoverable model error. Cap accumulated arg chars and event count;
   // exceeding either is a hard, non-retriable failure. Thresholds are generous
   // enough to allow legitimate large file writes through `write`.
   const MAX_TOOLCALL_DELTA_CHARS = 1_000_000; // 1 MB of accumulated tool-call args
@@ -640,7 +572,6 @@ export async function* agentLoop(
         idleTimedOut = true;
         streamController.abort();
       }, hardTimeoutMs);
-      let streamIterator: AsyncIterator<StreamEvent> | null = null;
 
       try {
         diag("stream_call", { nonStreaming: useNonStreamingFallback });
@@ -686,16 +617,7 @@ export async function* agentLoop(
         // network/provider latency, not the time spent before stream() returned.
         lastYieldEndTime = Date.now();
         resetIdleTimer();
-        streamIterator = result[Symbol.asyncIterator]();
-        while (true) {
-          // Race each pull against our local abort signal. Some SDK streams can
-          // ignore an aborted fetch before the first byte arrives; without this
-          // the idle/hard timers fire but the harness remains stuck awaiting
-          // `next()`, so Esc/Ctrl+C cannot release the UI.
-          const next = await abortablePromise(streamIterator.next(), streamController.signal);
-          if (next.done) break;
-          const event = next.value;
-
+        for await (const event of result) {
           // Measure consumer lag: time between finishing previous yield and
           // receiving this event. For event #1 this still includes network/
           // provider latency; for subsequent events it isolates how long
@@ -829,9 +751,8 @@ export async function* agentLoop(
           maxConsumerLagMs,
           eventTypes: eventTypeCounts,
         });
-        response = await abortablePromise(result.response, streamController.signal);
+        response = await result.response;
       } catch (err) {
-        if (streamController.signal.aborted) closeIterator(streamIterator);
         const errMsg = err instanceof Error ? err.message : String(err);
         diag("stream_error", {
           error: errMsg.slice(0, 200),
@@ -1375,10 +1296,7 @@ async function executeSingleToolCall(
           });
         },
       };
-      const raw = await abortablePromise(
-        Promise.resolve().then(() => tool.execute(parsed, ctx)),
-        ctx.signal,
-      );
+      const raw = await tool.execute(parsed, ctx);
       const normalized = normalizeToolResult(raw);
       resultContent = normalized.content;
       details = normalized.details;

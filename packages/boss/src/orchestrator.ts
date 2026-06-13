@@ -1,20 +1,18 @@
-import { Agent, isAbortError } from "@prestyj/agent";
+import { Agent, isAbortError } from "@kenkaiiii/gg-agent";
+import { compact, estimateConversationTokens, shouldCompact } from "@kenkaiiii/ggcoder";
 import {
   AuthStorage,
-  compact,
-  estimateConversationTokens,
   getContextWindow,
   getNextThinkingLevel,
   isThinkingLevelSupported,
-  shouldCompact,
-} from "@prestyj/cli";
+} from "@kenkaiiii/gg-core";
 import {
   formatError,
   type Message,
   type Provider,
   type ThinkingLevel,
   type Usage,
-} from "@prestyj/ai";
+} from "@kenkaiiii/gg-ai";
 import { Worker } from "./worker.js";
 import { EventQueue } from "./event-queue.js";
 import { createBossTools, WORKER_PROMPT_BRIEF } from "./tools.js";
@@ -54,7 +52,7 @@ function normalizeBossThinkingLevel(
     : getNextThinkingLevel(provider, model, undefined);
 }
 
-export interface EzBossOptions {
+export interface GGBossOptions {
   bossProvider: Provider;
   bossModel: string;
   /** Boss extended-thinking level. Toggled via Shift+Tab in the TUI. */
@@ -76,7 +74,7 @@ export interface EzBossOptions {
  *
  * UI state is mirrored into bossStore — components subscribe via useBossState().
  */
-export class EzBoss {
+export class GGBoss {
   private workers = new Map<string, Worker>();
   private lastSummaries = new Map<string, WorkerTurnSummary>();
   private queue = new EventQueue();
@@ -86,9 +84,9 @@ export class EzBoss {
   private turnAc: AbortController | null = null;
   private running = false;
   private pendingUserMessages = 0;
-  private opts: EzBossOptions;
+  private opts: GGBossOptions;
   private authStorage = new AuthStorage();
-  /** Path to the boss's per-session jsonl log under ~/.ezcoder/boss/sessions/. */
+  /** Path to the boss's per-session jsonl log under ~/.gg/boss/sessions/. */
   private sessionPath = "";
   /** Stable id for the current boss conversation, used as a provider cache routing key. */
   private bossSessionId = "";
@@ -134,7 +132,7 @@ export class EzBoss {
    */
   private stuckPushedAt = new Map<string, number | null>();
 
-  constructor(opts: EzBossOptions) {
+  constructor(opts: GGBossOptions) {
     this.opts = {
       ...opts,
       bossThinkingLevel: normalizeBossThinkingLevel(
@@ -228,7 +226,7 @@ export class EzBoss {
     this.lastPersistedIndex = this.bossAgent.getMessages().length;
 
     // Seed the context-bar estimate so it shows real progress before the first
-    // turn_end event fires. Especially critical on `ezboss continue` where
+    // turn_end event fires. Especially critical on `ggboss continue` where
     // we'd otherwise show 0% over a session that's already half-full.
     const initialMessages = this.bossAgent.getMessages();
     if (initialMessages.length > 1) {
@@ -387,8 +385,8 @@ export class EzBoss {
         contextWindow,
         signal: this.ac.signal,
       });
-      // Start a new session file so `ezboss continue` resumes the COMPACTED
-      // history, not the full original. Mirrors ezcoder/AgentSession.compact.
+      // Start a new session file so `ggboss continue` resumes the COMPACTED
+      // history, not the full original. Mirrors ggcoder/AgentSession.compact.
       // Set bossSessionId before rebuilding the Agent so its provider cache key
       // matches the new compacted session.
       const session = await createSession();
@@ -460,7 +458,7 @@ export class EzBoss {
   /**
    * Toggle the boss's extended-thinking level. Recreates bossAgent with the
    * new setting (Anthropic SDK reads `thinking` once on construction). Mirrors
-   * ezcoder's Shift+Tab UX. Persists to settings.json so the choice sticks
+   * ggcoder's Shift+Tab UX. Persists to settings.json so the choice sticks
    * across restarts.
    */
   async setBossThinking(level: ThinkingLevel | undefined): Promise<void> {
@@ -513,7 +511,7 @@ export class EzBoss {
 
   /**
    * Start a brand-new boss session — fresh agent with no message history,
-   * fresh session file on disk so `ezboss continue` picks up the new chat.
+   * fresh session file on disk so `ggboss continue` picks up the new chat.
    * Workers are unaffected.
    */
   async newSession(): Promise<void> {
@@ -534,7 +532,7 @@ export class EzBoss {
   }
 
   private getBossPromptCacheKey(): string {
-    return this.bossSessionId ? `ezboss:${this.bossSessionId}` : "ezboss";
+    return this.bossSessionId ? `ggboss:${this.bossSessionId}` : "ggboss";
   }
 
   async run(): Promise<void> {
@@ -684,7 +682,7 @@ export class EzBoss {
             bossStore.endTool(e.toolCallId, e.isError, e.durationMs, e.result, e.details);
             break;
           case "turn_end":
-            // Mirror ezcoder/useAgentLoop: total context = uncached input +
+            // Mirror ggcoder/useAgentLoop: total context = uncached input +
             // cache reads + cache writes (Anthropic separates input/output,
             // others share the window so include output too). Without adding
             // cache, prompt-cached calls report a tiny inputTokens delta and
@@ -718,7 +716,7 @@ export class EzBoss {
       }
     } catch (err) {
       if (isAbortError(err)) {
-        // Mirror ezcoder's onAborted: convert any in-flight tools to
+        // Mirror ggcoder's onAborted: convert any in-flight tools to
         // "Stopped." entries so the user sees the same visual feedback.
         bossStore.interruptStreaming();
         if (!this.running) {
@@ -1052,7 +1050,7 @@ ${s.textTail || "(no text yet)"}${renderOthers(event.project)}${renderAutoChain(
 }
 
 /**
- * Total context used in tokens. Mirrors ezcoder/useAgentLoop: Anthropic counts
+ * Total context used in tokens. Mirrors ggcoder/useAgentLoop: Anthropic counts
  * uncached input + cache reads/writes (output is metered separately); other
  * providers share a single window so output counts too.
  */
@@ -1062,7 +1060,7 @@ function computeContextUsed(usage: Usage, provider: Provider): number {
 }
 
 /**
- * Map raw provider error text to a human-friendly hint. Mirrors ezcoder's
+ * Map raw provider error text to a human-friendly hint. Mirrors ggcoder's
  * pattern in App.tsx so users see the same diagnostic phrasing.
  */
 function formatProviderError(err: unknown): string {
