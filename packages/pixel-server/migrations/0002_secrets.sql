@@ -2,8 +2,8 @@
 --
 -- Existing rows are left with a NULL secret on purpose: those projects can
 -- still receive /ingest events (matched by `key`), but they cannot be
--- managed via the API until they are re-minted via `ggcoder pixel install`.
--- Re-running install detects the missing secret in ~/.gg/projects.json and
+-- managed via the API until they are re-minted via `ezcoder pixel install`.
+-- Re-running install detects the missing secret in ~/.ezcoder/projects.json and
 -- creates a fresh project_id+key+secret triple for that directory.
 
 ALTER TABLE projects ADD COLUMN secret TEXT;

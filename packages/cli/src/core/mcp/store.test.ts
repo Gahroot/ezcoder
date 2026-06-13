@@ -82,7 +82,7 @@ describe("mcp store", () => {
       },
       scope: "project",
     });
-    // Project file lives at ./.gg/mcp.json.
+    // Project file lives at ./.ezcoder/mcp.json.
     await fs.access(projectMcpPath(tmpProject));
   });
 

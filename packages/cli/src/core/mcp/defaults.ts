@@ -99,7 +99,7 @@ export function getMCPServers(provider: Provider, apiKey?: string): MCPServerCon
 
 /**
  * Full startup set: provider defaults + user-configured servers from
- * ~/.ezcoder/mcp.json and ./.gg/mcp.json. Provider defaults stay authoritative —
+ * ~/.ezcoder/mcp.json and ./.ezcoder/mcp.json. Provider defaults stay authoritative —
  * a user server can only ADD a new name, never override a default like
  * `kencode-search`.
  */

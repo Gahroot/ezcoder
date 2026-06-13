@@ -1,20 +1,20 @@
 # Goal System Targeted Verification Log
 timestamp: 2026-05-26T19:56:37Z
 base_sha: 20190fcc8f4563a0e60c58f40cadeba4a729d7ee
-worktree: /Users/kenkai/Documents/UnstableMind/gg-coder-goal-worktrees/8967ac82-ca0a-4b28-83a4-2ad2c83b153a-6fe2b1bd
+worktree: /Users/kenkai/Documents/UnstableMind/ez-coder-goal-worktrees/8967ac82-ca0a-4b28-83a4-2ad2c83b153a-6fe2b1bd
 dependency_setup: pnpm install --frozen-lockfile was required because candidate worktree initially had no node_modules; first check failed on global TypeScript 5.9.2 vs repo TypeScript 6 config.
-command: pnpm --filter @kenkaiiii/ggcoder check && pnpm --filter @kenkaiiii/ggcoder test -- goal
+command: pnpm --filter @prestyj/cli check && pnpm --filter @prestyj/cli test -- goal
 
 
-> @kenkaiiii/ggcoder@4.3.219 check /Users/kenkai/Documents/UnstableMind/gg-coder-goal-worktrees/8967ac82-ca0a-4b28-83a4-2ad2c83b153a-6fe2b1bd/packages/ggcoder
+> @prestyj/cli@4.3.219 check /Users/kenkai/Documents/UnstableMind/ez-coder-goal-worktrees/8967ac82-ca0a-4b28-83a4-2ad2c83b153a-6fe2b1bd/packages/cli
 > tsc --noEmit
 
 
-> @kenkaiiii/ggcoder@4.3.219 test /Users/kenkai/Documents/UnstableMind/gg-coder-goal-worktrees/8967ac82-ca0a-4b28-83a4-2ad2c83b153a-6fe2b1bd/packages/ggcoder
+> @prestyj/cli@4.3.219 test /Users/kenkai/Documents/UnstableMind/ez-coder-goal-worktrees/8967ac82-ca0a-4b28-83a4-2ad2c83b153a-6fe2b1bd/packages/cli
 > vitest run -- goal
 
 
- RUN  v4.1.4 /Users/kenkai/Documents/UnstableMind/gg-coder-goal-worktrees/8967ac82-ca0a-4b28-83a4-2ad2c83b153a-6fe2b1bd/packages/ggcoder
+ RUN  v4.1.4 /Users/kenkai/Documents/UnstableMind/ez-coder-goal-worktrees/8967ac82-ca0a-4b28-83a4-2ad2c83b153a-6fe2b1bd/packages/cli
 
  ✓ src/ui/goal-events.test.ts (16 tests) 6ms
  ✓ src/core/goal-controller.test.ts (28 tests) 6ms

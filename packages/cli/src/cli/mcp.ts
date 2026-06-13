@@ -91,7 +91,7 @@ Add examples:
 
 Scopes:
   global   ~/.ezcoder/mcp.json   (all EZ Coder sessions)
-  project  ./.gg/mcp.json   (the current project)
+  project  ./.ezcoder/mcp.json   (the current project)
 
 Configs are stored in the same { "mcpServers": { … } } shape Claude Code uses.`);
 }
