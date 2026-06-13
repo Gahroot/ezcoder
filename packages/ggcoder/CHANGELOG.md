@@ -1,5 +1,19 @@
 # @kenkaiiii/ggcoder
 
+## 4.9.1
+
+### Patch Changes
+
+- Fix blank rows being reserved above short live content during streaming. The
+  live-area height estimate over-counted non-text rows (slash-command info lines,
+  tool/step markers), which falsely clamped the live area to its full budget and
+  bottom-anchored the content — leaving a block of empty rows above it until the
+  rows flushed to history. The estimate is now biased low; Ink's
+  clipFrameToTerminalHeight remains the authoritative overflow backstop.
+  - @kenkaiiii/gg-ai@4.9.1
+  - @kenkaiiii/gg-agent@4.9.1
+  - @kenkaiiii/gg-core@4.9.1
+
 ## 4.9.0
 
 ### Minor Changes
