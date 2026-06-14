@@ -34,7 +34,7 @@ import {
   getContextWindow,
   MODELS,
 } from "./core/model-registry.js";
-import { getGitBranch } from "./utils/git.js";
+import { getGitBranch, isGitRepo } from "./utils/git.js";
 import {
   getNextThinkingLevel,
   getSupportedThinkingLevels,
@@ -153,6 +153,33 @@ function detectHookKind(text: string): "ideal" | "loop_break" | "regrounding" | 
   return null;
 }
 
+// Separator AgentSession.prompt() inserts between a command's prompt body and
+// the user's trailing args. Must stay in sync with the expansion there.
+const COMMAND_ARGS_SEP = "\n\n## User Instructions\n\n";
+
+/**
+ * Reverse a prompt-template command's expansion. When a `/name` command runs,
+ * the agent persists the FULL expanded prompt body as the user message — so on
+ * resume the raw body would render instead of the short `/name` chip the user
+ * saw live. Given the candidate commands (built-in + custom) and a restored
+ * message body, recover the original `/name [args]` invocation. Returns null
+ * when the text isn't a known command body (an ordinary user message).
+ */
+function detectPromptCommand(
+  text: string,
+  candidates: ReadonlyArray<{ name: string; prompt: string }>,
+): string | null {
+  for (const c of candidates) {
+    if (!c.prompt) continue;
+    if (text === c.prompt) return `/${c.name}`;
+    if (text.startsWith(c.prompt + COMMAND_ARGS_SEP)) {
+      const args = text.slice(c.prompt.length + COMMAND_ARGS_SEP.length).trim();
+      return args ? `/${c.name} ${args}` : `/${c.name}`;
+    }
+  }
+  return null;
+}
+
 /**
  * Pick a provider/model the user is actually logged into, preferring the saved
  * defaults. Mirrors the CLI's resolveActiveProvider without exporting internals.
@@ -259,6 +286,7 @@ async function main(): Promise<void> {
   // branch is resolved once at startup and refreshed lazily; the context
   // window follows the active model.
   let gitBranch: string | null = await getGitBranch(cwd).catch(() => null);
+  let gitIsRepo: boolean = await isGitRepo(cwd).catch(() => false);
   function currentContextWindow(): number {
     const st = session.getState();
     return getContextWindow(st.model, { provider: st.provider });
@@ -268,11 +296,13 @@ async function main(): Promise<void> {
   function footerExtras(): {
     contextWindow: number;
     gitBranch: string | null;
+    isGitRepo: boolean;
     tasks: ReturnType<typeof session.listBackgroundProcesses>;
   } {
     return {
       contextWindow: currentContextWindow(),
       gitBranch,
+      isGitRepo: gitIsRepo,
       tasks: session.listBackgroundProcesses(),
     };
   }
@@ -552,27 +582,56 @@ async function main(): Promise<void> {
       // hook prompts (injected as user messages) are tagged with their `hook`
       // kind so the webview renders the short "Hook engaged" line, not the raw
       // prompt body — matching how they appear live.
-      const history = session
-        .getMessages()
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => {
-          // `m.content` is a union of differently-typed arrays (user vs
-          // assistant parts), so a type-predicate filter won't narrow cleanly.
-          // A structural `"text" in c` check extracts text from any text-bearing
-          // part regardless of the surrounding union.
-          const text =
-            typeof m.content === "string"
-              ? m.content
-              : m.content
-                  .map((c) =>
-                    c.type === "text" && "text" in c && typeof c.text === "string" ? c.text : "",
-                  )
-                  .join("");
-          const hook = m.role === "user" ? detectHookKind(text) : null;
-          return { role: m.role as "user" | "assistant", text, hook };
-        })
-        .filter((m) => m.text.trim().length > 0);
-      json(res, 200, { history });
+      //
+      // Prompt-template commands persist their FULL expanded body as the user
+      // message, so on resume we reverse the expansion (built-in + custom
+      // candidates) back to the short `/name [args]` chip the user saw live.
+      void (async () => {
+        const commandCandidates = [...PROMPT_COMMANDS, ...(await loadCustomCommands(cwd))];
+        const history = session
+          .getMessages()
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => {
+            // `m.content` is a union of differently-typed arrays (user vs
+            // assistant parts), so a type-predicate filter won't narrow cleanly.
+            // A structural `"text" in c` check extracts text from any text-bearing
+            // part regardless of the surrounding union.
+            const text =
+              typeof m.content === "string"
+                ? m.content
+                : m.content
+                    .map((c) =>
+                      c.type === "text" && "text" in c && typeof c.text === "string" ? c.text : "",
+                    )
+                    .join("");
+            // Reconstruct image attachments as data URLs so they re-render on
+            // resume — the webview only ever saw the live SSE stream, and the
+            // persisted message holds the base64 bytes. Without this, attached
+            // images vanish when returning to a session.
+            const images =
+              typeof m.content === "string"
+                ? []
+                : m.content.flatMap((c) =>
+                    c.type === "image" ? [`data:${c.mediaType};base64,${c.data}`] : [],
+                  );
+            const hook = m.role === "user" ? detectHookKind(text) : null;
+            // Recover a `/name [args]` command invocation from its expanded body
+            // (skip messages already claimed as hooks).
+            const command =
+              m.role === "user" && !hook ? detectPromptCommand(text, commandCandidates) : null;
+            return {
+              role: m.role as "user" | "assistant",
+              text: command ?? text,
+              images,
+              hook,
+              command: command !== null,
+            };
+          })
+          // Keep messages with text OR images — an image-only user turn has empty
+          // text but must still appear.
+          .filter((m) => m.text.trim().length > 0 || m.images.length > 0);
+        json(res, 200, { history });
+      })();
       return;
     }
 
@@ -654,6 +713,7 @@ async function main(): Promise<void> {
           // A run may have switched branches (git checkout) or spawned/finished
           // background tasks — refresh the footer extras once it settles.
           gitBranch = await getGitBranch(cwd).catch(() => gitBranch);
+          gitIsRepo = await isGitRepo(cwd).catch(() => gitIsRepo);
           broadcast("run_end", {});
           // Queue drains into the run as steering, so it's empty by run_end —
           // sync the webview indicator.

@@ -10,6 +10,7 @@ import {
   type RecentSession,
 } from "./agent";
 import { Badge, sourceStyle } from "./Badge";
+import { ListSkeleton } from "./Skeleton";
 import { BackButton } from "./BackButton";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 import { NewProjectModal } from "./NewProjectModal";
@@ -46,6 +47,12 @@ export function ProjectPicker({
   const [busy, setBusy] = useState(false);
   const [projectsRoot, setProjectsRoot] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const q = query.trim().toLowerCase();
+  const filteredProjects = q
+    ? projects.filter((p) => p.name.toLowerCase().includes(q) || p.path.toLowerCase().includes(q))
+    : projects;
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +122,16 @@ export function ProjectPicker({
         ) : null}
         <span className="picker-title">{selected ? selected.name : "Choose a project"}</span>
         {!selected && !loading && <Badge>{projects.length}</Badge>}
+        {!selected && !loading && projects.length > 0 && (
+          <input
+            className="picker-search"
+            type="text"
+            placeholder={"Search projects\u2026"}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search projects"
+          />
+        )}
         <span className="picker-head-actions">
           {selected ? (
             <button
@@ -135,11 +152,7 @@ export function ProjectPicker({
 
       {!selected ? (
         <div className="picker-list">
-          {loading && (
-            <div className="picker-empty" style={{ color: theme.textDim }}>
-              {"scanning projects\u2026"}
-            </div>
-          )}
+          {loading && <ListSkeleton rows={6} />}
           {!loading && projects.length === 0 && (
             <div className="picker-empty">
               <span style={{ color: theme.textMuted }}>No projects yet.</span>
@@ -148,40 +161,47 @@ export function ProjectPicker({
               </button>
             </div>
           )}
-          {projects.map((p) => (
-            <button
-              key={p.path}
-              className="picker-item"
-              onClick={() => openProject(p)}
-              title={p.path}
-            >
-              <span className="picker-row">
-                <span className="picker-name" style={{ color: theme.text }}>
-                  {p.name}
-                </span>
-                <Badge>{p.lastActiveDisplay}</Badge>
-              </span>
-              <span className="picker-sources">
-                {p.sources.map((s, i) => {
-                  const { label, color } = sourceStyle(s);
-                  return (
-                    <span key={s} style={{ color }}>
-                      {i > 0 ? <span style={{ color: theme.textDim }}>{" \u00b7 "}</span> : null}
-                      {label}
+          {!loading && projects.length > 0 && filteredProjects.length === 0 && (
+            <div className="picker-empty" style={{ color: theme.textMuted }}>
+              {`No projects match \u201c${query.trim()}\u201d`}
+            </div>
+          )}
+          {!loading && filteredProjects.length > 0 && (
+            <div className="picker-reveal">
+              {filteredProjects.map((p) => (
+                <button
+                  key={p.path}
+                  className="picker-item"
+                  onClick={() => openProject(p)}
+                  title={p.path}
+                >
+                  <span className="picker-row">
+                    <span className="picker-name" style={{ color: theme.text }}>
+                      {p.name}
                     </span>
-                  );
-                })}
-              </span>
-            </button>
-          ))}
+                    <Badge>{p.lastActiveDisplay}</Badge>
+                  </span>
+                  <span className="picker-sources">
+                    {p.sources.map((s, i) => {
+                      const { label, color } = sourceStyle(s);
+                      return (
+                        <span key={s} style={{ color }}>
+                          {i > 0 ? (
+                            <span style={{ color: theme.textDim }}>{" \u00b7 "}</span>
+                          ) : null}
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="picker-list">
-          {sessionsLoading && (
-            <div className="picker-empty" style={{ color: theme.textDim }}>
-              {"loading sessions\u2026"}
-            </div>
-          )}
+          {sessionsLoading && <ListSkeleton rows={4} />}
           {!sessionsLoading && sessions.length === 0 && (
             <div className="picker-empty">
               <span style={{ color: theme.textMuted }}>No previous sessions yet.</span>
@@ -194,21 +214,25 @@ export function ProjectPicker({
               </button>
             </div>
           )}
-          {sessions.map((s) => (
-            <button
-              key={s.id}
-              className="picker-session"
-              disabled={busy}
-              onClick={() => choose(selected.path, s.path)}
-            >
-              <span className="picker-preview" style={{ color: theme.text }}>
-                {s.preview || "(no preview)"}
-              </span>
-              <span className="picker-meta" style={{ color: theme.textMuted }}>
-                {`${s.messageCount} msgs \u00b7 ${s.lastActiveDisplay}`}
-              </span>
-            </button>
-          ))}
+          {!sessionsLoading && sessions.length > 0 && (
+            <div className="picker-reveal">
+              {sessions.map((s) => (
+                <button
+                  key={s.id}
+                  className="picker-session"
+                  disabled={busy}
+                  onClick={() => choose(selected.path, s.path)}
+                >
+                  <span className="picker-preview" style={{ color: theme.text }}>
+                    {s.preview || "(no preview)"}
+                  </span>
+                  <span className="picker-meta" style={{ color: theme.textMuted }}>
+                    {`${s.messageCount} msgs \u00b7 ${s.lastActiveDisplay}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

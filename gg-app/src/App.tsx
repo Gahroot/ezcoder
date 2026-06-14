@@ -28,6 +28,7 @@ import { ContextMeter } from "./ContextMeter";
 import { BackgroundTasksButton } from "./BackgroundTasksButton";
 import { ShimmerText } from "./ShimmerText";
 import { ConfirmModal } from "./ConfirmModal";
+import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { WindowLayoutButton } from "./WindowLayoutButton";
@@ -37,6 +38,8 @@ import { HomeScreen } from "./HomeScreen";
 import { Toaster } from "./Toaster";
 import { LoginScreen } from "./LoginScreen";
 import { Markdown } from "./Markdown";
+import { FooterSkeleton, TranscriptSkeleton } from "./Skeleton";
+import { recoverPromptLabel } from "./prompt-labels";
 import {
   segmentDoneMarkers,
   hasDoneMarker,
@@ -53,7 +56,16 @@ import "./App.css";
 type Item =
   // `command` marks a workflow slash command — rendered as just the short
   // `/name` with a highlight + shimmer, never the expanded prompt body.
-  | { kind: "user"; id: number; text: string; command?: boolean; images?: string[] }
+  // `label` overrides what's shown with a friendly shimmer phrase (e.g.
+  // "Initializing Git…") while the full prompt still goes to the agent.
+  | {
+      kind: "user";
+      id: number;
+      text: string;
+      command?: boolean;
+      label?: string;
+      images?: string[];
+    }
   | { kind: "assistant"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
   | { kind: "error"; id: number; text: string }
@@ -229,6 +241,13 @@ function App(): React.ReactElement {
   // New-session confirmation modal + in-flight guard.
   const [confirmNewSession, setConfirmNewSession] = useState(false);
   const [newSessionBusy, setNewSessionBusy] = useState(false);
+  // Initialize-git modal (shown via the top-right button when not yet a repo).
+  const [showInitGit, setShowInitGit] = useState(false);
+  // True once the initial hydrate (state + models + commands + history) has
+  // settled for the current project/session. Gates the footer + chrome so they
+  // reveal fully-formed in one pass instead of popping in piecemeal (cwd, git,
+  // thinking, model each arriving separately would reflow the bar mid-load).
+  const [hydrated, setHydrated] = useState(false);
 
   const readyRef = useRef(false);
   // Mirror of `state` for use inside the memoized event handler (which doesn't
@@ -582,6 +601,7 @@ function App(): React.ReactElement {
                   ...s,
                   contextWindow: (d.contextWindow as number | undefined) ?? s.contextWindow,
                   gitBranch: (d.gitBranch as string | null | undefined) ?? s.gitBranch,
+                  isGitRepo: (d.isGitRepo as boolean | undefined) ?? s.isGitRepo,
                 }
               : s,
           );
@@ -597,6 +617,7 @@ function App(): React.ReactElement {
   // sidecar (its port changes, so we re-wait for readiness).
   const hydrate = useCallback(async (): Promise<void> => {
     readyRef.current = false;
+    setHydrated(false);
     setStatus("connecting to agent\u2026");
     try {
       await waitForReady();
@@ -615,16 +636,31 @@ function App(): React.ReactElement {
       const history = await listHistory();
       if (history.length > 0) {
         setItems(
-          history.map(
-            (h): Item =>
-              h.hook
-                ? { kind: "hook", id: nextId(), hook: h.hook }
-                : { kind: h.role, id: nextId(), text: h.text },
-          ),
+          history.map((h): Item => {
+            if (h.hook) return { kind: "hook", id: nextId(), hook: h.hook };
+            if (h.role !== "user") return { kind: h.role, id: nextId(), text: h.text };
+            // App-button prompts (e.g. "Initialize Git") were shown live as a
+            // friendly shimmer label, not the expanded body. The label is
+            // webview-only, so recover it from the restored prompt text. Slash
+            // commands are already collapsed to `/name` by the sidecar (h.command).
+            const label = !h.command ? recoverPromptLabel(h.text) : null;
+            return {
+              kind: "user",
+              id: nextId(),
+              text: h.text,
+              command: h.command || label !== null,
+              ...(label !== null ? { label } : {}),
+              images: h.images && h.images.length > 0 ? h.images : undefined,
+            };
+          }),
         );
       }
     } catch (err) {
       setStatus(`agent failed to start: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      // Reveal the footer + chrome now that everything we know about the
+      // session is in hand — one fade-in, no staggered reflow.
+      setHydrated(true);
     }
   }, []);
 
@@ -702,6 +738,13 @@ function App(): React.ReactElement {
   const hasCommit = commands.some((c) => c.name === "commit");
   const hasSetupCommit = commands.some((c) => c.name === "setup-commit");
   const commitCommand = hasCommit ? "commit" : hasSetupCommit ? "setup-commit" : null;
+  // Until the project is a git repo, setting up commits is pointless — offer
+  // "Initialize Git" first (modal collects visibility + repo name, then drives
+  // the agent). isGitRepo can be undefined on older sidecars / before hydrate;
+  // only treat an explicit `false` as "not a repo".
+  const needsGitInit = state?.isGitRepo === false;
+  // Default repo name = the project folder name.
+  const defaultRepoName = (state?.cwd ?? "").split(/[\\/]/).filter(Boolean).pop() ?? "";
 
   function pickSlashCommand(cmd: SlashCommand): void {
     // Fill the input with the command; the user can add args or press Enter.
@@ -710,11 +753,18 @@ function App(): React.ReactElement {
   }
 
   // Submit arbitrary text as if typed + entered. Shared by the input and the
-  // top-right commit button.
-  function submitText(text: string): void {
+  // top-right commit button. `label` shows a friendly shimmer phrase in the
+  // transcript while the full `text` is still sent to the agent.
+  function submitText(text: string, label?: string): void {
     const trimmed = text.trim();
     if (!trimmed || !readyRef.current || running) return;
-    pushItem({ kind: "user", id: nextId(), text: trimmed, command: isWorkflowCommand(trimmed) });
+    pushItem({
+      kind: "user",
+      id: nextId(),
+      text: trimmed,
+      command: label !== undefined || isWorkflowCommand(trimmed),
+      ...(label !== undefined ? { label } : {}),
+    });
     setInput("");
     setSlashIndex(0);
     streamingIdRef.current = null;
@@ -832,6 +882,7 @@ function App(): React.ReactElement {
     setPlanDone(new Set());
     setAttachments([]);
     setQueuedCount(0);
+    setHydrated(false);
     setNeedsProject(false);
     setHydrateNonce((n) => n + 1);
   }
@@ -895,31 +946,53 @@ function App(): React.ReactElement {
           >
             {"+ New session"}
           </button>
-          {commitCommand && (
+          {needsGitInit ? (
             <button
-              className={`btn btn-sm ${hasCommit ? "btn-success" : "btn-ghost"}`}
+              className="btn btn-sm btn-ghost"
               disabled={running}
-              title={hasCommit ? "Run /commit" : "Generate a /commit command"}
-              onClick={() => submitText(`/${commitCommand}`)}
+              title="Initialize git + create a GitHub repository"
+              onClick={() => setShowInitGit(true)}
             >
-              {`/${commitCommand}`}
+              {"Initialize Git"}
             </button>
+          ) : (
+            commitCommand && (
+              <button
+                className={`btn btn-sm ${hasCommit ? "btn-success" : "btn-ghost"}`}
+                disabled={running}
+                title={hasCommit ? "Run /commit" : "Generate a /commit command"}
+                onClick={() =>
+                  submitText(
+                    `/${commitCommand}`,
+                    hasCommit ? "Committing\u2026" : "Setting up commits\u2026",
+                  )
+                }
+              >
+                {`/${commitCommand}`}
+              </button>
+            )
           )}
           <WindowLayoutButton />
         </span>
       </div>
 
       <div className="transcript" ref={scrollRef}>
-        {items.length === 0 && (
-          <div className="line" style={{ color: theme.textDim }}>
-            {status === "ready"
-              ? "Ready. Type a message below to start coding."
-              : `\u273b ${status}`}
-          </div>
+        {!hydrated && items.length === 0 ? (
+          <TranscriptSkeleton />
+        ) : (
+          <>
+            {items.length === 0 && (
+              <div className="line transcript-reveal" style={{ color: theme.textDim }}>
+                {status === "ready"
+                  ? "Ready. Type a message below to start coding."
+                  : `\u273b ${status}`}
+              </div>
+            )}
+            {items.map((it) => (
+              <TranscriptRow key={it.id} item={it} onImageLoad={scrollToBottom} />
+            ))}
+          </>
         )}
-        {items.map((it) => (
-          <TranscriptRow key={it.id} item={it} onImageLoad={scrollToBottom} />
-        ))}
       </div>
 
       <div className="liveregion">
@@ -1030,91 +1103,108 @@ function App(): React.ReactElement {
       </div>
 
       <div className="footer" style={{ color: theme.footerText }}>
-        <span className="footer-left" style={{ fontFamily: "var(--mono)" }}>
-          {state?.cwd && (
-            <span className="footer-cwd" style={{ color: theme.textDim }}>
-              {basename(state.cwd)}
-            </span>
-          )}
-          {state?.gitBranch && (
-            <>
-              {state?.cwd && <FooterSep />}
-              <span style={{ color: theme.secondary }}>{`\u2387 ${state.gitBranch}`}</span>
-            </>
-          )}
-          {tasks.length > 0 && (
-            <>
-              {(state?.cwd || state?.gitBranch) && <FooterSep />}
-              <BackgroundTasksButton tasks={tasks} />
-            </>
-          )}
-          {state?.planMode && (
-            <>
-              {(state?.cwd || state?.gitBranch || tasks.length > 0) && <FooterSep />}
-              <span className="footer-plan">
-                <ShimmerText base={theme.secondary} bright="#ddd6fe">
-                  {"\u25C6 plan mode"}
-                </ShimmerText>
-              </span>
-            </>
-          )}
-        </span>
-        <span className="footer-right">
-          {contextPct > 0 && (
-            <>
-              <ContextMeter pct={contextPct} />
-              <FooterSep />
-            </>
-          )}
-          {(state?.supportedThinkingLevels?.length ?? 0) > 0 &&
-            (() => {
-              const level = state?.thinkingLevel ?? null;
-              const label = level ? `Thinking ${level}` : "Thinking off";
-              const maxPower = level === "xhigh" || level === "max";
-              return (
+        {!hydrated ? (
+          <FooterSkeleton />
+        ) : (
+          <>
+            <span className="footer-left footer-reveal" style={{ fontFamily: "var(--mono)" }}>
+              {state?.cwd && (
+                <span className="footer-cwd" style={{ color: theme.textDim }}>
+                  {basename(state.cwd)}
+                </span>
+              )}
+              {state?.gitBranch && (
                 <>
-                  <button
-                    className="thinking-toggle"
-                    style={{
-                      color: thinkingColor(level),
-                      fontWeight: level === "high" ? 600 : 400,
-                    }}
-                    title="Cycle reasoning level"
-                    onClick={() => void cycleThinking()}
-                  >
-                    {maxPower ? (
-                      <ShimmerText base={MAX_POWER_COLOR} bright={MAX_POWER_SHIMMER}>
-                        {label}
-                      </ShimmerText>
-                    ) : (
-                      label
-                    )}
-                  </button>
+                  {state?.cwd && <FooterSep />}
+                  <span style={{ color: theme.secondary }}>{`\u2387 ${state.gitBranch}`}</span>
+                </>
+              )}
+              {tasks.length > 0 && (
+                <>
+                  {(state?.cwd || state?.gitBranch) && <FooterSep />}
+                  <BackgroundTasksButton tasks={tasks} />
+                </>
+              )}
+              {state?.planMode && (
+                <>
+                  {(state?.cwd || state?.gitBranch || tasks.length > 0) && <FooterSep />}
+                  <span className="footer-plan">
+                    <ShimmerText base={theme.secondary} bright="#ddd6fe">
+                      {"\u25C6 plan mode"}
+                    </ShimmerText>
+                  </span>
+                </>
+              )}
+            </span>
+            <span className="footer-right footer-reveal">
+              {contextPct > 0 && (
+                <>
+                  <ContextMeter pct={contextPct} />
                   <FooterSep />
                 </>
-              );
-            })()}
-          <span className="model-anchor">
-            {modelMenuOpen && models.length > 0 && (
-              <ModelMenu
-                models={models}
-                currentModel={state?.model ?? ""}
-                onSelect={onSelectModel}
-                onClose={() => setModelMenuOpen(false)}
-              />
-            )}
-            <button
-              className="model-button"
-              style={{ color: theme.text }}
-              disabled={running || models.length === 0}
-              title="Switch model"
-              onClick={() => setModelMenuOpen((o) => !o)}
-            >
-              {state?.model ?? "\u2026"}
-            </button>
-          </span>
-        </span>
+              )}
+              {(state?.supportedThinkingLevels?.length ?? 0) > 0 &&
+                (() => {
+                  const level = state?.thinkingLevel ?? null;
+                  const label = level ? `Thinking ${level}` : "Thinking off";
+                  const maxPower = level === "xhigh" || level === "max";
+                  return (
+                    <>
+                      <button
+                        className="thinking-toggle"
+                        style={{
+                          color: thinkingColor(level),
+                          fontWeight: level === "high" ? 600 : 400,
+                        }}
+                        title="Cycle reasoning level"
+                        onClick={() => void cycleThinking()}
+                      >
+                        {maxPower ? (
+                          <ShimmerText base={MAX_POWER_COLOR} bright={MAX_POWER_SHIMMER}>
+                            {label}
+                          </ShimmerText>
+                        ) : (
+                          label
+                        )}
+                      </button>
+                      <FooterSep />
+                    </>
+                  );
+                })()}
+              <span className="model-anchor">
+                {modelMenuOpen && models.length > 0 && (
+                  <ModelMenu
+                    models={models}
+                    currentModel={state?.model ?? ""}
+                    onSelect={onSelectModel}
+                    onClose={() => setModelMenuOpen(false)}
+                  />
+                )}
+                <button
+                  className="model-button"
+                  style={{ color: theme.text }}
+                  disabled={running || models.length === 0}
+                  title="Switch model"
+                  onClick={() => setModelMenuOpen((o) => !o)}
+                >
+                  {state?.model ?? "\u2026"}
+                </button>
+              </span>
+            </span>
+          </>
+        )}
       </div>
+
+      {showInitGit && (
+        <InitGitModal
+          defaultName={defaultRepoName}
+          onClose={() => setShowInitGit(false)}
+          onInitialize={(prompt) => {
+            setShowInitGit(false);
+            submitText(prompt, "Initializing Git\u2026");
+          }}
+        />
+      )}
 
       {confirmNewSession && (
         <ConfirmModal
@@ -1150,12 +1240,13 @@ function TranscriptRow({
   switch (item.kind) {
     case "user":
       if (item.command) {
-        // Workflow command: show just the short `/name` with a highlight +
-        // shimmer sweep. The full expanded prompt was sent to the agent.
+        // Workflow command: show just the short `/name` (or a friendly `label`
+        // phrase) with a highlight + shimmer sweep. The full expanded prompt
+        // was sent to the agent. Labels read as prose, so drop the mono font.
         return (
-          <div className="user-msg command">
+          <div className={`user-msg command${item.label ? " labelled" : ""}`}>
             <span className="command-shimmer" style={{ color: theme.commandColor }}>
-              {item.text}
+              {item.label ?? item.text}
             </span>
           </div>
         );

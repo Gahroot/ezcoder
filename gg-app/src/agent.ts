@@ -56,6 +56,8 @@ export interface AgentState {
   contextWindow?: number;
   /** Current git branch of the project cwd, or null when not a repo. */
   gitBranch?: string | null;
+  /** True when the project cwd is inside a git work tree. */
+  isGitRepo?: boolean;
   /** Live background tasks (footer indicator). */
   tasks?: BackgroundTask[];
 }
@@ -138,7 +140,12 @@ export async function cancel(): Promise<void> {
 export interface HistoryEntry {
   role: "user" | "assistant";
   text: string;
+  /** Attached image data URLs, reconstructed so they re-render on resume. */
+  images?: string[];
   hook?: "ideal" | "loop_break" | "regrounding" | null;
+  /** True when `text` is a recovered `/name [args]` command invocation, so the
+   *  webview renders the short command chip instead of the expanded body. */
+  command?: boolean;
 }
 
 /** Fetch the resumed session's prior messages so the transcript can hydrate. */
