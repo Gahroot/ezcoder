@@ -219,15 +219,18 @@ export function ProjectPicker({
               {sessions.map((s) => (
                 <button
                   key={s.id}
-                  className="picker-session"
+                  className="picker-item"
                   disabled={busy}
                   onClick={() => choose(selected.path, s.path)}
                 >
-                  <span className="picker-preview" style={{ color: theme.text }}>
-                    {s.preview || "(no preview)"}
+                  <span className="picker-row">
+                    <span className="picker-name picker-preview" style={{ color: theme.text }}>
+                      {s.preview || "(no preview)"}
+                    </span>
+                    <Badge>{s.lastActiveDisplay}</Badge>
                   </span>
                   <span className="picker-meta" style={{ color: theme.textMuted }}>
-                    {`${s.messageCount} msgs \u00b7 ${s.lastActiveDisplay}`}
+                    {`${s.messageCount} msgs`}
                   </span>
                 </button>
               ))}

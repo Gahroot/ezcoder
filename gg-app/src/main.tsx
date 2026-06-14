@@ -6,6 +6,7 @@ import { error as logError, attachConsole } from "@tauri-apps/plugin-log";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import App from "./App";
+import { tagPlatform } from "./platform";
 
 // Mirror Rust-side logs into the devtools console, and forward uncaught
 // webview errors into the shared log file so failures aren't invisible.
@@ -16,6 +17,10 @@ window.addEventListener("error", (e) => {
 window.addEventListener("unhandledrejection", (e) => {
   void logError(`unhandledrejection: ${String(e.reason)}`);
 });
+
+// Tag <html> with the host OS class (platform-macos|windows|linux) before the
+// first render so CSS can gate the macOS-only traffic-light insets.
+tagPlatform();
 
 // No StrictMode: its intentional double-invocation of effects and state
 // updaters double-registers the single Tauri `agent-event` listener and was

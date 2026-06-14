@@ -240,11 +240,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Top padding clears the macOS overlay title bar / traffic-light buttons so
-     the action rows sit BELOW it (matching .picker-head), not crammed onto it. */
-  padding: 34px 16px 10px;
+  /* Native chrome (Windows/Linux): no overlay title bar to clear. */
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   user-select: none;
+}
+/* macOS overlay title bar: top padding clears the traffic-light buttons so the
+   action rows sit BELOW them (matching .picker-head), not crammed onto them. */
+.platform-macos .titlebar {
+  padding: 34px 16px 10px;
 }
 
 .titlebar .title {
@@ -288,20 +292,24 @@ body {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   background: var(--surface-1);
   opacity: 0;
-  animation: meme-fade 6s ease-in-out forwards;
+  /* --rot (set inline per card) is folded into the keyframe so the card can
+     rise + scale into place instead of popping, while keeping its tilt. */
+  --rot: 0deg;
+  animation: meme-fade 6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
-/* Fade only — the per-card rotation is set inline and must not be overridden
-   by the animation's transform, so this keyframe touches opacity alone. */
 @keyframes meme-fade {
   0% {
     opacity: 0;
+    transform: rotate(var(--rot)) scale(0.9) translateY(10px);
   }
   12%,
   84% {
     opacity: 0.85;
+    transform: rotate(var(--rot)) scale(1) translateY(0);
   }
   100% {
     opacity: 0;
+    transform: rotate(var(--rot)) scale(0.97) translateY(-6px);
   }
 }
 .meme-gif {
@@ -335,9 +343,52 @@ body {
 .home > .ascii-logo,
 .home > .home-tagline,
 .home > .home-byline,
-.home > .home-actions {
+.home > .home-actions,
+.home > .home-update,
+.home > .home-version {
   position: relative;
   z-index: 1;
+}
+/* Entry: each block fades + rises in sequence so the page assembles smoothly
+   on load instead of snapping in all at once. The logo keeps its infinite
+   shimmer, so it gets BOTH animations (reveal-up once + ggshimmer looping). */
+.home > .home-update,
+.home > .home-version,
+.home > .home-tagline,
+.home > .home-byline,
+.home > .home-actions {
+  animation: reveal-up 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.home > .ascii-logo {
+  animation:
+    reveal-up 460ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    ggshimmer 4s linear infinite;
+  animation-delay: 120ms, 0s;
+}
+.home > .home-update,
+.home > .home-version {
+  animation-delay: 40ms;
+}
+.home > .home-tagline {
+  animation-delay: 240ms;
+}
+.home > .home-byline {
+  animation-delay: 340ms;
+}
+.home > .home-actions {
+  animation-delay: 440ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .home > .home-update,
+  .home > .home-version,
+  .home > .home-tagline,
+  .home > .home-byline,
+  .home > .home-actions {
+    animation: none;
+  }
+  .home > .ascii-logo {
+    animation: ggshimmer 4s linear infinite;
+  }
 }
 
 .ascii-logo {
@@ -515,9 +566,13 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  /* Top padding clears the macOS overlay title bar / traffic-light buttons. */
-  padding: 34px 20px 12px;
+  /* Native chrome (Windows/Linux): no overlay title bar to clear. */
+  padding: 12px 20px;
   border-bottom: 1px solid var(--border);
+}
+/* macOS overlay title bar: top padding clears the traffic-light buttons. */
+.platform-macos .picker-head {
+  padding: 34px 20px 12px;
 }
 .picker-title {
   font-size: 15px;
@@ -525,13 +580,55 @@ body {
   letter-spacing: -0.02em;
   color: var(--text);
 }
-/* Centered titlebar title (project session title, or "GG Coder"). Absolutely
-   positioned so it stays centered regardless of the side clusters' widths, and
-   truncates instead of pushing them. */
-/* Centered titlebar title (project session title, or "GG Coder"). Anchored to
-   the button row's vertical center (bottom padding area of picker-head) so it
-   doesn't float up into the macOS overlay/traffic-light zone. Centered
-   horizontally and truncates instead of pushing the side clusters. */
+
+/* ── Main chat-view header (.chat-head) ──
+   Two stacked rows under one bottom border:
+   1) .chat-head-strip — the macOS traffic-light row: window title (left, where
+      the native title sat) + the show/hide toggle (right). ALWAYS present.
+   2) .chat-head-nav — the action-button row; collapsed away by the toggle.
+   When collapsed only the strip remains, so the title never moves up into the
+   traffic lights. */
+.chat-head {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+}
+.chat-head-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* Height matches the macOS traffic-light zone so align-items:center lines the
+     title + toggle up with the lights' centerline (~19px from the window top). */
+  height: 38px;
+  /* Native chrome (Windows/Linux): no traffic lights, so no left gutter. */
+  padding: 0 14px;
+}
+/* macOS: left padding clears the traffic lights so the title sits right of them. */
+.platform-macos .chat-head-strip {
+  padding: 0 14px 0 82px;
+}
+/* The window title (session title once generated, else "GG Coder"). The native
+   overlay title is hidden (hiddenTitle), so this is the ONLY title. It grows to
+   take the slack and truncates with an ellipsis on small windows, so it never
+   overlaps the toggle. */
+.chat-head-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.chat-head-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 20px 12px;
+}
 .picker-head-actions {
   margin-left: auto;
   display: flex;
@@ -705,8 +802,7 @@ body {
   font-size: 14px;
   line-height: 1.5;
 }
-.picker-item,
-.picker-session {
+.picker-item {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -723,8 +819,7 @@ body {
     background-color var(--t-fast),
     border-color var(--t-fast);
 }
-.picker-item:hover,
-.picker-session:hover {
+.picker-item:hover {
   background: var(--surface-1);
 }
 .picker-row {
@@ -760,15 +855,9 @@ body {
   line-height: 1.5;
   white-space: nowrap;
 }
-.picker-session.new {
-  border-style: dashed;
-  align-items: center;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
 .picker-preview {
-  font-size: 13px;
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -817,6 +906,27 @@ body {
 .winlayout {
   position: relative;
   display: inline-flex;
+}
+/* Hide/show toggle for the nav-button row. Lives at the right of the title
+   strip; small and borderless so it reads as a titlebar control, not a button. */
+.nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-button);
+  color: var(--text-muted);
+  padding: 2px;
+  cursor: pointer;
+  transition:
+    color var(--t-fast),
+    background-color var(--t-fast);
+}
+.nav-toggle:hover {
+  background: var(--surface-1);
+  color: var(--text);
 }
 .winlayout-button {
   background: transparent;
@@ -1322,7 +1432,10 @@ body {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  padding: 8px 18px;
+  /* Extra top padding pushes the text down so it reads as vertically centered
+     between the top border and the chat input below (the input's own top gap
+     otherwise makes the line look high). */
+  padding: 11px 18px 7px;
   border-top: 1px solid var(--border);
   font-size: 13px;
   line-height: 1.5;
@@ -1609,6 +1722,124 @@ body {
   text-decoration: underline;
 }
 
+/* App-update banner — its own row below the footer so it reads as a distinct,
+   noticeable announcement. Same green gradient as the home-screen update pill
+   (#36c489 → #2dd4bf) with dark text; a light sweep draws the eye. The whole
+   row is the click target that downloads, installs, and restarts. */
+.update-banner {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 18px;
+  border: none;
+  background: linear-gradient(135deg, #36c489 0%, #2dd4bf 100%);
+  color: #04130d;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  transition: filter var(--t-fast);
+}
+/* Light sweep across the banner to draw the eye to a pending update. */
+.update-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.28) 50%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  animation: update-shimmer 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.update-banner-busy::after {
+  animation: none;
+}
+@keyframes update-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  60%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+.update-banner:hover:not(.update-banner-busy) {
+  filter: brightness(1.08);
+}
+.update-banner-busy {
+  cursor: default;
+  filter: saturate(0.7) brightness(0.92);
+}
+.update-banner-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #04130d;
+  box-shadow: 0 0 0 0 rgba(4, 19, 13, 0.55);
+  animation: update-pulse 1.8s ease-out infinite;
+}
+@keyframes update-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(4, 19, 13, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+/* Home-screen update pill — small green-gradient chip floating above the ASCII
+   logo, shown only when an update is pending. Deliberately smaller than the
+   primary action buttons so it reads as a notification, not a main CTA. */
+.home-update {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  align-self: center;
+  background: linear-gradient(135deg, #36c489 0%, #2dd4bf 100%);
+  color: #04130d;
+  border: none;
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--success) 35%, transparent);
+  transition:
+    filter var(--t-fast),
+    transform var(--t-fast);
+}
+.home-update:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.home-update:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+/* Shown in the update pill's place when already up to date — just the current
+   version, muted, so the spot never collapses/jumps. */
+.home-version {
+  align-self: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
 .footer {
   flex: 0 0 auto;
   display: flex;
@@ -1727,8 +1958,7 @@ body {
 .picker-reveal {
   display: contents;
 }
-.picker-reveal > .picker-item,
-.picker-reveal > .picker-session {
+.picker-reveal > .picker-item {
   animation: reveal-up 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -1737,8 +1967,7 @@ body {
   .transcript-reveal,
   .skeleton-msg,
   .skeleton-item,
-  .picker-reveal > .picker-item,
-  .picker-reveal > .picker-session {
+  .picker-reveal > .picker-item {
     animation-name: none;
   }
   .skeleton {

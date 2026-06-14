@@ -6,8 +6,12 @@ import { setupWindows } from "./agent";
  * Top-right control that tiles the app into a 2-, 4-, or 6-window grid (macOS
  * fill&arrange style). Each new window is a separate project with its own agent.
  * Windows open immediately; project selection happens per-window afterwards.
+ *
+ * `onArrange` fires when a multi-window layout is applied (count > 1) so the
+ * caller can auto-hide the nav bar — tiled windows are tight on space, and the
+ * setting is persisted, so the freshly opened windows boot hidden too.
  */
-export function WindowLayoutButton(): React.ReactElement {
+export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -29,6 +33,7 @@ export function WindowLayoutButton(): React.ReactElement {
     if (busy) return;
     setBusy(true);
     try {
+      if (count > 1) onArrange?.();
       await setupWindows(count);
     } finally {
       setBusy(false);

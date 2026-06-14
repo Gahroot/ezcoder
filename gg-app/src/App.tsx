@@ -39,6 +39,7 @@ import { Toaster } from "./Toaster";
 import { LoginScreen } from "./LoginScreen";
 import { Markdown } from "./Markdown";
 import { FooterSkeleton, TranscriptSkeleton } from "./Skeleton";
+import { useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
 import {
   segmentDoneMarkers,
@@ -240,7 +241,30 @@ function App(): React.ReactElement {
   const [hydrateNonce, setHydrateNonce] = useState(0);
   // New-session confirmation modal + in-flight guard.
   const [confirmNewSession, setConfirmNewSession] = useState(false);
+  // Hide/show the nav button row (the bar + centered title always stay).
+  // Persisted across reloads.
+  const [navHidden, setNavHidden] = useState(() => {
+    try {
+      return localStorage.getItem("gg-nav-hidden") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setNavHiddenPersisted = useCallback((hidden: boolean) => {
+    try {
+      localStorage.setItem("gg-nav-hidden", hidden ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    setNavHidden(hidden);
+  }, []);
+  const toggleNav = useCallback(
+    () => setNavHiddenPersisted(!navHidden),
+    [navHidden, setNavHiddenPersisted],
+  );
   const [newSessionBusy, setNewSessionBusy] = useState(false);
+  // App self-update (GitHub releases). Drives the footer update banner.
+  const appUpdate = useAppUpdate();
   // Initialize-git modal (shown via the top-right button when not yet a repo).
   const [showInitGit, setShowInitGit] = useState(false);
   // True once the initial hydrate (state + models + commands + history) has
@@ -935,45 +959,81 @@ function App(): React.ReactElement {
 
   return (
     <div className="app" style={{ background: theme.background }}>
-      <div className="picker-head" data-tauri-drag-region>
-        <BackButton label="Back to this project's sessions" onClick={() => setShowPicker(true)} />
-        <span className="picker-head-actions">
+      <div className="chat-head">
+        {/* Top strip — the macOS traffic-light row. Holds the window title (where
+            the native title used to sit) and the show/hide toggle. Always
+            present, so collapsing the nav below never moves the title up into
+            the traffic lights. */}
+        <div className="chat-head-strip" data-tauri-drag-region>
+          <span className="chat-head-title">{sessionTitle ?? "GG Coder"}</span>
           <button
-            className="btn btn-primary btn-sm"
-            disabled={running}
-            title="Start a new session for this project"
-            onClick={() => setConfirmNewSession(true)}
+            className="nav-toggle"
+            title={navHidden ? "Show nav buttons" : "Hide nav buttons"}
+            aria-label={navHidden ? "Show nav buttons" : "Hide nav buttons"}
+            onClick={toggleNav}
           >
-            {"+ New session"}
-          </button>
-          {needsGitInit ? (
-            <button
-              className="btn btn-sm btn-ghost"
-              disabled={running}
-              title="Initialize git + create a GitHub repository"
-              onClick={() => setShowInitGit(true)}
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ display: "block" }}
             >
-              {"Initialize Git"}
-            </button>
-          ) : (
-            commitCommand && (
+              <polyline points={navHidden ? "6 9 12 15 18 9" : "6 15 12 9 18 15"} />
+            </svg>
+          </button>
+        </div>
+
+        {/* Nav row — the action buttons. Collapsed away by the toggle. */}
+        {!navHidden && (
+          <div className="chat-head-nav" data-tauri-drag-region>
+            <BackButton
+              label="Back to this project's sessions"
+              onClick={() => setShowPicker(true)}
+            />
+            <span className="picker-head-actions">
               <button
-                className={`btn btn-sm ${hasCommit ? "btn-success" : "btn-ghost"}`}
+                className="btn btn-primary btn-sm"
                 disabled={running}
-                title={hasCommit ? "Run /commit" : "Generate a /commit command"}
-                onClick={() =>
-                  submitText(
-                    `/${commitCommand}`,
-                    hasCommit ? "Committing\u2026" : "Setting up commits\u2026",
-                  )
-                }
+                title="Start a new session for this project"
+                onClick={() => setConfirmNewSession(true)}
               >
-                {`/${commitCommand}`}
+                {"+ New session"}
               </button>
-            )
-          )}
-          <WindowLayoutButton />
-        </span>
+              {needsGitInit ? (
+                <button
+                  className="btn btn-sm btn-ghost"
+                  disabled={running}
+                  title="Initialize git + create a GitHub repository"
+                  onClick={() => setShowInitGit(true)}
+                >
+                  {"Initialize Git"}
+                </button>
+              ) : (
+                commitCommand && (
+                  <button
+                    className={`btn btn-sm ${hasCommit ? "btn-success" : "btn-ghost"}`}
+                    disabled={running}
+                    title={hasCommit ? "Run /commit" : "Generate a /commit command"}
+                    onClick={() =>
+                      submitText(
+                        `/${commitCommand}`,
+                        hasCommit ? "Committing\u2026" : "Setting up commits\u2026",
+                      )
+                    }
+                  >
+                    {`/${commitCommand}`}
+                  </button>
+                )
+              )}
+              <WindowLayoutButton onArrange={() => setNavHiddenPersisted(true)} />
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="transcript" ref={scrollRef}>
@@ -1194,6 +1254,23 @@ function App(): React.ReactElement {
           </>
         )}
       </div>
+
+      {appUpdate.phase === "available" && (
+        <button
+          className="update-banner"
+          title={`Update to ${appUpdate.version} — installs and restarts the app`}
+          onClick={() => void appUpdate.install()}
+        >
+          <span className="update-banner-dot" />
+          {`Ken just pushed a new update (${appUpdate.version}) — click here to install`}
+        </button>
+      )}
+      {appUpdate.phase === "installing" && (
+        <div className="update-banner update-banner-busy">
+          <span className="update-banner-dot" />
+          {"Installing update\u2026 the app will restart automatically."}
+        </div>
+      )}
 
       {showInitGit && (
         <InitGitModal

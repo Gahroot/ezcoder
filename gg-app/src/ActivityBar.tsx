@@ -119,8 +119,13 @@ export function ActivityBar({
     );
   }
 
-  const thinkingMs =
-    thinkingAccumMs + (isThinking && thinkingStartTs ? Date.now() - thinkingStartTs : 0);
+  // Live ticking timer: the 250ms `setNow` interval above forces this repaint,
+  // and reading the clock during render is what advances the displayed elapsed
+  // time each tick. Intentional, not a purity bug.
+  const liveThinkingDelta =
+    // eslint-disable-next-line react-hooks/purity
+    isThinking && thinkingStartTs ? Date.now() - thinkingStartTs : 0;
+  const thinkingMs = thinkingAccumMs + liveThinkingDelta;
   const thinkingLabel = isThinking
     ? thinkingMs >= 1000
       ? `thinking for ${formatElapsed(thinkingMs)}`

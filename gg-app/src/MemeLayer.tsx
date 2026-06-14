@@ -148,11 +148,15 @@ export function MemeLayer(): React.ReactElement {
         <div
           key={`${cycle}-${m.id}`}
           className="meme-card"
-          style={{
-            [m.v]: `${m.vInset}px`,
-            [m.h]: `${m.hInset}px`,
-            transform: `rotate(${m.rotate}deg)`,
-          }}
+          style={
+            {
+              [m.v]: `${m.vInset}px`,
+              [m.h]: `${m.hInset}px`,
+              // Rotation is exposed as a custom property so the entrance keyframe
+              // can combine it with a scale/rise without clobbering the angle.
+              "--rot": `${m.rotate}deg`,
+            } as React.CSSProperties
+          }
         >
           <MemeCardBody meme={m} />
         </div>

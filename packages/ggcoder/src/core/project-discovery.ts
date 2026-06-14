@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { getAppPaths } from "../config.js";
 
-
 export type ProjectSource = "ggcoder" | "claude-code" | "codex";
 
 export interface DiscoveredProject {
@@ -409,7 +408,11 @@ async function readSessionSummary(file: string): Promise<RecentSession | null> {
     const finish = (): void => {
       if (done) return;
       done = true;
-      resolve(valid ? { id, path: file, preview, lastActiveDisplay: rel(lastActivity), messageCount } : null);
+      resolve(
+        valid
+          ? { id, path: file, preview, lastActiveDisplay: rel(lastActivity), messageCount }
+          : null,
+      );
       rl.close();
       stream.destroy();
     };

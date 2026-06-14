@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Settings } from "lucide-react";
+import { Settings, Download } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { AsciiLogo } from "./AsciiLogo";
 import { MemeLayer } from "./MemeLayer";
 import { SettingsModal } from "./SettingsModal";
 import { waitForReady, getSettings, authStatus } from "./agent";
+import { useAppUpdate } from "./update";
 import { toast } from "./toast";
 
 interface Props {
@@ -22,6 +24,14 @@ export function HomeScreen({ onProjects, onLogin }: Props): React.ReactElement {
   const [folderSet, setFolderSet] = useState(false);
   const [providerCount, setProviderCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
+  const appUpdate = useAppUpdate();
+
+  useEffect(() => {
+    void getVersion()
+      .then(setVersion)
+      .catch(() => {});
+  }, []);
 
   async function refresh(): Promise<void> {
     await waitForReady();
@@ -61,6 +71,19 @@ export function HomeScreen({ onProjects, onLogin }: Props): React.ReactElement {
   return (
     <div className="home" data-tauri-drag-region>
       <MemeLayer />
+      {appUpdate.phase === "available" || appUpdate.phase === "installing" ? (
+        <button
+          className="home-update"
+          disabled={appUpdate.phase === "installing"}
+          title={`Update to ${appUpdate.version} — installs and restarts the app`}
+          onClick={() => void appUpdate.install()}
+        >
+          <Download size={14} strokeWidth={2.25} aria-hidden="true" />
+          {appUpdate.phase === "installing" ? "Installing\u2026" : `Update to ${appUpdate.version}`}
+        </button>
+      ) : (
+        version && <span className="home-version">{`v${version}`}</span>
+      )}
       <AsciiLogo />
       <div className="home-tagline">Cause the other coding agents piss me off</div>
       <div className="home-byline">

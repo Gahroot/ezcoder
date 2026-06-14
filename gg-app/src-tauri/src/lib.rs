@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
@@ -423,6 +423,43 @@ fn urlencoding(s: &str) -> String {
 /// first frame, so opening a new window never flashes white.
 const APP_BG: tauri::window::Color = tauri::window::Color(15, 17, 21, 255);
 
+/// Per-OS window chrome decision. macOS uses the Overlay title bar (webview
+/// draws under the traffic lights); every other OS keeps native decorations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowChrome {
+    MacOverlay,
+    Native,
+}
+
+/// Compile-time chrome selection: Overlay only on macOS, native elsewhere.
+fn window_chrome() -> WindowChrome {
+    if cfg!(target_os = "macos") {
+        WindowChrome::MacOverlay
+    } else {
+        WindowChrome::Native
+    }
+}
+
+/// Apply the macOS Overlay title bar + hidden title to a window builder. Kept
+/// behind `#[cfg(target_os = "macos")]` because `TitleBarStyle::Overlay` and
+/// `hidden_title` are macOS-only builder methods.
+#[cfg(target_os = "macos")]
+fn apply_mac_overlay<'a, R: tauri::Runtime, M: tauri::Manager<R>>(
+    builder: WebviewWindowBuilder<'a, R, M>,
+) -> WebviewWindowBuilder<'a, R, M> {
+    builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+}
+
+/// No-op on non-macOS: native chrome is the default, nothing to apply.
+#[cfg(not(target_os = "macos"))]
+fn apply_mac_overlay<'a, R: tauri::Runtime, M: tauri::Manager<R>>(
+    builder: WebviewWindowBuilder<'a, R, M>,
+) -> WebviewWindowBuilder<'a, R, M> {
+    builder
+}
+
 /// Open enough new project windows to reach `count` total (each with its own
 /// agent sidecar at the default cwd), then tile the first `count` windows across
 /// the work area like macOS fill&arrange. Project selection per window happens
@@ -433,17 +470,23 @@ fn setup_windows(app: tauri::AppHandle, count: usize) -> Result<(), String> {
     let to_create = count.saturating_sub(existing);
     for _ in 0..to_create {
         let label = next_window_label(&app);
-        let win = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
-            .title("GG Coder")
-            .inner_size(1024.0, 720.0)
-            .min_inner_size(480.0, 360.0)
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .background_color(APP_BG)
-            // Let the webview's HTML drop handler receive files (Tauri's native
-            // drag-drop would otherwise intercept them).
-            .disable_drag_drop_handler()
-            .build()
-            .map_err(|e| e.to_string())?;
+        let mut builder =
+            WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+                .title("GG Coder")
+                .inner_size(1024.0, 720.0)
+                .min_inner_size(480.0, 360.0)
+                .background_color(APP_BG)
+                // Let the webview's HTML drop handler receive files (Tauri's native
+                // drag-drop would otherwise intercept them).
+                .disable_drag_drop_handler();
+        // macOS-only chrome: the Overlay title bar + hidden title lets the
+        // webview draw under the traffic lights. Windows/Linux keep native
+        // chrome (Overlay is a no-op / unsupported there) and the webview CSS
+        // drops the mac traffic-light insets via the `.platform-*` class.
+        if matches!(window_chrome(), WindowChrome::MacOverlay) {
+            builder = apply_mac_overlay(builder);
+        }
+        let win = builder.build().map_err(|e| e.to_string())?;
         spawn_sidecar(app.clone(), label, default_cwd());
         let _ = win.set_focus();
     }
@@ -598,13 +641,87 @@ fn start_event_bridge(app: tauri::AppHandle, label: String, port: u16) {
     });
 }
 
-/// Resolve the built sidecar JS. Override with GG_SIDECAR_PATH; otherwise derive
-/// it from the workspace layout relative to this crate.
-fn sidecar_path() -> PathBuf {
-    if let Ok(p) = std::env::var("GG_SIDECAR_PATH") {
+/// Resolve the Node runtime used to run the sidecar.
+///
+/// Dev (debug build, or `GG_NODE_BIN` set): use `GG_NODE_BIN`, else bare
+/// `"node"` from PATH — matches the workspace developer flow.
+///
+/// Bundled (release): use the per-platform Node staged as a Tauri `externalBin`,
+/// which Tauri places next to the app executable named `ggnode` (`.exe` on
+/// Windows). This removes any dependency on a Node install on the user's PATH
+/// (a Finder/Dock-launched `.app` gets a minimal PATH without nvm/homebrew).
+fn resolve_node(_app: &tauri::AppHandle) -> PathBuf {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.to_path_buf()));
+    pick_node(
+        std::env::var("GG_NODE_BIN").ok(),
+        cfg!(debug_assertions),
+        exe_dir.as_deref(),
+    )
+}
+
+/// Pure node-path decision (testable without an AppHandle).
+/// - `env_override` (GG_NODE_BIN) always wins.
+/// - dev build → bare `"node"` from PATH.
+/// - bundled → `ggnode(.exe)` next to the executable if present, else `"node"`.
+fn pick_node(env_override: Option<String>, is_dev: bool, exe_dir: Option<&Path>) -> PathBuf {
+    if let Some(p) = env_override {
         return PathBuf::from(p);
     }
+    if is_dev {
+        return PathBuf::from("node");
+    }
+    let name = if cfg!(target_os = "windows") {
+        "ggnode.exe"
+    } else {
+        "ggnode"
+    };
+    match exe_dir.map(|d| d.join(name)) {
+        Some(p) if p.exists() => p,
+        _ => PathBuf::from("node"),
+    }
+}
+
+/// Resolve the built sidecar JS.
+///
+/// Dev (debug build, or `GG_SIDECAR_PATH` set): use `GG_SIDECAR_PATH`, else the
+/// workspace `dist/app-sidecar.js` relative to this crate.
+///
+/// Bundled (release): resolve the single-file ESM sidecar shipped under
+/// `bundle.resources` via the Tauri resource directory.
+fn resolve_sidecar(app: &tauri::AppHandle) -> PathBuf {
+    let resource = app
+        .path()
+        .resolve("sidecar/app-sidecar.mjs", tauri::path::BaseDirectory::Resource)
+        .ok();
+    pick_sidecar(
+        std::env::var("GG_SIDECAR_PATH").ok(),
+        cfg!(debug_assertions),
+        resource.as_deref(),
+    )
+}
+
+/// Path to the workspace dev sidecar, relative to this crate.
+fn workspace_sidecar() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packages/ggcoder/dist/app-sidecar.js")
+}
+
+/// Pure sidecar-path decision (testable without an AppHandle).
+/// - `env_override` (GG_SIDECAR_PATH) always wins.
+/// - dev build → workspace `dist/app-sidecar.js`.
+/// - bundled → the resolved bundle resource, falling back to the workspace path.
+fn pick_sidecar(env_override: Option<String>, is_dev: bool, resource: Option<&Path>) -> PathBuf {
+    if let Some(p) = env_override {
+        return PathBuf::from(p);
+    }
+    if is_dev {
+        return workspace_sidecar();
+    }
+    match resource {
+        Some(p) => p.to_path_buf(),
+        None => workspace_sidecar(),
+    }
 }
 
 /// Default working directory for the main window. Override with GG_APP_CWD;
@@ -632,10 +749,11 @@ fn spawn_sidecar_with_session(
     cwd: PathBuf,
     session_path: Option<String>,
 ) {
-    let script = sidecar_path();
-    let node = std::env::var("GG_NODE_BIN").unwrap_or_else(|_| "node".into());
+    let script = resolve_sidecar(&app);
+    let node = resolve_node(&app);
     log::info!(
-        "spawning sidecar for {label}: {} (cwd={})",
+        "spawning sidecar for {label}: {} {} (cwd={})",
+        node.display(),
         script.display(),
         cwd.display()
     );
@@ -721,6 +839,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -762,6 +882,14 @@ pub fn run() {
             agent_create_project
         ])
         .setup(|app| {
+            // The main window is created from config (which no longer carries a
+            // mac-only titleBarStyle). Apply the Overlay chrome at runtime on
+            // macOS only; other OSes keep native decorations.
+            if matches!(window_chrome(), WindowChrome::MacOverlay) {
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.set_title_bar_style(tauri::TitleBarStyle::Overlay);
+                }
+            }
             // The config's main window gets its sidecar at the default cwd.
             spawn_sidecar(app.handle().clone(), "main".into(), default_cwd());
             Ok(())
@@ -783,4 +911,87 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pick_node_env_override_wins() {
+        let got = pick_node(Some("/opt/node".into()), true, None);
+        assert_eq!(got, PathBuf::from("/opt/node"));
+        // ...even in bundled mode with a present exe dir.
+        let got = pick_node(Some("/opt/node".into()), false, Some(Path::new("/app")));
+        assert_eq!(got, PathBuf::from("/opt/node"));
+    }
+
+    #[test]
+    fn pick_node_dev_uses_path() {
+        let got = pick_node(None, true, Some(Path::new("/app")));
+        assert_eq!(got, PathBuf::from("node"));
+    }
+
+    #[test]
+    fn pick_node_bundled_uses_exe_dir_when_present() {
+        let tmp = std::env::temp_dir().join(format!("ggnode-test-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let name = if cfg!(target_os = "windows") {
+            "ggnode.exe"
+        } else {
+            "ggnode"
+        };
+        let staged = tmp.join(name);
+        std::fs::write(&staged, b"").unwrap();
+        let got = pick_node(None, false, Some(&tmp));
+        assert_eq!(got, staged);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn pick_node_bundled_falls_back_when_missing() {
+        let got = pick_node(None, false, Some(Path::new("/nonexistent-dir-xyz")));
+        assert_eq!(got, PathBuf::from("node"));
+    }
+
+    #[test]
+    fn pick_sidecar_env_override_wins() {
+        let got = pick_sidecar(Some("/x/side.mjs".into()), true, None);
+        assert_eq!(got, PathBuf::from("/x/side.mjs"));
+        let got = pick_sidecar(
+            Some("/x/side.mjs".into()),
+            false,
+            Some(Path::new("/res/sidecar/app-sidecar.mjs")),
+        );
+        assert_eq!(got, PathBuf::from("/x/side.mjs"));
+    }
+
+    #[test]
+    fn pick_sidecar_dev_uses_workspace() {
+        let got = pick_sidecar(None, true, Some(Path::new("/res/app-sidecar.mjs")));
+        assert_eq!(got, workspace_sidecar());
+    }
+
+    #[test]
+    fn pick_sidecar_bundled_uses_resource() {
+        let res = Path::new("/res/sidecar/app-sidecar.mjs");
+        let got = pick_sidecar(None, false, Some(res));
+        assert_eq!(got, res.to_path_buf());
+    }
+
+    #[test]
+    fn pick_sidecar_bundled_falls_back_without_resource() {
+        let got = pick_sidecar(None, false, None);
+        assert_eq!(got, workspace_sidecar());
+    }
+
+    #[test]
+    fn window_chrome_matches_target_os() {
+        let got = window_chrome();
+        if cfg!(target_os = "macos") {
+            assert_eq!(got, WindowChrome::MacOverlay);
+        } else {
+            assert_eq!(got, WindowChrome::Native);
+        }
+    }
 }
