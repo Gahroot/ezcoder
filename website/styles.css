@@ -122,6 +122,15 @@ h3 {
 .btn-block {
   width: 100%;
 }
+.btn.is-disabled {
+  cursor: default;
+  pointer-events: none;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border-color: var(--border);
+  box-shadow: none;
+  transform: none;
+}
 
 /* ── Nav ──────────────────────────────────────────────────── */
 .nav {

@@ -1,8 +1,9 @@
 // EZ Coder landing page — gallery, lightbox, OS detection, and live wiring of
 // the download buttons to the latest GitHub release. No dependencies.
 
+// Used only for the background release-metadata fetch (GitHub API) — the user
+// is never navigated to github.com; installers download directly.
 const REPO = "Gahroot/ezcoder";
-const RELEASES_URL = `https://github.com/${REPO}/releases`;
 
 // Every captured screen, in showcase order. One source of truth for the gallery
 // grid and the lightbox.
@@ -203,37 +204,53 @@ async function wireDownloads() {
         : "Pick your platform — the app keeps itself up to date after that.";
     }
   } catch {
-    // No published release yet (or offline): point both buttons at the releases
-    // page so the page stays useful until the first `v*` tag is pushed.
-    for (const os of ["mac", "windows"]) {
-      const btn = document.querySelector(`[data-dl="${os}"]`);
-      const sub = document.querySelector(`[data-dl-sub="${os}"]`);
-      if (btn) {
-        btn.href = RELEASES_URL;
-        btn.textContent = "Get it on GitHub";
-      }
-      if (sub) sub.textContent = "coming to the releases page";
-    }
+    // No published release yet (or offline). We never send people to GitHub, so
+    // both buttons go to a disabled "coming soon" state instead.
+    markComingSoon("mac");
+    markComingSoon("windows");
     if (status) {
-      status.innerHTML = `First builds land on the <a href="${RELEASES_URL}" target="_blank" rel="noopener">releases page</a> — push a <code>v*</code> tag to publish them.`;
+      status.textContent = "Builds are on the way — check back shortly.";
     }
   }
 }
 
-function wireCard(os, asset, tag, fallbackLabel) {
+function wireCard(os, asset, tag, label) {
   const btn = document.querySelector(`[data-dl="${os}"]`);
   const sub = document.querySelector(`[data-dl-sub="${os}"]`);
   if (!btn) return;
   if (asset) {
+    // `browser_download_url` streams the installer file directly; the `download`
+    // attribute + no `target` makes it a same-tab file download — the user never
+    // sees a GitHub page.
     btn.href = asset.browser_download_url;
-    btn.textContent = fallbackLabel;
+    btn.setAttribute("download", asset.name);
+    btn.removeAttribute("target");
+    btn.removeAttribute("rel");
+    btn.classList.remove("is-disabled");
+    btn.removeAttribute("aria-disabled");
+    btn.textContent = label;
     if (sub) sub.textContent = tag ? `${tag} · ${formatSize(asset.size)}` : formatSize(asset.size);
   } else {
-    // This platform has no asset on the latest release — send to releases page.
-    btn.href = RELEASES_URL;
-    btn.textContent = "View releases";
-    if (sub) sub.textContent = "no build on latest yet";
+    // The release exists but has no asset for this platform yet.
+    markComingSoon(os);
   }
+}
+
+// Put a platform's button into a non-clickable "coming soon" state (no GitHub
+// link). Used when there's no release, or no asset for that platform yet.
+function markComingSoon(os) {
+  const btn = document.querySelector(`[data-dl="${os}"]`);
+  const sub = document.querySelector(`[data-dl-sub="${os}"]`);
+  if (btn) {
+    btn.removeAttribute("href");
+    btn.removeAttribute("target");
+    btn.removeAttribute("rel");
+    btn.removeAttribute("download");
+    btn.classList.add("is-disabled");
+    btn.setAttribute("aria-disabled", "true");
+    btn.textContent = "Coming soon";
+  }
+  if (sub) sub.textContent = "building now";
 }
 
 function setVersionPill(tag) {
