@@ -127,7 +127,7 @@ replace_in_tracked_text_files() {
       -e 's|packages/ggcoder-eyes|packages/eyes|g' \
       -e 's|packages/ggcoder|packages/cli|g' \
       -e 's|"packages", "ggcoder"|"packages", "cli"|g' \
-      -e 's|"ggcoder",|"cli",|g' \
+      -e 's|^\( *\)"ggcoder",$|\1"cli",|g' \
       -e 's|packages/gg-boss|packages/boss|g' \
       -e 's|packages/gg-editor-premiere-panel|packages/editor-premiere-panel|g' \
       -e 's|packages/gg-editor|packages/editor|g' \
