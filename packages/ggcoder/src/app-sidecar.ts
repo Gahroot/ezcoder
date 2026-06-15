@@ -52,6 +52,7 @@ import {
 } from "./core/tasks-store.js";
 import { initLogger, log } from "./core/logger.js";
 import { RADIO_STATIONS, getCurrentStation, playRadio, stopRadio } from "./core/radio.js";
+import { enrichProcessPath } from "./core/shell-path.js";
 
 const ALL_PROVIDERS: Provider[] = [
   "anthropic",
@@ -270,6 +271,13 @@ async function main(): Promise<void> {
   // ~/.gg/debug.log (initLogger truncates on each start).
   const sidecarLog = path.join(paths.agentDir, "gg-app-sidecar.log");
   initLogger(sidecarLog);
+
+  // The packaged desktop app launches from Finder/Dock with a minimal PATH that
+  // omits Homebrew/Cargo/version-manager dirs, so the agent can't find node,
+  // git, python, rg, etc. Enrich process.env.PATH from the login shell once,
+  // before anything spawns (bash tool, background tasks, LSP, git helpers all
+  // inherit it). Best-effort — never blocks startup beyond its internal cap.
+  await enrichProcessPath();
 
   const auth = new AuthStorage(paths.authFile);
   await auth.load();
