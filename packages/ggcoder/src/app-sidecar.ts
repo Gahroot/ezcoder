@@ -43,6 +43,12 @@ import {
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
 import { loadCustomCommands } from "./core/custom-commands.js";
 import { discoverProjects, listRecentSessions } from "./core/project-discovery.js";
+import {
+  loadTasksSync,
+  saveTasksSync,
+  getNextPendingTask,
+  markTaskInProgress,
+} from "./core/tasks-store.js";
 import { initLogger, log } from "./core/logger.js";
 
 const ALL_PROVIDERS: Provider[] = [
@@ -338,6 +344,83 @@ async function main(): Promise<void> {
         if (title) broadcast("session_title", { title });
       });
     }
+  }
+
+  // Core run lifecycle shared by /prompt and the task runner: flips `running`,
+  // brackets the run with run_start/run_end, refreshes the footer extras, and
+  // generates the session title once. `label` is the text shown live with the
+  // run_start frame.
+  async function runAgent(label: string, run: () => Promise<void>): Promise<void> {
+    running = true;
+    broadcast("run_start", { text: label });
+    try {
+      await run();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      broadcast("error", { message });
+      log("ERROR", "app-sidecar", "run failed", { message });
+    } finally {
+      running = false;
+      // A run may have switched branches (git checkout) or spawned/finished
+      // background tasks — refresh the footer extras once it settles.
+      gitBranch = await getGitBranch(cwd).catch(() => gitBranch);
+      gitIsRepo = await isGitRepo(cwd).catch(() => gitIsRepo);
+      broadcast("run_end", {});
+      // Queue drains into the run as steering, so it's empty by run_end —
+      // sync the webview indicator.
+      broadcast("queued", { count: session.getQueuedCount() });
+      broadcast("extras", footerExtras());
+      // Generate a session title once, after the first run, for the title bar
+      // (best-effort, async — don't block the response).
+      if (!titleGenerated) {
+        titleGenerated = true;
+        void session.generateTitle().then((title) => {
+          if (title) broadcast("session_title", { title });
+        });
+      }
+    }
+  }
+
+  // ── Task runner (project task list → sessions) ──────────────
+  // Mirrors the CLI's task flow: each task runs in its OWN fresh session, with a
+  // completion hint instructing the agent to mark the task done via the tasks
+  // tool. Run-all advances to the next pending task after each run finishes.
+  let taskRunAll = false;
+
+  async function runTaskById(taskId: string): Promise<boolean> {
+    const task = loadTasksSync(cwd).find((t) => t.id === taskId || t.id.startsWith(taskId));
+    if (!task) return false;
+    // Fresh session per task so one task's context never bleeds into the next.
+    await session.newSession();
+    titleGenerated = false;
+    broadcast("session_reset", {});
+    markTaskInProgress(cwd, task.id);
+    broadcast("tasks_list", { tasks: loadTasksSync(cwd) });
+    broadcast("task_start", { id: task.id, title: task.title });
+    const shortId = task.id.slice(0, 8);
+    const completionHint =
+      `\n\n---\nWhen you have fully completed this task, call the tasks tool to mark it done:\n` +
+      `tasks({ action: "done", id: "${shortId}" })`;
+    await runAgent(task.title, () => session.prompt(task.prompt + completionHint));
+    // The agent typically marks the task done via the tasks tool during the run;
+    // push the refreshed list so the webview's task modal reflects it.
+    broadcast("tasks_list", { tasks: loadTasksSync(cwd) });
+    return true;
+  }
+
+  async function runTasks(startId: string | null, all: boolean): Promise<void> {
+    taskRunAll = all;
+    let currentId: string | null = startId ?? getNextPendingTask(cwd)?.id ?? null;
+    while (currentId) {
+      const ran = await runTaskById(currentId);
+      if (!ran || !taskRunAll) break;
+      const next = getNextPendingTask(cwd);
+      currentId = next ? next.id : null;
+      // Brief pause between tasks (mirrors the CLI cadence).
+      if (currentId) await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    taskRunAll = false;
+    broadcast("tasks_run_done", {});
   }
 
   // ── Provider auth (login) bridge ───────────────────────────
@@ -689,9 +772,7 @@ async function main(): Promise<void> {
           return;
         }
         json(res, 202, { accepted: true });
-        running = true;
-        broadcast("run_start", { text });
-        try {
+        await runAgent(text, async () => {
           if (attachments.length > 0) {
             // Persist each attachment under .gg/uploads so files are inspectable
             // by the agent's tools, then prompt with the media as native blocks.
@@ -704,30 +785,54 @@ async function main(): Promise<void> {
             // while the webview keeps showing the short `/name`.
             await session.prompt(text);
           }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          broadcast("error", { message });
-          log("ERROR", "app-sidecar", "prompt failed", { message });
-        } finally {
-          running = false;
-          // A run may have switched branches (git checkout) or spawned/finished
-          // background tasks — refresh the footer extras once it settles.
-          gitBranch = await getGitBranch(cwd).catch(() => gitBranch);
-          gitIsRepo = await isGitRepo(cwd).catch(() => gitIsRepo);
-          broadcast("run_end", {});
-          // Queue drains into the run as steering, so it's empty by run_end —
-          // sync the webview indicator.
-          broadcast("queued", { count: session.getQueuedCount() });
-          broadcast("extras", footerExtras());
-          // Generate a session title once, after the first run, for the title
-          // bar (best-effort, async — don't block the response).
-          if (!titleGenerated) {
-            titleGenerated = true;
-            void session.generateTitle().then((title) => {
-              if (title) broadcast("session_title", { title });
-            });
-          }
+        });
+      });
+      return;
+    }
+
+    if (method === "GET" && url === "/tasks") {
+      json(res, 200, { tasks: loadTasksSync(cwd) });
+      return;
+    }
+
+    if (method === "POST" && url === "/tasks/run") {
+      void readBody(req).then((raw) => {
+        let id: string | null;
+        let all: boolean;
+        try {
+          const body = JSON.parse(raw) as { id?: string | null; all?: boolean };
+          id = body.id ?? null;
+          all = Boolean(body.all);
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
         }
+        if (running) {
+          json(res, 409, { error: "cannot run a task while the agent is running" });
+          return;
+        }
+        json(res, 202, { accepted: true });
+        void runTasks(id, all);
+      });
+      return;
+    }
+
+    if (method === "POST" && url === "/tasks/delete") {
+      void readBody(req).then((raw) => {
+        let id: string;
+        try {
+          id = (JSON.parse(raw) as { id?: string }).id ?? "";
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!id.trim()) {
+          json(res, 400, { error: "missing task id" });
+          return;
+        }
+        const remaining = loadTasksSync(cwd).filter((t) => t.id !== id && !t.id.startsWith(id));
+        saveTasksSync(cwd, remaining);
+        json(res, 200, { tasks: remaining });
       });
       return;
     }
@@ -830,6 +935,8 @@ async function main(): Promise<void> {
       abort = new AbortController();
       session.setSignal(abort.signal);
       running = false;
+      // Stop a run-all sweep so the next pending task isn't auto-started.
+      taskRunAll = false;
       // Drop any queued steering and return it so the webview can restore it to
       // the composer.
       const drained = session.drainQueue();

@@ -11,6 +11,10 @@ import {
   switchModel,
   listCommands,
   listHistory,
+  listTasks,
+  runTask,
+  runAllTasks,
+  deleteTask,
   subscribe,
   isSecondaryWindow,
   setWindowTitle,
@@ -19,6 +23,7 @@ import {
   type ModelOption,
   type SlashCommand,
   type BackgroundTask,
+  type ProjectTask,
 } from "./agent";
 import { ActivityBar, formatTokenCount } from "./ActivityBar";
 import { LiveToolPanel, type LiveToolEntry, LIVE_TOOL_PANEL_ROWS } from "./LiveToolPanel";
@@ -27,6 +32,7 @@ import { ModelMenu } from "./ModelMenu";
 import { SlashMenu } from "./SlashMenu";
 import { ContextMeter } from "./ContextMeter";
 import { BackgroundTasksButton } from "./BackgroundTasksButton";
+import { TasksModal } from "./TasksModal";
 import { ShimmerText } from "./ShimmerText";
 import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
@@ -78,6 +84,8 @@ type Item =
   | { kind: "images"; id: number; images: TranscriptImage[]; caption?: string }
   // Plan-mode entry banner (ASCII logo + optional reason).
   | { kind: "plan"; id: number; reason: string }
+  // A task kicked off from the Tasks modal (shown at the top of its session).
+  | { kind: "task"; id: number; title: string }
   // Sub-agents delegated in a turn — a live, in-chat feed of each one's tools.
   | { kind: "subagent_group"; id: number; agents: SubAgentLine[]; aborted?: boolean };
 
@@ -226,6 +234,10 @@ function App(): React.ReactElement {
   // running context-window usage (input-side tokens of the latest turn).
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [contextTokens, setContextTokens] = useState(0);
+  // Project task list (the agent's `tasks` tool store) + the Tasks modal.
+  // Updated live via the `tasks_list` SSE event while a run-all sweep advances.
+  const [projectTasks, setProjectTasks] = useState<ProjectTask[]>([]);
+  const [showTasks, setShowTasks] = useState(false);
   // Every window picks a project before connecting — on app load and on each new
   // window. The picker re-points this window's agent at the chosen cwd/session.
   const [needsProject, setNeedsProject] = useState(true);
@@ -707,6 +719,18 @@ function App(): React.ReactElement {
         case "tasks":
           setTasks((d.tasks as BackgroundTask[] | undefined) ?? []);
           break;
+        case "tasks_list":
+          // Project task list refresh (run-all advance, status flips).
+          setProjectTasks((d.tasks as ProjectTask[] | undefined) ?? []);
+          break;
+        case "task_start":
+          // A task run just opened a fresh session; show its title at the top of
+          // the (already-cleared) transcript so the user sees what's running.
+          pushItem({ kind: "task", id: nextId(), title: String(d.title ?? "") });
+          break;
+        case "tasks_run_done":
+          // Run-all sweep finished — nothing to render; the modal reflects it.
+          break;
         case "queued":
           setQueuedCount(Number(d.count ?? 0));
           break;
@@ -775,6 +799,8 @@ function App(): React.ReactElement {
       if (available.length > 0) setModels(available);
       const cmds = await listCommands();
       if (cmds.length > 0) setCommands(cmds);
+      // Project task list for the Tasks modal + nav button.
+      setProjectTasks(await listTasks());
       // Hydrate the transcript when resuming an existing session — the webview
       // only sees live SSE events, so past messages must be fetched explicitly.
       const history = await listHistory();
@@ -820,6 +846,31 @@ function App(): React.ReactElement {
     // connected window (needsProject stays false there).
     if (!needsProject) void hydrate();
   }, [needsProject, hydrate, hydrateNonce]);
+
+  // Open the Tasks modal, refreshing the list from the sidecar first so it
+  // reflects any tasks the agent just added.
+  const openTasks = useCallback(() => {
+    setShowTasks(true);
+    void listTasks().then(setProjectTasks);
+  }, []);
+
+  // Run a single task: the sidecar opens a fresh session and streams progress
+  // back (session_reset → task_start → run_start/…/run_end). Close the modal so
+  // the transcript is visible while it runs.
+  const handleRunTask = useCallback((id: string) => {
+    setShowTasks(false);
+    void runTask(id);
+  }, []);
+
+  // Run every pending task sequentially (a fresh session each), in order.
+  const handleRunAllTasks = useCallback(() => {
+    setShowTasks(false);
+    void runAllTasks();
+  }, []);
+
+  const handleDeleteTask = useCallback((id: string) => {
+    void deleteTask(id).then(setProjectTasks);
+  }, []);
 
   function onSelectModel(modelId: string): void {
     setModelMenuOpen(false);
@@ -1133,6 +1184,15 @@ function App(): React.ReactElement {
               >
                 {"+ New session"}
               </button>
+              <button
+                className="btn btn-sm btn-ghost"
+                title="View and run this project's tasks"
+                onClick={openTasks}
+              >
+                {projectTasks.some((t) => t.status !== "done")
+                  ? `Tasks (${projectTasks.filter((t) => t.status !== "done").length})`
+                  : "Tasks"}
+              </button>
               {needsGitInit ? (
                 <button
                   className="btn btn-sm btn-ghost"
@@ -1431,6 +1491,17 @@ function App(): React.ReactElement {
           onReject={rejectPlan}
         />
       )}
+
+      {showTasks && (
+        <TasksModal
+          tasks={projectTasks}
+          running={running}
+          onRun={handleRunTask}
+          onRunAll={handleRunAllTasks}
+          onDelete={handleDeleteTask}
+          onClose={() => setShowTasks(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1550,6 +1621,16 @@ function TranscriptRow({
       );
     case "plan":
       return <PlanModeLogo reason={item.reason} />;
+    case "task":
+      return (
+        <div className="line task-row">
+          <span className="task-row-glyph" style={{ color: theme.primary }}>
+            {"\u25B8 "}
+          </span>
+          <span style={{ color: theme.textMuted }}>{"Task: "}</span>
+          <span style={{ color: theme.text, fontWeight: 600 }}>{item.title}</span>
+        </div>
+      );
     case "subagent_group":
       return <SubAgentFeed agents={item.agents} aborted={item.aborted} />;
     default:

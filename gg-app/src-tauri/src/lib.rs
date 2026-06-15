@@ -233,6 +233,58 @@ async fn agent_kill_task(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Proxy: list this project's task list (the ~/.gg-tasks store for its cwd).
+#[tauri::command]
+async fn agent_tasks(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .get(format!("{}/tasks", sidecar_base(port)))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: run one task (`id`) or run-all (`all = true`, starting from the next
+/// pending task). Progress streams back via `agent-event` (session_reset,
+/// task_start, run_start/run_end, tasks_list, tasks_run_done).
+#[tauri::command]
+async fn agent_run_tasks(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    id: Option<String>,
+    all: bool,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/tasks/run", sidecar_base(port)))
+        .json(&serde_json::json!({ "id": id, "all": all }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: delete a task by id. Returns the remaining `{ tasks }`.
+#[tauri::command]
+async fn agent_delete_task(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/tasks/delete", sidecar_base(port)))
+        .json(&serde_json::json!({ "id": id }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Proxy: cancel the in-flight run.
 #[tauri::command]
 async fn agent_cancel(
@@ -877,6 +929,9 @@ pub fn run() {
             agent_auth_oauth_code,
             agent_auth_logout,
             agent_kill_task,
+            agent_tasks,
+            agent_run_tasks,
+            agent_delete_task,
             agent_cycle_thinking,
             agent_models,
             agent_switch_model,

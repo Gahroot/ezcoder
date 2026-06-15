@@ -811,6 +811,77 @@ body {
   cursor: default;
   opacity: 0.7;
 }
+
+/* ── Tasks modal (project task list → run one / run all) ── */
+.tasks-empty {
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 2px;
+}
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Cap height so a long list scrolls inside the modal instead of growing it
+     past the viewport; the actions row stays pinned below. */
+  max-height: min(48vh, 360px);
+  overflow-y: auto;
+  margin: 2px 0 14px;
+}
+.tasks-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px;
+  border-radius: var(--radius-button);
+}
+.tasks-item:hover {
+  background: var(--surface-1);
+}
+.tasks-dot {
+  flex: 0 0 auto;
+  font-size: 11px;
+  width: 14px;
+  text-align: center;
+}
+.tasks-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tasks-status {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.tasks-run-one {
+  flex: 0 0 auto;
+}
+.tasks-delete {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color var(--t-fast);
+}
+.tasks-delete:hover {
+  color: var(--error) !important;
+}
+.tasks-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+/* In-transcript task header row (shown at the top of a task's session). */
+.task-row {
+  margin: 2px 0 6px;
+}
 .picker-list {
   flex: 1 1 auto;
   overflow-y: auto;

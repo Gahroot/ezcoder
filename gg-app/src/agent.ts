@@ -62,6 +62,47 @@ export interface AgentState {
   tasks?: BackgroundTask[];
 }
 
+/** A project task from the ~/.gg-tasks store (the agent's `tasks` tool). */
+export interface ProjectTask {
+  id: string;
+  title: string;
+  prompt: string;
+  status: "pending" | "in-progress" | "done";
+  createdAt: string;
+}
+
+/** List this project's tasks (pending / in-progress / done). */
+export async function listTasks(): Promise<ProjectTask[]> {
+  try {
+    const res = await invoke<{ tasks: ProjectTask[] }>("agent_tasks");
+    return res.tasks ?? [];
+  } catch (e) {
+    await logError(`agent_tasks failed: ${String(e)}`);
+    return [];
+  }
+}
+
+/** Run a single task end-to-end in its own fresh session. */
+export async function runTask(id: string): Promise<void> {
+  await invoke("agent_run_tasks", { id, all: false });
+}
+
+/** Run every pending task sequentially (a fresh session each), in order. */
+export async function runAllTasks(): Promise<void> {
+  await invoke("agent_run_tasks", { id: null, all: true });
+}
+
+/** Delete a task by id. Returns the remaining tasks. */
+export async function deleteTask(id: string): Promise<ProjectTask[]> {
+  try {
+    const res = await invoke<{ tasks: ProjectTask[] }>("agent_delete_task", { id });
+    return res.tasks ?? [];
+  } catch (e) {
+    await logError(`agent_delete_task failed: ${String(e)}`);
+    return [];
+  }
+}
+
 export interface ThinkingState {
   thinkingLevel: string | null;
   supportedThinkingLevels: string[];
