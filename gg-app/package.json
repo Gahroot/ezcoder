@@ -15,6 +15,7 @@
     "stage:node": "node scripts/stage-node.mjs",
     "bundle:sidecar": "node scripts/bundle-sidecar.mjs",
     "prebundle": "pnpm stage:node && pnpm bundle:sidecar",
+    "installer:art": "node installer/build-art.mjs",
     "test": "vitest run",
     "tauri": "tauri"
   },

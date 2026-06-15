@@ -46,11 +46,10 @@ jobs:
           # becomes available. Apple Silicon covers all Macs sold since 2020.
           - platform: windows-latest
             args: ""
-          - platform: ubuntu-latest
-            # Skip AppImage: linuxdeploy reliably hangs on CI runners for apps
-            # that bundle a Node runtime + many resources. deb + rpm cover the
-            # mainstream Linux install paths without the hang.
-            args: "--bundles deb,rpm"
+          # NOTE: Linux is intentionally omitted for now. We ship macOS +
+          # Windows only. Re-add an `ubuntu-latest` leg (with
+          # `args: --bundles deb,rpm` — AppImage's linuxdeploy hangs on CI for
+          # Node-bundling apps) when Linux support is prioritized.
     runs-on: ${{ matrix.platform }}
     # Hoisted to job level so the certificate-import step's own `if` can read it
     # (a step cannot reference env it defines in the same step's `if`).

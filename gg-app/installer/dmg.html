@@ -1,0 +1,164 @@
+<!doctype html>
+<!--
+  Source design for the macOS DMG background (rendered at 1320×800 = 2× the
+  660×400 Finder window; create-dmg scales it to fill, so it stays crisp on
+  retina). Icon slots are left intentionally clear: macOS overlays the real
+  gg-coder.app icon at logical (180,170) and the Applications symlink at
+  (480,170) — here that maps to the two empty zones either side of the arrow.
+  Regenerate the PNG with: pnpm --filter gg-app installer:art
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #0f1115;
+        --text: #f4f6f8;
+        --muted: #9aa3b2;
+        --dim: #5b6472;
+        --blue: #4d9dff;
+        --purple: #9b8cf7;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1320px;
+        height: 800px;
+        overflow: hidden;
+        font-family: -apple-system, "SF Pro Display", system-ui, sans-serif;
+      }
+      .stage {
+        position: relative;
+        width: 1320px;
+        height: 800px;
+        background:
+          radial-gradient(
+            120% 90% at 50% -10%,
+            rgba(77, 157, 255, 0.16),
+            transparent 55%
+          ),
+          radial-gradient(
+            90% 70% at 50% 120%,
+            rgba(155, 140, 247, 0.12),
+            transparent 60%
+          ),
+          linear-gradient(180deg, #12141b 0%, #0d0f14 100%);
+        color: var(--text);
+      }
+      /* Fine grid texture, very subtle. */
+      .stage::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: radial-gradient(120% 80% at 50% 30%, #000 30%, transparent 80%);
+      }
+      .header {
+        position: absolute;
+        top: 74px;
+        left: 0;
+        right: 0;
+        text-align: center;
+      }
+      .wordmark {
+        font-size: 46px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+      }
+      .wordmark .g {
+        background: linear-gradient(135deg, var(--blue), var(--purple));
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .sub {
+        margin-top: 12px;
+        font-size: 21px;
+        color: var(--muted);
+        letter-spacing: 0.01em;
+      }
+      /* Drop-zone rings sit under where macOS draws the two icons. */
+      .ring {
+        position: absolute;
+        width: 188px;
+        height: 188px;
+        border-radius: 30px;
+        top: 246px; /* icon center y=340 → 340-94 */
+        border: 1.5px dashed rgba(255, 255, 255, 0.10);
+        background: rgba(255, 255, 255, 0.018);
+      }
+      .ring.app {
+        left: 266px;
+      } /* center x=360 → 360-94 */
+      .ring.apps {
+        left: 866px;
+      } /* center x=960 → 960-94 */
+      .ring .tag {
+        position: absolute;
+        bottom: -42px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 18px;
+        color: var(--dim);
+      }
+      /* Arrow from app → Applications, centered at (660,340). */
+      .arrow {
+        position: absolute;
+        top: 322px;
+        left: 500px;
+        width: 320px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .arrow svg {
+        filter: drop-shadow(0 0 10px rgba(77, 157, 255, 0.35));
+      }
+      .footer {
+        position: absolute;
+        bottom: 56px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 18px;
+        color: var(--dim);
+        letter-spacing: 0.02em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="header">
+        <div class="wordmark"><span class="g">gg</span>-coder</div>
+        <div class="sub">Drag the app into your Applications folder</div>
+      </div>
+
+      <div class="ring app"></div>
+      <div class="ring apps"></div>
+
+      <div class="arrow">
+        <svg width="320" height="36" viewBox="0 0 320 36" fill="none">
+          <defs>
+            <linearGradient id="ag" gradientUnits="userSpaceOnUse" x1="6" y1="0" x2="312" y2="0">
+              <stop offset="0" stop-color="#4d9dff" stop-opacity="0.65" />
+              <stop offset="1" stop-color="#9b8cf7" stop-opacity="1" />
+            </linearGradient>
+          </defs>
+          <line x1="6" y1="18" x2="292" y2="18" stroke="url(#ag)" stroke-width="4" stroke-linecap="round" />
+          <path d="M286 6 L312 18 L286 30" stroke="#9b8cf7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        </svg>
+      </div>
+
+      <div class="footer">gg-coder · the coding agent, on your desktop</div>
+    </div>
+  </body>
+</html>
