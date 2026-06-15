@@ -27,8 +27,13 @@
       "@electron/get",
       "better-sqlite3",
       "electron",
+      "electron-winstaller",
       "esbuild",
-      "onnxruntime-node"
+      "onnxruntime-node",
+      "opensrc",
+      "protobufjs",
+      "sharp",
+      "workerd"
     ],
     "overrides": {
       "global-agent": "^4.1.3",
