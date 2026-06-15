@@ -14,3 +14,19 @@ overrides:
 patchedDependencies:
   ink@6.8.0: patches/ink@6.8.0.patch
   ink@7.0.2: patches/ink@7.0.2.patch
+
+# Native deps allowed to run install scripts. pnpm 11 errors
+# (ERR_PNPM_IGNORED_BUILDS) when a dep wants to build but isn't approved here, so
+# this list must stay complete. Like the keys above, it's read from this
+# workspace file on pnpm 10+, NOT the package.json "pnpm" key.
+onlyBuiltDependencies:
+  - "@electron/get"
+  - better-sqlite3
+  - electron
+  - electron-winstaller
+  - esbuild
+  - onnxruntime-node
+  - opensrc
+  - protobufjs
+  - sharp
+  - workerd
