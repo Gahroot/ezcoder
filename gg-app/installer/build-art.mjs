@@ -77,18 +77,19 @@ async function toBmp(srcPng, width, height, outName) {
 async function main() {
   mkdirSync(outDir, { recursive: true });
 
-  // DMG background MUST be 660×400 px to match the Finder window's point size:
-  // Finder maps 1 background pixel → 1 window point (it does NOT scale the
-  // image to fit), so a larger image only shows its top-left crop. We author
-  // dmg.html at 2× (1320×800) and downscale here → supersampled/crisp at the
-  // correct final size. Drop-zone rings at 2×(360,340)/(960,340) become
-  // (180,170)/(480,170), matching appPosition / applicationFolderPosition in
-  // tauri.conf.json.
+  // DMG background: RETINA. The Finder window is 660×400 *points*, but on a
+  // retina display that's 1320×800 device pixels — so a 660×400 image gets
+  // upscaled 2× (blurry). Instead we keep the full 1320×800 render and tag it
+  // 144 DPI (= 2×72): Finder reads the DPI, treats it as 660×400 points, fills
+  // the window, and uses the extra pixels for crisp retina rendering. No
+  // downscale → the ASCII art stays sharp. Author coords in dmg.html are at
+  // this 2× scale; icon centers 2×(360,340)/(960,340) → (180,170)/(480,170),
+  // matching appPosition / applicationFolderPosition in tauri.conf.json.
   await sharp(join(here, "dmg-background.png"))
-    .resize(660, 400, { fit: "fill" })
+    .withMetadata({ density: 144 })
     .png()
     .toFile(join(outDir, "dmg-background.png"));
-  console.log("wrote dmg-background.png (660×400)");
+  console.log("wrote dmg-background.png (1320×800 @144dpi → 660×400pt retina)");
 
   await toBmp(join(here, "nsis-sidebar.png"), 164, 314, "nsis-sidebar.bmp");
   await toBmp(join(here, "nsis-header.png"), 150, 57, "nsis-header.bmp");
