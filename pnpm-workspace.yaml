@@ -15,18 +15,19 @@ patchedDependencies:
   ink@6.8.0: patches/ink@6.8.0.patch
   ink@7.0.2: patches/ink@7.0.2.patch
 
-# Native deps allowed to run install scripts. pnpm 11 errors
-# (ERR_PNPM_IGNORED_BUILDS) when a dep wants to build but isn't approved here, so
-# this list must stay complete. Like the keys above, it's read from this
-# workspace file on pnpm 10+, NOT the package.json "pnpm" key.
-onlyBuiltDependencies:
-  - "@electron/get"
-  - better-sqlite3
-  - electron
-  - electron-winstaller
-  - esbuild
-  - onnxruntime-node
-  - opensrc
-  - protobufjs
-  - sharp
-  - workerd
+# Native deps allowed to run install scripts. pnpm 11 ERRORS
+# (ERR_PNPM_IGNORED_BUILDS) when a dep wants to build but isn't approved — in v10
+# it only warned. v11 replaced the v10 `onlyBuiltDependencies` list with the
+# `allowBuilds` map; CI (CI=true) is non-interactive and obeys this map without
+# prompting. Keep it complete or the frozen install fails before any build runs.
+allowBuilds:
+  "@electron/get": true
+  better-sqlite3: true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  onnxruntime-node: true
+  opensrc: true
+  protobufjs: true
+  sharp: true
+  workerd: true
