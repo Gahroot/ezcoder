@@ -32,7 +32,8 @@ const SHOTS = [
   {
     file: "login.png",
     title: "AI providers",
-    caption: "Sign in with Claude or ChatGPT, or bring an API key.",
+    caption:
+      "Anthropic, OpenAI, Gemini, GLM, Kimi and more — sign in with OAuth or bring an API key.",
   },
   {
     file: "provider.png",
