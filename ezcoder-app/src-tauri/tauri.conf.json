@@ -48,7 +48,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERBMDFGMkNBNjdFNUQzMkQKUldRdDArVm55dklCMmhWUWdmVjJpNWljUE5sTjNLM0RBWitkbmFIb0hjZXZxNmROd21BUEpydFkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE3MUUyNUQyMDdBNkMyRkIKUldUN3dxWUgwaVVlcHc4aTZ6VThlOXNjV3llMm1UWFhvMmRtTWRHcEFnMVJvWEJGN3F3TmN2Q0cK",
       "endpoints": [
         "https://github.com/Gahroot/ezcoder/releases/latest/download/latest.json"
       ]
