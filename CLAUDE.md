@@ -25,6 +25,77 @@ Workspace deps: `agent→ai`; `voice→agent,ai`; `cli→agent,ai,pixel`; `edito
 Non-package dirs: `Matey/` (separate Electron + Vite + React app, own tsconfigs/eslint), `ruby/` (Ruby agent stack: `ez_agent`, `ez_agent-rails`, `ez_llm`), `experiments/prompt-bench/`, `scripts/`.
 
 ## Tech stack (from manifests)
+## gg-app — Desktop App (primary product)
+
+`gg-app/` is the **Tauri 2 desktop app** — a React 19 + Vite webview shell over the full
+ggcoder agent. This is the main product we ship to users now; the CLI is the engine, the
+app is the face. Reuse the agent spine unchanged — never fork agent logic into the app.
+
+**Run**: `cd gg-app && pnpm tauri dev` (rebuild `@kenkaiiii/ggcoder` first if you touched the
+sidecar: `pnpm --filter @kenkaiiii/ggcoder build`). Restart the app after Rust/sidecar
+changes; pure webview edits hot-reload via Vite HMR.
+
+### Architecture: per-window sidecar
+
+Each window runs its **own** Node agent sidecar (`packages/ggcoder/src/app-sidecar.ts`) bound
+to its **own project cwd** — separate agents, separate projects, fully isolated. This is the
+core model: multiple windows = multiple projects open at once (one could be gg-coder, another
+Claude Code, another Codex).
+
+```
+React webview ──invoke()──▶ Rust commands ──HTTP──▶ Node sidecar (AgentSession)
+     ▲                          │                         │
+     └────── emit_to(window) ◀──┴──── SSE /events ◀────────┘
+```
+
+- **`gg-app/src-tauri/src/lib.rs`** — Rust shell. Owns a `Sidecars` registry keyed by window
+  label (`main`, `project-1`, …). Each command (`agent_prompt`, `agent_state`, `select_project`,
+  …) resolves the calling window's sidecar port via `port_for(&webview)`. SSE frames are
+  re-emitted with `emit_to(webview_window(label))` so **windows never see each other's events**.
+  Window background is painted `#111317` before first frame (no white flash). New windows are
+  tiled like macOS fill&arrange (`setup_windows` → `arrange_windows`, 2-up halves / 4-up quads).
+- **`gg-app/src/agent.ts`** — the ONLY bridge to Rust. Listens on the **current** webview target
+  (`getCurrentWebviewWindow().listen`) — a global `listen` would miss window-scoped events. All
+  IPC wrappers (`sendPrompt`, `listProjects`, `selectProject`, `createProject`, …) live here.
+- **`app-sidecar.ts`** — HTTP+SSE seam over `AgentSession`. Endpoints: `/state`, `/events`,
+  `/prompt`, `/cancel`, `/thinking`, `/model(s)`, `/commands`, `/projects`, `/sessions`,
+  `/settings`, `/create-project`. Slash-command expansion is delegated to `AgentSession.prompt()`
+  (single source of truth — built-in + `.gg/commands` custom). Env: `GG_APP_CWD` (project root),
+  `GG_APP_PORT` (0 = ephemeral), `GG_APP_SESSION_ID` (resume a session file).
+
+### UI components (`gg-app/src/`)
+
+One component per file; mirror the TUI's look. Reusable primitives: `Modal`, `BackButton`
+(chevron), `Badge` + `sourceStyle` (gg-coder=blue, Claude Code=clay `#d97757`, Codex=green
+`#10a37f`). Key screens/controls: `ProjectPicker` (shown per window on load — lists discovered
+projects + their recent 5 sessions, New Project, Settings), `NewProjectModal`,
+`SettingsModal` (projects-root folder), `ModelMenu`, `SlashMenu`, `LiveToolPanel`,
+`ActivityBar` (spinner + thinking timer + tokens), `PlanModeLogo` (amber ASCII banner),
+`WindowLayoutButton` (2/4 tiling), `Markdown`. Theme mirrors `ui/theme/dark.json` in `theme.ts`.
+
+### Project discovery + app settings
+
+- **Discovery** lives in `packages/ggcoder/src/core/project-discovery.ts` (one home — gg-boss
+  re-exports it). `discoverProjects()` scans ggcoder + Claude Code + Codex session stores;
+  `listRecentSessions(cwd)` fast-paths the newest 5 ggcoder sessions (mtime sort → single-pass
+  parse, no full-store scan). Decoded ggcoder paths are `path.resolve`d so traversal segments
+  don't surface as a stray `..` project.
+- **App settings** are app-specific in `~/.gg/gg-app.json` (separate from the CLI's
+  `~/.gg/settings.json`). Currently `projectsRoot` — the folder new projects are created inside
+  (default `~/gg-projects`). New projects: name validated to `^[a-z0-9]+(?:-[a-z0-9]+)*$`, folder
+  created under the root, then the window re-points at it via `select_project`.
+
+### Rules
+
+- The agent spine (gg-ai → gg-agent → gg-core → ggcoder `AgentSession`) is reused **verbatim**.
+  App-only concerns (windows, IPC, picker, settings) live in `gg-app/`; anything provider- or
+  agent-coupled stays in its existing home and the app consumes it.
+- New IPC = add a Rust `#[tauri::command]` that proxies the sidecar + register it in
+  `invoke_handler!`, expose a typed wrapper in `agent.ts`, never `fetch` the sidecar from the
+  webview (mixed-content blocked on the `tauri://` origin).
+- Webview calls that hit the sidecar must `await waitForReady()` first (startup/respawn race).
+
+## Project Structure
 
 TypeScript `^6.0.3` · Vitest `^4.1` · ESLint `^10.2` flat config + typescript-eslint · Prettier `^3.8` (NOT Biome) · Ink 6/7 + React 19. Build: **tsup** for libs (`ai`, `agent`, `boss`, `pixel`, `voice`); raw **tsc** for `cli`, `editor`, `eyes`, `editor-premiere-panel`. No `packageManager` or `engines` field is pinned anywhere. `tsconfig.json`: ES2022, `moduleResolution: bundler`, strict, `verbatimModuleSyntax`. `.prettierrc`: 100 print width, 2-space, double quotes, trailing commas.
 
