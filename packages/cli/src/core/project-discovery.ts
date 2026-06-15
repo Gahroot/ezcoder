@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { getAppPaths } from "../config.js";
 
-export type ProjectSource = "ggcoder" | "claude-code" | "codex";
+export type ProjectSource = "ezcoder" | "claude-code" | "codex";
 
 export interface DiscoveredProject {
   name: string;
@@ -17,7 +17,7 @@ export interface DiscoveredProject {
 }
 
 /**
- * Scan ggcoder + Claude Code + Codex session stores and return one row per
+ * Scan ezcoder + Claude Code + Codex session stores and return one row per
  * project, sorted most-recent first. Duplicates (same cwd) are collapsed; the
  * `sources` field lists every store the project appeared in so the picker can
  * show a combined badge.
@@ -54,7 +54,7 @@ export async function discoverProjects(): Promise<DiscoveredProject[]> {
 }
 
 const SOURCE_ORDER: Record<ProjectSource, number> = {
-  ggcoder: 0,
+  ezcoder: 0,
   "claude-code": 1,
   codex: 2,
 };
@@ -65,7 +65,7 @@ function mergeSources(a: ProjectSource[], b: ProjectSource[]): ProjectSource[] {
 }
 
 /**
- * Scan ~/.gg/sessions/. Each session directory's name is the encoded cwd
+ * Scan ~/.ezcoder/sessions/. Each session directory's name is the encoded cwd
  * (slashes → underscores); we decode it back and verify the directory still
  * exists on disk.
  */
@@ -95,7 +95,7 @@ async function discoverGgcoderProjects(): Promise<DiscoveredProject[]> {
       path: decoded,
       lastActiveMs: mtime,
       lastActiveDisplay: formatRelativeTime(mtime),
-      sources: ["ggcoder"],
+      sources: ["ezcoder"],
     });
   }
   return results;
@@ -104,7 +104,7 @@ async function discoverGgcoderProjects(): Promise<DiscoveredProject[]> {
 /**
  * Scan ~/.claude/projects/. Claude Code's directory encoding replaces every
  * "/" with "-", which is genuinely ambiguous — a real dash in a path component
- * (e.g. "gg-coder") collides with the separator. So we extract the cwd from
+ * (e.g. "ezcoder") collides with the separator. So we extract the cwd from
  * the JSONL events themselves; Claude writes it into user/assistant records.
  * Falls back to a best-effort dash decode only if no event carries a cwd.
  */
@@ -343,7 +343,7 @@ function formatRelativeTime(ms: number): string {
   return `${Math.floor(diff / month)}mo ago`;
 }
 
-// ── Recent sessions (ggcoder) ──────────────────────────────
+// ── Recent sessions (ezcoder) ──────────────────────────────
 
 export interface RecentSession {
   /** Session id. */
@@ -358,7 +358,7 @@ export interface RecentSession {
 }
 
 /**
- * List the most recent ggcoder sessions for a project cwd, newest first, each
+ * List the most recent ezcoder sessions for a project cwd, newest first, each
  * with a short preview built from its first user message. Used by the new-window
  * project picker to offer "resume a session" alongside "new session".
  *

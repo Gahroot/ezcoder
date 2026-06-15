@@ -152,12 +152,12 @@ async function main() {
     // few CJS-interop call sites in dependencies keep working under Node ESM.
     banner: {
       js: [
-        "import { createRequire as __ezCreateRequire } from 'node:module';",
-        "import { fileURLToPath as __ezFileURLToPath } from 'node:url';",
-        "import { dirname as __ezDirname } from 'node:path';",
-        "const require = __ezCreateRequire(import.meta.url);",
-        "const __filename = __ezFileURLToPath(import.meta.url);",
-        "const __dirname = __ezDirname(__filename);",
+        "import { createRequire as __ggCreateRequire } from 'node:module';",
+        "import { fileURLToPath as __ggFileURLToPath } from 'node:url';",
+        "import { dirname as __ggDirname } from 'node:path';",
+        "const require = __ggCreateRequire(import.meta.url);",
+        "const __filename = __ggFileURLToPath(import.meta.url);",
+        "const __dirname = __ggDirname(__filename);",
       ].join("\n"),
     },
     logLevel: "info",

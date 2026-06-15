@@ -124,7 +124,7 @@ interface ChatState {
  * Build a serve session: wire the Telegram bot to per-chat AgentSessions and
  * start long-polling in the background. Returns a controller to stop it.
  *
- * Shared by the CLI (`ggcoder serve`, via {@link runServeMode}) and the desktop
+ * Shared by the CLI (`ezcoder serve`, via {@link runServeMode}) and the desktop
  * app sidecar. In `embedded` mode it stays silent and leaves process-signal
  * handling to the host.
  */
@@ -834,7 +834,7 @@ export async function startServeMode(options: ServeModeOptions): Promise<ServeCo
 }
 
 /**
- * CLI serve flow (`ggcoder serve`): prints the banner, starts the bot, wires
+ * CLI serve flow (`ezcoder serve`): prints the banner, starts the bot, wires
  * SIGINT/SIGTERM to a graceful shutdown, then blocks until the process exits.
  */
 export async function runServeMode(options: ServeModeOptions): Promise<void> {

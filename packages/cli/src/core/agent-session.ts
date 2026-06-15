@@ -1,4 +1,4 @@
-import { agentLoop, isAbortError, type AgentEvent, type AgentTool } from "@kenkaiiii/gg-agent";
+import { agentLoop, isAbortError, type AgentEvent, type AgentTool } from "@prestyj/agent";
 import {
   ProviderError,
   type Message,
@@ -7,7 +7,7 @@ import {
   type TextContent,
   type ImageContent,
   type VideoContent,
-} from "@kenkaiiii/gg-ai";
+} from "@prestyj/ai";
 import { EventBus } from "./event-bus.js";
 import {
   SlashCommandRegistry,
@@ -89,7 +89,7 @@ export interface AgentSessionOptions {
   /**
    * Plan-mode callbacks. When provided, the `enter_plan`/`exit_plan` tools are
    * registered and the session manages plan-mode restrictions + system-prompt
-   * rebuilds. Hosts (e.g. the gg-app sidecar) use these to surface plan-mode
+   * rebuilds. Hosts (e.g. the ezcoder-app sidecar) use these to surface plan-mode
    * UI. Omitted by callers that don't want plan mode (CLI wires its own).
    */
   onEnterPlan?: (reason?: string) => void | Promise<void>;

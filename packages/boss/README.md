@@ -7,8 +7,8 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@prestyj/boss"><img src="https://img.shields.io/npm/v/@prestyj/boss?style=for-the-badge" alt="npm version"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
-  <a href="https://youtube.com/@kenkaidoesai"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
-  <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
+  <a href="https://prestyj.com"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
+  <a href="https://prestyj.com"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
   <a href="https://github.com/KenKaiii"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
 </p>
 
@@ -147,8 +147,8 @@ On every launch the boss installs any pending update from the prior run (effecti
 
 ## 👥 Community
 
-- [YouTube @kenkaidoesai](https://youtube.com/@kenkaidoesai) — tutorials and demos
-- [Skool community](https://skool.com/kenkai) — come hang out
+- [YouTube @kenkaidoesai](https://prestyj.com) — tutorials and demos
+- [Skool community](https://prestyj.com) — come hang out
 - [GitHub @KenKaiii](https://github.com/KenKaiii)
 
 ---

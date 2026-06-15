@@ -38,7 +38,7 @@ function Controls() {
     <ChatControls controlsRef={() => {}}>
       <Text>SIM_STATUS Ready to go..</Text>
       <Text>SIM_INPUT type your message</Text>
-      <Text>SIM_FOOTER gg-coder</Text>
+      <Text>SIM_FOOTER ezcoder</Text>
     </ChatControls>
   );
 }

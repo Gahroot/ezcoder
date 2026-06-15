@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { log } from "@kenkaiiii/gg-core";
+import { log } from "@prestyj/core";
 import stringWidth from "string-width";
 import wrapAnsi from "wrap-ansi";
 import type { Provider } from "@prestyj/ai";

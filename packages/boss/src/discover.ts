@@ -1,4 +1,4 @@
-// Project discovery moved to @kenkaiiii/ggcoder (one home — also used by the
-// gg-app sidecar). Re-exported here so existing `./discover.js` imports keep
+// Project discovery moved to @prestyj/cli (one home — also used by the
+// ezcoder-app sidecar). Re-exported here so existing `./discover.js` imports keep
 // resolving unchanged.
-export { discoverProjects, type DiscoveredProject, type ProjectSource } from "@kenkaiiii/ggcoder";
+export { discoverProjects, type DiscoveredProject, type ProjectSource } from "@prestyj/cli";

@@ -99,7 +99,7 @@ Key findings addressed:
 ## Candidate packet
 
 - **Base SHA:** `33c0f79d692e018643215f646f13afaf3359959c`
-- **Branch/worktree path:** `goal/445685e7-c0dc-48e4-bfbe-b11f79812f80/8eca78c4-4aeb-44bf-be63-6a5f96accbc2-8ffacb81` at `/Users/kenkai/Documents/UnstableMind/gg-coder-goal-worktrees/8eca78c4-4aeb-44bf-be63-6a5f96accbc2-8ffacb81`
+- **Branch/worktree path:** `goal/445685e7-c0dc-48e4-bfbe-b11f79812f80/8eca78c4-4aeb-44bf-be63-6a5f96accbc2-8ffacb81` at `/Users/kenkai/Documents/UnstableMind/ezcoder-goal-worktrees/8eca78c4-4aeb-44bf-be63-6a5f96accbc2-8ffacb81`
 - **Changed files for this task:** `fixes.md`, `packages/cli/src/tools/goals.ts`, `packages/cli/src/tools/goals.test.ts`, `packages/cli/src/ui/prompt-routing.ts`, `packages/cli/src/ui/prompt-routing.test.ts`.
 - **Diffstat:** see `git diff --stat` from this worktree; patch path `.goal-evidence/integrated-candidate.patch`.
 - **Verifier command/result:** `test -f fixes.md && grep -F "[original-goal-prompt]" fixes.md && pnpm --filter @prestyj/cli check` — PASS, exit 0; targeted Vitest command above also PASS, exit 0.

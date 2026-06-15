@@ -9,8 +9,8 @@
   <a href="https://www.npmjs.com/package/@prestyj/boss"><img src="https://img.shields.io/npm/v/@prestyj/boss?style=for-the-badge&label=ezboss" alt="ezboss npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <a href="https://prestyj.com"><img src="https://img.shields.io/badge/Website-prestyj.com-2563EB?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Website"></a>
-  <a href="https://youtube.com/@kenkaidoesai"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
-  <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
+  <a href="https://prestyj.com"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
+  <a href="https://prestyj.com"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
 </p>
 
 Four packages. Each one works on its own. Stack them together and you get a full coding agent — or an orchestrator that drives many of them at once.
@@ -99,8 +99,8 @@ cd ruby/ez_agent-rails && bundle exec rspec  # Rails engine adapter (end-to-end)
 ## Community
 
 - [prestyj.com](https://prestyj.com) - website
-- [YouTube @kenkaidoesai](https://youtube.com/@kenkaidoesai) - tutorials and demos
-- [Skool community](https://skool.com/kenkai) - come hang out
+- [YouTube @kenkaidoesai](https://prestyj.com) - tutorials and demos
+- [Skool community](https://prestyj.com) - come hang out
 
 ---
 

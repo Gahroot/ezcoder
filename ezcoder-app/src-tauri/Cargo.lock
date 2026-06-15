@@ -1420,8 +1420,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "ezcoder-app"
-version = "0.1.9"
+name = "gg-app"
+version = "0.1.10"
 dependencies = [
  "futures-util",
  "libc",

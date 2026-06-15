@@ -144,7 +144,18 @@ export function HomeScreen({ onProjects, onLogin }: Props): React.ReactElement {
             void openUrl("https://prestyj.com");
           }}
         >
-          PRESTYJ.com
+          Skool
+        </a>
+        <span className="home-byline-sep">{"\u00b7"}</span>
+        <a
+          className="home-link"
+          href="https://prestyj.com"
+          onClick={(e) => {
+            e.preventDefault();
+            void openUrl("https://prestyj.com");
+          }}
+        >
+          YouTube
         </a>
       </div>
       <div className="home-actions">

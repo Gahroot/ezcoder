@@ -213,7 +213,7 @@ The agent gets a dedicated system prompt and:
 // ~/.ezcoder/projects.json
 {
   "proj_abc123": { "name": "client-x-app", "path": "/Users/kenkai/Documents/client-x" },
-  "proj_def456": { "name": "ezcoder",      "path": "/Users/kenkai/Documents/UnstableMind/gg-coder" }
+  "proj_def456": { "name": "ezcoder",      "path": "/Users/kenkai/Documents/UnstableMind/ezcoder" }
 }
 ```
 

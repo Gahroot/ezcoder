@@ -443,6 +443,122 @@ async fn agent_save_settings(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+// ── Native app settings (~/.ezcoder/ezcoder-app.json) ───────────────────────────────
+// The project folder is a plain home-dir file with NOTHING to do with the
+// agent, so Rust reads/writes it directly. This makes the home-screen Settings
+// + New project flow independent of the Node sidecar's boot — a slow or crashed
+// sidecar used to make "Save project folder" silently fail or time out even on
+// up-to-date builds. (The sidecar keeps its own /settings endpoint for its
+// internal use; this is the authoritative path for the webview.)
+
+/// Absolute path to ~/.ezcoder/ezcoder-app.json.
+fn app_settings_path() -> PathBuf {
+    home_dir().join(".ezcoder").join("ezcoder-app.json")
+}
+
+/// Default projects root: ~/gg-projects.
+fn default_projects_root() -> PathBuf {
+    home_dir().join("gg-projects")
+}
+
+/// Validate a project folder name: lowercase letters, digits, single dashes
+/// between segments (mirrors the sidecar's isValidProjectName).
+fn is_valid_project_name(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    // ^[a-z0-9]+(?:-[a-z0-9]+)*$ — no leading/trailing/double dashes.
+    let bytes = name.as_bytes();
+    if bytes[0] == b'-' || bytes[bytes.len() - 1] == b'-' {
+        return false;
+    }
+    let mut prev_dash = false;
+    for &b in bytes {
+        match b {
+            b'a'..=b'z' | b'0'..=b'9' => prev_dash = false,
+            b'-' => {
+                if prev_dash {
+                    return false;
+                }
+                prev_dash = true;
+            }
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// Native: read ezcoder-app settings directly from ~/.ezcoder/ezcoder-app.json. `configured`
+/// is true only when the file exists with a non-empty projectsRoot (so the home
+/// screen's "Your Projects" gate matches the sidecar's semantics). Never needs
+/// the sidecar.
+#[tauri::command]
+fn app_settings_get() -> serde_json::Value {
+    let raw = std::fs::read_to_string(app_settings_path()).ok();
+    let parsed = raw
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+    let configured = parsed
+        .as_ref()
+        .and_then(|v| v.get("projectsRoot"))
+        .and_then(|v| v.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    let projects_root = parsed
+        .as_ref()
+        .and_then(|v| v.get("projectsRoot"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| default_projects_root().to_string_lossy().to_string());
+    serde_json::json!({ "projectsRoot": projects_root, "configured": configured })
+}
+
+/// Native: write ezcoder-app settings directly to ~/.ezcoder/ezcoder-app.json. Creates the
+/// ~/.gg directory if needed. Never needs the sidecar.
+#[tauri::command]
+fn app_settings_save(projects_root: String) -> Result<serde_json::Value, String> {
+    let trimmed = projects_root.trim();
+    if trimmed.is_empty() {
+        return Err("projectsRoot is required".to_string());
+    }
+    let path = app_settings_path();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let body = serde_json::json!({ "projectsRoot": trimmed });
+    let pretty = serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?;
+    std::fs::write(&path, pretty).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "projectsRoot": trimmed }))
+}
+
+/// Native: create a new project folder under the configured projects root.
+/// Returns `{ path }` on success, an error message on invalid name / conflict.
+/// Never needs the sidecar.
+#[tauri::command]
+fn app_create_project(name: String) -> Result<serde_json::Value, String> {
+    let name = name.trim();
+    if !is_valid_project_name(name) {
+        return Err(
+            "Project name must be lowercase letters, digits, and dashes (e.g. my-project)."
+                .to_string(),
+        );
+    }
+    // Resolve the projects root the same way app_settings_get does.
+    let settings = app_settings_get();
+    let root = settings
+        .get("projectsRoot")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_else(default_projects_root);
+    let dir = root.join(name);
+    if dir.exists() {
+        return Err(format!("A folder named \"{name}\" already exists."));
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "path": dir.to_string_lossy() }))
+}
+
 /// Proxy: read Telegram config status (configured + masked preview).
 #[tauri::command]
 async fn agent_telegram_get(
@@ -1138,6 +1254,9 @@ pub fn run() {
             agent_settings,
             agent_save_settings,
             agent_create_project,
+            app_settings_get,
+            app_settings_save,
+            app_create_project,
             agent_telegram_get,
             agent_telegram_save,
             agent_serve_status,

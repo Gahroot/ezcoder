@@ -276,7 +276,7 @@ Legend: `[x]` done · `[~]` partial / stubbed honestly · `[ ]` not started
 - [ ] Remotion bridge — generate compositions from agent decisions, render outside any NLE
 - [ ] Frame.io upload after render
 - [ ] Cloudinary / S3 upload + URL return for rendered files
-- [ ] Telegram / Slack notification on render complete (the existing `gg-coder` has telegram already; reusable)
+- [ ] Telegram / Slack notification on render complete (the existing `ezcoder` has telegram already; reusable)
 
 ### Infrastructure
 - [ ] Session persistence (current state, decisions journal) like ezcoder has

@@ -7,8 +7,8 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@prestyj/editor"><img src="https://img.shields.io/npm/v/@prestyj/editor?style=for-the-badge" alt="npm version"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
-  <a href="https://youtube.com/@kenkaidoesai"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
-  <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
+  <a href="https://prestyj.com"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
+  <a href="https://prestyj.com"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
 </p>
 
 Built on the [EZCoder Framework](../../README.md). Same agent loop ([`@prestyj/agent`](../agent/README.md)) as ezcoder, completely different tool surface — no `bash`, no `read/write/edit`, no general-purpose coder behaviour. Just video.
@@ -447,8 +447,8 @@ See [ROADMAP.md](./ROADMAP.md) for everything that's done, partial, stubbed, or 
 
 ## Community
 
-- [YouTube @kenkaidoesai](https://youtube.com/@kenkaidoesai) — tutorials and demos
-- [Skool community](https://skool.com/kenkai) — come hang out
+- [YouTube @kenkaidoesai](https://prestyj.com) — tutorials and demos
+- [Skool community](https://prestyj.com) — come hang out
 
 ---
 

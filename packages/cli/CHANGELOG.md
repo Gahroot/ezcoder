@@ -15,9 +15,9 @@
   repaints content — eliminating both failure modes. Opt back in with
   `GG_SHRINK_BACKFILL=1`. Also adds `[scrollback]` debug logging across every
   native-scrollback write path.
-  - @kenkaiiii/gg-ai@4.10.2
-  - @kenkaiiii/gg-agent@4.10.2
-  - @kenkaiiii/gg-core@4.10.2
+  - @prestyj/ai@4.10.2
+  - @prestyj/agent@4.10.2
+  - @prestyj/core@4.10.2
 
 ## 4.10.1
 

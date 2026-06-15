@@ -1,7 +1,7 @@
 /**
- * Shared Telegram bot configuration: the `~/.gg/telegram.json` store (bot token
+ * Shared Telegram bot configuration: the `~/.ezcoder/telegram.json` store (bot token
  * + authorized user id) plus bot-token verification. Used by the CLI
- * (`ggcoder telegram` / `ggcoder serve`) and the desktop app sidecar so both
+ * (`ezcoder telegram` / `ezcoder serve`) and the desktop app sidecar so both
  * read/write the same file with the same validation.
  */
 import fs from "node:fs/promises";

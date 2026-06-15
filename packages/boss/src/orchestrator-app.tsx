@@ -223,7 +223,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
 
   // ── App-level keyboard ──────────────────────────────────
   // Ctrl+T toggles the Tasks overlay globally. Ctrl+C is handled here only
-  // while an overlay owns focus; in the chat view the shared gg-coder InputArea
+  // while an overlay owns focus; in the chat view the shared ezcoder InputArea
   // owns Ctrl+C/ESC, so a single press cannot hit two abort/exit handlers.
   useInput((input, key) => {
     if (key.ctrl && input === "c" && overlay) {
@@ -534,7 +534,7 @@ export function renderBossApp(opts: RenderBossAppOptions): {
     old.unmount();
 
     if (reason === "resize-redraw") {
-      // A resize malformed the visible frame at the old width. Match gg-coder:
+      // A resize malformed the visible frame at the old width. Match ezcoder:
       // full screen clear, reset terminal-history dedupe, then repaint the
       // durable transcript once before mounting fresh live controls.
       terminalHistoryPrinter.resetPrinted();

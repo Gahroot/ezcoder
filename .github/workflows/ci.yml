@@ -101,23 +101,23 @@ jobs:
 
       - name: Build framework packages
         run: |
-          pnpm --filter @kenkaiiii/gg-ai build
-          pnpm --filter @kenkaiiii/gg-agent build
-          pnpm --filter @kenkaiiii/ggcoder build
+          pnpm --filter @prestyj/ai build
+          pnpm --filter @prestyj/agent build
+          pnpm --filter @prestyj/cli build
 
       - name: Stage node runtime + bundle sidecar
         run: |
-          pnpm --filter gg-app stage:node
-          pnpm --filter gg-app bundle:sidecar
+          pnpm --filter ezcoder-app stage:node
+          pnpm --filter ezcoder-app bundle:sidecar
         shell: bash
 
       - name: Sidecar smoke (bundled runtime + bundle, per-OS)
-        run: node gg-app/scripts/smoke-sidecar.mjs
+        run: node ezcoder-app/scripts/smoke-sidecar.mjs
         shell: bash
 
       - name: Frontend platform-class test
-        run: pnpm --filter gg-app test
+        run: pnpm --filter ezcoder-app test
 
       - name: Rust unit tests (path + window-chrome resolution)
-        working-directory: gg-app/src-tauri
+        working-directory: ezcoder-app/src-tauri
         run: cargo test

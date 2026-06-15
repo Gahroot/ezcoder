@@ -1,6 +1,6 @@
 name: Release
 
-# Build + sign + publish the gg-app desktop bundle for every OS/arch on a tag
+# Build + sign + publish the ezcoder-app desktop bundle for every OS/arch on a tag
 # push (v*). Each runner stages its own per-platform Node runtime and bundles
 # the sidecar (so sharp's native binary matches the target), then tauri-action
 # produces the installers, signs the updater artifacts, uploads them to a draft
@@ -83,18 +83,18 @@ jobs:
 
       - name: Build framework packages
         run: |
-          pnpm --filter @kenkaiiii/gg-ai build
-          pnpm --filter @kenkaiiii/gg-agent build
-          pnpm --filter @kenkaiiii/ggcoder build
+          pnpm --filter @prestyj/ai build
+          pnpm --filter @prestyj/agent build
+          pnpm --filter @prestyj/cli build
 
       - name: Stage node runtime + bundle sidecar
         run: |
-          pnpm --filter gg-app stage:node
-          pnpm --filter gg-app bundle:sidecar
+          pnpm --filter ezcoder-app stage:node
+          pnpm --filter ezcoder-app bundle:sidecar
         shell: bash
 
       - name: Sidecar smoke (bundled runtime + bundle)
-        run: node gg-app/scripts/smoke-sidecar.mjs
+        run: node ezcoder-app/scripts/smoke-sidecar.mjs
         shell: bash
 
       # Import the Developer ID Application cert into a throwaway CI keychain so
@@ -124,10 +124,10 @@ jobs:
       - name: Sign nested bundle binaries (macOS)
         if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
         run: |
-          bash gg-app/scripts/sign-nested-macos.sh \
+          bash ezcoder-app/scripts/sign-nested-macos.sh \
             "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
-            gg-app/src-tauri/binaries \
-            gg-app/src-tauri/sidecar
+            ezcoder-app/src-tauri/binaries \
+            ezcoder-app/src-tauri/sidecar
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -143,9 +143,9 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          projectPath: gg-app
+          projectPath: ezcoder-app
           tagName: ${{ github.ref_name }}
-          releaseName: "gg-coder ${{ github.ref_name }}"
+          releaseName: "ezcoder ${{ github.ref_name }}"
           releaseBody: "See the assets to download and install this version."
           releaseDraft: false
           prerelease: false

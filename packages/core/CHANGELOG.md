@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.10.2
+- @prestyj/ai@4.10.2
 
 ## 4.10.1
 

@@ -58,7 +58,7 @@ export { renderApp } from "./ui/render.js";
 // Config
 export { APP_NAME, VERSION, getAppPaths, ensureAppDirs } from "./config.js";
 
-// Project discovery (shared with gg-boss + gg-app sidecar)
+// Project discovery (shared with gg-boss + ezcoder-app sidecar)
 export {
   discoverProjects,
   listRecentSessions,

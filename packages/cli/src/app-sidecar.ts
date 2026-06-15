@@ -1,5 +1,5 @@
 /**
- * gg-app sidecar — bridges the full ggcoder AgentSession to the Tauri webview
+ * ezcoder-app sidecar — bridges the full ezcoder AgentSession to the Tauri webview
  * over plain HTTP + Server-Sent Events (zero browser-side dependencies).
  *
  * Transport:
@@ -16,10 +16,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { AgentSession } from "./core/agent-session.js";
 import { AuthStorage } from "./core/auth-storage.js";
-import { MOONSHOT_OAUTH_KEY } from "@kenkaiiii/gg-core";
+import { MOONSHOT_OAUTH_KEY } from "@prestyj/core";
 import { loginAnthropic } from "./core/oauth/anthropic.js";
 import { loginOpenAI } from "./core/oauth/openai.js";
 import { loginGemini } from "./core/oauth/gemini.js";
@@ -73,8 +73,8 @@ interface ResolvedStart {
   model: string;
 }
 
-// ── gg-app settings (~/.gg/gg-app.json) ────────────────────
-// App-specific, separate from the shared ggcoder settings file so the desktop
+// ── ezcoder-app settings (~/.ezcoder/ezcoder-app.json) ────────────────────
+// App-specific, separate from the shared ezcoder settings file so the desktop
 // app's preferences never collide with the CLI's.
 
 interface AppSettings {
@@ -83,7 +83,7 @@ interface AppSettings {
 }
 
 function appSettingsFile(): string {
-  return path.join(os.homedir(), ".gg", "gg-app.json");
+  return path.join(os.homedir(), ".ezcoder", "ezcoder-app.json");
 }
 
 function defaultProjectsRoot(): string {
@@ -110,7 +110,7 @@ async function saveAppSettings(settings: AppSettings): Promise<void> {
 }
 
 /**
- * Persist the active model selection to ~/.gg/settings.json so it survives app
+ * Persist the active model selection to ~/.ezcoder/settings.json so it survives app
  * restarts. Mirrors the CLI's handleModelSelect persistence (App.tsx).
  */
 async function persistModelSelection(
@@ -129,7 +129,7 @@ async function persistModelSelection(
 }
 
 /**
- * Persist the thinking level to ~/.gg/settings.json so it survives app restarts.
+ * Persist the thinking level to ~/.ezcoder/settings.json so it survives app restarts.
  * Mirrors the CLI's handleToggleThinking persistence (App.tsx).
  */
 async function persistThinkingLevel(
@@ -170,7 +170,7 @@ async function prepareAttachments(
   cwd: string,
   attachments: AppAttachment[],
 ): Promise<PreparedAttachment[]> {
-  const dir = path.join(cwd, ".gg", "uploads");
+  const dir = path.join(cwd, ".ezcoder", "uploads");
   await fs.mkdir(dir, { recursive: true }).catch(() => {});
   const out: PreparedAttachment[] = [];
   for (const a of attachments) {
@@ -242,7 +242,7 @@ async function resolveStart(
     if (await auth.hasProviderAuth(p)) loggedIn.push(p);
   }
   if (loggedIn.length === 0) {
-    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
+    throw new Error('Not logged in to any provider. Run "ezcoder login" to authenticate.');
   }
   if (loggedIn.includes(preferred)) {
     const saved = savedModel ? getModel(savedModel) : undefined;
@@ -270,8 +270,8 @@ async function main(): Promise<void> {
 
   const paths = await ensureAppDirs();
   // Own log file so the app sidecar never clobbers the interactive CLI's
-  // ~/.gg/debug.log (initLogger truncates on each start).
-  const sidecarLog = path.join(paths.agentDir, "gg-app-sidecar.log");
+  // ~/.ezcoder/debug.log (initLogger truncates on each start).
+  const sidecarLog = path.join(paths.agentDir, "ezcoder-app-sidecar.log");
   initLogger(sidecarLog);
 
   // The packaged desktop app launches from Finder/Dock with a minimal PATH that
@@ -613,7 +613,7 @@ async function main(): Promise<void> {
 
     if (method === "GET" && url === "/settings") {
       // `configured` is true only when the user explicitly saved a projects root
-      // (the gg-app.json file exists with a value) — not when we fall back to the
+      // (the ezcoder-app.json file exists with a value) — not when we fall back to the
       // default. The home screen gates "Your Projects" on this.
       void (async () => {
         const s = await loadAppSettings();
@@ -688,7 +688,7 @@ async function main(): Promise<void> {
     }
 
     if (method === "GET" && url === "/projects") {
-      // Scan ggcoder + Claude Code + Codex session stores for known projects.
+      // Scan ezcoder + Claude Code + Codex session stores for known projects.
       void discoverProjects()
         .then((projects) => json(res, 200, { projects }))
         .catch((err) => {
@@ -774,7 +774,7 @@ async function main(): Promise<void> {
 
     if (method === "GET" && url === "/commands") {
       // Workflow commands with agent functionality: built-in prompt templates +
-      // the user's own `.gg/commands/*.md`. UI commands (model/quit/etc.) are
+      // the user's own `.ezcoder/commands/*.md`. UI commands (model/quit/etc.) are
       // handled webview-side and intentionally excluded.
       void (async () => {
         const builtins = PROMPT_COMMANDS.map((c) => ({
@@ -835,7 +835,7 @@ async function main(): Promise<void> {
           } else {
             // Pass the raw text straight through. AgentSession.prompt() is the
             // single source of truth for slash-command expansion (built-in +
-            // `.gg/commands/*.md` custom), so the agent gets the right body
+            // `.ezcoder/commands/*.md` custom), so the agent gets the right body
             // while the webview keeps showing the short `/name`.
             await session.prompt(text);
           }
@@ -1183,7 +1183,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    // ── Telegram config (mirrors `ggcoder telegram`) ─────────
+    // ── Telegram config (mirrors `ezcoder telegram`) ─────────
     if (method === "GET" && url === "/telegram") {
       void loadTelegramConfig().then((cfg) => {
         if (!cfg) {
@@ -1235,7 +1235,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    // ── Serve lifecycle (mirrors `ggcoder serve`) ───────────
+    // ── Serve lifecycle (mirrors `ezcoder serve`) ───────────
     if (method === "GET" && url === "/serve") {
       void loadTelegramConfig().then((cfg) =>
         json(res, 200, { running: serveController !== null, configured: cfg !== null }),

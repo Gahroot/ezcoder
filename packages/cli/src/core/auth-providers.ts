@@ -1,5 +1,5 @@
 // Single source of truth for the providers the login UI offers and how each
-// authenticates. Mirrors the CLI's `ggcoder login` provider list (ui/login.tsx)
+// authenticates. Mirrors the CLI's `ezcoder login` provider list (ui/login.tsx)
 // so the desktop app and the terminal stay in lockstep. The app fetches this
 // (plus live connection status) from the sidecar's /auth/status endpoint.
 
