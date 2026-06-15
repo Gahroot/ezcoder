@@ -51,11 +51,6 @@ const SHOTS = [
     caption: "Pick up any past conversation right where you left it.",
   },
   {
-    file: "model.png",
-    title: "Pick your model",
-    caption: "Every provider in one place — Claude Opus 4.8, GPT-5.5, Gemini, GLM, Kimi and more.",
-  },
-  {
     file: "tasks.png",
     title: "Tasks",
     caption: "Queue work and run it end-to-end, one fresh session each.",
