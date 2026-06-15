@@ -20,6 +20,12 @@
 #   - @kenkaiiii/agent-home-sdk
 #   - @kenkaiiii/kencode-search
 #
+# Identifiers that STAY verbatim (NOT branding — load-bearing contracts):
+#   - GG_APP_* env vars (GG_APP_PORT/CWD/SESSION_ID, GG_APP_LISTENING/FATAL):
+#     the stdout/stdin IPC handshake between the ezcoder-app Tauri shell and the
+#     cli app-sidecar. Both sides must agree on the literal string, so renaming
+#     one without the other silently hangs the desktop app. Left as-is on both.
+#
 # If the merge has conflicts, it stops and asks you to resolve them first.
 # After resolving, re-run the script to continue with renames + branding.
 
@@ -119,6 +125,8 @@ replace_in_tracked_text_files() {
       -e 's|packages/gg-agent|packages/agent|g' \
       -e 's|packages/ggcoder-eyes|packages/eyes|g' \
       -e 's|packages/ggcoder|packages/cli|g' \
+      -e 's|"packages", "ggcoder"|"packages", "cli"|g' \
+      -e 's|"ggcoder",|"cli",|g' \
       -e 's|packages/gg-boss|packages/boss|g' \
       -e 's|packages/gg-editor-premiere-panel|packages/editor-premiere-panel|g' \
       -e 's|packages/gg-editor|packages/editor|g' \
@@ -180,6 +188,18 @@ replace_in_tracked_text_files() {
       -e 's|ggboss|ezboss|g' \
       -e 's|ggeditor|ezeditor|g' \
       -e 's|gg-editor-premiere-panel|ez-editor-premiere-panel|g' \
+      -e 's|GG CODER|EZ CODER|g' \
+      -e 's|gg_app_lib|ezcoder_app_lib|g' \
+      -e 's|gg-app|ezcoder-app|g' \
+      -e 's|gg-coder|ezcoder|g' \
+      -e 's|ggnode|eznode|g' \
+      -e 's|ggblink|ezblink|g' \
+      -e 's|com\.ggcoder\.app|com.prestyj.ezcoder|g' \
+      -e 's|com\.ezcoder\.app|com.prestyj.ezcoder|g' \
+      -e 's|description = "A Tauri App"|description = "EZ Coder \xe2\x80\x94 the coding agent, on your desktop"|g' \
+      -e 's|authors = \["you"\]|authors = ["Nolan Grout <nolan@prestyj.com>"]|g' \
+      -e 's|https://skool.com/kenkai|https://prestyj.com|g' \
+      -e 's|https://youtube.com/@kenkaidoesai|https://prestyj.com|g' \
       "$file"
   done <<< "$files"
 }
@@ -249,6 +269,7 @@ main() {
   rename_if_exists "packages/gg-pixel-rs" "packages/pixel-rs"
   rename_if_exists "packages/gg-pixel" "packages/pixel"
   rename_if_exists "packages/gg-voice" "packages/voice"
+  rename_if_exists "gg-app" "ezcoder-app"
 
   info "Fixing npm scope and branding..."
   replace_in_tracked_text_files

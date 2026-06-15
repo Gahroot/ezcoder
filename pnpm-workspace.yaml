@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "Matey"
+  - "ezcoder-app"
   - "experiments/*"
 
 # pnpm 10+ reads these settings from pnpm-workspace.yaml, not the package.json
