@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
 import { Modal } from "./Modal";
-import { waitForReady, getSettings, saveSettings } from "./agent";
+import { getSettings, saveSettings } from "./agent";
 import { toast } from "./toast";
 
 interface Props {
@@ -16,8 +16,8 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void waitForReady()
-      .then(() => getSettings())
+    // Native (Rust) read — no sidecar wait needed.
+    void getSettings()
       .then((s) => {
         if (s) setProjectsRoot(s.projectsRoot);
       })
@@ -33,9 +33,8 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
     if (!projectsRoot.trim() || busy) return;
     setBusy(true);
     try {
-      // The sidecar may still be starting (or respawning) — without this the
-      // invoke throws "sidecar not ready" and the save silently fails.
-      await waitForReady();
+      // Saved natively in Rust (writes ~/.gg/gg-app.json) — no sidecar round-trip,
+      // so this works even while the sidecar is still booting or has crashed.
       await saveSettings(projectsRoot.trim());
       onSaved?.(projectsRoot.trim());
       onClose();

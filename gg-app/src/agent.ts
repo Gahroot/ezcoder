@@ -350,31 +350,39 @@ export interface AppSettings {
   configured: boolean;
 }
 
-/** Read gg-app settings (projects root folder + whether it was explicitly set). */
+/**
+ * Read gg-app settings (projects root folder + whether it was explicitly set).
+ *
+ * Handled NATIVELY in Rust (reads ~/.gg/gg-app.json directly) so the home
+ * screen never depends on the Node sidecar being up — a slow/crashed sidecar on
+ * a fresh install used to leave "Your Projects" dimmed and saves timing out.
+ */
 export async function getSettings(): Promise<AppSettings | null> {
   try {
-    return await invoke<AppSettings>("agent_settings");
+    return await invoke<AppSettings>("app_settings_get");
   } catch (e) {
-    await logError(`agent_settings failed: ${String(e)}`);
+    await logError(`app_settings_get failed: ${String(e)}`);
     return null;
   }
 }
 
-/** Save gg-app settings. */
+/**
+ * Save gg-app settings. Handled NATIVELY in Rust (writes ~/.gg/gg-app.json
+ * directly) — no sidecar round-trip, so saving the project folder works even
+ * before/while the sidecar is still booting. Throws on a write error.
+ */
 export async function saveSettings(projectsRoot: string): Promise<void> {
-  await invoke("agent_save_settings", { projectsRoot });
+  await invoke("app_settings_save", { projectsRoot });
 }
 
 /**
  * Create a new project folder (lowercase/dashes name) under the configured
- * projects root. Returns the created absolute path. Throws with a user-facing
- * message on invalid name / conflict.
+ * projects root. Returns the created absolute path. Handled NATIVELY in Rust
+ * (no sidecar), so it can't fail with "sidecar not ready". Throws with a
+ * user-facing message on invalid name / conflict.
  */
 export async function createProject(name: string): Promise<string> {
-  // Mutating op: gate on readiness so a fast click on a slow-booting (release)
-  // sidecar waits instead of throwing "sidecar not ready".
-  await waitForReady();
-  const res = await invoke<{ path: string }>("agent_create_project", { name });
+  const res = await invoke<{ path: string }>("app_create_project", { name });
   return res.path;
 }
 

@@ -394,6 +394,21 @@ function App(): React.ReactElement {
       const active = document.activeElement;
       if (active && active !== document.body && active.tagName === "BUTTON") return;
       if (window.getSelection()?.toString()) return;
+      // A modal/overlay owns keyboard focus while open — stealing it back to the
+      // chat input means the user can't type in the modal's fields. Bail when one
+      // is present (every modal renders inside `.modal-backdrop`).
+      if (document.querySelector(".modal-backdrop")) return;
+      // Don't yank focus out of another editable field (a different input,
+      // textarea, or contenteditable) the user is intentionally typing in.
+      if (
+        active instanceof HTMLElement &&
+        active !== inputRef.current &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.isContentEditable)
+      ) {
+        return;
+      }
       inputRef.current?.focus();
     };
     window.addEventListener("focus", focusInput);
@@ -1146,8 +1161,15 @@ function App(): React.ReactElement {
           }}
           onClose={() => {
             setShowPicker(false);
-            setNeedsProject(true);
-            setEntryView("home");
+            // Secondary windows have no home screen — bouncing them "home" lands
+            // on a Projects picker whose back button is suppressed (the
+            // isSecondaryWindow guard below), stranding the user. The picker is
+            // only reachable here from an already-open project, so just close it
+            // to return to that project. The main window keeps going home.
+            if (!isSecondaryWindow) {
+              setNeedsProject(true);
+              setEntryView("home");
+            }
           }}
         />
       </div>

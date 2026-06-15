@@ -57,9 +57,8 @@ export function ProjectPicker({
 
   useEffect(() => {
     let cancelled = false;
-    // Settings are served by the sidecar — wait for readiness first.
-    void waitForReady()
-      .then(() => getSettings())
+    // Settings are read natively (Rust) — no sidecar wait needed.
+    void getSettings()
       .then((s) => {
         if (!cancelled && s) setProjectsRoot(s.projectsRoot);
       })
