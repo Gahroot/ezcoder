@@ -82,14 +82,22 @@ function extraPlayerDirs(): readonly string[] {
 }
 
 /**
- * Resolve a player command to a runnable path. Returns `cmd` unchanged when it
- * already resolves via PATH (the common dev case); otherwise probes the
- * well-known install dirs and returns the first absolute hit. Returns null when
- * the binary genuinely isn't installed anywhere we know to look.
+ * Resolve a player command to a runnable path. Probes PATH plus the well-known
+ * install dirs and returns the first absolute hit, so GUI apps find players in
+ * Homebrew/MacPorts dirs their minimal PATH omits. Returns null when the binary
+ * isn't found anywhere we look.
+ *
+ * Windows is left to the OS: executables carry extensions (.exe/.cmd) resolved
+ * via PATHEXT, and GUI apps there inherit a usable PATH — so we return `cmd`
+ * unchanged and let spawn do its normal lookup (probing bare names here would
+ * miss `mpv.exe` and regress Windows).
  */
 function resolvePlayerPath(cmd: string): string | null {
   // An explicit path is used as-is.
   if (cmd.includes(path.sep)) return existsSync(cmd) ? cmd : null;
+
+  // Defer to the OS on Windows (PATHEXT handles the extension).
+  if (process.platform === "win32") return cmd;
 
   // 1) PATH (covers terminal launches + any inherited shell environment).
   const pathDirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
