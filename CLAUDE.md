@@ -82,7 +82,7 @@ projects + their recent 5 sessions, New Project, Settings), `NewProjectModal`,
   don't surface as a stray `..` project.
 - **App settings** are app-specific in `~/.ezcoder/ezcoder-app.json` (separate from the CLI's
   `~/.ezcoder/settings.json`). Currently `projectsRoot` — the folder new projects are created inside
-  (default `~/gg-projects`). New projects: name validated to `^[a-z0-9]+(?:-[a-z0-9]+)*$`, folder
+  (default `~/ez-projects`). New projects: name validated to `^[a-z0-9]+(?:-[a-z0-9]+)*$`, folder
   created under the root, then the window re-points at it via `select_project`.
 
 ### Rules

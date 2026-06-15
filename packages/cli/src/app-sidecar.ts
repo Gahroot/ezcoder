@@ -78,7 +78,7 @@ interface ResolvedStart {
 // app's preferences never collide with the CLI's.
 
 interface AppSettings {
-  /** Folder new projects are created inside. Defaults to ~/gg-projects. */
+  /** Folder new projects are created inside. Defaults to ~/ez-projects. */
   projectsRoot: string;
 }
 
@@ -87,7 +87,7 @@ function appSettingsFile(): string {
 }
 
 function defaultProjectsRoot(): string {
-  return path.join(os.homedir(), "gg-projects");
+  return path.join(os.homedir(), "ez-projects");
 }
 
 async function loadAppSettings(): Promise<AppSettings> {

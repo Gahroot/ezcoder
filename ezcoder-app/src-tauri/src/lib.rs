@@ -456,9 +456,9 @@ fn app_settings_path() -> PathBuf {
     home_dir().join(".ezcoder").join("ezcoder-app.json")
 }
 
-/// Default projects root: ~/gg-projects.
+/// Default projects root: ~/ez-projects.
 fn default_projects_root() -> PathBuf {
-    home_dir().join("gg-projects")
+    home_dir().join("ez-projects")
 }
 
 /// Validate a project folder name: lowercase letters, digits, single dashes

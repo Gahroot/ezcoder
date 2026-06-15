@@ -58,7 +58,7 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
           className="modal-input"
           style={{ color: theme.text, background: theme.inputBackground }}
           value={projectsRoot}
-          placeholder="/Users/you/gg-projects"
+          placeholder="/Users/you/ez-projects"
           onChange={(e) => setProjectsRoot(e.target.value)}
         />
         <button
