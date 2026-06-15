@@ -103,6 +103,7 @@ replace_in_tracked_text_files() {
   local files
   files=$(git ls-files -- \
     '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.mjs' '*.yaml' '*.yml' '*.toml' '*.sh' \
+    '*.html' '*.css' '*.lock' \
     '*.py' '*.rb' '*.rs' '*.swift' '*.go' '*.gemspec' 'go.mod' 'Cargo.toml' 'Cargo.lock' 'Package.swift' \
     ':!pnpm-lock.yaml' ':!node_modules' ':!dist' ':!scripts/sync-upstream.sh')
 

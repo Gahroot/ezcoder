@@ -20,7 +20,7 @@
   --secondary: #9b8cf7;
   --info: #2dd4bf;
 
-  /* User identity — periwinkle text on a slate chip (mirrors the ggcoder TUI:
+  /* User identity — periwinkle text on a slate chip (mirrors the ezcoder TUI:
      commandColor #818cf8 on the #374151 message fill). Shared by the user
      bubble and the chat input. */
   --user-text: #818cf8;
@@ -631,7 +631,7 @@ body {
 .platform-macos .chat-head-strip {
   padding: 0 14px 0 82px;
 }
-/* The window title (session title once generated, else "GG Coder"). The native
+/* The window title (session title once generated, else "EZ Coder"). The native
    overlay title is hidden (hiddenTitle), so this is the ONLY title. It grows to
    take the slack and truncates with an ellipsis on small windows, so it never
    overlaps the toggle. */
@@ -1591,7 +1591,7 @@ body {
   text-align: center;
 }
 
-@keyframes ggblink {
+@keyframes ezblink {
   0%,
   100% {
     opacity: 1;
@@ -1601,7 +1601,7 @@ body {
   }
 }
 .blink {
-  animation: ggblink 1s steps(1, end) infinite;
+  animation: ezblink 1s steps(1, end) infinite;
 }
 
 /* ── Pinned live region (tool panel + activity bar) ── */
@@ -1618,7 +1618,7 @@ body {
 }
 
 /* ── Plan step completion row (✓ from [DONE:n] markers): blue circle, white
-   tick + label, mirroring the requested ggcoder treatment. ── */
+   tick + label, mirroring the requested ezcoder treatment. ── */
 .plan-step-done {
   display: flex;
   align-items: center;

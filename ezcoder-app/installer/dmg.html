@@ -5,7 +5,7 @@
   pixel → 1 window point and does NOT scale, so the final asset must be exactly
   the window's point size.
 
-  Finder draws the icon labels ("GG Coder", "Applications") itself, in BLACK,
+  Finder draws the icon labels ("EZ Coder", "Applications") itself, in BLACK,
   and macOS exposes no way to recolor them (create-dmg, which Tauri uses, only
   controls the background image + icon positions). So this background is LIGHT —
   black labels read naturally, no shelves/pills/tiles needed. The brand still
@@ -13,7 +13,7 @@
 
   Icon centers: app at 2×(360,340)=(180,170), Applications at 2×(960,340)=
   (480,170) — matching appPosition / applicationFolderPosition in
-  tauri.conf.json. Regenerate with: pnpm --filter gg-app installer:art
+  tauri.conf.json. Regenerate with: pnpm --filter ezcoder-app installer:art
 -->
 <html>
   <head>
@@ -73,7 +73,7 @@
         right: 0;
         text-align: center;
       }
-      /* ASCII "GG CODER" banner, mirroring src/AsciiLogo.tsx + its brand
+      /* ASCII "EZ CODER" banner, mirroring src/AsciiLogo.tsx + its brand
          gradient (blue → periwinkle → blue). Monospace + pre to keep the
          box-drawing glyphs aligned. */
       .ascii {
@@ -147,7 +147,7 @@
         </svg>
       </div>
 
-      <div class="footer">GG Coder · the coding agent, on your desktop</div>
+      <div class="footer">EZ Coder · the coding agent, on your desktop</div>
     </div>
   </body>
 </html>
