@@ -88,10 +88,15 @@ top offset on Windows/Linux.
 ## Release pipeline
 
 `.github/workflows/release.yml` runs on a `v*` tag: a matrix (`macos-14` arm64,
-`macos-13` x64, `windows-latest`, `ubuntu-latest`) stages node + sidecar, smoke
-tests, then `tauri-apps/tauri-action` bundles, signs the updater artifacts,
-uploads them to a draft GitHub release, and generates `latest.json` for the
-updater endpoint in `tauri.conf.json`.
+`windows-latest`, `ubuntu-latest`) stages node + sidecar, smoke tests, then
+`tauri-apps/tauri-action` bundles, signs the updater artifacts, uploads them to
+a draft GitHub release, and generates `latest.json` for the updater endpoint in
+`tauri.conf.json`. Linux builds `deb` + `rpm` (AppImage is skipped — its
+`linuxdeploy` step reliably hangs on CI for Node-bundling apps).
+
+Platform coverage: Apple Silicon macOS (signed + notarized), Windows
+(NSIS `.exe` + `.msi`), and Linux (`deb`/`rpm`). Intel macOS is intentionally
+not built — see the matrix comment in `release.yml`.
 
 `.github/workflows/ci.yml`'s `app` job exercises the same cross-OS spawn path on
 every push/PR (stage + bundle + smoke + `cargo test`) without a full bundle.

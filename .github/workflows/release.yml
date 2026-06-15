@@ -38,8 +38,12 @@ jobs:
         include:
           - platform: macos-14 # Apple Silicon (arm64)
             args: "--target aarch64-apple-darwin"
-          - platform: macos-13 # Intel (x64)
-            args: "--target x86_64-apple-darwin"
+          # NOTE: Intel macOS (x86_64) is intentionally omitted. GitHub's free
+          # Intel mac runners are effectively unavailable (jobs queue for hours),
+          # and a universal binary isn't viable here because the bundled Node
+          # runtime + native .node addons are single-arch. Re-add a
+          # `macos-13 / --target x86_64-apple-darwin` leg if a paid/Intel runner
+          # becomes available. Apple Silicon covers all Macs sold since 2020.
           - platform: windows-latest
             args: ""
           - platform: ubuntu-latest
