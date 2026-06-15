@@ -466,6 +466,14 @@ body {
   width: 48px;
   height: 48px;
 }
+/* Serve button while live: green tint + dot, so "on" reads at a glance. */
+.home-serve-active {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+}
+.home-serve-active:hover {
+  border-color: var(--success);
+}
 /* Dimmed (prerequisites unmet): muted but still clickable so it can toast.
    Keep the gradient flat on hover so it reads as inactive, not interactive. */
 .btn-primary.is-dimmed,
@@ -718,7 +726,7 @@ body {
   width: min(440px, 90vw);
   border: 1px solid;
   border-radius: var(--radius-card);
-  padding: 18px;
+  padding: 24px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   /* Modals can be mounted inside centered containers (e.g. `.home` is
      text-align: center). Pin left alignment so every modal's text matches
@@ -739,14 +747,18 @@ body {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.02em;
-  margin-bottom: 14px;
+  margin-bottom: 20px;
 }
 .modal-label {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  margin-top: 18px;
-  margin-bottom: 8px;
+  margin-top: 22px;
+  margin-bottom: 10px;
+}
+/* The first label shouldn't double up the title's bottom margin. */
+.modal-title + .modal-label {
+  margin-top: 4px;
 }
 .modal-input {
   width: 100%;
@@ -755,13 +767,13 @@ body {
   border-radius: var(--radius-card);
   font-family: var(--sans);
   font-size: 14px;
-  padding: 9px 11px;
+  padding: 11px 13px;
 }
 .modal-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 .modal-row .modal-input {
   flex: 1 1 auto;
@@ -771,9 +783,14 @@ body {
 }
 .modal-hint {
   font-size: 12px;
-  line-height: 1.5;
-  margin-top: 6px;
+  line-height: 1.55;
+  margin-top: 8px;
   word-break: break-all;
+}
+/* A hint sitting directly above an input needs breathing room below it,
+   otherwise the field is flush against the description text. */
+.modal-hint + .modal-input {
+  margin-top: 10px;
 }
 .modal-radio-group {
   display: flex;
@@ -798,8 +815,8 @@ body {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
+  gap: 10px;
+  margin-top: 26px;
 }
 .modal-btn {
   background: transparent;
@@ -808,7 +825,7 @@ body {
   font-family: var(--sans);
   font-size: 13px;
   font-weight: 600;
-  padding: 6px 14px;
+  padding: 8px 16px;
   cursor: pointer;
   transition:
     color var(--t-fast),

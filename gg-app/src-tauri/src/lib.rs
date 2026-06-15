@@ -443,6 +443,109 @@ async fn agent_save_settings(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Proxy: read Telegram config status (configured + masked preview).
+#[tauri::command]
+async fn agent_telegram_get(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .get(format!("{}/telegram", sidecar_base(port)))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: save Telegram config (bot token + user id). Verifies the token via
+/// getMe sidecar-side; returns an error message on rejection.
+#[tauri::command]
+async fn agent_telegram_save(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    bot_token: String,
+    user_id: String,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/telegram", sidecar_base(port)))
+        .json(&serde_json::json!({ "botToken": bot_token, "userId": user_id }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        let msg = body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("failed to save Telegram config");
+        return Err(msg.to_string());
+    }
+    Ok(body)
+}
+
+/// Proxy: Telegram serve status (`{ running, configured }`).
+#[tauri::command]
+async fn agent_serve_status(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .get(format!("{}/serve", sidecar_base(port)))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: start the Telegram serve loop. Returns `{ running }` or an error.
+#[tauri::command]
+async fn agent_serve_start(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/serve/start", sidecar_base(port)))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        let msg = body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("failed to start serve");
+        return Err(msg.to_string());
+    }
+    Ok(body)
+}
+
+/// Proxy: stop the Telegram serve loop. Returns `{ running: false }`.
+#[tauri::command]
+async fn agent_serve_stop(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/serve/stop", sidecar_base(port)))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Proxy: create a new project folder under the configured projects root.
 /// Returns `{ path }` on success, or an error message on validation/conflict.
 #[tauri::command]
@@ -1034,7 +1137,12 @@ pub fn run() {
             agent_sessions,
             agent_settings,
             agent_save_settings,
-            agent_create_project
+            agent_create_project,
+            agent_telegram_get,
+            agent_telegram_save,
+            agent_serve_status,
+            agent_serve_start,
+            agent_serve_stop
         ])
         .setup(|app| {
             // Build the main window in code (not from config) so macOS gets

@@ -432,6 +432,63 @@ export async function newWindow(): Promise<void> {
   }
 }
 
+// ── Telegram serve (remote control via Telegram) ───────────
+
+/** Telegram config status. `configured` is false until a bot token + user id
+ *  are saved; `tokenPreview` is a masked hint (never the real token). */
+export interface TelegramStatus {
+  configured: boolean;
+  userId?: number;
+  tokenPreview?: string;
+}
+
+/** Read the saved Telegram config status (masked). */
+export async function getTelegramStatus(): Promise<TelegramStatus> {
+  try {
+    return await invoke<TelegramStatus>("agent_telegram_get");
+  } catch (e) {
+    await logError(`agent_telegram_get failed: ${String(e)}`);
+    return { configured: false };
+  }
+}
+
+/**
+ * Save Telegram config. Leave `botToken` blank to keep the existing token. The
+ * sidecar verifies the token via getMe; throws with a user-facing message on
+ * rejection.
+ */
+export async function saveTelegramConfig(botToken: string, userId: string): Promise<void> {
+  await waitForReady();
+  await invoke("agent_telegram_save", { botToken, userId });
+}
+
+export interface ServeStatus {
+  running: boolean;
+  configured: boolean;
+}
+
+/** Read whether the Telegram serve loop is running + whether it's configured. */
+export async function getServeStatus(): Promise<ServeStatus> {
+  try {
+    return await invoke<ServeStatus>("agent_serve_status");
+  } catch (e) {
+    await logError(`agent_serve_status failed: ${String(e)}`);
+    return { running: false, configured: false };
+  }
+}
+
+/** Start the Telegram serve loop. Throws with a user-facing message on failure. */
+export async function startServe(): Promise<void> {
+  await waitForReady();
+  await invoke("agent_serve_start");
+}
+
+/** Stop the Telegram serve loop. */
+export async function stopServe(): Promise<void> {
+  await waitForReady();
+  await invoke("agent_serve_stop");
+}
+
 // Single Tauri listener for the whole app, fanned out to local subscribers.
 // Registering the OS-level listener once at module scope (not per React mount)
 // eliminates the StrictMode/HMR double-mount race where two async `listen()`

@@ -5,7 +5,15 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { AsciiLogo } from "./AsciiLogo";
 import { MemeLayer } from "./MemeLayer";
 import { SettingsModal } from "./SettingsModal";
-import { waitForReady, getSettings, authStatus } from "./agent";
+import { TelegramSettingsModal } from "./TelegramSettingsModal";
+import {
+  waitForReady,
+  getSettings,
+  authStatus,
+  getServeStatus,
+  startServe,
+  stopServe,
+} from "./agent";
 import { useAppUpdate } from "./update";
 import { toast } from "./toast";
 
@@ -24,6 +32,10 @@ export function HomeScreen({ onProjects, onLogin }: Props): React.ReactElement {
   const [folderSet, setFolderSet] = useState(false);
   const [providerCount, setProviderCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTelegram, setShowTelegram] = useState(false);
+  const [serving, setServing] = useState(false);
+  const [telegramConfigured, setTelegramConfigured] = useState(false);
+  const [serveBusy, setServeBusy] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const appUpdate = useAppUpdate();
 
@@ -35,12 +47,18 @@ export function HomeScreen({ onProjects, onLogin }: Props): React.ReactElement {
 
   async function refresh(): Promise<void> {
     await waitForReady();
-    const [settings, providers] = await Promise.all([getSettings(), authStatus()]);
+    const [settings, providers, serve] = await Promise.all([
+      getSettings(),
+      authStatus(),
+      getServeStatus(),
+    ]);
     // Prefer the explicit `configured` flag; fall back to a non-empty root so an
     // older sidecar (one that predates the flag) degrades to "set" instead of
     // dimming forever.
     setFolderSet(settings?.configured ?? Boolean(settings?.projectsRoot));
     setProviderCount(providers.filter((p) => p.connected).length);
+    setServing(serve.running);
+    setTelegramConfigured(serve.configured);
   }
 
   useEffect(() => {
@@ -53,6 +71,35 @@ export function HomeScreen({ onProjects, onLogin }: Props): React.ReactElement {
   }, []);
 
   const ready = folderSet && providerCount > 0;
+
+  async function handleServe(): Promise<void> {
+    if (serveBusy) return;
+    if (providerCount === 0) {
+      toast("Connect an AI provider first.", "warning");
+      return;
+    }
+    if (!telegramConfigured) {
+      toast("Set up Telegram first.", "warning");
+      setShowTelegram(true);
+      return;
+    }
+    setServeBusy(true);
+    try {
+      if (serving) {
+        await stopServe();
+        setServing(false);
+        toast("Stopped serving.", "success");
+      } else {
+        await startServe();
+        setServing(true);
+        toast("Serving on Telegram — message your bot.", "success");
+      }
+    } catch (e) {
+      toast(`Serve failed: ${e instanceof Error ? e.message : String(e)}`, "error");
+    } finally {
+      setServeBusy(false);
+    }
+  }
 
   function handleProjects(): void {
     if (ready) {
@@ -131,6 +178,22 @@ export function HomeScreen({ onProjects, onLogin }: Props): React.ReactElement {
         <button className="btn btn-ghost btn-lg home-btn" onClick={onLogin}>
           Login to AI Providers
         </button>
+        <div className="home-projects-row">
+          <button
+            className={`btn btn-ghost btn-lg home-btn${serving ? " home-serve-active" : ""}`}
+            disabled={serveBusy}
+            onClick={() => void handleServe()}
+          >
+            {serveBusy ? "Working\u2026" : serving ? "\u25CF Remote · Stop" : "Remote"}
+          </button>
+          <button
+            className="btn btn-ghost btn-icon home-settings"
+            title="Telegram setup"
+            onClick={() => setShowTelegram(true)}
+          >
+            <Settings size={20} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {showSettings && (
@@ -140,6 +203,12 @@ export function HomeScreen({ onProjects, onLogin }: Props): React.ReactElement {
             setFolderSet(true);
             toast("Project folder saved.", "success");
           }}
+        />
+      )}
+      {showTelegram && (
+        <TelegramSettingsModal
+          onClose={() => setShowTelegram(false)}
+          onSaved={() => setTelegramConfigured(true)}
         />
       )}
     </div>

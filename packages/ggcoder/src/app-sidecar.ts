@@ -53,6 +53,8 @@ import {
 import { initLogger, log } from "./core/logger.js";
 import { RADIO_STATIONS, getCurrentStation, playRadio, stopRadio } from "./core/radio.js";
 import { enrichProcessPath } from "./core/shell-path.js";
+import { startServeMode, type ServeController } from "./modes/serve-mode.js";
+import { loadTelegramConfig, saveTelegramConfig, verifyBotToken } from "./core/telegram-config.js";
 
 const ALL_PROVIDERS: Provider[] = [
   "anthropic",
@@ -378,6 +380,11 @@ async function main(): Promise<void> {
 
   let running = false;
   let titleGenerated = false;
+
+  // ── Telegram serve (remote control via Telegram) ───────────
+  // A single embedded serve session lives in this sidecar process. Only the main
+  // window's home screen exposes the controls, so there's one bot per app.
+  let serveController: ServeController | null = null;
 
   // Resumed session: if it already has a conversation, generate its title now so
   // the title bar shows it immediately on load (not just after the next prompt).
@@ -1176,6 +1183,112 @@ async function main(): Promise<void> {
       return;
     }
 
+    // ── Telegram config (mirrors `ggcoder telegram`) ─────────
+    if (method === "GET" && url === "/telegram") {
+      void loadTelegramConfig().then((cfg) => {
+        if (!cfg) {
+          json(res, 200, { configured: false });
+          return;
+        }
+        // Never return the raw token to the webview — a short masked preview is
+        // enough to show "already set".
+        const t = cfg.botToken;
+        const tokenPreview = t.length > 14 ? `${t.slice(0, 10)}\u2026${t.slice(-4)}` : "set";
+        json(res, 200, { configured: true, userId: cfg.userId, tokenPreview });
+      });
+      return;
+    }
+
+    if (method === "POST" && url === "/telegram") {
+      void readBody(req).then(async (raw) => {
+        let botTokenInput: string;
+        let userIdInput: string;
+        try {
+          const body = JSON.parse(raw) as { botToken?: string; userId?: string | number };
+          botTokenInput = (body.botToken ?? "").trim();
+          userIdInput = String(body.userId ?? "").trim();
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        // Keep the existing token when the field is left blank (the webview shows
+        // a masked preview, not the real token).
+        const existing = await loadTelegramConfig();
+        const botToken = botTokenInput || existing?.botToken || "";
+        if (!botToken) {
+          json(res, 400, { error: "Bot token is required." });
+          return;
+        }
+        const userId = userIdInput ? parseInt(userIdInput, 10) : existing?.userId;
+        if (!userId || Number.isNaN(userId)) {
+          json(res, 400, { error: "A numeric Telegram user ID is required." });
+          return;
+        }
+        const verified = await verifyBotToken(botToken);
+        if (!verified.ok) {
+          json(res, 400, { error: "Invalid bot token — Telegram rejected it." });
+          return;
+        }
+        await saveTelegramConfig({ botToken, userId });
+        json(res, 200, { ok: true, userId, username: verified.username ?? null });
+      });
+      return;
+    }
+
+    // ── Serve lifecycle (mirrors `ggcoder serve`) ───────────
+    if (method === "GET" && url === "/serve") {
+      void loadTelegramConfig().then((cfg) =>
+        json(res, 200, { running: serveController !== null, configured: cfg !== null }),
+      );
+      return;
+    }
+
+    if (method === "POST" && url === "/serve/start") {
+      void (async () => {
+        if (serveController) {
+          json(res, 200, { running: true });
+          return;
+        }
+        const cfg = await loadTelegramConfig();
+        if (!cfg) {
+          json(res, 400, { error: "Telegram isn't set up yet. Open Serve settings first." });
+          return;
+        }
+        const st = session.getState();
+        try {
+          serveController = await startServeMode({
+            provider: st.provider,
+            model: st.model,
+            cwd,
+            version: "app",
+            thinkingLevel: session.getThinkingLevel() ?? undefined,
+            telegram: { botToken: cfg.botToken, userId: cfg.userId },
+            embedded: true,
+          });
+          broadcast("serve_change", { running: true });
+          log("INFO", "app-sidecar", "serve started", { userId: cfg.userId });
+          json(res, 200, { running: true });
+        } catch (err) {
+          serveController = null;
+          json(res, 400, { error: err instanceof Error ? err.message : String(err) });
+        }
+      })();
+      return;
+    }
+
+    if (method === "POST" && url === "/serve/stop") {
+      void (async () => {
+        if (serveController) {
+          await serveController.stop().catch(() => {});
+          serveController = null;
+          broadcast("serve_change", { running: false });
+          log("INFO", "app-sidecar", "serve stopped");
+        }
+        json(res, 200, { running: false });
+      })();
+      return;
+    }
+
     json(res, 404, { error: "not found" });
   });
 
@@ -1191,6 +1304,8 @@ async function main(): Promise<void> {
     if (tasksPoll) clearTimeout(tasksPoll);
     // Kill any playing radio so the stream dies with its window.
     stopRadio();
+    // Stop the Telegram serve loop + dispose its per-chat sessions.
+    if (serveController) await serveController.stop().catch(() => {});
     for (const c of clients) c.res.end();
     server.close();
     await session.dispose().catch(() => {});

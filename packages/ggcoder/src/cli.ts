@@ -54,6 +54,11 @@ import { renderApp } from "./ui/render.js";
 import { runJsonMode } from "./modes/json-mode.js";
 import { runRpcMode } from "./modes/rpc-mode.js";
 import { runServeMode } from "./modes/serve-mode.js";
+import {
+  loadTelegramConfig,
+  saveTelegramConfig,
+  isValidBotTokenFormat,
+} from "./core/telegram-config.js";
 import { runAgentHomeMode } from "./modes/agent-home-mode.js";
 import { renderSessionSelector } from "./ui/sessions.js";
 import type { CompletedItem } from "./ui/app-items.js";
@@ -811,30 +816,6 @@ async function runSessions(): Promise<void> {
 
 // ── Telegram Setup ───────────────────────────────────────
 
-interface TelegramConfig {
-  botToken: string;
-  userId: number;
-}
-
-async function loadTelegramConfig(): Promise<TelegramConfig | null> {
-  try {
-    const raw = await fs.promises.readFile(getAppPaths().telegramFile, "utf-8");
-    const data = JSON.parse(raw) as TelegramConfig;
-    if (data.botToken && data.userId) return data;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function saveTelegramConfig(config: TelegramConfig): Promise<void> {
-  const paths = await ensureAppDirs();
-  await fs.promises.writeFile(paths.telegramFile, JSON.stringify(config, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-}
-
 async function runTelegramSetup(): Promise<void> {
   clearVisibleScreen();
   const paths = await ensureAppDirs();
@@ -892,7 +873,7 @@ async function runTelegramSetup(): Promise<void> {
     }
 
     // Validate token format (roughly: digits:alphanumeric)
-    if (!/^\d+:[A-Za-z0-9_-]+$/.test(botToken)) {
+    if (!isValidBotTokenFormat(botToken)) {
       console.log(chalk.hex("#ef4444")("\n  Invalid token format. Expected: 123456789:ABCdef..."));
       return;
     }
