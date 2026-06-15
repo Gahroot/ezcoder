@@ -27,6 +27,7 @@ import { loginKimi } from "./core/oauth/kimi.js";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./core/oauth/types.js";
 import { AUTH_PROVIDERS, type AuthProviderMeta } from "./core/auth-providers.js";
 import { ensureAppDirs, loadSavedSettings } from "./config.js";
+import { SettingsManager, type Settings } from "./core/settings-manager.js";
 import {
   getDefaultModel,
   getModel,
@@ -50,6 +51,7 @@ import {
   markTaskInProgress,
 } from "./core/tasks-store.js";
 import { initLogger, log } from "./core/logger.js";
+import { RADIO_STATIONS, getCurrentStation, playRadio, stopRadio } from "./core/radio.js";
 
 const ALL_PROVIDERS: Provider[] = [
   "anthropic",
@@ -102,6 +104,43 @@ async function loadAppSettings(): Promise<AppSettings> {
 async function saveAppSettings(settings: AppSettings): Promise<void> {
   await fs.mkdir(path.dirname(appSettingsFile()), { recursive: true });
   await fs.writeFile(appSettingsFile(), JSON.stringify(settings, null, 2), "utf-8");
+}
+
+/**
+ * Persist the active model selection to ~/.gg/settings.json so it survives app
+ * restarts. Mirrors the CLI's handleModelSelect persistence (App.tsx).
+ */
+async function persistModelSelection(
+  settingsFile: string,
+  provider: Provider,
+  model: string,
+): Promise<void> {
+  try {
+    const sm = new SettingsManager(settingsFile);
+    await sm.load();
+    await sm.set("defaultProvider", provider as Settings["defaultProvider"]);
+    await sm.set("defaultModel", model);
+  } catch (err) {
+    log("WARN", "app-sidecar", "failed to persist model selection", { err: String(err) });
+  }
+}
+
+/**
+ * Persist the thinking level to ~/.gg/settings.json so it survives app restarts.
+ * Mirrors the CLI's handleToggleThinking persistence (App.tsx).
+ */
+async function persistThinkingLevel(
+  settingsFile: string,
+  level: ThinkingLevel | undefined,
+): Promise<void> {
+  try {
+    const sm = new SettingsManager(settingsFile);
+    await sm.load();
+    await sm.set("thinkingEnabled", !!level);
+    if (level) await sm.set("thinkingLevel", level);
+  } catch (err) {
+    log("WARN", "app-sidecar", "failed to persist thinking level", { err: String(err) });
+  }
 }
 
 /** Validate a project folder name: lowercase letters, digits, dashes only. */
@@ -795,6 +834,38 @@ async function main(): Promise<void> {
       return;
     }
 
+    // ── Radio ─────────────────────────────────────────────────
+    // Playback runs in THIS sidecar process, which is unique per window, so a
+    // station only plays in the window that started it.
+    if (method === "GET" && url === "/radio") {
+      json(res, 200, { stations: RADIO_STATIONS, current: getCurrentStation() });
+      return;
+    }
+
+    if (method === "POST" && url === "/radio") {
+      void readBody(req).then((raw) => {
+        let station: string;
+        try {
+          station = (JSON.parse(raw) as { station?: string }).station ?? "";
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!station || station === "off") {
+          stopRadio();
+          json(res, 200, { current: null });
+          return;
+        }
+        const result = playRadio(station);
+        if (!result.ok) {
+          json(res, 400, { error: result.error ?? "Radio failed to start." });
+          return;
+        }
+        json(res, 200, { current: getCurrentStation() });
+      });
+      return;
+    }
+
     if (method === "POST" && url === "/tasks/run") {
       void readBody(req).then((raw) => {
         let id: string | null;
@@ -881,6 +952,9 @@ async function main(): Promise<void> {
         if (prevLevel && !isThinkingLevelSupported(target.provider, target.id, prevLevel)) {
           session.setThinkingLevel(getNextThinkingLevel(target.provider, target.id, undefined));
         }
+        // Persist so the selection (and clamped thinking level) survives restarts.
+        await persistModelSelection(paths.settingsFile, target.provider, target.id);
+        await persistThinkingLevel(paths.settingsFile, session.getThinkingLevel());
         const payload = {
           thinkingLevel: session.getThinkingLevel() ?? null,
           supportedThinkingLevels: getSupportedThinkingLevels(target.provider, target.id),
@@ -921,6 +995,8 @@ async function main(): Promise<void> {
       const st = session.getState();
       const next = getNextThinkingLevel(st.provider, st.model, session.getThinkingLevel());
       session.setThinkingLevel(next);
+      // Persist so the thinking level survives app restarts (mirrors the CLI).
+      void persistThinkingLevel(paths.settingsFile, next);
       const payload = {
         thinkingLevel: next ?? null,
         supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
@@ -1105,6 +1181,8 @@ async function main(): Promise<void> {
   const shutdown = async (): Promise<void> => {
     tasksPollStopped = true;
     if (tasksPoll) clearTimeout(tasksPoll);
+    // Kill any playing radio so the stream dies with its window.
+    stopRadio();
     for (const c of clients) c.res.end();
     server.close();
     await session.dispose().catch(() => {});

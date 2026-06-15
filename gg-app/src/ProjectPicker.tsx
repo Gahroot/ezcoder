@@ -13,6 +13,7 @@ import { Badge, sourceStyle } from "./Badge";
 import { ListSkeleton } from "./Skeleton";
 import { BackButton } from "./BackButton";
 import { WindowLayoutButton } from "./WindowLayoutButton";
+import { RadioButton } from "./RadioButton";
 import { NewProjectModal } from "./NewProjectModal";
 
 interface Props {
@@ -146,6 +147,7 @@ export function ProjectPicker({
               {"+ New project"}
             </button>
           )}
+          <RadioButton />
           <WindowLayoutButton />
         </span>
       </div>

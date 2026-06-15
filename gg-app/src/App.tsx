@@ -39,6 +39,7 @@ import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { WindowLayoutButton } from "./WindowLayoutButton";
+import { RadioButton } from "./RadioButton";
 import { ProjectPicker } from "./ProjectPicker";
 import { BackButton } from "./BackButton";
 import { HomeScreen } from "./HomeScreen";
@@ -1182,7 +1183,7 @@ function App(): React.ReactElement {
                 title="Start a new session for this project"
                 onClick={() => setConfirmNewSession(true)}
               >
-                {"+ New session"}
+                {"+ New"}
               </button>
               <button
                 className="btn btn-sm btn-ghost"
@@ -1219,6 +1220,7 @@ function App(): React.ReactElement {
                   </button>
                 )
               )}
+              <RadioButton />
               <WindowLayoutButton onArrange={() => setNavHiddenPersisted(true)} />
             </span>
           </div>

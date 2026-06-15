@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AppWindow } from "lucide-react";
 import { theme } from "./theme";
 import { setupWindows } from "./agent";
 
@@ -48,7 +49,7 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
         title="Arrange into multiple project windows"
         onClick={() => setOpen((o) => !o)}
       >
-        {"Windows"}
+        <AppWindow size={16} />
       </button>
       {open && (
         <>

@@ -255,6 +255,41 @@ export async function newSession(): Promise<void> {
   }
 }
 
+/** A radio station available to play in this window. */
+export interface RadioStation {
+  id: string;
+  name: string;
+  description: string;
+  url: string;
+}
+
+export interface RadioState {
+  stations: RadioStation[];
+  /** Currently-playing station id for THIS window, or null when off. */
+  current: string | null;
+}
+
+/** Read this window's radio state (available stations + what's playing). */
+export async function getRadioState(): Promise<RadioState> {
+  try {
+    const res = await invoke<RadioState>("agent_radio_state");
+    return { stations: res.stations ?? [], current: res.current ?? null };
+  } catch (e) {
+    await logError(`agent_radio_state failed: ${String(e)}`);
+    return { stations: [], current: null };
+  }
+}
+
+/**
+ * Play a station by id, or stop with "off". Playback is isolated to this
+ * window's sidecar. Returns the now-playing id (null when stopped). Throws with
+ * a user-facing message when no player is installed.
+ */
+export async function setRadio(station: string): Promise<string | null> {
+  const res = await invoke<{ current: string | null }>("agent_radio_set", { station });
+  return res.current ?? null;
+}
+
 /** Stop a background task by id. Returns the sidecar's status message, if any. */
 export async function killTask(id: string): Promise<string | null> {
   try {

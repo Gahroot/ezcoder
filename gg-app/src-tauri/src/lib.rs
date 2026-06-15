@@ -233,6 +233,54 @@ async fn agent_kill_task(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Proxy: radio state for THIS window's sidecar — `{ stations, current }`.
+/// Playback lives in the per-window sidecar process, so each window's radio is
+/// independent (opening more windows never duplicates audio).
+#[tauri::command]
+async fn agent_radio_state(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .get(format!("{}/radio", sidecar_base(port)))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: play a station by id, or stop with `station = "off"`. Returns
+/// `{ current }` on success, an error message (e.g. no player installed) on 4xx.
+#[tauri::command]
+async fn agent_radio_set(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    station: String,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/radio", sidecar_base(port)))
+        .json(&serde_json::json!({ "station": station }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        let msg = body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("radio request failed")
+            .to_string();
+        return Err(msg);
+    }
+    Ok(body)
+}
+
 /// Proxy: list this project's task list (the ~/.gg-tasks store for its cwd).
 #[tauri::command]
 async fn agent_tasks(
@@ -929,6 +977,8 @@ pub fn run() {
             agent_auth_oauth_code,
             agent_auth_logout,
             agent_kill_task,
+            agent_radio_state,
+            agent_radio_set,
             agent_tasks,
             agent_run_tasks,
             agent_delete_task,
