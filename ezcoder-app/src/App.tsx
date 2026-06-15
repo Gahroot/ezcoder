@@ -403,9 +403,7 @@ function App(): React.ReactElement {
       if (
         active instanceof HTMLElement &&
         active !== inputRef.current &&
-        (active.tagName === "INPUT" ||
-          active.tagName === "TEXTAREA" ||
-          active.isContentEditable)
+        (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)
       ) {
         return;
       }

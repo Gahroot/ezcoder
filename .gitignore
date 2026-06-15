@@ -55,3 +55,8 @@ packages/cli/ideal-sim/
 
 # prompt-bench scratch sandboxes
 experiments/prompt-bench/.bench-sandbox-*
+
+# Signing key material / personal secrets (never commit)
+*update_key*.rtf
+*.key
+*.key.pub
