@@ -35,10 +35,14 @@ current_version() {
 set_version() {
   local v="$1"
   # package.json + tauri.conf.json: first `"version": "..."` line.
-  perl -0pi -e 's/("version"\s*:\s*")[^"]+(")/${1}'"$v"'${2}/' "$PKG"
-  perl -0pi -e 's/("version"\s*:\s*")[^"]+(")/${1}'"$v"'${2}/' "$CONF"
-  # Cargo.toml: the `version = "..."` under [package] (first match).
-  perl -0pi -e 's/^(version\s*=\s*")[^"]+(")/${1}'"$v"'${2}/m' "$CARGO"
+  # Replace ONLY the first `"version": "..."` in each JSON file (the top-level
+  # app version). The `!$done && s/.../ && ($done=1)` guard increments only when
+  # the substitution actually matched, so an early non-matching line can't
+  # consume the guard and a later stray version field is never rewritten.
+  perl -pi -e '!$done and s/("version"\s*:\s*")[^"]+(")/${1}'"$v"'${2}/ and $done=1;' "$PKG"
+  perl -pi -e '!$done and s/("version"\s*:\s*")[^"]+(")/${1}'"$v"'${2}/ and $done=1;' "$CONF"
+  # Cargo.toml: the first `version = "..."` (the [package] version near the top).
+  perl -pi -e '!$done and s/^(version\s*=\s*")[^"]+(")/${1}'"$v"'${2}/ and $done=1;' "$CARGO"
 }
 
 assert_in_sync() {
