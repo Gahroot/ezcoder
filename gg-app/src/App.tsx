@@ -370,7 +370,13 @@ function App(): React.ReactElement {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
+    // Toggle scrolling only when content truly overflows the cap. Otherwise keep
+    // overflow hidden: under CSS zoom > 1, scrollHeight rounds down to an integer
+    // of unzoomed px, leaving the content a hair taller than the set height —
+    // `auto` would then flash a phantom grey scrollbar inside a single-line input.
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
   }, [input]);
 
   // Cmd+N (macOS) / Ctrl+N (Linux/Windows) opens a new project window.
@@ -403,9 +409,7 @@ function App(): React.ReactElement {
       if (
         active instanceof HTMLElement &&
         active !== inputRef.current &&
-        (active.tagName === "INPUT" ||
-          active.tagName === "TEXTAREA" ||
-          active.isContentEditable)
+        (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)
       ) {
         return;
       }

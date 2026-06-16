@@ -180,6 +180,65 @@
     transform: translateY(20px);
   }
 }
+/* ── Zoom level overlay ───────────────────────────────────────────────────
+   Centered flash shown on Cmd/Ctrl +/- / 0. Sits above everything; the wrapper
+   counter-scales the page zoom so the card is a constant on-screen size. */
+.zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.zoom-overlay-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 116px;
+  padding: 18px 26px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  box-shadow: 0 16px 44px -12px rgba(0, 0, 0, 0.7);
+  animation:
+    zoom-overlay-in 0.16s var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    zoom-overlay-out 0.3s ease 0.6s forwards;
+}
+@keyframes zoom-overlay-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes zoom-overlay-out {
+  to {
+    opacity: 0;
+  }
+}
+.zoom-overlay-pct {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.zoom-overlay-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .toast-icon {
   flex: 0 0 auto;
   display: inline-flex;
@@ -225,7 +284,10 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  /* 100% (not 100vh): vh resolves against the unzoomed layout viewport, so under
+     CSS `zoom` < 1 the shell came up short and the footer floated up. % chains
+     through #root/body/html (all 100%) and scales correctly with zoom. */
+  height: 100%;
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.55;
@@ -264,7 +326,7 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: 100%;
   gap: 28px;
   padding: 24px;
   text-align: center;
@@ -566,7 +628,7 @@ body {
 .picker {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
 }
 .picker-head {
   position: relative;
@@ -1929,6 +1991,11 @@ body {
      here and scroll past the cap. No manual resize handle, wrap long lines. */
   resize: none;
   overflow-y: auto;
+  /* The textarea wraps, so it never needs horizontal scroll. Pin it hidden:
+     under CSS zoom the content box rounds a sub-pixel wider than the element,
+     which otherwise flashes a full-width grey horizontal scrollbar inside the
+     input. */
+  overflow-x: hidden;
   max-height: 40vh;
   line-height: 1.5;
   padding: 0;
