@@ -214,13 +214,20 @@ export interface AuthProvider {
   connected: boolean;
 }
 
-/** List providers with their supported auth methods + live connection status. */
+/**
+ * List providers with their supported auth methods + live connection status.
+ *
+ * Handled NATIVELY in Rust (static list + reads ~/.gg/auth.json directly) so the
+ * login hub always renders even when the Node sidecar is slow/crashed — it used
+ * to show a blank list, the same failure mode as the project-folder bug. The
+ * login ACTIONS (OAuth, key save, logout) still go through the sidecar.
+ */
 export async function authStatus(): Promise<AuthProvider[]> {
   try {
-    const res = await invoke<{ providers: AuthProvider[] }>("agent_auth_status");
+    const res = await invoke<{ providers: AuthProvider[] }>("app_auth_status");
     return res.providers ?? [];
   } catch (e) {
-    await logError(`agent_auth_status failed: ${String(e)}`);
+    await logError(`app_auth_status failed: ${String(e)}`);
     return [];
   }
 }

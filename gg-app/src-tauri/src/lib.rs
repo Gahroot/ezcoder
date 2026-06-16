@@ -559,6 +559,147 @@ fn app_create_project(name: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "path": dir.to_string_lossy() }))
 }
 
+// ── Native provider auth status (~/.gg/auth.json) ─────────────────────────
+// The AI-providers list is STATIC metadata and the "connected" badge only needs
+// to read which provider keys exist in ~/.gg/auth.json — neither needs the Node
+// agent. Reading it natively means the login hub always renders even when the
+// sidecar is slow/crashed (it used to show a blank list, identical in spirit to
+// the project-folder bug). The login ACTIONS (OAuth flow, key storage, logout)
+// still go through the sidecar — those genuinely need the agent.
+//
+// This list mirrors packages/ggcoder/src/core/auth-providers.ts (AUTH_PROVIDERS).
+// Keep the two in sync when adding a provider.
+
+/// Absolute path to ~/.gg/auth.json.
+fn auth_file_path() -> PathBuf {
+    home_dir().join(".gg").join("auth.json")
+}
+
+/// Native: provider list + live connection status, read directly from
+/// ~/.gg/auth.json. `connected` is true when a credential key is present
+/// (moonshot is satisfied by either its OAuth key `moonshot-oauth` or the
+/// `moonshot` API key, mirroring AuthStorage.hasProviderAuth). Never needs the
+/// sidecar.
+#[tauri::command]
+fn app_auth_status() -> serde_json::Value {
+    // Parse the auth file into a JSON object; missing/invalid → empty (no creds).
+    let creds = std::fs::read_to_string(auth_file_path())
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    let has_key = |key: &str| -> bool {
+        creds
+            .as_ref()
+            .and_then(|v| v.get(key))
+            .map(|v| !v.is_null())
+            .unwrap_or(false)
+    };
+    let connected = |value: &str| -> bool {
+        if value == "moonshot" {
+            has_key("moonshot-oauth") || has_key("moonshot")
+        } else {
+            has_key(value)
+        }
+    };
+
+    // (value, label, description, methods, apiKeyLabel?, apiKeyBaseUrl?)
+    let providers: &[(&str, &str, &str, &[&str], Option<&str>, Option<&str>)] = &[
+        (
+            "anthropic",
+            "Anthropic",
+            "Claude Opus 4.8, Sonnet 4.6, Haiku 4.5",
+            &["oauth"],
+            None,
+            None,
+        ),
+        (
+            "openai",
+            "OpenAI",
+            "GPT-5.5, GPT-5.5 Pro, GPT-5.4, GPT-5.3 Codex",
+            &["oauth"],
+            None,
+            None,
+        ),
+        (
+            "gemini",
+            "Gemini",
+            "Gemini 3.1 Flash Lite Preview",
+            &["oauth"],
+            None,
+            None,
+        ),
+        (
+            "moonshot",
+            "Moonshot",
+            "Kimi K2.7 · OAuth or API key",
+            &["oauth", "apikey"],
+            Some("Moonshot"),
+            None,
+        ),
+        (
+            "glm",
+            "Z.AI (GLM)",
+            "GLM-5.1, GLM-4.7, GLM-4.7 Flash",
+            &["apikey"],
+            Some("Z.AI"),
+            None,
+        ),
+        (
+            "minimax",
+            "MiniMax",
+            "MiniMax M3",
+            &["apikey"],
+            Some("MiniMax"),
+            None,
+        ),
+        (
+            "xiaomi",
+            "Xiaomi (MiMo)",
+            "MiMo-V2-Pro",
+            &["apikey"],
+            Some("Xiaomi MiMo"),
+            Some("https://token-plan-sgp.xiaomimimo.com/v1"),
+        ),
+        (
+            "deepseek",
+            "DeepSeek",
+            "DeepSeek V4 Pro, V4 Flash",
+            &["apikey"],
+            Some("DeepSeek"),
+            None,
+        ),
+        (
+            "openrouter",
+            "OpenRouter",
+            "Qwen3.6-Plus, multi-provider gateway",
+            &["apikey"],
+            Some("OpenRouter"),
+            None,
+        ),
+    ];
+
+    let list: Vec<serde_json::Value> = providers
+        .iter()
+        .map(|(value, label, description, methods, api_key_label, api_key_base_url)| {
+            let mut obj = serde_json::json!({
+                "value": value,
+                "label": label,
+                "description": description,
+                "methods": methods,
+                "connected": connected(value),
+            });
+            if let Some(l) = api_key_label {
+                obj["apiKeyLabel"] = serde_json::json!(l);
+            }
+            if let Some(u) = api_key_base_url {
+                obj["apiKeyBaseUrl"] = serde_json::json!(u);
+            }
+            obj
+        })
+        .collect();
+
+    serde_json::json!({ "providers": list })
+}
+
 /// Proxy: read Telegram config status (configured + masked preview).
 #[tauri::command]
 async fn agent_telegram_get(
@@ -1257,6 +1398,7 @@ pub fn run() {
             app_settings_get,
             app_settings_save,
             app_create_project,
+            app_auth_status,
             agent_telegram_get,
             agent_telegram_save,
             agent_serve_status,
