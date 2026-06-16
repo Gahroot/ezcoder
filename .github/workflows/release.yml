@@ -132,27 +132,45 @@ jobs:
             ezcoder-app/src-tauri/binaries \
             ezcoder-app/src-tauri/sidecar
 
+      # Materialise the macOS signing env into $GITHUB_ENV. This must be a
+      # script (not the tauri-action `env:` block) because Tauri treats a
+      # *present-but-empty* var as "do this" — an empty APPLE_ID makes it
+      # attempt notarization and then die on the empty APPLE_TEAM_ID
+      # ("Team ID must be at least 3 characters"). Writing the notarization
+      # vars to $GITHUB_ENV only in the signed branch leaves them genuinely
+      # UNSET in the ad-hoc branch, so Tauri skips notarization entirely.
+      # Ad-hoc apps still run; macOS Gatekeeper just asks the user to allow
+      # them once (right-click → Open) — documented in the site FAQ.
+      - name: Configure macOS signing env
+        if: runner.os == 'macOS'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ "$HAS_APPLE_CERT" = "true" ]; then
+            {
+              echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+          else
+            # Ad-hoc signature; no notarization vars defined.
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+          fi
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS signing + notarization. The certificate is already imported
-          # into the CI keychain by the step above, so we deliberately do NOT
-          # pass APPLE_CERTIFICATE here — leaving it unset keeps Tauri's
-          # `var_os("APPLE_CERTIFICATE")` import branch off. When no cert is
-          # configured every var below resolves to empty and Tauri produces an
-          # unsigned-but-working .app/.dmg. When a cert IS present, Tauri signs
-          # with APPLE_SIGNING_IDENTITY against the keychain identity we imported.
-          # When no Developer ID cert is configured we fall back to the ad-hoc
-          # pseudo-identity "-" so Tauri produces a working (unsigned/ad-hoc)
-          # .dmg instead of attempting a keychain lookup that fails the build.
-          # Ad-hoc apps still run; macOS Gatekeeper just asks the user to allow
-          # them once (right-click → Open) — documented in the site FAQ.
-          APPLE_SIGNING_IDENTITY: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_SIGNING_IDENTITY || '-' }}
-          APPLE_ID: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_TEAM_ID || '' }}
+          # APPLE_* signing/notarization vars are injected via the
+          # "Configure macOS signing env" step above (see its comment for why a
+          # script, not this block). We deliberately never pass APPLE_CERTIFICATE
+          # here — the cert is imported into the CI keychain earlier, and an empty
+          # APPLE_CERTIFICATE would trip Tauri's `var_os` import branch.
         with:
           projectPath: ezcoder-app
           tagName: ${{ github.ref_name }}
