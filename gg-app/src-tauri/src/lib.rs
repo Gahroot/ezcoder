@@ -865,6 +865,24 @@ async fn agent_sessions(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Proxy: search project files for the chat input's `@` picker. Empty `query`
+/// returns the most-recently-modified files; a query returns fuzzy matches.
+#[tauri::command]
+async fn agent_files(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    query: String,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let encoded = urlencoding(&query);
+    let res = client
+        .get(format!("{}/files?q={}", sidecar_base(port), encoded))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Minimal percent-encoding for a filesystem path in a query string.
 fn urlencoding(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -997,6 +1015,77 @@ fn select_project(
     }
     spawn_sidecar_with_session(app, label, PathBuf::from(cwd), session_path);
     Ok(())
+}
+
+/// Map a normalized gaze point to a window and (optionally) focus it.
+///
+/// The webview can't see other windows' screen rectangles, so the gaze tracker
+/// (which only knows a normalized point across the primary monitor) hands the
+/// point to Rust. We convert it to physical coordinates using the primary
+/// monitor work area, hit-test every open window's outer rect, then:
+///   - emit `gaze-target { target, committed }` to ALL windows so each paints
+///     its own border: the `committed` (currently focused) window holds a solid
+///     ring, the `target` window a soft "dwelling here" highlight, and
+///   - call `set_focus()` on the hit window only when `commit` is true (after
+///     the controller's dwell), so a glance never steals keyboard focus.
+///
+/// `committed` is the controller's currently-focused window label, passed every
+/// frame so the focused border PERSISTS rather than flashing for one frame.
+///
+/// Returns the hit window's label (or null when the point lands on no window).
+#[tauri::command]
+fn gaze_focus(
+    app: tauri::AppHandle,
+    nx: f64,
+    ny: f64,
+    commit: bool,
+    committed: Option<String>,
+) -> Result<Option<String>, String> {
+    let windows = app.webview_windows();
+    let Some(any) = windows.values().next() else {
+        return Ok(None);
+    };
+    let Some(monitor) = any.primary_monitor().ok().flatten() else {
+        return Ok(None);
+    };
+    let area = monitor.work_area();
+    let nx = nx.clamp(0.0, 1.0);
+    let ny = ny.clamp(0.0, 1.0);
+    let px = area.position.x as f64 + nx * area.size.width as f64;
+    let py = area.position.y as f64 + ny * area.size.height as f64;
+
+    // Hit-test: first window whose outer rect contains the point.
+    let mut target: Option<String> = None;
+    for (label, win) in windows.iter() {
+        let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else {
+            continue;
+        };
+        let x0 = pos.x as f64;
+        let y0 = pos.y as f64;
+        let x1 = x0 + size.width as f64;
+        let y1 = y0 + size.height as f64;
+        if px >= x0 && px < x1 && py >= y0 && py < y1 {
+            target = Some(label.clone());
+            break;
+        }
+    }
+
+    // Broadcast both labels to every window; each computes its own border style.
+    for (label, win) in windows.iter() {
+        let _ = app.emit_to(
+            EventTarget::webview_window(label.clone()),
+            "gaze-target",
+            serde_json::json!({ "target": target, "committed": committed }),
+        );
+        if commit {
+            if let Some(t) = &target {
+                if t == label {
+                    let _ = win.set_focus();
+                }
+            }
+        }
+    }
+    Ok(target)
 }
 
 /// Allocate a unique `project-N` window label.
@@ -1392,6 +1481,7 @@ pub fn run() {
             select_project,
             agent_projects,
             agent_sessions,
+            agent_files,
             agent_settings,
             agent_save_settings,
             agent_create_project,
@@ -1403,7 +1493,8 @@ pub fn run() {
             agent_telegram_save,
             agent_serve_status,
             agent_serve_start,
-            agent_serve_stop
+            agent_serve_stop,
+            gaze_focus
         ])
         .setup(|app| {
             // Build the main window in code (not from config) so macOS gets

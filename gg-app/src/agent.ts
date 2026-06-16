@@ -404,6 +404,29 @@ export async function listProjects(): Promise<DiscoveredProject[]> {
   }
 }
 
+/** A project file surfaced in the chat input's `@` picker. */
+export interface FileHit {
+  /** Project-relative POSIX path, e.g. "src/App.tsx". */
+  path: string;
+  /** File name only, e.g. "App.tsx". */
+  name: string;
+}
+
+/**
+ * Search the current project's files for the `@` mention picker. An empty
+ * `query` returns the most-recently-modified files; a query returns fuzzy
+ * matches. Honors .gitignore and skips node_modules/.git. Capped sidecar-side.
+ */
+export async function searchFiles(query: string): Promise<FileHit[]> {
+  try {
+    const res = await invoke<{ files: FileHit[] }>("agent_files", { query });
+    return res.files ?? [];
+  } catch (e) {
+    await logError(`agent_files failed: ${String(e)}`);
+    return [];
+  }
+}
+
 /** List the latest sessions for a project cwd (newest first, with previews). */
 export async function listSessions(cwd: string): Promise<RecentSession[]> {
   try {
@@ -435,6 +458,40 @@ export async function setupWindows(count: number): Promise<void> {
     await logError(`setup_windows failed: ${String(e)}`);
     throw e;
   }
+}
+
+// ── Gaze focus (webcam eye/head tracking → window focus) ───────────
+
+/** Payload of the `gaze-target` event broadcast to every window. `target` is the
+ *  window the gaze currently rests on (null off any window); `committed` is the
+ *  window that currently holds focus. Each window paints a solid ring when it's
+ *  `committed`, a soft highlight when it's the (un-committed) `target`. */
+export interface GazeTargetEvent {
+  target: string | null;
+  committed: string | null;
+}
+
+/** Map a normalized monitor point to a window. With `commit`, commit OS focus to
+ *  the hit window. `committed` is the currently-focused window so the broadcast
+ *  border persists. Always broadcasts `gaze-target`. Returns the hit label. */
+export async function gazeFocus(
+  nx: number,
+  ny: number,
+  commit: boolean,
+  committed: string | null,
+): Promise<string | null> {
+  try {
+    return await invoke<string | null>("gaze_focus", { nx, ny, commit, committed });
+  } catch (e) {
+    await logError(`gaze_focus failed: ${String(e)}`);
+    return null;
+  }
+}
+
+/** Subscribe THIS window to gaze-target broadcasts. Returns an unlisten fn. */
+export async function onGazeTarget(cb: (e: GazeTargetEvent) => void): Promise<() => void> {
+  const un = await appWindow.listen<GazeTargetEvent>("gaze-target", (e) => cb(e.payload));
+  return un;
 }
 
 /** Open a single new project window (Cmd/Ctrl+N). Never re-tiles existing ones. */

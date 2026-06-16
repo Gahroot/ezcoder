@@ -1891,6 +1891,30 @@ body {
   object-fit: cover;
 }
 
+/* @-referenced file chips inside a sent user message bubble. */
+.user-files-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.user-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  max-width: 280px;
+}
+.user-file-chip > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Tool-produced images (screenshot / read) in the transcript. */
 .img-grid {
   display: flex;
@@ -1969,6 +1993,72 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── @-mention file picker (reuses .slash-menu chrome) ── */
+.mention-item {
+  align-items: center;
+  gap: 8px;
+}
+.mention-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.mention-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.mention-dir {
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+/* ── Referenced-files chip bar (inline-code styled @path tokens) ── */
+.mention-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 2px 0;
+}
+.mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid;
+  border-radius: var(--radius-button);
+  padding: 2px 4px 2px 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  max-width: 280px;
+}
+.mention-chip-at {
+  flex: 0 0 auto;
+}
+.mention-chip-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mention-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim, #5b6472);
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+  transition: color var(--t-fast);
+}
+.mention-chip-remove:hover {
+  color: var(--text, #f4f6f8);
 }
 
 .inputwrap .prompt {
@@ -2521,4 +2611,62 @@ body {
   top: 0;
   bottom: 0;
   width: 6px;
+}
+
+/* ── Gaze focus (webcam eye/head tracking) ────────────────────────────────
+   A border drawn inside the window edge when the gaze rests on it: a soft
+   amber "looking here" hover, then a solid blue ring once focus is committed
+   after the dwell. Pointer-events:none so it never intercepts clicks.
+
+   The frame is inset a few px and given the OS window corner radius so the
+   rounded window mask doesn't clip the corners off the border. macOS windows
+   round at ~10px; Windows/Linux are square-ish, so the platform classes adjust
+   both the radius and the inset. */
+.gaze-frame {
+  position: fixed;
+  inset: 3px;
+  z-index: 380;
+  pointer-events: none;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  transition:
+    box-shadow var(--t-fast),
+    border-color var(--t-fast);
+}
+.platform-windows .gaze-frame,
+.platform-linux .gaze-frame {
+  inset: 1px;
+  border-radius: 4px;
+}
+.gaze-frame-hover {
+  border-color: color-mix(in oklch, var(--warning) 60%, transparent);
+  box-shadow: inset 0 0 22px -6px color-mix(in oklch, var(--warning) 45%, transparent);
+}
+.gaze-frame-focused {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 30px -6px color-mix(in oklch, var(--primary) 55%, transparent);
+}
+
+/* Small status pill (camera owner window only), bottom-left. */
+.gaze-pill {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 390;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  user-select: none;
+}
+.gaze-pill svg {
+  color: var(--primary);
 }
