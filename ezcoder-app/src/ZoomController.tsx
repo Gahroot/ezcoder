@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 // one window persists and new windows inherit it. A `storage` listener also
 // live-syncs the change into already-open windows.
 
-const STORAGE_KEY = "gg-app:zoom";
+const STORAGE_KEY = "ezcoder-app:zoom";
 const STEP = 0.05; // 5% increments
 const MIN = 0.5; // 50%
 const MAX = 2.0; // 200%

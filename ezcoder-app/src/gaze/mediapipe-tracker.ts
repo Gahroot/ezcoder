@@ -50,10 +50,10 @@ export function createMediaPipeTracker(): GazeTracker {
     kind: "camera",
     async start(onSample: (s: GazeSample) => void): Promise<void> {
       // Tunables — calibrate per machine via localStorage, no rebuild needed.
-      const gainX = num("gg-app:gaze:gainX", 2.4);
-      const gainY = num("gg-app:gaze:gainY", 2.6);
-      const invertX = bool("gg-app:gaze:invertX", true);
-      const invertY = bool("gg-app:gaze:invertY", false);
+      const gainX = num("ezcoder-app:gaze:gainX", 2.4);
+      const gainY = num("ezcoder-app:gaze:gainY", 2.6);
+      const invertX = bool("ezcoder-app:gaze:invertX", true);
+      const invertY = bool("ezcoder-app:gaze:invertY", false);
 
       const fileset = await FilesetResolver.forVisionTasks(WASM_CDN);
       landmarker = await FaceLandmarker.createFromOptions(fileset, {

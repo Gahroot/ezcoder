@@ -7,7 +7,7 @@ import type { GazeSample, GazeTracker } from "./types";
 // window's screen offset with the pointer offset — close enough to drive and
 // debug the focus plumbing.
 //
-// Enable by setting localStorage "gg-app:gaze:tracker" = "mouse".
+// Enable by setting localStorage "ezcoder-app:gaze:tracker" = "mouse".
 export function createMouseTracker(): GazeTracker {
   let handler: ((e: MouseEvent) => void) | null = null;
   return {

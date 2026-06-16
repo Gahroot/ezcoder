@@ -515,7 +515,7 @@ fn app_settings_get() -> serde_json::Value {
 }
 
 /// Native: write ezcoder-app settings directly to ~/.ezcoder/ezcoder-app.json. Creates the
-/// ~/.gg directory if needed. Never needs the sidecar.
+/// ~/.ezcoder directory if needed. Never needs the sidecar.
 #[tauri::command]
 fn app_settings_save(projects_root: String) -> Result<serde_json::Value, String> {
     let trimmed = projects_root.trim();
@@ -559,24 +559,24 @@ fn app_create_project(name: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "path": dir.to_string_lossy() }))
 }
 
-// ── Native provider auth status (~/.gg/auth.json) ─────────────────────────
+// ── Native provider auth status (~/.ezcoder/auth.json) ─────────────────────────
 // The AI-providers list is STATIC metadata and the "connected" badge only needs
-// to read which provider keys exist in ~/.gg/auth.json — neither needs the Node
+// to read which provider keys exist in ~/.ezcoder/auth.json — neither needs the Node
 // agent. Reading it natively means the login hub always renders even when the
 // sidecar is slow/crashed (it used to show a blank list, identical in spirit to
 // the project-folder bug). The login ACTIONS (OAuth flow, key storage, logout)
 // still go through the sidecar — those genuinely need the agent.
 //
-// This list mirrors packages/ggcoder/src/core/auth-providers.ts (AUTH_PROVIDERS).
+// This list mirrors packages/cli/src/core/auth-providers.ts (AUTH_PROVIDERS).
 // Keep the two in sync when adding a provider.
 
-/// Absolute path to ~/.gg/auth.json.
+/// Absolute path to ~/.ezcoder/auth.json.
 fn auth_file_path() -> PathBuf {
-    home_dir().join(".gg").join("auth.json")
+    home_dir().join(".ezcoder").join("auth.json")
 }
 
 /// Native: provider list + live connection status, read directly from
-/// ~/.gg/auth.json. `connected` is true when a credential key is present
+/// ~/.ezcoder/auth.json. `connected` is true when a credential key is present
 /// (moonshot is satisfied by either its OAuth key `moonshot-oauth` or the
 /// `moonshot` API key, mirroring AuthStorage.hasProviderAuth). Never needs the
 /// sidecar.

@@ -8,6 +8,6 @@
       crashes) unless the camera usage description string is present.
     -->
     <key>NSCameraUsageDescription</key>
-    <string>GG Coder uses your camera locally to track which window you're looking at and focus it. Video never leaves your machine.</string>
+    <string>EZ Coder uses your camera locally to track which window you're looking at and focus it. Video never leaves your machine.</string>
 </dict>
 </plist>

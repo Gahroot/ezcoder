@@ -16,14 +16,14 @@ import { isGazeEnabled, onGazeEnabledChange, toggleGazeEnabled } from "./gaze/st
 //
 // Toggle with Cmd/Ctrl+Shift+G. State is shared via localStorage so the choice
 // persists and new windows inherit it. Pick the source with
-// localStorage "gg-app:gaze:tracker" = "camera" (default) | "mouse" (dev).
+// localStorage "ezcoder-app:gaze:tracker" = "camera" (default) | "mouse" (dev).
 
 const isMain = windowLabel === "main";
 
 // The MediaPipe tracker (and its bundled model loader) is lazy-imported so the
 // vision JS never loads until gaze is actually switched on.
 async function makeTracker(): Promise<GazeTracker> {
-  if (localStorage.getItem("gg-app:gaze:tracker") === "mouse") return createMouseTracker();
+  if (localStorage.getItem("ezcoder-app:gaze:tracker") === "mouse") return createMouseTracker();
   const { createMediaPipeTracker } = await import("./gaze/mediapipe-tracker");
   return createMediaPipeTracker();
 }

@@ -8,18 +8,18 @@
   isn't the CLI entry (e.g. the desktop app's sidecar). The subagent tool now
   resolves `dist/cli.js` relative to its own module instead of trusting
   `process.argv[1]`, so sub-agents run and stream NDJSON correctly in every host.
-  - @kenkaiiii/gg-ai@4.11.1
-  - @kenkaiiii/gg-agent@4.11.1
-  - @kenkaiiii/gg-core@4.11.1
+  - @prestyj/ai@4.11.1
+  - @prestyj/agent@4.11.1
+  - @prestyj/core@4.11.1
 
 ## 4.11.0
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-core@4.11.0
-  - @kenkaiiii/gg-ai@4.11.0
-  - @kenkaiiii/gg-agent@4.11.0
+  - @prestyj/core@4.11.0
+  - @prestyj/ai@4.11.0
+  - @prestyj/agent@4.11.0
 
 ## 4.10.2
 

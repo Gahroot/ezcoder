@@ -152,7 +152,7 @@ function isValidProjectName(name: string): boolean {
 }
 
 // ── Chat attachments (images / videos / files dropped into the input) ──────
-// The webview sends base64 payloads; we persist each under .gg/uploads/ so the
+// The webview sends base64 payloads; we persist each under .ezcoder/uploads/ so the
 // agent's tools can open files, then hand media to the model as native blocks.
 interface AppAttachment {
   kind: "image" | "video" | "file";
@@ -252,7 +252,7 @@ async function searchProjectFiles(cwd: string, rawQuery: string): Promise<FileHi
     cwd,
     dot: false,
     onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/.git/**", "**/.gg/**"],
+    ignore: ["**/node_modules/**", "**/.git/**", "**/.ezcoder/**"],
     suppressErrors: true,
     followSymbolicLinks: false,
     stats: true,
@@ -937,7 +937,7 @@ async function main(): Promise<void> {
         json(res, 202, { accepted: true });
         await runAgent(text, async () => {
           if (attachments.length > 0) {
-            // Persist each attachment under .gg/uploads so files are inspectable
+            // Persist each attachment under .ezcoder/uploads so files are inspectable
             // by the agent's tools, then prompt with the media as native blocks.
             const prepared = await prepareAttachments(cwd, attachments);
             await session.promptWithAttachments(text, prepared);

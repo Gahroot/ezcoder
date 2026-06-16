@@ -5,17 +5,17 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/ggcoder@4.11.1
-  - @kenkaiiii/gg-ai@4.11.1
-  - @kenkaiiii/gg-agent@4.11.1
+  - @prestyj/cli@4.11.1
+  - @prestyj/ai@4.11.1
+  - @prestyj/agent@4.11.1
 
 ## 0.7.29
 
 ### Patch Changes
 
-- @kenkaiiii/ggcoder@4.11.0
-- @kenkaiiii/gg-ai@4.11.0
-- @kenkaiiii/gg-agent@4.11.0
+- @prestyj/cli@4.11.0
+- @prestyj/ai@4.11.0
+- @prestyj/agent@4.11.0
 
 ## 0.7.28
 
@@ -542,7 +542,7 @@ Close the six gaps from the last audit: honest Premiere `set_clip_speed`, Resolv
 
 ### User-extensible skills
 
-- New `core/skills-loader.ts` — `discoverSkills({ cwd, homeDir, bundled })` layers `bundled → project (.gg/editor-skills/*.md) → user (~/.ezcoder/editor-skills/*.md)`. Last-wins by name; user overrides project, project overrides bundled.
+- New `core/skills-loader.ts` — `discoverSkills({ cwd, homeDir, bundled })` layers `bundled → project (.ezcoder/editor-skills/*.md) → user (~/.ezcoder/editor-skills/*.md)`. Last-wins by name; user overrides project, project overrides bundled.
 - `read_skill` no longer hard-codes the bundled set — it takes an injected `SkillSource[]`. The tool's enum becomes a string validated at execute time against the active list, so user skills are first-class.
 - System prompt renders the active skill list with `(project)` / `(user)` badges so override layering is visible.
 - README has a new "Custom skills" section.

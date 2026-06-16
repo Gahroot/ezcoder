@@ -58,16 +58,16 @@ export const DEFAULT_GAZE_CONFIG: GazeConfig = {
 
 /** Read the config, applying any per-machine localStorage overrides. Lets a user
  *  trade focus speed for stability without a rebuild:
- *    gg-app:gaze:smoothing | gg-app:gaze:dwellMs | gg-app:gaze:throttleMs */
+ *    ezcoder-app:gaze:smoothing | ezcoder-app:gaze:dwellMs | ezcoder-app:gaze:throttleMs */
 export function loadGazeConfig(): GazeConfig {
   const numOr = (key: string, fallback: number): number => {
     const v = Number(localStorage.getItem(key));
     return Number.isFinite(v) && v > 0 ? v : fallback;
   };
   return {
-    smoothing: numOr("gg-app:gaze:smoothing", DEFAULT_GAZE_CONFIG.smoothing),
-    dwellMs: numOr("gg-app:gaze:dwellMs", DEFAULT_GAZE_CONFIG.dwellMs),
+    smoothing: numOr("ezcoder-app:gaze:smoothing", DEFAULT_GAZE_CONFIG.smoothing),
+    dwellMs: numOr("ezcoder-app:gaze:dwellMs", DEFAULT_GAZE_CONFIG.dwellMs),
     minConfidence: DEFAULT_GAZE_CONFIG.minConfidence,
-    throttleMs: numOr("gg-app:gaze:throttleMs", DEFAULT_GAZE_CONFIG.throttleMs),
+    throttleMs: numOr("ezcoder-app:gaze:throttleMs", DEFAULT_GAZE_CONFIG.throttleMs),
   };
 }

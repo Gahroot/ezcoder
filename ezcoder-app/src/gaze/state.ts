@@ -7,8 +7,8 @@
 //     the window that made the write — only in OTHER windows), and
 //   - the native `storage` event for cross-window sync.
 
-export const GAZE_ENABLED_KEY = "gg-app:gaze:enabled";
-const SAME_WINDOW_EVENT = "gg-app:gaze:toggle";
+export const GAZE_ENABLED_KEY = "ezcoder-app:gaze:enabled";
+const SAME_WINDOW_EVENT = "ezcoder-app:gaze:toggle";
 
 /** Current enabled state from storage. */
 export function isGazeEnabled(): boolean {

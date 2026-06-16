@@ -152,7 +152,7 @@ export function createSubAgentTool(
       }
       cliArgs.push(args.task);
 
-      // Spawn the ggcoder CLI as a child process. We must run the CLI entry
+      // Spawn the ezcoder CLI as a child process. We must run the CLI entry
       // (dist/cli.js, the JSON-mode agent runner), NOT process.argv[1]: in the
       // desktop app the host process is app-sidecar.js, which ignores CLI args
       // and just boots another HTTP server — the sub-agent would then emit no
