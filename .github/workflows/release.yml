@@ -132,14 +132,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS signing + notarization. On non-macOS legs these are empty and
-          # ignored; on macOS, empty secrets mean Tauri produces an unsigned app.
+          # macOS signing + notarization. Only pass these when a certificate is
+          # actually configured: an EMPTY `APPLE_SIGNING_IDENTITY` still makes
+          # Tauri attempt `security import` and fail the bundle, so when the cert
+          # secret is absent we leave every Apple var unset (empty `${{ }}`) and
+          # Tauri produces an unsigned-but-working .app/.dmg.
           # (APPLE_CERTIFICATE is inherited from the job-level env.)
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_TEAM_ID || '' }}
         with:
           projectPath: ezcoder-app
           tagName: ${{ github.ref_name }}
