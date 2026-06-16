@@ -157,21 +157,6 @@ async fn agent_new_session(
     Ok(())
 }
 
-/// Proxy: provider auth status (which providers are connected).
-#[tauri::command]
-async fn agent_auth_status(
-    webview: WebviewWindow,
-    client: State<'_, reqwest::Client>,
-) -> Result<serde_json::Value, String> {
-    let port = port_for(&webview).ok_or("sidecar not ready")?;
-    let res = client
-        .get(format!("{}/auth/status", sidecar_base(port)))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
-}
-
 /// Proxy: store an API key for a provider.
 #[tauri::command]
 async fn agent_auth_apikey(
@@ -773,6 +758,107 @@ fn auth_file_path() -> PathBuf {
     home_dir().join(".gg").join("auth.json")
 }
 
+/// Static metadata for one AI provider in the login hub. Mirrors
+/// packages/ggcoder/src/core/auth-providers.ts (AUTH_PROVIDERS) — keep in sync.
+struct ProviderMeta {
+    /// Storage key in auth.json + the value the webview passes back.
+    value: &'static str,
+    label: &'static str,
+    description: &'static str,
+    /// Supported auth methods, e.g. `["oauth"]`, `["apikey"]`, or both.
+    methods: &'static [&'static str],
+    api_key_label: Option<&'static str>,
+    /// Custom API base URL stored alongside an API-key credential.
+    api_key_base_url: Option<&'static str>,
+}
+
+/// The provider catalog (single source of truth for app_auth_status +
+/// app_auth_apikey). Order is the display order in the login hub.
+const AUTH_PROVIDERS: &[ProviderMeta] = &[
+    ProviderMeta {
+        value: "anthropic",
+        label: "Anthropic",
+        description: "Claude Opus 4.8, Sonnet 4.6, Haiku 4.5",
+        methods: &["oauth"],
+        api_key_label: None,
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "openai",
+        label: "OpenAI",
+        description: "GPT-5.5, GPT-5.5 Pro, GPT-5.4, GPT-5.3 Codex",
+        methods: &["oauth"],
+        api_key_label: None,
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "gemini",
+        label: "Gemini",
+        description: "Gemini 3.1 Flash Lite Preview",
+        methods: &["oauth"],
+        api_key_label: None,
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "moonshot",
+        label: "Moonshot",
+        description: "Kimi K2.7 · OAuth or API key",
+        methods: &["oauth", "apikey"],
+        api_key_label: Some("Moonshot"),
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "glm",
+        label: "Z.AI (GLM)",
+        description: "GLM-5.1, GLM-4.7, GLM-4.7 Flash",
+        methods: &["apikey"],
+        api_key_label: Some("Z.AI"),
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "minimax",
+        label: "MiniMax",
+        description: "MiniMax M3",
+        methods: &["apikey"],
+        api_key_label: Some("MiniMax"),
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "xiaomi",
+        label: "Xiaomi (MiMo)",
+        description: "MiMo-V2-Pro",
+        methods: &["apikey"],
+        api_key_label: Some("Xiaomi MiMo"),
+        api_key_base_url: Some("https://token-plan-sgp.xiaomimimo.com/v1"),
+    },
+    ProviderMeta {
+        value: "deepseek",
+        label: "DeepSeek",
+        description: "DeepSeek V4 Pro, V4 Flash",
+        methods: &["apikey"],
+        api_key_label: Some("DeepSeek"),
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "openrouter",
+        label: "OpenRouter",
+        description: "Qwen3.6-Plus, multi-provider gateway",
+        methods: &["apikey"],
+        api_key_label: Some("OpenRouter"),
+        api_key_base_url: None,
+    },
+];
+
+/// Pure: if `value` is a known provider that supports API-key auth, return
+/// `Some(api_key_base_url)` (the inner Option is the custom base URL, if any).
+/// `None` means the provider is unknown or doesn't support API keys.
+fn provider_apikey_meta(value: &str) -> Option<Option<&'static str>> {
+    AUTH_PROVIDERS
+        .iter()
+        .find(|p| p.value == value && p.methods.contains(&"apikey"))
+        .map(|p| p.api_key_base_url)
+}
+
 /// Native: provider list + live connection status, read directly from
 /// ~/.gg/auth.json. `connected` is true when a credential key is present
 /// (moonshot is satisfied by either its OAuth key `moonshot-oauth` or the
@@ -799,96 +885,20 @@ fn app_auth_status() -> serde_json::Value {
         }
     };
 
-    // (value, label, description, methods, apiKeyLabel?, apiKeyBaseUrl?)
-    let providers: &[(&str, &str, &str, &[&str], Option<&str>, Option<&str>)] = &[
-        (
-            "anthropic",
-            "Anthropic",
-            "Claude Opus 4.8, Sonnet 4.6, Haiku 4.5",
-            &["oauth"],
-            None,
-            None,
-        ),
-        (
-            "openai",
-            "OpenAI",
-            "GPT-5.5, GPT-5.5 Pro, GPT-5.4, GPT-5.3 Codex",
-            &["oauth"],
-            None,
-            None,
-        ),
-        (
-            "gemini",
-            "Gemini",
-            "Gemini 3.1 Flash Lite Preview",
-            &["oauth"],
-            None,
-            None,
-        ),
-        (
-            "moonshot",
-            "Moonshot",
-            "Kimi K2.7 · OAuth or API key",
-            &["oauth", "apikey"],
-            Some("Moonshot"),
-            None,
-        ),
-        (
-            "glm",
-            "Z.AI (GLM)",
-            "GLM-5.1, GLM-4.7, GLM-4.7 Flash",
-            &["apikey"],
-            Some("Z.AI"),
-            None,
-        ),
-        (
-            "minimax",
-            "MiniMax",
-            "MiniMax M3",
-            &["apikey"],
-            Some("MiniMax"),
-            None,
-        ),
-        (
-            "xiaomi",
-            "Xiaomi (MiMo)",
-            "MiMo-V2-Pro",
-            &["apikey"],
-            Some("Xiaomi MiMo"),
-            Some("https://token-plan-sgp.xiaomimimo.com/v1"),
-        ),
-        (
-            "deepseek",
-            "DeepSeek",
-            "DeepSeek V4 Pro, V4 Flash",
-            &["apikey"],
-            Some("DeepSeek"),
-            None,
-        ),
-        (
-            "openrouter",
-            "OpenRouter",
-            "Qwen3.6-Plus, multi-provider gateway",
-            &["apikey"],
-            Some("OpenRouter"),
-            None,
-        ),
-    ];
-
-    let list: Vec<serde_json::Value> = providers
+    let list: Vec<serde_json::Value> = AUTH_PROVIDERS
         .iter()
-        .map(|(value, label, description, methods, api_key_label, api_key_base_url)| {
+        .map(|p| {
             let mut obj = serde_json::json!({
-                "value": value,
-                "label": label,
-                "description": description,
-                "methods": methods,
-                "connected": connected(value),
+                "value": p.value,
+                "label": p.label,
+                "description": p.description,
+                "methods": p.methods,
+                "connected": connected(p.value),
             });
-            if let Some(l) = api_key_label {
+            if let Some(l) = p.api_key_label {
                 obj["apiKeyLabel"] = serde_json::json!(l);
             }
-            if let Some(u) = api_key_base_url {
+            if let Some(u) = p.api_key_base_url {
                 obj["apiKeyBaseUrl"] = serde_json::json!(u);
             }
             obj
@@ -896,6 +906,150 @@ fn app_auth_status() -> serde_json::Value {
         .collect();
 
     serde_json::json!({ "providers": list })
+}
+
+// ── Native API-key auth writes (~/.gg/auth.json) ──────────────────────────
+// Storing/removing an API key is a pure mutation of auth.json — the SAME file
+// app_auth_status reads. Doing it natively (not via the sidecar) means a fresh
+// user can log in even though their not-yet-configured sidecar may not be up:
+// the sidecar used to crash on boot when no provider was configured, so a
+// sidecar-routed key write would hang forever. Mirrors AuthStorage on the Node
+// side (the credential shape + moonshot's dual-key logout).
+
+/// API-key credentials never expire in practice; mirror the sidecar's ~100-year
+/// horizon (365d * 100) so refresh logic never treats them as stale.
+const API_KEY_TTL_MS: i64 = 365 * 24 * 60 * 60 * 1000 * 100;
+
+/// Pure: build the OAuthCredentials JSON object for an API key (matches
+/// AuthStorage's shape: accessToken + empty refreshToken + far-future expiry +
+/// optional baseUrl). `now_ms` is injected for testability.
+fn apikey_credential_json(key: &str, base_url: Option<&str>, now_ms: i64) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "accessToken": key,
+        "refreshToken": "",
+        "expiresAt": now_ms + API_KEY_TTL_MS,
+    });
+    if let Some(url) = base_url {
+        obj["baseUrl"] = serde_json::json!(url);
+    }
+    obj
+}
+
+/// Pure: upsert an API-key credential into the existing auth.json text
+/// (read-modify-write), preserving every other provider's entry. Returns the
+/// new pretty-printed JSON. `existing` is the current file contents (None when
+/// the file is missing). Errors only on a malformed (non-object) existing file.
+fn apply_apikey(
+    existing: Option<&str>,
+    provider: &str,
+    base_url: Option<&str>,
+    now_ms: i64,
+    key: &str,
+) -> Result<String, String> {
+    let mut root = parse_auth_object(existing)?;
+    if let Some(map) = root.as_object_mut() {
+        map.insert(
+            provider.to_string(),
+            apikey_credential_json(key, base_url, now_ms),
+        );
+    }
+    serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
+}
+
+/// Pure: remove a provider's credential from the existing auth.json text.
+/// Moonshot also drops its distinct OAuth key (`moonshot-oauth`) so a single
+/// "disconnect" fully removes Kimi OAuth + the Moonshot API key. Returns the new
+/// pretty-printed JSON (an empty object `{}` when nothing remains / no file).
+fn apply_logout(existing: Option<&str>, provider: &str) -> Result<String, String> {
+    let mut root = parse_auth_object(existing)?;
+    if let Some(map) = root.as_object_mut() {
+        map.remove(provider);
+        if provider == "moonshot" {
+            map.remove("moonshot-oauth");
+        }
+    }
+    serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
+}
+
+/// Parse auth.json text into a JSON object value. Missing file → empty object.
+/// A present-but-malformed/non-object file is an error (refuse to clobber it).
+fn parse_auth_object(existing: Option<&str>) -> Result<serde_json::Value, String> {
+    match existing {
+        None => Ok(serde_json::json!({})),
+        Some(s) if s.trim().is_empty() => Ok(serde_json::json!({})),
+        Some(s) => {
+            let v: serde_json::Value =
+                serde_json::from_str(s).map_err(|e| format!("auth.json is not valid JSON: {e}"))?;
+            if v.is_object() {
+                Ok(v)
+            } else {
+                Err("auth.json is not a JSON object".to_string())
+            }
+        }
+    }
+}
+
+/// Atomically write auth.json (temp file + rename), creating ~/.gg if needed.
+/// On unix the file is mode 0600 (credentials). Mirrors gg-core's atomicWriteFile.
+fn write_auth_file(contents: &str) -> Result<(), String> {
+    let path = auth_file_path();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+    std::fs::write(&tmp, contents).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
+    std::fs::rename(&tmp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })?;
+    Ok(())
+}
+
+/// Native: store an API key for a provider directly in ~/.gg/auth.json. Never
+/// touches the sidecar, so it can't hang on a not-yet-booted agent. Validates
+/// that the provider exists and supports API-key auth, and that the key is
+/// non-empty. Returns `{ ok: true }`.
+#[tauri::command]
+fn app_auth_apikey(provider: String, key: String) -> Result<serde_json::Value, String> {
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("API key is required".to_string());
+    }
+    let base_url = provider_apikey_meta(&provider)
+        .ok_or_else(|| "provider does not support API key auth".to_string())?;
+    let existing = std::fs::read_to_string(auth_file_path()).ok();
+    let now_ms = current_unix_millis();
+    let next = apply_apikey(existing.as_deref(), &provider, base_url, now_ms, key)?;
+    write_auth_file(&next)?;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+/// Native: disconnect a provider (remove its credential from ~/.gg/auth.json).
+/// Moonshot also clears its OAuth key. Never touches the sidecar. Returns
+/// `{ ok: true }`.
+#[tauri::command]
+fn app_auth_logout(provider: String) -> Result<serde_json::Value, String> {
+    let existing = std::fs::read_to_string(auth_file_path()).ok();
+    // Nothing to remove and no file → succeed silently (idempotent).
+    if existing.is_none() {
+        return Ok(serde_json::json!({ "ok": true }));
+    }
+    let next = apply_logout(existing.as_deref(), &provider)?;
+    write_auth_file(&next)?;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+/// Current unix time in milliseconds (wall clock; fine for an expiry stamp).
+fn current_unix_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Proxy: read Telegram config status (configured + masked preview).
@@ -1727,7 +1881,6 @@ pub fn run() {
             agent_accept_plan,
             agent_new_session,
             agent_history,
-            agent_auth_status,
             agent_auth_apikey,
             agent_auth_oauth_start,
             agent_auth_oauth_code,
@@ -1755,6 +1908,8 @@ pub fn run() {
             app_settings_save,
             app_create_project,
             app_auth_status,
+            app_auth_apikey,
+            app_auth_logout,
             agent_telegram_get,
             agent_telegram_save,
             agent_serve_status,
@@ -1946,6 +2101,92 @@ mod tests {
     fn empty_or_missing_workspace_is_default() {
         let ws: Workspace = serde_json::from_str("{}").unwrap();
         assert!(ws.windows.is_empty());
+    }
+
+    #[test]
+    fn provider_apikey_meta_gates_on_apikey_support() {
+        // OAuth-only provider → not an API-key provider.
+        assert!(provider_apikey_meta("anthropic").is_none());
+        // Unknown provider → None.
+        assert!(provider_apikey_meta("nope").is_none());
+        // API-key provider with no custom base URL.
+        assert_eq!(provider_apikey_meta("glm"), Some(None));
+        // Xiaomi carries a custom base URL.
+        assert_eq!(
+            provider_apikey_meta("xiaomi"),
+            Some(Some("https://token-plan-sgp.xiaomimimo.com/v1")),
+        );
+        // Moonshot supports both oauth + apikey.
+        assert_eq!(provider_apikey_meta("moonshot"), Some(None));
+    }
+
+    #[test]
+    fn apikey_credential_has_far_future_expiry_and_optional_base_url() {
+        let now = 1_000_000_000_000i64;
+        let cred = apikey_credential_json("sk-test", None, now);
+        assert_eq!(cred["accessToken"], "sk-test");
+        assert_eq!(cred["refreshToken"], "");
+        assert_eq!(cred["expiresAt"].as_i64().unwrap(), now + API_KEY_TTL_MS);
+        assert!(cred.get("baseUrl").is_none());
+
+        let with_url = apikey_credential_json("k", Some("https://x/v1"), now);
+        assert_eq!(with_url["baseUrl"], "https://x/v1");
+    }
+
+    #[test]
+    fn apply_apikey_creates_file_when_missing() {
+        let out = apply_apikey(None, "glm", None, 0, "sk-1").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["glm"]["accessToken"], "sk-1");
+    }
+
+    #[test]
+    fn apply_apikey_preserves_other_providers() {
+        let existing = r#"{ "anthropic": { "accessToken": "oauth-tok", "refreshToken": "r", "expiresAt": 5 } }"#;
+        let out = apply_apikey(Some(existing), "glm", None, 0, "sk-1").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        // New provider added.
+        assert_eq!(v["glm"]["accessToken"], "sk-1");
+        // Existing provider untouched.
+        assert_eq!(v["anthropic"]["accessToken"], "oauth-tok");
+        assert_eq!(v["anthropic"]["refreshToken"], "r");
+    }
+
+    #[test]
+    fn apply_apikey_carries_base_url() {
+        let out = apply_apikey(None, "xiaomi", Some("https://x/v1"), 0, "sk-2").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["xiaomi"]["baseUrl"], "https://x/v1");
+    }
+
+    #[test]
+    fn apply_apikey_rejects_malformed_file() {
+        assert!(apply_apikey(Some("not json"), "glm", None, 0, "k").is_err());
+        assert!(apply_apikey(Some("[1,2,3]"), "glm", None, 0, "k").is_err());
+    }
+
+    #[test]
+    fn apply_logout_removes_provider() {
+        let existing = r#"{ "glm": { "accessToken": "k", "refreshToken": "", "expiresAt": 1 }, "openai": { "accessToken": "o", "refreshToken": "", "expiresAt": 1 } }"#;
+        let out = apply_logout(Some(existing), "glm").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(v.get("glm").is_none());
+        assert_eq!(v["openai"]["accessToken"], "o");
+    }
+
+    #[test]
+    fn apply_logout_moonshot_drops_both_keys() {
+        let existing = r#"{ "moonshot": { "accessToken": "key", "refreshToken": "", "expiresAt": 1 }, "moonshot-oauth": { "accessToken": "oauth", "refreshToken": "r", "expiresAt": 1 } }"#;
+        let out = apply_logout(Some(existing), "moonshot").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(v.get("moonshot").is_none());
+        assert!(v.get("moonshot-oauth").is_none());
+    }
+
+    #[test]
+    fn apply_logout_missing_file_is_empty_object() {
+        let out = apply_logout(None, "glm").unwrap();
+        assert_eq!(out.trim(), "{}");
     }
 
     #[test]

@@ -249,9 +249,14 @@ export async function authStatus(): Promise<AuthProvider[]> {
   }
 }
 
-/** Store an API key for a provider. Throws with a user-facing message on error. */
+/**
+ * Store an API key for a provider. Handled NATIVELY in Rust (writes ~/.gg/auth.json
+ * directly) so it never depends on the per-window sidecar being up — a fresh
+ * user's sidecar may not have booted yet, and a sidecar round-trip would hang.
+ * Throws with a user-facing message on error.
+ */
 export async function authApiKey(provider: string, key: string): Promise<void> {
-  await invoke("agent_auth_apikey", { provider, key });
+  await invoke("app_auth_apikey", { provider, key });
 }
 
 /** Begin an OAuth login; progress arrives via subscribe() auth_* events. */
@@ -264,9 +269,13 @@ export async function authOAuthCode(code: string): Promise<void> {
   await invoke("agent_auth_oauth_code", { code });
 }
 
-/** Disconnect a provider (clear stored credentials). */
+/**
+ * Disconnect a provider (clear stored credentials). Handled NATIVELY in Rust
+ * (removes the provider from ~/.gg/auth.json; moonshot also clears its OAuth
+ * key) so it never depends on the sidecar.
+ */
 export async function authLogout(provider: string): Promise<void> {
-  await invoke("agent_auth_logout", { provider });
+  await invoke("app_auth_logout", { provider });
 }
 
 /** Start a fresh session (clears history) for this window's current project. */

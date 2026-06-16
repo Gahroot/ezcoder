@@ -30,13 +30,8 @@ import type { OAuthCredentials, OAuthLoginCallbacks } from "./core/oauth/types.j
 import { AUTH_PROVIDERS, type AuthProviderMeta } from "./core/auth-providers.js";
 import { ensureAppDirs, loadSavedSettings } from "./config.js";
 import { SettingsManager, type Settings } from "./core/settings-manager.js";
-import {
-  getDefaultModel,
-  getModel,
-  getMaxThinkingLevel,
-  getContextWindow,
-  MODELS,
-} from "./core/model-registry.js";
+import { getModel, getMaxThinkingLevel, getContextWindow, MODELS } from "./core/model-registry.js";
+import { resolveStartOrFallback } from "./core/resolve-start.js";
 import { getGitBranch, isGitRepo } from "./utils/git.js";
 import {
   getNextThinkingLevel,
@@ -69,11 +64,6 @@ const ALL_PROVIDERS: Provider[] = [
   "deepseek",
   "openrouter",
 ];
-
-interface ResolvedStart {
-  provider: Provider;
-  model: string;
-}
 
 // ── gg-app settings (~/.gg/gg-app.json) ────────────────────
 // App-specific, separate from the shared ggcoder settings file so the desktop
@@ -318,33 +308,6 @@ function detectPromptCommand(
   return null;
 }
 
-/**
- * Pick a provider/model the user is actually logged into, preferring the saved
- * defaults. Mirrors the CLI's resolveActiveProvider without exporting internals.
- */
-async function resolveStart(
-  auth: AuthStorage,
-  preferred: Provider,
-  savedModel: string | undefined,
-): Promise<ResolvedStart> {
-  const loggedIn: Provider[] = [];
-  for (const p of ALL_PROVIDERS) {
-    if (await auth.hasProviderAuth(p)) loggedIn.push(p);
-  }
-  if (loggedIn.length === 0) {
-    throw new Error('Not logged in to any provider. Run "ggcoder login" to authenticate.');
-  }
-  if (loggedIn.includes(preferred)) {
-    const saved = savedModel ? getModel(savedModel) : undefined;
-    return {
-      provider: preferred,
-      model: saved?.provider === preferred ? saved.id : getDefaultModel(preferred).id,
-    };
-  }
-  const provider = loggedIn[0]!;
-  return { provider, model: getDefaultModel(provider).id };
-}
-
 interface SseClient {
   id: number;
   res: http.ServerResponse;
@@ -419,7 +382,21 @@ async function main(): Promise<void> {
 
   const saved = loadSavedSettings(paths.settingsFile);
   const preferred: Provider = saved.provider ?? "anthropic";
-  const { provider, model } = await resolveStart(auth, preferred, saved.model);
+  // Boot-tolerant: when no provider is configured this returns a logged-out
+  // fallback instead of throwing, so the sidecar still listens and the login
+  // endpoints are reachable for a fresh user (throwing here used to kill the
+  // sidecar before server.listen, making first-time login impossible).
+  const { provider, model, loggedIn } = await resolveStartOrFallback(
+    auth,
+    ALL_PROVIDERS,
+    preferred,
+    saved.model,
+  );
+  if (!loggedIn) {
+    log("WARN", "app-sidecar", "no provider configured — booting logged-out for login", {
+      fallbackProvider: provider,
+    });
+  }
 
   const thinkingLevel: ThinkingLevel | undefined = saved.thinkingEnabled
     ? (saved.thinkingLevel ?? getMaxThinkingLevel(model))
