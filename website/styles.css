@@ -167,8 +167,12 @@ h3 {
   font-weight: 700;
   font-size: 1.05rem;
 }
-.nav-brand img {
+.nav-brand .nav-icon {
   border-radius: 7px;
+}
+.nav-brand .nav-wordmark {
+  height: 20px;
+  width: auto;
 }
 .nav-links {
   display: flex;
@@ -219,33 +223,10 @@ h3 {
 }
 
 .ascii-logo {
-  font-family: var(--mono);
-  font-size: clamp(6px, 1.55vw, 15px);
-  line-height: 1.05;
-  white-space: pre;
-  margin: 1.6rem 0 0.4rem;
-  overflow: hidden;
-  background: linear-gradient(
-    100deg,
-    #4d9dff 0%,
-    #6f8ff7 25%,
-    #9b8cf7 50%,
-    #6f8ff7 75%,
-    #4d9dff 100%
-  );
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: ggshimmer 4s linear infinite;
-}
-@keyframes ggshimmer {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 220% 50%;
-  }
+  display: block;
+  width: min(560px, 80vw);
+  height: auto;
+  margin: 1.6rem auto 0.4rem;
 }
 
 .hero-tagline {
