@@ -25,12 +25,17 @@ import {
   type SlashCommand,
   type BackgroundTask,
   type ProjectTask,
+  type FileHit,
+  searchFiles,
 } from "./agent";
 import { ActivityBar, formatTokenCount } from "./ActivityBar";
 import { LiveToolPanel, type LiveToolEntry, LIVE_TOOL_PANEL_ROWS } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
+import { CompactionNotice } from "./CompactionNotice";
 import { ModelMenu } from "./ModelMenu";
 import { SlashMenu } from "./SlashMenu";
+import { FileMentionMenu } from "./FileMentionMenu";
+import { ReferencedFiles, appendReferencedFiles, parseReferencedFiles } from "./ReferencedFiles";
 import { ContextMeter } from "./ContextMeter";
 import { BackgroundTasksButton } from "./BackgroundTasksButton";
 import { TasksModal } from "./TasksModal";
@@ -40,6 +45,8 @@ import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { WindowLayoutButton } from "./WindowLayoutButton";
+// Experimental gaze focus — disabled for now (see main.tsx).
+// import { GazeButton } from "./GazeButton";
 import { RadioButton } from "./RadioButton";
 import { ProjectPicker } from "./ProjectPicker";
 import { BackButton } from "./BackButton";
@@ -50,13 +57,14 @@ import { Markdown } from "./Markdown";
 import { FooterSkeleton, TranscriptSkeleton } from "./Skeleton";
 import { useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
+import { playSound } from "./sounds";
 import {
   segmentDoneMarkers,
   hasDoneMarker,
   countPlanSteps,
   findCompletedSteps,
 } from "./plan-steps";
-import { Paperclip } from "lucide-react";
+import { Paperclip, AtSign } from "lucide-react";
 import { AttachmentBar } from "./AttachmentBar";
 import { fileToPending, toWire, type PendingAttachment } from "./attachments";
 import "./App.css";
@@ -75,6 +83,7 @@ type Item =
       command?: boolean;
       label?: string;
       images?: string[];
+      files?: string[];
     }
   | { kind: "assistant"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
@@ -89,7 +98,16 @@ type Item =
   // A task kicked off from the Tasks modal (shown at the top of its session).
   | { kind: "task"; id: number; title: string }
   // Sub-agents delegated in a turn — a live, in-chat feed of each one's tools.
-  | { kind: "subagent_group"; id: number; agents: SubAgentLine[]; aborted?: boolean };
+  | { kind: "subagent_group"; id: number; agents: SubAgentLine[]; aborted?: boolean }
+  // Context compaction — shimmering "compacting…" while running, then a quiet
+  // "compacted · N → M messages" summary when done.
+  | {
+      kind: "compaction";
+      id: number;
+      status: "running" | "done";
+      originalCount?: number;
+      newCount?: number;
+    };
 
 export interface TranscriptImage {
   /** data: URL (base64) ready to drop into <img src>. */
@@ -232,6 +250,15 @@ function App(): React.ReactElement {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  // `@`-mention file picker state. `mention` is the active token being typed
+  // (its query + where it starts in the input); `fileMatches` is the live
+  // search result; `fileIndex` is the keyboard-highlighted row.
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const [fileMatches, setFileMatches] = useState<FileHit[]>([]);
+  const [fileIndex, setFileIndex] = useState(0);
+  // Files referenced via `@`, tracked as chips (NOT left in the input text).
+  // Their paths are appended to the prompt on submit.
+  const [mentionedPaths, setMentionedPaths] = useState<string[]>([]);
   // Footer extras mirrored from the sidecar: live background tasks and the
   // running context-window usage (input-side tokens of the latest turn).
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
@@ -302,6 +329,9 @@ function App(): React.ReactElement {
   // first subagent spawns). Lets later parallel agents join the same in-chat
   // feed instead of each opening a fresh block.
   const subagentGroupIdRef = useRef<number | null>(null);
+  // Transcript id of the in-flight compaction notice, so compaction_end can
+  // flip the same row from shimmer → summary instead of pushing a new line.
+  const compactionIdRef = useRef<number | null>(null);
   const runStartRef = useRef<number>(0);
   const toolsUsedRef = useRef<Set<string>>(new Set());
   const tokensRef = useRef<number>(0);
@@ -370,7 +400,13 @@ function App(): React.ReactElement {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
+    // Toggle scrolling only when content truly overflows the cap. Otherwise keep
+    // overflow hidden: under CSS zoom > 1, scrollHeight rounds down to an integer
+    // of unzoomed px, leaving the content a hair taller than the set height —
+    // `auto` would then flash a phantom grey scrollbar inside a single-line input.
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
   }, [input]);
 
   // Cmd+N (macOS) / Ctrl+N (Linux/Windows) opens a new project window.
@@ -415,6 +451,24 @@ function App(): React.ReactElement {
       window.removeEventListener("focus", focusInput);
       window.removeEventListener("mouseup", focusInput);
     };
+  }, []);
+
+  // Global UI click sound — plays only when an actual interactive element is
+  // clicked (buttons, links, role=button, options, labels), never bare
+  // background/text. Capture phase so it fires even when a handler stops
+  // propagation; left button only.
+  useEffect(() => {
+    const INTERACTIVE = "button, a, [role='button'], [role='option'], label, summary, select";
+    const onClick = (e: MouseEvent): void => {
+      if (e.button !== 0) return;
+      const target = e.target as Element | null;
+      const el = target?.closest?.(INTERACTIVE);
+      if (!el) return;
+      if (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true") return;
+      playSound("click");
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
   }, []);
 
   // Side effects (nextId, ref mutation) happen outside the updater — updaters
@@ -465,6 +519,7 @@ function App(): React.ReactElement {
           setRunning(true);
           streamingIdRef.current = null;
           subagentGroupIdRef.current = null;
+          compactionIdRef.current = null;
           runStartRef.current = Date.now();
           toolsUsedRef.current = new Set();
           tokensRef.current = 0;
@@ -530,6 +585,7 @@ function App(): React.ReactElement {
               status: "running",
               activities: [],
               toolUseCount: 0,
+              tokenUsage: { input: 0, output: 0 },
             };
             const groupId = subagentGroupIdRef.current;
             if (groupId !== null) {
@@ -554,7 +610,11 @@ function App(): React.ReactElement {
           // currently running). Append distinct activities into its feed.
           const id = String(d.toolCallId ?? "");
           const update = d.update as
-            | { toolUseCount?: number; currentActivity?: string }
+            | {
+                toolUseCount?: number;
+                currentActivity?: string;
+                tokenUsage?: { input: number; output: number };
+              }
             | undefined;
           const groupId = subagentGroupIdRef.current;
           if (!update || groupId === null) break;
@@ -572,6 +632,7 @@ function App(): React.ReactElement {
                   return {
                     ...a,
                     toolUseCount: update.toolUseCount ?? a.toolUseCount,
+                    tokenUsage: update.tokenUsage ?? a.tokenUsage,
                     activities: activities.slice(-12),
                   };
                 }),
@@ -588,7 +649,11 @@ function App(): React.ReactElement {
           // Finalize a sub-agent's in-chat row: flip status + record duration.
           const groupId = subagentGroupIdRef.current;
           if (groupId !== null) {
-            const durationMs = (details as { durationMs?: number } | undefined)?.durationMs;
+            const endDetails = details as
+              | { durationMs?: number; tokenUsage?: { input: number; output: number } }
+              | undefined;
+            const durationMs = endDetails?.durationMs;
+            const finalTokens = endDetails?.tokenUsage;
             setItems((prev) =>
               prev.map((it) => {
                 // Only the active group, and only when the ended tool is actually
@@ -603,6 +668,7 @@ function App(): React.ReactElement {
                           ...a,
                           status: isError ? ("error" as const) : ("done" as const),
                           durationMs: durationMs ?? a.durationMs,
+                          tokenUsage: finalTokens ?? a.tokenUsage,
                         }
                       : a,
                   ),
@@ -672,9 +738,27 @@ function App(): React.ReactElement {
           }
           break;
         }
-        case "compaction_start":
-          pushItem({ kind: "info", id: nextId(), text: "compacting context\u2026" });
+        case "compaction_start": {
+          const id = nextId();
+          compactionIdRef.current = id;
+          streamingIdRef.current = null;
+          pushItem({ kind: "compaction", id, status: "running" });
           break;
+        }
+        case "compaction_end": {
+          const originalCount = typeof d.originalCount === "number" ? d.originalCount : undefined;
+          const newCount = typeof d.newCount === "number" ? d.newCount : undefined;
+          const id = compactionIdRef.current;
+          compactionIdRef.current = null;
+          setItems((prev) =>
+            prev.map((it) =>
+              it.kind === "compaction" && it.id === id
+                ? { ...it, status: "done" as const, originalCount, newCount }
+                : it,
+            ),
+          );
+          break;
+        }
         case "error":
           pushItem({
             kind: "error",
@@ -720,6 +804,7 @@ function App(): React.ReactElement {
             }
             setDoneStatus(parts.join(" \u2022 "));
             setStatus("ready");
+            playSound("done");
             // A run may have created/removed `.ezcoder/commands/*.md` (e.g.
             // /setup-commit writing commit.md). Refresh so the top-right
             // commit button flips /setup-commit → /commit without a restart.
@@ -844,19 +929,26 @@ function App(): React.ReactElement {
         setItems(
           history.map((h): Item => {
             if (h.hook) return { kind: "hook", id: nextId(), hook: h.hook };
+            // A resumed compacted session shows the quiet compaction notice in
+            // place of the raw summary body (counts aren't persisted).
+            if (h.compacted) return { kind: "compaction", id: nextId(), status: "done" };
             if (h.role !== "user") return { kind: h.role, id: nextId(), text: h.text };
             // App-button prompts (e.g. "Initialize Git") were shown live as a
             // friendly shimmer label, not the expanded body. The label is
             // webview-only, so recover it from the restored prompt text. Slash
             // commands are already collapsed to `/name` by the sidecar (h.command).
             const label = !h.command ? recoverPromptLabel(h.text) : null;
+            // Recover @-referenced files appended to the prompt so resumed
+            // sessions show the same file chips (and clean text) as when sent.
+            const parsed = !h.command && label === null ? parseReferencedFiles(h.text) : null;
             return {
               kind: "user",
               id: nextId(),
-              text: h.text,
+              text: parsed ? parsed.text : h.text,
               command: h.command || label !== null,
               ...(label !== null ? { label } : {}),
               images: h.images && h.images.length > 0 ? h.images : undefined,
+              ...(parsed && parsed.files.length > 0 ? { files: parsed.files } : {}),
             };
           }),
         );
@@ -953,6 +1045,11 @@ function App(): React.ReactElement {
   const slashOpen = slashMatches.length > 0;
   // Clamp so a shrinking match list never points past the end.
   const clampedSlashIndex = slashMatches.length > 0 ? slashIndex % slashMatches.length : 0;
+
+  // `@`-mention picker: open whenever a mention token is active and the search
+  // returned at least one file. Clamp the highlighted row to the result count.
+  const mentionOpen = mention !== null && fileMatches.length > 0;
+  const clampedFileIndex = fileMatches.length > 0 ? fileIndex % fileMatches.length : 0;
   // Footer background-tasks indicator only shows while something is actually
   // running (exited tasks shouldn't keep the bar item around).
   const runningTaskCount = tasks.filter((t) => t.exitCode === null).length;
@@ -986,6 +1083,73 @@ function App(): React.ReactElement {
     setSlashIndex(0);
   }
 
+  // Detect an active `@`-mention token at the caret: a `@` that starts at a word
+  // boundary with no whitespace between it and the caret. Returns the query text
+  // after `@` and the `@`'s index, or null when not in a mention.
+  function detectMention(text: string, caret: number): { query: string; start: number } | null {
+    const before = text.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at < 0) return null;
+    // Must start at the line start or after whitespace.
+    const prev = at > 0 ? before[at - 1] : " ";
+    if (prev !== undefined && !/\s/.test(prev)) return null;
+    const query = before.slice(at + 1);
+    // A space ends the token — no mention once the path is followed by a space.
+    if (/\s/.test(query)) return null;
+    return { query, start: at };
+  }
+
+  // Sync the mention picker to the current input + caret on every change.
+  function updateMention(text: string, caret: number): void {
+    setMention(detectMention(text, caret));
+  }
+
+  // Debounced file search whenever the active mention query changes.
+  useEffect(() => {
+    if (mention === null) {
+      setFileMatches([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void searchFiles(mention.query).then((files) => {
+        if (!cancelled) {
+          setFileMatches(files);
+          setFileIndex(0);
+        }
+      });
+    }, 80);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [mention]);
+
+  // Pick a file: drop the typed `@query` from the input, add the file as a chip
+  // (deduped), and restore the caret where the token was. The path lives in chip
+  // state, never in the textarea text.
+  function pickMentionFile(file: FileHit): void {
+    if (mention === null) return;
+    const el = inputRef.current;
+    const caret = el?.selectionStart ?? input.length;
+    const head = input.slice(0, mention.start);
+    const tail = input.slice(caret);
+    const next = head + tail;
+    setInput(next);
+    setMentionedPaths((prev) => (prev.includes(file.path) ? prev : [...prev, file.path]));
+    setMention(null);
+    setFileMatches([]);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(head.length, head.length);
+    });
+  }
+
+  // Drop a referenced-file chip.
+  function removeMentionChip(p: string): void {
+    setMentionedPaths((prev) => prev.filter((x) => x !== p));
+  }
+
   // Submit arbitrary text as if typed + entered. Shared by the input and the
   // top-right commit button. `label` shows a friendly shimmer phrase in the
   // transcript while the full `text` is still sent to the agent.
@@ -1010,15 +1174,27 @@ function App(): React.ReactElement {
   function submit(): void {
     const trimmed = input.trim();
     if (!readyRef.current) return;
-    if (!trimmed && attachments.length === 0) return;
+    if (!trimmed && attachments.length === 0 && mentionedPaths.length === 0) return;
+    // Referenced files are appended to the prompt as a small block so the agent
+    // knows which paths to read; they aren't shown in the user's bubble text.
+    const prompt =
+      mentionedPaths.length > 0 ? appendReferencedFiles(trimmed, mentionedPaths) : trimmed;
     // While a run is in flight, a plain text message is QUEUED as steering (the
     // sidecar injects it mid-loop). Attachments can't be queued — block those.
     if (running) {
       if (attachments.length > 0) return;
-      pushItem({ kind: "user", id: nextId(), text: trimmed, command: isWorkflowCommand(trimmed) });
+      pushItem({
+        kind: "user",
+        id: nextId(),
+        text: trimmed,
+        command: isWorkflowCommand(trimmed),
+        files: mentionedPaths.length > 0 ? mentionedPaths : undefined,
+      });
       setInput("");
       setSlashIndex(0);
-      void sendPrompt(trimmed);
+      setMention(null);
+      setMentionedPaths([]);
+      void sendPrompt(prompt);
       return;
     }
     const wire = attachments.map(toWire);
@@ -1029,12 +1205,15 @@ function App(): React.ReactElement {
       text: trimmed,
       command: isWorkflowCommand(trimmed),
       images: imgPreviews.length > 0 ? imgPreviews : undefined,
+      files: mentionedPaths.length > 0 ? mentionedPaths : undefined,
     });
     setInput("");
     setAttachments([]);
     setSlashIndex(0);
+    setMention(null);
+    setMentionedPaths([]);
     streamingIdRef.current = null;
-    void sendPrompt(trimmed, wire);
+    void sendPrompt(prompt, wire);
   }
 
   // ── Attachment intake (paste / attach button / drag-drop) ──
@@ -1263,6 +1442,7 @@ function App(): React.ReactElement {
                 )
               )}
               <RadioButton />
+              {/* <GazeButton /> */}
               <WindowLayoutButton onArrange={() => setNavHiddenPersisted(true)} />
             </span>
           </div>
@@ -1324,7 +1504,17 @@ function App(): React.ReactElement {
             onHover={setSlashIndex}
           />
         )}
+        {mentionOpen && (
+          <FileMentionMenu
+            files={fileMatches}
+            activeIndex={clampedFileIndex}
+            isRecent={mention?.query === ""}
+            onSelect={pickMentionFile}
+            onHover={setFileIndex}
+          />
+        )}
         <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
+        <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
         {queuedCount > 0 && (
           <div className="queued-bar">
             <span className="queued-dot" />
@@ -1361,7 +1551,7 @@ function App(): React.ReactElement {
             placeholder={
               running
                 ? "Agent is working \u2014 queue a follow-up…"
-                : "Type your message or / to run a command"
+                : "Type your message, / for commands, @ to add files"
             }
             onPaste={(e) => {
               const files = Array.from(e.clipboardData.files);
@@ -1373,9 +1563,31 @@ function App(): React.ReactElement {
             onChange={(e) => {
               setInput(e.target.value);
               setSlashIndex(0);
+              updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
+            }}
+            onClick={(e) => {
+              const el = e.currentTarget;
+              updateMention(el.value, el.selectionStart ?? el.value.length);
+            }}
+            onKeyUp={(e) => {
+              if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                const el = e.currentTarget;
+                updateMention(el.value, el.selectionStart ?? el.value.length);
+              }
             }}
             onKeyDown={(e) => {
-              if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              if (mentionOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                e.preventDefault();
+                const delta = e.key === "ArrowDown" ? 1 : -1;
+                setFileIndex((i) => (i + delta + fileMatches.length) % fileMatches.length);
+              } else if (mentionOpen && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
+                e.preventDefault();
+                const file = fileMatches[clampedFileIndex];
+                if (file) pickMentionFile(file);
+              } else if (mentionOpen && e.key === "Escape") {
+                e.preventDefault();
+                setMention(null);
+              } else if (slashOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
                 e.preventDefault();
                 const delta = e.key === "ArrowDown" ? 1 : -1;
                 setSlashIndex((i) => (i + delta + slashMatches.length) % slashMatches.length);
@@ -1584,6 +1796,16 @@ function TranscriptRow({
             </div>
           )}
           {item.text}
+          {item.files && item.files.length > 0 && (
+            <div className="user-files-row">
+              {item.files.map((p) => (
+                <span key={p} className="user-file-chip" title={p}>
+                  <AtSign size={11} style={{ color: theme.accent }} />
+                  <span style={{ color: theme.code }}>{p}</span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       );
     case "assistant": {
@@ -1679,6 +1901,14 @@ function TranscriptRow({
       );
     case "subagent_group":
       return <SubAgentFeed agents={item.agents} aborted={item.aborted} />;
+    case "compaction":
+      return (
+        <CompactionNotice
+          status={item.status}
+          originalCount={item.originalCount}
+          newCount={item.newCount}
+        />
+      );
     default:
       return null;
   }

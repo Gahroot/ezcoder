@@ -559,6 +559,147 @@ fn app_create_project(name: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "path": dir.to_string_lossy() }))
 }
 
+// ── Native provider auth status (~/.gg/auth.json) ─────────────────────────
+// The AI-providers list is STATIC metadata and the "connected" badge only needs
+// to read which provider keys exist in ~/.gg/auth.json — neither needs the Node
+// agent. Reading it natively means the login hub always renders even when the
+// sidecar is slow/crashed (it used to show a blank list, identical in spirit to
+// the project-folder bug). The login ACTIONS (OAuth flow, key storage, logout)
+// still go through the sidecar — those genuinely need the agent.
+//
+// This list mirrors packages/ggcoder/src/core/auth-providers.ts (AUTH_PROVIDERS).
+// Keep the two in sync when adding a provider.
+
+/// Absolute path to ~/.gg/auth.json.
+fn auth_file_path() -> PathBuf {
+    home_dir().join(".gg").join("auth.json")
+}
+
+/// Native: provider list + live connection status, read directly from
+/// ~/.gg/auth.json. `connected` is true when a credential key is present
+/// (moonshot is satisfied by either its OAuth key `moonshot-oauth` or the
+/// `moonshot` API key, mirroring AuthStorage.hasProviderAuth). Never needs the
+/// sidecar.
+#[tauri::command]
+fn app_auth_status() -> serde_json::Value {
+    // Parse the auth file into a JSON object; missing/invalid → empty (no creds).
+    let creds = std::fs::read_to_string(auth_file_path())
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    let has_key = |key: &str| -> bool {
+        creds
+            .as_ref()
+            .and_then(|v| v.get(key))
+            .map(|v| !v.is_null())
+            .unwrap_or(false)
+    };
+    let connected = |value: &str| -> bool {
+        if value == "moonshot" {
+            has_key("moonshot-oauth") || has_key("moonshot")
+        } else {
+            has_key(value)
+        }
+    };
+
+    // (value, label, description, methods, apiKeyLabel?, apiKeyBaseUrl?)
+    let providers: &[(&str, &str, &str, &[&str], Option<&str>, Option<&str>)] = &[
+        (
+            "anthropic",
+            "Anthropic",
+            "Claude Opus 4.8, Sonnet 4.6, Haiku 4.5",
+            &["oauth"],
+            None,
+            None,
+        ),
+        (
+            "openai",
+            "OpenAI",
+            "GPT-5.5, GPT-5.5 Pro, GPT-5.4, GPT-5.3 Codex",
+            &["oauth"],
+            None,
+            None,
+        ),
+        (
+            "gemini",
+            "Gemini",
+            "Gemini 3.1 Flash Lite Preview",
+            &["oauth"],
+            None,
+            None,
+        ),
+        (
+            "moonshot",
+            "Moonshot",
+            "Kimi K2.7 · OAuth or API key",
+            &["oauth", "apikey"],
+            Some("Moonshot"),
+            None,
+        ),
+        (
+            "glm",
+            "Z.AI (GLM)",
+            "GLM-5.1, GLM-4.7, GLM-4.7 Flash",
+            &["apikey"],
+            Some("Z.AI"),
+            None,
+        ),
+        (
+            "minimax",
+            "MiniMax",
+            "MiniMax M3",
+            &["apikey"],
+            Some("MiniMax"),
+            None,
+        ),
+        (
+            "xiaomi",
+            "Xiaomi (MiMo)",
+            "MiMo-V2-Pro",
+            &["apikey"],
+            Some("Xiaomi MiMo"),
+            Some("https://token-plan-sgp.xiaomimimo.com/v1"),
+        ),
+        (
+            "deepseek",
+            "DeepSeek",
+            "DeepSeek V4 Pro, V4 Flash",
+            &["apikey"],
+            Some("DeepSeek"),
+            None,
+        ),
+        (
+            "openrouter",
+            "OpenRouter",
+            "Qwen3.6-Plus, multi-provider gateway",
+            &["apikey"],
+            Some("OpenRouter"),
+            None,
+        ),
+    ];
+
+    let list: Vec<serde_json::Value> = providers
+        .iter()
+        .map(|(value, label, description, methods, api_key_label, api_key_base_url)| {
+            let mut obj = serde_json::json!({
+                "value": value,
+                "label": label,
+                "description": description,
+                "methods": methods,
+                "connected": connected(value),
+            });
+            if let Some(l) = api_key_label {
+                obj["apiKeyLabel"] = serde_json::json!(l);
+            }
+            if let Some(u) = api_key_base_url {
+                obj["apiKeyBaseUrl"] = serde_json::json!(u);
+            }
+            obj
+        })
+        .collect();
+
+    serde_json::json!({ "providers": list })
+}
+
 /// Proxy: read Telegram config status (configured + masked preview).
 #[tauri::command]
 async fn agent_telegram_get(
@@ -724,6 +865,24 @@ async fn agent_sessions(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Proxy: search project files for the chat input's `@` picker. Empty `query`
+/// returns the most-recently-modified files; a query returns fuzzy matches.
+#[tauri::command]
+async fn agent_files(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    query: String,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let encoded = urlencoding(&query);
+    let res = client
+        .get(format!("{}/files?q={}", sidecar_base(port), encoded))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Minimal percent-encoding for a filesystem path in a query string.
 fn urlencoding(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -856,6 +1015,77 @@ fn select_project(
     }
     spawn_sidecar_with_session(app, label, PathBuf::from(cwd), session_path);
     Ok(())
+}
+
+/// Map a normalized gaze point to a window and (optionally) focus it.
+///
+/// The webview can't see other windows' screen rectangles, so the gaze tracker
+/// (which only knows a normalized point across the primary monitor) hands the
+/// point to Rust. We convert it to physical coordinates using the primary
+/// monitor work area, hit-test every open window's outer rect, then:
+///   - emit `gaze-target { target, committed }` to ALL windows so each paints
+///     its own border: the `committed` (currently focused) window holds a solid
+///     ring, the `target` window a soft "dwelling here" highlight, and
+///   - call `set_focus()` on the hit window only when `commit` is true (after
+///     the controller's dwell), so a glance never steals keyboard focus.
+///
+/// `committed` is the controller's currently-focused window label, passed every
+/// frame so the focused border PERSISTS rather than flashing for one frame.
+///
+/// Returns the hit window's label (or null when the point lands on no window).
+#[tauri::command]
+fn gaze_focus(
+    app: tauri::AppHandle,
+    nx: f64,
+    ny: f64,
+    commit: bool,
+    committed: Option<String>,
+) -> Result<Option<String>, String> {
+    let windows = app.webview_windows();
+    let Some(any) = windows.values().next() else {
+        return Ok(None);
+    };
+    let Some(monitor) = any.primary_monitor().ok().flatten() else {
+        return Ok(None);
+    };
+    let area = monitor.work_area();
+    let nx = nx.clamp(0.0, 1.0);
+    let ny = ny.clamp(0.0, 1.0);
+    let px = area.position.x as f64 + nx * area.size.width as f64;
+    let py = area.position.y as f64 + ny * area.size.height as f64;
+
+    // Hit-test: first window whose outer rect contains the point.
+    let mut target: Option<String> = None;
+    for (label, win) in windows.iter() {
+        let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else {
+            continue;
+        };
+        let x0 = pos.x as f64;
+        let y0 = pos.y as f64;
+        let x1 = x0 + size.width as f64;
+        let y1 = y0 + size.height as f64;
+        if px >= x0 && px < x1 && py >= y0 && py < y1 {
+            target = Some(label.clone());
+            break;
+        }
+    }
+
+    // Broadcast both labels to every window; each computes its own border style.
+    for (label, win) in windows.iter() {
+        let _ = app.emit_to(
+            EventTarget::webview_window(label.clone()),
+            "gaze-target",
+            serde_json::json!({ "target": target, "committed": committed }),
+        );
+        if commit {
+            if let Some(t) = &target {
+                if t == label {
+                    let _ = win.set_focus();
+                }
+            }
+        }
+    }
+    Ok(target)
 }
 
 /// Allocate a unique `project-N` window label.
@@ -1251,17 +1481,20 @@ pub fn run() {
             select_project,
             agent_projects,
             agent_sessions,
+            agent_files,
             agent_settings,
             agent_save_settings,
             agent_create_project,
             app_settings_get,
             app_settings_save,
             app_create_project,
+            app_auth_status,
             agent_telegram_get,
             agent_telegram_save,
             agent_serve_status,
             agent_serve_start,
-            agent_serve_stop
+            agent_serve_stop,
+            gaze_focus
         ])
         .setup(|app| {
             // Build the main window in code (not from config) so macOS gets

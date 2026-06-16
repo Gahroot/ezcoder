@@ -187,6 +187,9 @@ export interface HistoryEntry {
   /** True when `text` is a recovered `/name [args]` command invocation, so the
    *  webview renders the short command chip instead of the expanded body. */
   command?: boolean;
+  /** True when this user message is a post-compaction summary marker, so the
+   *  webview renders the quiet compaction notice instead of the summary body. */
+  compacted?: boolean;
 }
 
 /** Fetch the resumed session's prior messages so the transcript can hydrate. */
@@ -214,13 +217,20 @@ export interface AuthProvider {
   connected: boolean;
 }
 
-/** List providers with their supported auth methods + live connection status. */
+/**
+ * List providers with their supported auth methods + live connection status.
+ *
+ * Handled NATIVELY in Rust (static list + reads ~/.gg/auth.json directly) so the
+ * login hub always renders even when the Node sidecar is slow/crashed — it used
+ * to show a blank list, the same failure mode as the project-folder bug. The
+ * login ACTIONS (OAuth, key save, logout) still go through the sidecar.
+ */
 export async function authStatus(): Promise<AuthProvider[]> {
   try {
-    const res = await invoke<{ providers: AuthProvider[] }>("agent_auth_status");
+    const res = await invoke<{ providers: AuthProvider[] }>("app_auth_status");
     return res.providers ?? [];
   } catch (e) {
-    await logError(`agent_auth_status failed: ${String(e)}`);
+    await logError(`app_auth_status failed: ${String(e)}`);
     return [];
   }
 }
@@ -397,6 +407,29 @@ export async function listProjects(): Promise<DiscoveredProject[]> {
   }
 }
 
+/** A project file surfaced in the chat input's `@` picker. */
+export interface FileHit {
+  /** Project-relative POSIX path, e.g. "src/App.tsx". */
+  path: string;
+  /** File name only, e.g. "App.tsx". */
+  name: string;
+}
+
+/**
+ * Search the current project's files for the `@` mention picker. An empty
+ * `query` returns the most-recently-modified files; a query returns fuzzy
+ * matches. Honors .gitignore and skips node_modules/.git. Capped sidecar-side.
+ */
+export async function searchFiles(query: string): Promise<FileHit[]> {
+  try {
+    const res = await invoke<{ files: FileHit[] }>("agent_files", { query });
+    return res.files ?? [];
+  } catch (e) {
+    await logError(`agent_files failed: ${String(e)}`);
+    return [];
+  }
+}
+
 /** List the latest sessions for a project cwd (newest first, with previews). */
 export async function listSessions(cwd: string): Promise<RecentSession[]> {
   try {
@@ -428,6 +461,40 @@ export async function setupWindows(count: number): Promise<void> {
     await logError(`setup_windows failed: ${String(e)}`);
     throw e;
   }
+}
+
+// ── Gaze focus (webcam eye/head tracking → window focus) ───────────
+
+/** Payload of the `gaze-target` event broadcast to every window. `target` is the
+ *  window the gaze currently rests on (null off any window); `committed` is the
+ *  window that currently holds focus. Each window paints a solid ring when it's
+ *  `committed`, a soft highlight when it's the (un-committed) `target`. */
+export interface GazeTargetEvent {
+  target: string | null;
+  committed: string | null;
+}
+
+/** Map a normalized monitor point to a window. With `commit`, commit OS focus to
+ *  the hit window. `committed` is the currently-focused window so the broadcast
+ *  border persists. Always broadcasts `gaze-target`. Returns the hit label. */
+export async function gazeFocus(
+  nx: number,
+  ny: number,
+  commit: boolean,
+  committed: string | null,
+): Promise<string | null> {
+  try {
+    return await invoke<string | null>("gaze_focus", { nx, ny, commit, committed });
+  } catch (e) {
+    await logError(`gaze_focus failed: ${String(e)}`);
+    return null;
+  }
+}
+
+/** Subscribe THIS window to gaze-target broadcasts. Returns an unlisten fn. */
+export async function onGazeTarget(cb: (e: GazeTargetEvent) => void): Promise<() => void> {
+  const un = await appWindow.listen<GazeTargetEvent>("gaze-target", (e) => cb(e.payload));
+  return un;
 }
 
 /** Open a single new project window (Cmd/Ctrl+N). Never re-tiles existing ones. */
