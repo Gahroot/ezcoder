@@ -161,6 +161,20 @@ function applyOS() {
   }
 }
 
+// Wire the hero's primary button to a direct installer download for the
+// visitor's detected OS. If there's no matching asset, leave it as the
+// in-page #download anchor (which reveals the per-platform cards).
+function wireHeroDownload(assetsByOS) {
+  const btn = document.querySelector("[data-primary-download]");
+  if (!btn) return;
+  const asset = assetsByOS[detectOS()];
+  if (!asset) return; // keep href="#download" fallback for Linux/unknown/missing
+  btn.href = asset.browser_download_url;
+  btn.setAttribute("download", asset.name);
+  btn.removeAttribute("target");
+  btn.removeAttribute("rel");
+}
+
 // ── Live release wiring ────────────────────────────────────
 function pickAsset(assets, exts) {
   for (const ext of exts) {
@@ -193,6 +207,12 @@ async function wireDownloads() {
       tag,
       win && win.name.endsWith(".msi") ? "Download .msi" : "Download .exe",
     );
+
+    // Point the hero's big button straight at the visitor's own installer so one
+    // click downloads it — no scroll-to-cards detour. Falls back to the #download
+    // anchor when we have no asset for their platform (Linux, or a build that's
+    // still publishing).
+    wireHeroDownload({ mac, windows: win });
 
     if (status) {
       status.textContent = tag
