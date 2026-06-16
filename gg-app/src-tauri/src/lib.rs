@@ -2,23 +2,49 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use futures_util::StreamExt;
-use tauri::{Emitter, EventTarget, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Emitter, EventTarget, Manager, RunEvent, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// One Node agent sidecar, owned by a single window. Each window runs its own
-/// agent against its own project cwd, so windows never share state.
+/// agent against its own project cwd, so windows never share state. `cwd` and
+/// `session_path` mirror what the window's sidecar was spawned with, so the
+/// workspace snapshot (restore-on-restart) can be written from this map alone.
 #[derive(Default)]
 struct SidecarInstance {
     child: Option<Child>,
     port: Option<u16>,
+    cwd: Option<PathBuf>,
+    session_path: Option<String>,
 }
 
 /// Per-window sidecar registry, keyed by window label.
 #[derive(Default)]
 struct Sidecars {
     map: Mutex<HashMap<String, SidecarInstance>>,
+}
+
+/// True once the app has begun quitting. Set on `ExitRequested` so the cascade
+/// of per-window `Destroyed` events during shutdown does NOT prune the workspace
+/// snapshot — the last full snapshot is what we restore next launch.
+#[derive(Default)]
+struct AppExiting(AtomicBool);
+
+/// One restored window's target (cwd + optional session), handed to the webview
+/// once via `window_restore_target` so it skips the project picker on boot.
+#[derive(Clone, serde::Serialize)]
+struct RestoreEntry {
+    cwd: String,
+    #[serde(rename = "sessionPath")]
+    session_path: Option<String>,
+}
+
+/// Pending per-window restore targets, consumed once by the webview on mount.
+#[derive(Default)]
+struct RestoreTargets {
+    map: Mutex<HashMap<String, RestoreEntry>>,
 }
 
 fn sidecar_base(port: u16) -> String {
@@ -333,6 +359,25 @@ async fn agent_delete_task(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Proxy: accept the pending plan — bakes its `## Steps` into the system prompt
+/// so the agent emits `[DONE:n]` progress markers while implementing. Call
+/// before sending the "implement it now" prompt.
+#[tauri::command]
+async fn agent_accept_plan(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    plan_path: Option<String>,
+) -> Result<(), String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    client
+        .post(format!("{}/plan/accept", sidecar_base(port)))
+        .json(&serde_json::json!({ "planPath": plan_path }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Proxy: cancel the in-flight run.
 #[tauri::command]
 async fn agent_cancel(
@@ -557,6 +602,159 @@ fn app_create_project(name: String) -> Result<serde_json::Value, String> {
     }
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({ "path": dir.to_string_lossy() }))
+}
+
+// ── Workspace snapshot (~/.gg/gg-app-workspace.json) ──────────────────────
+// Records which project/session is open in each window (plus geometry) so a
+// restart — especially the updater's relaunch() — can reopen every window where
+// it left off instead of dropping back to a single picker window. Owned by Rust
+// (same pattern as gg-app.json), written on project-select / window-close /
+// app-exit, replayed in `setup`.
+
+/// One saved window: the project cwd, an optional session file to resume, and
+/// optional last-known geometry (physical pixels).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+struct WorkspaceEntry {
+    cwd: String,
+    #[serde(rename = "sessionPath", default, skip_serializing_if = "Option::is_none")]
+    session_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    x: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    y: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    height: Option<u32>,
+}
+
+/// The whole snapshot: an ordered list of open windows (main first).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+struct Workspace {
+    #[serde(default)]
+    windows: Vec<WorkspaceEntry>,
+}
+
+/// Absolute path to ~/.gg/gg-app-workspace.json.
+fn app_workspace_path() -> PathBuf {
+    home_dir().join(".gg").join("gg-app-workspace.json")
+}
+
+/// Read the workspace snapshot; missing/invalid file → an empty workspace.
+fn read_workspace() -> Workspace {
+    std::fs::read_to_string(app_workspace_path())
+        .ok()
+        .and_then(|s| serde_json::from_str::<Workspace>(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Write the workspace snapshot (creating ~/.gg if needed). Best-effort.
+fn write_workspace(ws: &Workspace) {
+    let path = app_workspace_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(pretty) = serde_json::to_string_pretty(ws) {
+        let _ = std::fs::write(&path, pretty);
+    }
+}
+
+/// Pure: is this window worth snapshotting? A window still sitting on the picker
+/// has no project chosen (its cwd is None or equals the default boot cwd) and
+/// must be excluded so it doesn't restore as an empty home window.
+fn keep_for_snapshot(cwd: Option<&Path>, default_cwd: &Path) -> bool {
+    match cwd {
+        Some(c) => c != default_cwd,
+        None => false,
+    }
+}
+
+/// Pure: drop restore entries that can't be opened (empty cwd, or a cwd that no
+/// longer exists). `exists` is injected so this is testable without the fs.
+fn filter_restorable<F: Fn(&str) -> bool>(
+    windows: Vec<WorkspaceEntry>,
+    exists: F,
+) -> Vec<WorkspaceEntry> {
+    windows
+        .into_iter()
+        .filter(|w| !w.cwd.trim().is_empty() && exists(&w.cwd))
+        .collect()
+}
+
+/// Walk every live window + its `Sidecars` entry and write a fresh snapshot.
+/// Picker-only windows (still at the default boot cwd) are excluded. Geometry is
+/// captured from each window's current outer position + inner size.
+fn snapshot_workspace(app: &tauri::AppHandle) {
+    let default = default_cwd();
+    let windows = app.webview_windows();
+    let state: State<Sidecars> = app.state();
+    let map = state.map.lock().unwrap();
+
+    // Deterministic order: main first, then project-N ascending, so the first
+    // restored window reclaims the `main` label.
+    let mut labels: Vec<String> = windows.keys().cloned().collect();
+    labels.sort_by_key(|a| label_rank(a));
+
+    let mut entries: Vec<WorkspaceEntry> = Vec::new();
+    for label in &labels {
+        let Some(inst) = map.get(label) else { continue };
+        let cwd = inst.cwd.as_deref();
+        if !keep_for_snapshot(cwd, &default) {
+            continue;
+        }
+        let cwd = cwd.unwrap().to_string_lossy().to_string();
+        let (mut x, mut y, mut width, mut height) = (None, None, None, None);
+        if let Some(win) = windows.get(label) {
+            if let Ok(pos) = win.outer_position() {
+                x = Some(pos.x);
+                y = Some(pos.y);
+            }
+            if let Ok(size) = win.inner_size() {
+                width = Some(size.width);
+                height = Some(size.height);
+            }
+        }
+        entries.push(WorkspaceEntry {
+            cwd,
+            session_path: inst.session_path.clone(),
+            x,
+            y,
+            width,
+            height,
+        });
+    }
+    drop(map);
+    write_workspace(&Workspace { windows: entries });
+}
+
+/// Remove one window's entry from the snapshot (deliberate user close). Keyed by
+/// the window's recorded cwd, since the snapshot has no labels.
+fn remove_window_from_workspace(app: &tauri::AppHandle, label: &str) {
+    let cwd = {
+        let state: State<Sidecars> = app.state();
+        let map = state.map.lock().unwrap();
+        map.get(label)
+            .and_then(|i| i.cwd.as_ref())
+            .map(|c| c.to_string_lossy().to_string())
+    };
+    let Some(cwd) = cwd else { return };
+    let mut ws = read_workspace();
+    // Remove a SINGLE matching entry (not retain-by-cwd): two windows can have
+    // the same project open, and closing one must not prune the other's restore.
+    if let Some(idx) = ws.windows.iter().position(|w| w.cwd == cwd) {
+        ws.windows.remove(idx);
+        write_workspace(&ws);
+    }
+}
+
+/// Consume-once: hand the calling window its restore target (cwd + session) so
+/// the webview skips the picker on boot. Returns null for a normal (non-restored)
+/// window. The entry is removed after the first read.
+#[tauri::command]
+fn window_restore_target(webview: WebviewWindow) -> Option<RestoreEntry> {
+    let state: State<RestoreTargets> = webview.state();
+    let mut map = state.map.lock().unwrap();
+    map.remove(webview.label())
 }
 
 // ── Native provider auth status (~/.gg/auth.json) ─────────────────────────
@@ -1013,7 +1211,10 @@ fn select_project(
             }
         }
     }
-    spawn_sidecar_with_session(app, label, PathBuf::from(cwd), session_path);
+    spawn_sidecar_with_session(app.clone(), label, PathBuf::from(cwd), session_path);
+    // The map now reflects this window's new project/session; persist the
+    // workspace so a restart reopens it here.
+    snapshot_workspace(&app);
     Ok(())
 }
 
@@ -1364,7 +1565,7 @@ fn spawn_sidecar_with_session(
         .env("GG_APP_CWD", &cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if let Some(sp) = session_path {
+    if let Some(sp) = &session_path {
         cmd.env("GG_APP_SESSION_ID", sp);
     }
 
@@ -1429,7 +1630,69 @@ fn spawn_sidecar_with_session(
 
     let state: State<Sidecars> = app.state();
     let mut map = state.map.lock().unwrap();
-    map.entry(label).or_default().child = Some(child);
+    let inst = map.entry(label).or_default();
+    inst.child = Some(child);
+    inst.cwd = Some(cwd);
+    inst.session_path = session_path;
+}
+
+/// Boot the app's windows. If a workspace snapshot has restorable windows (each
+/// with a cwd that still exists on disk), reopen one window per entry — pointed
+/// at its project + session, with saved geometry — and record a per-window
+/// restore target so the webview skips the picker. Otherwise fall back to the
+/// single default `main` window at the boot cwd (the picker then shows).
+fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
+    let ws = read_workspace();
+    let entries = filter_restorable(ws.windows, |c| Path::new(c).exists());
+    if entries.is_empty() {
+        // Fresh boot / nothing to restore: the usual single main window.
+        build_app_window(app, "main")?;
+        spawn_sidecar(app.clone(), "main".into(), default_cwd());
+        return Ok(());
+    }
+
+    let count = entries.len();
+    let mut any_geometry = false;
+    for (i, entry) in entries.into_iter().enumerate() {
+        // First restored window reclaims `main`; the rest get project-N.
+        let label = if i == 0 {
+            "main".to_string()
+        } else {
+            format!("project-{i}")
+        };
+        let win = build_app_window(app, &label)?;
+        spawn_sidecar_with_session(
+            app.clone(),
+            label.clone(),
+            PathBuf::from(&entry.cwd),
+            entry.session_path.clone(),
+        );
+        // Tell this window which project/session it was restored to, so it skips
+        // the picker and hydrates straight away.
+        {
+            let state: State<RestoreTargets> = app.state();
+            state.map.lock().unwrap().insert(
+                label,
+                RestoreEntry {
+                    cwd: entry.cwd.clone(),
+                    session_path: entry.session_path.clone(),
+                },
+            );
+        }
+        // Apply saved geometry when present; else we tile after the loop.
+        if let (Some(x), Some(y)) = (entry.x, entry.y) {
+            any_geometry = true;
+            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+        if let (Some(w), Some(h)) = (entry.width, entry.height) {
+            any_geometry = true;
+            let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+        }
+    }
+    if !any_geometry {
+        arrange_windows(app, count);
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1453,12 +1716,15 @@ pub fn run() {
                 .build(),
         )
         .manage(Sidecars::default())
+        .manage(RestoreTargets::default())
+        .manage(AppExiting::default())
         .manage(reqwest::Client::new())
         .invoke_handler(tauri::generate_handler![
             sidecar_port,
             agent_state,
             agent_prompt,
             agent_cancel,
+            agent_accept_plan,
             agent_new_session,
             agent_history,
             agent_auth_status,
@@ -1494,21 +1760,27 @@ pub fn run() {
             agent_serve_status,
             agent_serve_start,
             agent_serve_stop,
-            gaze_focus
+            gaze_focus,
+            window_restore_target
         ])
         .setup(|app| {
-            // Build the main window in code (not from config) so macOS gets
-            // `hidden_title(true)` via the builder — there's no runtime setter,
-            // and without it the native "GG Coder" title would linger alongside
-            // the in-app title. `build_app_window` applies the same chrome as
-            // secondary windows.
-            build_app_window(&app.handle().clone(), "main")?;
-            // The main window gets its sidecar at the default cwd.
-            spawn_sidecar(app.handle().clone(), "main".into(), default_cwd());
+            // Restore the previous session's windows (each at its project +
+            // session) when a workspace snapshot exists; otherwise build the
+            // single default `main` window. Windows are built in code (not from
+            // config) so macOS gets `hidden_title(true)` via the builder.
+            restore_or_default_windows(&app.handle().clone())?;
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
+                let app = window.app_handle();
+                // A deliberate close (app NOT quitting) drops this window from the
+                // workspace so it doesn't reopen next launch. During quit the
+                // AppExiting flag is set, so the snapshot is preserved intact.
+                let exiting = app.state::<AppExiting>().0.load(Ordering::SeqCst);
+                if !exiting {
+                    remove_window_from_workspace(app, window.label());
+                }
                 // Kill only THIS window's sidecar so other projects keep running.
                 let state: State<Sidecars> = window.state();
                 let child = state
@@ -1522,13 +1794,159 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                // Mark the quit BEFORE windows start tearing down, so the
+                // Destroyed handlers preserve the snapshot, then write the final
+                // snapshot (current geometry + each window's live cwd/session).
+                app.state::<AppExiting>().0.store(true, Ordering::SeqCst);
+                refresh_live_sessions(app);
+                snapshot_workspace(app);
+            }
+        });
+}
+
+/// Before the final exit snapshot, re-read each live sidecar's `/state` so a
+/// window that started a new session mid-run (changing its session file) is
+/// recorded at its CURRENT session, not the one it was spawned with. Best-effort
+/// + time-boxed: any window we can't reach keeps its last-known session_path.
+fn refresh_live_sessions(app: &tauri::AppHandle) {
+    let ports: Vec<(String, u16)> = {
+        let state: State<Sidecars> = app.state();
+        let map = state.map.lock().unwrap();
+        map.iter()
+            .filter_map(|(label, inst)| inst.port.map(|p| (label.clone(), p)))
+            .collect()
+    };
+    if ports.is_empty() {
+        return;
+    }
+    let client = app.state::<reqwest::Client>().inner().clone();
+    // The exit callback runs on the main event-loop thread (outside the async
+    // runtime), so block_on is safe here. Each request is time-boxed so a hung
+    // sidecar can't stall quit.
+    let results: Vec<(String, Option<String>, Option<PathBuf>)> =
+        tauri::async_runtime::block_on(async {
+            let mut out = Vec::with_capacity(ports.len());
+            for (label, port) in ports {
+                let url = format!("{}/state", sidecar_base(port));
+                let req = client
+                    .get(&url)
+                    .timeout(std::time::Duration::from_millis(400))
+                    .send()
+                    .await;
+                let Ok(res) = req else {
+                    continue;
+                };
+                let Ok(body) = res.json::<serde_json::Value>().await else {
+                    continue;
+                };
+                let session_path = body
+                    .get("sessionPath")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                let cwd = body
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from);
+                out.push((label, session_path, cwd));
+            }
+            out
+        });
+    let state: State<Sidecars> = app.state();
+    let mut map = state.map.lock().unwrap();
+    for (label, session_path, cwd) in results {
+        if let Some(inst) = map.get_mut(&label) {
+            if session_path.is_some() {
+                inst.session_path = session_path;
+            }
+            if let Some(cwd) = cwd {
+                inst.cwd = Some(cwd);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keep_for_snapshot_excludes_picker_windows() {
+        let default = Path::new("/home/user");
+        // No project chosen yet → excluded.
+        assert!(!keep_for_snapshot(None, default));
+        // Still on the default boot cwd (picker) → excluded.
+        assert!(!keep_for_snapshot(Some(Path::new("/home/user")), default));
+        // A real project → kept.
+        assert!(keep_for_snapshot(Some(Path::new("/home/user/proj")), default));
+    }
+
+    #[test]
+    fn filter_restorable_drops_missing_and_empty() {
+        let windows = vec![
+            WorkspaceEntry {
+                cwd: "/exists/a".into(),
+                ..Default::default()
+            },
+            WorkspaceEntry {
+                cwd: "   ".into(),
+                ..Default::default()
+            },
+            WorkspaceEntry {
+                cwd: "/gone/b".into(),
+                ..Default::default()
+            },
+        ];
+        let kept = filter_restorable(windows, |c| c == "/exists/a");
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].cwd, "/exists/a");
+    }
+
+    #[test]
+    fn workspace_roundtrips_through_json() {
+        let ws = Workspace {
+            windows: vec![
+                WorkspaceEntry {
+                    cwd: "/p/a".into(),
+                    session_path: Some("/s/a.jsonl".into()),
+                    x: Some(0),
+                    y: Some(25),
+                    width: Some(1280),
+                    height: Some(800),
+                },
+                WorkspaceEntry {
+                    cwd: "/p/b".into(),
+                    ..Default::default()
+                },
+            ],
+        };
+        let json = serde_json::to_string(&ws).unwrap();
+        let back: Workspace = serde_json::from_str(&json).unwrap();
+        assert_eq!(ws, back);
+        // The second entry omits optional fields entirely (skip_serializing_if).
+        assert!(!json.contains("\"sessionPath\":null"));
+    }
+
+    #[test]
+    fn workspace_parses_minimal_entry() {
+        // Forward/backward compat: a bare { cwd } entry still loads.
+        let ws: Workspace =
+            serde_json::from_str(r#"{ "windows": [{ "cwd": "/p/a" }] }"#).unwrap();
+        assert_eq!(ws.windows.len(), 1);
+        assert_eq!(ws.windows[0].cwd, "/p/a");
+        assert_eq!(ws.windows[0].session_path, None);
+    }
+
+    #[test]
+    fn empty_or_missing_workspace_is_default() {
+        let ws: Workspace = serde_json::from_str("{}").unwrap();
+        assert!(ws.windows.is_empty());
+    }
 
     #[test]
     fn pick_node_env_override_wins() {

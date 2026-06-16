@@ -16,6 +16,8 @@ import {
   runAllTasks,
   deleteTask,
   newWindow,
+  restoreTarget,
+  acceptPlan as acceptPlanIPC,
   subscribe,
   isSecondaryWindow,
   setWindowTitle,
@@ -240,6 +242,10 @@ function App(): React.ReactElement {
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   // Pending plan awaiting review (the markdown). Non-null opens the review modal.
   const [planReview, setPlanReview] = useState<string | null>(null);
+  // Path of the plan awaiting review, captured from `plan_exit`. Needed on accept
+  // to bake the plan's `## Steps` into the agent's system prompt so it emits
+  // `[DONE:n]` progress markers (drives the activity bar's Plan Steps widget).
+  const planReviewPathRef = useRef<string | null>(null);
   // Approved-plan progress for the activity bar: total steps + completed set.
   const [planTotal, setPlanTotal] = useState(0);
   const [planDone, setPlanDone] = useState<Set<number>>(new Set());
@@ -270,6 +276,10 @@ function App(): React.ReactElement {
   // Every window picks a project before connecting — on app load and on each new
   // window. The picker re-points this window's agent at the chosen cwd/session.
   const [needsProject, setNeedsProject] = useState(true);
+  // False until the boot-time workspace-restore check resolves. Gates the entry
+  // render so a window reopened from the saved workspace (after a restart /
+  // update) never flashes the picker before jumping into its restored project.
+  const [restoreChecked, setRestoreChecked] = useState(false);
   // Entry-screen routing while no project is open: the home landing, the
   // project chooser, or the provider login hub. Secondary windows (opened via
   // the Windows button) skip the home screen and land on "Choose a project".
@@ -834,7 +844,9 @@ function App(): React.ReactElement {
           break;
         case "plan_exit":
           setState((s) => (s ? { ...s, planMode: false } : s));
-          // Open the review modal (Accept / Feedback / Reject) with the plan.
+          // Open the review modal (Accept / Feedback / Reject) with the plan, and
+          // stash its path so accept can bake it into the system prompt.
+          planReviewPathRef.current = typeof d.planPath === "string" ? d.planPath : null;
           setPlanReview(String(d.content ?? ""));
           break;
         case "tasks":
@@ -966,6 +978,25 @@ function App(): React.ReactElement {
     const unsub = subscribe(handleEvent);
     return () => unsub();
   }, [handleEvent]);
+
+  // Boot-time workspace restore: if Rust reopened THIS window from the saved
+  // workspace (after a restart / update), its sidecar is already spawned at the
+  // restored project + session. Skip the picker and hydrate straight in, exactly
+  // like a completed project choice. Consume-once on the Rust side, so this runs
+  // a single time on mount. Always flips `restoreChecked` so the entry render is
+  // unblocked whether or not this was a restored window.
+  useEffect(() => {
+    // No cancelled-guard: the Rust target is consume-once, so whichever call
+    // receives it MUST act on it (a dev StrictMode double-mount would otherwise
+    // consume it on the first run and drop it, stranding the window on the
+    // picker). React 19 makes a setState after unmount a safe no-op.
+    void restoreTarget()
+      .then((target) => {
+        if (target) onProjectChosen();
+      })
+      .finally(() => setRestoreChecked(true));
+    // Mount-only: onProjectChosen reads stable setters; restoreTarget is consumed once.
+  }, []);
 
   useEffect(() => {
     // Only the main window auto-connects to its default project. Secondary
@@ -1239,10 +1270,15 @@ function App(): React.ReactElement {
     void sendPrompt(prompt);
   }
 
-  function acceptPlan(): void {
+  async function acceptPlan(): Promise<void> {
     // Start activity-bar progress tracking from the approved plan's step count.
     setPlanTotal(planReview ? countPlanSteps(planReview) : 0);
     setPlanDone(new Set());
+    // Bake the approved plan into the agent's system prompt FIRST, so it's told
+    // to emit `[DONE:n]` markers as it implements — without this the activity
+    // bar's Plan Steps widget would never advance past 0. Must complete before
+    // the implement prompt runs (the prompt picks up the rebuilt system message).
+    await acceptPlanIPC(planReviewPathRef.current);
     runPlanPrompt(
       "The plan has been approved. Implement it now, following each step in order.",
       "\u2713 Plan accepted. Implementing.",
@@ -1298,6 +1334,13 @@ function App(): React.ReactElement {
     setHydrated(false);
     setNeedsProject(false);
     setHydrateNonce((n) => n + 1);
+  }
+
+  // Hold the entry render until the restore check resolves, so a window reopened
+  // from the saved workspace jumps straight into its project instead of briefly
+  // flashing the home/picker screen.
+  if (needsProject && !restoreChecked) {
+    return <div className="app" style={{ background: theme.background }} />;
   }
 
   if (needsProject) {

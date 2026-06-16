@@ -163,6 +163,10 @@ export class AgentSession {
   private customSystemPrompt?: string;
   /** Shared with the tool layer so plan-mode restrictions read live state. */
   private planModeRef = { current: false };
+  /** Path of the approved plan currently being implemented, or undefined. When
+   *  set, the system prompt carries the `[DONE:n]` progress contract so the
+   *  model emits step-completion markers the UI's plan-progress widget reads. */
+  private approvedPlanPath?: string;
 
   private sessionId = "";
   private sessionPath = "";
@@ -793,6 +797,9 @@ export class AgentSession {
   }
 
   async newSession(): Promise<void> {
+    // A fresh session drops any in-flight plan state so its prompt is clean.
+    this.planModeRef.current = false;
+    this.approvedPlanPath = undefined;
     const basePrompt =
       this.customSystemPrompt ??
       (await buildSystemPrompt(
@@ -916,12 +923,31 @@ export class AgentSession {
    */
   async setPlanMode(active: boolean): Promise<void> {
     this.planModeRef.current = active;
+    // Entering plan mode discards any prior approved-plan contract (a new plan
+    // is about to be drafted); exiting keeps it (set explicitly via accept).
+    if (active) this.approvedPlanPath = undefined;
+    await this.rebuildSystemPromptInPlace();
+  }
+
+  /**
+   * Bake an approved plan into the system prompt so the model is told to emit
+   * `[DONE:n]` markers as it completes each step (the contract the UI's
+   * plan-progress widget reads). Pass `undefined` to clear it. No-op when a
+   * custom system prompt is in force (the host owns the prompt then).
+   */
+  async setApprovedPlan(approvedPlanPath: string | undefined): Promise<void> {
+    this.approvedPlanPath = approvedPlanPath;
+    await this.rebuildSystemPromptInPlace();
+  }
+
+  /** Rebuild messages[0] from current plan-mode + approved-plan state. */
+  private async rebuildSystemPromptInPlace(): Promise<void> {
     if (this.customSystemPrompt) return;
     const rebuilt = await buildSystemPrompt(
       this.cwd,
       this.skills,
-      active,
-      undefined,
+      this.planModeRef.current,
+      this.approvedPlanPath,
       this.tools.map((tool) => tool.name),
       undefined,
       this.provider,

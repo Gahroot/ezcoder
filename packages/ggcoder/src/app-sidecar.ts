@@ -1163,6 +1163,28 @@ async function main(): Promise<void> {
       return;
     }
 
+    // Bake an approved plan into the system prompt before the implementation
+    // prompt runs, so the model is told to emit `[DONE:n]` markers and the
+    // webview's plan-progress widget advances (mirrors the CLI accept flow).
+    if (method === "POST" && url === "/plan/accept") {
+      void readBody(req).then(async (raw) => {
+        let planPath: string | undefined;
+        try {
+          planPath = (JSON.parse(raw) as { planPath?: string }).planPath || undefined;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        try {
+          await session.setApprovedPlan(planPath);
+          json(res, 200, { ok: true });
+        } catch (err) {
+          json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+        }
+      });
+      return;
+    }
+
     // ── Provider auth (login) ───────────────────────────────
     if (method === "GET" && url === "/auth/status") {
       void authStatusPayload().then((payload) => json(res, 200, payload));

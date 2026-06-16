@@ -175,6 +175,20 @@ export async function cancel(): Promise<void> {
   }
 }
 
+/**
+ * Accept the pending plan: bakes its `## Steps` into the agent's system prompt
+ * so it emits `[DONE:n]` progress markers as it implements each step (which the
+ * activity bar's "Plan Steps n/total" widget reads). Call this BEFORE sending
+ * the "implement it now" prompt. `planPath` comes from the `plan_exit` event.
+ */
+export async function acceptPlan(planPath: string | null): Promise<void> {
+  try {
+    await invoke("agent_accept_plan", { planPath });
+  } catch (e) {
+    await logError(`agent_accept_plan failed: ${String(e)}`);
+  }
+}
+
 /** A resumed transcript entry (user or assistant text) for hydration. When
  *  `hook` is set, this user message is an injected self-correction hook prompt
  *  and should render as the short hook notice, not the raw prompt body. */
@@ -447,6 +461,27 @@ export async function listSessions(cwd: string): Promise<RecentSession[]> {
  */
 export async function selectProject(cwd: string, sessionPath?: string): Promise<void> {
   await invoke("select_project", { cwd, sessionPath: sessionPath ?? null });
+}
+
+/** The project/session a window was restored to on app boot (workspace restore). */
+export interface RestoreTarget {
+  cwd: string;
+  sessionPath: string | null;
+}
+
+/**
+ * If THIS window was reopened from the saved workspace (after a restart/update),
+ * return its restore target so the webview can skip the project picker and
+ * hydrate straight into the resumed project/session. Returns null for a normal
+ * (freshly launched) window. Consume-once: a second call returns null.
+ */
+export async function restoreTarget(): Promise<RestoreTarget | null> {
+  try {
+    return await invoke<RestoreTarget | null>("window_restore_target");
+  } catch (e) {
+    await logError(`window_restore_target failed: ${String(e)}`);
+    return null;
+  }
 }
 
 /**
