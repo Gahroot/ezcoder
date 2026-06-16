@@ -144,7 +144,12 @@ jobs:
           # configured every var below resolves to empty and Tauri produces an
           # unsigned-but-working .app/.dmg. When a cert IS present, Tauri signs
           # with APPLE_SIGNING_IDENTITY against the keychain identity we imported.
-          APPLE_SIGNING_IDENTITY: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          # When no Developer ID cert is configured we fall back to the ad-hoc
+          # pseudo-identity "-" so Tauri produces a working (unsigned/ad-hoc)
+          # .dmg instead of attempting a keychain lookup that fails the build.
+          # Ad-hoc apps still run; macOS Gatekeeper just asks the user to allow
+          # them once (right-click → Open) — documented in the site FAQ.
+          APPLE_SIGNING_IDENTITY: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_SIGNING_IDENTITY || '-' }}
           APPLE_ID: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_TEAM_ID || '' }}

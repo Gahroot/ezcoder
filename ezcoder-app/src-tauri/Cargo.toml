@@ -1,6 +1,6 @@
 [package]
 name = "ezcoder-app"
-version = "0.1.11"
+version = "0.1.12"
 description = "EZ Coder — the coding agent, on your desktop"
 authors = ["Nolan Grout <nolan@prestyj.com>"]
 edition = "2021"
