@@ -51,10 +51,14 @@ jobs:
           # `args: --bundles deb,rpm` — AppImage's linuxdeploy hangs on CI for
           # Node-bundling apps) when Linux support is prioritized.
     runs-on: ${{ matrix.platform }}
-    # Hoisted to job level so the certificate-import step's own `if` can read it
-    # (a step cannot reference env it defines in the same step's `if`).
+    # A boolean flag — NOT the certificate itself — so step `if`s can branch on
+    # "is a cert configured?" without the secret leaking into every step's env.
+    # Hoisting the raw `APPLE_CERTIFICATE` made it present-but-empty in the
+    # tauri-action step, and Tauri's `var_os("APPLE_CERTIFICATE")` treats a
+    # present-empty var as "sign me" → `security import` of empty data fails the
+    # whole bundle. The secret is now only materialised in the import step below.
     env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -99,8 +103,9 @@ jobs:
       # codesign can find it. macOS only, and only when the secret is present —
       # an empty APPLE_CERTIFICATE leaves the build unsigned but still green.
       - name: Import Apple Developer certificate (macOS)
-        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
         env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
@@ -120,7 +125,7 @@ jobs:
       # the assembled app passes. Runs after the cert is in the keychain and
       # before tauri-action assembles + notarizes the bundle.
       - name: Sign nested bundle binaries (macOS)
-        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
         run: |
           bash ezcoder-app/scripts/sign-nested-macos.sh \
             "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
@@ -132,17 +137,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS signing + notarization. Only pass these when a certificate is
-          # actually configured: an EMPTY `APPLE_SIGNING_IDENTITY` still makes
-          # Tauri attempt `security import` and fail the bundle, so when the cert
-          # secret is absent we leave every Apple var unset (empty `${{ }}`) and
-          # Tauri produces an unsigned-but-working .app/.dmg.
-          # (APPLE_CERTIFICATE is inherited from the job-level env.)
-          APPLE_CERTIFICATE_PASSWORD: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_SIGNING_IDENTITY || '' }}
-          APPLE_ID: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ env.APPLE_CERTIFICATE != '' && secrets.APPLE_TEAM_ID || '' }}
+          # macOS signing + notarization. The certificate is already imported
+          # into the CI keychain by the step above, so we deliberately do NOT
+          # pass APPLE_CERTIFICATE here — leaving it unset keeps Tauri's
+          # `var_os("APPLE_CERTIFICATE")` import branch off. When no cert is
+          # configured every var below resolves to empty and Tauri produces an
+          # unsigned-but-working .app/.dmg. When a cert IS present, Tauri signs
+          # with APPLE_SIGNING_IDENTITY against the keychain identity we imported.
+          APPLE_SIGNING_IDENTITY: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_TEAM_ID || '' }}
         with:
           projectPath: ezcoder-app
           tagName: ${{ github.ref_name }}
@@ -150,5 +155,5 @@ jobs:
           releaseBody: "See the assets to download and install this version."
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
           args: ${{ matrix.args }}

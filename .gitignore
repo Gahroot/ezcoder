@@ -58,5 +58,6 @@ experiments/prompt-bench/.bench-sandbox-*
 
 # Signing key material / personal secrets (never commit)
 *update_key*.rtf
+*.rtf
 *.key
 *.key.pub
