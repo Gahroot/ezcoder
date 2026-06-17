@@ -454,11 +454,24 @@ function App(): React.ReactElement {
   }, [input]);
 
   // Cmd+N (macOS) / Ctrl+N (Linux/Windows) opens a new project window.
+  // Cmd+T / Ctrl+T toggles the Tasks modal (mirrors the CLI's Ctrl+T task pane).
+  // This is a global, nav-independent entry point so tasks stay reachable even
+  // when the nav row (which holds the Tasks button) is collapsed.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key.toLowerCase() === "n" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "n") {
         e.preventDefault();
         void newWindow();
+      } else if (k === "t") {
+        e.preventDefault();
+        setShowTasks((open) => {
+          // Refresh from the sidecar when opening so the list reflects any
+          // tasks the agent just added.
+          if (!open) void listTasks().then(setProjectTasks);
+          return !open;
+        });
       }
     };
     window.addEventListener("keydown", onKey);
