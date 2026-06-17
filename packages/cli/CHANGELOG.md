@@ -7,24 +7,24 @@
 - 1c37b11: Persist model + thinking selection per-project (per window) across app restarts.
 
   Previously every window's sidecar wrote its model choice to a single shared
-  `defaultModel`/`defaultProvider` slot in `~/.gg/settings.json`, so switching a
+  `defaultModel`/`defaultProvider` slot in `~/.ezcoder/settings.json`, so switching a
   model in one window clobbered the selection for all others — and on restart
   every window defaulted to the last-written model (or fell back to the provider
   default when that provider wasn't logged in). Model + thinking preferences are
-  now stored keyed by project cwd in `~/.gg/gg-app.json` and read first on boot;
+  now stored keyed by project cwd in `~/.ezcoder/ezcoder-app.json` and read first on boot;
   the global slot is kept only as a fallback for never-opened projects.
-  - @kenkaiiii/gg-ai@4.11.3
-  - @kenkaiiii/gg-agent@4.11.3
-  - @kenkaiiii/gg-core@4.11.3
+  - @prestyj/ai@4.11.3
+  - @prestyj/agent@4.11.3
+  - @prestyj/core@4.11.3
 
 ## 4.11.2
 
 ### Patch Changes
 
 - a2da1f8: Fix app subagents to inherit the active model at spawn time and render completed plan-step markers cleanly.
-  - @kenkaiiii/gg-ai@4.11.2
-  - @kenkaiiii/gg-agent@4.11.2
-  - @kenkaiiii/gg-core@4.11.2
+  - @prestyj/ai@4.11.2
+  - @prestyj/agent@4.11.2
+  - @prestyj/core@4.11.2
 
 ## 4.11.1
 

@@ -352,12 +352,12 @@ interface SseClient {
 }
 
 /**
- * Sub-agents spawn the ggcoder CLI in JSON mode to run a delegated task. In the
+ * Sub-agents spawn the ezcoder CLI in JSON mode to run a delegated task. In the
  * packaged desktop app the only runnable entry is THIS bundle (there's no
  * sibling `cli.js`), so the subagent tool ends up spawning the sidecar itself.
  * Without this guard that would boot a second HTTP server, emit no NDJSON, and
  * hang until the 10-minute hard timeout. So when invoked with `--json`, behave
- * exactly like `ggcoder --json …`: stream the sub-agent run as NDJSON and exit,
+ * exactly like `ezcoder --json …`: stream the sub-agent run as NDJSON and exit,
  * never starting the HTTP/SSE server. Mirrors the `values.json` branch in cli.ts.
  */
 async function runJsonModeIfRequested(): Promise<boolean> {

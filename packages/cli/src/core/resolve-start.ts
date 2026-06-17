@@ -1,4 +1,4 @@
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 import { getDefaultModel, getModel } from "./model-registry.js";
 
 /** A resolved startup provider + model for an AgentSession. */
@@ -23,7 +23,7 @@ export interface ProviderAuthLookup {
  * Pick a provider/model the user is logged into, preferring the saved defaults.
  * Mirrors the CLI's resolveActiveProvider, but NEVER throws when logged out:
  * instead it falls back to `preferred` + its default model and reports
- * `loggedIn: false`. This is what lets the gg-app sidecar boot (and serve the
+ * `loggedIn: false`. This is what lets the ezcoder-app sidecar boot (and serve the
  * login endpoints) for a fresh user with no credentials — throwing here used to
  * kill the sidecar before it listened, making login impossible.
  *

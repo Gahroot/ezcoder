@@ -125,7 +125,7 @@ struct ProcInfo {
     command: String,
 }
 
-/// Command substrings that identify GG Coder sidecar trees. `app-sidecar`
+/// Command substrings that identify EZ Coder sidecar trees. `app-sidecar`
 /// matches both bundled `app-sidecar.mjs` and dev `app-sidecar.js`;
 /// `kencode-search` catches long-dead MCP children already reparented to init.
 const ORPHAN_COMMAND_PATTERNS: &[&str] = &["app-sidecar", "kencode-search"];
@@ -139,7 +139,7 @@ const ORPHAN_COMMAND_PATTERNS: &[&str] = &["app-sidecar", "kencode-search"];
 /// still linked to a freshly-dead sidecar) plus any pattern-matching process
 /// with a dead parent not already collected (catches children reparented to
 /// init before the snapshot). The current app pid and its live sidecars are
-/// never matched — a live sidecar's parent is the still-running `gg-app`, so
+/// never matched — a live sidecar's parent is the still-running `ezcoder-app`, so
 /// its `ppid` is alive in the snapshot.
 fn orphan_killset(snapshot: &[ProcInfo], self_pid: i32) -> Vec<i32> {
     let live_pids: HashSet<i32> = snapshot.iter().map(|p| p.pid).collect();
@@ -893,11 +893,11 @@ fn app_create_project(name: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "path": dir.to_string_lossy() }))
 }
 
-// ── Workspace snapshot (~/.gg/gg-app-workspace.json) ──────────────────────
+// ── Workspace snapshot (~/.ezcoder/ezcoder-app-workspace.json) ──────────────────────
 // Records which project/session is open in each window (plus geometry) so a
 // restart — especially the updater's relaunch() — can reopen every window where
 // it left off instead of dropping back to a single picker window. Owned by Rust
-// (same pattern as gg-app.json), written on project-select / window-close /
+// (same pattern as ezcoder-app.json), written on project-select / window-close /
 // app-exit, replayed in `setup`.
 
 /// One saved window: the project cwd, an optional session file to resume, and
@@ -924,9 +924,9 @@ struct Workspace {
     windows: Vec<WorkspaceEntry>,
 }
 
-/// Absolute path to ~/.gg/gg-app-workspace.json.
+/// Absolute path to ~/.ezcoder/ezcoder-app-workspace.json.
 fn app_workspace_path() -> PathBuf {
-    home_dir().join(".gg").join("gg-app-workspace.json")
+    home_dir().join(".ezcoder").join("ezcoder-app-workspace.json")
 }
 
 /// Read the workspace snapshot; missing/invalid file → an empty workspace.
@@ -1046,7 +1046,7 @@ fn window_restore_target(webview: WebviewWindow) -> Option<RestoreEntry> {
     map.remove(webview.label())
 }
 
-// ── Native provider auth status (~/.gg/auth.json) ─────────────────────────
+// ── Native provider auth status (~/.ezcoder/auth.json) ─────────────────────────
 // The AI-providers list is STATIC metadata and the "connected" badge only needs
 // to read which provider keys exist in ~/.ezcoder/auth.json — neither needs the Node
 // agent. Reading it natively means the login hub always renders even when the
@@ -1063,7 +1063,7 @@ fn auth_file_path() -> PathBuf {
 }
 
 /// Static metadata for one AI provider in the login hub. Mirrors
-/// packages/ggcoder/src/core/auth-providers.ts (AUTH_PROVIDERS) — keep in sync.
+/// packages/cli/src/core/auth-providers.ts (AUTH_PROVIDERS) — keep in sync.
 struct ProviderMeta {
     /// Storage key in auth.json + the value the webview passes back.
     value: &'static str,
@@ -1212,7 +1212,7 @@ fn app_auth_status() -> serde_json::Value {
     serde_json::json!({ "providers": list })
 }
 
-// ── Native API-key auth writes (~/.gg/auth.json) ──────────────────────────
+// ── Native API-key auth writes (~/.ezcoder/auth.json) ──────────────────────────
 // Storing/removing an API key is a pure mutation of auth.json — the SAME file
 // app_auth_status reads. Doing it natively (not via the sidecar) means a fresh
 // user can log in even though their not-yet-configured sidecar may not be up:
@@ -1314,7 +1314,7 @@ fn write_auth_file(contents: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Native: store an API key for a provider directly in ~/.gg/auth.json. Never
+/// Native: store an API key for a provider directly in ~/.ezcoder/auth.json. Never
 /// touches the sidecar, so it can't hang on a not-yet-booted agent. Validates
 /// that the provider exists and supports API-key auth, and that the key is
 /// non-empty. Returns `{ ok: true }`.
@@ -1333,7 +1333,7 @@ fn app_auth_apikey(provider: String, key: String) -> Result<serde_json::Value, S
     Ok(serde_json::json!({ "ok": true }))
 }
 
-/// Native: disconnect a provider (remove its credential from ~/.gg/auth.json).
+/// Native: disconnect a provider (remove its credential from ~/.ezcoder/auth.json).
 /// Moonshot also clears its OAuth key. Never touches the sidecar. Returns
 /// `{ ok: true }`.
 #[tauri::command]
@@ -2641,10 +2641,10 @@ mod tests {
 
     #[test]
     fn live_sidecar_with_alive_parent_is_excluded() {
-        // The current gg-app (pid 100) is the parent of a live sidecar (pid 200).
+        // The current ezcoder-app (pid 100) is the parent of a live sidecar (pid 200).
         let snap = vec![
-            proc(100, 1, "/Applications/GG Coder.app/Contents/MacOS/gg-app"),
-            proc(200, 100, "ggnode app-sidecar.mjs"),
+            proc(100, 1, "/Applications/EZ Coder.app/Contents/MacOS/ezcoder-app"),
+            proc(200, 100, "eznode app-sidecar.mjs"),
         ];
         let ks = orphan_killset(&snap, 100);
         assert!(ks.is_empty(), "live sidecar must not be killed: {ks:?}");
@@ -2714,11 +2714,11 @@ mod tests {
 
     #[test]
     fn multi_instance_concurrent_dev_runs_safe() {
-        // Two gg-app instances each with their own sidecar — neither is orphaned.
+        // Two ezcoder-app instances each with their own sidecar — neither is orphaned.
         let snap = vec![
-            proc(100, 1, "gg-app"),
+            proc(100, 1, "ezcoder-app"),
             proc(200, 100, "node app-sidecar.js"),
-            proc(300, 1, "gg-app"),
+            proc(300, 1, "ezcoder-app"),
             proc(400, 300, "node app-sidecar.js"),
         ];
         // Instance 1 sweeps.
@@ -2736,8 +2736,8 @@ mod tests {
     fn parse_ps_handles_column_padding_and_spaces_in_command() {
         // Real `ps -eo pid=,ppid=,command=` output: multiple spaces between fields.
         let raw = "    1     0 /sbin/launchd\n\
-                   11541     1 /Applications/GG Coder.app/Contents/MacOS/gg-app\n\
-                   11553 11541 /Applications/GG Coder.app/Contents/MacOS/ggnode app-sidecar.mjs";
+                   11541     1 /Applications/EZ Coder.app/Contents/MacOS/ezcoder-app\n\
+                   11553 11541 /Applications/EZ Coder.app/Contents/MacOS/eznode app-sidecar.mjs";
         let rows = parse_ps_output(raw);
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].pid, 1);
@@ -2745,7 +2745,7 @@ mod tests {
         assert_eq!(rows[0].command, "/sbin/launchd");
         // Command with spaces is rejoined correctly.
         assert!(rows[2].command.contains("app-sidecar.mjs"));
-        assert!(rows[2].command.contains("ggnode"));
+        assert!(rows[2].command.contains("eznode"));
     }
 
     #[test]
@@ -2804,17 +2804,17 @@ mod tests {
     #[test]
     fn full_windows_sweep_pipeline() {
         // End-to-end: CIM output → parse → classify → killset. Simulates a
-        // Windows machine where a previous gg-app instance was force-quit,
+        // Windows machine where a previous ezcoder-app instance was force-quit,
         // orphaning its sidecar tree (parent PIDs absent from the snapshot).
         let raw = "4|0|\n\
                    1000|4|C:\\Windows\\System32\\cmd.exe\n\
                    5000|9999|C:\\nodejs\\node.exe app-sidecar.mjs\n\
                    5001|5000|C:\\nodejs\\node.exe kencode-search\n\
-                   6000|4|C:\\Program Files\\GG Coder\\gg-app.exe\n\
+                   6000|4|C:\\Program Files\\EZ Coder\\ezcoder-app.exe\n\
                    6001|6000|C:\\nodejs\\node.exe app-sidecar.mjs";
         let snapshot = parse_cim_output(raw);
         assert_eq!(snapshot.len(), 6);
-        // Self = the new gg-app (pid 6000). Its sidecar (6001) has a live parent.
+        // Self = the new ezcoder-app (pid 6000). Its sidecar (6001) has a live parent.
         let killset = orphan_killset(&snapshot, 6000);
         // Orphaned sidecar (5000, parent 9999 dead) + its kencode child (5001).
         assert!(killset.contains(&5000));

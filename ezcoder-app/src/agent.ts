@@ -264,7 +264,7 @@ export async function authStatus(): Promise<AuthProvider[]> {
 }
 
 /**
- * Store an API key for a provider. Handled NATIVELY in Rust (writes ~/.gg/auth.json
+ * Store an API key for a provider. Handled NATIVELY in Rust (writes ~/.ezcoder/auth.json
  * directly) so it never depends on the per-window sidecar being up — a fresh
  * user's sidecar may not have booted yet, and a sidecar round-trip would hang.
  * Throws with a user-facing message on error.
@@ -293,7 +293,7 @@ export async function authOAuthCode(code: string): Promise<void> {
 
 /**
  * Disconnect a provider (clear stored credentials). Handled NATIVELY in Rust
- * (removes the provider from ~/.gg/auth.json; moonshot also clears its OAuth
+ * (removes the provider from ~/.ezcoder/auth.json; moonshot also clears its OAuth
  * key) so it never depends on the sidecar.
  */
 export async function authLogout(provider: string): Promise<void> {
