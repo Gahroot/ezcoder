@@ -1799,7 +1799,9 @@ body {
   gap: 8px;
 }
 
-/* Attach button (paperclip). */
+/* Attach button (paperclip). The textarea's first line box is 15px×1.5 = 22.5px.
+   The 28px button is taller, so nudge it up by half the difference to center its
+   icon on the first text line instead of letting flex-start drop it low. */
 .attach-btn {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1807,6 +1809,7 @@ body {
   justify-content: center;
   width: 28px;
   height: 28px;
+  margin-top: -2.75px;
   background: transparent;
   border: none;
   border-radius: var(--radius-pill);
@@ -2070,6 +2073,12 @@ body {
   font-family: var(--mono);
   font-weight: 700;
   color: var(--user-text);
+  /* Match the textarea's first-line metrics exactly (15px / 1.5) so the ">"
+     prompt sits on the same baseline as the placeholder and typed text.
+     The row is align-items:flex-start (pinned to the first line), so without
+     this the chevron inherited 14px / 1.55 and floated a hair high + small. */
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 .input {
