@@ -731,6 +731,7 @@ async function main(): Promise<void> {
         ready: true,
         thinkingLevel: session.getThinkingLevel() ?? null,
         supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
+        supportsVideo: getModel(st.model)?.supportsVideo ?? false,
         ...footerExtras(),
       });
       return;
@@ -755,6 +756,7 @@ async function main(): Promise<void> {
             running,
             thinkingLevel: session.getThinkingLevel() ?? null,
             supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
+            supportsVideo: getModel(st.model)?.supportsVideo ?? false,
             ...footerExtras(),
           },
         })}\n\n`,
