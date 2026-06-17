@@ -226,8 +226,10 @@ export class AgentSession {
       provider: this.provider,
       model: this.model,
       lspDiagnostics: this.settingsManager.get("lspDiagnostics"),
-      // Lazy — sessionId isn't assigned yet when createTools() runs, so we
-      // must defer reading the cache key until the sub-agent actually fires.
+      // Lazy — sessionId/model/provider can change after createTools() runs, so
+      // sub-agent spawns read the current parent state at execution time.
+      getProvider: () => this.provider,
+      getModel: () => this.model,
       getCacheKey: () => this.getPromptCacheKey(),
       // Plan mode: only wired when the host supplies callbacks. The ref is
       // shared so bash/edit/write enforce read-only restrictions live.

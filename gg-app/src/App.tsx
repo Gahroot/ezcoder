@@ -249,6 +249,10 @@ function App(): React.ReactElement {
   // Approved-plan progress for the activity bar: total steps + completed set.
   const [planTotal, setPlanTotal] = useState(0);
   const [planDone, setPlanDone] = useState<Set<number>>(new Set());
+  // Refs mirror the plan progress state for the memoized SSE event handler,
+  // which intentionally does not re-capture React state on every render.
+  const planTotalRef = useRef(0);
+  const planDoneRef = useRef<Set<number>>(new Set());
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingStartTs, setThinkingStartTs] = useState<number | null>(null);
   const [thinkingAccumMs, setThinkingAccumMs] = useState(0);
@@ -587,11 +591,14 @@ function App(): React.ReactElement {
           assistantTextRef.current += chunk;
           const done = findCompletedSteps(assistantTextRef.current);
           if (done.length > 0) {
-            setPlanDone((prev) => {
-              const next = new Set(prev);
-              for (const n of done) next.add(n);
-              return next.size === prev.size ? prev : next;
-            });
+            const next = new Set(planDoneRef.current);
+            for (const n of done) {
+              if (n >= 1 && n <= planTotalRef.current) next.add(n);
+            }
+            if (next.size !== planDoneRef.current.size) {
+              planDoneRef.current = next;
+              setPlanDone(next);
+            }
           }
           break;
         }
@@ -838,6 +845,17 @@ function App(): React.ReactElement {
             }
             setDoneStatus(parts.join(" \u2022 "));
             setStatus("ready");
+            const completedPlan =
+              planTotalRef.current > 0 &&
+              Array.from({ length: planTotalRef.current }, (_, i) => i + 1).every((step) =>
+                planDoneRef.current.has(step),
+              );
+            if (completedPlan) {
+              planTotalRef.current = 0;
+              planDoneRef.current = new Set();
+              setPlanTotal(0);
+              setPlanDone(new Set());
+            }
             playSound("done");
             // A run may have created/removed `.gg/commands/*.md` (e.g.
             // /setup-commit writing commit.md). Refresh so the top-right
@@ -909,6 +927,8 @@ function App(): React.ReactElement {
           setContextTokens(0);
           setSessionTitle(null);
           setPlanReview(null);
+          planTotalRef.current = 0;
+          planDoneRef.current = new Set();
           setPlanTotal(0);
           setPlanDone(new Set());
           setAttachments([]);
@@ -1303,7 +1323,10 @@ function App(): React.ReactElement {
 
   async function acceptPlan(): Promise<void> {
     // Start activity-bar progress tracking from the approved plan's step count.
-    setPlanTotal(planReview ? countPlanSteps(planReview) : 0);
+    const nextPlanTotal = planReview ? countPlanSteps(planReview) : 0;
+    planTotalRef.current = nextPlanTotal;
+    planDoneRef.current = new Set();
+    setPlanTotal(nextPlanTotal);
     setPlanDone(new Set());
     // Bake the approved plan into the agent's system prompt FIRST, so it's told
     // to emit `[DONE:n]` markers as it implements — without this the activity
@@ -1359,6 +1382,8 @@ function App(): React.ReactElement {
     setContextTokens(0);
     setSessionTitle(null);
     setPlanReview(null);
+    planTotalRef.current = 0;
+    planDoneRef.current = new Set();
     setPlanTotal(0);
     setPlanDone(new Set());
     setAttachments([]);
@@ -1897,7 +1922,7 @@ function TranscriptRow({
                 <span className="plan-step-check" aria-hidden="true">
                   {"\u2713"}
                 </span>
-                <span className="plan-step-label">{`Step ${seg.stepNum} complete`}</span>
+                <span className="plan-step-label">{`Step ${seg.stepNum} completed`}</span>
               </div>
             ) : (
               <div key={i} className="assistant-msg">

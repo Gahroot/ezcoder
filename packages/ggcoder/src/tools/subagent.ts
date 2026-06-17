@@ -49,8 +49,8 @@ export interface SubAgentDetails {
 export function createSubAgentTool(
   cwd: string,
   agents: AgentDefinition[],
-  parentProvider: string,
-  parentModel: string,
+  getParentProvider: () => string,
+  getParentModel: () => string,
   getParentCacheKey?: () => string | undefined,
   planModeRef?: { current: boolean },
 ): AgentTool<typeof SubAgentParams> {
@@ -89,7 +89,8 @@ export function createSubAgentTool(
         }
       }
 
-      const useProvider = parentProvider;
+      const useProvider = getParentProvider();
+      const useModel = getParentModel();
 
       // Build CLI args — limit turns to prevent runaway context growth
       const cliArgs: string[] = [
@@ -97,7 +98,7 @@ export function createSubAgentTool(
         "--provider",
         useProvider,
         "--model",
-        parentModel,
+        useModel,
         "--max-turns",
         String(SUB_AGENT_MAX_TURNS),
       ];
@@ -147,7 +148,7 @@ export function createSubAgentTool(
       log("INFO", "subagent", "Sub-agent spawn", {
         cacheKey: subCacheKey,
         provider: useProvider,
-        model: parentModel,
+        model: useModel,
         agent: agentDef?.name ?? "(default)",
       });
 
