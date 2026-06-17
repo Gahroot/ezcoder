@@ -1853,7 +1853,7 @@ function App(): React.ReactElement {
           onClick={() => void appUpdate.install()}
         >
           <span className="update-banner-dot" />
-          {`Ken just pushed a new update (${appUpdate.version}) — click here to install`}
+          {`Nolan just pushed a new update (${appUpdate.version}) — click here to install`}
         </button>
       )}
       {appUpdate.phase === "installing" && (

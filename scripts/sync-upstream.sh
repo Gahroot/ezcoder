@@ -162,6 +162,7 @@ replace_in_tracked_text_files() {
       -e 's|\.gg/update-state|.ezcoder/update-state|g' \
       -e 's|\.gg-tasks|.ezcoder-tasks|g' \
       -e 's|GGAIError|EZCoderAIError|g' \
+      -e 's|Ken just pushed a new update|Nolan just pushed a new update|g' \
       -e 's|GG Coder by Ken Kai|EZ Coder by Nolan Grout|g' \
       -e 's|GG Framework|EZCoder Framework|g' \
       -e 's|GG Coder|EZ Coder|g' \
