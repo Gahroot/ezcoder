@@ -15,7 +15,9 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { parseArgs } from "node:util";
 import type { AddressInfo } from "node:net";
+import { runJsonMode } from "./modes/json-mode.js";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { AgentSession } from "./core/agent-session.js";
 import { AuthStorage } from "./core/auth-storage.js";
@@ -28,13 +30,8 @@ import type { OAuthCredentials, OAuthLoginCallbacks } from "./core/oauth/types.j
 import { AUTH_PROVIDERS, type AuthProviderMeta } from "./core/auth-providers.js";
 import { ensureAppDirs, loadSavedSettings } from "./config.js";
 import { SettingsManager, type Settings } from "./core/settings-manager.js";
-import {
-  getDefaultModel,
-  getModel,
-  getMaxThinkingLevel,
-  getContextWindow,
-  MODELS,
-} from "./core/model-registry.js";
+import { getModel, getMaxThinkingLevel, getContextWindow, MODELS } from "./core/model-registry.js";
+import { resolveStartOrFallback } from "./core/resolve-start.js";
 import { getGitBranch, isGitRepo } from "./utils/git.js";
 import {
   getNextThinkingLevel,
@@ -68,18 +65,26 @@ const ALL_PROVIDERS: Provider[] = [
   "openrouter",
 ];
 
-interface ResolvedStart {
-  provider: Provider;
-  model: string;
-}
-
 // ── ezcoder-app settings (~/.ezcoder/ezcoder-app.json) ────────────────────
 // App-specific, separate from the shared ezcoder settings file so the desktop
 // app's preferences never collide with the CLI's.
 
+/** Per-project model + thinking preferences. Persisted so each window (one
+ *  project cwd) restores its OWN model across app restarts — instead of every
+ *  window reading the same single global slot that the last writer clobbered. */
+interface ProjectModelPrefs {
+  provider: Provider;
+  model: string;
+  thinkingEnabled?: boolean;
+  thinkingLevel?: ThinkingLevel;
+}
+
 interface AppSettings {
   /** Folder new projects are created inside. Defaults to ~/ez-projects. */
   projectsRoot: string;
+  /** Model + thinking prefs keyed by normalized project cwd. A window restores
+   *  its own entry on boot; absent → global settings.json → provider default. */
+  projectModels?: Record<string, ProjectModelPrefs>;
 }
 
 function appSettingsFile(): string {
@@ -90,6 +95,12 @@ function defaultProjectsRoot(): string {
   return path.join(os.homedir(), "ez-projects");
 }
 
+/** Normalize a project cwd to a stable settings key so trailing slashes /
+ *  relative segments collapse — the same project always maps to one entry. */
+function projectModelKey(cwd: string): string {
+  return path.resolve(cwd);
+}
+
 async function loadAppSettings(): Promise<AppSettings> {
   try {
     const raw = JSON.parse(await fs.readFile(appSettingsFile(), "utf-8")) as Partial<AppSettings>;
@@ -98,6 +109,10 @@ async function loadAppSettings(): Promise<AppSettings> {
         typeof raw.projectsRoot === "string" && raw.projectsRoot.trim()
           ? raw.projectsRoot
           : defaultProjectsRoot(),
+      // Preserve the per-project map verbatim (validated + written by the
+      // model/thinking handlers below).
+      projectModels:
+        raw.projectModels && typeof raw.projectModels === "object" ? raw.projectModels : undefined,
     };
   } catch {
     return { projectsRoot: defaultProjectsRoot() };
@@ -107,6 +122,21 @@ async function loadAppSettings(): Promise<AppSettings> {
 async function saveAppSettings(settings: AppSettings): Promise<void> {
   await fs.mkdir(path.dirname(appSettingsFile()), { recursive: true });
   await fs.writeFile(appSettingsFile(), JSON.stringify(settings, null, 2), "utf-8");
+}
+
+/** Read this project's persisted model/thinking prefs, if any. */
+async function loadProjectModelPrefs(cwd: string): Promise<ProjectModelPrefs | undefined> {
+  const s = await loadAppSettings();
+  return s.projectModels?.[projectModelKey(cwd)];
+}
+
+/** Persist this project's model/thinking prefs via read-modify-write so the rest
+ *  of the settings file (projectsRoot, other projects' entries) is preserved. */
+async function saveProjectModelPrefs(cwd: string, prefs: ProjectModelPrefs): Promise<void> {
+  const s = await loadAppSettings();
+  const key = projectModelKey(cwd);
+  s.projectModels = { ...(s.projectModels ?? {}), [key]: prefs };
+  await saveAppSettings(s);
 }
 
 /**
@@ -316,39 +346,55 @@ function detectPromptCommand(
   return null;
 }
 
-/**
- * Pick a provider/model the user is actually logged into, preferring the saved
- * defaults. Mirrors the CLI's resolveActiveProvider without exporting internals.
- */
-async function resolveStart(
-  auth: AuthStorage,
-  preferred: Provider,
-  savedModel: string | undefined,
-): Promise<ResolvedStart> {
-  const loggedIn: Provider[] = [];
-  for (const p of ALL_PROVIDERS) {
-    if (await auth.hasProviderAuth(p)) loggedIn.push(p);
-  }
-  if (loggedIn.length === 0) {
-    throw new Error('Not logged in to any provider. Run "ezcoder login" to authenticate.');
-  }
-  if (loggedIn.includes(preferred)) {
-    const saved = savedModel ? getModel(savedModel) : undefined;
-    return {
-      provider: preferred,
-      model: saved?.provider === preferred ? saved.id : getDefaultModel(preferred).id,
-    };
-  }
-  const provider = loggedIn[0]!;
-  return { provider, model: getDefaultModel(provider).id };
-}
-
 interface SseClient {
   id: number;
   res: http.ServerResponse;
 }
 
+/**
+ * Sub-agents spawn the ggcoder CLI in JSON mode to run a delegated task. In the
+ * packaged desktop app the only runnable entry is THIS bundle (there's no
+ * sibling `cli.js`), so the subagent tool ends up spawning the sidecar itself.
+ * Without this guard that would boot a second HTTP server, emit no NDJSON, and
+ * hang until the 10-minute hard timeout. So when invoked with `--json`, behave
+ * exactly like `ggcoder --json …`: stream the sub-agent run as NDJSON and exit,
+ * never starting the HTTP/SSE server. Mirrors the `values.json` branch in cli.ts.
+ */
+async function runJsonModeIfRequested(): Promise<boolean> {
+  if (!process.argv.includes("--json")) return false;
+  const { values, positionals } = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      json: { type: "boolean" },
+      provider: { type: "string" },
+      model: { type: "string" },
+      "max-turns": { type: "string" },
+      "system-prompt": { type: "string" },
+      "prompt-cache-key": { type: "string" },
+    },
+    allowPositionals: true,
+    strict: true,
+  });
+  const maxTurnsRaw = values["max-turns"];
+  await runJsonMode({
+    message: positionals[0] ?? "",
+    provider: (values.provider ?? "anthropic") as Provider,
+    model: values.model ?? "claude-opus-4-8",
+    cwd: process.cwd(),
+    systemPrompt: values["system-prompt"],
+    maxTurns: maxTurnsRaw ? parseInt(maxTurnsRaw, 10) : undefined,
+    promptCacheKey: values["prompt-cache-key"],
+  }).catch((err: unknown) => {
+    process.stderr.write((err instanceof Error ? err.message : String(err)) + "\n");
+    process.exit(1);
+  });
+  return true;
+}
+
 async function main(): Promise<void> {
+  // Sub-agent JSON-mode dispatch must win before any sidecar/server setup.
+  if (await runJsonModeIfRequested()) return;
+
   const cwd = process.env.GG_APP_CWD ?? process.cwd();
   // Default to an ephemeral port (0) so concurrent/orphaned instances never
   // collide on a fixed port. The actual port is reported via the
@@ -373,11 +419,33 @@ async function main(): Promise<void> {
   await auth.load();
 
   const saved = loadSavedSettings(paths.settingsFile);
-  const preferred: Provider = saved.provider ?? "anthropic";
-  const { provider, model } = await resolveStart(auth, preferred, saved.model);
+  // Per-project model/thinking prefs win over the shared global settings.json:
+  // each window (one project cwd) restores its own selection instead of every
+  // window reading the same single global slot that the last writer clobbered
+  // (the old bug — switching models in one window reset every other window).
+  const projectPrefs = await loadProjectModelPrefs(cwd);
+  const preferred: Provider = projectPrefs?.provider ?? saved.provider ?? "anthropic";
+  const savedModel = projectPrefs?.model ?? saved.model;
+  // Boot-tolerant: when no provider is configured this returns a logged-out
+  // fallback instead of throwing, so the sidecar still listens and the login
+  // endpoints are reachable for a fresh user (throwing here used to kill the
+  // sidecar before server.listen, making first-time login impossible).
+  const { provider, model, loggedIn } = await resolveStartOrFallback(
+    auth,
+    ALL_PROVIDERS,
+    preferred,
+    savedModel,
+  );
+  if (!loggedIn) {
+    log("WARN", "app-sidecar", "no provider configured — booting logged-out for login", {
+      fallbackProvider: provider,
+    });
+  }
 
-  const thinkingLevel: ThinkingLevel | undefined = saved.thinkingEnabled
-    ? (saved.thinkingLevel ?? getMaxThinkingLevel(model))
+  // Per-project thinking prefs win over the global settings.json fallback.
+  const thinkEnabled = projectPrefs?.thinkingEnabled ?? saved.thinkingEnabled;
+  const thinkingLevel: ThinkingLevel | undefined = thinkEnabled
+    ? (projectPrefs?.thinkingLevel ?? saved.thinkingLevel ?? getMaxThinkingLevel(model))
     : undefined;
 
   // ── SSE fan-out (declared before the session so plan callbacks can use it) ─
@@ -714,7 +782,9 @@ async function main(): Promise<void> {
         } catch {
           configured = false;
         }
-        json(res, 200, { ...s, configured });
+        // Only projectsRoot + configured flag are webview-facing; the
+        // per-project model map is internal persistence, never shipped out.
+        json(res, 200, { projectsRoot: s.projectsRoot, configured });
       })();
       return;
     }
@@ -732,7 +802,11 @@ async function main(): Promise<void> {
           json(res, 400, { error: "projectsRoot is required" });
           return;
         }
-        await saveAppSettings({ projectsRoot });
+        // Read-modify-write so the per-project model map survives a projectsRoot
+        // change (a naive overwrite would drop every window's saved model).
+        const s = await loadAppSettings();
+        s.projectsRoot = projectsRoot;
+        await saveAppSettings(s);
         json(res, 200, { projectsRoot });
       });
       return;
@@ -1076,7 +1150,16 @@ async function main(): Promise<void> {
         if (prevLevel && !isThinkingLevelSupported(target.provider, target.id, prevLevel)) {
           session.setThinkingLevel(getNextThinkingLevel(target.provider, target.id, undefined));
         }
-        // Persist so the selection (and clamped thinking level) survives restarts.
+        // Persist per-project so THIS window/project restores its own model on
+        // restart (not the single global slot every window shares). Keep the
+        // global write too as a "last used" fallback for never-opened projects
+        // and so the CLI stays in sync.
+        await saveProjectModelPrefs(cwd, {
+          provider: target.provider,
+          model: target.id,
+          thinkingEnabled: !!session.getThinkingLevel(),
+          thinkingLevel: session.getThinkingLevel() ?? undefined,
+        });
         await persistModelSelection(paths.settingsFile, target.provider, target.id);
         await persistThinkingLevel(paths.settingsFile, session.getThinkingLevel());
         const payload = {
@@ -1119,8 +1202,14 @@ async function main(): Promise<void> {
       const st = session.getState();
       const next = getNextThinkingLevel(st.provider, st.model, session.getThinkingLevel());
       session.setThinkingLevel(next);
-      // Persist so the thinking level survives app restarts (mirrors the CLI).
-      void persistThinkingLevel(paths.settingsFile, next);
+      // Persist per-project so THIS window restores its thinking state on
+      // restart; keep the global write as a fallback (mirrors the CLI).
+      void saveProjectModelPrefs(cwd, {
+        provider: st.provider,
+        model: st.model,
+        thinkingEnabled: !!next,
+        thinkingLevel: next ?? undefined,
+      }).then(() => persistThinkingLevel(paths.settingsFile, next));
       const payload = {
         thinkingLevel: next ?? null,
         supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
@@ -1160,6 +1249,28 @@ async function main(): Promise<void> {
         .catch((err) => {
           json(res, 500, { error: err instanceof Error ? err.message : String(err) });
         });
+      return;
+    }
+
+    // Bake an approved plan into the system prompt before the implementation
+    // prompt runs, so the model is told to emit `[DONE:n]` markers and the
+    // webview's plan-progress widget advances (mirrors the CLI accept flow).
+    if (method === "POST" && url === "/plan/accept") {
+      void readBody(req).then(async (raw) => {
+        let planPath: string | undefined;
+        try {
+          planPath = (JSON.parse(raw) as { planPath?: string }).planPath || undefined;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        try {
+          await session.setApprovedPlan(planPath);
+          json(res, 200, { ok: true });
+        } catch (err) {
+          json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+        }
+      });
       return;
     }
 

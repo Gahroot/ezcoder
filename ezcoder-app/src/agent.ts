@@ -146,6 +146,20 @@ export async function getState(): Promise<AgentState> {
   return invoke<AgentState>("agent_state");
 }
 
+export async function openProjectPath(path: string): Promise<void> {
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // Keep the original string if the model emitted a malformed `%` escape.
+  }
+  try {
+    await invoke("open_project_path", { path: decoded });
+  } catch (e) {
+    await logError(`open_project_path failed: ${String(e)}`);
+  }
+}
+
 /** A chat-input attachment (image / video / other file) sent with a prompt. */
 export interface Attachment {
   kind: "image" | "video" | "file";
@@ -172,6 +186,20 @@ export async function cancel(): Promise<void> {
     await invoke("agent_cancel");
   } catch (e) {
     await logError(`agent_cancel failed: ${String(e)}`);
+  }
+}
+
+/**
+ * Accept the pending plan: bakes its `## Steps` into the agent's system prompt
+ * so it emits `[DONE:n]` progress markers as it implements each step (which the
+ * activity bar's "Plan Steps n/total" widget reads). Call this BEFORE sending
+ * the "implement it now" prompt. `planPath` comes from the `plan_exit` event.
+ */
+export async function acceptPlan(planPath: string | null): Promise<void> {
+  try {
+    await invoke("agent_accept_plan", { planPath });
+  } catch (e) {
+    await logError(`agent_accept_plan failed: ${String(e)}`);
   }
 }
 
@@ -235,24 +263,41 @@ export async function authStatus(): Promise<AuthProvider[]> {
   }
 }
 
-/** Store an API key for a provider. Throws with a user-facing message on error. */
+/**
+ * Store an API key for a provider. Handled NATIVELY in Rust (writes ~/.gg/auth.json
+ * directly) so it never depends on the per-window sidecar being up — a fresh
+ * user's sidecar may not have booted yet, and a sidecar round-trip would hang.
+ * Throws with a user-facing message on error.
+ */
 export async function authApiKey(provider: string, key: string): Promise<void> {
-  await invoke("agent_auth_apikey", { provider, key });
+  await invoke("app_auth_apikey", { provider, key });
 }
 
-/** Begin an OAuth login; progress arrives via subscribe() auth_* events. */
+/**
+ * Begin an OAuth login; progress arrives via subscribe() auth_* events. Unlike
+ * the API-key/logout paths (handled natively in Rust), the OAuth flow is proxied
+ * through the per-window Node sidecar, so wait for it to come up first — on the
+ * login hub the sidecar may still be booting, and invoking early throws the
+ * "sidecar not ready" error users hit when clicking Continue.
+ */
 export async function authOAuthStart(provider: string): Promise<void> {
+  await waitForReady();
   await invoke("agent_auth_oauth_start", { provider });
 }
 
-/** Submit a pasted OAuth code to an in-flight login. */
+/** Submit a pasted OAuth code to an in-flight login. Sidecar-proxied like start. */
 export async function authOAuthCode(code: string): Promise<void> {
+  await waitForReady();
   await invoke("agent_auth_oauth_code", { code });
 }
 
-/** Disconnect a provider (clear stored credentials). */
+/**
+ * Disconnect a provider (clear stored credentials). Handled NATIVELY in Rust
+ * (removes the provider from ~/.gg/auth.json; moonshot also clears its OAuth
+ * key) so it never depends on the sidecar.
+ */
 export async function authLogout(provider: string): Promise<void> {
-  await invoke("agent_auth_logout", { provider });
+  await invoke("app_auth_logout", { provider });
 }
 
 /** Start a fresh session (clears history) for this window's current project. */
@@ -447,6 +492,27 @@ export async function listSessions(cwd: string): Promise<RecentSession[]> {
  */
 export async function selectProject(cwd: string, sessionPath?: string): Promise<void> {
   await invoke("select_project", { cwd, sessionPath: sessionPath ?? null });
+}
+
+/** The project/session a window was restored to on app boot (workspace restore). */
+export interface RestoreTarget {
+  cwd: string;
+  sessionPath: string | null;
+}
+
+/**
+ * If THIS window was reopened from the saved workspace (after a restart/update),
+ * return its restore target so the webview can skip the project picker and
+ * hydrate straight into the resumed project/session. Returns null for a normal
+ * (freshly launched) window. Consume-once: a second call returns null.
+ */
+export async function restoreTarget(): Promise<RestoreTarget | null> {
+  try {
+    return await invoke<RestoreTarget | null>("window_restore_target");
+  } catch (e) {
+    await logError(`window_restore_target failed: ${String(e)}`);
+    return null;
+  }
 }
 
 /**

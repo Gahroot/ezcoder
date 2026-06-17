@@ -163,6 +163,10 @@ export class AgentSession {
   private customSystemPrompt?: string;
   /** Shared with the tool layer so plan-mode restrictions read live state. */
   private planModeRef = { current: false };
+  /** Path of the approved plan currently being implemented, or undefined. When
+   *  set, the system prompt carries the `[DONE:n]` progress contract so the
+   *  model emits step-completion markers the UI's plan-progress widget reads. */
+  private approvedPlanPath?: string;
 
   private sessionId = "";
   private sessionPath = "";
@@ -178,9 +182,27 @@ export class AgentSession {
     this.model = options.model;
     this.cwd = options.cwd;
     this.baseUrl = options.baseUrl;
-    this.maxTokens = options.maxTokens ?? getModel(options.model)?.maxOutputTokens ?? 16384;
+    this.maxTokens = this.resolveMaxTokens(options.model);
     this.thinkingLevel = options.thinkingLevel;
     this.customSystemPrompt = options.systemPrompt;
+  }
+
+  /**
+   * Derive the output-token cap for a model. Follows the active model's
+   * `maxOutputTokens` so a session booted on a large-output model (e.g. Kimi's
+   * 256K) doesn't carry that cap to a smaller one (e.g. Opus's 128K) after a
+   * model switch — that mismatch surfaces from the provider as
+   * `max_tokens: 262144 > 128000, which is the maximum allowed …`. An explicit
+   * `maxTokens` override is honored but clamped to the model's ceiling.
+   */
+  private resolveMaxTokens(modelId: string): number {
+    const modelInfo = getModel(modelId);
+    if (this.opts.maxTokens) {
+      return modelInfo
+        ? Math.min(this.opts.maxTokens, modelInfo.maxOutputTokens)
+        : this.opts.maxTokens;
+    }
+    return modelInfo?.maxOutputTokens ?? 16384;
   }
 
   async initialize(): Promise<void> {
@@ -222,8 +244,10 @@ export class AgentSession {
       provider: this.provider,
       model: this.model,
       lspDiagnostics: this.settingsManager.get("lspDiagnostics"),
-      // Lazy — sessionId isn't assigned yet when createTools() runs, so we
-      // must defer reading the cache key until the sub-agent actually fires.
+      // Lazy — sessionId/model/provider can change after createTools() runs, so
+      // sub-agent spawns read the current parent state at execution time.
+      getProvider: () => this.provider,
+      getModel: () => this.model,
       getCacheKey: () => this.getPromptCacheKey(),
       // Plan mode: only wired when the host supplies callbacks. The ref is
       // shared so bash/edit/write enforce read-only restrictions live.
@@ -700,6 +724,11 @@ export class AgentSession {
     if (provider) this.provider = provider as Provider;
     this.model = model;
     setEstimatorModel(model);
+    // maxTokens must follow the active model — it was frozen at the boot
+    // model's `maxOutputTokens` in the constructor, so without this a session
+    // booted on e.g. Kimi (256K) keeps sending that cap after switching to a
+    // smaller model (Opus 128K), which the provider rejects.
+    this.maxTokens = this.resolveMaxTokens(model);
     this.eventBus.emit("model_change", { provider: this.provider, model: this.model });
 
     // Update provider-specific tools when provider changes
@@ -800,6 +829,9 @@ export class AgentSession {
   }
 
   async newSession(): Promise<void> {
+    // A fresh session drops any in-flight plan state so its prompt is clean.
+    this.planModeRef.current = false;
+    this.approvedPlanPath = undefined;
     const basePrompt =
       this.customSystemPrompt ??
       (await buildSystemPrompt(
@@ -923,12 +955,31 @@ export class AgentSession {
    */
   async setPlanMode(active: boolean): Promise<void> {
     this.planModeRef.current = active;
+    // Entering plan mode discards any prior approved-plan contract (a new plan
+    // is about to be drafted); exiting keeps it (set explicitly via accept).
+    if (active) this.approvedPlanPath = undefined;
+    await this.rebuildSystemPromptInPlace();
+  }
+
+  /**
+   * Bake an approved plan into the system prompt so the model is told to emit
+   * `[DONE:n]` markers as it completes each step (the contract the UI's
+   * plan-progress widget reads). Pass `undefined` to clear it. No-op when a
+   * custom system prompt is in force (the host owns the prompt then).
+   */
+  async setApprovedPlan(approvedPlanPath: string | undefined): Promise<void> {
+    this.approvedPlanPath = approvedPlanPath;
+    await this.rebuildSystemPromptInPlace();
+  }
+
+  /** Rebuild messages[0] from current plan-mode + approved-plan state. */
+  private async rebuildSystemPromptInPlace(): Promise<void> {
     if (this.customSystemPrompt) return;
     const rebuilt = await buildSystemPrompt(
       this.cwd,
       this.skills,
-      active,
-      undefined,
+      this.planModeRef.current,
+      this.approvedPlanPath,
       this.tools.map((tool) => tool.name),
       undefined,
       this.provider,

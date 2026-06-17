@@ -1,5 +1,17 @@
 # @prestyj/core
 
+## 4.11.3
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@4.11.3
+
+## 4.11.2
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@4.11.2
+
 ## 4.11.1
 
 ### Patch Changes

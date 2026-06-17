@@ -21,22 +21,6 @@ const SUB_AGENT_MAX_OUTPUT_LINES = 500;
 const SUB_AGENT_MAX_STDERR_CHARS = 10_000; // Cap stderr to prevent unbounded growth
 const SUB_AGENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minute hard timeout
 
-function isPlanModeRef(value: unknown): value is { current: boolean } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { current?: unknown }).current === "boolean"
-  );
-}
-
-function isGoalModeRef(value: unknown): value is { current: GoalMode } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { current?: unknown }).current === "string"
-  );
-}
-
 /**
  * Absolute path to the ezcoder CLI entry (dist/cli.js) that runs a sub-agent in
  * JSON mode. Resolved relative to this module so it's correct no matter how the
@@ -71,20 +55,12 @@ export interface SubAgentDetails {
 export function createSubAgentTool(
   cwd: string,
   agents: AgentDefinition[],
-  parentProvider: string,
-  parentModel: string,
-  getParentCacheKeyOrGoalModeRef?: (() => string | undefined) | { current: GoalMode },
-  planModeRefArg?: { current: boolean },
-  goalModeRefArg?: { current: GoalMode },
+  getParentProvider: () => string,
+  getParentModel: () => string,
+  getParentCacheKey?: () => string | undefined,
+  planModeRef?: { current: boolean },
+  goalModeRef?: { current: GoalMode },
 ): AgentTool<typeof SubAgentParams> {
-  const getParentCacheKey =
-    typeof getParentCacheKeyOrGoalModeRef === "function"
-      ? getParentCacheKeyOrGoalModeRef
-      : undefined;
-  const goalModeRef = isGoalModeRef(getParentCacheKeyOrGoalModeRef)
-    ? getParentCacheKeyOrGoalModeRef
-    : goalModeRefArg;
-  const planModeRef = isPlanModeRef(planModeRefArg) ? planModeRefArg : undefined;
   const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
   const agentDesc = agentList
     ? `\n\nAvailable named agents:\n${agentList}`
@@ -124,7 +100,8 @@ export function createSubAgentTool(
         }
       }
 
-      const useProvider = parentProvider;
+      const useProvider = getParentProvider();
+      const useModel = getParentModel();
 
       // Build CLI args — limit turns to prevent runaway context growth
       const cliArgs: string[] = [
@@ -132,7 +109,7 @@ export function createSubAgentTool(
         "--provider",
         useProvider,
         "--model",
-        parentModel,
+        useModel,
         "--max-turns",
         String(SUB_AGENT_MAX_TURNS),
       ];
@@ -182,7 +159,7 @@ export function createSubAgentTool(
       log("INFO", "subagent", "Sub-agent spawn", {
         cacheKey: subCacheKey,
         provider: useProvider,
-        model: parentModel,
+        model: useModel,
         agent: agentDef?.name ?? "(default)",
       });
 

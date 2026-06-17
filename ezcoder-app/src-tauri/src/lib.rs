@@ -1,18 +1,27 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 use futures_util::StreamExt;
-use tauri::{Emitter, EventTarget, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Emitter, EventTarget, Manager, RunEvent, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_opener::OpenerExt;
 
 /// One Node agent sidecar, owned by a single window. Each window runs its own
-/// agent against its own project cwd, so windows never share state.
+/// agent against its own project cwd, so windows never share state. `cwd` and
+/// `session_path` mirror what the window's sidecar was spawned with, so the
+/// workspace snapshot (restore-on-restart) can be written from this map alone.
 #[derive(Default)]
 struct SidecarInstance {
     child: Option<Child>,
     port: Option<u16>,
+    cwd: Option<PathBuf>,
+    session_path: Option<String>,
 }
 
 /// Per-window sidecar registry, keyed by window label.
@@ -21,20 +30,52 @@ struct Sidecars {
     map: Mutex<HashMap<String, SidecarInstance>>,
 }
 
+/// True once the app has begun quitting. Set on `ExitRequested` so the cascade
+/// of per-window `Destroyed` events during shutdown does NOT prune the workspace
+/// snapshot — the last full snapshot is what we restore next launch.
+#[derive(Default)]
+struct AppExiting(AtomicBool);
+
+/// One restored window's target (cwd + optional session), handed to the webview
+/// once via `window_restore_target` so it skips the project picker on boot.
+#[derive(Clone, serde::Serialize)]
+struct RestoreEntry {
+    cwd: String,
+    #[serde(rename = "sessionPath")]
+    session_path: Option<String>,
+}
+
+/// Pending per-window restore targets, consumed once by the webview on mount.
+#[derive(Default)]
+struct RestoreTargets {
+    map: Mutex<HashMap<String, RestoreEntry>>,
+}
+
 fn sidecar_base(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-/// Gracefully terminate a sidecar child so its SIGINT/SIGTERM handler can run
-/// `session.dispose()` (process/LSP/MCP shutdown) before exit. On Unix we send
-/// SIGTERM synchronously (non-blocking), then poll `try_wait()` for up to ~3s off
-/// the calling thread, SIGKILL as a fallback, and `wait()` to reap the zombie
-/// (std `Child` never auto-reaps). On Windows there is no SIGTERM, so the
-/// fallback `kill()` is the only step.
+/// Gracefully terminate a sidecar child AND its entire process tree so MCP/LSP
+/// children (spawned without `detached`, so they share the sidecar's process
+/// group) die with it — no orphans on window-close/project-switch/quit.
+///
+/// On Unix the sidecar is spawned as a process-group leader (see
+/// `spawn_sidecar_with_session`), so sending signals to `-pid` (negative pid =
+/// the whole group) reaps every descendant in one shot. We SIGTERM the group so
+/// the sidecar's SIGTERM handler can run `session.dispose()`, poll `try_wait()`
+/// for up to ~3s, then SIGKILL the group and `wait()` to reap the direct child
+/// (std `Child` never auto-reaps).
+///
+/// On Windows there is no process-group kill, so we tree-kill via
+/// `taskkill /T /F` (kills the descendant tree), then `wait()` to reap.
 fn terminate_child(mut child: Child) {
+    let pid = child.id() as i32;
     #[cfg(unix)]
     unsafe {
-        libc::kill(child.id() as i32, libc::SIGTERM);
+        // Negative pid = signal the entire process group. The sidecar is its
+        // own group leader (pgid == sidecar pid), so this reaches every
+        // non-detached descendant (MCP stdio children, LSP servers).
+        libc::kill(-pid, libc::SIGTERM);
     }
     std::thread::spawn(move || {
         #[cfg(unix)]
@@ -45,10 +86,235 @@ fn terminate_child(mut child: Child) {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
+            // Grace period expired — force-kill the whole group.
+            unsafe {
+                libc::kill(-pid, libc::SIGKILL);
+            }
         }
-        let _ = child.kill(); // SIGKILL fallback (and the only step on Windows)
-        let _ = child.wait(); // reap
+        #[cfg(not(unix))]
+        {
+            // Tree-kill on Windows: /T kills the descendant tree, /F forces it.
+            let _ = std::process::Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            // Fall back to direct kill if taskkill is unavailable.
+            let _ = child.kill();
+        }
+        let _ = child.wait(); // reap the direct child (avoid zombie)
     });
+}
+
+// ── Startup orphan sweeper ─────────────────────────────────────────────────
+// When the app is force-quit, crashes, or is killed during a dev run, the
+// sidecar process tree (Node sidecar + MCP stdio children + LSP servers) is
+// orphaned — reparented to init (pid 1) or an orphan-reaper. Rust only kills
+// the direct sidecar PID, so children survive. Without a startup sweep these
+// accumulate forever. We run once at the top of `.setup`, before new sidecars
+// are spawned.
+//
+// Cross-platform: the pure classifier (`orphan_killset`) is OS-agnostic; only
+// the process-table snapshot and the force-kill primitive differ between
+// Unix (`ps` + `libc::kill`) and Windows (PowerShell CIM + `taskkill`).
+
+/// One process row from the OS process table (pid, parent pid, full command).
+struct ProcInfo {
+    pid: i32,
+    ppid: i32,
+    command: String,
+}
+
+/// Command substrings that identify GG Coder sidecar trees. `app-sidecar`
+/// matches both bundled `app-sidecar.mjs` and dev `app-sidecar.js`;
+/// `kencode-search` catches long-dead MCP children already reparented to init.
+const ORPHAN_COMMAND_PATTERNS: &[&str] = &["app-sidecar", "kencode-search"];
+
+/// Pure (no I/O): given a process-table snapshot and the current app's pid,
+/// return the set of orphaned sidecar-tree PIDs that should be SIGKILLed.
+///
+/// An orphan is a process whose command matches a known pattern AND whose
+/// parent is dead (`ppid == 1` or `ppid` absent from the snapshot). We then
+/// transitively include descendants of each orphan root (catches MCP/LSP trees
+/// still linked to a freshly-dead sidecar) plus any pattern-matching process
+/// with a dead parent not already collected (catches children reparented to
+/// init before the snapshot). The current app pid and its live sidecars are
+/// never matched — a live sidecar's parent is the still-running `gg-app`, so
+/// its `ppid` is alive in the snapshot.
+fn orphan_killset(snapshot: &[ProcInfo], self_pid: i32) -> Vec<i32> {
+    let live_pids: HashSet<i32> = snapshot.iter().map(|p| p.pid).collect();
+    let mut parent_children: HashMap<i32, Vec<i32>> = HashMap::new();
+    for p in snapshot {
+        parent_children.entry(p.ppid).or_default().push(p.pid);
+    }
+
+    let matches_pattern = |cmd: &str| ORPHAN_COMMAND_PATTERNS.iter().any(|pat| cmd.contains(pat));
+    let parent_dead = |ppid: i32| ppid == 1 || !live_pids.contains(&ppid);
+
+    // Roots: pattern-matching processes with a dead parent (not self).
+    let mut killset: HashSet<i32> = HashSet::new();
+    for p in snapshot {
+        if p.pid == self_pid {
+            continue;
+        }
+        if matches_pattern(&p.command) && parent_dead(p.ppid) {
+            killset.insert(p.pid);
+        }
+    }
+
+    // Descendants: transitively collect children of each root via the map.
+    // This catches freshly-orphaned MCP/LSP trees still linked to the dead
+    // sidecar in this snapshot.
+    let mut stack: Vec<i32> = killset.iter().copied().collect();
+    while let Some(parent) = stack.pop() {
+        if let Some(children) = parent_children.get(&parent) {
+            for &child in children {
+                if child != self_pid && killset.insert(child) {
+                    stack.push(child);
+                }
+            }
+        }
+    }
+
+    // Reparented: any pattern-matching process with a dead parent NOT already
+    // collected (e.g. kencode-search reparented to pid 1 before the snapshot,
+    // whose original sidecar parent may be gone entirely).
+    for p in snapshot {
+        if p.pid == self_pid {
+            continue;
+        }
+        if matches_pattern(&p.command) && parent_dead(p.ppid) {
+            killset.insert(p.pid);
+        }
+    }
+
+    let mut result: Vec<i32> = killset.into_iter().collect();
+    result.sort_unstable();
+    result
+}
+
+/// Pure parser for `ps -eo pid=,ppid=,command=` output (one row per line).
+/// Column padding (multiple spaces) is collapsed by `split_whitespace`.
+/// Available on all platforms so the parsing can be unit-tested.
+fn parse_ps_output(stdout: &str) -> Vec<ProcInfo> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let pid: i32 = parts.next()?.parse().ok()?;
+            let ppid: i32 = parts.next()?.parse().ok()?;
+            // The rest of the line is the full command (may contain spaces).
+            // Pattern matching uses .contains(), so rejoining with single
+            // spaces is fine.
+            let command = parts.collect::<Vec<_>>().join(" ");
+            Some(ProcInfo { pid, ppid, command })
+        })
+        .collect()
+}
+
+/// Pure parser for PowerShell CIM output: one line per process as
+/// `pid|ppid|command` (see `process_snapshot` on Windows). The command field
+/// may contain `|` and spaces — `splitn(3, '|')` captures it verbatim.
+/// Available on all platforms so the parsing can be unit-tested.
+/// `allow(dead_code)`: on Unix its only caller is `#[cfg(not(unix))]`, so the
+/// compiler flags it as dead; on Windows it IS used by `process_snapshot`.
+#[allow(dead_code)]
+fn parse_cim_output(stdout: &str) -> Vec<ProcInfo> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() {
+                return None;
+            }
+            // splitn(3, '|') — the command field may itself contain '|',
+            // but only the first two fields matter and the third captures
+            // everything else verbatim.
+            let mut parts = line.splitn(3, '|');
+            let pid: i32 = parts.next()?.trim().parse().ok()?;
+            let ppid: i32 = parts.next()?.trim().parse().ok()?;
+            let command = parts.next()?.trim().to_string();
+            Some(ProcInfo { pid, ppid, command })
+        })
+        .collect()
+}
+
+/// Snapshot the OS process table into `ProcInfo` rows (pid, ppid, command).
+/// Returns `None` if the process-listing command is unavailable — the sweep
+/// then silently does nothing.
+#[cfg(unix)]
+fn process_snapshot() -> Option<Vec<ProcInfo>> {
+    let output = Command::new("ps")
+        .args(["-eo", "pid=,ppid=,command="])
+        .output()
+        .ok()?;
+    Some(parse_ps_output(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// Windows snapshot via PowerShell CIM — the modern replacement for the
+/// deprecated `wmic`. Emits one line per process: `pid|ppid|command`, using
+/// `|` as a field delimiter. CommandLine may be empty for kernel processes;
+/// those won't match any pattern so they're harmless.
+#[cfg(not(unix))]
+fn process_snapshot() -> Option<Vec<ProcInfo>> {
+    // Single-quoted '|' inside the script is a literal separator, not a pipe.
+    // The script string uses Rust line continuations (\) so it reads as one
+    // logical line of PowerShell.
+    let script = "Get-CimInstance Win32_Process | ForEach-Object { \
+        [string]$_.ProcessId + '|' + [string]$_.ParentProcessId + '|' + [string]$_.CommandLine \
+    }";
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output()
+        .ok()?;
+    Some(parse_cim_output(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// Force-kill a single PID (best-effort, errors ignored).
+#[cfg(unix)]
+fn force_kill_pid(pid: i32) {
+    unsafe {
+        let _ = libc::kill(pid, libc::SIGKILL);
+    }
+}
+
+/// Force-kill a single PID via `taskkill /F` (no descendant tree walk needed —
+/// the sweeper kills every orphan-tree member individually from the snapshot).
+#[cfg(not(unix))]
+fn force_kill_pid(pid: i32) {
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// Snapshot the process table, classify orphaned sidecar trees, and force-kill
+/// each. Best-effort + logged; never panics. Runs once at startup before any
+/// sidecar is spawned.
+fn sweep_orphan_sidecars() {
+    let Some(snapshot) = process_snapshot() else {
+        log::warn!("orphan sweep: process listing unavailable, skipping");
+        return;
+    };
+    let self_pid = std::process::id() as i32;
+
+    let killset = orphan_killset(&snapshot, self_pid);
+    if killset.is_empty() {
+        log::info!("orphan sweep: no stale sidecars found");
+        return;
+    }
+
+    log::info!("orphan sweep: killing {} stale process(es)", killset.len());
+    for pid in &killset {
+        let cmd = snapshot
+            .iter()
+            .find(|p| &p.pid == pid)
+            .map(|p| p.command.as_str())
+            .unwrap_or("?");
+        log::info!("orphan sweep: killing pid {pid}: {cmd}");
+        force_kill_pid(*pid);
+    }
 }
 
 /// Resolve the sidecar port for the window that issued a command.
@@ -58,10 +324,74 @@ fn port_for(webview: &WebviewWindow) -> Option<u16> {
     map.get(webview.label()).and_then(|i| i.port)
 }
 
+fn cwd_for(webview: &WebviewWindow) -> Option<PathBuf> {
+    let state: State<Sidecars> = webview.state();
+    let map = state.map.lock().unwrap();
+    map.get(webview.label()).and_then(|i| i.cwd.clone())
+}
+
 /// Frontend polls this until it returns a port (mirrors the `sidecar-ready` event).
 #[tauri::command]
 fn sidecar_port(webview: WebviewWindow) -> Option<u16> {
     port_for(&webview)
+}
+
+fn strip_file_location_suffix(path: &str) -> &str {
+    let mut end = path.len();
+    for _ in 0..2 {
+        let Some(colon) = path[..end].rfind(':') else {
+            break;
+        };
+        let suffix = &path[colon + 1..end];
+        if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+            break;
+        }
+        let last_sep = path[..colon].rfind(|c| c == '/' || c == '\\').unwrap_or(0);
+        if colon <= last_sep {
+            break;
+        }
+        end = colon;
+    }
+    &path[..end]
+}
+
+/// Open a project file linked from the chat. Relative paths resolve against this
+/// window's sidecar cwd; `:line[:col]` and `#Lline` decorations are tolerated.
+#[tauri::command]
+fn open_project_path(webview: WebviewWindow, path: String) -> Result<(), String> {
+    let cwd = cwd_for(&webview).ok_or("sidecar not ready")?;
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("empty path".into());
+    }
+    if trimmed.contains("://") && !trimmed.starts_with("file://") {
+        return Err("not a file path".into());
+    }
+
+    let without_file_scheme = trimmed.strip_prefix("file://").unwrap_or(trimmed);
+    let without_anchor = without_file_scheme
+        .split_once("#L")
+        .map(|(p, _)| p)
+        .unwrap_or(without_file_scheme);
+    let without_query = without_anchor
+        .split_once('?')
+        .map(|(p, _)| p)
+        .unwrap_or(without_anchor);
+    let cleaned = strip_file_location_suffix(without_query);
+    let candidate = PathBuf::from(cleaned);
+    let resolved = if candidate.is_absolute() {
+        candidate
+    } else {
+        cwd.join(candidate)
+    };
+    let canonical = resolved
+        .canonicalize()
+        .map_err(|_| format!("file not found: {}", cleaned))?;
+
+    webview
+        .opener()
+        .open_path(canonical.to_string_lossy().to_string(), None::<String>)
+        .map_err(|e| e.to_string())
 }
 
 /// Proxy: current agent/session state.
@@ -129,21 +459,6 @@ async fn agent_new_session(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-/// Proxy: provider auth status (which providers are connected).
-#[tauri::command]
-async fn agent_auth_status(
-    webview: WebviewWindow,
-    client: State<'_, reqwest::Client>,
-) -> Result<serde_json::Value, String> {
-    let port = port_for(&webview).ok_or("sidecar not ready")?;
-    let res = client
-        .get(format!("{}/auth/status", sidecar_base(port)))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
 /// Proxy: store an API key for a provider.
@@ -331,6 +646,25 @@ async fn agent_delete_task(
         .await
         .map_err(|e| e.to_string())?;
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: accept the pending plan — bakes its `## Steps` into the system prompt
+/// so the agent emits `[DONE:n]` progress markers while implementing. Call
+/// before sending the "implement it now" prompt.
+#[tauri::command]
+async fn agent_accept_plan(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    plan_path: Option<String>,
+) -> Result<(), String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    client
+        .post(format!("{}/plan/accept", sidecar_base(port)))
+        .json(&serde_json::json!({ "planPath": plan_path }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Proxy: cancel the in-flight run.
@@ -559,7 +893,160 @@ fn app_create_project(name: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "path": dir.to_string_lossy() }))
 }
 
-// ── Native provider auth status (~/.ezcoder/auth.json) ─────────────────────────
+// ── Workspace snapshot (~/.gg/gg-app-workspace.json) ──────────────────────
+// Records which project/session is open in each window (plus geometry) so a
+// restart — especially the updater's relaunch() — can reopen every window where
+// it left off instead of dropping back to a single picker window. Owned by Rust
+// (same pattern as gg-app.json), written on project-select / window-close /
+// app-exit, replayed in `setup`.
+
+/// One saved window: the project cwd, an optional session file to resume, and
+/// optional last-known geometry (physical pixels).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+struct WorkspaceEntry {
+    cwd: String,
+    #[serde(rename = "sessionPath", default, skip_serializing_if = "Option::is_none")]
+    session_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    x: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    y: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    height: Option<u32>,
+}
+
+/// The whole snapshot: an ordered list of open windows (main first).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+struct Workspace {
+    #[serde(default)]
+    windows: Vec<WorkspaceEntry>,
+}
+
+/// Absolute path to ~/.gg/gg-app-workspace.json.
+fn app_workspace_path() -> PathBuf {
+    home_dir().join(".gg").join("gg-app-workspace.json")
+}
+
+/// Read the workspace snapshot; missing/invalid file → an empty workspace.
+fn read_workspace() -> Workspace {
+    std::fs::read_to_string(app_workspace_path())
+        .ok()
+        .and_then(|s| serde_json::from_str::<Workspace>(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Write the workspace snapshot (creating ~/.gg if needed). Best-effort.
+fn write_workspace(ws: &Workspace) {
+    let path = app_workspace_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(pretty) = serde_json::to_string_pretty(ws) {
+        let _ = std::fs::write(&path, pretty);
+    }
+}
+
+/// Pure: is this window worth snapshotting? A window still sitting on the picker
+/// has no project chosen (its cwd is None or equals the default boot cwd) and
+/// must be excluded so it doesn't restore as an empty home window.
+fn keep_for_snapshot(cwd: Option<&Path>, default_cwd: &Path) -> bool {
+    match cwd {
+        Some(c) => c != default_cwd,
+        None => false,
+    }
+}
+
+/// Pure: drop restore entries that can't be opened (empty cwd, or a cwd that no
+/// longer exists). `exists` is injected so this is testable without the fs.
+fn filter_restorable<F: Fn(&str) -> bool>(
+    windows: Vec<WorkspaceEntry>,
+    exists: F,
+) -> Vec<WorkspaceEntry> {
+    windows
+        .into_iter()
+        .filter(|w| !w.cwd.trim().is_empty() && exists(&w.cwd))
+        .collect()
+}
+
+/// Walk every live window + its `Sidecars` entry and write a fresh snapshot.
+/// Picker-only windows (still at the default boot cwd) are excluded. Geometry is
+/// captured from each window's current outer position + inner size.
+fn snapshot_workspace(app: &tauri::AppHandle) {
+    let default = default_cwd();
+    let windows = app.webview_windows();
+    let state: State<Sidecars> = app.state();
+    let map = state.map.lock().unwrap();
+
+    // Deterministic order: main first, then project-N ascending, so the first
+    // restored window reclaims the `main` label.
+    let mut labels: Vec<String> = windows.keys().cloned().collect();
+    labels.sort_by_key(|a| label_rank(a));
+
+    let mut entries: Vec<WorkspaceEntry> = Vec::new();
+    for label in &labels {
+        let Some(inst) = map.get(label) else { continue };
+        let cwd = inst.cwd.as_deref();
+        if !keep_for_snapshot(cwd, &default) {
+            continue;
+        }
+        let cwd = cwd.unwrap().to_string_lossy().to_string();
+        let (mut x, mut y, mut width, mut height) = (None, None, None, None);
+        if let Some(win) = windows.get(label) {
+            if let Ok(pos) = win.outer_position() {
+                x = Some(pos.x);
+                y = Some(pos.y);
+            }
+            if let Ok(size) = win.inner_size() {
+                width = Some(size.width);
+                height = Some(size.height);
+            }
+        }
+        entries.push(WorkspaceEntry {
+            cwd,
+            session_path: inst.session_path.clone(),
+            x,
+            y,
+            width,
+            height,
+        });
+    }
+    drop(map);
+    write_workspace(&Workspace { windows: entries });
+}
+
+/// Remove one window's entry from the snapshot (deliberate user close). Keyed by
+/// the window's recorded cwd, since the snapshot has no labels.
+fn remove_window_from_workspace(app: &tauri::AppHandle, label: &str) {
+    let cwd = {
+        let state: State<Sidecars> = app.state();
+        let map = state.map.lock().unwrap();
+        map.get(label)
+            .and_then(|i| i.cwd.as_ref())
+            .map(|c| c.to_string_lossy().to_string())
+    };
+    let Some(cwd) = cwd else { return };
+    let mut ws = read_workspace();
+    // Remove a SINGLE matching entry (not retain-by-cwd): two windows can have
+    // the same project open, and closing one must not prune the other's restore.
+    if let Some(idx) = ws.windows.iter().position(|w| w.cwd == cwd) {
+        ws.windows.remove(idx);
+        write_workspace(&ws);
+    }
+}
+
+/// Consume-once: hand the calling window its restore target (cwd + session) so
+/// the webview skips the picker on boot. Returns null for a normal (non-restored)
+/// window. The entry is removed after the first read.
+#[tauri::command]
+fn window_restore_target(webview: WebviewWindow) -> Option<RestoreEntry> {
+    let state: State<RestoreTargets> = webview.state();
+    let mut map = state.map.lock().unwrap();
+    map.remove(webview.label())
+}
+
+// ── Native provider auth status (~/.gg/auth.json) ─────────────────────────
 // The AI-providers list is STATIC metadata and the "connected" badge only needs
 // to read which provider keys exist in ~/.ezcoder/auth.json — neither needs the Node
 // agent. Reading it natively means the login hub always renders even when the
@@ -573,6 +1060,107 @@ fn app_create_project(name: String) -> Result<serde_json::Value, String> {
 /// Absolute path to ~/.ezcoder/auth.json.
 fn auth_file_path() -> PathBuf {
     home_dir().join(".ezcoder").join("auth.json")
+}
+
+/// Static metadata for one AI provider in the login hub. Mirrors
+/// packages/ggcoder/src/core/auth-providers.ts (AUTH_PROVIDERS) — keep in sync.
+struct ProviderMeta {
+    /// Storage key in auth.json + the value the webview passes back.
+    value: &'static str,
+    label: &'static str,
+    description: &'static str,
+    /// Supported auth methods, e.g. `["oauth"]`, `["apikey"]`, or both.
+    methods: &'static [&'static str],
+    api_key_label: Option<&'static str>,
+    /// Custom API base URL stored alongside an API-key credential.
+    api_key_base_url: Option<&'static str>,
+}
+
+/// The provider catalog (single source of truth for app_auth_status +
+/// app_auth_apikey). Order is the display order in the login hub.
+const AUTH_PROVIDERS: &[ProviderMeta] = &[
+    ProviderMeta {
+        value: "anthropic",
+        label: "Anthropic",
+        description: "Claude Opus 4.8, Sonnet 4.6, Haiku 4.5",
+        methods: &["oauth"],
+        api_key_label: None,
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "openai",
+        label: "OpenAI",
+        description: "GPT-5.5, GPT-5.5 Pro, GPT-5.4, GPT-5.3 Codex",
+        methods: &["oauth"],
+        api_key_label: None,
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "gemini",
+        label: "Gemini",
+        description: "Gemini 3.1 Flash Lite Preview",
+        methods: &["oauth"],
+        api_key_label: None,
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "moonshot",
+        label: "Moonshot",
+        description: "Kimi K2.7 · OAuth or API key",
+        methods: &["oauth", "apikey"],
+        api_key_label: Some("Moonshot"),
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "glm",
+        label: "Z.AI (GLM)",
+        description: "GLM-5.1, GLM-4.7, GLM-4.7 Flash",
+        methods: &["apikey"],
+        api_key_label: Some("Z.AI"),
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "minimax",
+        label: "MiniMax",
+        description: "MiniMax M3",
+        methods: &["apikey"],
+        api_key_label: Some("MiniMax"),
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "xiaomi",
+        label: "Xiaomi (MiMo)",
+        description: "MiMo-V2-Pro",
+        methods: &["apikey"],
+        api_key_label: Some("Xiaomi MiMo"),
+        api_key_base_url: Some("https://token-plan-sgp.xiaomimimo.com/v1"),
+    },
+    ProviderMeta {
+        value: "deepseek",
+        label: "DeepSeek",
+        description: "DeepSeek V4 Pro, V4 Flash",
+        methods: &["apikey"],
+        api_key_label: Some("DeepSeek"),
+        api_key_base_url: None,
+    },
+    ProviderMeta {
+        value: "openrouter",
+        label: "OpenRouter",
+        description: "Qwen3.6-Plus, multi-provider gateway",
+        methods: &["apikey"],
+        api_key_label: Some("OpenRouter"),
+        api_key_base_url: None,
+    },
+];
+
+/// Pure: if `value` is a known provider that supports API-key auth, return
+/// `Some(api_key_base_url)` (the inner Option is the custom base URL, if any).
+/// `None` means the provider is unknown or doesn't support API keys.
+fn provider_apikey_meta(value: &str) -> Option<Option<&'static str>> {
+    AUTH_PROVIDERS
+        .iter()
+        .find(|p| p.value == value && p.methods.contains(&"apikey"))
+        .map(|p| p.api_key_base_url)
 }
 
 /// Native: provider list + live connection status, read directly from
@@ -601,96 +1189,20 @@ fn app_auth_status() -> serde_json::Value {
         }
     };
 
-    // (value, label, description, methods, apiKeyLabel?, apiKeyBaseUrl?)
-    let providers: &[(&str, &str, &str, &[&str], Option<&str>, Option<&str>)] = &[
-        (
-            "anthropic",
-            "Anthropic",
-            "Claude Opus 4.8, Sonnet 4.6, Haiku 4.5",
-            &["oauth"],
-            None,
-            None,
-        ),
-        (
-            "openai",
-            "OpenAI",
-            "GPT-5.5, GPT-5.5 Pro, GPT-5.4, GPT-5.3 Codex",
-            &["oauth"],
-            None,
-            None,
-        ),
-        (
-            "gemini",
-            "Gemini",
-            "Gemini 3.1 Flash Lite Preview",
-            &["oauth"],
-            None,
-            None,
-        ),
-        (
-            "moonshot",
-            "Moonshot",
-            "Kimi K2.7 · OAuth or API key",
-            &["oauth", "apikey"],
-            Some("Moonshot"),
-            None,
-        ),
-        (
-            "glm",
-            "Z.AI (GLM)",
-            "GLM-5.1, GLM-4.7, GLM-4.7 Flash",
-            &["apikey"],
-            Some("Z.AI"),
-            None,
-        ),
-        (
-            "minimax",
-            "MiniMax",
-            "MiniMax M3",
-            &["apikey"],
-            Some("MiniMax"),
-            None,
-        ),
-        (
-            "xiaomi",
-            "Xiaomi (MiMo)",
-            "MiMo-V2-Pro",
-            &["apikey"],
-            Some("Xiaomi MiMo"),
-            Some("https://token-plan-sgp.xiaomimimo.com/v1"),
-        ),
-        (
-            "deepseek",
-            "DeepSeek",
-            "DeepSeek V4 Pro, V4 Flash",
-            &["apikey"],
-            Some("DeepSeek"),
-            None,
-        ),
-        (
-            "openrouter",
-            "OpenRouter",
-            "Qwen3.6-Plus, multi-provider gateway",
-            &["apikey"],
-            Some("OpenRouter"),
-            None,
-        ),
-    ];
-
-    let list: Vec<serde_json::Value> = providers
+    let list: Vec<serde_json::Value> = AUTH_PROVIDERS
         .iter()
-        .map(|(value, label, description, methods, api_key_label, api_key_base_url)| {
+        .map(|p| {
             let mut obj = serde_json::json!({
-                "value": value,
-                "label": label,
-                "description": description,
-                "methods": methods,
-                "connected": connected(value),
+                "value": p.value,
+                "label": p.label,
+                "description": p.description,
+                "methods": p.methods,
+                "connected": connected(p.value),
             });
-            if let Some(l) = api_key_label {
+            if let Some(l) = p.api_key_label {
                 obj["apiKeyLabel"] = serde_json::json!(l);
             }
-            if let Some(u) = api_key_base_url {
+            if let Some(u) = p.api_key_base_url {
                 obj["apiKeyBaseUrl"] = serde_json::json!(u);
             }
             obj
@@ -698,6 +1210,150 @@ fn app_auth_status() -> serde_json::Value {
         .collect();
 
     serde_json::json!({ "providers": list })
+}
+
+// ── Native API-key auth writes (~/.gg/auth.json) ──────────────────────────
+// Storing/removing an API key is a pure mutation of auth.json — the SAME file
+// app_auth_status reads. Doing it natively (not via the sidecar) means a fresh
+// user can log in even though their not-yet-configured sidecar may not be up:
+// the sidecar used to crash on boot when no provider was configured, so a
+// sidecar-routed key write would hang forever. Mirrors AuthStorage on the Node
+// side (the credential shape + moonshot's dual-key logout).
+
+/// API-key credentials never expire in practice; mirror the sidecar's ~100-year
+/// horizon (365d * 100) so refresh logic never treats them as stale.
+const API_KEY_TTL_MS: i64 = 365 * 24 * 60 * 60 * 1000 * 100;
+
+/// Pure: build the OAuthCredentials JSON object for an API key (matches
+/// AuthStorage's shape: accessToken + empty refreshToken + far-future expiry +
+/// optional baseUrl). `now_ms` is injected for testability.
+fn apikey_credential_json(key: &str, base_url: Option<&str>, now_ms: i64) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "accessToken": key,
+        "refreshToken": "",
+        "expiresAt": now_ms + API_KEY_TTL_MS,
+    });
+    if let Some(url) = base_url {
+        obj["baseUrl"] = serde_json::json!(url);
+    }
+    obj
+}
+
+/// Pure: upsert an API-key credential into the existing auth.json text
+/// (read-modify-write), preserving every other provider's entry. Returns the
+/// new pretty-printed JSON. `existing` is the current file contents (None when
+/// the file is missing). Errors only on a malformed (non-object) existing file.
+fn apply_apikey(
+    existing: Option<&str>,
+    provider: &str,
+    base_url: Option<&str>,
+    now_ms: i64,
+    key: &str,
+) -> Result<String, String> {
+    let mut root = parse_auth_object(existing)?;
+    if let Some(map) = root.as_object_mut() {
+        map.insert(
+            provider.to_string(),
+            apikey_credential_json(key, base_url, now_ms),
+        );
+    }
+    serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
+}
+
+/// Pure: remove a provider's credential from the existing auth.json text.
+/// Moonshot also drops its distinct OAuth key (`moonshot-oauth`) so a single
+/// "disconnect" fully removes Kimi OAuth + the Moonshot API key. Returns the new
+/// pretty-printed JSON (an empty object `{}` when nothing remains / no file).
+fn apply_logout(existing: Option<&str>, provider: &str) -> Result<String, String> {
+    let mut root = parse_auth_object(existing)?;
+    if let Some(map) = root.as_object_mut() {
+        map.remove(provider);
+        if provider == "moonshot" {
+            map.remove("moonshot-oauth");
+        }
+    }
+    serde_json::to_string_pretty(&root).map_err(|e| e.to_string())
+}
+
+/// Parse auth.json text into a JSON object value. Missing file → empty object.
+/// A present-but-malformed/non-object file is an error (refuse to clobber it).
+fn parse_auth_object(existing: Option<&str>) -> Result<serde_json::Value, String> {
+    match existing {
+        None => Ok(serde_json::json!({})),
+        Some(s) if s.trim().is_empty() => Ok(serde_json::json!({})),
+        Some(s) => {
+            let v: serde_json::Value =
+                serde_json::from_str(s).map_err(|e| format!("auth.json is not valid JSON: {e}"))?;
+            if v.is_object() {
+                Ok(v)
+            } else {
+                Err("auth.json is not a JSON object".to_string())
+            }
+        }
+    }
+}
+
+/// Atomically write auth.json (temp file + rename), creating ~/.gg if needed.
+/// On unix the file is mode 0600 (credentials). Mirrors gg-core's atomicWriteFile.
+fn write_auth_file(contents: &str) -> Result<(), String> {
+    let path = auth_file_path();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+    std::fs::write(&tmp, contents).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
+    std::fs::rename(&tmp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })?;
+    Ok(())
+}
+
+/// Native: store an API key for a provider directly in ~/.gg/auth.json. Never
+/// touches the sidecar, so it can't hang on a not-yet-booted agent. Validates
+/// that the provider exists and supports API-key auth, and that the key is
+/// non-empty. Returns `{ ok: true }`.
+#[tauri::command]
+fn app_auth_apikey(provider: String, key: String) -> Result<serde_json::Value, String> {
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("API key is required".to_string());
+    }
+    let base_url = provider_apikey_meta(&provider)
+        .ok_or_else(|| "provider does not support API key auth".to_string())?;
+    let existing = std::fs::read_to_string(auth_file_path()).ok();
+    let now_ms = current_unix_millis();
+    let next = apply_apikey(existing.as_deref(), &provider, base_url, now_ms, key)?;
+    write_auth_file(&next)?;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+/// Native: disconnect a provider (remove its credential from ~/.gg/auth.json).
+/// Moonshot also clears its OAuth key. Never touches the sidecar. Returns
+/// `{ ok: true }`.
+#[tauri::command]
+fn app_auth_logout(provider: String) -> Result<serde_json::Value, String> {
+    let existing = std::fs::read_to_string(auth_file_path()).ok();
+    // Nothing to remove and no file → succeed silently (idempotent).
+    if existing.is_none() {
+        return Ok(serde_json::json!({ "ok": true }));
+    }
+    let next = apply_logout(existing.as_deref(), &provider)?;
+    write_auth_file(&next)?;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+/// Current unix time in milliseconds (wall clock; fine for an expiry stamp).
+fn current_unix_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Proxy: read Telegram config status (configured + masked preview).
@@ -1013,7 +1669,10 @@ fn select_project(
             }
         }
     }
-    spawn_sidecar_with_session(app, label, PathBuf::from(cwd), session_path);
+    spawn_sidecar_with_session(app.clone(), label, PathBuf::from(cwd), session_path);
+    // The map now reflects this window's new project/session; persist the
+    // workspace so a restart reopens it here.
+    snapshot_workspace(&app);
     Ok(())
 }
 
@@ -1364,7 +2023,12 @@ fn spawn_sidecar_with_session(
         .env("GG_APP_CWD", &cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if let Some(sp) = session_path {
+    // Make the sidecar a process-group leader so a single group-kill
+    // (`kill(-pid)`) in `terminate_child` reaps its entire descendant tree
+    // (MCP stdio children, LSP servers) — no orphans on close/switch/quit.
+    #[cfg(unix)]
+    cmd.process_group(0);
+    if let Some(sp) = &session_path {
         cmd.env("GG_APP_SESSION_ID", sp);
     }
 
@@ -1429,7 +2093,69 @@ fn spawn_sidecar_with_session(
 
     let state: State<Sidecars> = app.state();
     let mut map = state.map.lock().unwrap();
-    map.entry(label).or_default().child = Some(child);
+    let inst = map.entry(label).or_default();
+    inst.child = Some(child);
+    inst.cwd = Some(cwd);
+    inst.session_path = session_path;
+}
+
+/// Boot the app's windows. If a workspace snapshot has restorable windows (each
+/// with a cwd that still exists on disk), reopen one window per entry — pointed
+/// at its project + session, with saved geometry — and record a per-window
+/// restore target so the webview skips the picker. Otherwise fall back to the
+/// single default `main` window at the boot cwd (the picker then shows).
+fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
+    let ws = read_workspace();
+    let entries = filter_restorable(ws.windows, |c| Path::new(c).exists());
+    if entries.is_empty() {
+        // Fresh boot / nothing to restore: the usual single main window.
+        build_app_window(app, "main")?;
+        spawn_sidecar(app.clone(), "main".into(), default_cwd());
+        return Ok(());
+    }
+
+    let count = entries.len();
+    let mut any_geometry = false;
+    for (i, entry) in entries.into_iter().enumerate() {
+        // First restored window reclaims `main`; the rest get project-N.
+        let label = if i == 0 {
+            "main".to_string()
+        } else {
+            format!("project-{i}")
+        };
+        let win = build_app_window(app, &label)?;
+        spawn_sidecar_with_session(
+            app.clone(),
+            label.clone(),
+            PathBuf::from(&entry.cwd),
+            entry.session_path.clone(),
+        );
+        // Tell this window which project/session it was restored to, so it skips
+        // the picker and hydrates straight away.
+        {
+            let state: State<RestoreTargets> = app.state();
+            state.map.lock().unwrap().insert(
+                label,
+                RestoreEntry {
+                    cwd: entry.cwd.clone(),
+                    session_path: entry.session_path.clone(),
+                },
+            );
+        }
+        // Apply saved geometry when present; else we tile after the loop.
+        if let (Some(x), Some(y)) = (entry.x, entry.y) {
+            any_geometry = true;
+            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+        if let (Some(w), Some(h)) = (entry.width, entry.height) {
+            any_geometry = true;
+            let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+        }
+    }
+    if !any_geometry {
+        arrange_windows(app, count);
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1453,15 +2179,18 @@ pub fn run() {
                 .build(),
         )
         .manage(Sidecars::default())
+        .manage(RestoreTargets::default())
+        .manage(AppExiting::default())
         .manage(reqwest::Client::new())
         .invoke_handler(tauri::generate_handler![
             sidecar_port,
+            open_project_path,
             agent_state,
             agent_prompt,
             agent_cancel,
+            agent_accept_plan,
             agent_new_session,
             agent_history,
-            agent_auth_status,
             agent_auth_apikey,
             agent_auth_oauth_start,
             agent_auth_oauth_code,
@@ -1489,26 +2218,39 @@ pub fn run() {
             app_settings_save,
             app_create_project,
             app_auth_status,
+            app_auth_apikey,
+            app_auth_logout,
             agent_telegram_get,
             agent_telegram_save,
             agent_serve_status,
             agent_serve_start,
             agent_serve_stop,
-            gaze_focus
+            gaze_focus,
+            window_restore_target
         ])
         .setup(|app| {
-            // Build the main window in code (not from config) so macOS gets
-            // `hidden_title(true)` via the builder — there's no runtime setter,
-            // and without it the native "EZ Coder" title would linger alongside
-            // the in-app title. `build_app_window` applies the same chrome as
-            // secondary windows.
-            build_app_window(&app.handle().clone(), "main")?;
-            // The main window gets its sidecar at the default cwd.
-            spawn_sidecar(app.handle().clone(), "main".into(), default_cwd());
+            // Sweep orphaned sidecars from previous (crashed/force-quit) app
+            // instances BEFORE spawning any new sidecars — they'd otherwise
+            // accumulate forever across launches. Best-effort + logged.
+            // Cross-platform: uses `ps` on Unix, PowerShell CIM on Windows.
+            sweep_orphan_sidecars();
+            // Restore the previous session's windows (each at its project +
+            // session) when a workspace snapshot exists; otherwise build the
+            // single default `main` window. Windows are built in code (not from
+            // config) so macOS gets `hidden_title(true)` via the builder.
+            restore_or_default_windows(&app.handle().clone())?;
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
+                let app = window.app_handle();
+                // A deliberate close (app NOT quitting) drops this window from the
+                // workspace so it doesn't reopen next launch. During quit the
+                // AppExiting flag is set, so the snapshot is preserved intact.
+                let exiting = app.state::<AppExiting>().0.load(Ordering::SeqCst);
+                if !exiting {
+                    remove_window_from_workspace(app, window.label());
+                }
                 // Kill only THIS window's sidecar so other projects keep running.
                 let state: State<Sidecars> = window.state();
                 let child = state
@@ -1522,13 +2264,245 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                // Mark the quit BEFORE windows start tearing down, so the
+                // Destroyed handlers preserve the snapshot, then write the final
+                // snapshot (current geometry + each window's live cwd/session).
+                app.state::<AppExiting>().0.store(true, Ordering::SeqCst);
+                refresh_live_sessions(app);
+                snapshot_workspace(app);
+            }
+        });
+}
+
+/// Before the final exit snapshot, re-read each live sidecar's `/state` so a
+/// window that started a new session mid-run (changing its session file) is
+/// recorded at its CURRENT session, not the one it was spawned with. Best-effort
+/// + time-boxed: any window we can't reach keeps its last-known session_path.
+fn refresh_live_sessions(app: &tauri::AppHandle) {
+    let ports: Vec<(String, u16)> = {
+        let state: State<Sidecars> = app.state();
+        let map = state.map.lock().unwrap();
+        map.iter()
+            .filter_map(|(label, inst)| inst.port.map(|p| (label.clone(), p)))
+            .collect()
+    };
+    if ports.is_empty() {
+        return;
+    }
+    let client = app.state::<reqwest::Client>().inner().clone();
+    // The exit callback runs on the main event-loop thread (outside the async
+    // runtime), so block_on is safe here. Each request is time-boxed so a hung
+    // sidecar can't stall quit.
+    let results: Vec<(String, Option<String>, Option<PathBuf>)> =
+        tauri::async_runtime::block_on(async {
+            let mut out = Vec::with_capacity(ports.len());
+            for (label, port) in ports {
+                let url = format!("{}/state", sidecar_base(port));
+                let req = client
+                    .get(&url)
+                    .timeout(std::time::Duration::from_millis(400))
+                    .send()
+                    .await;
+                let Ok(res) = req else {
+                    continue;
+                };
+                let Ok(body) = res.json::<serde_json::Value>().await else {
+                    continue;
+                };
+                let session_path = body
+                    .get("sessionPath")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                let cwd = body
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from);
+                out.push((label, session_path, cwd));
+            }
+            out
+        });
+    let state: State<Sidecars> = app.state();
+    let mut map = state.map.lock().unwrap();
+    for (label, session_path, cwd) in results {
+        if let Some(inst) = map.get_mut(&label) {
+            if session_path.is_some() {
+                inst.session_path = session_path;
+            }
+            if let Some(cwd) = cwd {
+                inst.cwd = Some(cwd);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keep_for_snapshot_excludes_picker_windows() {
+        let default = Path::new("/home/user");
+        // No project chosen yet → excluded.
+        assert!(!keep_for_snapshot(None, default));
+        // Still on the default boot cwd (picker) → excluded.
+        assert!(!keep_for_snapshot(Some(Path::new("/home/user")), default));
+        // A real project → kept.
+        assert!(keep_for_snapshot(Some(Path::new("/home/user/proj")), default));
+    }
+
+    #[test]
+    fn filter_restorable_drops_missing_and_empty() {
+        let windows = vec![
+            WorkspaceEntry {
+                cwd: "/exists/a".into(),
+                ..Default::default()
+            },
+            WorkspaceEntry {
+                cwd: "   ".into(),
+                ..Default::default()
+            },
+            WorkspaceEntry {
+                cwd: "/gone/b".into(),
+                ..Default::default()
+            },
+        ];
+        let kept = filter_restorable(windows, |c| c == "/exists/a");
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].cwd, "/exists/a");
+    }
+
+    #[test]
+    fn workspace_roundtrips_through_json() {
+        let ws = Workspace {
+            windows: vec![
+                WorkspaceEntry {
+                    cwd: "/p/a".into(),
+                    session_path: Some("/s/a.jsonl".into()),
+                    x: Some(0),
+                    y: Some(25),
+                    width: Some(1280),
+                    height: Some(800),
+                },
+                WorkspaceEntry {
+                    cwd: "/p/b".into(),
+                    ..Default::default()
+                },
+            ],
+        };
+        let json = serde_json::to_string(&ws).unwrap();
+        let back: Workspace = serde_json::from_str(&json).unwrap();
+        assert_eq!(ws, back);
+        // The second entry omits optional fields entirely (skip_serializing_if).
+        assert!(!json.contains("\"sessionPath\":null"));
+    }
+
+    #[test]
+    fn workspace_parses_minimal_entry() {
+        // Forward/backward compat: a bare { cwd } entry still loads.
+        let ws: Workspace =
+            serde_json::from_str(r#"{ "windows": [{ "cwd": "/p/a" }] }"#).unwrap();
+        assert_eq!(ws.windows.len(), 1);
+        assert_eq!(ws.windows[0].cwd, "/p/a");
+        assert_eq!(ws.windows[0].session_path, None);
+    }
+
+    #[test]
+    fn empty_or_missing_workspace_is_default() {
+        let ws: Workspace = serde_json::from_str("{}").unwrap();
+        assert!(ws.windows.is_empty());
+    }
+
+    #[test]
+    fn provider_apikey_meta_gates_on_apikey_support() {
+        // OAuth-only provider → not an API-key provider.
+        assert!(provider_apikey_meta("anthropic").is_none());
+        // Unknown provider → None.
+        assert!(provider_apikey_meta("nope").is_none());
+        // API-key provider with no custom base URL.
+        assert_eq!(provider_apikey_meta("glm"), Some(None));
+        // Xiaomi carries a custom base URL.
+        assert_eq!(
+            provider_apikey_meta("xiaomi"),
+            Some(Some("https://token-plan-sgp.xiaomimimo.com/v1")),
+        );
+        // Moonshot supports both oauth + apikey.
+        assert_eq!(provider_apikey_meta("moonshot"), Some(None));
+    }
+
+    #[test]
+    fn apikey_credential_has_far_future_expiry_and_optional_base_url() {
+        let now = 1_000_000_000_000i64;
+        let cred = apikey_credential_json("sk-test", None, now);
+        assert_eq!(cred["accessToken"], "sk-test");
+        assert_eq!(cred["refreshToken"], "");
+        assert_eq!(cred["expiresAt"].as_i64().unwrap(), now + API_KEY_TTL_MS);
+        assert!(cred.get("baseUrl").is_none());
+
+        let with_url = apikey_credential_json("k", Some("https://x/v1"), now);
+        assert_eq!(with_url["baseUrl"], "https://x/v1");
+    }
+
+    #[test]
+    fn apply_apikey_creates_file_when_missing() {
+        let out = apply_apikey(None, "glm", None, 0, "sk-1").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["glm"]["accessToken"], "sk-1");
+    }
+
+    #[test]
+    fn apply_apikey_preserves_other_providers() {
+        let existing = r#"{ "anthropic": { "accessToken": "oauth-tok", "refreshToken": "r", "expiresAt": 5 } }"#;
+        let out = apply_apikey(Some(existing), "glm", None, 0, "sk-1").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        // New provider added.
+        assert_eq!(v["glm"]["accessToken"], "sk-1");
+        // Existing provider untouched.
+        assert_eq!(v["anthropic"]["accessToken"], "oauth-tok");
+        assert_eq!(v["anthropic"]["refreshToken"], "r");
+    }
+
+    #[test]
+    fn apply_apikey_carries_base_url() {
+        let out = apply_apikey(None, "xiaomi", Some("https://x/v1"), 0, "sk-2").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["xiaomi"]["baseUrl"], "https://x/v1");
+    }
+
+    #[test]
+    fn apply_apikey_rejects_malformed_file() {
+        assert!(apply_apikey(Some("not json"), "glm", None, 0, "k").is_err());
+        assert!(apply_apikey(Some("[1,2,3]"), "glm", None, 0, "k").is_err());
+    }
+
+    #[test]
+    fn apply_logout_removes_provider() {
+        let existing = r#"{ "glm": { "accessToken": "k", "refreshToken": "", "expiresAt": 1 }, "openai": { "accessToken": "o", "refreshToken": "", "expiresAt": 1 } }"#;
+        let out = apply_logout(Some(existing), "glm").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(v.get("glm").is_none());
+        assert_eq!(v["openai"]["accessToken"], "o");
+    }
+
+    #[test]
+    fn apply_logout_moonshot_drops_both_keys() {
+        let existing = r#"{ "moonshot": { "accessToken": "key", "refreshToken": "", "expiresAt": 1 }, "moonshot-oauth": { "accessToken": "oauth", "refreshToken": "r", "expiresAt": 1 } }"#;
+        let out = apply_logout(Some(existing), "moonshot").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(v.get("moonshot").is_none());
+        assert!(v.get("moonshot-oauth").is_none());
+    }
+
+    #[test]
+    fn apply_logout_missing_file_is_empty_object() {
+        let out = apply_logout(None, "glm").unwrap();
+        assert_eq!(out.trim(), "{}");
+    }
 
     #[test]
     fn pick_node_env_override_wins() {
@@ -1644,5 +2618,209 @@ mod tests {
         } else {
             assert_eq!(got, WindowChrome::Native);
         }
+    }
+
+    // ── orphan_killset classifier tests ──────────────────────────────────────
+
+    /// Helper: build a ProcInfo row.
+    fn proc(pid: i32, ppid: i32, command: &str) -> ProcInfo {
+        ProcInfo {
+            pid,
+            ppid,
+            command: command.to_string(),
+        }
+    }
+
+    #[test]
+    fn orphan_sidecar_with_ppid_1_is_killed() {
+        // A sidecar reparented to init is an orphan.
+        let snap = vec![proc(500, 1, "node /app/sidecar/app-sidecar.mjs")];
+        let ks = orphan_killset(&snap, 100);
+        assert_eq!(ks, vec![500]);
+    }
+
+    #[test]
+    fn live_sidecar_with_alive_parent_is_excluded() {
+        // The current gg-app (pid 100) is the parent of a live sidecar (pid 200).
+        let snap = vec![
+            proc(100, 1, "/Applications/GG Coder.app/Contents/MacOS/gg-app"),
+            proc(200, 100, "ggnode app-sidecar.mjs"),
+        ];
+        let ks = orphan_killset(&snap, 100);
+        assert!(ks.is_empty(), "live sidecar must not be killed: {ks:?}");
+    }
+
+    #[test]
+    fn orphan_sidecar_with_dead_parent_not_in_snapshot() {
+        // Parent pid 999 is absent from the snapshot and ≠ 1 → dead → orphan.
+        let snap = vec![proc(300, 999, "node app-sidecar.js")];
+        let ks = orphan_killset(&snap, 100);
+        assert!(ks.contains(&300));
+    }
+
+    #[test]
+    fn reparented_kencode_is_killed() {
+        // kencode-search reparented to init.
+        let snap = vec![proc(700, 1, "node kencode-search")];
+        let ks = orphan_killset(&snap, 100);
+        assert_eq!(ks, vec![700]);
+    }
+
+    #[test]
+    fn orphan_descendant_tree_is_collected() {
+        // sidecar(500, orphaned) → npm exec(501) → node kencode-search(502)
+        let snap = vec![
+            proc(500, 1, "node app-sidecar.js"),
+            proc(501, 500, "npm exec @kenkaiiii/kencode-search"),
+            proc(502, 501, "node kencode-search"),
+        ];
+        let ks = orphan_killset(&snap, 100);
+        assert!(ks.contains(&500));
+        assert!(ks.contains(&501));
+        assert!(ks.contains(&502));
+        assert_eq!(ks.len(), 3);
+    }
+
+    #[test]
+    fn current_app_pid_never_killed() {
+        // Even if self somehow matches a pattern and has a dead parent, exclude it.
+        let snap = vec![proc(100, 1, "node app-sidecar.js")];
+        let ks = orphan_killset(&snap, 100);
+        assert!(ks.is_empty(), "self pid must never be in killset: {ks:?}");
+    }
+
+    #[test]
+    fn unrelated_node_with_dead_parent_excluded() {
+        // A vite process with a dead parent does NOT match any pattern → excluded.
+        let snap = vec![proc(800, 1, "node vite")];
+        let ks = orphan_killset(&snap, 100);
+        assert!(ks.is_empty(), "non-matching process must not be killed: {ks:?}");
+    }
+
+    #[test]
+    fn dedup_when_descendant_also_matches_pattern() {
+        // sidecar(500, orphaned) → kencode-search(501). Both match patterns,
+        // but 501 is both a descendant AND a reparented-pattern candidate.
+        // It must appear exactly once.
+        let snap = vec![
+            proc(500, 1, "node app-sidecar.js"),
+            proc(501, 500, "node kencode-search"),
+        ];
+        let ks = orphan_killset(&snap, 100);
+        let count_501 = ks.iter().filter(|&&p| p == 501).count();
+        assert_eq!(count_501, 1, "pid 501 must appear exactly once: {ks:?}");
+        assert_eq!(ks.len(), 2);
+    }
+
+    #[test]
+    fn multi_instance_concurrent_dev_runs_safe() {
+        // Two gg-app instances each with their own sidecar — neither is orphaned.
+        let snap = vec![
+            proc(100, 1, "gg-app"),
+            proc(200, 100, "node app-sidecar.js"),
+            proc(300, 1, "gg-app"),
+            proc(400, 300, "node app-sidecar.js"),
+        ];
+        // Instance 1 sweeps.
+        assert!(orphan_killset(&snap, 100).is_empty());
+        // Instance 2 sweeps.
+        assert!(orphan_killset(&snap, 300).is_empty());
+    }
+
+    // ── Output parser tests (cross-platform) ────────────────────────────────
+    // These verify the parsing of real OS process-listing output so the Windows
+    // CIM path is exercised on macOS (where the Windows snapshot command can't
+    // run, but the parser can).
+
+    #[test]
+    fn parse_ps_handles_column_padding_and_spaces_in_command() {
+        // Real `ps -eo pid=,ppid=,command=` output: multiple spaces between fields.
+        let raw = "    1     0 /sbin/launchd\n\
+                   11541     1 /Applications/GG Coder.app/Contents/MacOS/gg-app\n\
+                   11553 11541 /Applications/GG Coder.app/Contents/MacOS/ggnode app-sidecar.mjs";
+        let rows = parse_ps_output(raw);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].pid, 1);
+        assert_eq!(rows[0].ppid, 0);
+        assert_eq!(rows[0].command, "/sbin/launchd");
+        // Command with spaces is rejoined correctly.
+        assert!(rows[2].command.contains("app-sidecar.mjs"));
+        assert!(rows[2].command.contains("ggnode"));
+    }
+
+    #[test]
+    fn parse_ps_skips_unparseable_lines() {
+        let raw = "pid ppid command\n\
+                   abc def not-a-number\n\
+                   42 1 node";
+        let rows = parse_ps_output(raw);
+        // Header + garbage lines are skipped; only the valid row survives.
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pid, 42);
+    }
+
+    #[test]
+    fn parse_cim_handles_pipe_delimited_output() {
+        // Real PowerShell CIM output: pid|ppid|CommandLine.
+        let raw = "4|0|\n\
+                   5204|5200|C:\\Program Files\\nodejs\\node.exe app-sidecar.mjs\n\
+                   5300|5204|C:\\Program Files\\nodejs\\node.exe kencode-search";
+        let rows = parse_cim_output(raw);
+        assert_eq!(rows.len(), 3);
+        // Kernel process with empty CommandLine.
+        assert_eq!(rows[0].pid, 4);
+        assert_eq!(rows[0].ppid, 0);
+        assert_eq!(rows[0].command, "");
+        // Sidecar with full path.
+        assert!(rows[1].command.contains("app-sidecar.mjs"));
+        // kencode grandchild.
+        assert_eq!(rows[2].ppid, 5204);
+        assert!(rows[2].command.contains("kencode-search"));
+    }
+
+    #[test]
+    fn parse_cim_command_with_pipe_is_preserved() {
+        // A command line containing a pipe character must not be split further.
+        let raw = "100|1|cmd /c echo hi | findstr foo";
+        let rows = parse_cim_output(raw);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pid, 100);
+        assert_eq!(rows[0].ppid, 1);
+        // The third field captures everything after the second '|'.
+        assert_eq!(rows[0].command, "cmd /c echo hi | findstr foo");
+    }
+
+    #[test]
+    fn parse_cim_skips_blank_and_garbage_lines() {
+        let raw = "\n\
+                   \r\n\
+                   abc|def|garbage\n\
+                   42|1|node app-sidecar.mjs";
+        let rows = parse_cim_output(raw);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pid, 42);
+    }
+
+    #[test]
+    fn full_windows_sweep_pipeline() {
+        // End-to-end: CIM output → parse → classify → killset. Simulates a
+        // Windows machine where a previous gg-app instance was force-quit,
+        // orphaning its sidecar tree (parent PIDs absent from the snapshot).
+        let raw = "4|0|\n\
+                   1000|4|C:\\Windows\\System32\\cmd.exe\n\
+                   5000|9999|C:\\nodejs\\node.exe app-sidecar.mjs\n\
+                   5001|5000|C:\\nodejs\\node.exe kencode-search\n\
+                   6000|4|C:\\Program Files\\GG Coder\\gg-app.exe\n\
+                   6001|6000|C:\\nodejs\\node.exe app-sidecar.mjs";
+        let snapshot = parse_cim_output(raw);
+        assert_eq!(snapshot.len(), 6);
+        // Self = the new gg-app (pid 6000). Its sidecar (6001) has a live parent.
+        let killset = orphan_killset(&snapshot, 6000);
+        // Orphaned sidecar (5000, parent 9999 dead) + its kencode child (5001).
+        assert!(killset.contains(&5000));
+        assert!(killset.contains(&5001));
+        // Live sidecar (6001) must NOT be killed.
+        assert!(!killset.contains(&6001));
+        assert_eq!(killset.len(), 2);
     }
 }

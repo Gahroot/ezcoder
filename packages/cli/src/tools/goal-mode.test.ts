@@ -67,7 +67,15 @@ describe("goal mode tool restrictions", () => {
 
     it(`blocks subagent in Goal ${mode} mode`, async () => {
       goalModeRef.current = mode;
-      const tool = createSubAgentTool(tmpDir, [], "anthropic", "claude-sonnet-4-6", goalModeRef);
+      const tool = createSubAgentTool(
+        tmpDir,
+        [],
+        () => "anthropic",
+        () => "claude-sonnet-4-6",
+        undefined,
+        undefined,
+        goalModeRef,
+      );
 
       const result = resultToString(await tool.execute({ task: "Do work" }, mockContext));
 
