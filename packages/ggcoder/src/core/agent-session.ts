@@ -121,6 +121,10 @@ export class AgentSession {
 
   private messages: Message[] = [];
   private tools: AgentTool[] = [];
+  /** Rebuilds the read tool for a new model (video byte cap is baked in at
+   *  creation). Called from switchModel so video-capable models get the
+   *  read-tool's native-video path after a mid-session model change. */
+  private rebuildReadTool: ((model: string) => AgentTool) | undefined;
   private skills: Skill[] = [];
   private cacheKeyLogged = false;
   // ── Self-correction hook state (mirrors the TUI's useAgentLoop refs) ──
@@ -238,7 +242,7 @@ export class AgentSession {
       globalAgentsDir: paths.agentsDir,
       projectDir: this.cwd,
     });
-    const { tools, processManager, lspManager } = createTools(this.cwd, {
+    const { tools, processManager, rebuildReadTool, lspManager } = createTools(this.cwd, {
       agents,
       skills: this.skills,
       provider: this.provider,
@@ -260,6 +264,7 @@ export class AgentSession {
         : {}),
     });
     this.tools = tools;
+    this.rebuildReadTool = rebuildReadTool;
     this.processManager = processManager;
     this.lspManager = lspManager;
 
@@ -437,11 +442,38 @@ export class AgentSession {
   ): Promise<void> {
     const parts: Array<TextContent | ImageContent | VideoContent> = [];
     const fileNotes: string[] = [];
+    const modelSupportsVideo = getModel(this.model)?.supportsVideo ?? false;
     for (const a of attachments) {
       if (a.kind === "image") {
         parts.push({ type: "image", mediaType: a.mediaType, data: a.data });
       } else if (a.kind === "video") {
-        parts.push({ type: "video", mediaType: a.mediaType, data: a.data });
+        // Mirror the CLI's buildUserContentWithAttachments: never send inline
+        // VideoContent in the user message. Video-capable models (Kimi/Gemini/
+        // MiniMax) watch video via the read tool, which auto-compresses to the
+        // model's byte cap and delivers it in the provider's required shape.
+        // Non-video models get a plain note so they know to use ffmpeg. The file
+        // was already saved to disk by prepareAttachments in the sidecar.
+        if (modelSupportsVideo && a.path) {
+          parts.push({
+            type: "text",
+            text:
+              `The user attached a video at ${a.path}. You CAN watch it: call the read tool ` +
+              `on this exact path now, then answer based on what you see. Do not say you ` +
+              `cannot watch video — reading the file lets you analyze it.`,
+          });
+        } else if (a.path) {
+          parts.push({
+            type: "text",
+            text:
+              `[User attached a video file at ${a.path}. You cannot watch video directly; ` +
+              `if needed, use ffmpeg to extract frames or audio.]`,
+          });
+        } else {
+          parts.push({
+            type: "text",
+            text: `[User attached a video file but it could not be saved for analysis.]`,
+          });
+        }
       } else if (a.path) {
         fileNotes.push(`- ${a.name} (saved at ${a.path})`);
       }
@@ -722,7 +754,21 @@ export class AgentSession {
     // booted on e.g. Kimi (256K) keeps sending that cap after switching to a
     // smaller model (Opus 128K), which the provider rejects.
     this.maxTokens = this.resolveMaxTokens(model);
-    this.eventBus.emit("model_change", { provider: this.provider, model: this.model });
+    this.eventBus.emit("model_change", {
+      provider: this.provider,
+      model: this.model,
+      supportsVideo: getModel(this.model)?.supportsVideo ?? false,
+    });
+
+    // Rebuild the read tool for the new model's video byte cap. The tool's
+    // video capability (description + native-video execute path) is baked in
+    // at creation from the model's maxVideoBytes, so switching to/from a
+    // video-capable model mid-session needs a fresh tool object — mirrors
+    // the TUI's rebuildReadTool call on model switch.
+    if (this.rebuildReadTool) {
+      const newReadTool = this.rebuildReadTool(model);
+      this.tools = this.tools.map((t) => (t.name === "read" ? newReadTool : t));
+    }
 
     // Update provider-specific tools when provider changes
     if (provider && provider !== prevProvider) {

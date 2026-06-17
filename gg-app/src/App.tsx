@@ -1295,6 +1295,16 @@ function App(): React.ReactElement {
       images: imgPreviews.length > 0 ? imgPreviews : undefined,
       files: mentionedPaths.length > 0 ? mentionedPaths : undefined,
     });
+    // Warn the user when a video attachment is sent to a model without native
+    // video analysis — the agent can still use ffmpeg to extract frames/audio,
+    // but can't watch the clip directly.
+    if (wire.some((a) => a.kind === "video") && !(state?.supportsVideo ?? false)) {
+      pushItem({
+        kind: "info",
+        id: nextId(),
+        text: "This model can't watch video directly. The agent can still extract frames or audio with ffmpeg if needed — switch to a video-capable model (Gemini, Kimi, MiniMax) for native video analysis.",
+      });
+    }
     setInput("");
     setAttachments([]);
     setSlashIndex(0);

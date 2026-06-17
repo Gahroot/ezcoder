@@ -58,6 +58,8 @@ export interface AgentState {
   gitBranch?: string | null;
   /** True when the project cwd is inside a git work tree. */
   isGitRepo?: boolean;
+  /** True when the active model can accept native video input. */
+  supportsVideo?: boolean;
   /** Live background tasks (footer indicator). */
   tasks?: BackgroundTask[];
 }
