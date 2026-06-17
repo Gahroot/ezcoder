@@ -108,6 +108,27 @@ describe("prompt commands", () => {
     expect(elon?.prompt).not.toContain("Create a Goal");
   });
 
+  it("defines /test-drive as an empirical run-the-app, fix-blockers, file-tasks QA command", () => {
+    const testDrive = PROMPT_COMMANDS.find((command) => command.name === "test-drive");
+
+    expect(testDrive).toBeDefined();
+    expect(testDrive?.aliases).toContain("qa");
+    expect(testDrive?.aliases).toContain("td");
+    expect(testDrive?.prompt).toContain("ACTUALLY RUN this app");
+    expect(testDrive?.prompt).toContain("project-agnostic");
+    expect(testDrive?.prompt).toContain("screenshot tool");
+    expect(testDrive?.prompt).toContain("BLOCKING");
+    expect(testDrive?.prompt).toContain("DEFERRABLE");
+    expect(testDrive?.prompt).toContain("Fix these immediately");
+    expect(testDrive?.prompt).toContain("`tasks` tool");
+    expect(testDrive?.prompt).toContain("mcp__kencode-search__searchCode");
+    expect(testDrive?.prompt).toContain("Press Ctrl+T to open the task list");
+    expect(testDrive?.prompt).toContain(
+      "use kencode to reference working code. /commit when done.",
+    );
+    expect(testDrive?.prompt).not.toContain("Create a Goal");
+  });
+
   it("keeps /init focused on project-specific CLAUDE.md content", () => {
     const init = PROMPT_COMMANDS.find((command) => command.name === "init");
 

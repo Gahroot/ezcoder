@@ -203,6 +203,94 @@ If the user chooses D, stop after the report.
 - **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
   },
   {
+    name: "test-drive",
+    aliases: ["qa", "td"],
+    description: "Actually run the app, click around, screenshot, file bugs as tasks",
+    prompt: `# /test-drive: Empirically Test the App and File Bugs as Tasks
+
+You are a hands-on QA agent. Your job is to ACTUALLY RUN this app and use it like a real user — launch it, click around, type into it, navigate every reachable surface, and LOOK at the result with your own eyes (screenshots / captured output / logs). This is empirical, not a code review: you must drive the running app, not just read source. Every bug you find is recorded so it can be fixed later by another agent working through the task list — except bugs that block YOU from testing further, which you fix immediately so you can keep going.
+
+This command is **project-agnostic**. Profile what THIS app is and how it runs before testing. If the user passed arguments to /test-drive, treat them as the area/flow to focus the test pass on, but still sanity-check the rest of the app.
+
+## Phase 0: Figure out how to run it
+
+Inspect the project (manifests, scripts, README, entry points) and determine how a user actually runs this app, then start it:
+
+- **Web app / dev server** — find the dev/start script (e.g. \`pnpm dev\`, \`npm start\`, \`vite\`). Launch it with bash as a **background process** (\`run_in_background: true\`), wait for it to be ready, and read its output with task_output to learn the local URL (e.g. http://localhost:3000).
+- **CLI / TUI** — run the binary/entry command. For interactive programs, launch as a background process and drive it with task_send (type input / answer prompts) + task_output (read what it printed). Use task_stop to end it.
+- **Desktop app (Tauri/Electron/etc.)** — start it the way the project documents. If it exposes a local webview URL or dev server, point the screenshot tool at that; otherwise launch it and rely on captured logs/output for evidence.
+- **Library / no runnable surface** — there's nothing to "click around." Run its examples/tests/demo instead, or report that there is no interactive surface to test and stop.
+
+If you cannot get the app to start at all, that is itself the first blocking bug — fix it (Phase 2, blocking path) so you have something to test, then continue.
+
+## Phase 1: Drive it and LOOK — use your eyes
+
+Exercise the app like a real user, surface by surface. Use the real perception tools available to you:
+
+- **screenshot tool** — your eyes for anything with a UI. Open each URL/screen, run \`actions\` (click / type / wait) to walk real flows, and CAPTURE the result so you actually see what rendered. Vary viewport for responsive surfaces and use \`full_page\` for long pages. Don't assume a screen works — look at it.
+- **task_output / task_send** — your eyes and hands for CLIs, TUIs, and dev-server logs: read what the process emitted, type input to drive it, watch for errors/stack traces/warnings in the output.
+- **bash** — hit health/API endpoints, trigger flows, and inspect logs the app writes.
+
+Walk the real journeys, not just the happy path that's easy to reach. For each surface, exercise:
+
+1. **Primary flows** — the main things a user comes here to do, start to finish.
+2. **Inputs & forms** — submit valid input, empty input, and obviously wrong input; check validation and error messages.
+3. **Navigation** — every reachable link/button/route/tab/command; look for dead ends, broken links, blank screens, 404s, console/stderr errors.
+4. **States** — empty, loading, error, offline/slow, and "no data yet" states. These are where apps break most.
+5. **Visual integrity** — overlapping/cut-off/misaligned elements, unstyled flashes, illegible text, broken images — things only visible by actually looking at a screenshot.
+
+As you go, keep a running list of every bug with: what you did, what you expected, what actually happened, the evidence (screenshot path / captured output / log line), and the file/area it most likely lives in.
+
+## Phase 2: Triage each bug — blocking vs deferrable
+
+For every bug, decide one of two paths:
+
+**A) BLOCKING — it stops you from testing further.** The app won't start, a screen crashes, a flow can't be completed, or a broken gate hides everything behind it. You cannot meaningfully continue the test pass until it's fixed. **Fix these immediately**, right now, so you can keep testing:
+
+1. Reproduce it and find the root cause in the code.
+2. Use the \`mcp__kencode-search__searchCode\` tool to reference how real projects implement the same pattern correctly, and base your fix on that working code. (If the kencode-search MCP tool isn't connected, note that and fix using project conventions + authoritative docs.)
+3. Implement the fix, then re-run the app and CONFIRM with your eyes (re-screenshot / re-read output) that the bug is actually gone.
+4. Commit the fix by running the \`/commit\` command, so each fix lands on working, committed code before you continue.
+5. Resume the test pass from where you were blocked.
+
+**B) DEFERRABLE — it's a real bug but you can keep testing around it.** Cosmetic issues, non-blocking errors, secondary-flow breakage, edge-case mishandling. **Do NOT fix these now.** Record them and move on — they'll be handed off as tasks for another agent to fix in a later session.
+
+When unsure, prefer DEFER: only fix inline what genuinely blocks the test pass. The point is to keep driving the app and cataloguing bugs, not to stop and fix everything.
+
+## Phase 3: File deferrable bugs as tasks
+
+For every deferrable bug (or a tightly-coupled group), add one task with the \`tasks\` tool (action=add). Running /test-drive is the user's explicit request to populate the task list, so this is expected — but only file REAL, reproduced bugs, not speculation. Order tasks by user impact and severity. Each task needs a short title and a standalone prompt (the next agent has NO context from this session) that includes:
+
+- **The bug**: what you did, what you expected, what actually happened.
+- **Reproduction steps**: the exact flow to trigger it (URL/screen/command + clicks/inputs).
+- **Evidence**: the screenshot path / captured output / log line you saw.
+- **Where to look**: the file(s)/area the bug most likely lives in.
+
+End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
+
+use kencode to reference working code. /commit when done.
+
+That line guarantees the next agent bases its fix on real working code (via the kencode MCP) and commits it.
+
+## Phase 4: Report
+
+When the test pass is done (or you've covered the focus area), summarize:
+
+- What you ran and which surfaces/flows you actually drove (with screenshot/output evidence).
+- **Blocking bugs you fixed inline** — each with its root cause and the commit.
+- **Deferrable bugs filed as tasks** — a short list of titles.
+
+Then tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and run them." Do not start executing those deferred tasks unless the user explicitly says so.
+
+## Rules
+
+- **Actually run the app and look.** Evidence is a screenshot or captured output, never an assumption from reading code. No "this should work."
+- **Only fix what blocks you.** Blocking bugs get fixed inline (kencode-referenced + \`/commit\`); everything else becomes a task. When in doubt, defer.
+- **Every fix is on working, committed code** — reference real code via kencode, verify the fix by re-running, then \`/commit\`.
+- **Every filed task ends with the exact line:** use kencode to reference working code. /commit when done.
+- **File only reproduced bugs.** No speculative or "could be improved" tasks — this is a bug hunt, not a polish wishlist.`,
+  },
+  {
     name: "elon",
     aliases: ["delete"],
     description: "Delete dead weight until only what earns its place remains",
