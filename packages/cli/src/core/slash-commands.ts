@@ -233,6 +233,16 @@ export function createBuiltinCommands(): SlashCommand[] {
       },
     },
     {
+      name: "clear",
+      aliases: [],
+      description: "Clear the conversation (start a new session)",
+      usage: "/clear",
+      async execute(_args, ctx) {
+        await ctx.newSession();
+        return "Session cleared.";
+      },
+    },
+    {
       name: "branch",
       aliases: ["b"],
       description: "Create a branch (rewind and fork the conversation)",

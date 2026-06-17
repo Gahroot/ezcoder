@@ -259,11 +259,12 @@ When unsure, prefer DEFER: only fix inline what genuinely blocks the test pass. 
 
 ## Phase 3: File deferrable bugs as tasks
 
-For every deferrable bug (or a tightly-coupled group), add one task with the \`tasks\` tool (action=add). Running /test-drive is the user's explicit request to populate the task list, so this is expected — but only file REAL, reproduced bugs, not speculation. Order tasks by user impact and severity. Each task needs a short title and a standalone prompt (the next agent has NO context from this session) that includes:
+For every deferrable bug (or a tightly-coupled group), add one task with the \`tasks\` tool (action=add). Running /test-drive is the user's explicit request to populate the task list, so this is expected — but only file REAL, reproduced bugs, not speculation. **Before filing, trace each bug to its root cause and confirm it's an actual code defect — not bad seed/test/mock data, a misconfig, or expected behavior.** This app is full of synthetic data, so "these numbers look insane" is very often just the data, not a bug. Reading the code/data/DB to establish cause is REQUIRED here, not an "assumption" — the no-assumptions rule means don't claim a screen works without looking, it does not mean skip root-cause analysis. For any numeric/calculation bug, reproduce the arithmetic from the underlying inputs before filing. Order tasks by user impact and severity. Each task needs a short title and a standalone prompt (the next agent has NO context from this session) that includes:
 
 - **The bug**: what you did, what you expected, what actually happened.
 - **Reproduction steps**: the exact flow to trigger it (URL/screen/command + clicks/inputs).
 - **Evidence**: the screenshot path / captured output / log line you saw.
+- **Root cause**: the traced reason it's a code defect (not data/config/expected behavior) — for numeric bugs, the inputs and the arithmetic you reproduced.
 - **Where to look**: the file(s)/area the bug most likely lives in.
 
 End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
@@ -284,11 +285,13 @@ Then tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and
 
 ## Rules
 
-- **Actually run the app and look.** Evidence is a screenshot or captured output, never an assumption from reading code. No "this should work."
+- **Actually run the app and look.** Don't claim a screen works without observing it — a screenshot, captured output, or log line. No "this should work." But observation alone is not a filed bug: confirming a defect requires tracing the cause, which means reading the code/data/inputs.
+- **Trace cause before filing.** A symptom is not a bug until you've traced it to a code defect and ruled out bad seed/test/mock data, misconfig, and expected behavior. For numeric/calculation bugs, reproduce the arithmetic from the underlying inputs.
+- **An AI/agent (or the model itself) noticing something looks wrong is NOT evidence** — a model flags "big number vs small position" the same way whether the cause is data or logic. Only reproduced behavior plus a traced cause counts.
 - **Only fix what blocks you.** Blocking bugs get fixed inline (kencode-referenced + \`/commit\`); everything else becomes a task. When in doubt, defer.
 - **Every fix is on working, committed code** — reference real code via kencode, verify the fix by re-running, then \`/commit\`.
 - **Every filed task ends with the exact line:** use kencode to reference working code. /commit when done.
-- **File only reproduced bugs.** No speculative or "could be improved" tasks — this is a bug hunt, not a polish wishlist.`,
+- **File only reproduced bugs with a traced root cause.** No speculative or "could be improved" tasks, and no symptoms with an unverified cause — this is a bug hunt, not a polish wishlist.`,
   },
   {
     name: "elon",
