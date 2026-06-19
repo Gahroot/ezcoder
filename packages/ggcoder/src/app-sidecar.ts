@@ -619,6 +619,11 @@ async function main(): Promise<void> {
   session.eventBus.on("tool_call_start", (d) => broadcast("tool_call_start", d));
   session.eventBus.on("tool_call_update", (d) => broadcast("tool_call_update", d));
   session.eventBus.on("tool_call_end", (d) => broadcast("tool_call_end", d));
+  // Native server tools (e.g. Anthropic web_search) do NOT end the turn — text
+  // streams before and after them in the SAME turn. The webview must reset its
+  // streaming bubble here, or the two text blocks concatenate with no separator
+  // ("…command.Let me pull…"). Mirrors the TUI's server_tool_call handling.
+  session.eventBus.on("server_tool_call", (d) => broadcast("server_tool_call", d));
   session.eventBus.on("turn_end", (d) => broadcast("turn_end", d));
   session.eventBus.on("agent_done", (d) => broadcast("agent_done", d));
   session.eventBus.on("error", (d) =>

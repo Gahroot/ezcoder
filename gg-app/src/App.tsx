@@ -672,6 +672,16 @@ function App(): React.ReactElement {
           }
           break;
         }
+        case "server_tool_call": {
+          // Native server tools (e.g. Anthropic web_search) stream text both
+          // before and after them within the SAME turn. End the current
+          // assistant bubble so the post-tool text starts a fresh paragraph
+          // instead of gluing onto the pre-tool text ("…command.Let me pull…").
+          finalizeThinking();
+          streamingIdRef.current = null;
+          assistantTextRef.current = "";
+          break;
+        }
         case "tool_call_start": {
           finalizeThinking();
           streamingIdRef.current = null;
