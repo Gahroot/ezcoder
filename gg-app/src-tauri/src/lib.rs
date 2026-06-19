@@ -2076,6 +2076,28 @@ fn broadcast_window_order(app: &tauri::AppHandle) {
     }
 }
 
+/// Drain every complete SSE frame (frames are separated by a blank line) from a
+/// rolling BYTE buffer, returning each frame's decoded text and leaving any
+/// trailing partial frame in `buf`.
+///
+/// Why a byte buffer instead of decoding each network chunk: `bytes_stream()`
+/// splits on arbitrary TCP boundaries, so a multibyte UTF-8 codepoint (emoji,
+/// ✓, box-drawing, CJK, accented chars — all common in agent output) can
+/// straddle two chunks. Decoding a chunk that ends mid-codepoint replaces the
+/// partial bytes with U+FFFD and corrupts the stream for good. A complete frame
+/// always ends at an ASCII `\n`, so its bytes never split a codepoint — decoding
+/// per-frame is lossless, and any partial tail stays buffered until its rest
+/// arrives.
+fn drain_sse_frames(buf: &mut Vec<u8>) -> Vec<String> {
+    let mut frames = Vec::new();
+    while let Some(pos) = buf.windows(2).position(|w| w == b"\n\n") {
+        let drained: Vec<u8> = buf.drain(..pos + 2).collect();
+        // Bytes before the `\n\n` are the complete frame (whole codepoints).
+        frames.push(String::from_utf8_lossy(&drained[..pos]).into_owned());
+    }
+    frames
+}
+
 /// Connect to a window's sidecar SSE stream and re-emit each frame ONLY to that
 /// window (`emit_to` the window label) as `agent-event`, so windows never see
 /// each other's agent activity. Rust has no mixed-content restriction, so the
@@ -2101,14 +2123,13 @@ fn start_event_bridge(app: tauri::AppHandle, label: String, port: u16) {
             match client.get(&url).send().await {
                 Ok(res) => {
                     let mut stream = res.bytes_stream();
-                    let mut buf = String::new();
+                    // Raw byte buffer — decode only at frame boundaries so a
+                    // codepoint split across TCP chunks is never corrupted.
+                    let mut buf: Vec<u8> = Vec::new();
                     while let Some(chunk) = stream.next().await {
                         let Ok(bytes) = chunk else { break };
-                        buf.push_str(&String::from_utf8_lossy(&bytes));
-                        // SSE frames are separated by a blank line.
-                        while let Some(idx) = buf.find("\n\n") {
-                            let frame = buf[..idx].to_string();
-                            buf.drain(..idx + 2);
+                        buf.extend_from_slice(&bytes);
+                        for frame in drain_sse_frames(&mut buf) {
                             for line in frame.lines() {
                                 if let Some(payload) = line.strip_prefix("data: ") {
                                     if let Ok(value) =
@@ -2928,6 +2949,52 @@ mod tests {
         } else {
             assert_eq!(got, WindowChrome::Native);
         }
+    }
+
+    // ── SSE frame decoding (drain_sse_frames) ────────────────────────────────
+
+    #[test]
+    fn drains_complete_frames_and_keeps_partial() {
+        let mut buf: Vec<u8> = Vec::new();
+        buf.extend_from_slice(b"data: one\n\ndata: two\n\ndata: par");
+        let frames = drain_sse_frames(&mut buf);
+        assert_eq!(frames, vec!["data: one".to_string(), "data: two".to_string()]);
+        // The unterminated "data: par" stays buffered for the next chunk.
+        assert_eq!(buf, b"data: par");
+    }
+
+    #[test]
+    fn no_complete_frame_leaves_buffer_intact() {
+        let mut buf: Vec<u8> = b"data: incomplete\n".to_vec();
+        assert!(drain_sse_frames(&mut buf).is_empty());
+        assert_eq!(buf, b"data: incomplete\n");
+    }
+
+    #[test]
+    fn multibyte_codepoint_split_across_chunks_is_not_corrupted() {
+        // "✓ 🚀 café" — ✓ (3 bytes), 🚀 (4 bytes), é (2 bytes). Feed the
+        // frame one byte at a time so every codepoint straddles a chunk
+        // boundary. The old per-chunk from_utf8_lossy would emit U+FFFD; the
+        // byte-buffered drainer must reconstruct the exact text.
+        let payload = "data: ✓ 🚀 café";
+        let wire = format!("{payload}\n\n");
+        let mut buf: Vec<u8> = Vec::new();
+        let mut frames: Vec<String> = Vec::new();
+        for &byte in wire.as_bytes() {
+            buf.push(byte);
+            frames.extend(drain_sse_frames(&mut buf));
+        }
+        assert_eq!(frames, vec![payload.to_string()]);
+        assert!(!frames[0].contains('\u{FFFD}'), "no replacement chars: {:?}", frames[0]);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn multiple_frames_in_one_chunk() {
+        let mut buf: Vec<u8> = b"data: a\n\ndata: b\n\ndata: c\n\n".to_vec();
+        let frames = drain_sse_frames(&mut buf);
+        assert_eq!(frames, vec!["data: a", "data: b", "data: c"]);
+        assert!(buf.is_empty());
     }
 
     // ── orphan_killset classifier tests ──────────────────────────────────────

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo } from "react";
 import { theme } from "./theme";
 import {
   waitForReady,
@@ -2030,7 +2030,13 @@ function App(): React.ReactElement {
 }
 
 // ── Row renderers ──────────────────────────────────────────
-function TranscriptRow({
+// Memoized per row: the streaming run rebuilds the `items` array on every
+// `text_delta`, but `appendAssistant` returns the SAME object reference for
+// every non-streaming row, and `onImageLoad` is a stable useCallback. So a
+// default shallow `memo` re-renders ONLY the row whose `item` reference changed
+// (the one actively streaming) — the rest bail out, keeping per-token cost O(1)
+// instead of O(transcript length).
+const TranscriptRow = memo(function TranscriptRow({
   item,
   onImageLoad,
 }: {
@@ -2206,6 +2212,6 @@ function TranscriptRow({
     default:
       return null;
   }
-}
+});
 
 export default App;
