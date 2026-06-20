@@ -1,7 +1,7 @@
 import path from "node:path";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { z } from "zod";
-import type { AgentTool, StructuredToolResult, ToolContext } from "@kenkaiiii/gg-agent";
+import type { AgentTool, StructuredToolResult, ToolContext } from "@prestyj/agent";
 import { resolvePath } from "./path-utils.js";
 import { downscaleForPreview, shrinkToFit } from "../utils/image.js";
 
@@ -82,7 +82,7 @@ type GenerateImageArgs = z.infer<typeof GenerateImageParams>;
 function defaultOutPath(cwd: string, format: string): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const ext = format === "png" ? "png" : format === "jpeg" ? "jpg" : "webp";
-  return path.join(cwd, ".gg", "generated", `${stamp}.${ext}`);
+  return path.join(cwd, ".ezcoder", "generated", `${stamp}.${ext}`);
 }
 
 /** Format → media type for StructuredToolResult. */
@@ -297,7 +297,7 @@ async function callImageGeneration(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       ...(accountId ? { "chatgpt-account-id": accountId } : {}),
-      originator: "ggcoder",
+      originator: "ezcoder",
     },
     body: JSON.stringify(body),
     signal,

@@ -22,11 +22,11 @@ interface Props {
 }
 
 /**
- * MCP server manager — mirrors `ggcoder mcp`. Lists configured servers with live
+ * MCP server manager — mirrors `ezcoder mcp`. Lists configured servers with live
  * connection status + tool counts, adds them via the same paste-a-`claude mcp
  * add …` grammar (the sidecar reuses the CLI parser verbatim), and removes them.
  *
- * Scope: Global writes to ~/.gg/mcp.json (all sessions). Project writes to a
+ * Scope: Global writes to ~/.ezcoder/mcp.json (all sessions). Project writes to a
  * chosen project's `.gg/mcp.json` — a project picker appears when Project is
  * selected, since the modal has no inherent project context. Like the CLI, a
  * newly-added server needs an app restart to load (MCP connects once at startup).
@@ -244,7 +244,7 @@ export function McpModal({ onClose }: Props): React.ReactElement {
         Add a server
       </div>
       <div className="modal-hint" style={{ color: theme.textDim }}>
-        Paste a <code>claude mcp add …</code> or <code>ggcoder mcp add …</code> line.
+        Paste a <code>claude mcp add …</code> or <code>ezcoder mcp add …</code> line.
       </div>
       <input
         className="modal-input"

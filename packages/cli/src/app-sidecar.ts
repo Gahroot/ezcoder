@@ -16,7 +16,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import type { ToolResultContent } from "@kenkaiiii/gg-ai";
+import type { ToolResultContent } from "@prestyj/ai";
 import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
@@ -195,7 +195,7 @@ function isValidProjectName(name: string): boolean {
 }
 
 // ── History reconstruction types ──────────────────────────
-// Mirrors HistoryEntry in gg-app/src/agent.ts — the wire shape the webview
+// Mirrors HistoryEntry in ezcoder-app/src/agent.ts — the wire shape the webview
 // receives from GET /history. Fields beyond role/text carry the transcript
 // item kinds that are reconstructed from persisted session data.
 interface HistoryEntryForWire {
@@ -378,7 +378,7 @@ function detectPromptCommand(
   return null;
 }
 
-// ── MCP server management (mirrors `ggcoder mcp`) ───────────────────────────
+// ── MCP server management (mirrors `ezcoder mcp`) ───────────────────────────
 // The webview's MCP modal lists configured servers with live connection status,
 // adds them via the same paste-a-`claude mcp add …` grammar, and removes them.
 // All persistence + connection logic lives in core/mcp (single source of truth);
@@ -1725,10 +1725,10 @@ async function main(): Promise<void> {
       return;
     }
 
-    // ── MCP server management (mirrors `ggcoder mcp`) ──────────────────
+    // ── MCP server management (mirrors `ezcoder mcp`) ──────────────────
     // `targetCwd` (project scope) overrides the window cwd so a server can be
     // added/removed for ANY discovered project, not just this window's. Global
-    // scope ignores it (always ~/.gg/mcp.json).
+    // scope ignores it (always ~/.ezcoder/mcp.json).
     if (method === "GET" && (url === "/mcp" || url.startsWith("/mcp?"))) {
       const targetCwd = new URL(url, `http://${host}`).searchParams.get("cwd") ?? cwd;
       void buildMcpRows(targetCwd)

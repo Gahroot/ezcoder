@@ -15,7 +15,7 @@
  *   GG_BENCH_TURNS     — number of turns (default: 5)
  */
 
-import { stream, type Message, type StreamEvent, type Usage } from "@kenkaiiii/gg-ai";
+import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
 import { AuthStorage } from "./auth-storage.js";
 
 // ── Types ───────────────────────────────────────────────────
@@ -52,7 +52,7 @@ export interface ApiBenchmarkResult {
 
 function buildSystemPrompt(): string {
   return [
-    "You are GG Coder — a coding agent that works directly in the user's codebase.",
+    "You are EZ Coder — a coding agent that works directly in the user's codebase.",
     "You explore, understand, change, and verify code — completing tasks end-to-end",
     "rather than just suggesting edits.",
     "",
@@ -373,7 +373,7 @@ async function main(): Promise<void> {
   } catch (err) {
     console.error(
       `❌ Could not resolve credentials for "${provider}". ` +
-        `Make sure you're logged in: run \`ggcoder login\` and choose ${provider}.\n` +
+        `Make sure you're logged in: run \`ezcoder login\` and choose ${provider}.\n` +
         `   Error: ${err instanceof Error ? err.message : String(err)}`,
     );
     process.exit(1);
@@ -430,7 +430,7 @@ async function main(): Promise<void> {
 
   // Fire a prewarm request before the optimized run (same as AgentSession does).
   if (provider === "anthropic") {
-    const { prewarmAnthropicCache } = await import("@kenkaiiii/gg-ai");
+    const { prewarmAnthropicCache } = await import("@prestyj/ai");
     await prewarmAnthropicCache({
       apiKey,
       model,

@@ -5,9 +5,9 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.12.0
-  - @kenkaiiii/gg-agent@4.12.0
-  - @kenkaiiii/ggcoder@4.12.0
+  - @prestyj/ai@4.12.0
+  - @prestyj/agent@4.12.0
+  - @prestyj/cli@4.12.0
 
 ## 0.7.32
 

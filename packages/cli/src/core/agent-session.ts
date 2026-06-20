@@ -101,7 +101,7 @@ export interface AgentSessionOptions {
   /**
    * If true, `initialize()` returns WITHOUT waiting for MCP servers to connect —
    * the connection runs in the background and tools are appended when ready.
-   * Hosts whose readiness is gated on `initialize()` (the gg-app sidecar, which
+   * Hosts whose readiness is gated on `initialize()` (the ezcoder-app sidecar, which
    * can't emit its listening handshake until init resolves) set this so a slow
    * or hanging stdio MCP server (e.g. a first-run `npx -y …` download) can't
    * delay the session from becoming usable. Default (false) keeps the CLI's

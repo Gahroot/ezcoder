@@ -9,7 +9,7 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.12.0
+  - @prestyj/ai@4.12.0
 
 ## 4.11.3
 

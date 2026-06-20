@@ -111,7 +111,7 @@ export class MCPClientManager {
    * provider so later (non-interactive) connects succeed silently.
    *
    * `onAuthorizationUrl` is invoked with the authorize URL so the host can open
-   * it (the gg-app broadcasts it to the webview, which opens the system
+   * it (the ezcoder-app broadcasts it to the webview, which opens the system
    * browser; the CLI prints it). Never throws — returns `{ ok:false, error }`.
    */
   async login(
@@ -171,7 +171,7 @@ export class MCPClientManager {
         return;
       }
       res.end(
-        "<html><body><h1>Login successful!</h1><p>You can close this tab and return to GG Coder.</p></body></html>",
+        "<html><body><h1>Login successful!</h1><p>You can close this tab and return to EZ Coder.</p></body></html>",
       );
       codeResolve?.(code);
     });
@@ -202,7 +202,7 @@ export class MCPClientManager {
         requestInit: config.headers ? { headers: config.headers } : undefined,
         authProvider: provider,
       });
-      const loginClient = new Client({ name: "ggcoder", version: "1.0.0" });
+      const loginClient = new Client({ name: "ezcoder", version: "1.0.0" });
       try {
         await loginClient.connect(loginTransport);
         // Already authorized (had valid tokens) — nothing more to do.
@@ -223,7 +223,7 @@ export class MCPClientManager {
         requestInit: config.headers ? { headers: config.headers } : undefined,
         authProvider: provider,
       });
-      const verifyClient = new Client({ name: "ggcoder", version: "1.0.0" });
+      const verifyClient = new Client({ name: "ezcoder", version: "1.0.0" });
       await verifyClient.connect(verifyTransport);
       const { tools } = await verifyClient.listTools();
       await verifyClient.close().catch(() => {});
