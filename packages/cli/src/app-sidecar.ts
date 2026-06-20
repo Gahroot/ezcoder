@@ -652,9 +652,25 @@ async function main(): Promise<void> {
   // Forward every relevant bus event to the webview.
   session.eventBus.on("text_delta", (d) => broadcast("text_delta", d));
   session.eventBus.on("thinking_delta", (d) => broadcast("thinking_delta", d));
-  session.eventBus.on("tool_call_start", (d) => broadcast("tool_call_start", d));
+  // tool_call_end omits the tool name, so remember it from tool_call_start (keyed
+  // by toolCallId) to detect when the `tasks` tool just mutated the task store.
+  const toolNamesById = new Map<string, string>();
+  session.eventBus.on("tool_call_start", (d) => {
+    if (d?.toolCallId && typeof d.name === "string") toolNamesById.set(d.toolCallId, d.name);
+    broadcast("tool_call_start", d);
+  });
   session.eventBus.on("tool_call_update", (d) => broadcast("tool_call_update", d));
-  session.eventBus.on("tool_call_end", (d) => broadcast("tool_call_end", d));
+  session.eventBus.on("tool_call_end", (d) => {
+    broadcast("tool_call_end", d);
+    // The agent can add/done/remove project tasks via the `tasks` tool during a
+    // normal chat run. Push the refreshed list so the webview's Tasks modal and
+    // footer badge update live instead of going stale until the modal reopens.
+    const name = d?.toolCallId ? toolNamesById.get(d.toolCallId) : undefined;
+    if (d?.toolCallId) toolNamesById.delete(d.toolCallId);
+    if (name === "tasks") {
+      broadcast("tasks_list", { tasks: loadTasksSync(cwd) });
+    }
+  });
   // Native server tools (e.g. Anthropic web_search) do NOT end the turn — text
   // streams before and after them in the SAME turn. The webview must reset its
   // streaming bubble here, or the two text blocks concatenate with no separator
