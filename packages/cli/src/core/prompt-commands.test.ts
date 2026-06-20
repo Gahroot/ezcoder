@@ -108,6 +108,30 @@ describe("prompt commands", () => {
     expect(elon?.prompt).not.toContain("Create a Goal");
   });
 
+  it("defines /elon-2 as the add-back + simplify/accelerate/automate completion of the algorithm", () => {
+    const elon2 = PROMPT_COMMANDS.find((command) => command.name === "elon-2");
+
+    expect(elon2).toBeDefined();
+    expect(elon2?.aliases).toContain("step-2");
+    expect(elon2?.aliases).toContain("add-back");
+    expect(elon2?.prompt).toContain("SECOND HALF of /elon");
+    expect(elon2?.prompt).toContain("adding ~10% back");
+    expect(elon2?.prompt).toContain("Add-back recovery");
+    expect(elon2?.prompt).toContain("Simplify");
+    expect(elon2?.prompt).toContain("Accelerate");
+    expect(elon2?.prompt).toContain("Automate");
+    expect(elon2?.prompt).toContain("REVERT");
+    expect(elon2?.prompt).toContain("completion leverage");
+    expect(elon2?.prompt).toContain("completion ledger");
+    expect(elon2?.prompt).toContain("`tasks` tool");
+    expect(elon2?.prompt).toContain("Press Ctrl+T to open the task list");
+    expect(elon2?.prompt).toContain("use kencode to reference working code. /commit when done.");
+    expect(elon2?.prompt).toContain("B) Add tasks for the add-backs only");
+    expect(elon2?.prompt).toContain("D) None — report only");
+    expect(elon2?.prompt).toContain("Do not start implementing until the user chooses");
+    expect(elon2?.prompt).not.toContain("Create a Goal");
+  });
+
   it("defines /test-drive as an empirical run-the-app, fix-blockers, file-tasks QA command", () => {
     const testDrive = PROMPT_COMMANDS.find((command) => command.name === "test-drive");
 

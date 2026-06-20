@@ -406,6 +406,118 @@ If the user chooses D, stop after the report.
 - **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
   },
   {
+    name: "elon-2",
+    aliases: ["step-2", "add-back"],
+    description: "Finish the Elon algorithm: add back the ~10%, then simplify/accelerate/automate",
+    prompt: `# /elon-2: The Add-Back & Optimize Pass
+
+This is the SECOND HALF of /elon, and it only makes sense AFTER deletions have landed. /elon runs steps 1–2 of Elon Musk's algorithm — make the requirement less dumb, then delete the part/process — and it deletes aggressively, on purpose, until things break. /elon-2 runs the rest of the same algorithm, IN ORDER:
+
+1. ~~Make the requirement less dumb~~ — done by /elon.
+2. ~~Delete the part or process~~ — done by /elon.
+3. **Simplify** — only what survived deletion.
+4. **Accelerate** — only what survived simplification.
+5. **Automate** — last, never first.
+
+Before step 3, this command does the move /elon deliberately leaves undone — the famous Musk rule: **"if you're not adding ~10% back, you didn't delete enough."** Aggressive deletion overshoots; some small piece you cut was actually load-bearing and has to come back. **Phase 1 recovers that ~10%.** Only then do steps 3–5 run, on what survived.
+
+This command is **project-agnostic** and **report-first**: the only deliverable is a single ranked ledger, after which you hand the work off as tasks. **Do not edit, install, or implement anything until the user confirms by choosing an option at the end.**
+
+If the user passed arguments to /elon-2, treat them as a focus area: narrow the pass to that feature/surface, but still run the full algorithm within it.
+
+**Hard scope rules:**
+- **Add-backs are strictly the minimal load-bearing piece that broke.** Restoring functionality the deletions removed is NOT re-adding scope. If an "add-back" is really a net-new capability or a scope re-expansion, that is /expand — drop it here.
+- **Steps 3–5 operate ONLY on survivors.** Never simplify, accelerate, or automate something that should have been deleted — /elon already made those calls. Do not re-litigate deletions (revert-the-whole-deletion is the one exception, see Phase 1).
+- **Order is law.** Add-back → simplify → accelerate → automate. Never accelerate or automate something before it has been simplified.
+
+## Phase 0: Establish what changed + a baseline oracle (main agent)
+
+You cannot add back what broke without knowing what was cut. Build two maps from real evidence, not memory:
+
+- **Deletion map** — what /elon actually removed. Derive it from \`git log\`/\`git diff\` over the relevant range, completed deletion tasks, and removed files/symbols/flags/dependencies. For each deletion, note its predicted add-back (zero / fold-in / seam) from the /elon ledger if available.
+- **Survivor map** — the user-facing surfaces, flows, and internal pieces that remain after the deletions.
+
+Then run the project's own **build / typecheck / test / lint** (whatever it has) to capture a baseline oracle: what is broken right now, after the deletions. Note dangling imports, broken routes, failing tests, dead references, and any flow that no longer completes.
+
+## Phase 1: Add-back recovery (the ~10%)
+
+Empirically find what the deletions broke or over-cut. Spawn subagents in parallel using the subagent tool (call the subagent tool multiple times in a single response), one per high-risk deletion cluster from the deletion map (cap at 6).
+
+Each subagent must:
+
+1. Walk the deletion and find **breakage evidence** grounded in code: failing build/typecheck/test output, dangling references to removed symbols, routes/commands that no longer resolve, a real user flow that now dead-ends, behavior that callers still expect.
+2. For every breakage, identify the **minimal add-back** — the smallest piece of the deleted thing that must return so dependents work again (mirror the zero / fold-in / seam shapes from /elon). Cite the file:line that proves the breakage and what the restore touches.
+3. **Right-size the add-back.** If the minimal restore is large, vague, or "we'd basically rebuild the deleted thing," that is the signal the deletion itself was wrong — flag it as **REVERT** (undo the whole deletion) rather than a partial add-back. A small, well-scoped add-back is a true ~10%; a large one means the cut went too far.
+
+A deletion that broke nothing needs no add-back — that is a clean cut, leave it. The goal is to restore the minimum, not to undo the diet.
+
+## Phase 2: Steps 3–5 on survivors (in order)
+
+For the survivor map only, spawn subagents in parallel (cap at 6 total across the three steps) to find optimization candidates, strictly in algorithm order:
+
+- **Step 3 — Simplify.** Indirection, layers, branches, or config that only existed to serve now-deleted things and can be collapsed or inlined; survivors that can be merged; flows that can be flattened. This is where most leverage lives post-deletion.
+- **Step 4 — Accelerate.** Only what survived simplification: hot paths, redundant work, slow startup, repeated computation that can be sped up. A candidate may not be accelerated until it has been simplified first.
+- **Step 5 — Automate.** Last: manual steps in surviving flows that the system should do for the user. Never propose automating something that should instead be simplified away.
+
+Each subagent must cite file:line anchors, name which step it belongs to, and estimate effort (small / medium / large) and leverage.
+
+## Phase 3: Validate against the repo (main agent)
+
+For every candidate:
+
+1. **Add-backs:** confirm the breakage is real against the baseline oracle and that the restore is genuinely minimal. If the restore turns out large, reclassify as REVERT or drop it.
+2. **Simplify/accelerate/automate:** confirm the candidate is a survivor (not something that should have been deleted), and that the step order holds (nothing accelerated/automated before being simplified).
+3. Confirm scope: add-backs restore removed behavior only — anything that is net-new capability is /expand, make-it-work polish is /raise-floor, security is /bullet-proof. Drop out-of-scope items.
+4. Merge duplicates. Rank by **completion leverage = (breakage severity or surface improved) ÷ effort**, with all add-backs ahead of all step 3–5 work.
+
+## Phase 4: The completion ledger (report)
+
+Output the report. **Add-back (recover) rows first, then simplify, then accelerate, then automate** — algorithm order. Start with one line: project name + a one-sentence summary of how far the deletions overshot and where the biggest post-deletion wins are. Then a single table:
+
+| ID | Step | Candidate | Evidence (file:line) | What it restores / improves | Effort | Leverage |
+|---|---|---|---|---|---|---|
+| E2-001 | add-back | re-add the one default the deleted settings screen applied | flow X dead-ends after delete (path:line) | onboarding applies the default inline; nothing else returns | small | high |
+| E2-002 | simplify | inline the adapter layer that only wrapped the deleted backend | single caller left (path:line) | one fewer indirection; survivors merge | small | high |
+
+Use IDs like E2-001. Add-back rows lead, then step 3, then 4, then 5. Mark any deletion that overshot as **REVERT** with the reason. The ledger is structured so a later empirical mode can run each row against the project's build/check/test as the "is it fixed / still green?" oracle. Do not run that loop now — this is report-only.
+
+After the table, ask exactly:
+
+What should I do?
+A) Add tasks for everything (add-backs first, then simplify/accelerate/automate)
+B) Add tasks for the add-backs only (just recover what broke)
+C) Add tasks for specific rows (give IDs, e.g. "E2-001, E2-004")
+D) None — report only
+
+Do not start implementing until the user chooses.
+
+## Phase 5: Hand off as tasks
+
+If the user chooses A, B, or C, do not implement directly. Add one task per selected row (or tightly coupled group) using the \`tasks\` tool (action=add), ordered by algorithm step then leverage — **add-backs first, then simplify, then accelerate, then automate**. Each task needs a short title and a standalone prompt that includes:
+
+- the row ID, its step, and exactly what to restore or change (files/symbols/flags + anchors),
+- for add-backs: the breakage it fixes and the minimal restore (never re-expand scope),
+- the blast radius to touch (call sites, imports, tests, docs, config),
+- the project's verification commands to prove the build/tests are green again after the change.
+
+End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
+
+use kencode to reference working code. /commit when done.
+
+After adding the tasks, tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and run them." Do not begin executing them unless the user explicitly says so.
+
+If the user chooses D, stop after the report.
+
+## Rules
+
+- **Runs after /elon.** This pass assumes deletions already landed; Phase 0 derives them from git history and completed tasks.
+- **Add back the ~10%, no more.** Restore only the minimal load-bearing piece that broke. A large add-back means the deletion overshot — mark it REVERT, don't quietly rebuild.
+- **Algorithm order is law.** Add-back → simplify → accelerate → automate. Never accelerate or automate before simplifying.
+- **Survivors only for steps 3–5.** Don't optimize something that should have been deleted; don't re-add scope (that's /expand).
+- **Report-first. No edits, installs, or commits until the user picks an option.**
+- **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
+  },
+  {
     name: "bullet-proof",
     aliases: ["bp"],
     description: "Audit exploitable weaknesses",
