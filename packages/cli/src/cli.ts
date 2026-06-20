@@ -530,7 +530,7 @@ async function runInkTUI(opts: {
   const onPreFileMutation = (filePath: string): Promise<void> =>
     checkpointRef.current?.recordPreMutation(filePath) ?? Promise.resolve();
 
-  const { tools, processManager, rebuildReadTool, lspManager } = createTools(cwd, {
+  const { tools, processManager, rebuildReadTool, lspManager } = await createTools(cwd, {
     agents,
     skills,
     provider,
@@ -539,6 +539,7 @@ async function runInkTUI(opts: {
     goalModeRef,
     onPreFileMutation,
     lspDiagnostics: opts.lspDiagnostics,
+    authStorage,
     onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
     onExitPlan: (planPath) =>
       planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
@@ -551,9 +552,9 @@ async function runInkTUI(opts: {
   // Rebuilds the cwd-bound tools for a different project root. Used by the
   // pixel-fix flow so the agent operates in the error's project, not in
   // wherever ezcoder was launched from.
-  const rebuildToolsForCwd = (newCwd: string) => {
+  const rebuildToolsForCwd = async (newCwd: string) => {
     activeLspManager?.shutdownAll();
-    const { tools: rebuilt, lspManager: rebuiltLspManager } = createTools(newCwd, {
+    const { tools: rebuilt, lspManager: rebuiltLspManager } = await createTools(newCwd, {
       agents,
       skills,
       provider,
@@ -562,6 +563,7 @@ async function runInkTUI(opts: {
       goalModeRef,
       onPreFileMutation,
       lspDiagnostics: opts.lspDiagnostics,
+      authStorage,
       onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
       onExitPlan: (planPath) =>
         planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),

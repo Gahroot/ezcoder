@@ -51,6 +51,18 @@ struct RestoreTargets {
     map: Mutex<HashMap<String, RestoreEntry>>,
 }
 
+/// The label of the currently-focused window, updated on `Focused` window
+/// events. `broadcast_window_order` reads this so every window knows which one
+/// is active (and `focus_window_by_offset` cycles from here).
+#[derive(Default)]
+struct FocusedWindow(Mutex<Option<String>>);
+
+/// Debounce token for `Moved` window events: the `Instant` of the last move.
+/// Only the deferred task whose captured `Instant` still matches the stored one
+/// fires the broadcast — earlier moves are superseded.
+#[derive(Default)]
+struct MoveDebounce(Mutex<Option<std::time::Instant>>);
+
 fn sidecar_base(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
@@ -1459,6 +1471,112 @@ async fn agent_serve_stop(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Proxy: list MCP servers with live connection status (`{ servers: […] }`).
+/// `cwd` (project scope) scopes the project servers to a specific project path.
+#[tauri::command]
+async fn agent_mcp_list(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    cwd: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let mut req = client.get(format!("{}/mcp", sidecar_base(port)));
+    if let Some(c) = cwd.as_deref().filter(|c| !c.trim().is_empty()) {
+        req = req.query(&[("cwd", c)]);
+    }
+    let res = req.send().await.map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: add an MCP server from a pasted `claude mcp add …` line. Returns
+/// `{ ok, name, connected, toolCount, error? }`, or an error message on parse/save
+/// failure (the sidecar probes before saving but never blocks the save).
+/// `cwd` is required for project scope (the target project path).
+#[tauri::command]
+async fn agent_mcp_add(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    line: String,
+    scope: String,
+    cwd: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/mcp/add", sidecar_base(port)))
+        .json(&serde_json::json!({ "line": line, "scope": scope, "cwd": cwd }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        let msg = body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("failed to add MCP server");
+        return Err(msg.to_string());
+    }
+    Ok(body)
+}
+
+/// Proxy: remove an MCP server by name. Returns `{ removed: boolean }`.
+/// `cwd` is required for project scope (the target project path).
+#[tauri::command]
+async fn agent_mcp_remove(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    name: String,
+    scope: String,
+    cwd: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/mcp/remove", sidecar_base(port)))
+        .json(&serde_json::json!({ "name": name, "scope": scope, "cwd": cwd }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: begin an interactive OAuth login for a remote (HTTP) MCP server.
+/// Returns 202 immediately; progress + outcome stream back via `agent-event`
+/// (`mcp_auth_url`, `mcp_auth_status`, `mcp_auth_done`, `mcp_auth_error`). The
+/// webview opens the browser when it receives `mcp_auth_url`.
+/// `cwd` is required for project scope (the target project path).
+#[tauri::command]
+async fn agent_mcp_login(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    name: String,
+    scope: String,
+    cwd: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("sidecar not ready")?;
+    let res = client
+        .post(format!("{}/mcp/login", sidecar_base(port)))
+        .json(&serde_json::json!({ "name": name, "scope": scope, "cwd": cwd }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        let msg = body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("failed to start MCP login");
+        return Err(msg.to_string());
+    }
+    Ok(body)
+}
+
 /// Proxy: create a new project folder under the configured projects root.
 /// Returns `{ path }` on success, or an error message on validation/conflict.
 #[tauri::command]
@@ -1618,8 +1736,15 @@ fn build_app_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow
 /// agent sidecar at the default cwd), then tile the first `count` windows across
 /// the work area like macOS fill&arrange. Project selection per window happens
 /// in-app via the picker; windows open immediately.
+///
+/// MUST be `async`: on Windows, `WebviewWindowBuilder::build()` deadlocks when
+/// called from a SYNCHRONOUS command (WebView2 runs window creation on the
+/// event loop the sync command is blocking). The symptom was a blank,
+/// unresponsive, uncloseable window. An async command runs off that thread, so
+/// creation completes normally. See the docs.rs WebviewWindowBuilder "Known
+/// issues" note.
 #[tauri::command]
-fn setup_windows(app: tauri::AppHandle, count: usize) -> Result<(), String> {
+async fn setup_windows(app: tauri::AppHandle, count: usize) -> Result<(), String> {
     let existing = app.webview_windows().len();
     let to_create = count.saturating_sub(existing);
     for _ in 0..to_create {
@@ -1633,18 +1758,89 @@ fn setup_windows(app: tauri::AppHandle, count: usize) -> Result<(), String> {
         let _ = win.set_focus();
     }
     arrange_windows(&app, count);
+    broadcast_window_order(&app);
     Ok(())
 }
 
 /// Open a single new project window with its own agent sidecar (default cwd) and
 /// focus it. Unlike `setup_windows`, this never re-tiles existing windows — it's
 /// the Cmd/Ctrl+N "new window" shortcut. Project selection happens per-window.
+///
+/// `async` for the same reason as `setup_windows`: a synchronous window-building
+/// command deadlocks WebView2 on Windows.
 #[tauri::command]
-fn new_window(app: tauri::AppHandle) -> Result<(), String> {
+async fn new_window(app: tauri::AppHandle) -> Result<(), String> {
     let label = next_window_label(&app);
     let win = build_app_window(&app, &label)?;
     spawn_sidecar(app.clone(), label, default_cwd());
     let _ = win.set_focus();
+    broadcast_window_order(&app);
+    Ok(())
+}
+
+/// Cycle keyboard focus by `offset` (±1) through windows in reading order,
+/// wrapping around. No-op when ≤1 window is open. Forward = +1, backward = -1
+/// (Shift held). Bound to Cmd/Ctrl + Backquote (±Shift).
+#[tauri::command]
+fn focus_window_by_offset(app: tauri::AppHandle, offset: i32) -> Result<(), String> {
+    let order = compute_window_order(&app);
+    if order.len() <= 1 {
+        return Ok(());
+    }
+    let cur = app
+        .state::<FocusedWindow>()
+        .0
+        .lock()
+        .unwrap()
+        .clone()
+        .and_then(|f| order.iter().position(|l| l == &f))
+        .unwrap_or(0) as i32;
+    let len = order.len() as i32;
+    // Wrap-safe modulo for negative offsets (backward cycling).
+    let next = ((cur + offset) % len + len) % len;
+    if let Some(label) = order.get(next as usize) {
+        if let Some(win) = app.get_webview_window(label) {
+            let _ = win.set_focus();
+        }
+    }
+    Ok(())
+}
+
+/// Re-tile EVERY currently open window into a clean grid (no create/destroy),
+/// then broadcast the new order. Works for any count (3, 5, 7, 9, 12, …).
+///
+/// Applies the rects in a STAGGERED async loop (~30ms between windows). On macOS
+/// `set_size`/`set_position` dispatch to the main thread asynchronously, and
+/// firing all of them in a tight loop lets the window server coalesce the later
+/// dispatches — so the trailing windows would move but keep their old size.
+/// Staggering lets each window's size+position fully commit before the next's
+/// hits the main-thread queue.
+#[tauri::command]
+async fn arrange_all(app: tauri::AppHandle) -> Result<(), String> {
+    let count = app.webview_windows().len();
+    let tiles = sorted_windows(&app, count);
+    let rects = if tiles.is_empty() {
+        Vec::new()
+    } else {
+        let Some(monitor) = tiles[0].primary_monitor().ok().flatten() else {
+            broadcast_window_order(&app);
+            return Ok(());
+        };
+        let area = monitor.work_area();
+        tile_rects(
+            count,
+            area.position.x,
+            area.position.y,
+            area.size.width as i32,
+            area.size.height as i32,
+        )
+    };
+    for (win, rect) in tiles.iter().zip(rects.iter()) {
+        apply_tile(win, *rect);
+        // Let the main thread commit this window before queuing the next.
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+    }
+    broadcast_window_order(&app);
     Ok(())
 }
 
@@ -1759,44 +1955,67 @@ fn next_window_label(app: &tauri::AppHandle) -> String {
     }
 }
 
-/// Tile the first `count` windows into a grid filling the primary work area:
-/// 2 → side-by-side halves, 4 → 2×2 quadrants, 6 → 3×2. "main" is placed first.
-fn arrange_windows(app: &tauri::AppHandle, count: usize) {
+/// Pure: the tile rects `(x, y, width, height)` for `count` windows arranged in
+/// a generalized grid (`cols = ceil(sqrt(N))`) filling the work area `(ox, oy, w, h)`,
+/// in order (row-major: left→right within a row, top→bottom across rows).
+fn tile_rects(count: usize, ox: i32, oy: i32, w: i32, h: i32) -> Vec<(i32, i32, u32, u32)> {
+    if count == 0 {
+        return Vec::new();
+    }
+    let cols = grid_cols(count);
+    let rows: i32 = ((count as i32) + cols - 1) / cols;
+    let cell_w = w / cols;
+    let cell_h = h / rows;
+    (0..count as i32)
+        .map(|i| {
+            let col = i % cols;
+            let row = i / cols;
+            (ox + col * cell_w, oy + row * cell_h, cell_w as u32, cell_h as u32)
+        })
+        .collect()
+}
+
+/// The first `count` open windows (main first, then project-N ascending). Returns
+/// the live window handles in label order. `take`-limited by `count`.
+fn sorted_windows(app: &tauri::AppHandle, count: usize) -> Vec<WebviewWindow> {
     let mut windows: Vec<WebviewWindow> = app.webview_windows().into_values().collect();
     // Deterministic order: main first, then project-N ascending.
-    windows.sort_by(|a, b| label_rank(a.label()).cmp(&label_rank(b.label())));
-    let tiles: Vec<WebviewWindow> = windows.into_iter().take(count).collect();
+    windows.sort_by_key(|w| label_rank(w.label()));
+    windows.into_iter().take(count).collect()
+}
+
+/// Apply one tile rect to a window. Order matters on macOS: `set_size` and
+/// `set_position` both dispatch to the main thread asynchronously (tao's
+/// `set_content_size_async` / `set_frame_top_left_point_async`), and
+/// `setFrameTopLeftPoint` anchors against the window's CURRENT frame size — so
+/// resize FIRST (establish correct dimensions), then move to the cell origin.
+fn apply_tile(win: &WebviewWindow, rect: (i32, i32, u32, u32)) {
+    let (x, y, w, h) = rect;
+    let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+/// Tile the first `count` windows into a grid filling the primary work area.
+/// Synchronous (applies all rects immediately) — used at window-creation time
+/// (`setup_windows` / restore), where the OS commits each before the next shows.
+fn arrange_windows(app: &tauri::AppHandle, count: usize) {
+    let tiles = sorted_windows(app, count);
     if tiles.is_empty() {
         return;
     }
-
     let Some(monitor) = tiles[0].primary_monitor().ok().flatten() else {
         return;
     };
     let area = monitor.work_area();
-    let (ox, oy) = (area.position.x, area.position.y);
-    let (w, h) = (area.size.width as i32, area.size.height as i32);
-
-    // Column count: 2-up → 2×1, 4-up → 2×2, 6-up → 3×2 (wide displays read
-    // better with 3 columns than 2). Falls back to 2 columns otherwise.
-    let cols: i32 = if count <= 2 {
-        count.max(1) as i32
-    } else if count >= 6 {
-        3
-    } else {
-        2
-    };
-    let rows: i32 = ((count as i32) + cols - 1) / cols;
-    let cell_w = w / cols;
-    let cell_h = h / rows;
-
-    for (i, win) in tiles.iter().enumerate() {
-        let col = (i as i32) % cols;
-        let row = (i as i32) / cols;
-        let x = ox + col * cell_w;
-        let y = oy + row * cell_h;
-        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-        let _ = win.set_size(tauri::PhysicalSize::new(cell_w as u32, cell_h as u32));
+    let rects = tile_rects(
+        count,
+        area.position.x,
+        area.position.y,
+        area.size.width as i32,
+        area.size.height as i32,
+    );
+    for (win, rect) in tiles.iter().zip(rects.iter()) {
+        apply_tile(win, *rect);
     }
 }
 
@@ -1808,6 +2027,110 @@ fn label_rank(label: &str) -> (u8, u32) {
     } else {
         (2, 0)
     }
+}
+
+/// Pure: labels in reading order — rows top→bottom, left→right within a row.
+/// Windows whose y differs by < `row_tolerance` from the row's anchor (first
+/// member) are treated as the same row. `positions` is `(label, x, y)`.
+fn reading_order(positions: &[(String, i32, i32)], row_tolerance: i32) -> Vec<String> {
+    if positions.is_empty() {
+        return Vec::new();
+    }
+    // Sort by y so we can walk top→bottom and group into rows.
+    let mut sorted: Vec<&(String, i32, i32)> = positions.iter().collect();
+    sorted.sort_by_key(|p| p.2);
+
+    let mut rows: Vec<Vec<&(String, i32, i32)>> = Vec::new();
+    for &p in &sorted {
+        let need_new_row = match rows.last() {
+            // Same row when the y gap to the row's anchor is within tolerance.
+            Some(row) => (p.2 - row[0].2).abs() > row_tolerance,
+            None => true,
+        };
+        if need_new_row {
+            rows.push(vec![p]);
+        } else {
+            rows.last_mut().unwrap().push(p);
+        }
+    }
+
+    // Within each row sort left→right by x, then collect labels in order.
+    let mut out = Vec::with_capacity(positions.len());
+    for mut row in rows {
+        row.sort_by_key(|p| p.1);
+        for p in row {
+            out.push(p.0.clone());
+        }
+    }
+    out
+}
+
+/// Pure: column count for a generalized grid tiling N windows.
+/// cols = ceil(sqrt(N)) → 1→1, 2→2, 3→2, 4→2, 6→3, 9→3, 12→4.
+fn grid_cols(count: usize) -> i32 {
+    if count == 0 {
+        return 1;
+    }
+    ((count as f64).sqrt().ceil() as i32).max(1)
+}
+
+/// Every open window's label, in reading order (rows top→bottom, left→right
+/// within a row). Tolerance ≈ half the smallest window height so tiled same-row
+/// windows group reliably while free-floating windows still get a stable order.
+fn compute_window_order(app: &tauri::AppHandle) -> Vec<String> {
+    let windows = app.webview_windows();
+    let mut positions: Vec<(String, i32, i32)> = Vec::with_capacity(windows.len());
+    let mut min_height: i32 = i32::MAX;
+    for (label, win) in &windows {
+        let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else {
+            continue;
+        };
+        let h = size.height as i32;
+        if h > 0 && h < min_height {
+            min_height = h;
+        }
+        positions.push((label.clone(), pos.x, pos.y));
+    }
+    // Floor the tolerance so a single tiny window doesn't collapse rows together.
+    let tolerance = (min_height / 2).max(40);
+    reading_order(&positions, tolerance)
+}
+
+/// Broadcast the current reading order + focused label to every window so each
+/// can derive its own position (e.g. "1/4") and whether it's the active window.
+fn broadcast_window_order(app: &tauri::AppHandle) {
+    let order = compute_window_order(app);
+    let focused = app.state::<FocusedWindow>().0.lock().unwrap().clone();
+    let payload = serde_json::json!({ "order": order, "focused": focused });
+    for label in app.webview_windows().keys() {
+        let _ = app.emit_to(
+            EventTarget::webview_window(label.clone()),
+            "window-order",
+            payload.clone(),
+        );
+    }
+}
+
+/// Drain every complete SSE frame (frames are separated by a blank line) from a
+/// rolling BYTE buffer, returning each frame's decoded text and leaving any
+/// trailing partial frame in `buf`.
+///
+/// Why a byte buffer instead of decoding each network chunk: `bytes_stream()`
+/// splits on arbitrary TCP boundaries, so a multibyte UTF-8 codepoint (emoji,
+/// ✓, box-drawing, CJK, accented chars — all common in agent output) can
+/// straddle two chunks. Decoding a chunk that ends mid-codepoint replaces the
+/// partial bytes with U+FFFD and corrupts the stream for good. A complete frame
+/// always ends at an ASCII `\n`, so its bytes never split a codepoint — decoding
+/// per-frame is lossless, and any partial tail stays buffered until its rest
+/// arrives.
+fn drain_sse_frames(buf: &mut Vec<u8>) -> Vec<String> {
+    let mut frames = Vec::new();
+    while let Some(pos) = buf.windows(2).position(|w| w == b"\n\n") {
+        let drained: Vec<u8> = buf.drain(..pos + 2).collect();
+        // Bytes before the `\n\n` are the complete frame (whole codepoints).
+        frames.push(String::from_utf8_lossy(&drained[..pos]).into_owned());
+    }
+    frames
 }
 
 /// Connect to a window's sidecar SSE stream and re-emit each frame ONLY to that
@@ -1835,14 +2158,13 @@ fn start_event_bridge(app: tauri::AppHandle, label: String, port: u16) {
             match client.get(&url).send().await {
                 Ok(res) => {
                     let mut stream = res.bytes_stream();
-                    let mut buf = String::new();
+                    // Raw byte buffer — decode only at frame boundaries so a
+                    // codepoint split across TCP chunks is never corrupted.
+                    let mut buf: Vec<u8> = Vec::new();
                     while let Some(chunk) = stream.next().await {
                         let Ok(bytes) = chunk else { break };
-                        buf.push_str(&String::from_utf8_lossy(&bytes));
-                        // SSE frames are separated by a blank line.
-                        while let Some(idx) = buf.find("\n\n") {
-                            let frame = buf[..idx].to_string();
-                            buf.drain(..idx + 2);
+                        buf.extend_from_slice(&bytes);
+                        for frame in drain_sse_frames(&mut buf) {
                             for line in frame.lines() {
                                 if let Some(payload) = line.strip_prefix("data: ") {
                                     if let Ok(value) =
@@ -2111,6 +2433,7 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
         // Fresh boot / nothing to restore: the usual single main window.
         build_app_window(app, "main")?;
         spawn_sidecar(app.clone(), "main".into(), default_cwd());
+        broadcast_window_order(app);
         return Ok(());
     }
 
@@ -2155,6 +2478,7 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
     if !any_geometry {
         arrange_windows(app, count);
     }
+    broadcast_window_order(app);
     Ok(())
 }
 
@@ -2181,6 +2505,8 @@ pub fn run() {
         .manage(Sidecars::default())
         .manage(RestoreTargets::default())
         .manage(AppExiting::default())
+        .manage(FocusedWindow::default())
+        .manage(MoveDebounce::default())
         .manage(reqwest::Client::new())
         .invoke_handler(tauri::generate_handler![
             sidecar_port,
@@ -2225,7 +2551,13 @@ pub fn run() {
             agent_serve_status,
             agent_serve_start,
             agent_serve_stop,
+            agent_mcp_list,
+            agent_mcp_add,
+            agent_mcp_remove,
+            agent_mcp_login,
             gaze_focus,
+            focus_window_by_offset,
+            arrange_all,
             window_restore_target
         ])
         .setup(|app| {
@@ -2241,8 +2573,8 @@ pub fn run() {
             restore_or_default_windows(&app.handle().clone())?;
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::Destroyed => {
                 let app = window.app_handle();
                 // A deliberate close (app NOT quitting) drops this window from the
                 // workspace so it doesn't reopen next launch. During quit the
@@ -2262,7 +2594,42 @@ pub fn run() {
                 if let Some(child) = child {
                     terminate_child(child);
                 }
+                // Update peers: the closed window is gone from the reading order.
+                broadcast_window_order(app);
             }
+            // Track which window holds keyboard focus and notify peers so each
+            // can dim/brighten its position label + input border.
+            tauri::WindowEvent::Focused(focused) if *focused => {
+                let app = window.app_handle().clone();
+                {
+                    let state: State<FocusedWindow> = app.state();
+                    *state.0.lock().unwrap() = Some(window.label().to_string());
+                }
+                broadcast_window_order(&app);
+            }
+            // Debounced: native drag fires Moved per pixel. Only the last move's
+            // deferred task fires (its captured Instant still matches), so peers
+            // learn the new reading order ~150ms after the drag settles.
+            tauri::WindowEvent::Moved(_) => {
+                let app = window.app_handle().clone();
+                let now = std::time::Instant::now();
+                {
+                    let state: State<MoveDebounce> = app.state();
+                    *state.0.lock().unwrap() = Some(now);
+                }
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    let fire = {
+                        let state: State<MoveDebounce> = app.state();
+                        let guard = state.0.lock().unwrap();
+                        *guard == Some(now)
+                    };
+                    if fire {
+                        broadcast_window_order(&app);
+                    }
+                });
+            }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -2620,6 +2987,52 @@ mod tests {
         }
     }
 
+    // ── SSE frame decoding (drain_sse_frames) ────────────────────────────────
+
+    #[test]
+    fn drains_complete_frames_and_keeps_partial() {
+        let mut buf: Vec<u8> = Vec::new();
+        buf.extend_from_slice(b"data: one\n\ndata: two\n\ndata: par");
+        let frames = drain_sse_frames(&mut buf);
+        assert_eq!(frames, vec!["data: one".to_string(), "data: two".to_string()]);
+        // The unterminated "data: par" stays buffered for the next chunk.
+        assert_eq!(buf, b"data: par");
+    }
+
+    #[test]
+    fn no_complete_frame_leaves_buffer_intact() {
+        let mut buf: Vec<u8> = b"data: incomplete\n".to_vec();
+        assert!(drain_sse_frames(&mut buf).is_empty());
+        assert_eq!(buf, b"data: incomplete\n");
+    }
+
+    #[test]
+    fn multibyte_codepoint_split_across_chunks_is_not_corrupted() {
+        // "✓ 🚀 café" — ✓ (3 bytes), 🚀 (4 bytes), é (2 bytes). Feed the
+        // frame one byte at a time so every codepoint straddles a chunk
+        // boundary. The old per-chunk from_utf8_lossy would emit U+FFFD; the
+        // byte-buffered drainer must reconstruct the exact text.
+        let payload = "data: ✓ 🚀 café";
+        let wire = format!("{payload}\n\n");
+        let mut buf: Vec<u8> = Vec::new();
+        let mut frames: Vec<String> = Vec::new();
+        for &byte in wire.as_bytes() {
+            buf.push(byte);
+            frames.extend(drain_sse_frames(&mut buf));
+        }
+        assert_eq!(frames, vec![payload.to_string()]);
+        assert!(!frames[0].contains('\u{FFFD}'), "no replacement chars: {:?}", frames[0]);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn multiple_frames_in_one_chunk() {
+        let mut buf: Vec<u8> = b"data: a\n\ndata: b\n\ndata: c\n\n".to_vec();
+        let frames = drain_sse_frames(&mut buf);
+        assert_eq!(frames, vec!["data: a", "data: b", "data: c"]);
+        assert!(buf.is_empty());
+    }
+
     // ── orphan_killset classifier tests ──────────────────────────────────────
 
     /// Helper: build a ProcInfo row.
@@ -2822,5 +3235,114 @@ mod tests {
         // Live sidecar (6001) must NOT be killed.
         assert!(!killset.contains(&6001));
         assert_eq!(killset.len(), 2);
+    }
+
+    // ── reading_order + grid_cols tests ───────────────────────────────────────
+
+    /// Helper: build a (label, x, y) position tuple.
+    fn pos(label: &str, x: i32, y: i32) -> (String, i32, i32) {
+        (label.to_string(), x, y)
+    }
+
+    #[test]
+    fn reading_order_empty_is_empty() {
+        assert!(reading_order(&[], 50).is_empty());
+    }
+
+    #[test]
+    fn reading_order_2x2_grid_is_reading_order() {
+        // Four quadrants given out of order → TL, TR, BL, BR.
+        let positions = vec![
+            pos("br", 500, 400),
+            pos("tl", 0, 0),
+            pos("tr", 500, 0),
+            pos("bl", 0, 400),
+        ];
+        let order = reading_order(&positions, 50);
+        assert_eq!(order, vec!["tl", "tr", "bl", "br"]);
+    }
+
+    #[test]
+    fn reading_order_single_row_left_to_right() {
+        // Three same-row windows given out of order → left, center, right.
+        let positions = vec![pos("c", 500, 0), pos("a", 0, 0), pos("b", 250, 0)];
+        let order = reading_order(&positions, 50);
+        assert_eq!(order, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn reading_order_tolerance_groups_nearby_rows() {
+        // Two windows whose y differs by 30 (< tolerance 50) → same row, x order.
+        let positions = vec![pos("b", 500, 30), pos("a", 0, 0)];
+        let order = reading_order(&positions, 50);
+        assert_eq!(order, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn reading_order_large_gap_splits_rows() {
+        // y gap of 400 (> tolerance 50) → separate rows.
+        let positions = vec![pos("top", 500, 0), pos("bot", 0, 400)];
+        let order = reading_order(&positions, 50);
+        assert_eq!(order, vec!["top", "bot"]);
+    }
+
+    #[test]
+    fn reading_order_three_rows() {
+        // 3×2 grid (6 windows) → row1 L→R, row2 L→R, row3 L→R.
+        let positions = vec![
+            pos("c", 500, 0),
+            pos("f", 500, 800),
+            pos("a", 0, 0),
+            pos("e", 0, 800),
+            pos("d", 0, 400),
+            pos("b", 500, 400),
+        ];
+        let order = reading_order(&positions, 50);
+        assert_eq!(order, vec!["a", "c", "d", "b", "e", "f"]);
+    }
+
+    #[test]
+    fn grid_cols_generalizes_any_count() {
+        assert_eq!(grid_cols(0), 1); // guard against division-by-zero
+        assert_eq!(grid_cols(1), 1);
+        assert_eq!(grid_cols(2), 2);
+        assert_eq!(grid_cols(3), 2);
+        assert_eq!(grid_cols(4), 2);
+        assert_eq!(grid_cols(5), 3);
+        assert_eq!(grid_cols(6), 3);
+        assert_eq!(grid_cols(7), 3);
+        assert_eq!(grid_cols(8), 3);
+        assert_eq!(grid_cols(9), 3);
+        assert_eq!(grid_cols(12), 4);
+    }
+
+    #[test]
+    fn tile_rects_fills_work_area_row_major() {
+        // 1920×1080 work area, origin (0,0). 4 windows → 2×2.
+        let rects = tile_rects(4, 0, 0, 1920, 1080);
+        assert_eq!(rects.len(), 4);
+        // Row 0: left & right halves.
+        assert_eq!(rects[0], (0, 0, 960, 540));
+        assert_eq!(rects[1], (960, 0, 960, 540));
+        // Row 1: left & right halves.
+        assert_eq!(rects[2], (0, 540, 960, 540));
+        assert_eq!(rects[3], (960, 540, 960, 540));
+    }
+
+    #[test]
+    fn tile_rects_five_is_three_cols_two_rows() {
+        // 5 windows → cols=3, rows=2. The last two land in row 1 (col 0 & 1).
+        let rects = tile_rects(5, 0, 0, 3000, 1000);
+        assert_eq!(rects.len(), 5);
+        let cell_w = 3000 / 3; // 1000
+        let cell_h = 1000 / 2; // 500
+        // Indices 3 & 4 are the bottom row — they must be sized to the cell.
+        assert_eq!(rects[3], (0, cell_h, cell_w as u32, cell_h as u32));
+        assert_eq!(rects[4], (cell_w, cell_h, cell_w as u32, cell_h as u32));
+    }
+
+    #[test]
+    fn tile_rects_empty_is_empty() {
+        assert!(tile_rects(0, 0, 0, 1920, 1080).is_empty());
     }
 }

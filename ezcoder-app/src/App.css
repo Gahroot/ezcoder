@@ -734,6 +734,25 @@ body {
   font-weight: 600;
   color: var(--text);
 }
+/* Position pill — "1/4" reading-order indicator for multi-window orientation.
+   Shown only when >1 window is open. Dimmed when this window is not focused. */
+.window-index {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 0 7px;
+  line-height: 18px;
+  white-space: nowrap;
+  user-select: none;
+}
+.window-index.dim {
+  opacity: 0.45;
+}
 .chat-head-nav {
   display: flex;
   align-items: center;
@@ -1010,6 +1029,99 @@ body {
   justify-content: flex-end;
   gap: 8px;
 }
+/* ── MCP server management modal (mirrors .tasks-*) ─────────────────── */
+.mcp-empty {
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 2px;
+}
+.mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(44vh, 320px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+  margin: 2px 0 14px;
+}
+.mcp-list::-webkit-scrollbar {
+  width: 8px;
+}
+.mcp-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.mcp-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px;
+  border-radius: var(--radius-button);
+}
+.mcp-item:hover {
+  background: var(--surface-1);
+}
+.mcp-dot {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+.mcp-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-scope {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: var(--radius-button);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+.mcp-meta {
+  flex: 0 0 auto;
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.mcp-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-delete {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color var(--t-fast);
+}
+.mcp-delete:hover {
+  color: var(--error) !important;
+}
+/* Scope toggle on its own row (Global / Project). */
+.mcp-scope-toggle {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+}
 /* In-transcript task header row (shown at the top of a task's session). */
 .task-row {
   margin: 2px 0 6px;
@@ -1226,6 +1338,12 @@ body {
 .winlayout-item:hover {
   background: var(--surface-1);
 }
+/* Divider between the create-presets (2/4/6) and the auto-arrange action. */
+.winlayout-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
 
 .transcript {
   flex: 1 1 auto;
@@ -1239,6 +1357,20 @@ body {
   padding: 4px 18px 16px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Long-session perf: let the engine skip layout/paint/style for off-screen
+   transcript rows. Rows are block-level and stack (no flex/gap on children), so
+   this is a pure rendering optimization — the scroll container, pin-to-bottom
+   logic, and DOM order are all untouched. `contain-intrinsic-size: auto <len>`
+   reserves estimated height for skipped rows AND remembers each row's real size
+   after its first render, so scrolling up stays stable. Bottom rows are always
+   on-screen (rendered real-sized), so streaming auto-scroll lands exactly at the
+   true bottom. Unsupported engines simply ignore it and render every row as
+   before — no behavioral change, graceful degradation. */
+.transcript > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
 }
 
 .transcript::-webkit-scrollbar {
@@ -1365,6 +1497,33 @@ body {
   font-size: 15px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ── Queued steering message: still waiting to be injected mid-run. Dim it
+   and pulse a soft "queued" pill so it reads as not-yet-sent vs a live send. ── */
+.user-msg.queued {
+  position: relative;
+  opacity: 0.5;
+  border: 1px dashed var(--border, rgba(255, 255, 255, 0.18));
+  animation: ggqueuedpulse 2s ease-in-out infinite;
+}
+.queued-pill {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  margin-bottom: 6px;
+}
+@keyframes ggqueuedpulse {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.62;
+  }
 }
 
 /* ── Shimmer sweep: a bright spot rides across text (mirrors TUI ShimmerLabel).
@@ -1527,23 +1686,81 @@ body {
   word-break: break-word;
 }
 /* Code blocks: deeper inset surface + border so the block reads as a distinct
-   panel against the message background. */
-.markdown pre {
+   panel against the message background. The wrapper hosts the hover copy
+   button; the <pre> keeps the scroll + selection behavior. */
+.markdown .code-block {
+  position: relative;
   margin: 0.6em 0;
-  padding: 12px 14px;
+}
+.markdown pre {
+  margin: 0;
+  padding: 12px 36px 12px 14px;
   background: #0b0d11;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  overflow-x: auto;
-}
-.markdown pre code {
-  background: transparent;
-  border: none;
-  padding: 0;
   color: var(--text-secondary);
   font-size: 0.88em;
   line-height: 1.55;
-  white-space: pre;
+  /* Wrap long lines instead of overflowing to a single clipped row. pre-wrap
+     keeps the code's own newlines/indentation; overflow-wrap breaks runs wider
+     than the panel. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* Selection is allowed; double-click word selection is handled in JS
+     (Markdown.tsx selectWordAtPoint) because the macOS WKWebView otherwise
+     selects the whole preformatted block by paragraph granularity. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* Override highlight.js's `pre code.hljs { display:block; padding:1em }` too
+   (matches the .hljs selector specificity) so language-tagged blocks keep the
+   inline, word-selectable structure as well. */
+.markdown pre code,
+.markdown pre code.hljs {
+  display: inline;
+  background: transparent;
+  border: none;
+  padding: 0;
+  overflow-x: visible;
+  font-size: inherit;
+  color: inherit;
+  white-space: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* Copy button: pinned top-right, faint until the block is hovered. */
+.markdown .code-copy {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--t-fast),
+    color var(--t-fast),
+    border-color var(--t-fast),
+    background var(--t-fast);
+}
+.markdown .code-block:hover .code-copy,
+.markdown .code-copy:focus-visible {
+  opacity: 1;
+}
+.markdown .code-copy:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-2);
 }
 .markdown table {
   border-collapse: collapse;
@@ -1815,6 +2032,13 @@ body {
 .inputwrap:focus-within {
   border-color: var(--border-strong);
 }
+/* Focused window: prominent primary border + subtle ring so the active window's
+   input is unmistakable when multiple windows are tiled. Layers ABOVE the
+   subtle :focus-within (which only reacts to the textarea being focused). */
+.app.window-focused .inputwrap {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent);
+}
 .inputwrap.dragover {
   border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 8%, var(--surface-1));
@@ -1987,6 +2211,21 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── Image generation placeholder (shimmering square while tool runs) ── */
+.img-gen-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 240px;
+}
+.img-gen-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 /* ── Slash command palette (opens upward from the input) ── */

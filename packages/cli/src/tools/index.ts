@@ -19,6 +19,7 @@ import { createTaskSendTool } from "./task-send.js";
 import { createTasksTool } from "./tasks.js";
 import { createSkillTool } from "./skill.js";
 import { createScreenshotTool } from "./screenshot.js";
+import { createGenerateImageTool, type GenerateImageAuth } from "./generate-image.js";
 import { createEnterPlanTool } from "./enter-plan.js";
 import { createExitPlanTool } from "./exit-plan.js";
 import { localOperations, type ToolOperations } from "./operations.js";
@@ -75,6 +76,13 @@ export interface CreateToolsOptions {
    * a matching file — disabling this is a pure opt-out, not a capability loss.
    */
   lspDiagnostics?: boolean;
+  /**
+   * Auth storage for conditional tool registration. When provided AND the user
+   * has OpenAI connected, the `generate_image` tool is registered — letting the
+   * agent generate/edit images via OpenAI's Image API regardless of the active
+   * chat provider. Omitted by callers that don't want image generation.
+   */
+  authStorage?: GenerateImageAuth & { hasProviderAuth(provider: string): Promise<boolean> };
 }
 
 export interface CreateToolsResult {
@@ -98,7 +106,10 @@ export interface CreateToolsResult {
   lspManager?: LspManager;
 }
 
-export function createTools(cwd: string, opts?: CreateToolsOptions): CreateToolsResult {
+export async function createTools(
+  cwd: string,
+  opts?: CreateToolsOptions,
+): Promise<CreateToolsResult> {
   const readFiles: ReadTracker = new Map();
   const processManager = new ProcessManager();
   const ops = opts?.operations ?? localOperations;
@@ -188,6 +199,19 @@ export function createTools(cwd: string, opts?: CreateToolsOptions): CreateTools
     tools.push(createExitPlanTool(cwd, opts.onExitPlan));
   }
 
+  // Conditionally register the image generation tool — only when OpenAI auth
+  // is connected. The tool always uses OpenAI's Image API regardless of the
+  // active chat provider, so it's purely gated on OpenAI being logged in.
+  if (opts?.authStorage) {
+    try {
+      if (await opts.authStorage.hasProviderAuth("openai")) {
+        tools.push(createGenerateImageTool(cwd, opts.authStorage));
+      }
+    } catch {
+      // Auth not loaded yet or check failed — skip the tool silently.
+    }
+  }
+
   const rebuildReadTool = (model: string): AgentTool =>
     createReadTool(cwd, readFiles, ops, opts?.onFileRead, getVideoByteLimit(model));
 
@@ -210,6 +234,7 @@ export { createTaskStopTool } from "./task-stop.js";
 export { createTasksTool } from "./tasks.js";
 export { createSkillTool } from "./skill.js";
 export { createScreenshotTool } from "./screenshot.js";
+export { createGenerateImageTool, type GenerateImageAuth } from "./generate-image.js";
 export { createEnterPlanTool } from "./enter-plan.js";
 export { createExitPlanTool } from "./exit-plan.js";
 export { createGoalsTool } from "./goals.js";

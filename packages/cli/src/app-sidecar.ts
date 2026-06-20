@@ -16,6 +16,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import type { ToolResultContent } from "@kenkaiiii/gg-ai";
 import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
@@ -50,8 +51,20 @@ import {
 import { initLogger, log } from "./core/logger.js";
 import { RADIO_STATIONS, getCurrentStation, playRadio, stopRadio } from "./core/radio.js";
 import { enrichProcessPath } from "./core/shell-path.js";
+import { downscaleForPreview } from "./utils/image.js";
 import { startServeMode, type ServeController } from "./modes/serve-mode.js";
 import { loadTelegramConfig, saveTelegramConfig, verifyBotToken } from "./core/telegram-config.js";
+import {
+  loadServers,
+  addServer,
+  removeServer,
+  getServer,
+  parseMcpAddCommand,
+  MCPClientManager,
+  McpOAuthStore,
+  type MCPScope,
+  type MCPServerConfig,
+} from "./core/mcp/index.js";
 
 const ALL_PROVIDERS: Provider[] = [
   "anthropic",
@@ -179,6 +192,25 @@ async function persistThinkingLevel(
 /** Validate a project folder name: lowercase letters, digits, dashes only. */
 function isValidProjectName(name: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name);
+}
+
+// ── History reconstruction types ──────────────────────────
+// Mirrors HistoryEntry in gg-app/src/agent.ts — the wire shape the webview
+// receives from GET /history. Fields beyond role/text carry the transcript
+// item kinds that are reconstructed from persisted session data.
+interface HistoryEntryForWire {
+  role: "user" | "assistant";
+  text: string;
+  images?: string[];
+  hook?: "ideal" | "loop_break" | "regrounding" | null;
+  command?: boolean;
+  compacted?: boolean;
+  toolImages?: Array<{ src: string; path?: string }>;
+  subagentGroup?: Array<{
+    agentName?: string;
+    status: "done" | "error";
+    toolUseCount: number;
+  }>;
 }
 
 // ── Chat attachments (images / videos / files dropped into the input) ──────
@@ -346,6 +378,79 @@ function detectPromptCommand(
   return null;
 }
 
+// ── MCP server management (mirrors `ggcoder mcp`) ───────────────────────────
+// The webview's MCP modal lists configured servers with live connection status,
+// adds them via the same paste-a-`claude mcp add …` grammar, and removes them.
+// All persistence + connection logic lives in core/mcp (single source of truth);
+// these helpers only shape it for the wire.
+
+/** One wire row for the MCP list: a server config joined with its live status. */
+interface McpWireRow {
+  name: string;
+  scope: MCPScope;
+  ok: boolean;
+  toolCount: number;
+  error?: string;
+  kind: "stdio" | "http";
+  summary: string;
+  /** True when the server needs an interactive OAuth login before it connects. */
+  requiresAuth?: boolean;
+}
+
+/** A short transport summary for display (URL for http/sse, command+args for stdio). */
+function mcpRowSummary(config: MCPServerConfig): string {
+  if (config.url) return config.url;
+  return [config.command, ...(config.args ?? [])].filter(Boolean).join(" ");
+}
+
+/** Load + connect every server, returning one wire row per server. Mirrors the
+ *  CLI dashboard's buildRows (connectAllDetailed, then dispose). Empty list
+ *  short-circuits before spawning any stdio process / opening any HTTP conn. */
+async function buildMcpRows(cwd: string): Promise<McpWireRow[]> {
+  const scoped = await loadServers(cwd);
+  if (scoped.length === 0) return [];
+
+  const manager = new MCPClientManager();
+  try {
+    const results = await manager.connectAllDetailed(scoped.map((s) => s.config));
+    return scoped.map((s): McpWireRow => {
+      const result = results.find((r) => r.name === s.config.name);
+      return {
+        name: s.config.name,
+        scope: s.scope,
+        ok: result?.ok ?? false,
+        toolCount: result?.toolCount ?? 0,
+        error: result?.error,
+        kind: s.config.url ? "http" : "stdio",
+        summary: mcpRowSummary(s.config),
+        requiresAuth: result?.requiresAuth,
+      };
+    });
+  } finally {
+    await manager.dispose();
+  }
+}
+
+/** Probe a single server's connection before persisting it. Never throws — a
+ *  failed probe returns ok:false with a human-readable error so the config can
+ *  still be saved. Mirrors the CLI's probeServer. */
+async function probeMcp(
+  config: MCPServerConfig,
+): Promise<{ ok: boolean; toolCount: number; error?: string; requiresAuth?: boolean }> {
+  const manager = new MCPClientManager();
+  try {
+    const result = await manager.probe(config);
+    return {
+      ok: result.ok,
+      toolCount: result.toolCount,
+      error: result.error,
+      requiresAuth: result.requiresAuth,
+    };
+  } finally {
+    await manager.dispose();
+  }
+}
+
 interface SseClient {
   id: number;
   res: http.ServerResponse;
@@ -408,6 +513,26 @@ async function main(): Promise<void> {
   const sidecarLog = path.join(paths.agentDir, "ezcoder-app-sidecar.log");
   initLogger(sidecarLog);
 
+  // Global last-resort guards, installed as early as the logger allows so they
+  // cover the WHOLE lifecycle — including startup/initialize, the phase the
+  // "sidecar did not start in time" bug lives in. The sidecar is a long-lived
+  // HTTP server the Rust shell can respawn: a stray rejection or thrown error
+  // from one request (e.g. an MCP probe spawning a misbehaving child) must not
+  // tear down the whole process and strand the window on its next call. Log and
+  // keep serving (mirrors astro/vscode/gstack long-lived-server handlers).
+  process.on("unhandledRejection", (reason) => {
+    log("ERROR", "app-sidecar", "unhandledRejection", {
+      message: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+    });
+  });
+  process.on("uncaughtException", (err) => {
+    log("ERROR", "app-sidecar", "uncaughtException", {
+      message: err.message,
+      stack: err.stack,
+    });
+  });
+
   // The packaged desktop app launches from Finder/Dock with a minimal PATH that
   // omits Homebrew/Cargo/version-manager dirs, so the agent can't find node,
   // git, python, rg, etc. Enrich process.env.PATH from the login shell once,
@@ -469,6 +594,12 @@ async function main(): Promise<void> {
     thinkingLevel,
     sessionId: resumeSessionPath,
     signal: abort.signal,
+    // The shell gates window readiness on the GG_APP_LISTENING handshake, which
+    // can't fire until initialize() resolves. Connect MCP in the background so a
+    // slow or hanging stdio server (e.g. a first-run `npx -y @playwright/mcp`
+    // download) can't delay the sidecar past the webview's startup timeout
+    // ("sidecar did not start in time"). Tools attach when the servers come up.
+    backgroundMcpConnect: true,
     // Plan mode: the agent's enter_plan/exit_plan tools drive these. We flip
     // session plan state (rebuilds the system prompt + enforces read-only
     // tools) and surface the transition to the webview.
@@ -524,6 +655,11 @@ async function main(): Promise<void> {
   session.eventBus.on("tool_call_start", (d) => broadcast("tool_call_start", d));
   session.eventBus.on("tool_call_update", (d) => broadcast("tool_call_update", d));
   session.eventBus.on("tool_call_end", (d) => broadcast("tool_call_end", d));
+  // Native server tools (e.g. Anthropic web_search) do NOT end the turn — text
+  // streams before and after them in the SAME turn. The webview must reset its
+  // streaming bubble here, or the two text blocks concatenate with no separator
+  // ("…command.Let me pull…"). Mirrors the TUI's server_tool_call handling.
+  session.eventBus.on("server_tool_call", (d) => broadcast("server_tool_call", d));
   session.eventBus.on("turn_end", (d) => broadcast("turn_end", d));
   session.eventBus.on("agent_done", (d) => broadcast("agent_done", d));
   session.eventBus.on("error", (d) =>
@@ -890,68 +1026,148 @@ async function main(): Promise<void> {
     }
 
     if (method === "GET" && url === "/history") {
-      // Flatten the resumed conversation into the webview's transcript shape:
-      // user + assistant TEXT only (tools live in the live panel, never the
-      // transcript; system + tool-result messages are omitted). Self-correction
-      // hook prompts (injected as user messages) are tagged with their `hook`
-      // kind so the webview renders the short "Hook engaged" line, not the raw
-      // prompt body — matching how they appear live.
+      // Reconstruct the transcript from persisted messages so resume is 1:1 with
+      // the live SSE stream. Walks ALL message types (not just user/assistant):
+      // tool result messages carry ImageContent blocks (screenshots,
+      // generate_image) that must re-render inline, and assistant tool_call
+      // blocks carry sub-agent delegations that must re-appear as group items.
       //
-      // Prompt-template commands persist their FULL expanded body as the user
-      // message, so on resume we reverse the expansion (built-in + custom
-      // candidates) back to the short `/name [args]` chip the user saw live.
+      // The `details` object (imagePreviews with path + downscaled preview) is
+      // event-only and never persisted — we reconstruct from the raw
+      // ImageContent in the tool result, downsampling on the sidecar side and
+      // extracting the path from the text block ("Generated image → /path").
       void (async () => {
         const commandCandidates = [...PROMPT_COMMANDS, ...(await loadCustomCommands(cwd))];
-        const history = session
-          .getMessages()
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => {
-            // `m.content` is a union of differently-typed arrays (user vs
-            // assistant parts), so a type-predicate filter won't narrow cleanly.
-            // A structural `"text" in c` check extracts text from any text-bearing
-            // part regardless of the surrounding union.
-            const text =
-              typeof m.content === "string"
-                ? m.content
-                : m.content
-                    .map((c) =>
-                      c.type === "text" && "text" in c && typeof c.text === "string" ? c.text : "",
-                    )
-                    .join("");
-            // Reconstruct image attachments as data URLs so they re-render on
-            // resume — the webview only ever saw the live SSE stream, and the
-            // persisted message holds the base64 bytes. Without this, attached
-            // images vanish when returning to a session.
-            const images =
-              typeof m.content === "string"
-                ? []
-                : m.content.flatMap((c) =>
-                    c.type === "image" ? [`data:${c.mediaType};base64,${c.data}`] : [],
-                  );
-            const hook = m.role === "user" ? detectHookKind(text) : null;
-            // A compacted session persists its summary as a user message prefixed
-            // with this marker. Tag it so the webview renders the quiet "Compacted
-            // context" notice instead of dumping the full summary body.
-            const compacted =
-              m.role === "user" && !hook && text.startsWith("[Previous conversation summary]");
-            // Recover a `/name [args]` command invocation from its expanded body
-            // (skip messages already claimed as hooks or compaction summaries).
-            const command =
-              m.role === "user" && !hook && !compacted
-                ? detectPromptCommand(text, commandCandidates)
-                : null;
-            return {
-              role: m.role as "user" | "assistant",
+        const messages = session.getMessages();
+
+        // Pre-index tool results by toolCallId so we can pair tool calls with
+        // their results (for sub-agent status + image extraction).
+        const toolResultMap = new Map<string, { content: ToolResultContent; isError: boolean }>();
+        for (const msg of messages) {
+          if (msg.role !== "tool") continue;
+          for (const tr of msg.content) {
+            toolResultMap.set(tr.toolCallId, {
+              content: tr.content,
+              isError: tr.isError ?? false,
+            });
+          }
+        }
+
+        const history: HistoryEntryForWire[] = [];
+
+        for (const msg of messages) {
+          if (msg.role === "system") continue;
+
+          if (msg.role === "tool") {
+            // Tool result messages: check for ImageContent blocks (screenshots,
+            // generated images) and emit a toolImages entry.
+            for (const tr of msg.content) {
+              if (typeof tr.content === "string") continue;
+              const imageBlocks = tr.content.filter((c) => c.type === "image");
+              if (imageBlocks.length === 0) continue;
+              // Extract the path from the text block (e.g. "Generated image → /path").
+              const textBlock = tr.content.find(
+                (c) => c.type === "text" && "text" in c && typeof c.text === "string",
+              );
+              const textContent = textBlock && textBlock.type === "text" ? textBlock.text : "";
+              const pathMatch = textContent.match(/→\s*(\S+)/);
+              const imgPath = pathMatch?.[1];
+
+              // Downscale each image for the webview preview.
+              const toolImages: Array<{ src: string; path?: string }> = [];
+              for (const block of imageBlocks) {
+                if (block.type !== "image") continue;
+                try {
+                  const rawBuf = Buffer.from(block.data, "base64");
+                  const previewBuf = await downscaleForPreview(rawBuf);
+                  toolImages.push({
+                    src: `data:${block.mediaType};base64,${previewBuf.toString("base64")}`,
+                    path: imgPath,
+                  });
+                } catch {
+                  // Downscale failed — use the raw data.
+                  toolImages.push({
+                    src: `data:${block.mediaType};base64,${block.data}`,
+                    path: imgPath,
+                  });
+                }
+              }
+              if (toolImages.length > 0) {
+                history.push({
+                  role: "assistant",
+                  text: "",
+                  toolImages,
+                });
+              }
+            }
+            continue;
+          }
+
+          // User or assistant message — existing text/hook/command/compacted
+          // extraction, plus sub-agent group detection for assistant tool_calls.
+          const text =
+            typeof msg.content === "string"
+              ? msg.content
+              : msg.content
+                  .map((c) =>
+                    c.type === "text" && "text" in c && typeof c.text === "string" ? c.text : "",
+                  )
+                  .join("");
+          const images =
+            typeof msg.content === "string"
+              ? []
+              : msg.content.flatMap((c) =>
+                  c.type === "image" ? [`data:${c.mediaType};base64,${c.data}`] : [],
+                );
+          const hook = msg.role === "user" ? detectHookKind(text) : null;
+          const compacted =
+            msg.role === "user" && !hook && text.startsWith("[Previous conversation summary]");
+          const command =
+            msg.role === "user" && !hook && !compacted
+              ? detectPromptCommand(text, commandCandidates)
+              : null;
+
+          if (text.trim() || images.length > 0) {
+            history.push({
+              role: msg.role as "user" | "assistant",
               text: command ?? text,
               images,
               hook,
               command: command !== null,
               compacted,
-            };
-          })
-          // Keep messages with text OR images — an image-only user turn has empty
-          // text but must still appear.
-          .filter((m) => m.text.trim().length > 0 || m.images.length > 0);
+            });
+          }
+
+          // Assistant tool_call blocks: detect sub-agent delegations.
+          if (msg.role === "assistant" && typeof msg.content !== "string") {
+            const subagentCalls = msg.content.filter(
+              (
+                c,
+              ): c is typeof c & {
+                type: "tool_call";
+                id: string;
+                name: string;
+                args: Record<string, unknown>;
+              } => c.type === "tool_call" && c.name === "subagent",
+            );
+            if (subagentCalls.length > 0) {
+              const agents = subagentCalls.map((c) => {
+                const result = toolResultMap.get(c.id);
+                return {
+                  agentName: typeof c.args?.agent === "string" ? c.args.agent : undefined,
+                  status: result?.isError ? ("error" as const) : ("done" as const),
+                  toolUseCount: 0,
+                };
+              });
+              history.push({
+                role: "assistant",
+                text: "",
+                subagentGroup: agents,
+              });
+            }
+          }
+        }
+
         json(res, 200, { history });
       })();
       return;
@@ -999,13 +1215,11 @@ async function main(): Promise<void> {
           return;
         }
         if (running) {
-          // Queue text prompts as mid-run steering (mirrors the CLI). Attachments
-          // aren't supported mid-run — reject those so the user resends after.
-          if (attachments.length > 0) {
-            json(res, 409, { error: "cannot attach files while the agent is running" });
-            return;
-          }
-          const count = session.queueMessage(text);
+          // Queue prompts as mid-run steering (mirrors the CLI). Attachments are
+          // persisted to .gg/uploads first so the queued media rides the same
+          // native-block path as a non-queued attachment prompt when it drains.
+          const prepared = attachments.length > 0 ? await prepareAttachments(cwd, attachments) : [];
+          const count = session.queueMessage(text, prepared);
           broadcast("queued", { count });
           json(res, 202, { queued: true, count });
           return;
@@ -1508,6 +1722,176 @@ async function main(): Promise<void> {
         }
         json(res, 200, { running: false });
       })();
+      return;
+    }
+
+    // ── MCP server management (mirrors `ggcoder mcp`) ──────────────────
+    // `targetCwd` (project scope) overrides the window cwd so a server can be
+    // added/removed for ANY discovered project, not just this window's. Global
+    // scope ignores it (always ~/.gg/mcp.json).
+    if (method === "GET" && (url === "/mcp" || url.startsWith("/mcp?"))) {
+      const targetCwd = new URL(url, `http://${host}`).searchParams.get("cwd") ?? cwd;
+      void buildMcpRows(targetCwd)
+        .then((servers) => json(res, 200, { servers }))
+        .catch((err) => {
+          log("ERROR", "app-sidecar", "buildMcpRows failed", {
+            message: err instanceof Error ? err.message : String(err),
+          });
+          json(res, 200, { servers: [] });
+        });
+      return;
+    }
+
+    if (method === "POST" && url === "/mcp/add") {
+      void readBody(req).then(async (raw) => {
+        let line: string;
+        let scopeValue: string;
+        let bodyCwd: string | undefined;
+        try {
+          const body = JSON.parse(raw) as {
+            line?: string;
+            scope?: string;
+            cwd?: string;
+          };
+          line = body.line ?? "";
+          scopeValue = body.scope ?? "global";
+          bodyCwd = body.cwd;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        const scope: MCPScope = scopeValue === "project" ? "project" : "global";
+        if (scope === "project" && !bodyCwd) {
+          json(res, 400, { error: "project scope requires a project (cwd)." });
+          return;
+        }
+        const targetCwd = bodyCwd ?? cwd;
+        const parsed = parseMcpAddCommand(line);
+        if (!parsed.ok) {
+          json(res, 400, { error: parsed.error });
+          return;
+        }
+        const config = parsed.value.config;
+        try {
+          // Best-effort probe — never blocks the save. A failed connect is
+          // surfaced to the UI but the config is still persisted (mirrors the
+          // CLI). probeMcp swallows connect errors; the try/catch guards the
+          // persist step so a write failure returns a 500 instead of becoming
+          // an unhandled rejection that would crash the sidecar.
+          const probe = await probeMcp(config);
+          const saved = await addServer(config, scope, targetCwd, true);
+          if (!saved.ok) {
+            json(res, 400, { error: saved.error });
+            return;
+          }
+          json(res, 200, {
+            ok: true,
+            name: config.name,
+            connected: probe.ok,
+            toolCount: probe.toolCount,
+            error: probe.error,
+            requiresAuth: probe.requiresAuth,
+          });
+        } catch (err) {
+          json(res, 500, {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+      return;
+    }
+
+    if (method === "POST" && url === "/mcp/remove") {
+      void readBody(req).then(async (raw) => {
+        let name: string;
+        let scopeValue: string;
+        let bodyCwd: string | undefined;
+        try {
+          const body = JSON.parse(raw) as {
+            name?: string;
+            scope?: string;
+            cwd?: string;
+          };
+          name = body.name ?? "";
+          scopeValue = body.scope ?? "global";
+          bodyCwd = body.cwd;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!name.trim()) {
+          json(res, 400, { error: "missing server name" });
+          return;
+        }
+        const scope: MCPScope = scopeValue === "project" ? "project" : "global";
+        if (scope === "project" && !bodyCwd) {
+          json(res, 400, { error: "project scope requires a project (cwd)." });
+          return;
+        }
+        const targetCwd = bodyCwd ?? cwd;
+        const removed = await removeServer(name, scope, targetCwd);
+        // Drop any saved OAuth tokens for this server so a re-add starts clean.
+        await new McpOAuthStore().clear(name).catch(() => {});
+        json(res, 200, { removed });
+      });
+      return;
+    }
+
+    // Interactive OAuth login for a remote (HTTP) MCP server. The browser is
+    // opened by the webview in response to the broadcast `mcp_auth_url` event;
+    // progress + outcome stream via `mcp_auth_status` / `mcp_auth_done` /
+    // `mcp_auth_error`. Responds 202 immediately and runs the flow in the
+    // background (the browser round-trip can take a while).
+    if (method === "POST" && url === "/mcp/login") {
+      void readBody(req).then(async (raw) => {
+        let name: string;
+        let scopeValue: string;
+        let bodyCwd: string | undefined;
+        try {
+          const body = JSON.parse(raw) as { name?: string; scope?: string; cwd?: string };
+          name = body.name ?? "";
+          scopeValue = body.scope ?? "global";
+          bodyCwd = body.cwd;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!name.trim()) {
+          json(res, 400, { error: "missing server name" });
+          return;
+        }
+        const scope: MCPScope = scopeValue === "project" ? "project" : "global";
+        const targetCwd = bodyCwd ?? cwd;
+        const scoped = await getServer(name, targetCwd);
+        if (!scoped || scoped.scope !== scope) {
+          json(res, 404, { error: `No "${name}" server found.` });
+          return;
+        }
+        if (!scoped.config.url) {
+          json(res, 400, { error: "Login is only supported for HTTP MCP servers." });
+          return;
+        }
+        json(res, 202, { accepted: true });
+        broadcast("mcp_auth_status", { name, message: "Starting login\u2026" });
+        const manager = new MCPClientManager();
+        try {
+          const result = await manager.login(scoped.config, (authUrl) => {
+            broadcast("mcp_auth_url", { name, url: authUrl });
+          });
+          if (result.ok) {
+            broadcast("mcp_auth_done", { name, toolCount: result.toolCount });
+          } else {
+            broadcast("mcp_auth_error", { name, message: result.error ?? "Login failed." });
+          }
+        } catch (err) {
+          broadcast("mcp_auth_error", {
+            name,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          await manager.dispose().catch(() => {});
+        }
+      });
       return;
     }
 
