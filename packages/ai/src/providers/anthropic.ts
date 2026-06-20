@@ -24,6 +24,15 @@ import {
 import { isJsonObject } from "../utils/json.js";
 
 /**
+ * HTTP timeout for the non-streaming fallback request. Set explicitly so the
+ * SDK skips its client-side "Streaming is required…" guard (which only triggers
+ * when no client timeout is configured). The real upper bound on the call is
+ * the agent loop's abort signal + hard timeout; this is just a generous ceiling
+ * above that so the SDK never aborts a healthy response first.
+ */
+const NON_STREAMING_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
+
+/**
  * Client cache — avoids re-instantiating the SDK on every stream() call.
  * The SDK constructor parses config, computes auth headers, and sets up the
  * fetch dispatcher. Node's undici pool already reuses TCP connections, but
@@ -273,8 +282,15 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // SSE stream has stalled repeatedly -- broken streaming connections often
   // recover when the request is replayed over a plain HTTP response.
   if (!useStreaming) {
+    // The SDK refuses non-streaming requests whose `max_tokens` implies a
+    // response that could exceed its 10-minute timeout ("Streaming is required
+    // for operations that may take longer than 10 minutes"). That guard only
+    // fires when the client's own `timeout` is unset, so set one explicitly to
+    // bypass it -- our fallback intentionally rides a plain HTTP response and
+    // the agent loop bounds the call with its own abort signal + hard timeout.
+    const nonStreamingClient = client.withOptions({ timeout: NON_STREAMING_TIMEOUT_MS });
     try {
-      const message = (await client.messages.create(
+      const message = (await nonStreamingClient.messages.create(
         { ...params, stream: false } as Anthropic.MessageCreateParamsNonStreaming,
         requestOptions,
       )) as Anthropic.Message;

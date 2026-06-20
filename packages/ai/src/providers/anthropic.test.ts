@@ -4,6 +4,7 @@ import { streamAnthropic } from "./anthropic.js";
 
 const createMock = vi.fn();
 const streamMock = vi.fn();
+const withOptionsMock = vi.fn();
 
 vi.mock("@anthropic-ai/sdk", () => {
   class APIError extends Error {
@@ -31,16 +32,18 @@ vi.mock("@anthropic-ai/sdk", () => {
     static APIError = APIError;
     static nextError: Error | null = null;
     static nextEvents: unknown[] | null = null;
+    static nextMessage: unknown = null;
     messages = {
       create: createMock.mockImplementation((params: { stream?: boolean }) => {
         const error = AnthropicMock.nextError;
         const events = AnthropicMock.nextEvents;
-        if (!error && !events) {
-          throw new Error("test did not configure AnthropicMock.nextError or nextEvents");
-        }
         if (params.stream === false) {
           if (error) throw error;
+          if (AnthropicMock.nextMessage) return AnthropicMock.nextMessage;
           throw new Error("test did not configure a non-streaming message response");
+        }
+        if (!error && !events) {
+          throw new Error("test did not configure AnthropicMock.nextError or nextEvents");
         }
         if (error) throw error;
         return (async function* () {
@@ -49,6 +52,10 @@ vi.mock("@anthropic-ai/sdk", () => {
       }),
       stream: streamMock,
     };
+    // The SDK clone helper. Record calls so tests can assert the non-streaming
+    // fallback sets an explicit timeout (which bypasses the SDK's
+    // "Streaming is required…" guard), and return a client sharing this mock.
+    withOptions = withOptionsMock.mockImplementation(() => this);
   }
 
   return { default: AnthropicMock };
@@ -408,5 +415,54 @@ describe("streamAnthropic error normalization", () => {
       name: "web_search",
       input: { query: "opus clip pricing" },
     });
+  });
+});
+
+describe("streamAnthropic non-streaming fallback", () => {
+  it("sets an explicit timeout so a high max_tokens request skips the SDK guard", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const AnthropicMock = Anthropic as unknown as {
+      nextError: Error | null;
+      nextEvents: unknown[] | null;
+      nextMessage: unknown;
+    };
+    AnthropicMock.nextError = null;
+    AnthropicMock.nextEvents = null;
+    AnthropicMock.nextMessage = {
+      content: [{ type: "text", text: "hello" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 5, output_tokens: 2 },
+    };
+    withOptionsMock.mockClear();
+
+    const result = streamAnthropic({
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "sk-ant-test",
+      // Large enough that the SDK's client-side guard would throw
+      // "Streaming is required…" on a non-streaming request with no timeout set.
+      maxTokens: 64000,
+      streaming: false,
+    });
+
+    const events = [];
+    for await (const event of result) {
+      events.push(event);
+    }
+
+    // withOptions must be called with an explicit (non-null) timeout -- that's
+    // what bypasses the SDK guard.
+    const opts = withOptionsMock.mock.calls.at(-1)?.[0] as { timeout?: number } | undefined;
+    expect(opts?.timeout).toBeGreaterThan(0);
+    // The non-streaming request was issued with stream: false.
+    const params = createMock.mock.calls.at(-1)?.[0] as { stream?: boolean };
+    expect(params.stream).toBe(false);
+    await expect(result.response).resolves.toMatchObject({
+      message: { content: [{ type: "text", text: "hello" }] },
+      stopReason: "end_turn",
+    });
+
+    AnthropicMock.nextMessage = null;
   });
 });
