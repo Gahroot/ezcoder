@@ -1686,23 +1686,81 @@ body {
   word-break: break-word;
 }
 /* Code blocks: deeper inset surface + border so the block reads as a distinct
-   panel against the message background. */
-.markdown pre {
+   panel against the message background. The wrapper hosts the hover copy
+   button; the <pre> keeps the scroll + selection behavior. */
+.markdown .code-block {
+  position: relative;
   margin: 0.6em 0;
-  padding: 12px 14px;
+}
+.markdown pre {
+  margin: 0;
+  padding: 12px 36px 12px 14px;
   background: #0b0d11;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  overflow-x: auto;
-}
-.markdown pre code {
-  background: transparent;
-  border: none;
-  padding: 0;
   color: var(--text-secondary);
   font-size: 0.88em;
   line-height: 1.55;
-  white-space: pre;
+  /* Wrap long lines instead of overflowing to a single clipped row. pre-wrap
+     keeps the code's own newlines/indentation; overflow-wrap breaks runs wider
+     than the panel. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* Selection is allowed; double-click word selection is handled in JS
+     (Markdown.tsx selectWordAtPoint) because the macOS WKWebView otherwise
+     selects the whole preformatted block by paragraph granularity. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* Override highlight.js's `pre code.hljs { display:block; padding:1em }` too
+   (matches the .hljs selector specificity) so language-tagged blocks keep the
+   inline, word-selectable structure as well. */
+.markdown pre code,
+.markdown pre code.hljs {
+  display: inline;
+  background: transparent;
+  border: none;
+  padding: 0;
+  overflow-x: visible;
+  font-size: inherit;
+  color: inherit;
+  white-space: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* Copy button: pinned top-right, faint until the block is hovered. */
+.markdown .code-copy {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--t-fast),
+    color var(--t-fast),
+    border-color var(--t-fast),
+    background var(--t-fast);
+}
+.markdown .code-block:hover .code-copy,
+.markdown .code-copy:focus-visible {
+  opacity: 1;
+}
+.markdown .code-copy:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-2);
 }
 .markdown table {
   border-collapse: collapse;

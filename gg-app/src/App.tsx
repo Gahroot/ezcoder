@@ -242,6 +242,13 @@ function hasDraggedFiles(dataTransfer: DataTransfer | null): boolean {
 function App(): React.ReactElement {
   const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState("");
+  // Shell-style prompt history for ↑/↓ recall in the chat input. Newest entries
+  // last. `historyIndex` is null while editing a fresh draft; stepping ↑ walks
+  // backwards into history, ↓ forwards. `historyDraftRef` stashes the in-progress
+  // text so stepping ↓ past the newest entry restores what was being typed.
+  const promptHistoryRef = useRef<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const historyDraftRef = useRef("");
   // Staged attachments (paste / attach button / whole-window drag-drop) shown above the input.
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
@@ -1083,6 +1090,17 @@ function App(): React.ReactElement {
       if (history.length > 0) {
         // A freshly hydrated session lands at the bottom (newest message).
         stickToBottomRef.current = true;
+        // Seed ↑/↓ recall from the resumed prompts (chronological), so history
+        // works after reopening a session — not just within the live one. App-
+        // button prompts (shimmer labels) weren't typed by the user, so skip
+        // them; everything else the user actually entered is included.
+        promptHistoryRef.current = history
+          .filter((h) => h.role === "user" && !(!h.command && recoverPromptLabel(h.text)))
+          .map((h) => {
+            const parsed = !h.command ? parseReferencedFiles(h.text) : null;
+            return (parsed ? parsed.text : h.text).trim();
+          })
+          .filter((t, i, a) => t.length > 0 && a[i - 1] !== t);
         setItems(
           history.map((h): Item => {
             // Tool-produced images (screenshots, generate_image) — reconstructed
@@ -1371,12 +1389,68 @@ function App(): React.ReactElement {
     void sendPrompt(trimmed);
   }
 
+  // Record a sent prompt for ↑/↓ recall (skips consecutive duplicates, capped).
+  function recordHistory(text: string): void {
+    const h = promptHistoryRef.current;
+    if (text && h[h.length - 1] !== text) h.push(text);
+    if (h.length > 200) h.shift();
+    setHistoryIndex(null);
+    historyDraftRef.current = "";
+  }
+
+  // Replace the input with a recalled history entry and park the caret at the end.
+  function applyHistory(text: string): void {
+    setInput(text);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) el.selectionStart = el.selectionEnd = el.value.length;
+    });
+  }
+
+  // Walk prompt history with ↑ (dir -1, older) / ↓ (dir +1, newer). Returns true
+  // when it consumed the key. Only triggers when the caret is on the first line
+  // (↑) or last line (↓) so multi-line editing still moves the cursor normally.
+  function navigateHistory(dir: -1 | 1, el: HTMLTextAreaElement): boolean {
+    const hist = promptHistoryRef.current;
+    if (hist.length === 0) return false;
+    const collapsed = el.selectionStart === el.selectionEnd;
+    const caret = el.selectionStart ?? 0;
+    if (dir === -1) {
+      const onFirstLine = collapsed && !el.value.slice(0, caret).includes("\n");
+      if (!onFirstLine) return false;
+      if (historyIndex === null) {
+        historyDraftRef.current = el.value;
+        const idx = hist.length - 1;
+        setHistoryIndex(idx);
+        applyHistory(hist[idx]);
+      } else if (historyIndex > 0) {
+        const idx = historyIndex - 1;
+        setHistoryIndex(idx);
+        applyHistory(hist[idx]);
+      }
+      return true; // consume even at the oldest entry
+    }
+    if (historyIndex === null) return false; // not navigating — let ↓ move the caret
+    const onLastLine = collapsed && !el.value.slice(caret).includes("\n");
+    if (!onLastLine) return false;
+    if (historyIndex < hist.length - 1) {
+      const idx = historyIndex + 1;
+      setHistoryIndex(idx);
+      applyHistory(hist[idx]);
+    } else {
+      setHistoryIndex(null);
+      applyHistory(historyDraftRef.current);
+    }
+    return true;
+  }
+
   // Submit the current input together with any staged attachments. Images are
   // echoed inline in the user's bubble; all media is sent to the agent.
   function submit(): void {
     const trimmed = input.trim();
     if (!readyRef.current) return;
     if (!trimmed && attachments.length === 0 && mentionedPaths.length === 0) return;
+    recordHistory(trimmed);
     // A user send always re-pins to the bottom — they want to see their message.
     stickToBottomRef.current = true;
     // Referenced files are appended to the prompt as a small block so the agent
@@ -1838,6 +1912,8 @@ function App(): React.ReactElement {
             onChange={(e) => {
               setInput(e.target.value);
               setSlashIndex(0);
+              // Typing exits history-recall mode so ↑/↓ start fresh next time.
+              if (historyIndex !== null) setHistoryIndex(null);
               updateMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
             }}
             onClick={(e) => {
@@ -1870,6 +1946,14 @@ function App(): React.ReactElement {
                 e.preventDefault();
                 const cmd = slashMatches[clampedSlashIndex];
                 if (cmd) pickSlashCommand(cmd);
+              } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                // Menus are closed here (handled above), so arrows recall sent
+                // prompts shell-style — unless the caret is mid-text in a
+                // multi-line draft, where navigateHistory declines and the
+                // cursor moves normally.
+                if (navigateHistory(e.key === "ArrowUp" ? -1 : 1, e.currentTarget)) {
+                  e.preventDefault();
+                }
               } else if (e.key === "Enter" && !e.shiftKey) {
                 // Enter sends; Shift+Enter inserts a newline (textarea default).
                 e.preventDefault();
