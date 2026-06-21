@@ -2346,11 +2346,11 @@ body {
   font-family: var(--mono);
   font-weight: 700;
   color: var(--user-text);
-  /* Match the textarea's first-line metrics exactly (15px / 1.5) so the ">"
+  /* Match the textarea's first-line metrics exactly (14px / 1.5) so the ">"
      prompt sits on the same baseline as the placeholder and typed text.
      The row is align-items:flex-start (pinned to the first line), so without
-     this the chevron inherited 14px / 1.55 and floated a hair high + small. */
-  font-size: 15px;
+     this the chevron inherited the app's 14px / 1.55 and floated a hair high + small. */
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -2363,7 +2363,7 @@ body {
   /* User's own text matches the user-message identity color (mirrors TUI). */
   color: var(--user-text);
   font-family: var(--mono);
-  font-size: 15px;
+  font-size: 14px;
   /* Auto-growing multi-line input: JS sets height to fit content; cap growth
      here and scroll past the cap. No manual resize handle, wrap long lines. */
   resize: none;
