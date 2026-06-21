@@ -588,19 +588,69 @@ function App(): React.ReactElement {
 
   // Side effects (nextId, ref mutation) happen outside the updater — updaters
   // must stay pure since React may invoke them more than once.
-  const appendAssistant = useCallback((text: string) => {
+  //
+  // Throttled via requestAnimationFrame: text_delta events arrive at 50-100/sec.
+  // Without throttling, each triggers a full React re-render + markdown re-parse.
+  // We buffer chunks in a ref and flush once per animation frame (~16ms),
+  // reducing re-renders by 5-10× with no visible difference.
+  const pendingChunksRef = useRef<string>("");
+  const rafIdRef = useRef<number | null>(null);
+
+  const flushChunks = useCallback(() => {
+    rafIdRef.current = null;
+    const chunk = pendingChunksRef.current;
+    if (!chunk) return;
+    pendingChunksRef.current = "";
     const current = streamingIdRef.current;
-    if (current === null) {
-      const id = nextId();
-      streamingIdRef.current = id;
-      setItems((prev) => [...prev, { kind: "assistant", id, text }]);
-    } else {
-      setItems((prev) =>
-        prev.map((it) =>
-          it.kind === "assistant" && it.id === current ? { ...it, text: it.text + text } : it,
-        ),
-      );
+    if (current === null) return; // streaming ended while waiting
+    setItems((prev) =>
+      prev.map((it) =>
+        it.kind === "assistant" && it.id === current ? { ...it, text: it.text + chunk } : it,
+      ),
+    );
+  }, []);
+
+  const appendAssistant = useCallback(
+    (text: string) => {
+      const current = streamingIdRef.current;
+      if (current === null) {
+        // First token of a new assistant turn: create immediately (no delay
+        // on first paint — the user should see the bubble appear right away).
+        const id = nextId();
+        streamingIdRef.current = id;
+        setItems((prev) => [...prev, { kind: "assistant", id, text }]);
+      } else {
+        // Subsequent tokens: buffer and flush via rAF
+        pendingChunksRef.current += text;
+        if (rafIdRef.current === null) {
+          rafIdRef.current = requestAnimationFrame(flushChunks);
+        }
+      }
+    },
+    [flushChunks],
+  );
+
+  // Flush any pending buffered text and end the current streaming section.
+  // Called whenever streaming transitions to tool calls, a new prompt, etc.
+  // Without this, the last few buffered tokens (waiting for rAF) would be lost.
+  const endStreamingText = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
     }
+    if (pendingChunksRef.current) {
+      const chunk = pendingChunksRef.current;
+      pendingChunksRef.current = "";
+      const current = streamingIdRef.current;
+      if (current !== null) {
+        setItems((prev) =>
+          prev.map((it) =>
+            it.kind === "assistant" && it.id === current ? { ...it, text: it.text + chunk } : it,
+          ),
+        );
+      }
+    }
+    streamingIdRef.current = null;
   }, []);
 
   const pushItem = useCallback((item: Item) => {
@@ -632,7 +682,7 @@ function App(): React.ReactElement {
           break;
         case "run_start":
           setRunning(true);
-          streamingIdRef.current = null;
+          endStreamingText();
           subagentGroupIdRef.current = null;
           compactionIdRef.current = null;
           runStartRef.current = Date.now();
@@ -685,13 +735,13 @@ function App(): React.ReactElement {
           // assistant bubble so the post-tool text starts a fresh paragraph
           // instead of gluing onto the pre-tool text ("…command.Let me pull…").
           finalizeThinking();
-          streamingIdRef.current = null;
+          endStreamingText();
           assistantTextRef.current = "";
           break;
         }
         case "tool_call_start": {
           finalizeThinking();
-          streamingIdRef.current = null;
+          endStreamingText();
           const toolCallId = String(d.toolCallId ?? "");
           const name = String(d.name ?? "tool");
           const args = (d.args as Record<string, unknown>) ?? {};
@@ -727,7 +777,7 @@ function App(): React.ReactElement {
             } else {
               const id = nextId();
               subagentGroupIdRef.current = id;
-              streamingIdRef.current = null;
+              endStreamingText();
               pushItem({ kind: "subagent_group", id, agents: [newAgent] });
             }
           }
@@ -735,7 +785,7 @@ function App(): React.ReactElement {
           // tool runs. It gets replaced by the real image on tool_call_end.
           if (name === "generate_image") {
             const prompt = typeof args.prompt === "string" ? args.prompt : "generating image…";
-            streamingIdRef.current = null;
+            endStreamingText();
             pushItem({ kind: "generating_image", id: nextId(), prompt });
           }
           break;
@@ -828,7 +878,7 @@ function App(): React.ReactElement {
           const previews = (details as { imagePreviews?: ImagePreview[] } | undefined)
             ?.imagePreviews;
           if (Array.isArray(previews) && previews.length > 0) {
-            streamingIdRef.current = null;
+            endStreamingText();
             pushItem({
               kind: "images",
               id: nextId(),
@@ -879,7 +929,7 @@ function App(): React.ReactElement {
         case "compaction_start": {
           const id = nextId();
           compactionIdRef.current = id;
-          streamingIdRef.current = null;
+          endStreamingText();
           pushItem({ kind: "compaction", id, status: "running" });
           break;
         }
@@ -906,7 +956,7 @@ function App(): React.ReactElement {
           break;
         case "run_end": {
           setRunning(false);
-          streamingIdRef.current = null;
+          endStreamingText();
           finalizeThinking();
           // The queue drained into this run — un-dim any messages that were
           // waiting, since the agent has now consumed them.
@@ -1017,7 +1067,7 @@ function App(): React.ReactElement {
         case "hook": {
           const kind = String(d.kind ?? "ideal") as HookKind;
           if (kind in HOOK_PRESENTATION) {
-            streamingIdRef.current = null;
+            endStreamingText();
             pushItem({ kind: "hook", id: nextId(), hook: kind });
           }
           break;
@@ -1038,7 +1088,7 @@ function App(): React.ReactElement {
           setPlanDone(new Set());
           setAttachments([]);
           setQueuedCount(0);
-          streamingIdRef.current = null;
+          endStreamingText();
           subagentGroupIdRef.current = null;
           break;
         case "session_title":
@@ -1060,7 +1110,7 @@ function App(): React.ReactElement {
           break;
       }
     },
-    [appendAssistant, pushItem, finalizeThinking],
+    [appendAssistant, pushItem, finalizeThinking, endStreamingText],
   );
 
   // Run the connect/ready flow against the current sidecar and hydrate state,
@@ -1385,7 +1435,7 @@ function App(): React.ReactElement {
     });
     setInput("");
     setSlashIndex(0);
-    streamingIdRef.current = null;
+    endStreamingText();
     void sendPrompt(trimmed);
   }
 
@@ -1506,7 +1556,7 @@ function App(): React.ReactElement {
     setSlashIndex(0);
     setMention(null);
     setMentionedPaths([]);
-    streamingIdRef.current = null;
+    endStreamingText();
     void sendPrompt(prompt, wire);
   }
 
@@ -1562,7 +1612,7 @@ function App(): React.ReactElement {
     setPlanReview(null);
     if (!readyRef.current || running) return;
     pushItem({ kind: "info", id: nextId(), text: info });
-    streamingIdRef.current = null;
+    endStreamingText();
     void sendPrompt(prompt);
   }
 

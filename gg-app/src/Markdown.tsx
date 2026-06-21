@@ -1,10 +1,11 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { Check, Copy } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { openProjectPath } from "./agent";
+import { marked } from "marked";
 import "highlight.js/styles/github-dark.css";
 
 interface Props {
@@ -148,17 +149,27 @@ function CodeBlock({ children }: { children?: React.ReactNode }): React.ReactEle
 }
 
 /**
- * Renders assistant text as GitHub-flavored markdown with syntax-highlighted
- * fenced code blocks. Mirrors the TUI's Markdown.tsx role in the web build.
- * Memoized so unchanged blocks don't re-parse while later turns stream.
+ * Split markdown into top-level blocks (headings, paragraphs, code blocks,
+ * lists, etc.) using marked's lexer. Each block becomes a separately memoized
+ * component so that during streaming, only the last (active) block re-parses
+ * — earlier completed blocks hit React.memo and skip re-rendering entirely.
+ *
+ * This is the technique used by Vercel Streamdown, Cline, and the Vercel AI
+ * SDK cookbook. It reduces per-token cost from O(message_length) to O(block_length).
  */
-export const Markdown = memo(function Markdown({ children }: Props): React.ReactElement {
-  // Models sometimes emit literal backslash-n instead of real newlines, which
-  // react-markdown would render verbatim. Normalize them to real newlines
-  // (mirrors the TUI's presentation.ts) and trim leading/trailing blank lines.
-  const normalized = children.replace(/\\n/g, "\n").replace(/^\n+|\n+$/g, "");
-  return (
-    <div className="markdown">
+function parseMarkdownIntoBlocks(markdown: string): string[] {
+  try {
+    const tokens = marked.lexer(markdown);
+    return tokens.map((token) => token.raw);
+  } catch {
+    return [markdown];
+  }
+}
+
+const MemoizedMarkdownBlock = memo(
+  function MarkdownBlock({ content }: { content: string }): React.ReactElement {
+    const normalized = content.replace(/\\n/g, "\n").replace(/^\n+|\n+$/g, "");
+    return (
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
@@ -166,6 +177,27 @@ export const Markdown = memo(function Markdown({ children }: Props): React.React
       >
         {normalized}
       </ReactMarkdown>
+    );
+  },
+  (prev, next) => prev.content === next.content,
+);
+
+/**
+ * Renders assistant text as GitHub-flavored markdown with syntax-highlighted
+ * fenced code blocks. Mirrors the TUI's Markdown.tsx role in the web build.
+ *
+ * Splits the text into top-level blocks via marked.lexer() and memoizes each
+ * block individually. During streaming, when text_delta grows the last
+ * paragraph, only that paragraph re-parses — all earlier blocks (finished
+ * code blocks, completed paragraphs) hit memo() and bail out.
+ */
+export const Markdown = memo(function Markdown({ children }: Props): React.ReactElement {
+  const blocks = useMemo(() => parseMarkdownIntoBlocks(children), [children]);
+  return (
+    <div className="markdown">
+      {blocks.map((block, index) => (
+        <MemoizedMarkdownBlock key={index} content={block} />
+      ))}
     </div>
   );
 });
