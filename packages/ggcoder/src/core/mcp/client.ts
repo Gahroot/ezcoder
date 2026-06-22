@@ -16,6 +16,7 @@ import {
 } from "./oauth-provider.js";
 import { McpOAuthStore } from "./oauth-store.js";
 import { isLocalhost, alternateLoopback, isNetworkError } from "./loopback.js";
+import { resolveStdioCommand } from "./resolve-stdio.js";
 
 interface ConnectedServer {
   name: string;
@@ -251,9 +252,17 @@ export class MCPClientManager {
       // package.json names the same package as the MCP server makes
       // `npx -y <pkg>` self-resolve to the local source (no built bin
       // shim) and fail with "command not found".
+      //
+      // For an `npx -y <pkg>` of a package that ships as a ggcoder dependency
+      // (e.g. the default kencode-search), rewrite to a direct
+      // `node <binScript>` invocation. `npx` otherwise spawns a ~100 MB Node
+      // wrapper whose only job is to resolve+launch the real server, doubling
+      // memory per connection. Non-resolvable / non-npx commands pass through
+      // unchanged. Mirrors the LSP `process.execPath`+bin pattern.
+      const resolved = resolveStdioCommand(config.command, config.args);
       transport = new StdioClientTransport({
-        command: config.command,
-        args: config.args,
+        command: resolved.command,
+        args: resolved.args,
         env: { ...process.env, ...config.env } as Record<string, string>,
         cwd: os.homedir(),
         stderr: "pipe",

@@ -15,6 +15,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import type { ToolResultContent } from "@kenkaiiii/gg-ai";
 import type { AddressInfo } from "node:net";
@@ -496,11 +497,30 @@ async function runJsonModeIfRequested(): Promise<boolean> {
   return true;
 }
 
+// ── Daemon-level HTTP helpers (shared by the session-management routes) ─────
+// The per-session route table has its own local copies; these serve the
+// daemon's own POST /session / DELETE /session routes.
+function daemonReadBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c) => chunks.push(c as Buffer));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+    req.on("error", reject);
+  });
+}
+
+function daemonJson(res: http.ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, {
+    "content-type": "application/json",
+    "access-control-allow-origin": "*",
+  });
+  res.end(JSON.stringify(body));
+}
+
 async function main(): Promise<void> {
   // Sub-agent JSON-mode dispatch must win before any sidecar/server setup.
   if (await runJsonModeIfRequested()) return;
 
-  const cwd = process.env.GG_APP_CWD ?? process.cwd();
   // Default to an ephemeral port (0) so concurrent/orphaned instances never
   // collide on a fixed port. The actual port is reported via the
   // GG_APP_LISTENING handshake and consumed by the shell.
@@ -543,6 +563,146 @@ async function main(): Promise<void> {
   const auth = new AuthStorage(paths.authFile);
   await auth.load();
 
+  // Every window's session lives here as an in-process object, keyed by the id
+  // the daemon hands back from POST /session. The Rust shell routes each proxy
+  // request to its window's session via the `x-gg-session` header (and the
+  // `?session=` query for the SSE /events stream).
+  const sessions = new Map<string, SessionContext>();
+
+  /** Resolve the target session id: the `x-gg-session` header, else a
+   *  `?session=` query param (used by the SSE /events connection). */
+  function sessionIdFromReq(req: http.IncomingMessage, url: string): string | null {
+    const header = req.headers["x-gg-session"];
+    if (typeof header === "string" && header.length > 0) return header;
+    try {
+      return new URL(url, `http://${host}`).searchParams.get("session");
+    } catch {
+      return null;
+    }
+  }
+
+  const server = http.createServer((req, res) => {
+    const url = req.url ?? "/";
+    const method = req.method ?? "GET";
+
+    // CORS preflight — the webview origin differs from 127.0.0.1.
+    if (method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+        "access-control-allow-headers": "content-type, x-gg-session",
+      });
+      res.end();
+      return;
+    }
+
+    // ── Daemon-level routes (session lifecycle) ──────────────────────────
+    // Create a session for a window: { cwd, sessionPath? } → { sessionId }.
+    if (method === "POST" && url === "/session") {
+      void daemonReadBody(req).then(async (raw) => {
+        let body: { cwd?: unknown; sessionPath?: unknown } = {};
+        try {
+          body = raw ? (JSON.parse(raw) as typeof body) : {};
+        } catch {
+          /* empty/invalid body → defaults below */
+        }
+        const sessionCwd =
+          typeof body.cwd === "string" && body.cwd
+            ? body.cwd
+            : (process.env.GG_APP_CWD ?? process.cwd());
+        const sessionPath =
+          typeof body.sessionPath === "string" && body.sessionPath ? body.sessionPath : undefined;
+        const id = randomUUID();
+        try {
+          const ctx = await createSession({ auth, paths }, { id, cwd: sessionCwd, sessionPath });
+          sessions.set(id, ctx);
+          log("INFO", "app-sidecar", "session created", { id, cwd: sessionCwd });
+          daemonJson(res, 200, { sessionId: id });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          log("ERROR", "app-sidecar", "session create failed", { message });
+          daemonJson(res, 500, { error: message });
+        }
+      });
+      return;
+    }
+
+    // Dispose a session: DELETE /session/:id.
+    if (method === "DELETE" && url.startsWith("/session/")) {
+      const id = decodeURIComponent(url.slice("/session/".length));
+      const ctx = sessions.get(id);
+      if (ctx) {
+        sessions.delete(id);
+        void ctx.dispose().catch(() => {});
+        log("INFO", "app-sidecar", "session disposed", { id });
+      }
+      daemonJson(res, 200, { ok: true });
+      return;
+    }
+
+    // ── Per-session delegation ───────────────────────────────────────────
+    const id = sessionIdFromReq(req, url);
+    const ctx = id ? sessions.get(id) : undefined;
+    if (!ctx) {
+      daemonJson(res, 404, { error: "unknown session" });
+      return;
+    }
+    ctx.handle(req, res, url, method);
+  });
+  server.listen(port, host, () => {
+    const addr = server.address() as AddressInfo;
+    // The Rust shell reads this line to learn the daemon port.
+    process.stdout.write(`GG_APP_LISTENING ${addr.port}\n`);
+    log("INFO", "app-sidecar", "daemon listening", { port: String(addr.port), host });
+  });
+
+  const shutdown = async (): Promise<void> => {
+    // Radio playback is app-wide (one stream across all windows), so it stops
+    // at the daemon level, not per session.
+    stopRadio();
+    await Promise.all([...sessions.values()].map((c) => c.dispose().catch(() => {})));
+    server.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
+}
+
+interface SessionContext {
+  id: string;
+  cwd: string;
+  sessionPath?: string;
+  session: AgentSession;
+  clients: Set<SseClient>;
+  broadcast: (type: string, data: unknown) => void;
+  /** Handle one HTTP request for this session. Owns its own 404 fallthrough. */
+  handle: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: string,
+    method: string,
+  ) => void;
+  dispose: () => Promise<void>;
+}
+
+/**
+ * Build one in-process agent session: its AgentSession, SSE client set, event
+ * bridge, task runner, auth/login bridge, and the full HTTP route table exposed
+ * as a `handle()` method. Many of these live inside one daemon process, fully
+ * isolated (separate AgentSession, cwd, history, model) — only the HTTP server,
+ * logger, PATH, shared auth file, and radio live at the daemon level.
+ */
+async function createSession(
+  deps: { auth: AuthStorage; paths: Awaited<ReturnType<typeof ensureAppDirs>> },
+  opts: { id: string; cwd: string; sessionPath?: string },
+): Promise<SessionContext> {
+  const { auth } = deps;
+  const paths = deps.paths;
+  const cwd = opts.cwd;
+  // Base host for parsing request-URL query params (value is irrelevant to
+  // parsing); the daemon owns the real listen host.
+  const host = "127.0.0.1";
+
   const saved = loadSavedSettings(paths.settingsFile);
   // Per-project model/thinking prefs win over the shared global settings.json:
   // each window (one project cwd) restores its own selection instead of every
@@ -582,9 +742,9 @@ async function main(): Promise<void> {
     for (const c of clients) c.res.write(frame);
   }
 
-  // When the shell respawns this sidecar for a chosen project, it passes the
-  // session file path to resume; empty/unset starts a fresh session.
-  const resumeSessionPath = process.env.GG_APP_SESSION_ID || undefined;
+  // The session file path to resume (passed by the daemon's POST /session);
+  // empty/unset starts a fresh session.
+  const resumeSessionPath = opts.sessionPath;
 
   let abort = new AbortController();
   const session = new AgentSession({
@@ -844,21 +1004,13 @@ async function main(): Promise<void> {
     res.end(payload);
   }
 
-  const server = http.createServer((req, res) => {
-    const url = req.url ?? "/";
-    const method = req.method ?? "GET";
-
-    // CORS preflight — the webview origin differs from 127.0.0.1.
-    if (method === "OPTIONS") {
-      res.writeHead(204, {
-        "access-control-allow-origin": "*",
-        "access-control-allow-methods": "GET, POST, OPTIONS",
-        "access-control-allow-headers": "content-type",
-      });
-      res.end();
-      return;
-    }
-
+  // OPTIONS/CORS preflight is handled at the daemon level before delegation.
+  function handle(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: string,
+    method: string,
+  ): void {
     if (method === "GET" && url === "/state") {
       const st = session.getState();
       json(res, 200, {
@@ -873,7 +1025,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (method === "GET" && url === "/events") {
+    if (method === "GET" && (url === "/events" || url.startsWith("/events?"))) {
       res.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
@@ -1248,9 +1400,14 @@ async function main(): Promise<void> {
       return;
     }
 
-    // ── Radio ─────────────────────────────────────────────────
-    // Playback runs in THIS sidecar process, which is unique per window, so a
-    // station only plays in the window that started it.
+    // ── Radio (app-wide) ──────────────────────────────────────
+    // Radio is now APP-WIDE: all windows share one daemon process, and the
+    // player lives in `core/radio.ts` module-level singletons (one stream for
+    // the whole app). Any window's /radio reads/controls that single stream —
+    // starting a station in one window replaces whatever was playing, and every
+    // window's footer reflects the same `current`. This intentionally prevents
+    // duplicate audio across windows (the original per-window goal), now for
+    // free. (To restore per-window radio, key playback by sessionId.)
     if (method === "GET" && url === "/radio") {
       json(res, 200, { stations: RADIO_STATIONS, current: getCurrentStation() });
       return;
@@ -1896,29 +2053,27 @@ async function main(): Promise<void> {
     }
 
     json(res, 404, { error: "not found" });
-  });
+  }
 
-  server.listen(port, host, () => {
-    const addr = server.address() as AddressInfo;
-    // The Rust shell reads this line to learn the port.
-    process.stdout.write(`GG_APP_LISTENING ${addr.port}\n`);
-    log("INFO", "app-sidecar", "listening", { port: String(addr.port), host });
-  });
-
-  const shutdown = async (): Promise<void> => {
+  async function dispose(): Promise<void> {
     tasksPollStopped = true;
     if (tasksPoll) clearTimeout(tasksPoll);
-    // Kill any playing radio so the stream dies with its window.
-    stopRadio();
     // Stop the Telegram serve loop + dispose its per-chat sessions.
     if (serveController) await serveController.stop().catch(() => {});
     for (const c of clients) c.res.end();
-    server.close();
     await session.dispose().catch(() => {});
-    process.exit(0);
+  }
+
+  return {
+    id: opts.id,
+    cwd,
+    sessionPath: opts.sessionPath,
+    session,
+    clients,
+    broadcast,
+    handle,
+    dispose,
   };
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
 }
 
 main().catch((err) => {
