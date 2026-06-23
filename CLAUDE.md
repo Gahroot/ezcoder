@@ -35,33 +35,40 @@ app is the face. Reuse the agent spine unchanged — never fork agent logic into
 sidecar: `pnpm --filter @prestyj/cli build`). Restart the app after Rust/sidecar
 changes; pure webview edits hot-reload via Vite HMR.
 
-### Architecture: per-window sidecar
+### Architecture: one shared daemon, per-window sessions
 
-Each window runs its **own** Node agent sidecar (`packages/cli/src/app-sidecar.ts`) bound
-to its **own project cwd** — separate agents, separate projects, fully isolated. This is the
-core model: multiple windows = multiple projects open at once (one could be ezcoder, another
-Claude Code, another Codex).
+All windows share **one** Node agent daemon (`packages/cli/src/app-sidecar.ts`); each window
+owns its own `AgentSession` *inside* that daemon, addressed by a session id and bound to its
+own project cwd — separate agents, separate projects, still fully isolated. This is the core
+model: multiple windows = multiple projects open at once (one could be ezcoder, another
+Claude Code, another Codex). The daemon hands back a session id from `POST /session`; the Rust
+shell attaches it as the `x-gg-session` header on every proxy request to route to the right
+window's session (one daemon process replaced the old per-window-sidecar model).
 
 ```
-React webview ──invoke()──▶ Rust commands ──HTTP──▶ Node sidecar (AgentSession)
-     ▲                          │                         │
-     └────── emit_to(window) ◀──┴──── SSE /events ◀────────┘
+React webview ──invoke()──▶ Rust commands ──HTTP (x-gg-session)──▶ shared Node daemon
+     ▲                          │                                    │  (AgentSession per window)
+     └────── emit_to(window) ◀──┴──── SSE /events ◀───────────────────┘
 ```
 
-- **`ezcoder-app/src-tauri/src/lib.rs`** — Rust shell. Owns a `Sidecars` registry keyed by window
-  label (`main`, `project-1`, …). Each command (`agent_prompt`, `agent_state`, `select_project`,
-  …) resolves the calling window's sidecar port via `port_for(&webview)`. SSE frames are
-  re-emitted with `emit_to(webview_window(label))` so **windows never see each other's events**.
-  Window background is painted `#111317` before first frame (no white flash). New windows are
-  tiled like macOS fill&arrange (`setup_windows` → `arrange_windows`, 2-up halves / 4-up quads).
+- **`ezcoder-app/src-tauri/src/lib.rs`** — Rust shell. Owns the single shared daemon plus a
+  per-window session registry keyed by window label (`main`, `project-1`, …). Every command
+  (`agent_prompt`, `agent_state`, `select_project`, …) hits the shared daemon port via
+  `port_for(&webview)` and routes to the calling window's session via `session_for` (the
+  `x-gg-session` header). SSE frames are re-emitted with `emit_to(webview_window(label))` so
+  **windows never see each other's events**. Window background is painted `#111317` before first
+  frame (no white flash). New windows are tiled like macOS fill&arrange (`setup_windows` →
+  `arrange_windows`, 2-up halves / 4-up quads).
 - **`ezcoder-app/src/agent.ts`** — the ONLY bridge to Rust. Listens on the **current** webview target
   (`getCurrentWebviewWindow().listen`) — a global `listen` would miss window-scoped events. All
   IPC wrappers (`sendPrompt`, `listProjects`, `selectProject`, `createProject`, …) live here.
-- **`app-sidecar.ts`** — HTTP+SSE seam over `AgentSession`. Endpoints: `/state`, `/events`,
-  `/prompt`, `/cancel`, `/thinking`, `/model(s)`, `/commands`, `/projects`, `/sessions`,
-  `/settings`, `/create-project`. Slash-command expansion is delegated to `AgentSession.prompt()`
-  (single source of truth — built-in + `.ezcoder/commands` custom). Env: `GG_APP_CWD` (project root),
-  `GG_APP_PORT` (0 = ephemeral), `GG_APP_SESSION_ID` (resume a session file).
+- **`app-sidecar.ts`** — HTTP+SSE daemon over `AgentSession`. Session lifecycle: `POST /session`
+  (create, returns the id) / `DELETE /session/:id` (dispose); per-session endpoints `/state`,
+  `/events`, `/prompt`, `/cancel`, `/thinking`, `/model(s)`, `/commands`, `/projects`, `/sessions`,
+  `/settings`, `/create-project`, selected by the `x-gg-session` header. Slash-command expansion
+  is delegated to `AgentSession.prompt()` (single source of truth — built-in + `.ezcoder/commands`
+  custom). Env: `GG_APP_CWD` (project root), `GG_APP_PORT` (0 = ephemeral), `GG_APP_SESSION_ID`
+  (resume a session file).
 
 ### UI components (`ezcoder-app/src/`)
 
