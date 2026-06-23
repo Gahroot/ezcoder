@@ -1,5 +1,14 @@
 # @prestyj/voice
 
+## 4.5.1
+
+### Patch Changes
+
+- Rebuild against framework 4.13.3 (kept on this fork's published 4.5.x line; the
+  upstream merge briefly proposed 4.3.227, which would have downgraded npm).
+- @prestyj/ai@4.13.3
+- @prestyj/agent@4.13.3
+
 ## 4.3.227
 
 ### Patch Changes
