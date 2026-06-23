@@ -2,12 +2,14 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { AgentTool } from "@prestyj/agent";
 import { log } from "../core/logger.js";
-import { loadTasks, saveTasks, type TaskListItem } from "../core/task-store.js";
+import { loadTasks, saveTasks, type TaskListItem, type TaskStatus } from "../core/task-store.js";
 
 const TasksParams = z.object({
   action: z
-    .enum(["add", "list", "done", "remove"])
-    .describe("Action: add a task, list tasks, mark done, or remove"),
+    .enum(["add", "list", "update", "done", "remove"])
+    .describe(
+      "Action: add a task, list tasks, update a task's status/title/prompt, mark done, or remove",
+    ),
   title: z
     .string()
     .optional()
@@ -19,7 +21,14 @@ const TasksParams = z.object({
       "The standalone prompt sent to an agent with no context (required for add). " +
         "Concise, actionable instruction with file paths and what to change.",
     ),
-  id: z.string().optional().describe("Task ID (required for done/remove — use list to find IDs)"),
+  status: z
+    .enum(["pending", "in-progress", "done"])
+    .optional()
+    .describe("New status for the update action (pending, in-progress, or done)."),
+  id: z
+    .string()
+    .optional()
+    .describe("Task ID (required for update/done/remove — use list to find IDs)"),
 });
 
 export function createTasksTool(cwd: string): AgentTool<typeof TasksParams> {
@@ -43,10 +52,12 @@ export function createTasksTool(cwd: string): AgentTool<typeof TasksParams> {
       "with specific file paths — the agent must complete it from the prompt alone. " +
       "When adding multiple tasks, order them by dependency — foundational work " +
       "first, then core logic, integration, UI, and tests. " +
+      "Use the update action to change a task's status (pending/in-progress/done) or " +
+      "edit its title/prompt without recreating it. " +
       "Do not use this tool proactively — only manage the task list when the user explicitly requests it.",
     parameters: TasksParams,
     executionMode: "sequential",
-    execute({ action, title, prompt, id }) {
+    execute({ action, title, prompt, status, id }) {
       return enqueue(async () => {
         switch (action) {
           case "add": {
@@ -75,6 +86,35 @@ export function createTasksTool(cwd: string): AgentTool<typeof TasksParams> {
             });
             log("INFO", "tasks", `Listed ${tasks.length} tasks`);
             return lines.join("\n");
+          }
+
+          case "update": {
+            if (!id?.trim()) return "Error: id is required for update action.";
+            if (!status && !title?.trim() && !prompt?.trim())
+              return "Error: update needs at least one of status, title, or prompt.";
+            const tasks = await loadTasks(cwd);
+            const task = tasks.find((item) => item.id === id || item.id.startsWith(id));
+            if (!task) return `Error: no task found matching id "${id}".`;
+            const updated = tasks.map((item) =>
+              item.id === task.id
+                ? {
+                    ...item,
+                    ...(status ? { status: status as TaskStatus } : {}),
+                    ...(title?.trim() ? { title: title.trim() } : {}),
+                    ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
+                  }
+                : item,
+            );
+            await saveTasks(cwd, updated);
+            log("INFO", "tasks", `Task updated: ${task.title}`, { id: task.id });
+            const changes = [
+              status ? `status=${status}` : null,
+              title?.trim() ? "title" : null,
+              prompt?.trim() ? "prompt" : null,
+            ]
+              .filter(Boolean)
+              .join(", ");
+            return `Updated "${title?.trim() ?? task.title}" (${changes}).`;
           }
 
           case "done": {

@@ -99,6 +99,39 @@ export async function runAllTasks(): Promise<void> {
   await invoke("agent_run_tasks", { id: null, all: true });
 }
 
+/** Add a task (title + optional prompt). Returns the full updated list. */
+export async function addTask(title: string, prompt?: string): Promise<ProjectTask[]> {
+  try {
+    const res = await invoke<{ tasks: ProjectTask[] }>("agent_add_task", { title, prompt });
+    return res.tasks ?? [];
+  } catch (e) {
+    await logError(`agent_add_task failed: ${String(e)}`);
+    return [];
+  }
+}
+
+/**
+ * Update a task's status / title / prompt by id. Omit a field to leave it
+ * unchanged. Returns the full updated list.
+ */
+export async function updateTask(
+  id: string,
+  patch: { status?: ProjectTask["status"]; title?: string; prompt?: string },
+): Promise<ProjectTask[]> {
+  try {
+    const res = await invoke<{ tasks: ProjectTask[] }>("agent_update_task", {
+      id,
+      status: patch.status ?? null,
+      title: patch.title ?? null,
+      prompt: patch.prompt ?? null,
+    });
+    return res.tasks ?? [];
+  } catch (e) {
+    await logError(`agent_update_task failed: ${String(e)}`);
+    return [];
+  }
+}
+
 /** Delete a task by id. Returns the remaining tasks. */
 export async function deleteTask(id: string): Promise<ProjectTask[]> {
   try {

@@ -14,6 +14,8 @@ import {
   listTasks,
   runTask,
   runAllTasks,
+  addTask,
+  updateTask,
   deleteTask,
   newWindow,
   focusWindowByOffset,
@@ -1372,6 +1374,17 @@ function App(): React.ReactElement {
     void deleteTask(id).then(setProjectTasks);
   }, []);
 
+  const handleAddTask = useCallback((title: string, prompt: string) => {
+    void addTask(title, prompt).then(setProjectTasks);
+  }, []);
+
+  const handleUpdateTask = useCallback(
+    (id: string, patch: { status?: ProjectTask["status"]; title?: string; prompt?: string }) => {
+      void updateTask(id, patch).then(setProjectTasks);
+    },
+    [],
+  );
+
   function onSelectModel(modelId: string): void {
     setModelMenuOpen(false);
     if (state && modelId === state.model) return;
@@ -2276,6 +2289,8 @@ function App(): React.ReactElement {
           loading={tasksLoading}
           error={tasksError}
           onRetry={() => void refreshTasks()}
+          onAdd={handleAddTask}
+          onUpdate={handleUpdateTask}
           onRun={handleRunTask}
           onRunAll={handleRunAllTasks}
           onDelete={handleDeleteTask}

@@ -707,6 +707,54 @@ async fn agent_run_tasks(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Proxy: add a task (`title`, optional `prompt`). Returns the full `{ tasks }`.
+#[tauri::command]
+async fn agent_add_task(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    title: String,
+    prompt: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/tasks/add", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "title": title, "prompt": prompt }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Proxy: update a task's `status`, `title`, and/or `prompt` by id. Any field
+/// left `None` is unchanged. Returns the full `{ tasks }`.
+#[tauri::command]
+async fn agent_update_task(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    id: String,
+    status: Option<String>,
+    title: Option<String>,
+    prompt: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/tasks/update", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({
+            "id": id,
+            "status": status,
+            "title": title,
+            "prompt": prompt,
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Proxy: delete a task by id. Returns the remaining `{ tasks }`.
 #[tauri::command]
 async fn agent_delete_task(
@@ -2751,6 +2799,8 @@ pub fn run() {
             agent_radio_set,
             agent_tasks,
             agent_run_tasks,
+            agent_add_task,
+            agent_update_task,
             agent_delete_task,
             agent_cycle_thinking,
             agent_models,

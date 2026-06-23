@@ -1027,8 +1027,12 @@ body {
 .tasks-dot {
   flex: 0 0 auto;
   font-size: 11px;
-  width: 14px;
+  width: 16px;
   text-align: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  line-height: 1;
 }
 .tasks-title {
   flex: 1 1 auto;
@@ -1060,6 +1064,49 @@ body {
   color: var(--error) !important;
 }
 .tasks-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.tasks-edit-one {
+  flex: 0 0 auto;
+}
+/* Inline add / edit forms inside the tasks modal. */
+.tasks-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--radius-button);
+  background: var(--surface-1);
+}
+.tasks-add {
+  margin-bottom: 14px;
+}
+.tasks-input,
+.tasks-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface-0, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 8px;
+  outline: none;
+}
+.tasks-textarea {
+  resize: vertical;
+  font-family: var(--mono);
+  line-height: 1.4;
+}
+.tasks-input:focus,
+.tasks-textarea:focus {
+  border-color: var(--accent, var(--primary));
+}
+.tasks-edit-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;

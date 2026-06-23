@@ -48,6 +48,7 @@ import {
   saveTasksSync,
   getNextPendingTask,
   markTaskInProgress,
+  type TaskStatus,
 } from "./core/task-store.js";
 import { initLogger, log } from "./core/logger.js";
 import { RADIO_STATIONS, getCurrentStation, playRadio, stopRadio } from "./core/radio.js";
@@ -1487,6 +1488,90 @@ async function createSession(
       return;
     }
 
+    if (method === "POST" && url === "/tasks/add") {
+      void readBody(req).then((raw) => {
+        let title: string;
+        let prompt: string;
+        try {
+          const body = JSON.parse(raw) as { title?: string; prompt?: string };
+          title = (body.title ?? "").trim();
+          prompt = (body.prompt ?? "").trim();
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!title) {
+          json(res, 400, { error: "missing task title" });
+          return;
+        }
+        const tasks = loadTasksSync(cwd);
+        const newTask = {
+          id: randomUUID(),
+          title,
+          prompt: prompt || title,
+          status: "pending" as const,
+          createdAt: new Date().toISOString(),
+        };
+        const next = [...tasks, newTask];
+        saveTasksSync(cwd, next);
+        broadcast("tasks_list", { tasks: next });
+        json(res, 200, { tasks: next });
+      });
+      return;
+    }
+
+    if (method === "POST" && url === "/tasks/update") {
+      void readBody(req).then((raw) => {
+        let id: string;
+        let status: string | undefined;
+        let title: string | undefined;
+        let prompt: string | undefined;
+        try {
+          const body = JSON.parse(raw) as {
+            id?: string;
+            status?: string;
+            title?: string;
+            prompt?: string;
+          };
+          id = (body.id ?? "").trim();
+          status = body.status;
+          title = body.title;
+          prompt = body.prompt;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!id) {
+          json(res, 400, { error: "missing task id" });
+          return;
+        }
+        if (status && status !== "pending" && status !== "in-progress" && status !== "done") {
+          json(res, 400, { error: `invalid status: ${status}` });
+          return;
+        }
+        const tasks = loadTasksSync(cwd);
+        const task = tasks.find((t) => t.id === id || t.id.startsWith(id));
+        if (!task) {
+          json(res, 404, { error: `no task found matching id "${id}"` });
+          return;
+        }
+        const next = tasks.map((t) =>
+          t.id === task.id
+            ? {
+                ...t,
+                ...(status ? { status: status as TaskStatus } : {}),
+                ...(typeof title === "string" && title.trim() ? { title: title.trim() } : {}),
+                ...(typeof prompt === "string" && prompt.trim() ? { prompt: prompt.trim() } : {}),
+              }
+            : t,
+        );
+        saveTasksSync(cwd, next);
+        broadcast("tasks_list", { tasks: next });
+        json(res, 200, { tasks: next });
+      });
+      return;
+    }
+
     if (method === "POST" && url === "/tasks/delete") {
       void readBody(req).then((raw) => {
         let id: string;
@@ -1502,6 +1587,7 @@ async function createSession(
         }
         const remaining = loadTasksSync(cwd).filter((t) => t.id !== id && !t.id.startsWith(id));
         saveTasksSync(cwd, remaining);
+        broadcast("tasks_list", { tasks: remaining });
         json(res, 200, { tasks: remaining });
       });
       return;
