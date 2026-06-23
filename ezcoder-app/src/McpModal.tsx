@@ -105,7 +105,7 @@ export function McpModal({ onClose }: Props): React.ReactElement {
     const trimmed = line.trim();
     if (!trimmed || busy) return;
     if (scope === "project" && !projectPath) {
-      toast("Pick a project first.", "warning");
+      toast("Enter or pick a project path first.", "warning");
       return;
     }
     setBusy(true);
@@ -212,14 +212,8 @@ export function McpModal({ onClose }: Props): React.ReactElement {
               ) : null}
               {s.requiresAuth && !s.ok && (
                 <button
-                  className="modal-btn"
-                  style={{
-                    color: loggingIn === s.name ? theme.textDim : theme.background,
-                    background: loggingIn === s.name ? "transparent" : theme.primary,
-                    borderColor: theme.primary,
-                    padding: "2px 10px",
-                    fontSize: 12,
-                  }}
+                  className="modal-btn primary"
+                  style={{ padding: "2px 12px", fontSize: 12 }}
                   disabled={loggingIn === s.name}
                   title={`Sign in to "${s.name}"`}
                   onClick={() => void signIn(s.name, s.scope)}
@@ -245,6 +239,9 @@ export function McpModal({ onClose }: Props): React.ReactElement {
       </div>
       <div className="modal-hint" style={{ color: theme.textDim }}>
         Paste a <code>claude mcp add …</code> or <code>ezcoder mcp add …</code> line.
+        <br />
+        For local servers started with <code>--port</code> (e.g.&nbsp;Playwright MCP), use{" "}
+        <code>--transport sse</code>.
       </div>
       <input
         className="modal-input"
@@ -260,41 +257,40 @@ export function McpModal({ onClose }: Props): React.ReactElement {
       <div className="mcp-scope-toggle">
         <button
           className={`modal-btn${scope === "global" ? " primary" : ""}`}
-          style={scopeBtnStyle(scope === "global")}
           onClick={() => setScope("global")}
         >
           Global
         </button>
         <button
           className={`modal-btn${scope === "project" ? " primary" : ""}`}
-          style={scopeBtnStyle(scope === "project")}
           onClick={() => setScope("project")}
         >
           Project
         </button>
       </div>
       {scope === "project" && (
-        <select
-          className="modal-input"
-          style={{
-            color: projectPath ? theme.text : theme.textMuted,
-            background: theme.inputBackground,
-            width: "100%",
-            marginTop: 10,
-            cursor: "pointer",
-          }}
-          value={projectPath}
-          onChange={(e) => setProjectPath(e.target.value)}
-        >
-          <option value="" disabled>
-            Choose a project…
-          </option>
-          {projects.map((p) => (
-            <option key={p.path} value={p.path}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <>
+          <input
+            className="modal-input"
+            style={{
+              color: projectPath ? theme.text : theme.textMuted,
+              background: theme.inputBackground,
+              width: "100%",
+              marginTop: 10,
+            }}
+            value={projectPath}
+            placeholder="Type a project path or pick below…"
+            list="mcp-project-paths"
+            onChange={(e) => setProjectPath(e.target.value)}
+          />
+          <datalist id="mcp-project-paths">
+            {projects.map((p) => (
+              <option key={p.path} value={p.path}>
+                {p.name}
+              </option>
+            ))}
+          </datalist>
+        </>
       )}
 
       <div className="modal-hint" style={{ color: theme.textDim, marginTop: 12 }}>
@@ -302,16 +298,11 @@ export function McpModal({ onClose }: Props): React.ReactElement {
       </div>
 
       <div className="modal-actions">
-        <button className="modal-btn" style={{ color: theme.textMuted }} onClick={onClose}>
+        <button className="modal-btn" onClick={onClose}>
           Close
         </button>
         <button
           className="modal-btn primary"
-          style={{
-            color: line.trim() && !busy ? theme.background : theme.textDim,
-            background: line.trim() && !busy ? theme.primary : "transparent",
-            borderColor: line.trim() && !busy ? theme.primary : theme.border,
-          }}
           disabled={!line.trim() || busy}
           onClick={() => void add()}
         >
@@ -320,11 +311,4 @@ export function McpModal({ onClose }: Props): React.ReactElement {
       </div>
     </Modal>
   );
-}
-
-/** Inline style for the scope-toggle buttons; active = primary fill. */
-function scopeBtnStyle(active: boolean): React.CSSProperties {
-  return active
-    ? { color: theme.background, background: theme.primary, borderColor: theme.primary }
-    : { color: theme.textMuted, background: "transparent", borderColor: theme.border };
 }

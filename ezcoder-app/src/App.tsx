@@ -47,6 +47,7 @@ import { ContextMeter } from "./ContextMeter";
 import { BackgroundTasksButton } from "./BackgroundTasksButton";
 import { TasksModal } from "./TasksModal";
 import { ShimmerText } from "./ShimmerText";
+import { WakeScreen } from "./WakeScreen";
 import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
@@ -349,6 +350,28 @@ function App(): React.ReactElement {
     () => setNavHiddenPersisted(!navHidden),
     [navHidden, setNavHiddenPersisted],
   );
+  // Hide/show the live tool panel (the rolling feed above the activity bar).
+  // Mirrors navHidden: persisted across reloads, and auto-enabled when windows
+  // are tiled (tight space) so freshly opened windows boot with it collapsed.
+  const [toolsHidden, setToolsHidden] = useState(() => {
+    try {
+      return localStorage.getItem("gg-tools-hidden") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setToolsHiddenPersisted = useCallback((hidden: boolean) => {
+    try {
+      localStorage.setItem("gg-tools-hidden", hidden ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    setToolsHidden(hidden);
+  }, []);
+  const toggleTools = useCallback(
+    () => setToolsHiddenPersisted(!toolsHidden),
+    [toolsHidden, setToolsHiddenPersisted],
+  );
   const [newSessionBusy, setNewSessionBusy] = useState(false);
   // App self-update (GitHub releases). Drives the footer update banner.
   const appUpdate = useAppUpdate();
@@ -431,6 +454,31 @@ function App(): React.ReactElement {
   useLayoutEffect(() => {
     maybeScrollToBottom();
   }, [items, liveToolFeed, running, doneStatus, queuedCount, maybeScrollToBottom]);
+
+  // Settle the scroll position after a session hydrates. The single layout-effect
+  // scroll above runs the instant `items` is set, but the transcript keeps
+  // growing afterward — web fonts swap in (FOUT reflows text taller), code blocks
+  // and markdown finish laying out — which leaves the view pinned a little above
+  // the true bottom. Re-pin across the next two frames and once fonts are ready,
+  // gated on stick-to-bottom so it never yanks the view if the user scrolled up.
+  useEffect(() => {
+    if (!hydrated) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      maybeScrollToBottom();
+      raf2 = requestAnimationFrame(maybeScrollToBottom);
+    });
+    let cancelled = false;
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) maybeScrollToBottom();
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [hydrated, hydrateNonce, maybeScrollToBottom]);
 
   useEffect(() => {
     stateRef.current = state;
@@ -616,19 +664,69 @@ function App(): React.ReactElement {
 
   // Side effects (nextId, ref mutation) happen outside the updater — updaters
   // must stay pure since React may invoke them more than once.
-  const appendAssistant = useCallback((text: string) => {
+  //
+  // Throttled via requestAnimationFrame: text_delta events arrive at 50-100/sec.
+  // Without throttling, each triggers a full React re-render + markdown re-parse.
+  // We buffer chunks in a ref and flush once per animation frame (~16ms),
+  // reducing re-renders by 5-10× with no visible difference.
+  const pendingChunksRef = useRef<string>("");
+  const rafIdRef = useRef<number | null>(null);
+
+  const flushChunks = useCallback(() => {
+    rafIdRef.current = null;
+    const chunk = pendingChunksRef.current;
+    if (!chunk) return;
+    pendingChunksRef.current = "";
     const current = streamingIdRef.current;
-    if (current === null) {
-      const id = nextId();
-      streamingIdRef.current = id;
-      setItems((prev) => [...prev, { kind: "assistant", id, text }]);
-    } else {
-      setItems((prev) =>
-        prev.map((it) =>
-          it.kind === "assistant" && it.id === current ? { ...it, text: it.text + text } : it,
-        ),
-      );
+    if (current === null) return; // streaming ended while waiting
+    setItems((prev) =>
+      prev.map((it) =>
+        it.kind === "assistant" && it.id === current ? { ...it, text: it.text + chunk } : it,
+      ),
+    );
+  }, []);
+
+  const appendAssistant = useCallback(
+    (text: string) => {
+      const current = streamingIdRef.current;
+      if (current === null) {
+        // First token of a new assistant turn: create immediately (no delay
+        // on first paint — the user should see the bubble appear right away).
+        const id = nextId();
+        streamingIdRef.current = id;
+        setItems((prev) => [...prev, { kind: "assistant", id, text }]);
+      } else {
+        // Subsequent tokens: buffer and flush via rAF
+        pendingChunksRef.current += text;
+        if (rafIdRef.current === null) {
+          rafIdRef.current = requestAnimationFrame(flushChunks);
+        }
+      }
+    },
+    [flushChunks],
+  );
+
+  // Flush any pending buffered text and end the current streaming section.
+  // Called whenever streaming transitions to tool calls, a new prompt, etc.
+  // Without this, the last few buffered tokens (waiting for rAF) would be lost.
+  const endStreamingText = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
     }
+    if (pendingChunksRef.current) {
+      const chunk = pendingChunksRef.current;
+      pendingChunksRef.current = "";
+      const current = streamingIdRef.current;
+      if (current !== null) {
+        setItems((prev) =>
+          prev.map((it) =>
+            it.kind === "assistant" && it.id === current ? { ...it, text: it.text + chunk } : it,
+          ),
+        );
+      }
+    }
+    streamingIdRef.current = null;
   }, []);
 
   const pushItem = useCallback((item: Item) => {
@@ -660,7 +758,7 @@ function App(): React.ReactElement {
           break;
         case "run_start":
           setRunning(true);
-          streamingIdRef.current = null;
+          endStreamingText();
           subagentGroupIdRef.current = null;
           compactionIdRef.current = null;
           runStartRef.current = Date.now();
@@ -713,13 +811,13 @@ function App(): React.ReactElement {
           // assistant bubble so the post-tool text starts a fresh paragraph
           // instead of gluing onto the pre-tool text ("…command.Let me pull…").
           finalizeThinking();
-          streamingIdRef.current = null;
+          endStreamingText();
           assistantTextRef.current = "";
           break;
         }
         case "tool_call_start": {
           finalizeThinking();
-          streamingIdRef.current = null;
+          endStreamingText();
           const toolCallId = String(d.toolCallId ?? "");
           const name = String(d.name ?? "tool");
           const args = (d.args as Record<string, unknown>) ?? {};
@@ -755,7 +853,7 @@ function App(): React.ReactElement {
             } else {
               const id = nextId();
               subagentGroupIdRef.current = id;
-              streamingIdRef.current = null;
+              endStreamingText();
               pushItem({ kind: "subagent_group", id, agents: [newAgent] });
             }
           }
@@ -763,7 +861,7 @@ function App(): React.ReactElement {
           // tool runs. It gets replaced by the real image on tool_call_end.
           if (name === "generate_image") {
             const prompt = typeof args.prompt === "string" ? args.prompt : "generating image…";
-            streamingIdRef.current = null;
+            endStreamingText();
             pushItem({ kind: "generating_image", id: nextId(), prompt });
           }
           break;
@@ -856,7 +954,7 @@ function App(): React.ReactElement {
           const previews = (details as { imagePreviews?: ImagePreview[] } | undefined)
             ?.imagePreviews;
           if (Array.isArray(previews) && previews.length > 0) {
-            streamingIdRef.current = null;
+            endStreamingText();
             pushItem({
               kind: "images",
               id: nextId(),
@@ -907,7 +1005,7 @@ function App(): React.ReactElement {
         case "compaction_start": {
           const id = nextId();
           compactionIdRef.current = id;
-          streamingIdRef.current = null;
+          endStreamingText();
           pushItem({ kind: "compaction", id, status: "running" });
           break;
         }
@@ -934,7 +1032,7 @@ function App(): React.ReactElement {
           break;
         case "run_end": {
           setRunning(false);
-          streamingIdRef.current = null;
+          endStreamingText();
           finalizeThinking();
           // Reconcile the project task list after every run. The agent may have
           // added/removed/completed tasks via the `tasks` tool, and the live
@@ -1057,7 +1155,7 @@ function App(): React.ReactElement {
         case "hook": {
           const kind = String(d.kind ?? "ideal") as HookKind;
           if (kind in HOOK_PRESENTATION) {
-            streamingIdRef.current = null;
+            endStreamingText();
             pushItem({ kind: "hook", id: nextId(), hook: kind });
           }
           break;
@@ -1078,7 +1176,7 @@ function App(): React.ReactElement {
           setPlanDone(new Set());
           setAttachments([]);
           setQueuedCount(0);
-          streamingIdRef.current = null;
+          endStreamingText();
           subagentGroupIdRef.current = null;
           break;
         case "session_title":
@@ -1100,7 +1198,7 @@ function App(): React.ReactElement {
           break;
       }
     },
-    [appendAssistant, pushItem, finalizeThinking],
+    [appendAssistant, pushItem, finalizeThinking, endStreamingText],
   );
 
   // Run the connect/ready flow against the current sidecar and hydrate state,
@@ -1441,7 +1539,7 @@ function App(): React.ReactElement {
     });
     setInput("");
     setSlashIndex(0);
-    streamingIdRef.current = null;
+    endStreamingText();
     void sendPrompt(trimmed);
   }
 
@@ -1562,7 +1660,7 @@ function App(): React.ReactElement {
     setSlashIndex(0);
     setMention(null);
     setMentionedPaths([]);
-    streamingIdRef.current = null;
+    endStreamingText();
     void sendPrompt(prompt, wire);
   }
 
@@ -1618,7 +1716,7 @@ function App(): React.ReactElement {
     setPlanReview(null);
     if (!readyRef.current || running) return;
     pushItem({ kind: "info", id: nextId(), text: info });
-    streamingIdRef.current = null;
+    endStreamingText();
     void sendPrompt(prompt);
   }
 
@@ -1714,9 +1812,10 @@ function App(): React.ReactElement {
         ) : (
           <ProjectPicker
             onChosen={onProjectChosen}
-            // Secondary windows start on the picker and have no home screen, so
-            // they get no "back" affordance; the main window returns home.
-            onClose={isSecondaryWindow ? undefined : () => setEntryView("home")}
+            // Every window can return to the home screen (it shows global
+            // settings/auth, nothing window-specific) — secondary windows just
+            // default to opening on the picker.
+            onClose={() => setEntryView("home")}
           />
         )}
         <Toaster />
@@ -1739,15 +1838,11 @@ function App(): React.ReactElement {
           }}
           onClose={() => {
             setShowPicker(false);
-            // Secondary windows have no home screen — bouncing them "home" lands
-            // on a Projects picker whose back button is suppressed (the
-            // isSecondaryWindow guard below), stranding the user. The picker is
-            // only reachable here from an already-open project, so just close it
-            // to return to that project. The main window keeps going home.
-            if (!isSecondaryWindow) {
-              setNeedsProject(true);
-              setEntryView("home");
-            }
+            // Back from the over-a-project picker returns to the home screen for
+            // every window (the entry picker now offers a back-to-home button,
+            // so secondary windows are no longer stranded there).
+            setNeedsProject(true);
+            setEntryView("home");
           }}
         />
       </div>
@@ -1860,7 +1955,12 @@ function App(): React.ReactElement {
               )}
               <RadioButton />
               {/* <GazeButton /> */}
-              <WindowLayoutButton onArrange={() => setNavHiddenPersisted(true)} />
+              <WindowLayoutButton
+                onArrange={() => {
+                  setNavHiddenPersisted(true);
+                  setToolsHiddenPersisted(true);
+                }}
+              />
             </span>
           </div>
         )}
@@ -1871,13 +1971,14 @@ function App(): React.ReactElement {
           <TranscriptSkeleton />
         ) : (
           <>
-            {items.length === 0 && (
-              <div className="line transcript-reveal" style={{ color: theme.textDim }}>
-                {status === "ready"
-                  ? "Ready. Type a message below to start coding."
-                  : `\u273b ${status}`}
-              </div>
-            )}
+            {items.length === 0 &&
+              (status === "ready" ? (
+                <WakeScreen />
+              ) : (
+                <div className="line transcript-reveal" style={{ color: theme.textDim }}>
+                  {`\u273b ${status}`}
+                </div>
+              ))}
             {items.map((it) => (
               <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
             ))}
@@ -1886,7 +1987,7 @@ function App(): React.ReactElement {
       </div>
 
       <div className="liveregion">
-        <LiveToolPanel entries={liveToolFeed} />
+        {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
         <ActivityBar
           running={running}
           tokens={tokens}
@@ -1897,6 +1998,9 @@ function App(): React.ReactElement {
           planTotal={planTotal}
           planDone={Math.min(planDone.size, planTotal)}
           onCancel={() => void cancel()}
+          toolsHidden={toolsHidden}
+          hasToolFeed={liveToolFeed.length > 0}
+          onToggleTools={toggleTools}
         />
       </div>
 

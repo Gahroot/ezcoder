@@ -1,13 +1,13 @@
 {
-  "name": "@prestyj/core",
-  "version": "4.12.0",
+  "name": "@kenkaiiii/gg-core",
+  "version": "4.13.3",
   "type": "module",
   "description": "Provider-agnostic, UI-free shared foundation: model registry, auth, paths, telegram, voice",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Gahroot/ezcoder.git",
-    "directory": "packages/core"
+    "url": "git+https://github.com/kenkaiiii/gg-framework.git",
+    "directory": "packages/gg-core"
   },
   "exports": {
     ".": {
@@ -38,7 +38,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@prestyj/ai": "workspace:*"
+    "@kenkaiiii/gg-ai": "workspace:*"
   },
   "optionalDependencies": {
     "@huggingface/transformers": "^3.6.0",
