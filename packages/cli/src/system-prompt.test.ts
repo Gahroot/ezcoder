@@ -374,7 +374,7 @@ describe("buildSystemPrompt", () => {
 
     expect(measurements.normal.characters).toBeLessThan(4_800);
     // Ceiling is ~200 chars above upstream's 5_600: this fork's branding strings
-    // ("~/.ezcoder/", "EZ Coder") are longer than upstream's ("~/.gg/", "GG"),
+    // ("~/.ezcoder/", "EZ Coder") are longer than upstream's ("~/.ezcoder/", "GG"),
     // which inflates the plan-mode block that embeds them.
     expect(measurements.planMode.characters).toBeLessThan(5_900);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(9_500);

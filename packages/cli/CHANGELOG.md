@@ -8,9 +8,9 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.14.0
-- @kenkaiiii/gg-agent@4.14.0
-- @kenkaiiii/gg-core@4.14.0
+- @prestyj/ai@4.14.0
+- @prestyj/agent@4.14.0
+- @prestyj/core@4.14.0
 
 ## 4.13.3
 
