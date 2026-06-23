@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 4.13.3
+
+### Patch Changes
+
+- Fix orphaned queued messages after an abort — drain the post-abort queue even when the run was interrupted, so a reprompt during async teardown isn't stranded.
+  - @kenkaiiii/gg-ai@4.13.3
+  - @kenkaiiii/gg-agent@4.13.3
+  - @kenkaiiii/gg-core@4.13.3
+
 ## 4.13.2
 
 ### Patch Changes
