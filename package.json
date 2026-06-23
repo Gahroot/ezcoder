@@ -29,7 +29,6 @@
       "ip-address": "^10.1.1"
     },
     "patchedDependencies": {
-      "ink@6.8.0": "patches/ink@6.8.0.patch",
       "ink@7.0.2": "patches/ink@7.0.2.patch"
     }
   },
