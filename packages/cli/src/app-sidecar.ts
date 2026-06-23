@@ -78,6 +78,7 @@ const ALL_PROVIDERS: Provider[] = [
   "minimax",
   "deepseek",
   "openrouter",
+  "sakana",
 ];
 
 // ── ezcoder-app settings (~/.ezcoder/ezcoder-app.json) ────────────────────
