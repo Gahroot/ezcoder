@@ -1,9 +1,9 @@
-// Bump the gg-app desktop version across ALL four places that must stay in
+// Bump the ezcoder-app desktop version across ALL four places that must stay in
 // lockstep, so a release tag never ships with mismatched versions:
-//   1. gg-app/package.json            "version"
-//   2. gg-app/src-tauri/tauri.conf.json  "version"  (the bundle/updater version)
-//   3. gg-app/src-tauri/Cargo.toml    [package] version
-//   4. gg-app/src-tauri/Cargo.lock    the gg-app package entry
+//   1. ezcoder-app/package.json            "version"
+//   2. ezcoder-app/src-tauri/tauri.conf.json  "version"  (the bundle/updater version)
+//   3. ezcoder-app/src-tauri/Cargo.toml    [package] version
+//   4. ezcoder-app/src-tauri/Cargo.lock    the ezcoder-app package entry
 //
 // Usage:
 //   node scripts/bump-version.mjs patch        # 0.1.40 -> 0.1.41
@@ -70,14 +70,14 @@ const cargoNext = cargoRaw.replace(/^version = "\d+\.\d+\.\d+"/m, `version = "${
 if (cargoNext === cargoRaw) fail("could not find the [package] version in Cargo.toml");
 writeFileSync(cargoPath, cargoNext);
 
-// 4. Cargo.lock — the gg-app entry only (anchored to the name line so other
+// 4. Cargo.lock — the ezcoder-app entry only (anchored to the name line so other
 // packages that happen to share the old version are not touched).
 const lockRaw = readFileSync(lockPath, "utf8");
 const lockNext = lockRaw.replace(
-  /(name = "gg-app"\nversion = ")\d+\.\d+\.\d+(")/,
+  /(name = "ezcoder-app"\nversion = ")\d+\.\d+\.\d+(")/,
   (_m, a, b) => `${a}${next}${b}`,
 );
-if (lockNext === lockRaw) fail("could not find the gg-app entry in Cargo.lock");
+if (lockNext === lockRaw) fail("could not find the ezcoder-app entry in Cargo.lock");
 writeFileSync(lockPath, lockNext);
 
 console.error(

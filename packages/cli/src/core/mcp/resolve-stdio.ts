@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
  *
  * `npx` (= `npm exec`) spawns a full Node "wrapper" process (~100 MB RSS) whose
  * only job is to resolve the package and spawn the REAL server — doubling the
- * memory of every connection. When the package ships as a ggcoder dependency we
+ * memory of every connection. When the package ships as a ezcoder dependency we
  * can skip the wrapper entirely: resolve the package's bin entry script and run
  * it with `process.execPath` (the same Node already running). This mirrors the
  * LSP server resolution in `core/lsp/servers.ts` (`resolveNodeServer`), which
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
  * through unchanged, so behavior degrades gracefully to the original `npx` path.
  */
 
-/** Directory of this module — anchor for resolving ggcoder's own bundled deps. */
+/** Directory of this module — anchor for resolving ezcoder's own bundled deps. */
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -126,7 +126,7 @@ export interface ResolvedStdioCommand {
 /**
  * Rewrite a stdio `{ command, args }` to a direct `node <binScript>` invocation
  * when it's an `npx`/`npm exec` of a package whose bin script is resolvable from
- * ggcoder's install. Returns the original `{ command, args }` unchanged
+ * ezcoder's install. Returns the original `{ command, args }` unchanged
  * otherwise (non-npx command, or the package/bin can't be resolved locally).
  */
 export function resolveStdioCommand(

@@ -811,7 +811,7 @@ async function createSession(
 
   // tool_call_end carries no tool name (only the id), so remember each call's
   // name from tool_call_start to log a useful line on completion. Mirrors the
-  // CLI's logging so the app sidecar's ~/.gg/gg-app-sidecar.log records tool
+  // CLI's logging so the app sidecar's ~/.ezcoder/ezcoder-app-sidecar.log records tool
   // failures (e.g. repeated invalid-argument errors) instead of leaving the
   // fatal-abort path with no forensic trail.
   const toolCallNames = new Map<string, string>();

@@ -38,7 +38,7 @@ async function main(): Promise<void> {
   const comparisons: Comparison[] = [];
 
   console.log("\n╔══════════════════════════════════════════════════════╗");
-  console.log("║     GG CODER BENCHMARK SUITE — Before & After        ║");
+  console.log("║     EZ CODER BENCHMARK SUITE — Before & After        ║");
   console.log("╚══════════════════════════════════════════════════════╝");
 
   for (const suite of SUITES) {

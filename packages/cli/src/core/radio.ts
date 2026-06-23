@@ -9,7 +9,7 @@ import { log } from "./logger.js";
  * streams (SomaFM started in 2000, Radio Paradise in 2006).
  *
  * Playback uses module-level singletons (`currentChild` / `currentStationId`),
- * so in the shared gg-app daemon — where every window's session lives in ONE
+ * so in the shared ezcoder-app daemon — where every window's session lives in ONE
  * process — radio is APP-WIDE: there is a single stream across all windows.
  * Starting a station in any window replaces whatever was playing, and every
  * window's footer reflects the same state. This intentionally prevents

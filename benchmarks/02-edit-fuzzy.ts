@@ -12,7 +12,7 @@ import {
 import {
   fuzzyFindText,
   countOccurrences,
-} from "../packages/ggcoder/dist/tools/edit-diff.js";
+} from "../packages/cli/dist/tools/edit-diff.js";
 
 export async function runEditBench(): Promise<import("./harness.js").BenchResult[]> {
   const results: import("./harness.js").BenchResult[] = [];

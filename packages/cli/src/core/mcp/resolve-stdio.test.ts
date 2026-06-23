@@ -28,8 +28,8 @@ describe("parseNpxPackage", () => {
 });
 
 describe("findPackageBinScript", () => {
-  it("resolves the kencode-search bin script from ggcoder's install", () => {
-    // kencode-search is a ggcoder dependency, so its bin must resolve from here.
+  it("resolves the kencode-search bin script from ezcoder's install", () => {
+    // kencode-search is a ezcoder dependency, so its bin must resolve from here.
     const script = findPackageBinScript("@kenkaiiii/kencode-search", "kencode-search");
     expect(script).toBeTruthy();
     expect(script).toMatch(/kencode-search[/\\].*index\.js$/);

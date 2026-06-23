@@ -18,7 +18,7 @@
  * fails the audit — those are exactly the ways compressed context confuses a
  * model. Reduction is only reported for runs that PASS the audit.
  *
- * Run:  pnpm --filter @kenkaiiii/ggcoder exec tsx scripts/compress-bench-real.ts
+ * Run:  pnpm --filter @prestyj/cli exec tsx scripts/compress-bench-real.ts
  */
 import { execSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
@@ -59,8 +59,8 @@ const samples: Sample[] = [
     capture: () => sh("git log --stat -n 80"),
   },
   {
-    name: "grep 'import' across ggcoder src (real search dump)",
-    capture: () => sh("grep -rn \"import\" packages/ggcoder/src --include='*.ts' | head -2000"),
+    name: "grep 'import' across ezcoder src (real search dump)",
+    capture: () => sh("grep -rn \"import\" packages/cli/src --include='*.ts' | head -2000"),
   },
   {
     name: "find all .ts files (real find output)",
@@ -69,7 +69,7 @@ const samples: Sample[] = [
   {
     name: "read model-registry.ts (real source file)",
     capture: () => {
-      const p = path.join(repoRoot, "packages/gg-core/src/model-registry.ts");
+      const p = path.join(repoRoot, "packages/core/src/model-registry.ts");
       return existsSync(p) ? readFileSync(p, "utf-8") : "";
     },
   },

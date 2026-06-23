@@ -9,7 +9,7 @@ import { bench, type BenchResult } from "./harness.js";
 import { readFixtureContent } from "./fixtures.js";
 
 // Import the OPTIMIZED implementations from compiled dist
-import { fuzzyFindText as fuzzyFindOptimized, countOccurrences as countOptimized } from "../packages/ggcoder/dist/tools/edit-diff.js";
+import { fuzzyFindText as fuzzyFindOptimized, countOccurrences as countOptimized } from "../packages/cli/dist/tools/edit-diff.js";
 
 // ── OLD edit-diff implementations (pre-optimization, exact copy) ──
 
@@ -249,7 +249,7 @@ export async function runComparisonBench(): Promise<{ results: BenchResult[]; co
   // We measure: peak heap growth when consumer is absent.
   const { createRequire } = await import("node:module");
   const require = createRequire(import.meta.url);
-  const { StreamResult } = require("../packages/gg-ai/dist/index.cjs");
+  const { StreamResult } = require("../packages/ai/dist/index.cjs");
 
   function* mockEvents(count: number, payloadSize = 200) {
     const payload = "x".repeat(payloadSize);

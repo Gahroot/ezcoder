@@ -4,19 +4,19 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.13.3
+- @prestyj/ai@4.13.3
 
 ## 4.13.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.13.2
+- @prestyj/ai@4.13.2
 
 ## 4.13.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.13.1
+- @prestyj/ai@4.13.1
 
 ## 4.13.0
 
@@ -32,7 +32,7 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.13.0
+  - @prestyj/ai@4.13.0
 
 ## 4.12.2
 
@@ -40,7 +40,7 @@
 
 - Fix Windows sidecar crash: the session-folder name encoder (`encodeCwd`) now strips Windows extended-length path prefixes (`\\?\` and `\\?\UNC\`) and all reserved filename characters (`<>:"|?*`). Previously, Windows canonicalized cwds (`\\?\C:\Users\brams`) produced illegal folder names containing `?`, causing `mkdir` ENOENT and a fatal sidecar crash on startup — blocking OAuth/login for all Windows users.
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.12.2
+  - @prestyj/ai@4.12.2
 
 ## 4.12.1
 
@@ -58,7 +58,7 @@
   - benchmarks: full harness with before/after comparison tables (pnpm bench)
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.12.1
+  - @prestyj/ai@4.12.1
 
 ## 4.12.0
 

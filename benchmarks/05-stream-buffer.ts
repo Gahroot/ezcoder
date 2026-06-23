@@ -10,7 +10,7 @@ import { bench, fmtBytes } from "./harness.js";
 // Import from compiled package
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { StreamResult } = require("../packages/gg-ai/dist/index.cjs") as {
+const { StreamResult } = require("../packages/ai/dist/index.cjs") as {
   StreamResult: new <T>(gen: AsyncGenerator<T, unknown>, signal?: AbortSignal) => AsyncIterable<T>;
 };
 

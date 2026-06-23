@@ -18,7 +18,7 @@ interface Comparison {
 
 async function main(): Promise<void> {
   console.log("\n╔══════════════════════════════════════════════════════╗");
-  console.log("║   GG CODER — FULL BENCHMARK SUITE (Before → After)    ║");
+  console.log("║   EZ CODER — FULL BENCHMARK SUITE (Before → After)    ║");
   console.log("╚══════════════════════════════════════════════════════╝");
   console.log("\n  Running all benchmarks... this takes ~3 minutes.\n");
 

@@ -5,18 +5,18 @@
 ### Patch Changes
 
 - Fix orphaned queued messages after an abort — drain the post-abort queue even when the run was interrupted, so a reprompt during async teardown isn't stranded.
-  - @kenkaiiii/gg-ai@4.13.3
-  - @kenkaiiii/gg-agent@4.13.3
-  - @kenkaiiii/gg-core@4.13.3
+  - @prestyj/ai@4.13.3
+  - @prestyj/agent@4.13.3
+  - @prestyj/core@4.13.3
 
 ## 4.13.2
 
 ### Patch Changes
 
-- Add tool-call and error logging to the gg-app sidecar event bridge so fatal "invalid tool arguments" aborts leave a forensic trail in `~/.gg/gg-app-sidecar.log` (tool name, isError, result preview, and agent error events) instead of failing silently.
-  - @kenkaiiii/gg-ai@4.13.2
-  - @kenkaiiii/gg-agent@4.13.2
-  - @kenkaiiii/gg-core@4.13.2
+- Add tool-call and error logging to the ezcoder-app sidecar event bridge so fatal "invalid tool arguments" aborts leave a forensic trail in `~/.ezcoder/ezcoder-app-sidecar.log` (tool name, isError, result preview, and agent error events) instead of failing silently.
+  - @prestyj/ai@4.13.2
+  - @prestyj/agent@4.13.2
+  - @prestyj/core@4.13.2
 
 ## 4.13.1
 
@@ -28,10 +28,10 @@
   pass through unchanged.
 
   Also ships content-aware compression for bash/task_output truncation (preserves
-  errors over blind tail slices) and the gg-app shared-daemon backend refactor.
-  - @kenkaiiii/gg-ai@4.13.1
-  - @kenkaiiii/gg-agent@4.13.1
-  - @kenkaiiii/gg-core@4.13.1
+  errors over blind tail slices) and the ezcoder-app shared-daemon backend refactor.
+  - @prestyj/ai@4.13.1
+  - @prestyj/agent@4.13.1
+  - @prestyj/core@4.13.1
 
 ## 4.13.0
 
@@ -47,9 +47,9 @@
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.13.0
-  - @kenkaiiii/gg-agent@4.13.0
-  - @kenkaiiii/gg-core@4.13.0
+  - @prestyj/ai@4.13.0
+  - @prestyj/agent@4.13.0
+  - @prestyj/core@4.13.0
 
 ## 4.12.2
 
@@ -57,9 +57,9 @@
 
 - Fix Windows sidecar crash: the session-folder name encoder (`encodeCwd`) now strips Windows extended-length path prefixes (`\\?\` and `\\?\UNC\`) and all reserved filename characters (`<>:"|?*`). Previously, Windows canonicalized cwds (`\\?\C:\Users\brams`) produced illegal folder names containing `?`, causing `mkdir` ENOENT and a fatal sidecar crash on startup — blocking OAuth/login for all Windows users.
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.12.2
-  - @kenkaiiii/gg-agent@4.12.2
-  - @kenkaiiii/gg-core@4.12.2
+  - @prestyj/ai@4.12.2
+  - @prestyj/agent@4.12.2
+  - @prestyj/core@4.12.2
 
 ## 4.12.1
 
@@ -77,9 +77,9 @@
   - benchmarks: full harness with before/after comparison tables (pnpm bench)
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@4.12.1
-  - @kenkaiiii/gg-agent@4.12.1
-  - @kenkaiiii/gg-core@4.12.1
+  - @prestyj/ai@4.12.1
+  - @prestyj/agent@4.12.1
+  - @prestyj/core@4.12.1
 
 ## 4.12.0
 

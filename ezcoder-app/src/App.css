@@ -2660,7 +2660,7 @@ body {
   display: inline-block;
   margin-left: 2px;
   color: var(--primary);
-  animation: ggblink 1s step-end infinite;
+  animation: ezblink 1s step-end infinite;
 }
 .wake-cursor-rest {
   color: var(--secondary);

@@ -253,7 +253,7 @@ export class MCPClientManager {
       // `npx -y <pkg>` self-resolve to the local source (no built bin
       // shim) and fail with "command not found".
       //
-      // For an `npx -y <pkg>` of a package that ships as a ggcoder dependency
+      // For an `npx -y <pkg>` of a package that ships as a ezcoder dependency
       // (e.g. the default kencode-search), rewrite to a direct
       // `node <binScript>` invocation. `npx` otherwise spawns a ~100 MB Node
       // wrapper whose only job is to resolve+launch the real server, doubling
@@ -398,7 +398,7 @@ export class MCPClientManager {
 
     if (config.transport === "sse") {
       const transport = sseTransport();
-      const client = new Client({ name: "ggcoder", version: "1.0.0" });
+      const client = new Client({ name: "ezcoder", version: "1.0.0" });
       await client.connect(transport, { timeout });
       return { client, transport };
     }
@@ -408,7 +408,7 @@ export class MCPClientManager {
         requestInit: reqInit,
         authProvider,
       });
-      const client = new Client({ name: "ggcoder", version: "1.0.0" });
+      const client = new Client({ name: "ezcoder", version: "1.0.0" });
       await client.connect(transport, { timeout });
       return { client, transport };
     } catch (streamableErr) {
@@ -421,7 +421,7 @@ export class MCPClientManager {
         error: String(streamableErr),
       });
       const transport = sseTransport();
-      const client = new Client({ name: "ggcoder", version: "1.0.0" });
+      const client = new Client({ name: "ezcoder", version: "1.0.0" });
       await client.connect(transport, { timeout });
       return { client, transport };
     }

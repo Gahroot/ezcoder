@@ -1,4 +1,4 @@
-# GG Coder Benchmark Results
+# EZ Coder Benchmark Results
 
 **Date**: 2026-06-21
 **Method**: 3-1000 iterations per benchmark, warmup cycles, `process.hrtime.bigint()`.
@@ -52,7 +52,7 @@
 ### Round 1 — Core Optimizations
 
 #### 1. Edit-Diff Lazy Normalization Cache ✅
-**File**: `packages/ggcoder/src/tools/edit-diff.ts`
+**File**: `packages/cli/src/tools/edit-diff.ts`
 
 **Problem**: `fuzzyFindText()` and `countOccurrences()` re-normalized each content line (6 regex calls) for every sliding-window position. 10K-line file, no match = 60K+ regex calls.
 
@@ -61,7 +61,7 @@
 **Result**: **5-7× faster** across all scenarios. 10K-line no-match: 128ms → 21ms.
 
 #### 2. ls Parallel stat ✅
-**File**: `packages/ggcoder/src/tools/ls.ts`
+**File**: `packages/cli/src/tools/ls.ts`
 
 **Problem**: Sequential `await ops.stat()` per file. 500 files = 500 serial syscalls.
 
@@ -70,7 +70,7 @@
 **Result**: **3.7-5.5× faster**. 500 files: 4.8ms → 0.9ms.
 
 #### 3. StreamResult Backpressure ✅
-**File**: `packages/gg-ai/src/utils/event-stream.ts`
+**File**: `packages/ai/src/utils/event-stream.ts`
 
 **Problem**: Unbounded buffer growth — pump eagerly pulled events regardless of consumer speed. 50K events × 200 bytes = ~12MB.
 
@@ -81,7 +81,7 @@
 ### Round 2 — Agent Loop & Rendering
 
 #### 4. Mixed-Mode Tool Execution ✅
-**File**: `packages/gg-agent/src/agent-loop.ts`
+**File**: `packages/agent/src/agent-loop.ts`
 
 **Problem**: One sequential tool (bash/edit/write) in a batch forced ALL tools to run sequentially. `[grep, grep, write, grep]` = 4 serial calls.
 
@@ -90,7 +90,7 @@
 **Result**: **2-10× faster** for mixed batches. `5 reads + write + 2 reads`: 175ms → 65ms.
 
 #### 5. Per-Tool Timeout Isolation ✅
-**File**: `packages/gg-agent/src/agent-loop.ts`
+**File**: `packages/agent/src/agent-loop.ts`
 
 **Problem**: When a caller signal was provided (the normal case), no per-tool timeout was added. A hung tool (dead host, blocking input prompt) blocked indefinitely.
 
@@ -99,7 +99,7 @@
 **Result**: No more indefinite hangs from stuck tools. Zero performance cost.
 
 #### 6. Diagnostic Char-Count Gating ✅
-**File**: `packages/gg-agent/src/agent-loop.ts`
+**File**: `packages/agent/src/agent-loop.ts`
 
 **Problem**: O(n) char-counting loop over the full message history ran every turn, unconditionally, even when no diagnostic callback was registered (production default).
 

@@ -3,7 +3,7 @@ import { encodeCwd } from "./encode-cwd.js";
 
 describe("encodeCwd — Unix paths (unchanged behavior)", () => {
   it("encodes a typical Unix project path", () => {
-    expect(encodeCwd("/Users/kenkai/Documents/gg-coder")).toBe("Users_kenkai_Documents_gg-coder");
+    expect(encodeCwd("/Users/kenkai/Documents/ezcoder")).toBe("Users_kenkai_Documents_ezcoder");
   });
 
   it("drops only the leading slash, keeping interior underscores from the path", () => {
@@ -57,7 +57,7 @@ describe("encodeCwd — produces a valid folder name (no mkdir failure)", () => 
       "\\\\?\\C:\\Users\\brams",
       "\\\\?\\C:\\Users\\brams\\gg-projects\\my-app",
       "\\\\?\\UNC\\fileserver\\shared\\repo",
-      "/Users/kenkai/Documents/gg-coder",
+      "/Users/kenkai/Documents/ezcoder",
       "D:\\dev\\workspace",
     ];
     for (const input of inputs) {

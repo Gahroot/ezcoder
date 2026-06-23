@@ -1,9 +1,9 @@
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 import type { MCPServerConfig } from "./types.js";
 import { loadServers } from "./store.js";
 
 export const DEFAULT_MCP_SERVERS: MCPServerConfig[] = [
-  // kencode-search ships as a ggcoder dependency, so `connectServer` rewrites
+  // kencode-search ships as a ezcoder dependency, so `connectServer` rewrites
   // this `npx -y` form to a direct `node <binScript>` invocation at connect
   // time (see core/mcp/resolve-stdio.ts) — skipping the ~100 MB npx wrapper
   // process. The `npx` form is kept here so it still works if the dependency
@@ -63,7 +63,7 @@ export function getMCPServers(provider: Provider, apiKey?: string): MCPServerCon
 
 /**
  * Full startup set: provider defaults + user-configured servers from
- * ~/.gg/mcp.json and ./.gg/mcp.json. Provider defaults stay authoritative —
+ * ~/.ezcoder/mcp.json and ./.gg/mcp.json. Provider defaults stay authoritative —
  * a user server can only ADD a new name, never override a default like
  * `kencode-search`.
  */

@@ -11,7 +11,7 @@
  *
  * SCOPE: this is for understanding a file's API, NOT editing it.
  *
- * Run: pnpm --filter @kenkaiiii/ggcoder exec tsx scripts/code-compress-test.ts
+ * Run: pnpm --filter @prestyj/cli exec tsx scripts/code-compress-test.ts
  */
 import ts from "typescript";
 import { readFileSync } from "node:fs";
@@ -45,12 +45,12 @@ function declares(skeleton: string, name: string): boolean {
 }
 
 const targets = [
-  "packages/gg-core/src/index.ts", // BARREL — the prototype's worst case
-  "packages/gg-ai/src/index.ts", // BARREL
-  "packages/gg-core/src/model-registry.ts",
-  "packages/gg-ai/src/providers/transform.ts",
-  "packages/ggcoder/src/core/compaction/compactor.ts",
-  "packages/ggcoder/src/tools/code-skeleton.ts",
+  "packages/core/src/index.ts", // BARREL — the prototype's worst case
+  "packages/ai/src/index.ts", // BARREL
+  "packages/core/src/model-registry.ts",
+  "packages/ai/src/providers/transform.ts",
+  "packages/cli/src/core/compaction/compactor.ts",
+  "packages/cli/src/tools/code-skeleton.ts",
 ];
 
 console.log(`\nAST CODE-SKELETON test + fidelity audit (understand, not edit)\n`);
