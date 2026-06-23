@@ -297,9 +297,15 @@ function App(): React.ReactElement {
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [contextTokens, setContextTokens] = useState(0);
   // Project task list (the agent's `tasks` tool store) + the Tasks modal.
-  // Updated live via the `tasks_list` SSE event while a run-all sweep advances.
+  // Updated live via the `tasks_list` SSE event while a run-all sweep advances,
+  // and reconciled with a fresh fetch on run-end / modal-open so a dropped SSE
+  // frame (the event bridge reconnects often) never leaves the modal stale.
   const [projectTasks, setProjectTasks] = useState<ProjectTask[]>([]);
   const [showTasks, setShowTasks] = useState(false);
+  // Distinguish "still loading / failed to load" from a genuinely empty list, so
+  // a transient fetch miss never reads as a permanent "No tasks yet."
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState(false);
   // Every window picks a project before connecting — on app load and on each new
   // window. The picker re-points this window's agent at the chosen cwd/session.
   const [needsProject, setNeedsProject] = useState(true);
@@ -492,8 +498,17 @@ function App(): React.ReactElement {
         e.preventDefault();
         setShowTasks((open) => {
           // Refresh from the sidecar when opening so the list reflects any
-          // tasks the agent just added.
-          if (!open) void listTasks().then(setProjectTasks);
+          // tasks the agent just added. Inlined (not refreshTasks) to keep this
+          // mount-only effect's deps stable — only setState setters + the
+          // listTasks module import, no component callbacks.
+          if (!open) {
+            setTasksLoading(true);
+            setTasksError(false);
+            void listTasks()
+              .then(setProjectTasks)
+              .catch(() => setTasksError(true))
+              .finally(() => setTasksLoading(false));
+          }
           return !open;
         });
         return;
@@ -921,6 +936,18 @@ function App(): React.ReactElement {
           setRunning(false);
           streamingIdRef.current = null;
           finalizeThinking();
+          // Reconcile the project task list after every run. The agent may have
+          // added/removed/completed tasks via the `tasks` tool, and the live
+          // `tasks_list` SSE frame is fire-and-forget with no replay — if the
+          // event bridge was mid-reconnect when it fired, that frame is dropped
+          // and the modal/badge would stay stale (the reported bug: agent says
+          // "tasks added" but the list shows empty). A fresh fetch on run-end
+          // guarantees the list catches up regardless of dropped frames.
+          void listTasks()
+            .then(setProjectTasks)
+            .catch(() => {
+              /* transient (sidecar respawning); next run/open reconciles */
+            });
           // The queue drained into this run — un-dim any messages that were
           // waiting, since the agent has now consumed them.
           setItems((prev) =>
@@ -1079,6 +1106,22 @@ function App(): React.ReactElement {
   // Run the connect/ready flow against the current sidecar and hydrate state,
   // models, and commands. Re-invoked after a project switch respawns the
   // sidecar (its port changes, so we re-wait for readiness).
+  // Fetch the project task list, tracking loading/error so the modal can tell a
+  // transient miss (sidecar booting/respawning, dropped SSE frame) apart from a
+  // genuinely empty list. listTasks() waits for sidecar readiness and throws on
+  // a real failure (rather than silently returning []), so we surface that.
+  const refreshTasks = useCallback(async (): Promise<void> => {
+    setTasksLoading(true);
+    setTasksError(false);
+    try {
+      setProjectTasks(await listTasks());
+    } catch {
+      setTasksError(true);
+    } finally {
+      setTasksLoading(false);
+    }
+  }, []);
+
   const hydrate = useCallback(async (): Promise<void> => {
     readyRef.current = false;
     setHydrated(false);
@@ -1096,7 +1139,7 @@ function App(): React.ReactElement {
       const cmds = await listCommands();
       if (cmds.length > 0) setCommands(cmds);
       // Project task list for the Tasks modal + nav button.
-      setProjectTasks(await listTasks());
+      await refreshTasks();
       // Hydrate the transcript when resuming an existing session — the webview
       // only sees live SSE events, so past messages must be fetched explicitly.
       const history = await listHistory();
@@ -1172,7 +1215,7 @@ function App(): React.ReactElement {
       // session is in hand — one fade-in, no staggered reflow.
       setHydrated(true);
     }
-  }, []);
+  }, [refreshTasks]);
 
   useEffect(() => {
     const unsub = subscribe(handleEvent);
@@ -1210,8 +1253,8 @@ function App(): React.ReactElement {
   // reflects any tasks the agent just added.
   const openTasks = useCallback(() => {
     setShowTasks(true);
-    void listTasks().then(setProjectTasks);
-  }, []);
+    void refreshTasks();
+  }, [refreshTasks]);
 
   // Run a single task: the sidecar opens a fresh session and streams progress
   // back (session_reset → task_start → run_start/…/run_end). Close the modal so
@@ -2126,6 +2169,9 @@ function App(): React.ReactElement {
         <TasksModal
           tasks={projectTasks}
           running={running}
+          loading={tasksLoading}
+          error={tasksError}
+          onRetry={() => void refreshTasks()}
           onRun={handleRunTask}
           onRunAll={handleRunAllTasks}
           onDelete={handleDeleteTask}

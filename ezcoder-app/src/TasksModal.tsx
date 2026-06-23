@@ -13,6 +13,12 @@ interface Props {
   tasks: readonly ProjectTask[];
   /** True while the agent is running (task or chat) — disables run actions. */
   running: boolean;
+  /** True while the list is being (re)fetched from the sidecar. */
+  loading?: boolean;
+  /** True when the last fetch failed (sidecar not ready / errored). */
+  error?: boolean;
+  /** Retry a failed/empty load. */
+  onRetry?: () => void;
   onRun: (id: string) => void;
   onRunAll: () => void;
   onDelete: (id: string) => void;
@@ -28,6 +34,9 @@ const STATUS_STYLE: Record<ProjectTask["status"], { label: string; color: string
 export function TasksModal({
   tasks,
   running,
+  loading = false,
+  error = false,
+  onRetry,
   onRun,
   onRunAll,
   onDelete,
@@ -35,10 +44,30 @@ export function TasksModal({
 }: Props): React.ReactElement {
   const pending = tasks.filter((t) => t.status !== "done");
   const hasPending = pending.length > 0;
+  // Only show the "No tasks yet" empty state once we know the list is genuinely
+  // empty — never while a fetch is in flight or after one failed, so a transient
+  // sidecar miss can't masquerade as an empty list (the reported bug).
+  const isEmpty = tasks.length === 0;
 
   return (
     <Modal title="Tasks" onClose={onClose}>
-      {tasks.length === 0 ? (
+      {isEmpty && loading ? (
+        <div className="tasks-empty" style={{ color: theme.textMuted }}>
+          Loading tasks…
+        </div>
+      ) : isEmpty && error ? (
+        <div className="tasks-empty" style={{ color: theme.textMuted }}>
+          Couldn’t load tasks (the agent may still be starting).
+          {onRetry && (
+            <>
+              {" "}
+              <button className="btn btn-sm btn-ghost" onClick={onRetry}>
+                Retry
+              </button>
+            </>
+          )}
+        </div>
+      ) : isEmpty ? (
         <div className="tasks-empty" style={{ color: theme.textMuted }}>
           No tasks yet. Ask the agent to add tasks, then run them here.
         </div>

@@ -73,15 +73,20 @@ export interface ProjectTask {
   createdAt: string;
 }
 
-/** List this project's tasks (pending / in-progress / done). */
+/**
+ * List this project's tasks (pending / in-progress / done).
+ *
+ * Waits for the window's sidecar to be ready first: the Tasks button / Ctrl+T
+ * can fire while a sidecar is still booting or mid-respawn (project switch,
+ * workspace restore), when `agent_tasks` would throw "sidecar not ready" and we
+ * used to silently return `[]` — rendering identically to a genuinely empty
+ * list and leaving the modal stuck on "No tasks yet" even though tasks exist.
+ * Throws on a real failure so callers can distinguish a load error from empty.
+ */
 export async function listTasks(): Promise<ProjectTask[]> {
-  try {
-    const res = await invoke<{ tasks: ProjectTask[] }>("agent_tasks");
-    return res.tasks ?? [];
-  } catch (e) {
-    await logError(`agent_tasks failed: ${String(e)}`);
-    return [];
-  }
+  await waitForReady();
+  const res = await invoke<{ tasks: ProjectTask[] }>("agent_tasks");
+  return res.tasks ?? [];
 }
 
 /** Run a single task end-to-end in its own fresh session. */
