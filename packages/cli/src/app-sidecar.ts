@@ -47,7 +47,7 @@ import {
   saveTasksSync,
   getNextPendingTask,
   markTaskInProgress,
-} from "./core/tasks-store.js";
+} from "./core/task-store.js";
 import { initLogger, log } from "./core/logger.js";
 import { RADIO_STATIONS, getCurrentStation, playRadio, stopRadio } from "./core/radio.js";
 import { enrichProcessPath } from "./core/shell-path.js";

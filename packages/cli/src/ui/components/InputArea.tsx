@@ -9,7 +9,7 @@ import { extractMediaPaths, readMediaFile, getClipboardImage } from "../../utils
 import { SlashCommandMenu, filterCommands, type SlashCommandInfo } from "./SlashCommandMenu.js";
 import { TaskPickerMenu } from "./TaskPickerMenu.js";
 import { stripTerminalFocusSequences } from "../utils/terminal-input.js";
-import type { TaskRecord } from "../../core/tasks-store.js";
+import type { TaskListItem } from "../../core/task-store.js";
 import { log } from "../../core/logger.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -223,11 +223,11 @@ interface InputAreaProps {
   onShiftTab?: () => void;
   onToggleTasks?: () => void;
   taskPickerOpen?: boolean;
-  tasks?: readonly TaskRecord[];
+  tasks?: readonly TaskListItem[];
   onCloseTaskPicker?: () => void;
-  onStartTask?: (task: TaskRecord) => void;
-  onRunAllTasks?: (task?: TaskRecord) => void;
-  onDeleteTask?: (task: TaskRecord) => void;
+  onStartTask?: (task: TaskListItem) => void;
+  onRunAllTasks?: (task?: TaskListItem) => void;
+  onDeleteTask?: (task: TaskListItem) => void;
   onToggleSkills?: () => void;
   onTogglePixel?: () => void;
   onToggleGoal?: () => void;

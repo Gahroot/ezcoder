@@ -2,7 +2,7 @@ import React from "react";
 import type { DOMElement } from "ink";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import type { ContextWindowOptions } from "../../core/model-registry.js";
-import type { TaskRecord } from "../../core/tasks-store.js";
+import type { TaskListItem } from "../../core/task-store.js";
 import type { GoalRun } from "../../core/goal-store.js";
 import type { SlashCommandInfo } from "./SlashCommandMenu.js";
 import type { ImageAttachment } from "../../utils/image.js";
@@ -45,11 +45,11 @@ interface ChatInputControls {
 
 interface TaskPickerControls {
   open: boolean;
-  tasks: readonly TaskRecord[];
+  tasks: readonly TaskListItem[];
   onClose: () => void;
-  onStart: (task: TaskRecord) => void;
-  onRunAll: (task?: TaskRecord) => void;
-  onDelete: (task: TaskRecord) => void;
+  onStart: (task: TaskListItem) => void;
+  onRunAll: (task?: TaskListItem) => void;
+  onDelete: (task: TaskListItem) => void;
 }
 
 interface GoalPaneControls {

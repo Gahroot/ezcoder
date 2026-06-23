@@ -194,8 +194,16 @@ module EZAgentRails
           content = File.read(path, encoding: "UTF-8", invalid: :replace, undef: :replace)
           name = att["name"].to_s
           blocks << EZLLM::Types.text("[File: #{name}]\n#{content}")
+        elsif DocumentText.extractable?(att) &&
+              (document_text = DocumentText.extract(File.binread(path), att)).present?
+          # Document (PDF, DOCX, XLSX, PPTX) — decode to plain text and inline it
+          # so the LLM can actually read and discuss the file's contents. A
+          # corrupt/encrypted file (or a decompression bomb) returns nil here and
+          # falls through to the placeholder below; it never raises.
+          name = att["name"].to_s
+          blocks << EZLLM::Types.text("[Document: #{name}]\n#{document_text}")
         else
-          # Binary non-image (e.g. PDF) — include a placeholder so the LLM
+          # Binary non-image we can't decode — include a placeholder so the LLM
           # knows a file was attached even though its contents aren't inline.
           name = att["name"].to_s
           size = att["size"] ? " (#{att["size"]} bytes)" : ""

@@ -1,17 +1,17 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { useTheme } from "../theme/theme.js";
-import type { TaskRecord } from "../../core/tasks-store.js";
+import type { TaskListItem } from "../../core/task-store.js";
 
 interface TaskPickerMenuProps {
-  tasks: readonly TaskRecord[];
+  tasks: readonly TaskListItem[];
   selectedIndex: number;
   width: number;
 }
 
 const MAX_TASKS_TO_SHOW = 8;
 
-function statusGlyph(status: TaskRecord["status"]): string {
+function statusGlyph(status: TaskListItem["status"]): string {
   if (status === "done") return "✓";
   if (status === "in-progress") return "~";
   return " ";

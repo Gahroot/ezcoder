@@ -28,5 +28,13 @@ Gem::Specification.new do |spec|
   spec.add_dependency "rails", ">= 7.1"
   spec.add_dependency "turbo-rails", ">= 1.4"
 
+  # Document text extraction for uploaded attachments (DocumentText): pdf-reader
+  # decodes PDFs; rubyzip + nokogiri decode the OOXML containers (DOCX/XLSX/PPTX)
+  # so the agent can read their contents. Required lazily, so a host that omits
+  # them simply falls back to a filename placeholder.
+  spec.add_dependency "nokogiri", ">= 1.11"
+  spec.add_dependency "pdf-reader", "~> 2.0"
+  spec.add_dependency "rubyzip", ">= 2.0"
+
   spec.metadata["rubygems_mfa_required"] = "true"
 end
