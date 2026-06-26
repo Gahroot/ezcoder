@@ -261,7 +261,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain("DiscoverRepos");
     expect(prompt).not.toContain("SearchCode literal text/RE2");
     // The research section still exists, with a docs-first fallback.
-    expect(prompt).toContain("Do not assume APIs");
+    expect(prompt).toContain("Do not rely on memory for APIs");
     expect(prompt).toContain("For public code patterns, prefer official/live docs");
   });
 
@@ -375,9 +375,10 @@ describe("buildSystemPrompt", () => {
     console.info(`system prompt size measurements: ${JSON.stringify(measurements)}`);
 
     expect(measurements.normal.characters).toBeLessThan(5_100);
-    // Ceiling tracks upstream but this fork's branding strings ("~/.ezcoder/",
-    // "EZ Coder") are longer than upstream's, which inflates the plan-mode block.
-    expect(measurements.planMode.characters).toBeLessThan(5_900);
+    // Ceiling is ~300 chars above upstream's 5_900: this fork's branding strings
+    // ("~/.ezcoder/", "EZ Coder") are longer than upstream's, which inflates the
+    // plan-mode block that embeds them.
+    expect(measurements.planMode.characters).toBeLessThan(6_200);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(9_800);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
