@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.1",
+    date: "2026-06-27",
+    items: [
+      "Squashed a nasty one. On some Macs, clicking Enhance could black out the whole app. I tracked it down and killed it for good, so the screen stays rock solid every single time.",
+      "The Enhance button found its home. It now rides the top edge of your chat box and sticks around the moment you start typing, gliding in and out smooth as glass instead of crowding your words.",
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-06-26",
     items: [
