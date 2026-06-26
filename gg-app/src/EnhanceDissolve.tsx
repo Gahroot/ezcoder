@@ -7,14 +7,17 @@ import { Skeleton } from "./Skeleton";
  * growing naturally as the new prompt builds in:
  *
  *   1. DISSOLVE  — the whole draft fades out as one smooth motion (opacity +
- *                  blur into mist + a gentle upward drift) while the box height
+ *                  a gentle upward drift + slight scale) while the box height
  *                  collapses to a single line — a soft "vanish", not a delete.
+ *                  Deliberately no `filter: blur()`: an animated blur on a
+ *                  promoted layer crashes WKWebView's compositor on Intel Macs
+ *                  (whole window goes black). See .enh-diss-fade in App.css.
  *   2. SKELETON  — a shimmer placeholder holds the (now default-height) box while
  *                  the model thinks; covers the API call's variable latency.
  *   3. DECODE    — the enhanced text types in left-to-right behind a bright glyph
  *                  lead; the box expands line-by-line as the text wraps.
  *
- * Dissolve is CSS-transition driven (one smooth tween of opacity/blur/height);
+ * Dissolve is CSS-transition driven (one smooth tween of opacity/transform/height);
  * decode is an RAF loop that mutates spans' textContent directly (no per-frame
  * React render). React only re-renders on phase change.
  */
@@ -56,7 +59,7 @@ export function EnhanceDissolve({
     onDoneRef.current = onDone;
   });
 
-  // DISSOLVE: one smooth CSS tween — fade + blur + drift while the box height
+  // DISSOLVE: one smooth CSS tween — fade + drift while the box height
   // collapses to a single line. No character deletion.
   useEffect(() => {
     if (phase !== "dissolve") return;
