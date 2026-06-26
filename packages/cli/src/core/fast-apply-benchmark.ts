@@ -3,7 +3,7 @@
  *
  * Two strategies for the same edit task, measured end-to-end against live models:
  *
- *   BASELINE (what ggcoder does today): the frontier model emits full
+ *   BASELINE (what ezcoder does today): the frontier model emits full
  *   search/replace edit blocks (old_text + new_text, verbatim context). Our
  *   edit tool then applies them LOCALLY and instantly (no apply model).
  *
@@ -23,7 +23,7 @@
  *   GG_FA_APPLY_PROVIDER     / GG_FA_APPLY_MODEL      (default gemini / gemini-3.1-flash-lite-preview)
  */
 
-import { stream, type Message, type StreamEvent, type Usage } from "@kenkaiiii/gg-ai";
+import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
 import { AuthStorage } from "./auth-storage.js";
 
 // ── Edit tasks: synthetic TS files of controlled sizes + a concrete edit ──

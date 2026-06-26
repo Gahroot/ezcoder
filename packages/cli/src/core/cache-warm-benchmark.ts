@@ -19,7 +19,7 @@
  *        GG_CW_REPS (default 4)
  */
 
-import { stream, type Message, type StreamEvent, type Usage } from "@kenkaiiii/gg-ai";
+import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
 import { AuthStorage } from "./auth-storage.js";
 
 /** Build a large, realistic coding-agent system prompt (~well above 2048 tok). */
@@ -60,7 +60,7 @@ function bigPrefix(): string {
   for (let r = 0; r < 22; r++)
     bulkTools.push(...tools, `<!-- tool block repetition ${r} for prefix sizing -->`);
   return [
-    "You are GG Coder — a coding agent that works directly in the user's codebase.",
+    "You are EZ Coder — a coding agent that works directly in the user's codebase.",
     "You explore, understand, change, and verify code end-to-end.",
     "",
     "## How to Talk",

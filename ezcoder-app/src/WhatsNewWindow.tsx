@@ -37,7 +37,7 @@ export function WhatsNewWindow(): React.ReactElement {
       <div className="modal-head">
         <div className="modal-title">
           <ShimmerText base={theme.success} bright="#a7f3d0">
-            What&apos;s new with GG Coder
+            What&apos;s new with EZ Coder
           </ShimmerText>
         </div>
         <button

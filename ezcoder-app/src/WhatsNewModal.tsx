@@ -20,7 +20,7 @@ import { windowLabel, openWhatsNewWindow } from "./agent";
  * The seen-version is written the moment we decide, so a relaunch only ever
  * shows the notes a single time.
  */
-const STORAGE_KEY = "gg-app:whatsNewVersion";
+const STORAGE_KEY = "ezcoder-app:whatsNewVersion";
 
 /**
  * DEV ONLY — force the window open on launch so the layout/scroll can be

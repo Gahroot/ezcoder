@@ -4,7 +4,7 @@
  * `WhatsNewModal.tsx`, rendered by `WhatsNewWindow.tsx`).
  *
  * MAINTENANCE: this list is rewritten by the `/release` flow — see
- * `.gg/commands/release.md` (Track B). When cutting a desktop release, the diff
+ * `.ezcoder/commands/release.md` (Track B). When cutting a desktop release, the diff
  * since the last `v*` tag is parsed and rephrased into exciting, non-technical
  * copy, then a new entry is PREPENDED here for the new version. Keep entries
  * newest-first and the voice punchy — every line should make the update sound
