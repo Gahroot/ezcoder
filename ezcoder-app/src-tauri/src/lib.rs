@@ -1007,7 +1007,57 @@ fn app_settings_get() -> serde_json::Value {
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.to_string())
         .unwrap_or_else(|| default_projects_root().to_string_lossy().to_string());
-    serde_json::json!({ "projectsRoot": projects_root, "configured": configured })
+    // The display the window tiler should fill (by monitor label). Absent/empty
+    // means "auto" — fall back to the primary monitor.
+    let target_monitor = parsed
+        .as_ref()
+        .and_then(|v| v.get("targetMonitor"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+    serde_json::json!({
+        "projectsRoot": projects_root,
+        "configured": configured,
+        "targetMonitor": target_monitor,
+    })
+}
+
+/// The display label the window tiler should fill, from ~/.ezcoder/ezcoder-app.json.
+/// `None` means "auto" (primary monitor).
+fn target_monitor_name() -> Option<String> {
+    app_settings_get()
+        .get("targetMonitor")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+}
+
+/// Merge `patch` into ~/.ezcoder/ezcoder-app.json (a JSON object), preserving every
+/// other key. A `null` value in `patch` removes that key. Creates the directory
+/// and file as needed. Returns the full merged object.
+fn write_app_settings(patch: serde_json::Value) -> Result<serde_json::Value, String> {
+    let path = app_settings_path();
+    let mut current = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+    if let Some(obj) = patch.as_object() {
+        for (k, v) in obj {
+            if v.is_null() {
+                current.remove(k);
+            } else {
+                current.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let value = serde_json::Value::Object(current);
+    let pretty = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+    std::fs::write(&path, pretty).map_err(|e| e.to_string())?;
+    Ok(value)
 }
 
 /// Native: write ezcoder-app settings directly to ~/.ezcoder/ezcoder-app.json. Creates the
@@ -1018,14 +1068,72 @@ fn app_settings_save(projects_root: String) -> Result<serde_json::Value, String>
     if trimmed.is_empty() {
         return Err("projectsRoot is required".to_string());
     }
-    let path = app_settings_path();
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    let body = serde_json::json!({ "projectsRoot": trimmed });
-    let pretty = serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?;
-    std::fs::write(&path, pretty).map_err(|e| e.to_string())?;
+    // Merge so a previously-chosen targetMonitor isn't wiped by saving the folder.
+    write_app_settings(serde_json::json!({ "projectsRoot": trimmed }))?;
     Ok(serde_json::json!({ "projectsRoot": trimmed }))
+}
+
+/// Stable display label for a monitor: its OS name, or a 1-based fallback when
+/// the OS reports none. Used identically by `list_monitors` (what the user picks)
+/// and `tile_area` (what the tiler matches against) so selection round-trips.
+fn monitor_label(monitor: &tauri::Monitor, index: usize) -> String {
+    monitor
+        .name()
+        .cloned()
+        .unwrap_or_else(|| format!("Display {}", index + 1))
+}
+
+/// Native: enumerate the connected displays so the webview can offer a "tile onto
+/// this monitor" picker. `selected` echoes the saved targetMonitor (null = auto).
+/// Never needs the sidecar.
+#[tauri::command]
+fn list_monitors(window: WebviewWindow) -> Result<serde_json::Value, String> {
+    let monitors = window.available_monitors().map_err(|e| e.to_string())?;
+    // Identify the primary by position (unique per display) rather than by label,
+    // since the index-based fallback label only lines up when the primary is first.
+    let primary_pos = window
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| *m.position());
+    let selected = target_monitor_name();
+    let list: Vec<serde_json::Value> = monitors
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let label = monitor_label(m, i);
+            let size = m.size();
+            let pos = m.position();
+            let is_primary = primary_pos == Some(*pos);
+            let is_selected = selected.as_deref() == Some(label.as_str());
+            serde_json::json!({
+                "name": label,
+                "width": size.width,
+                "height": size.height,
+                "x": pos.x,
+                "y": pos.y,
+                "primary": is_primary,
+                "selected": is_selected,
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({ "monitors": list, "selected": selected }))
+}
+
+/// Native: persist which display the window tiler should fill. `None`/empty clears
+/// the choice (back to auto = primary monitor). Merges into ezcoder-app.json so the
+/// projects root is preserved. Never needs the sidecar.
+#[tauri::command]
+fn app_set_target_monitor(monitor: Option<String>) -> Result<serde_json::Value, String> {
+    let value = monitor
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty());
+    let patch = match &value {
+        Some(name) => serde_json::json!({ "targetMonitor": name }),
+        None => serde_json::json!({ "targetMonitor": serde_json::Value::Null }),
+    };
+    write_app_settings(patch)?;
+    Ok(serde_json::json!({ "targetMonitor": value }))
 }
 
 /// Native: create a new project folder under the configured projects root.
@@ -2044,18 +2152,11 @@ async fn arrange_all(app: tauri::AppHandle) -> Result<(), String> {
     let rects = if tiles.is_empty() {
         Vec::new()
     } else {
-        let Some(monitor) = tiles[0].primary_monitor().ok().flatten() else {
+        let Some((ox, oy, w, h)) = tile_area(&tiles[0]) else {
             broadcast_window_order(&app);
             return Ok(());
         };
-        let area = monitor.work_area();
-        tile_rects(
-            count,
-            area.position.x,
-            area.position.y,
-            area.size.width as i32,
-            area.size.height as i32,
-        )
+        tile_rects(count, ox, oy, w, h)
     };
     for (win, rect) in tiles.iter().zip(rects.iter()) {
         apply_tile(win, *rect);
@@ -2205,6 +2306,31 @@ fn tile_rects(count: usize, ox: i32, oy: i32, w: i32, h: i32) -> Vec<(i32, i32, 
         .collect()
 }
 
+/// Resolve the work area `(ox, oy, w, h)` the tiler should fill: the user's chosen
+/// `targetMonitor` (matched by label), else the primary monitor. `win` is any open
+/// window — it's only used to enumerate monitors. Returns `None` if no monitor is
+/// available (a window with zero displays, e.g. fully headless).
+fn tile_area(win: &WebviewWindow) -> Option<(i32, i32, i32, i32)> {
+    let want = target_monitor_name();
+    let chosen = want.as_ref().and_then(|name| {
+        win.available_monitors().ok().and_then(|monitors| {
+            monitors
+                .into_iter()
+                .enumerate()
+                .find(|(i, m)| &monitor_label(m, *i) == name)
+                .map(|(_, m)| m)
+        })
+    });
+    let monitor = chosen.or_else(|| win.primary_monitor().ok().flatten())?;
+    let area = monitor.work_area();
+    Some((
+        area.position.x,
+        area.position.y,
+        area.size.width as i32,
+        area.size.height as i32,
+    ))
+}
+
 /// The first `count` open windows (main first, then project-N ascending). Returns
 /// the live window handles in label order. `take`-limited by `count`.
 fn sorted_windows(app: &tauri::AppHandle, count: usize) -> Vec<WebviewWindow> {
@@ -2225,7 +2351,8 @@ fn apply_tile(win: &WebviewWindow, rect: (i32, i32, u32, u32)) {
     let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
-/// Tile the first `count` windows into a grid filling the primary work area.
+/// Tile the first `count` windows into a grid filling the chosen monitor's work
+/// area (`targetMonitor`, else primary).
 /// Synchronous (applies all rects immediately) — used at window-creation time
 /// (`setup_windows` / restore), where the OS commits each before the next shows.
 fn arrange_windows(app: &tauri::AppHandle, count: usize) {
@@ -2233,17 +2360,10 @@ fn arrange_windows(app: &tauri::AppHandle, count: usize) {
     if tiles.is_empty() {
         return;
     }
-    let Some(monitor) = tiles[0].primary_monitor().ok().flatten() else {
+    let Some((ox, oy, w, h)) = tile_area(&tiles[0]) else {
         return;
     };
-    let area = monitor.work_area();
-    let rects = tile_rects(
-        count,
-        area.position.x,
-        area.position.y,
-        area.size.width as i32,
-        area.size.height as i32,
-    );
+    let rects = tile_rects(count, ox, oy, w, h);
     for (win, rect) in tiles.iter().zip(rects.iter()) {
         apply_tile(win, *rect);
     }
@@ -2884,6 +3004,8 @@ pub fn run() {
             agent_create_project,
             app_settings_get,
             app_settings_save,
+            list_monitors,
+            app_set_target_monitor,
             app_create_project,
             app_auth_status,
             app_auth_apikey,

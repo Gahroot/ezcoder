@@ -506,6 +506,42 @@ export async function saveSettings(projectsRoot: string): Promise<void> {
   await invoke("app_settings_save", { projectsRoot });
 }
 
+/** A connected display, as reported by Rust's `list_monitors`. */
+export interface MonitorInfo {
+  name: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  primary: boolean;
+  selected: boolean;
+}
+
+/**
+ * Enumerate the connected displays so the window-layout menu can offer a "tile
+ * onto this monitor" picker. `selected` echoes the saved targetMonitor (null =
+ * auto / primary). Handled natively in Rust — no sidecar.
+ */
+export async function listMonitors(): Promise<{
+  monitors: MonitorInfo[];
+  selected: string | null;
+}> {
+  try {
+    return await invoke<{ monitors: MonitorInfo[]; selected: string | null }>("list_monitors");
+  } catch (e) {
+    await logError(`list_monitors failed: ${String(e)}`);
+    return { monitors: [], selected: null };
+  }
+}
+
+/**
+ * Persist which display the window tiler fills. Pass `null` to clear (auto =
+ * primary). Merges into ezcoder-app.json (projects root preserved). Native Rust.
+ */
+export async function setTargetMonitor(monitor: string | null): Promise<void> {
+  await invoke("app_set_target_monitor", { monitor });
+}
+
 /**
  * Create a new project folder (lowercase/dashes name) under the configured
  * projects root. Returns the created absolute path. Handled NATIVELY in Rust
