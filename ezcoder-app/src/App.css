@@ -132,6 +132,15 @@
   border-radius: var(--radius-pill);
   flex: 0 0 auto;
 }
+/* Nav icon buttons (Radio, Windows, …) hold a stroked lucide SVG. Animating the
+   .btn-ghost `filter: brightness()` over a stroked icon re-rasterizes it on a
+   filter layer every frame → visible shimmer/jitter. Brighten the icon via
+   `color` instead (lucide strokes use currentColor): same hover read as the
+   text buttons, zero re-raster, zero movement. */
+.btn-nav-icon:hover:not(:disabled) {
+  filter: none;
+  color: var(--text);
+}
 
 * {
   box-sizing: border-box;
@@ -456,7 +465,8 @@ body {
 .home > .home-byline,
 .home > .home-actions,
 .home > .home-update,
-.home > .home-version {
+.home > .home-version,
+.home > .home-version-row {
   position: relative;
   z-index: 1;
 }
@@ -465,6 +475,7 @@ body {
    shimmer, so it gets BOTH animations (reveal-up once + ggshimmer looping). */
 .home > .home-update,
 .home > .home-version,
+.home > .home-version-row,
 .home > .home-tagline,
 .home > .home-byline,
 .home > .home-actions {
@@ -477,7 +488,8 @@ body {
   animation-delay: 120ms, 0s;
 }
 .home > .home-update,
-.home > .home-version {
+.home > .home-version,
+.home > .home-version-row {
   animation-delay: 40ms;
 }
 .home > .home-tagline {
@@ -492,6 +504,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .home > .home-update,
   .home > .home-version,
+  .home > .home-version-row,
   .home > .home-tagline,
   .home > .home-byline,
   .home > .home-actions {
@@ -876,11 +889,43 @@ body {
   background: var(--border);
   border-radius: 4px;
 }
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
 .modal-title {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.02em;
-  margin-bottom: 20px;
+}
+.modal-close {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+  transition:
+    background var(--t-fast),
+    border-color var(--t-fast),
+    color var(--t-fast);
+}
+.modal-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--text);
 }
 .modal-label {
   display: block;
@@ -889,8 +934,8 @@ body {
   margin-top: 22px;
   margin-bottom: 10px;
 }
-/* The first label shouldn't double up the title's bottom margin. */
-.modal-title + .modal-label {
+/* The first label shouldn't double up the title row's bottom margin. */
+.modal-head + .modal-label {
   margin-top: 4px;
 }
 .modal-input {
@@ -984,6 +1029,126 @@ body {
 .modal-btn:disabled {
   cursor: default;
   opacity: 0.4;
+}
+
+/* ── Notes modal (free-form per-project notebook) ── */
+.notes-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  /* Fill most of the viewport so it reads as a full notebook, not a chat box.
+     Scrolls internally once the notes outgrow the area. */
+  height: min(72vh, 680px);
+  resize: none;
+  border: 1px solid;
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  outline: none;
+  overflow-y: auto;
+}
+/* The notes modal is a workspace, not a small dialog — give it room. */
+.notes-modal {
+  width: min(900px, 94vw);
+}
+
+/* ── What's-new window (post-update release notes) ──
+   Lives in its OWN borderless, screen-centered, TRANSPARENT Tauri window (see
+   Rust `open_whatsnew_window`). The native window is see-through so the rounded
+   card below shows real corners + a drop shadow, matching the in-app modals
+   instead of a hard rectangular window edge. */
+.whatsnew-root,
+.whatsnew-root body {
+  background: transparent;
+}
+.whatsnew-window {
+  display: flex;
+  flex-direction: column;
+  /* Fill the transparent window edge-to-edge: only the corners are clipped by
+     the radius (showing the desktop through them), so there's no inset gap or
+     shadow halo around the card. */
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  padding: 22px 24px;
+  border-radius: var(--radius-card);
+  /* Clip the confetti canvas to the rounded corners. */
+  overflow: hidden;
+  /* The window root sets the base font so the heading + body inherit our sans
+     stack (the `.modal-title` class only sizes/weights, it never sets family,
+     and this window has no `.modal` ancestor to inherit from). */
+  font-family: var(--sans);
+  /* Match the in-app modal's scrollbar treatment (those rules are scoped to
+     `.modal`, which this window doesn't use). */
+}
+/* One-shot confetti overlay — covers the whole modal, never intercepts clicks,
+   sits above the content while the burst plays then clears itself. */
+.confetti-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+.whatsnew-window ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.whatsnew-window ::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+/* Scroll container takes the remaining height and engages once the notes outgrow
+   it — short release lists sit at their natural height, long ones scroll. */
+.whatsnew-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Pad the right edge so the scrollbar never overlaps the text. */
+  padding-right: 8px;
+  margin-right: -4px;
+}
+.whatsnew-section {
+  margin-bottom: 22px;
+}
+.whatsnew-section:last-child {
+  margin-bottom: 0;
+}
+.whatsnew-version {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+.whatsnew-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.whatsnew-item {
+  position: relative;
+  padding-left: 18px;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.whatsnew-item::before {
+  content: "\203a";
+  position: absolute;
+  left: 4px;
+  top: -0.5px;
+  color: var(--primary);
+  font-weight: 700;
 }
 
 /* ── Tasks modal (project task list → run one / run all) ── */
@@ -2186,6 +2351,276 @@ body {
   background: var(--surface-2);
 }
 
+/* Chat-input stack: the textarea plus (transiently) the enhance animation layer.
+   Highlights for enhanced terms are NOT drawn over the input — an overlay can't
+   reliably track a native textarea's text metrics. They live in the sent bubble
+   (a clean div) instead, where they align perfectly + keep their tooltips. */
+.input-stack {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.input-stack .input {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/* Dissolve→skeleton→decode animation layer. While it plays it becomes the input
+   row's height driver: the textarea is pulled OUT of flow (.input-anim) so the
+   box collapses to this layer's content height — shrinking as the old text
+   dissolves, holding at one line for the skeleton, then growing as the new text
+   decodes in. Metrics mirror .input exactly so wrapping matches 1:1. */
+.input.input-anim {
+  position: absolute;
+  /* Out of flow + invisible so the .enh-diss layer alone drives the row height. */
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.enh-diss {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  /* At least one text line tall so the collapsed/skeleton state matches an empty
+     input's default height (14px × 1.5 = 21px). */
+  min-height: 1.5em;
+  /* Match the textarea's growth cap so a long decoded prompt scrolls inside the
+     input box instead of overflowing past it (mirrors .input max-height). */
+  max-height: 40vh;
+  overflow-y: auto;
+  /* Explicit: without this, setting only overflow-y makes overflow-x compute to
+     `auto` (CSS spec), turning the box into a horizontal scroll container that
+     sizes to its content — so the text stops wrapping and runs off on one line.
+     Pinning overflow-x hidden (like the textarea) restores normal wrapping. */
+  overflow-x: hidden;
+  z-index: 3;
+  pointer-events: none;
+  /* Match .input exactly so the text wraps identically to the textarea. */
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 0;
+  margin: 0;
+  /* Wrap exactly like the textarea (default overflow-wrap) so the decoded text
+     occupies the same lines the real input will once it's committed. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  color: var(--user-text);
+}
+.enh-diss::-webkit-scrollbar {
+  width: 8px;
+}
+.enh-diss::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+/* Smooth dissolve: the whole old draft fades + blurs into mist + drifts up while
+   its height (set inline by JS) collapses to one line. One CSS tween, no
+   character deletion — it just "vanishes" softly. */
+.enh-diss-fade {
+  overflow: hidden;
+  /* JS drives an explicit height tween here, so drop the shared one-line floor. */
+  min-height: 0;
+  transition:
+    opacity 460ms ease,
+    filter 460ms ease,
+    transform 460ms ease,
+    height 460ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, filter, transform, height;
+}
+.enh-diss-fade.dissolving {
+  opacity: 0;
+  filter: blur(7px);
+  transform: translateY(-6px) scale(0.985);
+}
+@media (prefers-reduced-motion: reduce) {
+  .enh-diss-fade {
+    transition: none;
+  }
+}
+.enh-diss-skeleton {
+  display: flex;
+  align-items: center;
+}
+/* The enhancer skeleton stands in for a full line of prompt text: full width,
+   clearly visible, with a seamless single-pass sheen. A flat surface-2 base with
+   a translating ::after band (clipped by overflow:hidden) loops without the
+   abrupt re-entry the shared background-position sweep shows at high contrast. */
+.enh-diss-skeleton .skeleton {
+  width: 100%;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  /* Override the shared background-position sweep — we sweep via ::after below. */
+  animation: none;
+  overflow: hidden;
+}
+.enh-diss-skeleton .skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    transparent 30%,
+    color-mix(in srgb, var(--secondary) 38%, var(--surface-2)) 50%,
+    transparent 70%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: enh-skeleton-sweep 1.5s ease-in-out infinite;
+}
+@keyframes enh-skeleton-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .enh-diss-skeleton .skeleton::after {
+    animation: none;
+  }
+}
+/* The bright resolving "lead" glyph at the active edge (decode front / dissolve
+   tail) — brand periwinkle, mirroring the Matrix decode head. */
+.enh-diss-lead {
+  color: #c4b5fd;
+}
+
+/* Floating "Enhance" pill — appears bottom-right of the input box after the
+   user pauses typing. Themed like a subtle secondary-accent chip. */
+.enhance-pill {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  /* Match the "+ New" button: glossy primary pill so it's clearly visible. */
+  background: var(--gloss-primary);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: var(--gloss-shadow-primary);
+  border-radius: var(--radius-pill);
+  color: #f4f8ff;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  animation: enhance-pill-in var(--t-fast) ease-out;
+  transition: filter var(--t-fast);
+}
+.enhance-pill:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.enhance-pill:disabled {
+  cursor: default;
+}
+.enhance-pill.enhancing {
+  animation: enhance-pulse 1s ease-in-out infinite;
+}
+@keyframes enhance-pill-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 3px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+@keyframes enhance-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* A corrected technical term — highlighted, with a teaching tooltip on hover.
+   Shared by the preview card and the sent user bubble. A custom CSS tooltip is
+   used instead of the native `title=` attribute, which is unreliable / never
+   appears inside the Tauri webview. */
+.enh-term {
+  position: relative;
+  background: color-mix(in srgb, var(--secondary) 20%, transparent);
+  color: var(--text);
+  /* text-decoration hugs the glyphs (and each wrapped fragment) instead of
+     floating at the bottom of the line box the way border-bottom does. */
+  text-decoration: underline dashed color-mix(in srgb, var(--secondary) 70%, transparent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  border-radius: 3px;
+  padding: 0 2px;
+  cursor: help;
+  outline: none;
+}
+.enh-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: max-content;
+  max-width: 280px;
+  padding: 7px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-button);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  color: var(--text-secondary);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--t-fast),
+    transform var(--t-fast),
+    visibility var(--t-fast);
+}
+/* Little arrow pointing down at the term. */
+.enh-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--surface-2);
+}
+.enh-term:hover .enh-tip,
+.enh-term:focus .enh-tip,
+.enh-term:focus-visible .enh-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+.enh-tip-said {
+  color: var(--text-dim);
+}
+.enh-tip-orig {
+  color: var(--text);
+}
+.enh-tip-note {
+  color: var(--text-muted);
+}
+
 /* Staged attachment chips above the input. */
 .attach-bar {
   display: flex;
@@ -2488,6 +2923,16 @@ body {
   line-height: 1.5;
   padding: 0;
   margin: 0;
+  transition:
+    opacity var(--t-fast),
+    filter var(--t-fast);
+}
+/* While the floating "Enhance?" pill is showing, dim + soften the input text so
+   focus shifts to the pill. Reverts the instant the user types (the pill hides,
+   removing this class). */
+.input.input-dimmed {
+  opacity: 0.4;
+  filter: blur(1.5px);
 }
 .input::-webkit-scrollbar {
   width: 8px;
@@ -2621,15 +3066,37 @@ body {
   opacity: 0.7;
   cursor: default;
 }
-/* Shown in the update pill's place when already up to date — just the current
-   version, muted, so the spot never collapses/jumps. */
-.home-version {
+/* Shown in the update pill's place when already up to date — the current
+   version plus a "What's new" button, so the spot never collapses/jumps. */
+.home-version-row {
   align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.home-version {
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 500;
   color: var(--text-dim);
   letter-spacing: 0.02em;
+}
+/* Small text button to the right of the version that re-opens the What's-new
+   window. Borderless + muted so it reads as a quiet secondary link, not a CTA. */
+.home-whatsnew {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  letter-spacing: -0.005em;
+  transition: color var(--t-fast);
+}
+.home-whatsnew:hover {
+  color: var(--text);
 }
 
 .footer {

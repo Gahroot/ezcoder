@@ -1,5 +1,23 @@
 # @prestyj/cli
 
+## 4.14.2
+
+### Patch Changes
+
+- Add prompt-enhancer sidecar capability with project-stack-aware terminology, and harden image attachments — malformed/unsupported images (e.g. a bad .ico) now degrade to a file note instead of failing the whole turn.
+  - @kenkaiiii/gg-ai@4.14.2
+  - @kenkaiiii/gg-agent@4.14.2
+  - @kenkaiiii/gg-core@4.14.2
+
+## 4.14.1
+
+### Patch Changes
+
+- Fix Anthropic 1h prompt-cache TTL by sending the extended-cache-ttl beta header on the streaming and prewarm paths, so `cacheRetention: "long"` no longer silently falls back to the 5-minute default.
+  - @kenkaiiii/gg-ai@4.14.1
+  - @kenkaiiii/gg-agent@4.14.1
+  - @kenkaiiii/gg-core@4.14.1
+
 ## 4.14.0
 
 ### Minor Changes

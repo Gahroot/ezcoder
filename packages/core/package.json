@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/core",
-  "version": "4.14.0",
+  "version": "4.14.2",
   "type": "module",
   "description": "Provider-agnostic, UI-free shared foundation: model registry, auth, paths, telegram, voice",
   "license": "MIT",

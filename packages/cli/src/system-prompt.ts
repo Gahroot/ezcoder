@@ -154,7 +154,8 @@ function renderResearchSection(hasKencode: boolean): string {
     : `For public code patterns, prefer official/live docs via \`web_search\`/\`web_fetch\`. `;
   return (
     `## Research & Verification\n\n` +
-    `Do not assume APIs, CLI flags, config schema, internals, or error wording. Use \`source_path\` for installed deps and inspect with read/grep/find/ls; use \`web_search\` then \`web_fetch\` for authoritative docs. ` +
+    `Your training data has a cutoff; the real current date is the final line of this prompt. Assume your knowledge of library versions, APIs, CLI flags, config schema, defaults, and best practices has changed since then — treat it as a stale hint to verify, never as ground truth. ` +
+    `Do not rely on memory for APIs, CLI flags, config schema, internals, or error wording — verify first. Use \`source_path\` for installed deps and inspect with read/grep/find/ls; use \`web_search\` then \`web_fetch\` for authoritative docs. ` +
     publicCodeSentence +
     `When driving a programmatic Goal run, model the intended experience, choose proportional local/free proof, and block only with exact user instructions for true external prerequisites. ` +
     `Run targeted checks when they are relevant to the change; read/fix failures; never report unrun or failing checks as passing.`
