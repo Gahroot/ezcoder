@@ -4,13 +4,13 @@
 
 ### Major Changes
 
-- Remove the `ggcoder pixel` error-tracking command and all gg-pixel SDK packages (breaking CLI change), and add test-drift detection to the ideal-review hook so editing a source file whose sibling test was left untouched now prompts the agent to update the stale test.
+- Remove the `ezcoder pixel` error-tracking command and all ez-pixel SDK packages (breaking CLI change), and add test-drift detection to the ideal-review hook so editing a source file whose sibling test was left untouched now prompts the agent to update the stale test.
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.0.0
-- @kenkaiiii/gg-agent@5.0.0
-- @kenkaiiii/gg-core@5.0.0
+- @prestyj/ai@5.0.0
+- @prestyj/agent@5.0.0
+- @prestyj/core@5.0.0
 
 ## 4.15.0
 
@@ -20,18 +20,18 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.15.0
-- @kenkaiiii/gg-agent@4.15.0
-- @kenkaiiii/gg-core@4.15.0
+- @prestyj/ai@4.15.0
+- @prestyj/agent@4.15.0
+- @prestyj/core@4.15.0
 
 ## 4.14.3
 
 ### Patch Changes
 
 - Fix queued messages overriding the original task: mid-run steering prompts are now framed as concurrent instructions so the agent folds them into the current work instead of abandoning the original objective.
-  - @kenkaiiii/gg-ai@4.14.3
-  - @kenkaiiii/gg-agent@4.14.3
-  - @kenkaiiii/gg-core@4.14.3
+  - @prestyj/ai@4.14.3
+  - @prestyj/agent@4.14.3
+  - @prestyj/core@4.14.3
 
 ## 4.14.2
 

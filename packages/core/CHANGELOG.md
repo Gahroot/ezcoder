@@ -4,19 +4,19 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.0.0
+- @prestyj/ai@5.0.0
 
 ## 4.15.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.15.0
+- @prestyj/ai@4.15.0
 
 ## 4.14.3
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@4.14.3
+- @prestyj/ai@4.14.3
 
 ## 4.14.2
 

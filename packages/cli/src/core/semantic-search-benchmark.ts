@@ -37,12 +37,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { stream, type Message, type StreamEvent, type Usage } from "@kenkaiiii/gg-ai";
+import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
 import { AuthStorage } from "./auth-storage.js";
 import { chunkFile, bm25Rank, rankFiles } from "./code-retrieval.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SRC = path.resolve(HERE, ".."); // packages/ggcoder/src
+const SRC = path.resolve(HERE, ".."); // packages/cli/src
 
 // ── Corpus: real repo files + questions with deterministic graders ──
 

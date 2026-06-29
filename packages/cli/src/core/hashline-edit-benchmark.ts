@@ -5,7 +5,7 @@
  * Two strategies produce the SAME edit against the SAME file, measured against
  * live gpt-5.5:
  *
- *   BASELINE (what ggcoder does today): the model emits { old_text, new_text }
+ *   BASELINE (what ezcoder does today): the model emits { old_text, new_text }
  *   edits where old_text must be copied VERBATIM from the file with enough
  *   surrounding context to match uniquely (this is exactly our edit tool's
  *   contract — see tools/edit.ts). The reproduced context is what costs output
@@ -29,7 +29,7 @@
  *   GG_HL_REPEAT                   (runs per task, default 1 — raise to average noise)
  */
 
-import { stream, type Message, type StreamEvent, type Usage } from "@kenkaiiii/gg-ai";
+import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
 import { AuthStorage } from "./auth-storage.js";
 import { anchorFile, type AnchoredFile } from "./hashline.js";
 
