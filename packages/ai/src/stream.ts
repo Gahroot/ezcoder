@@ -24,12 +24,29 @@ providerRegistry.register("anthropic", {
 });
 
 providerRegistry.register("xiaomi", {
-  stream: (options) =>
-    streamOpenAI({
-      ...options,
-      baseUrl: options.baseUrl ?? "https://token-plan-sgp.xiaomimimo.com/v1",
-      webSearch: false,
-    }),
+  stream: (options) => {
+    // Two distinct Xiaomi access products live under different hosts:
+    //   - Token Plan subscription:  token-plan-sgp.xiaomimimo.com/v1
+    //     (the default; serves mimo-v2.5-pro / mimo-v2.5 / flash)
+    //   - Standard MiMo platform:   api.xiaomimimo.com/v1
+    //     (serves the UltraSpeed beta, gated on a platform API key)
+    // The UltraSpeed beta is ONLY on the platform host. A user logged in for
+    // Token Plan carries a stored token-plan baseUrl that would misroute it
+    // (the host replies "Not supported model"), so when UltraSpeed is the
+    // target we ignore that token-plan default and use the platform host —
+    // while still honoring an explicit non-token-plan override, so a wrong
+    // host guess remains correctable via config.
+    const TOKEN_PLAN_URL = "https://token-plan-sgp.xiaomimimo.com/v1";
+    const PLATFORM_URL = "https://api.xiaomimimo.com/v1";
+    let baseUrl: string;
+    if (options.model === "mimo-v2.5-pro-ultraspeed") {
+      baseUrl =
+        options.baseUrl && options.baseUrl !== TOKEN_PLAN_URL ? options.baseUrl : PLATFORM_URL;
+    } else {
+      baseUrl = options.baseUrl ?? TOKEN_PLAN_URL;
+    }
+    return streamOpenAI({ ...options, baseUrl, webSearch: false });
+  },
 });
 
 providerRegistry.register("openai", {
