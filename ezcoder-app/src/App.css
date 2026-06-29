@@ -2417,23 +2417,28 @@ body {
   background: var(--border);
   border-radius: 4px;
 }
-/* Smooth dissolve: the whole old draft fades + blurs into mist + drifts up while
-   its height (set inline by JS) collapses to one line. One CSS tween, no
-   character deletion — it just "vanishes" softly. */
+/* Smooth dissolve: the whole old draft fades + drifts up while its height (set
+   inline by JS) collapses to one line. One CSS tween, no character deletion — it
+   just "vanishes" softly.
+
+   NOTE: deliberately NO animated `filter: blur()` here. An animated blur on a
+   `will-change`-promoted layer crashes WKWebView's compositor on Intel Macs —
+   the GPU process loses the webview's ROOT surface and the WHOLE window paints
+   black (not just this node). Apple Silicon's Metal compositor survives it, so
+   it only reproduced on Intel. The fade now leans on opacity + transform only,
+   which composite safely on every GPU. Do not re-add blur to this animation. */
 .enh-diss-fade {
   overflow: hidden;
   /* JS drives an explicit height tween here, so drop the shared one-line floor. */
   min-height: 0;
   transition:
     opacity 460ms ease,
-    filter 460ms ease,
     transform 460ms ease,
     height 460ms cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: opacity, filter, transform, height;
+  will-change: opacity, transform, height;
 }
 .enh-diss-fade.dissolving {
   opacity: 0;
-  filter: blur(7px);
   transform: translateY(-6px) scale(0.985);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2492,18 +2497,33 @@ body {
   color: #c4b5fd;
 }
 
-/* Floating "Enhance" pill — appears bottom-right of the input box after the
-   user pauses typing. Themed like a subtle secondary-accent chip. */
+/* "Enhance" pill — pinned to the center of the input box's top border,
+   overlapping it. Absolutely positioned against .inputwrap (position: relative),
+   so it's fully decoupled from the textarea's text flow: it can't overlap text,
+   drift with wrapping, shift the caret, or jump the box height. Nudged up by
+   ~half its height so it straddles the top border like a tab. */
 .enhance-pill {
   position: absolute;
+  top: -11px;
+  /* Centered on the top border (not top-right) so it stays clear of the status
+     row's "esc to cancel" button, which sits in the right corner just above. */
   left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   z-index: 4;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 14px;
+  padding: 2px 10px;
+  /* Hidden resting state. Always mounted so it can animate BOTH ways: the
+     `.visible` class fades + slides it in; removing it fades + slides it out.
+     pointer-events off while hidden so it can't be clicked mid-fade.
+     translateX(-50%) keeps it centered through the transform transition. */
+  opacity: 0;
+  transform: translate(-50%, -4px) scale(0.96);
+  pointer-events: none;
+  transition:
+    opacity var(--t-fast) ease,
+    transform var(--t-fast) ease,
+    filter var(--t-fast) ease;
   /* Match the "+ New" button: glossy primary pill so it's clearly visible. */
   background: var(--gloss-primary);
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -2514,8 +2534,11 @@ body {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  animation: enhance-pill-in var(--t-fast) ease-out;
-  transition: filter var(--t-fast);
+}
+.enhance-pill.visible {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  pointer-events: auto;
 }
 .enhance-pill:hover:not(:disabled) {
   filter: brightness(1.08);
@@ -2523,18 +2546,10 @@ body {
 .enhance-pill:disabled {
   cursor: default;
 }
-.enhance-pill.enhancing {
+/* Pulse only while visible — scoped so the animation can't override the hidden
+   state's opacity:0 and flash a hidden pill. */
+.enhance-pill.visible.enhancing {
   animation: enhance-pulse 1s ease-in-out infinite;
-}
-@keyframes enhance-pill-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% + 3px));
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%);
-  }
 }
 @keyframes enhance-pulse {
   0%,
@@ -2923,16 +2938,6 @@ body {
   line-height: 1.5;
   padding: 0;
   margin: 0;
-  transition:
-    opacity var(--t-fast),
-    filter var(--t-fast);
-}
-/* While the floating "Enhance?" pill is showing, dim + soften the input text so
-   focus shifts to the pill. Reverts the instant the user types (the pill hides,
-   removing this class). */
-.input.input-dimmed {
-  opacity: 0.4;
-  filter: blur(1.5px);
 }
 .input::-webkit-scrollbar {
   width: 8px;

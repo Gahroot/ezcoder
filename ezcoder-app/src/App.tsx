@@ -1776,20 +1776,19 @@ function App(): React.ReactElement {
     });
   }
 
-  // Reveal the floating "Enhance" pill ~1s after the user stops typing, for a
-  // non-trivial sendable draft. Every keystroke resets `input`, which re-runs
-  // this and hides the pill immediately, so it only surfaces on a real pause.
-  // Skipped while running/enhancing, with a menu open, or when the draft is
-  // already the current enhancement (nothing left to improve).
+  // Show the corner "Enhance" pill whenever the input holds text — it stays put
+  // (no debounce) and only hides when the box is empty. Shows even while the agent
+  // is running, so a queued follow-up draft can be enhanced too: enhancePrompt is
+  // a standalone one-shot call, independent of the agent loop. Still skipped mid-
+  // enhance, with a menu open, or when the draft is already the current
+  // enhancement (nothing left to improve).
   useEffect(() => {
-    setEnhanceHintVisible(false);
-    if (running || enhancing || !hydrated) return;
-    if (input.trim().length < 8) return;
-    if (slashOpen || mentionOpen) return;
-    if (enhancement && enhancement.plain === input) return;
-    const t = setTimeout(() => setEnhanceHintVisible(true), 1000);
-    return () => clearTimeout(t);
-  }, [input, running, enhancing, hydrated, slashOpen, mentionOpen, enhancement]);
+    if (enhancing || !hydrated) return setEnhanceHintVisible(false);
+    if (input.trim().length === 0) return setEnhanceHintVisible(false);
+    if (slashOpen || mentionOpen) return setEnhanceHintVisible(false);
+    if (enhancement && enhancement.plain === input) return setEnhanceHintVisible(false);
+    setEnhanceHintVisible(true);
+  }, [input, enhancing, hydrated, slashOpen, mentionOpen, enhancement]);
 
   // Submit the current input together with any staged attachments. Images are
   // echoed inline in the user's bubble; all media is sent to the agent.
@@ -2278,9 +2277,7 @@ function App(): React.ReactElement {
             )}
             <textarea
               ref={inputRef}
-              className={`input${enhanceAnim ? " input-anim" : ""}${
-                enhanceHintVisible ? " input-dimmed" : ""
-              }`}
+              className={`input${enhanceAnim ? " input-anim" : ""}`}
               rows={1}
               // Lock the input while the dissolve→decode animation plays: the caret
               // is invisible, so typing would be silently discarded and Enter would
@@ -2365,17 +2362,24 @@ function App(): React.ReactElement {
               autoFocus
             />
           </div>
-          {enhanceHintVisible && (
-            <button
-              className={`enhance-pill${enhancing ? " enhancing" : ""}`}
-              title="Enhance prompt — clearer wording + correct terms"
-              disabled={enhancing}
-              onClick={() => void runEnhance()}
-            >
-              {enhancing ? "Enhancing…" : "Enhance?"}
-            </button>
-          )}
         </div>
+        {!enhanceAnim && (
+          // Pill pinned to the center of the input box (.inputwrap) top border,
+          // overlapping it. Decoupled from text flow, so it never overlaps text,
+          // drifts, or shifts the caret/height; centered (not in a corner) to
+          // stay clear of the status row's "esc to cancel". Always mounted (so it
+          // can transition both ways); the `visible` class fades/slides it in
+          // when there's text and out when there isn't.
+          <button
+            className={`enhance-pill${enhanceHintVisible ? " visible" : ""}${enhancing ? " enhancing" : ""}`}
+            title="Enhance prompt — clearer wording + correct terms"
+            disabled={enhancing || !enhanceHintVisible}
+            aria-hidden={!enhanceHintVisible}
+            onClick={() => void runEnhance()}
+          >
+            {enhancing ? "Enhancing…" : "Enhance?"}
+          </button>
+        )}
       </div>
 
       <div className="footer" style={{ color: theme.footerText }}>

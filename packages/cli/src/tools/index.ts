@@ -8,6 +8,7 @@ import { createEditTool } from "./edit.js";
 import { createBashTool } from "./bash.js";
 import { createFindTool } from "./find.js";
 import { createGrepTool } from "./grep.js";
+import { createSearchCodeTool } from "./search-code.js";
 import { createLsTool } from "./ls.js";
 import { createSubAgentTool } from "./subagent.js";
 import { createWebFetchTool } from "./web-fetch.js";
@@ -157,6 +158,7 @@ export async function createTools(
     createBashTool(cwd, processManager, ops, planModeRef, goalModeRef),
     createFindTool(cwd),
     createGrepTool(cwd, ops),
+    createSearchCodeTool(cwd, ops),
     createLsTool(cwd, ops),
     createSourcePathTool(cwd),
     createWebFetchTool(),
@@ -224,6 +226,7 @@ export { createEditTool } from "./edit.js";
 export { createBashTool } from "./bash.js";
 export { createFindTool } from "./find.js";
 export { createGrepTool } from "./grep.js";
+export { createSearchCodeTool } from "./search-code.js";
 export { createLsTool } from "./ls.js";
 export { createWebFetchTool } from "./web-fetch.js";
 export { createWebSearchTool } from "./web-search.js";
