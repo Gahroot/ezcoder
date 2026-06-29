@@ -6,6 +6,7 @@ import { useTaskPickerController } from "./hooks/useTaskPickerController.js";
 import { useModeState } from "./hooks/useModeState.js";
 import { useSessionPersistence } from "./hooks/useSessionPersistence.js";
 import { useContextCompaction } from "./hooks/useContextCompaction.js";
+import { usePixelFixFlow } from "./hooks/usePixelFixFlow.js";
 import { useDoublePress } from "./hooks/useDoublePress.js";
 import {
   useTaskBarStore,
@@ -37,6 +38,7 @@ import type { LiveToolEntry } from "./components/LiveToolPanel.js";
 import { LIVE_TOOL_PANEL_ROWS } from "./components/LiveToolPanel.js";
 import { FullScreenOverlayRouter } from "./components/FullScreenOverlayRouter.js";
 import { SessionSummaryDisplay } from "./components/SessionSummary.js";
+import type { PreparedPixelFix } from "../core/pixel-fix.js";
 import type { SlashCommandInfo } from "./components/SlashCommandMenu.js";
 import type { ProcessManager } from "../core/process-manager.js";
 import { useTheme, useSetTheme, type ThemeName } from "./theme/theme.js";
@@ -230,6 +232,8 @@ export interface AppProps {
   skills?: Skill[];
   /** Per-session file checkpoint store backing the /rewind command. */
   checkpointStore?: CheckpointStore;
+  initialOverlay?: "pixel";
+  rebuildToolsForCwd?: (cwd: string) => Promise<AgentTool[]>;
   /** Rebuild the `read` tool for a model (reuses the read tracker). Used on
    *  model switch so the tool's video capability tracks the active model. */
   rebuildReadTool?: (model: string) => AgentTool;
@@ -270,7 +274,7 @@ export interface AppProps {
    * a full unmount/remount is the only consistent reset.
    *
    * Used by every path that previously did a bare ANSI screen clear:
-   * `/clear`, plan accept/reject, overlay open/close.
+   * `/clear`, plan accept/reject, overlay open/close, pixel fix.
    *
    * Runtime state (model, provider, thinking) survives via
    * `onRuntimeStateChange`; conversation/session state survives via
@@ -316,7 +320,7 @@ export interface AppProps {
     sessionId?: string;
     sessionTitle?: string;
     sessionTitleGenerated: boolean;
-    overlay?: "model" | "skills" | "plan" | "theme" | null;
+    overlay?: "model" | "skills" | "plan" | "theme" | "pixel" | null;
     planAutoExpand?: boolean;
     pendingAction?: {
       prompt: string;
@@ -326,6 +330,7 @@ export interface AppProps {
     isAgentRunning?: boolean;
     pendingResetUI?: boolean;
     runAllTasks?: boolean;
+    runAllPixel?: boolean;
     planMode?: boolean;
     sessionStats?: SessionStats;
     idealReviewEnabled?: boolean;
@@ -409,9 +414,10 @@ export function App(props: AppProps) {
   // separate from `liveItems` (the scrollback record) so tool calls mutate in
   // place above the activity bar instead of spamming the transcript.
   const [liveToolFeed, setLiveToolFeed] = useState<LiveToolEntry[]>([]);
-  // overlay seeded from sessionStore (lives across remount), then null.
-  const [overlay, setOverlay] = useState<"model" | "skills" | "plan" | "theme" | null>(
-    props.sessionStore?.overlay ?? null,
+  // overlay seeded from sessionStore (lives across remount). Falls back to
+  // props.initialOverlay (CLI launched with one), then null.
+  const [overlay, setOverlay] = useState<"model" | "skills" | "plan" | "theme" | "pixel" | null>(
+    props.sessionStore?.overlay ?? props.initialOverlay ?? null,
   );
   const [updatePending, setUpdatePending] = useState<boolean>(
     () => getPendingUpdate(props.version) !== null,
@@ -426,9 +432,11 @@ export function App(props: AppProps) {
   const [runAllTasks, setRunAllTasks] = useState(props.sessionStore?.runAllTasks ?? false);
   const runAllTasksRef = useRef(props.sessionStore?.runAllTasks ?? false);
   const startTaskRef = useRef<(title: string, prompt: string, taskId: string) => void>(() => {});
+  const runAllPixelRef = useRef(props.sessionStore?.runAllPixel ?? false);
+  const currentPixelFixRef = useRef<PreparedPixelFix | null>(null);
+  const startPixelFixRef = useRef<(errorId: string) => void>(() => {});
   const cwdRef = useRef(props.cwd);
-  // The project root is fixed for the session's lifetime, so this never changes.
-  const displayedCwd = props.cwd;
+  const [displayedCwd, setDisplayedCwd] = useState(props.cwd);
   // /rewind overlay: holds the checkpoint list while the picker is open.
   const [rewindCheckpoints, setRewindCheckpoints] = useState<CheckpointInfo[] | null>(null);
   // Monotonic user-turn counter keying per-turn checkpoints.
@@ -493,7 +501,7 @@ export function App(props: AppProps) {
   /**
    * Languages whose style packs are currently injected into the system prompt.
    * Grown by `maybeInjectLanguagePacks` after `write`/`bash` tool results when
-   * the language detector sees new marker files.
+   * the language detector sees new marker files. Reset on `chdir` (pixel-fix).
    * Only grows within a session; we never strip packs once injected (cheaper
    * than invalidating prompt caching, and stale guidance is harmless).
    */
@@ -656,7 +664,8 @@ export function App(props: AppProps) {
     [currentProvider, activeAccountId],
   );
 
-  // Load git branch — re-runs whenever the displayed cwd changes.
+  // Load git branch — re-runs whenever the displayed cwd changes (e.g. when
+  // a pixel fix moves the agent into a different project root).
   useEffect(() => {
     getGitBranch(displayedCwd).then(setGitBranch);
   }, [displayedCwd]);
@@ -818,7 +827,8 @@ export function App(props: AppProps) {
    * tools that can introduce new marker files (package.json, Cargo.toml, etc.).
    * Other tool kinds skip detection entirely to avoid wasted filesystem stats.
    *
-   * No restart required: the system prompt is mutated in place.
+   * No restart required: the system prompt is mutated in place, same mechanism
+   * used for pixel-fix chdir.
    *
    * Stored in a ref so `onToolEnd` (whose useCallback dep array is intentionally
    * empty to keep agent-loop options stable) can call the freshest version.
@@ -1661,11 +1671,48 @@ export function App(props: AppProps) {
               }
             }, 500);
           }
+
+          // Pixel fix: observe branch + commits, patch status, optionally pick
+          // up the next open error if run-all is active.
+          const pendingFix = currentPixelFixRef.current;
+          if (pendingFix) {
+            currentPixelFixRef.current = null;
+            void (async () => {
+              try {
+                const { finalizePixelFix } = await import("../core/pixel-fix.js");
+                const result = await finalizePixelFix(pendingFix);
+                log("INFO", "pixel", `Pixel fix done: ${result.outcome}`, {
+                  errorId: pendingFix.errorId,
+                  reason: result.reason,
+                });
+              } catch (err) {
+                log("ERROR", "pixel", `Pixel finalize failed: ${(err as Error).message}`);
+              }
+
+              if (runAllPixelRef.current) {
+                setTimeout(() => {
+                  void (async () => {
+                    const { fetchPixelEntries } = await import("../core/pixel.js");
+                    const data = await fetchPixelEntries();
+                    const next = data.entries.find((e) => e.status === "open");
+                    if (next) {
+                      startPixelFixRef.current(next.errorId);
+                    } else {
+                      setRunAllPixel(false);
+                      log("INFO", "pixel", "Run-all complete — no more open errors");
+                    }
+                  })();
+                }, 500);
+              }
+            })();
+          }
         },
         [],
       ),
       onAborted: useCallback(() => {
         log("WARN", "agent", "Agent run aborted by user");
+        setRunAllPixel(false);
+        currentPixelFixRef.current = null;
         setDoneStatus(null);
         setLiveItems((prev) => {
           const next = prev.map((item): CompletedItem => {
@@ -2502,7 +2549,7 @@ export function App(props: AppProps) {
     });
 
   const openOverlay = useCallback(
-    (kind: "skills" | "plan") => {
+    (kind: "skills" | "plan" | "pixel") => {
       if (props.resetUI && props.sessionStore && !agentLoop.isRunning) {
         props.sessionStore.overlay = kind;
         if (kind !== "plan") props.sessionStore.planAutoExpand = false;
@@ -2530,6 +2577,36 @@ export function App(props: AppProps) {
   useEffect(() => {
     agentRunningRef.current = agentLoop.isRunning;
   }, [agentLoop.isRunning]);
+
+  const { startPixelFix, setRunAllPixel } = usePixelFixFlow({
+    agentLoop,
+    cwd: props.cwd,
+    currentProvider,
+    currentModel,
+    rebuildToolsForCwd: props.rebuildToolsForCwd,
+    sessionStore: props.sessionStore,
+    currentPixelFixRef,
+    runAllPixelRef,
+    startPixelFixRef,
+    cwdRef,
+    currentToolsRef,
+    injectedLanguagesRef,
+    setupHintShownRef,
+    messagesRef,
+    persistedIndexRef,
+    sessionManagerRef,
+    sessionPathRef,
+    setDisplayedCwd,
+    setCurrentTools,
+    setHistory,
+    setLiveItems,
+    setLastUserMessage,
+    setDoneStatus,
+    rebuildSystemPrompt,
+    clearPendingHistory,
+    getId,
+    initialRunAllPixel: props.sessionStore?.runAllPixel ?? false,
+  });
 
   // Starts a single task: opens a fresh session + chat and runs the task
   // prompt through the agent loop. Wired into startTaskRef so both the task
@@ -2646,6 +2723,7 @@ export function App(props: AppProps) {
   useEffect(() => {
     liveLayoutRef.current = { columns, liveAreaRows: measuredLiveAreaRows };
   }, [columns, measuredLiveAreaRows]);
+  const isPixelView = overlay === "pixel";
   const hasLiveAssistantItem = liveItems.some((item) => item.kind === "assistant");
   const rawVisibleStreamingText = hasLiveAssistantItem ? "" : agentLoop.streamingText;
   // The live text is sliced by the COMMITTED `flushedChars` only. When the
@@ -2974,6 +3052,19 @@ export function App(props: AppProps) {
     setOverlay(null);
   };
 
+  const handlePixelFixOne = (entry: { errorId: string }) => {
+    setOverlay(null);
+    startPixelFix(entry.errorId);
+  };
+
+  const handlePixelFixAll = (entries: Array<{ errorId: string; status: string }>) => {
+    const first = entries.find((entry) => entry.status === "open") ?? entries[0];
+    if (!first) return;
+    setOverlay(null);
+    setRunAllPixel(true);
+    startPixelFix(first.errorId);
+  };
+
   const handleApprovePlan = (planPath: string) => {
     log("INFO", "plan", "Plan approved — transitioning to implementation", {
       planPath,
@@ -3093,7 +3184,13 @@ export function App(props: AppProps) {
     taskPicker.toggle();
   };
 
-  const fullScreenOverlay = isSkillsView ? "skills" : isPlanView ? "plan" : null;
+  const fullScreenOverlay = isPixelView
+    ? "pixel"
+    : isSkillsView
+      ? "skills"
+      : isPlanView
+        ? "plan"
+        : null;
 
   if (quittingSummary) {
     return (
@@ -3114,8 +3211,13 @@ export function App(props: AppProps) {
       ) : fullScreenOverlay ? (
         <FullScreenOverlayRouter
           overlay={fullScreenOverlay}
+          version={props.version}
           cwd={props.cwd}
+          agentRunning={agentLoop.isRunning}
           planAutoExpand={planAutoExpand}
+          onClosePixel={handleCloseRemountableOverlay}
+          onPixelFixOne={handlePixelFixOne}
+          onPixelFixAll={handlePixelFixAll}
           onCloseSkills={handleCloseRemountableOverlay}
           onClosePlan={handleClosePlanOverlay}
           onApprovePlan={handleApprovePlan}
@@ -3171,6 +3273,7 @@ export function App(props: AppProps) {
             onShiftTab: handleToggleThinking,
             onToggleTasks: handleToggleTasks,
             onToggleSkills: () => openOverlay("skills"),
+            onTogglePixel: () => openOverlay("pixel"),
             onToggleMarkdown: () => setRenderMarkdown((prev) => !prev),
             cwd: props.cwd,
             commands: allCommands,

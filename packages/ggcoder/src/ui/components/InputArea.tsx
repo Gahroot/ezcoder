@@ -229,6 +229,7 @@ interface InputAreaProps {
   onRunAllTasks?: (task?: TaskRecord) => void;
   onDeleteTask?: (task: TaskRecord) => void;
   onToggleSkills?: () => void;
+  onTogglePixel?: () => void;
   onToggleMarkdown?: () => void;
   cwd: string;
   commands?: SlashCommandInfo[];
@@ -339,6 +340,7 @@ export function InputArea({
   onRunAllTasks,
   onDeleteTask,
   onToggleSkills,
+  onTogglePixel,
   onToggleMarkdown,
   cwd,
   commands = [],
@@ -1012,6 +1014,12 @@ export function InputArea({
       // Ctrl+S toggles skills overlay
       if (key.ctrl && input === "s") {
         onToggleSkills?.();
+        return;
+      }
+
+      // Ctrl+E toggles pixel (errors) overlay
+      if (key.ctrl && input === "e") {
+        onTogglePixel?.();
         return;
       }
 
