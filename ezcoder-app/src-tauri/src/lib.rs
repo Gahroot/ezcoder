@@ -812,6 +812,43 @@ async fn agent_cancel(
     Ok(())
 }
 
+/// Proxy: ask Ken Kai (the read-only mentor agent). Reply streams back via the
+/// `agent-event` event with `ken_`-prefixed types. Lazily boots Ken's session.
+#[tauri::command]
+async fn agent_ken_prompt(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    text: String,
+) -> Result<(), String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    client
+        .post(format!("{}/ken/prompt", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "text": text }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Proxy: cancel Ken's in-flight run (leaves GG Coder's run untouched).
+#[tauri::command]
+async fn agent_ken_cancel(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<(), String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    client
+        .post(format!("{}/ken/cancel", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Proxy: list workflow (prompt-template) slash commands.
 #[tauri::command]
 async fn agent_commands(
@@ -2972,6 +3009,8 @@ pub fn run() {
             agent_state,
             agent_prompt,
             agent_cancel,
+            agent_ken_prompt,
+            agent_ken_cancel,
             agent_accept_plan,
             agent_new_session,
             agent_history,

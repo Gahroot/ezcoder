@@ -342,6 +342,8 @@ main() {
   rename_file_if_exists "packages/cli/src/core/ken-context.ts" "packages/cli/src/core/nolan-context.ts"
   rename_file_if_exists "packages/cli/src/core/ken-context.test.ts" "packages/cli/src/core/nolan-context.test.ts"
   rename_file_if_exists "ezcoder-app/src/KenActivityBar.tsx" "ezcoder-app/src/NolanActivityBar.tsx"
+  rename_file_if_exists "ezcoder-app/src/useKenMentor.ts" "ezcoder-app/src/useNolanMentor.ts"
+  rename_file_if_exists "ezcoder-app/src/useKenMentor.test.ts" "ezcoder-app/src/useNolanMentor.test.ts"
 
   git add -A
   if git diff --cached --quiet; then
