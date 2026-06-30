@@ -1123,6 +1123,9 @@ async function createSession(
   async function authStatusPayload(): Promise<{
     providers: (AuthProviderMeta & { connected: boolean })[];
   }> {
+    // Native (Rust) writes to auth.json bypass this daemon's cache; re-read so
+    // the reported connection state matches what's actually on disk.
+    await auth.reload();
     const providers = await Promise.all(
       AUTH_PROVIDERS.map(async (p) => ({
         ...p,
@@ -1854,6 +1857,10 @@ async function createSession(
 
     if (method === "GET" && url === "/models") {
       void (async () => {
+        // The desktop app writes API keys natively (Rust → auth.json), bypassing
+        // this daemon's AuthStorage cache. Re-read from disk so a provider the
+        // user just logged in for (e.g. Xiaomi/MiMo) shows up in the list.
+        await auth.reload();
         const loggedIn: Provider[] = [];
         for (const p of ALL_PROVIDERS) {
           if (await auth.hasProviderAuth(p)) loggedIn.push(p);
@@ -1888,6 +1895,9 @@ async function createSession(
           json(res, 409, { error: "cannot switch model while running" });
           return;
         }
+        // Pick up any natively-written keys (desktop app) before resolving the
+        // new model's credentials, so switching to a just-added provider works.
+        await auth.reload();
         await session.switchModel(target.provider, target.id);
         await syncNolanModel(target.provider, target.id);
         // Clamp the reasoning level to what the new model supports (mirrors the

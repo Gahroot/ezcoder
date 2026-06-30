@@ -1476,7 +1476,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "xiaomi",
         label: "Xiaomi (MiMo)",
-        description: "MiMo-V2-Pro",
+        description: "MiMo-V2.5-Pro, MiMo-V2.5-Pro UltraSpeed, MiMo-V2.5",
         methods: &["apikey"],
         api_key_label: Some("Xiaomi MiMo"),
         api_key_base_url: Some("https://token-plan-sgp.xiaomimimo.com/v1"),

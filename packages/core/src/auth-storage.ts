@@ -122,6 +122,18 @@ export class AuthStorage {
     if (!this.loaded) await this.load();
   }
 
+  /**
+   * Force a re-read from disk, discarding the in-memory cache. Needed when
+   * another process mutates the auth file out-of-band — e.g. the desktop app
+   * writes API keys natively (Rust → ~/.ezcoder/auth.json) without going through
+   * this instance, so a long-lived daemon's cache would otherwise stay stale and
+   * never see a newly added provider key.
+   */
+  async reload(): Promise<void> {
+    this.loaded = false;
+    await this.load();
+  }
+
   async getCredentials(provider: string): Promise<OAuthCredentials | undefined> {
     await this.ensureLoaded();
     return this.data[provider];

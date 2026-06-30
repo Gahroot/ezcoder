@@ -63,7 +63,7 @@ export const AUTH_PROVIDERS: AuthProviderMeta[] = [
   {
     value: "xiaomi",
     label: "Xiaomi (MiMo)",
-    description: "MiMo-V2-Pro",
+    description: "MiMo-V2.5-Pro, MiMo-V2.5-Pro UltraSpeed, MiMo-V2.5",
     methods: ["apikey"],
     apiKeyLabel: "Xiaomi MiMo",
     apiKeyBaseUrl: "https://token-plan-sgp.xiaomimimo.com/v1",
