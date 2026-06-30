@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.7.0",
+    date: "2026-06-30",
+    items: [
+      "Say hey to Ken. I put myself right inside the app as your mentor. Type @Ken and I'll tell you what to build next, call out when something is off, and hand you the exact prompt to run. I am not the one writing the code, I am the one keeping you on the rails.",
+      "I do not guess and I do not just nod along. When I size up your code or a plan I actually go check it. I search real shipping repos and read the live docs before I answer, and if something smells unverified I dig in and tell you what I found.",
+      "I have taste and I am hard on tools. Ask me what to use and I will not parrot whatever is trendy. I research what is actually good right now and steer you to the lean pick that fits your project, not the bloated mainstream one.",
+      "Every prompt I write comes with a Send to GG Coder button. One click and it runs. No copy paste, no fuss. I keep it one focused step at a time so nothing snowballs into a mess.",
+      "Our chats stick around. Close the app, come back later, and my advice plus everything you sent is right where you left it.",
+    ],
+  },
+  {
     version: "0.6.1",
     date: "2026-06-29",
     items: [
