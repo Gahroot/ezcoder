@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/boss",
-  "version": "5.0.1",
+  "version": "5.1.0",
   "type": "module",
   "description": "Orchestrator agent that drives multiple ezcoder sessions across projects from a single chat",
   "license": "MIT",

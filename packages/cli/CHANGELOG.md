@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.1.0
+
+### Minor Changes
+
+- Add the **@Nolan** read-only mentor agent (rebranded from upstream's @Ken). Talk to Nolan with `@Nolan <prompt>` in the desktop app: a second, read-only `AgentSession` per window that understands what you're building and hands back short, runnable prompts plus blunt mentorship — he recommends, EZ Coder executes. Includes session persistence, model-switch sync, rotating input placeholders, and a tinted UI. Also refactors the app's event handling into `useAgentEvents` + `useNolanMentor` hooks with run-end project-task reconciliation.
+
+### Patch Changes
+
+- @prestyj/ai@5.1.0
+- @prestyj/agent@5.1.0
+- @prestyj/core@5.1.0
+
 ## 5.0.1
 
 ### Patch Changes

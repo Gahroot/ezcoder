@@ -1,5 +1,11 @@
 # @prestyj/agent
 
+## 5.1.0
+
+### Patch Changes
+
+- @prestyj/ai@5.1.0
+
 ## 5.0.1
 
 ### Patch Changes
