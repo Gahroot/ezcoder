@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.1.2
+
+### Patch Changes
+
+- Add a tool-steering clause that nudges the model to batch independent read-only calls (read, grep, ls, find) into one turn, cutting round-trips since tool execution is already parallel.
+  - @kenkaiiii/gg-ai@5.1.2
+  - @kenkaiiii/gg-agent@5.1.2
+  - @kenkaiiii/gg-core@5.1.2
+
 ## 5.1.1
 
 ### Patch Changes
