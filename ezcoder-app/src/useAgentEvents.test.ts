@@ -6,11 +6,14 @@ import type { MutableRefObject } from "react";
 
 // playSound builds an <audio> element and ./agent calls Tauri APIs at module
 // scope (getCurrentWebviewWindow) which blow up in jsdom. Fully stub both. The
-// hook only uses `listCommands` from ./agent at runtime (the rest is type-only,
-// erased), so the mock just provides that, resolving empty so run_end's command
-// refresh is a no-op.
+// hook only uses `listCommands` + `listTasks` from ./agent at runtime (the rest
+// is type-only, erased), so the mock provides those, resolving empty so run_end's
+// command refresh + project-task reconciliation are no-ops.
 vi.mock("./sounds", () => ({ playSound: vi.fn() }));
-vi.mock("./agent", () => ({ listCommands: vi.fn().mockResolvedValue([]) }));
+vi.mock("./agent", () => ({
+  listCommands: vi.fn().mockResolvedValue([]),
+  listTasks: vi.fn().mockResolvedValue([]),
+}));
 
 import { useAgentEvents, type AgentEventsDeps } from "./useAgentEvents";
 import type { Item } from "./App";
