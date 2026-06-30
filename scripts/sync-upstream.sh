@@ -235,6 +235,12 @@ rebrand_ken_mentor() {
       s/\bken-(context|input|msg|prompt|sent|spinner|statusrow)\b/nolan-$1/g;
       # camelCase mentor vars: word-start ken + UpperCase (tokenUsage fails \b)
       s/\bken([A-Z]\w*)/nolan$1/g;
+      # lowercase @ken mention trigger in regex literals (\b after "ken" keeps
+      # @kenkaiiii and @kennedy safe — both have a letter, not a boundary, next)
+      s/\@ken\b/\@nolan/g;
+      # stale comment refs to the renamed SSE event family + delegate prose
+      s/ken_\*/nolan_*/g;
+      s/\bken events\b/nolan events/g;
       # any remaining capital Ken (PascalCase types, compound fns, @Ken, prose),
       # excluding the protected roots above
       s/Ken(?!Burns|Kai|code|nedy|-Burns| Burns)/Nolan/g;

@@ -270,7 +270,7 @@ export async function cancel(): Promise<void> {
 //   nolan_run_end { cancelled? }     — Nolan finished (or was cancelled)
 //   nolan_error { message }          — Nolan failed
 
-/** Ask Nolan Grout. Fires the read-only mentor run; reply arrives via `ken_*`
+/** Ask Nolan Grout. Fires the read-only mentor run; reply arrives via `nolan_*`
  *  SSE events. Lazily boots Nolan's session on first use. */
 export async function sendNolanPrompt(text: string): Promise<void> {
   await logInfo(`ken prompt: ${text.slice(0, 80)}`);

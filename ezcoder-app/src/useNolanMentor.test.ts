@@ -90,7 +90,7 @@ describe("useNolanMentor", () => {
     expect(hook.result.current.nolanRunning).toBe(false);
   });
 
-  it("returns true for ken events and false for a non-ken event", () => {
+  it("returns true for nolan events and false for a non-nolan event", () => {
     const { hook, getItems } = setup();
     let nolanHandled = false;
     let buildHandled = true;

@@ -10,7 +10,7 @@ import type { Item } from "./App";
  * his activity is fully independent: his own running flag, token count, and
  * thinking timer (mirroring the build session's so his activity bar reads the
  * same), plus his own streaming bubble in the shared transcript. All of it is
- * driven by the `ken_*` family of SSE events, which `handleNolanEvent` consumes.
+ * driven by the `nolan_*` family of SSE events, which `handleNolanEvent` consumes.
  *
  * The hook owns no transcript array of its own — it appends/updates Nolan bubbles
  * through the App's `setItems` (so Nolan's messages interleave with the build
@@ -32,7 +32,7 @@ export interface NolanMentor {
   /** Completed thinking time (ms) from earlier spans in this run. */
   nolanThinkingAccumMs: number;
   /**
-   * Handle one `ken_*` SSE event. Returns true when the event belonged to Nolan
+   * Handle one `nolan_*` SSE event. Returns true when the event belonged to Nolan
    * and was consumed, so the caller can early-return; false for anything else.
    */
   handleNolanEvent: (e: SidecarEvent) => boolean;

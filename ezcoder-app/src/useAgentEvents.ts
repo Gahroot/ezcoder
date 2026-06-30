@@ -114,7 +114,7 @@ function pickDoneVerb(toolsUsed: ReadonlySet<string>): string {
 export interface AgentEventsDeps {
   setItems: Dispatch<SetStateAction<Item[]>>;
   nextId: () => number;
-  /** Nolan (mentor) event delegate — consulted first; ken events early-return. */
+  /** Nolan (mentor) event delegate — consulted first; nolan events early-return. */
   handleNolanEvent: (e: SidecarEvent) => boolean;
 
   setState: Dispatch<SetStateAction<AgentState | null>>;
@@ -146,7 +146,7 @@ export interface AgentEventsDeps {
 }
 
 export interface AgentEvents {
-  /** Handle one SSE frame (ken events delegate out, everything else handled here). */
+  /** Handle one SSE frame (nolan events delegate out, everything else handled here). */
   handleEvent: (e: SidecarEvent) => void;
   /** Append a finished transcript item (used by App's submit/etc. too). */
   pushItem: (item: Item) => void;
@@ -749,7 +749,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           setTasks((d.tasks as BackgroundTask[] | undefined) ?? []);
           break;
 
-        // Nolan (mentor) events (`ken_*`) are handled by the useNolanMentor hook via
+        // Nolan (mentor) events (`nolan_*`) are handled by the useNolanMentor hook via
         // the early-return guard at the top of this handler.
       }
     },

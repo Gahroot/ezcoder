@@ -149,7 +149,7 @@ export type Item =
     }
   | { kind: "assistant"; id: number; text: string }
   // Nolan Grout (mentor agent) reply — magenta-tinted bubble + "Nolan Grout" badge,
-  // streamed from the ken_* SSE events. Never mistaken for EZ Coder.
+  // streamed from the nolan_* SSE events. Never mistaken for EZ Coder.
   | { kind: "ken"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
   | { kind: "error"; id: number; text: string }
@@ -226,8 +226,8 @@ function hasDraggedFiles(dataTransfer: DataTransfer | null): boolean {
 function App(): React.ReactElement {
   const [items, setItems] = useState<Item[]>([]);
   // Nolan Grout (mentor agent): own running flag, token/thinking metrics, streaming
-  // bubble, and `ken_*` SSE handling. Lives in its own hook; App just consumes
-  // the state for rendering and delegates ken events to `handleNolanEvent`.
+  // bubble, and `nolan_*` SSE handling. Lives in its own hook; App just consumes
+  // the state for rendering and delegates nolan events to `handleNolanEvent`.
   const {
     nolanRunning,
     nolanTokens,
@@ -1025,12 +1025,12 @@ function App(): React.ReactElement {
   // with it (case-insensitive, word-boundary so `@kennedy.ts` still picks files),
   // Nolan is "active": the file picker is suppressed and the input is tinted in
   // Nolan's color with a shimmering marker, so it's obvious the message goes to Nolan.
-  const nolanActive = /^@ken\b/i.test(input.trimStart());
+  const nolanActive = /^@nolan\b/i.test(input.trimStart());
   // Split the input for the `@Nolan` highlight overlay: any leading whitespace,
   // the literal `@Nolan` token (preserving the user's casing), then the rest. Only
   // the token shimmers; lead+rest render in the normal input color.
   const nolanInputParts = (() => {
-    const m = /^(\s*)(@ken)/i.exec(input);
+    const m = /^(\s*)(@nolan)/i.exec(input);
     if (!m) return null;
     return { lead: m[1], token: m[2], rest: input.slice(m[1].length + m[2].length) };
   })();
@@ -1334,8 +1334,8 @@ function App(): React.ReactElement {
 
     // `@Nolan <prompt>` (case-insensitive, optional colon) routes to Nolan Grout, the
     // read-only mentor agent — NOT EZ Coder. Nolan runs concurrently with any
-    // build run; his reply streams into a magenta bubble via ken_* events.
-    const nolanMatch = /^@ken\b:?\s*/i.exec(trimmed);
+    // build run; his reply streams into a magenta bubble via nolan_* events.
+    const nolanMatch = /^@nolan\b:?\s*/i.exec(trimmed);
     if (nolanMatch) {
       const question = trimmed.slice(nolanMatch[0].length).trim();
       if (!question) return;
