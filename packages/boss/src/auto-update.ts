@@ -9,7 +9,7 @@ const updater = createAutoUpdater({
   packageName: "@prestyj/boss",
   stateFilePath: () => path.join(os.homedir(), ".ezcoder", "boss", "update-state.json"),
   periodicMessage: ({ currentVersion, latestVersion, updateCommand }) =>
-    `Ken just pushed a fresh update — ${currentVersion} → ${latestVersion}! Restart ezboss to grab it (or run ${updateCommand} if you can't wait).`,
+    `Nolan just pushed a fresh update — ${currentVersion} → ${latestVersion}! Restart ezboss to grab it (or run ${updateCommand} if you can't wait).`,
 });
 
 export const checkAndAutoUpdate = updater.checkAndAutoUpdate;

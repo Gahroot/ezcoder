@@ -24,7 +24,7 @@ Verified live end-to-end against the deployed worker:
 ## 1. Publish the standalone-SDK packages (BLOCKED on credentials)
 
 For each, the artifact is already built and locally verified. The blocker is that
-the autonomous agent doesn't have publish credentials. After Ken runs each
+the autonomous agent doesn't have publish credentials. After Nolan runs each
 publish step ONCE, end users can install via the platform's standard flow.
 
 ### Python → PyPI
@@ -228,7 +228,7 @@ Estimated effort: ~1 day. Sentry's pattern for reference:
   stderr gets the warning. Could send a special "drops" record so the
   dashboard knows.
 - **`auto-update.test.ts` drift in ezcoder** — pre-existing test failure,
-  expects "Updating" but source says "Ken just shipped". 1-line fix.
+  expects "Updating" but source says "Nolan just shipped". 1-line fix.
 - **`ezeditor` lint errors** — pre-existing in another package, unrelated
   to pixel work. Fix or wave away.
 
@@ -256,5 +256,5 @@ If you're a coding agent that just picked this up:
 2. **Read `packages/pixel-server/migrations/0001_init.sql`** for the data model
 3. **Run the existing tests** in each package to confirm everything green
 4. **Pick one item from sections 1–6 above** and ship it
-5. **Don't ship "maybes"** — Ken's repeated rule. Either verify end-to-end
+5. **Don't ship "maybes"** — Nolan's repeated rule. Either verify end-to-end
    against the live worker, or be explicit about what isn't verified.

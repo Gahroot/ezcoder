@@ -1,9 +1,9 @@
 import { isValidElement, type ReactNode } from "react";
 
-// Pure helpers behind Ken's "Send to GG Coder" button. Kept dependency-free (no
+// Pure helpers behind Nolan's "Send to EZ Coder" button. Kept dependency-free (no
 // Tauri/agent imports) so they're unit-testable in a node env and reusable.
 // ReactMarkdown hands the `pre` override a `<code class="language-xxx">…</code>`
-// child: `codeLanguage` decides whether the fenced block becomes a Ken prompt
+// child: `codeLanguage` decides whether the fenced block becomes a Nolan prompt
 // button (language === "prompt"); `codeNodeText` extracts the exact body sent.
 
 /** Extract the raw text from a fenced block's `<code>` child node tree. */

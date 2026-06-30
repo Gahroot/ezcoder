@@ -26,9 +26,9 @@
   --user-text: #818cf8;
   --user-bg: #313a49;
 
-  /* Ken Kai (mentor agent) — soft cyan/green. Single source of truth with
-     theme.ken in theme.ts; both MUST match or the inline-styled @Ken input
-     drifts from the CSS-styled chat bubbles. Marks every Ken element. */
+  /* Nolan Grout (mentor agent) — soft cyan/green. Single source of truth with
+     theme.ken in theme.ts; both MUST match or the inline-styled @Nolan input
+     drifts from the CSS-styled chat bubbles. Marks every Nolan element. */
   --ken: #5ad1e6;
 
   /* Shape system (Linear capsule-vs-card + Warp three radii). */
@@ -1745,16 +1745,16 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* `@Ken` prompt bubble: tinted in Ken's color (matching his replies + the input
+/* `@Nolan` prompt bubble: tinted in Nolan's color (matching his replies + the input
    highlight) so the transcript shows this message went to the mentor, not GG
-   Coder. A faint Ken-tinted fill keeps it readable on the right edge. */
+   Coder. A faint Nolan-tinted fill keeps it readable on the right edge. */
 .user-msg.user-ken {
   color: var(--ken);
   background: color-mix(in srgb, var(--ken) 12%, var(--user-bg));
 }
-/* "Sent to GG Coder" bubble (from a Ken prompt-block button): same faint Ken
-   tint as a @Ken bubble, with the shimmer label carrying Ken's color. */
-.user-msg.user-ken-sent {
+/* "Sent to EZ Coder" bubble (from a Nolan prompt-block button): same faint Nolan
+   tint as a @Nolan bubble, with the shimmer label carrying Nolan's color. */
+.user-msg.user-nolan-sent {
   background: color-mix(in srgb, var(--ken) 12%, var(--user-bg));
 }
 
@@ -2025,29 +2025,29 @@ body {
   border-color: var(--border-strong);
   background: var(--surface-2);
 }
-/* Ken Kai (mentor agent): the whole reply is tinted in Ken's color — that tint
-   IS the only signal it's Ken, not GG Coder. No border line, no badge. Color the
+/* Nolan Grout (mentor agent): the whole reply is tinted in Nolan's color — that tint
+   IS the only signal it's Nolan, not EZ Coder. No border line, no badge. Color the
    markdown text and its inline elements (headings, list markers, bold, links),
    but leave the runnable-prompt block to its own styling below. */
-.ken-msg .assistant-text,
-.ken-msg .assistant-text .markdown,
-.ken-msg .assistant-text .markdown :is(p, li, h1, h2, h3, h4, strong, em, blockquote, code) {
+.nolan-msg .assistant-text,
+.nolan-msg .assistant-text .markdown,
+.nolan-msg .assistant-text .markdown :is(p, li, h1, h2, h3, h4, strong, em, blockquote, code) {
   color: var(--ken);
 }
-.ken-msg .assistant-text .markdown a {
+.nolan-msg .assistant-text .markdown a {
   color: var(--ken);
   text-decoration-color: color-mix(in srgb, var(--ken) 50%, transparent);
 }
-/* Ken's activity bar reuses the GG Coder ActivityBar's running statusrow as-is
+/* Nolan's activity bar reuses the EZ Coder ActivityBar's running statusrow as-is
    (same top border, padding, spinner, layout, meta readout) so it's the same
-   control aligned to what we have, just tinted to Ken. Only the spinner glow is
-   re-tinted from brand-blue to Ken's color. */
-.ken-spinner {
+   control aligned to what we have, just tinted to Nolan. Only the spinner glow is
+   re-tinted from brand-blue to Nolan's color. */
+.nolan-spinner {
   text-shadow: 0 0 8px color-mix(in srgb, var(--ken) 55%, transparent);
 }
 
-/* Ken's runnable-prompt block: Ken-tinted, with a Send-to-GG-Coder button. */
-.markdown .ken-prompt-block {
+/* Nolan's runnable-prompt block: Nolan-tinted, with a Send-to-GG-Coder button. */
+.markdown .nolan-prompt-block {
   margin: 0.6em 0;
   /* Neutral card (no pink): a subtle raised surface with the standard border,
      so the prompt reads as an actionable block without the heavy magenta tint. */
@@ -2056,7 +2056,7 @@ body {
   background: var(--surface-1);
   overflow: hidden;
 }
-.markdown .ken-prompt-body {
+.markdown .nolan-prompt-body {
   margin: 0;
   padding: 12px 14px;
   background: transparent;
@@ -2071,9 +2071,9 @@ body {
   user-select: text;
   -webkit-user-select: text;
 }
-/* Send button: neutral surface, standard border, with the Ken color reserved
+/* Send button: neutral surface, standard border, with the Nolan color reserved
    for the text + icon only (the accent, not the whole button). No pink fill. */
-.markdown .ken-prompt-send {
+.markdown .nolan-prompt-send {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2093,13 +2093,13 @@ body {
     border-color var(--t-fast),
     background var(--t-fast);
 }
-.markdown .ken-prompt-send:hover:not(:disabled) {
+.markdown .nolan-prompt-send:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-1);
 }
 /* Sent: settles to a quiet confirmed state in success green, no longer the
-   call-to-action Ken accent. */
-.markdown .ken-prompt-send.sent {
+   call-to-action Nolan accent. */
+.markdown .nolan-prompt-send.sent {
   color: var(--success);
   cursor: default;
   opacity: 0.85;
@@ -2463,9 +2463,9 @@ body {
   background: transparent;
 }
 
-/* `@Ken` active: the textarea text goes transparent (caret stays via caret-color)
-   so only the aligned highlight overlay shows, with the leading `@Ken` shimmering
-   in Ken's color. This is the signal the message is addressed to the mentor. */
+/* `@Nolan` active: the textarea text goes transparent (caret stays via caret-color)
+   so only the aligned highlight overlay shows, with the leading `@Nolan` shimmering
+   in Nolan's color. This is the signal the message is addressed to the mentor. */
 .input-stack .input.input-ken {
   color: transparent;
   caret-color: var(--ken);
@@ -2473,7 +2473,7 @@ body {
 .input-stack .input.input-ken::placeholder {
   color: var(--text-dim);
 }
-.ken-input-highlight {
+.nolan-input-highlight {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -2502,11 +2502,11 @@ body {
   max-height: 40vh;
   color: var(--user-text);
 }
-/* The `@Ken` token is a shimmer span, which otherwise renders at font-weight 600.
+/* The `@Nolan` token is a shimmer span, which otherwise renders at font-weight 600.
    In the input it MUST match the textarea's exact glyph metrics (normal weight,
    inherited mono) or its advance width drifts from the real text and the caret
    lands away from the visible end. Force it to inherit the input's metrics. */
-.ken-input-highlight .shimmer-text {
+.nolan-input-highlight .shimmer-text {
   font: inherit;
   font-weight: inherit;
   letter-spacing: inherit;
@@ -3073,7 +3073,7 @@ body {
   color: var(--user-text);
   font-family: var(--mono);
   font-size: 14px;
-  /* Pin every text-metric property explicitly so the @Ken highlight overlay (a
+  /* Pin every text-metric property explicitly so the @Nolan highlight overlay (a
      <div>) and this <textarea> compute IDENTICAL glyph advance. Browsers apply
      different UA defaults for kerning/ligatures/spacing to form controls vs
      divs, which otherwise drifts the caret from the visible overlay text by a

@@ -812,10 +812,10 @@ async fn agent_cancel(
     Ok(())
 }
 
-/// Proxy: ask Ken Kai (the read-only mentor agent). Reply streams back via the
-/// `agent-event` event with `ken_`-prefixed types. Lazily boots Ken's session.
+/// Proxy: ask Nolan Grout (the read-only mentor agent). Reply streams back via the
+/// `agent-event` event with `ken_`-prefixed types. Lazily boots Nolan's session.
 #[tauri::command]
-async fn agent_ken_prompt(
+async fn agent_nolan_prompt(
     webview: WebviewWindow,
     client: State<'_, reqwest::Client>,
     text: String,
@@ -832,9 +832,9 @@ async fn agent_ken_prompt(
     Ok(())
 }
 
-/// Proxy: cancel Ken's in-flight run (leaves GG Coder's run untouched).
+/// Proxy: cancel Nolan's in-flight run (leaves EZ Coder's run untouched).
 #[tauri::command]
-async fn agent_ken_cancel(
+async fn agent_nolan_cancel(
     webview: WebviewWindow,
     client: State<'_, reqwest::Client>,
 ) -> Result<(), String> {
@@ -3009,8 +3009,8 @@ pub fn run() {
             agent_state,
             agent_prompt,
             agent_cancel,
-            agent_ken_prompt,
-            agent_ken_cancel,
+            agent_nolan_prompt,
+            agent_nolan_cancel,
             agent_accept_plan,
             agent_new_session,
             agent_history,

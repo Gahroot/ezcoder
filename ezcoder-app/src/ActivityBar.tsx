@@ -3,7 +3,7 @@ import { theme } from "./theme";
 
 // Braille rotation spinner — the native language of CLI coding tools (ora,
 // npm, cargo). Smooth, monospace, and unmistakably "ours" rather than the
-// Matrix-flavored sparkle it replaces. Exported so Ken's activity row spins
+// Matrix-flavored sparkle it replaces. Exported so Nolan's activity row spins
 // with the exact same frames (aligned, not a separate visual language).
 export const SPINNER_FRAMES = [
   "\u280b",

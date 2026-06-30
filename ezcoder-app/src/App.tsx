@@ -4,8 +4,8 @@ import {
   waitForReady,
   getState,
   sendPrompt,
-  sendKenPrompt,
-  cancelKen,
+  sendNolanPrompt,
+  cancelNolan,
   cancel,
   newSession,
   cycleThinking,
@@ -41,8 +41,8 @@ import {
   type PromptSegment,
 } from "./agent";
 import { ActivityBar } from "./ActivityBar";
-import { KenActivityBar } from "./KenActivityBar";
-import { useKenMentor } from "./useKenMentor";
+import { NolanActivityBar } from "./NolanActivityBar";
+import { useNolanMentor } from "./useNolanMentor";
 import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEvents";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
@@ -84,15 +84,15 @@ import { toast } from "./toast";
 import { fileToPending, toWire, type PendingAttachment } from "./attachments";
 import "./App.css";
 
-const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Ken for help";
+const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Nolan for help";
 const INPUT_PLACEHOLDERS = [
   DEFAULT_INPUT_PLACEHOLDER,
-  "Need a second opinion? Ask @Ken",
-  "Stuck on what to do next? Ask @Ken",
+  "Need a second opinion? Ask @Nolan",
+  "Stuck on what to do next? Ask @Nolan",
   DEFAULT_INPUT_PLACEHOLDER,
-  "Want a second set of eyes? Ask @Ken",
-  "Unsure how to proceed? Ask @Ken",
-  "Need a quick review? Ask @Ken",
+  "Want a second set of eyes? Ask @Nolan",
+  "Unsure how to proceed? Ask @Nolan",
+  "Need a quick review? Ask @Nolan",
 ] as const;
 const RUNNING_INPUT_PLACEHOLDERS = [
   "Agent is working. Add a follow-up if you want",
@@ -117,7 +117,7 @@ function shufflePlaceholderFrame(target: string, frame: number): string {
 
 // ── Transcript model ───────────────────────────────────────
 // Tool activity lives in the pinned LiveToolPanel, never in the transcript.
-// Exported (type-only) so the Ken mentor hook can produce/typecheck ken + error
+// Exported (type-only) so the Nolan mentor hook can produce/typecheck ken + error
 // transcript items without a runtime import cycle.
 export type Item =
   // `command` marks a workflow slash command — rendered as just the short
@@ -138,18 +138,18 @@ export type Item =
       // True while this message is still waiting in the mid-run steering queue.
       // Rendered dimmed; cleared at run_end once the agent has consumed it.
       queued?: boolean;
-      // True when this prompt was addressed to Ken (`@Ken …`). Renders the bubble
-      // in Ken's color so the transcript shows it went to the mentor, not GG Coder.
+      // True when this prompt was addressed to Nolan (`@Nolan …`). Renders the bubble
+      // in Nolan's color so the transcript shows it went to the mentor, not EZ Coder.
       ken?: boolean;
-      // True when this bubble came from clicking a "Send to GG Coder" button on
-      // one of Ken's recommended prompts. Renders as a shimmering "Sent to GG
-      // Coder" label in Ken's color (like a slash command shows `/name`), instead
-      // of the full prompt body that was actually sent to GG Coder.
-      kenSent?: boolean;
+      // True when this bubble came from clicking a "Send to EZ Coder" button on
+      // one of Nolan's recommended prompts. Renders as a shimmering "Sent to GG
+      // Coder" label in Nolan's color (like a slash command shows `/name`), instead
+      // of the full prompt body that was actually sent to EZ Coder.
+      nolanSent?: boolean;
     }
   | { kind: "assistant"; id: number; text: string }
-  // Ken Kai (mentor agent) reply — magenta-tinted bubble + "Ken Kai" badge,
-  // streamed from the ken_* SSE events. Never mistaken for GG Coder.
+  // Nolan Grout (mentor agent) reply — magenta-tinted bubble + "Nolan Grout" badge,
+  // streamed from the ken_* SSE events. Never mistaken for EZ Coder.
   | { kind: "ken"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
   | { kind: "error"; id: number; text: string }
@@ -225,18 +225,18 @@ function hasDraggedFiles(dataTransfer: DataTransfer | null): boolean {
 
 function App(): React.ReactElement {
   const [items, setItems] = useState<Item[]>([]);
-  // Ken Kai (mentor agent): own running flag, token/thinking metrics, streaming
+  // Nolan Grout (mentor agent): own running flag, token/thinking metrics, streaming
   // bubble, and `ken_*` SSE handling. Lives in its own hook; App just consumes
-  // the state for rendering and delegates ken events to `handleKenEvent`.
+  // the state for rendering and delegates ken events to `handleNolanEvent`.
   const {
-    kenRunning,
-    kenTokens,
-    kenRunStartTs,
-    kenIsThinking,
-    kenThinkingStartTs,
-    kenThinkingAccumMs,
-    handleKenEvent,
-  } = useKenMentor({ setItems, nextId });
+    nolanRunning,
+    nolanTokens,
+    nolanRunStartTs,
+    nolanIsThinking,
+    nolanThinkingStartTs,
+    nolanThinkingAccumMs,
+    handleNolanEvent,
+  } = useNolanMentor({ setItems, nextId });
   const [input, setInput] = useState("");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [displayPlaceholder, setDisplayPlaceholder] = useState(DEFAULT_INPUT_PLACEHOLDER);
@@ -721,7 +721,7 @@ function App(): React.ReactElement {
   }, []);
 
   // Build-session SSE handling + assistant-streaming helpers live in the
-  // useAgentEvents hook (mirrors useKenMentor). It owns the event machine's
+  // useAgentEvents hook (mirrors useNolanMentor). It owns the event machine's
   // private refs + the streaming helpers; App keeps owning the build-session
   // state (its render + other handlers use it) and passes the setters +
   // cross-cutting refs in. App consumes `handleEvent` (for the SSE subscription)
@@ -729,7 +729,7 @@ function App(): React.ReactElement {
   const { handleEvent, pushItem, endStreamingText } = useAgentEvents({
     setItems,
     nextId,
-    handleKenEvent,
+    handleNolanEvent,
     setState,
     setTasks,
     setProjectTasks,
@@ -841,8 +841,8 @@ function App(): React.ReactElement {
             // A resumed compacted session shows the quiet compaction notice in
             // place of the raw summary body (counts aren't persisted).
             if (h.compacted) return { kind: "compaction", id: nextId(), status: "done" };
-            // Persisted Ken (mentor) turns: his reply restores as a Ken bubble,
-            // the `@Ken` question as a Ken-tinted user bubble (matches live).
+            // Persisted Nolan (mentor) turns: his reply restores as a Nolan bubble,
+            // the `@Nolan` question as a Nolan-tinted user bubble (matches live).
             if (h.ken && h.role === "assistant") return { kind: "ken", id: nextId(), text: h.text };
             if (h.ken && h.role === "user")
               return { kind: "user", id: nextId(), text: h.text, ken: true };
@@ -1021,23 +1021,23 @@ function App(): React.ReactElement {
   // Clamp so a shrinking match list never points past the end.
   const clampedSlashIndex = slashMatches.length > 0 ? slashIndex % slashMatches.length : 0;
 
-  // `@Ken` is the mentor-agent address, not a file mention. When the input leads
+  // `@Nolan` is the mentor-agent address, not a file mention. When the input leads
   // with it (case-insensitive, word-boundary so `@kennedy.ts` still picks files),
-  // Ken is "active": the file picker is suppressed and the input is tinted in
-  // Ken's color with a shimmering marker, so it's obvious the message goes to Ken.
-  const kenActive = /^@ken\b/i.test(input.trimStart());
-  // Split the input for the `@Ken` highlight overlay: any leading whitespace,
-  // the literal `@Ken` token (preserving the user's casing), then the rest. Only
+  // Nolan is "active": the file picker is suppressed and the input is tinted in
+  // Nolan's color with a shimmering marker, so it's obvious the message goes to Nolan.
+  const nolanActive = /^@ken\b/i.test(input.trimStart());
+  // Split the input for the `@Nolan` highlight overlay: any leading whitespace,
+  // the literal `@Nolan` token (preserving the user's casing), then the rest. Only
   // the token shimmers; lead+rest render in the normal input color.
-  const kenInputParts = (() => {
+  const nolanInputParts = (() => {
     const m = /^(\s*)(@ken)/i.exec(input);
     if (!m) return null;
     return { lead: m[1], token: m[2], rest: input.slice(m[1].length + m[2].length) };
   })();
   // `@`-mention picker: open whenever a mention token is active and the search
   // returned at least one file. Clamp the highlighted row to the result count.
-  // Never open while `@Ken` is active — that token addresses Ken, not a file.
-  const mentionOpen = mention !== null && fileMatches.length > 0 && !kenActive;
+  // Never open while `@Nolan` is active — that token addresses Nolan, not a file.
+  const mentionOpen = mention !== null && fileMatches.length > 0 && !nolanActive;
   const clampedFileIndex = fileMatches.length > 0 ? fileIndex % fileMatches.length : 0;
   // Footer background-tasks indicator only shows while something is actually
   // running (exited tasks shouldn't keep the bar item around).
@@ -1094,9 +1094,9 @@ function App(): React.ReactElement {
   }
 
   // Debounced file search whenever the active mention query changes. Skipped when
-  // `@Ken` is active so typing `@ken` never spawns a file lookup or picker.
+  // `@Nolan` is active so typing `@ken` never spawns a file lookup or picker.
   useEffect(() => {
-    if (mention === null || kenActive) {
+    if (mention === null || nolanActive) {
       setFileMatches([]);
       return;
     }
@@ -1113,7 +1113,7 @@ function App(): React.ReactElement {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [mention, kenActive]);
+  }, [mention, nolanActive]);
 
   // Pick a file: drop the typed `@query` from the input, add the file as a chip
   // (deduped), and restore the caret where the token was. The path lives in chip
@@ -1161,16 +1161,16 @@ function App(): React.ReactElement {
     void sendPrompt(trimmed);
   }
 
-  // Click handler for the "Send to GG Coder" button on Ken's recommended prompts.
-  // Pushes a shimmering "Sent to GG Coder" user bubble (the full prompt body went
-  // to GG Coder, but the transcript shows the short Ken-colored label, like a
+  // Click handler for the "Send to EZ Coder" button on Nolan's recommended prompts.
+  // Pushes a shimmering "Sent to EZ Coder" user bubble (the full prompt body went
+  // to EZ Coder, but the transcript shows the short Nolan-colored label, like a
   // slash command shows `/name`), then sends the prompt to the build session.
-  const sendKenRecommendedPrompt = useCallback(
+  const sendNolanRecommendedPrompt = useCallback(
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || !readyRef.current) return;
       stickToBottomRef.current = true;
-      pushItem({ kind: "user", id: nextId(), text: trimmed, kenSent: true });
+      pushItem({ kind: "user", id: nextId(), text: trimmed, nolanSent: true });
       endStreamingText();
       void sendPrompt(trimmed).catch(() => {});
     },
@@ -1332,12 +1332,12 @@ function App(): React.ReactElement {
     if (!readyRef.current) return;
     if (!trimmed && attachments.length === 0 && mentionedPaths.length === 0) return;
 
-    // `@Ken <prompt>` (case-insensitive, optional colon) routes to Ken Kai, the
-    // read-only mentor agent — NOT GG Coder. Ken runs concurrently with any
+    // `@Nolan <prompt>` (case-insensitive, optional colon) routes to Nolan Grout, the
+    // read-only mentor agent — NOT EZ Coder. Nolan runs concurrently with any
     // build run; his reply streams into a magenta bubble via ken_* events.
-    const kenMatch = /^@ken\b:?\s*/i.exec(trimmed);
-    if (kenMatch) {
-      const question = trimmed.slice(kenMatch[0].length).trim();
+    const nolanMatch = /^@ken\b:?\s*/i.exec(trimmed);
+    if (nolanMatch) {
+      const question = trimmed.slice(nolanMatch[0].length).trim();
       if (!question) return;
       recordHistory(trimmed);
       stickToBottomRef.current = true;
@@ -1347,7 +1347,7 @@ function App(): React.ReactElement {
       setMention(null);
       setMentionedPaths([]);
       setEnhancement(null);
-      void sendKenPrompt(question);
+      void sendNolanPrompt(question);
       return;
     }
 
@@ -1749,7 +1749,7 @@ function App(): React.ReactElement {
                   {`\u273b ${status}`}
                 </div>
               ))}
-            <PromptSendProvider value={sendKenRecommendedPrompt}>
+            <PromptSendProvider value={sendNolanRecommendedPrompt}>
               {items.map((it) => (
                 <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
               ))}
@@ -1759,21 +1759,21 @@ function App(): React.ReactElement {
       </div>
 
       <div className="liveregion">
-        {kenRunning && (
-          <KenActivityBar
-            runStartTs={kenRunStartTs}
-            tokens={kenTokens}
-            isThinking={kenIsThinking}
-            thinkingStartTs={kenThinkingStartTs}
-            thinkingAccumMs={kenThinkingAccumMs}
-            onCancel={() => void cancelKen()}
+        {nolanRunning && (
+          <NolanActivityBar
+            runStartTs={nolanRunStartTs}
+            tokens={nolanTokens}
+            isThinking={nolanIsThinking}
+            thinkingStartTs={nolanThinkingStartTs}
+            thinkingAccumMs={nolanThinkingAccumMs}
+            onCancel={() => void cancelNolan()}
           />
         )}
         {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
-        {/* Ken's bar REPLACES the main bar while Ken runs and the build is idle —
-            otherwise the idle "Ready for work" line stacks under Ken's spinner.
-            When the build is also running, both bars show (Ken on top). */}
-        {(running || !kenRunning) && (
+        {/* Nolan's bar REPLACES the main bar while Nolan runs and the build is idle —
+            otherwise the idle "Ready for work" line stacks under Nolan's spinner.
+            When the build is also running, both bars show (Nolan on top). */}
+        {(running || !nolanRunning) && (
           <ActivityBar
             running={running}
             tokens={tokens}
@@ -1847,23 +1847,23 @@ function App(): React.ReactElement {
                 onDone={onEnhanceAnimDone}
               />
             )}
-            {/* `@Ken` active: a textarea can't color just one token, so we mirror
-                the input in an aligned overlay where the leading `@Ken` shimmers
-                in Ken's color. The textarea text below is made transparent (caret
+            {/* `@Nolan` active: a textarea can't color just one token, so we mirror
+                the input in an aligned overlay where the leading `@Nolan` shimmers
+                in Nolan's color. The textarea text below is made transparent (caret
                 stays visible) so only this styled copy shows. Metrics match
                 `.input` 1:1 so wrapping/caret line up. */}
-            {kenActive && kenInputParts && (
-              <div className="ken-input-highlight" aria-hidden="true">
-                {kenInputParts.lead}
+            {nolanActive && nolanInputParts && (
+              <div className="nolan-input-highlight" aria-hidden="true">
+                {nolanInputParts.lead}
                 <ShimmerText base={theme.ken} bright="#ffffff">
-                  {kenInputParts.token}
+                  {nolanInputParts.token}
                 </ShimmerText>
-                {kenInputParts.rest}
+                {nolanInputParts.rest}
               </div>
             )}
             <textarea
               ref={inputRef}
-              className={`input${enhanceAnim ? " input-anim" : ""}${kenActive ? " input-ken" : ""}`}
+              className={`input${enhanceAnim ? " input-anim" : ""}${nolanActive ? " input-ken" : ""}`}
               rows={1}
               // Lock the input while the dissolve→decode animation plays: the caret
               // is invisible, so typing would be silently discarded and Enter would
@@ -1937,11 +1937,11 @@ function App(): React.ReactElement {
                   e.preventDefault();
                   submit();
                 } else if (e.key === "Escape") {
-                  // Cancel the build if it's running; otherwise cancel Ken so the
+                  // Cancel the build if it's running; otherwise cancel Nolan so the
                   // "esc to cancel" on his bar actually works.
                   if (slashOpen) setInput("");
                   else if (running) void cancel();
-                  else if (kenRunning) void cancelKen();
+                  else if (nolanRunning) void cancelNolan();
                 }
               }}
               autoFocus
@@ -2151,14 +2151,14 @@ const TranscriptRow = memo(function TranscriptRow({
 }): React.ReactElement | null {
   switch (item.kind) {
     case "user":
-      if (item.kenSent) {
-        // Sent from a Ken "Send to GG Coder" button: show a shimmering "Sent to GG
-        // Coder" in Ken's color (like a slash command shows `/name`), not the
-        // full prompt body. The full body still went to GG Coder.
+      if (item.nolanSent) {
+        // Sent from a Nolan "Send to EZ Coder" button: show a shimmering "Sent to GG
+        // Coder" in Nolan's color (like a slash command shows `/name`), not the
+        // full prompt body. The full body still went to EZ Coder.
         return (
-          <div className="user-msg command labelled user-ken-sent">
+          <div className="user-msg command labelled user-nolan-sent">
             <span className="command-shimmer" style={{ color: theme.ken }}>
-              Sent to GG Coder
+              Sent to EZ Coder
             </span>
           </div>
         );
@@ -2233,12 +2233,12 @@ const TranscriptRow = memo(function TranscriptRow({
       );
     }
     case "ken":
-      // Ken Kai's reply: the whole bubble is tinted in Ken's color (dot + all
-      // text), which is the ONLY differentiator from a normal GG Coder reply.
+      // Nolan Grout's reply: the whole bubble is tinted in Nolan's color (dot + all
+      // text), which is the ONLY differentiator from a normal EZ Coder reply.
       // No badge, no byline. The Markdown component special-cases ```prompt
-      // fences into a "Send to GG Coder" button.
+      // fences into a "Send to EZ Coder" button.
       return (
-        <div className="assistant-msg ken-msg">
+        <div className="assistant-msg nolan-msg">
           <span className="assistant-dot" style={{ color: theme.ken }}>
             {DOT}
           </span>

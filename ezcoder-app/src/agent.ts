@@ -256,40 +256,40 @@ export async function cancel(): Promise<void> {
   }
 }
 
-// ── Ken Kai (mentor agent) ──────────────────────────────────
-// Ken is a second, read-only agent in this window. The user reaches him with
-// `@Ken …`; he reads GG Coder's transcript and hands back runnable prompts +
-// blunt mentorship. His replies stream over the SAME SSE channel as GG Coder's
+// ── Nolan Grout (mentor agent) ──────────────────────────────────
+// Nolan is a second, read-only agent in this window. The user reaches him with
+// `@Nolan …`; he reads EZ Coder's transcript and hands back runnable prompts +
+// blunt mentorship. His replies stream over the SAME SSE channel as EZ Coder's
 // but with `ken_`-prefixed event types, so the webview routes them to a separate
 // magenta bubble:
-//   ken_run_start { text }         — Ken started thinking
-//   ken_text_delta { text }        — streaming reply text
-//   ken_thinking_delta { text }    — streaming reasoning
-//   ken_tool_call_start/_update/_end — Ken's read-only tool activity
-//   ken_turn_end { … }            — a turn finished
-//   ken_run_end { cancelled? }     — Ken finished (or was cancelled)
-//   ken_error { message }          — Ken failed
+//   nolan_run_start { text }         — Nolan started thinking
+//   nolan_text_delta { text }        — streaming reply text
+//   nolan_thinking_delta { text }    — streaming reasoning
+//   nolan_tool_call_start/_update/_end — Nolan's read-only tool activity
+//   nolan_turn_end { … }            — a turn finished
+//   nolan_run_end { cancelled? }     — Nolan finished (or was cancelled)
+//   nolan_error { message }          — Nolan failed
 
-/** Ask Ken Kai. Fires the read-only mentor run; reply arrives via `ken_*`
- *  SSE events. Lazily boots Ken's session on first use. */
-export async function sendKenPrompt(text: string): Promise<void> {
+/** Ask Nolan Grout. Fires the read-only mentor run; reply arrives via `ken_*`
+ *  SSE events. Lazily boots Nolan's session on first use. */
+export async function sendNolanPrompt(text: string): Promise<void> {
   await logInfo(`ken prompt: ${text.slice(0, 80)}`);
   try {
     await waitForReady();
-    await invoke("agent_ken_prompt", { text });
+    await invoke("agent_nolan_prompt", { text });
   } catch (e) {
-    await logError(`agent_ken_prompt failed: ${String(e)}`);
+    await logError(`agent_nolan_prompt failed: ${String(e)}`);
     throw e;
   }
 }
 
-/** Cancel Ken's in-flight run (does not touch GG Coder's run). */
-export async function cancelKen(): Promise<void> {
+/** Cancel Nolan's in-flight run (does not touch EZ Coder's run). */
+export async function cancelNolan(): Promise<void> {
   try {
     await waitForReady();
-    await invoke("agent_ken_cancel");
+    await invoke("agent_nolan_cancel");
   } catch (e) {
-    await logError(`agent_ken_cancel failed: ${String(e)}`);
+    await logError(`agent_nolan_cancel failed: ${String(e)}`);
   }
 }
 
@@ -322,9 +322,9 @@ export interface HistoryEntry {
   /** True when this user message is a post-compaction summary marker, so the
    *  webview renders the quiet compaction notice instead of the summary body. */
   compacted?: boolean;
-  /** True when this entry is a persisted Ken Kai (mentor) turn: a `user` row is
-   *  the `@Ken` question, an `assistant` row is Ken's reply. Rendered in Ken's
-   *  color (user bubble tinted, assistant as a Ken bubble) on resume. */
+  /** True when this entry is a persisted Nolan Grout (mentor) turn: a `user` row is
+   *  the `@Nolan` question, an `assistant` row is Nolan's reply. Rendered in Nolan's
+   *  color (user bubble tinted, assistant as a Nolan bubble) on resume. */
   ken?: boolean;
   /** Tool-produced images rendered inline (same as live `images` items),
    *  reconstructed from ImageContent blocks in persisted tool results. */

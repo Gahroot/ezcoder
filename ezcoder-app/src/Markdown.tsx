@@ -104,27 +104,27 @@ function selectWordAtPoint(x: number, y: number): boolean {
 }
 
 /**
- * True once the surrounding Ken bubble has FINISHED streaming. While Ken is
- * still typing the prompt, this is false and the "Send to GG Coder" button is
+ * True once the surrounding Nolan bubble has FINISHED streaming. While Nolan is
+ * still typing the prompt, this is false and the "Send to EZ Coder" button is
  * withheld so the user can't fire a half-written prompt by accident. Defaults to
- * true so ordinary (non-streaming) renders — resumed history, GG Coder text —
+ * true so ordinary (non-streaming) renders — resumed history, EZ Coder text —
  * always show the button. Provided by Markdown; consumed by PromptBlock.
  */
 const PromptReadyContext = createContext(true);
 
 /**
- * Handler the "Send to GG Coder" button calls when clicked. App provides one
- * that pushes a shimmering "Sent to GG Coder" user bubble into the transcript
+ * Handler the "Send to EZ Coder" button calls when clicked. App provides one
+ * that pushes a shimmering "Sent to EZ Coder" user bubble into the transcript
  * (like a slash command renders) and then sends the prompt. Defaults to null, in
  * which case the button falls back to sending directly with no transcript row
  * (safe for any render outside App). */
 const PromptSendContext = createContext<((text: string) => void) | null>(null);
 
 /**
- * A Ken-recommended GG Coder prompt. Ken wraps every runnable prompt in a
+ * A Nolan-recommended EZ Coder prompt. Nolan wraps every runnable prompt in a
  * ```prompt fence; we render the body in a styled block with a "Send to GG
  * Coder" button that fires it into the build session exactly as if the user
- * typed it. The button only appears once Ken's reply has finished streaming
+ * typed it. The button only appears once Nolan's reply has finished streaming
  * (PromptReadyContext), and once sent it stays "Sent" so it's clear it landed.
  */
 function PromptBlock({ body }: { body: string }): React.ReactElement {
@@ -134,7 +134,7 @@ function PromptBlock({ body }: { body: string }): React.ReactElement {
   const send = useCallback(() => {
     const text = body.replace(/\n$/, "").trim();
     if (!text) return;
-    // Route through App so it can render the shimmering "Sent to GG Coder" user
+    // Route through App so it can render the shimmering "Sent to EZ Coder" user
     // bubble; fall back to a direct send if no handler is provided. Stays "Sent"
     // (disabled) afterward so the user can see it landed and can't double-fire.
     if (onSend) onSend(text);
@@ -142,18 +142,18 @@ function PromptBlock({ body }: { body: string }): React.ReactElement {
     setSent(true);
   }, [body, onSend]);
   return (
-    <div className="ken-prompt-block">
-      <pre className="ken-prompt-body">{body.replace(/\n$/, "")}</pre>
+    <div className="nolan-prompt-block">
+      <pre className="nolan-prompt-body">{body.replace(/\n$/, "")}</pre>
       {ready && (
         <button
           type="button"
-          className={`ken-prompt-send${sent ? " sent" : ""}`}
+          className={`nolan-prompt-send${sent ? " sent" : ""}`}
           onClick={send}
           disabled={sent}
-          title={sent ? "Sent to GG Coder" : "Send this prompt to GG Coder"}
+          title={sent ? "Sent to EZ Coder" : "Send this prompt to EZ Coder"}
         >
           {sent ? <Check size={12} /> : <CornerDownLeft size={12} />}
-          {sent ? "Sent" : "Send to GG Coder"}
+          {sent ? "Sent" : "Send to EZ Coder"}
         </button>
       )}
     </div>
@@ -162,8 +162,8 @@ function PromptBlock({ body }: { body: string }): React.ReactElement {
 
 /**
  * Dispatch for ReactMarkdown's `pre` override. Hook-free so the branch is safe:
- * a ```prompt fence (Ken's runnable-prompt contract) renders as a PromptBlock
- * with a "Send to GG Coder" button; everything else is a normal CodeBlock.
+ * a ```prompt fence (Nolan's runnable-prompt contract) renders as a PromptBlock
+ * with a "Send to EZ Coder" button; everything else is a normal CodeBlock.
  */
 function PreBlock({ children }: { children?: React.ReactNode }): React.ReactElement {
   if (codeLanguage(children) === "prompt") {
@@ -240,7 +240,7 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
  * Whether a marked block's raw text is a COMPLETE ```prompt fence (closing ```
  * present), as opposed to one still being streamed. marked auto-closes an open
  * fence into a code token at EOF, so a closed block's raw ends with ``` while a
- * still-streaming one ends with the body. This is what reveals Ken's "Send to GG
+ * still-streaming one ends with the body. This is what reveals Nolan's "Send to GG
  * Coder" button the instant the prompt finishes, not when his whole reply ends.
  */
 function isPromptBlockComplete(raw: string): boolean {
@@ -290,9 +290,9 @@ export const Markdown = memo(function Markdown({ children }: Props): React.React
   return (
     <div className="markdown">
       {blocks.map((block, index) => (
-        // A ```prompt block reveals its "Send to GG Coder" button as soon as ITS
+        // A ```prompt block reveals its "Send to EZ Coder" button as soon as ITS
         // own closing fence arrives (per-block), not when the whole reply ends —
-        // so the button shows right after Ken finishes the prompt even if he
+        // so the button shows right after Nolan finishes the prompt even if he
         // keeps talking after it.
         <MemoizedMarkdownBlock
           key={index}
@@ -304,6 +304,6 @@ export const Markdown = memo(function Markdown({ children }: Props): React.React
   );
 });
 
-/** Provider for the "Send to GG Coder" click handler. App wraps the transcript
+/** Provider for the "Send to EZ Coder" click handler. App wraps the transcript
  *  with this so prompt-block buttons push a transcript row + send. */
 export const PromptSendProvider = PromptSendContext.Provider;

@@ -1,19 +1,19 @@
 /**
- * Ken's context digest — assembled fresh on each `@Ken` question.
+ * Nolan's context digest — assembled fresh on each `@Nolan` question.
  *
- * The build session (GG Coder) and Ken are two separate `AgentSession` objects.
- * Ken never appears in GG Coder's transcript; on each question we read GG
+ * The build session (EZ Coder) and Nolan are two separate `AgentSession` objects.
+ * Nolan never appears in EZ Coder's transcript; on each question we read GG
  * Coder's `getMessages()`, distill it into a cheap text digest, and prepend it
- * to the user's question as Ken's prompt body. Ken's read-only tools fill any
+ * to the user's question as Nolan's prompt body. Nolan's read-only tools fill any
  * gap the digest misses (he can read the actual files or screenshot the UI).
  *
  * Kept pure + dependency-light so it's unit-testable without booting the sidecar
  * (which runs `main()` at import time).
  */
-import type { Message, ContentPart, ToolResult } from "@kenkaiiii/gg-ai";
+import type { Message, ContentPart, ToolResult } from "@prestyj/ai";
 
 /** How many of the most recent build-session messages to inline verbatim. */
-export const KEN_RECENT_MESSAGE_LIMIT = 20;
+export const NOLAN_RECENT_MESSAGE_LIMIT = 20;
 
 /** Marker the compactor prepends to its summary user-message. */
 const COMPACTION_SUMMARY_MARKER = "[Previous conversation summary]";
@@ -21,8 +21,8 @@ const COMPACTION_SUMMARY_MARKER = "[Previous conversation summary]";
 /** Max chars of any single message's rendered text in the digest. */
 const MESSAGE_CHAR_CAP = 1500;
 
-export interface KenDigestInput {
-  /** The user's `@Ken …` text (already stripped of the mention). */
+export interface NolanDigestInput {
+  /** The user's `@Nolan …` text (already stripped of the mention). */
   question: string;
   /** `collectProjectContext(cwd)` output — CLAUDE.md/AGENTS.md up the tree. */
   projectContext: string[];
@@ -73,7 +73,7 @@ function renderMessage(msg: Message): string | null {
 
   if (msg.role === "assistant") {
     if (typeof msg.content === "string") {
-      return msg.content.trim() ? `**GG Coder:** ${cap(msg.content)}` : null;
+      return msg.content.trim() ? `**EZ Coder:** ${cap(msg.content)}` : null;
     }
     const parts: string[] = [];
     const calls: string[] = [];
@@ -84,7 +84,7 @@ function renderMessage(msg: Message): string | null {
     const segments: string[] = [];
     if (parts.length > 0) segments.push(cap(parts.join("\n")));
     if (calls.length > 0) segments.push(`[tools: ${calls.join(", ")}]`);
-    return segments.length > 0 ? `**GG Coder:** ${segments.join(" ")}` : null;
+    return segments.length > 0 ? `**EZ Coder:** ${segments.join(" ")}` : null;
   }
 
   if (msg.role === "tool") {
@@ -110,11 +110,11 @@ function renderMessage(msg: Message): string | null {
 }
 
 /**
- * Build Ken's full context digest string. Pure — no I/O. The sidecar gathers the
+ * Build Nolan's full context digest string. Pure — no I/O. The sidecar gathers the
  * inputs (project context, git, messages) and calls this.
  */
-export function buildKenDigest(input: KenDigestInput): string {
-  const recentLimit = input.recentLimit ?? KEN_RECENT_MESSAGE_LIMIT;
+export function buildNolanDigest(input: NolanDigestInput): string {
+  const recentLimit = input.recentLimit ?? NOLAN_RECENT_MESSAGE_LIMIT;
   const platform = input.platform ?? process.platform;
 
   // Find the latest compaction summary; everything newer is "recent activity".
@@ -143,7 +143,7 @@ export function buildKenDigest(input: KenDigestInput): string {
   const sections: string[] = [];
 
   sections.push(
-    `## Who you are\nYou are Ken Kai, mentoring the user inside GG Coder. Your persona is in your system prompt. Below is what GG Coder and the user are working on.`,
+    `## Who you are\nYou are Nolan Grout, mentoring the user inside EZ Coder. Your persona is in your system prompt. Below is what EZ Coder and the user are working on.`,
   );
 
   const building: string[] = [];
@@ -160,7 +160,7 @@ export function buildKenDigest(input: KenDigestInput): string {
   }
 
   sections.push(
-    `## Recent activity (GG Coder and user)\n${
+    `## Recent activity (EZ Coder and user)\n${
       renderedRecent.length > 0 ? renderedRecent.join("\n\n") : "(no conversation yet)"
     }`,
   );

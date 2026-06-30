@@ -20,7 +20,7 @@ import type { LiveToolEntry } from "./LiveToolPanel";
 const ev = (type: string, data: Record<string, unknown> = {}): SidecarEvent =>
   ({ type, data }) as SidecarEvent;
 
-function setup(handleKenEvent: (e: SidecarEvent) => boolean = () => false) {
+function setup(handleNolanEvent: (e: SidecarEvent) => boolean = () => false) {
   let items: Item[] = [];
   let id = 0;
   const setItems = (u: Item[] | ((prev: Item[]) => Item[])): void => {
@@ -42,7 +42,7 @@ function setup(handleKenEvent: (e: SidecarEvent) => boolean = () => false) {
   const deps: AgentEventsDeps = {
     setItems: setItems as AgentEventsDeps["setItems"],
     nextId,
-    handleKenEvent,
+    handleNolanEvent,
     setState: noop as unknown as AgentEventsDeps["setState"],
     setTasks: noop as unknown as AgentEventsDeps["setTasks"],
     setProjectTasks: noop as unknown as AgentEventsDeps["setProjectTasks"],
@@ -134,14 +134,14 @@ describe("useAgentEvents", () => {
     expect(setTokens).toHaveBeenLastCalledWith(15);
   });
 
-  it("delegates ken_ events to handleKenEvent and does not handle them locally", () => {
-    const handleKenEvent = vi.fn(() => true);
-    const { hook, getItems, setRunning } = setup(handleKenEvent);
+  it("delegates ken_ events to handleNolanEvent and does not handle them locally", () => {
+    const handleNolanEvent = vi.fn(() => true);
+    const { hook, getItems, setRunning } = setup(handleNolanEvent);
     act(() => {
-      hook.result.current.handleEvent(ev("ken_text_delta", { text: "from ken" }));
-      hook.result.current.handleEvent(ev("ken_run_start"));
+      hook.result.current.handleEvent(ev("nolan_text_delta", { text: "from ken" }));
+      hook.result.current.handleEvent(ev("nolan_run_start"));
     });
-    expect(handleKenEvent).toHaveBeenCalledTimes(2);
+    expect(handleNolanEvent).toHaveBeenCalledTimes(2);
     // Nothing handled locally: no assistant item, run state untouched.
     expect(getItems()).toHaveLength(0);
     expect(setRunning).not.toHaveBeenCalled();

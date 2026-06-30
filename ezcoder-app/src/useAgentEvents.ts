@@ -20,7 +20,7 @@ import type { Item } from "./App";
 
 /**
  * Build-session SSE event handling + assistant-streaming helpers, extracted from
- * App.tsx (mirrors `useKenMentor`). This owns the event machine's PRIVATE refs
+ * App.tsx (mirrors `useNolanMentor`). This owns the event machine's PRIVATE refs
  * (the streaming bubble id, rAF buffer, per-run accumulators, sub-agent/compaction
  * group ids) and the streaming helpers, and exposes `handleEvent` for the SSE
  * subscription plus the two helpers App still calls directly (`pushItem`,
@@ -29,7 +29,7 @@ import type { Item } from "./App";
  * The build session's React state is genuinely shared with App's render and its
  * other handlers (hydrate, submit, onProjectChosen, plan accept), so rather than
  * relocating all of it, App keeps owning that state and passes the setters +
- * cross-cutting refs in via `deps` (the same pattern `useKenMentor` uses for
+ * cross-cutting refs in via `deps` (the same pattern `useNolanMentor` uses for
  * `setItems`/`nextId`). The handler logic is byte-for-byte the original — only
  * the previously in-scope identifiers now arrive through `deps`.
  */
@@ -66,7 +66,7 @@ function formatElapsed(ms: number): string {
   return r > 0 ? `${m}m ${r}s` : `${m}m`;
 }
 
-// Port of packages/ggcoder/src/ui/duration-summary.ts, adapted to the sidecar's
+// Port of packages/cli/src/ui/duration-summary.ts, adapted to the sidecar's
 // underscore tool names. Picks a contextual done-verb from which tools ran.
 function pickDoneVerb(toolsUsed: ReadonlySet<string>): string {
   const has = (name: string): boolean => toolsUsed.has(name);
@@ -114,8 +114,8 @@ function pickDoneVerb(toolsUsed: ReadonlySet<string>): string {
 export interface AgentEventsDeps {
   setItems: Dispatch<SetStateAction<Item[]>>;
   nextId: () => number;
-  /** Ken (mentor) event delegate — consulted first; ken events early-return. */
-  handleKenEvent: (e: SidecarEvent) => boolean;
+  /** Nolan (mentor) event delegate — consulted first; ken events early-return. */
+  handleNolanEvent: (e: SidecarEvent) => boolean;
 
   setState: Dispatch<SetStateAction<AgentState | null>>;
   setTasks: Dispatch<SetStateAction<BackgroundTask[]>>;
@@ -158,7 +158,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   const {
     setItems,
     nextId,
-    handleKenEvent,
+    handleNolanEvent,
     setState,
     setTasks,
     setProjectTasks,
@@ -292,9 +292,9 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
 
   const handleEvent = useCallback(
     (e: SidecarEvent) => {
-      // Ken (mentor) events are owned by the useKenMentor hook; delegate and
+      // Nolan (mentor) events are owned by the useNolanMentor hook; delegate and
       // early-return so they never touch the build-session handling below.
-      if (handleKenEvent(e)) return;
+      if (handleNolanEvent(e)) return;
       const d = e.data as Record<string, unknown>;
       switch (e.type) {
         case "ready":
@@ -484,7 +484,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
             );
           }
           // Update the entry in place to its done state — it stays in the pinned
-          // panel (mirrors ggcoder), it does NOT move into the transcript.
+          // panel (mirrors ezcoder), it does NOT move into the transcript.
           setLiveToolFeed((prev) =>
             prev.map((entry) =>
               entry.toolCallId === id
@@ -525,7 +525,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
             tokensRef.current += usage.outputTokens;
             setTokens(tokensRef.current);
           }
-          // Context-window usage (footer meter). Mirrors ggcoder: Anthropic has
+          // Context-window usage (footer meter). Mirrors ezcoder: Anthropic has
           // separate input/output limits so only the input side counts; every
           // other provider shares one window, so add the output too.
           if (usage) {
@@ -585,7 +585,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           setItems((prev) =>
             prev.map((it) => (it.kind === "user" && it.queued ? { ...it, queued: false } : it)),
           );
-          // Exit the tool panel (mirrors ggcoder).
+          // Exit the tool panel (mirrors ezcoder).
           setLiveToolFeed([]);
           // Safety: clear any lingering image-generation placeholders in case
           // tool_call_end didn't fire (e.g. hard cancel mid-fetch).
@@ -634,7 +634,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
               setPlanDone(new Set());
             }
             playSound("done");
-            // A run may have created/removed `.gg/commands/*.md` (e.g.
+            // A run may have created/removed `.ezcoder/commands/*.md` (e.g.
             // /setup-commit writing commit.md). Refresh so the top-right
             // commit button flips /setup-commit → /commit without a restart.
             void listCommands().then((cmds) => {
@@ -749,12 +749,12 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           setTasks((d.tasks as BackgroundTask[] | undefined) ?? []);
           break;
 
-        // Ken (mentor) events (`ken_*`) are handled by the useKenMentor hook via
+        // Nolan (mentor) events (`ken_*`) are handled by the useNolanMentor hook via
         // the early-return guard at the top of this handler.
       }
     },
     [
-      handleKenEvent,
+      handleNolanEvent,
       appendAssistant,
       pushItem,
       finalizeThinking,

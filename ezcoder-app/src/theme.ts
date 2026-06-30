@@ -45,12 +45,12 @@ export const theme = {
   userText: "#818cf8",
   userBackground: "#313a49",
 
-  // Ken Kai (mentor agent) — soft cyan. Used as the FULL text color of Ken's
-  // replies (and the @Ken active chip in the input), so it must read well as
+  // Nolan Grout (mentor agent) — soft cyan. Used as the FULL text color of Nolan's
+  // replies (and the @Nolan active chip in the input), so it must read well as
   // body text on the dark canvas: a lighter, calmer hue than the saturated
   // magenta it replaced (which vibrated as full paragraphs). Distinct from the
-  // GG Coder blue dot and the greener `info` teal — the color IS the only
-  // signal that a reply is Ken's, not GG Coder's.
+  // EZ Coder blue dot and the greener `info` teal — the color IS the only
+  // signal that a reply is Nolan's, not EZ Coder's.
   ken: "#5ad1e6",
 } as const;
 

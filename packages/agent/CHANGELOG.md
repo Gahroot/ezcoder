@@ -11,13 +11,13 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.1.1
+- @prestyj/ai@5.1.1
 
 ## 5.1.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.1.0
+- @prestyj/ai@5.1.0
 
 ## 5.0.0
 

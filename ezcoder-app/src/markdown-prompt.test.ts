@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { codeLanguage, codeNodeText } from "./markdown-prompt";
 
-// These two helpers are the core of the "Send to GG Coder" button: ReactMarkdown
+// These two helpers are the core of the "Send to EZ Coder" button: ReactMarkdown
 // hands the `pre` override a `<code class="language-xxx">…</code>` child.
-// codeLanguage decides whether the block becomes a Ken prompt button (lang ===
-// "prompt"); codeNodeText extracts the exact body that gets sent to GG Coder.
+// codeLanguage decides whether the block becomes a Nolan prompt button (lang ===
+// "prompt"); codeNodeText extracts the exact body that gets sent to EZ Coder.
 
 describe("codeLanguage (button trigger detection)", () => {
   it("detects a ```prompt fence (turns the block into the Send button)", () => {
@@ -36,7 +36,7 @@ describe("codeLanguage (button trigger detection)", () => {
   });
 });
 
-describe("codeNodeText (what actually gets sent to GG Coder)", () => {
+describe("codeNodeText (what actually gets sent to EZ Coder)", () => {
   it("extracts a plain string body", () => {
     const code = createElement("code", { className: "language-prompt" }, "Add a footer");
     expect(codeNodeText(code)).toBe("Add a footer");

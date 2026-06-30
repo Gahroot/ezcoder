@@ -57,17 +57,17 @@ interface DisplayItemPayload {
   item: CompletedItem;
 }
 
-/** Custom-entry kind for a Ken Kai (mentor agent) turn. Ken's advisory
- *  conversation is NOT part of the LLM message history (GG Coder never sees it),
+/** Custom-entry kind for a Nolan Grout (mentor agent) turn. Nolan's advisory
+ *  conversation is NOT part of the LLM message history (EZ Coder never sees it),
  *  but it's persisted alongside the build session so it survives resume. Stored
  *  as a `custom` entry with `parentId: null` so it is NEVER on the message DAG
  *  branch — this keeps it out of `getMessages()` AND avoids racing the build
- *  session's leaf pointer (Ken runs concurrently). `afterMessageCount` is the
+ *  session's leaf pointer (Nolan runs concurrently). `afterMessageCount` is the
  *  number of non-system messages that existed when the turn was recorded, used
- *  to interleave Ken turns back into the transcript chronologically. */
-export const KEN_TURN_CUSTOM_KIND = "ken_turn";
+ *  to interleave Nolan turns back into the transcript chronologically. */
+export const NOLAN_TURN_CUSTOM_KIND = "nolan_turn";
 
-export interface KenTurnPayload {
+export interface NolanTurnPayload {
   version: 1;
   question: string;
   reply: string;
@@ -477,12 +477,12 @@ export class SessionManager {
     });
   }
 
-  /** Read all persisted Ken turns in file order. Returns them regardless of
-   *  branch (Ken turns are not chained into the DAG), validated + normalized. */
-  getKenTurns(entries: SessionEntry[]): KenTurnPayload[] {
-    return entries.flatMap((entry): KenTurnPayload[] => {
-      if (entry.type !== "custom" || entry.kind !== KEN_TURN_CUSTOM_KIND) return [];
-      const p = entry.data as Partial<KenTurnPayload> | undefined;
+  /** Read all persisted Nolan turns in file order. Returns them regardless of
+   *  branch (Nolan turns are not chained into the DAG), validated + normalized. */
+  getNolanTurns(entries: SessionEntry[]): NolanTurnPayload[] {
+    return entries.flatMap((entry): NolanTurnPayload[] => {
+      if (entry.type !== "custom" || entry.kind !== NOLAN_TURN_CUSTOM_KIND) return [];
+      const p = entry.data as Partial<NolanTurnPayload> | undefined;
       if (p?.version === 1 && typeof p.question === "string" && typeof p.reply === "string") {
         return [
           {

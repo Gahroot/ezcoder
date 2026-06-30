@@ -11,13 +11,13 @@ function formatElapsed(ms: number): string {
 }
 
 interface Props {
-  /** Timestamp (ms) Ken's run began, or null when not running. */
+  /** Timestamp (ms) Nolan's run began, or null when not running. */
   runStartTs: number | null;
-  /** Accumulated output tokens for Ken's current run. */
+  /** Accumulated output tokens for Nolan's current run. */
   tokens: number;
-  /** True while Ken is actively emitting reasoning/thinking. */
+  /** True while Nolan is actively emitting reasoning/thinking. */
   isThinking: boolean;
-  /** Timestamp (ms) Ken's current thinking span began, or null. */
+  /** Timestamp (ms) Nolan's current thinking span began, or null. */
   thinkingStartTs: number | null;
   /** Completed thinking time (ms) from earlier spans in this run. */
   thinkingAccumMs: number;
@@ -25,13 +25,13 @@ interface Props {
 }
 
 /**
- * Ken Kai's activity bar. A 1:1 mirror of the GG Coder ActivityBar's running row
+ * Nolan Grout's activity bar. A 1:1 mirror of the EZ Coder ActivityBar's running row
  * — same braille spinner, same `(elapsed · ↓ N tokens · thinking for Xs)` meta,
- * same statusrow layout + esc-to-cancel — just tinted to Ken and labelled "Ken
- * is thinking…". Stacks above the main bar while Ken runs concurrently, so its
+ * same statusrow layout + esc-to-cancel — just tinted to Nolan and labelled "Nolan
+ * is thinking…". Stacks above the main bar while Nolan runs concurrently, so its
  * own top border is dropped (the main bar keeps the divider).
  */
-export function KenActivityBar({
+export function NolanActivityBar({
   runStartTs,
   tokens,
   isThinking,
@@ -73,13 +73,13 @@ export function KenActivityBar({
   if (thinkingLabel) meta.push({ text: thinkingLabel, thinking: true });
 
   return (
-    <div className="statusrow running ken-statusrow" style={{ color: theme.textMuted }}>
+    <div className="statusrow running nolan-statusrow" style={{ color: theme.textMuted }}>
       <span className="statusrow-left">
-        <span className="statusrow-icon spinner ken-spinner" style={{ color: theme.ken }}>
+        <span className="statusrow-icon spinner nolan-spinner" style={{ color: theme.ken }}>
           {SPINNER_FRAMES[frame]}
         </span>
         <span className="working" style={{ color: theme.ken }}>
-          {"Ken is thinking\u2026"}
+          {"Nolan is thinking\u2026"}
         </span>
         <span style={{ color: theme.textMuted }}>
           {"("}

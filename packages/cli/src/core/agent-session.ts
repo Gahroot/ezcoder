@@ -23,11 +23,11 @@ import { getClaudeCliUserAgent } from "./claude-code-version.js";
 import { kimiCodingHeaders, isKimiCodingEndpoint } from "./oauth/kimi.js";
 import {
   SessionManager,
-  KEN_TURN_CUSTOM_KIND,
+  NOLAN_TURN_CUSTOM_KIND,
   type MessageEntry,
   type BranchInfo,
   type CustomEntry,
-  type KenTurnPayload,
+  type NolanTurnPayload,
 } from "./session-manager.js";
 import { ExtensionLoader } from "./extensions/loader.js";
 import type { ExtensionContext } from "./extensions/types.js";
@@ -130,7 +130,7 @@ export interface AgentSessionOptions {
   /**
    * If provided, the session's tool set is filtered to ONLY these tool names
    * after `createTools()` runs, and the system prompt's Tools section lists only
-   * them. Used by read-only advisory sessions (e.g. the Ken mentor agent) to
+   * them. Used by read-only advisory sessions (e.g. the Nolan mentor agent) to
    * register a safe subset — excluded mutating tools (write/edit/bash/…) are
    * never registered, so a hallucinated call can't change the repo. Default
    * (undefined) = all tools, preserving every existing caller's behavior.
@@ -140,7 +140,7 @@ export interface AgentSessionOptions {
    * MCP server names whose tools are allowed in an allow-listed session. Only
    * meaningful alongside `allowedTools`. With it set, the session connects ONLY
    * these named MCP servers (not the full configured set) and every tool they
-   * expose (`mcp__<server>__*`) passes the allow-list. The Ken mentor agent uses
+   * expose (`mcp__<server>__*`) passes the allow-list. The Nolan mentor agent uses
    * this to get `kencode-search` for real-code research while still being barred
    * from every mutating tool. Empty/undefined → an allow-listed session skips
    * MCP entirely (its dynamic tool names could never match a fixed allow-list).
@@ -172,12 +172,12 @@ export class AgentSession {
   private extensionLoader = new ExtensionLoader();
 
   private messages: Message[] = [];
-  // Ken Kai (mentor agent) turns recorded against this build session. Advisory
-  // only — NEVER part of `messages` (GG Coder must not see them), but persisted
+  // Nolan Grout (mentor agent) turns recorded against this build session. Advisory
+  // only — NEVER part of `messages` (EZ Coder must not see them), but persisted
   // alongside the session and reloaded on resume so they reappear in the
   // transcript. Each carries the non-system message count at record time so the
   // webview can interleave them chronologically.
-  private kenTurns: KenTurnPayload[] = [];
+  private nolanTurns: NolanTurnPayload[] = [];
   private tools: AgentTool[] = [];
   /** Rebuilds the read tool for a new model (video byte cap is baked in at
    *  creation). Called from switchModel so video-capable models get the
@@ -478,7 +478,7 @@ export class AgentSession {
     if (!this.mcpManager) return;
     // Allow-listed (read-only advisory) sessions enforce a fixed tool set by
     // name. An MCP server is only connected when its name is explicitly
-    // whitelisted via `allowedMcpServers` (the Ken mentor agent does this for
+    // whitelisted via `allowedMcpServers` (the Nolan mentor agent does this for
     // `kencode-search` so it can research real code). With no whitelist, skip
     // MCP entirely — dynamic `mcp__server__tool` names could never match a fixed
     // allow-list, and connecting would waste resources spawning stdio servers.
@@ -1042,8 +1042,8 @@ export class AgentSession {
       await this.persistMessage(msg);
     }
     this.lastPersistedIndex = this.messages.length;
-    // Carry Ken's advisory turns into the new file so they survive compaction.
-    await this.rePersistKenTurns();
+    // Carry Nolan's advisory turns into the new file so they survive compaction.
+    await this.rePersistNolanTurns();
 
     this.eventBus.emit("compaction_end", {
       originalCount: result.result.originalCount,
@@ -1223,31 +1223,31 @@ export class AgentSession {
     return this.messages;
   }
 
-  /** Ken Kai (mentor) turns recorded against this session, in record order. Used
-   *  by the host to interleave Ken's advisory exchanges back into the transcript
+  /** Nolan Grout (mentor) turns recorded against this session, in record order. Used
+   *  by the host to interleave Nolan's advisory exchanges back into the transcript
    *  on resume. Never part of the LLM message history. */
-  getKenTurns(): KenTurnPayload[] {
-    return this.kenTurns;
+  getNolanTurns(): NolanTurnPayload[] {
+    return this.nolanTurns;
   }
 
   /**
-   * Record one Ken Kai (mentor agent) turn against this build session: the
-   * user's question + Ken's reply. Kept in memory for the live transcript and
+   * Record one Nolan Grout (mentor agent) turn against this build session: the
+   * user's question + Nolan's reply. Kept in memory for the live transcript and
    * persisted as a `custom` entry (parentId null, so it's never on the message
    * DAG and never seen by the LLM, and can't race the build session's leaf while
-   * Ken runs concurrently). `afterMessageCount` anchors it among the messages so
+   * Nolan runs concurrently). `afterMessageCount` anchors it among the messages so
    * the host can interleave it chronologically. No-op persistence for transient
    * sessions (kept in memory only). Best-effort: a write failure is swallowed by
    * appendEntry's own handling.
    */
-  async persistKenTurn(question: string, reply: string): Promise<void> {
+  async persistNolanTurn(question: string, reply: string): Promise<void> {
     const afterMessageCount = this.messages.filter((m) => m.role !== "system").length;
-    const payload: KenTurnPayload = { version: 1, question, reply, afterMessageCount };
-    this.kenTurns.push(payload);
+    const payload: NolanTurnPayload = { version: 1, question, reply, afterMessageCount };
+    this.nolanTurns.push(payload);
     if (!this.sessionPath) return;
     const entry: CustomEntry = {
       type: "custom",
-      kind: KEN_TURN_CUSTOM_KIND,
+      kind: NOLAN_TURN_CUSTOM_KIND,
       id: crypto.randomUUID(),
       parentId: null,
       timestamp: new Date().toISOString(),
@@ -1256,16 +1256,16 @@ export class AgentSession {
     await this.sessionManager.appendEntry(this.sessionPath, entry);
   }
 
-  /** Re-append the in-memory Ken turns to the current session file. Called after
-   *  a continuation/compaction file is created so Ken's advisory history isn't
+  /** Re-append the in-memory Nolan turns to the current session file. Called after
+   *  a continuation/compaction file is created so Nolan's advisory history isn't
    *  lost when the session is rewritten (those rewrites only re-persist
    *  messages). Each turn keeps its original `afterMessageCount` anchor. */
-  private async rePersistKenTurns(): Promise<void> {
+  private async rePersistNolanTurns(): Promise<void> {
     if (!this.sessionPath) return;
-    for (const payload of this.kenTurns) {
+    for (const payload of this.nolanTurns) {
       const entry: CustomEntry = {
         type: "custom",
-        kind: KEN_TURN_CUSTOM_KIND,
+        kind: NOLAN_TURN_CUSTOM_KIND,
         id: crypto.randomUUID(),
         parentId: null,
         timestamp: new Date().toISOString(),
@@ -1432,9 +1432,9 @@ export class AgentSession {
     const loaded = await this.sessionManager.load(sessionPath);
     // Use the leaf from the header to walk the correct branch
     const loadedMessages = this.sessionManager.getMessages(loaded.entries, loaded.header.leafId);
-    // Restore Ken's advisory turns (custom entries, not on the message branch) so
+    // Restore Nolan's advisory turns (custom entries, not on the message branch) so
     // they reappear in the transcript and survive into the continuation file.
-    this.kenTurns = this.sessionManager.getKenTurns(loaded.entries);
+    this.nolanTurns = this.sessionManager.getNolanTurns(loaded.entries);
 
     // Track the current leaf for subsequent entries
     this.currentLeafId = loaded.header.leafId;
@@ -1480,8 +1480,8 @@ export class AgentSession {
       await this.persistMessage(msg);
     }
     this.lastPersistedIndex = this.messages.length;
-    // Carry Ken's restored turns into the continuation file.
-    await this.rePersistKenTurns();
+    // Carry Nolan's restored turns into the continuation file.
+    await this.rePersistNolanTurns();
   }
 
   private async prepareDynamicContext(_latestUserPrompt?: string): Promise<Message[]> {
