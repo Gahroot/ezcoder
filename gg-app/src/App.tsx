@@ -4,6 +4,8 @@ import {
   waitForReady,
   getState,
   sendPrompt,
+  sendKenPrompt,
+  cancelKen,
   cancel,
   newSession,
   cycleThinking,
@@ -38,6 +40,7 @@ import {
   type PromptSegment,
 } from "./agent";
 import { ActivityBar, formatTokenCount } from "./ActivityBar";
+import { KenActivityBar } from "./KenActivityBar";
 import { LiveToolPanel, type LiveToolEntry, LIVE_TOOL_PANEL_ROWS } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
 import { CompactionNotice } from "./CompactionNotice";
@@ -64,7 +67,7 @@ import { BackButton } from "./BackButton";
 import { HomeScreen } from "./HomeScreen";
 import { Toaster } from "./Toaster";
 import { LoginScreen } from "./LoginScreen";
-import { Markdown } from "./Markdown";
+import { Markdown, PromptSendProvider } from "./Markdown";
 import { FooterSkeleton, TranscriptSkeleton, Skeleton } from "./Skeleton";
 import { useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
@@ -104,8 +107,19 @@ type Item =
       // True while this message is still waiting in the mid-run steering queue.
       // Rendered dimmed; cleared at run_end once the agent has consumed it.
       queued?: boolean;
+      // True when this prompt was addressed to Ken (`@Ken …`). Renders the bubble
+      // in Ken's color so the transcript shows it went to the mentor, not GG Coder.
+      ken?: boolean;
+      // True when this bubble came from clicking a "Send to GG Coder" button on
+      // one of Ken's recommended prompts. Renders as a shimmering "Sent to GG
+      // Coder" label in Ken's color (like a slash command shows `/name`), instead
+      // of the full prompt body that was actually sent to GG Coder.
+      kenSent?: boolean;
     }
   | { kind: "assistant"; id: number; text: string }
+  // Ken Kai (mentor agent) reply — magenta-tinted bubble + "Ken Kai" badge,
+  // streamed from the ken_* SSE events. Never mistaken for GG Coder.
+  | { kind: "ken"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
   | { kind: "error"; id: number; text: string }
   // Agent self-correction hook notice (ideal review / loop-break / re-grounding),
@@ -289,6 +303,19 @@ function App(): React.ReactElement {
   const [queuedCount, setQueuedCount] = useState(0);
   const [state, setState] = useState<AgentState | null>(null);
   const [running, setRunning] = useState(false);
+  // True while Ken Kai (the mentor agent) is thinking. Independent of `running`
+  // so Ken can stream concurrently with a GG Coder build run.
+  const [kenRunning, setKenRunning] = useState(false);
+  // Ken's own activity metrics, mirroring the build session's so Ken's activity
+  // bar shows the SAME elapsed/tokens/thinking readout (just tinted to Ken).
+  const [kenTokens, setKenTokens] = useState(0);
+  const [kenRunStartTs, setKenRunStartTs] = useState<number | null>(null);
+  const [kenIsThinking, setKenIsThinking] = useState(false);
+  const [kenThinkingStartTs, setKenThinkingStartTs] = useState<number | null>(null);
+  const [kenThinkingAccumMs, setKenThinkingAccumMs] = useState(0);
+  const kenTokensRef = useRef(0);
+  const kenThinkingStartRef = useRef<number | null>(null);
+  const kenThinkingAccumRef = useRef(0);
   const [status, setStatus] = useState("connecting to agent\u2026");
   const [liveToolFeed, setLiveToolFeed] = useState<LiveToolEntry[]>([]);
   const [tokens, setTokens] = useState(0);
@@ -424,6 +451,8 @@ function App(): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingIdRef = useRef<number | null>(null);
+  // Id of the active Ken streaming bubble (null when Ken isn't streaming).
+  const kenStreamingIdRef = useRef<number | null>(null);
   // Transcript id of the active sub-agent group for this run (null until the
   // first subagent spawns). Lets later parallel agents join the same in-chat
   // feed instead of each opening a fresh block.
@@ -748,6 +777,43 @@ function App(): React.ReactElement {
       }
     }
     streamingIdRef.current = null;
+  }, []);
+
+  // Ken's streaming bubble. Ken's replies are short, so a direct setItems per
+  // delta (no rAF buffering) is fine and keeps his path independent of GG
+  // Coder's. First delta creates the magenta bubble; later deltas append to it.
+  const appendKen = useCallback((text: string) => {
+    const current = kenStreamingIdRef.current;
+    if (current === null) {
+      const id = nextId();
+      kenStreamingIdRef.current = id;
+      setItems((prev) => [...prev, { kind: "ken", id, text }]);
+    } else {
+      setItems((prev) =>
+        prev.map((it) =>
+          it.kind === "ken" && it.id === current ? { ...it, text: it.text + text } : it,
+        ),
+      );
+    }
+  }, []);
+
+  // Ends the CURRENT Ken streaming bubble (also called mid-turn on tool calls to
+  // break the bubble so post-tool text starts a fresh paragraph).
+  const endKenStreaming = useCallback(() => {
+    kenStreamingIdRef.current = null;
+  }, []);
+
+  // Close Ken's open thinking span (if any), folding its duration into the
+  // accumulator. Mirrors the build's finalizeThinking. Called when text or a
+  // tool begins, or the run ends, so the thinking timer doesn't over-count.
+  const finalizeKenThinking = useCallback(() => {
+    if (kenThinkingStartRef.current !== null) {
+      kenThinkingAccumRef.current += Date.now() - kenThinkingStartRef.current;
+      kenThinkingStartRef.current = null;
+      setKenThinkingAccumMs(kenThinkingAccumRef.current);
+      setKenThinkingStartTs(null);
+    }
+    setKenIsThinking(false);
   }, []);
 
   const pushItem = useCallback((item: Item) => {
@@ -1211,9 +1277,89 @@ function App(): React.ReactElement {
           );
           setTasks((d.tasks as BackgroundTask[] | undefined) ?? []);
           break;
+
+        // ── Ken Kai (mentor agent) ──────────────────────────────
+        // Separate event family so Ken's reply renders in its own magenta
+        // bubble and never touches GG Coder's streaming bubble / tool feed.
+        case "ken_run_start":
+          setKenRunning(true);
+          endKenStreaming();
+          // Reset Ken's activity metrics for this run (mirrors the build run_start).
+          kenTokensRef.current = 0;
+          kenThinkingStartRef.current = null;
+          kenThinkingAccumRef.current = 0;
+          setKenTokens(0);
+          setKenRunStartTs(Date.now());
+          setKenIsThinking(false);
+          setKenThinkingStartTs(null);
+          setKenThinkingAccumMs(0);
+          break;
+        case "ken_text_delta":
+          // First visible output ends any thinking span (mirrors finalizeThinking).
+          finalizeKenThinking();
+          appendKen(String(d.text ?? ""));
+          break;
+        case "ken_thinking_delta":
+          if (kenThinkingStartRef.current === null) {
+            const now = Date.now();
+            kenThinkingStartRef.current = now;
+            setKenThinkingStartTs(now);
+            setKenIsThinking(true);
+          }
+          break;
+        // A tool runs mid-turn: end Ken's current bubble so text streamed AFTER
+        // the tool starts a fresh paragraph instead of gluing onto the pre-tool
+        // text ("...work.Local tools..."). Mirrors the build session's
+        // tool_call_start / server_tool_call handling. Covers both client tools
+        // (read/grep/kencode-search) and Anthropic's native server web_search.
+        case "ken_tool_call_start":
+        case "ken_server_tool_call":
+          // Close any open thinking span (mirrors the build's finalizeThinking on
+          // tool_call_start) so the timer doesn't keep counting while a tool runs.
+          finalizeKenThinking();
+          endKenStreaming();
+          break;
+        case "ken_turn_end": {
+          const usage = d.usage as { outputTokens?: number } | undefined;
+          if (usage && typeof usage.outputTokens === "number") {
+            kenTokensRef.current += usage.outputTokens;
+            setKenTokens(kenTokensRef.current);
+          }
+          break;
+        }
+        case "ken_run_end":
+          setKenRunning(false);
+          endKenStreaming();
+          // Close any open thinking span so the final readout is accurate.
+          finalizeKenThinking();
+          setKenRunStartTs(null);
+          break;
+        case "ken_error":
+          setKenRunning(false);
+          endKenStreaming();
+          setKenIsThinking(false);
+          setKenRunStartTs(null);
+          pushItem({
+            kind: "error",
+            id: nextId(),
+            text: `Ken: ${String(d.message ?? "unknown")}`,
+          });
+          break;
+        // ken_tool_call_update / ken_tool_call_end carry Ken's read-only tool
+        // activity; the activity bar (kenRunning) is the indicator, so they need
+        // no transcript row. (ken_tool_call_start IS handled above to break the
+        // streaming bubble around mid-turn tool calls.)
       }
     },
-    [appendAssistant, pushItem, finalizeThinking, endStreamingText],
+    [
+      appendAssistant,
+      appendKen,
+      endKenStreaming,
+      finalizeKenThinking,
+      pushItem,
+      finalizeThinking,
+      endStreamingText,
+    ],
   );
 
   // Run the connect/ready flow against the current sidecar and hydrate state,
@@ -1284,6 +1430,11 @@ function App(): React.ReactElement {
             // A resumed compacted session shows the quiet compaction notice in
             // place of the raw summary body (counts aren't persisted).
             if (h.compacted) return { kind: "compaction", id: nextId(), status: "done" };
+            // Persisted Ken (mentor) turns: his reply restores as a Ken bubble,
+            // the `@Ken` question as a Ken-tinted user bubble (matches live).
+            if (h.ken && h.role === "assistant") return { kind: "ken", id: nextId(), text: h.text };
+            if (h.ken && h.role === "user")
+              return { kind: "user", id: nextId(), text: h.text, ken: true };
             if (h.role !== "user") return { kind: h.role, id: nextId(), text: h.text };
             // App-button prompts (e.g. "Initialize Git") were shown live as a
             // friendly shimmer label, not the expanded body. The label is
@@ -1448,9 +1599,23 @@ function App(): React.ReactElement {
   // Clamp so a shrinking match list never points past the end.
   const clampedSlashIndex = slashMatches.length > 0 ? slashIndex % slashMatches.length : 0;
 
+  // `@Ken` is the mentor-agent address, not a file mention. When the input leads
+  // with it (case-insensitive, word-boundary so `@kennedy.ts` still picks files),
+  // Ken is "active": the file picker is suppressed and the input is tinted in
+  // Ken's color with a shimmering marker, so it's obvious the message goes to Ken.
+  const kenActive = /^@ken\b/i.test(input.trimStart());
+  // Split the input for the `@Ken` highlight overlay: any leading whitespace,
+  // the literal `@Ken` token (preserving the user's casing), then the rest. Only
+  // the token shimmers; lead+rest render in the normal input color.
+  const kenInputParts = (() => {
+    const m = /^(\s*)(@ken)/i.exec(input);
+    if (!m) return null;
+    return { lead: m[1], token: m[2], rest: input.slice(m[1].length + m[2].length) };
+  })();
   // `@`-mention picker: open whenever a mention token is active and the search
   // returned at least one file. Clamp the highlighted row to the result count.
-  const mentionOpen = mention !== null && fileMatches.length > 0;
+  // Never open while `@Ken` is active — that token addresses Ken, not a file.
+  const mentionOpen = mention !== null && fileMatches.length > 0 && !kenActive;
   const clampedFileIndex = fileMatches.length > 0 ? fileIndex % fileMatches.length : 0;
   // Footer background-tasks indicator only shows while something is actually
   // running (exited tasks shouldn't keep the bar item around).
@@ -1506,9 +1671,10 @@ function App(): React.ReactElement {
     setMention(detectMention(text, caret));
   }
 
-  // Debounced file search whenever the active mention query changes.
+  // Debounced file search whenever the active mention query changes. Skipped when
+  // `@Ken` is active so typing `@ken` never spawns a file lookup or picker.
   useEffect(() => {
-    if (mention === null) {
+    if (mention === null || kenActive) {
       setFileMatches([]);
       return;
     }
@@ -1525,7 +1691,7 @@ function App(): React.ReactElement {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [mention]);
+  }, [mention, kenActive]);
 
   // Pick a file: drop the typed `@query` from the input, add the file as a chip
   // (deduped), and restore the caret where the token was. The path lives in chip
@@ -1572,6 +1738,22 @@ function App(): React.ReactElement {
     endStreamingText();
     void sendPrompt(trimmed);
   }
+
+  // Click handler for the "Send to GG Coder" button on Ken's recommended prompts.
+  // Pushes a shimmering "Sent to GG Coder" user bubble (the full prompt body went
+  // to GG Coder, but the transcript shows the short Ken-colored label, like a
+  // slash command shows `/name`), then sends the prompt to the build session.
+  const sendKenRecommendedPrompt = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || !readyRef.current) return;
+      stickToBottomRef.current = true;
+      pushItem({ kind: "user", id: nextId(), text: trimmed, kenSent: true });
+      endStreamingText();
+      void sendPrompt(trimmed).catch(() => {});
+    },
+    [pushItem, endStreamingText],
+  );
 
   // Record a sent prompt for ↑/↓ recall (skips consecutive duplicates, capped).
   function recordHistory(text: string): void {
@@ -1727,6 +1909,26 @@ function App(): React.ReactElement {
     const trimmed = input.trim();
     if (!readyRef.current) return;
     if (!trimmed && attachments.length === 0 && mentionedPaths.length === 0) return;
+
+    // `@Ken <prompt>` (case-insensitive, optional colon) routes to Ken Kai, the
+    // read-only mentor agent — NOT GG Coder. Ken runs concurrently with any
+    // build run; his reply streams into a magenta bubble via ken_* events.
+    const kenMatch = /^@ken\b:?\s*/i.exec(trimmed);
+    if (kenMatch) {
+      const question = trimmed.slice(kenMatch[0].length).trim();
+      if (!question) return;
+      recordHistory(trimmed);
+      stickToBottomRef.current = true;
+      pushItem({ kind: "user", id: nextId(), text: trimmed, ken: true });
+      setInput("");
+      setSlashIndex(0);
+      setMention(null);
+      setMentionedPaths([]);
+      setEnhancement(null);
+      void sendKenPrompt(question);
+      return;
+    }
+
     recordHistory(trimmed);
     // A user send always re-pins to the bottom — they want to see their message.
     stickToBottomRef.current = true;
@@ -2125,29 +2327,46 @@ function App(): React.ReactElement {
                   {`\u273b ${status}`}
                 </div>
               ))}
-            {items.map((it) => (
-              <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
-            ))}
+            <PromptSendProvider value={sendKenRecommendedPrompt}>
+              {items.map((it) => (
+                <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
+              ))}
+            </PromptSendProvider>
           </>
         )}
       </div>
 
       <div className="liveregion">
+        {kenRunning && (
+          <KenActivityBar
+            runStartTs={kenRunStartTs}
+            tokens={kenTokens}
+            isThinking={kenIsThinking}
+            thinkingStartTs={kenThinkingStartTs}
+            thinkingAccumMs={kenThinkingAccumMs}
+            onCancel={() => void cancelKen()}
+          />
+        )}
         {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
-        <ActivityBar
-          running={running}
-          tokens={tokens}
-          doneStatus={doneStatus}
-          isThinking={isThinking}
-          thinkingStartTs={thinkingStartTs}
-          thinkingAccumMs={thinkingAccumMs}
-          planTotal={planTotal}
-          planDone={Math.min(planDone.size, planTotal)}
-          onCancel={() => void cancel()}
-          toolsHidden={toolsHidden}
-          hasToolFeed={liveToolFeed.length > 0}
-          onToggleTools={toggleTools}
-        />
+        {/* Ken's bar REPLACES the main bar while Ken runs and the build is idle —
+            otherwise the idle "Ready for work" line stacks under Ken's spinner.
+            When the build is also running, both bars show (Ken on top). */}
+        {(running || !kenRunning) && (
+          <ActivityBar
+            running={running}
+            tokens={tokens}
+            doneStatus={doneStatus}
+            isThinking={isThinking}
+            thinkingStartTs={thinkingStartTs}
+            thinkingAccumMs={thinkingAccumMs}
+            planTotal={planTotal}
+            planDone={Math.min(planDone.size, planTotal)}
+            onCancel={() => void cancel()}
+            toolsHidden={toolsHidden}
+            hasToolFeed={liveToolFeed.length > 0}
+            onToggleTools={toggleTools}
+          />
+        )}
       </div>
 
       <div className={`inputwrap${isFileDragOver ? " dragover" : ""}`}>
@@ -2206,9 +2425,23 @@ function App(): React.ReactElement {
                 onDone={onEnhanceAnimDone}
               />
             )}
+            {/* `@Ken` active: a textarea can't color just one token, so we mirror
+                the input in an aligned overlay where the leading `@Ken` shimmers
+                in Ken's color. The textarea text below is made transparent (caret
+                stays visible) so only this styled copy shows. Metrics match
+                `.input` 1:1 so wrapping/caret line up. */}
+            {kenActive && kenInputParts && (
+              <div className="ken-input-highlight" aria-hidden="true">
+                {kenInputParts.lead}
+                <ShimmerText base={theme.ken} bright="#ffffff">
+                  {kenInputParts.token}
+                </ShimmerText>
+                {kenInputParts.rest}
+              </div>
+            )}
             <textarea
               ref={inputRef}
-              className={`input${enhanceAnim ? " input-anim" : ""}`}
+              className={`input${enhanceAnim ? " input-anim" : ""}${kenActive ? " input-ken" : ""}`}
               rows={1}
               // Lock the input while the dissolve→decode animation plays: the caret
               // is invisible, so typing would be silently discarded and Enter would
@@ -2286,8 +2519,11 @@ function App(): React.ReactElement {
                   e.preventDefault();
                   submit();
                 } else if (e.key === "Escape") {
+                  // Cancel the build if it's running; otherwise cancel Ken so the
+                  // "esc to cancel" on his bar actually works.
                   if (slashOpen) setInput("");
                   else if (running) void cancel();
+                  else if (kenRunning) void cancelKen();
                 }
               }}
               autoFocus
@@ -2492,6 +2728,18 @@ const TranscriptRow = memo(function TranscriptRow({
 }): React.ReactElement | null {
   switch (item.kind) {
     case "user":
+      if (item.kenSent) {
+        // Sent from a Ken "Send to GG Coder" button: show a shimmering "Sent to GG
+        // Coder" in Ken's color (like a slash command shows `/name`), not the
+        // full prompt body. The full body still went to GG Coder.
+        return (
+          <div className="user-msg command labelled user-ken-sent">
+            <span className="command-shimmer" style={{ color: theme.ken }}>
+              Sent to GG Coder
+            </span>
+          </div>
+        );
+      }
       if (item.command) {
         // Workflow command: show just the short `/name` (or a friendly `label`
         // phrase) with a highlight + shimmer sweep. The full expanded prompt
@@ -2505,7 +2753,7 @@ const TranscriptRow = memo(function TranscriptRow({
         );
       }
       return (
-        <div className={`user-msg${item.queued ? " queued" : ""}`}>
+        <div className={`user-msg${item.queued ? " queued" : ""}${item.ken ? " user-ken" : ""}`}>
           {item.queued && <span className="queued-pill">queued</span>}
           {item.images && item.images.length > 0 && (
             <div className="user-img-row">
@@ -2561,6 +2809,21 @@ const TranscriptRow = memo(function TranscriptRow({
         </>
       );
     }
+    case "ken":
+      // Ken Kai's reply: the whole bubble is tinted in Ken's color (dot + all
+      // text), which is the ONLY differentiator from a normal GG Coder reply.
+      // No badge, no byline. The Markdown component special-cases ```prompt
+      // fences into a "Send to GG Coder" button.
+      return (
+        <div className="assistant-msg ken-msg">
+          <span className="assistant-dot" style={{ color: theme.ken }}>
+            {DOT}
+          </span>
+          <div className="assistant-text">
+            <Markdown>{item.text}</Markdown>
+          </div>
+        </div>
+      );
     case "info":
       return (
         <div className="line info" style={{ color: theme.textDim }}>
