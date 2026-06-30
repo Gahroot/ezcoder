@@ -57,7 +57,7 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
   // Only worth showing the monitor picker when more than one display exists.
   const multiMonitor = monitors.length > 1;
   const selectedLabel =
-    (selected && monitors.find((m) => m.name === selected)?.name) ?? "Primary (auto)";
+    (selected && monitors.find((m) => m.name === selected)?.label) ?? "Primary (auto)";
 
   async function applyLayout(count: number): Promise<void> {
     setOpen(false);
@@ -176,7 +176,7 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
                     {monitors.map((m) => (
                       <MonitorRow
                         key={m.name}
-                        label={`${m.name}${m.primary ? " \u2014 primary" : ""} \u00b7 ${m.width}\u00d7${m.height}`}
+                        label={`${m.label} \u00b7 ${m.width}\u00d7${m.height}`}
                         active={selected === m.name}
                         onClick={() => void chooseMonitor(m.name)}
                       />

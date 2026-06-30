@@ -549,7 +549,10 @@ export async function saveSettings(projectsRoot: string): Promise<void> {
 
 /** A connected display, as reported by Rust's `list_monitors`. */
 export interface MonitorInfo {
+  /** Stable matching/persistence key (the display's physical position). */
   name: string;
+  /** Human-readable label for the picker (e.g. "Primary", "Left"). */
+  label: string;
   width: number;
   height: number;
   x: number;

@@ -1110,14 +1110,49 @@ fn app_settings_save(projects_root: String) -> Result<serde_json::Value, String>
     Ok(serde_json::json!({ "projectsRoot": trimmed }))
 }
 
-/// Stable display label for a monitor: its OS name, or a 1-based fallback when
-/// the OS reports none. Used identically by `list_monitors` (what the user picks)
-/// and `tile_area` (what the tiler matches against) so selection round-trips.
-fn monitor_label(monitor: &tauri::Monitor, index: usize) -> String {
-    monitor
-        .name()
-        .cloned()
-        .unwrap_or_else(|| format!("Display {}", index + 1))
+/// Stable identity for a monitor — its physical top-left position — used as both
+/// the persisted `targetMonitor` key and the value `tile_area` matches against.
+/// Position is unique per display and survives replug/rearrange, unlike the OS
+/// `name()` (macOS returns a model number that COLLIDES across two identical
+/// external displays; the old index-based fallback shifted when a monitor was
+/// unplugged, silently re-pointing the saved choice at a different screen).
+fn monitor_key(monitor: &tauri::Monitor) -> String {
+    let p = monitor.position();
+    format!("{},{}", p.x, p.y)
+}
+
+/// Human-readable label for the picker. Primary → "Primary"; others are described
+/// by their direction from the primary ("Left"/"Right"/"Above"/"Below"), which
+/// disambiguates two identical displays far better than a raw model number. Falls
+/// back to a 1-based index only when no primary position is known.
+fn monitor_friendly_label(
+    monitor: &tauri::Monitor,
+    index: usize,
+    primary_pos: Option<&tauri::PhysicalPosition<i32>>,
+) -> String {
+    let pos = monitor.position();
+    if primary_pos == Some(pos) {
+        return "Primary".to_string();
+    }
+    if let Some(pp) = primary_pos {
+        let dx = pos.x - pp.x;
+        let dy = pos.y - pp.y;
+        if dx != 0 || dy != 0 {
+            let dir = if dx.abs() >= dy.abs() {
+                if dx < 0 {
+                    "Left"
+                } else {
+                    "Right"
+                }
+            } else if dy < 0 {
+                "Above"
+            } else {
+                "Below"
+            };
+            return dir.to_string();
+        }
+    }
+    format!("Display {}", index + 1)
 }
 
 /// Native: enumerate the connected displays so the webview can offer a "tile onto
@@ -1138,13 +1173,17 @@ fn list_monitors(window: WebviewWindow) -> Result<serde_json::Value, String> {
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let label = monitor_label(m, i);
+            // `name` is the stable matching/persistence key; `label` is what the
+            // user actually reads in the picker.
+            let key = monitor_key(m);
+            let label = monitor_friendly_label(m, i, primary_pos.as_ref());
             let size = m.size();
             let pos = m.position();
             let is_primary = primary_pos == Some(*pos);
-            let is_selected = selected.as_deref() == Some(label.as_str());
+            let is_selected = selected.as_deref() == Some(key.as_str());
             serde_json::json!({
-                "name": label,
+                "name": key,
+                "label": label,
                 "width": size.width,
                 "height": size.height,
                 "x": pos.x,
@@ -2186,17 +2225,17 @@ fn focus_window_by_offset(app: tauri::AppHandle, offset: i32) -> Result<(), Stri
 async fn arrange_all(app: tauri::AppHandle) -> Result<(), String> {
     let count = app.webview_windows().len();
     let tiles = sorted_windows(&app, count);
-    let rects = if tiles.is_empty() {
-        Vec::new()
+    let (rects, scale) = if tiles.is_empty() {
+        (Vec::new(), 1.0)
     } else {
-        let Some((ox, oy, w, h)) = tile_area(&tiles[0]) else {
+        let Some((ox, oy, w, h, scale)) = tile_area(&tiles[0]) else {
             broadcast_window_order(&app);
             return Ok(());
         };
-        tile_rects(count, ox, oy, w, h)
+        (tile_rects(count, ox, oy, w, h), scale)
     };
     for (win, rect) in tiles.iter().zip(rects.iter()) {
-        apply_tile(win, *rect);
+        apply_tile(win, *rect, scale);
         // Let the main thread commit this window before queuing the next.
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
     }
@@ -2343,19 +2382,17 @@ fn tile_rects(count: usize, ox: i32, oy: i32, w: i32, h: i32) -> Vec<(i32, i32, 
         .collect()
 }
 
-/// Resolve the work area `(ox, oy, w, h)` the tiler should fill: the user's chosen
-/// `targetMonitor` (matched by label), else the primary monitor. `win` is any open
-/// window — it's only used to enumerate monitors. Returns `None` if no monitor is
-/// available (a window with zero displays, e.g. fully headless).
-fn tile_area(win: &WebviewWindow) -> Option<(i32, i32, i32, i32)> {
+/// Resolve the work area the tiler should fill: the user's chosen `targetMonitor`
+/// (matched by stable key), else the primary monitor. `win` is any open window —
+/// it's only used to enumerate monitors. Returns `(ox, oy, w, h, scale)` where the
+/// rect is in PHYSICAL pixels and `scale` is the TARGET monitor's scale factor
+/// (needed by `apply_tile` to place windows correctly across mismatched-DPI
+/// displays). Returns `None` if no monitor is available (e.g. fully headless).
+fn tile_area(win: &WebviewWindow) -> Option<(i32, i32, i32, i32, f64)> {
     let want = target_monitor_name();
-    let chosen = want.as_ref().and_then(|name| {
+    let chosen = want.as_ref().and_then(|key| {
         win.available_monitors().ok().and_then(|monitors| {
-            monitors
-                .into_iter()
-                .enumerate()
-                .find(|(i, m)| &monitor_label(m, *i) == name)
-                .map(|(_, m)| m)
+            monitors.into_iter().find(|m| &monitor_key(m) == key)
         })
     });
     let monitor = chosen.or_else(|| win.primary_monitor().ok().flatten())?;
@@ -2365,6 +2402,7 @@ fn tile_area(win: &WebviewWindow) -> Option<(i32, i32, i32, i32)> {
         area.position.y,
         area.size.width as i32,
         area.size.height as i32,
+        monitor.scale_factor(),
     ))
 }
 
@@ -2377,15 +2415,38 @@ fn sorted_windows(app: &tauri::AppHandle, count: usize) -> Vec<WebviewWindow> {
     windows.into_iter().take(count).collect()
 }
 
-/// Apply one tile rect to a window. Order matters on macOS: `set_size` and
-/// `set_position` both dispatch to the main thread asynchronously (tao's
-/// `set_content_size_async` / `set_frame_top_left_point_async`), and
-/// `setFrameTopLeftPoint` anchors against the window's CURRENT frame size — so
-/// resize FIRST (establish correct dimensions), then move to the cell origin.
-fn apply_tile(win: &WebviewWindow, rect: (i32, i32, u32, u32)) {
+/// Apply one tile rect (TARGET-monitor physical pixels) to a window. `scale` is the
+/// target monitor's scale factor.
+///
+/// Order matters: `set_size` and `set_position` both dispatch to the main thread
+/// asynchronously and `setFrameTopLeftPoint` anchors against the window's CURRENT
+/// frame size — so resize FIRST (establish correct dimensions), then move.
+///
+/// DPI correctness differs by platform:
+/// - **macOS:** tao converts whatever we pass to LOGICAL points using the window's
+///   CURRENT scale factor. Our rect is in the TARGET monitor's physical pixels, so
+///   when the window currently lives on a different-scale display (Retina laptop
+///   tiling onto a 1× external, or vice-versa) that conversion halves/doubles the
+///   geometry and the window lands the wrong size and off-screen. Pre-divide by the
+///   target scale and pass LOGICAL units, which tao keeps verbatim — correct no
+///   matter which display the window starts on. (macOS monitor positions/sizes are
+///   themselves `logical * scale`, so this round-trips exactly.)
+/// - **Windows/Linux:** coordinates are physical pixels in one global space; pass
+///   the rect straight through.
+fn apply_tile(win: &WebviewWindow, rect: (i32, i32, u32, u32), scale: f64) {
     let (x, y, w, h) = rect;
-    let _ = win.set_size(tauri::PhysicalSize::new(w, h));
-    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    #[cfg(target_os = "macos")]
+    {
+        let s = if scale > 0.0 { scale } else { 1.0 };
+        let _ = win.set_size(tauri::LogicalSize::new(w as f64 / s, h as f64 / s));
+        let _ = win.set_position(tauri::LogicalPosition::new(x as f64 / s, y as f64 / s));
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = scale;
+        let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    }
 }
 
 /// Tile the first `count` windows into a grid filling the chosen monitor's work
@@ -2397,12 +2458,12 @@ fn arrange_windows(app: &tauri::AppHandle, count: usize) {
     if tiles.is_empty() {
         return;
     }
-    let Some((ox, oy, w, h)) = tile_area(&tiles[0]) else {
+    let Some((ox, oy, w, h, scale)) = tile_area(&tiles[0]) else {
         return;
     };
     let rects = tile_rects(count, ox, oy, w, h);
     for (win, rect) in tiles.iter().zip(rects.iter()) {
-        apply_tile(win, *rect);
+        apply_tile(win, *rect, scale);
     }
 }
 
