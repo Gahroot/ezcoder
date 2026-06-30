@@ -206,6 +206,42 @@ replace_in_tracked_text_files() {
   done <<< "$files"
 }
 
+# Rename the upstream "@Ken" mentor agent persona to our "@Nolan" persona.
+#
+# This is SEPARATE from the GG→EZ branding sed block because it needs real
+# word-boundary anchoring (perl \b), not substring replacement. The string
+# "ken" is a substring of load-bearing identifiers we MUST NOT touch:
+#   - token / tokens / tokenUsage / tokensRef ... (LLM token accounting)
+#   - kencode-search / mcp__kencode-search / @kenkaiiii (the search provider)
+#   - Ken-Burns / ken_burns / createKenBurnsTool (the editor photography effect)
+#   - KenKai / KenKaiii (upstream author attribution in LICENSE/READMEs)
+#   - kennedy (a word-boundary example in a code comment)
+# Each rule below is anchored and/or excludes those roots explicitly.
+rebrand_ken_mentor() {
+  local files
+  files=$(git ls-files -- \
+    '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.mjs' '*.css' '*.rs' '*.toml' \
+    ':!pnpm-lock.yaml' ':!node_modules' ':!dist' ':!scripts/sync-upstream.sh')
+
+  while IFS= read -r file; do
+    [[ -f "$file" ]] || continue
+    perl -0777 -pi -e '
+      # ALL-CAPS mentor consts (anchored; TOKEN_ has no boundary before KEN)
+      s/\bKEN_(PROMPT_FENCE|ALLOWED_MCP_SERVERS|ALLOWED_TOOLS|RECENT_MESSAGE_LIMIT|TURN_CUSTOM_KIND)\b/NOLAN_$1/g;
+      # snake_case SSE event + route names (explicit list excludes ken_burns)
+      s/\bken_(run_start|run_end|text_delta|thinking_delta|tool_call_start|tool_call_update|tool_call_end|server_tool_call|turn_end|turn|error|cancel|prompt)\b/nolan_$1/g;
+      s/_ken_(cancel|prompt)\b/_nolan_$1/g;
+      # kebab-case CSS classes + file stems (explicit list excludes ken-burns)
+      s/\bken-(context|input|msg|prompt|sent|spinner|statusrow)\b/nolan-$1/g;
+      # camelCase mentor vars: word-start ken + UpperCase (tokenUsage fails \b)
+      s/\bken([A-Z]\w*)/nolan$1/g;
+      # any remaining capital Ken (PascalCase types, compound fns, @Ken, prose),
+      # excluding the protected roots above
+      s/Ken(?!Burns|Kai|code|nedy|-Burns| Burns)/Nolan/g;
+    ' "$file"
+  done <<< "$files"
+}
+
 fix_bin() {
   local pkg_path="$1"
   local old_bin="$2"
@@ -276,6 +312,9 @@ main() {
   info "Fixing npm scope and branding..."
   replace_in_tracked_text_files
 
+  info "Renaming @Ken mentor agent → @Nolan..."
+  rebrand_ken_mentor
+
   info "Fixing CLI bin entries..."
   fix_bin "packages/cli" "ggcoder" "ezcoder"
   fix_bin "packages/boss" "ggboss" "ezboss"
@@ -297,6 +336,12 @@ main() {
   rename_file_if_exists "packages/pixel-swift/Sources/GGPixelSmoke" "packages/pixel-swift/Sources/EZPixelSmoke"
   rename_file_if_exists "packages/pixel-swift/Tests/GGPixelTests" "packages/pixel-swift/Tests/EZPixelTests"
   rename_file_if_exists "packages/pixel-swift/Tests/EZPixelTests/GGPixelTests.swift" "packages/pixel-swift/Tests/EZPixelTests/EZPixelTests.swift"
+
+  info "Renaming @Ken mentor files → nolan-*..."
+  rename_file_if_exists "packages/cli/src/core/ken-prompt.ts" "packages/cli/src/core/nolan-prompt.ts"
+  rename_file_if_exists "packages/cli/src/core/ken-context.ts" "packages/cli/src/core/nolan-context.ts"
+  rename_file_if_exists "packages/cli/src/core/ken-context.test.ts" "packages/cli/src/core/nolan-context.test.ts"
+  rename_file_if_exists "ezcoder-app/src/KenActivityBar.tsx" "ezcoder-app/src/NolanActivityBar.tsx"
 
   git add -A
   if git diff --cached --quiet; then
