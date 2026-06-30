@@ -1094,7 +1094,7 @@ function App(): React.ReactElement {
   }
 
   // Debounced file search whenever the active mention query changes. Skipped when
-  // `@Nolan` is active so typing `@ken` never spawns a file lookup or picker.
+  // `@Nolan` is active so typing `@Nolan` never spawns a file lookup or picker.
   useEffect(() => {
     if (mention === null || nolanActive) {
       setFileMatches([]);
