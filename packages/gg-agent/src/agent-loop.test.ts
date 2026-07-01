@@ -1064,4 +1064,69 @@ describe("agentLoop", () => {
 
     expect(result.totalTurns).toBe(2);
   });
+
+  it("emits a terminal max_turns signal when the turn budget is exhausted mid-task", async () => {
+    // Model never stops calling tools, so the loop can only end by hitting the cap.
+    const toolResponse = {
+      message: {
+        role: "assistant" as const,
+        content: [{ type: "tool_call" as const, id: "t1", name: "test_tool", args: {} }],
+      },
+      stopReason: "tool_use",
+      usage: { inputTokens: 50, outputTokens: 25 },
+    };
+    mockStream.mockReturnValue({
+      [Symbol.asyncIterator]: async function* () {
+        // no text events
+      },
+      response: Promise.resolve(toolResponse),
+    } as unknown as ReturnType<typeof stream>);
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "test" },
+    ];
+
+    const { events } = await collectLoop(messages, {
+      provider: "anthropic",
+      model: "test",
+      maxTurns: 3,
+      tools: [
+        {
+          name: "test_tool",
+          description: "test",
+          parameters: { parse: () => ({}) } as never,
+          execute: () => "result",
+        },
+      ],
+    });
+
+    const maxTurnsEvents = events.filter((e) => e.type === "max_turns");
+    expect(maxTurnsEvents).toHaveLength(1);
+    expect(maxTurnsEvents[0]).toMatchObject({ type: "max_turns", totalTurns: 3, maxTurns: 3 });
+
+    // It must be terminal: the final agent_done comes AFTER the max_turns signal.
+    const maxTurnsIndex = events.findIndex((e) => e.type === "max_turns");
+    const doneIndex = events.findIndex((e) => e.type === "agent_done");
+    expect(maxTurnsIndex).toBeGreaterThanOrEqual(0);
+    expect(doneIndex).toBeGreaterThan(maxTurnsIndex);
+  });
+
+  it("does NOT emit max_turns when the agent finishes cleanly under budget", async () => {
+    mockStream.mockReturnValue(mockOkResult("done") as unknown as ReturnType<typeof stream>);
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "test" },
+    ];
+
+    const { events } = await collectLoop(messages, {
+      provider: "anthropic",
+      model: "test",
+      maxTurns: 5,
+    });
+
+    expect(events.some((e) => e.type === "max_turns")).toBe(false);
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+  });
 });

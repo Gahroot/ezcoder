@@ -372,6 +372,11 @@ export async function* agentLoop(
 
   const totalUsage: Usage = { inputTokens: 0, outputTokens: 0 };
   let turn = 0;
+  // Set when a turn executes tools and completes but the turn budget is now
+  // exhausted — the loop is about to stop mid-task. Drives the terminal
+  // `max_turns` signal below so callers can distinguish a cut-off from a clean
+  // finish (a silent stop otherwise looks like a truncated/empty result).
+  let hitMaxTurns = false;
   let firstTurn = true;
   let consecutivePauses = 0;
   let toolPairingRepaired = false;
@@ -1252,6 +1257,13 @@ export async function* agentLoop(
           }
         }
       }
+
+      // This turn ran tools and wants to continue, but the budget is spent —
+      // the while-condition will now end the loop mid-task. Flag it so the
+      // fall-through below emits an explicit cut-off signal.
+      if (turn >= maxTurns) {
+        hitMaxTurns = true;
+      }
     }
   } finally {
     // Sanitize orphaned server_tool_use blocks on abort.
@@ -1270,6 +1282,22 @@ export async function* agentLoop(
       lastAssistant = messages[i] as AssistantMessage;
       break;
     }
+  }
+
+  // Hard turn-budget cut-off — surface a terminal signal BEFORE agent_done so
+  // the caller knows the run stopped mid-task and the output may be incomplete.
+  if (hitMaxTurns) {
+    diag("max_turns_reached", {
+      turn,
+      maxTurns,
+      provider: options.provider,
+      model: options.model,
+    });
+    yield {
+      type: "max_turns" as const,
+      totalTurns: turn,
+      maxTurns,
+    };
   }
 
   yield {
