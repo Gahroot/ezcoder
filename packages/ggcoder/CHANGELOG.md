@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.4.3
+
+### Patch Changes
+
+- Enforce subagent `tools:` frontmatter as an allowlist, raise the subagent turn cap to 50 with a clear cut-off signal when it's hit, and phrase `/init` and task-handoff notices for the gg-app UI instead of CLI keybinds.
+  - @kenkaiiii/gg-ai@5.4.3
+  - @kenkaiiii/gg-agent@5.4.3
+  - @kenkaiiii/gg-core@5.4.3
+
 ## 5.4.2
 
 ### Patch Changes
