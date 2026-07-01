@@ -1,5 +1,21 @@
 # @prestyj/cli
 
+## 5.2.0
+
+### Minor Changes
+
+- Sync upstream gg-framework features: autopilot auto-review loop, Xiaomi API-Credits
+  fallback with MiMo-V2.5-Pro-UltraSpeed, structured provider errors
+  (headline/message/guidance), subagent tool allow-list enforcement, task
+  auto-pruning, and Claude Sonnet 5. Fork distinctions (task list, monitor selector,
+  branding) preserved.
+
+### Patch Changes
+
+- @prestyj/ai@5.2.0
+- @prestyj/agent@5.2.0
+- @prestyj/core@5.2.0
+
 ## 5.5.0
 
 ### Minor Changes
