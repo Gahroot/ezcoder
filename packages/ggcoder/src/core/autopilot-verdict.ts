@@ -2,7 +2,7 @@
  * Autopilot Ken's verdict contract.
  *
  * In autopilot mode Ken never talks to the user — he auto-reviews GG Coder's
- * work and replies with exactly one of three machine-parseable verdicts. The
+ * work and replies with exactly one of four machine-parseable verdicts. The
  * first non-empty line carries the keyword; anything after is the payload.
  *
  *   PROMPT
@@ -10,16 +10,27 @@
  *
  *   ALL_CLEAR
  *
+ *   IGNORE
+ *
  *   HUMAN
  *   <one short reason the human is needed>
  *
+ * ALL_CLEAR and IGNORE both stop the cycle with nothing left to do, but they
+ * mean different things to the UI: ALL_CLEAR is a verdict on real work ("GG
+ * Coder built/changed something and it checks out") and renders a one-line Ken
+ * marker. IGNORE means the turn was never worth reviewing in the first place
+ * (small talk, a question, an ack, a mechanical operation with no code
+ * changes) — it renders NOTHING, not even a marker, so trivial turns don't
+ * spam the transcript with a Ken bubble that adds no information.
+ *
  * Parsing is forgiving and safe-by-default: any reply we can't confidently map
- * to PROMPT or ALL_CLEAR becomes a HUMAN stop, never a blind loop.
+ * to PROMPT, ALL_CLEAR, or IGNORE becomes a HUMAN stop, never a blind loop.
  */
 
 export type AutopilotVerdict =
   | { kind: "prompt"; body: string }
   | { kind: "all_clear" }
+  | { kind: "ignore" }
   | { kind: "human"; reason: string };
 
 /** Cap on the raw-reply text we echo back as a HUMAN reason when Ken's output
@@ -77,6 +88,16 @@ export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
 
   if (collapsed === "ALL_CLEAR" || collapsed.startsWith("ALL_CLEAR")) {
     return { kind: "all_clear" };
+  }
+
+  // IGNORE / SKIP: the turn wasn't real work — nothing to say, nothing to show.
+  if (
+    collapsed === "IGNORE" ||
+    collapsed.startsWith("IGNORE") ||
+    collapsed === "SKIP" ||
+    collapsed.startsWith("SKIP")
+  ) {
+    return { kind: "ignore" };
   }
 
   if (collapsed === "PROMPT" || collapsed.startsWith("PROMPT")) {

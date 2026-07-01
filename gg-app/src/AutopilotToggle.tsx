@@ -13,9 +13,13 @@ interface Props {
   checked: boolean;
   /** Fired with the next value when the user flips the switch. */
   onChange: (next: boolean) => void;
+  /** True while GG Coder (or an autopilot review/injected run) is active —
+   *  disables the switch, mirroring "+ New" and "/commit". Autopilot must be
+   *  idle before its own on/off state can change. */
+  disabled?: boolean;
 }
 
-export function AutopilotToggle({ checked, onChange }: Props): React.ReactElement {
+export function AutopilotToggle({ checked, onChange, disabled }: Props): React.ReactElement {
   return (
     <span
       className="autopilot-toggle"
@@ -24,7 +28,12 @@ export function AutopilotToggle({ checked, onChange }: Props): React.ReactElemen
       <span className="autopilot-label">Autopilot</span>
       <span className="cl-toggle-switch">
         <label className="cl-switch">
-          <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.checked)}
+          />
           <span />
         </label>
       </span>

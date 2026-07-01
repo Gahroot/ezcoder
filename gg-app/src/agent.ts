@@ -243,6 +243,7 @@ export async function cancel(): Promise<void> {
 //   autopilot_review_start {}       — Ken started an auto-review (spinner)
 //   autopilot_prompted { round }    — Ken fed GG Coder another prompt (marker)
 //   autopilot_done {}               — Ken gave the all-clear, loop stops
+//   autopilot_ignored {}            — nothing worth reviewing, loop stops SILENTLY (no marker)
 //   autopilot_human { reason }      — Ken needs a human decision, loop stops
 //   autopilot_capped { rounds }     — round cap hit, loop paused
 //   autopilot_error { headline, … } — a review failed (structured, like error)

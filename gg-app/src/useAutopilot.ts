@@ -65,6 +65,12 @@ export function useAutopilot(opts: {
           setAutopilotReviewing(false);
           pushMarker("done");
           return true;
+        case "autopilot_ignored":
+          // Nothing worth reviewing (small talk, a mechanical git op, etc.) —
+          // stop the spinner and add NOTHING to the transcript. No marker, no
+          // "all clear", zilch.
+          setAutopilotReviewing(false);
+          return true;
         case "autopilot_human":
           setAutopilotReviewing(false);
           pushMarker("human", {

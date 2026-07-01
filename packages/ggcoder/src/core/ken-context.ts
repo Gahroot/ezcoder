@@ -119,8 +119,8 @@ function renderMessage(msg: Message): string | null {
 export const AUTOPILOT_REVIEW_INSTRUCTION =
   "GG Coder just finished a turn. Review its work against the user's original " +
   "request in the transcript above. Reply with your verdict ONLY — the first " +
-  "line must be exactly PROMPT, ALL_CLEAR, or HUMAN, with the payload after. No " +
-  "greetings, no mentorship prose.";
+  "line must be exactly PROMPT, ALL_CLEAR, IGNORE, or HUMAN, with the payload " +
+  "after. No greetings, no mentorship prose.";
 
 /** Inputs the sidecar gathers for an autopilot review digest (everything
  *  `buildKenDigest` needs except the fixed review instruction, which this helper

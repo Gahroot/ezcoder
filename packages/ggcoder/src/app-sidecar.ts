@@ -1231,6 +1231,12 @@ async function createSession(
           broadcast("autopilot_done", {});
           return;
         }
+        if (verdict.kind === "ignore") {
+          // Nothing worth reviewing (small talk, a mechanical git op, etc.) —
+          // stop the cycle silently, no marker at all.
+          broadcast("autopilot_ignored", {});
+          return;
+        }
         if (verdict.kind === "human") {
           broadcast("autopilot_human", { reason: verdict.reason });
           return;

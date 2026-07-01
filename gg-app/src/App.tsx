@@ -1654,6 +1654,7 @@ function App(): React.ReactElement {
             <span className="picker-head-actions">
               <AutopilotToggle
                 checked={state?.autopilot ?? false}
+                disabled={running || autopilotReviewing}
                 onChange={(next) => {
                   setState((s) => (s ? { ...s, autopilot: next } : s));
                   void setAutopilot(next);
