@@ -2,6 +2,7 @@ import { ZodError, prettifyError } from "zod";
 import {
   stream,
   EventStream,
+  GGAIError,
   type Message,
   type ToolCall,
   type ToolResult,
@@ -381,6 +382,12 @@ export async function* agentLoop(
   let overflowCompactionAttempts = 0;
   let toolResultTruncationAttempted = false;
   const invalidToolArgumentCounts = new Map<string, number>();
+  // A recoverable tool-argument fatal (empty args -- a provider stream
+  // glitch, see executeSingleToolCall) gets exactly one bounded auto-continue
+  // per agent run before it's surfaced as a real error. This mirrors what
+  // manually sending another message already fixes in practice, so the user
+  // doesn't have to do it by hand for a one-off upstream hiccup.
+  let toolArgumentAutoContinueUsed = false;
   // Non-streaming fallback mode. After repeated stream stalls, flip to a
   // plain non-streaming request/response -- often survives broken SSE
   // connections (transient CDN / proxy issues) that streaming retries cannot.
@@ -1179,8 +1186,16 @@ export async function* agentLoop(
       }
 
       let fatalToolArgumentError: Error | null = null;
-      const markFatalToolArgumentError = (error: Error): void => {
+      let fatalToolArgumentRecoverable = false;
+      let fatalToolArgumentToolName = "";
+      const markFatalToolArgumentError = (
+        error: Error,
+        recoverable: boolean,
+        toolName: string,
+      ): void => {
         fatalToolArgumentError = error;
+        fatalToolArgumentRecoverable = recoverable;
+        fatalToolArgumentToolName = toolName;
       };
       const executionOptions: ToolBatchExecutionOptions = {
         signal: options.signal,
@@ -1199,8 +1214,28 @@ export async function* agentLoop(
       const toolsAborted = executionResult.aborted;
 
       if (fatalToolArgumentError) {
-        yield { type: "error" as const, error: fatalToolArgumentError };
-        break;
+        if (fatalToolArgumentRecoverable && !toolArgumentAutoContinueUsed) {
+          // One-shot auto-continue: clear this tool's strike count so the
+          // model gets a fresh 3-attempt budget, tell the caller (UI) what
+          // happened, and fall through to the next turn instead of stopping --
+          // exactly what manually sending another message already does.
+          toolArgumentAutoContinueUsed = true;
+          for (const key of invalidToolArgumentCounts.keys()) {
+            if (key.startsWith(`${fatalToolArgumentToolName}:`))
+              invalidToolArgumentCounts.delete(key);
+          }
+          yield {
+            type: "retry" as const,
+            reason: "tool_argument_glitch" as const,
+            attempt: 1,
+            maxAttempts: 1,
+            delayMs: 0,
+            silent: false,
+          };
+        } else {
+          yield { type: "error" as const, error: fatalToolArgumentError };
+          break;
+        }
       }
 
       // Exit loop after cleaning up aborted tools
@@ -1261,7 +1296,16 @@ interface ToolBatchExecutionOptions {
   maxToolResultChars?: number;
   toolMap: Map<string, AgentTool>;
   invalidToolArgumentCounts: Map<string, number>;
-  markFatalToolArgumentError: (error: Error) => void;
+  /**
+   * `recoverable` flags the case where the failing call's raw args were a
+   * completely empty object -- the signature of a provider stream that cut
+   * off before emitting any `input_json_delta` for the tool call, rather
+   * than the model genuinely misunderstanding the schema. The agent loop
+   * gives recoverable failures one bounded auto-continue (exactly what
+   * manually sending another message already does) before treating them
+   * as fatal.
+   */
+  markFatalToolArgumentError: (error: Error, recoverable: boolean, toolName: string) => void;
 }
 
 interface ToolBatchExecutionResult {
@@ -1345,12 +1389,31 @@ async function executeSingleToolCall(
           prettyError +
           "\nRe-issue the call with each field as the correct type.";
         if (failureCount >= 3) {
+          // Empty raw args (no fields at all) is the signature of a provider
+          // stream that closed the tool_use block before ever emitting an
+          // input_json_delta -- an upstream glitch the model had no way to
+          // avoid, not a genuine misunderstanding of the schema. That case is
+          // `recoverable`: the agent loop gets one bounded auto-continue
+          // before giving up, matching what manually sending another message
+          // already fixes in practice.
+          const recoverable = Object.keys(toolCall.args ?? {}).length === 0;
           options.markFatalToolArgumentError(
-            new Error(
+            new GGAIError(
               `The model repeatedly issued invalid arguments for tool \`${toolCall.name}\`. ` +
-                `This is usually an upstream model/tool-calling bug. Your conversation is preserved; ` +
-                `send another message or switch models to continue.`,
+                `This is usually an upstream model/tool-calling bug` +
+                (recoverable ? " (the provider's stream returned empty tool-call arguments)" : "") +
+                `. Your conversation is preserved; send another message or switch models to continue.`,
+              {
+                source: "provider",
+                hint:
+                  "This is the model/provider's fault, not a ggcoder bug. " +
+                  (recoverable
+                    ? "ggcoder already retried automatically once; if it recurs, send another message or switch models."
+                    : "Send another message or switch models to continue."),
+              },
             ),
+            recoverable,
+            toolCall.name,
           );
         }
       } else {

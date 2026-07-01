@@ -896,11 +896,14 @@ describe("agentLoop", () => {
     expect(calls).toEqual(["mutate:start", "mutate:end", "read_after"]);
   });
 
-  it("stops after repeated invalid tool arguments", async () => {
+  it("stops after repeated invalid tool arguments with non-empty args", async () => {
+    // Non-empty (but wrong-typed) args mean the model actually attempted a
+    // value -- not a provider stream glitch -- so this stays non-recoverable
+    // and stops immediately after 3 identical failures, as before.
     const toolResponse = (id: string) => ({
       message: {
         role: "assistant" as const,
-        content: [{ type: "tool_call" as const, id, name: "bash", args: {} }],
+        content: [{ type: "tool_call" as const, id, name: "bash", args: { command: 123 } }],
       },
       stopReason: "tool_use",
       usage: { inputTokens: 50, outputTokens: 25 },
@@ -954,7 +957,71 @@ describe("agentLoop", () => {
         }),
       }),
     );
+    // Non-recoverable fatal — no auto-continue retry event.
+    expect(events.filter((e) => e.type === "retry")).toHaveLength(0);
     expect(result.totalTurns).toBe(3);
+  });
+
+  it("auto-continues once after repeated EMPTY tool arguments, then stops if it recurs", async () => {
+    // Empty args (`{}`) is the signature of a provider stream that closed the
+    // tool_use block before ever sending argument tokens -- recoverable, so
+    // the loop gets exactly one bounded auto-continue before treating a
+    // repeat as fatal.
+    const emptyArgsResponse = (id: string) => ({
+      message: {
+        role: "assistant" as const,
+        content: [{ type: "tool_call" as const, id, name: "bash", args: {} }],
+      },
+      stopReason: "tool_use",
+      usage: { inputTokens: 50, outputTokens: 25 },
+    });
+
+    for (const id of ["t1", "t2", "t3", "t4", "t5", "t6"]) {
+      mockStream.mockReturnValueOnce({
+        [Symbol.asyncIterator]: async function* () {
+          yield* [];
+        },
+        response: Promise.resolve(emptyArgsResponse(id)),
+      } as unknown as ReturnType<typeof stream>);
+    }
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "test" },
+    ];
+
+    const { events, result } = await collectLoop(messages, {
+      provider: "anthropic",
+      model: "test",
+      tools: [
+        {
+          name: "bash",
+          description: "test",
+          parameters: z.object({ command: z.string() }),
+          execute: () => "should not execute",
+        },
+      ],
+    });
+
+    // 3 failures trip the recoverable path and auto-continue (no stop yet);
+    // 3 more failures after the fresh budget trip the fatal path for real.
+    expect(mockStream).toHaveBeenCalledTimes(6);
+    expect(events.filter((e) => e.type === "tool_call_end" && e.isError)).toHaveLength(6);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "retry", reason: "tool_argument_glitch" }),
+    );
+    expect(
+      events.filter((e) => e.type === "retry" && e.reason === "tool_argument_glitch"),
+    ).toHaveLength(1);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        error: expect.objectContaining({
+          message: expect.stringContaining("repeatedly issued invalid arguments"),
+        }),
+      }),
+    );
+    expect(result.totalTurns).toBe(6);
   });
 
   it("respects maxTurns", async () => {
