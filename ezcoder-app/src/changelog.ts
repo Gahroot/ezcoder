@@ -25,10 +25,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.11.0",
     date: "2026-07-02",
     items: [
-      "Meet Autopilot. Flip it on and I stay in the room after every job, reviewing what GG Coder just built the moment it finishes. If something is broken or half-done I send it right back in with a sharp fix, if it nailed it I call it clear, and if it is a real judgment call I tap you on the shoulder. You get a second set of eyes on every single turn without lifting a finger.",
-      "You can watch me work now too. While I review, a little Ken line lights up in the status bar, and my verdict lands right in the chat like I am talking straight to you. No mystery, no black box.",
+      "Meet Autopilot. Flip it on and I stay in the room after every job, reviewing what EZ Coder just built the moment it finishes. If something is broken or half-done I send it right back in with a sharp fix, if it nailed it I call it clear, and if it is a real judgment call I tap you on the shoulder. You get a second set of eyes on every single turn without lifting a finger.",
+      "You can watch me work now too. While I review, a little Nolan line lights up in the status bar, and my verdict lands right in the chat like I am talking straight to you. No mystery, no black box.",
       "Your workspace tidies itself. The second a task is done it slips out of your Tasks list on its own, so all you ever see is what still needs doing. No more hunting for the checkbox.",
-      "Un-minimizing one window now brings the whole crew back. Click a single GG Coder window back up and its siblings rise with it, so you are never left digging through the dock for the rest.",
+      "Un-minimizing one window now brings the whole crew back. Click a single EZ Coder window back up and its siblings rise with it, so you are never left digging through the dock for the rest.",
     ],
   },
   {
@@ -37,15 +37,15 @@ export const CHANGELOG: ChangelogEntry[] = [
     items: [
       "Your helper agents just got a lot more capable. I gave them room to run five times longer, so instead of quitting halfway through a real job they now see it all the way to the finish. And if one ever does run out of road, it tells you straight up instead of handing back a mysterious blank.",
       "Read-only agents are now genuinely read-only. When I send a scout out to explore your code, it physically cannot touch or change a thing. Peace of mind baked right in.",
-      "The tips GG Coder gives you now actually match the app. No more being told to press some terminal shortcut that does not exist here. It points you at the real buttons you can see and click.",
+      "The tips EZ Coder gives you now actually match the app. No more being told to press some terminal shortcut that does not exist here. It points you at the real buttons you can see and click.",
     ],
   },
   {
     version: "0.10.2",
     date: "2026-07-01",
     items: [
-      "Anthropic occasionally drops a tool call mid-stream with nothing in it, and it used to make GG Coder throw up its hands and blame itself. I taught it to recognize that exact glitch and just quietly pick the work back up, so a rare hiccup doesn't kill your session anymore.",
-      "When something really does go wrong, I fixed the message so it points at the actual culprit instead of guessing it's a GG Coder bug. Clearer errors, less confusion about who to blame.",
+      "Anthropic occasionally drops a tool call mid-stream with nothing in it, and it used to make EZ Coder throw up its hands and blame itself. I taught it to recognize that exact glitch and just quietly pick the work back up, so a rare hiccup doesn't kill your session anymore.",
+      "When something really does go wrong, I fixed the message so it points at the actual culprit instead of guessing it's a EZ Coder bug. Clearer errors, less confusion about who to blame.",
     ],
   },
   {
@@ -84,7 +84,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.7.2",
     date: "2026-06-30",
     items: [
-      "GG Coder just got faster at the boring part. When it needs to read a few files or search around, it now grabs them all at once instead of one at a time. Less waiting on every step, more time actually building.",
+      "EZ Coder just got faster at the boring part. When it needs to read a few files or search around, it now grabs them all at once instead of one at a time. Less waiting on every step, more time actually building.",
     ],
   },
   {

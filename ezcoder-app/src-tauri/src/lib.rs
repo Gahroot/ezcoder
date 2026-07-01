@@ -907,7 +907,7 @@ async fn agent_nolan_cancel(
 }
 
 /// Proxy: toggle autopilot (auto-review) for THIS window's project. Persisted
-/// server-side in ~/.gg/gg-app.json keyed by cwd; returns `{ autopilot }`.
+/// server-side in ~/.ezcoder/ezcoder-app.json keyed by cwd; returns `{ autopilot }`.
 #[tauri::command]
 async fn agent_autopilot_set(
     webview: WebviewWindow,
@@ -1488,7 +1488,7 @@ fn auth_file_path() -> PathBuf {
 /// One API-key option for a provider that splits auth across multiple
 /// distinct endpoints/credentials (currently only Xiaomi: Token Plan vs.
 /// API Credits). Mirrors `ApiKeyVariant` in
-/// packages/ggcoder/src/core/auth-providers.ts.
+/// packages/cli/src/core/auth-providers.ts.
 #[derive(PartialEq, Debug)]
 struct ApiKeyVariant {
     /// Storage key in auth.json (distinct from the provider `value`).
@@ -1845,7 +1845,7 @@ fn app_auth_apikey(
     Ok(serde_json::json!({ "ok": true }))
 }
 
-/// Native: disconnect a provider (remove its credential from ~/.gg/auth.json).
+/// Native: disconnect a provider (remove its credential from ~/.ezcoder/auth.json).
 /// Moonshot also clears its OAuth key; any provider with multiple
 /// `api_key_variants` (currently only Xiaomi) clears every variant key, so a
 /// single "disconnect" fully removes all of a provider's credentials. Never
@@ -3230,8 +3230,8 @@ pub fn run() {
             agent_state,
             agent_prompt,
             agent_cancel,
-            agent_ken_prompt,
-            agent_ken_cancel,
+            agent_nolan_prompt,
+            agent_nolan_cancel,
             agent_autopilot_set,
             agent_accept_plan,
             agent_new_session,

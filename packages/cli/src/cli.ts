@@ -513,13 +513,13 @@ async function runInkTUI(opts: {
       const fallback = loggedInProviders.find((p) => resolvableModelFor(p));
       if (!fallback) {
         throw new Error(
-          'All logged-in providers expired or failed to authenticate. Run "ggcoder login" to re-authenticate.',
+          'All logged-in providers expired or failed to authenticate. Run "ezcoder login" to re-authenticate.',
         );
       }
       console.warn(
         chalk.yellow(
           `⚠ ${displayName(preferredProvider)} session expired — switched to ${displayName(fallback)} for this launch.\n` +
-            `  Run "ggcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
+            `  Run "ezcoder login" to re-authenticate ${displayName(preferredProvider)}.`,
         ),
       );
       provider = fallback;

@@ -80,9 +80,9 @@ projects + their recent 5 sessions, New Project, Settings), `NewProjectModal`,
 `ActivityBar` (spinner + thinking timer + tokens), `PlanModeLogo` (amber ASCII banner),
 `WindowLayoutButton` (2/4 tiling), `Markdown`. Theme mirrors `ui/theme/dark.json` in `theme.ts`.
 
-### Error display (gg-app)
+### Error display (ezcoder-app)
 
-gg-app never shows a raw provider string (e.g. `400 {"code":"400",...}`) — every error is run
+ezcoder-app never shows a raw provider string (e.g. `400 {"code":"400",...}`) — every error is run
 through gg-ai's `formatError` server-side before it reaches the webview, mirroring the TUI's
 headline/message/guidance split ("is this me or them", and — for usage-limit stops — when it
 resets).
@@ -91,7 +91,7 @@ resets).
   `JSON.stringify`-ing the whole error body whenever the provider's response has no usable string
   `message` (e.g. Xiaomi MiMo returning `{"code":"400","message":"","param":"","type":""}`) — so
   the blob was baked into `err.message` before it ever reached gg-ai's formatting layer.
-  `isRawJsonErrorEcho` / `emptyProviderErrorMessage` in `packages/gg-ai/src/errors.ts` detect that
+  `isRawJsonErrorEcho` / `emptyProviderErrorMessage` in `packages/ai/src/errors.ts` detect that
   shape and swap in a clean "provider returned an empty error response" fallback; both provider
   `toError()`s (`providers/openai.ts`, `providers/anthropic.ts`) apply it before constructing the
   `ProviderError`. The raw body is never lost — the original thrown error is kept on `cause` for
@@ -99,14 +99,14 @@ resets).
   fallback.
 
 - **`app-sidecar.ts`** has one chokepoint, `broadcastError(type, logLabel, err)`, used by every
-  catch site that used to hand-roll `{ message: err.message }` (the session/Ken event-bus `error`
-  handlers, `runAgent`'s catch, Ken's turn runner). It calls `formatError`, logs the full
-  structured detail to `gg-app-sidecar.log`, and broadcasts `{ headline, message?, guidance,
-  provider?, statusCode?, resetsAt? }` under the `"error"` / `"ken_error"` SSE type. Add new
+  catch site that used to hand-roll `{ message: err.message }` (the session/Nolan event-bus `error`
+  handlers, `runAgent`'s catch, Nolan's turn runner). It calls `formatError`, logs the full
+  structured detail to `ezcoder-app-sidecar.log`, and broadcasts `{ headline, message?, guidance,
+  provider?, statusCode?, resetsAt? }` under the `"error"` / `"nolan_error"` SSE type. Add new
   error catch sites through this helper — never broadcast a bare message again.
 - **Webview**: the `Item` union's `error` variant carries `headline` / `message` / `guidance`
   (a legacy `text` fallback remains for any older flat-string frame). `useAgentEvents.ts` and
-  `useKenMentor.ts` map the SSE payload onto it; `TranscriptRow` in `App.tsx` renders headline
+  `useNolanMentor.ts` map the SSE payload onto it; `TranscriptRow` in `App.tsx` renders headline
   (bold, error color) + message + guidance as stacked dim sub-lines — no new CSS, reuses the
   existing `.line.error` row and `theme.error`/`theme.textDim` tokens.
 

@@ -11,8 +11,8 @@ export interface PromptCommand {
 }
 
 /**
- * True when this process is the gg-app sidecar (Tauri spawns it with
- * `GG_APP_PORT` set, even to "0" — plain `ggcoder` CLI never sets it). Used
+ * True when this process is the ezcoder-app sidecar (Tauri spawns it with
+ * `GG_APP_PORT` set, even to "0" — plain `ezcoder` CLI never sets it). Used
  * to phrase user-facing notices (restart / task-list pointers) in terms of
  * the desktop app's UI instead of CLI keybinds, since most users are on the
  * app now and it has no terminal keybinds at all.
@@ -25,7 +25,7 @@ const TASKS_ADDED_NOTICE = IS_GG_APP
 
 const CLAUDE_MD_RESTART_NOTICE = IS_GG_APP
   ? '> ⚠️ CLAUDE.md was created/updated. GG App loads it fresh per session, so start a **New Session** (click "+ New") before continuing. Without a new session, I won\'t see the new context.'
-  : "> ⚠️ CLAUDE.md was created/updated. ggcoder loads it at startup, so **exit and restart ggcoder** (`/quit` then run `ggcoder` again) before continuing. Without a restart, I won't see the new context.";
+  : "> ⚠️ CLAUDE.md was created/updated. ezcoder loads it at startup, so **exit and restart ezcoder** (`/quit` then run `ezcoder` again) before continuing. Without a restart, I won't see the new context.";
 
 export const PROMPT_COMMANDS: PromptCommand[] = [
   {

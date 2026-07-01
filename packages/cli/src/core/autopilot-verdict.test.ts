@@ -33,7 +33,7 @@ describe("parseAutopilotVerdict", () => {
     });
   });
 
-  it("strips a ```prompt fence Ken wrapped the body in", () => {
+  it("strips a ```prompt fence Nolan wrapped the body in", () => {
     const reply = "PROMPT\n```prompt\nWire the button to the handler.\n```";
     expect(parseAutopilotVerdict(reply)).toEqual({
       kind: "prompt",

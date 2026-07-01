@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import os from "node:os";
 import {
-  buildKenDigest,
-  buildKenAutopilotContext,
+  buildNolanDigest,
+  buildNolanAutopilotContext,
   AUTOPILOT_REVIEW_INSTRUCTION,
-  KEN_RECENT_MESSAGE_LIMIT,
-} from "./ken-context.js";
+  NOLAN_RECENT_MESSAGE_LIMIT,
+} from "./nolan-context.js";
 import { createTools } from "../tools/index.js";
 import type { Message } from "@prestyj/ai";
 
@@ -114,19 +114,19 @@ describe("buildNolanDigest", () => {
     expect(digest).not.toContain("AAAABBBBCCCC");
   });
 
-  it("buildKenAutopilotContext injects the fixed review instruction as the question", () => {
+  it("buildNolanAutopilotContext injects the fixed review instruction as the question", () => {
     const messages: Message[] = [
       { role: "user", content: "add a login form" },
       { role: "assistant", content: "Added the form." },
     ];
-    const digest = buildKenAutopilotContext({
+    const digest = buildNolanAutopilotContext({
       projectContext: base.projectContext,
       cwd: base.cwd,
       gitBranch: base.gitBranch,
       platform: base.platform,
       messages,
     });
-    // The transcript is still inlined (Ken reviews it) ...
+    // The transcript is still inlined (Nolan reviews it) ...
     expect(digest).toContain("add a login form");
     expect(digest).toContain("Added the form.");
     // ... and the trailing question is the fixed autopilot instruction, not a

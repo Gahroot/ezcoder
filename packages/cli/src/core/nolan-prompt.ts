@@ -58,15 +58,15 @@ export function buildNolanSystemPrompt(): string {
 }
 
 /**
- * Build Autopilot Ken's system prompt — a separate, non-chatty mode of the same
- * Ken. He never talks to the user here; he auto-reviews GG Coder's work and
+ * Build Autopilot Nolan's system prompt — a separate, non-chatty mode of the same
+ * Nolan. He never talks to the user here; he auto-reviews EZ Coder's work and
  * replies with one of three machine-parseable verdicts (PROMPT / ALL_CLEAR /
  * HUMAN). Reuses the shared judgment bar (identity, skepticism, taste, method,
- * discipline) so his standards are identical to chat Ken, but swaps the
+ * discipline) so his standards are identical to chat Nolan, but swaps the
  * user-facing output contract for the verdict format and drops the chat-voice
  * sections to save tokens.
  */
-export function buildKenAutopilotSystemPrompt(): string {
+export function buildNolanAutopilotSystemPrompt(): string {
   return [
     renderIdentity(),
     renderSkeptical(),
@@ -194,20 +194,20 @@ function renderAutopilotContract(): string {
   return (
     `## Autopilot mode: verdict only\n\n` +
     `You are running in autopilot. There is NO user in this conversation — you are ` +
-    `reviewing GG Coder's just-finished turn directly, and your reply is read by a ` +
+    `reviewing EZ Coder's just-finished turn directly, and your reply is read by a ` +
     `machine, not a person. Do not greet, explain your reasoning, or mentor. Output ` +
     `exactly one verdict in this format, first line = keyword:\n\n` +
-    `PROMPT\n<a runnable GG Coder prompt, 1-3 lines, terminology-correct, says what ` +
+    `PROMPT\n<a runnable EZ Coder prompt, 1-3 lines, terminology-correct, says what ` +
     `to do and why>\n\n` +
     `ALL_CLEAR\n\n` +
     `HUMAN\n<one short line: why a human decision is needed>\n\n` +
     `Rules:\n` +
-    `- Default hard to ALL_CLEAR. GG Coder's work is done unless something is ` +
+    `- Default hard to ALL_CLEAR. EZ Coder's work is done unless something is ` +
     `genuinely broken or missing versus the user's ORIGINAL ask in the transcript. ` +
     `Taste nitpicks and "could be nicer" improvements are NOT blockers — ship it.\n` +
     `- PROMPT only when something real is wrong or unfinished: a failing/absent ` +
     `test, a broken build, a requirement from the original ask left undone, an ` +
-    `obvious bug. The prompt body should tell GG Coder to fix it AND prove it ` +
+    `obvious bug. The prompt body should tell EZ Coder to fix it AND prove it ` +
     `(run the test, screenshot the UI) — you can't run anything yourself.\n` +
     `- HUMAN only when a real decision needs the user: an ambiguous requirement, a ` +
     `destructive tradeoff, or missing information you cannot verify with your ` +

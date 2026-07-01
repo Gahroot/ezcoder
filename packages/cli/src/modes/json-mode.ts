@@ -21,7 +21,7 @@ export interface JsonModeOptions {
    */
   allowedTools?: string[];
   /**
-   * Stable prompt-cache routing key inherited from the parent ggcoder
+   * Stable prompt-cache routing key inherited from the parent ezcoder
    * process. Without this, each sub-agent session generates a unique
    * sessionId-derived cache key and starts with a cold cache on providers
    * that route caching by key (OpenAI Codex, OpenAI Chat, Moonshot).

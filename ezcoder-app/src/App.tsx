@@ -4,8 +4,8 @@ import {
   waitForReady,
   getState,
   sendPrompt,
-  sendKenPrompt,
-  cancelKen,
+  sendNolanPrompt,
+  cancelNolan,
   setAutopilot,
   cancel,
   newSession,
@@ -42,9 +42,9 @@ import {
   type PromptSegment,
 } from "./agent";
 import { ActivityBar } from "./ActivityBar";
-import { KenActivityBar } from "./KenActivityBar";
+import { NolanActivityBar } from "./NolanActivityBar";
 import { AutopilotReviewBar } from "./AutopilotReviewBar";
-import { useKenMentor } from "./useKenMentor";
+import { useNolanMentor } from "./useNolanMentor";
 import { useAutopilot } from "./useAutopilot";
 import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEvents";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
@@ -191,9 +191,9 @@ export type Item =
       originalCount?: number;
       newCount?: number;
     }
-  // Autopilot Ken verdict — emitted by the auto-review loop and rendered like a
-  // normal @Ken reply bubble (Ken dot + text), not a separate marker style.
-  // `phase` selects the message: he prompted GG Coder (with the `body` he sent),
+  // Autopilot Nolan verdict — emitted by the auto-review loop and rendered like a
+  // normal @Nolan reply bubble (Nolan dot + text), not a separate marker style.
+  // `phase` selects the message: he prompted EZ Coder (with the `body` he sent),
   // gave the all-clear, needs a human (with `reason`), or hit the round cap.
   | {
       kind: "autopilot";
@@ -255,17 +255,17 @@ function App(): React.ReactElement {
   // bubble, and `nolan_*` SSE handling. Lives in its own hook; App just consumes
   // the state for rendering and delegates nolan events to `handleNolanEvent`.
   const {
-    kenRunning,
-    kenTokens,
-    kenRunStartTs,
-    kenIsThinking,
-    kenThinkingStartTs,
-    kenThinkingAccumMs,
-    handleKenEvent,
-  } = useKenMentor({ setItems, nextId });
-  // Autopilot Ken (auto-reviewer): consumes the `autopilot_*` event family into
-  // compact transcript markers + a "Ken reviewing…" flag. Separate hook, same
-  // shared setItems/nextId pattern as useKenMentor.
+    nolanRunning,
+    nolanTokens,
+    nolanRunStartTs,
+    nolanIsThinking,
+    nolanThinkingStartTs,
+    nolanThinkingAccumMs,
+    handleNolanEvent,
+  } = useNolanMentor({ setItems, nextId });
+  // Autopilot Nolan (auto-reviewer): consumes the `autopilot_*` event family into
+  // compact transcript markers + a "Nolan reviewing…" flag. Separate hook, same
+  // shared setItems/nextId pattern as useNolanMentor.
   const { autopilotReviewing, handleAutopilotEvent } = useAutopilot({ setItems, nextId });
   const [input, setInput] = useState("");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -759,7 +759,7 @@ function App(): React.ReactElement {
   const { handleEvent, pushItem, endStreamingText } = useAgentEvents({
     setItems,
     nextId,
-    handleKenEvent,
+    handleNolanEvent,
     handleAutopilotEvent,
     setState,
     setTasks,
@@ -1798,21 +1798,21 @@ function App(): React.ReactElement {
 
       <div className="liveregion">
         {autopilotReviewing && <AutopilotReviewBar onCancel={() => void cancel()} />}
-        {kenRunning && (
-          <KenActivityBar
-            runStartTs={kenRunStartTs}
-            tokens={kenTokens}
-            isThinking={kenIsThinking}
-            thinkingStartTs={kenThinkingStartTs}
-            thinkingAccumMs={kenThinkingAccumMs}
-            onCancel={() => void cancelKen()}
+        {nolanRunning && (
+          <NolanActivityBar
+            runStartTs={nolanRunStartTs}
+            tokens={nolanTokens}
+            isThinking={nolanIsThinking}
+            thinkingStartTs={nolanThinkingStartTs}
+            thinkingAccumMs={nolanThinkingAccumMs}
+            onCancel={() => void cancelNolan()}
           />
         )}
         {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
-        {/* Ken's bar (chat OR autopilot review) REPLACES the main bar while the
+        {/* Nolan's bar (chat OR autopilot review) REPLACES the main bar while the
             build is idle — otherwise the idle "Ready for work" line stacks under
-            Ken's spinner. When the build is also running, both bars show. */}
-        {(running || (!kenRunning && !autopilotReviewing)) && (
+            Nolan's spinner. When the build is also running, both bars show. */}
+        {(running || (!nolanRunning && !autopilotReviewing)) && (
           <ActivityBar
             running={running}
             tokens={tokens}
@@ -2287,20 +2287,20 @@ const TranscriptRow = memo(function TranscriptRow({
         </div>
       );
     case "autopilot": {
-      // Autopilot Ken's verdict, rendered like a normal @Ken reply (Ken-tinted
+      // Autopilot Nolan's verdict, rendered like a normal @Nolan reply (Nolan-tinted
       // dot + text) rather than its own marker style. The text is his verdict as
-      // prose: for a PROMPT he shows what he sent GG Coder back to do; the
-      // terminal verdicts read as short Ken one-liners.
+      // prose: for a PROMPT he shows what he sent EZ Coder back to do; the
+      // terminal verdicts read as short Nolan one-liners.
       const copy: Record<Extract<Item, { kind: "autopilot" }>["phase"], string> = {
         prompted: item.body?.trim()
-          ? `Sending GG Coder back in:\n\n${item.body.trim()}`
-          : "Sending GG Coder back in for another pass.",
+          ? `Sending EZ Coder back in:\n\n${item.body.trim()}`
+          : "Sending EZ Coder back in for another pass.",
         done: "All clear. Looks good to me.",
         human: item.reason?.trim() ? item.reason.trim() : "Need you to weigh in on this one.",
         capped: "Paused autopilot after 3 rounds. Take a look before I keep going.",
       };
       return (
-        <div className="assistant-msg ken-msg">
+        <div className="assistant-msg nolan-msg">
           <span className="assistant-dot" style={{ color: theme.ken }}>
             {DOT}
           </span>

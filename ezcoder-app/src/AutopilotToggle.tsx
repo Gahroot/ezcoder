@@ -1,12 +1,12 @@
 /**
  * Autopilot toggle — the Material-style switch (Uiverse by lenin55) that turns
  * auto-review on/off for THIS window's project. Sits left of the "+ New" button
- * in the nav row. State lives on the sidecar (persisted per-cwd in gg-app.json);
+ * in the nav row. State lives on the sidecar (persisted per-cwd in ezcoder-app.json);
  * this is a controlled switch that optimistically flips then fires `setAutopilot`.
  *
  * Markup mirrors the source snippet exactly (label.cl-switch > input + span);
  * the styling lives in `.cl-switch` rules in App.css, re-themed to the app's
- * accent so the "on" track/thumb read as gg-coder purple, not the original teal.
+ * accent so the "on" track/thumb read as ezcoder purple, not the original teal.
  */
 interface Props {
   /** Current on/off state (from the sidecar's AgentState). */

@@ -265,23 +265,23 @@ export async function cancel(): Promise<void> {
 // blunt mentorship. His replies stream over the SAME SSE channel as EZ Coder's
 // but with `ken_`-prefixed event types, so the webview routes them to a separate
 // magenta bubble:
-//   ken_run_start { text }         — Ken started thinking
-//   ken_text_delta { text }        — streaming reply text
-//   ken_thinking_delta { text }    — streaming reasoning
-//   ken_tool_call_start/_update/_end — Ken's read-only tool activity
-//   ken_turn_end { … }            — a turn finished
-//   ken_run_end { cancelled? }     — Ken finished (or was cancelled)
-//   ken_error { message }          — Ken failed
+//   nolan_run_start { text }         — Nolan started thinking
+//   nolan_text_delta { text }        — streaming reply text
+//   nolan_thinking_delta { text }    — streaming reasoning
+//   nolan_tool_call_start/_update/_end — Nolan's read-only tool activity
+//   nolan_turn_end { … }            — a turn finished
+//   nolan_run_end { cancelled? }     — Nolan finished (or was cancelled)
+//   nolan_error { message }          — Nolan failed
 //
-// Autopilot Ken (auto-reviewer) is a SEPARATE, non-chatty mode of the same Ken.
-// When autopilot is on, after each GG Coder run the sidecar silently drives a
+// Autopilot Nolan (auto-reviewer) is a SEPARATE, non-chatty mode of the same Nolan.
+// When autopilot is on, after each EZ Coder run the sidecar silently drives a
 // review→prompt→review loop and emits the `autopilot_*` family (no chat bubble,
 // no new IPC — cancel reuses agent_cancel). All ride the same generic
 // `agent-event` SSE channel:
-//   autopilot_review_start {}       — Ken started an auto-review (spinner)
-//   autopilot_prompted { round }    — Ken fed GG Coder another prompt (marker)
-//   autopilot_done {}               — Ken gave the all-clear, loop stops
-//   autopilot_human { reason }      — Ken needs a human decision, loop stops
+//   autopilot_review_start {}       — Nolan started an auto-review (spinner)
+//   autopilot_prompted { round }    — Nolan fed EZ Coder another prompt (marker)
+//   autopilot_done {}               — Nolan gave the all-clear, loop stops
+//   autopilot_human { reason }      — Nolan needs a human decision, loop stops
 //   autopilot_capped { rounds }     — round cap hit, loop paused
 //   autopilot_error { headline, … } — a review failed (structured, like error)
 
@@ -309,7 +309,7 @@ export async function cancelNolan(): Promise<void> {
 }
 
 /** Toggle autopilot (auto-review) for this window's project. Persisted
- *  server-side (~/.gg/gg-app.json, keyed by cwd). Returns the new value. */
+ *  server-side (~/.ezcoder/ezcoder-app.json, keyed by cwd). Returns the new value. */
 export async function setAutopilot(enabled: boolean): Promise<boolean> {
   try {
     await waitForReady();
@@ -400,7 +400,7 @@ export interface AuthProvider {
   apiKeyBaseUrl?: string;
   /** When set, the API-key flow must ask which variant before submitting. */
   apiKeyVariants?: ApiKeyVariant[];
-  /** Live connection status from ~/.gg/auth.json. */
+  /** Live connection status from ~/.ezcoder/auth.json. */
   connected: boolean;
 }
 

@@ -60,11 +60,11 @@ A few things make it feel like one conversation instead of N:
 
 Boss and workers run on **different models, on purpose**. Use a strong reasoning model (Opus, GPT-5) up top and a fast cheap model (Sonnet, Haiku) for the workers — or whatever combination fits the work.
 
-Defaults: `claude-opus-4-8` for the boss, `claude-sonnet-5` for the workers. Anthropic, OpenAI, GLM, and Moonshot are all supported (anything `ggcoder` supports). Swap mid-session with `/model-boss` and `/model-workers` — your choice persists across restarts.
+Defaults: `claude-opus-4-8` for the boss, `claude-sonnet-5` for the workers. Anthropic, OpenAI, GLM, and Moonshot are all supported (anything `ezcoder` supports). Swap mid-session with `/model-boss` and `/model-workers` — your choice persists across restarts.
 
 ```bash
-ggboss --boss-model claude-opus-4-8 --worker-model claude-sonnet-5
-ggboss --project ../api --project ../web   # explicit project list
+ezboss --boss-model claude-opus-4-8 --worker-model claude-sonnet-5
+ezboss --project ../api --project ../web   # explicit project list
 ```
 
 ---

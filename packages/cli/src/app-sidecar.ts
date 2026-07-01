@@ -17,18 +17,18 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
-import { formatError, type ToolResultContent } from "@kenkaiiii/gg-ai";
+import { formatError, type ToolResultContent } from "@prestyj/ai";
 import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { AgentSession } from "./core/agent-session.js";
-import { buildKenSystemPrompt, buildKenAutopilotSystemPrompt } from "./core/ken-prompt.js";
-import { buildKenDigest, buildKenAutopilotContext } from "./core/ken-context.js";
+import { buildNolanSystemPrompt, buildNolanAutopilotSystemPrompt } from "./core/nolan-prompt.js";
+import { buildNolanDigest, buildNolanAutopilotContext } from "./core/nolan-context.js";
 import { parseAutopilotVerdict, type AutopilotVerdict } from "./core/autopilot-verdict.js";
 import { collectProjectContext } from "./system-prompt.js";
 import type { NolanTurnPayload } from "./core/session-manager.js";
 import { AuthStorage } from "./core/auth-storage.js";
-import { MOONSHOT_OAUTH_KEY, XIAOMI_CREDITS_KEY } from "@kenkaiiii/gg-core";
+import { MOONSHOT_OAUTH_KEY, XIAOMI_CREDITS_KEY } from "@prestyj/core";
 import { loginAnthropic } from "./core/oauth/anthropic.js";
 import { loginOpenAI } from "./core/oauth/openai.js";
 import { loginGemini } from "./core/oauth/gemini.js";
@@ -842,12 +842,12 @@ async function createSession(
 
   // Turn any thrown value into the same clear headline/message/guidance shape
   // the TUI shows (see gg-ai's formatError) instead of a bare `err.message`, log
-  // the full detail, and broadcast it under `type` ("error" or "ken_error").
+  // the full detail, and broadcast it under `type` ("error" or "nolan_error").
   // Without this the webview only ever saw a raw provider string like
   // `400 {"code":"400",...}` with no "is this me or them / when does it reset"
   // context that the CLI has always given.
   function broadcastError(
-    type: "error" | "ken_error" | "autopilot_error",
+    type: "error" | "nolan_error" | "autopilot_error",
     logLabel: string,
     err: unknown,
   ): void {
@@ -987,12 +987,12 @@ async function createSession(
   let running = false;
   let titleGenerated = false;
   // Autopilot (auto-review) toggle for THIS window's project. Loaded from
-  // gg-app.json on boot; flipped via POST /autopilot. When on, POST /prompt runs
-  // runAutopilotCycle after the user's turn settles — Ken auto-reviews the work
+  // ezcoder-app.json on boot; flipped via POST /autopilot. When on, POST /prompt runs
+  // runAutopilotCycle after the user's turn settles — Nolan auto-reviews the work
   // and drives the review→prompt→review loop.
   let autopilot = await loadAutopilot(cwd);
-  // True while an autopilot review is in flight (used to defer kenAuto model
-  // switches, like kenRunning does for chat Ken, and to drive the spinner).
+  // True while an autopilot review is in flight (used to defer nolanAuto model
+  // switches, like nolanRunning does for chat Nolan, and to drive the spinner).
   let autopilotReviewing = false;
   // True for the WHOLE autopilot cycle (reviews + injected runs). The build
   // `running` flag is false during the review windows between injected runs, so
@@ -1067,53 +1067,53 @@ async function createSession(
     ken.eventBus.on("server_tool_call", (d) => broadcast("nolan_server_tool_call", d));
     ken.eventBus.on("turn_end", (d) => broadcast("nolan_turn_end", d));
     ken.eventBus.on("error", (d) => {
-      broadcastError("ken_error", "ken error", d.error);
+      broadcastError("nolan_error", "ken error", d.error);
     });
     nolanSession = ken;
     log("INFO", "app-sidecar", "ken session ready", { provider: st.provider, model: st.model });
     return ken;
   }
 
-  // ── Autopilot Ken (auto-reviewer) ──────────────────────────
-  // A THIRD read-only AgentSession, separate from chat Ken. In autopilot mode
-  // Ken silently reviews each finished GG Coder turn and returns a verdict
+  // ── Autopilot Nolan (auto-reviewer) ──────────────────────────
+  // A THIRD read-only AgentSession, separate from chat Nolan. In autopilot mode
+  // Nolan silently reviews each finished EZ Coder turn and returns a verdict
   // (PROMPT / ALL_CLEAR / HUMAN). Its bus is intentionally NOT bridged to the
-  // ken_* chat bubbles — the review is silent; we read its final assistant text
+  // nolan_* chat bubbles — the review is silent; we read its final assistant text
   // and parse it. Uses the lean autopilot system prompt + the same read-only
   // tools. Created lazily on the first autopilot cycle.
-  let kenAutoSession: AgentSession | null = null;
-  let kenAutoAbort = new AbortController();
-  let pendingKenAutoModel: { provider: Provider; model: string } | null = null;
+  let nolanAutoSession: AgentSession | null = null;
+  let nolanAutoAbort = new AbortController();
+  let pendingNolanAutoModel: { provider: Provider; model: string } | null = null;
 
-  async function syncKenAutoModel(provider: Provider, model: string): Promise<void> {
+  async function syncNolanAutoModel(provider: Provider, model: string): Promise<void> {
     if (autopilotReviewing) {
-      pendingKenAutoModel = { provider, model };
+      pendingNolanAutoModel = { provider, model };
       return;
     }
-    if (!kenAutoSession) return;
-    const st = kenAutoSession.getState();
+    if (!nolanAutoSession) return;
+    const st = nolanAutoSession.getState();
     if (st.provider === provider && st.model === model) return;
-    await kenAutoSession.switchModel(provider, model);
+    await nolanAutoSession.switchModel(provider, model);
     log("INFO", "app-sidecar", "ken autopilot session model synced", { provider, model });
   }
 
-  async function ensureKenAutoSession(): Promise<AgentSession> {
-    if (kenAutoSession) return kenAutoSession;
+  async function ensureNolanAutoSession(): Promise<AgentSession> {
+    if (nolanAutoSession) return nolanAutoSession;
     const st = session.getState();
     const ken = new AgentSession({
       provider: st.provider,
       model: st.model,
       cwd,
-      systemPrompt: buildKenAutopilotSystemPrompt(),
-      allowedTools: KEN_ALLOWED_TOOLS,
-      allowedMcpServers: KEN_ALLOWED_MCP_SERVERS,
+      systemPrompt: buildNolanAutopilotSystemPrompt(),
+      allowedTools: NOLAN_ALLOWED_TOOLS,
+      allowedMcpServers: NOLAN_ALLOWED_MCP_SERVERS,
       transient: true,
-      signal: kenAutoAbort.signal,
+      signal: nolanAutoAbort.signal,
     });
     await ken.initialize();
     // Deliberately no bus bridge: the review is silent. Errors surface via the
     // runAutopilotReview try/catch as autopilot_error frames.
-    kenAutoSession = ken;
+    nolanAutoSession = ken;
     log("INFO", "app-sidecar", "ken autopilot session ready", {
       provider: st.provider,
       model: st.model,
@@ -1155,7 +1155,7 @@ async function createSession(
       broadcast("run_end", {});
       // Autopilot's review loop is driven explicitly from POST /prompt (see
       // runAutopilotCycle), NOT from this shared finally — that keeps the
-      // injected GG Coder runs this cycle triggers from recursively re-entering
+      // injected EZ Coder runs this cycle triggers from recursively re-entering
       // the loop through the same bracket.
       // The agent may have marked project tasks done during the run — prune the
       // completed ones so they drop out of the Tasks modal automatically (users
@@ -1177,16 +1177,16 @@ async function createSession(
   }
 
   // ── Autopilot orchestration ─────────────────────────────────
-  // One review = prompt the kenAuto session with the review digest, read its
+  // One review = prompt the nolanAuto session with the review digest, read its
   // final assistant text, parse a verdict. Returns null on failure (surfaced as
   // an autopilot_error frame) so the cycle stops rather than looping blind.
   async function runAutopilotReview(): Promise<AutopilotVerdict | null> {
     autopilotReviewing = true;
     broadcast("autopilot_review_start", {});
     try {
-      const ken = await ensureKenAutoSession();
+      const ken = await ensureNolanAutoSession();
       const projectContext = await collectProjectContext(cwd).catch(() => [] as string[]);
-      const digest = buildKenAutopilotContext({
+      const digest = buildNolanAutopilotContext({
         projectContext,
         cwd,
         gitBranch,
@@ -1200,9 +1200,9 @@ async function createSession(
     } finally {
       autopilotReviewing = false;
       // Apply any model switch that landed mid-review.
-      const pending = pendingKenAutoModel;
-      pendingKenAutoModel = null;
-      if (pending) await syncKenAutoModel(pending.provider, pending.model);
+      const pending = pendingNolanAutoModel;
+      pendingNolanAutoModel = null;
+      if (pending) await syncNolanAutoModel(pending.provider, pending.model);
     }
   }
 
@@ -1216,8 +1216,8 @@ async function createSession(
     try {
       // Lean context per user turn: wipe prior review history so each new turn
       // starts cheap, while within this cycle the few review messages persist so
-      // Ken remembers what he already asked GG Coder to fix.
-      await kenAutoSession?.newSession().catch(() => {});
+      // Nolan remembers what he already asked EZ Coder to fix.
+      await nolanAutoSession?.newSession().catch(() => {});
       for (let round = 1; round <= MAX_AUTOPILOT_ROUNDS; round++) {
         if (autopilotCancelled) return;
         const verdict = await runAutopilotReview();
@@ -1230,8 +1230,8 @@ async function createSession(
           broadcast("autopilot_human", { reason: verdict.reason });
           return;
         }
-        // prompt → show a compact Ken-tinted marker (not the prompt body), then
-        // feed GG Coder. Bracketed by runAgent so the run streams normally; the
+        // prompt → show a compact Nolan-tinted marker (not the prompt body), then
+        // feed EZ Coder. Bracketed by runAgent so the run streams normally; the
         // shared finally no longer re-triggers autopilot, so this can't recurse.
         broadcast("autopilot_prompted", { round, body: verdict.body });
         await runAgent(verdict.body, () => session.prompt(verdict.body));
@@ -1762,7 +1762,7 @@ async function createSession(
         if (running || autopilotActive) {
           // Queue prompts as mid-run steering (mirrors the CLI). Also queue while
           // an autopilot cycle is active but between injected runs (build idle,
-          // Ken reviewing) so the message never starts a run that collides with
+          // Nolan reviewing) so the message never starts a run that collides with
           // an injected one on the same session. Attachments are persisted to
           // .gg/uploads first so the queued media rides the same native-block
           // path as a non-queued attachment prompt when it drains.
@@ -1790,8 +1790,8 @@ async function createSession(
             await session.prompt(text);
           }
         });
-        // After the user's run settles, kick off Ken's auto-review loop. This is
-        // the ONLY entry point into the cycle — it drives any follow-up GG Coder
+        // After the user's run settles, kick off Nolan's auto-review loop. This is
+        // the ONLY entry point into the cycle — it drives any follow-up EZ Coder
         // runs itself, so the shared runAgent finally never recurses.
         if (autopilot && !autopilotCancelled) await runAutopilotCycle();
       });
@@ -1832,7 +1832,7 @@ async function createSession(
           const reply = lastAssistantText(ken.getMessages());
           if (reply.trim()) await session.persistNolanTurn(text, reply);
         } catch (err) {
-          broadcastError("ken_error", "ken run failed", err);
+          broadcastError("nolan_error", "ken run failed", err);
         } finally {
           nolanRunning = false;
           broadcast("nolan_run_end", {});
@@ -2112,8 +2112,8 @@ async function createSession(
         // new model's credentials, so switching to a just-added provider works.
         await auth.reload();
         await session.switchModel(target.provider, target.id);
-        await syncKenModel(target.provider, target.id);
-        await syncKenAutoModel(target.provider, target.id);
+        await syncNolanModel(target.provider, target.id);
+        await syncNolanAutoModel(target.provider, target.id);
         // Clamp the reasoning level to what the new model supports (mirrors the
         // CLI): keep thinking on at the first supported tier if it was on but
         // the prior level is unsupported here; leave it off if it was off.
@@ -2198,11 +2198,11 @@ async function createSession(
       // Stop a run-all sweep so the next pending task isn't auto-started.
       taskRunAll = false;
       // Stop any in-flight autopilot cycle: flag it so the loop bails between
-      // steps, and abort a review that's mid-prompt on the kenAuto session.
+      // steps, and abort a review that's mid-prompt on the nolanAuto session.
       autopilotCancelled = true;
-      kenAutoAbort.abort();
-      kenAutoAbort = new AbortController();
-      kenAutoSession?.setSignal(kenAutoAbort.signal);
+      nolanAutoAbort.abort();
+      nolanAutoAbort = new AbortController();
+      nolanAutoSession?.setSignal(nolanAutoAbort.signal);
       autopilotReviewing = false;
       // Drop any queued steering and return it so the webview can restore it to
       // the composer.
@@ -2692,10 +2692,10 @@ async function createSession(
     // Stop the Telegram serve loop + dispose its per-chat sessions.
     if (serveController) await serveController.stop().catch(() => {});
     for (const c of clients) c.res.end();
-    kenAbort.abort();
-    kenAutoAbort.abort();
-    await kenSession?.dispose().catch(() => {});
-    await kenAutoSession?.dispose().catch(() => {});
+    nolanAbort.abort();
+    nolanAutoAbort.abort();
+    await nolanSession?.dispose().catch(() => {});
+    await nolanAutoSession?.dispose().catch(() => {});
     await session.dispose().catch(() => {});
   }
 

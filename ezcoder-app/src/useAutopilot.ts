@@ -4,20 +4,20 @@ import type { SidecarEvent } from "./agent";
 import type { Item } from "./App";
 
 /**
- * Autopilot Ken (auto-reviewer) event handling, extracted from App.tsx and
- * modeled on useKenMentor.
+ * Autopilot Nolan (auto-reviewer) event handling, extracted from App.tsx and
+ * modeled on useNolanMentor.
  *
- * When autopilot is on, Ken silently reviews each finished GG Coder turn and the
- * sidecar drives a review→prompt→review loop. Ken never streams a chat bubble
+ * When autopilot is on, Nolan silently reviews each finished EZ Coder turn and the
+ * sidecar drives a review→prompt→review loop. Nolan never streams a chat bubble
  * here; instead the loop emits a small `autopilot_*` event family that this hook
- * turns into compact Ken-tinted transcript markers, plus an `autopilotReviewing`
- * flag for a "Ken reviewing…" spinner.
+ * turns into compact Nolan-tinted transcript markers, plus an `autopilotReviewing`
+ * flag for a "Nolan reviewing…" spinner.
  *
- * Like useKenMentor, the hook owns no transcript array — it appends markers via
+ * Like useNolanMentor, the hook owns no transcript array — it appends markers via
  * the App's shared `setItems` and mints ids with the App's `nextId`.
  */
 export interface Autopilot {
-  /** True while Ken is mid auto-review (drives the "Ken reviewing…" spinner). */
+  /** True while Nolan is mid auto-review (drives the "Nolan reviewing…" spinner). */
   autopilotReviewing: boolean;
   /**
    * Handle one `autopilot_*` SSE event. Returns true when the event belonged to
@@ -54,7 +54,7 @@ export function useAutopilot(opts: {
           setAutopilotReviewing(true);
           return true;
         case "autopilot_prompted":
-          // A review round decided GG Coder needs another pass. The spinner ends
+          // A review round decided EZ Coder needs another pass. The spinner ends
           // here; the injected build run takes over as the live activity.
           setAutopilotReviewing(false);
           pushMarker("prompted", {
@@ -78,7 +78,7 @@ export function useAutopilot(opts: {
         // Not an autopilot event, but a cancel settles the build run WITHOUT a
         // terminal autopilot frame (AgentSession swallows the abort, so the
         // in-flight review just returns). Peek at a cancelled run_end to clear a
-        // stuck "Ken reviewing…" spinner, then return false so the build handler
+        // stuck "Nolan reviewing…" spinner, then return false so the build handler
         // still processes run_end normally.
         case "run_end":
           if (d.cancelled === true) setAutopilotReviewing(false);
@@ -86,7 +86,7 @@ export function useAutopilot(opts: {
         case "autopilot_error": {
           setAutopilotReviewing(false);
           // Structured payload from the sidecar's broadcastError; "Autopilot: "
-          // prefix on the headline distinguishes it from a build/Ken error.
+          // prefix on the headline distinguishes it from a build/Nolan error.
           const headline = typeof d.headline === "string" ? d.headline : undefined;
           setItems((prev) => [
             ...prev,

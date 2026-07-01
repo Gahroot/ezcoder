@@ -1,12 +1,12 @@
 /**
- * Autopilot Ken's verdict contract.
+ * Autopilot Nolan's verdict contract.
  *
- * In autopilot mode Ken never talks to the user — he auto-reviews GG Coder's
+ * In autopilot mode Nolan never talks to the user — he auto-reviews EZ Coder's
  * work and replies with exactly one of three machine-parseable verdicts. The
  * first non-empty line carries the keyword; anything after is the payload.
  *
  *   PROMPT
- *   <runnable GG Coder prompt body, 1-3 lines>
+ *   <runnable EZ Coder prompt body, 1-3 lines>
  *
  *   ALL_CLEAR
  *
@@ -22,13 +22,13 @@ export type AutopilotVerdict =
   | { kind: "all_clear" }
   | { kind: "human"; reason: string };
 
-/** Cap on the raw-reply text we echo back as a HUMAN reason when Ken's output
+/** Cap on the raw-reply text we echo back as a HUMAN reason when Nolan's output
  *  is unrecognized — keeps a garbage/huge reply from bloating the transcript. */
 const RAW_REASON_CAP = 500;
 
-const DEFAULT_HUMAN_REASON = "Ken flagged this for a human but gave no reason.";
+const DEFAULT_HUMAN_REASON = "Nolan flagged this for a human but gave no reason.";
 
-/** Strip a leading/trailing ``` fence (optionally ```prompt) Ken may have wrapped
+/** Strip a leading/trailing ``` fence (optionally ```prompt) Nolan may have wrapped
  *  the prompt body in out of chat habit. */
 function stripPromptFence(body: string): string {
   const trimmed = body.trim();
@@ -47,7 +47,7 @@ function cap(text: string, max = RAW_REASON_CAP): string {
 }
 
 /**
- * Parse Autopilot Ken's raw reply into a verdict. Never throws.
+ * Parse Autopilot Nolan's raw reply into a verdict. Never throws.
  */
 export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
   const raw = (reply ?? "").trim();
@@ -88,7 +88,7 @@ export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
       body = stripPromptFence(inline);
     }
     if (!body) {
-      return { kind: "human", reason: "Ken said to continue but gave no prompt." };
+      return { kind: "human", reason: "Nolan said to continue but gave no prompt." };
     }
     return { kind: "prompt", body };
   }

@@ -114,8 +114,8 @@ function pickDoneVerb(toolsUsed: ReadonlySet<string>): string {
 export interface AgentEventsDeps {
   setItems: Dispatch<SetStateAction<Item[]>>;
   nextId: () => number;
-  /** Ken (mentor) event delegate — consulted first; ken events early-return. */
-  handleKenEvent: (e: SidecarEvent) => boolean;
+  /** Nolan (mentor) event delegate — consulted first; nolan events early-return. */
+  handleNolanEvent: (e: SidecarEvent) => boolean;
   /** Autopilot event delegate — consulted first; autopilot events early-return. */
   handleAutopilotEvent: (e: SidecarEvent) => boolean;
 
@@ -160,7 +160,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   const {
     setItems,
     nextId,
-    handleKenEvent,
+    handleNolanEvent,
     handleAutopilotEvent,
     setState,
     setTasks,
@@ -297,7 +297,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
     (e: SidecarEvent) => {
       // Nolan (mentor) events are owned by the useNolanMentor hook; delegate and
       // early-return so they never touch the build-session handling below.
-      if (handleKenEvent(e)) return;
+      if (handleNolanEvent(e)) return;
       // Autopilot (auto-review) events are owned by the useAutopilot hook; same
       // early-return so they never touch the build-session handling below.
       if (handleAutopilotEvent(e)) return;
@@ -771,7 +771,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
       }
     },
     [
-      handleKenEvent,
+      handleNolanEvent,
       handleAutopilotEvent,
       appendAssistant,
       pushItem,

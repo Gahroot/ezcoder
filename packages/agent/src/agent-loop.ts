@@ -2,7 +2,7 @@ import { ZodError, prettifyError } from "zod";
 import {
   stream,
   EventStream,
-  GGAIError,
+  EZCoderAIError,
   type Message,
   type ToolCall,
   type ToolResult,
@@ -1508,7 +1508,7 @@ async function executeSingleToolCall(
           // already fixes in practice.
           const recoverable = Object.keys(toolCall.args ?? {}).length === 0;
           options.markFatalToolArgumentError(
-            new GGAIError(
+            new EZCoderAIError(
               `The model repeatedly issued invalid arguments for tool \`${toolCall.name}\`. ` +
                 `This is usually an upstream model/tool-calling bug` +
                 (recoverable ? " (the provider's stream returned empty tool-call arguments)" : "") +
@@ -1516,9 +1516,9 @@ async function executeSingleToolCall(
               {
                 source: "provider",
                 hint:
-                  "This is the model/provider's fault, not a ggcoder bug. " +
+                  "This is the model/provider's fault, not a ezcoder bug. " +
                   (recoverable
-                    ? "ggcoder already retried automatically once; if it recurs, send another message or switch models."
+                    ? "ezcoder already retried automatically once; if it recurs, send another message or switch models."
                     : "Send another message or switch models to continue."),
               },
             ),
