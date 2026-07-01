@@ -569,13 +569,24 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           );
           break;
         }
-        case "error":
-          pushItem({
-            kind: "error",
-            id: nextId(),
-            text: `error: ${String(d.message ?? "unknown")}`,
-          });
+        case "error": {
+          // Structured payload from the sidecar's broadcastError (headline always
+          // present; message/guidance may be omitted for terse capability errors).
+          // Fall back to a flat string for any older-shaped frame.
+          const headline = typeof d.headline === "string" ? d.headline : undefined;
+          pushItem(
+            headline
+              ? {
+                  kind: "error",
+                  id: nextId(),
+                  headline,
+                  message: typeof d.message === "string" ? d.message : undefined,
+                  guidance: typeof d.guidance === "string" ? d.guidance : undefined,
+                }
+              : { kind: "error", id: nextId(), text: `error: ${String(d.message ?? "unknown")}` },
+          );
           break;
+        }
         case "run_end": {
           setRunning(false);
           endStreamingText();

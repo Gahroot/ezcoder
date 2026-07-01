@@ -22,6 +22,62 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.10.3",
+    date: "2026-07-02",
+    items: [
+      "Your helper agents just got a lot more capable. I gave them room to run five times longer, so instead of quitting halfway through a real job they now see it all the way to the finish. And if one ever does run out of road, it tells you straight up instead of handing back a mysterious blank.",
+      "Read-only agents are now genuinely read-only. When I send a scout out to explore your code, it physically cannot touch or change a thing. Peace of mind baked right in.",
+      "The tips GG Coder gives you now actually match the app. No more being told to press some terminal shortcut that does not exist here. It points you at the real buttons you can see and click.",
+    ],
+  },
+  {
+    version: "0.10.2",
+    date: "2026-07-01",
+    items: [
+      "Anthropic occasionally drops a tool call mid-stream with nothing in it, and it used to make GG Coder throw up its hands and blame itself. I taught it to recognize that exact glitch and just quietly pick the work back up, so a rare hiccup doesn't kill your session anymore.",
+      "When something really does go wrong, I fixed the message so it points at the actual culprit instead of guessing it's a GG Coder bug. Clearer errors, less confusion about who to blame.",
+    ],
+  },
+  {
+    version: "0.10.1",
+    date: "2026-07-01",
+    items: [
+      "Big sessions on GPT-5.5 just got sturdier. I fixed a bug where long chats could blow past the real context limit right after a compaction and choke with a context-window error. Now I always leave enough headroom, so those marathon sessions keep running instead of stalling out.",
+      "The context meter in the footer is honest now too. It reads the real window for however you're connected, so the percentage you see actually means something.",
+    ],
+  },
+  {
+    version: "0.10.0",
+    date: "2026-07-01",
+    items: [
+      "Claude Fable 5 is back on the menu. I flipped it back on in the model picker so you can jump straight to it again, no workarounds needed.",
+      "Error messages just got a whole lot friendlier. When a provider hiccups, I stopped showing you scary raw error dumps and started telling you exactly what happened, whether it's on their end or mine, and when things reset if you hit a usage limit.",
+    ],
+  },
+  {
+    version: "0.9.0",
+    date: "2026-07-01",
+    items: [
+      "Xiaomi just got a turbo button. MiMo-V2.5-Pro-UltraSpeed is in the model picker now, built for when you want answers fast and don't mind paying a bit more for the speed.",
+      "Connecting Xiaomi now gives you a real choice. Pick Token Plan or API Credits right in the login screen, and I'll route every MiMo model to whichever one you've actually got set up. No more guessing which key goes where.",
+    ],
+  },
+  {
+    version: "0.8.0",
+    date: "2026-07-01",
+    items: [
+      "Claude Sonnet 5 just landed. I wired up Anthropic's newest brain so you can pick it the moment you launch, with a roomy 1M context and double the room to think out loud. Smarter answers, longer memory, same one-click switch.",
+      "Long, heavy sessions no longer choke. I hunted down a nasty error that could halt big agent runs mid-task and erased it, so the toughest jobs now run all the way through without a hiccup.",
+    ],
+  },
+  {
+    version: "0.7.2",
+    date: "2026-06-30",
+    items: [
+      "GG Coder just got faster at the boring part. When it needs to read a few files or search around, it now grabs them all at once instead of one at a time. Less waiting on every step, more time actually building.",
+    ],
+  },
+  {
     version: "0.7.1",
     date: "2026-06-30",
     items: [

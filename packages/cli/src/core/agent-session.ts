@@ -31,8 +31,8 @@ import {
 } from "./session-manager.js";
 import { ExtensionLoader } from "./extensions/loader.js";
 import type { ExtensionContext } from "./extensions/types.js";
-import { shouldCompact, compact } from "./compaction/compactor.js";
-import { getContextWindow, getModel, MODELS } from "./model-registry.js";
+import { shouldCompact, compact, getCompactionReserveTokens } from "./compaction/compactor.js";
+import { getAuthStorageKeys, getContextWindow, getModel, MODELS } from "./model-registry.js";
 import { discoverSkills, type Skill } from "./skills.js";
 import { ensureAppDirs } from "../config.js";
 import { buildSystemPrompt } from "../system-prompt.js";
@@ -158,6 +158,10 @@ export interface AgentSessionState {
   sessionPath: string;
   messageCount: number;
   planMode: boolean;
+  /** accountId from the most recently resolved credentials, if any — lets
+   *  callers compute the transport-specific context window (e.g. OpenAI Codex
+   *  OAuth) without re-resolving credentials. */
+  accountId?: string;
 }
 
 // ── Agent Session ──────────────────────────────────────────
@@ -223,6 +227,11 @@ export class AgentSession {
   private provider: Provider;
   private model: string;
   private cwd: string;
+  /** accountId from the most recently resolved credentials — cached so sync
+   *  callers (e.g. the app-sidecar's context-window footer stat) can reflect
+   *  transport-specific windows (e.g. OpenAI Codex OAuth's smaller window)
+   *  without re-resolving credentials on every poll. */
+  private lastAccountId?: string;
   private baseUrl?: string;
   private maxTokens: number;
   private thinkingLevel?: ThinkingLevel;
@@ -819,7 +828,12 @@ export class AgentSession {
     // Resolve OAuth credentials and run agent loop.
     // On 401, force-refresh the token and retry once — the provider may have
     // revoked the token server-side before the stored expiry (e.g. after a restart).
-    let creds = await this.authStorage.resolveCredentials(this.provider);
+    let creds = await this.authStorage.resolveCredentials(this.provider, {
+      storageKeys: this.currentAuthStorageKeys(),
+    });
+    // Cache for sync callers (see field doc) — kept in step with `creds`
+    // through the 401 force-refresh retry below.
+    this.lastAccountId = creds.accountId;
 
     // Auto-compact if needed. This must happen after credential resolution so
     // OpenAI OAuth/Codex sessions use the Codex product context window instead
@@ -830,7 +844,14 @@ export class AgentSession {
         accountId: creds.accountId,
       });
       const threshold = this.settingsManager.get("compactThreshold");
-      if (shouldCompact(this.messages, contextWindow, threshold)) {
+      // Reserve headroom for this model's real output budget (e.g. GPT-5.5 over
+      // Codex OAuth: 272K window but up to 128K max output) — without this the
+      // default 16K reserve lets compaction skip until input alone is near the
+      // window, then `input + max_tokens` exceeds it and the provider rejects
+      // the turn outright with "exceeds the context window". Mirrors the TUI's
+      // useContextCompaction hook.
+      const reserveTokens = getCompactionReserveTokens(this.maxTokens);
+      if (shouldCompact(this.messages, contextWindow, threshold, undefined, reserveTokens)) {
         await this.compact(creds);
         // Re-grounding hook keys off this — the context was just summarized.
         this.compactionOccurred = true;
@@ -905,12 +926,25 @@ export class AgentSession {
         // (active for `moonshot` when present) is refreshable, so it falls
         // through to the force-refresh path below.
         if (await this.authStorage.isStaticApiKey(this.provider)) {
-          log("WARN", "auth", `Got 401 for ${this.provider} — API key is invalid or revoked`);
-          await this.authStorage.clearCredentials(this.provider);
+          // Clear whichever key actually resolved (the request may have used
+          // a fallback key, not the model's first preference).
+          const badKey =
+            (await this.authStorage.pickStorageKey(this.currentAuthStorageKeys())) ??
+            this.currentAuthStorageKeys()[0]!;
+          log(
+            "WARN",
+            "auth",
+            `Got 401 for ${this.provider} (${badKey}) — API key is invalid or revoked`,
+          );
+          await this.authStorage.clearCredentials(badKey);
           throw err;
         }
         log("INFO", "auth", "Got 401, force-refreshing token and retrying");
-        creds = await this.authStorage.resolveCredentials(this.provider, { forceRefresh: true });
+        creds = await this.authStorage.resolveCredentials(this.provider, {
+          forceRefresh: true,
+          storageKeys: this.currentAuthStorageKeys(),
+        });
+        this.lastAccountId = creds.accountId;
         await runAgentLoop(creds.accessToken, creds.accountId, creds.projectId);
       } else {
         throw err;
@@ -1010,7 +1044,11 @@ export class AgentSession {
     projectId?: string;
     baseUrl?: string;
   }): Promise<void> {
-    const creds = existingCredentials ?? (await this.authStorage.resolveCredentials(this.provider));
+    const creds =
+      existingCredentials ??
+      (await this.authStorage.resolveCredentials(this.provider, {
+        storageKeys: this.currentAuthStorageKeys(),
+      }));
     const contextWindow = getContextWindow(this.model, {
       provider: this.provider,
       accountId: creds.accountId,
@@ -1135,6 +1173,7 @@ export class AgentSession {
       sessionPath: this.sessionPath,
       messageCount: this.messages.length,
       planMode: this.planModeRef.current,
+      accountId: this.lastAccountId,
     };
   }
 
@@ -1294,7 +1333,9 @@ export class AgentSession {
     const userText = userMsg ? extractText(userMsg.content) : "";
     if (!userText.trim()) return null;
     try {
-      const creds = await this.authStorage.resolveCredentials(this.provider);
+      const creds = await this.authStorage.resolveCredentials(this.provider, {
+        storageKeys: this.currentAuthStorageKeys(),
+      });
       const title = await generateSessionTitle({
         provider: this.provider,
         userMessage: userText,
@@ -1318,7 +1359,9 @@ export class AgentSession {
    */
   async enhancePrompt(text: string): Promise<EnhanceResult> {
     if (!text.trim()) return { enhanced: text, segments: [{ kind: "text", text }] };
-    const creds = await this.authStorage.resolveCredentials(this.provider);
+    const creds = await this.authStorage.resolveCredentials(this.provider, {
+      storageKeys: this.currentAuthStorageKeys(),
+    });
     // Cheap, best-effort stack detection from the project root so terminology is
     // idiomatic to the user's stack. Never throws (returns "" on any failure).
     let stack = "";
@@ -1358,6 +1401,17 @@ export class AgentSession {
   /** True when speedProfile is "optimized" (1-h cache TTL + pre-warm). */
   private isSpeedOptimized(): boolean {
     return this.settingsManager?.get("speedProfile") === "optimized";
+  }
+
+  /**
+   * Ordered auth-storage keys the current (provider, model) pair tries, first
+   * match wins. Almost always just the provider id; Xiaomi models can prefer
+   * one endpoint and fall back to another the user configured instead (e.g.
+   * `mimo-v2.5-pro` prefers the Token Plan, falls back to API Credits; the
+   * API-only `mimo-v2.5-pro-ultraspeed` has no fallback).
+   */
+  private currentAuthStorageKeys(): string[] {
+    return getAuthStorageKeys(this.provider, this.model);
   }
 
   /** Fire a cache pre-warm request for Anthropic so the first real turn is a
@@ -1445,12 +1499,26 @@ export class AgentSession {
 
     // Auto-compact on load if the restored session exceeds the context window.
     // Without this, huge sessions (1M+ tokens) get loaded into memory and OOM.
-    const creds = await this.authStorage.resolveCredentials(this.provider);
+    const creds = await this.authStorage.resolveCredentials(this.provider, {
+      storageKeys: this.currentAuthStorageKeys(),
+    });
+    // Cache for sync callers (see field doc) so the app-sidecar's footer shows
+    // the right context window immediately on resume, before any prompt runs
+    // runLoop() and would otherwise be the first to set this.
+    this.lastAccountId = creds.accountId;
     const contextWindow = getContextWindow(this.model, {
       provider: this.provider,
       accountId: creds.accountId,
     });
-    if (shouldCompact(this.messages, contextWindow, 0.8)) {
+    if (
+      shouldCompact(
+        this.messages,
+        contextWindow,
+        0.8,
+        undefined,
+        getCompactionReserveTokens(this.maxTokens),
+      )
+    ) {
       log("INFO", "session", `Restored session exceeds context — auto-compacting`);
       const compacted = await compact(this.messages, {
         provider: this.provider,

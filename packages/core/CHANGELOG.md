@@ -1,5 +1,47 @@
 # @prestyj/core
 
+## 5.4.3
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.4.3
+
+## 5.4.2
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.4.2
+
+## 5.4.1
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.4.1
+
+## 5.4.0
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.4.0
+
+## 5.3.0
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.3.0
+
+## 5.2.0
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.2.0
+
+## 5.1.2
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.1.2
+
 ## 5.1.1
 
 ### Patch Changes

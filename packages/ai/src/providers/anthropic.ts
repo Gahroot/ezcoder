@@ -8,7 +8,13 @@ import type {
   StreamResponse,
   ToolCall,
 } from "../types.js";
-import { ProviderError, readHeader, isHardBillingMessage } from "../errors.js";
+import {
+  ProviderError,
+  readHeader,
+  isHardBillingMessage,
+  isRawJsonErrorEcho,
+  emptyProviderErrorMessage,
+} from "../errors.js";
 import { StreamResult } from "../utils/event-stream.js";
 import {
   downgradeUnsupportedImages,
@@ -42,6 +48,22 @@ const NON_STREAMING_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
  * fresh client.
  */
 const anthropicClientCache = new Map<string, Anthropic>();
+
+/**
+ * Upper HTTP timeout for the non-streaming fallback request.
+ *
+ * The Anthropic SDK refuses any non-streaming `messages.create` whose
+ * `max_tokens` implies a >10-minute worst case — it throws "Streaming is
+ * required for operations that may take longer than 10 minutes" *client-side*,
+ * before any network call (see `calculateNonstreamingTimeout`: the throw fires
+ * when `(60*60*max_tokens)/128000 > 600s`, i.e. any `max_tokens > ~21333`).
+ * Adaptive-thinking Opus/Sonnet models set `max_tokens` to their full output
+ * ceiling (~32K), so the fallback tripped this every time. The SDK only runs
+ * that pre-flight check when the *client* carries no explicit `timeout`, so we
+ * set one here to bypass it. The agent loop already bounds this call with its
+ * own abort signal (NON_STREAMING_HARD_TIMEOUT_MS), so this is just a ceiling.
+ */
+const NON_STREAMING_REQUEST_TIMEOUT_MS = 600_000;
 
 function createClient(options: StreamOptions): Anthropic {
   const isOAuth = options.apiKey?.startsWith("sk-ant-oat");
@@ -268,7 +290,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     stream: useStreaming,
   } as Anthropic.MessageCreateParams;
 
-  // Adaptive thinking models (Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 4.6) don't need the
+  // Adaptive thinking models (Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5) don't need the
   // interleaved-thinking beta — they have it built in.
   const hasAdaptiveThinking = isAdaptiveThinkingModel(options.model);
 
@@ -303,6 +325,12 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     // the agent loop bounds the call with its own abort signal + hard timeout.
     const nonStreamingClient = client.withOptions({ timeout: NON_STREAMING_TIMEOUT_MS });
     try {
+      // withOptions() clones the client (sharing auth state) with an explicit
+      // timeout set, which suppresses the SDK's bogus "Streaming is required…"
+      // pre-flight throw for large max_tokens. See NON_STREAMING_REQUEST_TIMEOUT_MS.
+      const nonStreamingClient = client.withOptions({
+        timeout: NON_STREAMING_REQUEST_TIMEOUT_MS,
+      });
       const message = (await nonStreamingClient.messages.create(
         { ...params, stream: false } as Anthropic.MessageCreateParamsNonStreaming,
         requestOptions,
@@ -741,11 +769,14 @@ function toError(err: unknown): ProviderError {
       (typeof errorBody?.request_id === "string" ? errorBody.request_id : undefined) ??
       (typeof nestedError?.request_id === "string" ? nestedError.request_id : undefined) ??
       undefined;
+    // Guard against an empty-string message (e.g. MiniMax's Anthropic-transport
+    // path returning `{ message: "" }`) counting as "usable" — that would win
+    // over the raw-JSON-echo fallback below and surface a blank error instead.
     const bodyMessage =
-      typeof nestedError?.message === "string"
-        ? nestedError.message
-        : typeof errorBody?.message === "string"
-          ? errorBody.message
+      typeof nestedError?.message === "string" && nestedError.message.trim()
+        ? nestedError.message.trim()
+        : typeof errorBody?.message === "string" && errorBody.message.trim()
+          ? errorBody.message.trim()
           : undefined;
     const bodyType =
       typeof nestedError?.type === "string"
@@ -755,8 +786,15 @@ function toError(err: unknown): ProviderError {
           : typeof (err as unknown as { type?: unknown }).type === "string"
             ? ((err as unknown as { type: string }).type as string)
             : undefined;
+    // When neither the nested nor top-level body carries a usable message, the
+    // SDK's err.message is a raw JSON echo of the (often near-empty) error body
+    // — swap in a clean fallback rather than showing that to the user (see
+    // isRawJsonErrorEcho).
+    const fallbackMessage = isRawJsonErrorEcho(err.message)
+      ? emptyProviderErrorMessage(err.status)
+      : err.message;
     const message =
-      bodyType && bodyMessage ? `${bodyType}: ${bodyMessage}` : (bodyMessage ?? err.message);
+      bodyType && bodyMessage ? `${bodyType}: ${bodyMessage}` : (bodyMessage ?? fallbackMessage);
 
     // Subscription (OAuth) usage-window exhaustion. Anthropic returns 429 with
     // the unified rate-limit headers; a "rejected" status — or a reset stamp

@@ -1,5 +1,77 @@
 # @prestyj/cli
 
+## 5.4.3
+
+### Patch Changes
+
+- Enforce subagent `tools:` frontmatter as an allowlist, raise the subagent turn cap to 50 with a clear cut-off signal when it's hit, and phrase `/init` and task-handoff notices for the gg-app UI instead of CLI keybinds.
+  - @kenkaiiii/gg-ai@5.4.3
+  - @kenkaiiii/gg-agent@5.4.3
+  - @kenkaiiii/gg-core@5.4.3
+
+## 5.4.2
+
+### Patch Changes
+
+- Auto-continue once when a tool call fails 3x with completely empty arguments (a provider stream glitch, not a model schema mistake), and correctly attribute the resulting error to the provider instead of mislabeling it a ggcoder bug.
+  - @kenkaiiii/gg-ai@5.4.2
+  - @kenkaiiii/gg-agent@5.4.2
+  - @kenkaiiii/gg-core@5.4.2
+
+## 5.4.1
+
+### Patch Changes
+
+- Fix gg-app auto-compaction not reserving headroom for a model's real output budget (e.g. GPT-5.5 over Codex OAuth: 272K window, up to 128K output), which let context grow until the provider rejected the turn with "exceeds the context window"; also fix the app's context-window footer to use the correct transport-specific window (Codex OAuth vs public API).
+  - @kenkaiiii/gg-ai@5.4.1
+  - @kenkaiiii/gg-agent@5.4.1
+  - @kenkaiiii/gg-core@5.4.1
+
+## 5.4.0
+
+### Minor Changes
+
+- Re-enable Claude Fable 5 in the model selector, and show clean, provider-attributed error messages (headline + guidance + reset time for usage limits) instead of raw JSON error blobs from providers like Xiaomi MiMo.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.4.0
+- @kenkaiiii/gg-agent@5.4.0
+- @kenkaiiii/gg-core@5.4.0
+
+## 5.3.0
+
+### Minor Changes
+
+- Add Xiaomi MiMo-V2.5-Pro-UltraSpeed, served over a separate API Credits endpoint. Xiaomi auth now supports both the existing Token Plan key and a new API Credits key — `mimo-v2.5-pro`/`mimo-v2.5` prefer the Token Plan and fall back to API Credits when that's all that's configured, while UltraSpeed requires API Credits. `ggcoder login` and the desktop login modal both let you choose which endpoint to authenticate with.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.3.0
+- @kenkaiiii/gg-agent@5.3.0
+- @kenkaiiii/gg-core@5.3.0
+
+## 5.2.0
+
+### Minor Changes
+
+- Add Claude Sonnet 5 (`claude-sonnet-5`, 1M context, 128k output, adaptive thinking) replacing Sonnet 4.6, and fix the Anthropic non-streaming fallback so it no longer trips the SDK's "Streaming is required for operations that may take longer than 10 minutes" pre-flight throw on large max_tokens.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.2.0
+- @kenkaiiii/gg-agent@5.2.0
+- @kenkaiiii/gg-core@5.2.0
+
+## 5.1.2
+
+### Patch Changes
+
+- Add a tool-steering clause that nudges the model to batch independent read-only calls (read, grep, ls, find) into one turn, cutting round-trips since tool execution is already parallel.
+  - @kenkaiiii/gg-ai@5.1.2
+  - @kenkaiiii/gg-agent@5.1.2
+  - @kenkaiiii/gg-core@5.1.2
+
 ## 5.1.1
 
 ### Patch Changes

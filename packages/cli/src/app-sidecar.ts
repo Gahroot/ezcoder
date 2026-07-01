@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
-import type { ToolResultContent } from "@prestyj/ai";
+import { formatError, type ToolResultContent } from "@kenkaiiii/gg-ai";
 import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
@@ -27,7 +27,7 @@ import { buildNolanDigest } from "./core/nolan-context.js";
 import { collectProjectContext } from "./system-prompt.js";
 import type { NolanTurnPayload } from "./core/session-manager.js";
 import { AuthStorage } from "./core/auth-storage.js";
-import { MOONSHOT_OAUTH_KEY } from "@prestyj/core";
+import { MOONSHOT_OAUTH_KEY, XIAOMI_CREDITS_KEY } from "@kenkaiiii/gg-core";
 import { loginAnthropic } from "./core/oauth/anthropic.js";
 import { loginOpenAI } from "./core/oauth/openai.js";
 import { loginGemini } from "./core/oauth/gemini.js";
@@ -50,6 +50,7 @@ import { discoverProjects, listRecentSessions } from "./core/project-discovery.j
 import {
   loadTasksSync,
   saveTasksSync,
+  pruneDoneTasksSync,
   getNextPendingTask,
   markTaskInProgress,
   type TaskStatus,
@@ -819,6 +820,32 @@ async function createSession(
     for (const c of clients) c.res.write(frame);
   }
 
+  // Turn any thrown value into the same clear headline/message/guidance shape
+  // the TUI shows (see gg-ai's formatError) instead of a bare `err.message`, log
+  // the full detail, and broadcast it under `type` ("error" or "ken_error").
+  // Without this the webview only ever saw a raw provider string like
+  // `400 {"code":"400",...}` with no "is this me or them / when does it reset"
+  // context that the CLI has always given.
+  function broadcastError(type: "error" | "ken_error", logLabel: string, err: unknown): void {
+    const f = formatError(err);
+    log("ERROR", "app-sidecar", logLabel, {
+      headline: f.headline,
+      source: f.source,
+      ...(f.message ? { message: f.message } : {}),
+      ...(f.provider ? { provider: f.provider } : {}),
+      ...(f.statusCode != null ? { statusCode: String(f.statusCode) } : {}),
+      ...(f.requestId ? { requestId: f.requestId } : {}),
+    });
+    broadcast(type, {
+      headline: f.headline,
+      ...(f.message ? { message: f.message } : {}),
+      guidance: f.guidance,
+      ...(f.provider ? { provider: f.provider } : {}),
+      ...(f.statusCode != null ? { statusCode: f.statusCode } : {}),
+      ...(f.resetsAt != null ? { resetsAt: f.resetsAt } : {}),
+    });
+  }
+
   // The session file path to resume (passed by the daemon's POST /session);
   // empty/unset starts a fresh session.
   const resumeSessionPath = opts.sessionPath;
@@ -868,7 +895,7 @@ async function createSession(
   let gitIsRepo: boolean = await isGitRepo(cwd).catch(() => false);
   function currentContextWindow(): number {
     const st = session.getState();
-    return getContextWindow(st.model, { provider: st.provider });
+    return getContextWindow(st.model, { provider: st.provider, accountId: st.accountId });
   }
   // Shared shape merged into /state + the SSE `ready` frame so the footer can
   // render context %, branch, and tasks immediately on connect.
@@ -926,9 +953,7 @@ async function createSession(
   session.eventBus.on("turn_end", (d) => broadcast("turn_end", d));
   session.eventBus.on("agent_done", (d) => broadcast("agent_done", d));
   session.eventBus.on("error", (d) => {
-    const message = d.error instanceof Error ? d.error.message : String(d.error);
-    log("ERROR", "app-sidecar", "agent error", { message });
-    broadcast("error", { message });
+    broadcastError("error", "agent error", d.error);
   });
   session.eventBus.on("model_change", (d) => broadcast("model_change", d));
   session.eventBus.on("hook", (d) => broadcast("hook", d));
@@ -1000,9 +1025,7 @@ async function createSession(
     ken.eventBus.on("server_tool_call", (d) => broadcast("nolan_server_tool_call", d));
     ken.eventBus.on("turn_end", (d) => broadcast("nolan_turn_end", d));
     ken.eventBus.on("error", (d) => {
-      const message = d.error instanceof Error ? d.error.message : String(d.error);
-      log("ERROR", "app-sidecar", "ken error", { message });
-      broadcast("nolan_error", { message });
+      broadcastError("ken_error", "ken error", d.error);
     });
     nolanSession = ken;
     log("INFO", "app-sidecar", "ken session ready", { provider: st.provider, model: st.model });
@@ -1033,9 +1056,7 @@ async function createSession(
     try {
       await run();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      broadcast("error", { message });
-      log("ERROR", "app-sidecar", "run failed", { message });
+      broadcastError("error", "run failed", err);
     } finally {
       running = false;
       // A run may have switched branches (git checkout) or spawned/finished
@@ -1043,6 +1064,10 @@ async function createSession(
       gitBranch = await getGitBranch(cwd).catch(() => gitBranch);
       gitIsRepo = await isGitRepo(cwd).catch(() => gitIsRepo);
       broadcast("run_end", {});
+      // The agent may have marked project tasks done during the run — prune the
+      // completed ones so they drop out of the Tasks modal automatically (users
+      // never have to delete finished tasks by hand).
+      broadcast("tasks_list", { tasks: pruneDoneTasksSync(cwd) });
       // Queue drains into the run as steering, so it's empty by run_end —
       // sync the webview indicator.
       broadcast("queued", { count: session.getQueuedCount() });
@@ -1080,8 +1105,8 @@ async function createSession(
       `tasks({ action: "done", id: "${shortId}" })`;
     await runAgent(task.title, () => session.prompt(task.prompt + completionHint));
     // The agent typically marks the task done via the tasks tool during the run;
-    // push the refreshed list so the webview's task modal reflects it.
-    broadcast("tasks_list", { tasks: loadTasksSync(cwd) });
+    // prune completed tasks and push the refreshed list so the modal drops them.
+    broadcast("tasks_list", { tasks: pruneDoneTasksSync(cwd) });
     return true;
   }
 
@@ -1635,9 +1660,7 @@ async function createSession(
           const reply = lastAssistantText(ken.getMessages());
           if (reply.trim()) await session.persistNolanTurn(text, reply);
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          log("ERROR", "app-sidecar", "ken run failed", { message });
-          broadcast("nolan_error", { message });
+          broadcastError("ken_error", "ken run failed", err);
         } finally {
           nolanRunning = false;
           broadcast("nolan_run_end", {});
@@ -1687,7 +1710,7 @@ async function createSession(
     }
 
     if (method === "GET" && url === "/tasks") {
-      json(res, 200, { tasks: loadTasksSync(cwd) });
+      json(res, 200, { tasks: pruneDoneTasksSync(cwd) });
       return;
     }
 
@@ -2054,10 +2077,12 @@ async function createSession(
       void readBody(req).then(async (raw) => {
         let provider = "";
         let key: string;
+        let variant: string | undefined;
         try {
-          const body = JSON.parse(raw) as { provider?: string; key?: string };
+          const body = JSON.parse(raw) as { provider?: string; key?: string; variant?: string };
           provider = body.provider ?? "";
           key = (body.key ?? "").trim();
+          variant = body.variant;
         } catch {
           json(res, 400, { error: "invalid JSON body" });
           return;
@@ -2071,13 +2096,21 @@ async function createSession(
           json(res, 400, { error: "API key is required" });
           return;
         }
+        // Providers with multiple API-key variants (currently only Xiaomi: Token
+        // Plan vs. API Credits) store under the chosen variant's key/baseUrl,
+        // defaulting to the first variant. Single-variant providers fall back to
+        // the legacy provider-id storage key + flat apiKeyBaseUrl.
+        const chosenVariant =
+          meta.apiKeyVariants?.find((v) => v.key === variant) ?? meta.apiKeyVariants?.[0];
+        const storageKey = chosenVariant?.key ?? provider;
+        const baseUrl = chosenVariant?.baseUrl ?? meta.apiKeyBaseUrl;
         const creds: OAuthCredentials = {
           accessToken: key,
           refreshToken: "",
           expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000 * 100, // ~100y
-          ...(meta.apiKeyBaseUrl ? { baseUrl: meta.apiKeyBaseUrl } : {}),
+          ...(baseUrl ? { baseUrl } : {}),
         };
-        await auth.setCredentials(provider, creds);
+        await auth.setCredentials(storageKey, creds);
         broadcast("auth_done", { provider });
         json(res, 200, { ok: true });
       });
@@ -2167,6 +2200,9 @@ async function createSession(
         // Moonshot's OAuth credential lives under a distinct key — clear both so
         // "disconnect" fully removes Kimi OAuth and the API key.
         if (provider === "moonshot") await auth.clearCredentials(MOONSHOT_OAUTH_KEY);
+        // Xiaomi's API Credits credential lives under a distinct key — clear it
+        // too so "disconnect" fully removes both the Token Plan and Credits keys.
+        if (provider === "xiaomi") await auth.clearCredentials(XIAOMI_CREDITS_KEY);
         broadcast("auth_done", { provider });
         json(res, 200, { ok: true });
       });

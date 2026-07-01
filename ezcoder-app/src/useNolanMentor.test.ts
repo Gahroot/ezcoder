@@ -75,7 +75,7 @@ describe("useNolanMentor", () => {
     expect(hook.result.current.nolanTokens).toBe(15);
   });
 
-  it("nolan_error pushes a kind:'error' item and stops running", () => {
+  it("ken_error with only a message (legacy shape) falls back to a flat text item", () => {
     const { hook, getItems } = setup();
     act(() => {
       hook.result.current.handleNolanEvent(ev("nolan_run_start"));
@@ -90,7 +90,32 @@ describe("useNolanMentor", () => {
     expect(hook.result.current.nolanRunning).toBe(false);
   });
 
-  it("returns true for nolan events and false for a non-nolan event", () => {
+  it("ken_error with a structured payload (headline/message/guidance) prefixes the headline with Ken", () => {
+    const { hook, getItems } = setup();
+    act(() => {
+      hook.result.current.handleKenEvent(ev("ken_run_start"));
+    });
+    act(() => {
+      hook.result.current.handleKenEvent(
+        ev("ken_error", {
+          headline: "Anthropic usage limit reached.",
+          message: "Your Anthropic usage is finished. It resets at 12:50 PM.",
+          guidance: "Try again once it's back. Your conversation is preserved.",
+        }),
+      );
+    });
+    const items = getItems();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: "error",
+      headline: "Ken: Anthropic usage limit reached.",
+      message: "Your Anthropic usage is finished. It resets at 12:50 PM.",
+      guidance: "Try again once it's back. Your conversation is preserved.",
+    });
+    expect(hook.result.current.kenRunning).toBe(false);
+  });
+
+  it("returns true for ken events and false for a non-ken event", () => {
     const { hook, getItems } = setup();
     let nolanHandled = false;
     let buildHandled = true;

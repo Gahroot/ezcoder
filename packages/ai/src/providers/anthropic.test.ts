@@ -52,10 +52,10 @@ vi.mock("@anthropic-ai/sdk", () => {
       }),
       stream: streamMock,
     };
-    // The SDK clone helper. Record calls so tests can assert the non-streaming
-    // fallback sets an explicit timeout (which bypasses the SDK's
-    // "Streaming is required…" guard), and return a client sharing this mock.
-    withOptions = withOptionsMock.mockImplementation(() => this);
+    // Mirrors the real SDK: a clone that shares auth state but carries per-call
+    // option overrides (e.g. an explicit timeout). The non-streaming fallback
+    // uses this to suppress the SDK's client-side "Streaming is required…" throw.
+    withOptions = withOptionsMock.mockImplementation((_options: unknown) => this);
   }
 
   return { default: AnthropicMock };
@@ -116,6 +116,60 @@ describe("streamAnthropic request shaping", () => {
   });
 });
 
+describe("streamAnthropic non-streaming fallback", () => {
+  it("sets a client timeout (bypassing the SDK long-request guard) and synthesizes a response", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const AnthropicMock = Anthropic as unknown as {
+      nextError: Error | null;
+      nextEvents: unknown[] | null;
+      nextMessage: unknown;
+    };
+    AnthropicMock.nextError = null;
+    AnthropicMock.nextEvents = null;
+    AnthropicMock.nextMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "hello from fallback" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 5, output_tokens: 9 },
+    };
+    withOptionsMock.mockClear();
+
+    const result = streamAnthropic({
+      provider: "anthropic",
+      model: "claude-opus-4-8",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "sk-ant-test",
+      // A large max_tokens is exactly what tripped the SDK's client-side
+      // "Streaming is required for operations that may take longer than 10
+      // minutes" throw on the non-streaming path before this fix.
+      maxTokens: 32000,
+      streaming: false,
+    });
+
+    const events = [];
+    for await (const event of result) {
+      events.push(event);
+    }
+
+    // The fallback must clone the client with an explicit (non-null) timeout so
+    // the SDK skips its pre-flight long-request guard.
+    expect(withOptionsMock).toHaveBeenCalledTimes(1);
+    const opts = withOptionsMock.mock.calls.at(-1)?.[0] as { timeout?: number };
+    expect(typeof opts.timeout).toBe("number");
+    expect(opts.timeout).toBeGreaterThan(0);
+
+    // The non-streaming Message is replayed as stream events + a final response.
+    const params = createMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(params.stream).toBe(false);
+    expect(events.some((e) => (e as { type?: string }).type === "text_delta")).toBe(true);
+    await expect(result.response).resolves.toMatchObject({
+      message: { content: [{ type: "text", text: "hello from fallback" }] },
+      stopReason: "end_turn",
+      usage: { inputTokens: 5, outputTokens: 9 },
+    });
+  });
+});
+
 describe("streamAnthropic error normalization", () => {
   it("extracts streamed api_error details and request ID", async () => {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
@@ -159,6 +213,50 @@ describe("streamAnthropic error normalization", () => {
       message: "api_error: Internal server error",
       requestId: "req_011Cb6hYLp9bbMmkqdo2yTWL",
     } satisfies Partial<ProviderError>);
+  });
+
+  it("replaces an empty-body error's raw JSON echo with a clean message", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const AnthropicMock = Anthropic as unknown as {
+      APIError: new (
+        status: number | undefined,
+        error: unknown,
+        message: string,
+        requestID?: string | null,
+        type?: string | null,
+      ) => Error;
+      nextError: Error | null;
+      nextEvents: unknown[] | null;
+    };
+    AnthropicMock.nextEvents = null;
+    // Anthropic-shaped body (mirrors the first test above) but every field is an
+    // EMPTY STRING rather than absent — e.g. a provider on the Anthropic
+    // transport (MiniMax) returning `{ error: { type: "", message: "" } }`. Both
+    // the empty-string guard (bodyMessage/bodyType must be non-blank to count as
+    // "usable") and the raw-JSON-echo fallback are exercised here: without the
+    // guard, the blank `message: ""` would win and the user would see nothing
+    // at all instead of the clean fallback.
+    AnthropicMock.nextError = new AnthropicMock.APIError(
+      400,
+      { type: "error", error: { type: "", message: "" } },
+      '400 {"type":"error","error":{"type":"","message":""}}',
+      null,
+      null,
+    );
+
+    const result = streamAnthropic({
+      provider: "anthropic",
+      model: "claude-test",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "sk-ant-test",
+    });
+
+    await expect(result.response).rejects.toMatchObject({
+      provider: "anthropic",
+      statusCode: 400,
+    } satisfies Partial<ProviderError>);
+    await expect(result.response).rejects.toThrow(/HTTP 400/);
+    await expect(result.response).rejects.not.toThrow(/"message"/);
   });
 
   it("maps an OAuth usage-window 429 to a usage-limit error with reset time", async () => {

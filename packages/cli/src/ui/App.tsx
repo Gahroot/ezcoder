@@ -39,7 +39,7 @@ import type { ProcessManager } from "../core/process-manager.js";
 import { useTheme, useSetTheme, type ThemeName } from "./theme/theme.js";
 import { useTerminalTitle } from "./hooks/useTerminalTitle.js";
 import { getGitBranch } from "../utils/git.js";
-import { getModel, getVideoByteLimit } from "../core/model-registry.js";
+import { getAuthStorageKeys, getModel, getVideoByteLimit } from "../core/model-registry.js";
 import { SessionManager } from "../core/session-manager.js";
 import { log } from "../core/logger.js";
 import {
@@ -940,8 +940,14 @@ export function App(props: AppProps) {
   // — see below where useAgentLoop is set up.
   const pendingActionConsumedRef = useRef(false);
 
-  // Derive credentials for the current provider
-  const currentCreds = props.credentialsByProvider?.[currentProvider];
+  // Derive credentials for the current provider + model. Almost always keyed
+  // by provider id, but a model can prefer one storage key and fall back to
+  // another (e.g. Xiaomi's mimo-v2.5-pro-ultraspeed is API-Credits-only,
+  // while mimo-v2.5-pro prefers the Token Plan but falls back to API Credits
+  // when only that's configured) — see getAuthStorageKeys().
+  const currentCreds = getAuthStorageKeys(currentProvider, currentModel)
+    .map((key) => props.credentialsByProvider?.[key])
+    .find((c) => c !== undefined);
   const activeApiKey = currentCreds?.accessToken ?? props.apiKey;
   const activeAccountId = currentCreds?.accountId ?? props.accountId;
   const activeProjectId = currentCreds?.projectId ?? props.projectId;
@@ -1241,7 +1247,10 @@ export function App(props: AppProps) {
   const resolveCredentials = useCallback(
     async (opts?: { forceRefresh?: boolean }) => {
       if (props.authStorage) {
-        const creds = await props.authStorage.resolveCredentials(currentProvider, opts);
+        const creds = await props.authStorage.resolveCredentials(currentProvider, {
+          ...opts,
+          storageKeys: getAuthStorageKeys(currentProvider, currentModel),
+        });
         return {
           apiKey: creds.accessToken,
           accountId: creds.accountId,
@@ -1250,7 +1259,14 @@ export function App(props: AppProps) {
       }
       return { apiKey: activeApiKey!, accountId: activeAccountId, projectId: activeProjectId };
     },
-    [props.authStorage, currentProvider, activeApiKey, activeAccountId, activeProjectId],
+    [
+      props.authStorage,
+      currentProvider,
+      currentModel,
+      activeApiKey,
+      activeAccountId,
+      activeProjectId,
+    ],
   );
 
   const agentLoop = useAgentLoop(
