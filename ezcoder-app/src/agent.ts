@@ -60,6 +60,9 @@ export interface AgentState {
   isGitRepo?: boolean;
   /** True when the active model can accept native video input. */
   supportsVideo?: boolean;
+  /** Autopilot (auto-review) toggle for this window's project. Per-window,
+   *  persisted server-side; absent on frames from older sidecars. */
+  autopilot?: boolean;
   /** Live background tasks (footer indicator). */
   tasks?: BackgroundTask[];
 }
@@ -262,13 +265,25 @@ export async function cancel(): Promise<void> {
 // blunt mentorship. His replies stream over the SAME SSE channel as EZ Coder's
 // but with `ken_`-prefixed event types, so the webview routes them to a separate
 // magenta bubble:
-//   nolan_run_start { text }         — Nolan started thinking
-//   nolan_text_delta { text }        — streaming reply text
-//   nolan_thinking_delta { text }    — streaming reasoning
-//   nolan_tool_call_start/_update/_end — Nolan's read-only tool activity
-//   nolan_turn_end { … }            — a turn finished
-//   nolan_run_end { cancelled? }     — Nolan finished (or was cancelled)
-//   nolan_error { message }          — Nolan failed
+//   ken_run_start { text }         — Ken started thinking
+//   ken_text_delta { text }        — streaming reply text
+//   ken_thinking_delta { text }    — streaming reasoning
+//   ken_tool_call_start/_update/_end — Ken's read-only tool activity
+//   ken_turn_end { … }            — a turn finished
+//   ken_run_end { cancelled? }     — Ken finished (or was cancelled)
+//   ken_error { message }          — Ken failed
+//
+// Autopilot Ken (auto-reviewer) is a SEPARATE, non-chatty mode of the same Ken.
+// When autopilot is on, after each GG Coder run the sidecar silently drives a
+// review→prompt→review loop and emits the `autopilot_*` family (no chat bubble,
+// no new IPC — cancel reuses agent_cancel). All ride the same generic
+// `agent-event` SSE channel:
+//   autopilot_review_start {}       — Ken started an auto-review (spinner)
+//   autopilot_prompted { round }    — Ken fed GG Coder another prompt (marker)
+//   autopilot_done {}               — Ken gave the all-clear, loop stops
+//   autopilot_human { reason }      — Ken needs a human decision, loop stops
+//   autopilot_capped { rounds }     — round cap hit, loop paused
+//   autopilot_error { headline, … } — a review failed (structured, like error)
 
 /** Ask Nolan Grout. Fires the read-only mentor run; reply arrives via `nolan_*`
  *  SSE events. Lazily boots Nolan's session on first use. */
@@ -290,6 +305,19 @@ export async function cancelNolan(): Promise<void> {
     await invoke("agent_nolan_cancel");
   } catch (e) {
     await logError(`agent_nolan_cancel failed: ${String(e)}`);
+  }
+}
+
+/** Toggle autopilot (auto-review) for this window's project. Persisted
+ *  server-side (~/.gg/gg-app.json, keyed by cwd). Returns the new value. */
+export async function setAutopilot(enabled: boolean): Promise<boolean> {
+  try {
+    await waitForReady();
+    const res = await invoke<{ autopilot?: boolean }>("agent_autopilot_set", { enabled });
+    return res.autopilot ?? enabled;
+  } catch (e) {
+    await logError(`agent_autopilot_set failed: ${String(e)}`);
+    return enabled;
   }
 }
 

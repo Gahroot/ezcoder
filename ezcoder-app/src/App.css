@@ -3746,3 +3746,155 @@ body {
 .gaze-pill svg {
   color: var(--primary);
 }
+
+/* ── Autopilot toggle (Material switch, Uiverse by lenin55) ──
+   Sits left of the "+ New" button in the nav row. The switch markup mirrors the
+   source snippet; colors are re-themed for the dark canvas: the off-track uses a
+   visible neutral (the original rgba(0,0,0,.38) vanished on dark), and the
+   checked track/thumb use the app accent instead of the source teal. */
+.autopilot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  /* Match the sibling .btn-sm height (25px) and reset the inherited 1.55
+     line-height so the label's tall line box can't push the nav row taller than
+     the buttons — the switch is 24px, the label collapses to its glyph height,
+     so the cluster stays ≤ the buttons and the row height is unchanged. */
+  height: 25px;
+  line-height: 1;
+}
+.autopilot-label {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.cl-toggle-switch {
+  position: relative;
+  /* Center the inline-block switch as a flex child at its exact height. As a
+     plain inline box the wrapper baseline-aligned the switch, inflating its own
+     line box to 26px (taller than the 25px row) and lifting the switch ~1px above
+     the row center. Flex + fixed height removes the baseline/line-box effect so
+     the switch sits dead center with the label and buttons. */
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+}
+.cl-switch {
+  position: relative;
+  display: inline-block;
+  /* The track (span::before) floats and the thumb (::after) is absolute, so
+     neither adds height — an auto-height box collapses and the switch sits off
+     center in the flex row. Pin the switch to the track's real footprint
+     (36px + 10px left margin wide, 14px + 5px×2 margin tall) so the parent's
+     align-items:center lines it up with the label and buttons. */
+  width: 46px;
+  height: 24px;
+}
+/* Input */
+.cl-switch > input {
+  appearance: none;
+  -moz-appearance: none;
+  -webkit-appearance: none;
+  z-index: -1;
+  position: absolute;
+  right: 6px;
+  top: -8px;
+  display: block;
+  margin: 0;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  background-color: var(--secondary);
+  outline: none;
+  opacity: 0;
+  transform: scale(1);
+  pointer-events: none;
+  transition:
+    opacity 0.3s 0.1s,
+    transform 0.2s 0.1s;
+}
+/* Track */
+.cl-switch > span::before {
+  content: "";
+  float: right;
+  display: inline-block;
+  margin: 5px 0 5px 10px;
+  border-radius: 7px;
+  width: 36px;
+  height: 14px;
+  background-color: var(--border-strong);
+  vertical-align: top;
+  transition:
+    background-color 0.2s,
+    opacity 0.2s;
+}
+/* Thumb */
+.cl-switch > span::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 16px;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  background-color: #cdd2db;
+  box-shadow:
+    0 3px 1px -2px rgba(0, 0, 0, 0.2),
+    0 2px 2px 0 rgba(0, 0, 0, 0.14),
+    0 1px 5px 0 rgba(0, 0, 0, 0.12);
+  transition:
+    background-color 0.2s,
+    transform 0.2s;
+}
+/* Checked */
+.cl-switch > input:checked {
+  right: -10px;
+  background-color: var(--secondary);
+}
+.cl-switch > input:checked + span::before {
+  background-color: rgba(155, 140, 247, 0.5);
+}
+.cl-switch > input:checked + span::after {
+  background-color: var(--secondary);
+  transform: translateX(16px);
+}
+/* Hover, Focus */
+.cl-switch:hover > input {
+  opacity: 0.04;
+}
+.cl-switch > input:focus {
+  opacity: 0.12;
+}
+.cl-switch:hover > input:focus {
+  opacity: 0.16;
+}
+/* Active */
+.cl-switch > input:active {
+  opacity: 1;
+  transform: scale(0);
+  transition:
+    transform 0s,
+    opacity 0s;
+}
+.cl-switch > input:active + span::before {
+  background-color: var(--border-strong);
+}
+.cl-switch > input:checked:active + span::before {
+  background-color: rgba(155, 140, 247, 0.5);
+}
+/* Disabled */
+.cl-switch > input:disabled {
+  opacity: 0;
+}
+.cl-switch > input:disabled + span::before {
+  background-color: var(--border);
+}
+.cl-switch > input:checked:disabled + span::before {
+  background-color: rgba(155, 140, 247, 0.3);
+}
+.cl-switch > input:checked:disabled + span::after {
+  background-color: rgba(155, 140, 247, 0.6);
+}

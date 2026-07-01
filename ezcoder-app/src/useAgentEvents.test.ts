@@ -45,7 +45,8 @@ function setup(handleNolanEvent: (e: SidecarEvent) => boolean = () => false) {
   const deps: AgentEventsDeps = {
     setItems: setItems as AgentEventsDeps["setItems"],
     nextId,
-    handleNolanEvent,
+    handleKenEvent,
+    handleAutopilotEvent: () => false,
     setState: noop as unknown as AgentEventsDeps["setState"],
     setTasks: noop as unknown as AgentEventsDeps["setTasks"],
     setProjectTasks: noop as unknown as AgentEventsDeps["setProjectTasks"],
