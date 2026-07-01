@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.10.1",
+    date: "2026-07-01",
+    items: [
+      "Big sessions on GPT-5.5 just got sturdier. I fixed a bug where long chats could blow past the real context limit right after a compaction and choke with a context-window error. Now I always leave enough headroom, so those marathon sessions keep running instead of stalling out.",
+      "The context meter in the footer is honest now too. It reads the real window for however you're connected, so the percentage you see actually means something.",
+    ],
+  },
+  {
     version: "0.10.0",
     date: "2026-07-01",
     items: [
