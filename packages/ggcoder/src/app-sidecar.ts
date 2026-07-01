@@ -519,12 +519,23 @@ async function runJsonModeIfRequested(): Promise<boolean> {
       model: { type: "string" },
       "max-turns": { type: "string" },
       "system-prompt": { type: "string" },
+      tools: { type: "string" },
       "prompt-cache-key": { type: "string" },
     },
     allowPositionals: true,
     strict: true,
   });
   const maxTurnsRaw = values["max-turns"];
+  // Optional tool allow-list forwarded by the subagent spawner from an agent
+  // definition's `tools:` frontmatter. Mirrors the identical parsing in
+  // cli.ts's `values.json` branch — keep both in sync (see subagent.ts).
+  const parsedTools = values.tools
+    ? values.tools
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
+  const allowedTools = parsedTools.length > 0 ? parsedTools : undefined;
   await runJsonMode({
     message: positionals[0] ?? "",
     provider: (values.provider ?? "anthropic") as Provider,
@@ -532,6 +543,7 @@ async function runJsonModeIfRequested(): Promise<boolean> {
     cwd: process.cwd(),
     systemPrompt: values["system-prompt"],
     maxTurns: maxTurnsRaw ? parseInt(maxTurnsRaw, 10) : undefined,
+    allowedTools,
     promptCacheKey: values["prompt-cache-key"],
   }).catch((err: unknown) => {
     process.stderr.write((err instanceof Error ? err.message : String(err)) + "\n");

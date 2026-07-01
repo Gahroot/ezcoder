@@ -3226,6 +3226,14 @@ body {
      transcript above never shift when the footer fills in (8+8 padding +
      ~20px line box). */
   min-height: 37px;
+  /* .inputwrap (an earlier sibling) is `position: relative`, which — despite
+     coming first in DOM order — paints ABOVE any non-positioned sibling per
+     CSS stacking rules (positioned elements always paint after static ones).
+     Without this, the growing textarea overlapped the upward-opening
+     .model-menu anchored in the footer. Make the footer positioned too, with
+     a higher z-index, so it (and its dropdowns) stack above the input. */
+  position: relative;
+  z-index: 2;
 }
 
 /* Footer clusters reveal as one faded unit once the session has hydrated,
