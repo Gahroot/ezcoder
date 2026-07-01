@@ -1,5 +1,15 @@
 # @prestyj/cli
 
+## 5.1.1
+
+### Patch Changes
+
+- Fix stale daemon auth cache blocking model switch after a native API-key write. The desktop app writes provider API keys natively (Rust → `~/.ezcoder/auth.json`), bypassing the long-lived Node daemon whose `AuthStorage` cached the file on first load. As a result a newly added provider (e.g. Xiaomi/MiMo) never appeared in `/models` and could not be selected. `AuthStorage` gains a `reload()` that re-reads from disk, and the daemon calls it on `/models`, `/model`, and `/auth/status`. Also refresh the Xiaomi provider description to list MiMo-V2.5-Pro, MiMo-V2.5-Pro UltraSpeed, and MiMo-V2.5.
+- Updated dependencies
+  - @prestyj/core@5.1.1
+  - @prestyj/ai@5.1.1
+  - @prestyj/agent@5.1.1
+
 ## 5.1.0
 
 ### Minor Changes
