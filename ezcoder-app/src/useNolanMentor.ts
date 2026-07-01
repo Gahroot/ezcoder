@@ -158,16 +158,30 @@ export function useNolanMentor(opts: {
           finalizeNolanThinking();
           setNolanRunStartTs(null);
           return true;
-        case "nolan_error":
+        case "nolan_error": {
           setNolanRunning(false);
           endNolanStreaming();
           setNolanIsThinking(false);
           setNolanRunStartTs(null);
+          // Structured payload from the sidecar's broadcastError (headline always
+          // present; message/guidance may be omitted). Prefix the headline with
+          // "Nolan:" so the mentor's errors read distinctly from the build's.
+          // Fall back to a flat text row for any older-shaped frame.
+          const headline = typeof d.headline === "string" ? d.headline : undefined;
           setItems((prev) => [
             ...prev,
-            { kind: "error", id: nextId(), text: `Nolan: ${String(d.message ?? "unknown")}` },
+            headline
+              ? {
+                  kind: "error",
+                  id: nextId(),
+                  headline: `Nolan: ${headline}`,
+                  message: typeof d.message === "string" ? d.message : undefined,
+                  guidance: typeof d.guidance === "string" ? d.guidance : undefined,
+                }
+              : { kind: "error", id: nextId(), text: `Nolan: ${String(d.message ?? "unknown")}` },
           ]);
           return true;
+        }
         // nolan_tool_call_update / nolan_tool_call_end carry Nolan's read-only tool
         // activity; the activity bar (nolanRunning) is the indicator, so they need
         // no transcript row. (nolan_tool_call_start IS handled above to break the

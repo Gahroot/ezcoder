@@ -350,20 +350,6 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "high",
     authStorageKeys: [XIAOMI_CREDITS_KEY],
   },
-  // UltraSpeed: latency-optimized Pro variant (beta). Same text-only coding
-  // profile as mimo-v2.5-pro, tuned for faster time-to-first-token.
-  {
-    id: "mimo-v2.5-pro-ultraspeed",
-    name: "MiMo-V2.5-Pro UltraSpeed",
-    provider: "xiaomi",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 131_072,
-    supportsThinking: true,
-    supportsImages: false,
-    supportsVideo: false,
-    costTier: "medium",
-    maxThinkingLevel: "high",
-  },
   // Omni series: native full-modal understanding (image + audio + video).
   // Video/image ride the OpenAI-compatible transport as base64 data URLs
   // (`video_url`/`image_url`), which the shared transform already emits.

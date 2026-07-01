@@ -63,7 +63,6 @@ const anthropicClientCache = new Map<string, Anthropic>();
  * set one here to bypass it. The agent loop already bounds this call with its
  * own abort signal (NON_STREAMING_HARD_TIMEOUT_MS), so this is just a ceiling.
  */
-const NON_STREAMING_REQUEST_TIMEOUT_MS = 600_000;
 
 function createClient(options: StreamOptions): Anthropic {
   const isOAuth = options.apiKey?.startsWith("sk-ant-oat");
@@ -323,14 +322,11 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     // fires when the client's own `timeout` is unset, so set one explicitly to
     // bypass it -- our fallback intentionally rides a plain HTTP response and
     // the agent loop bounds the call with its own abort signal + hard timeout.
+    // withOptions() clones the client (sharing auth state) with an explicit
+    // timeout set, which suppresses the SDK's bogus "Streaming is required…"
+    // pre-flight throw for large max_tokens.
     const nonStreamingClient = client.withOptions({ timeout: NON_STREAMING_TIMEOUT_MS });
     try {
-      // withOptions() clones the client (sharing auth state) with an explicit
-      // timeout set, which suppresses the SDK's bogus "Streaming is required…"
-      // pre-flight throw for large max_tokens. See NON_STREAMING_REQUEST_TIMEOUT_MS.
-      const nonStreamingClient = client.withOptions({
-        timeout: NON_STREAMING_REQUEST_TIMEOUT_MS,
-      });
       const message = (await nonStreamingClient.messages.create(
         { ...params, stream: false } as Anthropic.MessageCreateParamsNonStreaming,
         requestOptions,

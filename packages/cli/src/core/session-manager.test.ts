@@ -115,7 +115,9 @@ describe("SessionManager.getNolanTurns", () => {
   });
 
   it("defaults a missing afterMessageCount to 0", () => {
-    const turns = manager.getNolanTurns([nolanEntry("k1", { version: 1, question: "q", reply: "r" })]);
+    const turns = manager.getNolanTurns([
+      nolanEntry("k1", { version: 1, question: "q", reply: "r" }),
+    ]);
     expect(turns[0]?.afterMessageCount).toBe(0);
   });
 

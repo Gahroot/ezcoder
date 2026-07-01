@@ -170,6 +170,19 @@ export function getTaskCount(cwd: string): number {
   return loadTasksSync(cwd).filter((task) => task.status !== "done").length;
 }
 
+/**
+ * Drop every completed task and persist the pruned list, returning the
+ * survivors. Used by the desktop app so finished tasks disappear from the Tasks
+ * modal on completion instead of lingering with a "done" badge. No-op write
+ * when nothing was done (keeps the file untouched on idle runs).
+ */
+export function pruneDoneTasksSync(cwd: string): TaskListItem[] {
+  const tasks = loadTasksSync(cwd);
+  const remaining = tasks.filter((task) => task.status !== "done");
+  if (remaining.length !== tasks.length) saveTasksSync(cwd, remaining);
+  return remaining;
+}
+
 export function getNextPendingTask(cwd: string): PendingTaskInfo | null {
   const pending = loadTasksSync(cwd).find((task) => task.status === "pending");
   if (!pending) return null;
