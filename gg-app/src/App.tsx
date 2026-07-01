@@ -6,6 +6,7 @@ import {
   sendPrompt,
   sendKenPrompt,
   cancelKen,
+  setAutopilot,
   cancel,
   newSession,
   cycleThinking,
@@ -40,7 +41,9 @@ import {
 } from "./agent";
 import { ActivityBar } from "./ActivityBar";
 import { KenActivityBar } from "./KenActivityBar";
+import { AutopilotReviewBar } from "./AutopilotReviewBar";
 import { useKenMentor } from "./useKenMentor";
+import { useAutopilot } from "./useAutopilot";
 import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEvents";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
@@ -65,6 +68,7 @@ import { WindowLayoutButton } from "./WindowLayoutButton";
 import { RadioButton } from "./RadioButton";
 import { ProjectPicker } from "./ProjectPicker";
 import { BackButton } from "./BackButton";
+import { AutopilotToggle } from "./AutopilotToggle";
 import { HomeScreen } from "./HomeScreen";
 import { Toaster } from "./Toaster";
 import { LoginScreen } from "./LoginScreen";
@@ -184,6 +188,17 @@ export type Item =
       status: "running" | "done";
       originalCount?: number;
       newCount?: number;
+    }
+  // Autopilot Ken verdict — emitted by the auto-review loop and rendered like a
+  // normal @Ken reply bubble (Ken dot + text), not a separate marker style.
+  // `phase` selects the message: he prompted GG Coder (with the `body` he sent),
+  // gave the all-clear, needs a human (with `reason`), or hit the round cap.
+  | {
+      kind: "autopilot";
+      id: number;
+      phase: "prompted" | "done" | "human" | "capped";
+      reason?: string;
+      body?: string;
     };
 
 export interface TranscriptImage {
@@ -246,6 +261,10 @@ function App(): React.ReactElement {
     kenThinkingAccumMs,
     handleKenEvent,
   } = useKenMentor({ setItems, nextId });
+  // Autopilot Ken (auto-reviewer): consumes the `autopilot_*` event family into
+  // compact transcript markers + a "Ken reviewing…" flag. Separate hook, same
+  // shared setItems/nextId pattern as useKenMentor.
+  const { autopilotReviewing, handleAutopilotEvent } = useAutopilot({ setItems, nextId });
   const [input, setInput] = useState("");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [displayPlaceholder, setDisplayPlaceholder] = useState(DEFAULT_INPUT_PLACEHOLDER);
@@ -711,6 +730,7 @@ function App(): React.ReactElement {
     setItems,
     nextId,
     handleKenEvent,
+    handleAutopilotEvent,
     setState,
     setTasks,
     setProjectTasks,
@@ -1627,6 +1647,13 @@ function App(): React.ReactElement {
               onClick={() => setShowPicker(true)}
             />
             <span className="picker-head-actions">
+              <AutopilotToggle
+                checked={state?.autopilot ?? false}
+                onChange={(next) => {
+                  setState((s) => (s ? { ...s, autopilot: next } : s));
+                  void setAutopilot(next);
+                }}
+              />
               <button
                 className="btn btn-primary btn-sm"
                 disabled={running}
@@ -1713,6 +1740,7 @@ function App(): React.ReactElement {
       </div>
 
       <div className="liveregion">
+        {autopilotReviewing && <AutopilotReviewBar onCancel={() => void cancel()} />}
         {kenRunning && (
           <KenActivityBar
             runStartTs={kenRunStartTs}
@@ -1724,10 +1752,10 @@ function App(): React.ReactElement {
           />
         )}
         {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
-        {/* Ken's bar REPLACES the main bar while Ken runs and the build is idle —
-            otherwise the idle "Ready for work" line stacks under Ken's spinner.
-            When the build is also running, both bars show (Ken on top). */}
-        {(running || !kenRunning) && (
+        {/* Ken's bar (chat OR autopilot review) REPLACES the main bar while the
+            build is idle — otherwise the idle "Ready for work" line stacks under
+            Ken's spinner. When the build is also running, both bars show. */}
+        {(running || (!kenRunning && !autopilotReviewing)) && (
           <ActivityBar
             running={running}
             tokens={tokens}
@@ -2196,6 +2224,30 @@ const TranscriptRow = memo(function TranscriptRow({
           </div>
         </div>
       );
+    case "autopilot": {
+      // Autopilot Ken's verdict, rendered like a normal @Ken reply (Ken-tinted
+      // dot + text) rather than its own marker style. The text is his verdict as
+      // prose: for a PROMPT he shows what he sent GG Coder back to do; the
+      // terminal verdicts read as short Ken one-liners.
+      const copy: Record<Extract<Item, { kind: "autopilot" }>["phase"], string> = {
+        prompted: item.body?.trim()
+          ? `Sending GG Coder back in:\n\n${item.body.trim()}`
+          : "Sending GG Coder back in for another pass.",
+        done: "All clear. Looks good to me.",
+        human: item.reason?.trim() ? item.reason.trim() : "Need you to weigh in on this one.",
+        capped: "Paused autopilot after 3 rounds. Take a look before I keep going.",
+      };
+      return (
+        <div className="assistant-msg ken-msg">
+          <span className="assistant-dot" style={{ color: theme.ken }}>
+            {DOT}
+          </span>
+          <div className="assistant-text">
+            <Markdown>{copy[item.phase]}</Markdown>
+          </div>
+        </div>
+      );
+    }
     case "info":
       return (
         <div className="line info" style={{ color: theme.textDim }}>

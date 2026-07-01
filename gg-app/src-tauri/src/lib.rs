@@ -858,6 +858,26 @@ async fn agent_ken_cancel(
     Ok(())
 }
 
+/// Proxy: toggle autopilot (auto-review) for THIS window's project. Persisted
+/// server-side in ~/.gg/gg-app.json keyed by cwd; returns `{ autopilot }`.
+#[tauri::command]
+async fn agent_autopilot_set(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    enabled: bool,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/autopilot", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "enabled": enabled }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Proxy: list workflow (prompt-template) slash commands.
 #[tauri::command]
 async fn agent_commands(
@@ -2983,6 +3003,7 @@ pub fn run() {
             agent_cancel,
             agent_ken_prompt,
             agent_ken_cancel,
+            agent_autopilot_set,
             agent_accept_plan,
             agent_new_session,
             agent_history,

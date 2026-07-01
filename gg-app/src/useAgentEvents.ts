@@ -115,6 +115,8 @@ export interface AgentEventsDeps {
   nextId: () => number;
   /** Ken (mentor) event delegate — consulted first; ken events early-return. */
   handleKenEvent: (e: SidecarEvent) => boolean;
+  /** Autopilot event delegate — consulted first; autopilot events early-return. */
+  handleAutopilotEvent: (e: SidecarEvent) => boolean;
 
   setState: Dispatch<SetStateAction<AgentState | null>>;
   setTasks: Dispatch<SetStateAction<BackgroundTask[]>>;
@@ -158,6 +160,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
     setItems,
     nextId,
     handleKenEvent,
+    handleAutopilotEvent,
     setState,
     setTasks,
     setProjectTasks,
@@ -294,6 +297,9 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
       // Ken (mentor) events are owned by the useKenMentor hook; delegate and
       // early-return so they never touch the build-session handling below.
       if (handleKenEvent(e)) return;
+      // Autopilot (auto-review) events are owned by the useAutopilot hook; same
+      // early-return so they never touch the build-session handling below.
+      if (handleAutopilotEvent(e)) return;
       const d = e.data as Record<string, unknown>;
       switch (e.type) {
         case "ready":
@@ -753,6 +759,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
     },
     [
       handleKenEvent,
+      handleAutopilotEvent,
       appendAssistant,
       pushItem,
       finalizeThinking,

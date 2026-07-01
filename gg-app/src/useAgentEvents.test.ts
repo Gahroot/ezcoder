@@ -43,6 +43,7 @@ function setup(handleKenEvent: (e: SidecarEvent) => boolean = () => false) {
     setItems: setItems as AgentEventsDeps["setItems"],
     nextId,
     handleKenEvent,
+    handleAutopilotEvent: () => false,
     setState: noop as unknown as AgentEventsDeps["setState"],
     setTasks: noop as unknown as AgentEventsDeps["setTasks"],
     setProjectTasks: noop as unknown as AgentEventsDeps["setProjectTasks"],
