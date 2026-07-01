@@ -1252,7 +1252,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "anthropic",
         label: "Anthropic",
-        description: "Claude Opus 4.8, Sonnet 4.6, Haiku 4.5",
+        description: "Claude Opus 4.8, Fable 5, Sonnet 4.6, Haiku 4.5",
         methods: &["oauth"],
         api_key_label: None,
         api_key_base_url: None,
