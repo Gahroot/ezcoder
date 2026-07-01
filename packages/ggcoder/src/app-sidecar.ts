@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
-import type { ToolResultContent } from "@kenkaiiii/gg-ai";
+import { formatError, type ToolResultContent } from "@kenkaiiii/gg-ai";
 import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
 import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
@@ -818,6 +818,32 @@ async function createSession(
     for (const c of clients) c.res.write(frame);
   }
 
+  // Turn any thrown value into the same clear headline/message/guidance shape
+  // the TUI shows (see gg-ai's formatError) instead of a bare `err.message`, log
+  // the full detail, and broadcast it under `type` ("error" or "ken_error").
+  // Without this the webview only ever saw a raw provider string like
+  // `400 {"code":"400",...}` with no "is this me or them / when does it reset"
+  // context that the CLI has always given.
+  function broadcastError(type: "error" | "ken_error", logLabel: string, err: unknown): void {
+    const f = formatError(err);
+    log("ERROR", "app-sidecar", logLabel, {
+      headline: f.headline,
+      source: f.source,
+      ...(f.message ? { message: f.message } : {}),
+      ...(f.provider ? { provider: f.provider } : {}),
+      ...(f.statusCode != null ? { statusCode: String(f.statusCode) } : {}),
+      ...(f.requestId ? { requestId: f.requestId } : {}),
+    });
+    broadcast(type, {
+      headline: f.headline,
+      ...(f.message ? { message: f.message } : {}),
+      guidance: f.guidance,
+      ...(f.provider ? { provider: f.provider } : {}),
+      ...(f.statusCode != null ? { statusCode: f.statusCode } : {}),
+      ...(f.resetsAt != null ? { resetsAt: f.resetsAt } : {}),
+    });
+  }
+
   // The session file path to resume (passed by the daemon's POST /session);
   // empty/unset starts a fresh session.
   const resumeSessionPath = opts.sessionPath;
@@ -919,9 +945,7 @@ async function createSession(
   session.eventBus.on("turn_end", (d) => broadcast("turn_end", d));
   session.eventBus.on("agent_done", (d) => broadcast("agent_done", d));
   session.eventBus.on("error", (d) => {
-    const message = d.error instanceof Error ? d.error.message : String(d.error);
-    log("ERROR", "app-sidecar", "agent error", { message });
-    broadcast("error", { message });
+    broadcastError("error", "agent error", d.error);
   });
   session.eventBus.on("model_change", (d) => broadcast("model_change", d));
   session.eventBus.on("hook", (d) => broadcast("hook", d));
@@ -993,9 +1017,7 @@ async function createSession(
     ken.eventBus.on("server_tool_call", (d) => broadcast("ken_server_tool_call", d));
     ken.eventBus.on("turn_end", (d) => broadcast("ken_turn_end", d));
     ken.eventBus.on("error", (d) => {
-      const message = d.error instanceof Error ? d.error.message : String(d.error);
-      log("ERROR", "app-sidecar", "ken error", { message });
-      broadcast("ken_error", { message });
+      broadcastError("ken_error", "ken error", d.error);
     });
     kenSession = ken;
     log("INFO", "app-sidecar", "ken session ready", { provider: st.provider, model: st.model });
@@ -1026,9 +1048,7 @@ async function createSession(
     try {
       await run();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      broadcast("error", { message });
-      log("ERROR", "app-sidecar", "run failed", { message });
+      broadcastError("error", "run failed", err);
     } finally {
       running = false;
       // A run may have switched branches (git checkout) or spawned/finished
@@ -1625,9 +1645,7 @@ async function createSession(
           const reply = lastAssistantText(ken.getMessages());
           if (reply.trim()) await session.persistKenTurn(text, reply);
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          log("ERROR", "app-sidecar", "ken run failed", { message });
-          broadcast("ken_error", { message });
+          broadcastError("ken_error", "ken run failed", err);
         } finally {
           kenRunning = false;
           broadcast("ken_run_end", {});

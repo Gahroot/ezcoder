@@ -150,7 +150,18 @@ export type Item =
   // streamed from the ken_* SSE events. Never mistaken for GG Coder.
   | { kind: "ken"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
-  | { kind: "error"; id: number; text: string }
+  // Structured error (see gg-ai's formatError): headline always answers "is this
+  // me or them", message is the raw detail (omitted when redundant with the
+  // headline), guidance is the action line (retry / switch model / log in /
+  // wait until a reset time). `text` is a legacy fallback for older items.
+  | {
+      kind: "error";
+      id: number;
+      text?: string;
+      headline?: string;
+      message?: string;
+      guidance?: string;
+    }
   // Agent self-correction hook notice (ideal review / loop-break / re-grounding),
   // rendered like the TUI: a shimmering tone-colored one-liner.
   | { kind: "hook"; id: number; hook: HookKind }
@@ -2191,12 +2202,21 @@ const TranscriptRow = memo(function TranscriptRow({
           {item.text}
         </div>
       );
-    case "error":
+    case "error": {
+      // Structured errors (see gg-ai's formatError) always answer "is this me or
+      // them" and, for usage-limit stops, when it resets — mirrors the CLI's
+      // ErrorRow instead of dumping the raw provider string. `text` is the
+      // legacy fallback for items that only ever carried a flat string.
+      const headline = item.headline ?? item.text ?? "";
+      const showMessage = item.message && item.message !== headline;
       return (
-        <div className="line error" style={{ color: theme.error }}>
-          {item.text}
+        <div className="line error">
+          <div style={{ color: theme.error, fontWeight: 600 }}>{headline}</div>
+          {showMessage && <div style={{ color: theme.textDim }}>{item.message}</div>}
+          {item.guidance && <div style={{ color: theme.textDim }}>{item.guidance}</div>}
         </div>
       );
+    }
     case "hook": {
       // Mirrors the TUI IdealHookMessage: assistant-style dot + a shimmering
       // tone-colored one-liner so the self-correction is obvious.
