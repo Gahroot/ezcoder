@@ -544,6 +544,102 @@ body {
 .ascii-logo-line {
   white-space: pre;
 }
+
+/* ── Ken power banner (Autopilot on/off) ──────────────────────────────────
+   Takeover of the chat BODY only — lives inside `.transcript` (mirrors
+   WakeScreen's "Talk to me..." empty state, which is scoped the same way),
+   so the chat head/nav above and the tool panel/activity bar/input footer
+   below stay visible and untouched. A "KEN IS ON"/"KEN IS OFF" ASCII banner
+   (same ANSI-Shadow block font as the GG CODER home logo) materializes with
+   the same scale+fade "flash" the app already uses for the zoom-level HUD
+   (see `.zoom-overlay-card`/`zoom-overlay-in`) instead of sliding across the
+   pane — a small, on-brand pop in place, held, then a soft dissolve out. Sits
+   over the same dark surface as the chat background so it reads as an
+   overlay, not a new screen. Purely decorative — clicks pass through to
+   whatever is underneath. */
+.ken-power-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--bg);
+  pointer-events: none;
+}
+.ken-power-banner {
+  font-family: var(--mono);
+  font-size: clamp(7px, 1.7vw, 12px);
+  line-height: 1.05;
+  white-space: pre;
+  text-align: center;
+  animation: ken-power-flash 1150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ken-power-banner-line {
+  white-space: pre;
+}
+/* ON: vibrant Ken-teal shimmer sweep + soft glow, mirroring the home logo's
+   gradient treatment but in Ken's color. */
+.ken-power-banner-on {
+  background: linear-gradient(
+    100deg,
+    #3fa9bd 0%,
+    #5ad1e6 25%,
+    #a6f0ff 50%,
+    #5ad1e6 75%,
+    #3fa9bd 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--ken) 45%, transparent));
+  animation:
+    ken-power-flash 1150ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    ggshimmer 1.4s linear infinite;
+}
+/* OFF: flat, dim — no shimmer, signals the loop is stopped. */
+.ken-power-banner-off {
+  color: var(--text-dim);
+}
+/* Scale-and-fade "power flash": pops in slightly undersized (like the zoom
+   HUD), rests at full size while held, then grows a touch further as it
+   dissolves out — a gentle energize/derez feel with zero lateral motion. */
+@keyframes ken-power-flash {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  16% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  82% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.05);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ken-power-banner,
+  .ken-power-banner-on {
+    animation: ken-power-fade 900ms ease both;
+  }
+}
+@keyframes ken-power-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  15%,
+  80% {
+    opacity: 1;
+  }
+}
 .home-tagline {
   margin-top: -12px;
   font-size: 13px;
@@ -1551,6 +1647,7 @@ body {
 }
 
 .transcript {
+  position: relative;
   flex: 1 1 auto;
   /* Required so this scrollable flex child actually shrinks (default min-height
      is `auto`, which keeps it at content height — that pushes the live tool

@@ -61,6 +61,7 @@ import { WakeScreen } from "./WakeScreen";
 import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
+import { KenPowerBanner } from "./KenPowerBanner";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 // Experimental gaze focus — disabled for now (see main.tsx).
@@ -305,6 +306,10 @@ function App(): React.ReactElement {
   // Number of messages queued mid-run (injected as steering by the sidecar).
   const [queuedCount, setQueuedCount] = useState(0);
   const [state, setState] = useState<AgentState | null>(null);
+  // Transient "KEN IS ON"/"KEN IS OFF" takeover banner shown when Autopilot
+  // is toggled. Null = not showing; the banner clears itself via `onDone`
+  // once its slide-out animation finishes.
+  const [kenPowerBanner, setKenPowerBanner] = useState<"on" | "off" | null>(null);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("connecting to agent\u2026");
   const [liveToolFeed, setLiveToolFeed] = useState<LiveToolEntry[]>([]);
@@ -1652,6 +1657,7 @@ function App(): React.ReactElement {
                 onChange={(next) => {
                   setState((s) => (s ? { ...s, autopilot: next } : s));
                   void setAutopilot(next);
+                  setKenPowerBanner(next ? "on" : "off");
                 }}
               />
               <button
@@ -1718,6 +1724,11 @@ function App(): React.ReactElement {
       </div>
 
       <div className="transcript" ref={scrollRef} onScroll={onTranscriptScroll}>
+        {/* Scoped to the chat body only — sits above the transcript content,
+            never over the header/nav or the input footer below. */}
+        {kenPowerBanner && (
+          <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
+        )}
         {!hydrated && items.length === 0 ? (
           <TranscriptSkeleton />
         ) : (
