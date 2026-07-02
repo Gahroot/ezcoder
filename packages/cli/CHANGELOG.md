@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.3.0
+
+### Minor Changes
+
+- Autopilot Nolan: add IGNORE verdict so non-work turns (small talk, git commits, read-only lookups) stop silently instead of forcing ALL_CLEAR; fix autopilot gating and per-project model pinning; render a NOLAN ON/OFF ASCII banner on toggle; fix footer dropdown z-index and the `--tools` flag drift.
+
+### Patch Changes
+
+- @prestyj/ai@5.3.0
+- @prestyj/agent@5.3.0
+- @prestyj/core@5.3.0
+
 ## 5.2.0
 
 ### Minor Changes
