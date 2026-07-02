@@ -11,6 +11,19 @@ describe("parseAutopilotVerdict", () => {
     expect(parseAutopilotVerdict("All Clear\nlooks good")).toEqual({ kind: "all_clear" });
   });
 
+  it("parses IGNORE", () => {
+    expect(parseAutopilotVerdict("IGNORE")).toEqual({ kind: "ignore" });
+  });
+
+  it("parses fuzzy IGNORE (lowercase, trailing colon, extra text)", () => {
+    expect(parseAutopilotVerdict("ignore")).toEqual({ kind: "ignore" });
+    expect(parseAutopilotVerdict("Ignore:\nnothing to review")).toEqual({ kind: "ignore" });
+  });
+
+  it("parses SKIP as an alias for IGNORE", () => {
+    expect(parseAutopilotVerdict("SKIP")).toEqual({ kind: "ignore" });
+  });
+
   it("parses PROMPT with a multi-line body", () => {
     const reply = "PROMPT\nAdd a test for the login flow.\nRun it and confirm it passes.";
     expect(parseAutopilotVerdict(reply)).toEqual({

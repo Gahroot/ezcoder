@@ -544,6 +544,110 @@ body {
 .ascii-logo-line {
   white-space: pre;
 }
+
+/* ── Ken power banner (Autopilot on/off) ──────────────────────────────────
+   Takeover of the chat BODY only — lives inside `.transcript-frame`, the
+   non-scrolling sibling wrapping `.transcript` (see that rule below), so it
+   stays pinned to the visible viewport at any scroll position instead of the
+   scrolled chat content. The chat head/nav above and the tool
+   panel/activity bar/input footer below stay visible and untouched. A "KEN IS
+   ON"/"KEN IS OFF" ASCII banner
+   (same ANSI-Shadow block font as the GG CODER home logo) materializes with
+   the same scale+fade "flash" the app already uses for the zoom-level HUD
+   (see `.zoom-overlay-card`/`zoom-overlay-in`) instead of sliding across the
+   pane — a small, on-brand pop in place, held, then a soft dissolve out. Sits
+   over the same dark surface as the chat background so it reads as an
+   overlay, not a new screen. Purely decorative — clicks pass through to
+   whatever is underneath. */
+.ken-power-overlay {
+  position: absolute;
+  /* Bleed 1px past every edge (clipped by `.transcript-frame`'s `overflow:
+     hidden`) rather than a flush `inset: 0` — under CSS `zoom` the absolutely
+     positioned overlay's content box can round a hair narrower than its
+     positioned ancestor, leaving a hairline sliver of chat text visible along
+     the top edge. The 1px bleed guarantees full coverage regardless of the
+     rounding direction. */
+  inset: -1px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--bg);
+  pointer-events: none;
+}
+.ken-power-banner {
+  font-family: var(--mono);
+  font-size: clamp(7px, 1.7vw, 12px);
+  line-height: 1.05;
+  white-space: pre;
+  text-align: center;
+  animation: ken-power-flash 1150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ken-power-banner-line {
+  white-space: pre;
+}
+/* ON: vibrant Ken-teal shimmer sweep + soft glow, mirroring the home logo's
+   gradient treatment but in Ken's color. */
+.ken-power-banner-on {
+  background: linear-gradient(
+    100deg,
+    #3fa9bd 0%,
+    #5ad1e6 25%,
+    #a6f0ff 50%,
+    #5ad1e6 75%,
+    #3fa9bd 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--ken) 45%, transparent));
+  animation:
+    ken-power-flash 1150ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    ggshimmer 1.4s linear infinite;
+}
+/* OFF: flat, dim — no shimmer, signals the loop is stopped. */
+.ken-power-banner-off {
+  color: var(--text-dim);
+}
+/* Scale-and-fade "power flash": pops in slightly undersized (like the zoom
+   HUD), rests at full size while held, then grows a touch further as it
+   dissolves out — a gentle energize/derez feel with zero lateral motion. */
+@keyframes ken-power-flash {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  16% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  82% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.05);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ken-power-banner,
+  .ken-power-banner-on {
+    animation: ken-power-fade 900ms ease both;
+  }
+}
+@keyframes ken-power-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  15%,
+  80% {
+    opacity: 1;
+  }
+}
 .home-tagline {
   margin-top: -12px;
   font-size: 13px;
@@ -1597,6 +1701,25 @@ body {
   background: var(--border);
 }
 
+/* Non-scrolling wrapper around `.transcript` — owns the flex sizing +
+   `position: relative` so an absolutely positioned overlay child (the Ken
+   power banner) is pinned to the visible chat viewport, not the scrolled
+   CONTENT inside `.transcript` (a `position: absolute` descendant of a
+   scrolling container is positioned relative to the top of that container's
+   scrollable content, not what's currently on screen — a full-height overlay
+   on a scrolled-down existing session would render far above the visible
+   messages). `.transcript` itself just fills this frame and scrolls. */
+.transcript-frame {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Clips the overlay's 1px bleed below (see `.ken-power-overlay`) so it never
+     spills onto the chat-head border or the tool panel/footer beyond this
+     frame. */
+  overflow: hidden;
+}
 .transcript {
   flex: 1 1 auto;
   /* Required so this scrollable flex child actually shrinks (default min-height
@@ -3273,6 +3396,14 @@ body {
      transcript above never shift when the footer fills in (8+8 padding +
      ~20px line box). */
   min-height: 37px;
+  /* .inputwrap (an earlier sibling) is `position: relative`, which — despite
+     coming first in DOM order — paints ABOVE any non-positioned sibling per
+     CSS stacking rules (positioned elements always paint after static ones).
+     Without this, the growing textarea overlapped the upward-opening
+     .model-menu anchored in the footer. Make the footer positioned too, with
+     a higher z-index, so it (and its dropdowns) stack above the input. */
+  position: relative;
+  z-index: 2;
 }
 
 /* Footer clusters reveal as one faded unit once the session has hydrated,
@@ -3650,6 +3781,13 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 2px 8px;
+}
+
+/* "Follow GG Coder" row in Ken's model picker — full-width above the grid. */
+.model-menu-follow {
+  display: block;
+  width: 100%;
+  margin-bottom: 6px;
 }
 
 .model-menu-item {

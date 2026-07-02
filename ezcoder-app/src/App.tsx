@@ -12,6 +12,7 @@ import {
   cycleThinking,
   listModels,
   switchModel,
+  switchKenModel,
   listCommands,
   listHistory,
   listTasks,
@@ -63,6 +64,7 @@ import { WakeScreen } from "./WakeScreen";
 import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
+import { KenPowerBanner } from "./KenPowerBanner";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 // Experimental gaze focus — disabled for now (see main.tsx).
@@ -307,6 +309,10 @@ function App(): React.ReactElement {
   // Number of messages queued mid-run (injected as steering by the sidecar).
   const [queuedCount, setQueuedCount] = useState(0);
   const [state, setState] = useState<AgentState | null>(null);
+  // Transient "KEN IS ON"/"KEN IS OFF" takeover banner shown when Autopilot
+  // is toggled. Null = not showing; the banner clears itself via `onDone`
+  // once its slide-out animation finishes.
+  const [kenPowerBanner, setKenPowerBanner] = useState<"on" | "off" | null>(null);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("connecting to agent\u2026");
   const [liveToolFeed, setLiveToolFeed] = useState<LiveToolEntry[]>([]);
@@ -337,6 +343,7 @@ function App(): React.ReactElement {
   const [thinkingAccumMs, setThinkingAccumMs] = useState(0);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [kenModelMenuOpen, setKenModelMenuOpen] = useState(false);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
   // `@`-mention file picker state. `mention` is the active token being typed
@@ -1003,6 +1010,29 @@ function App(): React.ReactElement {
     },
     [notesKey],
   );
+
+  // Pin Ken to a model (or null → clear the pin, follow GG Coder). The
+  // sidecar's ken_model_change broadcast updates state; the .then is just a
+  // faster local echo of the same payload.
+  function onSelectKenModel(modelId: string | null): void {
+    setKenModelMenuOpen(false);
+    if (state && modelId !== null && state.kenModelOverride && modelId === state.kenModel) return;
+    if (state && modelId === null && !state.kenModelOverride) return;
+    void switchKenModel(modelId).then((res) => {
+      if (res) {
+        setState((s) =>
+          s
+            ? {
+                ...s,
+                kenProvider: res.kenProvider,
+                kenModel: res.kenModel,
+                kenModelOverride: res.kenModelOverride,
+              }
+            : s,
+        );
+      }
+    });
+  }
 
   function onSelectModel(modelId: string): void {
     setModelMenuOpen(false);
@@ -1706,9 +1736,11 @@ function App(): React.ReactElement {
             <span className="picker-head-actions">
               <AutopilotToggle
                 checked={state?.autopilot ?? false}
+                disabled={running || autopilotReviewing}
                 onChange={(next) => {
                   setState((s) => (s ? { ...s, autopilot: next } : s));
                   void setAutopilot(next);
+                  setKenPowerBanner(next ? "on" : "off");
                 }}
               />
               <button
@@ -1774,26 +1806,38 @@ function App(): React.ReactElement {
         )}
       </div>
 
-      <div className="transcript" ref={scrollRef} onScroll={onTranscriptScroll}>
-        {!hydrated && items.length === 0 ? (
-          <TranscriptSkeleton />
-        ) : (
-          <>
-            {items.length === 0 &&
-              (status === "ready" ? (
-                <WakeScreen />
-              ) : (
-                <div className="line transcript-reveal" style={{ color: theme.textDim }}>
-                  {`\u273b ${status}`}
-                </div>
-              ))}
-            <PromptSendProvider value={sendNolanRecommendedPrompt}>
-              {items.map((it) => (
-                <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
-              ))}
-            </PromptSendProvider>
-          </>
+      {/* Non-scrolling frame the same size as the chat viewport. The banner
+          lives HERE, not inside `.transcript` — `.transcript` scrolls, and an
+          absolutely positioned child of a scrolling container is pinned to the
+          top of the scrolled CONTENT, not the visible viewport, so in an
+          existing session scrolled down it rendered far above what's on
+          screen. Anchoring to this non-scrolling sibling keeps it pinned to
+          what the user is actually looking at, at any scroll position. */}
+      <div className="transcript-frame">
+        {kenPowerBanner && (
+          <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
         )}
+        <div className="transcript" ref={scrollRef} onScroll={onTranscriptScroll}>
+          {!hydrated && items.length === 0 ? (
+            <TranscriptSkeleton />
+          ) : (
+            <>
+              {items.length === 0 &&
+                (status === "ready" ? (
+                  <WakeScreen />
+                ) : (
+                  <div className="line transcript-reveal" style={{ color: theme.textDim }}>
+                    {`\u273b ${status}`}
+                  </div>
+                ))}
+              <PromptSendProvider value={sendKenRecommendedPrompt}>
+                {items.map((it) => (
+                  <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
+                ))}
+              </PromptSendProvider>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="liveregion">
@@ -2082,16 +2126,50 @@ function App(): React.ReactElement {
                     currentModel={state?.model ?? ""}
                     onSelect={onSelectModel}
                     onClose={() => setModelMenuOpen(false)}
+                    title="GG Coder model"
                   />
                 )}
                 <button
                   className="model-button"
                   style={{ color: theme.text }}
                   disabled={running || models.length === 0}
-                  title="Switch model"
-                  onClick={() => setModelMenuOpen((o) => !o)}
+                  title="Switch GG Coder's model"
+                  onClick={() => {
+                    setKenModelMenuOpen(false);
+                    setModelMenuOpen((o) => !o);
+                  }}
                 >
-                  {state?.model ?? "\u2026"}
+                  {`GG ${state?.model ?? "\u2026"}`}
+                </button>
+              </span>
+              <FooterSep />
+              <span className="model-anchor">
+                {kenModelMenuOpen && models.length > 0 && (
+                  <ModelMenu
+                    models={models}
+                    currentModel={state?.kenModel ?? state?.model ?? ""}
+                    onSelect={(id) => onSelectKenModel(id)}
+                    onClose={() => setKenModelMenuOpen(false)}
+                    title="Ken's model"
+                    onSelectFollow={() => onSelectKenModel(null)}
+                    followActive={!state?.kenModelOverride}
+                  />
+                )}
+                <button
+                  className="model-button"
+                  style={{ color: theme.ken }}
+                  disabled={models.length === 0}
+                  title={
+                    state?.kenModelOverride
+                      ? "Ken is pinned to his own model — click to change"
+                      : "Ken follows GG Coder's model — click to pin one"
+                  }
+                  onClick={() => {
+                    setModelMenuOpen(false);
+                    setKenModelMenuOpen((o) => !o);
+                  }}
+                >
+                  {`Ken ${state?.kenModel ?? state?.model ?? "\u2026"}`}
                 </button>
               </span>
             </span>

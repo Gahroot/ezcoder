@@ -22,6 +22,41 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.12.2",
+    date: "2026-07-02",
+    items: [
+      "Autopilot is calmer and harder to fool now. I judge GG Coder against your original request, not my own follow-up nudges, so I stop inventing extra work after the job is already done.",
+      "When GG Coder asks you a question or puts a plan in front of you, I keep my hands off the wheel. I will call for you instead of answering on your behalf.",
+      "Ken gets his own model switch. Pin me to a different brain or let me follow GG Coder, right from the footer.",
+      "Queued messages land cleaner now. If you send one while I am reviewing and there is no live run to steer, I treat it as a fresh turn instead of mixing it into the next unrelated job.",
+    ],
+  },
+  {
+    version: "0.12.1",
+    date: "2026-07-02",
+    items: [
+      "Squashed a bug in the brand new KEN IS ON banner: in a scrolled-down session it was flashing up above your chat instead of right over it. I pinned it to what you are actually looking at, every time, no matter how deep you have scrolled.",
+      "Also polished off a hairline sliver of chat text that could peek through the top edge of the banner. Full coverage now, clean every time.",
+    ],
+  },
+  {
+    version: "0.12.0",
+    date: "2026-07-02",
+    items: [
+      'Autopilot got sharper. I now know the difference between real work and a quick hello. Small talk, a plain answer, or a routine commit and push no longer get a pointless "all clear" from me, I just stay quiet and let you keep moving.',
+      "Flipping Autopilot mid-run is off the table now, and that is a good thing. The switch locks while I am working or reviewing so you never yank the rug out from under your own build.",
+      "You'll know exactly when I'm watching. A bold KEN IS ON banner flashes across the chat the moment you flip Autopilot on, and KEN IS OFF when you pull me back, so there is never any doubt whose eyes are on the work.",
+    ],
+  },
+  {
+    version: "0.11.1",
+    date: "2026-07-02",
+    items: [
+      "Fixed a spot where your sub-agents would refuse to launch. If you called on bee, owl, researcher, or worker they could hit a wall and fail outright. I tracked it down and cleared the path, so they run clean every time now.",
+      "Cleaned up the model picker. Opening it while you had a longer message typed used to let the chat box paint right over the dropdown. Now it always sits on top where you can actually read it.",
+    ],
+  },
+  {
     version: "0.11.0",
     date: "2026-07-02",
     items: [
