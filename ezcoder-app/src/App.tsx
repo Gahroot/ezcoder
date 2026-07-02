@@ -1016,7 +1016,8 @@ function App(): React.ReactElement {
   // faster local echo of the same payload.
   function onSelectNolanModel(modelId: string | null): void {
     setNolanModelMenuOpen(false);
-    if (state && modelId !== null && state.nolanModelOverride && modelId === state.nolanModel) return;
+    if (state && modelId !== null && state.nolanModelOverride && modelId === state.nolanModel)
+      return;
     if (state && modelId === null && !state.nolanModelOverride) return;
     void switchNolanModel(modelId).then((res) => {
       if (res) {

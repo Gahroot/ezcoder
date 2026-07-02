@@ -574,7 +574,9 @@ export async function switchModel(model: string): Promise<SwitchModelResult | nu
 
 /** Pin Nolan (mentor + autopilot) to a model, or pass null to clear the pin so
  *  he follows EZ Coder's model again. Returns his effective model. */
-export async function switchNolanModel(model: string | null): Promise<SwitchNolanModelResult | null> {
+export async function switchNolanModel(
+  model: string | null,
+): Promise<SwitchNolanModelResult | null> {
   try {
     return await invoke<SwitchNolanModelResult>("agent_switch_ken_model", { model });
   } catch (e) {

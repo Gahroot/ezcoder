@@ -53,7 +53,11 @@ export function effectiveNolanModel(
   build: { provider: Provider; model: string },
 ): EffectiveNolanModel {
   if (override) {
-    return { nolanProvider: override.provider, nolanModel: override.model, nolanModelOverride: true };
+    return {
+      nolanProvider: override.provider,
+      nolanModel: override.model,
+      nolanModelOverride: true,
+    };
   }
   return { nolanProvider: build.provider, nolanModel: build.model, nolanModelOverride: false };
 }

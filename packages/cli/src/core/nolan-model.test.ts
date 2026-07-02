@@ -30,7 +30,10 @@ describe("validateNolanModelPref", () => {
     expect(validateNolanModelPref(undefined, opts)).toBeNull();
     expect(validateNolanModelPref({ provider: "openai", model: "" }, opts)).toBeNull();
     expect(
-      validateNolanModelPref({ provider: "" as NolanModelPref["provider"], model: "gpt-5.5" }, opts),
+      validateNolanModelPref(
+        { provider: "" as NolanModelPref["provider"], model: "gpt-5.5" },
+        opts,
+      ),
     ).toBeNull();
   });
 });

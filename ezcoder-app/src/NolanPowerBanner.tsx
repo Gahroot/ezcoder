@@ -1,4 +1,4 @@
-// "KEN IS ON" / "KEN IS OFF" ASCII banner shown over the chat BODY (inside
+// "NOLAN ON" / "NOLAN OFF" ASCII banner shown over the chat BODY (inside
 // `.transcript-frame`, a non-scrolling sibling of `.transcript` sized to the
 // same viewport — NOT inside `.transcript` itself, which scrolls, so an
 // absolutely positioned overlay there would pin to the scrolled content
@@ -9,22 +9,22 @@
 // for its zoom-level HUD, holds briefly, then dissolves back out — quick,
 // decorative, non-interactive, no lateral motion. Self-removes via `onDone`
 // once the animation finishes so the caller can just stop rendering it.
-const KEN_IS_ON = [
-  "██╗  ██╗███████╗███╗   ██╗    ██╗███████╗     ██████╗ ███╗   ██╗",
-  "██║ ██╔╝██╔════╝████╗  ██║    ██║██╔════╝    ██╔═══██╗████╗  ██║",
-  "█████╔╝ █████╗  ██╔██╗ ██║    ██║███████╗    ██║   ██║██╔██╗ ██║",
-  "██╔═██╗ ██╔══╝  ██║╚██╗██║    ██║╚════██║    ██║   ██║██║╚██╗██║",
-  "██║  ██╗███████╗██║ ╚████║    ██║███████║    ╚██████╔╝██║ ╚████║",
-  "╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝    ╚═╝╚══════╝     ╚═════╝ ╚═╝  ╚═══╝",
+const NOLAN_ON = [
+  "███╗   ██╗ ██████╗ ██╗      █████╗ ███╗   ██╗     ██████╗ ███╗   ██╗",
+  "████╗  ██║██╔═══██╗██║     ██╔══██╗████╗  ██║    ██╔═══██╗████╗  ██║",
+  "██╔██╗ ██║██║   ██║██║     ███████║██╔██╗ ██║    ██║   ██║██╔██╗ ██║",
+  "██║╚██╗██║██║   ██║██║     ██╔══██║██║╚██╗██║    ██║   ██║██║╚██╗██║",
+  "██║ ╚████║╚██████╔╝███████╗██║  ██║██║ ╚████║    ╚██████╔╝██║ ╚████║",
+  "╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝     ╚═════╝ ╚═╝  ╚═══╝",
 ];
 
-const KEN_IS_OFF = [
-  "██╗  ██╗███████╗███╗   ██╗    ██╗███████╗     ██████╗ ███████╗███████╗",
-  "██║ ██╔╝██╔════╝████╗  ██║    ██║██╔════╝    ██╔═══██╗██╔════╝██╔════╝",
-  "█████╔╝ █████╗  ██╔██╗ ██║    ██║███████╗    ██║   ██║█████╗  █████╗  ",
-  "██╔═██╗ ██╔══╝  ██║╚██╗██║    ██║╚════██║    ██║   ██║██╔══╝  ██╔══╝  ",
-  "██║  ██╗███████╗██║ ╚████║    ██║███████║    ╚██████╔╝██║     ██║     ",
-  "╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝    ╚═╝╚══════╝     ╚═════╝ ╚═╝     ╚═╝     ",
+const NOLAN_OFF = [
+  "███╗   ██╗ ██████╗ ██╗      █████╗ ███╗   ██╗     ██████╗ ███████╗███████╗",
+  "████╗  ██║██╔═══██╗██║     ██╔══██╗████╗  ██║    ██╔═══██╗██╔════╝██╔════╝",
+  "██╔██╗ ██║██║   ██║██║     ███████║██╔██╗ ██║    ██║   ██║█████╗  █████╗  ",
+  "██║╚██╗██║██║   ██║██║     ██╔══██║██║╚██╗██║    ██║   ██║██╔══╝  ██╔══╝  ",
+  "██║ ╚████║╚██████╔╝███████╗██║  ██║██║ ╚████║    ╚██████╔╝██║     ██║     ",
+  "╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝     ╚═════╝ ╚═╝     ╚═╝     ",
 ];
 
 interface Props {
@@ -34,7 +34,7 @@ interface Props {
 }
 
 export function NolanPowerBanner({ mode, onDone }: Props): React.ReactElement {
-  const lines = mode === "on" ? KEN_IS_ON : KEN_IS_OFF;
+  const lines = mode === "on" ? NOLAN_ON : NOLAN_OFF;
   return (
     <div className="nolan-power-overlay" aria-hidden="true">
       {/* Keyed on `mode` so flipping the toggle again mid-animation remounts

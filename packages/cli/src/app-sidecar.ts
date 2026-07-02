@@ -32,7 +32,11 @@ import {
   type WorkflowCommandSpec,
 } from "./core/autopilot-gate.js";
 import { driveAutopilotCycle } from "./core/autopilot-cycle.js";
-import { validateNolanModelPref, effectiveNolanModel, type NolanModelPref } from "./core/nolan-model.js";
+import {
+  validateNolanModelPref,
+  effectiveNolanModel,
+  type NolanModelPref,
+} from "./core/nolan-model.js";
 import { collectProjectContext } from "./system-prompt.js";
 import type { NolanTurnPayload } from "./core/session-manager.js";
 import { AuthStorage } from "./core/auth-storage.js";
@@ -151,7 +155,8 @@ async function loadAppSettings(): Promise<AppSettings> {
       projectModels:
         raw.projectModels && typeof raw.projectModels === "object" ? raw.projectModels : undefined,
       autopilot: raw.autopilot && typeof raw.autopilot === "object" ? raw.autopilot : undefined,
-      nolanModels: raw.nolanModels && typeof raw.nolanModels === "object" ? raw.nolanModels : undefined,
+      nolanModels:
+        raw.nolanModels && typeof raw.nolanModels === "object" ? raw.nolanModels : undefined,
     };
   } catch {
     return { projectsRoot: defaultProjectsRoot() };
@@ -1094,10 +1099,13 @@ async function createSession(
   // is pinned to his own model and EZ Coder switches no longer touch him. A
   // stale persisted pin (model dropped from the registry / provider logged
   // out) validates to null so Nolan degrades to following instead of erroring.
-  let nolanModelOverride: NolanModelPref | null = validateNolanModelPref(await loadNolanModelPref(cwd), {
-    modelExists: (id) => getModel(id) !== undefined,
-    providerConnected: () => true, // async auth checked below
-  });
+  let nolanModelOverride: NolanModelPref | null = validateNolanModelPref(
+    await loadNolanModelPref(cwd),
+    {
+      modelExists: (id) => getModel(id) !== undefined,
+      providerConnected: () => true, // async auth checked below
+    },
+  );
   if (nolanModelOverride && !(await auth.hasProviderAuth(nolanModelOverride.provider))) {
     log("WARN", "app-sidecar", "ken model override provider not connected — following GG", {
       provider: nolanModelOverride.provider,
