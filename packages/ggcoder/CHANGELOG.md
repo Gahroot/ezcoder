@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.6.1
+
+### Patch Changes
+
+- Fix Ken autopilot gating, stranded prompt handling, and Ken model selection in the app sidecar.
+  - @kenkaiiii/gg-ai@5.6.1
+  - @kenkaiiii/gg-agent@5.6.1
+  - @kenkaiiii/gg-core@5.6.1
+
 ## 5.6.0
 
 ### Minor Changes
