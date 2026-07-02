@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- Sync upstream gg-framework features: autopilot auto-review loop, Xiaomi API-Credits
+- Sync upstream ezcoder features: autopilot auto-review loop, Xiaomi API-Credits
   fallback with MiMo-V2.5-Pro-UltraSpeed, structured provider errors
   (headline/message/guidance), subagent tool allow-list enforcement, task
   auto-pruning, and Claude Sonnet 5. Fork distinctions (task list, monitor selector,
@@ -20,31 +20,31 @@
 
 ### Patch Changes
 
-- Fix Ken autopilot gating, stranded prompt handling, and Ken model selection in the app sidecar.
-  - @kenkaiiii/gg-ai@5.6.1
-  - @kenkaiiii/gg-agent@5.6.1
-  - @kenkaiiii/gg-core@5.6.1
+- Fix Nolan autopilot gating, stranded prompt handling, and Nolan model selection in the app sidecar.
+  - @prestyj/ai@5.6.1
+  - @prestyj/agent@5.6.1
+  - @prestyj/core@5.6.1
 
 ## 5.6.0
 
 ### Minor Changes
 
-- Autopilot Ken now has an IGNORE verdict for turns that were never real work (small talk, answered questions, mechanical git ops like commit/push), so trivial turns no longer produce a pointless "all clear" in the transcript.
+- Autopilot Nolan now has an IGNORE verdict for turns that were never real work (small talk, answered questions, mechanical git ops like commit/push), so trivial turns no longer produce a pointless "all clear" in the transcript.
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.6.0
-- @kenkaiiii/gg-agent@5.6.0
-- @kenkaiiii/gg-core@5.6.0
+- @prestyj/ai@5.6.0
+- @prestyj/agent@5.6.0
+- @prestyj/core@5.6.0
 
 ## 5.5.1
 
 ### Patch Changes
 
 - Fix subagent tool allow-list crashing in the desktop app: the JSON-mode arg parser in `app-sidecar.ts` was missing the `--tools` flag, so any named agent with a `tools:` allow-list (bee, owl, researcher, worker) failed to spawn with "Unknown option '--tools'".
-  - @kenkaiiii/gg-ai@5.5.1
-  - @kenkaiiii/gg-agent@5.5.1
-  - @kenkaiiii/gg-core@5.5.1
+  - @prestyj/ai@5.5.1
+  - @prestyj/agent@5.5.1
+  - @prestyj/core@5.5.1
 
 ## 5.5.0
 

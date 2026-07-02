@@ -979,9 +979,9 @@ async fn agent_switch_model(
     res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
-/// Proxy: pin Ken (mentor + autopilot) to a model, or clear the pin so he
-/// follows GG Coder's model again. `model: None` clears. Returns
-/// `{ kenProvider, kenModel, kenModelOverride }`.
+/// Proxy: pin Nolan (mentor + autopilot) to a model, or clear the pin so he
+/// follows EZ Coder's model again. `model: None` clears. Returns
+/// `{ nolanProvider, nolanModel, nolanModelOverride }`.
 #[tauri::command]
 async fn agent_switch_ken_model(
     webview: WebviewWindow,

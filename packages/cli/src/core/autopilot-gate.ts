@@ -1,19 +1,19 @@
 /**
- * Autopilot gate — pure decision logic for whether Ken's auto-review cycle may
- * start after a finished GG Coder turn.
+ * Autopilot gate — pure decision logic for whether Nolan's auto-review cycle may
+ * start after a finished EZ Coder turn.
  *
  * Autopilot must NOT review every turn. The concrete leak cases this gate
  * closes (each has a matching unit test in autopilot-gate.test.ts):
  *
  * - Workflow slash commands (`/compare`, `/bullet-proof`, `/expand`, custom
- *   `.gg/commands/*.md`) end with reports or A/B/C choices that are reserved
- *   for the USER. Ken reviewing them reads "findings" as "something real is
+ *   `.ezcoder/commands/*.md`) end with reports or A/B/C choices that are reserved
+ *   for the USER. Nolan reviewing them reads "findings" as "something real is
  *   wrong" and injects fix prompts the user never approved.
  * - Registry commands (`/help`, `/session`, unknown `/foo`) and failed runs
  *   add no assistant work at all — a review would judge the PREVIOUS turn
- *   again (Ken's cycle memory is wiped per turn) and can flip a settled
+ *   again (Nolan's cycle memory is wiped per turn) and can flip a settled
  *   ALL_CLEAR into a fresh PROMPT.
- * - A turn that ended in plan mode has a pending Accept/Reject modal; Ken must
+ * - A turn that ended in plan mode has a pending Accept/Reject modal; Nolan must
  *   never inject a prompt into a read-only plan-mode session.
  *
  * Kept pure + dependency-light so it's unit-testable without booting the
@@ -21,7 +21,7 @@
  */
 
 /** A workflow (prompt-template) command: built-in PROMPT_COMMANDS or a custom
- *  `.gg/commands/*.md` entry. `prompt` is the full template body the command
+ *  `.ezcoder/commands/*.md` entry. `prompt` is the full template body the command
  *  expands to when run. */
 export interface WorkflowCommandSpec {
   name: string;
@@ -63,7 +63,7 @@ export function isWorkflowCommandText(
 /**
  * Match a transcript user-message body back to the workflow command it was
  * expanded from. AgentSession stores the EXPANDED template as a plain user
- * message, so without this Ken's digest renders 400-line templates as
+ * message, so without this Nolan's digest renders 400-line templates as
  * `**User:** …` and treats them as user-authored asks.
  *
  * Returns the matched command plus any trailing user args, or null.
@@ -117,7 +117,7 @@ export type AutopilotGateDecision = { start: true } | { start: false; reason: Au
 /**
  * Decide whether the autopilot cycle may start for a just-finished turn.
  * Checks are ordered cheapest/most-fundamental first; the reason is logged by
- * the sidecar so skips are debuggable from gg-app-sidecar.log.
+ * the sidecar so skips are debuggable from ezcoder-app-sidecar.log.
  */
 export function shouldStartAutopilotCycle(input: AutopilotGateInput): AutopilotGateDecision {
   if (!input.enabled) return { start: false, reason: "disabled" };

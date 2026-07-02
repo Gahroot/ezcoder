@@ -1,7 +1,7 @@
 /**
  * Autopilot Nolan's verdict contract.
  *
- * In autopilot mode Ken never talks to the user — he auto-reviews GG Coder's
+ * In autopilot mode Nolan never talks to the user — he auto-reviews EZ Coder's
  * work and replies with exactly one of four machine-parseable verdicts. The
  * first non-empty line carries the keyword; anything after is the payload.
  *
@@ -17,11 +17,11 @@
  *
  * ALL_CLEAR and IGNORE both stop the cycle with nothing left to do, but they
  * mean different things to the UI: ALL_CLEAR is a verdict on real work ("GG
- * Coder built/changed something and it checks out") and renders a one-line Ken
+ * Coder built/changed something and it checks out") and renders a one-line Nolan
  * marker. IGNORE means the turn was never worth reviewing in the first place
  * (small talk, a question, an ack, a mechanical operation with no code
  * changes) — it renders NOTHING, not even a marker, so trivial turns don't
- * spam the transcript with a Ken bubble that adds no information.
+ * spam the transcript with a Nolan bubble that adds no information.
  *
  * Parsing is forgiving and safe-by-default: any reply we can't confidently map
  * to PROMPT, ALL_CLEAR, or IGNORE becomes a HUMAN stop, never a blind loop.

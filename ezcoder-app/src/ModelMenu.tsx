@@ -9,7 +9,7 @@ interface Props {
   onClose: () => void;
   /** Menu heading (defaults to "select model"). */
   title?: string;
-  /** When set, renders a "Follow GG Coder" row above the model grid (Ken's
+  /** When set, renders a "Follow EZ Coder" row above the model grid (Nolan's
    *  picker) — selecting it clears the pin. `followActive` highlights it when
    *  no pin is set. */
   onSelectFollow?: () => void;
@@ -66,15 +66,15 @@ export function ModelMenu({
             background: followActive ? theme.surface2 : "transparent",
           }}
           onClick={onSelectFollow}
-          title="Ken adopts whatever model GG Coder is using"
+          title="Nolan adopts whatever model EZ Coder is using"
         >
-          Follow GG Coder
+          Follow EZ Coder
         </button>
       )}
       <div className="model-menu-grid">
         {models.map((m) => {
-          // With a follow row present (Ken's picker), a model is only "active"
-          // when it's an explicit pin — not when Ken merely inherits it.
+          // With a follow row present (Nolan's picker), a model is only "active"
+          // when it's an explicit pin — not when Nolan merely inherits it.
           const active = m.id === currentModel && !(onSelectFollow && followActive);
           return (
             <button

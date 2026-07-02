@@ -125,7 +125,7 @@ describe("driveAutopilotCycle", () => {
     let cancelled = false;
     const deps = makeDeps([], {
       review: vi.fn(async () => {
-        cancelled = true; // /cancel fires while Ken is reviewing
+        cancelled = true; // /cancel fires while Nolan is reviewing
         return { kind: "prompt", body: "fix it" } as AutopilotVerdict;
       }),
       isCancelled: () => cancelled,
@@ -169,7 +169,7 @@ describe("driveAutopilotCycle", () => {
       {
         runPrompt: async (body) => {
           ran.push(body);
-          planMode = true; // GG Coder called enter_plan/exit_plan during the run
+          planMode = true; // EZ Coder called enter_plan/exit_plan during the run
         },
         isPlanMode: () => planMode,
       },

@@ -196,40 +196,40 @@ describe("useAgentEvents", () => {
     expect(setRunning).not.toHaveBeenCalled();
   });
 
-  it("ken_model_change updates Ken's footer model state (falls through ken_ delegation)", () => {
-    // useKenMentor's handleKenEvent returns false for ken_model_change (it only
+  it("ken_model_change updates Nolan's footer model state (falls through ken_ delegation)", () => {
+    // useNolanMentor's handleNolanEvent returns false for ken_model_change (it only
     // owns the chat-bubble events), so the event must reach the main switch —
-    // the default setup handleKenEvent mirrors that by returning false.
+    // the default setup handleNolanEvent mirrors that by returning false.
     const { hook, getState } = setup();
     act(() => {
       hook.result.current.handleEvent(
         ev("ken_model_change", {
-          kenProvider: "openai",
-          kenModel: "gpt-5.5",
-          kenModelOverride: true,
+          nolanProvider: "openai",
+          nolanModel: "gpt-5.5",
+          nolanModelOverride: true,
         }),
       );
     });
     expect(getState()).toMatchObject({
-      kenProvider: "openai",
-      kenModel: "gpt-5.5",
-      kenModelOverride: true,
-      // GG Coder's own model is untouched by a Ken pin.
+      nolanProvider: "openai",
+      nolanModel: "gpt-5.5",
+      nolanModelOverride: true,
+      // EZ Coder's own model is untouched by a Nolan pin.
       model: "claude-opus-5",
       provider: "anthropic",
     });
 
-    // Clearing the pin: sidecar broadcasts Ken back on GG Coder's model.
+    // Clearing the pin: sidecar broadcasts Nolan back on EZ Coder's model.
     act(() => {
       hook.result.current.handleEvent(
         ev("ken_model_change", {
-          kenProvider: "anthropic",
-          kenModel: "claude-opus-5",
-          kenModelOverride: false,
+          nolanProvider: "anthropic",
+          nolanModel: "claude-opus-5",
+          nolanModelOverride: false,
         }),
       );
     });
-    expect(getState()).toMatchObject({ kenModel: "claude-opus-5", kenModelOverride: false });
+    expect(getState()).toMatchObject({ nolanModel: "claude-opus-5", nolanModelOverride: false });
   });
 
   it("run_end clears running state", () => {

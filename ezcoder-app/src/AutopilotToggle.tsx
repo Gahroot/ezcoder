@@ -13,7 +13,7 @@ interface Props {
   checked: boolean;
   /** Fired with the next value when the user flips the switch. */
   onChange: (next: boolean) => void;
-  /** True while GG Coder (or an autopilot review/injected run) is active —
+  /** True while EZ Coder (or an autopilot review/injected run) is active —
    *  disables the switch, mirroring "+ New" and "/commit". Autopilot must be
    *  idle before its own on/off state can change. */
   disabled?: boolean;

@@ -10,7 +10,7 @@
  * Kept pure + dependency-light so it's unit-testable without booting the sidecar
  * (which runs `main()` at import time).
  */
-import type { Message, ContentPart, ToolResult } from "@kenkaiiii/gg-ai";
+import type { Message, ContentPart, ToolResult } from "@prestyj/ai";
 import { matchExpandedCommand, type WorkflowCommandSpec } from "./autopilot-gate.js";
 
 /** How many of the most recent build-session messages to inline verbatim. */
@@ -27,14 +27,14 @@ const MESSAGE_CHAR_CAP = 1500;
  *  room than a recent-activity line. */
 const ORIGINAL_REQUEST_CAP = 4000;
 
-/** Label for a user-role message that was actually injected by Autopilot Ken.
- *  Without it, multi-round cycles render Ken's own fix prompts as `**User:**`
+/** Label for a user-role message that was actually injected by Autopilot Nolan.
+ *  Without it, multi-round cycles render Nolan's own fix prompts as `**User:**`
  *  and he starts reviewing against his own last prompt instead of the user's
  *  original ask. Referenced by the autopilot system prompt — keep in sync. */
-export const INJECTED_PROMPT_LABEL = "**Ken autopilot (injected):**";
+export const INJECTED_PROMPT_LABEL = "**Nolan autopilot (injected):**";
 
-export interface KenDigestInput {
-  /** The user's `@Ken …` text (already stripped of the mention). */
+export interface NolanDigestInput {
+  /** The user's `@Nolan …` text (already stripped of the mention). */
   question: string;
   /** `collectProjectContext(cwd)` output — CLAUDE.md/AGENTS.md up the tree. */
   projectContext: string[];
@@ -50,7 +50,7 @@ export interface KenDigestInput {
    *  its own section so it can never scroll out of the rolling recent-activity
    *  window during multi-round cycles. */
   originalRequest?: string;
-  /** Prompt bodies Autopilot Ken injected into the build session. Matching
+  /** Prompt bodies Autopilot Nolan injected into the build session. Matching
    *  user messages render under {@link INJECTED_PROMPT_LABEL}, not `**User:**`. */
   injectedPrompts?: readonly string[];
   /** Known workflow commands (built-in + custom). Expanded template bodies in
@@ -87,7 +87,7 @@ interface RenderMessageOptions {
 
 /** Render one user-role message body with provenance-aware labeling:
  *  autopilot-injected prompts and workflow-command expansions are labeled as
- *  what they ARE, so Ken never mistakes either for a user-authored ask. */
+ *  what they ARE, so Nolan never mistakes either for a user-authored ask. */
 function renderUserText(text: string, opts: RenderMessageOptions): string | null {
   if (!text) return null;
   if (opts.injectedPrompts.some((p) => p.trim() === text.trim())) {
@@ -162,11 +162,11 @@ function renderMessage(msg: Message, opts: RenderMessageOptions): string | null 
  * the transcript and demands the machine-parseable answer.
  */
 export const AUTOPILOT_REVIEW_INSTRUCTION =
-  "GG Coder just finished a turn. Review its work against the user's original " +
-  "ask (the 'Original user request' section above; lines labeled 'Ken " +
+  "EZ Coder just finished a turn. Review its work against the user's original " +
+  "ask (the 'Original user request' section above; lines labeled 'Nolan " +
   "autopilot (injected)' are your own earlier fix prompts, NOT user asks). " +
   "Reply with your verdict ONLY — the first line must be exactly PROMPT, " +
-  "ALL_CLEAR, IGNORE, or HUMAN, with the payload after. If GG Coder ended by " +
+  "ALL_CLEAR, IGNORE, or HUMAN, with the payload after. If EZ Coder ended by " +
   "asking the user a question or presenting options, the verdict is HUMAN. " +
   "No greetings, no mentorship prose.";
 
@@ -241,7 +241,7 @@ export function buildNolanDigest(input: NolanDigestInput): string {
   }
 
   // Pinned so multi-round autopilot cycles can never lose the ask under review
-  // to the rolling recent-activity window (the drift that made Ken judge his
+  // to the rolling recent-activity window (the drift that made Nolan judge his
   // own injected prompt as "the user's request").
   if (input.originalRequest?.trim()) {
     sections.push(

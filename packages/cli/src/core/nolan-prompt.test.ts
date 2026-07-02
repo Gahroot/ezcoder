@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildKenSystemPrompt, buildKenAutopilotSystemPrompt } from "./ken-prompt.js";
-import { INJECTED_PROMPT_LABEL } from "./ken-context.js";
+import { buildNolanSystemPrompt, buildNolanAutopilotSystemPrompt } from "./nolan-prompt.js";
+import { INJECTED_PROMPT_LABEL } from "./nolan-context.js";
 
-describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
-  const prompt = buildKenAutopilotSystemPrompt();
+describe("buildNolanAutopilotSystemPrompt — verdict contract", () => {
+  const prompt = buildNolanAutopilotSystemPrompt();
 
   it("teaches all four verdict keywords", () => {
     for (const keyword of ["PROMPT", "ALL_CLEAR", "IGNORE", "HUMAN"]) {
@@ -12,16 +12,16 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   });
 
   it("routes end-of-turn questions/options/plans to HUMAN, never PROMPT", () => {
-    // Leak regression: without this rule, GG Coder ending with "want me to…?"
-    // or an A/B/C menu reads as "unfinished" and Ken answers for the user.
+    // Leak regression: without this rule, EZ Coder ending with "want me to…?"
+    // or an A/B/C menu reads as "unfinished" and Nolan answers for the user.
     expect(prompt).toContain("asking the ");
     expect(prompt).toContain("presenting options");
     expect(prompt).toContain("never answer on the user's behalf");
     expect(prompt).toContain("submitting a plan for approval");
   });
 
-  it("tells Ken injected transcript lines are his own, not user asks", () => {
-    expect(prompt).toContain("Ken autopilot (injected)");
+  it("tells Nolan injected transcript lines are his own, not user asks", () => {
+    expect(prompt).toContain("Nolan autopilot (injected)");
     expect(prompt).toContain("Judge only against the original user request");
   });
 
@@ -34,15 +34,15 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   it("keeps the injected label byte-identical to the digest renderer's", () => {
     // The system prompt names the label in prose; the digest emits it. If the
     // label constant drifts, the prompt's rule points at nothing.
-    expect(INJECTED_PROMPT_LABEL).toContain("Ken autopilot (injected)");
-    expect(prompt).toContain("Ken autopilot (injected)");
+    expect(INJECTED_PROMPT_LABEL).toContain("Nolan autopilot (injected)");
+    expect(prompt).toContain("Nolan autopilot (injected)");
   });
 });
 
-describe("buildKenSystemPrompt — chat mode unaffected", () => {
+describe("buildNolanSystemPrompt — chat mode unaffected", () => {
   it("keeps the chat output contract (prompt fence) and no verdict keywords", () => {
-    const prompt = buildKenSystemPrompt();
-    expect(prompt).toContain("Send to GG Coder");
+    const prompt = buildNolanSystemPrompt();
+    expect(prompt).toContain("Send to EZ Coder");
     // The verdict contract is autopilot-only.
     expect(prompt).not.toContain("ALL_CLEAR");
   });

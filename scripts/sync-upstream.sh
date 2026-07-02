@@ -232,7 +232,7 @@ rebrand_ken_mentor() {
       s/\bken_(run_start|run_end|text_delta|thinking_delta|tool_call_start|tool_call_update|tool_call_end|server_tool_call|turn_end|turn|error|cancel|prompt)\b/nolan_$1/g;
       s/_ken_(cancel|prompt)\b/_nolan_$1/g;
       # kebab-case CSS classes + file stems (explicit list excludes ken-burns)
-      s/\bken-(context|input|msg|prompt|sent|spinner|statusrow)\b/nolan-$1/g;
+      s/\bken-(context|input|model|msg|power|prompt|sent|spinner|statusrow)\b/nolan-$1/g;
       # camelCase mentor vars: word-start ken + UpperCase (tokenUsage fails \b)
       s/\bken([A-Z]\w*)/nolan$1/g;
       # lowercase @ken mention trigger in regex literals (\b after "ken" keeps
@@ -345,8 +345,12 @@ main() {
 
   info "Renaming @Ken mentor files → nolan-*..."
   rename_file_if_exists "packages/cli/src/core/ken-prompt.ts" "packages/cli/src/core/nolan-prompt.ts"
+  rename_file_if_exists "packages/cli/src/core/ken-prompt.test.ts" "packages/cli/src/core/nolan-prompt.test.ts"
   rename_file_if_exists "packages/cli/src/core/ken-context.ts" "packages/cli/src/core/nolan-context.ts"
   rename_file_if_exists "packages/cli/src/core/ken-context.test.ts" "packages/cli/src/core/nolan-context.test.ts"
+  rename_file_if_exists "packages/cli/src/core/ken-model.ts" "packages/cli/src/core/nolan-model.ts"
+  rename_file_if_exists "packages/cli/src/core/ken-model.test.ts" "packages/cli/src/core/nolan-model.test.ts"
+  rename_file_if_exists "ezcoder-app/src/KenPowerBanner.tsx" "ezcoder-app/src/NolanPowerBanner.tsx"
   rename_file_if_exists "ezcoder-app/src/KenActivityBar.tsx" "ezcoder-app/src/NolanActivityBar.tsx"
   rename_file_if_exists "ezcoder-app/src/useKenMentor.ts" "ezcoder-app/src/useNolanMentor.ts"
   rename_file_if_exists "ezcoder-app/src/useKenMentor.test.ts" "ezcoder-app/src/useNolanMentor.test.ts"

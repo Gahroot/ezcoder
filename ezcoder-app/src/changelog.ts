@@ -25,9 +25,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.12.2",
     date: "2026-07-02",
     items: [
-      "Autopilot is calmer and harder to fool now. I judge GG Coder against your original request, not my own follow-up nudges, so I stop inventing extra work after the job is already done.",
-      "When GG Coder asks you a question or puts a plan in front of you, I keep my hands off the wheel. I will call for you instead of answering on your behalf.",
-      "Ken gets his own model switch. Pin me to a different brain or let me follow GG Coder, right from the footer.",
+      "Autopilot is calmer and harder to fool now. I judge EZ Coder against your original request, not my own follow-up nudges, so I stop inventing extra work after the job is already done.",
+      "When EZ Coder asks you a question or puts a plan in front of you, I keep my hands off the wheel. I will call for you instead of answering on your behalf.",
+      "Nolan gets his own model switch. Pin me to a different brain or let me follow EZ Coder, right from the footer.",
       "Queued messages land cleaner now. If you send one while I am reviewing and there is no live run to steer, I treat it as a fresh turn instead of mixing it into the next unrelated job.",
     ],
   },

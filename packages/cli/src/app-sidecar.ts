@@ -32,7 +32,7 @@ import {
   type WorkflowCommandSpec,
 } from "./core/autopilot-gate.js";
 import { driveAutopilotCycle } from "./core/autopilot-cycle.js";
-import { validateKenModelPref, effectiveKenModel, type KenModelPref } from "./core/ken-model.js";
+import { validateNolanModelPref, effectiveNolanModel, type NolanModelPref } from "./core/nolan-model.js";
 import { collectProjectContext } from "./system-prompt.js";
 import type { NolanTurnPayload } from "./core/session-manager.js";
 import { AuthStorage } from "./core/auth-storage.js";
@@ -118,10 +118,10 @@ interface AppSettings {
   /** Autopilot (auto-review) on/off keyed by normalized project cwd. Per-window
    *  (one window = one cwd); absent/false → off. Restored on boot. */
   autopilot?: Record<string, boolean>;
-  /** Ken's model override keyed by normalized project cwd. Absent → Ken follows
-   *  GG Coder's model (the historical behavior). Set → Ken (chat + autopilot)
-   *  uses this model regardless of GG Coder's. */
-  kenModels?: Record<string, KenModelPref>;
+  /** Nolan's model override keyed by normalized project cwd. Absent → Nolan follows
+   *  EZ Coder's model (the historical behavior). Set → Nolan (chat + autopilot)
+   *  uses this model regardless of EZ Coder's. */
+  nolanModels?: Record<string, NolanModelPref>;
 }
 
 function appSettingsFile(): string {
@@ -151,7 +151,7 @@ async function loadAppSettings(): Promise<AppSettings> {
       projectModels:
         raw.projectModels && typeof raw.projectModels === "object" ? raw.projectModels : undefined,
       autopilot: raw.autopilot && typeof raw.autopilot === "object" ? raw.autopilot : undefined,
-      kenModels: raw.kenModels && typeof raw.kenModels === "object" ? raw.kenModels : undefined,
+      nolanModels: raw.nolanModels && typeof raw.nolanModels === "object" ? raw.nolanModels : undefined,
     };
   } catch {
     return { projectsRoot: defaultProjectsRoot() };
@@ -178,21 +178,21 @@ async function saveProjectModelPrefs(cwd: string, prefs: ProjectModelPrefs): Pro
   await saveAppSettings(s);
 }
 
-/** Read this project's persisted Ken model override, if any. */
-async function loadKenModelPref(cwd: string): Promise<KenModelPref | undefined> {
+/** Read this project's persisted Nolan model override, if any. */
+async function loadNolanModelPref(cwd: string): Promise<NolanModelPref | undefined> {
   const s = await loadAppSettings();
-  return s.kenModels?.[projectModelKey(cwd)];
+  return s.nolanModels?.[projectModelKey(cwd)];
 }
 
-/** Persist (or with null, clear) this project's Ken model override via
+/** Persist (or with null, clear) this project's Nolan model override via
  *  read-modify-write so the rest of the settings file is preserved. */
-async function saveKenModelPref(cwd: string, pref: KenModelPref | null): Promise<void> {
+async function saveNolanModelPref(cwd: string, pref: NolanModelPref | null): Promise<void> {
   const s = await loadAppSettings();
   const key = projectModelKey(cwd);
-  const next = { ...(s.kenModels ?? {}) };
+  const next = { ...(s.nolanModels ?? {}) };
   if (pref) next[key] = pref;
   else delete next[key];
-  s.kenModels = next;
+  s.nolanModels = next;
   await saveAppSettings(s);
 }
 
@@ -791,7 +791,7 @@ function lastAssistantText(messages: ReturnType<AgentSession["getMessages"]>): s
 /**
  * Assemble Nolan's context digest for one `@Nolan` question: project docs (up the
  * tree) + git/env + the build session's compaction summary + recent activity.
- * Prepended to the user's question as Ken's prompt body each turn. Workflow
+ * Prepended to the user's question as Nolan's prompt body each turn. Workflow
  * commands + autopilot-injected prompts are passed through so the digest
  * labels them as what they are instead of user-authored asks.
  */
@@ -1053,16 +1053,16 @@ async function createSession(
   let autopilotCancelled = false;
   // Hard cap on review→prompt→review rounds per user turn (loop safety).
   const MAX_AUTOPILOT_ROUNDS = 3;
-  // Prompt bodies Autopilot Ken injected into the BUILD session this
-  // conversation. Passed into every Ken digest so injected prompts render as
-  // "Ken autopilot (injected)" instead of `**User:**` — otherwise multi-round
-  // cycles drift into Ken reviewing against his own last prompt. Cleared
+  // Prompt bodies Autopilot Nolan injected into the BUILD session this
+  // conversation. Passed into every Nolan digest so injected prompts render as
+  // "Nolan autopilot (injected)" instead of `**User:**` — otherwise multi-round
+  // cycles drift into Nolan reviewing against his own last prompt. Cleared
   // whenever the conversation resets (new session / plan accept / task run).
   let injectedAutopilotPrompts: string[] = [];
 
   // Workflow (prompt-template) commands: built-in + the project's custom
-  // `.gg/commands/*.md`. Used to gate autopilot off command turns and to label
-  // expanded templates in Ken's digests. Loaded fresh so a newly added custom
+  // `.ezcoder/commands/*.md`. Used to gate autopilot off command turns and to label
+  // expanded templates in Nolan's digests. Loaded fresh so a newly added custom
   // command is picked up without a restart (mirrors GET /commands).
   async function loadWorkflowCommandSpecs(): Promise<WorkflowCommandSpec[]> {
     const custom = await loadCustomCommands(cwd).catch(() => []);
@@ -1089,40 +1089,40 @@ async function createSession(
   let pendingNolanModel: { provider: Provider; model: string } | null = null;
   const nolanToolCallNames = new Map<string, string>();
 
-  // Ken's per-project model override. null → Ken (chat + autopilot) follows GG
-  // Coder's model, including live switches (the historical behavior). Set → Ken
-  // is pinned to his own model and GG Coder switches no longer touch him. A
+  // Nolan's per-project model override. null → Nolan (chat + autopilot) follows GG
+  // Coder's model, including live switches (the historical behavior). Set → Nolan
+  // is pinned to his own model and EZ Coder switches no longer touch him. A
   // stale persisted pin (model dropped from the registry / provider logged
-  // out) validates to null so Ken degrades to following instead of erroring.
-  let kenModelOverride: KenModelPref | null = validateKenModelPref(await loadKenModelPref(cwd), {
+  // out) validates to null so Nolan degrades to following instead of erroring.
+  let nolanModelOverride: NolanModelPref | null = validateNolanModelPref(await loadNolanModelPref(cwd), {
     modelExists: (id) => getModel(id) !== undefined,
     providerConnected: () => true, // async auth checked below
   });
-  if (kenModelOverride && !(await auth.hasProviderAuth(kenModelOverride.provider))) {
+  if (nolanModelOverride && !(await auth.hasProviderAuth(nolanModelOverride.provider))) {
     log("WARN", "app-sidecar", "ken model override provider not connected — following GG", {
-      provider: kenModelOverride.provider,
-      model: kenModelOverride.model,
+      provider: nolanModelOverride.provider,
+      model: nolanModelOverride.model,
     });
-    kenModelOverride = null;
+    nolanModelOverride = null;
   }
 
-  /** The model Ken uses next turn: the pin when set, else GG Coder's. */
-  function kenCurrentModel(): { provider: Provider; model: string } {
-    if (kenModelOverride) return kenModelOverride;
+  /** The model Nolan uses next turn: the pin when set, else EZ Coder's. */
+  function nolanCurrentModel(): { provider: Provider; model: string } {
+    if (nolanModelOverride) return nolanModelOverride;
     const st = session.getState();
     return { provider: st.provider, model: st.model };
   }
 
-  /** Footer payload: Ken's effective model + whether it's a pin. Merged into
+  /** Footer payload: Nolan's effective model + whether it's a pin. Merged into
    *  /state, the SSE ready frame, and every ken_model_change broadcast. */
-  function kenStatePayload(): ReturnType<typeof effectiveKenModel> {
+  function nolanStatePayload(): ReturnType<typeof effectiveNolanModel> {
     const st = session.getState();
-    return effectiveKenModel(kenModelOverride, { provider: st.provider, model: st.model });
+    return effectiveNolanModel(nolanModelOverride, { provider: st.provider, model: st.model });
   }
 
-  async function syncKenModel(provider: Provider, model: string): Promise<void> {
-    if (kenRunning) {
-      pendingKenModel = { provider, model };
+  async function syncNolanModel(provider: Provider, model: string): Promise<void> {
+    if (nolanRunning) {
+      pendingNolanModel = { provider, model };
       return;
     }
     if (!nolanSession) return;
@@ -1132,9 +1132,9 @@ async function createSession(
     log("INFO", "app-sidecar", "ken session model synced", { provider, model });
   }
 
-  async function ensureKenSession(): Promise<AgentSession> {
-    if (kenSession) return kenSession;
-    const target = kenCurrentModel();
+  async function ensureNolanSession(): Promise<AgentSession> {
+    if (nolanSession) return nolanSession;
+    const target = nolanCurrentModel();
     const ken = new AgentSession({
       provider: target.provider,
       model: target.model,
@@ -1167,7 +1167,7 @@ async function createSession(
     ken.eventBus.on("error", (d) => {
       broadcastError("nolan_error", "ken error", d.error);
     });
-    kenSession = ken;
+    nolanSession = ken;
     log("INFO", "app-sidecar", "ken session ready", {
       provider: target.provider,
       model: target.model,
@@ -1198,9 +1198,9 @@ async function createSession(
     log("INFO", "app-sidecar", "ken autopilot session model synced", { provider, model });
   }
 
-  async function ensureKenAutoSession(): Promise<AgentSession> {
-    if (kenAutoSession) return kenAutoSession;
-    const target = kenCurrentModel();
+  async function ensureNolanAutoSession(): Promise<AgentSession> {
+    if (nolanAutoSession) return nolanAutoSession;
+    const target = nolanCurrentModel();
     const ken = new AgentSession({
       provider: target.provider,
       model: target.model,
@@ -1326,19 +1326,19 @@ async function createSession(
         maxRounds: MAX_AUTOPILOT_ROUNDS,
         isCancelled: () => autopilotCancelled,
         // An injected run entering plan mode halts the cycle (autopilot_human
-        // with the plan-hold reason) — Ken never prompts into a read-only
+        // with the plan-hold reason) — Nolan never prompts into a read-only
         // plan-mode session or answers the plan modal for the user.
         isPlanMode: () => session.getPlanMode(),
         // Lean context per user turn: wipe prior review history so each new
         // turn starts cheap, while within this cycle the few review messages
-        // persist so Ken remembers what he already asked GG Coder to fix.
+        // persist so Nolan remembers what he already asked EZ Coder to fix.
         resetReviewer: async () => {
-          await kenAutoSession?.newSession().catch(() => {});
+          await nolanAutoSession?.newSession().catch(() => {});
         },
         review: () => runAutopilotReview(originalRequest),
         // prompt → record the injected body (so later digests label it as
-        // Ken's, not the user's), show a compact Ken-tinted marker (not the
-        // prompt body), then feed GG Coder bracketed by runAgent so the run
+        // Nolan's, not the user's), show a compact Nolan-tinted marker (not the
+        // prompt body), then feed EZ Coder bracketed by runAgent so the run
         // streams normally; the shared finally never re-triggers autopilot,
         // so this can't recurse.
         onInjected: (body, round) => {
@@ -1355,7 +1355,7 @@ async function createSession(
 
   // ── Stranded-queue drain ───────────────────────────────
   // A prompt POSTed while an autopilot cycle is between injected runs (build
-  // idle, Ken reviewing) queues — but the queue only drains INTO a running
+  // idle, Nolan reviewing) queues — but the queue only drains INTO a running
   // turn as steering. If the cycle ends without another run (ALL_CLEAR /
   // IGNORE / HUMAN / error), that message would sit stranded until the next
   // unrelated prompt, then land mislabeled as "concurrent steering" of an
@@ -1542,7 +1542,7 @@ async function createSession(
         supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
         supportsVideo: getModel(st.model)?.supportsVideo ?? false,
         autopilot,
-        ...kenStatePayload(),
+        ...nolanStatePayload(),
         ...footerExtras(),
       });
       return;
@@ -1569,7 +1569,7 @@ async function createSession(
             supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
             supportsVideo: getModel(st.model)?.supportsVideo ?? false,
             autopilot,
-            ...kenStatePayload(),
+            ...nolanStatePayload(),
             ...footerExtras(),
           },
         })}\n\n`,
@@ -1962,14 +1962,14 @@ async function createSession(
             await session.prompt(text);
           }
         });
-        // After the user's run settles, kick off Ken's auto-review loop — but
+        // After the user's run settles, kick off Nolan's auto-review loop — but
         // only when the turn is actually reviewable (shouldStartAutopilotCycle):
         // workflow commands (/compare, /bullet-proof, …) end with reports or
         // A/B/C choices reserved for the USER; registry commands (/help) and
         // failed runs add no assistant work to judge; a turn that ended in plan
-        // mode has a pending Accept/Reject modal Ken must not preempt. This is
+        // mode has a pending Accept/Reject modal Nolan must not preempt. This is
         // the ONLY entry point into the cycle besides the stranded-queue drain —
-        // it drives any follow-up GG Coder runs itself, so the shared runAgent
+        // it drives any follow-up EZ Coder runs itself, so the shared runAgent
         // finally never recurses.
         const decision = shouldStartAutopilotCycle({
           enabled: autopilot,
@@ -1983,7 +1983,7 @@ async function createSession(
         } else if (autopilot) {
           log("INFO", "app-sidecar", "autopilot skipped", { reason: decision.reason });
         }
-        // A prompt sent while Ken was reviewing (build idle) queued but had no
+        // A prompt sent while Nolan was reviewing (build idle) queued but had no
         // run to steer into — run it now as a fresh turn so it never strands.
         await runStrandedQueue();
       });
@@ -2015,8 +2015,8 @@ async function createSession(
         nolanRunning = true;
         broadcast("nolan_run_start", { text });
         try {
-          const ken = await ensureKenSession();
-          const digest = await buildKenContext(
+          const ken = await ensureNolanSession();
+          const digest = await buildNolanContext(
             session,
             cwd,
             gitBranch,
@@ -2311,11 +2311,11 @@ async function createSession(
         // new model's credentials, so switching to a just-added provider works.
         await auth.reload();
         await session.switchModel(target.provider, target.id);
-        // Ken follows GG Coder's model only while un-pinned; a user-set Ken
+        // Nolan follows EZ Coder's model only while un-pinned; a user-set Nolan
         // override survives GG model switches untouched.
-        if (!kenModelOverride) {
-          await syncKenModel(target.provider, target.id);
-          await syncKenAutoModel(target.provider, target.id);
+        if (!nolanModelOverride) {
+          await syncNolanModel(target.provider, target.id);
+          await syncNolanAutoModel(target.provider, target.id);
         }
         // Clamp the reasoning level to what the new model supports (mirrors the
         // CLI): keep thinking on at the first supported tier if it was on but
@@ -2343,11 +2343,11 @@ async function createSession(
         // model_change is emitted by switchModel; follow with thinking_change so
         // the footer toggle reflects the new model's supported levels.
         broadcast("thinking_change", payload);
-        // Un-pinned Ken just followed the switch — update his footer chip too.
-        // When Ken is pinned, his effective model did not change, so skip the
+        // Un-pinned Nolan just followed the switch — update his footer chip too.
+        // When Nolan is pinned, his effective model did not change, so skip the
         // no-op event (keeps footer/event tests from treating a GG switch as a
-        // Ken switch).
-        if (!kenModelOverride) broadcast("ken_model_change", kenStatePayload());
+        // Nolan switch).
+        if (!nolanModelOverride) broadcast("ken_model_change", nolanStatePayload());
         // The new model usually has a different context window — push extras so
         // the footer's context meter rescales immediately.
         broadcast("extras", footerExtras());
@@ -2356,9 +2356,9 @@ async function createSession(
       return;
     }
 
-    // Set or clear Ken's model pin. Body: { model: "<id>" } to pin, or
-    // { model: null } / "" to clear (Ken resumes following GG Coder). Applies
-    // to BOTH Ken sessions (chat + autopilot reviewer); a switch landing while
+    // Set or clear Nolan's model pin. Body: { model: "<id>" } to pin, or
+    // { model: null } / "" to clear (Nolan resumes following EZ Coder). Applies
+    // to BOTH Nolan sessions (chat + autopilot reviewer); a switch landing while
     // either is mid-run defers via the pending-model mechanics.
     if (method === "POST" && url === "/ken/model") {
       void readBody(req).then(async (raw) => {
@@ -2371,12 +2371,12 @@ async function createSession(
           return;
         }
         if (modelId === null) {
-          // Clear the pin → follow GG Coder again, syncing both sessions back.
-          kenModelOverride = null;
-          await saveKenModelPref(cwd, null);
+          // Clear the pin → follow EZ Coder again, syncing both sessions back.
+          nolanModelOverride = null;
+          await saveNolanModelPref(cwd, null);
           const st = session.getState();
-          await syncKenModel(st.provider, st.model);
-          await syncKenAutoModel(st.provider, st.model);
+          await syncNolanModel(st.provider, st.model);
+          await syncNolanAutoModel(st.provider, st.model);
           log("INFO", "app-sidecar", "ken model pin cleared — following GG", {
             provider: st.provider,
             model: st.model,
@@ -2387,16 +2387,16 @@ async function createSession(
             json(res, 404, { error: `unknown model: ${modelId}` });
             return;
           }
-          kenModelOverride = { provider: target.provider, model: target.id };
-          await saveKenModelPref(cwd, kenModelOverride);
-          await syncKenModel(target.provider, target.id);
-          await syncKenAutoModel(target.provider, target.id);
+          nolanModelOverride = { provider: target.provider, model: target.id };
+          await saveNolanModelPref(cwd, nolanModelOverride);
+          await syncNolanModel(target.provider, target.id);
+          await syncNolanAutoModel(target.provider, target.id);
           log("INFO", "app-sidecar", "ken model pinned", {
             provider: target.provider,
             model: target.id,
           });
         }
-        const payload = kenStatePayload();
+        const payload = nolanStatePayload();
         broadcast("ken_model_change", payload);
         json(res, 200, payload);
       });

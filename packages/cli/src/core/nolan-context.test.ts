@@ -4,9 +4,9 @@ import {
   buildNolanDigest,
   buildNolanAutopilotContext,
   AUTOPILOT_REVIEW_INSTRUCTION,
-  KEN_RECENT_MESSAGE_LIMIT,
+  NOLAN_RECENT_MESSAGE_LIMIT,
   INJECTED_PROMPT_LABEL,
-} from "./ken-context.js";
+} from "./nolan-context.js";
 import { USER_INSTRUCTIONS_HEADER } from "./autopilot-gate.js";
 import { PROMPT_COMMANDS } from "./prompt-commands.js";
 import { createTools } from "../tools/index.js";
@@ -141,12 +141,12 @@ describe("buildNolanDigest", () => {
   });
 
   it("autopilot review instruction covers the ask-the-user and injected-prompt rules", () => {
-    // GG Coder ending with a question/options must resolve to HUMAN, and Ken
+    // EZ Coder ending with a question/options must resolve to HUMAN, and Nolan
     // must be told injected lines are his own — these are leak regressions.
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("asking the user a question");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("HUMAN");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Original user request");
-    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Ken autopilot (injected)");
+    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Nolan autopilot (injected)");
   });
 
   it("uses the latest compaction summary as the story-so-far base", () => {
@@ -165,7 +165,7 @@ describe("buildNolanDigest", () => {
   });
 });
 
-describe("buildKenDigest — original request pinning", () => {
+describe("buildNolanDigest — original request pinning", () => {
   const base = {
     question: "review it",
     projectContext: [] as string[],
@@ -175,7 +175,7 @@ describe("buildKenDigest — original request pinning", () => {
   };
 
   it("pins the original request in its own section", () => {
-    const digest = buildKenDigest({
+    const digest = buildNolanDigest({
       ...base,
       messages: [],
       originalRequest: "build a login form with validation",
@@ -188,10 +188,10 @@ describe("buildKenDigest — original request pinning", () => {
     // The drift bug: multi-round cycles push the real ask out of the rolling
     // 20-message window. The pinned section must survive that.
     const messages: Message[] = [{ role: "user", content: "THE-REAL-ASK: add dark mode" }];
-    for (let i = 0; i < KEN_RECENT_MESSAGE_LIMIT + 5; i++) {
+    for (let i = 0; i < NOLAN_RECENT_MESSAGE_LIMIT + 5; i++) {
       messages.push({ role: "assistant", content: `working… step ${i}` });
     }
-    const digest = buildKenDigest({
+    const digest = buildNolanDigest({
       ...base,
       messages,
       originalRequest: "THE-REAL-ASK: add dark mode",
@@ -206,18 +206,18 @@ describe("buildKenDigest — original request pinning", () => {
     // Recent-activity lines truncate at 1500 chars; the ask under review must
     // not be judged against a mid-sentence cut, so its cap is 4000.
     const longAsk = "requirement " + "x".repeat(3000);
-    const digest = buildKenDigest({ ...base, messages: [], originalRequest: longAsk });
+    const digest = buildNolanDigest({ ...base, messages: [], originalRequest: longAsk });
     const pinned = digest.split("## Original user request")[1];
     expect(pinned).toContain("x".repeat(3000));
   });
 
-  it("omits the section when there is no original request (chat Ken)", () => {
-    const digest = buildKenDigest({ ...base, messages: [] });
+  it("omits the section when there is no original request (chat Nolan)", () => {
+    const digest = buildNolanDigest({ ...base, messages: [] });
     expect(digest).not.toContain("## Original user request");
   });
 });
 
-describe("buildKenDigest — injected-prompt labeling", () => {
+describe("buildNolanDigest — injected-prompt labeling", () => {
   const base = {
     question: "review it",
     projectContext: [] as string[],
@@ -226,7 +226,7 @@ describe("buildKenDigest — injected-prompt labeling", () => {
     platform: "darwin",
   };
 
-  it("labels autopilot-injected prompts as Ken's, never **User:**", () => {
+  it("labels autopilot-injected prompts as Nolan's, never **User:**", () => {
     const injected = "Fix the failing auth test and prove it by running it.";
     const messages: Message[] = [
       { role: "user", content: "add auth" },
@@ -234,7 +234,7 @@ describe("buildKenDigest — injected-prompt labeling", () => {
       { role: "user", content: injected },
       { role: "assistant", content: "Fixed the test." },
     ];
-    const digest = buildKenDigest({ ...base, messages, injectedPrompts: [injected] });
+    const digest = buildNolanDigest({ ...base, messages, injectedPrompts: [injected] });
     expect(digest).toContain(`${INJECTED_PROMPT_LABEL} ${injected}`);
     expect(digest).not.toContain(`**User:** ${injected}`);
     // Real user asks keep the normal label.
@@ -244,12 +244,12 @@ describe("buildKenDigest — injected-prompt labeling", () => {
   it("matches injected prompts through whitespace drift", () => {
     const injected = "Fix the failing test.";
     const messages: Message[] = [{ role: "user", content: `  ${injected}  ` }];
-    const digest = buildKenDigest({ ...base, messages, injectedPrompts: [injected] });
+    const digest = buildNolanDigest({ ...base, messages, injectedPrompts: [injected] });
     expect(digest).toContain(INJECTED_PROMPT_LABEL);
   });
 });
 
-describe("buildKenDigest — workflow-command labeling", () => {
+describe("buildNolanDigest — workflow-command labeling", () => {
   const base = {
     question: "review it",
     projectContext: [] as string[],
@@ -266,7 +266,7 @@ describe("buildKenDigest — workflow-command labeling", () => {
       { role: "user", content: compare.prompt },
       { role: "assistant", content: "Compared against 12 repos, all aligned." },
     ];
-    const digest = buildKenDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
+    const digest = buildNolanDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
     expect(digest).toContain("**User:** [ran workflow command /compare]");
     // The template body itself never leaks into the digest.
     expect(digest).not.toContain("Compare the code you just created or modified");
@@ -276,14 +276,14 @@ describe("buildKenDigest — workflow-command labeling", () => {
     const messages: Message[] = [
       { role: "user", content: `${compare.prompt}${USER_INSTRUCTIONS_HEADER}only src/auth.ts` },
     ];
-    const digest = buildKenDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
+    const digest = buildNolanDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
     expect(digest).toContain("[ran workflow command /compare]");
     expect(digest).toContain("only src/auth.ts");
   });
 
   it("leaves ordinary user text untouched when specs are provided", () => {
     const messages: Message[] = [{ role: "user", content: "please compare my two branches" }];
-    const digest = buildKenDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
+    const digest = buildNolanDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
     expect(digest).toContain("**User:** please compare my two branches");
   });
 });
