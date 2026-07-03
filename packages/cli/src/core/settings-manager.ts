@@ -41,6 +41,9 @@ const SettingsSchema = z.object({
   autoApprovePlans: z.boolean().default(true),
   /** Append LSP diagnostics to edit/write tool results. */
   lspDiagnostics: z.boolean().default(true),
+  /** Defer MCP tool schemas out of the prompt until discovered via tool_search.
+   *  Cuts ~8k tokens/cache-miss turn with two MCP servers (bench/RESULTS.md). */
+  deferredMcpTools: z.boolean().default(true),
   enabledTools: z.array(z.string()).optional(),
   /** Delete session transcripts older than this many days at startup. 0 disables pruning. */
   sessionRetentionDays: z.number().int().min(0).default(30),
@@ -63,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
   idealReviewEnabled: true,
   autoApprovePlans: true,
   lspDiagnostics: true,
+  deferredMcpTools: true,
   sessionRetentionDays: 30,
   speedProfile: "optimized",
 };

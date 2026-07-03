@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import os from "node:os";
 import {
-  buildNolanDigest,
-  buildNolanAutopilotContext,
+  buildKenDigest,
+  buildKenAutopilotContext,
+  buildKenAutopilotPlanContext,
   AUTOPILOT_REVIEW_INSTRUCTION,
-  NOLAN_RECENT_MESSAGE_LIMIT,
+  AUTOPILOT_PLAN_REVIEW_INSTRUCTION,
+  KEN_RECENT_MESSAGE_LIMIT,
   INJECTED_PROMPT_LABEL,
 } from "./nolan-context.js";
 import { USER_INSTRUCTIONS_HEADER } from "./autopilot-gate.js";
@@ -74,15 +76,13 @@ describe("Nolan allowedTools filter", () => {
 describe("buildNolanDigest", () => {
   const base = {
     question: "what next?",
-    projectContext: ["### CLAUDE.md\n\nBuild a todo app."],
     cwd: "/tmp/proj",
     gitBranch: "main" as string | null,
     platform: "darwin",
   };
 
-  it("includes the project context, env, and the question", () => {
-    const digest = buildNolanDigest({ ...base, messages: [] });
-    expect(digest).toContain("Build a todo app.");
+  it("includes the env and the question", () => {
+    const digest = buildKenDigest({ ...base, messages: [] });
     expect(digest).toContain("/tmp/proj");
     expect(digest).toContain("main");
     expect(digest).toContain("what next?");
@@ -122,8 +122,7 @@ describe("buildNolanDigest", () => {
       { role: "user", content: "add a login form" },
       { role: "assistant", content: "Added the form." },
     ];
-    const digest = buildNolanAutopilotContext({
-      projectContext: base.projectContext,
+    const digest = buildKenAutopilotContext({
       cwd: base.cwd,
       gitBranch: base.gitBranch,
       platform: base.platform,
@@ -140,13 +139,69 @@ describe("buildNolanDigest", () => {
     expect(digest).toContain("HUMAN");
   });
 
-  it("autopilot review instruction covers the ask-the-user and injected-prompt rules", () => {
-    // EZ Coder ending with a question/options must resolve to HUMAN, and Nolan
-    // must be told injected lines are his own — these are leak regressions.
+  it("autopilot review instruction separates true human decisions from safe implied follow-ups", () => {
+    // GG Coder ending with a question/options is HUMAN only when it needs a
+    // real user-level decision. Permission to continue safe work implied by the
+    // original ask should become a PROMPT, not a blocker. Ken must also be told
+    // injected lines are his own — these are leak regressions.
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("asking the user a question");
-    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("HUMAN");
+    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("HUMAN only when");
+    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("actual user-level decision");
+    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain(
+      "mechanically implied by the user's original ask",
+    );
+    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain(
+      "safe for GG Coder to do without new information",
+    );
+    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("use PROMPT with the next concrete follow-up");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Original user request");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Nolan autopilot (injected)");
+  });
+
+  it("buildKenAutopilotPlanContext inlines the plan section + plan instruction", () => {
+    const messages: Message[] = [
+      { role: "user", content: "add OAuth login" },
+      { role: "assistant", content: "Plan drafted." },
+    ];
+    const digest = buildKenAutopilotPlanContext({
+      cwd: base.cwd,
+      gitBranch: base.gitBranch,
+      platform: base.platform,
+      messages,
+      originalRequest: "add OAuth login",
+      planContent: "# OAuth plan\n\n1. Add provider config\n2. Wire callback route",
+    });
+    // The plan itself is inlined under its own section …
+    expect(digest).toContain("## Plan under review");
+    expect(digest).toContain("Wire callback route");
+    // … before the trailing question, which is the PLAN instruction (not the
+    // work-review one).
+    expect(digest.indexOf("## Plan under review")).toBeLessThan(
+      digest.indexOf("## They just asked you"),
+    );
+    expect(digest).toContain(AUTOPILOT_PLAN_REVIEW_INSTRUCTION);
+    expect(digest).not.toContain(AUTOPILOT_REVIEW_INSTRUCTION);
+  });
+
+  it("buildKenAutopilotPlanContext caps a pathological plan", () => {
+    const digest = buildKenAutopilotPlanContext({
+      cwd: base.cwd,
+      gitBranch: base.gitBranch,
+      platform: base.platform,
+      messages: [],
+      planContent: "x".repeat(10_000),
+    });
+    const section = digest.slice(digest.indexOf("## Plan under review"));
+    expect(section).toContain("more chars]");
+    expect(section.length).toBeLessThan(9000);
+  });
+
+  it("plan review instruction names the three allowed verdicts and forbids IGNORE", () => {
+    expect(AUTOPILOT_PLAN_REVIEW_INSTRUCTION).toContain("ALL_CLEAR");
+    expect(AUTOPILOT_PLAN_REVIEW_INSTRUCTION).toContain("PROMPT");
+    expect(AUTOPILOT_PLAN_REVIEW_INSTRUCTION).toContain("HUMAN");
+    expect(AUTOPILOT_PLAN_REVIEW_INSTRUCTION).toContain("Never IGNORE a plan");
+    expect(AUTOPILOT_PLAN_REVIEW_INSTRUCTION).toContain("Plan under review");
   });
 
   it("uses the latest compaction summary as the story-so-far base", () => {
@@ -168,7 +223,6 @@ describe("buildNolanDigest", () => {
 describe("buildNolanDigest — original request pinning", () => {
   const base = {
     question: "review it",
-    projectContext: [] as string[],
     cwd: "/tmp/proj",
     gitBranch: "main" as string | null,
     platform: "darwin",
@@ -220,7 +274,6 @@ describe("buildNolanDigest — original request pinning", () => {
 describe("buildNolanDigest — injected-prompt labeling", () => {
   const base = {
     question: "review it",
-    projectContext: [] as string[],
     cwd: "/tmp/proj",
     gitBranch: null,
     platform: "darwin",
@@ -252,7 +305,6 @@ describe("buildNolanDigest — injected-prompt labeling", () => {
 describe("buildNolanDigest — workflow-command labeling", () => {
   const base = {
     question: "review it",
-    projectContext: [] as string[],
     cwd: "/tmp/proj",
     gitBranch: null,
     platform: "darwin",

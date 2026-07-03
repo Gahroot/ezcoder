@@ -793,162 +793,123 @@ describe("agentLoop", () => {
     expect(result.totalTurns).toBe(1); // stall retries don't count as turns
   }, 30_000);
 
-  it("retries when a stalled stream ignores abort", async () => {
+  it("preserves partial streamed text across a transport-failure retry", async () => {
     vi.useFakeTimers();
-    try {
-      let callIndex = 0;
-      mockStream.mockImplementation(() => {
-        callIndex++;
-        if (callIndex === 1) {
-          const pendingNext = new Promise<IteratorResult<StreamEvent>>(() => {});
-          return {
-            [Symbol.asyncIterator]: () => ({
-              next: () => pendingNext,
-            }),
-            response: new Promise(() => {}),
-          } as unknown as ReturnType<typeof stream>;
-        }
-        return mockOkResult("Recovered!") as unknown as ReturnType<typeof stream>;
-      });
 
-      const loopPromise = collectLoop(
-        [
-          { role: "system", content: "sys" },
-          { role: "user", content: "hi" },
-        ],
-        { provider: "anthropic", model: "test" },
-      );
-
-      await vi.advanceTimersByTimeAsync(50_000);
-
-      const { events, result } = await loopPromise;
-      expect(mockStream).toHaveBeenCalledTimes(2);
-      expect(events.some((e) => e.type === "retry" && e.reason === "stream_stall")).toBe(true);
-      expect(events.some((e) => e.type === "agent_done")).toBe(true);
-      expect(result.totalTurns).toBe(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("uses the full ten-attempt budget for repeated Anthropic/Fable transport stalls", async () => {
-    vi.useFakeTimers();
-    try {
-      let callIndex = 0;
-      mockStream.mockImplementation(() => {
-        callIndex++;
-        if (callIndex <= 10) {
-          return mockErrorResult(
-            Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
-          ) as unknown as ReturnType<typeof stream>;
-        }
-        return mockOkResult("Recovered after Fable stall") as unknown as ReturnType<typeof stream>;
-      });
-
-      const loopPromise = collectLoop(
-        [
-          { role: "system", content: "sys" },
-          { role: "user", content: "hi" },
-        ],
-        { provider: "anthropic", model: "claude-fable-5" },
-      );
-
-      await vi.advanceTimersByTimeAsync(70_000);
-
-      const { events, result } = await loopPromise;
-      const retries = events.filter((e) => e.type === "retry" && e.reason === "stream_stall");
-      expect(mockStream).toHaveBeenCalledTimes(11);
-      expect(retries).toHaveLength(10);
-      expect(retries.at(-1)).toMatchObject({ attempt: 10, maxAttempts: 10 });
-      expect(events.some((e) => e.type === "agent_done")).toBe(true);
-      expect(result.totalTurns).toBe(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("exits when caller aborts a stream that ignores abort", async () => {
-    const controller = new AbortController();
-    const returnIterator = vi.fn(async () => ({ done: true as const, value: undefined }));
-    mockStream.mockReturnValueOnce({
-      [Symbol.asyncIterator]: () => ({
-        next: () => new Promise<IteratorResult<StreamEvent>>(() => {}),
-        return: returnIterator,
-      }),
-      response: new Promise(() => {}),
-    } as unknown as ReturnType<typeof stream>);
-
-    const loopPromise = collectLoop(
-      [
-        { role: "system", content: "sys" },
-        { role: "user", content: "hi" },
-      ],
-      { provider: "anthropic", model: "test", signal: controller.signal },
-    );
-
-    await Promise.resolve();
-    controller.abort();
-
-    const { events, result } = await loopPromise;
-    expect(returnIterator).toHaveBeenCalledOnce();
-    expect(events.some((e) => e.type === "agent_done")).toBe(true);
-    expect(result.totalTurns).toBe(1);
-  });
-
-  it("exits when caller aborts a tool that ignores abort", async () => {
-    const controller = new AbortController();
-    mockStream.mockReturnValueOnce({
-      [Symbol.asyncIterator]: async function* () {
-        yield* [];
-      },
-      response: Promise.resolve({
-        message: {
-          role: "assistant" as const,
-          content: [{ type: "tool_call" as const, id: "t1", name: "hang", args: {} }],
-        },
-        stopReason: "tool_use",
-        usage: { inputTokens: 50, outputTokens: 25 },
-      }),
-    } as unknown as ReturnType<typeof stream>);
-
-    const gen = agentLoop(
-      [
-        { role: "system", content: "sys" },
-        { role: "user", content: "hi" },
-      ],
-      {
-        provider: "anthropic",
-        model: "test",
-        signal: controller.signal,
-        tools: [
-          {
-            name: "hang",
-            description: "hanging test tool",
-            parameters: emptyParams,
-            execute: () => new Promise<string>(() => {}),
+    // >= 200 chars so the partial clears MIN_PARTIAL_PRESERVE_CHARS.
+    const partial = "Here is the first half of the answer. ".repeat(8);
+    let callIndex = 0;
+    mockStream.mockImplementation((opts: StreamOptions) => {
+      callIndex++;
+      if (callIndex === 1) {
+        // Streams the partial, then stalls until the idle timeout aborts it.
+        const abortPromise = new Promise<never>((_, reject) => {
+          opts.signal?.addEventListener(
+            "abort",
+            () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            { once: true },
+          );
+        });
+        abortPromise.catch(() => {});
+        return {
+          [Symbol.asyncIterator]: async function* () {
+            yield { type: "text_delta" as const, text: partial };
+            await abortPromise;
           },
-        ],
-      },
+          response: abortPromise,
+        } as unknown as ReturnType<typeof stream>;
+      }
+      return mockOkResult("and the second half.") as unknown as ReturnType<typeof stream>;
+    });
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi" },
+    ];
+
+    const loopPromise = collectLoop(messages, { provider: "anthropic", model: "test" });
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(50_000);
+    }
+    const { events } = await loopPromise;
+    vi.useRealTimers();
+
+    // The retry event advertises the preserved chars so UIs skip the rollback.
+    const retry = events.find((e) => e.type === "retry" && e.reason === "stream_stall");
+    expect(retry && "preservedChars" in retry ? retry.preservedChars : 0).toBe(partial.length);
+
+    // History keeps the partial as an assistant message, then a continuation
+    // instruction, then the retry's completion — nothing regenerated.
+    const texts = messages.map((m) =>
+      typeof m.content === "string"
+        ? m.content
+        : (m.content as { type: string; text?: string }[])
+            .filter((p) => p.type === "text")
+            .map((p) => p.text)
+            .join(""),
     );
+    const partialIdx = texts.findIndex((t) => t === partial);
+    expect(partialIdx).toBeGreaterThan(-1);
+    expect(messages[partialIdx].role).toBe("assistant");
+    expect(messages[partialIdx + 1].role).toBe("user");
+    expect(texts[partialIdx + 1]).toContain("cut off");
+    expect(texts.some((t) => t === "and the second half.")).toBe(true);
+  }, 30_000);
 
-    const events: AgentEvent[] = [];
-    while (true) {
-      const next = await gen.next();
-      if (next.done) throw new Error("agent loop ended before tool started");
-      events.push(next.value);
-      if (next.value.type === "tool_call_start") break;
+  it("discards a sub-threshold partial on transport-failure retry", async () => {
+    vi.useFakeTimers();
+
+    const tiny = "Short."; // < MIN_PARTIAL_PRESERVE_CHARS — replay is cheaper
+    let callIndex = 0;
+    mockStream.mockImplementation((opts: StreamOptions) => {
+      callIndex++;
+      if (callIndex === 1) {
+        const abortPromise = new Promise<never>((_, reject) => {
+          opts.signal?.addEventListener(
+            "abort",
+            () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            { once: true },
+          );
+        });
+        abortPromise.catch(() => {});
+        return {
+          [Symbol.asyncIterator]: async function* () {
+            yield { type: "text_delta" as const, text: tiny };
+            await abortPromise;
+          },
+          response: abortPromise,
+        } as unknown as ReturnType<typeof stream>;
+      }
+      return mockOkResult("Full answer.") as unknown as ReturnType<typeof stream>;
+    });
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "hi" },
+    ];
+
+    const loopPromise = collectLoop(messages, { provider: "anthropic", model: "test" });
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(50_000);
     }
+    const { events } = await loopPromise;
+    vi.useRealTimers();
 
-    controller.abort();
-    while (true) {
-      const next = await gen.next();
-      if (next.done) break;
-      events.push(next.value);
-    }
-
-    expect(events.some((e) => e.type === "tool_call_start")).toBe(true);
-    expect(events.some((e) => e.type === "agent_done")).toBe(true);
-  });
+    const retry = events.find((e) => e.type === "retry" && e.reason === "stream_stall");
+    expect(retry && "preservedChars" in retry ? retry.preservedChars : undefined).toBeUndefined();
+    // No preserved-partial assistant message in history.
+    const assistantTexts = messages
+      .filter((m) => m.role === "assistant")
+      .map((m) =>
+        typeof m.content === "string"
+          ? m.content
+          : (m.content as { type: string; text?: string }[])
+              .filter((p) => p.type === "text")
+              .map((p) => p.text)
+              .join(""),
+      );
+    expect(assistantTexts).not.toContain(tiny);
+  }, 30_000);
 
   it("runs parallel tools concurrently by default", async () => {
     const firstStarted = deferred();

@@ -9,6 +9,12 @@
  *
  * Kept pure + dependency-light so it's unit-testable without booting the sidecar
  * (which runs `main()` at import time).
+ *
+ * NOTE: static project docs (CLAUDE.md/AGENTS.md) are NOT part of this digest
+ * — they're folded into Ken's cached system prompt once per session
+ * (`buildKenSystemPrompt`/`buildKenAutopilotSystemPrompt` in ken-prompt.ts) so
+ * they hit the provider prompt cache instead of being re-sent uncached on
+ * every `@Ken` question and every autopilot review round.
  */
 import type { Message, ContentPart, ToolResult } from "@prestyj/ai";
 import { matchExpandedCommand, type WorkflowCommandSpec } from "./autopilot-gate.js";
@@ -36,8 +42,6 @@ export const INJECTED_PROMPT_LABEL = "**Nolan autopilot (injected):**";
 export interface NolanDigestInput {
   /** The user's `@Nolan …` text (already stripped of the mention). */
   question: string;
-  /** `collectProjectContext(cwd)` output — CLAUDE.md/AGENTS.md up the tree. */
-  projectContext: string[];
   cwd: string;
   gitBranch: string | null;
   /** Build session messages (`buildSession.getMessages()`). */
@@ -166,9 +170,14 @@ export const AUTOPILOT_REVIEW_INSTRUCTION =
   "ask (the 'Original user request' section above; lines labeled 'Nolan " +
   "autopilot (injected)' are your own earlier fix prompts, NOT user asks). " +
   "Reply with your verdict ONLY — the first line must be exactly PROMPT, " +
-  "ALL_CLEAR, IGNORE, or HUMAN, with the payload after. If EZ Coder ended by " +
-  "asking the user a question or presenting options, the verdict is HUMAN. " +
-  "No greetings, no mentorship prose.";
+  "ALL_CLEAR, IGNORE, or HUMAN, with the payload after. If GG Coder ended by " +
+  "asking the user a question or presenting options, use HUMAN only when the " +
+  "answer requires an actual user-level decision: intent, preference, missing " +
+  "product requirement, credential/secret, external access, budget/cost, or " +
+  "destructive/irreversible approval. If the question is only permission to " +
+  "continue work that is mechanically implied by the user's original ask and " +
+  "safe for GG Coder to do without new information, use PROMPT with the next " +
+  "concrete follow-up instead. No greetings, no mentorship prose.";
 
 /** Inputs the sidecar gathers for an autopilot review digest (everything
  *  `buildNolanDigest` needs except the fixed review instruction, which this helper
@@ -182,6 +191,50 @@ export type NolanAutopilotContextInput = Omit<NolanDigestInput, "question">;
  */
 export function buildNolanAutopilotContext(input: NolanAutopilotContextInput): string {
   return buildNolanDigest({ ...input, question: AUTOPILOT_REVIEW_INSTRUCTION });
+}
+
+/** Max chars of the inlined plan markdown in a plan-review digest. Plans are
+ *  hand-written markdown, rarely near this; the cap only guards against a
+ *  pathological plan blowing the reviewer's context. */
+const PLAN_CONTENT_CAP = 8000;
+
+/**
+ * Fixed instruction fed into the digest's `question` slot for an autopilot
+ * PLAN review. In autopilot there is no user in the loop: Ken himself is the
+ * plan reviewer — ALL_CLEAR approves (auto-accept + implementation starts),
+ * PROMPT sends revision feedback, HUMAN is reserved for genuine user-level
+ * decisions. IGNORE is meaningless for a plan (the sidecar maps it to approve
+ * defensively), so the instruction forbids it outright.
+ */
+export const AUTOPILOT_PLAN_REVIEW_INSTRUCTION =
+  "GG Coder submitted an implementation plan (the 'Plan under review' section " +
+  "above). You are the reviewer — there is no user in the loop. Reply with " +
+  "your verdict ONLY — the first line must be exactly ALL_CLEAR (approve — the " +
+  "plan is sound and implementation starts immediately), PROMPT + feedback " +
+  "(send it back for revision), or HUMAN + reason (a real product/destructive " +
+  "decision only the user can make). Never IGNORE a plan. No greetings, no " +
+  "mentorship prose.";
+
+/**
+ * Build the autopilot PLAN-review digest: the normal autopilot digest plus a
+ * `## Plan under review` section carrying the submitted plan's markdown, with
+ * {@link AUTOPILOT_PLAN_REVIEW_INSTRUCTION} as the trailing question. Pure —
+ * the sidecar reads the plan file and passes its content. The plan section is
+ * spliced in before the trailing question so it sits closest to the
+ * instruction that references it.
+ */
+export function buildKenAutopilotPlanContext(
+  input: KenAutopilotContextInput & { planContent: string },
+): string {
+  const { planContent, ...rest } = input;
+  const digest = buildKenDigest({ ...rest, question: AUTOPILOT_PLAN_REVIEW_INSTRUCTION });
+  const planSection = `## Plan under review\n${cap(planContent.trim(), PLAN_CONTENT_CAP)}`;
+  // Insert the plan section right before the final "They just asked you"
+  // section (always the last one buildKenDigest appends).
+  const marker = "\n\n## They just asked you\n";
+  const idx = digest.lastIndexOf(marker);
+  if (idx === -1) return `${digest}\n\n${planSection}`;
+  return `${digest.slice(0, idx)}\n\n${planSection}${digest.slice(idx)}`;
 }
 
 /**
@@ -228,7 +281,6 @@ export function buildNolanDigest(input: NolanDigestInput): string {
   );
 
   const building: string[] = [];
-  if (input.projectContext.length > 0) building.push(input.projectContext.join("\n\n"));
   building.push(
     `- Working directory: ${input.cwd}`,
     `- Platform: ${platform}`,

@@ -203,6 +203,54 @@ export async function getState(): Promise<AgentState> {
   return invoke<AgentState>("agent_state");
 }
 
+// ── Progress (Ranks) ─────────────────────────────────────────────────────
+
+/** One rung of the 50-rank ladder, as computed by the sidecar. */
+export interface RankLadderEntry {
+  level: number;
+  name: string;
+  tier: number;
+  tierName: string;
+  effectId: string;
+  xpRequired: number;
+}
+
+export interface LevelUpEvent {
+  from: number;
+  to: number;
+  rankName: string;
+}
+
+/** XP/rank snapshot — fully computed sidecar-side; the webview renders it verbatim. */
+export interface ProgressSnapshot {
+  level: number;
+  rankName: string;
+  tier: number;
+  tierName: string;
+  tierGlyph: string;
+  effectId: string;
+  xp: number;
+  xpIntoLevel: number;
+  xpForLevel: number;
+  percent: number;
+  streak: { current: number; best: number };
+  totals: { prompts: number; commits: number; linesShipped: number; projects: number };
+  xpBySource: { prompts: number; commits: number; streakBonus: number };
+  memberSince: string;
+  ladder: RankLadderEntry[];
+  levelUp: LevelUpEvent | null;
+  eventNonce: string | null;
+  /** True only on the frame sent to the window whose run earned the XP —
+   *  gates window-local feedback (sounds, XP chips). Absent on GET /progress. */
+  origin?: boolean;
+}
+
+/** Fetch the current XP/rank snapshot (initial paint; live updates ride `progress` frames). */
+export async function getProgress(): Promise<ProgressSnapshot> {
+  await waitForReady();
+  return invoke<ProgressSnapshot>("agent_progress");
+}
+
 /**
  * One piece of an enhanced prompt. A `text` segment is verbatim prose; a `term`
  * segment is a corrected technical term the model swapped in, carrying the
@@ -244,6 +292,21 @@ export async function openProjectPath(path: string): Promise<void> {
   }
 }
 
+export interface DroppedPathInfo {
+  path: string;
+  isDir: boolean;
+}
+
+export async function getDroppedPathInfo(paths: string[]): Promise<DroppedPathInfo[]> {
+  if (paths.length === 0) return [];
+  try {
+    return await invoke<DroppedPathInfo[]>("dropped_path_info", { paths });
+  } catch (e) {
+    await logError(`dropped_path_info failed: ${String(e)}`);
+    return paths.map((path) => ({ path, isDir: false }));
+  }
+}
+
 /** A chat-input attachment (image / video / other file) sent with a prompt. */
 export interface Attachment {
   kind: "image" | "video" | "file";
@@ -253,12 +316,46 @@ export interface Attachment {
   data: string;
 }
 
-export async function sendPrompt(text: string, attachments: Attachment[] = []): Promise<void> {
+/** Read a natively-dropped (non-directory) file's bytes as base64, since a
+ *  native drag-drop only gives us a path — no browser File object. Returns
+ *  null (logging) on failure (e.g. permission denied, file too large) so one
+ *  bad file in a multi-file drop doesn't block the rest. */
+export async function readDroppedFileAttachment(path: string): Promise<Attachment | null> {
+  try {
+    const res = await invoke<{ name: string; mediaType: string; data: string }>(
+      "read_dropped_file_attachment",
+      { path },
+    );
+    const kind: Attachment["kind"] = res.mediaType.startsWith("image/")
+      ? "image"
+      : res.mediaType.startsWith("video/")
+        ? "video"
+        : "file";
+    return { kind, name: res.name, mediaType: res.mediaType, data: res.data };
+  } catch (e) {
+    await logError(`read_dropped_file_attachment failed for ${path}: ${String(e)}`);
+    return null;
+  }
+}
+
+/** Display hints for the user bubble this prompt creates — persisted by the
+ *  sidecar so a resumed session re-renders the same bubble (Ken "Sent to GG
+ *  Coder" label, enhancer term highlights). */
+export interface PromptMeta {
+  kenSent?: boolean;
+  enhancements?: PromptSegment[];
+}
+
+export async function sendPrompt(
+  text: string,
+  attachments: Attachment[] = [],
+  meta?: PromptMeta,
+): Promise<void> {
   await logInfo(
     `prompt: ${text.slice(0, 80)}${attachments.length ? ` (+${attachments.length} att)` : ""}`,
   );
   try {
-    await invoke("agent_prompt", { text, attachments });
+    await invoke("agent_prompt", { text, attachments, meta: meta ?? null });
   } catch (e) {
     await logError(`agent_prompt failed: ${String(e)}`);
     throw e;
@@ -298,6 +395,10 @@ export async function cancel(): Promise<void> {
 //   autopilot_ignored {}            — nothing worth reviewing, loop stops SILENTLY (no marker)
 //   autopilot_human { reason }      — Nolan needs a human decision, loop stops
 //   autopilot_capped { rounds }     — round cap hit, loop paused
+//   autopilot_plan_accepted {}      — Ken approved a submitted plan; broadcast
+//                                     BEFORE the session_reset that follows so
+//                                     the webview can seed the plan-progress
+//                                     widget from the still-open plan modal
 //   autopilot_error { headline, … } — a review failed (structured, like error)
 
 /** Ask Nolan Grout. Fires the read-only mentor run; reply arrives via `nolan_*`
@@ -365,10 +466,36 @@ export interface HistoryEntry {
   /** True when this user message is a post-compaction summary marker, so the
    *  webview renders the quiet compaction notice instead of the summary body. */
   compacted?: boolean;
-  /** True when this entry is a persisted Nolan Grout (mentor) turn: a `user` row is
-   *  the `@Nolan` question, an `assistant` row is Nolan's reply. Rendered in Nolan's
-   *  color (user bubble tinted, assistant as a Nolan bubble) on resume. */
+  /** Persisted counts for a compacted row's "N → M messages" summary. */
+  compactionCounts?: { originalCount: number; newCount: number };
+  /** True when this entry is a persisted Ken Kai (mentor) turn: a `user` row is
+   *  the `@Ken` question, an `assistant` row is Ken's reply. Rendered in Ken's
+   *  color (user bubble tinted, assistant as a Ken bubble) on resume. */
   ken?: boolean;
+  /** Present when this entry is a persisted autopilot verdict marker. Rendered
+   *  identically to the live `autopilot` item (Ken-tinted bubble), never as
+   *  the raw verdict keyword the model replied with (e.g. `ALL_CLEAR`). */
+  autopilot?: {
+    phase: "prompted" | "done" | "human" | "capped" | "plan_approved";
+    reason?: string;
+    body?: string;
+    /** Stable seed from persisted marker data so resumed all-clear copy doesn't flicker. */
+    copySeed?: string;
+  };
+  /** True when this user prompt came from a Ken "Send to GG Coder" button —
+   *  render the shimmering label instead of the prompt body (matches live). */
+  kenSent?: boolean;
+  /** Enhancer highlight segments, restored for unedited enhanced sends. */
+  enhancements?: PromptSegment[];
+  /** Plan-mode entry banner (reason), persisted at plan_enter. */
+  plan?: { reason: string };
+  /** Task header row (title), persisted at task_start. */
+  task?: { title: string };
+  /** Error row persisted by the sidecar's broadcastError. `scope` selects the
+   *  live headline prefix (ken_error → "Ken: ", autopilot_error → "Autopilot: "). */
+  error?: { scope: string; headline: string; message?: string; guidance?: string };
+  /** Webview-copy info row marker (e.g. the video-capability warning). */
+  infoKind?: "video_warning";
   /** Tool-produced images rendered inline (same as live `images` items),
    *  reconstructed from ImageContent blocks in persisted tool results. */
   toolImages?: Array<{ src: string; path?: string }>;
@@ -617,43 +744,39 @@ export async function saveSettings(projectsRoot: string): Promise<void> {
   await invoke("app_settings_save", { projectsRoot });
 }
 
-/** A connected display, as reported by Rust's `list_monitors`. */
-export interface MonitorInfo {
-  /** Stable matching/persistence key (the display's physical position). */
-  name: string;
-  /** Human-readable label for the picker (e.g. "Primary", "Left"). */
-  label: string;
-  width: number;
-  height: number;
-  x: number;
-  y: number;
-  primary: boolean;
-  selected: boolean;
+export interface PermissionsStatus {
+  /** False on platforms with nothing to grant (Windows/Linux today) — the
+   *  caller should hide the permissions row entirely rather than show a
+   *  badge for a permission that doesn't exist. */
+  applicable: boolean;
+  granted: boolean;
 }
 
 /**
- * Enumerate the connected displays so the window-layout menu can offer a "tile
- * onto this monitor" picker. `selected` echoes the saved targetMonitor (null =
- * auto / primary). Handled natively in Rust — no sidecar.
+ * OS permission needed for sub-agents to run without repeat "Allow" prompts:
+ * each subagent call spawns a fresh `ggnode` process, and macOS re-triggers
+ * its per-folder privacy prompt (Desktop/Documents/Downloads/iCloud) for every
+ * newly-spawned binary unless Full Disk Access is granted. Handled NATIVELY in
+ * Rust so it works even before the sidecar is up. Falls back to "not
+ * applicable" on any failure so the row degrades to hidden, never stuck open.
  */
-export async function listMonitors(): Promise<{
-  monitors: MonitorInfo[];
-  selected: string | null;
-}> {
+export async function getPermissionsStatus(): Promise<PermissionsStatus> {
   try {
-    return await invoke<{ monitors: MonitorInfo[]; selected: string | null }>("list_monitors");
+    return await invoke<PermissionsStatus>("permissions_status");
   } catch (e) {
-    await logError(`list_monitors failed: ${String(e)}`);
-    return { monitors: [], selected: null };
+    await logError(`permissions_status failed: ${String(e)}`);
+    return { applicable: false, granted: false };
   }
 }
 
-/**
- * Persist which display the window tiler fills. Pass `null` to clear (auto =
- * primary). Merges into ezcoder-app.json (projects root preserved). Native Rust.
- */
-export async function setTargetMonitor(monitor: string | null): Promise<void> {
-  await invoke("app_set_target_monitor", { monitor });
+/** Open the OS's permission-grant screen (macOS: System Settings → Privacy &
+ *  Security → Full Disk Access). No-op on platforms where it's not applicable. */
+export async function openPermissionsSettings(): Promise<void> {
+  try {
+    await invoke("open_permissions_settings");
+  } catch (e) {
+    await logError(`open_permissions_settings failed: ${String(e)}`);
+  }
 }
 
 /**

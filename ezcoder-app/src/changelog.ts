@@ -22,6 +22,78 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.14.4",
+    date: "2026-07-03",
+    items: [
+      "Edits just got rock solid. I killed a nasty glitch where a big change could arrive half-broken and get rejected, so now it quietly retries and lands clean the first time you see it.",
+      "Your projects stop disappearing. If a folder had an underscore in its name it could vanish from the picker even with all its sessions safe on disk, and I tracked down exactly why and fixed it. Every project shows up now.",
+    ],
+  },
+  {
+    version: "0.14.3",
+    date: "2026-07-03",
+    items: [
+      "Big tool catalogs no longer slow down your first reply. I keep the essentials ready, then pull in the heavy stuff only when you actually need it.",
+      "Connection hiccups feel way less annoying now. If a reply gets cut off after real progress, I keep what you already saw and continue instead of making you watch the same answer again.",
+      "Streaming feels calmer and lighter. I tuned the live text updates so long answers stay smooth without making your machine work so hard.",
+      "I trimmed the instruction stack again. GG Coder spends less attention on boilerplate and more attention on your code.",
+    ],
+  },
+  {
+    version: "0.14.2",
+    date: "2026-07-03",
+    items: [
+      "Reopening a session now looks exactly like you never left. I rebuilt the whole resume path so every bubble, label, and highlight comes back precisely the way you saw it live.",
+      "No more ghost messages. Old sessions sometimes piled duplicate all-clear notes from me at the bottom, and I hunted every last one down.",
+      "Messages you sent mid-run come back clean too. The internal plumbing that used to leak into reopened chats is gone for good.",
+      "Plan banners, task headers, and error details now survive a restart, so the story of what happened in a session stays complete forever.",
+    ],
+  },
+  {
+    version: "0.14.1",
+    date: "2026-07-03",
+    items: [
+      "XP feels punchier now. I swapped in a fresher sound for those little progress hits, so every step forward lands with more snap.",
+    ],
+  },
+  {
+    version: "0.14.0",
+    date: "2026-07-03",
+    items: [
+      "Autopilot can handle plans on its own now. When GG Coder drafts a solid plan, I review it, approve it, and kick off the build without making you babysit the button.",
+      "Bad plans get bounced back cleanly. I send GG Coder the exact revision it needs, then review the new plan again until it is ready to ship.",
+      "Plan popups stay out of your way when Autopilot is on. You still get the normal review screen when you are driving manually, but when I am on watch I keep the flow moving.",
+      "I got better at spotting fake blockers. If GG Coder asks permission for safe work that is already implied by your request, I tell it to keep going instead of dragging you back in.",
+    ],
+  },
+  {
+    version: "0.13.0",
+    date: "2026-07-03",
+    items: [
+      "Coding just became a game. I now award you XP for every bit of real work you ship, and you climb through ranks as you go. Check your shiny new rank badge right on the home screen.",
+      "Open your Scorecard to see your level, your progress bar, and how close you are to the next rank. Your grind finally has a scoreboard.",
+      "Level ups come with a proper celebration: sound, confetti, the works. You earned it, so I make sure it feels like it.",
+      "Your XP is built from your actual git history, so the progress you already made counts from day one. No starting from zero.",
+    ],
+  },
+  {
+    version: "0.12.4",
+    date: "2026-07-02",
+    items: [
+      "Your sessions list is clean now. Reopening a project used to clone the whole conversation into a duplicate every single time, I fixed the leak so resuming just picks up right where you left off.",
+    ],
+  },
+  {
+    version: "0.12.3",
+    date: "2026-07-02",
+    items: [
+      "I got a lot faster and cheaper to talk to. Your context now stays warm in my memory for a full hour instead of dropping every five minutes, so long sessions cost less and I answer quicker.",
+      "Drag a folder straight onto the window and I will drop its path right into your message, no more typing paths by hand.",
+      "Autopilot now skips reviewing pure busywork, like commits, pushes, and status checks, so I only chime in when there is real work worth judging.",
+      "Added a Grant Permissions button in Settings for macOS so you can hand me full disk access in one click instead of clicking through a maze of prompts.",
+    ],
+  },
+  {
     version: "0.12.2",
     date: "2026-07-02",
     items: [

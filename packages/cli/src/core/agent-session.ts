@@ -23,11 +23,15 @@ import { getClaudeCliUserAgent } from "./claude-code-version.js";
 import { kimiCodingHeaders, isKimiCodingEndpoint } from "./oauth/kimi.js";
 import {
   SessionManager,
-  NOLAN_TURN_CUSTOM_KIND,
+  KEN_TURN_CUSTOM_KIND,
+  AUTOPILOT_MARKER_CUSTOM_KIND,
+  APP_MARKER_CUSTOM_KIND,
   type MessageEntry,
   type BranchInfo,
   type CustomEntry,
-  type NolanTurnPayload,
+  type KenTurnPayload,
+  type AutopilotMarkerPayload,
+  type AppMarkerPayload,
 } from "./session-manager.js";
 import { ExtensionLoader } from "./extensions/loader.js";
 import type { ExtensionContext } from "./extensions/types.js";
@@ -44,6 +48,8 @@ import {
 } from "../tools/index.js";
 import type { BackgroundProcess } from "./process-manager.js";
 import { MCPClientManager, getAllMcpServers } from "./mcp/index.js";
+import { DeferredToolCatalog } from "./mcp/deferred-catalog.js";
+import { createToolSearchTool } from "../tools/tool-search.js";
 import { log } from "./logger.js";
 import { setEstimatorModel } from "./compaction/token-estimator.js";
 import { discoverAgents } from "./agents.js";
@@ -146,6 +152,16 @@ export interface AgentSessionOptions {
    * MCP entirely (its dynamic tool names could never match a fixed allow-list).
    */
   allowedMcpServers?: string[];
+  /**
+   * Force 1-h prompt-cache TTL + pre-warm regardless of the user's global
+   * `speedProfile` setting. Bursty read-only advisory sessions (the Ken
+   * mentor + autopilot reviewer) call the same static system prompt on a
+   * schedule that routinely exceeds the default 5-min cache window — a
+   * dropped cache there resends the whole cached prefix at full price right
+   * when it matters most, independent of whatever the user picked for the
+   * main build session. Default (undefined) = follow `speedProfile`.
+   */
+  forceLongCacheRetention?: boolean;
 }
 
 // ── State ──────────────────────────────────────────────────
@@ -181,7 +197,18 @@ export class AgentSession {
   // alongside the session and reloaded on resume so they reappear in the
   // transcript. Each carries the non-system message count at record time so the
   // webview can interleave them chronologically.
-  private nolanTurns: NolanTurnPayload[] = [];
+  private kenTurns: KenTurnPayload[] = [];
+  // Autopilot Ken (auto-reviewer) markers recorded against this build session:
+  // the review verdict shown in the transcript (prompted / done / human /
+  // capped). Same not-on-the-DAG treatment as kenTurns — advisory only,
+  // persisted + reloaded so a resumed session shows the identical Ken bubble
+  // the live run showed instead of dropping it or replaying a raw verdict.
+  private autopilotMarkers: AutopilotMarkerPayload[] = [];
+  // Generic app transcript markers (plan-mode banner, task header, error rows,
+  // user-bubble display hints). Same not-on-the-DAG treatment as kenTurns —
+  // display only, persisted + reloaded so a resumed session shows the same
+  // transcript rows the live run showed.
+  private appMarkers: AppMarkerPayload[] = [];
   private tools: AgentTool[] = [];
   /** Rebuilds the read tool for a new model (video byte cap is baked in at
    *  creation). Called from switchModel so video-capable models get the
@@ -224,6 +251,8 @@ export class AgentSession {
   private processManager?: ProcessManager;
   private lspManager?: LspManager;
   private mcpManager?: MCPClientManager;
+  /** Deferred MCP tools awaiting discovery via tool_search (bench A win). */
+  private mcpCatalog?: DeferredToolCatalog;
   private provider: Provider;
   private model: string;
   private cwd: string;
@@ -517,7 +546,7 @@ export class AgentSession {
       const mcpTools = this.opts.allowedTools
         ? connected.filter((t) => this.isToolAllowed(t.name))
         : connected;
-      this.tools.push(...mcpTools);
+      this.addMcpTools(mcpTools);
       // Background connect resolves AFTER initialize() has already built the
       // system prompt (the default path awaits this before buildSystemPrompt,
       // so its prompt already lists the tools). Refresh messages[0] so the
@@ -534,6 +563,33 @@ export class AgentSession {
         "WARN",
         "mcp",
         `MCP initialization failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Route freshly connected MCP tools: deferred into the tool_search catalog
+   * (default — keeps ~8k tokens of schema out of every cache-miss turn, see
+   * bench/RESULTS.md bench A) or pushed eagerly when the user opted out.
+   * Allow-listed sessions (Ken) always get the eager path — their fixed tool
+   * expectations predate the catalog, and tool_search isn't allow-listed.
+   * Promotion pushes onto the live `this.tools` array the running agent loop
+   * re-reads every turn, so promoted tools are callable on the next step.
+   */
+  private addMcpTools(mcpTools: AgentTool[]): void {
+    if (mcpTools.length === 0) return;
+    const defer = !this.opts.allowedTools && this.settingsManager.get("deferredMcpTools");
+    if (!defer) {
+      this.tools.push(...mcpTools);
+      return;
+    }
+    this.mcpCatalog ??= new DeferredToolCatalog();
+    this.mcpCatalog.add(mcpTools);
+    if (!this.tools.some((t) => t.name === "tool_search")) {
+      this.tools.push(
+        createToolSearchTool(this.mcpCatalog, (promoted) => {
+          this.tools.push(...promoted);
+        }),
       );
     }
   }
@@ -749,21 +805,23 @@ export class AgentSession {
     // agent sees them mid-loop instead of after it stops.
     if (this.userQueue.length > 0) {
       const queued = this.userQueue.splice(0);
-      // Frame the queued text as concurrent steering — without this wrapper the
-      // model treats a mid-run message as a fresh request that supersedes the
-      // original task and silently drops it.
-      // Plain-text-only queue: keep the simple merged-string message.
-      if (queued.every((m) => m.attachments.length === 0)) {
-        const merged = queued.map((m) => m.text).join("\n\n");
-        return [{ role: "user", content: wrapSteeringText(merged) }];
-      }
-      // Any queued attachments → deliver one user message with text + media
-      // blocks built the same way as a non-queued attachment prompt.
-      const parts: Array<TextContent | ImageContent | VideoContent> = [
-        { type: "text", text: STEERING_PREFIX },
-      ];
-      for (const m of queued) parts.push(...this.buildAttachmentParts(m.text, m.attachments));
-      return [{ role: "user", content: parts }];
+      // Frame each queued item as concurrent steering — without this wrapper
+      // the model treats a mid-run message as a fresh request that supersedes
+      // the original task and silently drops it. ONE message per queued item
+      // (not merged): each persists as its own user message, so a resumed
+      // session shows the same number of bubbles the live run did.
+      return queued.map((m): Message => {
+        if (m.attachments.length === 0) {
+          return { role: "user", content: wrapSteeringText(m.text) };
+        }
+        // Queued attachments ride the same native-block path as a non-queued
+        // attachment prompt, prefixed with the steering framing.
+        const parts: Array<TextContent | ImageContent | VideoContent> = [
+          { type: "text", text: STEERING_PREFIX },
+          ...this.buildAttachmentParts(m.text, m.attachments),
+        ];
+        return { role: "user", content: parts };
+      });
     }
     if (!this.settingsManager.get("idealReviewEnabled")) return null;
     if (!this.loopBreakInjected) {
@@ -1026,7 +1084,11 @@ export class AgentSession {
           // Use getAllMcpServers so user-configured servers survive the reconnect.
           const servers = await getAllMcpServers(this.provider, apiKey, this.cwd);
           const mcpTools = await this.mcpManager.connectAll(servers);
-          this.tools.push(...mcpTools);
+          // Drop stale MCP tools from both the live set and deferred catalog before
+          // re-adding. Some tools may already have been promoted out of the catalog.
+          this.tools = this.tools.filter((t) => !t.name.startsWith("mcp__"));
+          this.mcpCatalog?.removeWhere((name) => name.startsWith("mcp__"));
+          this.addMcpTools(mcpTools);
         } catch (err) {
           log(
             "WARN",
@@ -1080,8 +1142,16 @@ export class AgentSession {
       await this.persistMessage(msg);
     }
     this.lastPersistedIndex = this.messages.length;
-    // Carry Nolan's advisory turns into the new file so they survive compaction.
-    await this.rePersistNolanTurns();
+    // Carry Ken's advisory turns into the new file so they survive compaction.
+    await this.rePersistKenTurns();
+    await this.rePersistAutopilotMarkers();
+    await this.rePersistAppMarkers();
+    // Persist the compaction counts so a resumed session's quiet notice can
+    // show the same "N → M messages" summary the live run did.
+    await this.persistAppMarker("compaction", {
+      originalCount: result.result.originalCount,
+      newCount: result.result.newCount,
+    });
 
     this.eventBus.emit("compaction_end", {
       originalCount: result.result.originalCount,
@@ -1093,6 +1163,13 @@ export class AgentSession {
     // A fresh session drops any in-flight plan state so its prompt is clean.
     this.planModeRef.current = false;
     this.approvedPlanPath = undefined;
+    // Display-only history belongs to the OLD session. Without this, stale Ken
+    // turns / autopilot verdicts / app markers linger in memory, show up in the
+    // new session's /history, and get re-persisted into the new file by the
+    // next compaction — the cross-session duplicate-marker propagation bug.
+    this.kenTurns = [];
+    this.autopilotMarkers = [];
+    this.appMarkers = [];
     const basePrompt =
       this.customSystemPrompt ??
       (await buildSystemPrompt(
@@ -1277,6 +1354,13 @@ export class AgentSession {
     return this.nolanTurns;
   }
 
+  /** Autopilot verdict markers recorded against this session, in record order.
+   *  Used by the host to interleave the auto-review loop's markers back into
+   *  the transcript on resume, mirroring `getKenTurns`. */
+  getAutopilotMarkers(): AutopilotMarkerPayload[] {
+    return this.autopilotMarkers;
+  }
+
   /**
    * Record one Nolan Grout (mentor agent) turn against this build session: the
    * user's question + Nolan's reply. Kept in memory for the live transcript and
@@ -1313,6 +1397,112 @@ export class AgentSession {
       const entry: CustomEntry = {
         type: "custom",
         kind: NOLAN_TURN_CUSTOM_KIND,
+        id: crypto.randomUUID(),
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        data: payload,
+      };
+      await this.sessionManager.appendEntry(this.sessionPath, entry);
+    }
+  }
+
+  /**
+   * Record one autopilot verdict marker (prompted / done / human / capped)
+   * against this build session. Kept in memory for the live transcript and
+   * persisted as a `custom` entry (parentId null, same as Ken turns) so a
+   * resumed session renders the exact same Ken bubble the live run showed
+   * instead of dropping the marker or falling back to a raw verdict string.
+   * No-op persistence for transient sessions (kept in memory only).
+   */
+  async persistAutopilotMarker(
+    phase: AutopilotMarkerPayload["phase"],
+    extra?: { reason?: string; body?: string },
+  ): Promise<void> {
+    const afterMessageCount = this.messages.filter((m) => m.role !== "system").length;
+    const payload: AutopilotMarkerPayload = {
+      version: 1,
+      phase,
+      afterMessageCount,
+      ...(extra?.reason !== undefined ? { reason: extra.reason } : {}),
+      ...(extra?.body !== undefined ? { body: extra.body } : {}),
+    };
+    this.autopilotMarkers.push(payload);
+    if (!this.sessionPath) return;
+    const entry: CustomEntry = {
+      type: "custom",
+      kind: AUTOPILOT_MARKER_CUSTOM_KIND,
+      id: crypto.randomUUID(),
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      data: payload,
+    };
+    await this.sessionManager.appendEntry(this.sessionPath, entry);
+  }
+
+  /** Re-append the in-memory autopilot markers to the current session file.
+   *  Mirrors `rePersistKenTurns` — called after a continuation/compaction file
+   *  is created so the auto-review history survives the rewrite. */
+  private async rePersistAutopilotMarkers(): Promise<void> {
+    if (!this.sessionPath) return;
+    for (const payload of this.autopilotMarkers) {
+      const entry: CustomEntry = {
+        type: "custom",
+        kind: AUTOPILOT_MARKER_CUSTOM_KIND,
+        id: crypto.randomUUID(),
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        data: payload,
+      };
+      await this.sessionManager.appendEntry(this.sessionPath, entry);
+    }
+  }
+
+  /** App transcript markers recorded against this session, in record order.
+   *  Used by the host to interleave display-only rows (plan banner, task
+   *  header, errors, user-bubble hints) back into the transcript on resume. */
+  getAppMarkers(): AppMarkerPayload[] {
+    return this.appMarkers;
+  }
+
+  /**
+   * Record one app transcript marker (display-only row) against this session.
+   * Same treatment as autopilot markers: kept in memory for the live
+   * transcript, persisted as a `custom` entry (parentId null, never on the
+   * message DAG) so a resumed session shows the identical row. `anchorOffset`
+   * shifts the recorded `afterMessageCount` — pass +1 for a marker that should
+   * attach to the user message about to be pushed by the imminent prompt.
+   * No-op persistence for transient sessions.
+   */
+  async persistAppMarker(
+    kind: AppMarkerPayload["kind"],
+    data: Record<string, unknown>,
+    anchorOffset = 0,
+  ): Promise<void> {
+    const afterMessageCount =
+      this.messages.filter((m) => m.role !== "system").length + anchorOffset;
+    const payload: AppMarkerPayload = { version: 1, kind, afterMessageCount, data };
+    this.appMarkers.push(payload);
+    if (!this.sessionPath) return;
+    const entry: CustomEntry = {
+      type: "custom",
+      kind: APP_MARKER_CUSTOM_KIND,
+      id: crypto.randomUUID(),
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      data: payload,
+    };
+    await this.sessionManager.appendEntry(this.sessionPath, entry);
+  }
+
+  /** Re-append the in-memory app markers to the current session file. Mirrors
+   *  `rePersistKenTurns` — called after a continuation/compaction file is
+   *  created so display-only rows survive the rewrite. */
+  private async rePersistAppMarkers(): Promise<void> {
+    if (!this.sessionPath) return;
+    for (const payload of this.appMarkers) {
+      const entry: CustomEntry = {
+        type: "custom",
+        kind: APP_MARKER_CUSTOM_KIND,
         id: crypto.randomUUID(),
         parentId: null,
         timestamp: new Date().toISOString(),
@@ -1406,9 +1596,13 @@ export class AgentSession {
     this.opts = { ...this.opts, signal };
   }
 
-  /** True when speedProfile is "optimized" (1-h cache TTL + pre-warm). */
+  /** True when speedProfile is "optimized" (1-h cache TTL + pre-warm), or the
+   *  session was constructed with `forceLongCacheRetention` (Ken sessions). */
   private isSpeedOptimized(): boolean {
-    return this.settingsManager?.get("speedProfile") === "optimized";
+    return (
+      this.opts.forceLongCacheRetention === true ||
+      this.settingsManager?.get("speedProfile") === "optimized"
+    );
   }
 
   /**
@@ -1496,7 +1690,11 @@ export class AgentSession {
     const loadedMessages = this.sessionManager.getMessages(loaded.entries, loaded.header.leafId);
     // Restore Nolan's advisory turns (custom entries, not on the message branch) so
     // they reappear in the transcript and survive into the continuation file.
-    this.nolanTurns = this.sessionManager.getNolanTurns(loaded.entries);
+    this.kenTurns = this.sessionManager.getKenTurns(loaded.entries);
+    // Restore autopilot verdict markers the same way (not on the message DAG).
+    this.autopilotMarkers = this.sessionManager.getAutopilotMarkers(loaded.entries);
+    // Restore app transcript markers (plan banner / task header / errors / hints).
+    this.appMarkers = this.sessionManager.getAppMarkers(loaded.entries);
 
     // Track the current leaf for subsequent entries
     this.currentLeafId = loaded.header.leafId;
@@ -1543,21 +1741,42 @@ export class AgentSession {
         before: String(compacted.result.originalCount),
         after: String(compacted.result.newCount),
       });
+
+      // Compaction rewrote history, so the on-disk file no longer reflects
+      // what's in memory — fork a fresh session file for the compacted state
+      // (mirrors compact()'s own persistence) so `ggcoder continue` picks up
+      // the summary instead of the full original transcript.
+      const session = await this.sessionManager.create(this.cwd, this.provider, this.model);
+      this.sessionId = session.id;
+      this.sessionPath = session.path;
+      this.currentLeafId = null;
+
+      // Re-persist (compacted) messages — skip system, it's rebuilt on load
+      for (const msg of this.messages) {
+        if (msg.role === "system") continue;
+        await this.persistMessage(msg);
+      }
+      this.lastPersistedIndex = this.messages.length;
+      // Carry Ken's restored turns into the continuation file.
+      await this.rePersistKenTurns();
+      await this.rePersistAutopilotMarkers();
+      await this.rePersistAppMarkers();
+      // Record this load-time auto-compaction's counts for the resumed notice.
+      await this.persistAppMarker("compaction", {
+        originalCount: compacted.result.originalCount,
+        newCount: compacted.result.newCount,
+      });
+      return;
     }
 
-    // Create new session file for continuation
-    const session = await this.sessionManager.create(this.cwd, this.provider, this.model);
-    this.sessionId = session.id;
-    this.sessionPath = session.path;
-
-    // Re-persist (compacted) messages — skip system, it's rebuilt on load
-    for (const msg of this.messages) {
-      if (msg.role === "system") continue;
-      await this.persistMessage(msg);
-    }
+    // Plain resume (no compaction needed): keep using the original session
+    // file/id and append future turns to it in place. Forking a new file here
+    // unconditionally used to create a byte-identical duplicate every time a
+    // session was merely reopened (e.g. app/window restart) with zero new
+    // messages in between — the duplicate entries seen in the session list.
+    this.sessionId = loaded.header.id;
+    this.sessionPath = sessionPath;
     this.lastPersistedIndex = this.messages.length;
-    // Carry Nolan's restored turns into the continuation file.
-    await this.rePersistNolanTurns();
   }
 
   private async prepareDynamicContext(_latestUserPrompt?: string): Promise<Message[]> {

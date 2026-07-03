@@ -28,6 +28,75 @@
 - @prestyj/agent@5.2.0
 - @prestyj/core@5.2.0
 
+## 5.8.3
+
+### Patch Changes
+
+- Fix Anthropic empty-args tool calls and underscore-path project discovery. Truncated tool-input JSON now surfaces as a retryable parse error instead of emitting a phantom `args:{}` call, and eager/fine-grained tool streaming is gated behind a default-off flag. Project discovery reads the real cwd from ggcoder session headers, so projects whose path contains an underscore no longer vanish from the picker.
+  - @kenkaiiii/gg-ai@5.8.3
+  - @kenkaiiii/gg-agent@5.8.3
+  - @kenkaiiii/gg-core@5.8.3
+
+## 5.8.2
+
+### Patch Changes
+
+- Ship deferred MCP tools, leaner prompts, and smoother retry recovery for faster coding-agent turns.
+  - @kenkaiiii/gg-ai@5.8.2
+  - @kenkaiiii/gg-agent@5.8.2
+  - @kenkaiiii/gg-core@5.8.2
+
+## 5.8.1
+
+### Patch Changes
+
+- Session resume now renders 1:1 with the live transcript: stale autopilot all-clear markers are deduped and range-clamped (no more duplicate Ken bubbles bunching at the bottom of reopened sessions), queued steering prompts resume as clean bubbles without the internal wrapper, Ken "Send to GG Coder" labels, enhancer highlights, plan-mode banners, task headers, error rows, and compaction counts all persist and restore, and all-clear wording is deterministic across reopens.
+  - @kenkaiiii/gg-ai@5.8.1
+  - @kenkaiiii/gg-agent@5.8.1
+  - @kenkaiiii/gg-core@5.8.1
+
+## 5.8.0
+
+### Minor Changes
+
+- Autopilot now reviews submitted plans itself, auto-approves sound plans, requests revisions when needed, and starts implementation without a human blocker.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.8.0
+- @kenkaiiii/gg-agent@5.8.0
+- @kenkaiiii/gg-core@5.8.0
+
+## 5.7.0
+
+### Minor Changes
+
+- Add XP progression system: rank engine, git-based XP, persistent progress store, and sidecar progress endpoints powering the gg-app rank badge, scorecard, and level-up celebrations.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.7.0
+- @kenkaiiii/gg-agent@5.7.0
+- @kenkaiiii/gg-core@5.7.0
+
+## 5.6.3
+
+### Patch Changes
+
+- Fix duplicate session files created on every resume — resuming now appends to the original session file instead of forking a byte-identical copy each time.
+  - @kenkaiiii/gg-ai@5.6.3
+  - @kenkaiiii/gg-agent@5.6.3
+  - @kenkaiiii/gg-core@5.6.3
+
+## 5.6.2
+
+### Patch Changes
+
+- Optimize Ken mentor/autopilot prompt caching: fold static project context (CLAUDE.md/AGENTS.md) into the cached system prompt instead of resending it uncached every turn, and force long cache retention on Ken sessions independent of the user's global speed profile.
+  - @kenkaiiii/gg-ai@5.6.2
+  - @kenkaiiii/gg-agent@5.6.2
+  - @kenkaiiii/gg-core@5.6.2
+
 ## 5.6.1
 
 ### Patch Changes

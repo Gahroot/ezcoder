@@ -36,11 +36,18 @@ export function useAutopilot(opts: {
   const pushMarker = useCallback(
     (
       phase: "prompted" | "done" | "human" | "capped",
-      extra?: { reason?: string; body?: string },
+      extra?: { reason?: string; body?: string; copySeed?: string },
     ) => {
       setItems((prev) => [
         ...prev,
-        { kind: "autopilot", id: nextId(), phase, reason: extra?.reason, body: extra?.body },
+        {
+          kind: "autopilot",
+          id: nextId(),
+          phase,
+          reason: extra?.reason,
+          body: extra?.body,
+          copySeed: extra?.copySeed,
+        },
       ]);
     },
     [setItems, nextId],
@@ -60,10 +67,16 @@ export function useAutopilot(opts: {
           pushMarker("prompted", {
             body: typeof d.body === "string" ? d.body : undefined,
           });
-          return true;
+          // Let useAgentEvents also see the frame so it can close a stale plan
+          // modal when this prompt is Ken's plan-revision feedback.
+          return false;
         case "autopilot_done":
           setAutopilotReviewing(false);
-          pushMarker("done");
+          // copySeed mirrors the persisted marker's seed so the live all-clear
+          // wording is the SAME line a resumed session shows.
+          pushMarker("done", {
+            copySeed: typeof d.copySeed === "string" ? d.copySeed : undefined,
+          });
           return true;
         case "autopilot_ignored":
           // Nothing worth reviewing (small talk, a mechanical git op, etc.) —
@@ -81,6 +94,13 @@ export function useAutopilot(opts: {
           setAutopilotReviewing(false);
           pushMarker("capped");
           return true;
+        // Ken approved a submitted plan. The plan state (modal, step-count
+        // seeding, the plan_approved marker) lives in useAgentEvents, so only
+        // stop the spinner here and return false so the main handler still
+        // processes the frame — same peek-and-pass-through as run_end below.
+        case "autopilot_plan_accepted":
+          setAutopilotReviewing(false);
+          return false;
         // Not an autopilot event, but a cancel settles the build run WITHOUT a
         // terminal autopilot frame (AgentSession swallows the abort, so the
         // in-flight review just returns). Peek at a cancelled run_end to clear a

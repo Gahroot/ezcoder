@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo } from "react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { theme } from "./theme";
 import {
   waitForReady,
@@ -40,6 +41,9 @@ import {
   type FileHit,
   searchFiles,
   enhancePrompt,
+  getDroppedPathInfo,
+  readDroppedFileAttachment,
+  type Attachment,
   type PromptSegment,
 } from "./agent";
 import { ActivityBar } from "./ActivityBar";
@@ -75,6 +79,10 @@ import { BackButton } from "./BackButton";
 import { AutopilotToggle } from "./AutopilotToggle";
 import { HomeScreen } from "./HomeScreen";
 import { Toaster } from "./Toaster";
+import { Confetti } from "./Confetti";
+import { RankBadge } from "./RankBadge";
+import { ScorecardModal } from "./ScorecardModal";
+import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
 import { Markdown, PromptSendProvider } from "./Markdown";
 import { FooterSkeleton, TranscriptSkeleton, Skeleton } from "./Skeleton";
@@ -87,7 +95,7 @@ import { AttachmentBar } from "./AttachmentBar";
 import { EnhancedSegments } from "./PromptEnhancement";
 import { EnhanceDissolve } from "./EnhanceDissolve";
 import { toast } from "./toast";
-import { fileToPending, toWire, type PendingAttachment } from "./attachments";
+import { fileToPending, toWire, attachmentToPending, type PendingAttachment } from "./attachments";
 import "./App.css";
 
 const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Nolan for help";
@@ -111,6 +119,43 @@ const INPUT_PLACEHOLDER_INTERVAL_MS = 12_000;
 const PLACEHOLDER_SHUFFLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const PLACEHOLDER_SHUFFLE_FRAMES = 18;
 const PLACEHOLDER_SHUFFLE_FRAME_MS = 24;
+
+// Autopilot Ken's "all clear" line, rotated so the auto-review loop doesn't
+// repeat the exact same sentence every time GG Coder's work checks out.
+// Info row shown when a video attachment is sent to a model without native
+// video analysis. Shared by the live send path and history restore so the
+// resumed transcript matches the live one exactly.
+const VIDEO_CAPABILITY_WARNING =
+  "This model can't watch video directly. The agent can still extract frames or audio with ffmpeg if needed — switch to a video-capable model (Gemini, Kimi, MiniMax) for native video analysis.";
+
+const ALL_CLEAR_VARIATIONS = [
+  "All clear. Looks good to me.",
+  "Checks out. Nothing left to flag.",
+  "Nice, this holds up. Nothing more from me.",
+  "Solid work. I've got no notes.",
+  "Yep, that covers it. All good.",
+  "Looks right to me — ship it.",
+  "Clean pass. Nothing to add here.",
+  "That does the job. No complaints.",
+  "Good to go, no issues found.",
+  "This holds together. All clear.",
+] as const;
+
+function stableIndex(seed: string, modulo: number): number {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % modulo;
+}
+
+function allClearCopy(seed: string | undefined, fallbackId: number): string {
+  const index = seed
+    ? stableIndex(seed, ALL_CLEAR_VARIATIONS.length)
+    : fallbackId % ALL_CLEAR_VARIATIONS.length;
+  return ALL_CLEAR_VARIATIONS[index];
+}
 
 function shufflePlaceholderFrame(target: string, frame: number): string {
   const revealCount = Math.ceil((target.length * frame) / PLACEHOLDER_SHUFFLE_FRAMES);
@@ -200,9 +245,11 @@ export type Item =
   | {
       kind: "autopilot";
       id: number;
-      phase: "prompted" | "done" | "human" | "capped";
+      phase: "prompted" | "done" | "human" | "capped" | "plan_approved";
       reason?: string;
       body?: string;
+      /** Stable seed from persisted marker data so resumed all-clear copy doesn't flicker. */
+      copySeed?: string;
     };
 
 export interface TranscriptImage {
@@ -251,6 +298,29 @@ function hasDraggedFiles(dataTransfer: DataTransfer | null): boolean {
   return Array.from(dataTransfer?.types ?? []).includes("Files");
 }
 
+type WebkitEntry = { isDirectory?: boolean };
+type DirectoryAwareDataTransferItem = DataTransferItem & {
+  webkitGetAsEntry?: () => WebkitEntry | null;
+};
+
+function isDirectoryDragItem(item: DataTransferItem): boolean {
+  const entry = (item as DirectoryAwareDataTransferItem).webkitGetAsEntry?.();
+  return entry?.isDirectory === true;
+}
+
+function filesForAttachment(dataTransfer: DataTransfer): File[] {
+  const items = Array.from(dataTransfer.items ?? []);
+  if (items.length === 0) return Array.from(dataTransfer.files);
+  return items
+    .filter((item) => item.kind === "file" && !isDirectoryDragItem(item))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null);
+}
+
+function canHandleWindowFileDrop(): boolean {
+  return !document.querySelector(".modal-backdrop");
+}
+
 function App(): React.ReactElement {
   const [items, setItems] = useState<Item[]>([]);
   // Nolan Grout (mentor agent): own running flag, token/thinking metrics, streaming
@@ -269,6 +339,12 @@ function App(): React.ReactElement {
   // compact transcript markers + a "Nolan reviewing…" flag. Separate hook, same
   // shared setItems/nextId pattern as useNolanMentor.
   const { autopilotReviewing, handleAutopilotEvent } = useAutopilot({ setItems, nextId });
+  const { snapshot: progress, levelUp, levelUpNonce, levelUpOrigin } = useProgress();
+  const [showScorecard, setShowScorecard] = useState(false);
+  const [rankCelebrateNonce, setRankCelebrateNonce] = useState<string | null>(null);
+  const [xpChips, setXpChips] = useState<Array<{ id: string; label: string }>>([]);
+  const lastProgressXpRef = useRef<number | null>(null);
+  const [confettiNonce, setConfettiNonce] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [displayPlaceholder, setDisplayPlaceholder] = useState(DEFAULT_INPUT_PLACEHOLDER);
@@ -491,6 +567,58 @@ function App(): React.ReactElement {
     stickToBottomRef.current = distanceFromBottom <= 48;
   }, []);
 
+  const insertDroppedFolderPaths = useCallback((paths: string[]): void => {
+    if (paths.length === 0) return;
+    const text = paths.join(" ");
+    setInput((prev) => {
+      if (!prev.trim()) return text;
+      return `${prev}${/\s$/.test(prev) ? "" : " "}${text}`;
+    });
+    setEnhancement(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  const showXpChip = useCallback((label: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    playSound("xp");
+    setXpChips((chips) => [...chips.slice(-2), { id, label }]);
+    window.setTimeout(() => {
+      setXpChips((chips) => chips.filter((chip) => chip.id !== id));
+    }, 1700);
+  }, []);
+
+  useEffect(() => {
+    if (!progress) return;
+    const previous = lastProgressXpRef.current;
+    lastProgressXpRef.current = progress.xp;
+    if (previous == null) return;
+    const gained = progress.xp - previous;
+    // Chip + sound only in the window whose run earned the XP — other windows
+    // still receive the frame (badge/percent update) but stay quiet.
+    if (gained > 0 && progress.origin) showXpChip(`+${gained} XP`);
+  }, [progress, showXpChip]);
+
+  useEffect(() => {
+    if (!levelUp || !levelUpNonce) return;
+    toast(`Rank up! → ${levelUp.rankName}`, "success", 5200);
+    // Rank-up visuals show everywhere; the sound only plays in the earning window.
+    if (levelUpOrigin) playSound("levelUp");
+    setRankCelebrateNonce(levelUpNonce);
+    const clearRank = window.setTimeout(() => setRankCelebrateNonce(null), 2400);
+
+    const crossedTier = Math.floor((levelUp.from - 1) / 5) !== Math.floor((levelUp.to - 1) / 5);
+    let clearConfetti = 0;
+    if (crossedTier) {
+      setConfettiNonce(levelUpNonce);
+      clearConfetti = window.setTimeout(() => setConfettiNonce(null), 1900);
+    }
+
+    return () => {
+      window.clearTimeout(clearRank);
+      if (clearConfetti) window.clearTimeout(clearConfetti);
+    };
+  }, [levelUp, levelUpNonce, levelUpOrigin]);
+
   // Re-pin to the bottom before every paint — but only while pinned. The live
   // tool panel + activity bar (.liveregion) grow/shrink below the transcript as
   // tools run and finish; since the transcript is a flexible sibling, that
@@ -571,8 +699,8 @@ function App(): React.ReactElement {
 
   // Stop the browser from navigating to / opening a file dropped anywhere
   // (which would replace the whole UI with the raw file). The active chat view
-  // handles those drops as attachments; entry/picker screens just suppress the
-  // default behavior.
+  // handles files as attachments; native Tauri drop events add folder paths to
+  // the draft because browser File objects cannot represent directories well.
   useEffect(() => {
     const prevent = (e: DragEvent): void => {
       // Only files — don't interfere with text selection drags.
@@ -585,6 +713,40 @@ function App(): React.ReactElement {
       window.removeEventListener("drop", prevent);
     };
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (disposed) return;
+        const payload = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          if (canHandleWindowFileDrop()) setIsFileDragOver(true);
+          return;
+        }
+        if (payload.type === "leave") {
+          setIsFileDragOver(false);
+          return;
+        }
+        setIsFileDragOver(false);
+        if (!canHandleWindowFileDrop() || payload.paths.length === 0) return;
+        void getDroppedPathInfo(payload.paths).then((infos) => {
+          if (disposed) return;
+          insertDroppedFolderPaths(infos.filter((info) => info.isDir).map((info) => info.path));
+          const filePaths = infos.filter((info) => !info.isDir).map((info) => info.path);
+          if (filePaths.length > 0) void addNativeDroppedFiles(filePaths);
+        });
+      })
+      .then((off) => {
+        if (disposed) off();
+        else unlisten = off;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [insertDroppedFolderPaths]);
 
   // Drive the native OS title bar (macOS / Windows / Linux all honor setTitle):
   // the generated session title when actively working in a project, else
@@ -751,6 +913,9 @@ function App(): React.ReactElement {
       const el = target?.closest?.(INTERACTIVE);
       if (!el) return;
       if (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true") return;
+      // The autopilot toggle plays its own dedicated sound (only when turning
+      // on) instead of the generic click, so skip it here to avoid a double cue.
+      if (el.closest("[data-suppress-click-sound]")) return;
       playSound("click");
     };
     document.addEventListener("click", onClick, true);
@@ -878,12 +1043,57 @@ function App(): React.ReactElement {
             if (h.hook) return { kind: "hook", id: nextId(), hook: h.hook };
             // A resumed compacted session shows the quiet compaction notice in
             // place of the raw summary body (counts aren't persisted).
-            if (h.compacted) return { kind: "compaction", id: nextId(), status: "done" };
-            // Persisted Nolan (mentor) turns: his reply restores as a Nolan bubble,
-            // the `@Nolan` question as a Nolan-tinted user bubble (matches live).
+            if (h.compacted)
+              return {
+                kind: "compaction",
+                id: nextId(),
+                status: "done",
+                originalCount: h.compactionCounts?.originalCount,
+                newCount: h.compactionCounts?.newCount,
+              };
+            // Persisted display-only markers: plan-mode banner, task header,
+            // error rows, and the video-capability info row — all rendered
+            // identically to their live counterparts.
+            if (h.plan) return { kind: "plan", id: nextId(), reason: h.plan.reason };
+            if (h.task) return { kind: "task", id: nextId(), title: h.task.title };
+            if (h.error) {
+              const prefix =
+                h.error.scope === "ken_error"
+                  ? "Ken: "
+                  : h.error.scope === "autopilot_error"
+                    ? "Autopilot: "
+                    : "";
+              return {
+                kind: "error",
+                id: nextId(),
+                headline: `${prefix}${h.error.headline}`,
+                message: h.error.message,
+                guidance: h.error.guidance,
+              };
+            }
+            if (h.infoKind === "video_warning")
+              return { kind: "info", id: nextId(), text: VIDEO_CAPABILITY_WARNING };
+            // Ken "Send to GG Coder" prompts: restore the shimmer label, not the
+            // full prompt body (matches live).
+            if (h.kenSent && h.role === "user")
+              return { kind: "user", id: nextId(), text: h.text, kenSent: true };
+            // Persisted Ken (mentor) turns: his reply restores as a Ken bubble,
+            // the `@Ken` question as a Ken-tinted user bubble (matches live).
             if (h.ken && h.role === "assistant") return { kind: "ken", id: nextId(), text: h.text };
             if (h.ken && h.role === "user")
               return { kind: "user", id: nextId(), text: h.text, ken: true };
+            // Persisted autopilot verdict marker: render identically to the
+            // live item so a resumed session never shows the raw verdict text
+            // (e.g. "ALL_CLEAR") the model actually replied with.
+            if (h.autopilot)
+              return {
+                kind: "autopilot",
+                id: nextId(),
+                phase: h.autopilot.phase,
+                reason: h.autopilot.reason,
+                body: h.autopilot.body,
+                copySeed: h.autopilot.copySeed,
+              };
             if (h.role !== "user") return { kind: h.role, id: nextId(), text: h.text };
             // App-button prompts (e.g. "Initialize Git") were shown live as a
             // friendly shimmer label, not the expanded body. The label is
@@ -901,6 +1111,9 @@ function App(): React.ReactElement {
               ...(label !== null ? { label } : {}),
               images: h.images && h.images.length > 0 ? h.images : undefined,
               ...(parsed && parsed.files.length > 0 ? { files: parsed.files } : {}),
+              ...(h.enhancements && h.enhancements.length > 0
+                ? { enhancements: h.enhancements }
+                : {}),
             };
           }),
         );
@@ -1234,7 +1447,7 @@ function App(): React.ReactElement {
       stickToBottomRef.current = true;
       pushItem({ kind: "user", id: nextId(), text: trimmed, nolanSent: true });
       endStreamingText();
-      void sendPrompt(trimmed).catch(() => {});
+      void sendPrompt(trimmed, [], { kenSent: true }).catch(() => {});
     },
     [pushItem, endStreamingText],
   );
@@ -1447,7 +1660,11 @@ function App(): React.ReactElement {
       setMention(null);
       setMentionedPaths([]);
       setEnhancement(null);
-      void sendPrompt(prompt, queuedWire);
+      void sendPrompt(
+        prompt,
+        queuedWire,
+        sentEnhancements ? { enhancements: sentEnhancements } : undefined,
+      );
       return;
     }
     const wire = attachments.map(toWire);
@@ -1468,7 +1685,7 @@ function App(): React.ReactElement {
       pushItem({
         kind: "info",
         id: nextId(),
-        text: "This model can't watch video directly. The agent can still extract frames or audio with ffmpeg if needed — switch to a video-capable model (Gemini, Kimi, MiniMax) for native video analysis.",
+        text: VIDEO_CAPABILITY_WARNING,
       });
     }
     setInput("");
@@ -1478,7 +1695,11 @@ function App(): React.ReactElement {
     setMentionedPaths([]);
     setEnhancement(null);
     endStreamingText();
-    void sendPrompt(prompt, wire);
+    void sendPrompt(
+      prompt,
+      wire,
+      sentEnhancements ? { enhancements: sentEnhancements } : undefined,
+    );
   }
 
   // ── Attachment intake (paste / attach button / whole-window drag-drop) ──
@@ -1489,8 +1710,17 @@ function App(): React.ReactElement {
     if (ok.length > 0) setAttachments((prev) => [...prev, ...ok]);
   }
 
-  function canHandleWindowFileDrop(): boolean {
-    return !document.querySelector(".modal-backdrop");
+  // Native Tauri drop events hand us absolute paths, not browser File objects
+  // (macOS/Linux keep the native drag-drop handler enabled so folder drops can
+  // report a path at all — see build_app_window). Non-directory paths are read
+  // here and staged exactly like a picked/pasted file.
+  async function addNativeDroppedFiles(paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const results = await Promise.all(paths.map((p) => readDroppedFileAttachment(p)));
+    const ok = results
+      .filter((a): a is Attachment => a !== null)
+      .map((a) => attachmentToPending(a));
+    if (ok.length > 0) setAttachments((prev) => [...prev, ...ok]);
   }
 
   function handleWindowDragEnter(e: React.DragEvent<HTMLDivElement>): void {
@@ -1519,7 +1749,8 @@ function App(): React.ReactElement {
     e.preventDefault();
     setIsFileDragOver(false);
     if (!canHandleWindowFileDrop()) return;
-    if (e.dataTransfer.files.length > 0) void addFiles(e.dataTransfer.files);
+    const files = filesForAttachment(e.dataTransfer);
+    if (files.length > 0) void addFiles(files);
   }
 
   function removeAttachment(id: number): void {
@@ -1683,6 +1914,8 @@ function App(): React.ReactElement {
       onDragLeave={handleWindowDragLeave}
       onDrop={handleWindowDrop}
     >
+      {confettiNonce && <Confetti key={confettiNonce} />}
+
       <div className="chat-head">
         {/* Top strip — the macOS traffic-light row. Holds the window title (where
             the native title used to sit) and the show/hide toggle. Always
@@ -1734,6 +1967,20 @@ function App(): React.ReactElement {
               label="Back to this project's sessions"
               onClick={() => setShowPicker(true)}
             />
+            <div className="rank-badge-wrap">
+              <RankBadge
+                snapshot={progress}
+                celebrateNonce={rankCelebrateNonce}
+                onClick={() => setShowScorecard(true)}
+              />
+              <div className="rank-xp-chip-layer" aria-hidden="true">
+                {xpChips.map((chip) => (
+                  <span className="rank-xp-chip" key={chip.id}>
+                    {chip.label}
+                  </span>
+                ))}
+              </div>
+            </div>
             <span className="picker-head-actions">
               <AutopilotToggle
                 checked={state?.autopilot ?? false}
@@ -1741,7 +1988,10 @@ function App(): React.ReactElement {
                 onChange={(next) => {
                   setState((s) => (s ? { ...s, autopilot: next } : s));
                   void setAutopilot(next);
-                  setNolanPowerBanner(next ? "on" : "off");
+                  setKenPowerBanner(next ? "on" : "off");
+                  // Dedicated cues for turning autopilot on/off (not the generic
+                  // click, suppressed via data-suppress-click-sound).
+                  playSound(next ? "autopilotOn" : "autopilotOff");
                 }}
               />
               <button
@@ -2130,6 +2380,9 @@ function App(): React.ReactElement {
                     title="EZ Coder model"
                   />
                 )}
+                <span className="model-label" style={{ color: theme.text }}>
+                  GG
+                </span>
                 <button
                   className="model-button"
                   style={{ color: theme.text }}
@@ -2140,7 +2393,7 @@ function App(): React.ReactElement {
                     setModelMenuOpen((o) => !o);
                   }}
                 >
-                  {`EZ ${state?.model ?? "\u2026"}`}
+                  {state?.model ?? "\u2026"}
                 </button>
               </span>
               <FooterSep />
@@ -2156,6 +2409,9 @@ function App(): React.ReactElement {
                     followActive={!state?.nolanModelOverride}
                   />
                 )}
+                <span className="model-label" style={{ color: theme.ken }}>
+                  Ken
+                </span>
                 <button
                   className="model-button"
                   style={{ color: theme.ken }}
@@ -2170,7 +2426,7 @@ function App(): React.ReactElement {
                     setNolanModelMenuOpen((o) => !o);
                   }}
                 >
-                  {`Nolan ${state?.nolanModel ?? state?.model ?? "\u2026"}`}
+                  {state?.kenModel ?? state?.model ?? "\u2026"}
                 </button>
               </span>
             </span>
@@ -2220,6 +2476,9 @@ function App(): React.ReactElement {
       {planReview !== null && (
         <PlanReviewModal
           content={planReview}
+          // Autopilot Ken reviews submitted plans himself; the indicator tells
+          // the user, but manual Accept/Reject stays live and always wins.
+          kenReviewing={autopilotReviewing}
           onAccept={acceptPlan}
           onFeedback={sendPlanFeedback}
           onReject={rejectPlan}
@@ -2232,6 +2491,10 @@ function App(): React.ReactElement {
           onChange={handleNotesChange}
           onClose={() => setShowNotes(false)}
         />
+      )}
+
+      {showScorecard && progress && (
+        <ScorecardModal snapshot={progress} onClose={() => setShowScorecard(false)} />
       )}
 
       {showTasks && (
@@ -2368,15 +2631,19 @@ const TranscriptRow = memo(function TranscriptRow({
     case "autopilot": {
       // Autopilot Nolan's verdict, rendered like a normal @Nolan reply (Nolan-tinted
       // dot + text) rather than its own marker style. The text is his verdict as
-      // prose: for a PROMPT he shows what he sent EZ Coder back to do; the
-      // terminal verdicts read as short Nolan one-liners.
+      // prose: for a PROMPT he shows what he sent GG Coder back to do; the
+      // terminal verdicts read as short Ken one-liners. `done` rotates through
+      // several casual Ken lines (picked deterministically off the item's
+      // stable id, so it never flickers on re-render) instead of always
+      // repeating the exact same sentence turn after turn.
       const copy: Record<Extract<Item, { kind: "autopilot" }>["phase"], string> = {
         prompted: item.body?.trim()
-          ? `Sending EZ Coder back in:\n\n${item.body.trim()}`
-          : "Sending EZ Coder back in for another pass.",
-        done: "All clear. Looks good to me.",
+          ? `Sending GG Coder back in:\n\n${item.body.trim()}`
+          : "Sending GG Coder back in for another pass.",
+        done: allClearCopy(item.copySeed, item.id),
         human: item.reason?.trim() ? item.reason.trim() : "Need you to weigh in on this one.",
         capped: "Paused autopilot after 3 rounds. Take a look before I keep going.",
+        plan_approved: "Plan looks solid. Approved it — implementation is underway.",
       };
       return (
         <div className="assistant-msg nolan-msg">

@@ -246,50 +246,25 @@ describe("buildSystemPrompt", () => {
     expect(tools.length).toBeLessThan(950);
   });
 
-  it("omits kencode research guidance when the kencode tools are not connected", async () => {
+  it("routes public-code research guidance through tool_search when MCP tools are deferred", async () => {
     const cwd = await makeProject();
-    const prompt = await buildSystemPrompt(cwd, undefined, false, undefined, [
+    // Deferred MCP loading: kencode tools live in the catalog, tool_search is active.
+    const deferred = await buildSystemPrompt(cwd, undefined, false, undefined, [
       "read",
-      "web_search",
-      "web_fetch",
-      "source_path",
+      "bash",
+      "tool_search",
     ]);
+    // Research section must not name tools the model can't call yet…
+    expect(deferred).not.toContain("SearchCode literal text/RE2");
+    expect(deferred).not.toContain("ReferenceSources");
+    // …and must point discovery at tool_search instead (research + tools hint).
+    expect(deferred).toContain("call `tool_search` first");
+    expect(deferred).toContain("Check the catalog BEFORE concluding");
 
-    // No kencode tool in the set → don't tell the model to call ReferenceSources/
-    // DiscoverRepos/SearchCode (they aren't in its toolMap → "Unknown tool").
-    expect(prompt).not.toContain("ReferenceSources");
-    expect(prompt).not.toContain("DiscoverRepos");
-    expect(prompt).not.toContain("SearchCode literal text/RE2");
-    // The research section still exists, with a docs-first fallback.
-    expect(prompt).toContain("Do not rely on memory for APIs");
-    expect(prompt).toContain("For public code patterns, prefer official/live docs");
-  });
-
-  it("drops the kencode probe from the goal planner section when the tools are absent", async () => {
-    const cwd = await makeProject();
-    const withKencode = await buildSystemPrompt(
-      cwd,
-      undefined,
-      false,
-      undefined,
-      ["read", "mcp__kencode-search__searchCode"],
-      undefined,
-      undefined,
-      "planner",
-    );
-    const withoutKencode = await buildSystemPrompt(
-      cwd,
-      undefined,
-      false,
-      undefined,
-      ["read"],
-      undefined,
-      undefined,
-      "planner",
-    );
-
-    expect(withKencode).toContain("kencode reference/discover/searchCode");
-    expect(withoutKencode).not.toContain("kencode reference/discover/searchCode");
+    // Neither kencode nor tool_search active: the public-code sentence is omitted.
+    const bare = await buildSystemPrompt(cwd, undefined, false, undefined, ["read", "bash"]);
+    expect(bare).not.toContain("SearchCode literal text/RE2");
+    expect(bare).not.toContain("tool_search");
   });
 
   it("measures representative system prompt sizes", async () => {
