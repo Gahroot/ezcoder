@@ -148,7 +148,7 @@ export type Item =
       // in Nolan's color so the transcript shows it went to the mentor, not EZ Coder.
       ken?: boolean;
       // True when this bubble came from clicking a "Send to EZ Coder" button on
-      // one of Nolan's recommended prompts. Renders as a shimmering "Sent to GG
+      // one of Nolan's recommended prompts. Renders as a shimmering "Sent to EZ
       // Coder" label in Nolan's color (like a slash command shows `/name`), instead
       // of the full prompt body that was actually sent to EZ Coder.
       nolanSent?: boolean;
@@ -2140,7 +2140,7 @@ function App(): React.ReactElement {
                     setModelMenuOpen((o) => !o);
                   }}
                 >
-                  {`GG ${state?.model ?? "\u2026"}`}
+                  {`EZ ${state?.model ?? "\u2026"}`}
                 </button>
               </span>
               <FooterSep />

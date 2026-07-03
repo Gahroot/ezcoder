@@ -122,7 +122,7 @@ const PromptSendContext = createContext<((text: string) => void) | null>(null);
 
 /**
  * A Nolan-recommended EZ Coder prompt. Nolan wraps every runnable prompt in a
- * ```prompt fence; we render the body in a styled block with a "Send to GG
+ * ```prompt fence; we render the body in a styled block with a "Send to EZ
  * Coder" button that fires it into the build session exactly as if the user
  * typed it. The button only appears once Nolan's reply has finished streaming
  * (PromptReadyContext), and once sent it stays "Sent" so it's clear it landed.
@@ -240,7 +240,7 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
  * Whether a marked block's raw text is a COMPLETE ```prompt fence (closing ```
  * present), as opposed to one still being streamed. marked auto-closes an open
  * fence into a code token at EOF, so a closed block's raw ends with ``` while a
- * still-streaming one ends with the body. This is what reveals Nolan's "Send to GG
+ * still-streaming one ends with the body. This is what reveals Nolan's "Send to EZ
  * Coder" button the instant the prompt finishes, not when his whole reply ends.
  */
 function isPromptBlockComplete(raw: string): boolean {
