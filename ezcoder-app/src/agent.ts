@@ -956,6 +956,45 @@ export async function arrangeAllWindows(): Promise<void> {
   }
 }
 
+/** A connected display, as reported by Rust's `list_monitors`. */
+export interface MonitorInfo {
+  /** Stable matching/persistence key (the display's physical position). */
+  name: string;
+  /** Human-readable label for the picker (e.g. "Primary", "Left"). */
+  label: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  primary: boolean;
+  selected: boolean;
+}
+
+/**
+ * Enumerate the connected displays so the window-layout menu can offer a "tile
+ * onto this monitor" picker. `selected` echoes the saved targetMonitor (null =
+ * auto / primary). Handled natively in Rust — no sidecar.
+ */
+export async function listMonitors(): Promise<{
+  monitors: MonitorInfo[];
+  selected: string | null;
+}> {
+  try {
+    return await invoke<{ monitors: MonitorInfo[]; selected: string | null }>("list_monitors");
+  } catch (e) {
+    await logError(`list_monitors failed: ${String(e)}`);
+    return { monitors: [], selected: null };
+  }
+}
+
+/**
+ * Persist which display the window tiler fills. Pass `null` to clear (auto =
+ * primary). Merges into ezcoder-app.json (projects root preserved). Native Rust.
+ */
+export async function setTargetMonitor(monitor: string | null): Promise<void> {
+  await invoke("app_set_target_monitor", { monitor });
+}
+
 /**
  * Payload of the `window-order` broadcast: window labels in reading order
  * (rows top→bottom, left→right within a row) and the label of the

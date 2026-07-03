@@ -2381,7 +2381,7 @@ function App(): React.ReactElement {
                   />
                 )}
                 <span className="model-label" style={{ color: theme.text }}>
-                  GG
+                  EZ
                 </span>
                 <button
                   className="model-button"

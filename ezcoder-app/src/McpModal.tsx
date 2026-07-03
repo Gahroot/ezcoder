@@ -27,7 +27,7 @@ interface Props {
  * add …` grammar (the sidecar reuses the CLI parser verbatim), and removes them.
  *
  * Scope: Global writes to ~/.ezcoder/mcp.json (all sessions). Project writes to a
- * chosen project's `.gg/mcp.json` — a project picker appears when Project is
+ * chosen project's `.ezcoder/mcp.json` — a project picker appears when Project is
  * selected, since the modal has no inherent project context. Like the CLI, a
  * newly-added server needs an app restart to load (MCP connects once at startup).
  */
