@@ -19,16 +19,16 @@ import {
   sleep,
 } from "./lib.mjs";
 
-const req = createRequire(new URL("../packages/gg-ai/package.json", import.meta.url));
+const req = createRequire(new URL("../packages/ai/package.json", import.meta.url));
 const { z } = await import(pathToFileURL(req.resolve("zod")).href);
 
 const TURNS = 6;
 const RUNS = 2;
 
 // ── Assemble toolsets ──────────────────────────────────────
-const { createTools } = await import("../packages/ggcoder/dist/tools/index.js");
-const { MCPClientManager } = await import("../packages/ggcoder/dist/core/mcp/client.js");
-const { getAllMcpServers } = await import("../packages/ggcoder/dist/core/mcp/defaults.js");
+const { createTools } = await import("../packages/cli/dist/tools/index.js");
+const { MCPClientManager } = await import("../packages/cli/dist/core/mcp/client.js");
+const { getAllMcpServers } = await import("../packages/cli/dist/core/mcp/defaults.js");
 
 console.log("Connecting built-in tools + MCP servers…");
 const { tools: builtinTools } = await createTools(process.cwd(), { lspDiagnostics: false });

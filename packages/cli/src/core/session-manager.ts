@@ -74,12 +74,12 @@ export interface NolanTurnPayload {
   afterMessageCount: number;
 }
 
-/** Custom-entry kind for an autopilot verdict marker. Mirrors `ken_turn`:
+/** Custom-entry kind for an autopilot verdict marker. Mirrors `nolan_turn`:
  *  persisted as a `custom` entry with `parentId: null` so it's never on the
- *  message DAG (GG Coder never sees it) but survives resume/compaction and
+ *  message DAG (EZ Coder never sees it) but survives resume/compaction and
  *  interleaves back into the transcript via `afterMessageCount`. Covers all
  *  four terminal/near-terminal autopilot markers so a resumed session renders
- *  the exact same Ken bubble the live run showed — never the raw verdict
+ *  the exact same Nolan bubble the live run showed — never the raw verdict
  *  keyword (e.g. `ALL_CLEAR`) the model actually replied with. */
 export const AUTOPILOT_MARKER_CUSTOM_KIND = "autopilot_marker";
 
@@ -93,7 +93,7 @@ export interface AutopilotMarkerPayload {
 
 /** Custom-entry kind for a generic app transcript marker (plan-mode banner,
  *  task header, error row, user-bubble display hint). Same not-on-the-DAG
- *  treatment as Ken turns / autopilot markers: persisted with `parentId: null`
+ *  treatment as Nolan turns / autopilot markers: persisted with `parentId: null`
  *  so the LLM never sees it, anchored by `afterMessageCount` so the host can
  *  interleave it back into the transcript on resume. */
 export const APP_MARKER_CUSTOM_KIND = "app_transcript_marker";
@@ -102,7 +102,7 @@ export interface AppMarkerPayload {
   version: 1;
   kind: "plan" | "task" | "error" | "user_hint" | "compaction";
   afterMessageCount: number;
-  /** Kind-specific display fields (reason/title/headline/kenSent/counts/…). */
+  /** Kind-specific display fields (reason/title/headline/nolanSent/counts/…). */
   data: Record<string, unknown>;
 }
 
@@ -530,7 +530,7 @@ export class SessionManager {
   }
 
   /** Read all persisted app transcript markers in file order, validated +
-   *  normalized (same not-on-the-DAG treatment as Ken turns). */
+   *  normalized (same not-on-the-DAG treatment as Nolan turns). */
   getAppMarkers(entries: SessionEntry[]): AppMarkerPayload[] {
     return entries.flatMap((entry): AppMarkerPayload[] => {
       if (entry.type !== "custom" || entry.kind !== APP_MARKER_CUSTOM_KIND) return [];
@@ -558,7 +558,7 @@ export class SessionManager {
   }
 
   /** Read all persisted autopilot markers in file order, validated + normalized
-   *  (same not-on-the-DAG treatment as Ken turns). */
+   *  (same not-on-the-DAG treatment as Nolan turns). */
   getAutopilotMarkers(entries: SessionEntry[]): AutopilotMarkerPayload[] {
     return entries.flatMap((entry): AutopilotMarkerPayload[] => {
       if (entry.type !== "custom" || entry.kind !== AUTOPILOT_MARKER_CUSTOM_KIND) return [];

@@ -1,4 +1,4 @@
-// Bench D — prefix-cache hit-rate audit with the REAL GG Coder system prompt.
+// Bench D — prefix-cache hit-rate audit with the REAL EZ Coder system prompt.
 //
 // Arms:
 //   control   — byte-stable prefix, pure message appends (our normal flow)
@@ -13,8 +13,8 @@ import { measuredTurn, estTokens, freshCacheKey, mean, fmt, pct, table, sleep } 
 const TURNS = 6;
 const RUNS = 2;
 
-const { buildSystemPrompt } = await import("../packages/ggcoder/dist/system-prompt.js");
-const { wrapSteeringText } = await import("../packages/ggcoder/dist/core/steering.js");
+const { buildSystemPrompt } = await import("../packages/cli/dist/system-prompt.js");
+const { wrapSteeringText } = await import("../packages/cli/dist/core/steering.js");
 
 const baseSystem = await buildSystemPrompt(process.cwd());
 console.log(`System prompt: ${baseSystem.length} chars (~${estTokens(baseSystem)} tokens)`);

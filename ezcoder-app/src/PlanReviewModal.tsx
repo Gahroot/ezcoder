@@ -6,11 +6,11 @@ import { Markdown } from "./Markdown";
 interface Props {
   /** Plan markdown to review. */
   content: string;
-  /** True while Autopilot Ken is reviewing this plan himself — shows a small
+  /** True while Autopilot Nolan is reviewing this plan himself — shows a small
    *  indicator above the actions. Buttons stay ENABLED: a manual Accept/
-   *  Feedback/Reject always overrides Ken (the sidecar's generation guard
+   *  Feedback/Reject always overrides Nolan (the sidecar's generation guard
    *  discards his stale verdict). */
-  kenReviewing?: boolean;
+  nolanReviewing?: boolean;
   onAccept: () => void;
   onFeedback: (feedback: string) => void;
   onReject: () => void;
@@ -23,7 +23,7 @@ interface Props {
  */
 export function PlanReviewModal({
   content,
-  kenReviewing = false,
+  nolanReviewing = false,
   onAccept,
   onFeedback,
   onReject,
@@ -40,9 +40,9 @@ export function PlanReviewModal({
         <Markdown>{content || "_(plan is empty)_"}</Markdown>
       </div>
 
-      {kenReviewing && (
+      {nolanReviewing && (
         <div className="plan-review-ken" style={{ color: theme.ken }}>
-          Ken is reviewing this plan… you can still accept or reject it yourself.
+          Nolan is reviewing this plan… you can still accept or reject it yourself.
         </div>
       )}
       <div className="plan-review-actions">

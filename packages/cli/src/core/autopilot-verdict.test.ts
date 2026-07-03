@@ -102,7 +102,7 @@ describe("parseAutopilotVerdict", () => {
     expect(parseAutopilotVerdict("\n\nALL_CLEAR")).toEqual({ kind: "all_clear" });
   });
 
-  it("recovers ALL_CLEAR when Ken adds commentary before a trailing bare keyword line", () => {
+  it("recovers ALL_CLEAR when Nolan adds commentary before a trailing bare keyword line", () => {
     const reply =
       "The label is now a plain non-clickable <span>, model name is the separate " +
       "clickable button. Matches the request exactly. Typecheck passed.\nALL_CLEAR";

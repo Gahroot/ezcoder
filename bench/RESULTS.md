@@ -1,7 +1,7 @@
 # Bench Results — A/B/C/D (3 July 2026)
 
 Live arms ran against **gpt-5.5 via real OAuth** (codex transport). Scripts in `bench/`,
-Ink harness in `packages/ggcoder/.bench-render.mjs`. Note: gg-ai's OpenAI usage mapping
+Ink harness in `packages/cli/.bench-render.mjs`. Note: gg-ai's OpenAI usage mapping
 **subtracts** cached tokens from `inputTokens`, so `input` = billed uncached tokens.
 
 ## A — Eager vs deferred MCP tool injection  → WIN, implement
@@ -45,7 +45,7 @@ Live (12 turns/arm):
 - Matches Claude Code 2.1.191's reported ~37% cut.
 - CPU scales with render count, not delta count — the Markdown re-render dominates.
 - 100ms is imperceptible for streaming text; keep first-token immediate paint.
-- gg-app webview uses rAF (~16ms) — same change applies to `useAgentEvents.flushChunks`.
+- ezcoder-app webview uses rAF (~16ms) — same change applies to `useAgentEvents.flushChunks`.
 
 ## C — Partial output on mid-stream failure  → REAL GAP, implement
 
@@ -66,7 +66,7 @@ Live (12 turns/arm):
 
 ## D — Prefix-cache health + steering audit  → PASS, no bug; ship observability
 
-`bench/d-cache-audit.mjs`. Real GG Coder system prompt (~7.9k tok). 3 arms × 2 runs × 6 turns.
+`bench/d-cache-audit.mjs`. Real EZ Coder system prompt (~7.9k tok). 3 arms × 2 runs × 6 turns.
 
 | arm | warm hit% | avg TTFT (warm) | total billed input |
 |---|---|---|---|

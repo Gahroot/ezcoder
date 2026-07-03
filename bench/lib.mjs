@@ -2,8 +2,8 @@
 // Run from repo root: node bench/<script>.mjs
 import { randomUUID } from "node:crypto";
 
-const AI = await import("../packages/gg-ai/dist/index.js");
-const CORE = await import("../packages/gg-core/dist/index.js");
+const AI = await import("../packages/ai/dist/index.js");
+const CORE = await import("../packages/core/dist/index.js");
 
 export const { stream } = AI;
 

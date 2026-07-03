@@ -66,7 +66,7 @@ function mergeSources(a: ProjectSource[], b: ProjectSource[]): ProjectSource[] {
 }
 
 /**
- * Scan ~/.gg/sessions/. Each session directory's name is the encoded cwd
+ * Scan ~/.ezcoder/sessions/. Each session directory's name is the encoded cwd
  * (slashes → underscores), but that encoding is lossy: any real path segment
  * containing a literal underscore round-trips wrong (e.g. `my_app` decodes to
  * `.../my/app`, which doesn't exist, so the project silently vanished from the
@@ -90,7 +90,7 @@ async function discoverGgcoderProjects(): Promise<DiscoveredProject[]> {
     if (mtime === null) continue;
 
     const rawCwd =
-      (await readFirstFromJsonlDir(dir, ggcoderCwdExtractor)) ?? fallbackUnderscoreDecode(entry);
+      (await readFirstFromJsonlDir(dir, ezcoderCwdExtractor)) ?? fallbackUnderscoreDecode(entry);
     if (!rawCwd) continue;
     // Normalize traversal segments (e.g. an agent launched with cwd
     // `.../src-tauri/../..`) so the basename isn't a stray "..".
@@ -109,7 +109,7 @@ async function discoverGgcoderProjects(): Promise<DiscoveredProject[]> {
 }
 
 /**
- * Best-effort decode of a ggcoder session directory name back to a cwd, used
+ * Best-effort decode of a ezcoder session directory name back to a cwd, used
  * only when the session files carry no `cwd` header. Lossy by design (literal
  * underscores are indistinguishable from separators); the caller still verifies
  * the result is an existing directory.
@@ -262,11 +262,11 @@ const claudeCwdExtractor: LineExtractor = (line) => {
   return null;
 };
 
-// ggcoder session files open with a `{"type":"session",...,"cwd":"/abs"}` header
+// ezcoder session files open with a `{"type":"session",...,"cwd":"/abs"}` header
 // that stores the real cwd verbatim. Prefer it over decoding the directory name,
 // whose slash→underscore encoding is lossy for paths containing literal
 // underscores (e.g. `my_app` would wrongly decode to `.../my/app`).
-const ggcoderCwdExtractor: LineExtractor = (line) => {
+const ezcoderCwdExtractor: LineExtractor = (line) => {
   try {
     const parsed = JSON.parse(line) as { type?: unknown; cwd?: unknown };
     if (parsed.type === "session" && typeof parsed.cwd === "string" && parsed.cwd.startsWith("/")) {

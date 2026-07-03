@@ -120,8 +120,8 @@ const PLACEHOLDER_SHUFFLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrs
 const PLACEHOLDER_SHUFFLE_FRAMES = 18;
 const PLACEHOLDER_SHUFFLE_FRAME_MS = 24;
 
-// Autopilot Ken's "all clear" line, rotated so the auto-review loop doesn't
-// repeat the exact same sentence every time GG Coder's work checks out.
+// Autopilot Nolan's "all clear" line, rotated so the auto-review loop doesn't
+// repeat the exact same sentence every time EZ Coder's work checks out.
 // Info row shown when a video attachment is sent to a model without native
 // video analysis. Shared by the live send path and history restore so the
 // resumed transcript matches the live one exactly.
@@ -1058,8 +1058,8 @@ function App(): React.ReactElement {
             if (h.task) return { kind: "task", id: nextId(), title: h.task.title };
             if (h.error) {
               const prefix =
-                h.error.scope === "ken_error"
-                  ? "Ken: "
+                h.error.scope === "nolan_error"
+                  ? "Nolan: "
                   : h.error.scope === "autopilot_error"
                     ? "Autopilot: "
                     : "";
@@ -1073,12 +1073,12 @@ function App(): React.ReactElement {
             }
             if (h.infoKind === "video_warning")
               return { kind: "info", id: nextId(), text: VIDEO_CAPABILITY_WARNING };
-            // Ken "Send to GG Coder" prompts: restore the shimmer label, not the
+            // Nolan "Send to EZ Coder" prompts: restore the shimmer label, not the
             // full prompt body (matches live).
-            if (h.kenSent && h.role === "user")
-              return { kind: "user", id: nextId(), text: h.text, kenSent: true };
-            // Persisted Ken (mentor) turns: his reply restores as a Ken bubble,
-            // the `@Ken` question as a Ken-tinted user bubble (matches live).
+            if (h.nolanSent && h.role === "user")
+              return { kind: "user", id: nextId(), text: h.text, nolanSent: true };
+            // Persisted Nolan (mentor) turns: his reply restores as a Nolan bubble,
+            // the `@Nolan` question as a Nolan-tinted user bubble (matches live).
             if (h.ken && h.role === "assistant") return { kind: "ken", id: nextId(), text: h.text };
             if (h.ken && h.role === "user")
               return { kind: "user", id: nextId(), text: h.text, ken: true };
@@ -1447,7 +1447,7 @@ function App(): React.ReactElement {
       stickToBottomRef.current = true;
       pushItem({ kind: "user", id: nextId(), text: trimmed, nolanSent: true });
       endStreamingText();
-      void sendPrompt(trimmed, [], { kenSent: true }).catch(() => {});
+      void sendPrompt(trimmed, [], { nolanSent: true }).catch(() => {});
     },
     [pushItem, endStreamingText],
   );
@@ -1988,7 +1988,7 @@ function App(): React.ReactElement {
                 onChange={(next) => {
                   setState((s) => (s ? { ...s, autopilot: next } : s));
                   void setAutopilot(next);
-                  setKenPowerBanner(next ? "on" : "off");
+                  setNolanPowerBanner(next ? "on" : "off");
                   // Dedicated cues for turning autopilot on/off (not the generic
                   // click, suppressed via data-suppress-click-sound).
                   playSound(next ? "autopilotOn" : "autopilotOff");
@@ -2410,7 +2410,7 @@ function App(): React.ReactElement {
                   />
                 )}
                 <span className="model-label" style={{ color: theme.ken }}>
-                  Ken
+                  Nolan
                 </span>
                 <button
                   className="model-button"
@@ -2426,7 +2426,7 @@ function App(): React.ReactElement {
                     setNolanModelMenuOpen((o) => !o);
                   }}
                 >
-                  {state?.kenModel ?? state?.model ?? "\u2026"}
+                  {state?.nolanModel ?? state?.model ?? "\u2026"}
                 </button>
               </span>
             </span>
@@ -2476,9 +2476,9 @@ function App(): React.ReactElement {
       {planReview !== null && (
         <PlanReviewModal
           content={planReview}
-          // Autopilot Ken reviews submitted plans himself; the indicator tells
+          // Autopilot Nolan reviews submitted plans himself; the indicator tells
           // the user, but manual Accept/Reject stays live and always wins.
-          kenReviewing={autopilotReviewing}
+          nolanReviewing={autopilotReviewing}
           onAccept={acceptPlan}
           onFeedback={sendPlanFeedback}
           onReject={rejectPlan}
@@ -2631,15 +2631,15 @@ const TranscriptRow = memo(function TranscriptRow({
     case "autopilot": {
       // Autopilot Nolan's verdict, rendered like a normal @Nolan reply (Nolan-tinted
       // dot + text) rather than its own marker style. The text is his verdict as
-      // prose: for a PROMPT he shows what he sent GG Coder back to do; the
-      // terminal verdicts read as short Ken one-liners. `done` rotates through
-      // several casual Ken lines (picked deterministically off the item's
+      // prose: for a PROMPT he shows what he sent EZ Coder back to do; the
+      // terminal verdicts read as short Nolan one-liners. `done` rotates through
+      // several casual Nolan lines (picked deterministically off the item's
       // stable id, so it never flickers on re-render) instead of always
       // repeating the exact same sentence turn after turn.
       const copy: Record<Extract<Item, { kind: "autopilot" }>["phase"], string> = {
         prompted: item.body?.trim()
-          ? `Sending GG Coder back in:\n\n${item.body.trim()}`
-          : "Sending GG Coder back in for another pass.",
+          ? `Sending EZ Coder back in:\n\n${item.body.trim()}`
+          : "Sending EZ Coder back in for another pass.",
         done: allClearCopy(item.copySeed, item.id),
         human: item.reason?.trim() ? item.reason.trim() : "Need you to weigh in on this one.",
         capped: "Paused autopilot after 3 rounds. Take a look before I keep going.",

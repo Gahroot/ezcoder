@@ -68,7 +68,7 @@ export function useAutopilot(opts: {
             body: typeof d.body === "string" ? d.body : undefined,
           });
           // Let useAgentEvents also see the frame so it can close a stale plan
-          // modal when this prompt is Ken's plan-revision feedback.
+          // modal when this prompt is Nolan's plan-revision feedback.
           return false;
         case "autopilot_done":
           setAutopilotReviewing(false);
@@ -94,7 +94,7 @@ export function useAutopilot(opts: {
           setAutopilotReviewing(false);
           pushMarker("capped");
           return true;
-        // Ken approved a submitted plan. The plan state (modal, step-count
+        // Nolan approved a submitted plan. The plan state (modal, step-count
         // seeding, the plan_approved marker) lives in useAgentEvents, so only
         // stop the spinner here and return false so the main handler still
         // processes the frame — same peek-and-pass-through as run_end below.

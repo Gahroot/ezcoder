@@ -8,11 +8,11 @@
  * runnable prompts the user can fire into EZ Coder, plus blunt, casual
  * mentorship. Nolan never writes code; he recommends, EZ Coder executes.
  *
- * This module owns Ken's identity + method, PLUS the static project-context
+ * This module owns Nolan's identity + method, PLUS the static project-context
  * files (CLAUDE.md/AGENTS.md up the tree) — they rarely change turn to turn,
  * so they're read once per session creation and folded into the cached system
  * prompt instead of being re-sent uncached in every digest (see
- * `buildKenDigest()` in ken-context.ts, which only carries what's genuinely
+ * `buildNolanDigest()` in nolan-context.ts, which only carries what's genuinely
  * dynamic: cwd/platform/git branch/recent activity/original request).
  */
 import { collectProjectContext } from "../system-prompt.js";
@@ -44,7 +44,7 @@ function renderUncachedDateSuffix(): string {
  * are listed by the session's own Tools section; this prompt teaches him how to
  * think and how to format what he hands back.
  */
-export async function buildKenSystemPrompt(cwd: string): Promise<string> {
+export async function buildNolanSystemPrompt(cwd: string): Promise<string> {
   return [
     renderIdentity(),
     renderEdge(),
@@ -74,7 +74,7 @@ export async function buildKenSystemPrompt(cwd: string): Promise<string> {
  * user-facing output contract for the verdict format and drops the chat-voice
  * sections to save tokens.
  */
-export async function buildKenAutopilotSystemPrompt(cwd: string): Promise<string> {
+export async function buildNolanAutopilotSystemPrompt(cwd: string): Promise<string> {
   return [
     renderIdentity(),
     renderSkeptical(),
@@ -93,7 +93,7 @@ export async function buildKenAutopilotSystemPrompt(cwd: string): Promise<string
 /** Static project-context files (CLAUDE.md/AGENTS.md up the tree from cwd),
  *  folded into the cached system prompt. Read once per session creation
  *  instead of per-turn in the digest — rarely changes mid-session, and even
- *  when it does, a stale read is harmless (Ken's tools can always re-check). */
+ *  when it does, a stale read is harmless (Nolan's tools can always re-check). */
 async function renderProjectContext(cwd: string): Promise<string> {
   const parts = await collectProjectContext(cwd).catch(() => [] as string[]);
   if (parts.length === 0) return "";
@@ -215,7 +215,7 @@ function renderAutopilotContract(): string {
   return (
     `## Autopilot mode: verdict only\n\n` +
     `You are running in autopilot. There is NO user in this conversation — you are ` +
-    `reviewing GG Coder's just-finished turn directly, and your reply is read by a ` +
+    `reviewing EZ Coder's just-finished turn directly, and your reply is read by a ` +
     `machine, not a person. Do not greet, explain your reasoning, mentor, or summarize ` +
     `what changed. The parser only reads the FIRST line of your reply — anything you ` +
     `put before the keyword (a recap, an opinion, "Looks good.") is treated as ` +
@@ -223,7 +223,7 @@ function renderAutopilotContract(): string {
     `than saying nothing. The very first character of your reply must be the ` +
     `keyword. Output exactly one verdict in this format, first line = keyword, ` +
     `nothing before it:\n\n` +
-    `PROMPT\n<a runnable GG Coder prompt, 1-3 lines, terminology-correct, says what ` +
+    `PROMPT\n<a runnable EZ Coder prompt, 1-3 lines, terminology-correct, says what ` +
     `to do and why>\n\n` +
     `ALL_CLEAR\n\n` +
     `IGNORE\n\n` +
@@ -246,9 +246,9 @@ function renderAutopilotContract(): string {
     `- HUMAN only when a real decision needs the user: an ambiguous requirement, a ` +
     `destructive tradeoff, missing information you cannot verify with your ` +
     `read-only tools, credentials/secrets, external access, budget/cost, or a ` +
-    `product/taste choice the user must own. GG Coder asking the user a ` +
+    `product/taste choice the user must own. EZ Coder asking the user a ` +
     `question or presenting options is HUMAN only when answering it requires ` +
-    `one of those user-level decisions. If GG Coder merely asks permission to ` +
+    `one of those user-level decisions. If EZ Coder merely asks permission to ` +
     `continue work that is mechanically implied by the user's original ask and ` +
     `safe to do without new information, do NOT block on the human. Use PROMPT ` +
     `with the concrete next step.\n` +
@@ -258,7 +258,7 @@ function renderAutopilotContract(): string {
     `only for a genuine user-level decision (destructive/ambiguous product ` +
     `choice). Default to approving a sound plan — taste nitpicks are not ` +
     `blockers. Never IGNORE a plan.\n` +
-    `- Transcript lines labeled "Ken autopilot (injected)" are YOUR own earlier ` +
+    `- Transcript lines labeled "Nolan autopilot (injected)" are YOUR own earlier ` +
     `fix prompts, not user asks. Judge only against the original user request.\n` +
     `- You are read-only. Use read/grep/find/ls/web/kencode-search ONLY when a fact ` +
     `is truly in doubt; otherwise judge from the transcript and answer. Every wasted ` +

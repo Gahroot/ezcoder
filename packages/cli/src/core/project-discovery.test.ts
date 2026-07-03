@@ -19,7 +19,7 @@ vi.mock("../config.js", async (orig) => {
   };
 });
 
-/** Write a minimal ggcoder session file (header + one message) into `dir`. */
+/** Write a minimal ezcoder session file (header + one message) into `dir`. */
 async function writeSession(dir: string, cwd: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
   const header = JSON.stringify({
@@ -40,12 +40,12 @@ async function writeSession(dir: string, cwd: string): Promise<void> {
   await fs.writeFile(path.join(dir, "session.jsonl"), `${header}\n${message}\n`, "utf-8");
 }
 
-describe("discoverProjects (ggcoder store)", () => {
+describe("discoverProjects (ezcoder store)", () => {
   let tmp: string;
 
   beforeEach(async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), "gg-discovery-"));
-    state.sessionsDir = path.join(tmp, ".gg", "sessions");
+    state.sessionsDir = path.join(tmp, ".ezcoder", "sessions");
     await fs.mkdir(state.sessionsDir, { recursive: true });
     // Point Claude/Codex discovery at an empty home so they contribute nothing.
     vi.spyOn(os, "homedir").mockReturnValue(path.join(tmp, "home"));
@@ -69,7 +69,7 @@ describe("discoverProjects (ggcoder store)", () => {
     const found = projects.find((p) => p.path === projectPath);
     expect(found).toBeDefined();
     expect(found?.name).toBe("my_app");
-    expect(found?.sources).toContain("ggcoder");
+    expect(found?.sources).toContain("ezcoder");
     // The lossy decode must NOT surface as a phantom project.
     expect(projects.some((p) => p.path === path.join(tmp, "projects", "my", "app"))).toBe(false);
   });

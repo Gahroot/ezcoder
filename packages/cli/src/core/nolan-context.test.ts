@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import os from "node:os";
 import {
-  buildKenDigest,
-  buildKenAutopilotContext,
-  buildKenAutopilotPlanContext,
+  buildNolanDigest,
+  buildNolanAutopilotContext,
+  buildNolanAutopilotPlanContext,
   AUTOPILOT_REVIEW_INSTRUCTION,
   AUTOPILOT_PLAN_REVIEW_INSTRUCTION,
-  KEN_RECENT_MESSAGE_LIMIT,
+  NOLAN_RECENT_MESSAGE_LIMIT,
   INJECTED_PROMPT_LABEL,
 } from "./nolan-context.js";
 import { USER_INSTRUCTIONS_HEADER } from "./autopilot-gate.js";
@@ -82,7 +82,7 @@ describe("buildNolanDigest", () => {
   };
 
   it("includes the env and the question", () => {
-    const digest = buildKenDigest({ ...base, messages: [] });
+    const digest = buildNolanDigest({ ...base, messages: [] });
     expect(digest).toContain("/tmp/proj");
     expect(digest).toContain("main");
     expect(digest).toContain("what next?");
@@ -122,7 +122,7 @@ describe("buildNolanDigest", () => {
       { role: "user", content: "add a login form" },
       { role: "assistant", content: "Added the form." },
     ];
-    const digest = buildKenAutopilotContext({
+    const digest = buildNolanAutopilotContext({
       cwd: base.cwd,
       gitBranch: base.gitBranch,
       platform: base.platform,
@@ -140,9 +140,9 @@ describe("buildNolanDigest", () => {
   });
 
   it("autopilot review instruction separates true human decisions from safe implied follow-ups", () => {
-    // GG Coder ending with a question/options is HUMAN only when it needs a
+    // EZ Coder ending with a question/options is HUMAN only when it needs a
     // real user-level decision. Permission to continue safe work implied by the
-    // original ask should become a PROMPT, not a blocker. Ken must also be told
+    // original ask should become a PROMPT, not a blocker. Nolan must also be told
     // injected lines are his own — these are leak regressions.
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("asking the user a question");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("HUMAN only when");
@@ -151,19 +151,19 @@ describe("buildNolanDigest", () => {
       "mechanically implied by the user's original ask",
     );
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain(
-      "safe for GG Coder to do without new information",
+      "safe for EZ Coder to do without new information",
     );
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("use PROMPT with the next concrete follow-up");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Original user request");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Nolan autopilot (injected)");
   });
 
-  it("buildKenAutopilotPlanContext inlines the plan section + plan instruction", () => {
+  it("buildNolanAutopilotPlanContext inlines the plan section + plan instruction", () => {
     const messages: Message[] = [
       { role: "user", content: "add OAuth login" },
       { role: "assistant", content: "Plan drafted." },
     ];
-    const digest = buildKenAutopilotPlanContext({
+    const digest = buildNolanAutopilotPlanContext({
       cwd: base.cwd,
       gitBranch: base.gitBranch,
       platform: base.platform,
@@ -183,8 +183,8 @@ describe("buildNolanDigest", () => {
     expect(digest).not.toContain(AUTOPILOT_REVIEW_INSTRUCTION);
   });
 
-  it("buildKenAutopilotPlanContext caps a pathological plan", () => {
-    const digest = buildKenAutopilotPlanContext({
+  it("buildNolanAutopilotPlanContext caps a pathological plan", () => {
+    const digest = buildNolanAutopilotPlanContext({
       cwd: base.cwd,
       gitBranch: base.gitBranch,
       platform: base.platform,

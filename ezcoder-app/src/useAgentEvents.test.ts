@@ -24,7 +24,7 @@ const ev = (type: string, data: Record<string, unknown> = {}): SidecarEvent =>
   ({ type, data }) as SidecarEvent;
 
 function setup(
-  handleKenEvent: (e: SidecarEvent) => boolean = () => false,
+  handleNolanEvent: (e: SidecarEvent) => boolean = () => false,
   initialState: Partial<AgentState> = {},
 ) {
   let items: Item[] = [];
@@ -262,7 +262,7 @@ describe("useAgentEvents", () => {
         ev("plan_exit", { planPath: "/tmp/p.md", content: "# Plan" }),
       );
     });
-    // The content/path are still stashed for Ken auto-review + auto-accept step
+    // The content/path are still stashed for Nolan auto-review + auto-accept step
     // counting, but the human overlay stays hidden while autopilot owns review.
     expect(getPlanReview()).toBeNull();
     expect(deps.planReviewPathRef.current).toBe("/tmp/p.md");
@@ -279,12 +279,12 @@ describe("useAgentEvents", () => {
     });
     // Step count seeded for the accept-driven session_reset to carry over.
     expect(deps.pendingPlanTotalRef.current).toBe(2);
-    // The approved marker lands in the transcript (rendered as a Ken bubble).
+    // The approved marker lands in the transcript (rendered as a Nolan bubble).
     const marker = getItems().find((i) => i.kind === "autopilot");
     expect(marker).toMatchObject({ kind: "autopilot", phase: "plan_approved" });
   });
 
-  it("autopilot_prompted closes the stale plan modal after Ken asks for revision", () => {
+  it("autopilot_prompted closes the stale plan modal after Nolan asks for revision", () => {
     const { hook, getPlanReview } = setup();
     act(() => {
       hook.result.current.handleEvent(
@@ -295,7 +295,7 @@ describe("useAgentEvents", () => {
     act(() => {
       hook.result.current.handleEvent(ev("autopilot_prompted", { round: 1, body: "revise it" }));
     });
-    // Autopilot-only: a revision prompt means Ken took over the plan review;
+    // Autopilot-only: a revision prompt means Nolan took over the plan review;
     // the human modal should disappear. Non-autopilot never emits this frame.
     expect(getPlanReview()).toBeNull();
   });

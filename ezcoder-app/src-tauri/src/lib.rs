@@ -67,7 +67,7 @@ struct DroppedPathInfo {
 
 /// OS-level permission status shown in the Settings modal's "Grant
 /// Permissions" row. Only macOS has anything to grant today (Full Disk
-/// Access — needed because the subagent tool spawns a fresh `ggnode` process
+/// Access — needed because the subagent tool spawns a fresh `eznode` process
 /// per call, which re-triggers macOS's per-folder privacy prompts under
 /// Desktop/Documents/Downloads/iCloud). Windows/Linux report
 /// `applicable: false` so the webview hides the row entirely instead of

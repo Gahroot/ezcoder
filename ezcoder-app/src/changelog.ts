@@ -36,7 +36,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Big tool catalogs no longer slow down your first reply. I keep the essentials ready, then pull in the heavy stuff only when you actually need it.",
       "Connection hiccups feel way less annoying now. If a reply gets cut off after real progress, I keep what you already saw and continue instead of making you watch the same answer again.",
       "Streaming feels calmer and lighter. I tuned the live text updates so long answers stay smooth without making your machine work so hard.",
-      "I trimmed the instruction stack again. GG Coder spends less attention on boilerplate and more attention on your code.",
+      "I trimmed the instruction stack again. EZ Coder spends less attention on boilerplate and more attention on your code.",
     ],
   },
   {
@@ -60,10 +60,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.14.0",
     date: "2026-07-03",
     items: [
-      "Autopilot can handle plans on its own now. When GG Coder drafts a solid plan, I review it, approve it, and kick off the build without making you babysit the button.",
-      "Bad plans get bounced back cleanly. I send GG Coder the exact revision it needs, then review the new plan again until it is ready to ship.",
+      "Autopilot can handle plans on its own now. When EZ Coder drafts a solid plan, I review it, approve it, and kick off the build without making you babysit the button.",
+      "Bad plans get bounced back cleanly. I send EZ Coder the exact revision it needs, then review the new plan again until it is ready to ship.",
       "Plan popups stay out of your way when Autopilot is on. You still get the normal review screen when you are driving manually, but when I am on watch I keep the flow moving.",
-      "I got better at spotting fake blockers. If GG Coder asks permission for safe work that is already implied by your request, I tell it to keep going instead of dragging you back in.",
+      "I got better at spotting fake blockers. If EZ Coder asks permission for safe work that is already implied by your request, I tell it to keep going instead of dragging you back in.",
     ],
   },
   {

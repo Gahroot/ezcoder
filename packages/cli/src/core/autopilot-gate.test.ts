@@ -159,7 +159,7 @@ describe("shouldStartAutopilotCycle", () => {
       shouldStartAutopilotCycle({ ...reviewable, planPending: true, cancelled: true }),
     ).toEqual({ start: false, reason: "cancelled" });
     // Still INSIDE plan mode (entered, never exited) → no submitted plan to
-    // review; Ken must not touch a read-only session.
+    // review; Nolan must not touch a read-only session.
     expect(shouldStartAutopilotCycle({ ...reviewable, planPending: true, planMode: true })).toEqual(
       { start: false, reason: "plan-mode" },
     );

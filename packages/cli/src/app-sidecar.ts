@@ -23,12 +23,12 @@ import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { AgentSession } from "./core/agent-session.js";
-import { buildKenSystemPrompt, buildKenAutopilotSystemPrompt } from "./core/ken-prompt.js";
+import { buildNolanSystemPrompt, buildNolanAutopilotSystemPrompt } from "./core/nolan-prompt.js";
 import {
-  buildKenDigest,
-  buildKenAutopilotContext,
-  buildKenAutopilotPlanContext,
-} from "./core/ken-context.js";
+  buildNolanDigest,
+  buildNolanAutopilotContext,
+  buildNolanAutopilotPlanContext,
+} from "./core/nolan-context.js";
 import { parseAutopilotVerdict, type AutopilotVerdict } from "./core/autopilot-verdict.js";
 import {
   isWorkflowCommandText,
@@ -39,12 +39,12 @@ import {
   type WorkflowCommandSpec,
 } from "./core/autopilot-gate.js";
 import { driveAutopilotCycle } from "./core/autopilot-cycle.js";
-import { validateKenModelPref, effectiveKenModel, type KenModelPref } from "./core/ken-model.js";
-import type { KenTurnPayload, AppMarkerPayload } from "./core/session-manager.js";
+import { validateNolanModelPref, effectiveNolanModel, type NolanModelPref } from "./core/nolan-model.js";
+import type { NolanTurnPayload, AppMarkerPayload } from "./core/session-manager.js";
 import {
   normalizeAutopilotMarkersForHistory,
   normalizeAppMarkersForHistory,
-  normalizeKenTurnsForHistory,
+  normalizeNolanTurnsForHistory,
   restoreUserRow,
   restoreAssistantTexts,
   autopilotMarkerCopySeed,
@@ -287,9 +287,9 @@ interface HistoryEntryForWire {
   compacted?: boolean;
   /** Persisted counts for a compacted row's "N → M messages" summary. */
   compactionCounts?: { originalCount: number; newCount: number };
-  /** True when this entry is a Ken Kai (mentor) turn: a `user` row is the `@Ken`
-   *  question, an `assistant` row is Ken's reply. The webview renders these in
-   *  Ken's color (user bubble tinted; assistant as a Ken bubble). */
+  /** True when this entry is a Nolan Grout (mentor) turn: a `user` row is the `@Nolan`
+   *  question, an `assistant` row is Nolan's reply. The webview renders these in
+   *  Nolan's color (user bubble tinted; assistant as a Nolan bubble). */
   ken?: boolean;
   /** Present when this entry is a persisted autopilot verdict marker (an
    *  `assistant` row with empty `text`). The webview renders it exactly like
@@ -302,9 +302,9 @@ interface HistoryEntryForWire {
     /** Stable seed derived from persisted marker data for deterministic all-clear copy. */
     copySeed?: string;
   };
-  /** True when this user prompt came from a Ken "Send to GG Coder" button —
+  /** True when this user prompt came from a Nolan "Send to EZ Coder" button —
    *  the webview renders the shimmering label instead of the prompt body. */
-  kenSent?: boolean;
+  nolanSent?: boolean;
   /** Enhancer highlight segments for this user prompt (unedited enhanced sends). */
   enhancements?: unknown[];
   /** Plan-mode entry banner (ASCII logo + reason), persisted at plan_enter. */
@@ -312,7 +312,7 @@ interface HistoryEntryForWire {
   /** Task header row (task title), persisted at task_start. */
   task?: { title: string };
   /** Error row (headline/message/guidance), persisted by broadcastError.
-   *  `scope` selects the live prefix (ken_error → "Ken: ", autopilot_error →
+   *  `scope` selects the live prefix (nolan_error → "Nolan: ", autopilot_error →
    *  "Autopilot: "). */
   error?: { scope: string; headline: string; message?: string; guidance?: string };
   /** Webview-copy info row marker (e.g. the video-capability warning). */
@@ -856,16 +856,16 @@ function lastAssistantText(messages: ReturnType<AgentSession["getMessages"]>): s
 }
 
 /**
- * Assemble Ken's context digest for one `@Ken` question: git/env + the build
+ * Assemble Nolan's context digest for one `@Nolan` question: git/env + the build
  * session's compaction summary + recent activity. Prepended to the user's
- * question as Ken's prompt body each turn. Project docs (CLAUDE.md/AGENTS.md)
- * are NOT here — they're folded into Ken's cached system prompt once per
- * session instead (see ken-prompt.ts), so they hit the provider prompt cache
+ * question as Nolan's prompt body each turn. Project docs (CLAUDE.md/AGENTS.md)
+ * are NOT here — they're folded into Nolan's cached system prompt once per
+ * session instead (see nolan-prompt.ts), so they hit the provider prompt cache
  * instead of being re-sent uncached on every question. Workflow commands +
  * autopilot-injected prompts are passed through so the digest labels them as
  * what they are instead of user-authored asks.
  */
-function buildKenContext(
+function buildNolanContext(
   buildSession: AgentSession,
   cwd: string,
   gitBranch: string | null,
@@ -873,7 +873,7 @@ function buildKenContext(
   workflowCommands: readonly WorkflowCommandSpec[],
   injectedPrompts: readonly string[],
 ): string {
-  return buildKenDigest({
+  return buildNolanDigest({
     question,
     cwd,
     gitBranch,
@@ -884,7 +884,7 @@ function buildKenContext(
 }
 
 // ── Progress ("Ranks") ──────────────────────────────────────────────────
-// Daemon-level XP/rank manager: one durable file (~/.gg/progress.json), awards
+// Daemon-level XP/rank manager: one durable file (~/.ezcoder/progress.json), awards
 // applied under a file lock, snapshots broadcast to EVERY session's SSE clients,
 // and an fs.watch on ~/.gg so writes from OTHER daemon processes (dev + packaged
 // app side by side) re-broadcast here too — deduped by the lastEvent nonce.
@@ -1143,7 +1143,7 @@ async function createSession(
       // into a PLAN review instead of a stale work review (plan mode is
       // already false here, so the gate's planMode check alone never catches
       // a submission). setPendingPlan bumps planGeneration, which invalidates
-      // any in-flight Ken plan review racing a user action.
+      // any in-flight Nolan plan review racing a user action.
       setPendingPlan(planPath, content);
       broadcast("plan_exit", { planPath, content });
       return "Plan submitted for user review. Wait for the user to approve, reject, or dismiss it before implementing.";
@@ -1253,12 +1253,12 @@ async function createSession(
   // cycles drift into Nolan reviewing against his own last prompt. Cleared
   // whenever the conversation resets (new session / plan accept / task run).
   let injectedAutopilotPrompts: string[] = [];
-  // The plan GG Coder submitted via exit_plan that still awaits a decision
-  // (Ken's auto-review in autopilot, or the user's modal). Path + the content
+  // The plan EZ Coder submitted via exit_plan that still awaits a decision
+  // (Nolan's auto-review in autopilot, or the user's modal). Path + the content
   // read at submission time (fallback if the file becomes unreadable).
   let pendingPlanPath: string | null = null;
   let pendingPlanContent = "";
-  // Bumped on EVERY pending-plan set/clear. Ken's plan review captures it
+  // Bumped on EVERY pending-plan set/clear. Nolan's plan review captures it
   // before reviewing and re-checks it before acting on the verdict, so a user
   // Accept/Reject racing an in-flight review always wins — the stale verdict
   // is discarded silently.
@@ -1359,12 +1359,12 @@ async function createSession(
       provider: target.provider,
       model: target.model,
       cwd,
-      systemPrompt: await buildKenSystemPrompt(cwd),
-      allowedTools: KEN_ALLOWED_TOOLS,
-      allowedMcpServers: KEN_ALLOWED_MCP_SERVERS,
+      systemPrompt: await buildNolanSystemPrompt(cwd),
+      allowedTools: NOLAN_ALLOWED_TOOLS,
+      allowedMcpServers: NOLAN_ALLOWED_MCP_SERVERS,
       transient: true,
-      signal: kenAbort.signal,
-      // Ken's bursty, spread-out turns (chat) outlast the default 5-min cache
+      signal: nolanAbort.signal,
+      // Nolan's bursty, spread-out turns (chat) outlast the default 5-min cache
       // TTL regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
     });
@@ -1428,12 +1428,12 @@ async function createSession(
       provider: target.provider,
       model: target.model,
       cwd,
-      systemPrompt: await buildKenAutopilotSystemPrompt(cwd),
-      allowedTools: KEN_ALLOWED_TOOLS,
-      allowedMcpServers: KEN_ALLOWED_MCP_SERVERS,
+      systemPrompt: await buildNolanAutopilotSystemPrompt(cwd),
+      allowedTools: NOLAN_ALLOWED_TOOLS,
+      allowedMcpServers: NOLAN_ALLOWED_MCP_SERVERS,
       transient: true,
-      signal: kenAutoAbort.signal,
-      // Autopilot review rounds routinely span the injected GG Coder run
+      signal: nolanAutoAbort.signal,
+      // Autopilot review rounds routinely span the injected EZ Coder run
       // (often >5 min) regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
     });
@@ -1528,8 +1528,8 @@ async function createSession(
     autopilotReviewing = true;
     broadcast("autopilot_review_start", {});
     try {
-      const ken = await ensureKenAutoSession();
-      const digest = buildKenAutopilotContext({
+      const ken = await ensureNolanAutoSession();
+      const digest = buildNolanAutopilotContext({
         cwd,
         gitBranch,
         messages: session.getMessages(),
@@ -1553,7 +1553,7 @@ async function createSession(
 
   // One PLAN review: like runAutopilotReview but the digest carries the
   // submitted plan's markdown (`## Plan under review`) and the plan-review
-  // instruction — Ken judges the plan itself, not finished work. Returns null
+  // instruction — Nolan judges the plan itself, not finished work. Returns null
   // on failure; a failure caused by the user's own action racing the review
   // (cancel or a manual Accept/Reject that bumped planGeneration) stays
   // SILENT — no autopilot_error — because the user's decision already won.
@@ -1564,11 +1564,11 @@ async function createSession(
     autopilotReviewing = true;
     broadcast("autopilot_review_start", {});
     try {
-      const ken = await ensureKenAutoSession();
+      const ken = await ensureNolanAutoSession();
       // Re-read the plan file (the run may have revised it in place); fall
       // back to the content captured at exit_plan time.
       const planContent = await fs.readFile(planPath, "utf-8").catch(() => pendingPlanContent);
-      const digest = buildKenAutopilotPlanContext({
+      const digest = buildNolanAutopilotPlanContext({
         cwd,
         gitBranch,
         messages: session.getMessages(),
@@ -1581,23 +1581,23 @@ async function createSession(
       if (autopilotCancelled || planGeneration !== genAtStart) return null;
       return parseAutopilotVerdict(lastAssistantText(ken.getMessages()));
     } catch (err) {
-      // User action mid-review (manual Accept aborts the kenAuto run): drop
-      // the review silently — the user's decision supersedes Ken's.
+      // User action mid-review (manual Accept aborts the nolanAuto run): drop
+      // the review silently — the user's decision supersedes Nolan's.
       if (autopilotCancelled || planGeneration !== genAtStart) return null;
       broadcastError("autopilot_error", "autopilot plan review failed", err);
       return null;
     } finally {
       autopilotReviewing = false;
       // Apply any model switch that landed mid-review.
-      const pending = pendingKenAutoModel;
-      pendingKenAutoModel = null;
-      if (pending) await syncKenAutoModel(pending.provider, pending.model);
+      const pending = pendingNolanAutoModel;
+      pendingNolanAutoModel = null;
+      if (pending) await syncNolanAutoModel(pending.provider, pending.model);
     }
   }
 
   // The prompt fed to the fresh session after a plan is accepted — the SAME
   // string the webview sends on a manual Accept (see PlanReviewModal's accept
-  // handler in gg-app/src/App.tsx). Keep the two in lockstep so auto- and
+  // handler in ezcoder-app/src/App.tsx). Keep the two in lockstep so auto- and
   // manual approval produce identical implementation turns.
   const IMPLEMENT_PLAN_PROMPT =
     "The plan has been approved. Implement it now, following each step in order.";
@@ -1622,7 +1622,7 @@ async function createSession(
         maxRounds: pendingPlanPath !== null ? MAX_AUTOPILOT_ROUNDS + 2 : MAX_AUTOPILOT_ROUNDS,
         isCancelled: () => autopilotCancelled,
         // An injected run entering plan mode WITHOUT submitting (enter_plan,
-        // no exit_plan) halts the cycle — Ken never prompts into a read-only
+        // no exit_plan) halts the cycle — Nolan never prompts into a read-only
         // plan-mode session. A submitted plan takes the planPending branch.
         isPlanMode: () => session.getPlanMode(),
         planPending: () => pendingPlanPath !== null,
@@ -1681,7 +1681,7 @@ async function createSession(
         runPrompt: (body) => runAgent(body, () => session.prompt(body)),
         emit: (event) => {
           // Persist the terminal verdict marker so a resumed session renders the
-          // same Ken bubble the live run showed instead of dropping it or
+          // same Nolan bubble the live run showed instead of dropping it or
           // falling back to the raw verdict text (e.g. ALL_CLEAR).
           if (event.type === "autopilot_done") {
             // Broadcast the SAME copySeed the persisted marker will produce on
@@ -1756,7 +1756,7 @@ async function createSession(
           assistantMessagesAdded: countAssistantMessages(session.getMessages()) - assistantsBefore,
           // Skip the review API call outright for turns that only started a
           // background process (dev server/watcher), ran a read-only lookup, or
-          // committed/pushed — Ken's autopilot contract already IGNOREs these,
+          // committed/pushed — Nolan's autopilot contract already IGNOREs these,
           // so there's no reason to pay for that verdict.
           mechanicalOnly: isMechanicalOnlyTurn(
             extractTurnToolCalls(session.getMessages(), messagesBefore),
@@ -2118,15 +2118,15 @@ async function createSession(
         // they were recorded after, so each lands right after that message. A
         // turn becomes two wire rows: the `@Nolan` question (user) + Nolan's reply
         // (assistant), both flagged `ken` so the webview tints them.
-        // Deduped; stale anchors are clamped to the last message (Ken turns
+        // Deduped; stale anchors are clamped to the last message (Nolan turns
         // carry real conversation, so they render at the end instead of
         // vanishing).
-        const kenByCount = new Map<number, KenTurnPayload[]>();
-        for (const turn of normalizeKenTurnsForHistory(
-          session.getKenTurns(),
+        const nolanByCount = new Map<number, NolanTurnPayload[]>();
+        for (const turn of normalizeNolanTurnsForHistory(
+          session.getNolanTurns(),
           messages.filter((m) => m.role !== "system").length,
         )) {
-          const list = kenByCount.get(turn.afterMessageCount) ?? [];
+          const list = nolanByCount.get(turn.afterMessageCount) ?? [];
           list.push(turn);
           nolanByCount.set(turn.afterMessageCount, list);
         }
@@ -2140,7 +2140,7 @@ async function createSession(
           }
         };
 
-        // Autopilot verdict markers to interleave, same anchor scheme as Ken
+        // Autopilot verdict markers to interleave, same anchor scheme as Nolan
         // turns — each becomes a single assistant row the webview renders
         // exactly like the live `autopilot` item (never a raw verdict string).
         // Compact/continuation rewrites can carry old markers whose original
@@ -2240,7 +2240,7 @@ async function createSession(
         let nonSystemCount = 0;
         // Turns/markers recorded before any build message (anchor 0) render at
         // the top.
-        flushKen(0);
+        flushNolan(0);
         flushAutopilot(0);
         flushAppMarkers(0);
 
@@ -2319,7 +2319,7 @@ async function createSession(
                 ...(compacted && compactionCounts.length > 0
                   ? { compactionCounts: compactionCounts.pop() }
                   : {}),
-                ...(hint?.kenSent === true ? { kenSent: true } : {}),
+                ...(hint?.nolanSent === true ? { nolanSent: true } : {}),
                 ...(Array.isArray(hint?.enhancements) ? { enhancements: hint.enhancements } : {}),
               });
               // Live showed the video-capability warning right after the bubble.
@@ -2372,17 +2372,17 @@ async function createSession(
             }
           }
 
-          // Interleave any Ken turns / autopilot / app markers recorded right
+          // Interleave any Nolan turns / autopilot / app markers recorded right
           // after this message.
-          flushKen(nonSystemCount);
+          flushNolan(nonSystemCount);
           flushAutopilot(nonSystemCount);
           flushAppMarkers(nonSystemCount);
         }
 
-        // Flush remaining Ken turns whose anchor is at/after the message count so
+        // Flush remaining Nolan turns whose anchor is at/after the message count so
         // none are dropped. Autopilot/app markers beyond the restored message
         // count were already filtered above; any remaining marker here is valid.
-        for (const count of [...kenByCount.keys()].sort((a, b) => a - b)) flushKen(count);
+        for (const count of [...nolanByCount.keys()].sort((a, b) => a - b)) flushNolan(count);
         for (const count of [...autopilotByCount.keys()].sort((a, b) => a - b))
           flushAutopilot(count);
         for (const count of [...appMarkersByCount.keys()].sort((a, b) => a - b))
@@ -2422,12 +2422,12 @@ async function createSession(
       void readBody(req).then(async (raw) => {
         let text: string;
         let attachments: AppAttachment[];
-        let meta: { kenSent?: boolean; enhancements?: unknown[] } | undefined;
+        let meta: { nolanSent?: boolean; enhancements?: unknown[] } | undefined;
         try {
           const body = JSON.parse(raw) as {
             text?: string;
             attachments?: AppAttachment[];
-            meta?: { kenSent?: boolean; enhancements?: unknown[] };
+            meta?: { nolanSent?: boolean; enhancements?: unknown[] };
           };
           text = body.text ?? "";
           attachments = Array.isArray(body.attachments) ? body.attachments : [];
@@ -2454,16 +2454,16 @@ async function createSession(
           return;
         }
         json(res, 202, { accepted: true });
-        // Webview display hint for this prompt's user bubble (kenSent shimmer
+        // Webview display hint for this prompt's user bubble (nolanSent shimmer
         // label / enhancer highlight segments). Anchored +1 so it attaches to
         // the user message the prompt below is about to push. Queued prompts
         // skip this (their position in the run is unpredictable).
-        if (meta && (meta.kenSent === true || Array.isArray(meta.enhancements))) {
+        if (meta && (meta.nolanSent === true || Array.isArray(meta.enhancements))) {
           void session
             .persistAppMarker(
               "user_hint",
               {
-                ...(meta.kenSent === true ? { kenSent: true } : {}),
+                ...(meta.nolanSent === true ? { nolanSent: true } : {}),
                 ...(Array.isArray(meta.enhancements) ? { enhancements: meta.enhancements } : {}),
               },
               1,
@@ -2475,7 +2475,7 @@ async function createSession(
         autopilotCancelled = false;
         // A typed message while a plan modal/review is pending (reject,
         // feedback, anything) supersedes the pending plan — the bump also
-        // invalidates any in-flight Ken plan review.
+        // invalidates any in-flight Nolan plan review.
         clearPendingPlan();
         // Gate inputs captured around the run: whether this turn is a workflow
         // slash command (attachment prompts skip slash expansion entirely), and
@@ -2520,7 +2520,7 @@ async function createSession(
           assistantMessagesAdded: countAssistantMessages(session.getMessages()) - assistantsBefore,
           // Skip the review API call outright for turns that only started a
           // background process (dev server/watcher), ran a read-only lookup, or
-          // committed/pushed — Ken's autopilot contract already IGNOREs these,
+          // committed/pushed — Nolan's autopilot contract already IGNOREs these,
           // so there's no reason to pay for that verdict.
           mechanicalOnly: isMechanicalOnlyTurn(
             extractTurnToolCalls(session.getMessages(), messagesBefore),
@@ -3059,10 +3059,10 @@ async function createSession(
           json(res, 409, { error: "cannot accept a plan while the agent is running" });
           return;
         }
-        // Manual accept, possibly racing Ken's autopilot plan review: the user
+        // Manual accept, possibly racing Nolan's autopilot plan review: the user
         // always wins. Bump the plan generation (invalidates any in-flight
         // review's verdict), stop the cycle, abort a mid-prompt review on the
-        // kenAuto session, and clear the spinner — autopilot_ignored renders
+        // nolanAuto session, and clear the spinner — autopilot_ignored renders
         // nothing, so no stale "approve or reject" bubble ever lands. The
         // webview's follow-up "implement" /prompt arrives as a fresh turn
         // (resetting autopilotCancelled), so the implementation still gets its
@@ -3070,9 +3070,9 @@ async function createSession(
         // it queues and runStrandedQueue drains it as a fresh turn.
         clearPendingPlan();
         autopilotCancelled = true;
-        kenAutoAbort.abort();
-        kenAutoAbort = new AbortController();
-        kenAutoSession?.setSignal(kenAutoAbort.signal);
+        nolanAutoAbort.abort();
+        nolanAutoAbort = new AbortController();
+        nolanAutoSession?.setSignal(nolanAutoAbort.signal);
         if (autopilotReviewing) {
           autopilotReviewing = false;
           broadcast("autopilot_ignored", {});

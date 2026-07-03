@@ -707,13 +707,13 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
         case "plan_exit": {
           setState((s) => (s ? { ...s, planMode: false } : s));
           // Always stash the submitted plan: autopilot needs the content to
-          // seed the plan-progress widget if Ken approves it, and manual accept
+          // seed the plan-progress widget if Nolan approves it, and manual accept
           // needs the path when autopilot is off.
           planReviewPathRef.current = typeof d.planPath === "string" ? d.planPath : null;
           const content = String(d.content ?? "");
           planReviewContentRef.current = content;
           // Autopilot owns plan review when enabled. Showing the human overlay
-          // during the few seconds before Ken accepts/rejects is just visual
+          // during the few seconds before Nolan accepts/rejects is just visual
           // noise, and users generally cannot act in time anyway. Non-autopilot
           // stays unchanged: the modal opens for manual Accept/Feedback/Reject.
           if (stateRef.current?.autopilot) {
@@ -724,7 +724,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           break;
         }
         case "autopilot_plan_accepted":
-          // Autopilot Ken approved the submitted plan (no user in the loop).
+          // Autopilot Nolan approved the submitted plan (no user in the loop).
           // Mirrors the manual-accept path: seed the plan-progress widget from
           // the modal's plan BEFORE the imminent session_reset consumes the
           // ref, close the modal, and drop the approved marker in the
@@ -738,8 +738,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           pushItem({ kind: "autopilot", id: nextId(), phase: "plan_approved" });
           break;
         case "autopilot_prompted":
-          // Autopilot-only plan revision path: Ken rejected/refined the plan and
-          // the sidecar injected a revision prompt into GG Coder. Close the
+          // Autopilot-only plan revision path: Nolan rejected/refined the plan and
+          // the sidecar injected a revision prompt into EZ Coder. Close the
           // stale human review modal so autopilot visibly continues. In
           // non-autopilot mode this frame never exists, so the normal modal +
           // manual Accept/Feedback/Reject flow stays unchanged.

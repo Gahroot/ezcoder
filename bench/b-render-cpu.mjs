@@ -1,5 +1,5 @@
 // Bench B — TUI streaming render CPU vs flush interval.
-// Spawns the Ink harness (inside packages/ggcoder so deps resolve) once per
+// Spawns the Ink harness (inside packages/cli so deps resolve) once per
 // arm in a fresh process. Arms: 0ms (per-delta), 16ms (current), 50ms, 100ms
 // (Claude Code 2.1.191's choice).
 import { spawn } from "node:child_process";
@@ -13,7 +13,7 @@ function runArm(flushMs) {
     const p = spawn(
       process.execPath,
       [".bench-render.mjs", String(flushMs), String(DURATION_MS)],
-      { cwd: "packages/ggcoder", stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: "packages/cli", stdio: ["ignore", "pipe", "pipe"] },
     );
     let out = "";
     let err = "";

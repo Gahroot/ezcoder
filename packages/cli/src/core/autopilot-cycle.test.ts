@@ -194,7 +194,7 @@ describe("driveAutopilotCycle — work branch (unchanged behavior)", () => {
       {
         runPrompt: async (body) => {
           ran.push(body);
-          planMode = true; // GG Coder called enter_plan (no exit_plan) mid-run
+          planMode = true; // EZ Coder called enter_plan (no exit_plan) mid-run
         },
         isPlanMode: () => planMode,
       },
@@ -377,7 +377,7 @@ describe("driveAutopilotCycle — plan branch", () => {
       planPending: () => true,
       isCancelled: () => cancelled,
       reviewPlan: vi.fn(async () => {
-        cancelled = true; // user Accept/cancel fired while Ken reviewed the plan
+        cancelled = true; // user Accept/cancel fired while Nolan reviewed the plan
         return { kind: "all_clear" } as AutopilotVerdict;
       }),
     });

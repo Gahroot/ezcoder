@@ -6,7 +6,7 @@
  * unit-testable without booting the sidecar.
  *
  * Two branches share one loop:
- *  - PLAN branch (planPending): GG Coder submitted a plan via exit_plan. Ken
+ *  - PLAN branch (planPending): EZ Coder submitted a plan via exit_plan. Nolan
  *    reviews the PLAN itself — approve (auto-accept + implement, then the next
  *    round work-reviews the implementation), send revision feedback, or hand a
  *    genuine user-level decision to the human. Verdict mapping for plans:
@@ -18,24 +18,24 @@
  *    HUMAN / PROMPT), unchanged.
  *
  * A mid-cycle enter_plan WITHOUT exit_plan (isPlanMode() true, no pending
- * plan) still halts as HUMAN — Ken must never prompt into a read-only
+ * plan) still halts as HUMAN — Nolan must never prompt into a read-only
  * plan-mode session.
  */
 import type { AutopilotVerdict } from "./autopilot-verdict.js";
 
-/** Reason shown in the Ken bubble when the build session is still INSIDE plan
+/** Reason shown in the Nolan bubble when the build session is still INSIDE plan
  *  mode (enter_plan without exit_plan) when the cycle checks in — there is no
  *  submitted plan to review and the session is read-only, so the loop halts
  *  and hands control to the user. */
 export const AUTOPILOT_PLAN_DRAFTING_REASON =
-  "GG Coder is still drafting a plan (plan mode is active with nothing submitted). Finish or cancel the plan yourself; autopilot can't prompt a read-only session.";
+  "EZ Coder is still drafting a plan (plan mode is active with nothing submitted). Finish or cancel the plan yourself; autopilot can't prompt a read-only session.";
 
-/** Prompt injected into the build session when Ken rejects a plan with
+/** Prompt injected into the build session when Nolan rejects a plan with
  *  feedback. Mirrors the webview's manual "Feedback" wording in spirit: the
  *  plan was not approved, revise it, resubmit via exit_plan. */
 export function buildPlanRevisionPrompt(feedback: string): string {
   return (
-    `The plan was not approved. Feedback from Ken (automated reviewer):\n\n` +
+    `The plan was not approved. Feedback from Nolan (automated reviewer):\n\n` +
     `${feedback}\n\n` +
     `Revise the plan based on this feedback, then call exit_plan again for review.`
   );
@@ -75,7 +75,7 @@ export interface AutopilotCycleDeps {
   acceptPlan: () => Promise<boolean>;
   /** Run the "plan approved — implement it now" prompt on the fresh session. */
   runImplement: () => Promise<void>;
-  /** Feed a PROMPT verdict's body to GG Coder as an injected run. */
+  /** Feed a PROMPT verdict's body to EZ Coder as an injected run. */
   runPrompt: (body: string) => Promise<void>;
   /** Called BEFORE runPrompt: record the injected body (digest labeling) and
    *  broadcast the autopilot_prompted marker. */
@@ -129,7 +129,7 @@ export async function driveAutopilotCycle(deps: AutopilotCycleDeps): Promise<voi
     }
     // The gate blocks a still-in-plan-mode turn up front, so hitting this
     // means an injected run entered plan mode mid-cycle WITHOUT submitting a
-    // plan: halt — Ken can't prompt a read-only session.
+    // plan: halt — Nolan can't prompt a read-only session.
     if (deps.isPlanMode()) {
       deps.emit({ type: "autopilot_human", data: { reason: AUTOPILOT_PLAN_DRAFTING_REASON } });
       return;

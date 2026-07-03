@@ -2,17 +2,17 @@ import { describe, it, expect, beforeAll } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { buildKenSystemPrompt, buildKenAutopilotSystemPrompt } from "./ken-prompt.js";
-import { INJECTED_PROMPT_LABEL } from "./ken-context.js";
+import { buildNolanSystemPrompt, buildNolanAutopilotSystemPrompt } from "./nolan-prompt.js";
+import { INJECTED_PROMPT_LABEL } from "./nolan-context.js";
 
 // No CLAUDE.md/AGENTS.md up the tree from tmpdir, so the appended project-
 // context section is empty and these assertions stay focused on the persona.
 const TEST_CWD = os.tmpdir();
 
-describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
+describe("buildNolanAutopilotSystemPrompt — verdict contract", () => {
   let prompt: string;
   beforeAll(async () => {
-    prompt = await buildKenAutopilotSystemPrompt(TEST_CWD);
+    prompt = await buildNolanAutopilotSystemPrompt(TEST_CWD);
   });
 
   it("teaches all four verdict keywords", () => {
@@ -22,8 +22,8 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   });
 
   it("routes only real user-level questions/options to HUMAN", () => {
-    // Leak regression: without this rule, GG Coder ending with "want me to…?"
-    // or an A/B/C menu reads as "unfinished" and Ken answers for the user.
+    // Leak regression: without this rule, EZ Coder ending with "want me to…?"
+    // or an A/B/C menu reads as "unfinished" and Nolan answers for the user.
     // But the inverse matters too: permission to continue obvious safe work is
     // NOT a user decision and should be a PROMPT, not a blocker. This is a
     // principle, not a list of special-case examples.
@@ -36,8 +36,8 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
     expect(prompt).toContain("Use PROMPT with the concrete next step");
   });
 
-  it("makes Ken the plan reviewer (no automatic HUMAN on plan submissions)", () => {
-    // In autopilot, a submitted plan is reviewed by Ken himself — approve,
+  it("makes Nolan the plan reviewer (no automatic HUMAN on plan submissions)", () => {
+    // In autopilot, a submitted plan is reviewed by Nolan himself — approve,
     // revise, or (rarely) hand a genuine product decision to the user.
     expect(prompt).toContain("Plans are YOURS to review");
     expect(prompt).toContain("'Plan under review' section");
@@ -67,7 +67,7 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   });
 
   it("forbids commentary before or after the keyword line", () => {
-    // Leak regression: Ken once prefaced ALL_CLEAR with a recap/opinion ("The
+    // Leak regression: Nolan once prefaced ALL_CLEAR with a recap/opinion ("The
     // label is now a plain non-clickable span... Typecheck passed.\nALL_CLEAR"),
     // which the parser couldn't read as a bare verdict and surfaced as a raw
     // HUMAN bubble. The prompt must explicitly ban prose around the keyword.
@@ -77,22 +77,22 @@ describe("buildKenAutopilotSystemPrompt — verdict contract", () => {
   });
 });
 
-describe("buildKenSystemPrompt — chat mode unaffected", () => {
+describe("buildNolanSystemPrompt — chat mode unaffected", () => {
   it("keeps the chat output contract (prompt fence) and no verdict keywords", async () => {
-    const prompt = await buildKenSystemPrompt(TEST_CWD);
-    expect(prompt).toContain("Send to GG Coder");
+    const prompt = await buildNolanSystemPrompt(TEST_CWD);
+    expect(prompt).toContain("Send to EZ Coder");
     // The verdict contract is autopilot-only.
     expect(prompt).not.toContain("ALL_CLEAR");
   });
 });
 
-describe("buildKenSystemPrompt / buildKenAutopilotSystemPrompt — project context", () => {
+describe("buildNolanSystemPrompt / buildNolanAutopilotSystemPrompt — project context", () => {
   it("folds project context into the cached system prompt, not the per-turn digest", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ken-prompt-test-"));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "nolan-prompt-test-"));
     await fs.writeFile(path.join(dir, "CLAUDE.md"), "Build a todo app.");
     try {
-      const chat = await buildKenSystemPrompt(dir);
-      const autopilot = await buildKenAutopilotSystemPrompt(dir);
+      const chat = await buildNolanSystemPrompt(dir);
+      const autopilot = await buildNolanAutopilotSystemPrompt(dir);
       expect(chat).toContain("Build a todo app.");
       expect(autopilot).toContain("Build a todo app.");
     } finally {

@@ -1,7 +1,7 @@
 import { theme } from "./theme";
 
 /**
- * Footer context-usage indicator — mirrors the ggcoder TUI footer's context
+ * Footer context-usage indicator — mirrors the ezcoder TUI footer's context
  * reading. Percentage only, color-graded by pressure: green under 50%, amber
  * from 50%, red from 80%. Hidden by the caller until there's a real reading
  * (a context window + some tokens).

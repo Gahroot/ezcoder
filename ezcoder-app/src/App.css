@@ -3730,7 +3730,7 @@ body {
   gap: 4px;
 }
 
-/* Static "GG" / "Ken" prefix — plain text, never clickable. Only the model
+/* Static "GG" / "Nolan" prefix — plain text, never clickable. Only the model
    name next to it opens the dropdown. `line-height: 1` matches `.model-button`
    below so both sit on the same baseline — without it the button's default UA
    line-height differs from the inherited body line-height and the label

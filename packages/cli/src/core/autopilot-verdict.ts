@@ -69,7 +69,7 @@ function normalizeKeywordLine(line: string): string {
 }
 
 /**
- * Fallback for when Ken ignores the "keyword-first, nothing before it"
+ * Fallback for when Nolan ignores the "keyword-first, nothing before it"
  * instruction and buries a bare ALL_CLEAR/IGNORE/SKIP line after a recap or
  * explanation (a real drift pattern models fall into despite the system
  * prompt). Only matches a line that is EXACTLY one of these bare keywords —
@@ -154,7 +154,7 @@ export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
     return { kind: "human", reason: cap(reason) || DEFAULT_HUMAN_REASON };
   }
 
-  // Unrecognized first line → before giving up, check for a bare verdict Ken
+  // Unrecognized first line → before giving up, check for a bare verdict Nolan
   // buried later in the reply (prose-then-keyword drift). This is the exact
   // shape that used to leak raw commentary + "ALL_CLEAR" into a HUMAN bubble
   // instead of rendering the normal all-clear/ignore marker.

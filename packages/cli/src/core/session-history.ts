@@ -1,8 +1,8 @@
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import type {
   AutopilotMarkerPayload,
   AppMarkerPayload,
-  KenTurnPayload,
+  NolanTurnPayload,
 } from "./session-manager.js";
 import { STEERING_PREFIX } from "./steering.js";
 
@@ -29,7 +29,7 @@ export function autopilotMarkerCopySeed(marker: AutopilotMarkerPayload): string 
  *
  * Older compacted/continued sessions may carry markers whose original
  * `afterMessageCount` points beyond the restored message list. Replaying those
- * at EOF bunches old Ken all-clear bubbles at the bottom, so drop them. Also
+ * at EOF bunches old Nolan all-clear bubbles at the bottom, so drop them. Also
  * dedupe exact marker payloads produced by old rewrite/re-persist paths.
  */
 export function normalizeAutopilotMarkersForHistory(
@@ -77,18 +77,18 @@ export function normalizeAppMarkersForHistory(
 }
 
 /**
- * Normalize persisted Ken turns for replay. Unlike autopilot/app markers, Ken
+ * Normalize persisted Nolan turns for replay. Unlike autopilot/app markers, Nolan
  * turns carry real conversation — an out-of-range anchor (stale after
  * compaction) is CLAMPED to the last message instead of dropped, so the
  * exchange still renders (at the end, in order) rather than vanishing. Exact
  * duplicate payloads (old rewrite/re-persist paths) are deduped.
  */
-export function normalizeKenTurnsForHistory(
-  turns: readonly KenTurnPayload[],
+export function normalizeNolanTurnsForHistory(
+  turns: readonly NolanTurnPayload[],
   maxAfterMessageCount: number,
-): KenTurnPayload[] {
+): NolanTurnPayload[] {
   const seen = new Set<string>();
-  const normalized: KenTurnPayload[] = [];
+  const normalized: NolanTurnPayload[] = [];
   for (const turn of turns) {
     const key = JSON.stringify({ q: turn.question, r: turn.reply, a: turn.afterMessageCount });
     if (seen.has(key)) continue;

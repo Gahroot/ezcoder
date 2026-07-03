@@ -6,10 +6,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { getAppPaths, withFileLock } from "@kenkaiiii/gg-core";
+import { getAppPaths, withFileLock } from "@prestyj/core";
 import type { ProgressFile } from "./types.js";
 
-const HMAC_KEY = "gg-coder-progress-v1-9f2c4e7a1b8d3f6c";
+const HMAC_KEY = "ezcoder-progress-v1-9f2c4e7a1b8d3f6c";
 const PATCH_ID_CAP = 500;
 
 export interface ProgressStoreOptions {

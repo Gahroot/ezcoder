@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   SessionManager,
-  KEN_TURN_CUSTOM_KIND,
+  NOLAN_TURN_CUSTOM_KIND,
   AUTOPILOT_MARKER_CUSTOM_KIND,
   APP_MARKER_CUSTOM_KIND,
   type SessionEntry,
@@ -176,7 +176,7 @@ describe("SessionManager.getAutopilotMarkers", () => {
     const entries: SessionEntry[] = [
       entry("m1"),
       autopilotEntry("d1", { version: 1, item: { kind: "x", id: "y" } }, "display_item"),
-      autopilotEntry("k1", { version: 1, question: "q", reply: "r" }, KEN_TURN_CUSTOM_KIND),
+      autopilotEntry("k1", { version: 1, question: "q", reply: "r" }, NOLAN_TURN_CUSTOM_KIND),
       autopilotEntry("a1", {
         version: 1,
         phase: "human",
@@ -314,15 +314,15 @@ describe("SessionManager.getAppMarkers", () => {
       created.path,
       autopilotEntry(
         "u1",
-        { version: 1, kind: "user_hint", afterMessageCount: 1, data: { kenSent: true } },
+        { version: 1, kind: "user_hint", afterMessageCount: 1, data: { nolanSent: true } },
         APP_MARKER_CUSTOM_KIND,
       ),
     );
     const loaded = await manager2.load(created.path);
     const msgs = manager2.getMessages(loaded.entries, loaded.header.leafId);
-    expect(JSON.stringify(msgs)).not.toContain("kenSent");
+    expect(JSON.stringify(msgs)).not.toContain("nolanSent");
     expect(manager2.getAppMarkers(loaded.entries)).toEqual([
-      { version: 1, kind: "user_hint", afterMessageCount: 1, data: { kenSent: true } },
+      { version: 1, kind: "user_hint", afterMessageCount: 1, data: { nolanSent: true } },
     ]);
   });
 });

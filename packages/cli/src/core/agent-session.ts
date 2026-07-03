@@ -23,13 +23,13 @@ import { getClaudeCliUserAgent } from "./claude-code-version.js";
 import { kimiCodingHeaders, isKimiCodingEndpoint } from "./oauth/kimi.js";
 import {
   SessionManager,
-  KEN_TURN_CUSTOM_KIND,
+  NOLAN_TURN_CUSTOM_KIND,
   AUTOPILOT_MARKER_CUSTOM_KIND,
   APP_MARKER_CUSTOM_KIND,
   type MessageEntry,
   type BranchInfo,
   type CustomEntry,
-  type KenTurnPayload,
+  type NolanTurnPayload,
   type AutopilotMarkerPayload,
   type AppMarkerPayload,
 } from "./session-manager.js";
@@ -154,7 +154,7 @@ export interface AgentSessionOptions {
   allowedMcpServers?: string[];
   /**
    * Force 1-h prompt-cache TTL + pre-warm regardless of the user's global
-   * `speedProfile` setting. Bursty read-only advisory sessions (the Ken
+   * `speedProfile` setting. Bursty read-only advisory sessions (the Nolan
    * mentor + autopilot reviewer) call the same static system prompt on a
    * schedule that routinely exceeds the default 5-min cache window — a
    * dropped cache there resends the whole cached prefix at full price right
@@ -197,15 +197,15 @@ export class AgentSession {
   // alongside the session and reloaded on resume so they reappear in the
   // transcript. Each carries the non-system message count at record time so the
   // webview can interleave them chronologically.
-  private kenTurns: KenTurnPayload[] = [];
-  // Autopilot Ken (auto-reviewer) markers recorded against this build session:
+  private nolanTurns: NolanTurnPayload[] = [];
+  // Autopilot Nolan (auto-reviewer) markers recorded against this build session:
   // the review verdict shown in the transcript (prompted / done / human /
-  // capped). Same not-on-the-DAG treatment as kenTurns — advisory only,
-  // persisted + reloaded so a resumed session shows the identical Ken bubble
+  // capped). Same not-on-the-DAG treatment as nolanTurns — advisory only,
+  // persisted + reloaded so a resumed session shows the identical Nolan bubble
   // the live run showed instead of dropping it or replaying a raw verdict.
   private autopilotMarkers: AutopilotMarkerPayload[] = [];
   // Generic app transcript markers (plan-mode banner, task header, error rows,
-  // user-bubble display hints). Same not-on-the-DAG treatment as kenTurns —
+  // user-bubble display hints). Same not-on-the-DAG treatment as nolanTurns —
   // display only, persisted + reloaded so a resumed session shows the same
   // transcript rows the live run showed.
   private appMarkers: AppMarkerPayload[] = [];
@@ -571,7 +571,7 @@ export class AgentSession {
    * Route freshly connected MCP tools: deferred into the tool_search catalog
    * (default — keeps ~8k tokens of schema out of every cache-miss turn, see
    * bench/RESULTS.md bench A) or pushed eagerly when the user opted out.
-   * Allow-listed sessions (Ken) always get the eager path — their fixed tool
+   * Allow-listed sessions (Nolan) always get the eager path — their fixed tool
    * expectations predate the catalog, and tool_search isn't allow-listed.
    * Promotion pushes onto the live `this.tools` array the running agent loop
    * re-reads every turn, so promoted tools are callable on the next step.
@@ -1142,8 +1142,8 @@ export class AgentSession {
       await this.persistMessage(msg);
     }
     this.lastPersistedIndex = this.messages.length;
-    // Carry Ken's advisory turns into the new file so they survive compaction.
-    await this.rePersistKenTurns();
+    // Carry Nolan's advisory turns into the new file so they survive compaction.
+    await this.rePersistNolanTurns();
     await this.rePersistAutopilotMarkers();
     await this.rePersistAppMarkers();
     // Persist the compaction counts so a resumed session's quiet notice can
@@ -1163,11 +1163,11 @@ export class AgentSession {
     // A fresh session drops any in-flight plan state so its prompt is clean.
     this.planModeRef.current = false;
     this.approvedPlanPath = undefined;
-    // Display-only history belongs to the OLD session. Without this, stale Ken
+    // Display-only history belongs to the OLD session. Without this, stale Nolan
     // turns / autopilot verdicts / app markers linger in memory, show up in the
     // new session's /history, and get re-persisted into the new file by the
     // next compaction — the cross-session duplicate-marker propagation bug.
-    this.kenTurns = [];
+    this.nolanTurns = [];
     this.autopilotMarkers = [];
     this.appMarkers = [];
     const basePrompt =
@@ -1356,7 +1356,7 @@ export class AgentSession {
 
   /** Autopilot verdict markers recorded against this session, in record order.
    *  Used by the host to interleave the auto-review loop's markers back into
-   *  the transcript on resume, mirroring `getKenTurns`. */
+   *  the transcript on resume, mirroring `getNolanTurns`. */
   getAutopilotMarkers(): AutopilotMarkerPayload[] {
     return this.autopilotMarkers;
   }
@@ -1409,8 +1409,8 @@ export class AgentSession {
   /**
    * Record one autopilot verdict marker (prompted / done / human / capped)
    * against this build session. Kept in memory for the live transcript and
-   * persisted as a `custom` entry (parentId null, same as Ken turns) so a
-   * resumed session renders the exact same Ken bubble the live run showed
+   * persisted as a `custom` entry (parentId null, same as Nolan turns) so a
+   * resumed session renders the exact same Nolan bubble the live run showed
    * instead of dropping the marker or falling back to a raw verdict string.
    * No-op persistence for transient sessions (kept in memory only).
    */
@@ -1440,7 +1440,7 @@ export class AgentSession {
   }
 
   /** Re-append the in-memory autopilot markers to the current session file.
-   *  Mirrors `rePersistKenTurns` — called after a continuation/compaction file
+   *  Mirrors `rePersistNolanTurns` — called after a continuation/compaction file
    *  is created so the auto-review history survives the rewrite. */
   private async rePersistAutopilotMarkers(): Promise<void> {
     if (!this.sessionPath) return;
@@ -1495,7 +1495,7 @@ export class AgentSession {
   }
 
   /** Re-append the in-memory app markers to the current session file. Mirrors
-   *  `rePersistKenTurns` — called after a continuation/compaction file is
+   *  `rePersistNolanTurns` — called after a continuation/compaction file is
    *  created so display-only rows survive the rewrite. */
   private async rePersistAppMarkers(): Promise<void> {
     if (!this.sessionPath) return;
@@ -1597,7 +1597,7 @@ export class AgentSession {
   }
 
   /** True when speedProfile is "optimized" (1-h cache TTL + pre-warm), or the
-   *  session was constructed with `forceLongCacheRetention` (Ken sessions). */
+   *  session was constructed with `forceLongCacheRetention` (Nolan sessions). */
   private isSpeedOptimized(): boolean {
     return (
       this.opts.forceLongCacheRetention === true ||
@@ -1690,7 +1690,7 @@ export class AgentSession {
     const loadedMessages = this.sessionManager.getMessages(loaded.entries, loaded.header.leafId);
     // Restore Nolan's advisory turns (custom entries, not on the message branch) so
     // they reappear in the transcript and survive into the continuation file.
-    this.kenTurns = this.sessionManager.getKenTurns(loaded.entries);
+    this.nolanTurns = this.sessionManager.getNolanTurns(loaded.entries);
     // Restore autopilot verdict markers the same way (not on the message DAG).
     this.autopilotMarkers = this.sessionManager.getAutopilotMarkers(loaded.entries);
     // Restore app transcript markers (plan banner / task header / errors / hints).
@@ -1744,7 +1744,7 @@ export class AgentSession {
 
       // Compaction rewrote history, so the on-disk file no longer reflects
       // what's in memory — fork a fresh session file for the compacted state
-      // (mirrors compact()'s own persistence) so `ggcoder continue` picks up
+      // (mirrors compact()'s own persistence) so `ezcoder continue` picks up
       // the summary instead of the full original transcript.
       const session = await this.sessionManager.create(this.cwd, this.provider, this.model);
       this.sessionId = session.id;
@@ -1757,8 +1757,8 @@ export class AgentSession {
         await this.persistMessage(msg);
       }
       this.lastPersistedIndex = this.messages.length;
-      // Carry Ken's restored turns into the continuation file.
-      await this.rePersistKenTurns();
+      // Carry Nolan's restored turns into the continuation file.
+      await this.rePersistNolanTurns();
       await this.rePersistAutopilotMarkers();
       await this.rePersistAppMarkers();
       // Record this load-time auto-compaction's counts for the resumed notice.

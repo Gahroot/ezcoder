@@ -339,10 +339,10 @@ export async function readDroppedFileAttachment(path: string): Promise<Attachmen
 }
 
 /** Display hints for the user bubble this prompt creates — persisted by the
- *  sidecar so a resumed session re-renders the same bubble (Ken "Sent to GG
+ *  sidecar so a resumed session re-renders the same bubble (Nolan "Sent to GG
  *  Coder" label, enhancer term highlights). */
 export interface PromptMeta {
-  kenSent?: boolean;
+  nolanSent?: boolean;
   enhancements?: PromptSegment[];
 }
 
@@ -395,7 +395,7 @@ export async function cancel(): Promise<void> {
 //   autopilot_ignored {}            — nothing worth reviewing, loop stops SILENTLY (no marker)
 //   autopilot_human { reason }      — Nolan needs a human decision, loop stops
 //   autopilot_capped { rounds }     — round cap hit, loop paused
-//   autopilot_plan_accepted {}      — Ken approved a submitted plan; broadcast
+//   autopilot_plan_accepted {}      — Nolan approved a submitted plan; broadcast
 //                                     BEFORE the session_reset that follows so
 //                                     the webview can seed the plan-progress
 //                                     widget from the still-open plan modal
@@ -468,12 +468,12 @@ export interface HistoryEntry {
   compacted?: boolean;
   /** Persisted counts for a compacted row's "N → M messages" summary. */
   compactionCounts?: { originalCount: number; newCount: number };
-  /** True when this entry is a persisted Ken Kai (mentor) turn: a `user` row is
-   *  the `@Ken` question, an `assistant` row is Ken's reply. Rendered in Ken's
-   *  color (user bubble tinted, assistant as a Ken bubble) on resume. */
+  /** True when this entry is a persisted Nolan Grout (mentor) turn: a `user` row is
+   *  the `@Nolan` question, an `assistant` row is Nolan's reply. Rendered in Nolan's
+   *  color (user bubble tinted, assistant as a Nolan bubble) on resume. */
   ken?: boolean;
   /** Present when this entry is a persisted autopilot verdict marker. Rendered
-   *  identically to the live `autopilot` item (Ken-tinted bubble), never as
+   *  identically to the live `autopilot` item (Nolan-tinted bubble), never as
    *  the raw verdict keyword the model replied with (e.g. `ALL_CLEAR`). */
   autopilot?: {
     phase: "prompted" | "done" | "human" | "capped" | "plan_approved";
@@ -482,9 +482,9 @@ export interface HistoryEntry {
     /** Stable seed from persisted marker data so resumed all-clear copy doesn't flicker. */
     copySeed?: string;
   };
-  /** True when this user prompt came from a Ken "Send to GG Coder" button —
+  /** True when this user prompt came from a Nolan "Send to EZ Coder" button —
    *  render the shimmering label instead of the prompt body (matches live). */
-  kenSent?: boolean;
+  nolanSent?: boolean;
   /** Enhancer highlight segments, restored for unedited enhanced sends. */
   enhancements?: PromptSegment[];
   /** Plan-mode entry banner (reason), persisted at plan_enter. */
@@ -492,7 +492,7 @@ export interface HistoryEntry {
   /** Task header row (title), persisted at task_start. */
   task?: { title: string };
   /** Error row persisted by the sidecar's broadcastError. `scope` selects the
-   *  live headline prefix (ken_error → "Ken: ", autopilot_error → "Autopilot: "). */
+   *  live headline prefix (nolan_error → "Nolan: ", autopilot_error → "Autopilot: "). */
   error?: { scope: string; headline: string; message?: string; guidance?: string };
   /** Webview-copy info row marker (e.g. the video-capability warning). */
   infoKind?: "video_warning";
@@ -754,7 +754,7 @@ export interface PermissionsStatus {
 
 /**
  * OS permission needed for sub-agents to run without repeat "Allow" prompts:
- * each subagent call spawns a fresh `ggnode` process, and macOS re-triggers
+ * each subagent call spawns a fresh `eznode` process, and macOS re-triggers
  * its per-folder privacy prompt (Desktop/Documents/Downloads/iCloud) for every
  * newly-spawned binary unless Full Disk Access is granted. Handled NATIVELY in
  * Rust so it works even before the sidecar is up. Falls back to "not

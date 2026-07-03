@@ -1,6 +1,6 @@
 // Bench B harness — Ink streaming render CPU at a given flush interval.
 // Usage: node .bench-render.mjs <flushMs> <durationMs>
-// Placed inside packages/ggcoder so `ink`/`react` resolve to the real deps.
+// Placed inside packages/cli so `ink`/`react` resolve to the real deps.
 // Prints one JSON line with metrics.
 import React from "react";
 import { render, Box } from "ink";

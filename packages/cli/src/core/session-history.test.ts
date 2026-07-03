@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import type {
   AutopilotMarkerPayload,
   AppMarkerPayload,
-  KenTurnPayload,
+  NolanTurnPayload,
 } from "./session-manager.js";
 import { STEERING_PREFIX } from "./steering.js";
 import {
   normalizeAutopilotMarkersForHistory,
   normalizeAppMarkersForHistory,
-  normalizeKenTurnsForHistory,
+  normalizeNolanTurnsForHistory,
   restoreUserRow,
   restoreAssistantTexts,
 } from "./session-history.js";
@@ -52,14 +52,14 @@ describe("normalizeAppMarkersForHistory", () => {
   });
 });
 
-describe("normalizeKenTurnsForHistory", () => {
+describe("normalizeNolanTurnsForHistory", () => {
   it("clamps stale anchors to the last message instead of dropping, and dedupes", () => {
-    const turns: KenTurnPayload[] = [
+    const turns: NolanTurnPayload[] = [
       { version: 1, question: "why?", reply: "because", afterMessageCount: 2 },
       { version: 1, question: "why?", reply: "because", afterMessageCount: 2 },
       { version: 1, question: "later q", reply: "later a", afterMessageCount: 50 },
     ];
-    expect(normalizeKenTurnsForHistory(turns, 4)).toEqual([
+    expect(normalizeNolanTurnsForHistory(turns, 4)).toEqual([
       { version: 1, question: "why?", reply: "because", afterMessageCount: 2 },
       { version: 1, question: "later q", reply: "later a", afterMessageCount: 4 },
     ]);

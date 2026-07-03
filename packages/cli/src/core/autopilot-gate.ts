@@ -20,7 +20,7 @@
  *   plain `git add`/`commit`/`push` workflow; a dedicated read-only tool
  *   (read/grep/find/ls/web_fetch/web_search/source_path/code_search/
  *   task_output/screenshot/skill); or NO tool calls at all (a plain-text
- *   answer with nothing built) — was always going to come back as Ken's
+ *   answer with nothing built) — was always going to come back as Nolan's
  *   IGNORE verdict (see the autopilot system prompt's "mechanical operation"
  *   / "plain question answered with no code touched" rules). Pre-filtering
  *   these skips the review API call entirely instead of paying for one whose
@@ -145,7 +145,7 @@ export interface AutopilotGateInput {
   /** True when the session ended the turn in plan mode (plan modal pending). */
   planMode: boolean;
   /** True when the turn SUBMITTED a plan (exit_plan fired — the sidecar's
-   *  pendingPlanPath is set). Ken reviews the plan itself instead of the
+   *  pendingPlanPath is set). Nolan reviews the plan itself instead of the
    *  work. Optional so existing callers/tests default to false. */
   planPending?: boolean;
   /** True when the turn was a workflow slash command (see isWorkflowCommandText). */
@@ -153,7 +153,7 @@ export interface AutopilotGateInput {
   /** Assistant messages ADDED by this turn (after minus before). */
   assistantMessagesAdded: number;
   /** True when every tool call this turn was mechanical bash usage (see
-   *  isMechanicalOnlyTurn) — nothing for Ken to review. Optional so existing
+   *  isMechanicalOnlyTurn) — nothing for Nolan to review. Optional so existing
    *  callers/tests that don't set it default to false (reviewable). */
   mechanicalOnly?: boolean;
 }
@@ -165,14 +165,14 @@ export type AutopilotGateDecision =
 /**
  * Decide whether the autopilot cycle may start for a just-finished turn.
  * Checks are ordered cheapest/most-fundamental first; the reason is logged by
- * the sidecar so skips are debuggable from gg-app-sidecar.log.
+ * the sidecar so skips are debuggable from ezcoder-app-sidecar.log.
  *
  * `planPending` beats the workflow/mechanical/no-output checks: a plan
  * submission via exit_plan flips plan mode OFF and often has only mechanical
- * tool calls, but it IS reviewable work — Ken reviews the plan itself
+ * tool calls, but it IS reviewable work — Nolan reviews the plan itself
  * (kind: "plan") instead of skipping. `planMode` still wins over it: a turn
  * that ended INSIDE plan mode (enter without exit) has no submitted plan and
- * Ken must never prompt into a read-only session.
+ * Nolan must never prompt into a read-only session.
  */
 export function shouldStartAutopilotCycle(input: AutopilotGateInput): AutopilotGateDecision {
   if (!input.enabled) return { start: false, reason: "disabled" };
@@ -246,7 +246,7 @@ function isMechanicalBashCall(args: Record<string, unknown> | undefined): boolea
 }
 
 /**
- * True when the turn has nothing for Ken to review: either it made NO tool
+ * True when the turn has nothing for Nolan to review: either it made NO tool
  * calls at all (a plain-text answer — "a plain question that got answered
  * with no code touched" is IGNORE per the autopilot contract), or EVERY tool
  * call was mechanical (a dedicated read-only tool, or bash usage that starts

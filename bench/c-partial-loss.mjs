@@ -10,7 +10,7 @@
 import http from "node:http";
 import { estTokens, fmt, table } from "./lib.mjs";
 
-const { agentLoop } = await import("../packages/gg-agent/dist/index.js");
+const { agentLoop } = await import("../packages/agent/dist/index.js");
 
 const PARTIAL = "Here is the plan so far. ".repeat(30); // ~750 chars streamed pre-drop
 // Retry response deliberately does NOT repeat the partial text — so if the
