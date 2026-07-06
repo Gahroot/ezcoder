@@ -1,5 +1,11 @@
 # @prestyj/ai
 
+## 5.3.1
+
+### Patch Changes
+
+- Fix app task runs hanging when models enter plan mode; sync upstream framework changes.
+
 ## 5.3.0
 
 ## 5.2.0
