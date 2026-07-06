@@ -21,7 +21,7 @@
  * the edit applied cleanly + produced the correct file, and an anchor-uniqueness
  * / safety check. Edits are graded deterministically — no second model needed.
  *
- * The BASELINE apply path runs ggcoder's REAL edit ladder (fuzzy match +
+ * The BASELINE apply path runs ezcoder's REAL edit ladder (fuzzy match +
  * indent-flex + blank-edge strip + dotdotdots — the same edit-diff functions
  * tools/edit.ts uses), so baseline numbers reflect what our tool actually
  * recovers, not a naive exact-replace.
@@ -303,7 +303,7 @@ export function checkAnchors(file: string, task: EditTask): boolean {
 }
 
 /**
- * ggcoder's REAL apply ladder, mirroring tools/edit.ts:
+ * ezcoder's REAL apply ladder, mirroring tools/edit.ts:
  *   1. exact + smart-quote/dash fuzzy
  *   2. indent-flex
  *   3. blank-edge strip, retry 1+2

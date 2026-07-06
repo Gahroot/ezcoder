@@ -264,7 +264,7 @@ export function resolveStdioCommand(
 
   const pkgName = stripVersion(pkgSpec);
   const binName = binNameFor(pkgName);
-  // 1) Local resolution (bundled next to the sidecar / ggcoder deps) — fastest,
+  // 1) Local resolution (bundled next to the sidecar / ezcoder deps) — fastest,
   //    version-authoritative. 2) npx on-demand cache — covers non-bundled
   //    defaults (e.g. zai) and any user-added MCP once npx has cached it.
   const binScript =

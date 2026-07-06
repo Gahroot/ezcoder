@@ -34,16 +34,16 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.14.9",
     date: "2026-07-06",
     items: [
-      "Your session list is yours again. Ken's silent autopilot reviews were quietly leaving behind a fake 2-message session every few minutes, burying your real work under a wall of clones. I plugged the leak for good, so what you see in the picker is exactly what you built. Nothing else.",
-      "Autopilot got tougher to derail. When Ken hands GG Coder the next move, the app now catches his instruction even when he wraps it in chatter, so autopilot keeps rolling instead of stopping to ask you about something it could handle itself.",
-      "I also drilled Ken on keeping his reviews clean and machine-tight, so autopilot cycles run leaner and stall less.",
+      "Your session list is yours again. Nolan's silent autopilot reviews were quietly leaving behind a fake 2-message session every few minutes, burying your real work under a wall of clones. I plugged the leak for good, so what you see in the picker is exactly what you built. Nothing else.",
+      "Autopilot got tougher to derail. When Nolan hands EZ Coder the next move, the app now catches his instruction even when he wraps it in chatter, so autopilot keeps rolling instead of stopping to ask you about something it could handle itself.",
+      "I also drilled Nolan on keeping his reviews clean and machine-tight, so autopilot cycles run leaner and stall less.",
     ],
   },
   {
     version: "0.14.8",
     date: "2026-07-05",
     items: [
-      "Your search and tool helpers just went on a diet. Each one used to drag along a chunky launcher that ate around 90 MB for no reason, and with a few windows open that really added up. I taught GG Coder to run the real thing directly and skip the dead weight, so you get the same power for a fraction of the memory.",
+      "Your search and tool helpers just went on a diet. Each one used to drag along a chunky launcher that ate around 90 MB for no reason, and with a few windows open that really added up. I taught EZ Coder to run the real thing directly and skip the dead weight, so you get the same power for a fraction of the memory.",
       "This covers every tool, not just mine. Whatever MCP tools you plug in, they now start lean instead of hauling that extra baggage, so your machine stays snappy no matter how loaded up you get.",
     ],
   },
@@ -51,24 +51,24 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.14.7",
     date: "2026-07-05",
     items: [
-      "Your machine breathes easier now. GG Coder used to leave stray search and tool helpers running every time you closed a project, and they quietly piled up and ate your memory for days. I taught it to hunt down every one of those leftovers on startup, no matter which tools you plugged in, so your RAM stays yours.",
-      "This works for any tool you add, not just the ones I ship. However exotic your setup gets, GG Coder now cleans up after itself instead of slowly bogging down your computer in the background.",
-      "Ken gives sharper advice. He now knows exactly what GG Coder can do under the hood, so his guidance is grounded in the real tools at hand instead of guesses, and his handoffs back to the agent come through clean.",
+      "Your machine breathes easier now. EZ Coder used to leave stray search and tool helpers running every time you closed a project, and they quietly piled up and ate your memory for days. I taught it to hunt down every one of those leftovers on startup, no matter which tools you plugged in, so your RAM stays yours.",
+      "This works for any tool you add, not just the ones I ship. However exotic your setup gets, EZ Coder now cleans up after itself instead of slowly bogging down your computer in the background.",
+      "Nolan gives sharper advice. He now knows exactly what EZ Coder can do under the hood, so his guidance is grounded in the real tools at hand instead of guesses, and his handoffs back to the agent come through clean.",
     ],
   },
   {
     version: "0.14.6",
     date: "2026-07-05",
     items: [
-      "Autopilot just got a lot more independent. When Ken sends GG Coder back in, it now knows nobody is looking over its shoulder, so it proves its own work before calling it done instead of stopping to check with a human who isn't there.",
-      "Fewer pointless pauses. GG Coder stops asking permission for the obvious next step when it's already clear what you want, so autopilot keeps moving and finishes more in one run.",
+      "Autopilot just got a lot more independent. When Nolan sends EZ Coder back in, it now knows nobody is looking over its shoulder, so it proves its own work before calling it done instead of stopping to check with a human who isn't there.",
+      "Fewer pointless pauses. EZ Coder stops asking permission for the obvious next step when it's already clear what you want, so autopilot keeps moving and finishes more in one run.",
     ],
   },
   {
     version: "0.14.5",
     date: "2026-07-04",
     items: [
-      "Your research helpers just got faster and cheaper. When GG Coder sends a scout off to read your code or dig through the project, I now put it on the quickest model for the job. Answers come back sooner and cost you less.",
+      "Your research helpers just got faster and cheaper. When EZ Coder sends a scout off to read your code or dig through the project, I now put it on the quickest model for the job. Answers come back sooner and cost you less.",
       "No tradeoff on quality. The helpers that actually change your code still run on the big brain, so your edits stay sharp while the quick lookups fly.",
     ],
   },

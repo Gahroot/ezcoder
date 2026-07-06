@@ -140,10 +140,10 @@ describe("AgentSession worker auto-compaction", () => {
   });
 });
 
-/** Every .jsonl under the ggcoder session store — must stay empty for
- *  transient sessions (Ken chat/autopilot, subagent spawns). */
+/** Every .jsonl under the ezcoder session store — must stay empty for
+ *  transient sessions (Nolan chat/autopilot, subagent spawns). */
 async function listSessionFiles(): Promise<string[]> {
-  const sessionsDir = path.join(tmpHome, ".gg", "sessions");
+  const sessionsDir = path.join(tmpHome, ".ezcoder", "sessions");
   const out: string[] = [];
   const walk = async (dir: string): Promise<void> => {
     let entries;
@@ -163,8 +163,8 @@ async function listSessionFiles(): Promise<string[]> {
 }
 
 describe("transient sessions never leak to the session store", () => {
-  // Regression: the Ken autopilot session (transient: true) was leaking one
-  // 3-line "## Who you are … Ken Kai" session file per review cycle into the
+  // Regression: the Nolan autopilot session (transient: true) was leaking one
+  // 3-line "## Who you are … Nolan Grout" session file per review cycle into the
   // project's session list — via compact() assigning a real sessionPath and
   // via newSession() (autopilot's per-cycle resetReviewer) creating a file
   // unconditionally.
@@ -200,7 +200,7 @@ describe("transient sessions never leak to the session store", () => {
     await session.initialize();
     await session.prompt("review this turn");
     // Post-compaction persistence paths must all stay no-ops.
-    await session.persistKenTurn("q", "a");
+    await session.persistNolanTurn("q", "a");
     await session.persistAutopilotMarker("done");
     await session.dispose();
 

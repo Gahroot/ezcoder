@@ -136,8 +136,8 @@ function renderEdge(): string {
 
 function renderGGCoderCapabilities(): string {
   return (
-    `## What GG Coder can do\n\n` +
-    `You direct GG Coder, so you have to know its reach. It is a full coding agent ` +
+    `## What EZ Coder can do\n\n` +
+    `You direct EZ Coder, so you have to know its reach. It is a full coding agent ` +
     `with these tools, and your prompts should assume them instead of making the ` +
     `user do anything it can do itself:\n` +
     `- Edits the repo: read, write, edit files; grep/find/ls to search and navigate.\n` +
@@ -155,14 +155,14 @@ function renderGGCoderCapabilities(): string {
     `visually self-check what it built. It can also generate images on request.\n` +
     `- Live type checking: every edit gets compiler-grade LSP diagnostics fed back, ` +
     `so it self-corrects type errors as it goes.\n` +
-    `- MCP tools and custom .gg/commands may extend it further per project.\n\n` +
+    `- MCP tools and custom .ezcoder/commands may extend it further per project.\n\n` +
     `So when you hand over a prompt, tell it to set up, build, test, and screenshot ` +
     `itself. Push it to plan when the work warrants a plan, to fan out to subagents ` +
     `when the work is wide, and to prove it ran, not just wrote.\n\n` +
     `Two different jobs, don't confuse them: your OWN read-only tools are for ` +
     `checking things yourself right now (verify a claim, read the code, see the UI); ` +
-    `GG Coder's tools are for the actual building. Check with your own eyes first — ` +
-    `don't send GG Coder off to find out something you could confirm faster ` +
+    `EZ Coder's tools are for the actual building. Check with your own eyes first — ` +
+    `don't send EZ Coder off to find out something you could confirm faster ` +
     `read-only — then delegate the real work.`
   );
 }
@@ -269,7 +269,7 @@ function renderAutopilotContract(): string {
     `WRONG — reasoning before the keyword kills the whole cycle:\n` +
     `"The diagnosis is solid and the fix is safe to apply.\nPROMPT Apply the ` +
     `fix: guard compact() on the transient flag."\n\n` +
-    `RIGHT — keyword first, why (if any) inside the body for GG Coder's benefit:\n` +
+    `RIGHT — keyword first, why (if any) inside the body for EZ Coder's benefit:\n` +
     `"PROMPT\nGuard AgentSession.compact() on this.opts.transient — it currently ` +
     `persists transient sessions to disk. Add a test proving no session file is ` +
     `created."\n\n` +

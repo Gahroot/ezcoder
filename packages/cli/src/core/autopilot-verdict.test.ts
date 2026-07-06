@@ -122,7 +122,7 @@ describe("parseAutopilotVerdict", () => {
   it("recovers a buried PROMPT with an inline body (the real drift shape)", () => {
     // The exact drift that stalled a live autopilot cycle: reasoning prose
     // first, then `PROMPT <body>` on one line — used to parse as a HUMAN stop
-    // and dump the whole reply into the chat as a Ken bubble.
+    // and dump the whole reply into the chat as a Nolan bubble.
     const reply =
       "The diagnosis is solid and confirmed on disk. The fix is mechanically " +
       "implied by the original ask. Safe to proceed without new user input.\n" +
@@ -141,7 +141,7 @@ describe("parseAutopilotVerdict", () => {
       parseAutopilotVerdict("Waiting on input.\nprompt the user for their API key first.").kind,
     ).toBe("human");
     expect(
-      parseAutopilotVerdict("Unclear ask.\nWe should write a prompt for GG Coder here.").kind,
+      parseAutopilotVerdict("Unclear ask.\nWe should write a prompt for EZ Coder here.").kind,
     ).toBe("human");
   });
 
@@ -158,11 +158,11 @@ describe("parseAutopilotVerdict", () => {
   });
 
   it("recovers a buried HUMAN, dropping the leading reasoning prose", () => {
-    // Ken drifted: he wrote his whole recap first, THEN the verdict. Recover the
+    // Nolan drifted: he wrote his whole recap first, THEN the verdict. Recover the
     // reason after the keyword and drop the prose — HUMAN stops either way.
     const reply =
       "The screenshot shows a clean squared inward spiral that matches the " +
-      "reference. Tests green. GG Coder asked whether to dress it up with art — " +
+      "reference. Tests green. EZ Coder asked whether to dress it up with art — " +
       "that's a taste/product call the user should own.\nHUMAN\nStructural spiral " +
       "is done; dressing it up with art is a taste call only you can make.";
     const v = parseAutopilotVerdict(reply);

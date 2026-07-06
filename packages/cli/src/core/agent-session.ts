@@ -1135,11 +1135,11 @@ export class AgentSession {
 
     this.messages = result.messages;
 
-    // Transient sessions (Ken chat/autopilot, subagent spawns) must NEVER touch
+    // Transient sessions (Nolan chat/autopilot, subagent spawns) must NEVER touch
     // the session store: without this guard, the first auto-compaction called
     // sessionManager.create() and assigned a real sessionPath, silently turning
     // the "in-memory only" session into a persisted one — every later turn (and
-    // every further compaction) then leaked a Ken transcript file into the
+    // every further compaction) then leaked a Nolan transcript file into the
     // project's session list. Compact in memory only and keep sessionPath empty.
     if (this.opts.transient) {
       this.lastPersistedIndex = this.messages.length;
@@ -1156,8 +1156,8 @@ export class AgentSession {
         await this.persistMessage(msg);
       }
       this.lastPersistedIndex = this.messages.length;
-      // Carry Ken's advisory turns into the new file so they survive compaction.
-      await this.rePersistKenTurns();
+      // Carry Nolan's advisory turns into the new file so they survive compaction.
+      await this.rePersistNolanTurns();
       await this.rePersistAutopilotMarkers();
       await this.rePersistAppMarkers();
       // Persist the compaction counts so a resumed session's quiet notice can
@@ -1199,10 +1199,10 @@ export class AgentSession {
     this.messages = [{ role: "system", content: basePrompt }];
     // Fresh conversation — new entries must not chain onto the old DAG's leaf.
     this.currentLeafId = null;
-    // Transient sessions (Ken chat/autopilot, subagent spawns) never touch the
+    // Transient sessions (Nolan chat/autopilot, subagent spawns) never touch the
     // session store. Without this guard, autopilot's per-cycle resetReviewer
-    // (kenAutoSession.newSession()) created a real session file EVERY review
-    // cycle — the stream of 3-line "## Who you are … Ken Kai" sessions that
+    // (nolanAutoSession.newSession()) created a real session file EVERY review
+    // cycle — the stream of 3-line "## Who you are … Nolan Grout" sessions that
     // polluted the project's session list.
     if (this.opts.transient) {
       this.sessionId = "";

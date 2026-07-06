@@ -26,7 +26,7 @@
  * Parsing is forgiving and safe-by-default: any reply we can't confidently map
  * to PROMPT, ALL_CLEAR, or IGNORE becomes a HUMAN stop, never a blind loop.
  *
- * Recovery order for prose-then-keyword drift (Ken writing commentary before
+ * Recovery order for prose-then-keyword drift (Nolan writing commentary before
  * the verdict despite the contract): bare trailing ALL_CLEAR/IGNORE → buried
  * HUMAN → buried line-start PROMPT (uppercase, line-start only, so prose like
  * "prompt the user" can never match). HUMAN wins over PROMPT when both appear
@@ -168,10 +168,10 @@ export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
   if (trailing === "all_clear") return { kind: "all_clear" };
   if (trailing === "ignore") return { kind: "ignore" };
 
-  // A buried bare HUMAN line (Ken wrote his reasoning first, THEN the verdict).
+  // A buried bare HUMAN line (Nolan wrote his reasoning first, THEN the verdict).
   // Take the lines after the LAST exact-"HUMAN" line as the reason and drop the
   // leading prose. Safe to recover unlike a buried PROMPT: HUMAN stops the cycle
-  // either way, so this can't trigger autonomous action — it only keeps Ken's
+  // either way, so this can't trigger autonomous action — it only keeps Nolan's
   // internal reasoning out of the human-facing reason bubble (the drift that
   // dumped his whole recap into the transcript alongside the real reason).
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -188,7 +188,7 @@ export function parseAutopilotVerdict(reply: string): AutopilotVerdict {
   // HUMAN bubble): recover a line that STARTS with the uppercase keyword and
   // re-parse from there, so both `PROMPT <inline body>` and `PROMPT\n<body>`
   // shapes work. Uppercase + line-start (never mid-line, never lowercase)
-  // keeps prose like "prompt the user" or "a prompt for GG Coder" from ever
+  // keeps prose like "prompt the user" or "a prompt for EZ Coder" from ever
   // matching. Takes the LAST such line, and runs AFTER the HUMAN recovery so
   // a reply carrying both stops instead of acting.
   const BURIED_PROMPT_RE = /^PROMPT(?=$|[\s:.,])/;

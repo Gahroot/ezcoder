@@ -426,7 +426,7 @@ fn force_kill_pid(pid: i32) {
         .status();
 }
 
-/// Absolute path to the sidecar PID ledger (`~/.gg/gg-app-sidecars`).
+/// Absolute path to the sidecar PID ledger (`~/.ezcoder/ezcoder-app-sidecars`).
 ///
 /// Newline-delimited list of PIDs of every Node sidecar this app has spawned.
 /// Because each sidecar is spawned as a process-group leader (`process_group(0)`
@@ -434,7 +434,7 @@ fn force_kill_pid(pid: i32) {
 /// ledgered PID doubles as "a GG process-group id", which is how the sweep
 /// recognises a crashed sidecar's children by lineage — no MCP-name whitelist.
 fn sidecar_ledger_path() -> PathBuf {
-    home_dir().join(".gg").join("gg-app-sidecars")
+    home_dir().join(".ezcoder").join("ezcoder-app-sidecars")
 }
 
 /// Read the ledgered sidecar PIDs (== process-group ids). Missing/garbage file
@@ -4210,8 +4210,8 @@ mod tests {
         // The live app (pid 100, self) is in the snapshot so the sidecar's parent
         // reads as alive too.
         let snap = vec![
-            proc(100, 1, "gg-app"),
-            proc(500, 100, "ggnode app-sidecar.mjs"),
+            proc(100, 1, "ezcoder-app"),
+            proc(500, 100, "eznode app-sidecar.mjs"),
             proc_g(701, 500, 500, "node some-user-mcp-server"),
         ];
         let ks = orphan_killset(&snap, 100, &ledger(&[500]));

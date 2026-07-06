@@ -1677,8 +1677,8 @@ async function createSession(
           return true;
         },
         runImplement: () => {
-          // Autopilot-injected run: frame it so GG Coder knows no human is
-          // watching the implementation. Record the framed string so Ken's
+          // Autopilot-injected run: frame it so EZ Coder knows no human is
+          // watching the implementation. Record the framed string so Nolan's
           // digest labels it as injected, not as the user's ask. The run_start
           // label stays the clean prompt.
           const framed = frameAutopilotInjection(IMPLEMENT_PLAN_PROMPT);
@@ -1703,14 +1703,14 @@ async function createSession(
           // branch injections, where nothing is pending).
           clearPendingPlan();
           // Record the FRAMED string (what actually lands in the build session,
-          // see runPrompt) so Ken's digest matches and labels it as injected.
+          // see runPrompt) so Nolan's digest matches and labels it as injected.
           // The webview marker + persisted body stay the CLEAN prompt so the UI
-          // shows Ken's actual instruction, not the autopilot preamble.
+          // shows Nolan's actual instruction, not the autopilot preamble.
           injectedAutopilotPrompts.push(frameAutopilotInjection(body));
           broadcast("autopilot_prompted", { round, body });
           void session.persistAutopilotMarker("prompted", { body });
         },
-        // Autopilot-injected run: GG Coder receives the framed prompt (no human
+        // Autopilot-injected run: EZ Coder receives the framed prompt (no human
         // is watching this turn) while run_start keeps the clean label.
         runPrompt: (body) => runAgent(body, () => session.prompt(frameAutopilotInjection(body))),
         emit: (event) => {

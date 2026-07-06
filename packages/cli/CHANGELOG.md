@@ -36,54 +36,54 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.9.0
-- @kenkaiiii/gg-agent@5.9.0
-- @kenkaiiii/gg-core@5.9.0
+- @prestyj/ai@5.9.0
+- @prestyj/agent@5.9.0
+- @prestyj/core@5.9.0
 
 ## 5.8.8
 
 ### Patch Changes
 
-- Fix transient Ken sessions leaking to the session store (compact() and newSession() now respect the transient flag), harden autopilot verdict parsing to recover a buried line-start PROMPT keyword, and tighten Ken's autopilot contract so reasoning prose never precedes the verdict.
-  - @kenkaiiii/gg-ai@5.8.8
-  - @kenkaiiii/gg-agent@5.8.8
-  - @kenkaiiii/gg-core@5.8.8
+- Fix transient Nolan sessions leaking to the session store (compact() and newSession() now respect the transient flag), harden autopilot verdict parsing to recover a buried line-start PROMPT keyword, and tighten Nolan's autopilot contract so reasoning prose never precedes the verdict.
+  - @prestyj/ai@5.8.8
+  - @prestyj/agent@5.8.8
+  - @prestyj/core@5.8.8
 
 ## 5.8.7
 
 ### Patch Changes
 
 - Cut MCP server memory: resolve stdio servers to their real bin (via the npx on-demand cache and sole-bin matching) instead of falling back to the ~90 MB npx wrapper per connection. Covers non-bundled defaults like zai and any user-added MCP.
-  - @kenkaiiii/gg-ai@5.8.7
-  - @kenkaiiii/gg-agent@5.8.7
-  - @kenkaiiii/gg-core@5.8.7
+  - @prestyj/ai@5.8.7
+  - @prestyj/agent@5.8.7
+  - @prestyj/core@5.8.7
 
 ## 5.8.6
 
 ### Patch Changes
 
-- Fix autopilot leaking the raw HUMAN verdict reason and teach Ken GG Coder's own capabilities so his guidance is grounded in what the tool can actually do.
-  - @kenkaiiii/gg-ai@5.8.6
-  - @kenkaiiii/gg-agent@5.8.6
-  - @kenkaiiii/gg-core@5.8.6
+- Fix autopilot leaking the raw HUMAN verdict reason and teach Nolan EZ Coder's own capabilities so his guidance is grounded in what the tool can actually do.
+  - @prestyj/ai@5.8.6
+  - @prestyj/agent@5.8.6
+  - @prestyj/core@5.8.6
 
 ## 5.8.5
 
 ### Patch Changes
 
-- Autopilot now tells GG Coder when no human is watching: injected review prompts carry a situational-awareness preamble so the agent self-verifies its work and stops asking permission for safe, already-implied steps, while the transcript and resumed sessions still show Ken's clean instruction.
-  - @kenkaiiii/gg-ai@5.8.5
-  - @kenkaiiii/gg-agent@5.8.5
-  - @kenkaiiii/gg-core@5.8.5
+- Autopilot now tells EZ Coder when no human is watching: injected review prompts carry a situational-awareness preamble so the agent self-verifies its work and stops asking permission for safe, already-implied steps, while the transcript and resumed sessions still show Nolan's clean instruction.
+  - @prestyj/ai@5.8.5
+  - @prestyj/agent@5.8.5
+  - @prestyj/core@5.8.5
 
 ## 5.8.4
 
 ### Patch Changes
 
 - Route read-only scout sub-agents (recon/research) to each provider's fast/cheap model via `costTier`, cutting sub-agent latency and spend with no quality risk. Writers and default sub-agents keep the parent model.
-  - @kenkaiiii/gg-ai@5.8.4
-  - @kenkaiiii/gg-agent@5.8.4
-  - @kenkaiiii/gg-core@5.8.4
+  - @prestyj/ai@5.8.4
+  - @prestyj/agent@5.8.4
+  - @prestyj/core@5.8.4
 
 ## 5.8.3
 
