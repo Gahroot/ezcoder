@@ -19,6 +19,18 @@
   explicit custom baseUrl still wins). Fixes the "Not supported model" error when
   selecting UltraSpeed.
 
+## 5.9.0
+
+## 5.8.8
+
+## 5.8.7
+
+## 5.8.6
+
+## 5.8.5
+
+## 5.8.4
+
 ## 5.8.3
 
 ## 5.8.2

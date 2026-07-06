@@ -1074,6 +1074,7 @@ dependencies = [
 name = "ezcoder-app"
 version = "0.1.50"
 dependencies = [
+ "base64 0.22.1",
  "futures-util",
  "libc",
  "log",
