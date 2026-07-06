@@ -27,6 +27,34 @@ describe("plan mode", () => {
     processManager.shutdownAll();
   });
 
+  it("declines plan mode and tells the agent to implement directly when the host returns false", async () => {
+    // Unattended task runs return false from onEnterPlan so the loop never hangs
+    // on an approval pane. The enter_plan tool must convert that into an
+    // implement-directly hint rather than confirming plan mode.
+    const { tools, processManager } = await createTools(os.tmpdir(), {
+      onEnterPlan: () => false,
+      onExitPlan: async () => "ok",
+    });
+    const enterPlan = tools.find((tool) => tool.name === "enter_plan");
+    expect(enterPlan).toBeDefined();
+
+    const result = String(await enterPlan!.execute({ reason: "complex task" }, toolContext()));
+    expect(result).toContain("Plan mode is unavailable during a task run");
+    expect(result).not.toContain("Plan mode activated");
+    processManager.shutdownAll();
+  });
+
+  it("confirms plan mode when the host accepts (no false return)", async () => {
+    const { tools, processManager } = await createTools(os.tmpdir(), {
+      onEnterPlan: () => {},
+      onExitPlan: async () => "ok",
+    });
+    const enterPlan = tools.find((tool) => tool.name === "enter_plan");
+    const result = String(await enterPlan!.execute({ reason: "complex task" }, toolContext()));
+    expect(result).toContain("Plan mode activated");
+    processManager.shutdownAll();
+  });
+
   it("renders active plan instructions and plan tools", async () => {
     const prompt = await buildSystemPrompt(os.tmpdir(), [], true, undefined, [
       "read",

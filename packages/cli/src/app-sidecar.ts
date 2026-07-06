@@ -39,7 +39,11 @@ import {
   type WorkflowCommandSpec,
 } from "./core/autopilot-gate.js";
 import { driveAutopilotCycle } from "./core/autopilot-cycle.js";
-import { validateNolanModelPref, effectiveNolanModel, type NolanModelPref } from "./core/nolan-model.js";
+import {
+  validateNolanModelPref,
+  effectiveNolanModel,
+  type NolanModelPref,
+} from "./core/nolan-model.js";
 import type { NolanTurnPayload, AppMarkerPayload } from "./core/session-manager.js";
 import {
   normalizeAutopilotMarkersForHistory,
@@ -77,6 +81,7 @@ import {
   getNextPendingTask,
   markTaskInProgress,
   type TaskStatus,
+  type TaskListItem,
 } from "./core/task-store.js";
 import { initLogger, log } from "./core/logger.js";
 import { RADIO_STATIONS, getCurrentStation, playRadio, stopRadio } from "./core/radio.js";
@@ -1124,12 +1129,28 @@ async function createSession(
     // session plan state (rebuilds the system prompt + enforces read-only
     // tools) and surface the transition to the webview.
     onEnterPlan: async (reason) => {
+      // During a task run there is no human present to approve a plan, and a
+      // submitted plan would strand the task in-progress while the run-all loop
+      // advances to the next one. Decline plan mode so the agent implements the
+      // task directly — mirrors the TUI's isUnattendedRun guard (App.tsx). The
+      // enter_plan tool turns a false return into an "implement directly" hint.
+      if (taskRunActive) return false;
       await session.setPlanMode(true);
       broadcast("plan_enter", { reason: reason ?? "" });
       // Persist the plan-mode banner so a resumed session still shows it.
       void session.persistAppMarker("plan", { reason: reason ?? "" }).catch(() => {});
     },
     onExitPlan: async (planPath: string) => {
+      // A model can call exit_plan even when enter_plan was declined. During a
+      // task run, never route the plan into review (no approver) — that would
+      // hang the task and stall run-all. Leave plan mode and tell it to build.
+      if (taskRunActive) {
+        await session.setPlanMode(false);
+        return (
+          "Plan review is unavailable during a task run. Skip review and implement " +
+          "the plan directly now: make the changes, verify them, then mark the task done."
+        );
+      }
       await session.setPlanMode(false);
       // Surface the plan's path + markdown so the webview can show the review
       // modal (Accept / Feedback / Reject). Best-effort content read.
@@ -1783,10 +1804,23 @@ async function createSession(
   // completion hint instructing the agent to mark the task done via the tasks
   // tool. Run-all advances to the next pending task after each run finishes.
   let taskRunAll = false;
+  // True for the duration of any task run (single or run-all). The plan-mode
+  // callbacks read this to decline plan mode when no human is present to
+  // approve a plan, so tasks implement directly instead of hanging on review.
+  let taskRunActive = false;
 
   async function runTaskById(taskId: string): Promise<boolean> {
     const task = loadTasksSync(cwd).find((t) => t.id === taskId || t.id.startsWith(taskId));
     if (!task) return false;
+    taskRunActive = true;
+    try {
+      return await runTaskByIdInner(task);
+    } finally {
+      taskRunActive = false;
+    }
+  }
+
+  async function runTaskByIdInner(task: TaskListItem): Promise<boolean> {
     // Fresh session per task so one task's context never bleeds into the next.
     await session.newSession();
     injectedAutopilotPrompts = [];
@@ -3002,6 +3036,7 @@ async function createSession(
       running = false;
       // Stop a run-all sweep so the next pending task isn't auto-started.
       taskRunAll = false;
+      taskRunActive = false;
       // Stop any in-flight autopilot cycle: flag it so the loop bails between
       // steps, and abort a review that's mid-prompt on the nolanAuto session.
       autopilotCancelled = true;

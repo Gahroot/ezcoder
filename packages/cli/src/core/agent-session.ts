@@ -131,7 +131,12 @@ export interface AgentSessionOptions {
    * rebuilds. Hosts (e.g. the ezcoder-app sidecar) use these to surface plan-mode
    * UI. Omitted by callers that don't want plan mode (CLI wires its own).
    */
-  onEnterPlan?: (reason?: string) => void | Promise<void>;
+  /**
+   * Return `false` to decline plan mode (e.g. an unattended task run where no
+   * human is present to approve a plan). The `enter_plan` tool then tells the
+   * agent to skip planning and implement directly. Any other return accepts.
+   */
+  onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
   onExitPlan?: (planPath: string) => Promise<string>;
   /**
    * If provided, the session's tool set is filtered to ONLY these tool names

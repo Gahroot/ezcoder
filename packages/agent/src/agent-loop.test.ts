@@ -12,7 +12,7 @@ import {
   serverResetDelayMs,
 } from "./agent-loop.js";
 import type { AgentEvent, AgentResult, AgentTool } from "./types.js";
-import type { Message, StreamEvent, StreamOptions } from "@prestyj/ai";
+import type { Message, StreamOptions } from "@prestyj/ai";
 
 // ── Mock stream ────────────────────────────────────────────
 
