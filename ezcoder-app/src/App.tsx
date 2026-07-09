@@ -56,6 +56,7 @@ import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
 import { CompactionNotice } from "./CompactionNotice";
 import { ModelMenu } from "./ModelMenu";
+import { modelDisplayName } from "./model-name";
 import { SlashMenu } from "./SlashMenu";
 import { FileMentionMenu } from "./FileMentionMenu";
 import { ReferencedFiles, appendReferencedFiles, parseReferencedFiles } from "./ReferencedFiles";
@@ -82,6 +83,7 @@ import { Toaster } from "./Toaster";
 import { Confetti } from "./Confetti";
 import { RankBadge } from "./RankBadge";
 import { ScorecardModal } from "./ScorecardModal";
+import { TitleUsageMeter } from "./TitleUsageMeter";
 import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
 import { Markdown, PromptSendProvider } from "./Markdown";
@@ -418,6 +420,9 @@ function App(): React.ReactElement {
   const [thinkingStartTs, setThinkingStartTs] = useState<number | null>(null);
   const [thinkingAccumMs, setThinkingAccumMs] = useState(0);
   const [models, setModels] = useState<ModelOption[]>([]);
+  // Footer + menus show the friendly registry name (e.g. "Gemini 3.5 Flash"),
+  // not the raw wire id (e.g. "gemini-3-flash").
+  const modelName = (id: string | undefined | null): string => modelDisplayName(models, id);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [nolanModelMenuOpen, setNolanModelMenuOpen] = useState(false);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
@@ -1929,6 +1934,7 @@ function App(): React.ReactElement {
           <span className="chat-head-title" data-tauri-drag-region>
             {sessionTitle ?? "EZ Coder"}
           </span>
+          <TitleUsageMeter currentProvider={state?.provider ?? ""} />
           {windowTotal > 1 && windowIndex !== null && (
             <span
               className={`window-index${isThisFocused ? "" : " dim"}`}
@@ -2393,7 +2399,7 @@ function App(): React.ReactElement {
                     setModelMenuOpen((o) => !o);
                   }}
                 >
-                  {state?.model ?? "\u2026"}
+                  {modelName(state?.model)}
                 </button>
               </span>
               <FooterSep />
@@ -2426,7 +2432,7 @@ function App(): React.ReactElement {
                     setNolanModelMenuOpen((o) => !o);
                   }}
                 >
-                  {state?.nolanModel ?? state?.model ?? "\u2026"}
+                  {modelName(state?.kenModel ?? state?.model)}
                 </button>
               </span>
             </span>

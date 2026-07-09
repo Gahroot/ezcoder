@@ -25,6 +25,26 @@
   explicit custom baseUrl still wins). Fixes the "Not supported model" error when
   selecting UltraSpeed.
 
+## 5.10.0
+
+## 5.9.7
+
+## 5.9.6
+
+## 5.9.5
+
+## 5.9.4
+
+## 5.9.3
+
+## 5.9.2
+
+## 5.9.1
+
+### Patch Changes
+
+- Fix error guidance to use desktop-app UI actions instead of CLI commands in the gg-app
+
 ## 5.9.0
 
 ## 5.8.8

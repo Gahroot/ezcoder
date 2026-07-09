@@ -22,6 +22,77 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.15.0",
+    date: "2026-07-10",
+    items: [
+      "Your Claude and Codex limits now live right in the title bar. I built a tiny glowing meter that shows how much of your current window is gone and how long until it resets, so you can keep shipping without surprises.",
+      "Tap the meter and your weekly view slides in instantly. I made it follow the model you are using and disappear when it has nothing useful to say.",
+    ],
+  },
+  {
+    version: "0.14.18",
+    date: "2026-07-10",
+    items: [
+      "GPT-5.6's full power dial is finally yours. I opened every step from quick and light to maximum firepower, so you can choose exactly how hard Sol, Terra, or Luna thinks on every task.",
+    ],
+  },
+  {
+    version: "0.14.17",
+    date: "2026-07-10",
+    items: [
+      "Sub-agents no longer quit when the faster, cheaper model is out of reach. I made them switch straight back to your active model and finish the job, so your workflow keeps moving without babysitting.",
+    ],
+  },
+  {
+    version: "0.14.16",
+    date: "2026-07-10",
+    items: [
+      "GPT-5.6 is here and ready to go. I added all three tiers, Sol, Terra, and Luna, straight from OpenAI's latest Codex catalog, so you can pick the exact balance of power and speed your task needs. Sol is the frontier heavyweight, Terra is your daily driver, and Luna is the fast and affordable one.",
+      "Older OpenAI models have been retired. GPT-5.4, 5.4 Mini, and 5.3 Codex are gone, making room for the new 5.6 family and keeping your model picker clean.",
+      "Error messages finally speak app, not terminal. Every hint now tells you to use the model selector or compact button instead of referencing slash commands that only exist in the CLI.",
+    ],
+  },
+  {
+    version: "0.14.15",
+    date: "2026-07-09",
+    items: [
+      "Big sessions no longer hit a wall. When a chat grew too large for the model, the app used to just stop with an error. Now I catch it, quietly trim the history, and keep the conversation rolling so you never lose your flow.",
+      "Error messages read like a human wrote them. Everything now says GG Coder in plain, friendly language, and points you to the exact button to click instead of some command you'd never type.",
+    ],
+  },
+  {
+    version: "0.14.14",
+    date: "2026-07-08",
+    items: [
+      "Gemini is back and firing on all cylinders. Google renamed their models and it quietly broke sign-ins for everyone, so I matched every latest name and got you connected again.",
+      "Gemini 3.5 Flash and Gemini 3.1 Pro now show up in the model picker, ready to use the moment your account has them.",
+      "Model names read like actual names now. The picker and footer say Gemini 3.5 Flash instead of some cryptic code, so you always know exactly what you're running.",
+      "If your Google account can't reach a model, I now tell you why in plain English and point you straight to one that works, instead of dumping a scary error at you.",
+    ],
+  },
+  {
+    version: "0.14.13",
+    date: "2026-07-08",
+    items: [
+      "Your level finally reflects the real grind. If you've put in serious miles, you no longer get dumped at the same starting rank as everyone else. I reworked the way past work counts so heavy hitters climb higher right out of the gate, and the leveling curve feels earned instead of flat.",
+    ],
+  },
+  {
+    version: "0.14.12",
+    date: "2026-07-07",
+    items: [
+      "Error messages finally speak desktop. When something goes wrong, the app now tells you exactly what to click instead of spitting out terminal commands you'd never run anyway. Clean, clear, and to the point.",
+    ],
+  },
+  {
+    version: "0.14.11",
+    date: "2026-07-07",
+    items: [
+      "Kencode search is back. My code search engine that digs through millions of real repositories was silently failing to start inside the app, and every session quietly lost it. I traced it deep into the build pipeline, fixed it at the root, and confirmed live searches flow again.",
+      "I also wired a tripwire into every future build that refuses to ship if this ever breaks again. You get the fix today and the insurance forever.",
+    ],
+  },
+  {
     version: "0.14.10",
     date: "2026-07-06",
     items: [
