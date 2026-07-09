@@ -196,8 +196,8 @@ describe("AgentSession overflow recovery", () => {
   });
 });
 
-/** Every .jsonl under the ggcoder session store — must stay empty for
- *  transient sessions (Ken chat/autopilot, subagent spawns). */
+/** Every .jsonl under the ezcoder session store — must stay empty for
+ *  transient sessions (Nolan chat/autopilot, subagent spawns). */
 async function listSessionFiles(): Promise<string[]> {
   const sessionsDir = path.join(tmpHome, ".ezcoder", "sessions");
   const out: string[] = [];

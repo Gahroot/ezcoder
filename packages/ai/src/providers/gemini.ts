@@ -181,13 +181,13 @@ const ACCOUNT_GATED_MODELS = new Set([
   "gemini-3.1-pro-preview-customtools",
 ]);
 
-// The user-facing account-gated message is split so the error UI (gg-app + TUI)
+// The user-facing account-gated message is split so the error UI (ezcoder-app + TUI)
 // can render it as `message` (what happened — an entitlement gap, not a bug)
 // plus `hint` (the actionable next step, shown on the dedicated guidance line).
 function accountGatedMessage(model: string): string {
   return (
     `Your Google account isn't entitled to "${model}" over Gemini Code Assist OAuth, ` +
-    `so the API reports it as not found. This is an account-access limit, not a ggcoder bug.`
+    `so the API reports it as not found. This is an account-access limit, not a ezcoder bug.`
   );
 }
 

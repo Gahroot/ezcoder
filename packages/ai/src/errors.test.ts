@@ -110,7 +110,7 @@ describe("VideoUnsupportedError", () => {
   it("renders headline + guidance only (no bug-report framing)", () => {
     const out = formatErrorForDisplay(new VideoUnsupportedError());
     expect(out).toContain("This model can't analyze video.");
-    expect(out).not.toContain("GG Coder bug");
+    expect(out).not.toContain("EZ Coder bug");
   });
 });
 
@@ -123,7 +123,7 @@ describe("formatErrorForDisplay", () => {
       [
         "Anthropic returned an error.",
         "  overloaded_error: Overloaded",
-        "  → Anthropic's servers are overloaded right now. Retry in a moment — not a GG Coder issue.",
+        "  → Anthropic's servers are overloaded right now. Retry in a moment — not a EZ Coder issue.",
       ].join("\n"),
     );
   });
@@ -136,7 +136,7 @@ describe("formatErrorForDisplay", () => {
       [
         "OpenAI returned an error.",
         "  server_error: something broke",
-        "  \u2192 This is an error from OpenAI, not GG Coder. Retry \u2014 if it keeps happening, check status.openai.com.",
+        "  \u2192 This is an error from OpenAI, not EZ Coder. Retry \u2014 if it keeps happening, check status.openai.com.",
       ].join("\n"),
     );
   });
@@ -165,29 +165,29 @@ describe("formatErrorForDisplay", () => {
       [
         "Gemini returned an error.",
         "  quota exceeded",
-        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a GG Coder issue.",
+        "  \u2192 Your Gemini account has a billing or quota issue \u2014 check your balance. Not a EZ Coder issue.",
       ].join("\n"),
     );
   });
 
-  it("classifies a network GGAIError without a GG Coder bug headline", () => {
-    const out = formatErrorForDisplay(new GGAIError("fetch failed", { source: "network" }));
+  it("classifies a network EZCoderAIError without a EZ Coder bug headline", () => {
+    const out = formatErrorForDisplay(new EZCoderAIError("fetch failed", { source: "network" }));
     expect(out).toBe(
       [
         "Network error \u2014 couldn't reach the provider.",
         "  fetch failed",
-        "  → Check your internet connection. Not a GG Coder issue — retry shortly.",
+        "  → Check your internet connection. Not a EZ Coder issue — retry shortly.",
       ].join("\n"),
     );
   });
 
-  it("falls back to the GG Coder-bug headline for unknown errors", () => {
+  it("falls back to the EZ Coder-bug headline for unknown errors", () => {
     const out = formatErrorForDisplay(new Error("Cannot read property 'foo' of undefined"));
     expect(out).toBe(
       [
-        "GG Coder hit an unexpected error.",
+        "EZ Coder hit an unexpected error.",
         "  Cannot read property 'foo' of undefined",
-        "  → This looks like a GG Coder bug — please report it to the developer (see /help).",
+        "  → This looks like a EZ Coder bug — please report it to the developer (see /help).",
       ].join("\n"),
     );
   });

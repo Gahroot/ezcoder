@@ -43,7 +43,7 @@
 
 ### Patch Changes
 
-- Fix error guidance to use desktop-app UI actions instead of CLI commands in the gg-app
+- Fix error guidance to use desktop-app UI actions instead of CLI commands in the ezcoder-app
 
 ## 5.9.0
 

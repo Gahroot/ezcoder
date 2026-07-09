@@ -61,7 +61,7 @@ import {
   XIAOMI_CREDITS_KEY,
   type SubscriptionUsageProvider,
   type SubscriptionUsageSnapshot,
-} from "@kenkaiiii/gg-core";
+} from "@prestyj/core";
 import { loginAnthropic } from "./core/oauth/anthropic.js";
 import { loginOpenAI } from "./core/oauth/openai.js";
 import { loginGemini } from "./core/oauth/gemini.js";
@@ -1170,18 +1170,18 @@ async function createSession(
   }
 
   // Replace CLI-specific guidance (slash commands, CLI tool names) with
-  // desktop-app equivalents so the webview never shows "run ggcoder login".
+  // desktop-app equivalents so the webview never shows "run ezcoder login".
   // Applied to BOTH the message and guidance fields — the auth "Not logged in…
-  // Run "ggcoder login"" string lives in `message`, not `guidance`.
+  // Run "ezcoder login"" string lives in `message`, not `guidance`.
   function desktopGuidance(guidance: string): string {
     return (
       guidance
-        // Auth: `Run "ggcoder login"` / `Run 'ggcoder login'` / `Run `ggcoder login``
+        // Auth: `Run "ezcoder login"` / `Run 'ezcoder login'` / `Run `ezcoder login``
         // (any quote style, or none) → button. Do this first so the whole phrase
         // is rewritten cleanly instead of leaving a dangling `Run "…"`.
-        .replaceAll(/Run ["'`]?ggcoder login["'`]?/gi, "Use the Login to AI Providers button")
+        .replaceAll(/Run ["'`]?ezcoder login["'`]?/gi, "Use the Login to AI Providers button")
         // Any remaining bare mention.
-        .replaceAll(/ggcoder login/gi, "the Login to AI Providers button")
+        .replaceAll(/ezcoder login/gi, "the Login to AI Providers button")
         // /compact: the app has NO manual compact command or button — it only
         // auto-compacts (and now auto-recovers on overflow). If this guidance is
         // reached, auto-compaction already couldn't reduce enough, so the only

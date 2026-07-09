@@ -2432,7 +2432,7 @@ function App(): React.ReactElement {
                     setNolanModelMenuOpen((o) => !o);
                   }}
                 >
-                  {modelName(state?.kenModel ?? state?.model)}
+                  {modelName(state?.nolanModel ?? state?.model)}
                 </button>
               </span>
             </span>

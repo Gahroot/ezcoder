@@ -46,72 +46,72 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.10.0
-- @kenkaiiii/gg-agent@5.10.0
-- @kenkaiiii/gg-core@5.10.0
+- @prestyj/ai@5.10.0
+- @prestyj/agent@5.10.0
+- @prestyj/core@5.10.0
 
 ## 5.9.7
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-core@5.9.7
-  - @kenkaiiii/gg-ai@5.9.7
-  - @kenkaiiii/gg-agent@5.9.7
+  - @prestyj/core@5.9.7
+  - @prestyj/ai@5.9.7
+  - @prestyj/agent@5.9.7
 
 ## 5.9.6
 
 ### Patch Changes
 
 - Retry read-only sub-agents on the active parent model when the cheaper model is unavailable.
-  - @kenkaiiii/gg-ai@5.9.6
-  - @kenkaiiii/gg-agent@5.9.6
-  - @kenkaiiii/gg-core@5.9.6
+  - @prestyj/ai@5.9.6
+  - @prestyj/agent@5.9.6
+  - @prestyj/core@5.9.6
 
 ## 5.9.5
 
 ### Patch Changes
 
 - Add GPT-5.6 Sol, Terra, and Luna models to the registry; remove GPT-5.4, GPT-5.4 Mini, and GPT-5.3 Codex. Fix provider error hints to reference the model selector instead of CLI-only slash commands so they work in both the desktop app and the CLI.
-  - @kenkaiiii/gg-ai@5.9.5
-  - @kenkaiiii/gg-agent@5.9.5
-  - @kenkaiiii/gg-core@5.9.5
+  - @prestyj/ai@5.9.5
+  - @prestyj/agent@5.9.5
+  - @prestyj/core@5.9.5
 
 ## 5.9.4
 
 ### Patch Changes
 
-- Auto-recover from context-overflow errors in the desktop app (request_too_large / 413) by wiring force-compaction + retry into AgentSession, add explicit 413 guidance, and rebrand user-facing error text to "GG Coder".
-  - @kenkaiiii/gg-ai@5.9.4
-  - @kenkaiiii/gg-agent@5.9.4
-  - @kenkaiiii/gg-core@5.9.4
+- Auto-recover from context-overflow errors in the desktop app (request_too_large / 413) by wiring force-compaction + retry into AgentSession, add explicit 413 guidance, and rebrand user-facing error text to "EZ Coder".
+  - @prestyj/ai@5.9.4
+  - @prestyj/agent@5.9.4
+  - @prestyj/core@5.9.4
 
 ## 5.9.3
 
 ### Patch Changes
 
 - Fix Gemini models over Code Assist OAuth: use the GA IDs from gemini-cli (`gemini-3.1-flash-lite`, wire name `gemini-3-flash` for Gemini 3.5 Flash), add Gemini 3.1 Pro (Preview) to the registry, and surface account-gated 404s as a clear entitlement message with actionable guidance instead of a raw provider error body.
-  - @kenkaiiii/gg-ai@5.9.3
-  - @kenkaiiii/gg-agent@5.9.3
-  - @kenkaiiii/gg-core@5.9.3
+  - @prestyj/ai@5.9.3
+  - @prestyj/agent@5.9.3
+  - @prestyj/core@5.9.3
 
 ## 5.9.2
 
 ### Patch Changes
 
 - Fix retroactive XP seeding so heavy prior users spread across levels 15-25 instead of all clamping onto level 15. Full credit up to level 15, then diminishing returns beyond, hard-capped at level 25.
-  - @kenkaiiii/gg-ai@5.9.2
-  - @kenkaiiii/gg-agent@5.9.2
-  - @kenkaiiii/gg-core@5.9.2
+  - @prestyj/ai@5.9.2
+  - @prestyj/agent@5.9.2
+  - @prestyj/core@5.9.2
 
 ## 5.9.1
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@5.9.1
-  - @kenkaiiii/gg-agent@5.9.1
-  - @kenkaiiii/gg-core@5.9.1
+  - @prestyj/ai@5.9.1
+  - @prestyj/agent@5.9.1
+  - @prestyj/core@5.9.1
 
 ## 5.9.0
 

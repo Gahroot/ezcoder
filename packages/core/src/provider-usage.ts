@@ -124,7 +124,7 @@ async function fetchAnthropicUsage(
       Accept: "application/json",
       "anthropic-version": "2023-06-01",
       "anthropic-beta": "oauth-2025-04-20",
-      "User-Agent": "ggcoder",
+      "User-Agent": "ezcoder",
     },
   });
   const data = (await readUsageResponse(response)) as AnthropicUsageResponse;
@@ -164,8 +164,8 @@ async function fetchCodexUsage(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${credentials.accessToken}`,
     Accept: "application/json",
-    originator: "ggcoder",
-    "User-Agent": "ggcoder",
+    originator: "ezcoder",
+    "User-Agent": "ezcoder",
   };
   if (credentials.accountId) headers["ChatGPT-Account-Id"] = credentials.accountId;
   const response = await fetchFn(CODEX_USAGE_URL, { method: "GET", signal, headers });

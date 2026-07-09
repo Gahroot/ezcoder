@@ -3,15 +3,15 @@
  *
  * Every error users see should answer one question: "is this me or them?"
  * That answer drives whether they retry, switch model, log in, or report a
- * GG Coder bug. The `FormattedError` shape captures it in plain English:
+ * EZ Coder bug. The `FormattedError` shape captures it in plain English:
  *
  *   ✗ OpenAI returned an error.
  *     An error occurred while processing your request...
- *     → This is an OpenAI issue, not GG Coder. Retry — if it persists, check status.openai.com.
+ *     → This is an OpenAI issue, not EZ Coder. Retry — if it persists, check status.openai.com.
  *
- *   ✗ GG Coder hit an unexpected error.
+ *   ✗ EZ Coder hit an unexpected error.
  *     Cannot read property 'foo' of undefined
- *     → This is a GG Coder bug — please report it.
+ *     → This is a EZ Coder bug — please report it.
  */
 
 export type ErrorSource = "provider" | "ezcoder" | "network" | "auth" | "capability";
@@ -321,7 +321,7 @@ function finaliseBySource(
         headline: "Network error — couldn't reach the provider.",
         source,
         message,
-        guidance: hint ?? "Check your internet connection. Not a GG Coder issue — retry shortly.",
+        guidance: hint ?? "Check your internet connection. Not a EZ Coder issue — retry shortly.",
         ...(requestId ? { requestId } : {}),
       };
     case "auth":
@@ -353,11 +353,11 @@ function finaliseBySource(
       };
     case "ezcoder":
       return {
-        headline: "GG Coder hit an unexpected error.",
+        headline: "EZ Coder hit an unexpected error.",
         source,
         message,
         guidance:
-          hint ?? "This looks like a GG Coder bug — please report it to the developer (see /help).",
+          hint ?? "This looks like a EZ Coder bug — please report it to the developer (see /help).",
         ...(requestId ? { requestId } : {}),
       };
   }
@@ -416,7 +416,7 @@ function inferSource(err: Error): ErrorSource {
  * Build the action line for a provider error: tells the user whether to
  * retry, switch model, check billing, or whether it's serious enough to
  * report. Always frames the source plainly ("This is an OpenAI issue") so
- * the user knows to NOT report it to the GG Coder dev.
+ * the user knows to NOT report it to the EZ Coder dev.
  */
 function providerGuidance(
   provider: string | undefined,
@@ -431,7 +431,7 @@ function providerGuidance(
     return `Authentication failed with ${name}. Re-authenticate to refresh your credentials.`;
   }
   if (lower.includes("overloaded") || lower.includes("engine_overloaded")) {
-    return `${name}'s servers are overloaded right now. Retry in a moment — not a GG Coder issue.`;
+    return `${name}'s servers are overloaded right now. Retry in a moment — not a EZ Coder issue.`;
   }
   if (
     lower.includes("insufficient balance") ||
@@ -439,16 +439,16 @@ function providerGuidance(
     lower.includes("recharge") ||
     lower.includes("no resource package")
   ) {
-    return `Your ${name} account has a billing or quota issue — check your balance. Not a GG Coder issue.`;
+    return `Your ${name} account has a billing or quota issue — check your balance. Not a EZ Coder issue.`;
   }
   if (statusCode === 429 || lower.includes("rate limit") || lower.includes("too many requests")) {
-    return `${name} rate limit hit. Wait a moment then retry — not a GG Coder issue.`;
+    return `${name} rate limit hit. Wait a moment then retry — not a EZ Coder issue.`;
   }
   if (statusCode === 502 || lower.includes("bad gateway")) {
-    return `${name} returned a bad gateway. Retry — this is on their side, not GG Coder.`;
+    return `${name} returned a bad gateway. Retry — this is on their side, not EZ Coder.`;
   }
   if (statusCode === 503 || lower.includes("service unavailable")) {
-    return `${name} is temporarily unavailable. Retry shortly — not a GG Coder issue.`;
+    return `${name} is temporarily unavailable. Retry shortly — not a EZ Coder issue.`;
   }
   if (
     statusCode === 500 ||
@@ -456,11 +456,11 @@ function providerGuidance(
     (lower.includes("500") && lower.includes("internal server error"))
   ) {
     return status
-      ? `This is an error from ${name}, not GG Coder. Retry — if it keeps happening, check ${status}.`
-      : `This is an error from ${name}, not GG Coder. Retry — if it keeps happening, try a different model via the model selector.`;
+      ? `This is an error from ${name}, not EZ Coder. Retry — if it keeps happening, check ${status}.`
+      : `This is an error from ${name}, not EZ Coder. Retry — if it keeps happening, try a different model via the model selector.`;
   }
   if (lower.includes("timeout") || lower.includes("timed out")) {
-    return `Request to ${name} timed out. Their servers may be slow — retry. Not a GG Coder issue.`;
+    return `Request to ${name} timed out. Their servers may be slow — retry. Not a EZ Coder issue.`;
   }
   if (
     lower.includes("does not recognize the requested model") ||
@@ -483,6 +483,6 @@ function providerGuidance(
     return `The request to ${name} is too large. Compact the conversation to shrink history, or start a new session.`;
   }
   return status
-    ? `This is an error from ${name}, not GG Coder. Retry — if it persists, check ${status}.`
-    : `This is an error from ${name}, not GG Coder. Retry — if it persists, try a different model via the model selector.`;
+    ? `This is an error from ${name}, not EZ Coder. Retry — if it persists, check ${status}.`
+    : `This is an error from ${name}, not EZ Coder. Retry — if it persists, try a different model via the model selector.`;
 }
