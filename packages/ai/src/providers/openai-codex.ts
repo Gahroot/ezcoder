@@ -91,10 +91,10 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     Accept: "text/event-stream",
     Authorization: `Bearer ${options.apiKey}`,
     "OpenAI-Beta": "responses=experimental",
-    originator: responsesLite ? "codex_cli_rs" : "ggcoder",
+    originator: responsesLite ? "codex_cli_rs" : "ezcoder",
     "User-Agent": responsesLite
       ? `codex_cli_rs/${CODEX_CLIENT_VERSION}`
-      : `ggcoder (${os.platform()} ${os.release()}; ${os.arch()})`,
+      : `ezcoder (${os.platform()} ${os.release()}; ${os.arch()})`,
     ...(responsesLite
       ? {
           version: CODEX_CLIENT_VERSION,
