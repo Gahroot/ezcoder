@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.53
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/ai@5.4.1
+  - @prestyj/agent@5.4.1
+  - @prestyj/cli@5.4.1
+
 ## 0.7.52
 
 ### Patch Changes

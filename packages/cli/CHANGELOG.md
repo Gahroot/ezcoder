@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.4.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/ai@5.4.1
+  - @prestyj/agent@5.4.1
+  - @prestyj/core@5.4.1
+
 ## 5.4.0
 
 ### Minor Changes

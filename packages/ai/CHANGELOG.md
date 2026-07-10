@@ -1,5 +1,11 @@
 # @prestyj/ai
 
+## 5.4.1
+
+### Patch Changes
+
+- Fix OpenAI Codex GPT-5.6 Responses-Lite request handling for Sol, Terra, and Luna.
+
 ## 5.4.0
 
 ### Minor Changes

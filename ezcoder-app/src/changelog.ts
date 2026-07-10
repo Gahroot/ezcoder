@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.53",
+    date: "2026-07-10",
+    items: [
+      "GPT-5.6 Sol, Terra, and Luna now connect cleanly through Codex. I fixed the handshake behind the scenes, so every tier answers the moment you choose it.",
+      "Apps you launch through EZ Coder can now use your microphone for recording and audio testing, so your dev workflow hears exactly what it needs to.",
+    ],
+  },
+  {
     version: "0.15.0",
     date: "2026-07-10",
     items: [
