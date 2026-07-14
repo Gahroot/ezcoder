@@ -434,7 +434,7 @@ export async function readDroppedFileAttachment(path: string): Promise<Attachmen
 }
 
 /** Display hints for the user bubble this prompt creates — persisted by the
- *  sidecar so a resumed session re-renders the same bubble (Nolan "Sent to GG
+ *  sidecar so a resumed session re-renders the same bubble (Nolan "Sent to EZ
  *  Coder" label, enhancer term highlights). */
 export interface PromptMeta {
   nolanSent?: boolean;

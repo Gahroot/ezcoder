@@ -2602,7 +2602,7 @@ const TranscriptRow = memo(function TranscriptRow({
   switch (item.kind) {
     case "user":
       if (item.nolanSent) {
-        // Sent from a Nolan "Send to EZ Coder" button: show a shimmering "Sent to GG
+        // Sent from a Nolan "Send to EZ Coder" button: show a shimmering "Sent to EZ
         // Coder" in Nolan's color (like a slash command shows `/name`), not the
         // full prompt body. The full body still went to EZ Coder.
         return (

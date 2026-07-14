@@ -2027,7 +2027,7 @@ body {
   word-break: break-word;
 }
 /* `@Nolan` prompt bubble: tinted in Nolan's color (matching his replies + the input
-   highlight) so the transcript shows this message went to the mentor, not GG
+   highlight) so the transcript shows this message went to the mentor, not EZ
    Coder. A faint Nolan-tinted fill keeps it readable on the right edge. */
 .user-msg.user-ken {
   color: var(--ken);
@@ -2327,7 +2327,7 @@ body {
   text-shadow: 0 0 8px color-mix(in srgb, var(--ken) 55%, transparent);
 }
 
-/* Nolan's runnable-prompt block: Nolan-tinted, with a Send-to-GG-Coder button. */
+/* Nolan's runnable-prompt block: Nolan-tinted, with a Send-to-EZ-Coder button. */
 .markdown .nolan-prompt-block {
   margin: 0.6em 0;
   /* Neutral card (no pink): a subtle raised surface with the standard border,
@@ -3887,7 +3887,7 @@ body {
   gap: 4px;
 }
 
-/* Static "GG" / "Nolan" prefix — plain text, never clickable. Only the model
+/* Static "EZ" / "Nolan" prefix — plain text, never clickable. Only the model
    name next to it opens the dropdown. `line-height: 1` matches `.model-button`
    below so both sit on the same baseline — without it the button's default UA
    line-height differs from the inherited body line-height and the label

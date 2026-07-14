@@ -181,7 +181,7 @@ function pruneForeignNativePayloads() {
     );
   }
 
-  const keep = join(outDir, `.gg-onnxruntime-${process.pid}`);
+  const keep = join(outDir, `.ezcoder-onnxruntime-${process.pid}`);
   cpSync(selected, keep, { recursive: true });
   rmSync(runtimes, { recursive: true, force: true });
   mkdirSync(join(runtimes, process.platform), { recursive: true });

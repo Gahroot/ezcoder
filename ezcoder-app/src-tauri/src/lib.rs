@@ -477,7 +477,7 @@ fn force_kill_pid(pid: i32) {
 /// Newline-delimited list of PIDs of every Node sidecar this app has spawned.
 /// Because each sidecar is spawned as a process-group leader (`process_group(0)`
 /// on Unix), its PID equals the pgid shared by all of its MCP/LSP children. So a
-/// ledgered PID doubles as "a GG process-group id", which is how the sweep
+/// ledgered PID doubles as "an EZ Coder process-group id", which is how the sweep
 /// recognises a crashed sidecar's children by lineage — no MCP-name whitelist.
 fn sidecar_ledger_path() -> PathBuf {
     home_dir().join(".ezcoder").join("ezcoder-app-sidecars")
@@ -498,7 +498,7 @@ fn read_sidecar_ledger() -> HashSet<i32> {
 }
 
 /// Append a freshly-spawned sidecar's PID to the ledger. Called right after
-/// `spawn_daemon` gets a live child. Creates `~/.gg` if needed. Best-effort:
+/// `spawn_daemon` gets a live child. Creates `~/.ezcoder` if needed. Best-effort:
 /// a write failure only means that sidecar's orphans fall back to name matching.
 fn record_sidecar_pid(pid: i32) {
     let path = sidecar_ledger_path();
@@ -1825,7 +1825,7 @@ fn read_workspace() -> Workspace {
         .unwrap_or_default()
 }
 
-/// Write the workspace snapshot (creating ~/.gg if needed). Best-effort.
+/// Write the workspace snapshot (creating ~/.ezcoder if needed). Best-effort.
 fn write_workspace(ws: &Workspace) {
     let path = app_workspace_path();
     if let Some(dir) = path.parent() {
@@ -2274,8 +2274,8 @@ fn parse_auth_object(existing: Option<&str>) -> Result<serde_json::Value, String
     }
 }
 
-/// Atomically write auth.json (temp file + rename), creating ~/.gg if needed.
-/// On unix the file is mode 0600 (credentials). Mirrors gg-core's atomicWriteFile.
+/// Atomically write auth.json (temp file + rename), creating ~/.ezcoder if needed.
+/// On unix the file is mode 0600 (credentials). Mirrors @prestyj/core's atomicWriteFile.
 fn write_auth_file(contents: &str) -> Result<(), String> {
     let path = auth_file_path();
     if let Some(dir) = path.parent() {

@@ -113,7 +113,7 @@ export function createChatAgent(
           options.cwd,
           delegationEnabled,
         ),
-        `ggchat:${nextAgent}`,
+        `ezchat:${nextAgent}`,
       );
       if (notify) await options.onAgentChange?.(nextAgent);
       return true;

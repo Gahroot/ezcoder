@@ -207,7 +207,7 @@ export async function runDoctor(): Promise<void> {
   if (myUid !== process.geteuid!()) {
     console.log(warn("    ⚠ uid ≠ euid — running with elevated privileges (sudo?)"));
     console.log(dim("      Running ezcoder with sudo can cause ownership issues."));
-    console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.gg"));
+    console.log(dim("      Use without sudo, or fix after: sudo chown -R $(whoami) ~/.ezcoder"));
   }
   console.log();
 

@@ -4,7 +4,7 @@ import os from "node:os";
 import fs from "node:fs/promises";
 import type * as ConfigModule from "../../config.js";
 
-// Point the global mcp file at a temp home so tests don't touch the real ~/.gg.
+// Point the global MCP file at a temp home so tests don't touch the real ~/.ezcoder.
 let tmpHome: string;
 let tmpProject: string;
 

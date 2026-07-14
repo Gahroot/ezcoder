@@ -24,14 +24,14 @@ export interface DiscoveredProject {
  * show a combined badge.
  */
 export async function discoverProjects(): Promise<DiscoveredProject[]> {
-  const [gg, cc, cx] = await Promise.all([
-    discoverGgcoderProjects(),
+  const [ez, cc, cx] = await Promise.all([
+    discoverEzcoderProjects(),
     discoverClaudeProjects(),
     discoverCodexProjects(),
   ]);
 
   const byPath = new Map<string, DiscoveredProject>();
-  for (const p of [...gg, ...cc, ...cx]) {
+  for (const p of [...ez, ...cc, ...cx]) {
     const existing = byPath.get(p.path);
     if (!existing) {
       byPath.set(p.path, p);
@@ -74,7 +74,7 @@ function mergeSources(a: ProjectSource[], b: ProjectSource[]): ProjectSource[] {
  * session header (`{"type":"session",...,"cwd":"/abs"}`) and only fall back to
  * decoding the directory name when no header carries a cwd.
  */
-async function discoverGgcoderProjects(): Promise<DiscoveredProject[]> {
+async function discoverEzcoderProjects(): Promise<DiscoveredProject[]> {
   const sessionsDir = getAppPaths().sessionsDir;
   let entries: string[];
   try {

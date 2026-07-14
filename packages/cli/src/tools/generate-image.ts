@@ -65,7 +65,7 @@ const GenerateImageParams = z.object({
     .optional()
     .describe(
       "Where to save the generated image (relative to cwd or absolute). " +
-        "Defaults to .gg/generated/<timestamp>.png",
+        "Defaults to .ezcoder/generated/<timestamp>.png",
     ),
   output_format: z
     .enum(["png", "jpeg", "webp"])
@@ -103,7 +103,7 @@ export function createGenerateImageTool(
       "chat provider is active — only requires OpenAI to be connected. Only use this tool when " +
       "the user explicitly asks to create, generate, or edit an image. Pass `image` with a " +
       "file path to edit an existing image (e.g. a previously generated one or a user attachment). " +
-      "Use `out_path` to save to a specific location (defaults to .gg/generated/).",
+      "Use `out_path` to save to a specific location (defaults to .ezcoder/generated/).",
     parameters: GenerateImageParams,
     async execute(
       args: GenerateImageArgs,

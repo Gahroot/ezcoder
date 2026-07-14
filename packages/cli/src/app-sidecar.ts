@@ -1560,7 +1560,7 @@ async function createSession(
   let pendingNolanModel: { provider: Provider; model: string } | null = null;
   const nolanToolCallNames = new Map<string, string>();
 
-  // Nolan's per-project model override. null → Nolan (chat + autopilot) follows GG
+  // Nolan's per-project model override. null → Nolan (chat + autopilot) follows EZ
   // Coder's model, including live switches (the historical behavior). Set → Nolan
   // is pinned to his own model and EZ Coder switches no longer touch him. A
   // stale persisted pin (model dropped from the registry / provider logged
@@ -1573,7 +1573,7 @@ async function createSession(
     },
   );
   if (nolanModelOverride && !(await auth.hasProviderAuth(nolanModelOverride.provider))) {
-    log("WARN", "app-sidecar", "ken model override provider not connected — following GG", {
+    log("WARN", "app-sidecar", "Nolan model override provider not connected — following EZ Coder", {
       provider: nolanModelOverride.provider,
       model: nolanModelOverride.model,
     });
@@ -3253,7 +3253,7 @@ async function createSession(
         await auth.reload();
         await session.switchModel(target.provider, target.id);
         // Nolan follows EZ Coder's model only while un-pinned; a user-set Nolan
-        // override survives GG model switches untouched.
+        // override survives EZ Coder model switches untouched.
         if (!nolanModelOverride) {
           await syncNolanModel(target.provider, target.id);
           await syncNolanAutoModel(target.provider, target.id);
@@ -3286,8 +3286,8 @@ async function createSession(
         broadcast("thinking_change", payload);
         // Un-pinned Nolan just followed the switch — update his footer chip too.
         // When Nolan is pinned, his effective model did not change, so skip the
-        // no-op event (keeps footer/event tests from treating a GG switch as a
-        // Nolan switch).
+        // no-op event (keeps footer/event tests from treating an EZ Coder
+        // switch as a Nolan switch).
         if (!nolanModelOverride) broadcast("ken_model_change", nolanStatePayload());
         // The new model usually has a different context window — push extras so
         // the footer's context meter rescales immediately.
@@ -3318,7 +3318,7 @@ async function createSession(
           const st = session.getState();
           await syncNolanModel(st.provider, st.model);
           await syncNolanAutoModel(st.provider, st.model);
-          log("INFO", "app-sidecar", "ken model pin cleared — following GG", {
+          log("INFO", "app-sidecar", "Nolan model pin cleared — following EZ Coder", {
             provider: st.provider,
             model: st.model,
           });

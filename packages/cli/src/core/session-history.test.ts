@@ -86,7 +86,7 @@ describe("restoreUserRow", () => {
         text: "what's in this screenshot?\n\nAttached files (inspect with your tools):\n- notes.txt (saved at /p/notes.txt)",
       },
       { type: "image", mediaType: "image/png", data: "aGk=" },
-      { type: "text", text: "[Image saved at /p/.gg/uploads/x.png]" },
+      { type: "text", text: "[Image saved at /p/.ezcoder/uploads/x.png]" },
     ]);
     expect(row.text).toBe("what's in this screenshot?");
     expect(row.images).toEqual(["data:image/png;base64,aGk="]);
