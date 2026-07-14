@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.5.0
+
+### Minor Changes
+
+- Add chat agents, async subagent orchestration, model upgrades, and reliability improvements.
+
+### Patch Changes
+
+- @prestyj/ai@5.5.0
+- @prestyj/agent@5.5.0
+- @prestyj/core@5.5.0
+
 ## 5.4.1
 
 ### Patch Changes
