@@ -2442,7 +2442,9 @@ function App(): React.ReactElement {
                   className="model-button"
                   style={{ color: theme.text }}
                   disabled={running || models.length === 0}
-                  title={workspaceMode === "chat" ? "Switch EZ Chat's model" : "Switch EZ Coder's model"}
+                  title={
+                    workspaceMode === "chat" ? "Switch EZ Chat's model" : "Switch EZ Coder's model"
+                  }
                   onClick={() => {
                     setNolanModelMenuOpen(false);
                     setModelMenuOpen((o) => !o);
@@ -2453,39 +2455,39 @@ function App(): React.ReactElement {
               </span>
               {workspaceMode === "code" && (
                 <>
-              <FooterSep />
-              <span className="model-anchor">
-                {nolanModelMenuOpen && models.length > 0 && (
-                  <ModelMenu
-                    models={models}
-                    currentModel={state?.nolanModel ?? state?.model ?? ""}
-                    onSelect={(id) => onSelectNolanModel(id)}
-                    onClose={() => setNolanModelMenuOpen(false)}
-                    title="Nolan's model"
-                    onSelectFollow={() => onSelectNolanModel(null)}
-                    followActive={!state?.nolanModelOverride}
-                  />
-                )}
-                <span className="model-label" style={{ color: theme.ken }}>
-                  Nolan
-                </span>
-                <button
-                  className="model-button"
-                  style={{ color: theme.ken }}
-                  disabled={models.length === 0}
-                  title={
-                    state?.nolanModelOverride
-                      ? "Nolan is pinned to his own model — click to change"
-                      : "Nolan follows EZ Coder's model — click to pin one"
-                  }
-                  onClick={() => {
-                    setModelMenuOpen(false);
-                    setNolanModelMenuOpen((o) => !o);
-                  }}
-                >
-                  {modelName(state?.nolanModel ?? state?.model)}
-                </button>
-              </span>
+                  <FooterSep />
+                  <span className="model-anchor">
+                    {nolanModelMenuOpen && models.length > 0 && (
+                      <ModelMenu
+                        models={models}
+                        currentModel={state?.nolanModel ?? state?.model ?? ""}
+                        onSelect={(id) => onSelectNolanModel(id)}
+                        onClose={() => setNolanModelMenuOpen(false)}
+                        title="Nolan's model"
+                        onSelectFollow={() => onSelectNolanModel(null)}
+                        followActive={!state?.nolanModelOverride}
+                      />
+                    )}
+                    <span className="model-label" style={{ color: theme.ken }}>
+                      Nolan
+                    </span>
+                    <button
+                      className="model-button"
+                      style={{ color: theme.ken }}
+                      disabled={models.length === 0}
+                      title={
+                        state?.nolanModelOverride
+                          ? "Nolan is pinned to his own model — click to change"
+                          : "Nolan follows EZ Coder's model — click to pin one"
+                      }
+                      onClick={() => {
+                        setModelMenuOpen(false);
+                        setNolanModelMenuOpen((o) => !o);
+                      }}
+                    >
+                      {modelName(state?.nolanModel ?? state?.model)}
+                    </button>
+                  </span>
                 </>
               )}
             </span>

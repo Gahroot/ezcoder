@@ -6,8 +6,8 @@ description: Cut a full release — publish npm packages (changesets) then bump 
 You are cutting a release for this monorepo. There are **two independent release
 tracks** and they must go in this order. Read this whole file, then execute.
 
-- **Track A — npm framework packages** (`@prestyj/ai`, `gg-agent`, `gg-core`,
-  `ezcoder`, `gg-boss`, and dependents) via **Changesets**. These are the engine the
+- **Track A — npm framework packages** (`@prestyj/ai`, `@prestyj/agent`, `@prestyj/core`,
+  `@prestyj/cli`, `@prestyj/boss`, and dependents) via **Changesets**. These are the engine the
   CLI ships from. The spine is a *fixed group* — one changeset bumps them together.
 - **Track B — ezcoder-app desktop** (`ezcoder-app`, currently a `0.1.x` line, `private: true`,
   never on npm). Released by pushing a `v*` git tag, which triggers

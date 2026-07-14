@@ -49,7 +49,7 @@ export function buildChatAgentSystemPrompt(
   return `${rolePrompt}${MEMORY_CURATION_INSTRUCTIONS}${handoffInstructions}\n\n${runtimeContext}`;
 }
 
-/** Create a chat agent on the shared caching/compaction spine without GG Coder behavior. */
+/** Create a chat agent on the shared caching/compaction spine without EZ Coder behavior. */
 export function createChatAgentSession(
   agentId: ChatAgentId,
   systemPrompt: string,
@@ -77,7 +77,7 @@ export function createChatAgentSession(
       sessionOptions.cwd,
       handoffEnabled === true,
     ),
-    promptCacheKeyPrefix: `ggchat:${agentId}`,
+    promptCacheKeyPrefix: `ezchat:${agentId}`,
     sessionRootDir,
     coderSlashCommands: false,
     selfCorrectionHooks: false,

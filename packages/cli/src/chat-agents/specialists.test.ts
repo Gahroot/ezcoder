@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import type { AgentSessionOptions } from "../core/agent-session.js";
 import { createChatAgent, parseChatAgentId } from "./index.js";
 import { RESEARCH_CHAT_SYSTEM_PROMPT } from "./research.js";
@@ -11,7 +11,7 @@ function optionsFor(agentId: "therapist" | "research"): AgentSessionOptions {
     provider: "anthropic",
     model: "claude-test",
     cwd: "/tmp/workspace",
-    sessionsDir: "/tmp/gg/sessions",
+    sessionsDir: "/tmp/ezcoder/sessions",
   });
   return (agent as unknown as { opts: AgentSessionOptions }).opts;
 }
@@ -21,8 +21,8 @@ describe("specialist chat agents", () => {
     const options = optionsFor("therapist");
     expect(options.systemPrompt).toContain(THERAPIST_CHAT_SYSTEM_PROMPT);
     expect(options.systemPrompt).toContain("- Active agent: therapist");
-    expect(options.promptCacheKeyPrefix).toBe("ggchat:therapist");
-    expect(options.sessionRootDir).toBe("/tmp/gg/chat-sessions/therapist");
+    expect(options.promptCacheKeyPrefix).toBe("ezchat:therapist");
+    expect(options.sessionRootDir).toBe("/tmp/ezcoder/chat-sessions/therapist");
     expect(options.allowedTools).toBeUndefined();
     expect(options.additionalTools?.map((tool) => tool.name)).toContain("delegate_to_agent");
     expect(options.systemPrompt).toContain("hand the entire conversation");
@@ -36,8 +36,8 @@ describe("specialist chat agents", () => {
     expect(options.systemPrompt).toContain(RESEARCH_CHAT_SYSTEM_PROMPT);
     expect(options.systemPrompt).toContain("- Active agent: research");
     expect(options.systemPrompt).toMatch(/- Current date: \d{4}-\d{2}-\d{2}/);
-    expect(options.promptCacheKeyPrefix).toBe("ggchat:research");
-    expect(options.sessionRootDir).toBe("/tmp/gg/chat-sessions/research");
+    expect(options.promptCacheKeyPrefix).toBe("ezchat:research");
+    expect(options.sessionRootDir).toBe("/tmp/ezcoder/chat-sessions/research");
     expect(options.allowedTools).toBeUndefined();
     expect(options.additionalTools?.map((tool) => tool.name)).toContain("delegate_to_agent");
   });
@@ -56,7 +56,7 @@ describe("specialist chat agents", () => {
         provider: "anthropic",
         model: "claude-test",
         cwd: "/tmp/workspace",
-        sessionsDir: "/tmp/gg/sessions",
+        sessionsDir: "/tmp/ezcoder/sessions",
         additionalTools: [memoryTool],
         getSystemPromptTail,
       },
@@ -73,7 +73,7 @@ describe("specialist chat agents", () => {
       provider: "anthropic",
       model: "claude-test",
       cwd: "/tmp/workspace",
-      sessionsDir: "/tmp/gg/sessions",
+      sessionsDir: "/tmp/ezcoder/sessions",
       onAgentChange: (agentId) => {
         changed.push(agentId);
       },

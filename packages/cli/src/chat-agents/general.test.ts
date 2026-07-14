@@ -9,10 +9,10 @@ function optionsOf(agent: unknown): AgentSessionOptions {
 }
 
 describe("General chat agent", () => {
-  it("uses an isolated session namespace outside GG Coder history", () => {
-    const coderSessions = path.join("/tmp", "gg", "sessions");
+  it("uses an isolated session namespace outside EZ Coder history", () => {
+    const coderSessions = path.join("/tmp", "ezcoder", "sessions");
     expect(chatAgentSessionsDir(coderSessions, "general")).toBe(
-      path.join("/tmp", "gg", "chat-sessions", "general"),
+      path.join("/tmp", "ezcoder", "chat-sessions", "general"),
     );
   });
 
@@ -21,15 +21,15 @@ describe("General chat agent", () => {
       provider: "anthropic",
       model: "claude-test",
       cwd: "/tmp/workspace",
-      sessionsDir: "/tmp/gg/sessions",
+      sessionsDir: "/tmp/ezcoder/sessions",
     });
     const options = optionsOf(agent);
 
     expect(options.systemPrompt).toContain(GENERAL_CHAT_SYSTEM_PROMPT);
     expect(options.systemPrompt).toContain("- Active agent: general");
     expect(options.systemPrompt).toContain("- Workspace root: /tmp/workspace");
-    expect(options.promptCacheKeyPrefix).toBe("ggchat:general");
-    expect(options.sessionRootDir).toBe("/tmp/gg/chat-sessions/general");
+    expect(options.promptCacheKeyPrefix).toBe("ezchat:general");
+    expect(options.sessionRootDir).toBe("/tmp/ezcoder/chat-sessions/general");
     expect(options.coderSlashCommands).toBe(false);
     expect(options.selfCorrectionHooks).toBe(false);
     expect(options.projectCustomization).toBe(false);
@@ -41,13 +41,13 @@ describe("General chat agent", () => {
     expect(options.transient).toBeUndefined();
   });
 
-  it("refuses to resume a GG Coder session outside the General namespace", () => {
+  it("refuses to resume a EZ Coder session outside the General namespace", () => {
     const agent = createGeneralChatAgent({
       provider: "anthropic",
       model: "claude-test",
       cwd: "/tmp/workspace",
-      sessionsDir: "/tmp/gg/sessions",
-      sessionId: "/tmp/gg/sessions/project/coder-session.jsonl",
+      sessionsDir: "/tmp/ezcoder/sessions",
+      sessionId: "/tmp/ezcoder/sessions/project/coder-session.jsonl",
     });
     expect(optionsOf(agent).sessionId).toBeUndefined();
   });
