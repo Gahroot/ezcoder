@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.54",
+    date: "2026-07-14",
+    items: [
+      "I gave you a full specialist crew. `Chat Agents` handle focused conversations while async `Sub-agents` tackle multiple jobs at once, so bigger builds move without babysitting.",
+      "`GPT-5.6 Ultra` now brings serious orchestration power to your hardest work. I tuned the model routing so the right agent stays on task and finishes strong.",
+      "Moving between ideas feels effortless now. I polished the `Chat Picker`, handoffs, and `Memory` controls so your conversations stay organized and useful.",
+      "Long sessions are tougher and smoother. I tightened caching, compaction, session history, and the packaged sidecar so you wait less and recover cleanly when the work gets heavy.",
+    ],
+  },
+  {
     version: "0.1.53",
     date: "2026-07-10",
     items: [
