@@ -95,7 +95,7 @@ describe("discoverProjects (ezcoder store)", () => {
 
   it("lists recent sessions only from an explicit agent session root", async () => {
     const projectPath = path.join(tmp, "projects", "shared-root");
-    const chatSessionsDir = path.join(tmp, ".gg", "chat-sessions", "general");
+    const chatSessionsDir = path.join(tmp, ".ezcoder", "chat-sessions", "general");
     await fs.mkdir(projectPath, { recursive: true });
     await writeSession(path.join(state.sessionsDir, encodeCwd(projectPath)), projectPath);
     await writeSession(path.join(chatSessionsDir, encodeCwd(projectPath)), projectPath);

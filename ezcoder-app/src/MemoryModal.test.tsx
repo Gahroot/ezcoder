@@ -34,7 +34,7 @@ const populated: MemorySnapshot = {
   memories: [
     {
       id: "memory-1",
-      text: "Ken prefers concise, scannable answers.",
+      text: "Nolan prefers concise, scannable answers.",
       category: "preference",
       importance: 5,
       createdAt: "2026-07-01T00:00:00.000Z",
@@ -58,7 +58,7 @@ describe("MemoryModal", () => {
   it("displays memory metadata and the total in a badge", async () => {
     render(<MemoryModal onClose={vi.fn()} />);
 
-    expect(await screen.findByText("Ken prefers concise, scannable answers.")).toBeDefined();
+    expect(await screen.findByText("Nolan prefers concise, scannable answers.")).toBeDefined();
     const title = document.querySelector(".memory-modal-title");
     expect(title?.textContent).toContain("Memories");
     expect(title?.querySelector(".badge")?.textContent).toBe("1");
@@ -70,7 +70,7 @@ describe("MemoryModal", () => {
   it("deletes exactly one row and applies the returned snapshot", async () => {
     render(<MemoryModal onClose={vi.fn()} />);
     const button = await screen.findByRole("button", {
-      name: "Delete memory: Ken prefers concise, scannable answers.",
+      name: "Delete memory: Nolan prefers concise, scannable answers.",
     });
 
     fireEvent.click(button);
@@ -102,18 +102,18 @@ describe("MemoryModal", () => {
         {
           ...populated.memories[0]!,
           id: "memory-2",
-          text: "Ken is building durable chat memory.",
+          text: "Nolan is building durable chat memory.",
           category: "project" as const,
         },
       ],
     };
     listMemoriesMock.mockResolvedValueOnce(populated).mockResolvedValueOnce(refreshed);
     render(<MemoryModal onClose={vi.fn()} />);
-    await screen.findByText("Ken prefers concise, scannable answers.");
+    await screen.findByText("Nolan prefers concise, scannable answers.");
 
     eventHandler?.({ type: "memory_change", data: { count: 2 } });
 
-    expect(await screen.findByText("Ken is building durable chat memory.")).toBeDefined();
+    expect(await screen.findByText("Nolan is building durable chat memory.")).toBeDefined();
     expect(document.querySelector(".memory-modal .badge")?.textContent).toBe("2");
     expect(isMemoryChangeEventMock).toHaveBeenCalled();
     expect(subscribeMock).toHaveBeenCalledOnce();

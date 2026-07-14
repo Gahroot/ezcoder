@@ -13,7 +13,7 @@
 
 ### Minor Changes
 
-- Sync upstream gg-framework (27 commits): add GPT-5.6 Sol/Terra/Luna models with the `max` reasoning ladder, fix Gemini GA model IDs (`gemini-3-flash`, `gemini-3.1-pro-preview`), add the subscription usage meter, make error hints UI-agnostic, and fix the sidecar bundler dropping transitive MCP deps.
+- Sync upstream ezcoder (27 commits): add GPT-5.6 Sol/Terra/Luna models with the `max` reasoning ladder, fix Gemini GA model IDs (`gemini-3-flash`, `gemini-3.1-pro-preview`), add the subscription usage meter, make error hints UI-agnostic, and fix the sidecar bundler dropping transitive MCP deps.
 
 ### Patch Changes
 

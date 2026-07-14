@@ -385,7 +385,7 @@ export function playRadio(stationId: string): PlayResult {
         nativeFfmpeg ??
         spawn(bin, playerArgs, {
           // Stay in the sidecar's process group so Rust teardown and the parent
-          // watchdog cannot leave audio playing after GG Coder closes.
+          // watchdog cannot leave audio playing after EZ Coder closes.
           detached: false,
           stdio: "ignore",
         });

@@ -40,9 +40,9 @@ beforeEach(async () => {
   process.env.HOME = tempHome;
   observedPrompts.length = 0;
   agentLoopMock.mockClear();
-  await fs.mkdir(path.join(tempHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tempHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tempHome, ".gg", "auth.json"),
+    path.join(tempHome, ".ezcoder", "auth.json"),
     JSON.stringify({
       anthropic: {
         accessToken: "test-token",

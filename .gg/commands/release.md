@@ -1,15 +1,15 @@
 ---
 name: release
-description: Cut a full release — publish npm packages (changesets) then bump + tag the gg-app desktop build
+description: Cut a full release — publish npm packages (changesets) then bump + tag the ezcoder-app desktop build
 ---
 
 You are cutting a release for this monorepo. There are **two independent release
 tracks** and they must go in this order. Read this whole file, then execute.
 
-- **Track A — npm framework packages** (`@kenkaiiii/gg-ai`, `gg-agent`, `gg-core`,
-  `ggcoder`, `gg-boss`, and dependents) via **Changesets**. These are the engine the
+- **Track A — npm framework packages** (`@prestyj/ai`, `gg-agent`, `gg-core`,
+  `ezcoder`, `gg-boss`, and dependents) via **Changesets**. These are the engine the
   CLI ships from. The spine is a *fixed group* — one changeset bumps them together.
-- **Track B — gg-app desktop** (`gg-app`, currently a `0.1.x` line, `private: true`,
+- **Track B — ezcoder-app desktop** (`ezcoder-app`, currently a `0.1.x` line, `private: true`,
   never on npm). Released by pushing a `v*` git tag, which triggers
   `.github/workflows/release.yml` to build/sign/notarize installers and publish a
   **non-draft** GitHub release + updater `latest.json`.
@@ -19,10 +19,10 @@ The app's CI builds the sidecar from **workspace source** (`pnpm install` resolv
 published first. But publishing npm first keeps the shipped CLI and app in lockstep
 and is the correct order — do Track A, then Track B.
 
-> **IRON RULE — Track A always drags Track B with it.** gg-app bundles the
-> ggcoder sidecar built from the **same** spine source you just published. So if
+> **IRON RULE — Track A always drags Track B with it.** ezcoder-app bundles the
+> ezcoder sidecar built from the **same** spine source you just published. So if
 > Track A runs, the app is now shipping changed engine code and **Track B is
-> mandatory in the same release** — even when `gg-app/` itself has zero diff. The
+> mandatory in the same release** — even when `ezcoder-app/` itself has zero diff. The
 > only release that is npm-only is one where Track A did NOT run. Never finish a
 > release that bumped npm without also bumping + tagging the app. Do not ask the
 > user; do not wait to be told. This is the single most-repeated miss — do not
@@ -38,12 +38,12 @@ npm; if the app changed, release the app. Run both detections:
 
 **Track A (npm) needed?** Compare against the last spine tag:
 ```bash
-LAST_NPM=$(git tag --sort=-creatordate | grep '@kenkaiiii/ggcoder@' | head -1)
+LAST_NPM=$(git tag --sort=-creatordate | grep '@prestyj/cli@' | head -1)
 # Real source/metadata changes. Ignore generated changelogs, pure tests, and a
 # package.json only when its sole diff is the top-level version line.
 NPM_CHANGES=$(
   git diff --name-only "$LAST_NPM" HEAD -- packages/ \
-    | grep -vE 'CHANGELOG\.md$|^packages/gg-pixel/|/(src/)?.*\.test\.' \
+    | grep -vE 'CHANGELOG\.md$|^packages/pixel/|/(src/)?.*\.test\.' \
     | while IFS= read -r file; do
         if [[ "$file" == */package.json ]]; then
           git diff --quiet -I '^[[:space:]]*"version":[[:space:]]*' \
@@ -55,25 +55,25 @@ NPM_CHANGES=$(
 )
 if [[ -n "$NPM_CHANGES" ]]; then printf '%s\n' "$NPM_CHANGES"; else echo "(no npm source changes)"; fi
 ```
-Exclude the `gg-pixel` SDK (not on the spine), generated changelogs, pure tests,
+Exclude the `ez-pixel` SDK (not on the spine), generated changelogs, pure tests,
 and package manifests whose only change is version noise from the previous publish.
 Dependency, export, bin, script, and other package metadata changes still trigger Track A.
-If only `gg-app/` or non-package files changed, Track A is **not** needed.
+If only `ezcoder-app/` or non-package files changed, Track A is **not** needed.
 
 **Track B (desktop) needed?** Track B is needed if **EITHER** of these is true:
 
 1. **Track A ran** (npm spine was published). The app bundles that spine as its
    sidecar, so a spine release *always* requires a matching app release. This
    alone is sufficient — stop here and mark Track B needed.
-2. `gg-app/` itself changed since the last `v*` tag:
+2. `ezcoder-app/` itself changed since the last `v*` tag:
    ```bash
    LAST_APP=$(git tag --sort=-creatordate | grep -E '^v[0-9]' | head -1)
-   git diff --name-only "$LAST_APP" HEAD -- gg-app/ | grep -v '^gg-app/dist/' || echo "(no app-only changes)"
+   git diff --name-only "$LAST_APP" HEAD -- ezcoder-app/ | grep -v '^ezcoder-app/dist/' || echo "(no app-only changes)"
    ```
 
 So: **Track A needed ⇒ Track B needed, period.** Track B is only skipped when
-Track A did NOT run AND `gg-app/` has no diff. When Track B is triggered only by
-Track A (no `gg-app/` diff of its own), still cut it — the "What's new" entry then
+Track A did NOT run AND `ezcoder-app/` has no diff. When Track B is triggered only by
+Track A (no `ezcoder-app/` diff of its own), still cut it — the "What's new" entry then
 describes the engine wins users now get (the same changes you wrote the changeset
 for).
 
@@ -109,7 +109,7 @@ stop and say there's nothing to release.
      chose, e.g.:
      ```md
      ---
-     "@kenkaiiii/ggcoder": patch
+     "@prestyj/cli": patch
      ---
 
      <one-line summary of what shipped>
@@ -130,31 +130,31 @@ stop and say there's nothing to release.
    - This also creates the per-package git tags at the commit from step 5.
 7. Push the version commit + the tags changesets just created:
    `git push --follow-tags`.
-8. Verify: `npm view @kenkaiiii/ggcoder version` matches the new version.
+8. Verify: `npm view @prestyj/cli version` matches the new version.
 
 ---
 
-## 3. Track B — gg-app desktop (skip ONLY if Track A did not run AND gg-app/ had no diff)
+## 3. Track B — ezcoder-app desktop (skip ONLY if Track A did not run AND ezcoder-app/ had no diff)
 
 1. Bump all four in-sync version files with the helper (never hand-edit them — they
    must match or the release ships mismatched):
    ```bash
-   pnpm --filter gg-app bump <patch|minor|major|x.y.z>
+   pnpm --filter ezcoder-app bump <patch|minor|major|x.y.z>
    ```
    It updates `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`,
    and `src-tauri/Cargo.lock`, and prints the new version. Capture that version as
    `NEW` (e.g. `0.1.41`).
 2. **Write the "What's new" entry.** This is the single most important hand-
-   written step of the desktop release. It ships in `gg-app/src/changelog.ts`
+   written step of the desktop release. It ships in `ezcoder-app/src/changelog.ts`
    (the `CHANGELOG` array) and is shown to every user in a celebratory window the
-   first time they launch the new build. It must read like Ken hyping up his own
+   first time they launch the new build. It must read like Nolan hyping up his own
    product, never like a git log.
 
    **a. Find what actually changed since the last desktop release:**
    ```bash
    LAST_APP=$(git tag --sort=-creatordate | grep -E '^v[0-9]' | head -1)
-   git log --oneline "$LAST_APP"..HEAD | grep -ivE 'version packages|update gg-app'
-   git diff "$LAST_APP" HEAD -- gg-app/ packages/ | head -400   # skim the real
+   git log --oneline "$LAST_APP"..HEAD | grep -ivE 'version packages|update ezcoder-app'
+   git diff "$LAST_APP" HEAD -- ezcoder-app/ packages/ | head -400   # skim the real
      # diff, not just commit subjects, to find the user-facing wins
    ```
    Read the diffs, not just the commit subjects, so you describe what the user
@@ -163,8 +163,8 @@ stop and say there's nothing to release.
    (faster, cheaper, fewer crashes, fewer bugs) — then sell THAT win, not the
    plumbing behind it.
 
-   **b. Rewrite each user-facing change in Ken's voice.** The hard rules:
-   - **First person, singular.** This is Ken talking straight to the user: "I"
+   **b. Rewrite each user-facing change in Nolan's voice.** The hard rules:
+   - **First person, singular.** This is Nolan talking straight to the user: "I"
      built / fixed / squeezed, never "we" or "the team". Address the user as
      "you".
    - **Exciting and non-technical.** Every line should make the update sound
@@ -218,16 +218,16 @@ stop and say there's nothing to release.
    ```
    If genuinely nothing user-facing shipped (pure refactor/chore release), add a
    single honest-but-warm line rather than inventing hype, e.g. "Tuned things
-   under the hood so GG Coder stays fast and stable."
+   under the hood so EZ Coder stays fast and stable."
 3. Confirm the bump touched exactly the four version files plus the changelog:
-   `git status --short gg-app/`.
+   `git status --short ezcoder-app/`.
 4. Stage **only** those five files (never `git add -A`):
    ```bash
-   git add gg-app/package.json gg-app/src-tauri/tauri.conf.json \
-           gg-app/src-tauri/Cargo.toml gg-app/src-tauri/Cargo.lock \
-           gg-app/src/changelog.ts
+   git add ezcoder-app/package.json ezcoder-app/src-tauri/tauri.conf.json \
+           ezcoder-app/src-tauri/Cargo.toml ezcoder-app/src-tauri/Cargo.lock \
+           ezcoder-app/src/changelog.ts
    ```
-5. Commit: `git commit -m "Update gg-app to v<NEW>"`.
+5. Commit: `git commit -m "Update ezcoder-app to v<NEW>"`.
 6. Push the commit: `git push`.
 7. Tag and push the tag (this is what fires the release workflow):
    ```bash
