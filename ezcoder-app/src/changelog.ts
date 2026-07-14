@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.55",
+    date: "2026-07-14",
+    items: [
+      "Your interfaces just got a real design brain. I packed `Evidence-Led UI` with proven patterns from standout products, so every screen I build for you starts sharper, cleaner, and more accessible.",
+      "I taught `Memory` to learn how you like to work, not just what you told me. Your preferences now follow you into future chats so EZ Coder feels more like your own teammate every time.",
+      "Long agent runs are harder to derail. I tightened `loop detection` so repeated dead ends get caught earlier and your work gets moving again instead of burning time in circles.",
+      "Project controls are right where you need them now. I polished the `Workspace Header` so moving around your work feels quicker and more natural.",
+    ],
+  },
+  {
     version: "0.1.54",
     date: "2026-07-14",
     items: [
