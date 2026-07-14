@@ -17,13 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
-const sidecarEntry = join(
-  repoRoot,
-  "packages",
-  "cli",
-  "dist",
-  "app-sidecar.js",
-);
+const sidecarEntry = join(repoRoot, "packages", "cli", "dist", "app-sidecar.js");
 const outDir = join(here, "..", "src-tauri", "sidecar");
 const outFile = join(outDir, "app-sidecar.mjs");
 const nodeModulesOut = join(outDir, "node_modules");
@@ -50,9 +44,7 @@ const EXTERNAL = [
 ];
 
 // require resolver anchored at the ezcoder package, where these deps live.
-const ezcoderRequire = createRequire(
-  join(repoRoot, "packages", "cli", "package.json"),
-);
+const ezcoderRequire = createRequire(join(repoRoot, "packages", "cli", "package.json"));
 
 // Candidate node_modules roots to scan directly when `require.resolve` is
 // blocked by a package's `exports` map (which often hides ./package.json).
@@ -194,9 +186,7 @@ function pruneForeignNativePayloads() {
 
 async function main() {
   if (!existsSync(sidecarEntry)) {
-    throw new Error(
-      `sidecar entry missing: ${sidecarEntry} (build @prestyj/cli first)`,
-    );
+    throw new Error(`sidecar entry missing: ${sidecarEntry} (build @prestyj/cli first)`);
   }
   if (!existsSync(bundledSkillsSource)) {
     throw new Error(`bundled skills missing: ${bundledSkillsSource}`);

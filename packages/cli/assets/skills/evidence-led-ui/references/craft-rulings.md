@@ -12,7 +12,7 @@
 8. UI copy punctuation
 9. Final craft check
 
-These are binding defaults for UI implementation and review. They reflect Ken's product taste, current accessibility guidance, current web-font delivery guidance, established design-system motion/grid practices, and the pinned observational corpus. Override one only when the user explicitly requests the exception or the existing product has a stronger documented rule.
+These are binding defaults for UI implementation and review. They reflect Nolan's product taste, current accessibility guidance, current web-font delivery guidance, established design-system motion/grid practices, and the pinned observational corpus. Override one only when the user explicitly requests the exception or the existing product has a stronger documented rule.
 
 ## 1. Icons, never emoji
 

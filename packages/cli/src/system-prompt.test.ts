@@ -352,11 +352,10 @@ describe("buildSystemPrompt", () => {
 
     console.info(`system prompt size measurements: ${JSON.stringify(measurements)}`);
 
-    expect(measurements.normal.characters).toBeLessThan(5_100);
-    // Ceiling sits above upstream's: this fork's branding strings ("~/.ezcoder/",
-    // "EZ Coder") are longer than upstream's, which inflates the plan-mode block
-    // that embeds them.
-    expect(measurements.planMode.characters).toBeLessThan(6_400);
+    // Ceilings include the fork's longer branding strings plus the upstream
+    // skill-routing guidance that now applies before the agent acts.
+    expect(measurements.normal.characters).toBeLessThan(5_300);
+    expect(measurements.planMode.characters).toBeLessThan(6_500);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(9_800);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(

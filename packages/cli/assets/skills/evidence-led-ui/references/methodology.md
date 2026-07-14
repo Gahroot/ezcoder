@@ -65,7 +65,7 @@ This mapping is analytical judgment, recorded explicitly in `scripts/analyze-cor
 
 ## Product-owner rulings and production standards versus corpus evidence
 
-`references/craft-rulings.md` contains Ken's binding product defaults for emoji, icons, alignment, reuse, motion, UI punctuation, typography, contrast, consistency, and flow. `references/production-contract.md` contains the separate pass/fail implementation floor for semantics, accessibility, forms, resilience, performance, platform behavior, tokens, trust, and verification. Neither document presents its requirements as corpus frequencies. `references/provenance.md` records the current standards and implementation sources that support them.
+`references/craft-rulings.md` contains Nolan's binding product defaults for emoji, icons, alignment, reuse, motion, UI punctuation, typography, contrast, consistency, and flow. `references/production-contract.md` contains the separate pass/fail implementation floor for semantics, accessibility, forms, resilience, performance, platform behavior, tokens, trust, and verification. Neither document presents its requirements as corpus frequencies. `references/provenance.md` records the current standards and implementation sources that support them.
 
 ## How to use the evidence
 
