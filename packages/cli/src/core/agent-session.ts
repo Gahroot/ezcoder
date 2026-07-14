@@ -1,7 +1,6 @@
 import { agentLoop, isAbortError, type AgentEvent, type AgentTool } from "@prestyj/agent";
 import {
   ProviderError,
-  prewarmAnthropicCache,
   type Message,
   type Provider,
   type ThinkingLevel,
@@ -47,6 +46,8 @@ import {
   type ProcessManager,
 } from "../tools/index.js";
 import type { BackgroundProcess } from "./process-manager.js";
+import type { SubAgentManager } from "./subagent-manager.js";
+import { applyAsyncSubagentPolicy } from "./subagent-policy.js";
 import { MCPClientManager, getAllMcpServers } from "./mcp/index.js";
 import { DeferredToolCatalog } from "./mcp/deferred-catalog.js";
 import { createToolSearchTool } from "../tools/tool-search.js";
@@ -93,9 +94,12 @@ export interface AgentSessionOptions {
   cwd: string;
   baseUrl?: string;
   systemPrompt?: string;
+  /** Synchronous volatile prompt suffix, refreshed immediately before every run. */
+  getSystemPromptTail?: () => string;
   sessionId?: string;
   continueRecent?: boolean;
   maxTokens?: number;
+  maxTurns?: number;
   thinkingLevel?: ThinkingLevel;
   signal?: AbortSignal;
   /** Prefix used for provider prompt-cache routing keys. */
@@ -167,6 +171,24 @@ export interface AgentSessionOptions {
    * main build session. Default (undefined) = follow `speedProfile`.
    */
   forceLongCacheRetention?: boolean;
+  /** Hidden persistent subagent workers omit the async orchestration tool suite. */
+  subagentWorker?: boolean;
+  /** Session storage root override. Chat agents use a dedicated namespace. */
+  sessionRootDir?: string;
+  /** Register EZ Coder built-in/prompt/custom slash commands. Defaults to true. */
+  coderSlashCommands?: boolean;
+  /** Enable loop-break, re-grounding, and Ideal review hooks. Defaults to true. */
+  selfCorrectionHooks?: boolean;
+  /** Load project skills/agents and create local .ezcoder directories. Defaults to true. */
+  projectCustomization?: boolean;
+  /** Register global + bundled subagents without loading project customization. */
+  globalSubagents?: boolean;
+  /** Load EZ Coder extensions. Defaults to true. */
+  loadExtensions?: boolean;
+  /** Inject EZ Coder's model-specific subagent orchestration prompt. Defaults to true. */
+  orchestrationPrompt?: boolean;
+  /** Host-provided tools appended to this session only (for example, chat delegation). */
+  additionalTools?: AgentTool[];
 }
 
 // ── State ──────────────────────────────────────────────────
@@ -245,9 +267,6 @@ export class AgentSession {
   private regroundingInjected = false;
   private compactionOccurred = false;
   private originalRequest = "";
-  /** True after the cache has been pre-warmed for this session. Ensures we only
-   *  fire the warm-up call once (before the first real turn). */
-  private cachePrewarmed = false;
   // Messages queued by the user while a run is in flight. Drained at the
   // mid-loop steering boundary (user steering wins over the hooks), mirroring
   // the TUI's getSteeringMessages. Each entry carries its own attachments so a
@@ -255,6 +274,11 @@ export class AgentSession {
   private userQueue: Array<{ text: string; attachments: SessionAttachment[] }> = [];
   private processManager?: ProcessManager;
   private lspManager?: LspManager;
+  private subAgentManager?: SubAgentManager;
+  private managerAbortSignal?: AbortSignal;
+  private readonly managerAbortHandler = () => {
+    void this.subAgentManager?.interruptAll();
+  };
   private mcpManager?: MCPClientManager;
   /** Deferred MCP tools awaiting discovery via tool_search (bench A win). */
   private mcpCatalog?: DeferredToolCatalog;
@@ -270,6 +294,8 @@ export class AgentSession {
   private maxTokens: number;
   private thinkingLevel?: ThinkingLevel;
   private customSystemPrompt?: string;
+  /** Stable prompt prefix retained separately from the volatile uncached tail. */
+  private baseSystemPrompt = "";
   /** Shared with the tool layer so plan-mode restrictions read live state. */
   private planModeRef = { current: false };
   /** Path of the approved plan currently being implemented, or undefined. When
@@ -278,6 +304,9 @@ export class AgentSession {
   private approvedPlanPath?: string;
 
   private sessionId = "";
+  /** Runtime conversation identity for provider transport headers. Transient
+   *  children need one even though they intentionally have no persisted session. */
+  private readonly transportSessionId = crypto.randomUUID();
   private sessionPath = "";
   private lastPersistedIndex = 0;
   /** Current leaf entry ID in the session DAG — used to chain parentIds for branching. */
@@ -327,27 +356,42 @@ export class AgentSession {
     this.authStorage = new AuthStorage(paths.authFile);
     await this.authStorage.load();
 
-    // Session manager
-    this.sessionManager = new SessionManager(paths.sessionsDir);
+    // Session manager. Agent-specific roots keep chat and coder histories isolated.
+    this.sessionManager = new SessionManager(this.opts.sessionRootDir ?? paths.sessionsDir);
 
-    // Ensure project-local .ezcoder directories exist
-    const localEzDir = path.join(this.cwd, ".ezcoder");
-    await fs.mkdir(path.join(localEzDir, "skills"), { recursive: true });
-    await fs.mkdir(path.join(localEzDir, "commands"), { recursive: true });
-    await fs.mkdir(path.join(localEzDir, "agents"), { recursive: true });
+    const projectCustomization = this.opts.projectCustomization !== false;
+    if (projectCustomization) {
+      // Ensure project-local .ezcoder directories exist.
+      const localEzDir = path.join(this.cwd, ".ezcoder");
+      await fs.mkdir(path.join(localEzDir, "skills"), { recursive: true });
+      await fs.mkdir(path.join(localEzDir, "commands"), { recursive: true });
+      await fs.mkdir(path.join(localEzDir, "agents"), { recursive: true });
 
-    // Discover skills
-    this.skills = await discoverSkills({
-      globalSkillsDir: paths.skillsDir,
-      projectDir: this.cwd,
-    });
+      this.skills = await discoverSkills({
+        globalSkillsDir: paths.skillsDir,
+        projectDir: this.cwd,
+      });
+    } else {
+      this.skills = [];
+    }
 
-    // Discover agents and create tools (with sub-agent support)
-    const agents = await discoverAgents({
-      globalAgentsDir: paths.agentsDir,
-      projectDir: this.cwd,
-    });
-    const { tools, processManager, rebuildReadTool, lspManager } = await createTools(this.cwd, {
+    // Discover agents and create tools (with sub-agent support). Chat sessions
+    // can retain bundled workers without loading project/global customization.
+    const agents = projectCustomization
+      ? await discoverAgents({
+          globalAgentsDir: paths.agentsDir,
+          projectDir: this.cwd,
+        })
+      : this.opts.globalSubagents
+        ? await discoverAgents({ globalAgentsDir: paths.agentsDir })
+        : [];
+    const {
+      tools: builtInTools,
+      processManager,
+      rebuildReadTool,
+      lspManager,
+      subAgentManager,
+    } = await createTools(this.cwd, {
       agents,
       skills: this.skills,
       provider: this.provider,
@@ -358,7 +402,11 @@ export class AgentSession {
       // sub-agent spawns read the current parent state at execution time.
       getProvider: () => this.provider,
       getModel: () => this.model,
+      getThinkingLevel: () => this.thinkingLevel,
+      getBaseUrl: () => this.baseUrl,
       getCacheKey: () => this.getPromptCacheKey(),
+      disableAsyncSubagents: this.opts.subagentWorker,
+      onSubAgentState: (snapshot) => this.eventBus.emit("subagent_state", snapshot),
       // Plan mode: only wired when the host supplies callbacks. The ref is
       // shared so bash/edit/write enforce read-only restrictions live.
       ...(this.opts.onEnterPlan || this.opts.onExitPlan
@@ -369,6 +417,7 @@ export class AgentSession {
           }
         : {}),
     });
+    const tools = [...builtInTools, ...(this.opts.additionalTools ?? [])];
     // Apply the optional tool allow-list (read-only advisory sessions). Filtering
     // here means the excluded tools are never registered with the agent loop, so
     // a hallucinated call can't mutate the repo — and buildSystemPrompt below is
@@ -377,6 +426,8 @@ export class AgentSession {
     this.rebuildReadTool = rebuildReadTool;
     this.processManager = processManager;
     this.lspManager = lspManager;
+    this.subAgentManager = subAgentManager;
+    this.bindManagerCancellation(this.opts.signal);
 
     // Connect MCP servers (non-blocking — failures are logged and skipped).
     // Child sessions (subagents and goal workers run via `--json` mode) get the
@@ -412,7 +463,9 @@ export class AgentSession {
         undefined,
         this.provider,
       ));
-    this.messages = [{ role: "system", content: basePrompt }];
+    this.baseSystemPrompt = basePrompt;
+    this.messages = [{ role: "system", content: this.withSystemPromptTail(basePrompt) }];
+    this.syncUltraOrchestrationPrompt();
 
     // Load or create session. Transient sessions (subagent spawns) never
     // touch the session store — sessionPath stays empty and persistMessage
@@ -432,58 +485,53 @@ export class AgentSession {
       await this.createNewSession();
     }
 
-    // Register slash commands
-    const builtins = createBuiltinCommands();
-    for (const cmd of builtins) {
-      this.slashCommands.register(cmd);
+    // EZ Coder owns its command registry. Other agents start with an isolated
+    // empty registry and can register their own commands in their own file.
+    if (this.opts.coderSlashCommands !== false) {
+      const builtins = createBuiltinCommands();
+      for (const cmd of builtins) this.slashCommands.register(cmd);
+
+      // Wire up /help to show all registered + prompt + custom commands.
+      const helpCmd = this.slashCommands.get("help");
+      if (helpCmd) {
+        const registry = this.slashCommands;
+        const cwd = this.cwd;
+        helpCmd.execute = async () => {
+          const all = registry.getAll();
+          const lines = all.map(
+            (c) =>
+              `  /${c.name}${c.aliases.length ? ` (${c.aliases.map((a) => "/" + a).join(", ")})` : ""} — ${c.description}`,
+          );
+
+          if (PROMPT_COMMANDS.length > 0) {
+            lines.push("", "Prompt commands:");
+            for (const cmd of PROMPT_COMMANDS) {
+              lines.push(
+                `  /${cmd.name}${cmd.aliases.length ? ` (${cmd.aliases.map((a) => "/" + a).join(", ")})` : ""} — ${cmd.description}`,
+              );
+            }
+          }
+
+          const customCmds = await loadCustomCommands(cwd);
+          if (customCmds.length > 0) {
+            lines.push("", "Custom commands:");
+            for (const cmd of customCmds) lines.push(`  /${cmd.name} — ${cmd.description}`);
+          }
+          return "Available commands:\n" + lines.join("\n");
+        };
+      }
     }
 
-    // Wire up /help to show all registered + prompt + custom commands
-    const helpCmd = this.slashCommands.get("help");
-    if (helpCmd) {
-      const registry = this.slashCommands;
-      const cwd = this.cwd;
-      helpCmd.execute = async () => {
-        const all = registry.getAll();
-        const lines = all.map(
-          (c) =>
-            `  /${c.name}${c.aliases.length ? ` (${c.aliases.map((a) => "/" + a).join(", ")})` : ""} — ${c.description}`,
-        );
-
-        // Add prompt-template commands
-        if (PROMPT_COMMANDS.length > 0) {
-          lines.push("");
-          lines.push("Prompt commands:");
-          for (const cmd of PROMPT_COMMANDS) {
-            lines.push(
-              `  /${cmd.name}${cmd.aliases.length ? ` (${cmd.aliases.map((a) => "/" + a).join(", ")})` : ""} — ${cmd.description}`,
-            );
-          }
-        }
-
-        // Add custom commands from .ezcoder/commands/
-        const customCmds = await loadCustomCommands(cwd);
-        if (customCmds.length > 0) {
-          lines.push("");
-          lines.push("Custom commands:");
-          for (const cmd of customCmds) {
-            lines.push(`  /${cmd.name} — ${cmd.description}`);
-          }
-        }
-
-        return "Available commands:\n" + lines.join("\n");
+    if (this.opts.loadExtensions !== false) {
+      const extContext: ExtensionContext = {
+        eventBus: this.eventBus,
+        registerTool: (tool) => this.tools.push(tool),
+        registerSlashCommand: (cmd) => this.slashCommands.register(cmd),
+        cwd: this.cwd,
+        settingsManager: this.settingsManager,
       };
+      await this.extensionLoader.loadAll(paths.extensionsDir, extContext);
     }
-
-    // Load extensions
-    const extContext: ExtensionContext = {
-      eventBus: this.eventBus,
-      registerTool: (tool) => this.tools.push(tool),
-      registerSlashCommand: (cmd) => this.slashCommands.register(cmd),
-      cwd: this.cwd,
-      settingsManager: this.settingsManager,
-    };
-    await this.extensionLoader.loadAll(paths.extensionsDir, extContext);
 
     this.eventBus.emit("session_start", { sessionId: this.sessionId });
   }
@@ -603,12 +651,18 @@ export class AgentSession {
    * Process user input. Handles slash commands or runs agent loop.
    */
   async prompt(content: string): Promise<void> {
-    // Check for slash commands
-    const parsed = this.slashCommands.parse(content);
+    const parsedInput = this.slashCommands.parse(content);
+    const coderCommands = this.opts.coderSlashCommands !== false;
+    // Non-coder agents only intercept commands registered in their own registry.
+    // Unknown `/text` stays a normal conversational prompt.
+    const parsed =
+      parsedInput && (coderCommands || this.slashCommands.get(parsedInput.name))
+        ? parsedInput
+        : null;
     if (parsed) {
-      // Check prompt-template commands first (built-in + custom)
-      const builtinPromptCmd = getPromptCommand(parsed.name);
-      const customCmds = await loadCustomCommands(this.cwd);
+      // EZ Coder alone can resolve its prompt-template and project commands.
+      const builtinPromptCmd = coderCommands ? getPromptCommand(parsed.name) : undefined;
+      const customCmds = coderCommands ? await loadCustomCommands(this.cwd) : [];
       const customPromptCmd = !builtinPromptCmd
         ? customCmds.find((c) => c.name === parsed.name)
         : undefined;
@@ -828,6 +882,7 @@ export class AgentSession {
         return { role: "user", content: parts };
       });
     }
+    if (this.opts.selfCorrectionHooks === false) return null;
     if (!this.settingsManager.get("idealReviewEnabled")) return null;
     if (!this.loopBreakInjected) {
       const decision = evaluateLoopBreak({
@@ -855,6 +910,7 @@ export class AgentSession {
    * otherwise finish and the change set is substantial enough to warrant it.
    */
   private getHookFollowUpMessages(): Message[] | null {
+    if (this.opts.selfCorrectionHooks === false) return null;
     if (!this.settingsManager.get("idealReviewEnabled")) return null;
     if (this.idealReviewInjected) return null;
     const decision = evaluateIdealReview(this.hookStats);
@@ -869,6 +925,7 @@ export class AgentSession {
 
   /** Auto-compact if needed, run agent loop with auth retry, and persist messages. */
   private async runLoop(): Promise<void> {
+    this.refreshSystemPromptTail();
     // One-shot cache-key marker per session so turn_end cacheRead numbers
     // in the log can be traced back to a specific routing namespace —
     // particularly useful when sub-agents inherit `parentKey:subagent`.
@@ -934,11 +991,13 @@ export class AgentSession {
         tools: this.tools,
         webSearch: true,
         maxTokens: this.maxTokens,
+        maxTurns: this.opts.maxTurns,
         thinking: this.thinkingLevel,
         apiKey,
         baseUrl: effectiveBaseUrl,
         signal: this.opts.signal,
         accountId,
+        transportSessionId: this.sessionId || this.transportSessionId,
         projectId,
         // Kimi For Coding gates the managed endpoint on coding-agent identity
         // headers; attach them only when the Kimi OAuth token is in use.
@@ -989,11 +1048,6 @@ export class AgentSession {
     };
 
     try {
-      // Fire cache pre-warm before the first turn (Anthropic + speedProfile optimized).
-      // Runs concurrently with nothing — it must complete before runAgentLoop so
-      // the cache is warm when the real request arrives. Best-effort: swallowed
-      // inside maybePrewarmCache/prewarmAnthropicCache.
-      await this.maybePrewarmCache(creds);
       await runAgentLoop(creds.accessToken, creds.accountId, creds.projectId);
     } catch (err) {
       // Abort errors are expected (user cancellation) — don't retry or re-throw
@@ -1045,6 +1099,11 @@ export class AgentSession {
     const prevProvider = this.provider;
     if (provider) this.provider = provider as Provider;
     this.model = model;
+    // Keep host-provided option closures (notably chat delegation) aligned with
+    // the live selection after an in-session model switch.
+    this.opts.provider = this.provider;
+    this.opts.model = this.model;
+    this.syncUltraOrchestrationPrompt();
     setEstimatorModel(model);
     // maxTokens must follow the active model — it was frozen at the boot
     // model's `maxOutputTokens` in the constructor, so without this a session
@@ -1214,7 +1273,9 @@ export class AgentSession {
         undefined,
         this.provider,
       ));
-    this.messages = [{ role: "system", content: basePrompt }];
+    this.baseSystemPrompt = basePrompt;
+    this.messages = [{ role: "system", content: this.withSystemPromptTail(basePrompt) }];
+    this.syncUltraOrchestrationPrompt();
     // Fresh conversation — new entries must not chain onto the old DAG's leaf.
     this.currentLeafId = null;
     // Transient sessions (Nolan chat/autopilot, subagent spawns) never touch the
@@ -1345,6 +1406,21 @@ export class AgentSession {
     return this.processManager.stop(id);
   }
 
+  /** Replace a host-owned system prompt in place without resetting conversation history. */
+  setCustomSystemPrompt(systemPrompt: string, promptCacheKeyPrefix?: string): void {
+    this.customSystemPrompt = systemPrompt;
+    this.baseSystemPrompt = systemPrompt;
+    this.opts.systemPrompt = systemPrompt;
+    if (promptCacheKeyPrefix) this.opts.promptCacheKeyPrefix = promptCacheKeyPrefix;
+    const content = this.withSystemPromptTail(systemPrompt);
+    if (this.messages[0]?.role === "system") {
+      this.messages[0] = { role: "system", content };
+    } else {
+      this.messages.unshift({ role: "system", content });
+    }
+    this.syncUltraOrchestrationPrompt();
+  }
+
   /**
    * Toggle plan mode: flips the shared ref (so tools enforce read-only
    * restrictions) and rebuilds the system prompt in place so the model is told
@@ -1382,10 +1458,28 @@ export class AgentSession {
       undefined,
       this.provider,
     );
+    this.baseSystemPrompt = rebuilt;
+    const content = this.withSystemPromptTail(rebuilt);
     if (this.messages[0]?.role === "system") {
-      this.messages[0] = { role: "system", content: rebuilt };
+      this.messages[0] = { role: "system", content };
     } else {
-      this.messages.unshift({ role: "system", content: rebuilt });
+      this.messages.unshift({ role: "system", content });
+    }
+    this.syncUltraOrchestrationPrompt();
+  }
+
+  private withSystemPromptTail(basePrompt: string): string {
+    if (!this.opts.getSystemPromptTail) return basePrompt;
+    return `${basePrompt}\n\n<!-- uncached -->\n${this.opts.getSystemPromptTail()}`;
+  }
+
+  private refreshSystemPromptTail(): void {
+    if (!this.opts.getSystemPromptTail) return;
+    const content = this.withSystemPromptTail(this.baseSystemPrompt);
+    if (this.messages[0]?.role === "system") {
+      this.messages[0] = { role: "system", content };
+    } else {
+      this.messages.unshift({ role: "system", content });
     }
   }
 
@@ -1635,11 +1729,35 @@ export class AgentSession {
    * effect on the next prompt, since the in-flight loop reads it at start. */
   setThinkingLevel(level: ThinkingLevel | undefined): void {
     this.thinkingLevel = level;
+    this.syncUltraOrchestrationPrompt();
+  }
+
+  /** Sol/Terra Ultra delegates proactively; lower levels require an explicit request. */
+  private syncUltraOrchestrationPrompt(): void {
+    if (this.opts.orchestrationPrompt === false) return;
+    const systemMessage = this.messages[0];
+    if (systemMessage?.role !== "system" || typeof systemMessage.content !== "string") return;
+
+    systemMessage.content = applyAsyncSubagentPolicy(
+      systemMessage.content,
+      this.provider,
+      this.model,
+      this.thinkingLevel,
+      this.tools.map((tool) => tool.name),
+    );
   }
 
   /** Replace the abort signal (e.g. after cancellation). */
   setSignal(signal: AbortSignal): void {
     this.opts = { ...this.opts, signal };
+    this.bindManagerCancellation(signal);
+  }
+
+  private bindManagerCancellation(signal: AbortSignal | undefined): void {
+    this.managerAbortSignal?.removeEventListener("abort", this.managerAbortHandler);
+    this.managerAbortSignal = signal;
+    signal?.addEventListener("abort", this.managerAbortHandler, { once: true });
+    if (signal?.aborted) this.managerAbortHandler();
   }
 
   /** True when speedProfile is "optimized" (1-h cache TTL + pre-warm), or the
@@ -1662,44 +1780,6 @@ export class AgentSession {
     return getAuthStorageKeys(this.provider, this.model);
   }
 
-  /** Fire a cache pre-warm request for Anthropic so the first real turn is a
-   *  cache read instead of a cold write. No-op for other providers and when
-   *  speedProfile is not "optimized". Entirely best-effort — any failure is
-   *  swallowed so prewarm never blocks or aborts the real prompt. */
-  private async maybePrewarmCache(creds: {
-    accessToken: string;
-    accountId?: string;
-    baseUrl?: string;
-  }): Promise<void> {
-    if (this.cachePrewarmed || !this.isSpeedOptimized() || this.provider !== "anthropic") {
-      return;
-    }
-    this.cachePrewarmed = true;
-    try {
-      const userAgent = await getClaudeCliUserAgent();
-      const systemText =
-        typeof this.messages[0]?.content === "string" ? this.messages[0].content : "";
-      if (!systemText) return;
-      await prewarmAnthropicCache({
-        apiKey: creds.accessToken,
-        model: this.model,
-        system: systemText,
-        tools: this.tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          parameters: t.parameters,
-          ...(t.rawInputSchema ? { rawInputSchema: t.rawInputSchema } : {}),
-        })),
-        baseUrl: this.baseUrl ?? creds.baseUrl,
-        userAgent,
-        cacheRetention: "long",
-        signal: this.opts.signal,
-      });
-    } catch {
-      // Best-effort — prewarm failure must never block the session.
-    }
-  }
-
   private getPromptCacheKey(): string | undefined {
     if (this.opts.promptCacheKey) return this.opts.promptCacheKey;
     if (!this.sessionId) return undefined;
@@ -1712,9 +1792,10 @@ export class AgentSession {
   }
 
   async dispose(): Promise<void> {
+    this.managerAbortSignal?.removeEventListener("abort", this.managerAbortHandler);
     this.processManager?.shutdownAll();
     this.lspManager?.shutdownAll();
-    await this.mcpManager?.dispose();
+    await Promise.all([this.subAgentManager?.shutdownAll(), this.mcpManager?.dispose()]);
     await this.extensionLoader.deactivateAll();
     this.eventBus.removeAllListeners();
     this.messages = [];

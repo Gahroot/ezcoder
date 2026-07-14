@@ -21,8 +21,19 @@ import { parseArgs } from "node:util";
 import { formatError, type ToolResultContent } from "@prestyj/ai";
 import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
+import { runSubagentWorkerMode } from "./modes/subagent-worker-mode.js";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { AgentSession } from "./core/agent-session.js";
+import {
+  CHAT_AGENT_IDS,
+  chatAgentSessionsDir,
+  createChatAgent,
+  parseChatAgentId,
+  sessionsDirForChatAgent,
+  switchChatAgent,
+  type ChatAgentId,
+} from "./chat-agents/index.js";
+import { buildMemoryTools, MemoryStore } from "./chat-agents/memory.js";
 import { buildNolanSystemPrompt, buildNolanAutopilotSystemPrompt } from "./core/nolan-prompt.js";
 import {
   buildNolanDigest,
@@ -91,7 +102,14 @@ import {
   type TaskListItem,
 } from "./core/task-store.js";
 import { initLogger, log } from "./core/logger.js";
-import { RADIO_STATIONS, getCurrentStation, playRadio, stopRadio } from "./core/radio.js";
+import {
+  RADIO_STATIONS,
+  getCurrentStation,
+  getRadioVolume,
+  playRadio,
+  setRadioVolume,
+  stopRadio,
+} from "./core/radio.js";
 import { enrichProcessPath } from "./core/shell-path.js";
 import { downscaleForPreview, validateVisionImage } from "./utils/image.js";
 import { startServeMode, type ServeController } from "./modes/serve-mode.js";
@@ -666,6 +684,11 @@ function daemonJson(res: http.ServerResponse, status: number, body: unknown): vo
 }
 
 async function main(): Promise<void> {
+  // Hidden persistent-worker dispatch must win before strict JSON/server parsing.
+  if (process.argv.includes("--subagent-worker")) {
+    await runSubagentWorkerMode();
+    return;
+  }
   // Sub-agent JSON-mode dispatch must win before any sidecar/server setup.
   if (await runJsonModeIfRequested()) return;
 
@@ -716,6 +739,13 @@ async function main(): Promise<void> {
   // request to its window's session via the `x-gg-session` header (and the
   // `?session=` query for the SSE /events stream).
   const sessions = new Map<string, SessionContext>();
+  const memoryStore = new MemoryStore({
+    onChange: ({ memories }) => {
+      for (const ctx of sessions.values()) {
+        ctx.broadcast("memory_change", { count: memories.length });
+      }
+    },
+  });
 
   // XP/rank progress — loaded once per daemon; awards fan out to every window.
   // Each frame is tagged `origin: true` only for the session that earned the
@@ -828,15 +858,18 @@ async function main(): Promise<void> {
     }
 
     // ── Daemon-level routes (session lifecycle) ──────────────────────────
-    // Create a session for a window: { cwd, sessionPath? } → { sessionId }.
+    // Create a session for a window: { mode?, cwd, sessionPath? } → { sessionId }.
     if (method === "POST" && url === "/session") {
       void daemonReadBody(req).then(async (raw) => {
-        let body: { cwd?: unknown; sessionPath?: unknown } = {};
+        let body: { mode?: unknown; chatAgent?: unknown; cwd?: unknown; sessionPath?: unknown } =
+          {};
         try {
           body = raw ? (JSON.parse(raw) as typeof body) : {};
         } catch {
           /* empty/invalid body → defaults below */
         }
+        const mode: WorkspaceMode = body.mode === "chat" ? "chat" : "code";
+        const chatAgent = parseChatAgentId(body.chatAgent);
         const sessionCwd =
           typeof body.cwd === "string" && body.cwd
             ? body.cwd
@@ -846,11 +879,16 @@ async function main(): Promise<void> {
         const id = randomUUID();
         try {
           const ctx = await createSession(
-            { auth, paths, progress },
-            { id, cwd: sessionCwd, sessionPath },
+            { auth, paths, progress, memoryStore },
+            { id, mode, chatAgent, cwd: sessionCwd, sessionPath },
           );
           sessions.set(id, ctx);
-          log("INFO", "app-sidecar", "session created", { id, cwd: sessionCwd });
+          log("INFO", "app-sidecar", "session created", {
+            id,
+            mode,
+            chatAgent,
+            cwd: sessionCwd,
+          });
           daemonJson(res, 200, { sessionId: id });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -917,16 +955,38 @@ async function main(): Promise<void> {
     log("INFO", "app-sidecar", "daemon listening", { port: String(addr.port), host });
   });
 
-  const shutdown = async (): Promise<void> => {
+  const shellPid = process.ppid;
+  let shuttingDown = false;
+  async function shutdown(): Promise<void> {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    clearInterval(parentWatch);
     // Radio playback is app-wide (one stream across all windows), so it stops
     // at the daemon level, not per session.
     stopRadio();
     await Promise.all([...sessions.values()].map((c) => c.dispose().catch(() => {})));
     server.close();
     process.exit(0);
-  };
+  }
   process.on("SIGINT", () => void shutdown());
   process.on("SIGTERM", () => void shutdown());
+  process.once("exit", stopRadio);
+
+  // Tauri can disappear without delivering a signal (force-quit, dev runner
+  // teardown, crash). Detect reparenting or a dead shell so the daemon and its
+  // radio player do not survive as audible orphans.
+  const parentWatch = setInterval(() => {
+    let parentAlive = process.ppid === shellPid;
+    if (parentAlive && shellPid > 1) {
+      try {
+        process.kill(shellPid, 0);
+      } catch (error) {
+        parentAlive = (error as NodeJS.ErrnoException).code === "EPERM";
+      }
+    }
+    if (!parentAlive) void shutdown();
+  }, 1_000);
+  parentWatch.unref?.();
 }
 
 /** Nolan's read-only tool allow-list. Excludes every mutating tool (write/edit/
@@ -993,7 +1053,7 @@ function buildNolanContext(
 // ── Progress ("Ranks") ──────────────────────────────────────────────────
 // Daemon-level XP/rank manager: one durable file (~/.ezcoder/progress.json), awards
 // applied under a file lock, snapshots broadcast to EVERY session's SSE clients,
-// and an fs.watch on ~/.gg so writes from OTHER daemon processes (dev + packaged
+// and an fs.watch on ~/.ezcoder so writes from OTHER daemon processes (dev + packaged
 // app side by side) re-broadcast here too — deduped by the lastEvent nonce.
 // XP failures are debug-log-only; progress must never break a run.
 
@@ -1008,8 +1068,15 @@ async function createProgressManager(
   agentDir: string,
   broadcastAll: (snapshot: ProgressSnapshot, originId?: string) => void,
 ): Promise<ProgressManager> {
-  // Boot: recovery chain main → backup → one-time session-history rebuild → empty.
-  let file: ProgressFile = await loadProgress({ rebuild: () => rebuildFromSessions() });
+  // Boot: recovery chain main → backup → coding + chat session rebuild → empty.
+  const coderSessionsDir = path.join(agentDir, "sessions");
+  let file: ProgressFile = await loadProgress({
+    rebuild: () =>
+      rebuildFromSessions([
+        coderSessionsDir,
+        ...CHAT_AGENT_IDS.map((agentId) => chatAgentSessionsDir(coderSessionsDir, agentId)),
+      ]),
+  });
   // Don't re-celebrate an old levelUp event on boot.
   let lastSeenNonce: string | null = file.lastEvent?.nonce ?? null;
   log("INFO", "app-sidecar", "progress loaded", {
@@ -1062,7 +1129,7 @@ async function createProgressManager(
     }
   }
 
-  // Watch ~/.gg (dir watch survives the atomic tmp+rename) for progress.json
+  // Watch ~/.ezcoder (dir watch survives the atomic tmp+rename) for progress.json
   // writes from other daemon processes; debounce, reload read-only, dedupe by nonce.
   let watchDebounce: NodeJS.Timeout | null = null;
   try {
@@ -1091,8 +1158,12 @@ async function createProgressManager(
   return { snapshot, awardRun };
 }
 
+type WorkspaceMode = "code" | "chat";
+
 interface SessionContext {
   id: string;
+  mode: WorkspaceMode;
+  chatAgent: ChatAgentId;
   cwd: string;
   sessionPath?: string;
   session: AgentSession;
@@ -1120,11 +1191,20 @@ async function createSession(
     auth: AuthStorage;
     paths: Awaited<ReturnType<typeof ensureAppDirs>>;
     progress: ProgressManager;
+    memoryStore: MemoryStore;
   },
-  opts: { id: string; cwd: string; sessionPath?: string },
+  opts: {
+    id: string;
+    mode: WorkspaceMode;
+    chatAgent: ChatAgentId;
+    cwd: string;
+    sessionPath?: string;
+  },
 ): Promise<SessionContext> {
-  const { auth, progress } = deps;
+  const { auth, progress, memoryStore } = deps;
   const paths = deps.paths;
+  const mode = opts.mode;
+  let chatAgent = opts.chatAgent;
   const cwd = opts.cwd;
   // Base host for parsing request-URL query params (value is irrelevant to
   // parsing); the daemon owns the real listen host.
@@ -1254,66 +1334,76 @@ async function createSession(
   const resumeSessionPath = opts.sessionPath;
 
   let abort = new AbortController();
-  const session = new AgentSession({
+  const baseSessionOptions = {
     provider,
     model,
     cwd,
     thinkingLevel,
     sessionId: resumeSessionPath,
     signal: abort.signal,
-    // The shell gates window readiness on the GG_APP_LISTENING handshake, which
-    // can't fire until initialize() resolves. Connect MCP in the background so a
-    // slow or hanging stdio server (e.g. a first-run `npx -y @playwright/mcp`
-    // download) can't delay the sidecar past the webview's startup timeout
-    // ("sidecar did not start in time"). Tools attach when the servers come up.
+    // Keep MCP startup off the readiness path in both modes.
     backgroundMcpConnect: true,
-    // Plan mode: the agent's enter_plan/exit_plan tools drive these. We flip
-    // session plan state (rebuilds the system prompt + enforces read-only
-    // tools) and surface the transition to the webview.
-    onEnterPlan: async (reason) => {
-      // During a task run there is no human present to approve a plan, and a
-      // submitted plan would strand the task in-progress while the run-all loop
-      // advances to the next one. Decline plan mode so the agent implements the
-      // task directly — mirrors the TUI's isUnattendedRun guard (App.tsx). The
-      // enter_plan tool turns a false return into an "implement directly" hint.
-      if (taskRunActive) return false;
-      await session.setPlanMode(true);
-      broadcast("plan_enter", { reason: reason ?? "" });
-      // Persist the plan-mode banner so a resumed session still shows it.
-      void session.persistAppMarker("plan", { reason: reason ?? "" }).catch(() => {});
-    },
-    onExitPlan: async (planPath: string) => {
-      // A model can call exit_plan even when enter_plan was declined. During a
-      // task run, never route the plan into review (no approver) — that would
-      // hang the task and stall run-all. Leave plan mode and tell it to build.
-      if (taskRunActive) {
+  };
+  let session!: AgentSession;
+  if (mode === "chat") {
+    session = createChatAgent(chatAgent, {
+      ...baseSessionOptions,
+      sessionsDir: paths.sessionsDir,
+      additionalTools: buildMemoryTools(memoryStore),
+      getSystemPromptTail: () => memoryStore.renderForPrompt(),
+      onAgentChange: async (nextAgent) => {
+        chatAgent = nextAgent;
+        broadcast("chat_agent_change", { chatAgent: nextAgent });
+        await session.persistAppMarker("agent_handoff", { chatAgent: nextAgent }).catch((error) => {
+          log("WARN", "app-sidecar", "agent handoff marker persist failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+      },
+    });
+  } else {
+    session = new AgentSession({
+      ...baseSessionOptions,
+      // Plan mode belongs only to the coding agent.
+      onEnterPlan: async (reason) => {
+        // Unattended task runs cannot approve plans; implement directly instead.
+        if (taskRunActive) return false;
+        await session.setPlanMode(true);
+        broadcast("plan_enter", { reason: reason ?? "" });
+        void session.persistAppMarker("plan", { reason: reason ?? "" }).catch(() => {});
+      },
+      onExitPlan: async (planPath: string) => {
+        if (taskRunActive) {
+          await session.setPlanMode(false);
+          return (
+            "Plan review is unavailable during a task run. Skip review and implement " +
+            "the plan directly now: make the changes, verify them, then mark the task done."
+          );
+        }
         await session.setPlanMode(false);
-        return (
-          "Plan review is unavailable during a task run. Skip review and implement " +
-          "the plan directly now: make the changes, verify them, then mark the task done."
-        );
-      }
-      await session.setPlanMode(false);
-      // Surface the plan's path + markdown so the webview can show the review
-      // modal (Accept / Feedback / Reject). Best-effort content read.
-      let content: string;
-      try {
-        content = await fs.readFile(planPath, "utf-8");
-      } catch {
-        content = "";
-      }
-      // Record the submitted plan so the autopilot gate can route this turn
-      // into a PLAN review instead of a stale work review (plan mode is
-      // already false here, so the gate's planMode check alone never catches
-      // a submission). setPendingPlan bumps planGeneration, which invalidates
-      // any in-flight Nolan plan review racing a user action.
-      setPendingPlan(planPath, content);
-      broadcast("plan_exit", { planPath, content });
-      return "Plan submitted for user review. Wait for the user to approve, reject, or dismiss it before implementing.";
-    },
-  });
+        let content: string;
+        try {
+          content = await fs.readFile(planPath, "utf-8");
+        } catch {
+          content = "";
+        }
+        setPendingPlan(planPath, content);
+        broadcast("plan_exit", { planPath, content });
+        return "Plan submitted for user review. Wait for the user to approve, reject, or dismiss it before implementing.";
+      },
+    });
+  }
   await session.initialize();
-  log("INFO", "app-sidecar", "session ready", { provider, model, cwd });
+  if (mode === "chat") {
+    const restoredAgent = [...session.getAppMarkers()]
+      .reverse()
+      .find((marker) => marker.kind === "agent_handoff")?.data.chatAgent;
+    if (typeof restoredAgent === "string") {
+      chatAgent = parseChatAgentId(restoredAgent);
+      await switchChatAgent(session, chatAgent, false);
+    }
+  }
+  log("INFO", "app-sidecar", "session ready", { provider, model, mode, chatAgent, cwd });
 
   // Footer extras (context window, git branch, background tasks). The git
   // branch is resolved once at startup and refreshed lazily; the context
@@ -1384,6 +1474,7 @@ async function createSession(
   });
   session.eventBus.on("model_change", (d) => broadcast("model_change", d));
   session.eventBus.on("hook", (d) => broadcast("hook", d));
+  session.eventBus.on("subagent_state", (d) => broadcast("subagent_state", d));
   session.eventBus.on("compaction_start", (d) => broadcast("compaction_start", d));
   session.eventBus.on("compaction_end", (d) => broadcast("compaction_end", d));
 
@@ -1396,7 +1487,7 @@ async function createSession(
   // ezcoder-app.json on boot; flipped via POST /autopilot. When on, POST /prompt runs
   // runAutopilotCycle after the user's turn settles — Nolan auto-reviews the work
   // and drives the review→prompt→review loop.
-  let autopilot = await loadAutopilot(cwd);
+  let autopilot = mode === "code" && (await loadAutopilot(cwd));
   // True while an autopilot review is in flight (used to defer nolanAuto model
   // switches, like nolanRunning does for chat Nolan, and to drive the spinner).
   let autopilotReviewing = false;
@@ -2102,6 +2193,8 @@ async function createSession(
       const st = session.getState();
       json(res, 200, {
         ...st,
+        mode,
+        chatAgent,
         running,
         ready: true,
         thinkingLevel: session.getThinkingLevel() ?? null,
@@ -2116,6 +2209,32 @@ async function createSession(
 
     if (method === "GET" && url === "/progress") {
       json(res, 200, progress.snapshot());
+      return;
+    }
+
+    if (method === "GET" && url === "/memories") {
+      void memoryStore
+        .snapshot()
+        .then((snapshot) => json(res, 200, snapshot))
+        .catch((error) =>
+          json(res, 500, { error: error instanceof Error ? error.message : String(error) }),
+        );
+      return;
+    }
+
+    if (method === "DELETE" && url.startsWith("/memories/")) {
+      const id = decodeURIComponent(url.slice("/memories/".length));
+      if (!id) {
+        json(res, 400, { error: "memory id is required" });
+        return;
+      }
+      void memoryStore
+        .forget(id)
+        .then(() => memoryStore.snapshot())
+        .then((snapshot) => json(res, 200, snapshot))
+        .catch((error) =>
+          json(res, 500, { error: error instanceof Error ? error.message : String(error) }),
+        );
       return;
     }
 
@@ -2135,6 +2254,8 @@ async function createSession(
           type: "ready",
           data: {
             ...st,
+            mode,
+            chatAgent,
             running,
             thinkingLevel: session.getThinkingLevel() ?? null,
             supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
@@ -2254,7 +2375,44 @@ async function createSession(
         json(res, 400, { error: "missing cwd query param" });
         return;
       }
-      void listRecentSessions(target, 5)
+      const requestedAgent = new URL(url, `http://${host}`).searchParams.get("chatAgent");
+      if (requestedAgent === "all") {
+        void Promise.all(
+          CHAT_AGENT_IDS.map(async (agentId) => {
+            const agentSessions = await listRecentSessions(
+              target,
+              5,
+              chatAgentSessionsDir(paths.sessionsDir, agentId),
+            );
+            return agentSessions.map((item) => ({ ...item, chatAgent: agentId }));
+          }),
+        )
+          .then(async (groups) => {
+            const dated = await Promise.all(
+              groups.flat().map(async (item) => ({
+                item,
+                mtime: await fs
+                  .stat(item.path)
+                  .then((stat) => stat.mtimeMs)
+                  .catch(() => 0),
+              })),
+            );
+            const recent = dated
+              .sort((left, right) => right.mtime - left.mtime)
+              .slice(0, 5)
+              .map(({ item }) => item);
+            json(res, 200, { sessions: recent });
+          })
+          .catch(() => json(res, 200, { sessions: [] }));
+        return;
+      }
+      // The picker may be served by a sidecar currently running in Chat mode.
+      // An omitted chatAgent always means coding history; chat callers identify
+      // their namespace explicitly (one agent or "all").
+      const sessionsDir = requestedAgent
+        ? sessionsDirForChatAgent(paths.sessionsDir, requestedAgent)
+        : paths.sessionsDir;
+      void listRecentSessions(target, 5, sessionsDir)
         .then((sessions) => json(res, 200, { sessions }))
         .catch(() => json(res, 200, { sessions: [] }));
       return;
@@ -2542,13 +2700,19 @@ async function createSession(
                 id: string;
                 name: string;
                 args: Record<string, unknown>;
-              } => c.type === "tool_call" && c.name === "subagent",
+              } => c.type === "tool_call" && (c.name === "subagent" || c.name === "spawn_agent"),
             );
             if (subagentCalls.length > 0) {
               const agents = subagentCalls.map((c) => {
                 const result = toolResultMap.get(c.id);
                 return {
-                  agentName: typeof c.args?.agent === "string" ? c.args.agent : undefined,
+                  agentName:
+                    c.name === "spawn_agent" && typeof c.args?.task_name === "string"
+                      ? c.args.task_name
+                      : typeof c.args?.agent === "string"
+                        ? c.args.agent
+                        : undefined,
+                  // Async workers are intentionally non-resumable; restored rows are historical.
                   status: result?.isError ? ("error" as const) : ("done" as const),
                   toolUseCount: 0,
                 };
@@ -2583,6 +2747,10 @@ async function createSession(
     }
 
     if (method === "GET" && url === "/commands") {
+      if (mode === "chat") {
+        json(res, 200, { commands: [] });
+        return;
+      }
       // Workflow commands with agent functionality: built-in prompt templates +
       // the user's own `.ezcoder/commands/*.md`. UI commands (model/quit/etc.) are
       // handled webview-side and intentionally excluded.
@@ -2634,7 +2802,7 @@ async function createSession(
           // an autopilot cycle is active but between injected runs (build idle,
           // Nolan reviewing) so the message never starts a run that collides with
           // an injected one on the same session. Attachments are persisted to
-          // .gg/uploads first so the queued media rides the same native-block
+          // .ezcoder/uploads first so the queued media rides the same native-block
           // path as a non-queued attachment prompt when it drains.
           const prepared = attachments.length > 0 ? await prepareAttachments(cwd, attachments) : [];
           const count = session.queueMessage(text, prepared);
@@ -2733,6 +2901,10 @@ async function createSession(
     // webview keeps the bubbles separate. The context digest is assembled fresh
     // from the BUILD session's transcript each turn (one-way mirror).
     if (method === "POST" && url === "/ken/prompt") {
+      if (mode === "chat") {
+        json(res, 404, { error: "Nolan is not available in EZ Chat." });
+        return;
+      }
       void readBody(req).then(async (raw) => {
         let text: string;
         try {
@@ -2792,6 +2964,10 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/autopilot") {
+      if (mode === "chat") {
+        json(res, 404, { error: "Autopilot is not available in EZ Chat." });
+        return;
+      }
       void readBody(req).then(async (raw) => {
         let enabled: boolean;
         try {
@@ -2850,7 +3026,34 @@ async function createSession(
     // duplicate audio across windows (the original per-window goal), now for
     // free. (To restore per-window radio, key playback by sessionId.)
     if (method === "GET" && url === "/radio") {
-      json(res, 200, { stations: RADIO_STATIONS, current: getCurrentStation() });
+      json(res, 200, {
+        stations: RADIO_STATIONS,
+        current: getCurrentStation(),
+        volume: getRadioVolume(),
+      });
+      return;
+    }
+
+    if (method === "POST" && url === "/radio/volume") {
+      void readBody(req).then((raw) => {
+        let volume: number;
+        try {
+          volume = Number((JSON.parse(raw) as { volume?: number }).volume);
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!Number.isFinite(volume)) {
+          json(res, 400, { error: "volume must be a number" });
+          return;
+        }
+        const result = setRadioVolume(volume);
+        if (!result.ok) {
+          json(res, 400, { error: result.error ?? "Radio volume failed to update." });
+          return;
+        }
+        json(res, 200, { current: getCurrentStation(), volume: getRadioVolume() });
+      });
       return;
     }
 
@@ -3215,7 +3418,10 @@ async function createSession(
       }
       void session
         .newSession()
-        .then(() => {
+        .then(async () => {
+          if (mode === "chat") {
+            await session.persistAppMarker("agent_handoff", { chatAgent });
+          }
           injectedAutopilotPrompts = [];
           clearPendingPlan();
           broadcast("session_reset", {});
@@ -3717,6 +3923,10 @@ async function createSession(
 
   return {
     id: opts.id,
+    mode,
+    get chatAgent() {
+      return chatAgent;
+    },
     cwd,
     sessionPath: opts.sessionPath,
     session,

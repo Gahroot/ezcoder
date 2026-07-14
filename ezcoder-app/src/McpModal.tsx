@@ -176,9 +176,7 @@ export function McpModal({ onClose }: Props): React.ReactElement {
         <ListSkeleton rows={3} />
       ) : visible.length === 0 ? (
         <div className="mcp-empty" style={{ color: theme.textMuted }}>
-          {scope === "global"
-            ? "No global MCP servers configured."
-            : "No project MCP servers configured."}
+          No MCP’s configured.
         </div>
       ) : (
         <div className="mcp-list">

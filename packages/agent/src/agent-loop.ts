@@ -707,6 +707,7 @@ export async function* agentLoop(
           baseUrl: options.baseUrl,
           signal: streamController.signal,
           accountId: options.accountId,
+          transportSessionId: options.transportSessionId,
           projectId: options.projectId,
           cacheRetention: options.cacheRetention,
           promptCacheKey: options.promptCacheKey,

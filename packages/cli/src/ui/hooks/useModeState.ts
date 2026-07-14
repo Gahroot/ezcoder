@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import type { Message, Provider } from "@prestyj/ai";
+import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import type { AgentTool } from "@prestyj/agent";
 import { buildSystemPrompt } from "../../system-prompt.js";
 import type { LanguageId } from "../../core/language-detector.js";
 import type { Skill } from "../../core/skills.js";
 import type { GoalMode } from "../../core/runtime-mode.js";
+import { applyAsyncSubagentPolicy } from "../../core/subagent-policy.js";
 
 /** Options accepted by {@link useModeState.rebuildSystemPrompt}. */
 export interface RebuildSystemPromptOptions {
@@ -34,6 +35,8 @@ interface UseModeStateOptions {
   currentToolsRef: MutableRefObject<AgentTool[]>;
   // Active provider, consulted so the prompt identity tracks the current model.
   providerRef: MutableRefObject<Provider>;
+  modelRef: MutableRefObject<string>;
+  thinkingLevelRef: MutableRefObject<ThinkingLevel | undefined>;
   approvedPlanPathRef: MutableRefObject<string | undefined>;
   injectedLanguagesRef: MutableRefObject<Set<LanguageId>>;
   messagesRef: MutableRefObject<Message[]>;
@@ -65,6 +68,8 @@ export function useModeState({
   cwdRef,
   currentToolsRef,
   providerRef,
+  modelRef,
+  thinkingLevelRef,
   approvedPlanPathRef,
   injectedLanguagesRef,
   messagesRef,
@@ -89,18 +94,34 @@ export function useModeState({
       const approvedPlanPath = options?.clearApprovedPlan
         ? undefined
         : (options?.approvedPlanPath ?? approvedPlanPathRef.current);
-      return buildSystemPrompt(
-        options?.cwd ?? cwdRef.current,
-        skills,
-        options?.planMode ?? planModeStateRef.current,
-        approvedPlanPath,
-        (options?.tools ?? currentToolsRef.current).map((tool) => tool.name),
-        options?.activeLanguages ?? injectedLanguagesRef.current,
+      const toolNames = (options?.tools ?? currentToolsRef.current).map((tool) => tool.name);
+      return applyAsyncSubagentPolicy(
+        await buildSystemPrompt(
+          options?.cwd ?? cwdRef.current,
+          skills,
+          options?.planMode ?? planModeStateRef.current,
+          approvedPlanPath,
+          toolNames,
+          options?.activeLanguages ?? injectedLanguagesRef.current,
+          providerRef.current,
+          goalModeStateRef.current,
+        ),
         providerRef.current,
-        goalModeStateRef.current,
+        modelRef.current,
+        thinkingLevelRef.current,
+        toolNames,
       );
     },
-    [skills, approvedPlanPathRef, cwdRef, currentToolsRef, providerRef, injectedLanguagesRef],
+    [
+      skills,
+      approvedPlanPathRef,
+      cwdRef,
+      currentToolsRef,
+      providerRef,
+      modelRef,
+      thinkingLevelRef,
+      injectedLanguagesRef,
+    ],
   );
 
   const replaceSystemPrompt = useCallback(

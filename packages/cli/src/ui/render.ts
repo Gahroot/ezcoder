@@ -5,6 +5,7 @@ import { render, type Instance as InkInstance } from "ink";
 import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import type { AgentTool } from "@prestyj/agent";
 import type { ProcessManager } from "../core/process-manager.js";
+import type { SubAgentManager } from "../core/subagent-manager.js";
 import type { MCPClientManager } from "../core/mcp/index.js";
 import type { AuthStorage } from "../core/auth-storage.js";
 import type { Skill } from "../core/skills.js";
@@ -65,6 +66,7 @@ export interface RenderAppConfig {
   sessionPath?: string;
   sessionId?: string;
   processManager?: ProcessManager;
+  subAgentManager?: SubAgentManager;
   settingsFile?: string;
   mcpManager?: MCPClientManager;
   authStorage?: AuthStorage;
@@ -76,6 +78,7 @@ export interface RenderAppConfig {
   rebuildToolsForCwd?: (cwd: string) => Promise<AgentTool[]>;
   rebuildReadTool?: (model: string) => AgentTool;
   connectInitialMcpTools?: () => Promise<AgentTool[]>;
+  onRuntimeStateChange?: (updates: Partial<RuntimeState>) => void;
   planCallbacks?: {
     onEnterPlan?: (reason?: string) => boolean | void | Promise<boolean | void>;
     onExitPlan?: (planPath: string) => Promise<string>;
@@ -88,7 +91,7 @@ export interface RenderAppConfig {
  * picks aren't lost when an overlay close, plan accept, etc. tears down
  * the React tree.
  */
-interface RuntimeState {
+export interface RuntimeState {
   model: string;
   provider: Provider;
   thinking?: ThinkingLevel;
@@ -411,6 +414,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
 
   const onRuntimeStateChange = (updates: Partial<RuntimeState>): void => {
     Object.assign(runtimeState, updates);
+    config.onRuntimeStateChange?.(updates);
   };
 
   // Session state — App mirrors its React state here via useEffects, so
@@ -608,6 +612,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             sessionPath: sessionStore.sessionPath,
             sessionId: sessionStore.sessionId,
             processManager: config.processManager,
+            subAgentManager: config.subAgentManager,
             settingsFile: config.settingsFile,
             mcpManager: config.mcpManager,
             authStorage: config.authStorage,

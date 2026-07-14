@@ -52,6 +52,7 @@ import fs from "node:fs";
 import readline from "node:readline/promises";
 import { renderApp } from "./ui/render.js";
 import { runJsonMode } from "./modes/json-mode.js";
+import { runSubagentWorkerMode } from "./modes/subagent-worker-mode.js";
 import { runRpcMode } from "./modes/rpc-mode.js";
 import { runServeMode } from "./modes/serve-mode.js";
 import {
@@ -105,6 +106,7 @@ import {
   requireInteractiveTTY,
 } from "./cli/shared.js";
 import { discoverAgents } from "./core/agents.js";
+import { applyAsyncSubagentPolicy } from "./core/subagent-policy.js";
 import { discoverSkills } from "./core/skills.js";
 import path from "node:path";
 import chalk from "chalk";
@@ -112,13 +114,13 @@ import { checkAndAutoUpdate } from "./core/auto-update.js";
 
 import { routeCliCommandInput, type CliSubcommandName } from "./cli/command-routing.js";
 
-const THINKING_LEVELS = new Set<ThinkingLevel>(["low", "medium", "high", "xhigh", "max"]);
+const THINKING_LEVELS = new Set<ThinkingLevel>(["low", "medium", "high", "xhigh", "max", "ultra"]);
 
 export function parseThinkingLevel(value: string | undefined): ThinkingLevel | undefined {
   if (value === undefined) return undefined;
   if (THINKING_LEVELS.has(value as ThinkingLevel)) return value as ThinkingLevel;
   throw new Error(
-    `Invalid --thinking value "${value}". Expected low, medium, high, xhigh, or max.`,
+    `Invalid --thinking value "${value}". Expected low, medium, high, xhigh, max, or ultra.`,
   );
 }
 
@@ -249,6 +251,14 @@ function createCliSubcommandHandlers(): Record<CliSubcommandName, () => void> {
 }
 
 function main(): void {
+  if (process.argv.includes("--subagent-worker")) {
+    void runSubagentWorkerMode().catch((error: unknown) => {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    });
+    return;
+  }
+
   // Silent auto-update check (throttled, non-blocking on failure)
   const updateMessage = checkAndAutoUpdate(CLI_VERSION);
   if (updateMessage) {
@@ -584,21 +594,30 @@ async function runInkTUI(opts: {
   const checkpointRef: { current: CheckpointStore | null } = { current: null };
   const onPreFileMutation = (filePath: string): Promise<void> =>
     checkpointRef.current?.recordPreMutation(filePath) ?? Promise.resolve();
+  let activeProvider = provider;
+  let activeModel = model;
+  let activeThinking = opts.thinkingLevel;
 
-  const { tools, processManager, rebuildReadTool, lspManager } = await createTools(cwd, {
-    agents,
-    skills,
-    provider,
-    model,
-    planModeRef,
-    goalModeRef,
-    onPreFileMutation,
-    lspDiagnostics: opts.lspDiagnostics,
-    authStorage,
-    onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
-    onExitPlan: (planPath) =>
-      planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
-  });
+  const { tools, processManager, rebuildReadTool, lspManager, subAgentManager } = await createTools(
+    cwd,
+    {
+      agents,
+      skills,
+      provider,
+      model,
+      planModeRef,
+      goalModeRef,
+      onPreFileMutation,
+      lspDiagnostics: opts.lspDiagnostics,
+      authStorage,
+      onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
+      onExitPlan: (planPath) =>
+        planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
+      getProvider: () => activeProvider,
+      getModel: () => activeModel,
+      getThinkingLevel: () => activeThinking,
+    },
+  );
 
   // The active LSP pool follows the active tool set — rebuilds (pixel chdir)
   // shut the old pool down and swap in the new one.
@@ -622,6 +641,9 @@ async function runInkTUI(opts: {
       onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
       onExitPlan: (planPath) =>
         planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
+      getProvider: () => activeProvider,
+      getModel: () => activeModel,
+      getThinkingLevel: () => activeThinking,
     });
     activeLspManager = rebuiltLspManager;
     return rebuilt;
@@ -641,25 +663,31 @@ async function runInkTUI(opts: {
     return initialMcpConnectPromise;
   };
 
-  // Kick the connect off eagerly so the kencode-search (and any other) MCP
-  // servers are booting during TUI mount instead of only after first paint.
-  // The App's effect awaits this same memoized promise and swaps in the tools
-  // + rebuilds the system prompt once it resolves. Errors are surfaced there.
+  // Start MCP discovery eagerly while the TUI mounts; the memoized promise is
+  // consumed by App when it swaps in the connected tools.
   void connectInitialMcpTools().catch(() => {});
 
-  const systemPrompt = await buildSystemPrompt(
-    cwd,
-    skills,
-    planModeRef.current,
-    undefined,
-    tools.map((tool) => tool.name),
-    undefined,
+  const toolNames = tools.map((tool) => tool.name);
+  const systemPrompt = applyAsyncSubagentPolicy(
+    await buildSystemPrompt(
+      cwd,
+      skills,
+      planModeRef.current,
+      undefined,
+      toolNames,
+      undefined,
+      provider,
+      goalModeRef.current,
+    ),
     provider,
-    goalModeRef.current,
+    model,
+    opts.thinkingLevel,
+    toolNames,
   );
 
   // Kill all background processes on exit (synchronous — catches all exit paths)
   process.on("exit", () => {
+    subAgentManager?.shutdownAllNow();
     processManager.shutdownAll();
     activeLspManager?.shutdownAll();
     mcpManager.dispose().catch(() => {});
@@ -816,6 +844,7 @@ async function runInkTUI(opts: {
     sessionPath,
     sessionId,
     processManager,
+    subAgentManager,
     settingsFile: paths.settingsFile,
     mcpManager,
     authStorage,
@@ -830,8 +859,14 @@ async function runInkTUI(opts: {
     rebuildReadTool,
     connectInitialMcpTools,
     planCallbacks: planToolCallbacks,
+    onRuntimeStateChange: (updates) => {
+      if (updates.provider) activeProvider = updates.provider;
+      if (updates.model) activeModel = updates.model;
+      if ("thinking" in updates) activeThinking = updates.thinking;
+    },
   });
 
+  await subAgentManager?.shutdownAll();
   closeLogger();
 }
 
@@ -1419,15 +1454,38 @@ export function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
           case "tool_call": {
             flushText();
             const result = toolResults.get(block.id);
-            items.push({
-              kind: "tool_done",
-              name: block.name,
-              args: block.args,
-              result: result?.content ?? "",
-              isError: result?.isError ?? false,
-              durationMs: 0,
-              id: `restore-${id++}`,
-            });
+            if (block.name === "subagent" || block.name === "spawn_agent") {
+              items.push({
+                kind: "subagent_group",
+                agents: [
+                  {
+                    toolCallId: block.id,
+                    task: String(
+                      block.name === "spawn_agent"
+                        ? (block.args.task_name ?? block.args.task ?? "Async agent")
+                        : (block.args.task ?? "Sub-agent"),
+                    ),
+                    agentName: String(block.args.agent ?? "default"),
+                    status: result?.isError ? "error" : "done",
+                    toolUseCount: 0,
+                    tokenUsage: { input: 0, output: 0 },
+                    result: result?.content ?? "",
+                    durationMs: 0,
+                  },
+                ],
+                id: `restore-${id++}`,
+              });
+            } else {
+              items.push({
+                kind: "tool_done",
+                name: block.name,
+                args: block.args,
+                result: result?.content ?? "",
+                isError: result?.isError ?? false,
+                durationMs: 0,
+                id: `restore-${id++}`,
+              });
+            }
             break;
           }
           case "server_tool_call": {

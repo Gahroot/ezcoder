@@ -25,9 +25,38 @@ export function setWindowTitle(title: string): void {
   void appWindow.setTitle(title).catch(() => {});
 }
 
+export interface SubAgentStatePayload {
+  agent_id: string;
+  task_name: string;
+  state: "starting" | "running" | "completed" | "failed" | "interrupted" | "closed";
+  started_at: number;
+  updated_at: number;
+  elapsed_ms: number;
+  current_activity?: string;
+  turn_count: number;
+  tool_use_count: number;
+  token_usage: { input: number; output: number };
+  output?: string;
+  error?: string;
+}
+
 export interface SidecarEvent {
   type: string;
   data: unknown;
+}
+
+export interface MemoryChangeEvent extends SidecarEvent {
+  type: "memory_change";
+  data: { count: number };
+}
+
+export function isMemoryChangeEvent(event: SidecarEvent): event is MemoryChangeEvent {
+  return (
+    event.type === "memory_change" &&
+    typeof event.data === "object" &&
+    event.data !== null &&
+    typeof (event.data as { count?: unknown }).count === "number"
+  );
 }
 
 /** A background process (bash run_in_background), mirrored from the sidecar. */
@@ -40,10 +69,38 @@ export interface BackgroundTask {
   exitCode: number | null;
 }
 
+export type WorkspaceMode = "code" | "chat";
+export type ChatAgentId = "general" | "therapist" | "research";
+
+export type MemoryCategory =
+  | "identity"
+  | "preference"
+  | "project"
+  | "relationship"
+  | "health"
+  | "other";
+
+export interface Memory {
+  id: string;
+  text: string;
+  category: MemoryCategory;
+  importance: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemorySnapshot {
+  memories: Memory[];
+  softLimit: number;
+  hardLimit: number;
+}
+
 export interface AgentState {
   provider: string;
   model: string;
   cwd: string;
+  mode: WorkspaceMode;
+  chatAgent?: ChatAgentId;
   running: boolean;
   /** Current reasoning level, or null when thinking is off. May be absent on
    * frames from older sidecars / partial model_change spreads. */
@@ -153,6 +210,16 @@ export async function deleteTask(id: string): Promise<ProjectTask[]> {
   }
 }
 
+export async function listMemories(): Promise<MemorySnapshot> {
+  await waitForReady();
+  return invoke<MemorySnapshot>("agent_memories");
+}
+
+export async function deleteMemory(id: string): Promise<MemorySnapshot> {
+  await waitForReady();
+  return invoke<MemorySnapshot>("agent_delete_memory", { id });
+}
+
 export interface ThinkingState {
   thinkingLevel: string | null;
   supportedThinkingLevels: string[];
@@ -185,6 +252,7 @@ export interface RecentSession {
   preview: string;
   lastActiveDisplay: string;
   messageCount: number;
+  chatAgent?: ChatAgentId;
 }
 
 export interface SwitchModelResult extends ThinkingState {
@@ -648,29 +716,36 @@ export interface RadioStation {
 
 export interface RadioState {
   stations: RadioStation[];
-  /** Currently-playing station id for THIS window, or null when off. */
+  /** Currently-playing station id app-wide, or null when paused. */
   current: string | null;
+  volume: number;
 }
 
-/** Read this window's radio state (available stations + what's playing). */
+/** Read app-wide radio state (stations, playback, and volume). */
 export async function getRadioState(): Promise<RadioState> {
   try {
     const res = await invoke<RadioState>("agent_radio_state");
-    return { stations: res.stations ?? [], current: res.current ?? null };
+    return {
+      stations: res.stations ?? [],
+      current: res.current ?? null,
+      volume: Number.isFinite(res.volume) ? res.volume : 70,
+    };
   } catch (e) {
     await logError(`agent_radio_state failed: ${String(e)}`);
-    return { stations: [], current: null };
+    return { stations: [], current: null, volume: 70 };
   }
 }
 
-/**
- * Play a station by id, or stop with "off". Playback is isolated to this
- * window's sidecar. Returns the now-playing id (null when stopped). Throws with
- * a user-facing message when no player is installed.
- */
+/** Play a station by id, or pause with "off". */
 export async function setRadio(station: string): Promise<string | null> {
   const res = await invoke<{ current: string | null }>("agent_radio_set", { station });
   return res.current ?? null;
+}
+
+/** Set app-wide radio volume from 0 to 100. */
+export async function setRadioVolume(volume: number): Promise<number> {
+  const res = await invoke<{ volume: number }>("agent_radio_volume", { volume });
+  return Number.isFinite(res.volume) ? res.volume : volume;
 }
 
 /** Stop a background task by id. Returns the sidecar's status message, if any. */
@@ -851,10 +926,16 @@ export async function searchFiles(query: string): Promise<FileHit[]> {
   }
 }
 
-/** List the latest sessions for a project cwd (newest first, with previews). */
-export async function listSessions(cwd: string): Promise<RecentSession[]> {
+/** List the latest sessions for a project, one chat agent, or every chat agent. */
+export async function listSessions(
+  cwd: string,
+  chatAgent?: ChatAgentId | "all",
+): Promise<RecentSession[]> {
   try {
-    const res = await invoke<{ sessions: RecentSession[] }>("agent_sessions", { cwd });
+    const res = await invoke<{ sessions: RecentSession[] }>("agent_sessions", {
+      cwd,
+      chatAgent: chatAgent ?? null,
+    });
     return res.sessions ?? [];
   } catch (e) {
     await logError(`agent_sessions failed: ${String(e)}`);
@@ -863,15 +944,32 @@ export async function listSessions(cwd: string): Promise<RecentSession[]> {
 }
 
 /**
- * Re-point this window's agent at a project: respawns the sidecar at `cwd`,
+ * Re-point this window's agent at a workspace: respawns the sidecar at `cwd`,
  * optionally resuming `sessionPath`. The caller re-runs the ready flow after.
  */
+export async function selectWorkspace(
+  mode: WorkspaceMode,
+  cwd: string,
+  sessionPath?: string,
+  chatAgent: ChatAgentId = "general",
+): Promise<void> {
+  await invoke("select_project", {
+    mode,
+    chatAgent,
+    cwd,
+    sessionPath: sessionPath ?? null,
+  });
+}
+
+/** Re-point this window at a coding project. */
 export async function selectProject(cwd: string, sessionPath?: string): Promise<void> {
-  await invoke("select_project", { cwd, sessionPath: sessionPath ?? null });
+  await selectWorkspace("code", cwd, sessionPath);
 }
 
 /** The project/session a window was restored to on app boot (workspace restore). */
 export interface RestoreTarget {
+  mode: WorkspaceMode;
+  chatAgent?: ChatAgentId;
   cwd: string;
   sessionPath: string | null;
 }

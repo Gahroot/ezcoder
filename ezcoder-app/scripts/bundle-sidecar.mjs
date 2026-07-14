@@ -4,10 +4,11 @@
 //
 // Why external + copy (not a single SEA binary): ezcoder's runtime pulls in
 // native `sharp` and lazily imports optional natives (playwright, transformers,
-// unpdf, linkedom, ...). Those cannot be inlined by a bundler, so we mark them
-// `external` and copy the real packages (with their dependency trees) next to
-// the bundle. Each OS/arch bundle is built on its own CI runner, so the copied
-// `sharp` platform binary is always correct for the target.
+// unpdf, ...). Those cannot be inlined by a bundler, so we mark them `external`
+// and copy the real packages (with their dependency trees) next to the bundle.
+// Pure-JS linkedom is bundled to avoid flattening incompatible htmlparser2/entities
+// versions into that external node_modules tree. Each OS/arch bundle is built on
+// its own runner, so copied native binaries match the target.
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -34,7 +35,6 @@ const EXTERNAL = [
   "playwright",
   "@huggingface/transformers",
   "unpdf",
-  "linkedom",
   "ogg-opus-decoder",
   "turndown",
   "turndown-plugin-gfm",
@@ -164,6 +164,32 @@ function copyPackage(name, fromRequire, fromDir, copied) {
   }
 }
 
+/**
+ * Native packages can publish binaries for every supported OS/architecture in
+ * one npm tarball. Keep only this build runner's payload: shipping dormant Intel
+ * Mach-O files makes an arm64 app look Intel-based to macOS inventory scanners
+ * and adds roughly 180 MB of unused files before compression.
+ */
+function pruneForeignNativePayloads() {
+  const runtimes = join(nodeModulesOut, "onnxruntime-node", "bin", "napi-v3");
+  if (!existsSync(runtimes)) return;
+
+  const selected = join(runtimes, process.platform, process.arch);
+  if (!existsSync(selected)) {
+    throw new Error(
+      `onnxruntime-node has no native payload for ${process.platform}/${process.arch}`,
+    );
+  }
+
+  const keep = join(outDir, `.gg-onnxruntime-${process.pid}`);
+  cpSync(selected, keep, { recursive: true });
+  rmSync(runtimes, { recursive: true, force: true });
+  mkdirSync(join(runtimes, process.platform), { recursive: true });
+  cpSync(keep, selected, { recursive: true });
+  rmSync(keep, { recursive: true, force: true });
+  console.log(`pruned onnxruntime-node payloads to ${process.platform}/${process.arch}`);
+}
+
 async function main() {
   if (!existsSync(sidecarEntry)) {
     throw new Error(
@@ -201,6 +227,7 @@ async function main() {
   for (const name of EXTERNAL) {
     copyPackage(name, ezcoderRequire, ezcoderRoot, copied);
   }
+  pruneForeignNativePayloads();
   console.log(
     `bundled sidecar → ${outFile}\ncopied ${copied.size} external packages → ${nodeModulesOut}`,
   );
