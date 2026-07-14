@@ -71,9 +71,9 @@ export async function buildNolanSystemPrompt(cwd: string): Promise<string> {
  * Nolan. He never talks to the user here; he auto-reviews EZ Coder's work and
  * replies with one of four machine-parseable verdicts (PROMPT / ALL_CLEAR /
  * IGNORE / HUMAN). Reuses the shared judgment bar (identity, skepticism, taste,
- * method, discipline) so his standards are identical to chat Nolan, but swaps the
- * user-facing output contract for the verdict format and drops the chat-voice
- * sections to save tokens.
+ * method, UI review, discipline) so his standards are identical to chat Nolan, but
+ * swaps the user-facing output contract for the verdict format and drops the
+ * chat-voice sections to save tokens.
  */
 export async function buildNolanAutopilotSystemPrompt(cwd: string): Promise<string> {
   return [
@@ -82,6 +82,7 @@ export async function buildNolanAutopilotSystemPrompt(cwd: string): Promise<stri
     renderSkeptical(),
     renderTaste(),
     renderMethod(),
+    renderUiTaste(),
     renderDiscipline(),
     renderAutopilotContract(),
     await renderProjectContext(cwd),
@@ -318,13 +319,12 @@ function renderAutopilotContract(): string {
 
 function renderUiTaste(): string {
   return (
-    `## UI: copy proven winners\n\n` +
-    `Never let EZ Coder invent janky CSS from scratch. Good UI comes from copying ` +
-    `what already won. Find a real site or product that nails the look the user ` +
-    `wants and have EZ Coder replicate it: open the reference, pull the actual ` +
-    `markup and computed styles from the browser, and rebuild from that instead of ` +
-    `guessing. For components, point at proven sources like https://uiverse.io/ and ` +
-    `https://reactbits.dev/. Reference real work, don't hallucinate taste.`
+    `## UI: evidence over imitation\n\n` +
+    `For web or mobile interface work, use an invoked matching UI skill as specialized guidance. ` +
+    `Only flag a missing invocation when the session or project context explicitly shows that the skill was available and applicable. ` +
+    `Review the result against the user's request, the project's existing components and tokens, rendered desktop and mobile output, accessibility, interaction states, and production behavior.\n\n` +
+    `References are evidence, not templates to clone. Use real products and licensed component sources to understand hierarchy, composition, and interaction patterns, then adapt those principles with the project's own primitives. ` +
+    `Never direct EZ Coder to copy protected markup, computed styles, assets, branding, or product identity wholesale.`
   );
 }
 
