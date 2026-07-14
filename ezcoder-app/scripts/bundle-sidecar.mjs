@@ -27,7 +27,7 @@ const sidecarEntry = join(
 const outDir = join(here, "..", "src-tauri", "sidecar");
 const outFile = join(outDir, "app-sidecar.mjs");
 const nodeModulesOut = join(outDir, "node_modules");
-const bundledSkillsSource = join(repoRoot, "packages", "ggcoder", "assets", "skills");
+const bundledSkillsSource = join(repoRoot, "packages", "cli", "assets", "skills");
 const bundledSkillsOut = join(outDir, "skills");
 
 // Packages that must NOT be inlined: native addons + lazily-loaded optional

@@ -62,7 +62,7 @@ describe("skill routing prompts", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "skill-precedence-"));
     const globalSkillsDir = path.join(root, "global");
     const projectDir = path.join(root, "project");
-    const projectSkillsDir = path.join(projectDir, ".gg", "skills");
+    const projectSkillsDir = path.join(projectDir, ".ezcoder", "skills");
     try {
       await fs.mkdir(globalSkillsDir, { recursive: true });
       await fs.mkdir(projectSkillsDir, { recursive: true });

@@ -23,7 +23,7 @@ export function WorkspaceHeader({
     <div className="chat-head">
       <div className="chat-head-strip" data-tauri-drag-region>
         <span className="chat-head-title" data-tauri-drag-region>
-          {sessionTitle ?? (workspaceMode === "chat" ? "GG Chat" : "GG Coder")}
+          {sessionTitle ?? (workspaceMode === "chat" ? "GG Chat" : "EZ Coder")}
         </span>
         {stripExtras}
         <button
