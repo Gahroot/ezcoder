@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.6.0
+
+### Minor Changes
+
+- Add evidence-led UI guidance and improve agent session reliability.
+
+### Patch Changes
+
+- @prestyj/ai@5.6.0
+- @prestyj/agent@5.6.0
+- @prestyj/core@5.6.0
+
 ## 5.5.0
 
 ### Minor Changes
