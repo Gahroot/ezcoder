@@ -11,7 +11,7 @@ import type {
   ToolChoice,
 } from "../types.js";
 import {
-  GGAIError,
+  EZCoderAIError,
   ProviderError,
   isRawHtmlErrorEcho,
   providerHtmlErrorMessage,
@@ -48,13 +48,13 @@ function isVisibleOutputItem(itemType: string | undefined): boolean {
 function toCodexToolChoice(choice: ToolChoice | undefined, tools: Tool[] | undefined): string {
   const resolved = choice ?? "auto";
   if (typeof resolved === "object") {
-    throw new GGAIError(
+    throw new EZCoderAIError(
       `OpenAI Codex does not support selecting the named tool \`${resolved.name}\`; use auto, none, or required.`,
       { source: "capability" },
     );
   }
   if (resolved === "required" && !tools?.length) {
-    throw new GGAIError("OpenAI Codex cannot require a tool call when no tools are configured.", {
+    throw new EZCoderAIError("OpenAI Codex cannot require a tool call when no tools are configured.", {
       source: "capability",
     });
   }

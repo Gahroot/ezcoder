@@ -1746,14 +1746,14 @@ async function createSession(
     // Stop a run-all sweep and every async child through AgentSession's signal.
     taskRunAll = false;
     autopilotCancelled = true;
-    kenAutoAbort.abort();
+    nolanAutoAbort.abort();
   }
 
   function installFreshRunControllers(): void {
     abort = new AbortController();
     session.setSignal(abort.signal);
-    kenAutoAbort = new AbortController();
-    kenAutoSession?.setSignal(kenAutoAbort.signal);
+    nolanAutoAbort = new AbortController();
+    nolanAutoSession?.setSignal(nolanAutoAbort.signal);
   }
 
   function finishOwnedGeneration(generation: number, emitCancelledFallback: boolean): boolean {

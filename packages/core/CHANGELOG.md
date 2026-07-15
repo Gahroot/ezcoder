@@ -9,207 +9,207 @@
 ### Patch Changes
 
 - Updated dependencies [a3916ff]
-  - @kenkaiiii/gg-ai@5.17.0
+  - @prestyj/ai@5.17.0
 
 ## 5.16.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.16.0
+- @prestyj/ai@5.16.0
 
 ## 5.15.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.15.1
+- @prestyj/ai@5.15.1
 
 ## 5.15.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.15.0
+- @prestyj/ai@5.15.0
 
 ## 5.14.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.14.0
+- @prestyj/ai@5.14.0
 
 ## 5.13.3
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.13.3
+- @prestyj/ai@5.13.3
 
 ## 5.13.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.13.2
+- @prestyj/ai@5.13.2
 
 ## 5.13.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.13.1
+- @prestyj/ai@5.13.1
 
 ## 5.13.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.13.0
+- @prestyj/ai@5.13.0
 
 ## 5.12.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.12.0
+- @prestyj/ai@5.12.0
 
 ## 5.11.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.11.0
+- @prestyj/ai@5.11.0
 
 ## 5.10.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.10.1
+- @prestyj/ai@5.10.1
 
 ## 5.10.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.10.0
+- @prestyj/ai@5.10.0
 
 ## 5.9.7
 
 ### Patch Changes
 
 - Expose low, medium, high, xhigh, and max reasoning selections for every GPT-5.6 model.
-  - @kenkaiiii/gg-ai@5.9.7
+  - @prestyj/ai@5.9.7
 
 ## 5.9.6
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.9.6
+- @prestyj/ai@5.9.6
 
 ## 5.9.5
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.9.5
+- @prestyj/ai@5.9.5
 
 ## 5.9.4
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.9.4
+- @prestyj/ai@5.9.4
 
 ## 5.9.3
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.9.3
+- @prestyj/ai@5.9.3
 
 ## 5.9.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.9.2
+- @prestyj/ai@5.9.2
 
 ## 5.9.1
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@5.9.1
+  - @prestyj/ai@5.9.1
 
 ## 5.9.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.9.0
+- @prestyj/ai@5.9.0
 
 ## 5.8.8
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.8
+- @prestyj/ai@5.8.8
 
 ## 5.8.7
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.7
+- @prestyj/ai@5.8.7
 
 ## 5.8.6
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.6
+- @prestyj/ai@5.8.6
 
 ## 5.8.5
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.5
+- @prestyj/ai@5.8.5
 
 ## 5.8.4
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.4
+- @prestyj/ai@5.8.4
 
 ## 5.8.3
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.3
+- @prestyj/ai@5.8.3
 
 ## 5.8.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.2
+- @prestyj/ai@5.8.2
 
 ## 5.8.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.1
+- @prestyj/ai@5.8.1
 
 ## 5.8.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.8.0
+- @prestyj/ai@5.8.0
 
 ## 5.7.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.7.0
+- @prestyj/ai@5.7.0
 
 ## 5.6.3
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.6.3
+- @prestyj/ai@5.6.3
 
 ## 5.6.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.6.2
+- @prestyj/ai@5.6.2
 
 ## 5.6.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.6.1
+- @prestyj/ai@5.6.1
 
 ## 5.6.0
 

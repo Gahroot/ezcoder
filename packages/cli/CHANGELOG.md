@@ -9,9 +9,9 @@
 ### Patch Changes
 
 - Updated dependencies [a3916ff]
-  - @kenkaiiii/gg-ai@5.17.0
-  - @kenkaiiii/gg-agent@5.17.0
-  - @kenkaiiii/gg-core@5.17.0
+  - @prestyj/ai@5.17.0
+  - @prestyj/agent@5.17.0
+  - @prestyj/core@5.17.0
 
 ## 5.16.0
 
