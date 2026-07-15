@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.56",
+    date: "2026-07-15",
+    items: [
+      "Long builds are tougher to lose. I made `Sub-agents` keep durable progress and recover after interruptions, so you can continue the job instead of starting over.",
+      "Cancel now tells you exactly what is happening. I added a live `Cancelling...` state and honest recovery when a provider keeps running, so you never mistake a stuck request for a finished one.",
+      "Provider failures are cleaner and safer. I strip `tokens`, credentials, and noisy raw payloads before they reach your screen or logs, while keeping the guidance you actually need.",
+      "Every `Modal` now keeps keyboard focus exactly where it belongs. I tightened tab controls, Escape behavior, and focus return so the whole app feels smoother with a keyboard or screen reader.",
+    ],
+  },
+  {
     version: "0.1.55",
     date: "2026-07-14",
     items: [
