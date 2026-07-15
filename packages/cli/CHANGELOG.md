@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.7.0
+
+### Minor Changes
+
+- Make long-running agents safer and more resilient with durable child-agent recovery, stronger cancellation, clearer provider errors, and higher-confidence review and LSP evidence.
+
+### Patch Changes
+
+- @prestyj/ai@5.7.0
+- @prestyj/agent@5.7.0
+- @prestyj/core@5.7.0
+
 ## 5.17.0
 
 ### Minor Changes
