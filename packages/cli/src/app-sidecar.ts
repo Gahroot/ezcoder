@@ -18,12 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
-import {
-  environmentSecrets,
-  formatError,
-  redactValue,
-  type ToolResultContent,
-} from "@prestyj/ai";
+import { environmentSecrets, formatError, redactValue, type ToolResultContent } from "@prestyj/ai";
 import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
 import { runSubagentWorkerMode } from "./modes/subagent-worker-mode.js";

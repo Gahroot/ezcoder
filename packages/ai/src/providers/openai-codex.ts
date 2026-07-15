@@ -54,9 +54,12 @@ function toCodexToolChoice(choice: ToolChoice | undefined, tools: Tool[] | undef
     );
   }
   if (resolved === "required" && !tools?.length) {
-    throw new EZCoderAIError("OpenAI Codex cannot require a tool call when no tools are configured.", {
-      source: "capability",
-    });
+    throw new EZCoderAIError(
+      "OpenAI Codex cannot require a tool call when no tools are configured.",
+      {
+        source: "capability",
+      },
+    );
   }
   return resolved;
 }

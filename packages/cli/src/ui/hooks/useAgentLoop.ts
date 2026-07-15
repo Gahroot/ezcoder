@@ -1,10 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import {
-  agentLoop,
-  type AgentEvent,
-  type AgentTool,
-  type AgentTurnTiming,
-} from "@prestyj/agent";
+import { agentLoop, type AgentEvent, type AgentTool, type AgentTurnTiming } from "@prestyj/agent";
 import { ProviderError } from "@prestyj/ai";
 import type {
   Message,
