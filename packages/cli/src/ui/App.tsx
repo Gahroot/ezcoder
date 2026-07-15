@@ -21,8 +21,12 @@ import {
 import { playNotificationSound } from "../utils/sound.js";
 import { type Message, type Provider, type ThinkingLevel, type TextContent } from "@prestyj/ai";
 import { downscaleForPreview, extractMediaPaths, type ImageAttachment } from "../utils/image.js";
-import type { AgentTool } from "@prestyj/agent";
-import type { SubAgentManager, SubAgentSnapshot } from "../core/subagent-manager.js";
+import type { AgentTool, AgentTurnTiming } from "@prestyj/agent";
+import {
+  buildSubAgentCompletionFollowUp,
+  type SubAgentManager,
+  type SubAgentSnapshot,
+} from "../core/subagent-manager.js";
 import { useAgentLoop, type StreamSnapshot, type UserContent } from "./hooks/useAgentLoop.js";
 import { useTranscriptHistory } from "./hooks/useTranscriptHistory.js";
 import type { PasteInfo } from "./components/InputArea.js";
@@ -41,7 +45,7 @@ import { useTheme, useSetTheme, type ThemeName } from "./theme/theme.js";
 import { useTerminalTitle } from "./hooks/useTerminalTitle.js";
 import { getGitBranch } from "../utils/git.js";
 import { getAuthStorageKeys, getModel, getVideoByteLimit } from "../core/model-registry.js";
-import { SessionManager } from "../core/session-manager.js";
+import { SessionManager, type TurnMetricPayload } from "../core/session-manager.js";
 import { log } from "../core/logger.js";
 import {
   getPendingUpdate,
@@ -101,7 +105,9 @@ import {
   buildIdealReviewMessage,
   evaluateIdealReview,
   detectTestDrift,
+  type ReviewCoverageTracker,
 } from "../core/ideal-review.js";
+import type { LspManager } from "../core/lsp/manager.js";
 import { buildLoopBreakMessage, evaluateLoopBreak } from "../core/loop-breaker.js";
 import { buildRegroundingMessage } from "../core/regrounding.js";
 import { getNextThinkingLevel, isThinkingLevelSupported } from "./thinking-level.js";
@@ -428,6 +434,8 @@ export interface AppProps {
   sessionId?: string;
   processManager?: ProcessManager;
   subAgentManager?: SubAgentManager;
+  lspManager?: LspManager;
+  reviewCoverageTracker?: ReviewCoverageTracker;
   settingsFile?: string;
   mcpManager?: MCPClientManager;
   authStorage?: AuthStorage;
@@ -516,6 +524,7 @@ export interface AppProps {
   sessionStore?: {
     messages: Message[];
     history: CompletedItem[];
+    turnMetrics?: TurnMetricPayload[];
     liveItems?: CompletedItem[];
     doneStatus?: DoneStatus | null;
     approvedPlanPath?: string;
@@ -764,6 +773,7 @@ export function App(props: AppProps) {
   );
   const sessionPathRef = useRef(props.sessionStore?.sessionPath ?? props.sessionPath);
   const persistedIndexRef = useRef(messagesRef.current.length);
+  const turnMetricsRef = useRef<TurnMetricPayload[]>(props.sessionStore?.turnMetrics ?? []);
   const sessionStatsRef = useRef(
     props.sessionStore?.sessionStats ??
       createSessionStats({ sessionId: props.sessionStore?.sessionId ?? props.sessionId }),
@@ -1006,10 +1016,10 @@ export function App(props: AppProps) {
     .map((key) => props.credentialsByProvider?.[key])
     .find((c) => c !== undefined);
   const activeApiKey = currentCreds?.accessToken ?? props.apiKey;
-  const activeAccountId = currentCreds?.accountId ?? props.accountId;
-  const activeProjectId = currentCreds?.projectId ?? props.projectId;
+  const activeAccountId = currentCreds ? currentCreds.accountId : props.accountId;
+  const activeProjectId = currentCreds ? currentCreds.projectId : props.projectId;
   const activeBaseUrl =
-    currentProvider === "gemini" ? undefined : (currentCreds?.baseUrl ?? props.baseUrl);
+    currentProvider === "gemini" ? undefined : currentCreds ? currentCreds.baseUrl : props.baseUrl;
   const contextWindowOptions = useMemo(
     () => ({ provider: currentProvider, accountId: activeAccountId }),
     [currentProvider, activeAccountId],
@@ -1209,16 +1219,23 @@ export function App(props: AppProps) {
     void applyLanguageDetectionRef.current("initial");
   }, []);
 
+  const rebindSubagentsAfterCompaction = useCallback(
+    (sessionId: string) =>
+      props.subAgentManager?.rebindParentSession(sessionId) ?? Promise.resolve(),
+    [props.subAgentManager],
+  );
   const { persistCompactedSession, persistNewMessages } = useSessionPersistence({
     sessionManagerRef,
     sessionPathRef,
     sessionStatsRef,
     persistedIndexRef,
     messagesRef,
+    turnMetricsRef,
     cwdRef,
     currentProvider,
     currentModel,
     sessionStore,
+    onCompactedSession: rebindSubagentsAfterCompaction,
   });
 
   /**
@@ -1343,6 +1360,8 @@ export function App(props: AppProps) {
       projectId: activeProjectId,
       resolveCredentials,
       transformContext,
+      lspManager: props.lspManager,
+      reviewCoverageTracker: props.reviewCoverageTracker,
       getIdealReviewMessage: (stats, touchedFiles) => {
         if (!idealReviewEnabledRef.current) return null;
         const decision = evaluateIdealReview(stats);
@@ -2004,14 +2023,37 @@ export function App(props: AppProps) {
             cacheRead?: number;
             cacheWrite?: number;
           },
+          timing: AgentTurnTiming,
         ) => {
           recordTurnEnd(sessionStatsRef.current, usage);
+          const metric: TurnMetricPayload = {
+            version: 1,
+            turn,
+            provider: currentProvider,
+            model: currentModel,
+            stopReason,
+            usage: { ...usage },
+            timing: { ...timing },
+            cost: {
+              status: "unavailable",
+              reason: "No authoritative effective-dated provider pricing is available",
+            },
+          };
+          turnMetricsRef.current.push(metric);
+          if (sessionStore) sessionStore.turnMetrics = [...turnMetricsRef.current];
+          const metricSessionPath = sessionPathRef.current;
+          const metricManager = sessionManagerRef.current;
+          if (metricSessionPath && metricManager) {
+            void metricManager.appendTurnMetric(metricSessionPath, metric);
+          }
           log("INFO", "turn", `Turn ${turn} ended`, {
             stopReason,
             inputTokens: String(usage.inputTokens),
             outputTokens: String(usage.outputTokens),
             ...(usage.cacheRead != null && { cacheRead: String(usage.cacheRead) }),
             ...(usage.cacheWrite != null && { cacheWrite: String(usage.cacheWrite) }),
+            providerDurationMs: String(timing.providerDurationMs),
+            ...(timing.ttftMs != null && { ttftMs: String(timing.ttftMs) }),
           });
           // Track actual token count for compaction decisions.
           // Anthropic has separate input/output limits — only count input.
@@ -2030,7 +2072,7 @@ export function App(props: AppProps) {
             return remaining;
           });
         },
-        [queueFlush],
+        [currentModel, currentProvider, queueFlush, sessionStore],
       ),
       onDone: useCallback(
         (
@@ -2216,6 +2258,8 @@ export function App(props: AppProps) {
       // natural completion boundary regardless. The stuck-guard caps
       // nudges per step so a genuinely blocked agent surfaces.
       getFollowUpMessages: useCallback(() => {
+        const childCompletionFollowUp = buildSubAgentCompletionFollowUp(props.subAgentManager);
+        if (childCompletionFollowUp) return childCompletionFollowUp;
         const steps = planStepsRef.current;
         if (steps.length === 0 || !approvedPlanPathRef.current) return null;
         const next = steps.find((s) => !s.completed);
@@ -2237,7 +2281,7 @@ export function App(props: AppProps) {
               `or you genuinely need user input.`,
           },
         ];
-      }, []),
+      }, [props.subAgentManager]),
       onRetry: useCallback(() => {
         // Roll back any pending progressive flushes from the aborted attempt.
         // Without this, a stall retry regenerates the preamble and the old
@@ -3410,6 +3454,9 @@ export function App(props: AppProps) {
             try {
               const session = await sm.create(taskCwd, currentProvider, currentModel);
               newSessionPath = session.path;
+              sessionStatsRef.current.sessionId = session.id;
+              if (props.sessionStore) props.sessionStore.sessionId = session.id;
+              await props.subAgentManager?.resetParentSession(session.id);
               log("INFO", "tasks", "New session for task", { path: session.path });
             } catch {
               // Session creation is best-effort.
@@ -3434,22 +3481,25 @@ export function App(props: AppProps) {
       agentLoop.reset();
       persistedIndexRef.current = messagesRef.current.length;
       const sm = sessionManagerRef.current;
-      if (sm) {
-        void sm.create(taskCwd, currentProvider, currentModel).then((session) => {
-          sessionPathRef.current = session.path;
-          log("INFO", "tasks", "New session for task", { path: session.path });
-        });
-      }
       const taskItem: TaskItem = { kind: "task", title, id: getId() };
       setLastUserMessage(title);
       setDoneStatus(null);
       setLiveItems([taskItem]);
-      void agentLoop.run(fullPrompt).catch((err: unknown) => {
-        if (agentLoop.isRunning) {
-          agentLoop.reset();
+      void (async () => {
+        try {
+          if (sm) {
+            const session = await sm.create(taskCwd, currentProvider, currentModel);
+            sessionPathRef.current = session.path;
+            sessionStatsRef.current.sessionId = session.id;
+            await props.subAgentManager?.resetParentSession(session.id);
+            log("INFO", "tasks", "New session for task", { path: session.path });
+          }
+          await agentLoop.run(fullPrompt);
+        } catch (err) {
+          if (agentLoop.isRunning) agentLoop.reset();
+          setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
         }
-        setLiveItems((prev) => [...prev, toErrorItem(err, getId())]);
-      });
+      })();
     },
     [agentLoop, currentModel, currentProvider, props],
   );
@@ -4083,6 +4133,9 @@ export function App(props: AppProps) {
         if (sm) {
           const s = await sm.create(props.cwd, currentProvider, currentModel);
           newSessionPath = s.path;
+          sessionStatsRef.current.sessionId = s.id;
+          if (props.sessionStore) props.sessionStore.sessionId = s.id;
+          await props.subAgentManager?.resetParentSession(s.id);
         }
 
         if (props.resetUI && props.sessionStore) {

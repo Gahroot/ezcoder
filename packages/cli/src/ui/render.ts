@@ -11,6 +11,9 @@ import type { AuthStorage } from "../core/auth-storage.js";
 import type { Skill } from "../core/skills.js";
 import type { CheckpointStore } from "../core/checkpoint-store.js";
 import type { GoalMode } from "../core/runtime-mode.js";
+import type { LspManager } from "../core/lsp/manager.js";
+import type { ReviewCoverageTracker } from "../core/ideal-review.js";
+import type { TurnMetricPayload } from "../core/session-manager.js";
 import { App, type CompletedItem, type DoneStatus } from "./App.js";
 import { itemHasImagePreviews } from "./app-items.js";
 import { createTerminalHistoryPrinter } from "./terminal-history.js";
@@ -62,11 +65,14 @@ export interface RenderAppConfig {
     { accessToken: string; accountId?: string; projectId?: string; baseUrl?: string }
   >;
   initialHistory?: CompletedItem[];
+  initialTurnMetrics?: TurnMetricPayload[];
   sessionsDir?: string;
   sessionPath?: string;
   sessionId?: string;
   processManager?: ProcessManager;
   subAgentManager?: SubAgentManager;
+  lspManager?: LspManager;
+  reviewCoverageTracker?: ReviewCoverageTracker;
   settingsFile?: string;
   mcpManager?: MCPClientManager;
   authStorage?: AuthStorage;
@@ -114,6 +120,7 @@ type OverlayKind = "model" | "skills" | "plan" | "theme" | "pixel" | null;
 export interface SessionStore {
   messages: Message[];
   history: CompletedItem[];
+  turnMetrics?: TurnMetricPayload[];
   /** Live, not-yet-flushed rows that must survive overlay/resize remounts. */
   liveItems?: CompletedItem[];
   /** Transient completion footer (e.g. "✻ Mulled it over for 3s") that is still visible. */
@@ -423,6 +430,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
   const sessionStore: SessionStore = {
     messages: config.messages,
     history: config.initialHistory ?? [{ kind: "banner", id: "banner" }],
+    turnMetrics: config.initialTurnMetrics ?? [],
     liveItems: [],
     doneStatus: null,
     approvedPlanPath: undefined,
@@ -613,6 +621,8 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             sessionId: sessionStore.sessionId,
             processManager: config.processManager,
             subAgentManager: config.subAgentManager,
+            lspManager: config.lspManager,
+            reviewCoverageTracker: config.reviewCoverageTracker,
             settingsFile: config.settingsFile,
             mcpManager: config.mcpManager,
             authStorage: config.authStorage,
@@ -660,6 +670,7 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
       // approvedPlanPath + planSteps for the implementation phase).
       terminalHistoryPrinter.clear();
       sessionStore.history = [{ kind: "banner", id: "banner" }];
+      sessionStore.turnMetrics = [];
       sessionStore.liveItems = [];
       sessionStore.doneStatus = null;
       sessionStore.approvedPlanPath = undefined;
