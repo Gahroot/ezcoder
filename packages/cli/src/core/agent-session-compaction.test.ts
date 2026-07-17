@@ -102,8 +102,8 @@ beforeEach(async () => {
       authProviders.map((provider) => [
         provider,
         {
-          accessToken: `${provider}-token`,
-          refreshToken: `${provider}-refresh`,
+          accessToken: `test-${provider}-token`,
+          refreshToken: `test-${provider}-refresh`,
           expiresAt: Date.now() + 3_600_000,
           ...(provider === "openai" ? { accountId: "chatgpt-account" } : {}),
         },

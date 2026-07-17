@@ -774,10 +774,6 @@ export function App(props: AppProps) {
     props.sessionStore?.autoApprovePlans ?? props.autoApprovePlans ?? true,
   );
   const autoApprovePlansEnabledRef = useRef(autoApprovePlansEnabled);
-  /** Last actual API-reported input token count (from turn_end). */
-  const lastActualTokensRef = useRef(0);
-  /** Timestamp (ms) when lastActualTokensRef was last updated by turn_end. */
-  const lastActualTokensTimestampRef = useRef(0);
   /**
    * Languages whose style packs are currently injected into the system prompt.
    * Grown by `maybeInjectLanguagePacks` after `write`/`bash` tool results when
