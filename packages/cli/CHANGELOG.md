@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.8.0
+
+### Minor Changes
+
+- Add resilient Codex streaming, smarter context compaction, and expanded model support.
+
+### Patch Changes
+
+- @prestyj/ai@5.8.0
+- @prestyj/agent@5.8.0
+- @prestyj/core@5.8.0
+
 ## 5.7.0
 
 ### Minor Changes
