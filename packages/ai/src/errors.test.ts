@@ -57,6 +57,15 @@ describe("formatError usage limit", () => {
     expect(formatted.message).toBe("Your Anthropic usage is finished.");
     expect(formatted.resetsAt).toBeUndefined();
   });
+
+  it("uses the xAI display name for Grok errors", () => {
+    const formatted = formatError(
+      new ProviderError("xai", "usage limit reached: You have exceeded your current quota", {
+        statusCode: 429,
+      }),
+    );
+    expect(formatted.headline).toBe("xAI (Grok) usage limit reached.");
+  });
 });
 
 describe("formatError Mythos access", () => {
@@ -94,6 +103,17 @@ describe("formatError request too large", () => {
     expect(f.guidance).toContain("too large");
     expect(f.guidance).toContain("Compact");
     expect(f.guidance).not.toContain("status.anthropic.com");
+  });
+
+  it("explains the recovery after OpenAI's request retry buffer overflows", () => {
+    const f = formatError(
+      new ProviderError("openai", "exceeded request buffer limit while retrying upstream", {
+        statusCode: 507,
+      }),
+    );
+    expect(f.guidance).toContain("already retried automatically");
+    expect(f.guidance).toContain("compact the conversation");
+    expect(f.guidance).not.toContain("status.openai.com");
   });
 });
 

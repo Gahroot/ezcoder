@@ -6,6 +6,39 @@
 
 - @prestyj/ai@5.7.0
 
+## 5.19.3
+
+### Patch Changes
+
+- b6e7562: Compress large OpenAI Codex request bodies with zstd and automatically retry HTTP 507 upstream retry-buffer failures.
+- Updated dependencies [b6e7562]
+  - @kenkaiiii/gg-ai@5.19.3
+
+## 5.19.2
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.2
+
+## 5.19.1
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.1
+
+## 5.19.0
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.0
+
+## 5.18.0
+
+### Patch Changes
+
+- Updated dependencies [e00de5b]
+  - @kenkaiiii/gg-ai@5.18.0
+
 ## 5.17.0
 
 ### Minor Changes

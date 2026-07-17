@@ -35,6 +35,9 @@ const EXTERNAL = [
   "turndown",
   "turndown-plugin-gfm",
   "@mozilla/readability",
+  // The Codex transport loads this package's zstd.wasm by path at runtime.
+  // Keep the package external so the WASM asset survives the sidecar bundle.
+  "@bokuweb/zstd-wasm",
   // Default MCP server: spawned as a stdio child, never imported, so esbuild
   // won't bundle it. Copy it next to the sidecar so resolveStdioCommand can
   // resolve its bin and rewrite `npx -y @kenkaiiii/kencode-search` to a direct
@@ -50,6 +53,7 @@ const ezcoderRequire = createRequire(join(repoRoot, "packages", "cli", "package.
 // blocked by a package's `exports` map (which often hides ./package.json).
 const NM_ROOTS = [
   join(repoRoot, "packages", "cli", "node_modules"),
+  join(repoRoot, "packages", "ai", "node_modules"),
   join(repoRoot, "node_modules"),
 ];
 

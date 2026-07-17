@@ -1,5 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { agentLoop, type AgentEvent, type AgentTool, type AgentTurnTiming } from "@prestyj/agent";
+import {
+  agentLoop,
+  type AgentEvent,
+  type AgentTool,
+  type AgentTurnTiming,
+  type TransformContextOptions,
+} from "@prestyj/agent";
 import { ProviderError } from "@prestyj/ai";
 import type {
   Message,
@@ -11,6 +17,7 @@ import type {
 } from "@prestyj/ai";
 import {
   buildReviewCoverageMessage,
+  withReviewCoverageRequirements,
   type IdealReviewStats,
   type ReviewCoverageTracker,
 } from "../../core/ideal-review.js";
@@ -21,6 +28,7 @@ import {
   type LoopBreakStats,
 } from "../../core/loop-breaker.js";
 import { getClaudeCliUserAgent } from "../../core/claude-code-version.js";
+import { resolveSessionTurnToolResultCharLimit } from "../../core/agent-session.js";
 import { kimiCodingHeaders, isKimiCodingEndpoint } from "../../core/oauth/kimi.js";
 import { log } from "../../core/logger.js";
 import { wrapSteeringContent } from "../../core/steering.js";
@@ -148,7 +156,7 @@ export interface AgentLoopOptions {
   }) => Promise<{ apiKey: string; accountId?: string; projectId?: string }>;
   transformContext?: (
     messages: Message[],
-    options?: { force?: boolean },
+    options: TransformContextOptions,
   ) => Message[] | Promise<Message[]>;
   getIdealReviewMessage?: (stats: IdealReviewStats, touchedFiles: string[]) => Message | null;
   /** Harness-owned successful read/mutation evidence for fail-closed Ideal review. */
@@ -642,6 +650,13 @@ export function useAgentLoop(
             baseUrl: options.baseUrl,
             accountId,
             projectId,
+            // Aggregate per-turn budget across parallel tool results — same
+            // fan-out guard the AgentSession applies (see agent-session.ts).
+            maxTurnToolResultChars: resolveSessionTurnToolResultCharLimit(
+              options.model,
+              options.provider,
+              accountId,
+            ),
             signal: ac.signal,
             userAgent,
             defaultHeaders,
@@ -751,7 +766,11 @@ export function useAgentLoop(
                 missing: coverage.missing,
               });
               return [
-                withLspReviewEvidence(idealReviewMessage, coverage.expected, options.lspManager),
+                withLspReviewEvidence(
+                  withReviewCoverageRequirements(idealReviewMessage, coverage.missing),
+                  coverage.expected,
+                  options.lspManager,
+                ),
               ];
             },
             // clearToolUses disabled — causes model to output unsolicited context

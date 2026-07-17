@@ -134,7 +134,6 @@ export interface AgentEventsDeps {
   setThinkingAccumMs: Dispatch<SetStateAction<number>>;
   setPlanTotal: Dispatch<SetStateAction<number>>;
   setPlanDone: Dispatch<SetStateAction<Set<number>>>;
-  setSessionTitle: Dispatch<SetStateAction<string | null>>;
   setPlanReview: Dispatch<SetStateAction<string | null>>;
   setQueuedCount: Dispatch<SetStateAction<number>>;
   setAttachments: Dispatch<SetStateAction<PendingAttachment[]>>;
@@ -177,7 +176,6 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
     setThinkingAccumMs,
     setPlanTotal,
     setPlanDone,
-    setSessionTitle,
     setPlanReview,
     setQueuedCount,
     setAttachments,
@@ -213,10 +211,9 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   // them for render. Finalizing a span happens outside setState updaters.
   const thinkingStartRef = useRef<number | null>(null);
   const thinkingAccumRef = useRef<number>(0);
-  // Content of the plan currently in the review modal, mirrored from plan_exit.
-  // autopilot_plan_accepted reads it SYNCHRONOUSLY to seed the plan-progress
-  // widget — the planReview state value may not have flushed yet when the
-  // accepted + session_reset frames arrive back-to-back over SSE.
+  // Submitted plan content retained until approval. Current sidecars provide the
+  // canonical live-file count on session_reset; this content supplies the fallback
+  // count when connected to an older sidecar.
   const planReviewContentRef = useRef<string | null>(null);
 
   // Streaming deltas arrive faster than React can usefully render each one.
@@ -280,6 +277,25 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
       }
     }
     streamingIdRef.current = null;
+  }, [setItems]);
+
+  // Ideal review is a pre-final hook: the no-tool response immediately before
+  // it is an internal draft, not a transcript answer. Drop that active bubble
+  // (including any throttled chunks) before rendering the hook notice, so the
+  // user sees hook → reviewed final response rather than draft → hook → final.
+  const discardStreamingDraft = useCallback(() => {
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    pendingChunksRef.current = "";
+    const current = streamingIdRef.current;
+    streamingIdRef.current = null;
+    if (current !== null) {
+      setItems((prev) =>
+        prev.filter((item) => !(item.kind === "assistant" && item.id === current)),
+      );
+    }
   }, [setItems]);
 
   const pushItem = useCallback(
@@ -526,7 +542,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
             | {
                 toolUseCount?: number;
                 currentActivity?: string;
-                tokenUsage?: { input: number; output: number };
+                tokenUsage?: SubAgentLine["tokenUsage"];
               }
             | undefined;
           const groupId = subagentGroupIdRef.current;
@@ -563,7 +579,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           const groupId = subagentGroupIdRef.current;
           if (groupId !== null) {
             const endDetails = details as
-              | { durationMs?: number; tokenUsage?: { input: number; output: number } }
+              | { durationMs?: number; tokenUsage?: SubAgentLine["tokenUsage"] }
               | undefined;
             const durationMs = endDetails?.durationMs;
             const finalTokens = endDetails?.tokenUsage;
@@ -813,6 +829,32 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           setState((s) => (s ? { ...s, planMode: true } : s));
           pushItem({ kind: "plan", id: nextId(), reason: String(d.reason ?? "") });
           break;
+        case "plan_progress": {
+          // The sidecar reads the live approved-plan file, so this snapshot
+          // stays accurate even if implementation expands or rewrites `## Steps`.
+          // It is authoritative over the approval-time count and local streamed
+          // marker detection, both of which can be stale between tool calls.
+          const total =
+            typeof d.total === "number" && Number.isFinite(d.total)
+              ? Math.max(0, Math.floor(d.total))
+              : 0;
+          const completed = new Set(
+            Array.isArray(d.completed)
+              ? d.completed.filter(
+                  (step): step is number =>
+                    typeof step === "number" &&
+                    Number.isInteger(step) &&
+                    step >= 1 &&
+                    step <= total,
+                )
+              : [],
+          );
+          planTotalRef.current = total;
+          planDoneRef.current = completed;
+          setPlanTotal(total);
+          setPlanDone(completed);
+          break;
+        }
         case "plan_exit": {
           setState((s) => (s ? { ...s, planMode: false } : s));
           // Always stash the submitted plan: autopilot needs the content to
@@ -833,11 +875,9 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           break;
         }
         case "autopilot_plan_accepted":
-          // Autopilot Nolan approved the submitted plan (no user in the loop).
-          // Mirrors the manual-accept path: seed the plan-progress widget from
-          // the modal's plan BEFORE the imminent session_reset consumes the
-          // ref, close the modal, and drop the approved marker in the
-          // transcript.
+          // Keep an approval-time fallback for older sidecars, close the review
+          // modal, and render the approved marker. Current sidecars override this
+          // fallback with the canonical live-file count on session_reset.
           pendingPlanTotalRef.current = planReviewContentRef.current
             ? countPlanSteps(planReviewContentRef.current)
             : 0;
@@ -877,7 +917,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
         case "hook": {
           const kind = String(d.kind ?? "ideal") as HookKind;
           if (kind in HOOK_PRESENTATION) {
-            endStreamingText();
+            if (kind === "ideal") discardStreamingDraft();
+            else endStreamingText();
             pushItem({ kind: "hook", id: nextId(), hook: kind });
           }
           break;
@@ -890,13 +931,16 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           setTokens(0);
           setDoneStatus(null);
           setContextTokens(0);
-          setSessionTitle(null);
           setPlanReview(null);
           planReviewContentRef.current = null;
           {
             // On an accept-driven reset, restore the approved plan's step count
             // instead of zeroing it (the widget tracks the implementation run).
-            const carriedTotal = pendingPlanTotalRef.current ?? 0;
+            const eventTotal =
+              typeof d.planTotal === "number" && Number.isFinite(d.planTotal)
+                ? Math.max(0, Math.floor(d.planTotal))
+                : null;
+            const carriedTotal = eventTotal ?? pendingPlanTotalRef.current ?? 0;
             pendingPlanTotalRef.current = null;
             planTotalRef.current = carriedTotal;
             planDoneRef.current = new Set();
@@ -909,11 +953,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           subagentGroupIdRef.current = null;
           subagentGroupByAgentRef.current.clear();
           break;
-        case "session_title":
-          setSessionTitle(String(d.title ?? "") || null);
-          break;
         case "extras":
-          // Context window / git branch refresh (model switch, run end).
+          // Context window / git status refresh (model switch, run end).
           setState((s) =>
             s
               ? {
@@ -921,6 +962,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
                   contextWindow: (d.contextWindow as number | undefined) ?? s.contextWindow,
                   gitBranch: (d.gitBranch as string | null | undefined) ?? s.gitBranch,
                   isGitRepo: (d.isGitRepo as boolean | undefined) ?? s.isGitRepo,
+                  gitDirtyFileCount:
+                    (d.gitDirtyFileCount as number | undefined) ?? s.gitDirtyFileCount,
                 }
               : s,
           );
@@ -938,6 +981,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
       pushItem,
       finalizeThinking,
       endStreamingText,
+      discardStreamingDraft,
       nextId,
       setItems,
       setState,
@@ -954,7 +998,6 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
       setThinkingAccumMs,
       setPlanTotal,
       setPlanDone,
-      setSessionTitle,
       setPlanReview,
       setQueuedCount,
       setAttachments,

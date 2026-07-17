@@ -6,6 +6,42 @@
 
 - @prestyj/ai@5.7.0
 
+## 5.19.3
+
+### Patch Changes
+
+- Updated dependencies [b6e7562]
+  - @kenkaiiii/gg-ai@5.19.3
+
+## 5.19.2
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.2
+
+## 5.19.1
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.1
+
+## 5.19.0
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.0
+
+## 5.18.0
+
+### Minor Changes
+
+- e00de5b: Add Kimi K3 as Moonshot's default model with its 1M-token multimodal registry metadata and endpoint-specific max-effort request handling for both the public API and Kimi Code OAuth. Keep Kimi K2.7 Code available as the dedicated coding alternative.
+
+### Patch Changes
+
+- Updated dependencies [e00de5b]
+  - @kenkaiiii/gg-ai@5.18.0
+
 ## 5.17.0
 
 ### Minor Changes

@@ -129,8 +129,6 @@ export interface SessionStore {
   planSteps: PlanStep[];
   sessionPath?: string;
   sessionId?: string;
-  sessionTitle?: string;
-  sessionTitleGenerated: boolean;
   /** Which overlay (Skills, Plan, Pixel, Theme, Model) is open. */
   overlay?: OverlayKind;
   /** Plan overlay auto-expand-newest flag (only meaningful when overlay==='plan'). */
@@ -437,8 +435,6 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
     planSteps: [],
     sessionPath: config.sessionPath,
     sessionId: config.sessionId,
-    sessionTitle: undefined,
-    sessionTitleGenerated: false,
     overlay: config.initialOverlay ?? null,
     planAutoExpand: false,
     pendingAction: undefined,
@@ -675,8 +671,6 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
       sessionStore.doneStatus = null;
       sessionStore.approvedPlanPath = undefined;
       sessionStore.planSteps = [];
-      sessionStore.sessionTitle = undefined;
-      sessionStore.sessionTitleGenerated = false;
     }
     if (options?.messages) sessionStore.messages = options.messages;
     if (options?.history) {

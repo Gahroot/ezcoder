@@ -48,4 +48,18 @@ describe("loadSavedSettings", () => {
 
     expect(settings.autoApprovePlans).toBe(false);
   });
+
+  it("accepts xai as a saved provider", () => {
+    const settingsPath = tempSettingsPath();
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ defaultProvider: "xai", defaultModel: "grok-4.5" }),
+      "utf-8",
+    );
+
+    const settings = loadSavedSettings(settingsPath);
+
+    expect(settings.provider).toBe("xai");
+    expect(settings.model).toBe("grok-4.5");
+  });
 });

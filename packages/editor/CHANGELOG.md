@@ -9,6 +9,51 @@
   - @prestyj/ai@5.7.0
   - @prestyj/agent@5.7.0
 
+## 0.7.96
+
+### Patch Changes
+
+- Updated dependencies [b6e7562]
+  - @prestyj/ai@5.19.3
+  - @prestyj/agent@5.19.3
+  - @prestyj/cli@5.19.3
+
+## 0.7.95
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/cli@5.19.2
+  - @prestyj/ai@5.19.2
+  - @prestyj/agent@5.19.2
+
+## 0.7.94
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/cli@5.19.1
+  - @prestyj/ai@5.19.1
+  - @prestyj/agent@5.19.1
+
+## 0.7.93
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/cli@5.19.0
+  - @prestyj/ai@5.19.0
+  - @prestyj/agent@5.19.0
+
+## 0.7.92
+
+### Patch Changes
+
+- Updated dependencies [e00de5b]
+  - @prestyj/ai@5.18.0
+  - @prestyj/cli@5.18.0
+  - @prestyj/agent@5.18.0
+
 ## 0.7.91
 
 ### Patch Changes
