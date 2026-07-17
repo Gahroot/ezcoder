@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.57",
+    date: "2026-07-17",
+    items: [
+      "Your workspace tells the truth at a glance. I moved the project, `Git branch`, and live `uncommitted` count into the title bar, so you always know exactly where you are before you ship.",
+      "Huge chats now stay fast instead of folding under their own weight. I made `Context Compaction` trim stale tool noise, recover oversized results, and resume without that brutal `30-second` freeze.",
+      "More model power, fewer dead ends. I added `Kimi K3` and `Grok`, strengthened fallbacks, and hardened Codex streaming so long runs keep moving when a provider gets weird.",
+      "Agent runs are much easier to trust. I fixed live `Plan Steps`, removed stale completion badges and draft answers, and now show cached token usage for every `Sub-agent`.",
+    ],
+  },
+  {
     version: "0.1.56",
     date: "2026-07-15",
     items: [
