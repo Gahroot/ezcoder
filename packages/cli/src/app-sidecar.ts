@@ -739,7 +739,7 @@ async function main(): Promise<void> {
   // inherit it). Best-effort — never blocks startup beyond its internal cap.
   await enrichProcessPath();
 
-  // Sweep recoverable full tool outputs (~/.gg/tool-output/) older than 48h.
+  // Sweep recoverable full tool outputs (~/.ezcoder/tool-output/) older than 48h.
   // Fire-and-forget: cleanup must never delay or break startup.
   void cleanupToolOutputs().catch(() => {});
 
@@ -1852,7 +1852,7 @@ async function createSession(
       // (often >5 min) regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
     });
-    // Ken is already the independent autopilot reviewer; recursively running
+    // Nolan is already the independent autopilot reviewer; recursively running
     // his own Ideal self-review adds latency and can corrupt the verdict shape.
     ken.setIdealReviewSuppressed(true);
     await ken.initialize();
@@ -3262,7 +3262,7 @@ async function createSession(
           return;
         }
         autopilot = enabled;
-        // A toggle-off during an active cycle takes effect after Ken finishes;
+        // A toggle-off during an active cycle takes effect after Nolan finishes;
         // until then, injected build runs must not re-enable Ideal self-review.
         session.setIdealReviewSuppressed(enabled || autopilotActive);
         await saveAutopilot(cwd, enabled);

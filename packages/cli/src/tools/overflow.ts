@@ -12,7 +12,7 @@ export function getToolOutputRoot(): string {
 }
 
 /**
- * Write full content to `~/.gg/tool-output/<yyyy-mm-dd>/<prefix>-<random>.txt`
+ * Write full content to `~/.ezcoder/tool-output/<yyyy-mm-dd>/<prefix>-<random>.txt`
  * so truncated tool results stay recoverable via `read` with offset/limit
  * instead of forcing the model to re-run the command.
  * Returns the file path. Caller uses it in truncation notices; callers must

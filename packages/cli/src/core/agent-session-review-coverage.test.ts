@@ -53,7 +53,7 @@ describe("AgentSession Ideal review coverage gate", () => {
     expect(internal.getHookFollowUpMessages()).toBeNull();
   });
 
-  it("suppresses only Ideal review while Ken owns autopilot verification", () => {
+  it("suppresses only Ideal review while Nolan owns autopilot verification", () => {
     const session = new AgentSession({
       provider: "anthropic",
       model: "claude-sonnet-5",

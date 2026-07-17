@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Message, ToolResult } from "@kenkaiiii/gg-ai";
+import type { Message, ToolResult } from "@prestyj/ai";
 import { pruneStaleToolResults } from "./tool-result-pruner.js";
 
 function toolTurn(

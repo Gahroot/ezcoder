@@ -1,8 +1,8 @@
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 
 const COMPACTION_SUMMARY_PREFIX = "[Previous conversation summary]";
 const AUTOPILOT_PROMPT_PREFIX =
-  "[Autopilot] This turn was triggered by Ken, GG Coder's automated reviewer";
+  "[Autopilot] This turn was triggered by Nolan, EZ Coder's automated reviewer";
 const STEERING_PREFIX_START = "[The user added this while you were working";
 
 /** Extract visible text from a persisted message content value. */
@@ -21,7 +21,7 @@ export function extractSessionText(content: Message["content"] | unknown): strin
 
 /**
  * Return user-authored prompt text suitable for a stable session title.
- * Compaction summaries and Ken's autopilot injections are model-owned context,
+ * Compaction summaries and Nolan's autopilot injections are model-owned context,
  * not new conversations, so they must never replace the user's title.
  */
 export function getUserSessionPrompt(content: Message["content"] | unknown): string | null {

@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 describe("writeOverflow", () => {
-  it("writes full content under ~/.gg/tool-output/<yyyy-mm-dd>/", async () => {
+  it("writes full content under ~/.ezcoder/tool-output/<yyyy-mm-dd>/", async () => {
     const content = "line one\nline two\nline three";
     const filePath = await writeOverflow(content, "bash");
 

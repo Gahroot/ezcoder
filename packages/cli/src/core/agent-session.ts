@@ -26,7 +26,7 @@ import { PROMPT_COMMANDS, getPromptCommand } from "./prompt-commands.js";
 import { loadCustomCommands } from "./custom-commands.js";
 import { SettingsManager } from "./settings-manager.js";
 import { AuthStorage } from "./auth-storage.js";
-import { MOONSHOT_OAUTH_KEY } from "@kenkaiiii/gg-core";
+import { MOONSHOT_OAUTH_KEY } from "@prestyj/core";
 import { getClaudeCliUserAgent } from "./claude-code-version.js";
 import { kimiCodingHeaders, isKimiCodingEndpoint } from "./oauth/kimi.js";
 import {
@@ -156,9 +156,9 @@ export interface AgentSessionOptions {
    * `runLoop()` handles it on the first prompt instead (with proper
    * compaction_start/_end events). The inline load compaction makes a summary
    * LLM call with a 30s timeout, and hosts whose readiness is gated on
-   * `initialize()` (the gg-app sidecar: waitForReady blocks the whole webview)
+   * `initialize()` (the ezcoder-app sidecar: waitForReady blocks the whole webview)
    * would freeze the UI for that entire call. Default (false) keeps the
-   * compact-on-load behavior for CLI resume/`ggcoder continue`.
+   * compact-on-load behavior for CLI resume/`ezcoder continue`.
    */
   deferLoadCompaction?: boolean;
   /**
@@ -326,7 +326,7 @@ export class AgentSession {
   private hookFileEditCounts = new Map<string, number>();
   private hookToolCalls = new Map<string, { name: string; args: Record<string, unknown> }>();
   private idealReviewPhase: "idle" | "reviewing" | "complete" = "idle";
-  /** Runtime-only suppression while Ken owns verification in autopilot mode. */
+  /** Runtime-only suppression while Nolan owns verification in autopilot mode. */
   private idealReviewSuppressed = false;
   private readonly reviewCoverage: ReviewCoverageTracker;
   private loopBreakInjected = false;
@@ -1706,7 +1706,7 @@ export class AgentSession {
 
   /**
    * Suppress only the pre-final Ideal self-review for this live session.
-   * Autopilot uses this while Ken independently owns verification; loop-break
+   * Autopilot uses this while Nolan independently owns verification; loop-break
    * and post-compaction re-grounding remain active.
    */
   setIdealReviewSuppressed(suppressed: boolean): void {

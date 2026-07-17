@@ -199,7 +199,7 @@ export class AuthStorage {
    * future, `resolveCredentials("moonshot")` serves the Moonshot API key
    * instead of the Kimi OAuth credential (when both are configured) — OAuth
    * stays the preferred credential and is retried automatically once the mark
-   * lapses. Persisted to auth.json so a restart (or another gg-app window)
+   * lapses. Persisted to auth.json so a restart (or another ezcoder-app window)
    * doesn't burn a request rediscovering the same exhausted window. No-op if
    * nothing is stored under `storageKey`.
    */

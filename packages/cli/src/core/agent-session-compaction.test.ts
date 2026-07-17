@@ -370,7 +370,7 @@ describe("AgentSession overflow recovery", () => {
 
 describe("AgentSession mid-turn compaction", () => {
   it("compacts non-forced in-flight history exactly at the configured 80% boundary", async () => {
-    await writeJson(path.join(tmpHome, ".gg", "settings.json"), {
+    await writeJson(path.join(tmpHome, ".ezcoder", "settings.json"), {
       autoCompact: true,
       compactThreshold: 0.8,
     });
@@ -516,7 +516,7 @@ describe("AgentSession mid-turn compaction", () => {
   it.each(providerModels)(
     "$provider uses the same normalized usage formula",
     async ({ provider, model }) => {
-      await writeJson(path.join(tmpHome, ".gg", "settings.json"), {
+      await writeJson(path.join(tmpHome, ".ezcoder", "settings.json"), {
         autoCompact: true,
         compactThreshold: 0.8,
       });
@@ -562,7 +562,7 @@ describe("AgentSession mid-turn compaction", () => {
   );
 
   it("honors a custom threshold during a non-forced transform", async () => {
-    await writeJson(path.join(tmpHome, ".gg", "settings.json"), {
+    await writeJson(path.join(tmpHome, ".ezcoder", "settings.json"), {
       autoCompact: true,
       compactThreshold: 0.65,
     });
@@ -595,7 +595,7 @@ describe("AgentSession mid-turn compaction", () => {
   });
 
   it("honors autoCompact false for non-forced calls but force bypasses settings and cooldown", async () => {
-    await writeJson(path.join(tmpHome, ".gg", "settings.json"), {
+    await writeJson(path.join(tmpHome, ".ezcoder", "settings.json"), {
       autoCompact: false,
       compactThreshold: 0.8,
     });
@@ -873,7 +873,7 @@ describe("transient sessions never leak to the session store", () => {
 describe("load-time auto-compaction deferral (deferLoadCompaction)", () => {
   // Regression: resuming an over-context session ran a summary LLM call (30s
   // timeout) inline in loadExistingSession — inside initialize(), which the
-  // gg-app sidecar's readiness (waitForReady → the whole webview) is gated on.
+  // ezcoder-app sidecar's readiness (waitForReady → the whole webview) is gated on.
   // A slow/hanging summary call froze the window for the full timeout. With
   // deferLoadCompaction the resume returns immediately and runLoop()'s
   // pre-run auto-compaction handles it on the first prompt.

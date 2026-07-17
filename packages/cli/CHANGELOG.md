@@ -17,27 +17,27 @@
 ### Patch Changes
 
 - Updated dependencies [b6e7562]
-  - @kenkaiiii/gg-ai@5.19.3
-  - @kenkaiiii/gg-agent@5.19.3
-  - @kenkaiiii/gg-core@5.19.3
+  - @prestyj/ai@5.19.3
+  - @prestyj/agent@5.19.3
+  - @prestyj/core@5.19.3
 
 ## 5.19.2
 
 ### Patch Changes
 
 - Reduce long-session token usage with calibrated context estimates and preserve full oversized command output for targeted recovery.
-  - @kenkaiiii/gg-ai@5.19.2
-  - @kenkaiiii/gg-agent@5.19.2
-  - @kenkaiiii/gg-core@5.19.2
+  - @prestyj/ai@5.19.2
+  - @prestyj/agent@5.19.2
+  - @prestyj/core@5.19.2
 
 ## 5.19.1
 
 ### Patch Changes
 
-- Cut OpenAI token burn: percentage-only compaction thresholds on authoritative provider usage, a per-turn aggregate tool-result budget that trims parallel fan-out context bombs, cheap stale tool-output pruning (superseded reads and old outputs stubbed before compaction), and autopilot now suppresses the redundant Ideal self-review while Ken owns verification.
-  - @kenkaiiii/gg-ai@5.19.1
-  - @kenkaiiii/gg-agent@5.19.1
-  - @kenkaiiii/gg-core@5.19.1
+- Cut OpenAI token burn: percentage-only compaction thresholds on authoritative provider usage, a per-turn aggregate tool-result budget that trims parallel fan-out context bombs, cheap stale tool-output pruning (superseded reads and old outputs stubbed before compaction), and autopilot now suppresses the redundant Ideal self-review while Nolan owns verification.
+  - @prestyj/ai@5.19.1
+  - @prestyj/agent@5.19.1
+  - @prestyj/core@5.19.1
 
 ## 5.19.0
 
@@ -47,9 +47,9 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.19.0
-- @kenkaiiii/gg-agent@5.19.0
-- @kenkaiiii/gg-core@5.19.0
+- @prestyj/ai@5.19.0
+- @prestyj/agent@5.19.0
+- @prestyj/core@5.19.0
 
 ## 5.18.0
 
@@ -60,9 +60,9 @@
 ### Patch Changes
 
 - Updated dependencies [e00de5b]
-  - @kenkaiiii/gg-ai@5.18.0
-  - @kenkaiiii/gg-core@5.18.0
-  - @kenkaiiii/gg-agent@5.18.0
+  - @prestyj/ai@5.18.0
+  - @prestyj/core@5.18.0
+  - @prestyj/agent@5.18.0
 
 ## 5.17.0
 

@@ -1,4 +1,4 @@
-import type { Message, ToolResult } from "@kenkaiiii/gg-ai";
+import type { Message, ToolResult } from "@prestyj/ai";
 import { estimateTokens } from "./token-estimator.js";
 
 /**

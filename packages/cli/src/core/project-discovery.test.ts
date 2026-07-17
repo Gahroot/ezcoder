@@ -164,7 +164,7 @@ describe("discoverProjects (ezcoder store)", () => {
           message: {
             role: "user",
             content:
-              "[Autopilot] This turn was triggered by Ken, GG Coder's automated reviewer — fix it",
+              "[Autopilot] This turn was triggered by Nolan, EZ Coder's automated reviewer — fix it",
           },
         },
         {

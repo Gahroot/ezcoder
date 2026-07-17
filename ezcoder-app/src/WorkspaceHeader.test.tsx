@@ -42,18 +42,18 @@ describe("WorkspaceHeader", () => {
   });
 
   it("formats clean, dirty, and pre-commit project context", () => {
-    expect(formatWorkspaceTitle("/work/app", "main", "GG Coder")).toBe("app │ ⎇ main");
-    expect(formatWorkspaceTitle("/work/app", "main", "GG Coder", 3)).toBe(
+    expect(formatWorkspaceTitle("/work/app", "main", "EZ Coder")).toBe("app │ ⎇ main");
+    expect(formatWorkspaceTitle("/work/app", "main", "EZ Coder", 3)).toBe(
       "app │ ⎇ main │ 3 uncommitted",
     );
-    expect(formatWorkspaceTitle("/work/app", null, "GG Coder", 1)).toBe("app │ 1 uncommitted");
+    expect(formatWorkspaceTitle("/work/app", null, "EZ Coder", 1)).toBe("app │ 1 uncommitted");
   });
 
   it("shows the current directory, branch, and dirty count instead of a session title", () => {
     render(
       <WorkspaceHeader
         workspaceMode="code"
-        cwd="C:\\work\\gg-coder"
+        cwd="C:\\work\\ezcoder"
         gitBranch="feature/titlebar"
         gitDirtyFileCount={3}
         navHidden
@@ -63,10 +63,10 @@ describe("WorkspaceHeader", () => {
       </WorkspaceHeader>,
     );
 
-    expect(screen.getByText("gg-coder")).toBeDefined();
+    expect(screen.getByText("ezcoder")).toBeDefined();
     expect(screen.getByText("⎇ feature/titlebar")).toBeDefined();
     expect(screen.getByText("3 uncommitted")).toBeDefined();
-    expect(screen.getByTitle("gg-coder │ ⎇ feature/titlebar │ 3 uncommitted")).toBeDefined();
-    expect(screen.queryByText("GG Coder")).toBeNull();
+    expect(screen.getByTitle("ezcoder │ ⎇ feature/titlebar │ 3 uncommitted")).toBeDefined();
+    expect(screen.queryByText("EZ Coder")).toBeNull();
   });
 });

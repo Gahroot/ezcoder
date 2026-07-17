@@ -26,14 +26,14 @@ const [
   activeContext,
   registry,
 ] = await Promise.all([
-  import(path.join(root, "packages/gg-agent/dist/index.js")),
-  import(path.join(root, "packages/ggcoder/dist/tools/read.js")),
-  import(path.join(root, "packages/ggcoder/dist/tools/bash.js")),
-  import(path.join(root, "packages/ggcoder/dist/core/process-manager.js")),
-  import(path.join(root, "packages/ggcoder/dist/core/compaction/token-estimator.js")),
-  import(path.join(root, "packages/ggcoder/dist/core/compaction/compactor.js")),
-  import(path.join(root, "packages/ggcoder/dist/core/compaction/active-context.js")),
-  import(path.join(root, "packages/ggcoder/dist/core/model-registry.js")),
+  import(path.join(root, "packages/agent/dist/index.js")),
+  import(path.join(root, "packages/cli/dist/tools/read.js")),
+  import(path.join(root, "packages/cli/dist/tools/bash.js")),
+  import(path.join(root, "packages/cli/dist/core/process-manager.js")),
+  import(path.join(root, "packages/cli/dist/core/compaction/token-estimator.js")),
+  import(path.join(root, "packages/cli/dist/core/compaction/compactor.js")),
+  import(path.join(root, "packages/cli/dist/core/compaction/active-context.js")),
+  import(path.join(root, "packages/cli/dist/core/model-registry.js")),
 ]);
 
 const MODEL = "gpt-5.6-sol";
@@ -53,7 +53,7 @@ function formatUsage(usage) {
 }
 
 async function loadCodexAuth() {
-  const authPath = path.join(os.homedir(), ".gg", "auth.json");
+  const authPath = path.join(os.homedir(), ".ezcoder", "auth.json");
   const rawAuth = await fs.readFile(authPath, "utf-8");
   const auth = JSON.parse(rawAuth);
   const openai = auth.openai;

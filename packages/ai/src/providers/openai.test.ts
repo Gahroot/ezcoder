@@ -151,7 +151,7 @@ describe("streamOpenAI request shaping", () => {
     }
 
     const params = createMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(params).toMatchObject({ reasoning_effort: "max", prompt_cache_key: "ggcoder" });
+    expect(params).toMatchObject({ reasoning_effort: "max", prompt_cache_key: "ezcoder" });
     expect(params).not.toHaveProperty("thinking");
     expect(params).not.toHaveProperty("temperature");
     expect(params).not.toHaveProperty("top_p");
@@ -175,7 +175,7 @@ describe("streamOpenAI request shaping", () => {
     const params = createMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params).toMatchObject({
       thinking: { type: "enabled", effort: "max", keep: "all" },
-      prompt_cache_key: "ggcoder",
+      prompt_cache_key: "ezcoder",
     });
     expect(params).not.toHaveProperty("reasoning_effort");
   });

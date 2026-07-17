@@ -477,7 +477,7 @@ function providerGuidance(
     statusCode === 507 ||
     lower.includes("exceeded request buffer limit while retrying upstream")
   ) {
-    return `${name}'s proxy could not retry this large request. GG Coder already retried automatically — compact the conversation, then retry.`;
+    return `${name}'s proxy could not retry this large request. EZ Coder already retried automatically — compact the conversation, then retry.`;
   }
   if (
     statusCode === 500 ||

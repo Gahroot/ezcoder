@@ -842,7 +842,7 @@ async function runInkTUI(opts: {
         })
         .catch(() => {});
     }
-    // Sweep recoverable full tool outputs (~/.gg/tool-output/) older than 48h.
+    // Sweep recoverable full tool outputs (~/.ezcoder/tool-output/) older than 48h.
     void cleanupToolOutputs().catch(() => {});
   }
 
