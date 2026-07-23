@@ -22,7 +22,7 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.0",
+    version: "0.1.58",
     date: "2026-07-23",
     items: [
       "Marathon runs just got relentless. I made EZ Coder recover dropped replies, continue answers up to `2 times`, retry runaway tools, and break repeating loops before they waste your time. You get the whole job, not a confident half-finish.",
