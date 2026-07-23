@@ -17,15 +17,16 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
-const sidecarEntry = join(repoRoot, "packages", "cli", "dist", "app-sidecar.js");
+const sidecarEntry = join(here, "error-mom-sidecar.mjs");
+const cliSidecarEntry = join(repoRoot, "packages", "cli", "dist", "app-sidecar.js");
 const outDir = join(here, "..", "src-tauri", "sidecar");
 const outFile = join(outDir, "app-sidecar.mjs");
 const nodeModulesOut = join(outDir, "node_modules");
 const bundledSkillsSource = join(repoRoot, "packages", "cli", "assets", "skills");
 const bundledSkillsOut = join(outDir, "skills");
 
-// Packages that must NOT be inlined: native addons + lazily-loaded optional
-// heavy deps. They are copied verbatim with their dependency trees instead.
+// Packages that must NOT be inlined: native addons, lazily-loaded optional
+// heavy deps, and child-process entry points that esbuild cannot discover.
 const EXTERNAL = [
   "sharp",
   "playwright",
@@ -38,6 +39,14 @@ const EXTERNAL = [
   // The Codex transport loads this package's zstd.wasm by path at runtime.
   // Keep the package external so the WASM asset survives the sidecar bundle.
   "@bokuweb/zstd-wasm",
+  // LSP servers run as child processes from their real package entry points.
+  // The server resolver also needs a physical tsserver.js path. Neither package
+  // is imported by the sidecar, so esbuild would otherwise omit both and every
+  // installed desktop build would silently lose TS/JS inline diagnostics.
+  "typescript-language-server",
+  "typescript",
+  // source_path spawns opensrc's CLI by physical path; it is never imported.
+  "opensrc",
   // Default MCP server: spawned as a stdio child, never imported, so esbuild
   // won't bundle it. Copy it next to the sidecar so resolveStdioCommand can
   // resolve its bin and rewrite `npx -y @kenkaiiii/kencode-search` to a direct
@@ -46,7 +55,7 @@ const EXTERNAL = [
   "@kenkaiiii/kencode-search",
 ];
 
-// require resolver anchored at the ezcoder package, where these deps live.
+// require resolver anchored at the EZ Coder package, where these deps live.
 const ezcoderRequire = createRequire(join(repoRoot, "packages", "cli", "package.json"));
 
 // Candidate node_modules roots to scan directly when `require.resolve` is
@@ -189,8 +198,10 @@ function pruneForeignNativePayloads() {
 }
 
 async function main() {
-  if (!existsSync(sidecarEntry)) {
-    throw new Error(`sidecar entry missing: ${sidecarEntry} (build @prestyj/cli first)`);
+  if (!existsSync(cliSidecarEntry)) {
+    throw new Error(
+      `sidecar entry missing: ${cliSidecarEntry} (build @prestyj/cli first)`,
+    );
   }
   if (!existsSync(bundledSkillsSource)) {
     throw new Error(`bundled skills missing: ${bundledSkillsSource}`);

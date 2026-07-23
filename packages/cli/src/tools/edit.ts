@@ -22,6 +22,7 @@ import {
   planModeRestriction,
   type GoalMode,
 } from "../core/runtime-mode.js";
+import { resolveWriteGuard, type WriteGuardSettings } from "../core/workspace-guard.js";
 
 type MutationCallback = (filePath: string) => void | Promise<void>;
 
@@ -182,6 +183,7 @@ export function createEditTool(
   onPreFileMutation?: MutationCallback,
   getDiagnostics?: DiagnosticsProvider,
   goalModeRefArg?: { current: GoalMode },
+  getWriteGuardSettings?: () => WriteGuardSettings | undefined,
 ): AgentTool<typeof EditParams> {
   const planModeRef = isPlanModeRef(planModeRefOrOnFileMutated)
     ? planModeRefOrOnFileMutated
@@ -219,6 +221,12 @@ export function createEditTool(
       }
       const resolved = resolvePath(cwd, file_path);
       await rejectSymlink(resolved);
+
+      // Workspace write guard: outside cwd/tmp/~/.gg requires user approval.
+      const guard = resolveWriteGuard(cwd, resolved, getWriteGuardSettings?.());
+      if (!guard.allowed) {
+        return `Error: ${guard.reason}`;
+      }
 
       await assertFresh(readFiles, resolved, ops);
 

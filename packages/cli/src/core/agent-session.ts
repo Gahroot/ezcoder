@@ -86,12 +86,15 @@ import {
 import {
   evaluateLoopBreak,
   buildLoopBreakMessage,
+  CycleDetector,
   ToolCallProgressTracker,
   detectTextRepetition,
+  type CycleDetection,
 } from "./loop-breaker.js";
 import { buildRegroundingMessage } from "./regrounding.js";
 import { wrapSteeringText, STEERING_PREFIX } from "./steering.js";
 import { findUserSessionPrompt, getUserSessionPrompt } from "./session-preview.js";
+import { normalizeMessageImages } from "./message-images.js";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -323,13 +326,16 @@ export class AgentSession {
   private hookConsecutiveFailures = 0;
   private hookRepeatedNoProgressCalls = 0;
   private hookProgressTracker = new ToolCallProgressTracker();
+  private hookCycleDetector = new CycleDetector();
+  private hookCyclicPattern: CycleDetection | null = null;
   private hookFileEditCounts = new Map<string, number>();
   private hookToolCalls = new Map<string, { name: string; args: Record<string, unknown> }>();
   private idealReviewPhase: "idle" | "reviewing" | "complete" = "idle";
   /** Runtime-only suppression while Nolan owns verification in autopilot mode. */
   private idealReviewSuppressed = false;
   private readonly reviewCoverage: ReviewCoverageTracker;
-  private loopBreakInjected = false;
+  /** 0 = none; 1 = first nudge sent; 2 = final stop-and-report injected. */
+  private loopBreakInjected: 0 | 1 | 2 = 0;
   private regroundingInjected = false;
   private compactionOccurred = false;
   private lastCompactionCompacted = false;
@@ -472,6 +478,9 @@ export class AgentSession {
       provider: this.provider,
       model: this.model,
       lspDiagnostics: this.settingsManager.get("lspDiagnostics"),
+      getWriteGuardSettings: () => ({
+        allowOutsideWorkspaceWrites: this.settingsManager.get("allowOutsideWorkspaceWrites"),
+      }),
       authStorage: this.authStorage,
       onFileRead: (filePath) => this.reviewCoverage.recordRead(filePath),
       onFileMutated: (filePath) => {
@@ -486,6 +495,7 @@ export class AgentSession {
       getThinkingLevel: () => this.thinkingLevel,
       getBaseUrl: () => this.baseUrl,
       getCacheKey: () => this.getPromptCacheKey(),
+      getMaxPerModel: () => this.settingsManager.get("subagentMaxPerModel"),
       disableAsyncSubagents: this.opts.subagentWorker,
       onSubAgentState: (snapshot) => this.eventBus.emit("subagent_state", snapshot),
       // Plan mode: only wired when the host supplies callbacks. The ref is
@@ -567,6 +577,34 @@ export class AgentSession {
     }
     if (this.sessionId) await this.subAgentManager?.hydrate(this.sessionId);
 
+    // Maintenance is deliberately queued after initialization work and never
+    // awaited, so retention/compression cannot delay sidecar or CLI readiness.
+    if (!this.opts.transient) {
+      const retentionDays = this.settingsManager.get("sessionRetentionDays");
+      void Promise.resolve()
+        .then(() =>
+          this.sessionManager.runMaintenance({
+            retentionDays,
+            keepPaths: this.sessionPath ? [this.sessionPath] : [],
+          }),
+        )
+        .then((metrics) => {
+          if (metrics.deletedFiles > 0 || metrics.archivedFiles > 0 || metrics.failures > 0) {
+            log("INFO", "session", "Session maintenance complete", {
+              deletedFiles: String(metrics.deletedFiles),
+              deletedMB: (metrics.deletedBytes / 1024 / 1024).toFixed(1),
+              archivedFiles: String(metrics.archivedFiles),
+              savedMB: (metrics.bytesSaved / 1024 / 1024).toFixed(1),
+              failures: String(metrics.failures),
+            });
+          }
+        })
+        .catch((error) => {
+          log("WARN", "session", "Session maintenance failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+    }
     // EZ Coder owns its command registry. Other agents start with an isolated
     // empty registry and can register their own commands in their own file.
     if (this.opts.coderSlashCommands !== false) {
@@ -876,11 +914,13 @@ export class AgentSession {
     this.hookConsecutiveFailures = 0;
     this.hookRepeatedNoProgressCalls = 0;
     this.hookProgressTracker.reset();
+    this.hookCycleDetector.reset();
+    this.hookCyclicPattern = null;
     this.hookFileEditCounts.clear();
     this.hookToolCalls.clear();
     this.reviewCoverage.reset();
     this.idealReviewPhase = "idle";
-    this.loopBreakInjected = false;
+    this.loopBreakInjected = 0;
     this.regroundingInjected = false;
     this.compactionOccurred = false;
     this.originalRequest = originalRequest;
@@ -910,6 +950,12 @@ export class AgentSession {
         if (name === "bash") this.hookStats.bashCalls += 1;
         this.hookConsecutiveFailures = event.isError ? this.hookConsecutiveFailures + 1 : 0;
         this.hookRepeatedNoProgressCalls = this.hookProgressTracker.record(
+          name,
+          args,
+          event.result,
+          event.isError,
+        );
+        this.hookCyclicPattern = this.hookCycleDetector.record(
           name,
           args,
           event.result,
@@ -968,19 +1014,34 @@ export class AgentSession {
     }
     if (this.opts.selfCorrectionHooks === false) return null;
     if (!this.settingsManager.get("idealReviewEnabled")) return null;
-    if (!this.loopBreakInjected) {
+    // Two-stage loop-breaker: stage 1 nudges; a FRESH detection after that
+    // injects the harsher final stop-and-report prompt. Signals reset after
+    // each injection so stage 2 only fires on new evidence.
+    if (this.loopBreakInjected < 2) {
       const decision = evaluateLoopBreak({
         consecutiveFailures: this.hookConsecutiveFailures,
         repeatedNoProgressCalls: this.hookRepeatedNoProgressCalls,
         textRepetitionDetected: detectTextRepetition(this.hookText),
+        ...(this.hookCyclicPattern ? { cyclicPattern: this.hookCyclicPattern } : {}),
       });
       if (decision.shouldBreak) {
-        this.loopBreakInjected = true;
+        const stage = this.loopBreakInjected === 0 ? (1 as const) : (2 as const);
+        this.loopBreakInjected = stage;
+        this.hookProgressTracker.reset();
+        this.hookCycleDetector.reset();
+        this.hookCyclicPattern = null;
+        this.hookConsecutiveFailures = 0;
+        this.hookRepeatedNoProgressCalls = 0;
+        // Clear the text buffer too — otherwise a stage-1 text-repetition
+        // trigger still sees the same repeated tail on the next check and
+        // escalates to stage 2 on stale evidence.
+        this.hookText = "";
         log("INFO", "loop-break", "Injecting loop-break nudge", {
+          stage: String(stage),
           reasons: decision.reasons.join(", "),
         });
         this.eventBus.emit("hook", { kind: "loop_break" });
-        return [buildLoopBreakMessage(decision.reasons)];
+        return [buildLoopBreakMessage(decision.reasons, stage === 2)];
       }
     }
     if (!this.regroundingInjected && this.compactionOccurred) {
@@ -1526,6 +1587,7 @@ export class AgentSession {
 
     if (!result.result.compacted) {
       this.eventBus.emit("compaction_end", {
+        compacted: false,
         originalCount: result.result.originalCount,
         newCount: result.result.newCount,
       });
@@ -1551,7 +1613,7 @@ export class AgentSession {
       });
       this.sessionId = session.id;
       this.conversationId = session.header.conversationId ?? session.id;
-      this.sessionPath = session.path;
+      this.setSessionPath(session.path);
       await this.subAgentManager?.rebindParentSession(this.sessionId);
 
       // Write compacted messages (skip system — it's rebuilt on load)
@@ -1574,6 +1636,7 @@ export class AgentSession {
     }
 
     this.eventBus.emit("compaction_end", {
+      compacted: true,
       originalCount: result.result.originalCount,
       newCount: result.result.newCount,
     });
@@ -1622,7 +1685,7 @@ export class AgentSession {
       this.sessionId = "";
       this.conversationId = "";
       this.sessionPreview = "";
-      this.sessionPath = "";
+      this.setSessionPath("");
       this.lastPersistedIndex = this.messages.length;
     } else {
       await this.createNewSession();
@@ -1647,6 +1710,7 @@ export class AgentSession {
   async branch(stepsBack = 2): Promise<{ branchedFrom: number; messagesKept: number }> {
     // Load the full session to access the DAG
     const loaded = await this.sessionManager.load(this.sessionPath);
+    this.setSessionPath(loaded.path);
     const branch = this.sessionManager.getBranch(loaded.entries, this.currentLeafId);
 
     // Walk back stepsBack message entries
@@ -1684,6 +1748,7 @@ export class AgentSession {
    */
   async listBranches(): Promise<BranchInfo[]> {
     const loaded = await this.sessionManager.load(this.sessionPath);
+    this.setSessionPath(loaded.path);
     return this.sessionManager.listBranches(loaded.entries);
   }
 
@@ -2147,12 +2212,20 @@ export class AgentSession {
     this.lspManager?.shutdownAll();
     await Promise.all([this.subAgentManager?.shutdownAll(), this.mcpManager?.dispose()]);
     await this.extensionLoader.deactivateAll();
+    this.setSessionPath("");
     this.eventBus.removeAllListeners();
     this.messages = [];
     this.tools = [];
   }
 
   // ── Private ────────────────────────────────────────────
+
+  private setSessionPath(nextPath: string): void {
+    if (this.sessionPath === nextPath) return;
+    if (this.sessionPath) this.sessionManager.unregisterActivePath(this.sessionPath);
+    this.sessionPath = nextPath;
+    if (nextPath) this.sessionManager.registerActivePath(nextPath);
+  }
 
   private async createNewSession(): Promise<void> {
     const session = await this.sessionManager.create(this.cwd, this.provider, this.model, {
@@ -2161,7 +2234,7 @@ export class AgentSession {
     });
     this.sessionId = session.id;
     this.conversationId = session.header.conversationId ?? session.id;
-    this.sessionPath = session.path;
+    this.setSessionPath(session.path);
     this.lastPersistedIndex = this.messages.length;
   }
 
@@ -2190,10 +2263,15 @@ export class AgentSession {
     // Track the current leaf for subsequent entries
     this.currentLeafId = loaded.header.leafId;
 
-    // Rebuild messages: keep system, add loaded
+    // Rebuild messages: keep system, add loaded. Older gg-app sessions may
+    // contain full-resolution attachments; repair them once on load so they do
+    // not fail when Anthropic's stricter many-image limit activates later.
     const systemMsg = this.messages[0]; // Already built
     this.messages = [systemMsg, ...loadedMessages];
-
+    const normalizedImageCount = await normalizeMessageImages(this.messages);
+    if (normalizedImageCount > 0) {
+      log("INFO", "session", `Resized ${normalizedImageCount} restored session image(s)`);
+    }
     // Auto-compact on load if the restored session exceeds the context window.
     // Without this, huge sessions (1M+ tokens) get loaded into memory and OOM.
     const creds = await this.authStorage.resolveCredentials(this.provider, {
@@ -2248,7 +2326,7 @@ export class AgentSession {
       });
       this.sessionId = session.id;
       this.conversationId = session.header.conversationId ?? session.id;
-      this.sessionPath = session.path;
+      this.setSessionPath(session.path);
       await this.subAgentManager?.rebindParentSession(this.sessionId);
       this.currentLeafId = null;
 
@@ -2277,7 +2355,7 @@ export class AgentSession {
     // session was merely reopened (e.g. app/window restart) with zero new
     // messages in between — the duplicate entries seen in the session list.
     this.sessionId = loaded.header.id;
-    this.sessionPath = sessionPath;
+    this.setSessionPath(loaded.path);
     this.lastPersistedIndex = this.messages.length;
   }
 

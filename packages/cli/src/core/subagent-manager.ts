@@ -58,6 +58,11 @@ export interface SubAgentManagerOptions {
   getThinkingLevel: () => ThinkingLevel | undefined;
   getCacheKey?: () => string | undefined;
   getBaseUrl?: () => string | undefined;
+  /** Optional per-model concurrency cap (subagentMaxPerModel setting). Counted
+   *  against the RESOLVED child model — read-only agents may run on the fast
+   *  model, so they count under that model, not the parent's. Only ever
+   *  reduces concurrency below the global ACTIVE_LIMIT. */
+  getMaxPerModel?: () => number | undefined;
   onState?: (snapshot: SubAgentSnapshot) => void;
   workerEntry?: string;
   idleTimeoutMs?: number;
@@ -200,6 +205,7 @@ export class SubAgentManager {
     const parentModel = this.options.getModel();
     const selection = selectSubAgent(this.options.agents, agentName, provider, parentModel);
     if (agentName && !selection.agentDef) throw new Error(`Unknown agent: "${agentName}"`);
+    this.assertModelCapacity(selection.model);
 
     const now = Date.now();
     const agentId = this.createId();
@@ -291,6 +297,7 @@ export class SubAgentManager {
     }
     if (this.activeCount() >= ACTIVE_LIMIT)
       throw new Error(`At most ${ACTIVE_LIMIT} agents may run at once`);
+    if (worker.model) this.assertModelCapacity(worker.model);
     clearTimeout(worker.idleTimer);
     worker.taskOutput = "";
     worker.output = undefined;
@@ -470,6 +477,7 @@ export class SubAgentManager {
     const provider = (snapshot.provider as Provider | undefined) ?? this.options.getProvider();
     const model = snapshot.model ?? this.options.getModel();
     const parentModel = this.options.getModel();
+    this.assertModelCapacity(model);
     const childSessionPath = this.assertChildSessionPath(snapshot.child_session_path);
     const child = this.spawnWorkerProcess();
     const worker: WorkerRecord = {
@@ -574,7 +582,16 @@ export class SubAgentManager {
     if (frame.type === "event") {
       const event = String(frame.event);
       const payload = (frame.payload ?? {}) as Record<string, unknown>;
-      if (event === "text_delta") worker.taskOutput += String(payload.text ?? "");
+      // text_delta / thinking_delta fire per token but change no snapshot
+      // field (taskOutput is worker-local; the snapshot only carries the final
+      // `output`). Publishing them broadcast an unchanged snapshot per token,
+      // per agent — pure SSE + re-render churn downstream. Accumulate and move
+      // on; real state changes publish below.
+      if (event === "text_delta" || event === "thinking_delta") {
+        if (event === "text_delta") worker.taskOutput += String(payload.text ?? "");
+        worker.updated_at = Date.now();
+        return;
+      }
       if (event === "tool_call_start") {
         worker.tool_use_count++;
         worker.current_activity = activity(
@@ -716,6 +733,21 @@ export class SubAgentManager {
 
   private activeCount(): number {
     return [...this.workers.values()].filter((worker) => this.isActive(worker)).length;
+  }
+
+  /** Enforce the optional per-model cap against the resolved child model. */
+  private assertModelCapacity(model: string): void {
+    const cap = this.options.getMaxPerModel?.();
+    if (cap === undefined) return;
+    const activeOnModel = [...this.workers.values()].filter(
+      (worker) => this.isActive(worker) && worker.model === model,
+    ).length;
+    if (activeOnModel >= cap) {
+      throw new Error(
+        `At most ${cap} agents may run at once on model ${model} (subagentMaxPerModel) — ` +
+          `wait for one to finish or choose a different agent`,
+      );
+    }
   }
 
   private isActive(worker: SubAgentSnapshot): boolean {

@@ -11,6 +11,7 @@ import {
   isPlanModeActive,
   type GoalMode,
 } from "../core/runtime-mode.js";
+import { resolveWriteGuard, type WriteGuardSettings } from "../core/workspace-guard.js";
 
 type MutationCallback = (filePath: string) => void | Promise<void>;
 
@@ -51,6 +52,7 @@ export function createWriteTool(
   onPreFileMutation?: MutationCallback,
   getDiagnostics?: DiagnosticsProvider,
   goalModeRefArg?: { current: GoalMode },
+  getWriteGuardSettings?: () => WriteGuardSettings | undefined,
 ): AgentTool<typeof WriteParams> {
   const planModeRef = isPlanModeRef(planModeRefOrOnFileMutated)
     ? planModeRefOrOnFileMutated
@@ -75,6 +77,12 @@ export function createWriteTool(
       const goalMode = getActiveGoalMode(goalModeRef);
       if (goalMode !== "off") {
         return goalModeMutationRestriction("write", goalMode);
+      }
+
+      // Workspace write guard: outside cwd/tmp/~/.ezcoder requires user approval.
+      const guard = resolveWriteGuard(cwd, resolved, getWriteGuardSettings?.());
+      if (!guard.allowed) {
+        return `Error: ${guard.reason}`;
       }
 
       if (isPlanModeActive(planModeRef)) {

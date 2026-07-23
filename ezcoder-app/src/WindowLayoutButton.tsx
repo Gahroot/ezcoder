@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AppWindow, Check, ChevronRight, Monitor } from "lucide-react";
-import { theme } from "./theme";
 import {
   setupWindows,
   arrangeAllWindows,
@@ -9,15 +8,11 @@ import {
   type MonitorInfo,
 } from "./agent";
 import { playSound } from "./sounds";
+import { theme } from "./theme";
 
 /**
- * Top-right control that tiles the app into a 2-, 4-, or 6-window grid (macOS
- * fill&arrange style). Each new window is a separate project with its own agent.
- * Windows open immediately; project selection happens per-window afterwards.
- *
- * `onArrange` fires when a multi-window layout is applied (count > 1) so the
- * caller can auto-hide the nav bar — tiled windows are tight on space, and the
- * setting is persisted, so the freshly opened windows boot hidden too.
+ * Titlebar control that tiles the app into a 2-, 4-, or 6-window grid,
+ * auto-arranges all open windows, and targets a selected display.
  */
 export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): React.ReactElement {
   const [open, setOpen] = useState(false);
@@ -25,7 +20,9 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
   const [showMonitors, setShowMonitors] = useState(false);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
 
   useEffect(() => {
     if (!open) {
@@ -38,13 +35,26 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
       setMonitors(res.monitors);
       setSelected(res.selected);
     });
-    const onDoc = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    const closeOnOutsideClick = (event: MouseEvent): void => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     };
-    const id = setTimeout(() => document.addEventListener("mousedown", onDoc), 0);
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    const listenerId = window.setTimeout(
+      () => document.addEventListener("mousedown", closeOnOutsideClick),
+      0,
+    );
+    document.addEventListener("keydown", closeOnEscape);
+    requestAnimationFrame(() =>
+      rootRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus(),
+    );
     return () => {
-      clearTimeout(id);
-      document.removeEventListener("mousedown", onDoc);
+      window.clearTimeout(listenerId);
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
 
@@ -57,91 +67,93 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
   // Only worth showing the monitor picker when more than one display exists.
   const multiMonitor = monitors.length > 1;
   const selectedLabel =
-    (selected && monitors.find((m) => m.name === selected)?.label) ?? "Primary (auto)";
+    (selected && monitors.find((monitor) => monitor.name === selected)?.label) ?? "Primary (auto)";
 
-  async function applyLayout(count: number): Promise<void> {
-    setOpen(false);
+  async function run(choice: string): Promise<void> {
     if (busy) return;
+    setOpen(false);
     setBusy(true);
     try {
-      if (count > 1) {
-        onArrange?.();
-        playSound("hover");
+      if (choice === "auto") {
+        await arrangeAllWindows();
+      } else {
+        const count = Number(choice);
+        if (count > 1) {
+          onArrange?.();
+          playSound("hover");
+        }
+        await setupWindows(count);
       }
-      await setupWindows(count);
     } finally {
       setBusy(false);
+      requestAnimationFrame(() => triggerRef.current?.focus());
     }
   }
 
-  async function arrangeAll(): Promise<void> {
-    setOpen(false);
-    if (busy) return;
-    setBusy(true);
-    try {
-      await arrangeAllWindows();
-    } finally {
-      setBusy(false);
-    }
+  function moveMenuFocus(event: React.KeyboardEvent<HTMLDivElement>): void {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>("[role='menuitem']"),
+    );
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus();
   }
 
   return (
-    <div className="winlayout" ref={ref}>
+    <div className="winlayout" ref={rootRef}>
       <button
+        ref={triggerRef}
         className="btn btn-ghost btn-sm btn-nav-icon"
         disabled={busy}
         title="Arrange into multiple project windows"
-        onClick={() => setOpen((o) => !o)}
+        aria-label="Arrange into multiple project windows"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((current) => !current)}
       >
         <AppWindow size={16} />
       </button>
       {open && (
         <>
-          {/* Full-screen catcher: closes the menu on any outside click. The
-              document `mousedown` listener can't see clicks on Tauri
-              `data-tauri-drag-region` areas (the OS swallows them for window
-              dragging), so this backdrop guarantees dismissal. */}
           <div className="menu-backdrop" onMouseDown={() => setOpen(false)} />
           <div
+            id={menuId}
             className="winlayout-menu"
+            role="menu"
+            aria-label="Window layout"
+            onKeyDown={moveMenuFocus}
             style={{ background: theme.surface2, borderColor: theme.border }}
           >
-            <button
-              className="winlayout-item"
-              style={{ color: theme.text }}
-              onClick={() => void applyLayout(2)}
-            >
+            <button role="menuitem" className="winlayout-item" onClick={() => void run("2")}>
               2 windows
             </button>
-            <button
-              className="winlayout-item"
-              style={{ color: theme.text }}
-              onClick={() => void applyLayout(4)}
-            >
+            <button role="menuitem" className="winlayout-item" onClick={() => void run("4")}>
               4 windows
             </button>
-            <button
-              className="winlayout-item"
-              style={{ color: theme.text }}
-              onClick={() => void applyLayout(6)}
-            >
+            <button role="menuitem" className="winlayout-item" onClick={() => void run("6")}>
               6 windows
             </button>
-            <div className="winlayout-divider" />
-            <button
-              className="winlayout-item"
-              style={{ color: theme.text }}
-              onClick={() => void arrangeAll()}
-            >
+            <div className="winlayout-divider" role="separator" />
+            <button role="menuitem" className="winlayout-item" onClick={() => void run("auto")}>
               Auto-arrange all
             </button>
             {multiMonitor && (
               <>
-                <div className="winlayout-divider" />
+                <div className="winlayout-divider" role="separator" />
                 <button
+                  role="menuitem"
                   className="winlayout-item"
                   style={{ color: theme.text, justifyContent: "space-between" }}
-                  onClick={() => setShowMonitors((s) => !s)}
+                  onClick={() => setShowMonitors((shown) => !shown)}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
                     <Monitor size={14} />
@@ -203,8 +215,7 @@ function MonitorRow({
   onClick: () => void;
 }): React.ReactElement {
   return (
-    <button
-      className="winlayout-item"
+    <button role="menuitem" className="winlayout-item"
       style={{ color: active ? theme.text : theme.textDim, paddingLeft: 22, fontSize: 12 }}
       onClick={onClick}
     >

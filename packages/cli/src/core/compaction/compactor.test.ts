@@ -212,9 +212,9 @@ describe("compaction thresholds across all models", () => {
   });
 
   const openAITransportCases = [
-    { id: "gpt-5.6-sol", publicWindow: 1_050_000, codexWindow: 372_000 },
-    { id: "gpt-5.6-terra", publicWindow: 1_050_000, codexWindow: 372_000 },
-    { id: "gpt-5.6-luna", publicWindow: 1_050_000, codexWindow: 372_000 },
+    { id: "gpt-5.6-sol", publicWindow: 1_050_000, codexWindow: 272_000 },
+    { id: "gpt-5.6-terra", publicWindow: 1_050_000, codexWindow: 272_000 },
+    { id: "gpt-5.6-luna", publicWindow: 1_050_000, codexWindow: 272_000 },
     { id: "gpt-5.5", publicWindow: 1_050_000, codexWindow: 272_000 },
   ] as const;
 
@@ -305,6 +305,22 @@ describe("findRecentCutPoint", () => {
     // Budget 0 means nothing fits, but the guard ensures we always keep
     // the last user→assistant pair so compaction never produces empty recent messages.
     expect(cut).toBe(1);
+  });
+
+  it("keeps only the latest atomic tool group when its result exceeds the budget", () => {
+    const messages = [
+      makeMessage("system", "sys"),
+      makeMessage("user", "one long task"),
+      makeToolCallMessage("read", { file_path: "old.ts" }, "old"),
+      makeToolResultMessage("old", "old result"),
+      makeToolCallMessage("bash", { command: "generate" }, "latest"),
+      makeToolResultMessage("latest", "x".repeat(100_000)),
+    ];
+
+    const cut = findRecentCutPoint(messages, 8_000);
+
+    expect(cut).toBe(4);
+    expect(messages.slice(cut).map((message) => message.role)).toEqual(["assistant", "tool"]);
   });
 });
 

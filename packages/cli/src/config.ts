@@ -35,6 +35,10 @@ export interface SavedSettings {
   autoApprovePlans: boolean;
   /** Append LSP diagnostics to edit/write tool results. */
   lspDiagnostics: boolean;
+  /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.gg). */
+  allowOutsideWorkspaceWrites: boolean;
+  /** Max concurrent subagents per resolved child model (1–4). Unset = global limit only. */
+  subagentMaxPerModel?: number;
   /** Days to keep session transcripts before startup pruning. 0 disables. */
   sessionRetentionDays: number;
   /** Speed optimization profile.
@@ -71,6 +75,7 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     idealReviewEnabled: true,
     autoApprovePlans: true,
     lspDiagnostics: true,
+    allowOutsideWorkspaceWrites: false,
     sessionRetentionDays: 30,
   };
   try {
@@ -90,6 +95,15 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     if (raw.idealReviewEnabled === false) result.idealReviewEnabled = false;
     if (raw.autoApprovePlans === false) result.autoApprovePlans = false;
     if (raw.lspDiagnostics === false) result.lspDiagnostics = false;
+    if (raw.allowOutsideWorkspaceWrites === true) result.allowOutsideWorkspaceWrites = true;
+    if (
+      typeof raw.subagentMaxPerModel === "number" &&
+      Number.isInteger(raw.subagentMaxPerModel) &&
+      raw.subagentMaxPerModel >= 1 &&
+      raw.subagentMaxPerModel <= 4
+    ) {
+      result.subagentMaxPerModel = raw.subagentMaxPerModel;
+    }
     if (
       typeof raw.sessionRetentionDays === "number" &&
       Number.isInteger(raw.sessionRetentionDays) &&

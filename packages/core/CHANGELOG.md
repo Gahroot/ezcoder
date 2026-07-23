@@ -12,6 +12,92 @@
 
 - @prestyj/ai@5.7.0
 
+## 5.22.3
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.22.3
+
+## 5.22.2
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.22.2
+
+## 5.22.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @kenkaiiii/gg-ai@5.22.1
+
+## 5.22.0
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.22.0
+
+## 5.21.0
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.21.0
+
+## 5.20.5
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.20.5
+
+## 5.20.4
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.20.4
+
+## 5.20.3
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.20.3
+
+## 5.20.2
+
+### Patch Changes
+
+- f4b8ec7: Cap each long-lived process at 10 MB of debug-log writes so noisy production paths cannot grow the active log without bound.
+  - @kenkaiiii/gg-ai@5.20.2
+
+## 5.20.1
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.20.1
+
+## 5.20.0
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.20.0
+
+## 5.19.6
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.6
+
+## 5.19.5
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.5
+
+## 5.19.4
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.19.4
+
 ## 5.19.3
 
 ### Patch Changes

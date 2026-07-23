@@ -68,7 +68,7 @@ import { segmentDisplayText, stripDoneMarkers } from "./utils/plan-steps.js";
 import { formatUserError } from "./utils/error-handler.js";
 import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import type { ThemeName } from "./ui/theme/theme.js";
-import { AuthStorage } from "./core/auth-storage.js";
+import { AuthStorage, readStoredBaseUrlSync } from "./core/auth-storage.js";
 import { SessionManager, type TurnMetricPayload } from "./core/session-manager.js";
 import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
@@ -93,7 +93,7 @@ import {
   getAuthStorageKeys,
   getContextWindow,
   getDefaultModel,
-  getMaxThinkingLevel,
+  getDefaultThinkingLevel,
   getModel,
   getModelsForProvider,
 } from "./core/model-registry.js";
@@ -386,8 +386,13 @@ function main(): void {
   }
 
   const model: string = saved.model ?? getHardcodedDefault(provider);
+  // No saved level → follow the active credential's endpoint (Kimi K3 OAuth
+  // starts at its declared default, high). Sync read: main() is not async.
   const thinkingLevel: ThinkingLevel | undefined = saved.thinkingEnabled
-    ? (saved.thinkingLevel ?? getMaxThinkingLevel(model))
+    ? (saved.thinkingLevel ??
+      getDefaultThinkingLevel(model, {
+        baseUrl: readStoredBaseUrlSync(getAppPaths().authFile, provider),
+      }))
     : undefined;
 
   // Interactive mode (Ink TUI)
@@ -402,6 +407,8 @@ function main(): void {
     idealReviewEnabled: saved.idealReviewEnabled,
     autoApprovePlans: saved.autoApprovePlans,
     lspDiagnostics: saved.lspDiagnostics,
+    allowOutsideWorkspaceWrites: saved.allowOutsideWorkspaceWrites,
+    subagentMaxPerModel: saved.subagentMaxPerModel,
     continueRecent,
     resumeSessionPath: values.resume,
     theme: savedTheme,
@@ -427,6 +434,8 @@ async function runInkTUI(opts: {
   idealReviewEnabled?: boolean;
   autoApprovePlans?: boolean;
   lspDiagnostics?: boolean;
+  allowOutsideWorkspaceWrites?: boolean;
+  subagentMaxPerModel?: number;
 }): Promise<void> {
   requireInteractiveTTY();
 
@@ -616,6 +625,9 @@ async function runInkTUI(opts: {
       onFileRead: (filePath) => reviewCoverageTracker.recordRead(filePath),
       onFileMutated: (filePath) => reviewCoverageTracker.recordChanged(filePath),
       lspDiagnostics: opts.lspDiagnostics,
+      getWriteGuardSettings: () => ({
+        allowOutsideWorkspaceWrites: opts.allowOutsideWorkspaceWrites ?? false,
+      }),
       authStorage,
       onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
       onExitPlan: (planPath) =>
@@ -623,6 +635,7 @@ async function runInkTUI(opts: {
       getProvider: () => activeProvider,
       getModel: () => activeModel,
       getThinkingLevel: () => activeThinking,
+      getMaxPerModel: () => opts.subagentMaxPerModel,
     },
   );
 
@@ -727,7 +740,7 @@ async function runInkTUI(opts: {
 
       if (loadedMessages.length > 0) {
         messages.push(...loadedMessages);
-        sessionPath = resumePath;
+        sessionPath = loaded.path;
         sessionId = loaded.header.id;
         log("INFO", "session", `Restored session`, {
           path: resumePath,
@@ -821,27 +834,26 @@ async function runInkTUI(opts: {
     await subAgentManager?.hydrate(sessionId);
   }
 
-  // Prune old session transcripts in the background — they're append-only
-  // JSONL and can reach 100MB+ each, so without cleanup ~/.ezcoder/sessions grows
-  // unbounded and eventually fills the disk. Fire-and-forget: pruning must
-  // never delay or break startup. The active session is explicitly protected.
+  // Unified maintenance enforces retention first, then normalizes and archives
+  // cold sessions. Fire-and-forget: startup and TUI readiness never wait for it.
   {
     const { sessionRetentionDays } = loadSavedSettings(paths.settingsFile);
-    if (sessionRetentionDays > 0) {
-      const keepPaths = sessionPath ? [sessionPath] : [];
-      void sessionManager
-        .pruneOldSessions({ maxAgeDays: sessionRetentionDays, keepPaths })
-        .then(({ deletedFiles, freedBytes }) => {
-          if (deletedFiles > 0) {
-            log("INFO", "session", `Pruned old sessions`, {
-              deletedFiles: String(deletedFiles),
-              freedMB: (freedBytes / 1024 / 1024).toFixed(1),
-              retentionDays: String(sessionRetentionDays),
-            });
-          }
-        })
-        .catch(() => {});
-    }
+    const keepPaths = sessionPath ? [sessionPath] : [];
+    void sessionManager
+      .runMaintenance({ retentionDays: sessionRetentionDays, keepPaths })
+      .then((metrics) => {
+        if (metrics.deletedFiles > 0 || metrics.archivedFiles > 0 || metrics.failures > 0) {
+          log("INFO", "session", "Session maintenance complete", {
+            deletedFiles: String(metrics.deletedFiles),
+            freedMB: (metrics.deletedBytes / 1024 / 1024).toFixed(1),
+            archivedFiles: String(metrics.archivedFiles),
+            savedMB: (metrics.bytesSaved / 1024 / 1024).toFixed(1),
+            failures: String(metrics.failures),
+            retentionDays: String(sessionRetentionDays),
+          });
+        }
+      })
+      .catch(() => {});
     // Sweep recoverable full tool outputs (~/.ezcoder/tool-output/) older than 48h.
     void cleanupToolOutputs().catch(() => {});
   }
@@ -932,7 +944,10 @@ async function runSessions(): Promise<void> {
 
   const model = saved2.model ?? getDefault(provider);
   const thinkingLevel: ThinkingLevel | undefined = saved2.thinkingEnabled
-    ? (saved2.thinkingLevel ?? getMaxThinkingLevel(model))
+    ? (saved2.thinkingLevel ??
+      getDefaultThinkingLevel(model, {
+        baseUrl: readStoredBaseUrlSync(paths.authFile, provider),
+      }))
     : undefined;
 
   closeLogger();
@@ -945,6 +960,8 @@ async function runSessions(): Promise<void> {
     idealReviewEnabled: saved2.idealReviewEnabled,
     autoApprovePlans: saved2.autoApprovePlans,
     lspDiagnostics: saved2.lspDiagnostics,
+    allowOutsideWorkspaceWrites: saved2.allowOutsideWorkspaceWrites,
+    subagentMaxPerModel: saved2.subagentMaxPerModel,
     resumeSessionPath: selectedPath,
     theme: saved2.theme,
   });
@@ -1127,7 +1144,8 @@ async function runServe(): Promise<void> {
   );
 
   const thinkingLevel: ThinkingLevel | undefined = saved3.thinkingEnabled
-    ? (saved3.thinkingLevel ?? getMaxThinkingLevel(model))
+    ? (saved3.thinkingLevel ??
+      getDefaultThinkingLevel(model, { baseUrl: authStorage.getStoredBaseUrl(provider) }))
     : undefined;
 
   initLogger(paths.logFile, {
@@ -1288,7 +1306,8 @@ async function runAgentHome(): Promise<void> {
   );
 
   const thinkingLevel: ThinkingLevel | undefined = saved4.thinkingEnabled
-    ? (saved4.thinkingLevel ?? getMaxThinkingLevel(model))
+    ? (saved4.thinkingLevel ??
+      getDefaultThinkingLevel(model, { baseUrl: authStorage.getStoredBaseUrl(provider) }))
     : undefined;
 
   initLogger(paths.logFile, {

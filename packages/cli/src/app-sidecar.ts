@@ -30,7 +30,6 @@ import {
   chatAgentSessionsDir,
   createChatAgent,
   parseChatAgentId,
-  sessionsDirForChatAgent,
   switchChatAgent,
   type ChatAgentId,
 } from "./chat-agents/index.js";
@@ -68,6 +67,7 @@ import {
 } from "./core/session-history.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { cleanupToolOutputs } from "./tools/overflow.js";
+import { readCappedBody } from "./utils/http-body.js";
 import {
   fetchSubscriptionUsage,
   MOONSHOT_OAUTH_KEY,
@@ -84,7 +84,12 @@ import type { OAuthCredentials, OAuthLoginCallbacks } from "./core/oauth/types.j
 import { AUTH_PROVIDERS, type AuthProviderMeta } from "./core/auth-providers.js";
 import { ensureAppDirs, loadSavedSettings } from "./config.js";
 import { SettingsManager, type Settings } from "./core/settings-manager.js";
-import { getModel, getMaxThinkingLevel, getContextWindow, MODELS } from "./core/model-registry.js";
+import {
+  getModel,
+  getDefaultThinkingLevel,
+  getContextWindow,
+  MODELS,
+} from "./core/model-registry.js";
 import { resolveStartOrFallback } from "./core/resolve-start.js";
 import { getGitBranch, getGitDirtyFileCount, isGitRepo } from "./utils/git.js";
 import { extractPlanSteps } from "./utils/plan-steps.js";
@@ -95,7 +100,8 @@ import {
 } from "./core/thinking-level.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
 import { loadCustomCommands } from "./core/custom-commands.js";
-import { discoverProjects, listRecentSessions } from "./core/project-discovery.js";
+import { discoverProjects } from "./core/project-discovery.js";
+import { listSidecarSessions } from "./app-sidecar-sessions.js";
 import {
   loadTasksSync,
   saveTasksSync,
@@ -115,7 +121,7 @@ import {
   stopRadio,
 } from "./core/radio.js";
 import { enrichProcessPath } from "./core/shell-path.js";
-import { downscaleForPreview, validateVisionImage } from "./utils/image.js";
+import { downscaleForPreview, shrinkToFit, validateVisionImage } from "./utils/image.js";
 import { startServeMode, type ServeController } from "./modes/serve-mode.js";
 import { loadTelegramConfig, saveTelegramConfig, verifyBotToken } from "./core/telegram-config.js";
 import {
@@ -135,6 +141,13 @@ import { awardPrompt, awardCommits } from "./core/progress/engine.js";
 import { detectNewCommits, repoKey } from "./core/progress/git-xp.js";
 import { rebuildFromSessions } from "./core/progress/rebuild.js";
 import type { ProgressFile, ProgressSnapshot } from "./core/progress/types.js";
+import {
+  captureSidecarError,
+  flushSidecarErrors,
+  shouldCaptureToolFailure,
+  shouldCaptureUsagePollingError,
+  wrapSidecarHandler,
+} from "./core/sidecar-error-reporter.js";
 
 const ALL_PROVIDERS: Provider[] = [
   // US
@@ -285,6 +298,7 @@ async function persistModelSelection(
     await sm.set("defaultProvider", provider as Settings["defaultProvider"]);
     await sm.set("defaultModel", model);
   } catch (err) {
+    captureSidecarError(err, "app-sidecar.settings.persist-model");
     log("WARN", "app-sidecar", "failed to persist model selection", { err: String(err) });
   }
 }
@@ -303,6 +317,7 @@ async function persistThinkingLevel(
     await sm.set("thinkingEnabled", !!level);
     if (level) await sm.set("thinkingLevel", level);
   } catch (err) {
+    captureSidecarError(err, "app-sidecar.settings.persist-thinking");
     log("WARN", "app-sidecar", "failed to persist thinking level", { err: String(err) });
   }
 }
@@ -391,17 +406,27 @@ async function prepareAttachments(
     const fileName = `${Date.now().toString(36)}-${safe}`;
     const filePath = path.join(dir, fileName);
     const buf = Buffer.from(a.data, "base64");
-    // Validate image attachments before they become native image content blocks.
-    // A corrupt or unsupported-format image (e.g. a malformed .ico, or a .png
-    // with a bad IDAT) makes the provider reject the ENTIRE turn ("image data
-    // ... not a valid image") before the agent can respond. Downgrade such files
-    // to a plain "file" attachment so the model gets a path note and inspects
-    // them with its tools instead of the request 400ing.
+    // Validate and cap image attachments before they become native image content
+    // blocks. Anthropic applies a 2000 px per-dimension cap once conversation
+    // history contains more than 20 images, so every attachment must be safe for
+    // later turns too. Keep the original on disk, but send the resized bytes.
+    // Corrupt or unsupported images become plain files so they cannot reject the
+    // entire provider request.
     let prepared: PreparedAttachment = { ...a };
     if (a.kind === "image") {
-      const validatedType = await validateVisionImage(buf).catch(() => null);
-      if (validatedType) prepared = { ...a, mediaType: validatedType };
-      else prepared = { ...a, kind: "file" };
+      try {
+        const resized = await shrinkToFit(buf, a.mediaType);
+        const validatedType = await validateVisionImage(resized.buffer);
+        prepared = validatedType
+          ? {
+              ...a,
+              mediaType: validatedType,
+              data: resized.buffer.toString("base64"),
+            }
+          : { ...a, kind: "file" };
+      } catch {
+        prepared = { ...a, kind: "file" };
+      }
     }
     try {
       await fs.writeFile(filePath, buf);
@@ -425,6 +450,9 @@ interface FileHit {
 }
 
 const FILE_SEARCH_LIMIT = 20;
+// Upper bound on files walked per search (baseline #8 memory cap). Far above the
+// 20-result output limit, so relevance/recency ranking is unaffected in practice.
+const FILE_SEARCH_SCAN_CAP = 50_000;
 
 /** Score a candidate path against a lowercased query. Higher is better; a
  *  negative score means "no match". Basename hits beat path hits; prefix beats
@@ -472,8 +500,13 @@ async function searchProjectFiles(cwd: string, rawQuery: string): Promise<FileHi
   const ig = ignore.default().add(gitignore);
 
   // `stats: true` gives mtime without a second stat pass, so the empty-query
-  // "recent files" path is a single walk.
-  const entries = await fg.default("**/*", {
+  // "recent files" path is a single walk. Stream + hard scan cap (baseline #8):
+  // collecting the full result array retained ~0.9 MB per 1k files (18.5 MB at
+  // 20k), unbounded. Bail after FILE_SEARCH_SCAN_CAP entries so a giant repo
+  // can't balloon RSS; the newest/most-relevant matches still surface because
+  // the cap is far above the 20-result output limit.
+  const entries: { path: string; stats?: { mtimeMs: number } }[] = [];
+  const scanStream = fg.default.stream("**/*", {
     cwd,
     dot: false,
     onlyFiles: true,
@@ -482,6 +515,17 @@ async function searchProjectFiles(cwd: string, rawQuery: string): Promise<FileHi
     followSymbolicLinks: false,
     stats: true,
   });
+  for await (const entry of scanStream) {
+    entries.push(entry as unknown as { path: string; stats?: { mtimeMs: number } });
+    if (entries.length >= FILE_SEARCH_SCAN_CAP) {
+      (scanStream as unknown as { destroy: () => void }).destroy();
+      log("DEBUG", "app-sidecar", "file search scan cap hit", {
+        cap: String(FILE_SEARCH_SCAN_CAP),
+        cwd,
+      });
+      break;
+    }
+  }
   const files = entries.filter((e) => !ig.ignores(e.path));
 
   if (!query) {
@@ -664,7 +708,11 @@ async function runJsonModeIfRequested(): Promise<boolean> {
     maxTurns: maxTurnsRaw ? parseInt(maxTurnsRaw, 10) : undefined,
     allowedTools,
     promptCacheKey: values["prompt-cache-key"],
-  }).catch((err: unknown) => {
+  }).catch(async (err: unknown) => {
+    captureSidecarError(err, "app-sidecar.json-mode", {
+      provider: String(values.provider ?? "anthropic"),
+    });
+    await flushSidecarErrors();
     process.stderr.write((err instanceof Error ? err.message : String(err)) + "\n");
     process.exit(1);
   });
@@ -674,13 +722,11 @@ async function runJsonModeIfRequested(): Promise<boolean> {
 // ── Daemon-level HTTP helpers (shared by the session-management routes) ─────
 // The per-session route table has its own local copies; these serve the
 // daemon's own POST /session / DELETE /session routes.
-function daemonReadBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(c as Buffer));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-    req.on("error", reject);
-  });
+function daemonReadBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<string | null> {
+  return readCappedBody(req, res);
 }
 
 function daemonJson(res: http.ServerResponse, status: number, body: unknown): void {
@@ -789,19 +835,26 @@ async function main(): Promise<void> {
     { expiresAt: number; result: UsageResult }
   >();
   const usageRequests = new Map<SubscriptionUsageProvider, Promise<UsageResult>>();
-  // 429 backoff: when the provider rate-limits the usage endpoint, hold the
-  // error result until this timestamp instead of re-polling (and re-logging a
-  // WARN) every 60s — the old cadence hammered a limited endpoint for hours.
+  // 429 backoff: quota endpoints are auxiliary UI data. Honor Retry-After when
+  // provided; otherwise retain the unavailable snapshot for 30 minutes. Clamp
+  // the provider value so a malformed header can neither hammer the endpoint
+  // nor suppress usage data forever.
   const usageRateLimitedUntil = new Map<SubscriptionUsageProvider, number>();
-  const USAGE_RATE_LIMIT_BACKOFF_MS = 5 * 60_000;
+  const USAGE_RATE_LIMIT_FALLBACK_BACKOFF_MS = 30 * 60_000;
+  const USAGE_RATE_LIMIT_MIN_BACKOFF_MS = 60_000;
+  const USAGE_RATE_LIMIT_MAX_BACKOFF_MS = 24 * 60 * 60_000;
 
   async function fetchUsageProvider(provider: SubscriptionUsageProvider): Promise<UsageResult> {
-    const displayName = provider === "anthropic" ? "Anthropic" : "Codex";
-    if (!(await auth.hasProviderAuth(provider))) {
+    const displayName =
+      provider === "anthropic" ? "Anthropic" : provider === "openai" ? "Codex" : "Kimi";
+    // Kimi plan usage is tracked on the OAuth credential specifically — the
+    // Moonshot platform API key is metered per-token, not per plan window.
+    const authKey = provider === "moonshot" ? MOONSHOT_OAUTH_KEY : provider;
+    if (!(await auth.hasProviderAuth(authKey))) {
       return { provider, displayName, connected: false, windows: [], fetchedAt: Date.now() };
     }
     try {
-      let credentials = await auth.resolveCredentials(provider);
+      let credentials = await auth.resolveCredentials(authKey);
       try {
         const snapshot = {
           ...(await fetchSubscriptionUsage(provider, credentials)),
@@ -813,7 +866,7 @@ async function main(): Promise<void> {
         // A provider can revoke an access token before its stored expiry. Refresh
         // once on 401, matching inference auth recovery, then retry the usage call.
         if (error instanceof SubscriptionUsageError && error.status === 401) {
-          credentials = await auth.resolveCredentials(provider, { forceRefresh: true });
+          credentials = await auth.resolveCredentials(authKey, { forceRefresh: true });
           const snapshot = {
             ...(await fetchSubscriptionUsage(provider, credentials)),
             connected: true as const,
@@ -825,11 +878,27 @@ async function main(): Promise<void> {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      log("WARN", "app-sidecar", "subscription usage fetch failed", { provider, message });
-      if (error instanceof SubscriptionUsageError && error.status === 429) {
-        usageRateLimitedUntil.set(provider, Date.now() + USAGE_RATE_LIMIT_BACKOFF_MS);
+      if (shouldCaptureUsagePollingError(error)) {
+        captureSidecarError(error, "app-sidecar.usage.fetch", { provider });
       }
-      const connected = await auth.hasProviderAuth(provider);
+      let backoffMs: number | undefined;
+      if (error instanceof SubscriptionUsageError && error.status === 429) {
+        backoffMs = Math.min(
+          USAGE_RATE_LIMIT_MAX_BACKOFF_MS,
+          Math.max(
+            USAGE_RATE_LIMIT_MIN_BACKOFF_MS,
+            error.retryAfterMs ?? USAGE_RATE_LIMIT_FALLBACK_BACKOFF_MS,
+          ),
+        );
+        usageRateLimitedUntil.set(provider, Date.now() + backoffMs);
+      }
+      log("WARN", "app-sidecar", "subscription usage fetch failed", {
+        provider,
+        message,
+        ...(backoffMs !== undefined && { backoffMs: String(backoffMs) }),
+      });
+
+      const connected = await auth.hasProviderAuth(authKey);
       return {
         provider,
         displayName,
@@ -883,112 +952,117 @@ async function main(): Promise<void> {
     }
   }
 
-  const server = http.createServer((req, res) => {
-    const url = req.url ?? "/";
-    const method = req.method ?? "GET";
+  const server = http.createServer(
+    wrapSidecarHandler((req: http.IncomingMessage, res: http.ServerResponse) => {
+      const url = req.url ?? "/";
+      const method = req.method ?? "GET";
 
-    // CORS preflight — the webview origin differs from 127.0.0.1.
-    if (method === "OPTIONS") {
-      res.writeHead(204, {
-        "access-control-allow-origin": "*",
-        "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
-        "access-control-allow-headers": "content-type, x-gg-session",
-      });
-      res.end();
-      return;
-    }
-
-    // ── Daemon-level routes (session lifecycle) ──────────────────────────
-    // Create a session for a window: { mode?, cwd, sessionPath? } → { sessionId }.
-    if (method === "POST" && url === "/session") {
-      void daemonReadBody(req).then(async (raw) => {
-        let body: { mode?: unknown; chatAgent?: unknown; cwd?: unknown; sessionPath?: unknown } =
-          {};
-        try {
-          body = raw ? (JSON.parse(raw) as typeof body) : {};
-        } catch {
-          /* empty/invalid body → defaults below */
-        }
-        const mode: WorkspaceMode = body.mode === "chat" ? "chat" : "code";
-        const chatAgent = parseChatAgentId(body.chatAgent);
-        const sessionCwd =
-          typeof body.cwd === "string" && body.cwd
-            ? body.cwd
-            : (process.env.GG_APP_CWD ?? process.cwd());
-        const sessionPath =
-          typeof body.sessionPath === "string" && body.sessionPath ? body.sessionPath : undefined;
-        const id = randomUUID();
-        try {
-          const ctx = await createSession(
-            { auth, paths, progress, memoryStore, jiwaStore },
-            { id, mode, chatAgent, cwd: sessionCwd, sessionPath },
-          );
-          sessions.set(id, ctx);
-          log("INFO", "app-sidecar", "session created", {
-            id,
-            mode,
-            chatAgent,
-            cwd: sessionCwd,
-          });
-          daemonJson(res, 200, { sessionId: id });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          log("ERROR", "app-sidecar", "session create failed", { message });
-          daemonJson(res, 500, { error: message });
-        }
-      });
-      return;
-    }
-
-    // Dispose a session: DELETE /session/:id.
-    if (method === "DELETE" && url.startsWith("/session/")) {
-      const id = decodeURIComponent(url.slice("/session/".length));
-      const ctx = sessions.get(id);
-      if (ctx) {
-        sessions.delete(id);
-        void ctx.dispose().catch(() => {});
-        log("INFO", "app-sidecar", "session disposed", { id });
-      }
-      daemonJson(res, 200, { ok: true });
-      return;
-    }
-
-    // Progress is daemon-level so the Home screen can paint before a project
-    // session exists; per-session callers still work through the same endpoint.
-    if (method === "GET" && url === "/progress") {
-      daemonJson(res, 200, progress.snapshot());
-      return;
-    }
-
-    // Subscription quota is account-wide, not project/session-specific. OAuth
-    // tokens stay in this daemon; only the active provider's normalized snapshot
-    // reaches the webview.
-    if (method === "GET" && (url === "/usage" || url.startsWith("/usage?"))) {
-      void (async () => {
-        const provider = new URL(url, `http://${host}`).searchParams.get("provider");
-        if (provider !== "anthropic" && provider !== "openai") {
-          daemonJson(res, 400, { error: "unsupported usage provider" });
-          return;
-        }
-        daemonJson(res, 200, await subscriptionUsage(provider));
-      })().catch((error) => {
-        log("ERROR", "app-sidecar", "subscription usage request failed", {
-          message: error instanceof Error ? error.message : String(error),
+      // CORS preflight — the webview origin differs from 127.0.0.1.
+      if (method === "OPTIONS") {
+        res.writeHead(204, {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+          "access-control-allow-headers": "content-type, x-gg-session",
         });
-        daemonJson(res, 500, { error: "Usage is temporarily unavailable." });
-      });
-      return;
-    }
+        res.end();
+        return;
+      }
 
-    // ── Per-session delegation ───────────────────────────────────────────
-    const id = sessionIdFromReq(req, url);
-    const ctx = id ? sessions.get(id) : undefined;
-    if (!ctx) {
-      daemonJson(res, 404, { error: "unknown session" });
-      return;
-    }
-    ctx.handle(req, res, url, method);
-  });
+      // ── Daemon-level routes (session lifecycle) ──────────────────────────
+      // Create a session for a window: { mode?, cwd, sessionPath? } → { sessionId }.
+      if (method === "POST" && url === "/session") {
+        void daemonReadBody(req, res).then(async (raw) => {
+          if (raw === null) return;
+          let body: { mode?: unknown; chatAgent?: unknown; cwd?: unknown; sessionPath?: unknown } =
+            {};
+          try {
+            body = raw ? (JSON.parse(raw) as typeof body) : {};
+          } catch {
+            /* empty/invalid body → defaults below */
+          }
+          const mode: WorkspaceMode = body.mode === "chat" ? "chat" : "code";
+          const chatAgent = parseChatAgentId(body.chatAgent);
+          const sessionCwd =
+            typeof body.cwd === "string" && body.cwd
+              ? body.cwd
+              : (process.env.GG_APP_CWD ?? process.cwd());
+          const sessionPath =
+            typeof body.sessionPath === "string" && body.sessionPath ? body.sessionPath : undefined;
+          const id = randomUUID();
+          try {
+            const ctx = await createSession(
+              { auth, paths, progress, memoryStore, jiwaStore },
+              { id, mode, chatAgent, cwd: sessionCwd, sessionPath },
+            );
+            sessions.set(id, ctx);
+            log("INFO", "app-sidecar", "session created", {
+              id,
+              mode,
+              chatAgent,
+              cwd: sessionCwd,
+            });
+            daemonJson(res, 200, { sessionId: id });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            captureSidecarError(err, "app-sidecar.session.create");
+            log("ERROR", "app-sidecar", "session create failed", { message });
+            daemonJson(res, 500, { error: message });
+          }
+        });
+        return;
+      }
+
+      // Dispose a session: DELETE /session/:id.
+      if (method === "DELETE" && url.startsWith("/session/")) {
+        const id = decodeURIComponent(url.slice("/session/".length));
+        const ctx = sessions.get(id);
+        if (ctx) {
+          sessions.delete(id);
+          void ctx.dispose().catch(() => {});
+          log("INFO", "app-sidecar", "session disposed", { id });
+        }
+        daemonJson(res, 200, { ok: true });
+        return;
+      }
+
+      // Progress is daemon-level so the Home screen can paint before a project
+      // session exists; per-session callers still work through the same endpoint.
+      if (method === "GET" && url === "/progress") {
+        daemonJson(res, 200, progress.snapshot());
+        return;
+      }
+
+      // Subscription quota is account-wide, not project/session-specific. OAuth
+      // tokens stay in this daemon; only the active provider's normalized snapshot
+      // reaches the webview.
+      if (method === "GET" && (url === "/usage" || url.startsWith("/usage?"))) {
+        void (async () => {
+          const provider = new URL(url, `http://${host}`).searchParams.get("provider");
+          if (provider !== "anthropic" && provider !== "openai" && provider !== "moonshot") {
+            daemonJson(res, 400, { error: "unsupported usage provider" });
+            return;
+          }
+          daemonJson(res, 200, await subscriptionUsage(provider));
+        })().catch((error) => {
+          captureSidecarError(error, "app-sidecar.usage.request");
+          log("ERROR", "app-sidecar", "subscription usage request failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+          daemonJson(res, 500, { error: "Usage is temporarily unavailable." });
+        });
+        return;
+      }
+
+      // ── Per-session delegation ───────────────────────────────────────────
+      const id = sessionIdFromReq(req, url);
+      const ctx = id ? sessions.get(id) : undefined;
+      if (!ctx) {
+        daemonJson(res, 404, { error: "unknown session" });
+        return;
+      }
+      ctx.handle(req, res, url, method);
+    }, "app-sidecar.http"),
+  );
   server.listen(port, host, () => {
     const addr = server.address() as AddressInfo;
     // The Rust shell reads this line to learn the daemon port.
@@ -1005,6 +1079,8 @@ async function main(): Promise<void> {
     // Radio playback is app-wide (one stream across all windows), so it stops
     // at the daemon level, not per session.
     stopRadio();
+    // Close the ~/.gg progress fs.watch handle (baseline #8 leak fix).
+    progress.dispose();
     await Promise.all([...sessions.values()].map((c) => c.dispose().catch(() => {})));
     server.close();
     process.exit(0);
@@ -1103,6 +1179,8 @@ interface ProgressManager {
   snapshot: () => ProgressSnapshot;
   /** Award XP for one successfully completed run (prompt + any new commits). */
   awardRun: (cwd: string, runStartedAt: number, originId?: string) => Promise<void>;
+  /** Close the ~/.gg fs.watch + clear any pending debounce (leak-free shutdown). */
+  dispose: () => void;
 }
 
 async function createProgressManager(
@@ -1164,6 +1242,7 @@ async function createProgressManager(
       lastSeenNonce = updated.lastEvent?.nonce ?? null;
       broadcastAll(buildSnapshot(updated), originId);
     } catch (err) {
+      captureSidecarError(err, "app-sidecar.progress.award");
       log("DEBUG", "app-sidecar", "progress award failed", {
         message: err instanceof Error ? err.message : String(err),
       });
@@ -1173,6 +1252,7 @@ async function createProgressManager(
   // Watch ~/.ezcoder (dir watch survives the atomic tmp+rename) for progress.json
   // writes from other daemon processes; debounce, reload read-only, dedupe by nonce.
   let watchDebounce: NodeJS.Timeout | null = null;
+  let progressWatcher: ReturnType<typeof fsWatch> | null = null;
   try {
     const watcher = fsWatch(agentDir, (_event, filename) => {
       if (filename !== "progress.json") return;
@@ -1190,13 +1270,30 @@ async function createProgressManager(
       }, 150);
     });
     watcher.unref();
+    progressWatcher = watcher;
   } catch (err) {
+    captureSidecarError(err, "app-sidecar.progress.watch");
     log("DEBUG", "app-sidecar", "progress watch unavailable", {
       message: err instanceof Error ? err.message : String(err),
     });
   }
 
-  return { snapshot, awardRun };
+  // Dispose closes the fs.watch handle (baseline #8: it was previously never
+  // closed — a per-daemon leak) and clears any pending debounce timer.
+  function dispose(): void {
+    if (watchDebounce) {
+      clearTimeout(watchDebounce);
+      watchDebounce = null;
+    }
+    try {
+      progressWatcher?.close();
+    } catch {
+      // Already closed / never opened — nothing to do.
+    }
+    progressWatcher = null;
+  }
+
+  return { snapshot, awardRun, dispose };
 }
 
 type WorkspaceMode = "code" | "chat";
@@ -1253,6 +1350,10 @@ async function createSession(
   const host = "127.0.0.1";
 
   const saved = loadSavedSettings(paths.settingsFile);
+  // Native login/logout and other live sessions share auth.json. Refresh the
+  // daemon-level snapshot before choosing this session's provider so a project
+  // never boots against credentials that were just replaced or disconnected.
+  await auth.load();
   // Per-project model/thinking prefs win over the shared global settings.json:
   // each window (one project cwd) restores its own selection instead of every
   // window reading the same single global slot that the last writer clobbered
@@ -1277,9 +1378,14 @@ async function createSession(
   }
 
   // Per-project thinking prefs win over the global settings.json fallback.
+  // With no saved level, the default follows the active credential's endpoint:
+  // Kimi K3 on the OAuth coding endpoint starts at its declared default (high),
+  // matching the official kimi-code CLI's plan-usage profile.
   const thinkEnabled = projectPrefs?.thinkingEnabled ?? saved.thinkingEnabled;
   const thinkingLevel: ThinkingLevel | undefined = thinkEnabled
-    ? (projectPrefs?.thinkingLevel ?? saved.thinkingLevel ?? getMaxThinkingLevel(model))
+    ? (projectPrefs?.thinkingLevel ??
+      saved.thinkingLevel ??
+      getDefaultThinkingLevel(model, { baseUrl: auth.getStoredBaseUrl(provider) }))
     : undefined;
 
   // ── SSE fan-out (declared before the session so plan callbacks can use it) ─
@@ -1344,6 +1450,11 @@ async function createSession(
     const f = formatError(err);
     const message = f.message ? desktopGuidance(f.message) : undefined;
     const guidance = desktopGuidance(f.guidance);
+    captureSidecarError(err, `app-sidecar.${logLabel.replaceAll(" ", "-")}`, {
+      scope: type,
+      ...(f.provider ? { provider: f.provider } : {}),
+      ...(f.statusCode != null ? { status: String(f.statusCode) } : {}),
+    });
     log("ERROR", "app-sidecar", logLabel, {
       headline: f.headline,
       source: f.source,
@@ -1404,6 +1515,7 @@ async function createSession(
         chatAgent = nextAgent;
         broadcast("chat_agent_change", { chatAgent: nextAgent });
         await session.persistAppMarker("agent_handoff", { chatAgent: nextAgent }).catch((error) => {
+          captureSidecarError(error, "app-sidecar.chat-agent.persist-handoff");
           log("WARN", "app-sidecar", "agent handoff marker persist failed", {
             message: error instanceof Error ? error.message : String(error),
           });
@@ -1542,6 +1654,7 @@ async function createSession(
       .catch(() => false)
       .then(() => syncApprovedPlanProgress(generation))
       .catch((error) => {
+        captureSidecarError(error, "app-sidecar.plan.refresh-progress");
         log("WARN", "app-sidecar", "plan progress refresh failed", {
           message: error instanceof Error ? error.message : String(error),
         });
@@ -1597,6 +1710,11 @@ async function createSession(
   session.eventBus.on("tool_call_end", (d) => {
     const name = toolCallNames.get(d.toolCallId) ?? "unknown";
     toolCallNames.delete(d.toolCallId);
+    if (d.isError && shouldCaptureToolFailure(name, d.result)) {
+      // Expected model-correctable validation failures stay in the local log and
+      // conversation. Unexpected failures are reported without private result data.
+      captureSidecarError(new Error(`Tool ${name} failed`), `tool.${name}`, { tool: name });
+    }
     log(d.isError ? "ERROR" : "INFO", "tool", `Tool call ended: ${name}`, {
       id: d.toolCallId,
       durationMs: String(d.durationMs),
@@ -1622,6 +1740,9 @@ async function createSession(
   session.eventBus.on("server_tool_call", (d) => broadcast("server_tool_call", d));
   session.eventBus.on("turn_end", (d) => broadcast("turn_end", d));
   session.eventBus.on("agent_done", (d) => broadcast("agent_done", d));
+  // Non-clean stop (max_tokens/refusal/provider error) — info-style frame so
+  // the webview can warn instead of presenting truncated output as complete.
+  session.eventBus.on("truncated", (d) => broadcast("truncated", d));
   session.eventBus.on("error", (d) => {
     broadcastError("error", "agent error", d.error);
   });
@@ -1952,6 +2073,7 @@ async function createSession(
         } catch (error) {
           // Keep tracking when prompt cleanup fails; hiding the widget here
           // would claim completion while the approved-plan contract remained.
+          captureSidecarError(error, "app-sidecar.plan.cleanup");
           log("WARN", "app-sidecar", "completed plan cleanup failed", {
             message: error instanceof Error ? error.message : String(error),
           });
@@ -2401,13 +2523,8 @@ async function createSession(
   };
   scheduleGitPoll(5000);
 
-  function readBody(req: http.IncomingMessage): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      req.on("data", (c) => chunks.push(c as Buffer));
-      req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-      req.on("error", reject);
-    });
+  function readBody(req: http.IncomingMessage, res: http.ServerResponse): Promise<string | null> {
+    return readCappedBody(req, res);
   }
 
   function json(res: http.ServerResponse, status: number, body: unknown): void {
@@ -2454,9 +2571,10 @@ async function createSession(
       void memoryStore
         .snapshot()
         .then((snapshot) => json(res, 200, snapshot))
-        .catch((error) =>
-          json(res, 500, { error: error instanceof Error ? error.message : String(error) }),
-        );
+        .catch((error) => {
+          captureSidecarError(error, "app-sidecar.memory.snapshot");
+          json(res, 500, { error: error instanceof Error ? error.message : String(error) });
+        });
       return;
     }
 
@@ -2470,9 +2588,10 @@ async function createSession(
         .forget(id)
         .then(() => memoryStore.snapshot())
         .then((snapshot) => json(res, 200, snapshot))
-        .catch((error) =>
-          json(res, 500, { error: error instanceof Error ? error.message : String(error) }),
-        );
+        .catch((error) => {
+          captureSidecarError(error, "app-sidecar.memory.forget");
+          json(res, 500, { error: error instanceof Error ? error.message : String(error) });
+        });
       return;
     }
 
@@ -2480,9 +2599,10 @@ async function createSession(
       void jiwaStore
         .snapshot()
         .then((snapshot) => json(res, 200, snapshot))
-        .catch((error) =>
-          json(res, 500, { error: error instanceof Error ? error.message : String(error) }),
-        );
+        .catch((error) => {
+          captureSidecarError(error, "app-sidecar.jiwa.snapshot");
+          json(res, 500, { error: error instanceof Error ? error.message : String(error) });
+        });
       return;
     }
 
@@ -2496,9 +2616,10 @@ async function createSession(
         .forget(id)
         .then(() => jiwaStore.snapshot())
         .then((snapshot) => json(res, 200, snapshot))
-        .catch((error) =>
-          json(res, 500, { error: error instanceof Error ? error.message : String(error) }),
-        );
+        .catch((error) => {
+          captureSidecarError(error, "app-sidecar.jiwa.forget");
+          json(res, 500, { error: error instanceof Error ? error.message : String(error) });
+        });
       return;
     }
     if (method === "GET" && (url === "/events" || url.startsWith("/events?"))) {
@@ -2561,7 +2682,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/settings") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let projectsRoot: string;
         try {
           projectsRoot = (JSON.parse(raw) as { projectsRoot?: string }).projectsRoot ?? "";
@@ -2584,7 +2706,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/create-project") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let name: string;
         try {
           name = (JSON.parse(raw) as { name?: string }).name ?? "";
@@ -2614,6 +2737,7 @@ async function createSession(
           await fs.mkdir(dir, { recursive: true });
           json(res, 200, { path: dir });
         } catch (err) {
+          captureSidecarError(err, "app-sidecar.project.create");
           json(res, 500, { error: err instanceof Error ? err.message : String(err) });
         }
       });
@@ -2625,6 +2749,7 @@ async function createSession(
       void discoverProjects()
         .then((projects) => json(res, 200, { projects }))
         .catch((err) => {
+          captureSidecarError(err, "app-sidecar.projects.discover");
           log("ERROR", "app-sidecar", "discoverProjects failed", {
             message: err instanceof Error ? err.message : String(err),
           });
@@ -2640,45 +2765,14 @@ async function createSession(
         return;
       }
       const requestedAgent = new URL(url, `http://${host}`).searchParams.get("chatAgent");
-      if (requestedAgent === "all") {
-        void Promise.all(
-          CHAT_AGENT_IDS.map(async (agentId) => {
-            const agentSessions = await listRecentSessions(
-              target,
-              5,
-              chatAgentSessionsDir(paths.sessionsDir, agentId),
-            );
-            return agentSessions.map((item) => ({ ...item, chatAgent: agentId }));
-          }),
-        )
-          .then(async (groups) => {
-            const dated = await Promise.all(
-              groups.flat().map(async (item) => ({
-                item,
-                mtime: await fs
-                  .stat(item.path)
-                  .then((stat) => stat.mtimeMs)
-                  .catch(() => 0),
-              })),
-            );
-            const recent = dated
-              .sort((left, right) => right.mtime - left.mtime)
-              .slice(0, 5)
-              .map(({ item }) => item);
-            json(res, 200, { sessions: recent });
-          })
-          .catch(() => json(res, 200, { sessions: [] }));
-        return;
-      }
-      // The picker may be served by a sidecar currently running in Chat mode.
-      // An omitted chatAgent always means coding history; chat callers identify
-      // their namespace explicitly (one agent or "all").
-      const sessionsDir = requestedAgent
-        ? sessionsDirForChatAgent(paths.sessionsDir, requestedAgent)
-        : paths.sessionsDir;
-      void listRecentSessions(target, 5, sessionsDir)
+      // An omitted chatAgent means coding history; chat callers identify one
+      // agent or request the combined, recency-sorted "all" listing.
+      void listSidecarSessions(target, requestedAgent, paths.sessionsDir)
         .then((sessions) => json(res, 200, { sessions }))
-        .catch(() => json(res, 200, { sessions: [] }));
+        .catch((error) => {
+          captureSidecarError(error, "app-sidecar.sessions.list");
+          json(res, 200, { sessions: [] });
+        });
       return;
     }
 
@@ -2687,6 +2781,7 @@ async function createSession(
       void searchProjectFiles(cwd, q)
         .then((files) => json(res, 200, { files }))
         .catch((err) => {
+          captureSidecarError(err, "app-sidecar.files.search");
           log("ERROR", "app-sidecar", "searchProjectFiles failed", {
             message: err instanceof Error ? err.message : String(err),
           });
@@ -3054,7 +3149,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/prompt") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let text: string;
         let attachments: AppAttachment[];
         let meta: { nolanSent?: boolean; enhancements?: unknown[] } | undefined;
@@ -3190,7 +3286,8 @@ async function createSession(
         json(res, 404, { error: "Nolan is not available in EZ Chat." });
         return;
       }
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let text: string;
         try {
           text = (JSON.parse(raw) as { text?: string }).text ?? "";
@@ -3253,7 +3350,8 @@ async function createSession(
         json(res, 404, { error: "Autopilot is not available in EZ Chat." });
         return;
       }
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let enabled: boolean;
         try {
           enabled = Boolean((JSON.parse(raw) as { enabled?: boolean }).enabled);
@@ -3274,7 +3372,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/enhance") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let text: string;
         try {
           text = (JSON.parse(raw) as { text?: string }).text ?? "";
@@ -3293,6 +3392,7 @@ async function createSession(
           json(res, 200, result);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
+          captureSidecarError(err, "app-sidecar.prompt-enhancer");
           log("ERROR", "app-sidecar", "enhance failed", { message });
           json(res, 500, { error: message });
         }
@@ -3323,7 +3423,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/radio/volume") {
-      void readBody(req).then((raw) => {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
         let volume: number;
         try {
           volume = Number((JSON.parse(raw) as { volume?: number }).volume);
@@ -3346,7 +3447,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/radio") {
-      void readBody(req).then((raw) => {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
         let station: string;
         try {
           station = (JSON.parse(raw) as { station?: string }).station ?? "";
@@ -3370,7 +3472,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/tasks/run") {
-      void readBody(req).then((raw) => {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
         let id: string | null;
         let all: boolean;
         try {
@@ -3476,7 +3579,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/tasks/delete") {
-      void readBody(req).then((raw) => {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
         let id: string;
         try {
           id = (JSON.parse(raw) as { id?: string }).id ?? "";
@@ -3519,7 +3623,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/model") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let modelId: string;
         try {
           modelId = (JSON.parse(raw) as { model?: string }).model ?? "";
@@ -3590,7 +3695,8 @@ async function createSession(
     // to BOTH Nolan sessions (chat + autopilot reviewer); a switch landing while
     // either is mid-run defers via the pending-model mechanics.
     if (method === "POST" && url === "/ken/model") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let modelId: string | null;
         try {
           const parsed = (JSON.parse(raw) as { model?: string | null }).model;
@@ -3633,7 +3739,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/kill") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let id: string;
         try {
           id = (JSON.parse(raw) as { id?: string }).id ?? "";
@@ -3713,6 +3820,7 @@ async function createSession(
           drained,
         });
       })().catch((error) => {
+        captureSidecarError(error, "app-sidecar.run.cancel");
         broadcast("cancel_failed", { error: "cancel_failed", runState: runLifecycle.state });
         json(res, 500, {
           error: "cancel_failed",
@@ -3741,6 +3849,7 @@ async function createSession(
           json(res, 200, { ok: true });
         })
         .catch((err) => {
+          captureSidecarError(err, "app-sidecar.session.new");
           json(res, 500, { error: err instanceof Error ? err.message : String(err) });
         });
       return;
@@ -3756,7 +3865,8 @@ async function createSession(
     //   3. session_reset tells the webview to clear its transcript; it then runs
     //      the "implement it now" prompt in the clean session.
     if (method === "POST" && url === "/plan/accept") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let planPath: string | undefined;
         try {
           planPath = (JSON.parse(raw) as { planPath?: string }).planPath || undefined;
@@ -3794,6 +3904,7 @@ async function createSession(
           broadcast("plan_progress", planProgressPayload());
           json(res, 200, { ok: true, planTotal });
         } catch (err) {
+          captureSidecarError(err, "app-sidecar.plan.accept");
           json(res, 500, { error: err instanceof Error ? err.message : String(err) });
         }
       });
@@ -3807,7 +3918,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/auth/apikey") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let provider = "";
         let key: string;
         let variant: string | undefined;
@@ -3851,7 +3963,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/auth/oauth/start") {
-      void readBody(req).then((raw) => {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
         let provider = "";
         try {
           provider = (JSON.parse(raw) as { provider?: string }).provider ?? "";
@@ -3887,6 +4000,7 @@ async function createSession(
             await auth.setCredentials(storageKey, creds);
             broadcast("auth_done", { provider });
           } catch (err) {
+            captureSidecarError(err, "app-sidecar.auth.oauth", { provider });
             broadcast("auth_error", {
               provider,
               message: err instanceof Error ? err.message : String(err),
@@ -3901,7 +4015,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/auth/oauth/code") {
-      void readBody(req).then((raw) => {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
         let code: string;
         try {
           code = (JSON.parse(raw) as { code?: string }).code ?? "";
@@ -3921,7 +4036,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/auth/logout") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let provider: string;
         try {
           provider = (JSON.parse(raw) as { provider?: string }).provider ?? "";
@@ -3959,7 +4075,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/telegram") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let botTokenInput: string;
         let userIdInput: string;
         try {
@@ -4029,6 +4146,7 @@ async function createSession(
           json(res, 200, { running: true });
         } catch (err) {
           serveController = null;
+          captureSidecarError(err, "app-sidecar.serve.start", { provider: st.provider });
           json(res, 400, { error: err instanceof Error ? err.message : String(err) });
         }
       })();
@@ -4057,6 +4175,7 @@ async function createSession(
       void buildMcpRows(targetCwd)
         .then((servers) => json(res, 200, { servers }))
         .catch((err) => {
+          captureSidecarError(err, "app-sidecar.mcp.list");
           log("ERROR", "app-sidecar", "buildMcpRows failed", {
             message: err instanceof Error ? err.message : String(err),
           });
@@ -4066,7 +4185,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/mcp/add") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let line: string;
         let scopeValue: string;
         let bodyCwd: string | undefined;
@@ -4116,6 +4236,7 @@ async function createSession(
             requiresAuth: probe.requiresAuth,
           });
         } catch (err) {
+          captureSidecarError(err, "app-sidecar.mcp.add", { server: config.name });
           json(res, 500, {
             error: err instanceof Error ? err.message : String(err),
           });
@@ -4125,7 +4246,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/mcp/remove") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let name: string;
         let scopeValue: string;
         let bodyCwd: string | undefined;
@@ -4166,7 +4288,8 @@ async function createSession(
     // `mcp_auth_error`. Responds 202 immediately and runs the flow in the
     // background (the browser round-trip can take a while).
     if (method === "POST" && url === "/mcp/login") {
-      void readBody(req).then(async (raw) => {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
         let name: string;
         let scopeValue: string;
         let bodyCwd: string | undefined;
@@ -4207,6 +4330,7 @@ async function createSession(
             broadcast("mcp_auth_error", { name, message: result.error ?? "Login failed." });
           }
         } catch (err) {
+          captureSidecarError(err, "app-sidecar.mcp.login", { server: name });
           broadcast("mcp_auth_error", {
             name,
             message: err instanceof Error ? err.message : String(err),
@@ -4252,7 +4376,9 @@ async function createSession(
   };
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
+  captureSidecarError(err, "app-sidecar.main", { severity: "fatal" });
+  await flushSidecarErrors();
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`GG_APP_FATAL ${message}\n`);
   process.exit(1);

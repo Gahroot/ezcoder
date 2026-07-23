@@ -253,3 +253,142 @@ If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
 ## Upstream sync
 
 `./scripts/sync-upstream.sh` (`--dry-run` to preview) fetches + merges `upstream/main`, then rewrites fork-specific identity: dirs `gg-ai→ai`, `gg-agent→agent`, `ezcoder→cli`; scope `@kenkaiiii→@prestyj`; branding `GG→EZ`, `~/.ezcoder/`, `EZCoderAIError`. On merge conflicts: resolve, `git merge --continue`, re-run the script. The EZ block-art logo in `Banner.tsx`/`cli.ts` can't be auto-detected — verify visually with `ezcoder --help` after syncing.
+
+## Key Patterns
+
+- **StreamResult/AgentStream**: dual-nature objects — async iterable (`for await`) + thenable (`await`)
+- **EventStream**: push-based async iterable in `@kenkaiiii/gg-ai/utils/event-stream.ts`
+- **agentLoop**: pure async generator — call LLM, yield deltas, execute tools, loop on tool_use
+- **OAuth-only auth**: no API keys, PKCE OAuth flows, tokens in `~/.gg/auth.json`
+- **Zod schemas**: tool parameters defined with Zod, converted to JSON Schema at provider boundary
+- **Debug logging**: the CLI and the app sidecar log to **different files** — always check the right one.
+  - CLI (`ggcoder` in a terminal): `~/.gg/debug.log` — truncated on each CLI restart.
+  - **gg-app (desktop app) — the one we actually use now**: `~/.gg/gg-app-sidecar.log`. Each window's
+    sidecar process appends here (not truncated per-window), tagged with its own `sid=`. Same format:
+    timestamped, category-tagged (`[app-sidecar]`, `[tool]`, `[cache]`, `[compaction]`, `[subagent]`,
+    `[lsp]`, `[mcp]`, `[auth]`, …). Agent/provider errors land as `[ERROR] [app-sidecar] run failed
+    message=…` or `[ERROR] [app-sidecar] agent error message=…`. Both files share the core file-writer
+    logger (`openLog`/`log` in `@kenkaiiii/gg-core`, rotated at 10MB to a single `.1` generation);
+    ggcoder's thin wrapper is `src/core/logger.ts` (`initLogger`, `attachToEventBus`). The sidecar wires
+    its own bus listeners directly in `app-sidecar.ts` instead of calling `attachToEventBus`.
+
+## LSP Inline Edit Diagnostics
+
+Successful `edit`/`write` tool results get compiler-grade error diagnostics appended
+(`Diagnostics in src/a.ts (informational …): L42:7 Type 'string' is not assignable …`)
+so the model self-corrects type errors in the same turn it creates them. Code lives in
+`packages/ggcoder/src/core/lsp/` (`jsonrpc.ts` zero-dep Content-Length framing,
+`servers.ts` catalog + root detection, `client.ts` document sync + push/pull race,
+`manager.ts` lazy pool, `format.ts` rendering).
+
+Hard rules:
+
+- **TS/JS works for every user out of the box.** `typescript-language-server` + `typescript`
+  ship as ggcoder dependencies (~26MB unpacked) — no postinstall, no downloads, no runtime
+  `npx -y`. Resolution order: project's `node_modules` (walking up, its own TS version wins) →
+  ggcoder's bundled copy → PATH. Node-based servers spawn via `process.execPath` + the real
+  bin script (never `.bin` shims, which need `node` on PATH). Other servers
+  (`pyright-langserver`, `gopls`, `rust-analyzer`, `clangd`) resolve from project/PATH only —
+  they ship with their language toolchains.
+- **Silent graceful degradation.** Missing/crashed/slow server ⇒ tool output is byte-identical
+  to before (debug-log only). A failed spawn marks `(server, root)` broken for the session.
+- **Lazy + budgeted.** Nothing spawns until the first edit of a matching file; diagnostics are
+  capped at 3s warm / 8s first-touch — overruns return nothing and leave the server warm.
+- **Errors only, capped at 5**, framed as informational so multi-file sequences aren't derailed.
+- Opt out with `"lspDiagnostics": false` in `~/.gg/settings.json`. Exit handlers call
+  `lspManager.shutdownAll()` alongside `processManager`.
+- Tests: `src/core/lsp/*.test.ts` run against a fake stdio server fixture
+  (`src/tools/__fixtures__/fake-lsp-server.mjs`) — CI never needs real language servers.
+  Opt-in real-tsserver test: `GG_LSP_INTEGRATION=1 npx vitest run src/core/lsp/integration.test.ts`.
+
+## MCP Servers
+
+`ggcoder mcp` adds and manages Model Context Protocol servers. Configs are stored in the same `{ "mcpServers": { … } }` shape Claude Code uses, so they're portable both directions.
+
+### Scopes & file locations
+
+- **Global** → `~/.gg/mcp.json` — available in all GG Coder sessions.
+- **Project** → `./.gg/mcp.json` — only the current project root.
+- On a name collision, **project wins**. Provider defaults (e.g. `kencode-search`) stay authoritative — a user server can only add a new name, never override a default.
+
+### Commands
+
+```bash
+ggcoder mcp                              # interactive dashboard (🟢/🔴 status, tool counts, scope)
+ggcoder mcp list                         # list servers with live connection status
+ggcoder mcp get <name>                   # show one server's config (secrets masked)
+ggcoder mcp add <args…>                  # add a server (claude-compatible grammar)
+ggcoder mcp remove <name> [--scope s]    # remove a server
+```
+
+The `add` grammar mirrors `claude mcp add` 1:1 — you can paste a `claude mcp add …` (or `ggcoder mcp add …`) line and the prefix is stripped automatically:
+
+```bash
+ggcoder mcp add --transport http notion https://mcp.notion.com/mcp
+ggcoder mcp add --transport sse asana https://mcp.asana.com/sse
+ggcoder mcp add --env AIRTABLE_API_KEY=key airtable -- npx -y airtable-mcp-server
+```
+
+`--scope user` maps to global; `local`/`project` map to project. Code lives in `core/mcp/` (`store.ts` persistence, `parse-add-command.ts` parser, `client.ts` `connectAllDetailed`/`probe`) and `cli/mcp.ts` + `ui/mcp.tsx`.
+
+### Caveats
+
+- **Connection is startup-only.** MCP connects once at launch (`connectInitialMcpTools` in `cli.ts`). Adding a server via `ggcoder mcp` mid-session won't hot-load it — restart ggcoder.
+- **WebSocket transport** is parsed but rejected (no WS client today).
+- **Env var expansion** (`${VAR}`) in `.mcp.json` is NOT expanded in v1 — values pass through literally.
+
+## Slash Commands
+
+There are two kinds of slash commands:
+
+### 1. UI-handled commands (in `App.tsx`)
+
+Commands that need direct access to React state (UI, overlays, token counters) are handled inline in `handleSubmit` in `src/ui/App.tsx`. These short-circuit before the slash command registry.
+
+**Current UI commands:** `/model` (`/m`), `/compact` (`/c`), `/quit` (`/q`, `/exit`), `/clear`
+
+To add a new UI command:
+1. Add a condition in `handleSubmit` after the existing checks:
+   ```tsx
+   if (trimmed === "/mycommand") {
+     // manipulate React state directly
+     setLiveItems([{ kind: "info", text: "Done.", id: getId() }]);
+     return;
+   }
+   ```
+2. If the command needs to reset agent state, call `agentLoop.reset()`.
+
+### 2. Registry commands (in `core/slash-commands.ts`)
+
+Commands that don't need React state live in `createBuiltinCommands()` in `src/core/slash-commands.ts`. They receive a `SlashCommandContext` with methods like `switchModel`, `compact`, `newSession`, `quit`, etc.
+
+**Current registry commands:** `/model` (`/m`), `/compact` (`/c`), `/help` (`/h`, `/?`), `/settings` (`/config`), `/session` (`/s`), `/new` (`/n`), `/quit` (`/q`, `/exit`)
+
+Note: `/model`, `/compact`, and `/quit` exist in both — the UI handlers in `App.tsx` take precedence since they're checked first.
+
+To add a new registry command:
+1. Add an entry to the array in `createBuiltinCommands()`:
+   ```ts
+   {
+     name: "mycommand",
+     aliases: ["mc"],
+     description: "Does something useful",
+     usage: "/mycommand [args]",
+     execute(args, ctx) {
+       // Use ctx methods or return a string to display
+       return "Result text";
+     },
+   },
+   ```
+2. If the command needs new capabilities, add the method to `SlashCommandContext` interface and wire it up in `AgentSession.createSlashCommandContext()`.
+
+### When to use which
+
+| Need | Where |
+|---|---|
+| Modify UI state (history, overlays, live items) | `App.tsx` |
+| Reset token counters | `App.tsx` (call `agentLoop.reset()`) |
+| Access agent session (messages, auth, settings) | `slash-commands.ts` registry |
+| Both UI + session access | `App.tsx` (can call session methods via props) |
+
+There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.gg/commands/` directory).

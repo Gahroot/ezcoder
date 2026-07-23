@@ -32,6 +32,7 @@ export interface BusEventMap {
     };
   };
   max_turns: { totalTurns: number; maxTurns: number };
+  truncated: { reason: "max_tokens" | "refusal" | "provider_error"; continued: boolean };
   error: { error: Error };
 
   // Server tool events
@@ -53,7 +54,7 @@ export interface BusEventMap {
   session_start: { sessionId: string };
   model_change: { provider: string; model: string; supportsVideo?: boolean };
   compaction_start: { messageCount: number };
-  compaction_end: { originalCount: number; newCount: number };
+  compaction_end: { compacted: boolean; originalCount: number; newCount: number };
 
   // Branch events
   branch_created: { leafId: string; messagesKept: number };
@@ -155,6 +156,12 @@ export class EventBus {
         this.emit("max_turns", {
           totalTurns: event.totalTurns,
           maxTurns: event.maxTurns,
+        });
+        break;
+      case "truncated":
+        this.emit("truncated", {
+          reason: event.reason,
+          continued: event.continued,
         });
         break;
       case "server_tool_call":

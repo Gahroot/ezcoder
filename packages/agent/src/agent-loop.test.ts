@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ProviderError } from "@prestyj/ai";
 import {
   agentLoop,
+  capToolResults,
   capTurnToolResults,
   classifyOverload,
   extractContextOverflowDetails,
@@ -13,7 +14,7 @@ import {
   serverResetDelayMs,
 } from "./agent-loop.js";
 import type { AgentEvent, AgentResult, AgentTool, TransformContextOptions } from "./types.js";
-import type { Message, StreamOptions, Usage } from "@prestyj/ai";
+import type { Message, StreamOptions, ToolResult, Usage } from "@prestyj/ai";
 
 // ── Mock stream ────────────────────────────────────────────
 
@@ -74,6 +75,28 @@ function mockErrorResult(error: Error) {
       throw error;
     },
     response: p,
+  };
+}
+
+function mockRunawayToolCallResult(kind: "events" | "chars") {
+  const error = Object.assign(new Error("aborted runaway tool call"), { name: "AbortError" });
+  const response = Promise.reject(error);
+  response.catch(() => {});
+  return {
+    [Symbol.asyncIterator]: async function* () {
+      const count = kind === "events" ? 20_001 : 1;
+      const argsJson = kind === "chars" ? "x".repeat(1_000_001) : "";
+      for (let index = 0; index < count; index++) {
+        yield {
+          type: "toolcall_delta" as const,
+          id: "runaway",
+          name: "write",
+          argsJson,
+        };
+      }
+      throw error;
+    },
+    response,
   };
 }
 
@@ -1007,6 +1030,72 @@ describe("agentLoop", () => {
     ).toBeGreaterThanOrEqual(90_000);
   }, 30_000);
 
+  it("automatically replays a turn after a runaway tool-call stream", async () => {
+    vi.useFakeTimers();
+    mockStream
+      .mockReturnValueOnce(
+        mockRunawayToolCallResult("events") as unknown as ReturnType<typeof stream>,
+      )
+      .mockReturnValueOnce(
+        mockOkResult("Recovered automatically.") as unknown as ReturnType<typeof stream>,
+      );
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "continue the task" },
+    ];
+    const loopPromise = collectLoop(messages, { provider: "openai", model: "test" });
+    await vi.advanceTimersByTimeAsync(1_100);
+    const { events, result } = await loopPromise;
+    vi.useRealTimers();
+
+    expect(mockStream).toHaveBeenCalledTimes(2);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "retry",
+        reason: "runaway_toolcall",
+        attempt: 1,
+        maxAttempts: 2,
+        delayMs: 1_000,
+        silent: true,
+      }),
+    );
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(events.some((event) => event.type === "agent_done")).toBe(true);
+    expect(result.totalTurns).toBe(1);
+  });
+
+  it("bounds runaway tool-call auto-retries", async () => {
+    vi.useFakeTimers();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      mockStream.mockReturnValueOnce(
+        mockRunawayToolCallResult("chars") as unknown as ReturnType<typeof stream>,
+      );
+    }
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "continue the task" },
+    ];
+    const loopPromise = collectLoop(messages, { provider: "openai", model: "test" });
+    await vi.advanceTimersByTimeAsync(3_100);
+    const { events } = await loopPromise;
+    vi.useRealTimers();
+
+    expect(mockStream).toHaveBeenCalledTimes(3);
+    expect(
+      events.filter((event) => event.type === "retry" && event.reason === "runaway_toolcall"),
+    ).toHaveLength(2);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        error: expect.objectContaining({
+          message: expect.stringContaining("after 2 automatic retries"),
+        }),
+      }),
+    );
+  });
+
   it("preserves partial streamed text across a transport-failure retry", async () => {
     vi.useFakeTimers();
 
@@ -1567,6 +1656,159 @@ describe("agentLoop", () => {
   });
 });
 
+describe("agentLoop truncation handling", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  function mockStopResult(text: string, stopReason: string) {
+    const resp = makeResponse(text, stopReason);
+    const events = text ? [{ type: "text_delta" as const, text }] : [];
+    return {
+      [Symbol.asyncIterator]: async function* () {
+        for (const e of events) yield e;
+      },
+      response: Promise.resolve(resp),
+    };
+  }
+
+  const truncatedEvents = (events: AgentEvent[]) =>
+    events.filter((e): e is Extract<AgentEvent, { type: "truncated" }> => e.type === "truncated");
+
+  it("injects a continuation after a max_tokens stop and resumes the output", async () => {
+    mockStream
+      .mockReturnValueOnce(
+        mockStopResult("first half", "max_tokens") as unknown as ReturnType<typeof stream>,
+      )
+      .mockReturnValueOnce(
+        mockStopResult("second half", "end_turn") as unknown as ReturnType<typeof stream>,
+      );
+
+    const messages: Message[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "go" },
+    ];
+
+    const { events, result } = await collectLoop(messages, {
+      provider: "anthropic",
+      model: "test",
+    });
+
+    const truncated = truncatedEvents(events);
+    expect(truncated).toEqual([{ type: "truncated", reason: "max_tokens", continued: true }]);
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+    expect(result.totalTurns).toBe(2);
+
+    // The continuation user message was injected between the two assistant parts.
+    const continuation = messages.find(
+      (m) =>
+        m.role === "user" &&
+        typeof m.content === "string" &&
+        m.content.includes("output-token limit"),
+    );
+    expect(continuation).toBeDefined();
+    // Both parts are preserved in history — no replay.
+    const assistantTexts = messages
+      .filter((m) => m.role === "assistant")
+      .map((m) =>
+        Array.isArray(m.content)
+          ? m.content
+              .filter((p): p is { type: "text"; text: string } => p.type === "text")
+              .map((p) => p.text)
+              .join("")
+          : m.content,
+      );
+    expect(assistantTexts).toEqual(["first half", "second half"]);
+  });
+
+  it("stops continuing after two max_tokens continuations and warns", async () => {
+    mockStream.mockReturnValue(
+      mockStopResult("partial", "max_tokens") as unknown as ReturnType<typeof stream>,
+    );
+
+    const { events } = await collectLoop([{ role: "user", content: "go" }], {
+      provider: "anthropic",
+      model: "test",
+    });
+
+    const truncated = truncatedEvents(events);
+    expect(truncated).toEqual([
+      { type: "truncated", reason: "max_tokens", continued: true },
+      { type: "truncated", reason: "max_tokens", continued: true },
+      { type: "truncated", reason: "max_tokens", continued: false },
+    ]);
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+  });
+
+  it("emits a provider_error truncated warning on an error stop", async () => {
+    mockStream.mockReturnValueOnce(
+      mockStopResult("degraded", "error") as unknown as ReturnType<typeof stream>,
+    );
+
+    const { events } = await collectLoop([{ role: "user", content: "go" }], {
+      provider: "anthropic",
+      model: "test",
+    });
+
+    const truncated = truncatedEvents(events);
+    expect(truncated).toEqual([{ type: "truncated", reason: "provider_error", continued: false }]);
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+  });
+
+  it("emits a refusal truncated warning on a refusal stop", async () => {
+    mockStream.mockReturnValueOnce(
+      mockStopResult("no", "refusal") as unknown as ReturnType<typeof stream>,
+    );
+
+    const { events } = await collectLoop([{ role: "user", content: "go" }], {
+      provider: "anthropic",
+      model: "test",
+    });
+
+    expect(truncatedEvents(events)).toEqual([
+      { type: "truncated", reason: "refusal", continued: false },
+    ]);
+  });
+
+  it("executes tools normally on max_tokens with tool calls — no truncated event", async () => {
+    const toolResp = {
+      [Symbol.asyncIterator]: async function* () {
+        yield* [];
+      },
+      response: Promise.resolve({
+        message: {
+          role: "assistant" as const,
+          content: [{ type: "tool_call" as const, id: "t1", name: "echo", args: {} }],
+        },
+        stopReason: "max_tokens" as const,
+        usage: { inputTokens: 100, outputTokens: 50 },
+      }),
+    };
+    mockStream
+      .mockReturnValueOnce(toolResp as unknown as ReturnType<typeof stream>)
+      .mockReturnValueOnce(
+        mockStopResult("done", "end_turn") as unknown as ReturnType<typeof stream>,
+      );
+
+    const echo: AgentTool = {
+      name: "echo",
+      description: "echo",
+      parameters: emptyParams,
+      execute: vi.fn().mockResolvedValue("ok"),
+    };
+
+    const { events } = await collectLoop([{ role: "user", content: "go" }], {
+      provider: "anthropic",
+      model: "test",
+      tools: [echo],
+    });
+
+    expect(truncatedEvents(events)).toEqual([]);
+    expect(echo.execute).toHaveBeenCalledTimes(1);
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+  });
+});
+
 describe("capTurnToolResults", () => {
   const result = (id: string, content: string) => ({
     type: "tool_result" as const,
@@ -1633,5 +1875,54 @@ describe("capTurnToolResults", () => {
     capTurnToolResults([structured, text], 5_000);
     expect(structured.content[0].text).toBe("t".repeat(10_000));
     expect(text.content).toContain("characters trimmed");
+  });
+});
+
+// Fix D (baseline #2): capping mutates the model-input/persistent transcript in
+// place while the tool_call_end event already carried the FULL preview. The
+// `capped` marker makes that divergence programmatically visible.
+describe("tool-result cap divergence marker", () => {
+  const result = (id: string, content: string): ToolResult => ({
+    type: "tool_result",
+    toolCallId: id,
+    content,
+  });
+
+  it("marks a per-result cap with original + kept char counts", () => {
+    const r = result("big", "z".repeat(10_000));
+    capToolResults([r], 1_000);
+    expect(r.content).toContain("characters omitted");
+    expect(r.capped).toEqual({
+      originalChars: 10_000,
+      keptChars: (r.content as string).length,
+      scope: "per-result",
+    });
+  });
+
+  it("does not mark a result that fits the per-result budget", () => {
+    const r = result("small", "z".repeat(500));
+    capToolResults([r], 1_000);
+    expect(r.capped).toBeUndefined();
+    expect(r.content).toBe("z".repeat(500));
+  });
+
+  it("marks a per-turn cap with scope 'per-turn'", () => {
+    const large = result("large", "l".repeat(20_000));
+    capTurnToolResults([large], 6_000);
+    expect(large.capped?.scope).toBe("per-turn");
+    expect(large.capped?.originalChars).toBe(20_000);
+    expect(large.capped?.keptChars).toBe((large.content as string).length);
+  });
+
+  it("preserves the true original size when both caps fire in sequence", () => {
+    const r = result("huge", "h".repeat(100_000));
+    capToolResults([r], 50_000); // per-result trim first
+    const afterPerResult = r.capped?.originalChars;
+    capTurnToolResults([r], 5_000); // then per-turn trim
+    expect(afterPerResult).toBe(100_000);
+    // The per-turn marker keeps the FULL pre-any-trim original, not the
+    // already-trimmed intermediate size.
+    expect(r.capped?.originalChars).toBe(100_000);
+    expect(r.capped?.scope).toBe("per-turn");
   });
 });

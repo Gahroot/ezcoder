@@ -459,6 +459,7 @@ export async function* agentLoop(
   let overloadRetries = 0;
   let emptyResponseRetries = 0;
   let stallRetries = 0;
+  let runawayToolcallRetries = 0;
   let overflowCompactionAttempts = 0;
   let toolResultTruncationAttempted = false;
   const invalidToolArgumentCounts = new Map<string, number>();
@@ -474,9 +475,11 @@ export async function* agentLoop(
   let useNonStreamingFallback = false;
   const MAX_OVERLOAD_RETRIES = 10;
   const MAX_EMPTY_RESPONSE_RETRIES = 2;
-  // Match the provider-transient retry budget: Anthropic/Fable stalls are usually
-  // upstream stream/transport failures, not an agent state problem.
+  // Match the provider-transient retry budget: stalls are usually upstream
+  // stream/transport failures, not an agent state problem.
   const MAX_STALL_RETRIES = 10;
+  const MAX_RUNAWAY_TOOLCALL_RETRIES = 2;
+  const RUNAWAY_TOOLCALL_RETRY_DELAY_MS = 1_000;
   const MAX_OVERFLOW_COMPACTIONS = 2;
   // After this many streaming stalls in a row, switch to non-streaming mode
   // for the remaining stall retries. Keeps the first two retries fast (the
@@ -490,6 +493,16 @@ export async function* agentLoop(
     "[Your previous response was cut off by a connection failure. The text " +
     "above is what was already delivered to the user. Continue exactly from " +
     "where it stopped — do not repeat or restart it.]";
+  // Bounded auto-continue after the model hits its output-token limit
+  // (stopReason "max_tokens" with no tool calls). The assistant partial is
+  // already in history, so the continuation resumes exactly where the output
+  // was clipped — no replay, no double-billing.
+  const MAX_OUTPUT_CONTINUATIONS = 2;
+  const MAX_TOKENS_CONTINUATION_PROMPT =
+    "[Your previous response hit the output-token limit and was cut off. The " +
+    "text above is what was already delivered to the user. Continue exactly " +
+    "from where it stopped — do not repeat or restart it.]";
+  let maxTokensContinuations = 0;
   const OVERLOAD_BASE_DELAY_MS = 2_000;
   const OVERLOAD_MAX_DELAY_MS = 30_000;
   const STREAM_FIRST_EVENT_TIMEOUT_MS = 45_000; // 45s to get first event (Opus thinks long)
@@ -535,11 +548,10 @@ export async function* agentLoop(
     ? STREAM_THINKING_HARD_TIMEOUT_MS // 10min absolute cap before output
     : STREAM_HARD_TIMEOUT_MS; // 90s
   // Runaway tool-call circuit breaker. When a model glitches mid-tool-call it
-  // can emit tens of thousands of toolcall_delta events without ever closing,
-  // burning the entire stall-retry budget on what is clearly a non-recoverable
-  // model error. Cap accumulated arg chars and event count;
-  // exceeding either is a hard, non-retriable failure. Thresholds are generous
-  // enough to allow legitimate large file writes through `write`.
+  // can emit tens of thousands of toolcall_delta events without ever closing.
+  // Cap accumulated arg chars and event count so one bad stream cannot hang the
+  // run indefinitely. The loop automatically replays the untouched turn twice;
+  // only repeated failures surface to the user.
   const MAX_TOOLCALL_DELTA_CHARS = 1_000_000; // 1 MB of accumulated tool-call args
   const MAX_TOOLCALL_DELTA_EVENTS = 20_000; // 20k delta events in one stream
   let logicalTurnStartedAt = 0;
@@ -1057,16 +1069,39 @@ export async function* agentLoop(
         // Both are transport failures — retry with exponential backoff and flip
         // to non-streaming mode after STALL_RETRIES_BEFORE_NON_STREAMING attempts,
         // since broken SSE often recovers when replayed as plain HTTP.
-        // Runaway tool-call: the model never closed a tool-call block and
-        // blew past the size/count caps. Retrying just reproduces the loop,
-        // so surface a clear error and stop. Checked before the abort branch
-        // since we ourselves aborted the stream to break the runaway.
+        // Runaway tool-call: the model never closed a tool-call block and blew
+        // past the size/count caps. The partial call was never added to message
+        // history, so replay the untouched turn automatically — exactly what a
+        // manual "continue" fixed, without forcing the user to intervene.
         if (runawayDetected) {
           diag("runaway_toolcall_aborted", {
             ...runawayDetected,
             provider: options.provider,
             model: options.model,
           });
+          if (runawayToolcallRetries < MAX_RUNAWAY_TOOLCALL_RETRIES) {
+            runawayToolcallRetries++;
+            const delayMs = RUNAWAY_TOOLCALL_RETRY_DELAY_MS * runawayToolcallRetries;
+            diag("retry", {
+              reason: "runaway_toolcall",
+              attempt: runawayToolcallRetries,
+              maxAttempts: MAX_RUNAWAY_TOOLCALL_RETRIES,
+              delayMs,
+              ...runawayDetected,
+            });
+            yield {
+              type: "retry" as const,
+              reason: "runaway_toolcall" as const,
+              attempt: runawayToolcallRetries,
+              maxAttempts: MAX_RUNAWAY_TOOLCALL_RETRIES,
+              delayMs,
+              silent: true,
+            };
+            await abortableSleep(delayMs, options.signal);
+            turn--; // The aborted provider attempt does not consume a turn.
+            continue;
+          }
+
           const detail =
             runawayDetected.kind === "chars"
               ? `${(runawayDetected.chars / 1024).toFixed(0)} KB of tool-call arguments`
@@ -1074,9 +1109,8 @@ export async function* agentLoop(
           yield {
             type: "error" as const,
             error: new Error(
-              `The model glitched mid-tool-call and produced ${detail} without closing the call. ` +
-                `This is usually an upstream model bug — try the same request again or switch models. ` +
-                `Your conversation is preserved.`,
+              `The model repeatedly failed to close a tool call after ${MAX_RUNAWAY_TOOLCALL_RETRIES} automatic retries ` +
+                `(${detail}). Switch models and retry; your conversation is preserved.`,
             ),
           };
           break;
@@ -1202,6 +1236,7 @@ export async function* agentLoop(
 
       overloadRetries = 0;
       stallRetries = 0;
+      runawayToolcallRetries = 0;
 
       // Detect empty/degenerate responses — the API occasionally returns 0 tokens
       // with no content, or "thinks" without producing actionable output.
@@ -1311,6 +1346,34 @@ export async function* agentLoop(
       // Check content (not just stopReason) because some providers (e.g. GLM)
       // return finish_reason="stop" even when tool calls are present.
       if (response.stopReason !== "tool_use" && allToolCalls.length === 0) {
+        // Honest terminal states: a max_tokens / refusal / error stop with no
+        // tool calls is NOT a clean completion. For max_tokens, auto-continue
+        // a bounded number of times; otherwise warn and preserve the
+        // conversation (hosts render the incomplete-output warning).
+        if (response.stopReason === "max_tokens") {
+          if (maxTokensContinuations < MAX_OUTPUT_CONTINUATIONS) {
+            maxTokensContinuations++;
+            diag("max_tokens_continuation", {
+              attempt: maxTokensContinuations,
+              maxAttempts: MAX_OUTPUT_CONTINUATIONS,
+              provider: options.provider,
+              model: options.model,
+            });
+            yield { type: "truncated" as const, reason: "max_tokens" as const, continued: true };
+            messages.push({ role: "user" as const, content: MAX_TOKENS_CONTINUATION_PROMPT });
+            continue;
+          }
+          yield { type: "truncated" as const, reason: "max_tokens" as const, continued: false };
+        } else if (response.stopReason === "refusal" || response.stopReason === "error") {
+          yield {
+            type: "truncated" as const,
+            reason:
+              response.stopReason === "refusal"
+                ? ("refusal" as const)
+                : ("provider_error" as const),
+            continued: false,
+          };
+        }
         // Check for queued steering messages — if present, inject and continue
         // the loop instead of returning (follow-up pattern).
         if (options.getSteeringMessages) {
@@ -1823,19 +1886,30 @@ function buildToolResults(
   return toolResults;
 }
 
-function capToolResults(toolResults: ToolResult[], maxToolResultChars: number | undefined): void {
+export function capToolResults(
+  toolResults: ToolResult[],
+  maxToolResultChars: number | undefined,
+): void {
   if (!maxToolResultChars) return;
   const hardMax = 400_000; // absolute ceiling regardless of context window
   const max = Math.min(maxToolResultChars, hardMax);
   for (const toolResult of toolResults) {
     if (typeof toolResult.content !== "string" || toolResult.content.length <= max) continue;
+    const originalChars = toolResult.content.length;
     // Keep 70% head + 30% tail to preserve errors/diagnostics at the end.
     const headChars = Math.floor(max * 0.7);
     const tailChars = max - headChars;
     const head = toolResult.content.slice(0, headChars);
     const tail = toolResult.content.slice(-tailChars);
-    const omitted = toolResult.content.length - headChars - tailChars;
+    const omitted = originalChars - headChars - tailChars;
     toolResult.content = head + `\n\n[... ${omitted} characters omitted ...]\n\n` + tail;
+    // Mark the divergence: the model + persistent transcript now hold this
+    // trimmed content, but the tool_call_end event already carried the full one.
+    toolResult.capped = {
+      originalChars,
+      keptChars: toolResult.content.length,
+      scope: "per-result",
+    };
   }
 }
 
@@ -1872,16 +1946,24 @@ export function capTurnToolResults(
       continue;
     }
     remaining -= fairShare;
+    const originalChars = toolResult.content.length;
     // Keep 70% head + 30% tail so errors/diagnostics at the end survive.
     const headChars = Math.floor(fairShare * 0.7);
     const tailChars = fairShare - headChars;
-    const omitted = toolResult.content.length - fairShare;
+    const omitted = originalChars - fairShare;
     toolResult.content =
       toolResult.content.slice(0, headChars) +
       `\n\n[... ${omitted} characters trimmed: this turn's combined tool results exceeded the ` +
       `per-turn budget. Re-run this call alone with narrower filters or offset/limit if you ` +
       `need the omitted content ...]\n\n` +
       (tailChars > 0 ? toolResult.content.slice(-tailChars) : "");
+    // Mark the divergence (per-turn budget). Preserve an existing per-result
+    // marker's originalChars so the full pre-any-trim size stays visible.
+    toolResult.capped = {
+      originalChars: toolResult.capped?.originalChars ?? originalChars,
+      keptChars: toolResult.content.length,
+      scope: "per-turn",
+    };
   }
 }
 

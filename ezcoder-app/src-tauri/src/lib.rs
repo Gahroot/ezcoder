@@ -26,6 +26,9 @@ struct Daemon {
     /// The daemon's HTTP port, learned from its `GG_APP_LISTENING` handshake.
     /// `None` until ready; reset to `None` across a crash-respawn.
     port: Mutex<Option<u16>>,
+    /// Consecutive short-lived crashes. A daemon that stays up for the stable
+    /// window resets this budget; repeated crashes hit a circuit breaker.
+    respawn_attempts: Mutex<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -72,8 +75,8 @@ struct Windows {
 #[derive(Default)]
 struct AppExiting(AtomicBool);
 
-/// One restored window's target (mode, cwd, and optional session), handed to the
-/// webview once via `window_restore_target` so it skips the picker on boot.
+/// One window's active target (mode, cwd, and optional session), returned by
+/// `window_restore_target` so the webview can recover without showing Home.
 #[derive(Clone, serde::Serialize)]
 struct RestoreEntry {
     mode: WorkspaceMode,
@@ -104,7 +107,10 @@ struct PermissionsStatus {
     granted: bool,
 }
 
-/// Pending per-window restore targets, consumed once by the webview on mount.
+/// Per-window active workspace targets. An entry exists only after the user has
+/// chosen a workspace (or when one was restored at boot). Targets stay available
+/// for the lifetime of the window so a WebKit content-process reload can recover
+/// the same workspace instead of falling back to Home.
 #[derive(Default)]
 struct RestoreTargets {
     map: Mutex<HashMap<String, RestoreEntry>>,
@@ -116,6 +122,10 @@ fn register_restore_target(
     entry: RestoreEntry,
 ) {
     targets.insert(label, entry);
+}
+
+fn restore_target(targets: &HashMap<String, RestoreEntry>, label: &str) -> Option<RestoreEntry> {
+    targets.get(label).cloned()
 }
 
 fn remove_restore_target(
@@ -916,7 +926,7 @@ async fn agent_usage(
     provider: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    if provider != "anthropic" && provider != "openai" {
+    if provider != "anthropic" && provider != "openai" && provider != "moonshot" {
         return Err("unsupported usage provider".into());
     }
     let res = client
@@ -1935,14 +1945,11 @@ fn write_workspace(ws: &Workspace) {
     }
 }
 
-/// Pure: is this window worth snapshotting? A window still sitting on the picker
-/// has no project chosen (its cwd is None or equals the default boot cwd) and
-/// must be excluded so it doesn't restore as an empty home window.
-fn keep_for_snapshot(cwd: Option<&Path>, default_cwd: &Path) -> bool {
-    match cwd {
-        Some(c) => c != default_cwd,
-        None => false,
-    }
+/// Pure: picker-only windows have a daemon session at the default boot cwd but
+/// no active workspace target. A selected project remains snapshot-worthy even
+/// when its path happens to equal that default cwd.
+fn keep_for_snapshot(workspace_selected: bool, cwd: Option<&Path>) -> bool {
+    workspace_selected && cwd.is_some()
 }
 
 /// Pure: drop restore entries that can't be opened (empty cwd, or a cwd that no
@@ -1958,11 +1965,18 @@ fn filter_restorable<F: Fn(&str) -> bool>(
 }
 
 /// Walk every live window + its `Windows` session entry and write a fresh
-/// snapshot. Picker-only windows (still at the default boot cwd) are excluded.
+/// snapshot. Picker-only windows (without an active target) are excluded.
 /// Geometry is captured from each window's current outer position + inner size.
 fn snapshot_workspace(app: &tauri::AppHandle) {
-    let default = default_cwd();
     let windows = app.webview_windows();
+    let selected_labels: HashSet<String> = app
+        .state::<RestoreTargets>()
+        .map
+        .lock()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
     let state: State<Windows> = app.state();
     let map = state.map.lock().unwrap();
 
@@ -1975,7 +1989,7 @@ fn snapshot_workspace(app: &tauri::AppHandle) {
     for label in &labels {
         let Some(inst) = map.get(label) else { continue };
         let cwd = inst.cwd.as_deref();
-        if !keep_for_snapshot(cwd, &default) {
+        if !keep_for_snapshot(selected_labels.contains(label), cwd) {
             continue;
         }
         let cwd = cwd.unwrap().to_string_lossy().to_string();
@@ -2032,14 +2046,14 @@ fn remove_window_from_workspace(app: &tauri::AppHandle, label: &str) {
     }
 }
 
-/// Consume-once: hand the calling window its restore target (cwd + session) so
-/// the webview skips the picker on boot. Returns null for a normal (non-restored)
-/// window. The entry is removed after the first read.
+/// Hand the calling webview its active workspace target so it can skip Home and
+/// hydrate the existing daemon session. Unlike the old consume-once target, this
+/// remains available across React remounts and WebKit content-process reloads.
 #[tauri::command]
 fn window_restore_target(webview: WebviewWindow) -> Option<RestoreEntry> {
     let state: State<RestoreTargets> = webview.state();
-    let mut map = state.map.lock().unwrap();
-    remove_restore_target(&mut map, webview.label())
+    let map = state.map.lock().unwrap();
+    restore_target(&map, webview.label())
 }
 
 // ── Native provider auth status (~/.ezcoder/auth.json) ─────────────────────────
@@ -3036,10 +3050,10 @@ async fn arrange_all(app: tauri::AppHandle) -> Result<(), String> {
 
 /// Re-point THIS window's agent at a chosen project: dispose its current daemon
 /// session and create a fresh one at `cwd`, optionally resuming the session file
-/// `session_path`. No process is killed — only one session in the shared daemon
-/// is swapped. The webview re-runs its ready flow against the new session.
+/// `session_path`. The command resolves only after the daemon session is ready,
+/// so a failed resume stays in the picker instead of opening an endless skeleton.
 #[tauri::command]
-fn select_project(
+async fn select_project(
     webview: WebviewWindow,
     app: tauri::AppHandle,
     mode: WorkspaceMode,
@@ -3048,11 +3062,21 @@ fn select_project(
     session_path: Option<String>,
 ) -> Result<(), String> {
     let label = webview.label().to_string();
+    // The existing daemon session is about to be retired. Remove its durable
+    // target first so a failed switch or mid-switch webview reload cannot reopen
+    // a workspace whose session has already been disposed.
+    remove_restore_target(
+        &mut app.state::<RestoreTargets>().map.lock().unwrap(),
+        &label,
+    );
+    snapshot_workspace(&app);
+
     // Take the old session id (and clear it) so the old SSE bridge retires.
     let old_id = {
         let windows: State<Windows> = app.state();
         let mut map = windows.map.lock().unwrap();
-        map.get_mut(&label).and_then(|w| w.session_id.take())
+        map.get_mut(&label)
+            .and_then(|window| window.session_id.take())
     };
     // Dispose the old session on the daemon (best-effort, off-thread).
     if let Some(id) = old_id {
@@ -3063,18 +3087,40 @@ fn select_project(
             });
         }
     }
-    // Create the new session for this window (records cwd/session_path, awaits
-    // the daemon, starts the bridge, emits sidecar-ready).
-    start_window_session(
-        app.clone(),
-        label,
+
+    let target = RestoreEntry {
         mode,
         chat_agent,
-        PathBuf::from(cwd),
-        session_path,
+        cwd: cwd.clone(),
+        session_path: session_path.clone(),
+    };
+    let cwd = PathBuf::from(cwd);
+    let generation = prepare_window_session(
+        &app,
+        &label,
+        mode,
+        chat_agent,
+        &cwd,
+        session_path.as_deref(),
     );
-    // The map now reflects this window's new project/session; persist the
-    // workspace so a restart reopens it here.
+    finish_window_session(
+        app.clone(),
+        label.clone(),
+        mode,
+        chat_agent,
+        cwd,
+        session_path,
+        generation,
+    )
+    .await?;
+
+    // Publish the target only after the daemon confirms the selection. Keeping
+    // it for the window lifetime lets a reloaded webview recover in place.
+    register_restore_target(
+        &mut app.state::<RestoreTargets>().map.lock().unwrap(),
+        label,
+        target,
+    );
     snapshot_workspace(&app);
     Ok(())
 }
@@ -3495,7 +3541,7 @@ fn pick_node(env_override: Option<String>, is_dev: bool, exe_dir: Option<&Path>)
 /// Resolve the built sidecar JS.
 ///
 /// Dev (debug build, or `GG_SIDECAR_PATH` set): use `GG_SIDECAR_PATH`, else the
-/// workspace `dist/app-sidecar.js` relative to this crate.
+/// workspace Error Mom wrapper relative to this crate.
 ///
 /// Bundled (release): resolve the single-file ESM sidecar shipped under
 /// `bundle.resources` via the Tauri resource directory.
@@ -3514,14 +3560,15 @@ fn resolve_sidecar(app: &tauri::AppHandle) -> PathBuf {
     )
 }
 
-/// Path to the workspace dev sidecar, relative to this crate.
+/// Path to the workspace dev sidecar wrapper, relative to this crate. The
+/// wrapper initializes Error Mom before importing EZ Coder's built sidecar.
 fn workspace_sidecar() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packages/cli/dist/app-sidecar.js")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/error-mom-sidecar.mjs")
 }
 
 /// Pure sidecar-path decision (testable without an AppHandle).
 /// - `env_override` (GG_SIDECAR_PATH) always wins.
-/// - dev build → workspace `dist/app-sidecar.js`.
+/// - dev build → workspace Error Mom sidecar wrapper.
 /// - bundled → the resolved bundle resource, falling back to the workspace path.
 fn pick_sidecar(env_override: Option<String>, is_dev: bool, resource: Option<&Path>) -> PathBuf {
     if let Some(p) = env_override {
@@ -3632,15 +3679,40 @@ fn pick_cwd(
     home
 }
 
+const DAEMON_STABLE_UPTIME: std::time::Duration = std::time::Duration::from_secs(60);
+const DAEMON_MAX_RESPAWNS: u32 = 5;
+
+/// Exponential crash-loop backoff: 1s, 2s, 4s, 8s, 16s, then stop.
+/// A hard retry budget prevents a broken sidecar/signature/configuration from
+/// turning the desktop shell into an unbounded process-spawn and disk-write loop.
+fn daemon_respawn_delay(attempt: u32) -> Option<std::time::Duration> {
+    if attempt == 0 || attempt > DAEMON_MAX_RESPAWNS {
+        return None;
+    }
+    Some(std::time::Duration::from_secs(1 << (attempt - 1)))
+}
+
+fn emit_daemon_error(app: &tauri::AppHandle, message: &str) {
+    for label in app.webview_windows().keys() {
+        let _ = app.emit_to(
+            EventTarget::webview_window(label.clone()),
+            "sidecar-error",
+            message,
+        );
+    }
+}
+
 /// Spawn the ONE shared Node daemon. Reads its `GG_APP_LISTENING` handshake to
-/// learn the shared port; on an unexpected exit (its stdout closes while the app
-/// is NOT quitting) it respawns the daemon and re-creates every live window's
-/// session from its stored `{cwd, session_path}` (Step 9 crash recovery).
+/// learn the shared port; on an unexpected exit it reaps the dead child, applies
+/// bounded exponential backoff, and re-creates every live window's session.
+/// Five short-lived respawns exhaust the retry budget; one minute of stable
+/// uptime resets it.
 ///
 /// The daemon is a process-group leader (Unix), so `terminate_child` reaps its
 /// entire descendant tree (every session's MCP stdio children + LSP servers) in
 /// one group-kill — no orphans on quit.
 fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
+    let started_at = std::time::Instant::now();
     let script = resolve_sidecar(&app);
     let node = resolve_node(&app);
     log::info!("spawning daemon: {} {}", node.display(), script.display());
@@ -3650,6 +3722,7 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
         // Port 0 → the OS assigns a free port, reported back via the
         // GG_APP_LISTENING handshake.
         .env("GG_APP_PORT", "0")
+        .env("ERROR_MOM_RELEASE", env!("CARGO_PKG_VERSION"))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(unix)]
@@ -3665,20 +3738,24 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
             c
         }
         Err(e) => {
-            log::error!("failed to spawn daemon: {e}");
-            // Surface to every open window so they don't hang on waitForReady.
-            for label in app.webview_windows().keys() {
-                let _ = app.emit_to(
-                    EventTarget::webview_window(label.clone()),
-                    "sidecar-error",
-                    format!("failed to spawn daemon: {e}"),
-                );
-            }
+            let message = format!("failed to spawn daemon: {e}");
+            log::error!("{message}");
+            emit_daemon_error(&app, &message);
             return;
         }
     };
 
-    if let Some(stdout) = child.stdout.take() {
+    // Publish the child before starting pipe readers. A process can fail before
+    // the reader thread starts; storing first guarantees the crash handler can
+    // still take and reap that exact child instead of leaving a zombie behind.
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    {
+        let daemon: State<Daemon> = app.state();
+        *daemon.child.lock().unwrap() = Some(child);
+    }
+
+    if let Some(stdout) = stdout {
         let app2 = app.clone();
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
@@ -3690,9 +3767,6 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
                         // On a respawn the windows already exist with (now
                         // stale) sessions — re-create them all. On the initial
                         // spawn `restore_or_default_windows` drives creation.
-                        // (We can't infer respawn from prior port state: the
-                        // crash handler resets it to None before respawning so
-                        // proxy commands fail fast while the daemon is down.)
                         if is_respawn {
                             recreate_all_window_sessions(app2.clone());
                         }
@@ -3701,45 +3775,68 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
                     log::debug!("[daemon] {line}");
                 }
             }
-            // stdout closed → the daemon process exited. If the app isn't
-            // quitting, this is a crash: respawn + rehydrate every window.
-            let exiting = app2.state::<AppExiting>().0.load(Ordering::SeqCst);
-            if !exiting {
-                log::warn!("daemon exited unexpectedly — respawning");
-                {
-                    let daemon: State<Daemon> = app2.state();
-                    *daemon.port.lock().unwrap() = None;
+
+            // stdout closed → the daemon exited (or lost its control pipe). If
+            // the app isn't quitting, remove the stale port and reap/terminate
+            // the exact child before considering a bounded respawn.
+            if app2.state::<AppExiting>().0.load(Ordering::SeqCst) {
+                return;
+            }
+
+            let attempt = {
+                let daemon: State<Daemon> = app2.state();
+                *daemon.port.lock().unwrap() = None;
+                if let Some(mut old_child) = daemon.child.lock().unwrap().take() {
+                    match old_child.try_wait() {
+                        Ok(Some(_)) => {
+                            let _ = old_child.wait();
+                        }
+                        _ => terminate_child(old_child),
+                    }
                 }
+                let mut attempts = daemon.respawn_attempts.lock().unwrap();
+                if started_at.elapsed() >= DAEMON_STABLE_UPTIME {
+                    *attempts = 0;
+                }
+                *attempts += 1;
+                *attempts
+            };
+
+            let Some(delay) = daemon_respawn_delay(attempt) else {
+                let message =
+                    "Agent daemon stopped after repeated crashes. Restart GG Coder to try again.";
+                log::error!("daemon crash circuit breaker opened after {attempt} crashes");
+                emit_daemon_error(&app2, message);
+                return;
+            };
+
+            log::warn!(
+                "daemon exited unexpectedly — respawn {attempt}/{DAEMON_MAX_RESPAWNS} in {}s",
+                delay.as_secs()
+            );
+            std::thread::sleep(delay);
+            if !app2.state::<AppExiting>().0.load(Ordering::SeqCst) {
                 spawn_daemon(app2.clone(), true);
             }
         });
     }
 
-    if let Some(stderr) = child.stderr.take() {
+    if let Some(stderr) = stderr {
         let app3 = app.clone();
         std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
                 log::error!("[daemon:stderr] {line}");
                 if line.starts_with("GG_APP_FATAL") {
-                    for label in app3.webview_windows().keys() {
-                        let _ = app3.emit_to(
-                            EventTarget::webview_window(label.clone()),
-                            "sidecar-error",
-                            line.clone(),
-                        );
-                    }
+                    emit_daemon_error(&app3, &line);
                 }
             }
         });
     }
-
-    let daemon: State<Daemon> = app.state();
-    *daemon.child.lock().unwrap() = Some(child);
 }
 
 /// POST /session to the daemon for `cwd` (+ optional resume `session_path`);
-/// returns the new session id, or `None` on failure.
+/// returns the new session id or the daemon's concrete initialization error.
 async fn daemon_create_session(
     app: &tauri::AppHandle,
     port: u16,
@@ -3747,7 +3844,7 @@ async fn daemon_create_session(
     chat_agent: ChatAgent,
     cwd: &Path,
     session_path: Option<&str>,
-) -> Option<String> {
+) -> Result<String, String> {
     let client = app.state::<reqwest::Client>().inner().clone();
     let body = serde_json::json!({
         "mode": mode,
@@ -3760,12 +3857,24 @@ async fn daemon_create_session(
         .json(&body)
         .send()
         .await
-        .ok()?;
-    let value = res.json::<serde_json::Value>().await.ok()?;
+        .map_err(|error| error.to_string())?;
+    let status = res.status();
+    let value = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        return Err(value
+            .get("error")
+            .and_then(|error| error.as_str())
+            .unwrap_or("failed to create agent session")
+            .to_string());
+    }
     value
         .get("sessionId")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+        .and_then(|session_id| session_id.as_str())
+        .map(|session_id| session_id.to_string())
+        .ok_or_else(|| "agent daemon returned no session id".to_string())
 }
 
 /// DELETE /session/:id on the daemon (best-effort, fire-and-forget).
@@ -3797,37 +3906,82 @@ fn publish_window_session(
     true
 }
 
-/// Create (or re-point) one window's session. Each start receives a process-wide
-/// generation; only that generation may publish its daemon response.
-fn start_window_session(
+/// Record a pending window session synchronously. This invalidates older starts
+/// before any daemon request is allowed to publish its response.
+fn prepare_window_session(
+    app: &tauri::AppHandle,
+    label: &str,
+    mode: WorkspaceMode,
+    chat_agent: ChatAgent,
+    cwd: &Path,
+    session_path: Option<&str>,
+) -> u64 {
+    let windows: State<Windows> = app.state();
+    let generation = windows.next_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let mut map = windows.map.lock().unwrap();
+    let entry = map.entry(label.to_string()).or_default();
+    entry.generation = generation;
+    entry.mode = mode;
+    entry.chat_agent = chat_agent;
+    entry.cwd = Some(cwd.to_path_buf());
+    entry.session_path = session_path.map(str::to_string);
+    entry.session_id = None;
+    log::info!(
+        "window session starting label={label} generation={generation} mode={mode:?} cwd={} elapsed_ms=0",
+        cwd.display()
+    );
+    generation
+}
+
+/// Finish a prepared session and publish it only if its generation is current.
+/// Returning the daemon error lets picker commands remain on the session list
+/// instead of entering a loading screen that can never hydrate.
+async fn finish_window_session(
     app: tauri::AppHandle,
     label: String,
     mode: WorkspaceMode,
     chat_agent: ChatAgent,
     cwd: PathBuf,
     session_path: Option<String>,
-) {
+    generation: u64,
+) -> Result<(), String> {
     let started_at = std::time::Instant::now();
-    let generation = {
-        let windows: State<Windows> = app.state();
-        let generation = windows.next_generation.fetch_add(1, Ordering::SeqCst) + 1;
-        let mut map = windows.map.lock().unwrap();
-        let entry = map.entry(label.clone()).or_default();
-        entry.generation = generation;
-        entry.mode = mode;
-        entry.chat_agent = chat_agent;
-        entry.cwd = Some(cwd.clone());
-        entry.session_path = session_path.clone();
-        entry.session_id = None;
-        generation
+    let Some(port) = await_daemon_port(&app).await else {
+        let message = "daemon did not start in time".to_string();
+        let current = app
+            .state::<Windows>()
+            .map
+            .lock()
+            .unwrap()
+            .get(&label)
+            .is_some_and(|entry| entry.generation == generation);
+        log::error!(
+            "window session daemon unavailable label={label} generation={generation} mode={mode:?} cwd={} elapsed_ms={}",
+            cwd.display(),
+            started_at.elapsed().as_millis()
+        );
+        if current {
+            let _ = app.emit_to(
+                EventTarget::webview_window(label.clone()),
+                "sidecar-error",
+                &message,
+            );
+        }
+        return Err(message);
     };
-    log::info!(
-        "window session starting label={label} generation={generation} mode={mode:?} cwd={} elapsed_ms=0",
-        cwd.display()
-    );
 
-    tauri::async_runtime::spawn(async move {
-        let Some(port) = await_daemon_port(&app).await else {
+    let id = match daemon_create_session(
+        &app,
+        port,
+        mode,
+        chat_agent,
+        &cwd,
+        session_path.as_deref(),
+    )
+    .await
+    {
+        Ok(id) => id,
+        Err(message) => {
             let current = app
                 .state::<Windows>()
                 .map
@@ -3836,7 +3990,7 @@ fn start_window_session(
                 .get(&label)
                 .is_some_and(|entry| entry.generation == generation);
             log::error!(
-                "window session daemon unavailable label={label} generation={generation} mode={mode:?} cwd={} elapsed_ms={}",
+                "daemon session creation failed label={label} generation={generation} mode={mode:?} cwd={} error={message} elapsed_ms={}",
                 cwd.display(),
                 started_at.elapsed().as_millis()
             );
@@ -3844,63 +3998,58 @@ fn start_window_session(
                 let _ = app.emit_to(
                     EventTarget::webview_window(label.clone()),
                     "sidecar-error",
-                    "daemon did not start in time",
+                    &message,
                 );
             }
-            return;
-        };
-        match daemon_create_session(&app, port, mode, chat_agent, &cwd, session_path.as_deref())
-            .await
-        {
-            Some(id) => {
-                let published = {
-                    let windows: State<Windows> = app.state();
-                    let mut map = windows.map.lock().unwrap();
-                    publish_window_session(&mut map, &label, generation, id.clone())
-                };
-                if !published {
-                    log::warn!(
-                        "stale window session discarded label={label} generation={generation} mode={mode:?} cwd={} daemon_session_id={id} elapsed_ms={}",
-                        cwd.display(),
-                        started_at.elapsed().as_millis()
-                    );
-                    daemon_delete_session(&app, port, &id).await;
-                    return;
-                }
-                log::info!(
-                    "window session ready label={label} generation={generation} mode={mode:?} cwd={} daemon_session_id={id} elapsed_ms={}",
-                    cwd.display(),
-                    started_at.elapsed().as_millis()
-                );
-                start_event_bridge(app.clone(), label.clone(), port, id);
-                let _ = app.emit_to(
-                    EventTarget::webview_window(label.clone()),
-                    "sidecar-ready",
-                    port,
-                );
-            }
-            None => {
-                let current = app
-                    .state::<Windows>()
-                    .map
-                    .lock()
-                    .unwrap()
-                    .get(&label)
-                    .is_some_and(|entry| entry.generation == generation);
-                log::error!(
-                    "daemon session creation failed label={label} generation={generation} mode={mode:?} cwd={} elapsed_ms={}",
-                    cwd.display(),
-                    started_at.elapsed().as_millis()
-                );
-                if current {
-                    let _ = app.emit_to(
-                        EventTarget::webview_window(label.clone()),
-                        "sidecar-error",
-                        "failed to create agent session",
-                    );
-                }
-            }
+            return Err(message);
         }
+    };
+
+    let published = {
+        let windows: State<Windows> = app.state();
+        let mut map = windows.map.lock().unwrap();
+        publish_window_session(&mut map, &label, generation, id.clone())
+    };
+    if !published {
+        log::warn!(
+            "stale window session discarded label={label} generation={generation} mode={mode:?} cwd={} daemon_session_id={id} elapsed_ms={}",
+            cwd.display(),
+            started_at.elapsed().as_millis()
+        );
+        daemon_delete_session(&app, port, &id).await;
+        return Err("session selection was superseded".to_string());
+    }
+
+    log::info!(
+        "window session ready label={label} generation={generation} mode={mode:?} cwd={} daemon_session_id={id} elapsed_ms={}",
+        cwd.display(),
+        started_at.elapsed().as_millis()
+    );
+    start_event_bridge(app.clone(), label.clone(), port, id);
+    let _ = app.emit_to(EventTarget::webview_window(label), "sidecar-ready", port);
+    Ok(())
+}
+
+/// Create (or re-point) one window's session in the background.
+fn start_window_session(
+    app: tauri::AppHandle,
+    label: String,
+    mode: WorkspaceMode,
+    chat_agent: ChatAgent,
+    cwd: PathBuf,
+    session_path: Option<String>,
+) {
+    let generation = prepare_window_session(
+        &app,
+        &label,
+        mode,
+        chat_agent,
+        &cwd,
+        session_path.as_deref(),
+    );
+    tauri::async_runtime::spawn(async move {
+        let _ = finish_window_session(app, label, mode, chat_agent, cwd, session_path, generation)
+            .await;
     });
 }
 
@@ -4325,17 +4474,28 @@ mod tests {
     }
 
     #[test]
-    fn keep_for_snapshot_excludes_picker_windows() {
+    fn daemon_respawns_with_bounded_exponential_backoff() {
+        let delays: Vec<u64> = (1..=DAEMON_MAX_RESPAWNS)
+            .map(|attempt| daemon_respawn_delay(attempt).unwrap().as_secs())
+            .collect();
+        assert_eq!(delays, vec![1, 2, 4, 8, 16]);
+    }
+
+    #[test]
+    fn daemon_crash_loop_opens_circuit_breaker() {
+        assert!(daemon_respawn_delay(0).is_none());
+        assert!(daemon_respawn_delay(DAEMON_MAX_RESPAWNS + 1).is_none());
+    }
+
+    #[test]
+    fn keep_for_snapshot_excludes_only_unselected_picker_windows() {
         let default = Path::new("/home/user");
-        // No project chosen yet → excluded.
-        assert!(!keep_for_snapshot(None, default));
-        // Still on the default boot cwd (picker) → excluded.
-        assert!(!keep_for_snapshot(Some(Path::new("/home/user")), default));
-        // A real project → kept.
-        assert!(keep_for_snapshot(
-            Some(Path::new("/home/user/proj")),
-            default
-        ));
+        // Picker session exists at the boot cwd, but no workspace was chosen.
+        assert!(!keep_for_snapshot(false, Some(default)));
+        assert!(!keep_for_snapshot(false, None));
+        // Explicitly choosing that exact directory must still survive restart.
+        assert!(keep_for_snapshot(true, Some(default)));
+        assert!(keep_for_snapshot(true, Some(Path::new("/home/user/proj"))));
     }
 
     #[test]
@@ -4426,7 +4586,10 @@ mod tests {
 
     #[test]
     fn auth_providers_keep_regional_groups_and_openrouter_last() {
-        let values: Vec<&str> = AUTH_PROVIDERS.iter().map(|provider| provider.value).collect();
+        let values: Vec<&str> = AUTH_PROVIDERS
+            .iter()
+            .map(|provider| provider.value)
+            .collect();
         assert_eq!(
             values,
             vec![
@@ -5226,7 +5389,7 @@ mod tests {
     }
 
     #[test]
-    fn restore_target_registration_is_consume_once_and_cleanup_safe() {
+    fn restore_target_survives_repeated_webview_mounts_until_cleanup() {
         let mut targets = HashMap::new();
         let entry = RestoreEntry {
             mode: WorkspaceMode::Code,
@@ -5236,13 +5399,16 @@ mod tests {
         };
 
         register_restore_target(&mut targets, "main".into(), entry);
-        assert!(targets.contains_key("main"));
-        let consumed = remove_restore_target(&mut targets, "main");
         assert_eq!(
-            consumed.as_ref().map(|target| target.cwd.as_str()),
-            Some("/project")
+            restore_target(&targets, "main").map(|target| target.cwd),
+            Some("/project".into())
         );
-        assert!(remove_restore_target(&mut targets, "main").is_none());
+        assert_eq!(
+            restore_target(&targets, "main").map(|target| target.cwd),
+            Some("/project".into())
+        );
+        assert!(remove_restore_target(&mut targets, "main").is_some());
+        assert!(restore_target(&targets, "main").is_none());
     }
 
     #[test]

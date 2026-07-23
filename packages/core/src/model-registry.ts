@@ -1,4 +1,5 @@
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
+import { isKimiCodingEndpoint } from "./oauth/kimi.js";
 import { XIAOMI_CREDITS_KEY } from "./auth-storage.js";
 
 export interface ModelInfo {
@@ -136,7 +137,8 @@ export const MODELS: ModelInfo[] = [
   // ── OpenAI (Codex) ─────────────────────────────────────
   // GPT-5.6 family — three agentic coding tiers launched July 2026. The public
   // Responses API advertises a 1.05M context window; OpenAI's Codex product
-  // catalog advertises 372K on the ChatGPT OAuth route. All three take
+  // catalog advertises 272K on the ChatGPT OAuth route (corrected from the
+  // initially advertised 372K — openai/codex PR #33972, Jul 18 2026 hotfix). All three take
   // text+image input, freeform apply_patch, text+image web search, and parallel
   // tool calls.
   {
@@ -148,7 +150,7 @@ export const MODELS: ModelInfo[] = [
     name: "GPT-5.6 Sol",
     provider: "openai",
     contextWindow: 1_050_000,
-    codexContextWindow: 372_000,
+    codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
@@ -163,7 +165,7 @@ export const MODELS: ModelInfo[] = [
     name: "GPT-5.6 Terra",
     provider: "openai",
     contextWindow: 1_050_000,
-    codexContextWindow: 372_000,
+    codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
@@ -178,7 +180,7 @@ export const MODELS: ModelInfo[] = [
     name: "GPT-5.6 Luna",
     provider: "openai",
     contextWindow: 1_050_000,
-    codexContextWindow: 372_000,
+    codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     supportsImages: true,
@@ -297,8 +299,9 @@ export const MODELS: ModelInfo[] = [
   },
   // ── Moonshot (Kimi) ────────────────────────────────────
   // K3 is Kimi's 2.8T-parameter flagship for long-horizon coding, knowledge
-  // work, and deep reasoning. It always reasons at the `max` effort; the public
-  // API uses `reasoning_effort`, while Kimi Code OAuth keeps its managed wire shape.
+  // work, and deep reasoning. Its effort ladder is server-declared as
+  // low/high/max on both the public API (default max) and the Kimi For Coding
+  // OAuth endpoint (default high); thinking can also be fully disabled.
   {
     id: "kimi-k3",
     name: "Kimi K3",
@@ -576,6 +579,25 @@ export function getContextWindow(modelId: string, options?: ContextWindowOptions
  */
 export function getMaxThinkingLevel(modelId: string): ThinkingLevel {
   return getModel(modelId)?.maxThinkingLevel ?? "high";
+}
+
+/**
+ * The thinking level a fresh session starts at. Identical to
+ * {@link getMaxThinkingLevel} except where the provider declares a lower
+ * default effort server-side — Kimi K3's Kimi For Coding OAuth endpoint
+ * declares `default_effort: "high"` in its /models think_efforts (the public
+ * Moonshot API declares "max"), and the official kimi-code CLI starts there.
+ * Pass the active credential's baseUrl so the endpoint-aware default resolves;
+ * matching it keeps plan-usage burn identical to the official CLI (users can
+ * still toggle up to max).
+ */
+export function getDefaultThinkingLevel(
+  modelId: string,
+  options?: { baseUrl?: string },
+): ThinkingLevel {
+  const model = getModel(modelId);
+  if (model?.id === "kimi-k3" && isKimiCodingEndpoint(options?.baseUrl)) return "high";
+  return model?.maxThinkingLevel ?? "high";
 }
 
 /**
