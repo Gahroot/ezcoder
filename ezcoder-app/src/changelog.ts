@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.2.0",
+    date: "2026-07-23",
+    items: [
+      "Marathon runs just got relentless. I made EZ Coder recover dropped replies, continue answers up to `2 times`, retry runaway tools, and break repeating loops before they waste your time. You get the whole job, not a confident half-finish.",
+      "Your workspace has stronger guardrails and sharper eyes. I block dangerous writes outside your project, restore `TypeScript diagnostics`, and inspect dependency source directly so mistakes get caught before they become cleanup.",
+      "Your work now comes back exactly where you left it. I expanded chat history to `30` conversations, archive quiet sessions without losing them, and restore every project window with a clear `Restoring workspace` state instead of an empty screen.",
+      "Kimi users just got the full cockpit. I added `Kimi K3` thinking controls, live `Kimi For Coding` usage tracking, and a polished provider login grid so choosing and managing your AI feels effortless.",
+      "Every interface I build for you starts smarter and more inclusive. I upgraded the `Evidence-Led UI` skill with `WCAG 2.2 AA` standards, stronger spacing, cleaner status colors, and tighter keyboard behavior so polished never means generic or inaccessible.",
+    ],
+  },
+  {
     version: "0.1.57",
     date: "2026-07-17",
     items: [
