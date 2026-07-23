@@ -3495,7 +3495,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/tasks/add") {
-      void readBody(req).then((raw) => {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
         let title: string;
         let prompt: string;
         try {
@@ -3527,7 +3528,8 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/tasks/update") {
-      void readBody(req).then((raw) => {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
         let id: string;
         let status: string | undefined;
         let title: string | undefined;

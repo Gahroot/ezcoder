@@ -99,9 +99,7 @@ export function createBashTool(
     : isGoalModeRef(goalModeRefOrShellOpts)
       ? goalModeRefOrShellOpts
       : undefined;
-  const shellOpts = isGoalModeRef(goalModeRefOrShellOpts)
-    ? shellOptsArg
-    : goalModeRefOrShellOpts;
+  const shellOpts = isGoalModeRef(goalModeRefOrShellOpts) ? shellOptsArg : goalModeRefOrShellOpts;
   // Lazily created on the first persist:true call; one session per tool
   // instance (i.e. per agent session), killed when the process exits.
   let sessionShell: PersistentShell | null = null;

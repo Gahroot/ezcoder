@@ -215,7 +215,9 @@ function MonitorRow({
   onClick: () => void;
 }): React.ReactElement {
   return (
-    <button role="menuitem" className="winlayout-item"
+    <button
+      role="menuitem"
+      className="winlayout-item"
       style={{ color: active ? theme.text : theme.textDim, paddingLeft: 22, fontSize: 12 }}
       onClick={onClick}
     >

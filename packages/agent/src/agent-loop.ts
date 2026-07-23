@@ -381,8 +381,12 @@ function createAbortError(): Error {
 
 function abortablePromise<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(createAbortError());
-
+  if (signal.aborted) {
+    // The promise was already created by the caller (for example iterator.next()).
+    // Observe its eventual rejection before returning the local AbortError.
+    promise.catch(() => {});
+    return Promise.reject(createAbortError());
+  }
   return new Promise<T>((resolve, reject) => {
     let settled = false;
     const cleanup = (): void => signal.removeEventListener("abort", onAbort);

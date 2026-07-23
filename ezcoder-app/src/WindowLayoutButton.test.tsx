@@ -7,6 +7,8 @@ import { WindowLayoutButton } from "./WindowLayoutButton";
 vi.mock("./agent", () => ({
   arrangeAllWindows: vi.fn().mockResolvedValue(undefined),
   setupWindows: vi.fn().mockResolvedValue(undefined),
+  listMonitors: vi.fn().mockResolvedValue({ monitors: [], selected: null }),
+  setTargetMonitor: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./sounds", () => ({ playSound: vi.fn() }));
 
