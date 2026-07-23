@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.9.0
+
+### Minor Changes
+
+- Add resilient agent recovery, richer sidecar tooling, stronger provider handling, and expanded UI guidance.
+
+### Patch Changes
+
+- @prestyj/ai@5.9.0
+- @prestyj/agent@5.9.0
+- @prestyj/core@5.9.0
+
 ## 5.8.0
 
 ### Minor Changes

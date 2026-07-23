@@ -1,5 +1,12 @@
 # @prestyj/voice
 
+## 4.5.15
+
+### Patch Changes
+
+- @prestyj/ai@5.9.0
+- @prestyj/agent@5.9.0
+
 ## 4.5.14
 
 ### Patch Changes
