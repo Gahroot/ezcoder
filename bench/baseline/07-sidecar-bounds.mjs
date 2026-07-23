@@ -48,7 +48,7 @@ async function benchGlob() {
       cwd: dir,
       dot: false,
       onlyFiles: true,
-      ignore: ["**/node_modules/**", "**/.git/**", "**/.gg/**"],
+      ignore: ["**/node_modules/**", "**/.git/**", "**/.ezcoder/**"],
       suppressErrors: true,
       followSymbolicLinks: false,
       stats: true,

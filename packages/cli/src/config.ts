@@ -35,7 +35,7 @@ export interface SavedSettings {
   autoApprovePlans: boolean;
   /** Append LSP diagnostics to edit/write tool results. */
   lspDiagnostics: boolean;
-  /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.gg). */
+  /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.ezcoder). */
   allowOutsideWorkspaceWrites: boolean;
   /** Max concurrent subagents per resolved child model (1–4). Unset = global limit only. */
   subagentMaxPerModel?: number;

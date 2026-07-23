@@ -27,7 +27,7 @@ const ScreenshotParams = z.object({
   out_path: z
     .string()
     .optional()
-    .describe("Output PNG path (defaults to .gg/screenshots/<timestamp>.png)"),
+    .describe("Output PNG path (defaults to .ezcoder/screenshots/<timestamp>.png)"),
   wait_for: z.string().optional().describe("CSS selector to wait for before capturing"),
   viewport: z
     .object({ width: z.number().int().min(1), height: z.number().int().min(1) })

@@ -308,7 +308,7 @@ Hard rules:
 ### Scopes & file locations
 
 - **Global** → `~/.ezcoder/mcp.json` — available in all EZ Coder sessions.
-- **Project** → `./.gg/mcp.json` — only the current project root.
+- **Project** → `./.ezcoder/mcp.json` — only the current project root.
 - On a name collision, **project wins**. Provider defaults (e.g. `kencode-search`) stay authoritative — a user server can only add a new name, never override a default.
 
 ### Commands

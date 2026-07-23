@@ -147,6 +147,7 @@ replace_in_tracked_text_files() {
       -e 's|gg-framework|ezcoder|g' \
       -e 's|~/\.gg/|~/.ezcoder/|g' \
       -e 's|~/.gg/|~/.ezcoder/|g' \
+      -e 's|~/\.gg|~/.ezcoder|g' \
       -e 's|"\.gg"|".ezcoder"|g' \
       -e "s|'\.gg'|'.ezcoder'|g" \
       -e 's|\.gg/eyes|.ezcoder/eyes|g' \
@@ -160,6 +161,8 @@ replace_in_tracked_text_files() {
       -e 's|\.gg/debug|.ezcoder/debug|g' \
       -e 's|\.gg/settings|.ezcoder/settings|g' \
       -e 's|\.gg/update-state|.ezcoder/update-state|g' \
+      -e 's|\.gg/|.ezcoder/|g' \
+      -e 's|/\.gg"|/.ezcoder"|g' \
       -e 's|\.gg-tasks|.ezcoder-tasks|g' \
       -e 's|GGAIError|EZCoderAIError|g' \
       -e 's|Ken just pushed a new update|Nolan just pushed a new update|g' \

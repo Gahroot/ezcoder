@@ -34,7 +34,7 @@ function isWithin(root: string, target: string): boolean {
 /**
  * Decide whether a resolved write/edit target path is allowed.
  * Allowed by default: under `cwd`, under the OS temp dir, and under the
- * agent's own state dir (~/.gg) — sessions/plans/settings must keep working.
+ * agent's own state dir (~/.ezcoder) — sessions/plans/settings must keep working.
  */
 export function resolveWriteGuard(
   cwd: string,

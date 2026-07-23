@@ -1079,7 +1079,7 @@ async function main(): Promise<void> {
     // Radio playback is app-wide (one stream across all windows), so it stops
     // at the daemon level, not per session.
     stopRadio();
-    // Close the ~/.gg progress fs.watch handle (baseline #8 leak fix).
+    // Close the ~/.ezcoder progress fs.watch handle (baseline #8 leak fix).
     progress.dispose();
     await Promise.all([...sessions.values()].map((c) => c.dispose().catch(() => {})));
     server.close();
@@ -1179,7 +1179,7 @@ interface ProgressManager {
   snapshot: () => ProgressSnapshot;
   /** Award XP for one successfully completed run (prompt + any new commits). */
   awardRun: (cwd: string, runStartedAt: number, originId?: string) => Promise<void>;
-  /** Close the ~/.gg fs.watch + clear any pending debounce (leak-free shutdown). */
+  /** Close the ~/.ezcoder fs.watch + clear any pending debounce (leak-free shutdown). */
   dispose: () => void;
 }
 

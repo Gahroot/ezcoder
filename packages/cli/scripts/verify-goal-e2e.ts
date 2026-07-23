@@ -78,9 +78,9 @@ async function runFullAzReliabilityContractHarness() {
   try {
     const originalPrompt = "Improve feature X/Y/Z using https://github.com/acme/product-reference and attached screenshot/instructions.";
     const goalPlan = "GOAL_PLAN\nresearch=local\nfacts=goal-store.ts goal-references.ts goals.ts system-prompt.ts goal-controller.ts package scripts\nsuccess=original prompt durable; GOAL_PLAN durable; verifier handoff clear; A-Z contract\nproof=domain-agnostic durable state verifier audit contract\nsetup=references worker proof verifier final audit\nEND_GOAL_PLAN";
-    const screenshotPath = ".gg/goal-references/image-liked-ui.png";
-    const xyzPath = ".gg/goal-references/text-feature-fix-x-y-z.md";
-    await fs.mkdir(path.join(tmpProject, ".gg/goal-references"), { recursive: true });
+    const screenshotPath = ".ezcoder/goal-references/image-liked-ui.png";
+    const xyzPath = ".ezcoder/goal-references/text-feature-fix-x-y-z.md";
+    await fs.mkdir(path.join(tmpProject, ".ezcoder/goal-references"), { recursive: true });
     await fs.writeFile(path.join(tmpProject, screenshotPath), "fake-png", "utf-8");
     await fs.writeFile(path.join(tmpProject, xyzPath), "X: keyboard flow\nY: empty state copy\nZ: error recovery\n", "utf-8");
     await executeGoalHarnessTool(tmpProject, {

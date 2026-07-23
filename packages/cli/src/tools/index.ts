@@ -97,7 +97,7 @@ export interface CreateToolsOptions {
   authStorage?: GenerateImageAuth & { hasProviderAuth(provider: string): Promise<boolean> };
   /**
    * Lazily read the workspace write-guard settings (allowOutsideWorkspaceWrites).
-   * When omitted, writes are allowed under cwd, the OS tmpdir, and ~/.gg only.
+   * When omitted, writes are allowed under cwd, the OS tmpdir, and ~/.ezcoder only.
    */
   getWriteGuardSettings?: () => WriteGuardSettings | undefined;
 }

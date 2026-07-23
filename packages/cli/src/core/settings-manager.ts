@@ -42,7 +42,7 @@ const SettingsSchema = z.object({
   autoApprovePlans: z.boolean().default(true),
   /** Append LSP diagnostics to edit/write tool results. */
   lspDiagnostics: z.boolean().default(true),
-  /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.gg). Off by
+  /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.ezcoder). Off by
    *  default — outside writes return a guard error asking for user approval. */
   allowOutsideWorkspaceWrites: z.boolean().default(false),
   /** Defer MCP tool schemas out of the prompt until discovered via tool_search.

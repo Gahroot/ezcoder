@@ -611,7 +611,7 @@ describe("goal controller", () => {
           summary: "tests failed",
           checkedAt: "2024-01-01T00:00:00.000Z",
           exitCode: 1,
-          outputPath: ".gg/log.log",
+          outputPath: ".ezcoder/log.log",
         },
       },
       evidence: [
@@ -620,7 +620,7 @@ describe("goal controller", () => {
           kind: "command",
           label: "Verifier fail",
           content: "tests failed",
-          path: ".gg/log.log",
+          path: ".ezcoder/log.log",
           createdAt: "2024-01-01T00:00:00.000Z",
         },
       ],
@@ -632,7 +632,7 @@ describe("goal controller", () => {
       reason: "Verifier failed; creating bounded fix task 1/5.",
     });
     expect(decision.kind === "create_task" ? decision.prompt : "").toContain(
-      "Output path: .gg/log.log",
+      "Output path: .ezcoder/log.log",
     );
   });
 

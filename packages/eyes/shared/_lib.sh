@@ -9,7 +9,7 @@ eyes_project_root() {
   if [ -n "${EYES_PROJECT_ROOT:-}" ]; then echo "$EYES_PROJECT_ROOT"; return; fi
   local d="$PWD"
   while [ "$d" != "/" ]; do
-    if [ -d "$d/.gg" ]; then echo "$d"; return; fi
+    if [ -d "$d/.ezcoder" ]; then echo "$d"; return; fi
     d="$(dirname "$d")"
   done
   echo "$PWD"

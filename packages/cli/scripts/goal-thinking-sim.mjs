@@ -10,7 +10,7 @@
 //   node packages/cli/scripts/goal-thinking-sim.mjs
 //   node packages/cli/scripts/goal-thinking-sim.mjs --only agent --models "anthropic:claude-opus-4-8"
 //
-// Writes raw + readable outputs under .gg/goal-sim/run-<timestamp>/<provider-model>/<scenario>/.
+// Writes raw + readable outputs under .ezcoder/goal-sim/run-<timestamp>/<provider-model>/<scenario>/.
 
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
