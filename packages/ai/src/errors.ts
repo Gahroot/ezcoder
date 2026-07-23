@@ -505,7 +505,7 @@ function providerGuidance(
     lower.includes("many-image request") ||
     (lower.includes("image dimensions") && lower.includes("max allowed size"))
   ) {
-    return `An image in conversation history exceeds ${name}'s many-image limit. Restart GG Coder so restored images are resized, then retry; if it persists, start a new session.`;
+    return `An image in conversation history exceeds ${name}'s many-image limit. Restart EZ Coder so restored images are resized, then retry; if it persists, start a new session.`;
   }
   // Anthropic HTTP 413: the request BODY (not the token count) exceeds the
   // provider's max size. Retrying the same request fails identically — the fix

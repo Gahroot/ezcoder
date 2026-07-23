@@ -41,10 +41,10 @@ describe("BOM-tolerant instruction parsing", () => {
     expect(agent.systemPrompt).toBe("You are a scout.");
   });
 
-  it("parses a BOM'd .gg/commands/*.md custom command", async () => {
+  it("parses a BOM'd .ezcoder/commands/*.md custom command", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "bom-commands-"));
     try {
-      const dir = path.join(cwd, ".gg", "commands");
+      const dir = path.join(cwd, ".ezcoder", "commands");
       await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(
         path.join(dir, "deploy.md"),

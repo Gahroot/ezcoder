@@ -42,7 +42,7 @@ export function createExitPlanTool(
       // Fail closed: a plan without extractable steps silently loses the
       // [DONE:n] progress contract after approval — reject with the exact
       // remediation so the model can self-repair in the same run (plan mode
-      // allows writing under .gg/plans/).
+      // allows writing under .ezcoder/plans/).
       if (extractPlanSteps(content).length === 0) {
         return (
           "Plan rejected: no '## Steps' section with numbered steps found. " +

@@ -19,12 +19,12 @@ import {
 } from "./lib.mjs";
 
 const { discoverSkills, formatSkillsForPrompt } = await import(
-  path.join(REPO_ROOT, "packages/ggcoder/dist/core/skills.js")
+  path.join(REPO_ROOT, "packages/cli/dist/core/skills.js")
 );
 
-// ── How injection works (from packages/ggcoder/src/system-prompt.ts + core/skills.ts) ──
-// - Skills: agent-session.ts calls discoverSkills({globalSkillsDir: ~/.gg/skills,
-//   projectDir}) → bundled + global + project .gg/skills. buildSystemPrompt
+// ── How injection works (from packages/cli/src/system-prompt.ts + core/skills.ts) ──
+// - Skills: agent-session.ts calls discoverSkills({globalSkillsDir: ~/.ezcoder/skills,
+//   projectDir}) → bundled + global + project .ezcoder/skills. buildSystemPrompt
 //   appends formatSkillsForPrompt(skills) as a "## Skills" section containing
 //   one "- **name**: description" line per skill (the full SKILL.md body is
 //   NOT inlined — it's loaded on demand via the `skill` tool).
@@ -34,13 +34,13 @@ const { discoverSkills, formatSkillsForPrompt } = await import(
 // - MCP tools: deferred — the prompt only points at `tool_search` discovery
 //   (renderResearchSection), MCP tool schemas are not inlined either.
 const injectionNotes = {
-  skills: "discoverSkills() merges bundled + ~/.gg/skills + <project>/.gg/skills; buildSystemPrompt appends a '## Skills' section via formatSkillsForPrompt() with one description line per skill; full skill bodies load on demand via the skill tool.",
+  skills: "discoverSkills() merges bundled + ~/.ezcoder/skills + <project>/.ezcoder/skills; buildSystemPrompt appends a '## Skills' section via formatSkillsForPrompt() with one description line per skill; full skill bodies load on demand via the skill tool.",
   slashCommands: "Not injected into the system prompt (client-side SlashCommandRegistry expansion).",
   mcpTools: "Deferred behind tool_search; schemas not inlined in the prompt.",
 };
 
 // ── Installed skills ──
-const globalSkillsDir = path.join(homedir(), ".gg", "skills");
+const globalSkillsDir = path.join(homedir(), ".ezcoder", "skills");
 const skills = await discoverSkills({ globalSkillsDir, projectDir: REPO_ROOT });
 const skillInventory = skills.map((s) => ({
   name: s.name,

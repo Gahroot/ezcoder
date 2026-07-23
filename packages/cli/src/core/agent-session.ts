@@ -2263,7 +2263,7 @@ export class AgentSession {
     // Track the current leaf for subsequent entries
     this.currentLeafId = loaded.header.leafId;
 
-    // Rebuild messages: keep system, add loaded. Older gg-app sessions may
+    // Rebuild messages: keep system, add loaded. Older ezcoder-app sessions may
     // contain full-resolution attachments; repair them once on load so they do
     // not fail when Anthropic's stricter many-image limit activates later.
     const systemMsg = this.messages[0]; // Already built

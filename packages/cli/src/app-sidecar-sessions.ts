@@ -13,7 +13,7 @@ const CHAT_SESSION_LIMIT = 30;
 
 export type SidecarSession = RecentSession & { chatAgent?: ChatAgentId };
 
-/** List coding or chat sessions using the caps exposed by the gg-app sidecar. */
+/** List coding or chat sessions using the caps exposed by the ezcoder-app sidecar. */
 export async function listSidecarSessions(
   cwd: string,
   requestedAgent: string | null,

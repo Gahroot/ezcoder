@@ -1,6 +1,6 @@
 /**
  * Provider id → bundled logo asset. Keys match `AuthProviderMeta.value` in
- * ggcoder's `core/auth-providers.ts` (the sidecar's /auth/status payload).
+ * ezcoder's `core/auth-providers.ts` (the sidecar's /auth/status payload).
  *
  * Marks are official brand assets, normalized for the dark theme: monochrome
  * marks (OpenAI, xAI, Kimi) render in off-white, Anthropic in brand clay, the

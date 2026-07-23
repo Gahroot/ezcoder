@@ -137,8 +137,8 @@ export function ProjectPicker({
         const message = reason instanceof Error ? reason.message : String(reason);
         setResumeError(
           message
-            .replace(/Run ["'`]?ggcoder login["'`]?/gi, "Use AI Providers to sign in")
-            .replace(/ggcoder login/gi, "AI Providers"),
+            .replace(/Run ["'`]?ezcoder login["'`]?/gi, "Use AI Providers to sign in")
+            .replace(/ezcoder login/gi, "AI Providers"),
         );
         setBusy(false);
       });

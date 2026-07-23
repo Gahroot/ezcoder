@@ -3,7 +3,7 @@
   "model": "claude-sonnet-5",
   "date": "2026-07-21T21:34:05.016Z",
   "injectionNotes": {
-    "skills": "discoverSkills() merges bundled + ~/.gg/skills + <project>/.gg/skills; buildSystemPrompt appends a '## Skills' section via formatSkillsForPrompt() with one description line per skill; full skill bodies load on demand via the skill tool.",
+    "skills": "discoverSkills() merges bundled + ~/.ezcoder/skills + <project>/.ezcoder/skills; buildSystemPrompt appends a '## Skills' section via formatSkillsForPrompt() with one description line per skill; full skill bodies load on demand via the skill tool.",
     "slashCommands": "Not injected into the system prompt (client-side SlashCommandRegistry expansion).",
     "mcpTools": "Deferred behind tool_search; schemas not inlined in the prompt."
   },
@@ -80,7 +80,7 @@
         "pctOfTotal": 2.7693841313354723
       },
       {
-        "name": "## gg-app — Desktop App (primary product)",
+        "name": "## ezcoder-app — Desktop App (primary product)",
         "chars": 6685,
         "estTokens": 1672,
         "pctOfTotal": 20.824896420672253

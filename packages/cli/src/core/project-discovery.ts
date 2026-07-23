@@ -444,7 +444,7 @@ function formatRelativeTime(ms: number): string {
 export interface RecentSession {
   /** Session id. */
   id: string;
-  /** Absolute resumable path to a plain or gzip GG Coder session. */
+  /** Absolute resumable path to a plain or gzip EZ Coder session. */
   path: string;
   /** Legacy saved label, falling back to the first real user prompt. */
   preview: string;

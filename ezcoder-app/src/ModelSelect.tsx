@@ -9,11 +9,11 @@ interface Props {
   currentModel: string;
   onSelect: (modelId: string) => void;
   disabled?: boolean;
-  /** Tooltip + accessible name (e.g. "Switch GG Coder's model"). */
+  /** Tooltip + accessible name (e.g. "Switch EZ Coder's model"). */
   title: string;
-  /** Accent color for the closed control (GG = text, Ken = ken). */
+  /** Accent color for the closed control (GG = text, Nolan = ken). */
   color?: string;
-  /** When set, adds a "Follow GG Coder" choice (Ken's picker) — selecting it
+  /** When set, adds a "Follow EZ Coder" choice (Nolan's picker) — selecting it
    *  clears the pin. `followActive` makes it the selected value. */
   onSelectFollow?: () => void;
   followActive?: boolean;
@@ -127,8 +127,8 @@ export function ModelSelect({
           {onSelectFollow && (
             <option value={FOLLOW_VALUE}>
               {following
-                ? `Follow GG Coder (${modelDisplayName(models, currentModel)})`
-                : "Follow GG Coder"}
+                ? `Follow EZ Coder (${modelDisplayName(models, currentModel)})`
+                : "Follow EZ Coder"}
             </option>
           )}
           {!known && currentModel !== "" && <option value={currentModel}>{currentModel}</option>}
@@ -179,9 +179,9 @@ export function ModelSelect({
                 background: following ? theme.surface2 : "transparent",
               }}
               onClick={chooseFollow}
-              title="Ken adopts whatever model GG Coder is using"
+              title="Nolan adopts whatever model EZ Coder is using"
             >
-              Follow GG Coder
+              Follow EZ Coder
             </button>
           )}
           <div className="model-menu-grid" role="group">

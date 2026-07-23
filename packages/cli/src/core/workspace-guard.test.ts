@@ -17,7 +17,7 @@ describe("resolveWriteGuard", () => {
   });
 
   it("allows paths under the agent's own ~/.gg state dir", () => {
-    const target = path.join(os.homedir(), ".gg", "plans", "plan.md");
+    const target = path.join(os.homedir(), ".ezcoder", "plans", "plan.md");
     expect(resolveWriteGuard(cwd, target).allowed).toBe(true);
   });
 

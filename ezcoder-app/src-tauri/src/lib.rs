@@ -3804,7 +3804,7 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
 
             let Some(delay) = daemon_respawn_delay(attempt) else {
                 let message =
-                    "Agent daemon stopped after repeated crashes. Restart GG Coder to try again.";
+                    "Agent daemon stopped after repeated crashes. Restart EZ Coder to try again.";
                 log::error!("daemon crash circuit breaker opened after {attempt} crashes");
                 emit_daemon_error(&app2, message);
                 return;

@@ -259,7 +259,7 @@ describe("discoverProjects (ezcoder store)", () => {
     expect(sessions[0]?.preview).toBe("Original user request");
   });
 
-  it("discovers and deduplicates an archived GG Coder session", async () => {
+  it("discovers and deduplicates an archived EZ Coder session", async () => {
     const projectPath = path.join(tmp, "projects", "archived");
     await fs.mkdir(projectPath, { recursive: true });
     const timestamp = new Date().toISOString();

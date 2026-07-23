@@ -6,7 +6,7 @@
 //     the registry's 1M is a lie that lets compaction fire too late.
 //   - If they succeed → the models are 1M-GA, the registry is correct, and item
 //     #3 is a NO-OP (nothing to change in gg-ai).
-// Uses the real GG auth credentials (~/.gg/auth.json) via AuthStorage.
+// Uses the real GG auth credentials (~/.ezcoder/auth.json) via AuthStorage.
 // Run from repo root:  node bench/baseline/12-anthropic-1m-probe.mjs
 import { stream, anthropicCreds, freshCacheKey, writeResult, estTokens, table } from "./lib.mjs";
 

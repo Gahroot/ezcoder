@@ -6,7 +6,7 @@ import { createGunzip, createGzip } from "node:zlib";
 import type { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import { pipeline } from "node:stream/promises";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 
 export const MAX_PERSISTED_TOOL_TEXT_CHARS = 40_000;
 export const COLD_SESSION_AGE_DAYS = 7;

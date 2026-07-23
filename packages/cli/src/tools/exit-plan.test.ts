@@ -21,7 +21,7 @@ describe("createExitPlanTool", () => {
 
   beforeEach(async () => {
     cwd = await fs.mkdtemp(path.join(os.tmpdir(), "exit-plan-test-"));
-    plansDir = path.join(cwd, ".gg", "plans");
+    plansDir = path.join(cwd, ".ezcoder", "plans");
     await fs.mkdir(plansDir, { recursive: true });
   });
 
@@ -38,7 +38,7 @@ describe("createExitPlanTool", () => {
     const onExitPlan = vi.fn().mockResolvedValue("Plan submitted.");
     const tool = createExitPlanTool(cwd, onExitPlan);
 
-    const result = await tool.execute({ plan_path: ".gg/plans/plan.md" }, context());
+    const result = await tool.execute({ plan_path: ".ezcoder/plans/plan.md" }, context());
 
     expect(asText(result)).toBe("Plan submitted.");
     expect(onExitPlan).toHaveBeenCalledWith(planPath);
@@ -52,7 +52,7 @@ describe("createExitPlanTool", () => {
     const onExitPlan = vi.fn();
     const tool = createExitPlanTool(cwd, onExitPlan);
 
-    const result = await tool.execute({ plan_path: ".gg/plans/plan.md" }, context());
+    const result = await tool.execute({ plan_path: ".ezcoder/plans/plan.md" }, context());
 
     expect(asText(result)).toContain("Plan rejected: no '## Steps' section");
     expect(asText(result)).toContain("call exit_plan again");
@@ -67,7 +67,7 @@ describe("createExitPlanTool", () => {
     const onExitPlan = vi.fn();
     const tool = createExitPlanTool(cwd, onExitPlan);
 
-    const result = await tool.execute({ plan_path: ".gg/plans/plan.md" }, context());
+    const result = await tool.execute({ plan_path: ".ezcoder/plans/plan.md" }, context());
 
     expect(asText(result)).toContain("Plan rejected");
     expect(onExitPlan).not.toHaveBeenCalled();
@@ -78,19 +78,19 @@ describe("createExitPlanTool", () => {
     const onExitPlan = vi.fn();
     const tool = createExitPlanTool(cwd, onExitPlan);
 
-    const result = await tool.execute({ plan_path: ".gg/plans/plan.md" }, context());
+    const result = await tool.execute({ plan_path: ".ezcoder/plans/plan.md" }, context());
 
     expect(asText(result)).toContain("Plan file is empty");
     expect(onExitPlan).not.toHaveBeenCalled();
   });
 
-  it("still rejects paths outside .gg/plans/", async () => {
+  it("still rejects paths outside .ezcoder/plans/", async () => {
     const onExitPlan = vi.fn();
     const tool = createExitPlanTool(cwd, onExitPlan);
 
-    for (const bad of ["plan.md", "../plan.md", ".gg/plans/../../etc/passwd"]) {
+    for (const bad of ["plan.md", "../plan.md", ".ezcoder/plans/../../etc/passwd"]) {
       const result = await tool.execute({ plan_path: bad }, context());
-      expect(asText(result)).toContain("must be under .gg/plans/");
+      expect(asText(result)).toContain("must be under .ezcoder/plans/");
     }
     expect(onExitPlan).not.toHaveBeenCalled();
   });

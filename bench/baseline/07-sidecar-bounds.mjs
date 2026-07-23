@@ -21,12 +21,12 @@ if (typeof globalThis.gc !== "function") {
   process.exit(1);
 }
 
-// Same fast-glob + ignore the sidecar uses (packages/ggcoder deps, fast-glob 3.3.3).
+// Same fast-glob + ignore the sidecar uses (packages/cli deps, fast-glob 3.3.3).
 const fg = (
-  await import(pathToFileURL(path.join(REPO_ROOT, "packages/ggcoder/node_modules/fast-glob/out/index.js")).href)
+  await import(pathToFileURL(path.join(REPO_ROOT, "packages/cli/node_modules/fast-glob/out/index.js")).href)
 ).default;
 const ignore = (
-  await import(pathToFileURL(path.join(REPO_ROOT, "packages/ggcoder/node_modules/ignore/index.js")).href)
+  await import(pathToFileURL(path.join(REPO_ROOT, "packages/cli/node_modules/ignore/index.js")).href)
 ).default;
 
 const FILE_SEARCH_LIMIT = 20; // app-sidecar.ts:449

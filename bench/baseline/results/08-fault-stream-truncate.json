@@ -41,10 +41,10 @@
       "isProviderError": true,
       "statusCode": null,
       "errorSource": "provider",
-      "guidance": "This is an error from Anthropic, not GG Coder. Retry — if it persists, check status.anthropic.com.",
+      "guidance": "This is an error from Anthropic, not EZ Coder. Retry — if it persists, check status.anthropic.com.",
       "isUsageLimit": false,
       "classification": "unclassified",
-      "retryablePerGgAi": "no explicit marker — source=provider, guidance \"This is an error from Anthropic, not GG Coder. Retry — if it…\"",
+      "retryablePerGgAi": "no explicit marker — source=provider, guidance \"This is an error from Anthropic, not EZ Coder. Retry — if it…\"",
       "eventsSeen": {
         "keepalive": 2,
         "text_delta": 2
@@ -62,10 +62,10 @@
       "isProviderError": true,
       "statusCode": 504,
       "errorSource": "provider",
-      "guidance": "This is an error from Anthropic, not GG Coder. Retry — if it persists, check status.anthropic.com.",
+      "guidance": "This is an error from Anthropic, not EZ Coder. Retry — if it persists, check status.anthropic.com.",
       "isUsageLimit": false,
       "classification": "unclassified",
-      "retryablePerGgAi": "no explicit marker — source=provider, guidance \"This is an error from Anthropic, not GG Coder. Retry — if it…\"",
+      "retryablePerGgAi": "no explicit marker — source=provider, guidance \"This is an error from Anthropic, not EZ Coder. Retry — if it…\"",
       "eventsSeen": {
         "keepalive": 2,
         "text_delta": 2
@@ -77,5 +77,5 @@
       "ms": "2"
     }
   },
-  "verdict": "clean: full sequence works (stop=end_turn, text=\"Hello world\"). truncate-mid (socket destroyed mid-events): stream() THROWS ProviderError (\"terminated\"), statusCode=null — gg-ai classification: unclassified (source=provider); retryable: no explicit marker — source=provider, guidance \"This is an error from Anthropic, not GG Coder. Retry — if it…\". truncate-silent (clean TCP close, no message_stop): stream() THROWS ProviderError (\"Stream ended before completion (no stop_reason).\"), statusCode=504 — gg-ai classification: unclassified (source=provider); retryable: no explicit marker — source=provider, guidance \"This is an error from Anthropic, not GG Coder. Retry — if it…\". anthropic.ts now guards both the zero-event case (\"Stream ended without producing any events\") and the started-but-never-finished case (\"Stream ended before completion (no stop_reason)\") with statusCode 504, so a truncated stream is a retryable transport failure instead of a phantom-complete end_turn."
+  "verdict": "clean: full sequence works (stop=end_turn, text=\"Hello world\"). truncate-mid (socket destroyed mid-events): stream() THROWS ProviderError (\"terminated\"), statusCode=null — gg-ai classification: unclassified (source=provider); retryable: no explicit marker — source=provider, guidance \"This is an error from Anthropic, not EZ Coder. Retry — if it…\". truncate-silent (clean TCP close, no message_stop): stream() THROWS ProviderError (\"Stream ended before completion (no stop_reason).\"), statusCode=504 — gg-ai classification: unclassified (source=provider); retryable: no explicit marker — source=provider, guidance \"This is an error from Anthropic, not EZ Coder. Retry — if it…\". anthropic.ts now guards both the zero-event case (\"Stream ended without producing any events\") and the started-but-never-finished case (\"Stream ended before completion (no stop_reason)\") with statusCode 504, so a truncated stream is a retryable transport failure instead of a phantom-complete end_turn."
 }

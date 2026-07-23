@@ -11,9 +11,9 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const RESULTS_DIR = path.join(ROOT, "bench", "baseline", "results");
 
-const AI = await import(path.join(ROOT, "packages/gg-ai/dist/index.js"));
-const AGENT = await import(path.join(ROOT, "packages/gg-agent/dist/index.js"));
-const GGCODER = await import(path.join(ROOT, "packages/ggcoder/dist/index.js"));
+const AI = await import(path.join(ROOT, "packages/ai/dist/index.js"));
+const AGENT = await import(path.join(ROOT, "packages/agent/dist/index.js"));
+const GGCODER = await import(path.join(ROOT, "packages/cli/dist/index.js"));
 
 export const { stream } = AI;
 export const { Agent } = AGENT;
@@ -28,7 +28,7 @@ export async function anthropicCreds() {
   const auth = new GGCODER.AuthStorage();
   cachedCreds = await auth.resolveCredentials("anthropic").catch((err) => {
     throw new Error(
-      `Could not resolve Anthropic credentials (run: ggcoder login). ${err?.message ?? err}`,
+      `Could not resolve Anthropic credentials (run: ezcoder login). ${err?.message ?? err}`,
     );
   });
   return cachedCreds;

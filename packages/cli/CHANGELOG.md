@@ -29,18 +29,18 @@
 ### Patch Changes
 
 - Automatically recover from runaway tool-call streams and restore bundled TypeScript diagnostics and source inspection in the desktop sidecar.
-  - @kenkaiiii/gg-ai@5.22.3
-  - @kenkaiiii/gg-agent@5.22.3
-  - @kenkaiiii/gg-core@5.22.3
+  - @prestyj/ai@5.22.3
+  - @prestyj/agent@5.22.3
+  - @prestyj/core@5.22.3
 
 ## 5.22.2
 
 ### Patch Changes
 
 - Keep live sessions responsive while multiple subagents stream in parallel.
-  - @kenkaiiii/gg-ai@5.22.2
-  - @kenkaiiii/gg-agent@5.22.2
-  - @kenkaiiii/gg-core@5.22.2
+  - @prestyj/ai@5.22.2
+  - @prestyj/agent@5.22.2
+  - @prestyj/core@5.22.2
 
 ## 5.22.1
 
@@ -48,15 +48,15 @@
 
 - Reliability fixes from the baseline harness (bench/baseline):
   - **Truncated-stream guard (gg-ai):** a clean stream close with no terminal event (no `message_stop` / `finish_reason`) now throws a retryable `ProviderError(504)` instead of silently returning partial text as a phantom-complete `end_turn`. Applies to both the Anthropic and OpenAI-compatible providers.
-  - **Sidecar bounds (ggcoder):** inbound HTTP bodies capped at 10 MB (413) via `readCappedBody`; the `~/.gg` progress `fs.watch` handle is now closed on shutdown; the project-file glob search streams and bails after 50k entries. Closes three unbounded-memory/leak paths.
+  - **Sidecar bounds (ezcoder):** inbound HTTP bodies capped at 10 MB (413) via `readCappedBody`; the `~/.gg` progress `fs.watch` handle is now closed on shutdown; the project-file glob search streams and bails after 50k entries. Closes three unbounded-memory/leak paths.
   - **Cap-divergence marker (gg-agent):** `capToolResults`/`capTurnToolResults` now stamp `ToolResult.capped = { originalChars, keptChars, scope }` when they trim, so the event-transcript vs model-input divergence is programmatically visible. Internal metadata only — never serialized to the provider.
   - **Empty-part serializer fix (gg-ai):** `toAnthropicMessages` no longer emits empty text parts (user `""`, user `{text:""}`, settled assistant `""`), eliminating live Anthropic 400 "text content blocks must be non-empty" failures.
   - **Tool-id remap fix (gg-ai):** `remapToolCallId` now strips the full `toolu_` prefix (`slice(6)`), mapping `toolu_01ABC` → clean `call_01ABC` instead of the lossy double-underscore `call__01ABC`.
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@5.22.1
-  - @kenkaiiii/gg-agent@5.22.1
-  - @kenkaiiii/gg-core@5.22.1
+  - @prestyj/ai@5.22.1
+  - @prestyj/agent@5.22.1
+  - @prestyj/core@5.22.1
 
 ## 5.22.0
 
@@ -66,9 +66,9 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.22.0
-- @kenkaiiii/gg-agent@5.22.0
-- @kenkaiiii/gg-core@5.22.0
+- @prestyj/ai@5.22.0
+- @prestyj/agent@5.22.0
+- @prestyj/core@5.22.0
 
 ## 5.21.0
 
@@ -78,36 +78,36 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.21.0
-- @kenkaiiii/gg-agent@5.21.0
-- @kenkaiiii/gg-core@5.21.0
+- @prestyj/ai@5.21.0
+- @prestyj/agent@5.21.0
+- @prestyj/core@5.21.0
 
 ## 5.20.5
 
 ### Patch Changes
 
 - Require generated UIs to meet WCAG 2.2 Level AA and follow ADA-aligned accessibility practices.
-  - @kenkaiiii/gg-ai@5.20.5
-  - @kenkaiiii/gg-agent@5.20.5
-  - @kenkaiiii/gg-core@5.20.5
+  - @prestyj/ai@5.20.5
+  - @prestyj/agent@5.20.5
+  - @prestyj/core@5.20.5
 
 ## 5.20.4
 
 ### Patch Changes
 
 - Teach the bundled UI skill to avoid generic soft semantic tint-on-tint treatments.
-  - @kenkaiiii/gg-ai@5.20.4
-  - @kenkaiiii/gg-agent@5.20.4
-  - @kenkaiiii/gg-core@5.20.4
+  - @prestyj/ai@5.20.4
+  - @prestyj/agent@5.20.4
+  - @prestyj/core@5.20.4
 
 ## 5.20.3
 
 ### Patch Changes
 
 - Strengthen the bundled UI skill with consistent content rails, control spacing, and pointer focus guidance.
-  - @kenkaiiii/gg-ai@5.20.3
-  - @kenkaiiii/gg-agent@5.20.3
-  - @kenkaiiii/gg-core@5.20.3
+  - @prestyj/ai@5.20.3
+  - @prestyj/agent@5.20.3
+  - @prestyj/core@5.20.3
 
 ## 5.20.2
 
@@ -115,18 +115,18 @@
 
 - 5fb6b62: Automatically enforce session retention across desktop, CLI, and chat-agent stores, compress inactive transcripts after seven days, and cap persisted tool output at 40,000 characters. Media is migrated to deduplicated adjacent assets with backward-compatible hydration and archived sessions remain discoverable and resumable through stale saved paths.
 - Updated dependencies [f4b8ec7]
-  - @kenkaiiii/gg-core@5.20.2
-  - @kenkaiiii/gg-ai@5.20.2
-  - @kenkaiiii/gg-agent@5.20.2
+  - @prestyj/core@5.20.2
+  - @prestyj/ai@5.20.2
+  - @prestyj/agent@5.20.2
 
 ## 5.20.1
 
 ### Patch Changes
 
 - Show up to 30 recent chat sessions while keeping coding history capped at 5.
-  - @kenkaiiii/gg-ai@5.20.1
-  - @kenkaiiii/gg-agent@5.20.1
-  - @kenkaiiii/gg-core@5.20.1
+  - @prestyj/ai@5.20.1
+  - @prestyj/agent@5.20.1
+  - @prestyj/core@5.20.1
 
 ## 5.20.0
 
@@ -136,36 +136,36 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.20.0
-- @kenkaiiii/gg-agent@5.20.0
-- @kenkaiiii/gg-core@5.20.0
+- @prestyj/ai@5.20.0
+- @prestyj/agent@5.20.0
+- @prestyj/core@5.20.0
 
 ## 5.19.6
 
 ### Patch Changes
 
 - Filter expected usage polling, cancellation, and tool validation failures from desktop error reports.
-  - @kenkaiiii/gg-ai@5.19.6
-  - @kenkaiiii/gg-agent@5.19.6
-  - @kenkaiiii/gg-core@5.19.6
+  - @prestyj/ai@5.19.6
+  - @prestyj/agent@5.19.6
+  - @prestyj/core@5.19.6
 
 ## 5.19.5
 
 ### Patch Changes
 
 - Report sidecar, provider, tool, and subagent failures through the desktop Error Mom integration.
-  - @kenkaiiii/gg-ai@5.19.5
-  - @kenkaiiii/gg-agent@5.19.5
-  - @kenkaiiii/gg-core@5.19.5
+  - @prestyj/ai@5.19.5
+  - @prestyj/agent@5.19.5
+  - @prestyj/core@5.19.5
 
 ## 5.19.4
 
 ### Patch Changes
 
 - Prevent Anthropic many-image requests from failing by resizing new and restored images to provider-safe dimensions.
-  - @kenkaiiii/gg-ai@5.19.4
-  - @kenkaiiii/gg-agent@5.19.4
-  - @kenkaiiii/gg-core@5.19.4
+  - @prestyj/ai@5.19.4
+  - @prestyj/agent@5.19.4
+  - @prestyj/core@5.19.4
 
 ## 5.19.3
 

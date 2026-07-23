@@ -58,7 +58,7 @@ if (other) {
 }
 
 // Does the prompt embed the current date/time? Inspect source + prompt tail.
-const src = await readFile(path.join(REPO_ROOT, "packages/ggcoder/src/system-prompt.ts"), "utf8");
+const src = await readFile(path.join(REPO_ROOT, "packages/cli/src/system-prompt.ts"), "utf8");
 const volatileSrcLines = src
   .split("\n")
   .map((line, i) => ({ n: i + 1, line: line.trim() }))

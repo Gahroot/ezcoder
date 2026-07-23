@@ -113,7 +113,7 @@ describe("formatError request too large", () => {
         { statusCode: 400 },
       ),
     );
-    expect(f.guidance).toContain("Restart GG Coder");
+    expect(f.guidance).toContain("Restart EZ Coder");
     expect(f.guidance).toContain("restored images are resized");
     expect(f.guidance).not.toContain("status.anthropic.com");
   });

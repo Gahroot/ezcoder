@@ -23,7 +23,7 @@ globalThis.__GG_ERROR_MOM__ = errorMom;
 process.env.GG_SUBAGENT_WORKER_ENTRY ??= process.argv[1];
 
 try {
-  await import("../../packages/ggcoder/dist/app-sidecar.js");
+  await import("../../packages/cli/dist/app-sidecar.js");
 } catch (error) {
   errorMom.captureError(error, {
     level: "fatal",

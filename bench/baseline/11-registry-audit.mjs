@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { writeResult, table, REPO_ROOT } from "./lib.mjs";
 
-const CORE = await import(path.join(REPO_ROOT, "packages/gg-core/dist/index.js"));
+const CORE = await import(path.join(REPO_ROOT, "packages/core/dist/index.js"));
 const { MODELS, getContextWindow } = CORE;
 
 // ── (a) Route-specific windows ───────────────────────────────
@@ -31,9 +31,9 @@ const anthropicModels = MODELS.filter((m) => m.provider === "anthropic").map((m)
 
 // Does gg-ai ever send Anthropic's 1M-context beta header? (Without it the
 // default API route caps input at 200K for these models.)
-const aiDist = readFileSync(path.join(REPO_ROOT, "packages/gg-ai/dist/index.js"), "utf8");
+const aiDist = readFileSync(path.join(REPO_ROOT, "packages/ai/dist/index.js"), "utf8");
 const aiSrcAnthropic = readFileSync(
-  path.join(REPO_ROOT, "packages/gg-ai/src/providers/anthropic.ts"),
+  path.join(REPO_ROOT, "packages/ai/src/providers/anthropic.ts"),
   "utf8",
 );
 const sends1mBeta = /context-1m|1m-2025|context_1m/i.test(aiDist) || /context-1m|1m-2025|context_1m/i.test(aiSrcAnthropic);

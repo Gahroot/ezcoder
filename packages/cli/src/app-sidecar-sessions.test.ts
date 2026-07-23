@@ -44,7 +44,7 @@ async function writeSessions(
   }
 }
 
-describe("gg-app sidecar session listings", () => {
+describe("ezcoder-app sidecar session listings", () => {
   let tmp: string;
   let cwd: string;
   let coderSessionsDir: string;

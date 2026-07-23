@@ -151,7 +151,7 @@ for (const b of BUDGETS) {
 }
 
 // ── Current cap behavior (from reading the source) ──
-// packages/gg-agent/src/agent-loop.ts:
+// packages/agent/src/agent-loop.ts:
 //   capToolResults(toolResults, max)        — per-result cap, keeps 70% head + 30% tail,
 //                                             inserts "[... N characters omitted ...]"; hard ceiling 400_000 chars.
 //   capTurnToolResults(toolResults, max)    — aggregate per-turn budget, water-filling
@@ -164,14 +164,14 @@ for (const b of BUDGETS) {
 //   transcript (the messages re-sent to the model on later turns), while the
 //   UI/event stream retains the uncapped result. Transcript and wire payload
 //   DIVERGE once a cap triggers.
-// packages/ggcoder/src/core/agent-session.ts:
+// packages/cli/src/core/agent-session.ts:
 //   resolveSessionToolResultCharLimit  = getToolResultCharLimit(model) ?? floor(contextWindow * 3.5 * 0.30)
 //   resolveSessionTurnToolResultCharLimit = clamp(floor(contextWindow * 3.5 * 0.15), 100_000, 240_000)
 // In THIS bench harness, Agent is constructed without either option, so both
 // caps are DISABLED (capToolResults/capTurnToolResults return early on undefined).
 let resolvedCaps = {};
 try {
-  const sess = await import("../../packages/ggcoder/dist/core/agent-session.js");
+  const sess = await import("../../packages/cli/dist/core/agent-session.js");
   resolvedCaps = {
     // getContextWindow is not exported from either dist entry; 1_050_000 /
     // (3.5 * 0.30) implies a 1M-token context window for claude-sonnet-5.
@@ -191,7 +191,7 @@ const currentCaps = {
     perTurnOptionDefault: "undefined → cap OFF in raw Agent",
     benchHarness: "Agent built without maxToolResultChars/maxTurnToolResultChars → both caps disabled in these runs",
   },
-  ggcoderSession: {
+  ezcoderSession: {
     formula: {
       perResult: "getToolResultCharLimit(model) ?? floor(contextWindow * 3.5 * 0.30)",
       perTurn: "clamp(floor(contextWindow * 3.5 * 0.15), 100_000, 240_000)",

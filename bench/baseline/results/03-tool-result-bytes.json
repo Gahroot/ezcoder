@@ -419,7 +419,7 @@
       "perTurnOptionDefault": "undefined → cap OFF in raw Agent",
       "benchHarness": "Agent built without maxToolResultChars/maxTurnToolResultChars → both caps disabled in these runs"
     },
-    "ggcoderSession": {
+    "ezcoderSession": {
       "formula": {
         "perResult": "getToolResultCharLimit(model) ?? floor(contextWindow * 3.5 * 0.30)",
         "perTurn": "clamp(floor(contextWindow * 3.5 * 0.15), 100_000, 240_000)"

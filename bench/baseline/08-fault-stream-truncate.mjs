@@ -8,7 +8,7 @@ import http from "node:http";
 import path from "node:path";
 import { stream, SONNET, writeResult, fmt, table, REPO_ROOT } from "./lib.mjs";
 
-const AI = await import(path.join(REPO_ROOT, "packages/gg-ai/dist/index.js"));
+const AI = await import(path.join(REPO_ROOT, "packages/ai/dist/index.js"));
 const { isUsageLimitError, classifyProviderError, formatError, ProviderError } = AI;
 
 // ── SSE helpers ──────────────────────────────────────────────
