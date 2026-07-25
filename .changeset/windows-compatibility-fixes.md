@@ -30,3 +30,11 @@ Fix Windows compatibility across project discovery, shell execution, MCP and LSP
   PATH.
 - `find`/`grep` glob patterns containing backslashes now match (backslash is
   picomatch's escape character, never a separator).
+- **Session persistence was broken on Windows.** `syncFile` opened the file
+  read-only (`"r"`) and then called `fsync`, but Windows implements fsync as
+  `FlushFileBuffers`, which requires a handle with WRITE access and fails with
+  `EPERM` on a read-only one. Every durable session write funnels through that
+  helper, so saving sessions, archiving cold sessions and writing redirects all
+  threw. It now opens `"r+"`, and a failed flush is non-fatal (network shares
+  and container overlays can reject fsync outright — losing durability there is
+  acceptable, refusing to save the user's session is not).
