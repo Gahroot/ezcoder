@@ -139,8 +139,11 @@ describe.skipIf(process.platform !== "win32")("createBashTool on real Windows", 
     const out = String(await tool.execute({ command: "echo hello && pwd" }, ctx("win-bash")));
 
     expect(out).toContain("hello");
-    // POSIX-shaped cwd proves this really went through bash, not cmd.exe.
-    expect(out).toMatch(/\/[a-z]\//i);
+    // A POSIX-shaped absolute cwd proves this really went through bash: cmd.exe
+    // would print a `C:\…` path. (Don't assume the `/c/…` drive mapping — under
+    // Git Bash a temp dir can surface as `/tmp/…`.)
+    expect(out).toMatch(/^\/\S+/m);
+    expect(out).not.toMatch(/[A-Za-z]:\\/);
     expect(out).toContain("Exit code: 0");
   });
 
@@ -191,7 +194,10 @@ describe.skipIf(process.platform !== "win32")("createBashTool on real Windows", 
     // "TIMEOUT" is reported would still pass with that bug present, so use a
     // Node grandchild that reports its OWN Windows pid — Git Bash's `$!` is an
     // MSYS pid, which process.kill() cannot address.
-    const pidFile = path.join(tmpHome, "grandchild.pid");
+    // Forward slashes on purpose: Node accepts them on Windows, and embedding
+    // a backslash path inside a JS string inside a bash command means bash eats
+    // the escapes (`\U`, `\b` → backspace) and the write lands somewhere else.
+    const pidFile = path.join(tmpHome, "grandchild.pid").replaceAll("\\", "/");
     const script = `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
     const tool = createBashTool(tmpHome, new ProcessManager());
 

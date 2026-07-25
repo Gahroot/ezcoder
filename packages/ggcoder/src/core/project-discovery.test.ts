@@ -403,6 +403,15 @@ describe.skipIf(process.platform !== "win32")("real Windows session round-trip",
     const created = await manager.create(projectPath, "anthropic", "claude-sonnet-5", {
       preview: "windows round trip",
     });
+    // listRecentSessions deliberately skips header-only sessions, so a real
+    // session needs at least one message to be resumable from the picker.
+    await manager.appendEntry(created.path, {
+      type: "message",
+      id: "33333333-3333-3333-3333-333333333333",
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      message: { role: "user", content: "hi" },
+    });
     // The real writer must have produced a folder name with no illegal
     // characters — a stray `:` or `\` here is an ENOENT at session-create time.
     expect(path.dirname(created.path)).toBe(path.join(state.sessionsDir, encodeCwd(projectPath)));

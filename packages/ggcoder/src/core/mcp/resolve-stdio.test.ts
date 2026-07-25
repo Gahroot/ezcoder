@@ -8,6 +8,7 @@ import {
   findPackageBinScript,
   resolveStdioCommand,
   resolveWindowsExecutable,
+  resolveWindowsLauncher,
 } from "./resolve-stdio.js";
 
 /** Lay out a fake npx cache entry: `<cache>/_npx/<hash>/node_modules/<pkg>`
@@ -93,11 +94,16 @@ describe("resolveStdioCommand", () => {
     expect(out.args.slice(1)).toEqual(["--flag", "value"]);
   });
 
-  it("passes through an npx server that isn't locally resolvable", () => {
-    const out = resolveStdioCommand("npx", ["-y", "@vendor/not-installed-mcp"]);
-    expect(out.command).toBe("npx");
-    expect(out.args).toEqual(["-y", "@vendor/not-installed-mcp"]);
-  });
+  // Windows cannot spawn a bare `npx` shell-lessly, so "passthrough" there
+  // means `node <npx-cli.js>` with the original args preserved after it.
+  it.skipIf(process.platform === "win32")(
+    "passes through an npx server that isn't locally resolvable",
+    () => {
+      const out = resolveStdioCommand("npx", ["-y", "@vendor/not-installed-mcp"]);
+      expect(out.command).toBe("npx");
+      expect(out.args).toEqual(["-y", "@vendor/not-installed-mcp"]);
+    },
+  );
 
   it("passes through a non-npx command unchanged", () => {
     const out = resolveStdioCommand("uvx", ["some-mcp-server", "--port", "0"]);
@@ -133,9 +139,10 @@ describe("resolveStdioCommand npx-cache fallback (covers user-added MCPs)", () =
     process.env.npm_config_cache = tmp;
 
     // Requested @2.0.0, only 1.0.0 cached → do NOT rewrite to the wrong version.
+    // The npx invocation is preserved; only its launcher differs by OS.
     const out = resolveStdioCommand("npx", ["-y", "@vendor/cool-mcp@2.0.0"]);
-    expect(out.command).toBe("npx");
-    expect(out.args).toEqual(["-y", "@vendor/cool-mcp@2.0.0"]);
+    expect(out.args.slice(-2)).toEqual(["-y", "@vendor/cool-mcp@2.0.0"]);
+    if (process.platform !== "win32") expect(out.command).toBe("npx");
   });
 
   it("uses a cached copy whose version matches the pin exactly", () => {
@@ -180,6 +187,40 @@ describe("resolveStdioCommand npx-cache fallback (covers user-added MCPs)", () =
     const out = resolveStdioCommand("npx", ["-y", "@z_ai/mcp-server"]);
     expect(out.command).toBe(process.execPath);
     expect(out.args[0]).toMatch(/mcp-server[/\\]build[/\\]index\.js$/);
+  });
+});
+
+describe("resolveWindowsLauncher", () => {
+  const exists = (present: string[]) => (p: string) => present.includes(p);
+  const env = { PATH: "C:\\nodejs", PATHEXT: ".cmd" };
+
+  it("maps npx to node + npm's npx-cli.js (the .cmd shim is unspawnable)", () => {
+    const got = resolveWindowsLauncher(
+      "npx",
+      env,
+      "win32",
+      exists(["C:\\nodejs\\npx.cmd", "C:\\nodejs\\node_modules\\npm\\bin\\npx-cli.js"]),
+    );
+    expect(got).toEqual({
+      command: process.execPath,
+      prefixArgs: ["C:\\nodejs\\node_modules\\npm\\bin\\npx-cli.js"],
+    });
+  });
+
+  it("maps npm to its own CLI script", () => {
+    const got = resolveWindowsLauncher(
+      "npm",
+      env,
+      "win32",
+      exists(["C:\\nodejs\\npm.cmd", "C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js"]),
+    );
+    expect(got?.prefixArgs).toEqual(["C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js"]);
+  });
+
+  it("returns null off Windows, for other commands, and when the CLI is absent", () => {
+    expect(resolveWindowsLauncher("npx", env, "darwin", () => true)).toBeNull();
+    expect(resolveWindowsLauncher("some-server", env, "win32", () => true)).toBeNull();
+    expect(resolveWindowsLauncher("npx", env, "win32", exists(["C:\\nodejs\\npx.cmd"]))).toBeNull();
   });
 });
 
@@ -242,44 +283,58 @@ describe("resolveWindowsExecutable", () => {
 });
 
 /**
- * REAL Windows PATH resolution — runs only on an actual Windows host (the CI
- * `windows-latest` matrix leg), skipped everywhere else.
+ * REAL Windows launcher resolution — runs only on an actual Windows host (the
+ * CI `windows-latest` matrix leg), skipped everywhere else.
  *
  * The unit tests above inject a fake PATH and a fake `exists`, so they only
- * prove the algorithm. This proves the PREMISE: that on a real Windows box the
- * thing called `npx` on PATH is `npx.cmd`, that a bare `npx` therefore cannot
- * be spawned with `shell: false` (how the MCP SDK spawns every stdio server),
- * and that our resolution hands back something that actually runs.
+ * prove the algorithm. This proves the PREMISE, and it is the reason the fix
+ * is what it is: on a real Windows box a bare `npx` is ENOENT for a shell-less
+ * spawn, AND the `npx.cmd` it resolves to is ALSO unspawnable (EINVAL, since
+ * the CVE-2024-27980 hardening). Only `node <npx-cli.js>` actually runs — a
+ * fact no mocked test could have told us.
  */
-describe.skipIf(process.platform !== "win32")("resolveWindowsExecutable on real Windows", () => {
-  it("resolves npx to a real file that a shell-less spawn can execute", () => {
-    const resolved = resolveWindowsExecutable("npx");
+describe.skipIf(process.platform !== "win32")("npx launching on real Windows", () => {
+  const run = (command: string, args: string[]) =>
+    spawnSync(command, args, { shell: false, encoding: "utf8", windowsHide: true });
 
-    expect(resolved).not.toBe("npx");
-    expect(fs.existsSync(resolved)).toBe(true);
-    expect(path.extname(resolved).toLowerCase()).not.toBe("");
+  it("confirms neither bare npx nor its .cmd shim can be spawned shell-lessly", () => {
+    const bare = run("npx", ["--version"]);
+    expect((bare.error as NodeJS.ErrnoException | undefined)?.code).toBe("ENOENT");
 
-    // The bug, demonstrated: bare `npx` is ENOENT without a shell…
-    const bare = spawnSync("npx", ["--version"], { shell: false, encoding: "utf8" });
-    expect(bare.error).toBeDefined();
-    expect((bare.error as NodeJS.ErrnoException).code).toBe("ENOENT");
+    // resolveWindowsExecutable does find the real file on PATH…
+    const shim = resolveWindowsExecutable("npx");
+    expect(shim).not.toBe("npx");
+    expect(fs.existsSync(shim)).toBe(true);
+    expect(path.extname(shim).toLowerCase()).toBe(".cmd");
 
-    // …and the resolved path is not.
-    const viaResolved = spawnSync(resolved, ["--version"], {
-      shell: false,
-      encoding: "utf8",
-      windowsHide: true,
-    });
-    expect(viaResolved.error).toBeUndefined();
-    expect(viaResolved.status).toBe(0);
-    expect(viaResolved.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+    // …but Node refuses to execute a .cmd without a shell, so resolving the
+    // shim alone would NOT have fixed anything.
+    expect((run(shim, ["--version"]).error as NodeJS.ErrnoException | undefined)?.code).toBe(
+      "EINVAL",
+    );
   }, 60_000);
 
-  it("rewrites a passthrough MCP stdio config into a spawnable command", () => {
-    // The single most common MCP config in the wild is `command: "npx"`. Even
-    // when the package isn't locally resolvable (the passthrough branch), what
-    // we hand the SDK must still be spawnable.
+  it("resolves npx to a node + CLI-script invocation that really runs", () => {
+    const launcher = resolveWindowsLauncher("npx");
+    if (!launcher) throw new Error("expected a Windows npx launcher");
+    expect(launcher.command).toBe(process.execPath);
+    expect(launcher.prefixArgs[0]).toMatch(/npx-cli\.js$/);
+    expect(fs.existsSync(launcher.prefixArgs[0])).toBe(true);
+
+    const out = run(launcher.command, [...launcher.prefixArgs, "--version"]);
+    expect(out.error).toBeUndefined();
+    expect(out.status).toBe(0);
+    expect(out.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+  }, 60_000);
+
+  it("hands the MCP SDK a spawnable command for the ubiquitous npx config", () => {
+    // `{ "command": "npx", "args": ["-y", …] }` is the most common MCP config
+    // in existence. Even on the passthrough branch (package not resolvable),
+    // what we hand the SDK must be executable, or the server dies as an opaque
+    // "Connection closed".
     const out = resolveStdioCommand("npx", ["-y", "definitely-not-a-real-package-xyz"]);
-    expect(fs.existsSync(out.command)).toBe(true);
+    expect(out.command).toBe(process.execPath);
+    expect(fs.existsSync(out.args[0])).toBe(true);
+    expect(out.args.slice(-2)).toEqual(["-y", "definitely-not-a-real-package-xyz"]);
   });
 });

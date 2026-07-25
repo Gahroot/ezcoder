@@ -89,19 +89,56 @@ function selectBin(
 }
 
 /**
- * Resolve a bare command name to a real executable on Windows.
+ * Resolve a bare `npx`/`npm` into something Windows can actually spawn.
  *
- * The MCP SDK spawns stdio servers with `shell: false`, and Windows'
- * CreateProcess does NOT apply `PATHEXT`. So the most common MCP config in the
- * wild — `{ "command": "npx", "args": ["-y", "…"] }` — dies with a bare ENOENT
- * that surfaces to the user as an opaque "Connection closed", because the real
- * file on disk is `npx.cmd`. Walk PATH × PATHEXT ourselves and hand the SDK a
- * full path.
+ * Two Windows facts collide here, and the MCP SDK spawns stdio servers with
+ * `shell: false`, so both apply:
  *
- * No-op off Windows, for an already-extensioned name, or when nothing matches
- * (the command then fails exactly as it does today). The current directory is
- * deliberately NOT searched — a stray `npx.cmd` in the project must not hijack
- * the server.
+ *  1. `CreateProcess` does not apply `PATHEXT`, so a bare `npx` is ENOENT —
+ *     the real file is `npx.cmd`.
+ *  2. Since the CVE-2024-27980 fix, Node REFUSES to spawn a `.cmd`/`.bat` at
+ *     all without `shell: true`, failing with EINVAL.
+ *
+ * So resolving `npx` → `npx.cmd` is necessary but NOT sufficient; the batch
+ * shim is a dead end, and using `shell: true` to get around it would re-open
+ * the command-injection hole the CVE fix closed. Instead map the shim to the
+ * Node CLI script it wraps (`<dir>\node_modules\npm\bin\npx-cli.js`, the
+ * standard Windows Node layout) and run it with `process.execPath` — the same
+ * "never a shim, always the real script" pattern this module already uses for
+ * package bins.
+ *
+ * Returns null when nothing better than the original command can be found, so
+ * the caller passes through and fails exactly as it does today.
+ */
+export function resolveWindowsLauncher(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  exists: (p: string) => boolean = fs.existsSync,
+): { command: string; prefixArgs: string[] } | null {
+  if (platform !== "win32") return null;
+
+  const base = path.win32.basename(command, path.win32.extname(command)).toLowerCase();
+  if (base !== "npx" && base !== "npm") return null;
+
+  const shim = resolveWindowsExecutable(command, env, platform, exists);
+  // `npx.cmd` lives beside `node.exe`, with npm's CLI scripts under
+  // `node_modules\npm\bin` in the same directory.
+  const dir = path.win32.dirname(shim);
+  if (dir && dir !== ".") {
+    const cli = path.win32.join(dir, "node_modules", "npm", "bin", `${base}-cli.js`);
+    if (exists(cli)) return { command: process.execPath, prefixArgs: [cli] };
+  }
+  return null;
+}
+
+/**
+ * Resolve a bare command name to a real file on Windows by walking
+ * PATH × PATHEXT, which `CreateProcess` does not do for a shell-less spawn.
+ *
+ * No-op off Windows, for an already-extensioned name, or when nothing matches.
+ * The current directory is deliberately NOT searched — a stray `npx.cmd` in the
+ * project must not hijack the server.
  */
 export function resolveWindowsExecutable(
   command: string,
@@ -303,10 +340,13 @@ export function resolveStdioCommand(
   command: string,
   args: readonly string[] = [],
 ): ResolvedStdioCommand {
-  const passthrough: ResolvedStdioCommand = {
-    command: resolveWindowsExecutable(command),
-    args: [...args],
-  };
+  // Windows can't spawn a bare `npx` (no PATHEXT) or its `.cmd` shim (EINVAL
+  // since the CVE-2024-27980 fix) without a shell, so passthrough resolves to
+  // `node <npx-cli.js>`. No-op elsewhere.
+  const launcher = resolveWindowsLauncher(command);
+  const passthrough: ResolvedStdioCommand = launcher
+    ? { command: launcher.command, args: [...launcher.prefixArgs, ...args] }
+    : { command, args: [...args] };
 
   const pkgSpec = parseNpxPackage(command, args);
   if (!pkgSpec) return passthrough;

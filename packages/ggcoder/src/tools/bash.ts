@@ -119,8 +119,8 @@ export function createBashTool(
       }
       // Persistent session mode — POSIX only; Windows-without-bash falls through
       // to the normal spawn path (cmd.exe fallback) below.
-      if (persist && !run_in_background && !resolveShell(command).isCmdFallback) {
-        sessionShell ??= new PersistentShell(cwd, getSafeToolEnv(), MAX_OUTPUT_BYTES);
+      if (persist && !run_in_background && !resolveShell(command, shellOpts).isCmdFallback) {
+        sessionShell ??= new PersistentShell(cwd, getSafeToolEnv(), MAX_OUTPUT_BYTES, shellOpts);
         const res = await sessionShell.run(
           command,
           timeoutMs ?? DEFAULT_TIMEOUT,
@@ -155,7 +155,11 @@ export function createBashTool(
         // cmd.exe fallback). Hardcoding "bash" broke on Windows with `spawn
         // bash ENOENT`, and accidentally hitting WSL's bash ran commands in a
         // separate Linux filesystem (the "files not mounted" symptom).
-        const shell = resolveShell(command);
+        // `shellOpts` MUST be threaded through here, not just into the
+        // description above: without it the tool advertised cmd.exe semantics
+        // while actually executing through bash, and no test could drive the
+        // Windows fallback path on a real Windows host.
+        const shell = resolveShell(command, shellOpts);
         const child = ops.spawn(shell.file, shell.args, {
           cwd,
           detached: true,
