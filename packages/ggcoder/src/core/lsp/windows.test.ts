@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { closeLogger, openLog } from "@kenkaiiii/gg-core";
 
 import { LspManager } from "./manager.js";
+import { removeWhenReleased } from "./test-support.js";
 import { normalizeUri } from "./client.js";
 import { LSP_SERVER_CATALOG, findExecutable, serverForFile } from "./servers.js";
 
@@ -58,7 +59,9 @@ describe.skipIf(process.platform !== "win32")("LSP diagnostics on a real C:\\ pa
 
   afterAll(async () => {
     manager?.shutdownAll();
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    // Windows won't rmdir while the server still holds handles; retry instead
+    // of failing the suite in teardown after every assertion has passed.
+    await removeWhenReleased(tmpDir);
   });
 
   it("resolves the language server AND spawns it successfully", () => {
@@ -201,14 +204,7 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
     manager?.shutdownAll();
     delete process.env.GG_LSP_TRACE;
     if (traceOpen) closeLogger();
-    for (let attempt = 0; attempt < 40; attempt++) {
-      try {
-        await fs.rm(tmpDir, { recursive: true, force: true });
-        return;
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
+    await removeWhenReleased(tmpDir);
   });
 
   it("produces diagnostics when typescript is resolvable inside the project", async () => {

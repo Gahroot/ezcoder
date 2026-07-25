@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
+import { removeWhenReleased } from "./test-support.js";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -36,26 +37,6 @@ describe("LspManager", () => {
     for (const manager of managers) manager.shutdownAll();
     await removeWhenReleased(tmpDir);
   });
-
-  /**
-   * `shutdownAll()` signals the server but does not wait for the OS to reap it.
-   * POSIX happily unlinks a directory a live process still holds open; Windows
-   * refuses with EBUSY/EPERM until every handle is closed, so a straight `rm`
-   * failed EVERY LspManager test on Windows — in teardown, with all the real
-   * assertions already passed. Retry briefly, then let a genuine failure
-   * surface rather than hiding it.
-   */
-  async function removeWhenReleased(dir: string): Promise<void> {
-    for (let attempt = 0; attempt < 40; attempt++) {
-      try {
-        await fs.rm(dir, { recursive: true, force: true });
-        return;
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-    await fs.rm(dir, { recursive: true, force: true });
-  }
 
   function makeManager(
     spec: LspServerSpec,
