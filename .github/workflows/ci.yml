@@ -84,6 +84,18 @@ jobs:
         continue-on-error: ${{ runner.os == 'Windows' }}
         run: pnpm --filter @kenkaiiii/ggcoder test
 
+      # `continue-on-error` rewrites the step's conclusion to success, which
+      # would make the Windows backlog look fixed. Re-surface the true outcome
+      # as a warning annotation so it stays on the run summary where someone
+      # will actually see it.
+      - name: Flag Windows test backlog
+        if: steps.ggcoder_tests.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning title=ggcoder Windows tests failing::Known pre-existing Windows failures (see the 'Test ggcoder' step). Not blocking, but real: burn the list down and remove continue-on-error from ci.yml."
+          echo "### :warning: ggcoder Windows test backlog" >> "$GITHUB_STEP_SUMMARY"
+          echo "The Windows leg has known failures. See the **Test ggcoder** step for the list." >> "$GITHUB_STEP_SUMMARY"
+
       - name: ggboss CLI smoke (extra belt-and-braces)
         run: node packages/gg-boss/dist/cli.js --help
         shell: bash
