@@ -18,6 +18,7 @@
     "installer:art": "node installer/build-art.mjs",
     "bump": "node scripts/bump-version.mjs",
     "test": "vitest run",
+    "smoke:packaged": "node scripts/smoke-packaged-windows.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

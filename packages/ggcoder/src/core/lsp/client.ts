@@ -45,6 +45,24 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Canonicalize a `file://` URI so ours and the server's are the same string.
+ *
+ * Diagnostics are cached in a Map keyed by URI: we `set` what the server sends
+ * and `get` what we built from the edited path. On Windows those disagree —
+ * `pathToFileURL("C:\\repo\\a.ts")` keeps the uppercase drive, while language
+ * servers normalize to `file:///c:/repo/a.ts` (VS Code's convention, which is
+ * why servers emit it). Every lookup missed, so inline edit diagnostics simply
+ * never appeared on Windows — and because LSP degrades silently, nothing said
+ * why. Lowercasing the drive letter matches what servers expect on the wire.
+ */
+export function normalizeUri(uri: string): string {
+  return uri.replace(
+    /^(file:\/\/\/)([A-Z])(:|%3A)/i,
+    (_m, prefix: string, drive: string) => `${prefix}${drive.toLowerCase()}:`,
+  );
+}
+
+/**
  * One language-server process bound to one project root. Owns document sync
  * (didOpen / didChange / didSave with per-uri version counters), the
  * push-diagnostics cache, and LSP 3.17 pull diagnostics with the
@@ -84,9 +102,10 @@ export class LspClient {
     this.conn = new JsonRpcConnection(stdout, stdin);
     this.conn.onNotification("textDocument/publishDiagnostics", (params) => {
       const publish = params as PublishDiagnosticsParams;
-      this.published.set(publish.uri, publish.diagnostics);
+      const uri = normalizeUri(publish.uri);
+      this.published.set(uri, publish.diagnostics);
       this.waiters = this.waiters.filter((waiter) => {
-        if (waiter.uri !== publish.uri) return true;
+        if (waiter.uri !== uri) return true;
         waiter.resolve(publish.diagnostics);
         return false;
       });
@@ -110,7 +129,7 @@ export class LspClient {
   }
 
   async initialize(timeoutMs: number): Promise<void> {
-    const rootUri = pathToFileURL(this.rootPath).href;
+    const rootUri = normalizeUri(pathToFileURL(this.rootPath).href);
     const result = (await this.conn.request(
       "initialize",
       {
@@ -141,7 +160,7 @@ export class LspClient {
    * report computed against THIS content rather than a stale one.
    */
   syncDocument(filePath: string, content: string): string {
-    const uri = pathToFileURL(filePath).href;
+    const uri = normalizeUri(pathToFileURL(filePath).href);
     this.published.delete(uri);
     const previousVersion = this.versions.get(uri);
     if (previousVersion === undefined) {

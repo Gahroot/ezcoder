@@ -89,6 +89,52 @@ function selectBin(
 }
 
 /**
+ * Resolve a bare command name to a real executable on Windows.
+ *
+ * The MCP SDK spawns stdio servers with `shell: false`, and Windows'
+ * CreateProcess does NOT apply `PATHEXT`. So the most common MCP config in the
+ * wild — `{ "command": "npx", "args": ["-y", "…"] }` — dies with a bare ENOENT
+ * that surfaces to the user as an opaque "Connection closed", because the real
+ * file on disk is `npx.cmd`. Walk PATH × PATHEXT ourselves and hand the SDK a
+ * full path.
+ *
+ * No-op off Windows, for an already-extensioned name, or when nothing matches
+ * (the command then fails exactly as it does today). The current directory is
+ * deliberately NOT searched — a stray `npx.cmd` in the project must not hijack
+ * the server.
+ */
+export function resolveWindowsExecutable(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  exists: (p: string) => boolean = fs.existsSync,
+): string {
+  if (platform !== "win32") return command;
+  if (path.win32.extname(command)) return command;
+
+  const exts = (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((e) => e.trim())
+    .filter(Boolean);
+
+  // An explicit path (relative or absolute) is resolved in place, not via PATH.
+  if (path.win32.dirname(command) !== ".") {
+    for (const ext of exts) {
+      if (exists(`${command}${ext}`)) return `${command}${ext}`;
+    }
+    return command;
+  }
+
+  for (const dir of (env.PATH ?? env.Path ?? "").split(";").filter(Boolean)) {
+    for (const ext of exts) {
+      const candidate = path.win32.join(dir, `${command}${ext}`);
+      if (exists(candidate)) return candidate;
+    }
+  }
+  return command;
+}
+
+/**
  * Parse an `npx`/`npm exec` command + args into the target package spec, or null
  * when the command isn't an npx/npm-exec invocation. Skips npx flags (`-y`,
  * `--yes`, `-p <pkg>`, `--package <pkg>`, `--`) to find the package positional.
@@ -257,7 +303,10 @@ export function resolveStdioCommand(
   command: string,
   args: readonly string[] = [],
 ): ResolvedStdioCommand {
-  const passthrough: ResolvedStdioCommand = { command, args: [...args] };
+  const passthrough: ResolvedStdioCommand = {
+    command: resolveWindowsExecutable(command),
+    args: [...args],
+  };
 
   const pkgSpec = parseNpxPackage(command, args);
   if (!pkgSpec) return passthrough;

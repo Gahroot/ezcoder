@@ -7,6 +7,26 @@ use std::sync::Mutex;
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as WindowsCommandExt;
+
+/// `CREATE_NO_WINDOW` — spawn a console program without allocating a console.
+///
+/// The packaged app is a GUI (`windows_subsystem = "windows"`) process, so it
+/// owns no console: every console child (the Node daemon, `taskkill`, the
+/// PowerShell process snapshot) would otherwise pop its own black window. On
+/// launch and quit that reads as the app flashing command prompts at the user.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Suppress the console window for a spawned child. No-op off Windows.
+fn hide_console(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
 
 use base64::Engine as _;
 use futures_util::StreamExt;
@@ -247,7 +267,7 @@ fn terminate_child(mut child: Child) {
         #[cfg(not(unix))]
         {
             // Tree-kill on Windows: /T kills the descendant tree, /F forces it.
-            let _ = std::process::Command::new("taskkill")
+            let _ = hide_console(&mut std::process::Command::new("taskkill"))
                 .args(["/PID", &pid.to_string(), "/T", "/F"])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -456,7 +476,7 @@ fn process_snapshot() -> Option<Vec<ProcInfo>> {
     let script = "Get-CimInstance Win32_Process | ForEach-Object { \
         [string]$_.ProcessId + '|' + [string]$_.ParentProcessId + '|' + [string]$_.CommandLine \
     }";
-    let output = Command::new("powershell")
+    let output = hide_console(&mut Command::new("powershell"))
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
         .ok()?;
@@ -475,7 +495,7 @@ fn force_kill_pid(pid: i32) {
 /// the sweeper kills every orphan-tree member individually from the snapshot).
 #[cfg(not(unix))]
 fn force_kill_pid(pid: i32) {
-    let _ = Command::new("taskkill")
+    let _ = hide_console(&mut Command::new("taskkill"))
         .args(["/PID", &pid.to_string(), "/F"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -749,9 +769,11 @@ fn open_project_path(webview: WebviewWindow, path: String) -> Result<(), String>
     } else {
         cwd.join(candidate)
     };
-    let canonical = resolved
-        .canonicalize()
-        .map_err(|_| format!("file not found: {}", cleaned))?;
+    let canonical = strip_extended_prefix(
+        resolved
+            .canonicalize()
+            .map_err(|_| format!("file not found: {}", cleaned))?,
+    );
 
     webview
         .opener()
@@ -3379,12 +3401,62 @@ fn default_cwd() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
         home_dir(),
     );
-    std::fs::canonicalize(&raw).unwrap_or(raw)
+    strip_extended_prefix(std::fs::canonicalize(&raw).unwrap_or(raw))
 }
 
-/// The current user's home directory, from HOME (Unix) / USERPROFILE (Windows).
-/// Falls back to "/" only if neither is set (effectively never on a real OS).
+/// Drop Windows' extended-length (`\\?\`) prefix from a canonicalized path.
+///
+/// `std::fs::canonicalize` ALWAYS returns `\\?\C:\…` on Windows. That string is
+/// not interchangeable with the plain `C:\…` form everyone else produces:
+/// project paths from discovery, the workspace snapshot, and the picker's
+/// selected-project comparison all use the plain form, so the prefixed value
+/// silently matched nothing and leaked into the UI as `\\?\C:\Users\…`. Shell
+/// APIs (`ShellExecute`, hence the opener) also reject the prefixed form, so
+/// clicking a file path in a tool result did nothing.
+///
+/// UNC canonicalizes to `\\?\UNC\server\share`, which maps back to
+/// `\\server\share`. No-op on other platforms and for unprefixed paths.
+fn strip_extended_prefix(path: PathBuf) -> PathBuf {
+    let Some(text) = path.to_str() else {
+        return path;
+    };
+    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{unc}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) => PathBuf::from(rest),
+        None => path,
+    }
+}
+
+/// The current user's home directory.
+///
+/// MUST agree with Node's `os.homedir()` in the sidecar — both sides read and
+/// write the same `~/.gg` files (auth.json, gg-app.json, the workspace file,
+/// the sidecar ledger). libuv resolves Windows homes as
+/// `USERPROFILE` → `HOMEDRIVE`+`HOMEPATH`, and ignores `HOME` entirely; a
+/// Windows box with `HOME` set (Git for Windows / MSYS sets it, often to a
+/// POSIX-style `/c/Users/x` that no Win32 API can open) made the Rust shell
+/// look for settings, auth and projects in a directory the sidecar never
+/// wrote — the app came up logged out with an empty project picker.
 fn home_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            if !profile.is_empty() {
+                return PathBuf::from(profile);
+            }
+        }
+        if let (Some(drive), Some(path)) =
+            (std::env::var_os("HOMEDRIVE"), std::env::var_os("HOMEPATH"))
+        {
+            if !drive.is_empty() && !path.is_empty() {
+                let mut home = std::ffi::OsString::from(drive);
+                home.push(path);
+                return PathBuf::from(home);
+            }
+        }
+    }
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
@@ -3503,6 +3575,7 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
     log::info!("spawning daemon: {} {}", node.display(), script.display());
 
     let mut cmd = Command::new(node);
+    hide_console(&mut cmd);
     cmd.arg(&script)
         // Port 0 → the OS assigns a free port, reported back via the
         // GG_APP_LISTENING handshake.
@@ -4533,6 +4606,30 @@ mod tests {
         // ...even in bundled mode with a present exe dir.
         let got = pick_node(Some("/opt/node".into()), false, Some(Path::new("/app")));
         assert_eq!(got, PathBuf::from("/opt/node"));
+    }
+
+    #[test]
+    fn strip_extended_prefix_normalizes_windows_canonical_paths() {
+        // canonicalize() always returns the \\?\ form on Windows; nothing else
+        // in the app (discovery, workspace json, the picker) produces it, and
+        // ShellExecute rejects it outright.
+        assert_eq!(
+            strip_extended_prefix(PathBuf::from(r"\\?\C:\Users\dev\proj")),
+            PathBuf::from(r"C:\Users\dev\proj")
+        );
+        assert_eq!(
+            strip_extended_prefix(PathBuf::from(r"\\?\UNC\server\share\proj")),
+            PathBuf::from(r"\\server\share\proj")
+        );
+        // Unprefixed and POSIX paths pass through untouched.
+        assert_eq!(
+            strip_extended_prefix(PathBuf::from(r"C:\Users\dev")),
+            PathBuf::from(r"C:\Users\dev")
+        );
+        assert_eq!(
+            strip_extended_prefix(PathBuf::from("/Users/dev")),
+            PathBuf::from("/Users/dev")
+        );
     }
 
     #[test]

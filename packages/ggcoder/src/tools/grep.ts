@@ -61,7 +61,9 @@ export function createGrepTool(
 
       // Enumerate files
       const fg = await import("fast-glob");
-      const globPattern = include ?? "**/*";
+      // Backslashes are picomatch ESCAPES, not separators: a Windows-shaped
+      // `include` (e.g. `src\**\*.ts`) would match nothing.
+      const globPattern = (include ?? "**/*").replace(/\\/g, "/");
       const entries = await fg.default(globPattern, {
         cwd: dir,
         dot: false,

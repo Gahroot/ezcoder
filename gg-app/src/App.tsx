@@ -101,6 +101,7 @@ import { EnhancedSegments } from "./PromptEnhancement";
 import { EnhanceDissolve } from "./EnhanceDissolve";
 import { toast } from "./toast";
 import { fileToPending, toWire, attachmentToPending, type PendingAttachment } from "./attachments";
+import { basename } from "./tool-format";
 import "./App.css";
 
 const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Ken for help";
@@ -2676,7 +2677,7 @@ const TranscriptRow = memo(function TranscriptRow({
                 />
                 {img.path && (
                   <figcaption className="img-cap" title={img.path}>
-                    {img.path.split("/").filter(Boolean).pop()}
+                    {basename(img.path)}
                   </figcaption>
                 )}
               </figure>

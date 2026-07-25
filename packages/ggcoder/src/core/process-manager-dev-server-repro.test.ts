@@ -86,8 +86,12 @@ describe("ProcessManager dev-server lifecycle repro", () => {
     }
   });
 
-  it("uses taskkill for Windows process-tree shutdown fallback", async () => {
-    const taskkill = vi.fn();
+  // Windows has no process groups: signalling the wrapper leaves its whole
+  // descendant tree (the dev server everyone actually wants dead) running. So
+  // stop() force-kills the PID tree with taskkill FIRST, and reports honestly
+  // when the process is still alive after the 5s grace window.
+  it("force-kills the PID tree with taskkill on Windows", async () => {
+    const taskkill = vi.fn().mockReturnValue({ status: 1 });
     manager = new ProcessManager({
       platform: "win32",
       kill: vi.fn(() => {
@@ -102,11 +106,14 @@ describe("ProcessManager dev-server lifecycle repro", () => {
     );
     try {
       const stopped = await manager.stop(started.id);
-      expect(stopped).toBe(`Process ${started.id} already exited`);
-      manager.shutdownAll();
-      expect(taskkill).toHaveBeenCalledWith("taskkill", ["/pid", String(started.pid), "/T", "/F"], {
-        stdio: "ignore",
-      });
+      // The mocked taskkill never really kills the child, so the 5s window
+      // elapses and the user is told the truth instead of "stopped".
+      expect(stopped).toContain("Failed to stop process");
+      expect(taskkill).toHaveBeenCalledWith(
+        expect.stringMatching(/taskkill\.exe$/),
+        ["/PID", String(started.pid), "/T", "/F"],
+        expect.objectContaining({ stdio: "ignore", windowsHide: true }),
+      );
     } finally {
       // This test deliberately mocks `kill` and `spawnSync`, so neither the
       // simulated stop() nor shutdownAll() actually signals the real child
@@ -114,7 +121,8 @@ describe("ProcessManager dev-server lifecycle repro", () => {
       // this suite orphans a live `node -e setInterval` process forever.
       killRealProcessTree(started.pid);
     }
-  });
+    // stop() waits out its full 5s grace window before reporting failure.
+  }, 15_000);
 
   it("starts, reads, and stops a long-running Node HTTP server through the worker background path", async () => {
     manager = new ProcessManager();

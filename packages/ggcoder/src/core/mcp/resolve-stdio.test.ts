@@ -1,8 +1,14 @@
 import { afterEach, describe, it, expect } from "vitest";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseNpxPackage, findPackageBinScript, resolveStdioCommand } from "./resolve-stdio.js";
+import {
+  parseNpxPackage,
+  findPackageBinScript,
+  resolveStdioCommand,
+  resolveWindowsExecutable,
+} from "./resolve-stdio.js";
 
 /** Lay out a fake npx cache entry: `<cache>/_npx/<hash>/node_modules/<pkg>`
  *  with a package.json + real bin file. Returns the cache root to point
@@ -174,5 +180,106 @@ describe("resolveStdioCommand npx-cache fallback (covers user-added MCPs)", () =
     const out = resolveStdioCommand("npx", ["-y", "@z_ai/mcp-server"]);
     expect(out.command).toBe(process.execPath);
     expect(out.args[0]).toMatch(/mcp-server[/\\]build[/\\]index\.js$/);
+  });
+});
+
+describe("resolveWindowsExecutable", () => {
+  const exists = (present: string[]) => (p: string) => present.includes(p);
+
+  it("resolves a bare npx to npx.cmd via PATH x PATHEXT", () => {
+    // The MCP SDK spawns with shell:false and CreateProcess ignores PATHEXT,
+    // so a bare "npx" is ENOENT on Windows even though npx.cmd is right there.
+    expect(
+      resolveWindowsExecutable(
+        "npx",
+        { PATH: "C:\\nodejs;C:\\other", PATHEXT: ".com;.exe;.cmd" },
+        "win32",
+        exists(["C:\\nodejs\\npx.cmd"]),
+      ),
+    ).toBe("C:\\nodejs\\npx.cmd");
+  });
+
+  it("honors Windows' lowercase Path spelling", () => {
+    expect(
+      resolveWindowsExecutable(
+        "npx",
+        { Path: "C:\\nodejs", PATHEXT: ".cmd" },
+        "win32",
+        exists(["C:\\nodejs\\npx.cmd"]),
+      ),
+    ).toBe("C:\\nodejs\\npx.cmd");
+  });
+
+  it("never searches the current directory (no hijack by a local npx.cmd)", () => {
+    expect(
+      resolveWindowsExecutable(
+        "npx",
+        { PATH: "C:\\nodejs", PATHEXT: ".cmd" },
+        "win32",
+        exists(["npx.cmd"]),
+      ),
+    ).toBe("npx");
+  });
+
+  it("extends an explicit path in place", () => {
+    expect(
+      resolveWindowsExecutable(
+        "C:\\tools\\server",
+        { PATHEXT: ".exe" },
+        "win32",
+        exists(["C:\\tools\\server.exe"]),
+      ),
+    ).toBe("C:\\tools\\server.exe");
+  });
+
+  it("passes through off Windows, when extensioned, and when unresolvable", () => {
+    expect(resolveWindowsExecutable("npx", { PATH: "/usr/bin" }, "darwin", () => true)).toBe("npx");
+    expect(resolveWindowsExecutable("npx.cmd", {}, "win32", () => true)).toBe("npx.cmd");
+    expect(resolveWindowsExecutable("npx", { PATH: "C:\\nodejs" }, "win32", () => false)).toBe(
+      "npx",
+    );
+  });
+});
+
+/**
+ * REAL Windows PATH resolution — runs only on an actual Windows host (the CI
+ * `windows-latest` matrix leg), skipped everywhere else.
+ *
+ * The unit tests above inject a fake PATH and a fake `exists`, so they only
+ * prove the algorithm. This proves the PREMISE: that on a real Windows box the
+ * thing called `npx` on PATH is `npx.cmd`, that a bare `npx` therefore cannot
+ * be spawned with `shell: false` (how the MCP SDK spawns every stdio server),
+ * and that our resolution hands back something that actually runs.
+ */
+describe.skipIf(process.platform !== "win32")("resolveWindowsExecutable on real Windows", () => {
+  it("resolves npx to a real file that a shell-less spawn can execute", () => {
+    const resolved = resolveWindowsExecutable("npx");
+
+    expect(resolved).not.toBe("npx");
+    expect(fs.existsSync(resolved)).toBe(true);
+    expect(path.extname(resolved).toLowerCase()).not.toBe("");
+
+    // The bug, demonstrated: bare `npx` is ENOENT without a shell…
+    const bare = spawnSync("npx", ["--version"], { shell: false, encoding: "utf8" });
+    expect(bare.error).toBeDefined();
+    expect((bare.error as NodeJS.ErrnoException).code).toBe("ENOENT");
+
+    // …and the resolved path is not.
+    const viaResolved = spawnSync(resolved, ["--version"], {
+      shell: false,
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    expect(viaResolved.error).toBeUndefined();
+    expect(viaResolved.status).toBe(0);
+    expect(viaResolved.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
+  }, 60_000);
+
+  it("rewrites a passthrough MCP stdio config into a spawnable command", () => {
+    // The single most common MCP config in the wild is `command: "npx"`. Even
+    // when the package isn't locally resolvable (the passthrough branch), what
+    // we hand the SDK must still be spawnable.
+    const out = resolveStdioCommand("npx", ["-y", "definitely-not-a-real-package-xyz"]);
+    expect(fs.existsSync(out.command)).toBe(true);
   });
 });
