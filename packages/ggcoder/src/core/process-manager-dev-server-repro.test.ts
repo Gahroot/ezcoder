@@ -174,7 +174,17 @@ describe("ProcessManager dev-server lifecycle repro", () => {
     const final = await manager.readOutput(started.id, true);
     expect(final.isRunning).toBe(false);
     expect(final.exitCode).not.toBeNull();
-    expect(final.output).toContain("DEV_SERVER_SIGTERM");
+    if (process.platform === "win32") {
+      // Windows has no SIGTERM. `stop()` force-kills the PID tree with taskkill
+      // /F precisely because there is no process group and no graceful signal
+      // to send, so a SIGTERM handler CANNOT run and the server gets no chance
+      // to clean up. That is a real, unavoidable platform difference — what
+      // matters (asserted above) is that the process and its children are
+      // genuinely dead, which is the failure mode users actually hit.
+      expect(final.output).toContain("DEV_SERVER_READY");
+    } else {
+      expect(final.output).toContain("DEV_SERVER_SIGTERM");
+    }
   }, 45_000);
 
   const posixIt = process.platform === "win32" ? it.skip : it;
