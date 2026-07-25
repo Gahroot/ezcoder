@@ -189,7 +189,18 @@ export class LspManager {
       this.clients.set(key, Promise.resolve({ status: "server_failed" }));
       return this.outcome("server_failed", filePath);
     }
-    if (diagnostics === null) return this.outcome("timeout", filePath);
+    if (diagnostics === null) {
+      // A timeout carries no other evidence and is indistinguishable from
+      // "clean" in the tool output. Log the server's own stderr alongside it —
+      // usually the only thing that explains why a server accepted the document
+      // and then never reported on it.
+      log("WARN", "lsp", `${spec.id} diagnostics timed out`, {
+        file: filePath,
+        budgetMs,
+        stderr: client.stderrTail() || "(none)",
+      });
+      return this.outcome("timeout", filePath);
+    }
 
     if (diagnostics.length > 0) {
       const relPath = path.relative(this.cwd, filePath);

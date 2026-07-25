@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { JsonRpcConnection, JsonRpcRequestError } from "./jsonrpc.js";
 import { getSafeToolEnv } from "../../tools/safe-env.js";
+import { log } from "../logger.js";
 import type { LspServerSpec, ResolvedCommand } from "./servers.js";
 
 /** LSP diagnostic shape (the subset we render). */
@@ -35,6 +36,8 @@ function progressTokenKey(token: string | number): string {
 const SERVER_CANCELLED = -32802;
 const METHOD_NOT_FOUND = -32601;
 const PULL_POLL_INTERVAL_MS = 300;
+/** Bounded stderr retained per server for failure diagnostics. */
+const STDERR_TAIL_BYTES = 4000;
 const SHUTDOWN_TIMEOUT_MS = 2000;
 const KILL_GRACE_MS = 1500;
 
@@ -85,6 +88,7 @@ export class LspClient {
   private alive = true;
 
   private readonly initializationOptions: unknown;
+  private stderrBuffer = "";
 
   constructor(
     private readonly spec: LspServerSpec,
@@ -94,11 +98,29 @@ export class LspClient {
     this.initializationOptions = command.initializationOptions ?? {};
     this.proc = spawn(command.command, command.args, {
       cwd: rootPath,
-      stdio: ["pipe", "pipe", "ignore"],
+      // stderr was "ignore" — which made every server-side failure completely
+      // unattributable. LSP degrades silently by design, so a server that boots
+      // and then errors (a tsserver that can't start, a bad
+      // initializationOptions path, an unsupported flag) produced exactly the
+      // same empty output as a clean file, with nothing anywhere saying why.
+      // Diagnosing the Windows timeout was blind for precisely this reason.
+      // Pipe it and log it; the pipe MUST be drained either way, or a chatty
+      // server eventually blocks on a full stderr buffer.
+      stdio: ["pipe", "pipe", "pipe"],
       env: getSafeToolEnv(),
     });
+    this.captureStderr();
     this.proc.on("error", () => this.markDead());
-    this.proc.on("exit", () => this.markDead());
+    this.proc.on("exit", (code, signal) => {
+      if (code !== 0 && code !== null) {
+        log("WARN", "lsp", `${spec.id} language server exited`, {
+          code,
+          signal,
+          stderr: this.stderrTail(),
+        });
+      }
+      this.markDead();
+    });
     const { stdout, stdin } = this.proc;
     if (!stdout || !stdin) {
       // Cannot happen with "pipe" stdio, but guard instead of asserting.
@@ -132,6 +154,27 @@ export class LspClient {
   /** True while the server reports indexing/analysis through LSP work progress. */
   get hasActiveProgress(): boolean {
     return this.activeProgressTokens.size > 0;
+  }
+
+  /**
+   * Drain the server's stderr into a bounded ring, and mirror it to the debug
+   * log so a misbehaving server is diagnosable from `~/.gg/*.log` alone.
+   * Bounded because a looping server can emit stderr without limit.
+   */
+  private captureStderr(): void {
+    this.proc.stderr?.on("data", (chunk: Buffer | string) => {
+      const text = chunk.toString();
+      this.stderrBuffer = (this.stderrBuffer + text).slice(-STDERR_TAIL_BYTES);
+      const trimmed = text.trim();
+      if (trimmed) log("DEBUG", "lsp", `${this.spec.id} stderr`, { text: trimmed.slice(0, 500) });
+    });
+    // A read error must not take the process down; the server is still usable.
+    this.proc.stderr?.on("error", () => {});
+  }
+
+  /** Most recent server stderr, for failure diagnostics. */
+  stderrTail(): string {
+    return this.stderrBuffer.trim().slice(-STDERR_TAIL_BYTES);
   }
 
   async initialize(timeoutMs: number): Promise<void> {

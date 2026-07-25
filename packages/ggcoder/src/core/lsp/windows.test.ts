@@ -209,10 +209,14 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
 
     const started = Date.now();
     const outcome = await manager!.diagnosticsAfterWriteDetailed(filePath, broken);
-    // Surfaces in the CI log next to the failing bundled-path tests, so the two
-    // arms can be compared directly.
+    // Surfaces in the CI log next to the bundled-path tests so the two arms can
+    // be compared directly — including the server's own stderr, which used to be
+    // discarded and is the one thing that explains a server going quiet.
 
-    console.log(`[control arm] outcome=${outcome.kind} in ${Date.now() - started}ms`);
+    console.log(
+      `[control arm] outcome=${outcome.kind} in ${Date.now() - started}ms\n` +
+        `[control arm] server stderr: ${(await serverStderr(manager!)) || "(none)"}`,
+    );
 
     expect(outcome.kind).toBe("diagnostics");
     expect(outcome.kind === "diagnostics" && outcome.formatted).toMatch(
@@ -220,6 +224,22 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
     );
   }, 120_000);
 });
+
+/**
+ * The pooled client's retained stderr, for the log line above. Reaches into the
+ * private pool deliberately: this is a diagnostic probe, and widening the public
+ * API just to print stderr in one test isn't worth the surface area.
+ */
+async function serverStderr(manager: LspManager): Promise<string> {
+  // The pool stores PROMISES of resolutions, so these must be awaited — reading
+  // `.client` off the promise itself silently yields nothing.
+  const clients = (manager as unknown as { clients: Map<string, Promise<unknown>> }).clients;
+  for (const [, pending] of clients) {
+    const resolution = (await pending) as { client?: { stderrTail(): string } };
+    if (resolution?.client) return resolution.client.stderrTail();
+  }
+  return "";
+}
 
 /** Nearest `node_modules/<name>` walking up from this test file. */
 function findUpNodeModulesDir(name: string): string | null {
