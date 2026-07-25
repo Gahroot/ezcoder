@@ -10,7 +10,10 @@ async function waitForOutput(
   predicate: (output: string) => boolean,
 ): Promise<string> {
   let combined = "";
-  for (let i = 0; i < 50; i += 1) {
+  // 200 x 100ms = 20s. The old 5s budget was enough on a developer machine but
+  // not on a loaded Windows CI runner, where spawning node and binding a port
+  // is markedly slower — the test failed there on timing, not behavior.
+  for (let i = 0; i < 200; i += 1) {
     const result = await manager.readOutput(id);
     combined += result.output;
     if (predicate(combined)) return combined;
@@ -122,7 +125,7 @@ describe("ProcessManager dev-server lifecycle repro", () => {
       killRealProcessTree(started.pid);
     }
     // stop() waits out its full 5s grace window before reporting failure.
-  }, 15_000);
+  }, 45_000);
 
   it("starts, reads, and stops a long-running Node HTTP server through the worker background path", async () => {
     manager = new ProcessManager();
@@ -165,7 +168,7 @@ describe("ProcessManager dev-server lifecycle repro", () => {
     expect(final.isRunning).toBe(false);
     expect(final.exitCode).not.toBeNull();
     expect(final.output).toContain("DEV_SERVER_SIGTERM");
-  }, 15_000);
+  }, 45_000);
 
   const posixIt = process.platform === "win32" ? it.skip : it;
 

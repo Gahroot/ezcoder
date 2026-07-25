@@ -70,31 +70,14 @@ jobs:
           pnpm --filter @kenkaiiii/gg-agent test
           pnpm --filter @kenkaiiii/gg-boss test
 
-      # ggcoder's suite is split out and non-blocking ON WINDOWS ONLY because it
-      # has a REAL backlog of 72 pre-existing Windows failures (EPERM/EBUSY on
-      # fsync + rename in session storage, LSP diagnostics returning nothing,
-      # compaction fixtures assuming POSIX paths). They were invisible until the
-      # shell bug above was fixed, and they are not this change's to fix — but
-      # they must be VISIBLE, so the step runs and reports rather than being
-      # skipped or hidden. Burn the list down, then delete `continue-on-error`.
-      # macOS and Linux stay fully blocking.
+      # Blocking on every OS, Windows included. This started as a 72-failure
+      # Windows backlog that had been invisible because the default PowerShell
+      # shell swallowed it (see above); it is now zero, so the leg is a real
+      # gate again. Do NOT reintroduce continue-on-error to get a red build
+      # green — a non-blocking Windows leg is how the original bugs shipped.
       - name: Test ggcoder
-        id: ggcoder_tests
         shell: bash
-        continue-on-error: ${{ runner.os == 'Windows' }}
         run: pnpm --filter @kenkaiiii/ggcoder test
-
-      # `continue-on-error` rewrites the step's conclusion to success, which
-      # would make the Windows backlog look fixed. Re-surface the true outcome
-      # as a warning annotation so it stays on the run summary where someone
-      # will actually see it.
-      - name: Flag Windows test backlog
-        if: steps.ggcoder_tests.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "::warning title=ggcoder Windows tests failing::Known pre-existing Windows failures (see the 'Test ggcoder' step). Not blocking, but real: burn the list down and remove continue-on-error from ci.yml."
-          echo "### :warning: ggcoder Windows test backlog" >> "$GITHUB_STEP_SUMMARY"
-          echo "The Windows leg has known failures. See the **Test ggcoder** step for the list." >> "$GITHUB_STEP_SUMMARY"
 
       - name: ggboss CLI smoke (extra belt-and-braces)
         run: node packages/gg-boss/dist/cli.js --help
