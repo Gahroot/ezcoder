@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { JsonRpcConnection, JsonRpcRequestError, type WireTracer } from "./jsonrpc.js";
 import { getSafeToolEnv } from "../../tools/safe-env.js";
+import { killProcessTree } from "../../utils/process.js";
 import { log } from "../logger.js";
 import type { LspServerSpec, ResolvedCommand } from "./servers.js";
 
@@ -340,9 +341,27 @@ export class LspClient {
     void this.conn.request("shutdown", null, SHUTDOWN_TIMEOUT_MS).catch(() => {});
     this.conn.notify("exit");
     const killTimer = setTimeout(() => {
-      if (this.alive) this.proc.kill("SIGKILL");
+      if (this.alive) this.terminate();
     }, KILL_GRACE_MS);
     killTimer.unref();
+  }
+
+  /**
+   * Force-kill the server and everything it spawned, immediately.
+   *
+   * For a server that never completed the handshake, the polite
+   * `shutdown`/`exit` sequence is pointless — it has already proven it isn't
+   * answering — so skip straight to the kill.
+   *
+   * Uses `killProcessTree`, not `proc.kill()`: language servers spawn children
+   * (typescript-language-server runs tsserver), Windows has no process groups,
+   * and killing only the parent leaves those children alive holding file
+   * handles in the project directory.
+   */
+  terminate(): void {
+    this.conn.dispose();
+    if (this.proc.pid !== undefined) killProcessTree(this.proc.pid);
+    this.markDead();
   }
 
   private markDead(): void {

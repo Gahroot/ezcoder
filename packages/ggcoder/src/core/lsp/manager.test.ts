@@ -177,6 +177,42 @@ describe("LspManager", () => {
     expect(outcome.kind).toBe("server_failed");
   });
 
+  it("kills a server that fails to initialize instead of leaking it", async () => {
+    // `new LspClient` SPAWNS the process, so an initialize that rejects used to
+    // drop the only reference to a LIVE server: one orphan per (server, root)
+    // for the whole session. Invisible on POSIX; on Windows the orphan holds
+    // handles in the project directory, which is how it surfaced — as an EBUSY
+    // rmdir in this suite's teardown, long after the assertions had passed.
+    const pidFile = path.join(tmpDir, "server.pid");
+    const manager = makeManager(fakeSpec(["--init-error", `--pid-file=${pidFile}`]));
+
+    const outcome = await manager.diagnosticsAfterWriteDetailed(
+      path.join(tmpDir, "init-failed.fake"),
+      "ERROR\n",
+    );
+    expect(outcome.kind).toBe("server_failed");
+
+    const pid = Number(await fs.readFile(pidFile, "utf-8"));
+    expect(Number.isInteger(pid)).toBe(true);
+
+    const alive = (): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    // Termination is asynchronous (taskkill on Windows); give it a moment.
+    for (let attempt = 0; attempt < 50 && alive(); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (alive()) {
+      process.kill(pid, "SIGKILL"); // never leak a live process out of the suite
+      throw new Error(`language server ${pid} survived a failed initialize`);
+    }
+  }, 30_000);
+
   it("records a post-initialization server crash", async () => {
     const manager = makeManager(fakeSpec(["--crash-on-open"]));
     const outcome = await manager.diagnosticsAfterWriteDetailed(
