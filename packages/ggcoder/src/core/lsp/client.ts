@@ -86,25 +86,46 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Canonicalize a `file://` URI so ours and the server's are the same string.
+ * Canonical cache key for a `file://` URI.
  *
- * Diagnostics are cached in a Map keyed by URI: we `set` what the server sends
- * and `get` what we built from the edited path. On Windows those can disagree —
- * `pathToFileURL("C:\\repo\\a.ts")` keeps the uppercase drive, while language
- * servers normalize to `file:///c:/repo/a.ts` (VS Code's convention, which is
- * why servers emit it), and a Map miss shows up as "no diagnostics" because LSP
- * degrades silently by design.
+ * Diagnostics live in a Map keyed by URI: we `set` what the server sends and
+ * `get` what we built from the edited path, so the two must be the SAME STRING.
+ * There is no single canonical spelling of a file URI, and on Windows we and
+ * tsserver disagreed in two independent ways at once. Measured on CI:
  *
- * Scope note, measured not assumed: for a document we opened, tsserver echoes
- * the URI we sent, so this alone is NOT what makes Windows diagnostics come
- * back empty — a POSIX experiment with a deliberately non-canonical path
- * (`/var` vs `/private/var`) still produced diagnostics. Keep this because
- * matching the wire convention is correct and cheap, but do not credit it with
- * fixing the Windows outage; that cause is still open.
+ *   we sent:      file:///c:/Users/RUNNER%7E1/…/main.ts
+ *   server sent:  file:///c%3A/Users/RUNNER~1/…/main.ts
+ *
+ * `~` is an RFC 3986 unreserved character that `pathToFileURL` percent-encodes
+ * and tsserver leaves literal; the drive colon is the reverse. Every lookup
+ * missed, so the diagnostics arrived (the wire trace shows `diagnostics=1`)
+ * and were then dropped on the floor — reported to the user as a clean file,
+ * because LSP degrades silently by design. 8.3 short names like `RUNNER~1` are
+ * not exotic: that IS the Windows temp path on GitHub runners, and `PROGRA~1`
+ * and friends show up in real user paths.
+ *
+ * Fix: decode percent-escapes and lower-case the drive letter, so both
+ * spellings collapse to one key. Used ONLY as a Map key — the URI actually put
+ * on the wire is still the properly encoded one from `pathToFileURL`.
+ *
+ * Windows paths are also case-insensitive, but case is deliberately NOT folded:
+ * both sides derive from the same path string, and folding would break the
+ * genuinely case-sensitive POSIX servers that share this code.
  */
 export function normalizeUri(uri: string): string {
-  return uri.replace(
-    /^(file:\/\/\/)([A-Z])(:|%3A)/i,
+  let decoded = uri;
+  try {
+    decoded = decodeURI(uri);
+    // decodeURI leaves %3A alone (`:` is reserved), so unescape it explicitly
+    // rather than reaching for decodeURIComponent, which would also mangle any
+    // literal `#`/`?` a filename is allowed to contain.
+    decoded = decoded.replace(/%3A/gi, ":");
+  } catch {
+    // Malformed escape sequence — fall back to the raw URI rather than throwing
+    // inside a notification handler.
+  }
+  return decoded.replace(
+    /^(file:\/\/\/)([A-Za-z])(:)/,
     (_m, prefix: string, drive: string) => `${prefix}${drive.toLowerCase()}:`,
   );
 }
@@ -216,7 +237,10 @@ export class LspClient {
   }
 
   async initialize(timeoutMs: number): Promise<void> {
-    const rootUri = normalizeUri(pathToFileURL(this.rootPath).href);
+    // Wire value: keep it properly percent-encoded. `normalizeUri` is a cache
+    // key helper, and a decoded root (`C:\Program Files\…` → a literal space)
+    // is not a valid URI to hand a server at initialize.
+    const rootUri = pathToFileURL(this.rootPath).href;
     const result = (await this.conn.request(
       "initialize",
       {
@@ -247,11 +271,16 @@ export class LspClient {
    * report computed against THIS content rather than a stale one.
    */
   syncDocument(filePath: string, content: string): string {
-    const uri = normalizeUri(pathToFileURL(filePath).href);
-    this.published.delete(uri);
-    const previousVersion = this.versions.get(uri);
+    // Two different strings on purpose: `uri` is the properly percent-encoded
+    // form that goes ON THE WIRE (a literal space or `~` there would be an
+    // invalid URI), while `key` is the decoded form used for our own bookkeeping
+    // so it matches whatever spelling the server replies with.
+    const uri = pathToFileURL(filePath).href;
+    const key = normalizeUri(uri);
+    this.published.delete(key);
+    const previousVersion = this.versions.get(key);
     if (previousVersion === undefined) {
-      this.versions.set(uri, 1);
+      this.versions.set(key, 1);
       this.conn.notify("textDocument/didOpen", {
         textDocument: {
           uri,
@@ -262,7 +291,7 @@ export class LspClient {
       });
     } else {
       const version = previousVersion + 1;
-      this.versions.set(uri, version);
+      this.versions.set(key, version);
       this.conn.notify("textDocument/didChange", {
         textDocument: { uri, version },
         contentChanges: [{ text: content }],
@@ -326,12 +355,15 @@ export class LspClient {
   }
 
   private waitForPublish(uri: string, timeoutMs: number): Promise<LspDiagnostic[] | null> {
-    const cached = this.published.get(uri);
+    // Both the cache and the waiter list are keyed by the normalized form, which
+    // is what the publishDiagnostics handler stores under.
+    const key = normalizeUri(uri);
+    const cached = this.published.get(key);
     if (cached !== undefined) return Promise.resolve(cached);
     if (!this.alive) return Promise.resolve(null);
     return new Promise<LspDiagnostic[] | null>((resolve) => {
       const waiter: DiagnosticWaiter = {
-        uri,
+        uri: key,
         resolve: (diagnostics) => {
           clearTimeout(timer);
           resolve(diagnostics);
@@ -357,7 +389,7 @@ export class LspClient {
         timeoutMs,
       )) as { kind?: string; items?: LspDiagnostic[] } | null;
       if (report?.kind === "full") return report.items ?? [];
-      if (report?.kind === "unchanged") return this.published.get(uri) ?? [];
+      if (report?.kind === "unchanged") return this.published.get(normalizeUri(uri)) ?? [];
       return "unsupported";
     } catch (error) {
       if (error instanceof JsonRpcRequestError) {
