@@ -129,3 +129,107 @@ describe.skipIf(process.platform !== "win32")("LSP diagnostics on a real C:\\ pa
     );
   }, 120_000);
 });
+
+/**
+ * Isolates WHY Windows diagnostics time out, by changing exactly one variable.
+ *
+ * The suite above uses a bare project with no local `typescript`, so
+ * `resolveCommand` takes the BUNDLED-tsserver fallback and passes ggcoder's own
+ * copy via `initializationOptions.tsserver.path`. On Windows that timed out
+ * (measured: the full 60s budget) even though the language server resolves to
+ * `process.execPath` + a real script and starts in ~100ms — so the failure is
+ * downstream of spawning, and `initialize` itself succeeded (a failure there
+ * would surface as `server_failed`, not `timeout`).
+ *
+ * The one remaining difference from a real user's project is that local
+ * `typescript`. Give the project its own copy — a junction, which needs no
+ * privileges on Windows — and the two outcomes are diagnostic:
+ *
+ *   passes here + times out above → the bundled-tsserver fallback is the bug,
+ *     and it hits real users whose project has no local typescript.
+ *   times out here too            → tsserver itself can't produce diagnostics
+ *     in this environment, and the fallback is exonerated.
+ *
+ * Runs on POSIX too (symlink), where it must pass — that keeps the control arm
+ * honest instead of only ever observing the broken platform.
+ */
+describe("LSP diagnostics with the project's OWN typescript (control arm)", () => {
+  let tmpDir: string;
+  let manager: LspManager | undefined;
+  let linked = false;
+
+  beforeAll(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-lsp-own-ts-"));
+    await fs.writeFile(
+      path.join(tmpDir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          module: "esnext",
+          moduleResolution: "bundler",
+          target: "es2022",
+        },
+        include: ["src"],
+      }),
+    );
+    await fs.mkdir(path.join(tmpDir, "src"), { recursive: true });
+
+    // Link ggcoder's own typescript in as if the project installed it.
+    const ours = findUpNodeModulesDir("typescript");
+    if (ours) {
+      await fs.mkdir(path.join(tmpDir, "node_modules"), { recursive: true });
+      await fs.symlink(ours, path.join(tmpDir, "node_modules", "typescript"), "junction");
+      linked = true;
+    }
+    manager = new LspManager(tmpDir, { firstBudgetMs: 60_000, warmBudgetMs: 20_000 });
+  });
+
+  afterAll(async () => {
+    manager?.shutdownAll();
+    for (let attempt = 0; attempt < 40; attempt++) {
+      try {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+        return;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  });
+
+  it("produces diagnostics when typescript is resolvable inside the project", async () => {
+    expect(linked).toBe(true);
+    // Prove we are NOT on the bundled-tsserver code path any more.
+    expect(
+      fsSync.existsSync(path.join(tmpDir, "node_modules", "typescript", "lib", "tsserver.js")),
+    ).toBe(true);
+
+    const filePath = path.join(tmpDir, "src", "main.ts");
+    const broken = 'export const n: number = "not a number";\n';
+    await fs.writeFile(filePath, broken);
+
+    const started = Date.now();
+    const outcome = await manager!.diagnosticsAfterWriteDetailed(filePath, broken);
+    // Surfaces in the CI log next to the failing bundled-path tests, so the two
+    // arms can be compared directly.
+
+    console.log(`[control arm] outcome=${outcome.kind} in ${Date.now() - started}ms`);
+
+    expect(outcome.kind).toBe("diagnostics");
+    expect(outcome.kind === "diagnostics" && outcome.formatted).toMatch(
+      /not assignable to type 'number'/,
+    );
+  }, 120_000);
+});
+
+/** Nearest `node_modules/<name>` walking up from this test file. */
+function findUpNodeModulesDir(name: string): string | null {
+  let dir = path.dirname(new URL(import.meta.url).pathname);
+  if (process.platform === "win32" && /^\/[A-Za-z]:/.test(dir)) dir = dir.slice(1);
+  for (;;) {
+    const candidate = path.join(dir, "node_modules", name);
+    if (fsSync.existsSync(candidate)) return fsSync.realpathSync.native(candidate);
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
