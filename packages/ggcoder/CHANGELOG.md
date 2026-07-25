@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.23.2
+
+### Patch Changes
+
+- Fix named sub-agents receiving no MCP tools: a session with a `tools:` allow-list skipped MCP entirely unless an MCP whitelist was also set, so an agent listing `mcp__kencode-search__searchCode` silently fell back to training data. The whitelist is now derived from the agent definition and forwarded through every spawn path. Also removes the v5.22.6 seeded `auditor.md`/`skeptic.md` that shadowed the richer bundled agents, with hash-gated cleanup that leaves user-edited files untouched.
+  - @kenkaiiii/gg-ai@5.23.2
+  - @kenkaiiii/gg-agent@5.23.2
+  - @kenkaiiii/gg-core@5.23.2
+
 ## 5.23.1
 
 ### Patch Changes
