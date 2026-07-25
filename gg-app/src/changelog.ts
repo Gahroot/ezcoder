@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.28.3",
+    date: "2026-07-25",
+    items: [
+      "Windows finally feels like home. Your projects and recent sessions show up the moment you open the app, and you stay signed in instead of landing on an empty picker. I was hunting for your files in a folder Windows never actually uses.",
+      "Your work on Windows now genuinely saves. Every session write, resume, and archive was quietly failing behind the scenes, so your history could vanish when you closed the app. Nothing slips away anymore.",
+      "Inline error checking is live on Windows. I spot type errors the instant I create them and fix them in the same turn, exactly like on Mac. Before this I was getting nothing back and never knew it.",
+      "Your `MCP` servers connect on Windows. Anything set up through `npx`, which is very nearly all of them, died with a dead end error before it ever started. They boot properly now.",
+      "No more black console windows flashing when you launch or quit. I also make sure a cancelled command takes its entire process tree down with it, so runaway dev servers stop quietly piling up in the background.",
+    ],
+  },
+  {
     version: "0.28.2",
     date: "2026-07-25",
     items: [
