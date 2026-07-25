@@ -3,6 +3,8 @@
  * into the agent loop. Each command maps to a full prompt the agent executes.
  */
 
+import { isGgApp } from "./runtime-mode.js";
+
 export interface PromptCommand {
   name: string;
   aliases: string[];
@@ -10,14 +12,7 @@ export interface PromptCommand {
   prompt: string;
 }
 
-/**
- * True when this process is the gg-app sidecar (Tauri spawns it with
- * `GG_APP_PORT` set, even to "0" — plain `ggcoder` CLI never sets it). Used
- * to phrase user-facing notices (restart / task-list pointers) in terms of
- * the desktop app's UI instead of CLI keybinds, since most users are on the
- * app now and it has no terminal keybinds at all.
- */
-const IS_GG_APP = process.env.GG_APP_PORT !== undefined;
+const IS_GG_APP = isGgApp();
 
 const TASKS_ADDED_NOTICE = IS_GG_APP
   ? 'Tasks added. Click the "Tasks" button to open the task list and run them.'
@@ -33,6 +28,15 @@ const CLAUDE_MD_RESTART_NOTICE = IS_GG_APP
  */
 const spawnParallel = (count: string | number): string =>
   `in parallel using the subagent tool (call the subagent tool ${count} times in a single response)`;
+
+/**
+ * Kencode-search ships behind deferred MCP loading (`deferredMcpTools` defaults
+ * to true), so its tools sit in the `tool_search` catalog until promoted. Any
+ * command that names an `mcp__kencode-search__*` tool must say how to unlock it,
+ * or the call fails on a default install.
+ */
+const KENCODE_UNLOCK_NOTE =
+  'If the `mcp__kencode-search__*` tools aren\'t active yet, call `tool_search` (e.g. "search public code") first to unlock them.';
 
 export const PROMPT_COMMANDS: PromptCommand[] = [
   {
@@ -84,7 +88,7 @@ For every candidate from the sub-agents, validate it yourself before reporting:
 1. Confirm the external source is relevant to this project and fresh enough (normally within 6 months).
 2. Search this repo with grep/find and language-aware anchors to confirm the feature is not already present under another name.
 3. Check routes, CLI commands, UI surfaces, package exports, config, docs, and examples before calling a feature missing.
-4. Use mcp__kencode-search__searchCode when a code-level look clarifies how peers actually ship the feature. Use literal imports, functions, config keys, CLI flags, route names, or package names — not conceptual phrases.
+4. Use mcp__kencode-search__searchCode when a code-level look clarifies how peers actually ship the feature. Use literal imports, functions, config keys, CLI flags, route names, or package names — not conceptual phrases. ${KENCODE_UNLOCK_NOTE}
 5. Drop anything already present, irrelevant, too vague, too stale, or that is not a real user-facing feature.
 6. Merge duplicates and keep only the most exciting 5–10 features.
 
@@ -446,6 +450,8 @@ Report that /commit is now available with quality checks, an agent code review g
     aliases: [],
     description: "Compare real-world code",
     prompt: `Compare the code you just created or modified in this conversation against real-world implementations using the \`mcp__kencode-search__searchCode\` tool.
+
+${KENCODE_UNLOCK_NOTE}
 
 You already know what you just built. For each file you created or modified, use \`mcp__kencode-search__searchCode\` to search for how real projects implement the same patterns. Look at the specific APIs, hooks, functions, and architecture you used.
 

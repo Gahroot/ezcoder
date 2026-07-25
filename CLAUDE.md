@@ -222,74 +222,17 @@ over running the steps by hand.
   `.github/workflows/release.yml` to build/sign/notarize installers and publish a
   **non-draft** GitHub release + updater `latest.json`.
 
-### How gg-app consumes the packages
+Non-obvious invariants (full runbook lives in `.gg/commands/release.md`):
 
-gg-app does **not** depend on the published npm versions. Its CI runs
-`pnpm install --frozen-lockfile` (resolving `workspace:*` locally), builds gg-ai →
-gg-agent → ggcoder **from source**, then bundles `packages/ggcoder/dist/app-sidecar.js`
-into the Tauri app. So a desktop release ships whatever is in the workspace at tag time —
-npm need not be published first for the app to build. Still, publish npm first (Track A
-then Track B) so the shipped CLI and app stay in lockstep.
-
-### Track A — npm packages (Changesets)
-
-Manual multi-package version bumping is gone — do **not** hand-edit package `version`
-fields. The framework spine — `@kenkaiiii/gg-ai`, `@kenkaiiii/gg-agent`,
-`@kenkaiiii/gg-core`, `@kenkaiiii/ggcoder`, `@kenkaiiii/gg-boss` — is a **fixed group**
-in `.changeset/config.json`: a changeset touching any one bumps them all to the same
-version together (this is what kept drifting before). Dependents like gg-editor /
-gg-voice get an automatic patch bump.
-
-```bash
-pnpm changeset            # describe the change; pick bump level (patch/minor/major)
-pnpm changeset version    # apply bumps + update internal deps + write changelogs
-pnpm build                # rebuild with the new versions
-git commit -am "Version packages"   # COMMIT BEFORE PUBLISH — publish tags HEAD
-pnpm changeset publish    # publishes in topological order + creates git tags
-git push --follow-tags    # push the version commit + the new tags
-```
-
-Commit the version bump **before** `pnpm changeset publish` — publish creates git tags
-at `HEAD`, so an uncommitted bump tags the wrong commit and publishes from a dirty tree.
-`pnpm changeset status` shows the pending release graph at any time.
-
-### Track B — gg-app desktop (tag-triggered)
-
-The desktop version lives in **four files that must stay in lockstep**:
-`gg-app/package.json`, `gg-app/src-tauri/tauri.conf.json`, `gg-app/src-tauri/Cargo.toml`,
-and `gg-app/src-tauri/Cargo.lock`. **Never hand-edit them** — use the helper, which
-bumps all four at once and prints the new version:
-
-```bash
-pnpm --filter gg-app bump <patch|minor|major|x.y.z>   # scripts/bump-version.mjs
-git add gg-app/package.json gg-app/src-tauri/tauri.conf.json \
-        gg-app/src-tauri/Cargo.toml gg-app/src-tauri/Cargo.lock
-git commit -m "Update gg-app to v<NEW>"
-git push
-git tag v<NEW> && git push origin v<NEW>   # fires release.yml
-gh run list --workflow=release.yml --limit 1   # confirm the build kicked off
-```
-
-The workflow has `releaseDraft: false` — it publishes a **live, non-draft** release
-automatically when the build finishes; there is no manual publish step. It builds for
-macOS (arm64) + Windows only (Linux/Intel-mac legs are intentionally omitted — see the
-comments in `release.yml`).
-
-### npm auth (Track A)
-
-- npm granular access token must be set: `npm set //registry.npmjs.org/:_authToken=<token>`
-- `access: public` is set in `.changeset/config.json` (and each package's `publishConfig`), required for scoped packages.
-- `workspace:*` references resolve to real versions at publish time because changesets publishes via pnpm.
-
-### Verify a published npm release (Track A)
-
-```bash
-npm view @kenkaiiii/ggcoder versions --json   # check published versions
-npm i -g @kenkaiiii/ggcoder@<version>         # test install
-ggcoder --help                                # verify CLI works
-```
-
-If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
+- **Never hand-edit versions.** The npm spine is a *fixed group* in
+  `.changeset/config.json` (one changeset bumps all of them together); the desktop
+  version lives in four files kept in lockstep by `pnpm --filter gg-app bump`.
+- **Commit the version bump before `pnpm changeset publish`** — publish tags `HEAD`,
+  so an uncommitted bump tags the wrong commit and publishes from a dirty tree.
+- **gg-app builds the sidecar from workspace source**, not from npm — so a Track A
+  release always requires a matching Track B release, even with no `gg-app/` diff.
+- The desktop workflow is `releaseDraft: false` (publishes live, no manual step) and
+  builds macOS arm64 + Windows only.
 
 ## Organization Rules
 
@@ -387,56 +330,20 @@ ggcoder mcp add --env AIRTABLE_API_KEY=key airtable -- npx -y airtable-mcp-serve
 
 ## Slash Commands
 
-There are two kinds of slash commands:
+Four homes, checked in this order. Add a command to the *first* one that fits:
 
-### 1. UI-handled commands (in `App.tsx`)
+| Kind | Lives in | Use when | Reaches gg-app? |
+|---|---|---|---|
+| UI-handled | `handleSubmit` in `ui/App.tsx` | needs React state (overlays, live items, token counters) | no — app uses buttons |
+| Registry | `createBuiltinCommands()` in `core/slash-commands.ts` | needs session (messages, auth, settings) via `SlashCommandContext` | yes, via `AgentSession.prompt()` |
+| Prompt-template | `core/prompt-commands.ts` | injects a prompt for the agent to execute | yes — listed in the app's slash menu |
+| Custom | `.gg/commands/*.md` | project-local prompt templates | yes |
 
-Commands that need direct access to React state (UI, overlays, token counters) are handled inline in `handleSubmit` in `src/ui/App.tsx`. These short-circuit before the slash command registry.
+Gotchas:
 
-**Current UI commands:** `/model` (`/m`), `/compact` (`/c`), `/quit` (`/q`, `/exit`), `/clear`
-
-To add a new UI command:
-1. Add a condition in `handleSubmit` after the existing checks:
-   ```tsx
-   if (trimmed === "/mycommand") {
-     // manipulate React state directly
-     setLiveItems([{ kind: "info", text: "Done.", id: getId() }]);
-     return;
-   }
-   ```
-2. If the command needs to reset agent state, call `agentLoop.reset()`.
-
-### 2. Registry commands (in `core/slash-commands.ts`)
-
-Commands that don't need React state live in `createBuiltinCommands()` in `src/core/slash-commands.ts`. They receive a `SlashCommandContext` with methods like `switchModel`, `compact`, `newSession`, `quit`, etc.
-
-**Current registry commands:** `/model` (`/m`), `/compact` (`/c`), `/help` (`/h`, `/?`), `/settings` (`/config`), `/session` (`/s`), `/new` (`/n`), `/quit` (`/q`, `/exit`)
-
-Note: `/model`, `/compact`, and `/quit` exist in both — the UI handlers in `App.tsx` take precedence since they're checked first.
-
-To add a new registry command:
-1. Add an entry to the array in `createBuiltinCommands()`:
-   ```ts
-   {
-     name: "mycommand",
-     aliases: ["mc"],
-     description: "Does something useful",
-     usage: "/mycommand [args]",
-     execute(args, ctx) {
-       // Use ctx methods or return a string to display
-       return "Result text";
-     },
-   },
-   ```
-2. If the command needs new capabilities, add the method to `SlashCommandContext` interface and wire it up in `AgentSession.createSlashCommandContext()`.
-
-### When to use which
-
-| Need | Where |
-|---|---|
-| Modify UI state (history, overlays, live items) | `App.tsx` |
-| Reset token counters | `App.tsx` (call `agentLoop.reset()`) |
-| Access agent session (messages, auth, settings) | `slash-commands.ts` registry |
-| Both UI + session access | `App.tsx` (can call session methods via props) |
-
-There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.gg/commands/` directory).
+- `/model`, `/compact`, `/quit` exist in **both** App.tsx and the registry — the TUI
+  handlers win (checked first); the registry copies are what gg-app actually runs.
+- `/rewind` and `/clear` are TUI-only. A registry entry that has no app equivalent must
+  say so (see `/rewind`'s `isGgApp()` branch) rather than echo a dead pointer.
+- Registry commands needing new capabilities: add the method to `SlashCommandContext`
+  and wire it in `AgentSession.createSlashCommandContext()`.

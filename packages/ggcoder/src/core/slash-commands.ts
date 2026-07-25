@@ -1,3 +1,5 @@
+import { isGgApp } from "./runtime-mode.js";
+
 // ── Types ──────────────────────────────────────────────────
 
 export interface SlashCommandContext {
@@ -191,8 +193,12 @@ export function createBuiltinCommands(): SlashCommand[] {
       description: "Restore files/conversation to an earlier checkpoint",
       usage: "/rewind — pick a checkpoint, then code / conversation / both",
       execute() {
-        // Handled in App.tsx (needs React state); listed here for /help.
-        return "Use /rewind to open the checkpoint picker.";
+        // The real implementation lives in App.tsx (it needs React state to
+        // drive the picker) and intercepts before the registry, so this only
+        // runs where no picker exists — today that's the gg-app sidecar.
+        return isGgApp()
+          ? "/rewind is only available in the ggcoder terminal app — the desktop app has no checkpoint picker yet."
+          : "Checkpoint picker unavailable in this context.";
       },
     },
     {

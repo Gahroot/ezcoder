@@ -289,6 +289,7 @@ function main(): void {
       "max-turns": { type: "string" },
       "system-prompt": { type: "string" },
       tools: { type: "string" },
+      "mcp-servers": { type: "string" },
       "prompt-cache-key": { type: "string" },
       thinking: { type: "string" },
       resume: { type: "string" },
@@ -327,6 +328,16 @@ function main(): void {
           .filter(Boolean)
       : [];
     const allowedTools = parsedTools.length > 0 ? parsedTools : undefined;
+    // MCP servers the agent definition asked for (`mcp__<server>__<tool>` in its
+    // `tools:` list). Without this an allow-listed child connects no MCP at all,
+    // so a research agent silently loses live code search.
+    const parsedMcpServers = values["mcp-servers"]
+      ? values["mcp-servers"]
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const allowedMcpServers = parsedMcpServers.length > 0 ? parsedMcpServers : undefined;
     const cwd = process.cwd();
     runJsonMode({
       message,
@@ -336,6 +347,7 @@ function main(): void {
       systemPrompt,
       maxTurns,
       allowedTools,
+      allowedMcpServers,
       promptCacheKey,
       thinkingLevel,
     }).catch((err: unknown) => {

@@ -16,6 +16,17 @@ describe("prompt commands", () => {
     expect(bulletProof?.prompt).not.toContain("Press CTRL + G");
   });
 
+  it("tells commands that name kencode tools how to unlock deferred MCP", () => {
+    // `deferredMcpTools` defaults to true, so `mcp__kencode-search__*` sits in
+    // the tool_search catalog until promoted. A command that hard-names it must
+    // say how to unlock it, or the call fails on a default install.
+    for (const name of ["compare", "expand"]) {
+      const cmd = PROMPT_COMMANDS.find((command) => command.name === name);
+      expect(cmd?.prompt, name).toContain("mcp__kencode-search__");
+      expect(cmd?.prompt, name).toContain("call `tool_search`");
+    }
+  });
+
   it("frames bullet-proof as an authorized defensive review with no exploit output", () => {
     const bulletProof = PROMPT_COMMANDS.find((command) => command.name === "bullet-proof");
 

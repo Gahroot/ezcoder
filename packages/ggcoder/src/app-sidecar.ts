@@ -683,6 +683,7 @@ async function runJsonModeIfRequested(): Promise<boolean> {
       "max-turns": { type: "string" },
       "system-prompt": { type: "string" },
       tools: { type: "string" },
+      "mcp-servers": { type: "string" },
       "prompt-cache-key": { type: "string" },
     },
     allowPositionals: true,
@@ -699,6 +700,15 @@ async function runJsonModeIfRequested(): Promise<boolean> {
         .filter(Boolean)
     : [];
   const allowedTools = parsedTools.length > 0 ? parsedTools : undefined;
+  // MCP servers the agent definition asked for. Without forwarding these, an
+  // allow-listed child connects no MCP at all and loses live code search.
+  const parsedMcpServers = values["mcp-servers"]
+    ? values["mcp-servers"]
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+  const allowedMcpServers = parsedMcpServers.length > 0 ? parsedMcpServers : undefined;
   await runJsonMode({
     message: positionals[0] ?? "",
     provider: (values.provider ?? "anthropic") as Provider,
@@ -707,6 +717,7 @@ async function runJsonModeIfRequested(): Promise<boolean> {
     systemPrompt: values["system-prompt"],
     maxTurns: maxTurnsRaw ? parseInt(maxTurnsRaw, 10) : undefined,
     allowedTools,
+    allowedMcpServers,
     promptCacheKey: values["prompt-cache-key"],
   }).catch(async (err: unknown) => {
     captureSidecarError(err, "app-sidecar.json-mode", {

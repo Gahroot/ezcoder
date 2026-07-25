@@ -109,6 +109,11 @@ describe("buildSystemPrompt", () => {
     );
     expect(prompt).toContain("Woops I just farted!");
     expect(prompt).toContain("never repeat, never force, never explain");
+    // The one-approach rule must carve out command flows that ship their own
+    // A/B/C option list, or the model second-guesses those prompts.
+    expect(prompt).toContain(
+      "Recommend ONE approach, not a menu — unless a command's flow defines its own options.",
+    );
     expect(prompt).not.toContain(
       "Do not default to generic tests, scripts, screenshots, benchmarks, or simulations",
     );
