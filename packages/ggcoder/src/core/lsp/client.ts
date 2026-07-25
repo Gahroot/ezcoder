@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { JsonRpcConnection, JsonRpcRequestError } from "./jsonrpc.js";
+import { JsonRpcConnection, JsonRpcRequestError, type WireTracer } from "./jsonrpc.js";
 import { getSafeToolEnv } from "../../tools/safe-env.js";
 import { log } from "../logger.js";
 import type { LspServerSpec, ResolvedCommand } from "./servers.js";
@@ -40,6 +40,44 @@ const PULL_POLL_INTERVAL_MS = 300;
 const STDERR_TAIL_BYTES = 4000;
 const SHUTDOWN_TIMEOUT_MS = 2000;
 const KILL_GRACE_MS = 1500;
+
+/**
+ * JSON-RPC wire tracer, enabled only by `GG_LSP_TRACE=1`.
+ *
+ * When a server accepts a document and then never publishes diagnostics, the
+ * outcome (`timeout`) looks identical whether our `didOpen` never went out, the
+ * server rejected it, or it answered about a URI we weren't watching. Only the
+ * wire tells those apart. Opt-in because it is genuinely chatty, and params are
+ * SUMMARIZED rather than dumped so a trace can never spill file contents into a
+ * log.
+ */
+function wireTracer(serverId: string): WireTracer | undefined {
+  if (process.env.GG_LSP_TRACE !== "1") return undefined;
+  return (direction, message) => {
+    const params = message.params as
+      | {
+          textDocument?: { uri?: string };
+          uri?: string;
+          diagnostics?: unknown[];
+          message?: string;
+        }
+      | undefined;
+    // `window/logMessage` / `window/showMessage` are the server's own
+    // human-readable complaints ("cannot find tsserver", bad option, …) and are
+    // frequently the only statement of what actually went wrong. Everything
+    // else is summarized — never file contents.
+    const isServerMessage =
+      message.method === "window/logMessage" || message.method === "window/showMessage";
+    log("DEBUG", "lsp", `${serverId} rpc ${direction}`, {
+      method: message.method ?? `(response id=${String(message.id)})`,
+      uri: params?.textDocument?.uri ?? params?.uri,
+      // Counts only, never the diagnostics themselves.
+      diagnostics: Array.isArray(params?.diagnostics) ? params.diagnostics.length : undefined,
+      text: isServerMessage ? params?.message?.slice(0, 300) : undefined,
+      error: message.error?.message,
+    });
+  };
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -127,7 +165,7 @@ export class LspClient {
       this.proc.kill("SIGKILL");
       throw new Error(`failed to open stdio pipes for ${spec.id} language server`);
     }
-    this.conn = new JsonRpcConnection(stdout, stdin);
+    this.conn = new JsonRpcConnection(stdout, stdin, wireTracer(spec.id));
     this.conn.onNotification("textDocument/publishDiagnostics", (params) => {
       const publish = params as PublishDiagnosticsParams;
       const uri = normalizeUri(publish.uri);

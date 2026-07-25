@@ -7,6 +7,8 @@ import { pathToFileURL } from "node:url";
 
 import { spawnSync } from "node:child_process";
 
+import { closeLogger, openLog } from "@kenkaiiii/gg-core";
+
 import { LspManager } from "./manager.js";
 import { normalizeUri } from "./client.js";
 import { LSP_SERVER_CATALOG, findExecutable, serverForFile } from "./servers.js";
@@ -157,9 +159,20 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
   let tmpDir: string;
   let manager: LspManager | undefined;
   let linked = false;
+  let traceLog = "";
+  let traceOpen = false;
 
   beforeAll(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-lsp-own-ts-"));
+
+    // Turn on JSON-RPC wire tracing and give it somewhere to land. The tracer
+    // writes via the shared debug logger, which DISCARDS everything until a log
+    // file is open (`fd === null` → return), so without this the trace would
+    // silently produce nothing — the same class of silent-degradation that made
+    // this bug hard in the first place.
+    process.env.GG_LSP_TRACE = "1";
+    traceLog = path.join(tmpDir, "lsp-trace.log");
+    traceOpen = openLog(traceLog, "ggcoder-test");
     await fs.writeFile(
       path.join(tmpDir, "tsconfig.json"),
       JSON.stringify({
@@ -186,6 +199,8 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
 
   afterAll(async () => {
     manager?.shutdownAll();
+    delete process.env.GG_LSP_TRACE;
+    if (traceOpen) closeLogger();
     for (let attempt = 0; attempt < 40; attempt++) {
       try {
         await fs.rm(tmpDir, { recursive: true, force: true });
@@ -209,13 +224,16 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
 
     const started = Date.now();
     const outcome = await manager!.diagnosticsAfterWriteDetailed(filePath, broken);
-    // Surfaces in the CI log next to the bundled-path tests so the two arms can
-    // be compared directly — including the server's own stderr, which used to be
-    // discarded and is the one thing that explains a server going quiet.
+    // Everything the CI log needs to name the cause without another round-trip:
+    // the outcome kind, the server's own stderr (previously discarded), and the
+    // JSON-RPC wire — which is the only thing that distinguishes "our didOpen
+    // never went out" from "the server never answered" from "it answered about
+    // a URI we weren't watching".
 
     console.log(
       `[control arm] outcome=${outcome.kind} in ${Date.now() - started}ms\n` +
-        `[control arm] server stderr: ${(await serverStderr(manager!)) || "(none)"}`,
+        `[control arm] server stderr: ${(await serverStderr(manager!)) || "(none)"}\n` +
+        `[control arm] wire:\n${readTrace(traceLog, traceOpen)}`,
     );
 
     expect(outcome.kind).toBe("diagnostics");
@@ -224,6 +242,25 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
     );
   }, 120_000);
 });
+
+/**
+ * The JSON-RPC trace for this run, trimmed to the LSP lines and capped so a
+ * chatty server can't bury the CI log.
+ */
+function readTrace(traceLog: string, traceOpen: boolean): string {
+  if (!traceOpen) return "(trace log unavailable — a logger was already open)";
+  let raw: string;
+  try {
+    raw = fsSync.readFileSync(traceLog, "utf8");
+  } catch {
+    return "(trace log unreadable)";
+  }
+  const lines = raw.split(/\r?\n/).filter((line) => line.includes("[lsp]"));
+  if (lines.length === 0) return "(no rpc lines — tracer never fired)";
+  const head = lines.slice(0, 40);
+  const tail = lines.length > 60 ? lines.slice(-20) : [];
+  return [...head, ...(tail.length ? [`  … ${lines.length - 60} more …`] : []), ...tail].join("\n");
+}
 
 /**
  * The pooled client's retained stderr, for the log line above. Reaches into the
