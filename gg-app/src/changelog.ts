@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.28.2",
+    date: "2026-07-25",
+    items: [
+      "Your specialist agents now research with real, live code instead of guessing from memory. Anything you point at `kencode-search` can finally reach it, so answers come back grounded in code that actually exists today. They were quietly cut off from it before.",
+      "`/bullet-proof` got its sharpest reviewers back. The deep `auditor` and `skeptic` agents were being shadowed by weaker stand-ins, so your security reports now come from the real thing again. Anything you wrote yourself stays exactly as you left it.",
+    ],
+  },
+  {
     version: "0.28.1",
     date: "2026-07-24",
     items: [
