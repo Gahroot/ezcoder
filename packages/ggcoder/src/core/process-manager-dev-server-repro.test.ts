@@ -147,7 +147,14 @@ describe("ProcessManager dev-server lifecycle repro", () => {
         `});\n`,
     );
 
-    const started = await manager.start(`${process.execPath} ${fixture}`, tmpDir);
+    // Both paths MUST be quoted. Unquoted, bash eats the backslashes in a
+    // Windows path: `C:\hostedtoolcache\…\node.exe` reached the shell as
+    // `C:hostedtoolcache…node.exe` and failed with "command not found". Every
+    // other manager.start call in this file already quotes; this one did not.
+    const started = await manager.start(
+      `${JSON.stringify(process.execPath)} ${JSON.stringify(fixture)}`,
+      tmpDir,
+    );
     expect(started.pid).toBeGreaterThan(0);
     expect(started.logFile).toMatch(/\.log$/);
 
