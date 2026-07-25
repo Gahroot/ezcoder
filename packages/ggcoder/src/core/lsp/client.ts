@@ -48,12 +48,18 @@ function sleep(ms: number): Promise<void> {
  * Canonicalize a `file://` URI so ours and the server's are the same string.
  *
  * Diagnostics are cached in a Map keyed by URI: we `set` what the server sends
- * and `get` what we built from the edited path. On Windows those disagree —
+ * and `get` what we built from the edited path. On Windows those can disagree —
  * `pathToFileURL("C:\\repo\\a.ts")` keeps the uppercase drive, while language
  * servers normalize to `file:///c:/repo/a.ts` (VS Code's convention, which is
- * why servers emit it). Every lookup missed, so inline edit diagnostics simply
- * never appeared on Windows — and because LSP degrades silently, nothing said
- * why. Lowercasing the drive letter matches what servers expect on the wire.
+ * why servers emit it), and a Map miss shows up as "no diagnostics" because LSP
+ * degrades silently by design.
+ *
+ * Scope note, measured not assumed: for a document we opened, tsserver echoes
+ * the URI we sent, so this alone is NOT what makes Windows diagnostics come
+ * back empty — a POSIX experiment with a deliberately non-canonical path
+ * (`/var` vs `/private/var`) still produced diagnostics. Keep this because
+ * matching the wire convention is correct and cheap, but do not credit it with
+ * fixing the Windows outage; that cause is still open.
  */
 export function normalizeUri(uri: string): string {
   return uri.replace(
