@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.24.0
+
+### Minor Changes
+
+- Add Markdown chat transcript export, network egress allowlist, multi-root `/add-dir`, and OpenAI-compatible reasoning-field detection
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.24.0
+- @kenkaiiii/gg-agent@5.24.0
+- @kenkaiiii/gg-core@5.24.0
+
 ## 5.23.3
 
 ### Patch Changes
