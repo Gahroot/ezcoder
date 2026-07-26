@@ -14,6 +14,7 @@ import {
   cycleThinking,
   listModels,
   switchModel,
+  isSwitchModelError,
   switchKenModel,
   listCommands,
   listHistory,
@@ -983,6 +984,7 @@ function App(): React.ReactElement {
     setQueuedCount,
     setAttachments,
     setCommands,
+    setModels,
     stateRef,
     planDoneRef,
     planTotalRef,
@@ -1250,21 +1252,26 @@ function App(): React.ReactElement {
   function onSelectModel(modelId: string): void {
     if (state && modelId === state.model) return;
     void switchModel(modelId).then((res) => {
-      if (res) {
-        // Sakana Fugu easter egg: blow the fugu horn when a Fugu model is picked.
-        if (res.model.startsWith("fugu")) playSound("fugu");
-        setState((s) =>
-          s
-            ? {
-                ...s,
-                provider: res.provider,
-                model: res.model,
-                thinkingLevel: res.thinkingLevel,
-                supportedThinkingLevels: res.supportedThinkingLevels,
-              }
-            : s,
-        );
+      if (isSwitchModelError(res)) {
+        // The sidecar refuses with a reason worth reading ("Ollama isn't
+        // running at …", "has no tool calling"). Show it — otherwise the
+        // picker just snaps back with no explanation.
+        toast(res.error, "error");
+        return;
       }
+      // Sakana Fugu easter egg: blow the fugu horn when a Fugu model is picked.
+      if (res.model.startsWith("fugu")) playSound("fugu");
+      setState((s) =>
+        s
+          ? {
+              ...s,
+              provider: res.provider,
+              model: res.model,
+              thinkingLevel: res.thinkingLevel,
+              supportedThinkingLevels: res.supportedThinkingLevels,
+            }
+          : s,
+      );
     });
   }
 

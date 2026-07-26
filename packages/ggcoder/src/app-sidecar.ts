@@ -80,9 +80,24 @@ import {
   MOONSHOT_OAUTH_KEY,
   SubscriptionUsageError,
   XIAOMI_CREDITS_KEY,
+  discoverLocalModels,
+  findProbedModel,
+  formatLocalModelId,
+  parseLocalModelId,
+  probeEndpoint,
+  toModelInfo as localModelInfo,
+  type LocalEndpoint,
+  type LocalEndpointProbe,
   type SubscriptionUsageProvider,
   type SubscriptionUsageSnapshot,
 } from "@kenkaiiii/gg-core";
+import {
+  LocalEndpointError,
+  addCustomEndpoint,
+  listAllEndpoints,
+  removeCustomEndpoint,
+  syncEndpointCredentials,
+} from "./core/local-endpoint-store.js";
 import { loginAnthropic } from "./core/oauth/anthropic.js";
 import { loginOpenAI } from "./core/oauth/openai.js";
 import { loginGemini } from "./core/oauth/gemini.js";
@@ -95,7 +110,9 @@ import {
   getModel,
   getDefaultThinkingLevel,
   getContextWindow,
-  MODELS,
+  getAllModels,
+  clearRuntimeModels,
+  registerRuntimeModels,
 } from "./core/model-registry.js";
 import { resolveStartOrFallback } from "./core/resolve-start.js";
 import { getGitBranch, getGitDirtyFileCount, isGitRepo } from "./utils/git.js";
@@ -1485,6 +1502,25 @@ async function createSession(
     );
   }
 
+  /**
+   * Guidance for a connection failure against the ACTIVE local endpoint, or
+   * undefined when that isn't the situation (so the generic wording stands).
+   * "Disable your VPN / allow us through the firewall" is useless advice for a
+   * server running on this machine — name what the user has to restart.
+   */
+  function localNetworkGuidance(source: string | undefined): string | undefined {
+    if (source !== "network") return undefined;
+    const state = session.getState();
+    if (state.provider !== "local") return undefined;
+    const parsed = parseLocalModelId(state.model);
+    const probe = localProbes.find((p) => p.endpoint.id === parsed?.endpointId);
+    if (!probe) return undefined;
+    return (
+      `${probe.endpoint.label} stopped responding at ${probe.endpoint.baseUrl}. ` +
+      "Start it again and retry, or pick another model."
+    );
+  }
+
   // Turn any thrown value into the same clear headline/message/guidance shape
   // the TUI shows (see gg-ai's formatError) instead of a bare `err.message`, log
   // the full detail, and broadcast it under `type` ("error" or "ken_error").
@@ -1498,7 +1534,7 @@ async function createSession(
   ): void {
     const f = formatError(err);
     const message = f.message ? desktopGuidance(f.message) : undefined;
-    const guidance = desktopGuidance(f.guidance);
+    const guidance = localNetworkGuidance(f.source) ?? desktopGuidance(f.guidance);
     captureSidecarError(err, `app-sidecar.${logLabel.replaceAll(" ", "-")}`, {
       scope: type,
       ...(f.provider ? { provider: f.provider } : {}),
@@ -1608,6 +1644,124 @@ async function createSession(
   }
   log("INFO", "app-sidecar", "session ready", { provider, model, mode, chatAgent, cwd });
 
+  // ── Local models (Ollama / LM Studio / llama.cpp / vLLM) ──
+  // Probing four HTTP endpoints must never delay readiness, so this runs in the
+  // background (same shape as backgroundMcpConnect) and pushes a models_change
+  // frame when it lands.
+  let localProbes: LocalEndpointProbe[] = [];
+
+  async function scanLocalModels(force: boolean): Promise<LocalEndpointProbe[]> {
+    const endpoints = await listAllEndpoints();
+    const { probes, models } = await discoverLocalModels(endpoints, { force });
+    localProbes = probes;
+    // Only endpoints that answered get a credential: writing one for a server
+    // that isn't running would make `hasProviderAuth("local")` true forever.
+    await syncEndpointCredentials(
+      probes.filter((probe) => probe.reachable).map((probe) => probe.endpoint),
+    );
+    clearRuntimeModels((m) => m.provider === "local");
+    registerRuntimeModels(models);
+    log("INFO", "app-sidecar", "local model scan", {
+      reachable: probes.filter((p) => p.reachable).length + "/" + probes.length,
+      models: String(models.length),
+    });
+    return probes;
+  }
+
+  /** Endpoint rows + models, in the shape the Local models UI renders. */
+  function localStatePayload(): {
+    endpoints: {
+      id: string;
+      label: string;
+      baseUrl: string;
+      kind: LocalEndpoint["kind"];
+      custom: boolean;
+      reachable: boolean;
+      reason?: string;
+      models: {
+        id: string;
+        rawId: string;
+        contextWindow: number;
+        contextWindowKnown: boolean;
+        supportsTools: boolean;
+        supportsImages: boolean;
+        supportsThinking: boolean;
+        loaded?: boolean;
+      }[];
+    }[];
+  } {
+    return {
+      endpoints: localProbes.map((probe) => ({
+        id: probe.endpoint.id,
+        label: probe.endpoint.label,
+        baseUrl: probe.endpoint.baseUrl,
+        kind: probe.endpoint.kind,
+        custom: probe.endpoint.custom === true,
+        reachable: probe.reachable,
+        ...(probe.reason ? { reason: probe.reason } : {}),
+        models: probe.models.map((m) => ({
+          id: formatLocalModelId(probe.endpoint.id, m.rawId),
+          rawId: m.rawId,
+          contextWindow: m.contextWindow,
+          contextWindowKnown: m.contextWindowKnown,
+          supportsTools: m.supportsTools,
+          supportsImages: m.supportsImages,
+          supportsThinking: m.supportsThinking,
+          ...(m.loaded === undefined ? {} : { loaded: m.loaded }),
+        })),
+      })),
+    };
+  }
+
+  /**
+   * Why `modelId` can't be selected right now, or `undefined` when it can.
+   * Two real footguns get a clear answer instead of a mid-run provider error:
+   * a model with no tool calling (can't drive the agent at all), and a server
+   * that has since been shut down.
+   */
+  async function localModelBlocker(modelId: string): Promise<string | undefined> {
+    const parsed = parseLocalModelId(modelId);
+    if (!parsed) return undefined;
+    const endpoints = await listAllEndpoints();
+    const endpoint = endpoints.find((e) => e.id === parsed.endpointId);
+    if (!endpoint)
+      return `Unknown local endpoint "${parsed.endpointId}" — re-scan for local models.`;
+
+    const probe = await probeEndpoint(endpoint);
+    // Keep the cached view honest: this probe is fresher than the last scan.
+    localProbes = localProbes.map((p) => (p.endpoint.id === endpoint.id ? probe : p));
+    if (!probe.reachable) {
+      return `${endpoint.label} isn't running at ${endpoint.baseUrl}. Start it and scan again.`;
+    }
+    const model = probe.models.find((m) => m.rawId === parsed.rawId);
+    if (!model) {
+      return `${endpoint.label} no longer serves "${parsed.rawId}".`;
+    }
+    if (!model.supportsTools) {
+      return `${parsed.rawId} has no tool calling, so it can't run the agent. Pick a tool-capable model.`;
+    }
+    registerRuntimeModels(probe.models.map((m) => localModelInfo(m, endpoint)));
+    return undefined;
+  }
+
+  /**
+   * A restored per-project pref can ask for thinking on a local model that
+   * turns out not to reason (capabilities are only known after a probe). Drop
+   * the level once we know, so the first prompt doesn't carry a
+   * `reasoning_effort` the server rejects.
+   */
+  function clampLocalThinking(): void {
+    const st = session.getState();
+    const level = session.getThinkingLevel();
+    if (!level || st.provider !== "local") return;
+    if (isThinkingLevelSupported(st.provider, st.model, level)) return;
+    session.setThinkingLevel(undefined);
+    broadcast("thinking_change", {
+      thinkingLevel: null,
+      supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
+    });
+  }
+
   // Workspace extras (context window, git status, background tasks). Git state
   // is resolved once at startup and refreshed after every run; the context
   // window follows the active model.
@@ -1656,6 +1810,20 @@ async function createSession(
       additionalRoots: session.getAdditionalRoots(),
     };
   }
+
+  void scanLocalModels(false)
+    .then(() => {
+      clampLocalThinking();
+      broadcast("extras", footerExtras());
+    })
+    .then(() => broadcast("models_change", { local: localStatePayload() }))
+    .catch((err: unknown) => {
+      // A discovery failure is never fatal — the user simply has no local
+      // models. Log it; don't push an error row into the transcript.
+      log("WARN", "app-sidecar", "local model scan failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
   // Refresh the GitHub counts and broadcast only on change. Transient failures
   // keep the last-known numbers so the chips don't flicker off on a timeout.
@@ -3607,12 +3775,30 @@ async function createSession(
           if (await auth.hasProviderAuth(p)) loggedIn.push(p);
         }
         // Just the names, grouped by provider in registry order — the UI shows
-        // a clean multi-column list of model ids.
-        const models = MODELS.filter((m) => loggedIn.includes(m.provider)).map((m) => ({
-          id: m.id,
-          name: m.name,
-          provider: m.provider,
-        }));
+        // a clean multi-column list of model ids. Local models come from the
+        // runtime registry (populated by the background scan) and are always
+        // listed: their "login" is the endpoint answering a probe.
+        const models = getAllModels()
+          .filter((m) => m.provider === "local" || loggedIn.includes(m.provider))
+          .map((m) => {
+            if (m.provider !== "local") {
+              return { id: m.id, name: m.name, provider: m.provider };
+            }
+            const probed = findProbedModel(localProbes, m.id);
+            return {
+              id: m.id,
+              name: m.name,
+              provider: m.provider,
+              local: true,
+              endpoint: probed?.endpoint.label ?? parseLocalModelId(m.id)?.endpointId,
+              // A local model that can't call tools can't run the agent — the UI
+              // renders it disabled rather than hiding it, so the user learns why.
+              supportsTools: probed?.model.supportsTools ?? true,
+              contextWindow: m.contextWindow,
+              contextWindowKnown: probed?.model.contextWindowKnown ?? false,
+              supportsThinking: m.supportsThinking,
+            };
+          });
         json(res, 200, { models });
       })();
       return;
@@ -3636,6 +3822,13 @@ async function createSession(
         if (running) {
           json(res, 409, { error: "cannot switch model while running" });
           return;
+        }
+        if (target.provider === "local") {
+          const problem = await localModelBlocker(target.id);
+          if (problem) {
+            json(res, 409, { error: problem });
+            return;
+          }
         }
         await session.switchModel(target.provider, target.id);
         // Ken follows GG Coder's model only while un-pinned; a user-set Ken
@@ -4052,6 +4245,86 @@ async function createSession(
     }
 
     // ── Telegram config (mirrors `ggcoder telegram`) ─────────
+    // ── Local models ──────────────────────────────────────
+    // GET returns the last scan (cheap, no probing) so opening the modal is
+    // instant; POST /local/scan is the explicit refresh.
+    if (method === "GET" && url === "/local") {
+      json(res, 200, localStatePayload());
+      return;
+    }
+
+    if (method === "POST" && url === "/local/scan") {
+      void scanLocalModels(true)
+        .then(() => {
+          broadcast("models_change", { local: localStatePayload() });
+          json(res, 200, localStatePayload());
+        })
+        .catch((err: unknown) => {
+          broadcastError("error", "local model scan failed", err);
+          json(res, 500, { error: "Local model scan failed — see the sidecar log." });
+        });
+      return;
+    }
+
+    if (method === "POST" && url === "/local/endpoints") {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
+        let body: { label?: string; baseUrl?: string; apiKey?: string };
+        try {
+          body = JSON.parse(raw) as typeof body;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        try {
+          const endpoint = await addCustomEndpoint({
+            baseUrl: body.baseUrl ?? "",
+            ...(body.label ? { label: body.label } : {}),
+            ...(body.apiKey ? { apiKey: body.apiKey } : {}),
+          });
+          await scanLocalModels(true);
+          broadcast("models_change", { local: localStatePayload() });
+          json(res, 200, {
+            endpoint: { id: endpoint.id, label: endpoint.label },
+            ...localStatePayload(),
+          });
+        } catch (err) {
+          // Validation errors are the user's typo, not a system fault — 400 with
+          // the exact reason, and nothing in the transcript.
+          if (err instanceof LocalEndpointError) {
+            json(res, 400, { error: err.message });
+            return;
+          }
+          broadcastError("error", "add local endpoint failed", err);
+          json(res, 500, { error: "Could not save the endpoint — see the sidecar log." });
+        }
+      });
+      return;
+    }
+
+    if (method === "DELETE" && url.startsWith("/local/endpoints/")) {
+      const id = decodeURIComponent(url.slice("/local/endpoints/".length));
+      void (async () => {
+        try {
+          await removeCustomEndpoint(id);
+          clearRuntimeModels(
+            (m) => m.provider === "local" && parseLocalModelId(m.id)?.endpointId === id,
+          );
+          await scanLocalModels(true);
+          broadcast("models_change", { local: localStatePayload() });
+          json(res, 200, localStatePayload());
+        } catch (err) {
+          if (err instanceof LocalEndpointError) {
+            json(res, 400, { error: err.message });
+            return;
+          }
+          broadcastError("error", "remove local endpoint failed", err);
+          json(res, 500, { error: "Could not remove the endpoint — see the sidecar log." });
+        }
+      })();
+      return;
+    }
+
     if (method === "GET" && url === "/telegram") {
       void loadTelegramConfig().then((cfg) => {
         if (!cfg) {

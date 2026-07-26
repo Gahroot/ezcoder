@@ -22,6 +22,7 @@ import {
   downgradeUnsupportedVideos,
   normalizeOpenAIStopReason,
   toOpenAIMessages,
+  toLocalReasoningEffort,
   toOpenAIReasoningEffort,
   toOpenAIToolChoice,
   toOpenAITools,
@@ -146,6 +147,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // disabled via the nested toggle on either endpoint. The public API takes
   // top-level `reasoning_effort`; the managed endpoint keeps the official
   // CLI's nested shape.
+  const isLocal = options.provider === "local";
   const isKimiK3 = options.provider === "moonshot" && options.model === "kimi-k3";
   const isManagedKimiK3 =
     isKimiK3 && options.baseUrl?.replace(/\/+$/, "").endsWith("/coding/v1") === true;
@@ -202,7 +204,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       : {}),
     ...(options.topP != null && !hasFixedKimiSampling ? { top_p: options.topP } : {}),
     ...(options.stop ? { stop: options.stop } : {}),
-    ...(options.thinking && !usesThinkingParam && !isKimiK3 && !isKimiK27
+    ...(options.thinking && !usesThinkingParam && !isKimiK3 && !isKimiK27 && !isLocal
       ? { reasoning_effort: toOpenAIReasoningEffort(options.thinking, options.model) }
       : {}),
     ...(options.tools?.length ? { tools: toOpenAITools(options.tools) } : {}),
@@ -233,6 +235,14 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       // K3 caching is automatic and its request schema does not expose a TTL.
       paramsAny.prompt_cache_retention = "24h";
     }
+  }
+
+  // Local endpoints take low/medium/high/max — `max` sits outside the OpenAI
+  // SDK's effort union (same situation as Kimi's), so assign it directly.
+  if (isLocal && options.thinking) {
+    (params as unknown as Record<string, unknown>).reasoning_effort = toLocalReasoningEffort(
+      options.thinking,
+    );
   }
 
   if (options.provider === "openai" && options.serviceTier) {

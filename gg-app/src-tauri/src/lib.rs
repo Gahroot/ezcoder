@@ -2351,6 +2351,92 @@ async fn agent_telegram_get(
         .map_err(|e| e.to_string())
 }
 
+/// Proxy: local model endpoints + their last-scan status (no probing).
+#[tauri::command]
+async fn agent_local(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .get(format!("{}/local", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Proxy: re-probe every local endpoint (the "Scan" button). Slower than
+/// `agent_local` — it actually talks to each server.
+#[tauri::command]
+async fn agent_local_scan(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/local/scan", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Proxy: add a custom local endpoint (URL + optional API key).
+#[tauri::command]
+async fn agent_local_endpoint_add(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    base_url: String,
+    label: Option<String>,
+    api_key: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/local/endpoints", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "baseUrl": base_url, "label": label, "apiKey": api_key }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Proxy: remove a custom local endpoint (and its stored credential).
+#[tauri::command]
+async fn agent_local_endpoint_remove(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .delete(format!(
+            "{}/local/endpoints/{}",
+            sidecar_base(port),
+            urlencoding(&id)
+        ))
+        .header("x-gg-session", &gg_sid)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Proxy: save Telegram config (bot token + user id). Verifies the token via
 /// getMe sidecar-side; returns an error message on rejection.
 #[tauri::command]
@@ -4129,6 +4215,10 @@ pub fn run() {
             app_auth_logout,
             agent_telegram_get,
             agent_telegram_save,
+            agent_local,
+            agent_local_scan,
+            agent_local_endpoint_add,
+            agent_local_endpoint_remove,
             agent_serve_status,
             agent_serve_start,
             agent_serve_stop,

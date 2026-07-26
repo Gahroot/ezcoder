@@ -390,6 +390,76 @@ remembers which one an endpoint used in a bounded 64-entry cache keyed by
 same name. Before this, endpoints naming it `reasoning` (newer vLLM, some
 gateways) lost 100% of their thinking content silently.
 
+## Local models (Ollama / LM Studio / llama.cpp / vLLM)
+
+A `local` provider (gg-ai) plus runtime discovery (gg-core) puts every model the
+user already runs into the same picker as the hosted ones. No config file, no CLI
+flag — the four well-known servers are probed on their documented ports, and
+extra endpoints are added from the UI.
+
+- **Discovery** — `packages/gg-core/src/local-models.ts`. `probeEndpoint()` calls
+  `GET {baseUrl}/models`, then enriches per server kind because `/v1/models`
+  reports no capabilities: Ollama `POST /api/show` (`capabilities[]` +
+  `model_info["<arch>.context_length"]`), LM Studio `GET /api/v0/models`
+  (`type`/`state`/`max_context_length`), llama.cpp `GET /props`
+  (`default_generation_settings.n_ctx`), vLLM/generic nothing (`max_model_len`
+  sometimes rides the model object). Probing **never throws** — an unreachable
+  server is a normal state with a `reason`, not an error toast. 30s cache;
+  `force` bypasses it (the Scan button, after an `ollama pull`).
+- **Capability rules that matter.** `supportsTools` comes from Ollama's
+  capabilities but defaults to **true** for servers that report nothing (they
+  gate per-model server-side; assuming false would make them all unusable).
+  Unknown context window ⇒ conservative **8192** with a "?" chip, because an
+  over-guess is a mid-run provider 400 that auto-compaction already sailed past.
+  Embedding/rerank models are dropped (LM Studio `type`, or an `embed|rerank` id).
+- **Id scheme** — `local/<endpointId>/<rawModelId>`
+  (`formatLocalModelId`/`parseLocalModelId`). The prefix is routing only:
+  gg-ai's `localWireModelId()` strips it in the `local` provider so the server
+  sees its own id. A local stream with no `baseUrl` throws a clear `GGAIError`
+  instead of guessing someone else's port.
+- **Auth** — one `local:<endpointId>` entry per endpoint in `~/.gg/auth.json`
+  carrying that endpoint's `baseUrl` (+ optional key), written by
+  `AuthStorage.setLocalEndpoint()`. Each local `ModelInfo` sets
+  `authStorageKeys: ["local:<id>"]`, so the existing ordered-storage-key override
+  resolves it and `effectiveBaseUrl` picks the endpoint up with **zero new code
+  paths**. Only endpoints that answered a probe get a credential.
+- **Registry** — `MODELS` stays static; discovered models live in a runtime map
+  (`registerRuntimeModels` / `clearRuntimeModels` / `getAllModels`), which
+  `getModel`/`getModelsForProvider` consult. `getDefaultModel("local")` never
+  throws (placeholder before the first scan).
+- **Thinking (verified against real Ollama 0.32).** `getSupportedThinkingLevels("local", id)`
+  returns `[]` unless the probe said the model reasons — not defensive padding:
+  Ollama **hard-400s** (`"llama3.2" does not support thinking`) if
+  `reasoning_effort` reaches a non-thinking model, and the footer toggle hides
+  itself on an empty level list. A thinking-capable local model **cycles**
+  through its ladder then off (`provider === "local"` is in `shouldCycleLevels`),
+  and the ceiling is the **endpoint's**, set at discovery by
+  `maxThinkingLevelFor`: Ollama accepts `low|medium|high|max`, every other server
+  stops at `high` (only Ollama documents `max`). **No local server accepts
+  `xhigh`** — Ollama answers `invalid reasoning value: 'xhigh' (must be "high",
+"medium", "low", "max", or "none")` — so local uses its own wire vocabulary via
+  `toLocalReasoningEffort` (`max`/`ultra`/`xhigh` → `"max"`), assigned through the
+  same out-of-SDK-union escape hatch as Kimi's `max`. Ollama names the streamed
+  field `reasoning`, which `reasoning-field.ts` already handles.
+- **Selection gating.** `POST /model` **rejects** a tool-less local model
+  (409 + reason) and re-probes the endpoint first, so a stopped server gives
+  "Ollama isn't running at …" instead of a mid-run failure. A connection error
+  while a local model is active gets endpoint-specific guidance
+  (`localNetworkGuidance`) — never "disable your VPN".
+- **Surface** — sidecar `GET /local`, `POST /local/scan`, `POST /local/endpoints`,
+  `DELETE /local/endpoints/:id` (+ the four `agent_local*` Rust proxies);
+  custom endpoints persist in `~/.gg/gg-app.json` under `localEndpoints`
+  (`packages/ggcoder/src/core/local-endpoint-store.ts`).
+  `gg-app/src/LocalModelsModal.tsx` (from the login hub) is **read-only status**:
+  which servers are up, each model's context + capabilities in a row tooltip.
+  **Selection happens only in the footer `ModelSelect`** — one selection surface
+  in the app. That picker groups **every** provider under its own heading
+  (`provider-labels.ts`, labels matching the login hub's tiles), Local pinned
+  last, and renders tool-less local models disabled with the reason.
+- **Not built** (deliberately): native Ollama/LM Studio transports, model
+  download/load/unload, embeddings, per-model context override, and a CLI screen
+  for local endpoints (the CLI still inherits the models via the shared registry).
+
 ## Local-backend stream watchdog (gg-agent)
 
 `isLocalBackendUrl` (`gg-agent/src/local-backend.ts`) is true for `localhost`,

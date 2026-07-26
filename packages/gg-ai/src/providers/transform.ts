@@ -958,6 +958,19 @@ export function toOpenAIToolChoice(choice: ToolChoice): OpenAI.ChatCompletionToo
   return { type: "function", function: { name: choice.name } };
 }
 
+/**
+ * Reasoning effort for a locally hosted server (Ollama, LM Studio, llama.cpp,
+ * vLLM). These spell the top rung **"max"**, not "xhigh" — Ollama 0.32 answers
+ * `invalid reasoning value: 'xhigh' (must be "high", "medium", "low", "max", or
+ * "none")`, so sending the OpenAI spelling is a hard 400. Like Kimi's `max`,
+ * the value sits outside the OpenAI SDK's effort union, so the caller assigns
+ * it through the usual escape hatch.
+ */
+export function toLocalReasoningEffort(level: ThinkingLevel): "low" | "medium" | "high" | "max" {
+  if (level === "max" || level === "ultra" || level === "xhigh") return "max";
+  return level;
+}
+
 export function toOpenAIReasoningEffort(
   level: ThinkingLevel,
   model: string,
