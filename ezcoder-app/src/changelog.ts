@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.59",
+    date: "2026-07-26",
+    items: [
+      "Your own hardware can run the show now. I added polished local-model support for `Ollama`, `LM Studio`, `llama.cpp`, and `vLLM`, with smart thinking and tool controls matched to each model.",
+      "Your workspace can finally stretch across every folder the job needs. Add or remove directories with `/add-dir` and `/remove-dir`, use the native folder picker, and keep queued work moving without losing your place.",
+      "Your best conversations are yours to keep. I added one-click `Markdown` export so you can save, share, and search a complete chat transcript anytime.",
+      "The title bar just became a command center. Click straight into your project or `Git branch`, watch live issue and pull-request counts, and keep the useful details visible even when the window gets tight.",
+      "Meet `Claude Opus 5`, now wired in with adaptive thinking. I also toughened sign-in refreshes and silent reasoning streams so ambitious runs stay connected and keep moving.",
+    ],
+  },
+  {
     version: "0.1.58",
     date: "2026-07-23",
     items: [
