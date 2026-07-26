@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.10.0
+
+### Minor Changes
+
+- Add local-model support, multi-directory workspace controls, and a more resilient agent runtime.
+
+### Patch Changes
+
+- @prestyj/ai@5.10.0
+- @prestyj/agent@5.10.0
+- @prestyj/core@5.10.0
+
 ## 5.9.0
 
 ### Minor Changes
