@@ -10,9 +10,11 @@ function optionsOf(agent: unknown): AgentSessionOptions {
 
 describe("General chat agent", () => {
   it("uses an isolated session namespace outside EZ Coder history", () => {
-    const coderSessions = path.join("/tmp", "ezcoder", "sessions");
+    // Resolve both sides so the assertion remains valid when Windows attaches
+    // the current drive to a root-relative path.
+    const coderSessions = path.resolve("/tmp", "ezcoder", "sessions");
     expect(chatAgentSessionsDir(coderSessions, "general")).toBe(
-      path.join("/tmp", "ezcoder", "chat-sessions", "general"),
+      path.resolve("/tmp", "ezcoder", "chat-sessions", "general"),
     );
   });
 
@@ -34,7 +36,7 @@ describe("General chat agent", () => {
     expect(options.systemPrompt).toContain("- Active agent: general");
     expect(options.systemPrompt).toContain("- Workspace root: /tmp/workspace");
     expect(options.promptCacheKeyPrefix).toBe("ezchat:general");
-    expect(options.sessionRootDir).toBe("/tmp/ezcoder/chat-sessions/general");
+    expect(options.sessionRootDir).toBe(path.resolve("/tmp/ezcoder/chat-sessions/general"));
     expect(options.coderSlashCommands).toBe(false);
     expect(options.selfCorrectionHooks).toBe(false);
     expect(options.projectCustomization).toBe(false);

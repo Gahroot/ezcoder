@@ -16,6 +16,7 @@ import type {
   ToolResultContent,
 } from "../types.js";
 import { resolveToolSchema, zodToJsonSchema } from "../utils/zod-to-json-schema.js";
+import { DEFAULT_REASONING_FIELD } from "./reasoning-field.js";
 
 // ── Shared helpers ─────────────────────────────────────────
 
@@ -641,12 +642,13 @@ export function toAnthropicToolChoice(choice: ToolChoice): Anthropic.ToolChoice 
 
 /**
  * Anthropic models with built-in adaptive thinking (Fable 5, Mythos 5,
- * Opus 4.8/4.7/4.6, Sonnet 5). Matches both dashed (`opus-4-8`) and dotted
- * (`opus-4.8`) forms so callers don't have to enumerate variants. These models
- * don't need the `interleaved-thinking` beta header — it's built in.
+ * Opus 5, Opus 4.8/4.7/4.6, Sonnet 5). Matches both dashed (`opus-4-8`) and
+ * dotted (`opus-4.8`) forms so callers don't have to enumerate variants. These
+ * models don't need the `interleaved-thinking` beta header — it's built in.
+ * (`opus-5` can't false-match `claude-opus-4-5-…` — the `4-` breaks the literal.)
  */
 export function isAdaptiveThinkingModel(model: string): boolean {
-  return /opus-4[-.]8|opus-4[-.]7|opus-4[-.]6|sonnet-5|fable-5|mythos-5/.test(model);
+  return /opus-5|opus-4[-.]8|opus-4[-.]7|opus-4[-.]6|sonnet-5|fable-5|mythos-5/.test(model);
 }
 
 export function toAnthropicThinking(
@@ -660,11 +662,11 @@ export function toAnthropicThinking(
 } {
   if (isAdaptiveThinkingModel(model)) {
     // Adaptive thinking — model decides when/how much to think.
-    // budget_tokens is deprecated on Opus 4.8 / Opus 4.7 / Opus 4.6 / Sonnet 5.
+    // budget_tokens is deprecated on Opus 5 / 4.8 / 4.7 / 4.6 and Sonnet 5.
     // Anthropic's output_config.effort accepts low, medium, high, xhigh, and max.
-    // xhigh is Opus 4.8/4.7-only; max is supported by Opus 4.8/4.7/4.6 and Sonnet 5.
+    // xhigh is Opus 5 / 4.8 / 4.7-only; max is supported by every adaptive model.
     let effort: string = level;
-    if (effort === "xhigh" && !/opus-4-8|opus-4-7/.test(model)) {
+    if (effort === "xhigh" && !/opus-5|opus-4-8|opus-4-7/.test(model)) {
       effort = "high";
     }
     return {
@@ -721,8 +723,15 @@ function remapToolCallId(id: string, idMap: Map<string, string>): string {
 
 export function toOpenAIMessages(
   messages: Message[],
-  options?: { provider?: string; thinking?: boolean; supportsImages?: boolean },
+  options?: {
+    provider?: string;
+    thinking?: boolean;
+    supportsImages?: boolean;
+    /** Wire name for reasoning on assistant messages. Defaults to `reasoning_content`. */
+    reasoningField?: string;
+  },
 ): OpenAI.ChatCompletionMessageParam[] {
+  const reasoningField = options?.reasoningField || DEFAULT_REASONING_FIELD;
   const out: OpenAI.ChatCompletionMessageParam[] = [];
   const idMap = new Map<string, string>();
   // GLM drops reasoning_content when a user message follows tool results.
@@ -840,9 +849,9 @@ export function toOpenAIMessages(
       // Moonshot/Kimi requires reasoning_content on assistant tool_call messages —
       // default to empty string.  GLM silently hangs on empty values, so skip it there.
       if (thinkingParts) {
-        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = thinkingParts;
+        (assistantMsg as unknown as Record<string, unknown>)[reasoningField] = thinkingParts;
       } else if (options?.thinking && hasToolCalls && options.provider !== "glm") {
-        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = " ";
+        (assistantMsg as unknown as Record<string, unknown>)[reasoningField] = " ";
       }
       out.push(assistantMsg);
       continue;
@@ -947,6 +956,19 @@ export function toOpenAIToolChoice(choice: ToolChoice): OpenAI.ChatCompletionToo
   if (choice === "none") return "none";
   if (choice === "required") return "required";
   return { type: "function", function: { name: choice.name } };
+}
+
+/**
+ * Reasoning effort for a locally hosted server (Ollama, LM Studio, llama.cpp,
+ * vLLM). These spell the top rung **"max"**, not "xhigh" — Ollama 0.32 answers
+ * `invalid reasoning value: 'xhigh' (must be "high", "medium", "low", "max", or
+ * "none")`, so sending the OpenAI spelling is a hard 400. Like Kimi's `max`,
+ * the value sits outside the OpenAI SDK's effort union, so the caller assigns
+ * it through the usual escape hatch.
+ */
+export function toLocalReasoningEffort(level: ThinkingLevel): "low" | "medium" | "high" | "max" {
+  if (level === "max" || level === "ultra" || level === "xhigh") return "max";
+  return level;
 }
 
 export function toOpenAIReasoningEffort(

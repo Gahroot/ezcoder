@@ -339,56 +339,145 @@ ezcoder mcp add --env AIRTABLE_API_KEY=key airtable -- npx -y airtable-mcp-serve
 
 ## Slash Commands
 
-There are two kinds of slash commands:
+Four homes, checked in this order. Add a command to the _first_ one that fits:
 
-### 1. UI-handled commands (in `App.tsx`)
+| Kind            | Lives in                                              | Use when                                                           | Reaches gg-app?                      |
+| --------------- | ----------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------ |
+| UI-handled      | `handleSubmit` in `ui/App.tsx`                        | needs React state (overlays, live items, token counters)           | no — app uses buttons                |
+| Registry        | `createBuiltinCommands()` in `core/slash-commands.ts` | needs session (messages, auth, settings) via `SlashCommandContext` | yes, via `AgentSession.prompt()`     |
+| Prompt-template | `core/prompt-commands.ts`                             | injects a prompt for the agent to execute                          | yes — listed in the app's slash menu |
+| Custom          | `.gg/commands/*.md`                                   | project-local prompt templates                                     | yes                                  |
 
-Commands that need direct access to React state (UI, overlays, token counters) are handled inline in `handleSubmit` in `src/ui/App.tsx`. These short-circuit before the slash command registry.
+Gotchas:
 
-**Current UI commands:** `/model` (`/m`), `/compact` (`/c`), `/quit` (`/q`, `/exit`), `/clear`
+- `/model`, `/compact`, `/quit` exist in **both** App.tsx and the registry — the TUI
+  handlers win (checked first); the registry copies are what gg-app actually runs.
+- `/rewind` and `/clear` are TUI-only. A registry entry that has no app equivalent must
+  say so (see `/rewind`'s `isGgApp()` branch) rather than echo a dead pointer.
+- Registry commands needing new capabilities: add the method to `SlashCommandContext`
+  and wire it in `AgentSession.createSlashCommandContext()`.
 
-To add a new UI command:
-1. Add a condition in `handleSubmit` after the existing checks:
-   ```tsx
-   if (trimmed === "/mycommand") {
-     // manipulate React state directly
-     setLiveItems([{ kind: "info", text: "Done.", id: getId() }]);
-     return;
-   }
-   ```
-2. If the command needs to reset agent state, call `agentLoop.reset()`.
+## Multi-root workspaces (`/add-dir`)
 
-### 2. Registry commands (in `core/slash-commands.ts`)
+`/add-dir <path>` (alias `/adddir`; no args lists current roots) adds a second
+workspace root for cross-repo work. Tools already resolve absolute paths and LSP
+does per-file root detection, so only three things change: `resolveWriteGuard`
+(`core/workspace-guard.ts`) allows writes under `additionalRoots`, `AgentSession`
+holds the resolved list (`addDirectory` / `getAdditionalRoots`), and the system
+prompt's Environment section gains `- Additional roots: …`. That section sits in
+the **cached prefix**, so each `/add-dir` costs exactly one cache-miss turn —
+accepted deliberately, since a root advertised only in the uncached suffix would
+drift from the tool behaviour it describes. The sidecar exposes the roots in
+`/state` + the `extras` SSE frame; gg-app's header shows a `+N roots` badge.
+Project-context (`CLAUDE.md`) collection from extra roots is _not_ implemented.
 
-Commands that don't need React state live in `createBuiltinCommands()` in `src/core/slash-commands.ts`. They receive a `SlashCommandContext` with methods like `switchModel`, `compact`, `newSession`, `quit`, etc.
+## Network egress allowlist
 
-**Current registry commands:** `/model` (`/m`), `/compact` (`/c`), `/help` (`/h`, `/?`), `/settings` (`/config`), `/session` (`/s`), `/new` (`/n`), `/quit` (`/q`, `/exit`)
+Off by default. `~/.gg/settings.json`: `"networkMode": "off" | "allowlist"` and
+`"networkAllow": ["github.com", "*.githubusercontent.com"]` (leading `*.` matches
+subdomains only). Two layers, with honestly different strength — see
+`core/network-guard.ts`:
 
-Note: `/model`, `/compact`, and `/quit` exist in both — the UI handlers in `App.tsx` take precedence since they're checked first.
+- **Real enforcement**: `web-fetch` and `web-search` check every request URL _and
+  every redirect hop_. These are our own egress paths, so nothing escapes them.
+- **Defence in depth, bypassable by design**: `extractCommandHosts` recognises
+  `curl`/`wget`, `git clone|fetch|pull|push|ls-remote`, `ssh`/`scp`/`rsync`, and
+  package-manager installs, and `bash` refuses a disallowed host. A command with
+  no recognised host is never blocked. `python -c`, a shell variable, or a
+  base64'd URL walks straight past it — this is not an OS sandbox.
 
-To add a new registry command:
-1. Add an entry to the array in `createBuiltinCommands()`:
-   ```ts
-   {
-     name: "mycommand",
-     aliases: ["mc"],
-     description: "Does something useful",
-     usage: "/mycommand [args]",
-     execute(args, ctx) {
-       // Use ctx methods or return a string to display
-       return "Result text";
-     },
-   },
-   ```
-2. If the command needs new capabilities, add the method to `SlashCommandContext` interface and wire it up in `AgentSession.createSlashCommandContext()`.
+When allowlist mode is on, the Environment section lists the allowed hosts so the
+model plans around the policy instead of discovering it through failures.
 
-### When to use which
+## Reasoning-field detection (gg-ai)
 
-| Need | Where |
-|---|---|
-| Modify UI state (history, overlays, live items) | `App.tsx` |
-| Reset token counters | `App.tsx` (call `agentLoop.reset()`) |
-| Access agent session (messages, auth, settings) | `slash-commands.ts` registry |
-| Both UI + session access | `App.tsx` (can call session methods via props) |
+OpenAI-compatible endpoints disagree on the thinking field name.
+`providers/reasoning-field.ts` reads the first of `reasoning_content`,
+`reasoning`, `reasoning_text` present (that order — `reasoning_content` stays
+authoritative, so every endpoint we ship today is byte-identical on the wire),
+remembers which one an endpoint used in a bounded 64-entry cache keyed by
+`provider|baseUrl|model`, and `toOpenAIMessages` echoes history back using that
+same name. Before this, endpoints naming it `reasoning` (newer vLLM, some
+gateways) lost 100% of their thinking content silently.
 
 There is also support for **prompt-template commands** (built-in from `core/prompt-commands.ts` and custom from `.ezcoder/commands/` directory).
+
+## Local models (Ollama / LM Studio / llama.cpp / vLLM)
+
+A `local` provider (gg-ai) plus runtime discovery (gg-core) puts every model the
+user already runs into the same picker as the hosted ones. No config file, no CLI
+flag — the four well-known servers are probed on their documented ports, and
+extra endpoints are added from the UI.
+
+- **Discovery** — `packages/gg-core/src/local-models.ts`. `probeEndpoint()` calls
+  `GET {baseUrl}/models`, then enriches per server kind because `/v1/models`
+  reports no capabilities: Ollama `POST /api/show` (`capabilities[]` +
+  `model_info["<arch>.context_length"]`), LM Studio `GET /api/v0/models`
+  (`type`/`state`/`max_context_length`), llama.cpp `GET /props`
+  (`default_generation_settings.n_ctx`), vLLM/generic nothing (`max_model_len`
+  sometimes rides the model object). Probing **never throws** — an unreachable
+  server is a normal state with a `reason`, not an error toast. 30s cache;
+  `force` bypasses it (the Scan button, after an `ollama pull`).
+- **Capability rules that matter.** `supportsTools` comes from Ollama's
+  capabilities but defaults to **true** for servers that report nothing (they
+  gate per-model server-side; assuming false would make them all unusable).
+  Unknown context window ⇒ conservative **8192** with a "?" chip, because an
+  over-guess is a mid-run provider 400 that auto-compaction already sailed past.
+  Embedding/rerank models are dropped (LM Studio `type`, or an `embed|rerank` id).
+- **Id scheme** — `local/<endpointId>/<rawModelId>`
+  (`formatLocalModelId`/`parseLocalModelId`). The prefix is routing only:
+  gg-ai's `localWireModelId()` strips it in the `local` provider so the server
+  sees its own id. A local stream with no `baseUrl` throws a clear `GGAIError`
+  instead of guessing someone else's port.
+- **Auth** — one `local:<endpointId>` entry per endpoint in `~/.gg/auth.json`
+  carrying that endpoint's `baseUrl` (+ optional key), written by
+  `AuthStorage.setLocalEndpoint()`. Each local `ModelInfo` sets
+  `authStorageKeys: ["local:<id>"]`, so the existing ordered-storage-key override
+  resolves it and `effectiveBaseUrl` picks the endpoint up with **zero new code
+  paths**. Only endpoints that answered a probe get a credential.
+- **Registry** — `MODELS` stays static; discovered models live in a runtime map
+  (`registerRuntimeModels` / `clearRuntimeModels` / `getAllModels`), which
+  `getModel`/`getModelsForProvider` consult. `getDefaultModel("local")` never
+  throws (placeholder before the first scan).
+- **Thinking (verified against real Ollama 0.32).** `getSupportedThinkingLevels("local", id)`
+  returns `[]` unless the probe said the model reasons — not defensive padding:
+  Ollama **hard-400s** (`"llama3.2" does not support thinking`) if
+  `reasoning_effort` reaches a non-thinking model, and the footer toggle hides
+  itself on an empty level list. A thinking-capable local model **cycles**
+  through its ladder then off (`provider === "local"` is in `shouldCycleLevels`),
+  and the ceiling is the **endpoint's**, set at discovery by
+  `maxThinkingLevelFor`: Ollama accepts `low|medium|high|max`, every other server
+  stops at `high` (only Ollama documents `max`). **No local server accepts
+  `xhigh`** — Ollama answers `invalid reasoning value: 'xhigh' (must be "high",
+"medium", "low", "max", or "none")` — so local uses its own wire vocabulary via
+  `toLocalReasoningEffort` (`max`/`ultra`/`xhigh` → `"max"`), assigned through the
+  same out-of-SDK-union escape hatch as Kimi's `max`. Ollama names the streamed
+  field `reasoning`, which `reasoning-field.ts` already handles.
+- **Selection gating.** `POST /model` **rejects** a tool-less local model
+  (409 + reason) and re-probes the endpoint first, so a stopped server gives
+  "Ollama isn't running at …" instead of a mid-run failure. A connection error
+  while a local model is active gets endpoint-specific guidance
+  (`localNetworkGuidance`) — never "disable your VPN".
+- **Surface** — sidecar `GET /local`, `POST /local/scan`, `POST /local/endpoints`,
+  `DELETE /local/endpoints/:id` (+ the four `agent_local*` Rust proxies);
+  custom endpoints persist in `~/.gg/gg-app.json` under `localEndpoints`
+  (`packages/ggcoder/src/core/local-endpoint-store.ts`).
+  `gg-app/src/LocalModelsModal.tsx` (from the login hub) is **read-only status**:
+  which servers are up, each model's context + capabilities in a row tooltip.
+  **Selection happens only in the footer `ModelSelect`** — one selection surface
+  in the app. That picker groups **every** provider under its own heading
+  (`provider-labels.ts`, labels matching the login hub's tiles), Local pinned
+  last, and renders tool-less local models disabled with the reason.
+- **Not built** (deliberately): native Ollama/LM Studio transports, model
+  download/load/unload, embeddings, per-model context override, and a CLI screen
+  for local endpoints (the CLI still inherits the models via the shared registry).
+
+## Local-backend stream watchdog (gg-agent)
+
+`isLocalBackendUrl` (`gg-agent/src/local-backend.ts`) is true for `localhost`,
+`127.0.0.0/8`, `::1`, `0.0.0.0`, and `*.local`. For those backends the agent loop
+disables the 45 s **first-event** timeout entirely (a llama.cpp/vLLM prefill of a
+large prompt takes minutes; aborting guarantees a cold-prefill retry loop that
+never converges) and raises the initial hard cap to 10 min. The 90 s inter-event
+idle timer still arms as soon as the first event lands, and ESC/Ctrl+C abort is
+untouched.

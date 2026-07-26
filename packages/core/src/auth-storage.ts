@@ -30,6 +30,18 @@ export const MOONSHOT_OAUTH_KEY = "moonshot-oauth";
 export const XIAOMI_CREDITS_KEY = "xiaomi-credits";
 
 /**
+ * Prefix for local-endpoint credentials (`local:ollama`, `local:lmstudio`, …).
+ * One entry per endpoint, each carrying that endpoint's `baseUrl`, so the
+ * existing `resolveCredentials({ storageKeys })` override resolves a local model
+ * with no new code path. Kept in sync with `localAuthStorageKey()` in
+ * local-models.ts.
+ */
+export const LOCAL_AUTH_KEY_PREFIX = "local:";
+
+/** A century — local endpoints have no token lifetime, so never expire them. */
+const LOCAL_CREDENTIAL_LIFETIME_MS = 100 * 365 * 24 * 60 * 60 * 1000;
+
+/**
  * The credential entry whose baseUrl applies right now. For `moonshot` this
  * mirrors resolveCredentials' preference: the Kimi OAuth entry, sidelined to
  * the Moonshot API key only while its usage window is exhausted and a key is
@@ -66,13 +78,24 @@ export function readStoredBaseUrlSync(authFile: string, provider: string): strin
 }
 
 /**
- * Refresh refreshable OAuth tokens this long BEFORE their hard expiry. Renewing
- * proactively keeps the credential (and its refresh token) alive across
- * sessions instead of waiting until a request fails with 401 — which, for
- * providers like Kimi, is otherwise misread as a dead credential and triggers a
- * silent fall back to a static API key.
+ * Proactive-refresh threshold, ported from MoonshotAI/kimi-code's OAuthManager
+ * (`defaultRefreshThreshold`): refresh when the token is within
+ * `max(MIN_REFRESH_THRESHOLD_MS, lifetime * REFRESH_THRESHOLD_RATIO)` of expiry.
+ *
+ * A flat skew is wrong for short-lived tokens. Kimi access tokens live only
+ * 15 min, so a 60s skew rode them to the boundary and reliably 401'd — misread
+ * as a dead credential, silently falling back to a static API key (or hard-
+ * failing the run when a concurrent-session refresh race rotated the token).
+ * Scaling by lifetime refreshes a 15-min token at its 7.5-min halfway point,
+ * and never earlier than 5 min before expiry for longer-lived tokens.
  */
-const REFRESH_SKEW_MS = 60_000;
+const MIN_REFRESH_THRESHOLD_MS = 300_000;
+const REFRESH_THRESHOLD_RATIO = 0.5;
+
+function refreshThresholdMs(creds: OAuthCredentials): number {
+  const lifetimeMs = (creds.expiresIn ?? 0) * 1000;
+  return Math.max(MIN_REFRESH_THRESHOLD_MS, lifetimeMs * REFRESH_THRESHOLD_RATIO);
+}
 
 /**
  * How long a usage-exhausted mark holds when the provider gave no reset time.
@@ -93,6 +116,8 @@ const STATIC_API_KEY_PROVIDERS = new Set([
   "openrouter",
   "sakana",
   "xai",
+  // Local endpoints: a fixed (usually placeholder) key, never refreshable.
+  "local",
 ]);
 
 export class AuthStorage {
@@ -148,7 +173,38 @@ export class AuthStorage {
     if (provider === "xiaomi") {
       return Boolean(this.data["xiaomi"] || this.data[XIAOMI_CREDITS_KEY]);
     }
+    // `local` has no single credential — any configured endpoint counts.
+    if (provider === "local") {
+      return Object.keys(this.data).some((key) => key.startsWith(LOCAL_AUTH_KEY_PREFIX));
+    }
     return Boolean(this.data[provider]);
+  }
+
+  /** Endpoint ids that currently have a `local:<id>` credential stored. */
+  async listLocalEndpointIds(): Promise<string[]> {
+    await this.ensureLoaded();
+    return Object.keys(this.data)
+      .filter((key) => key.startsWith(LOCAL_AUTH_KEY_PREFIX))
+      .map((key) => key.slice(LOCAL_AUTH_KEY_PREFIX.length));
+  }
+
+  /**
+   * Write (or refresh) the credential for one local endpoint. The `baseUrl` is
+   * what `effectiveBaseUrl` later picks up, and `accessToken` is the endpoint's
+   * key — a placeholder for the servers that ignore it.
+   */
+  async setLocalEndpoint(endpointId: string, baseUrl: string, apiKey?: string): Promise<void> {
+    await this.setCredentials(`${LOCAL_AUTH_KEY_PREFIX}${endpointId}`, {
+      accessToken: apiKey && apiKey.length > 0 ? apiKey : "local",
+      refreshToken: "",
+      expiresAt: Date.now() + LOCAL_CREDENTIAL_LIFETIME_MS,
+      baseUrl,
+    });
+  }
+
+  /** Remove one local endpoint's credential. No-op when it isn't stored. */
+  async removeLocalEndpoint(endpointId: string): Promise<void> {
+    await this.clearCredentials(`${LOCAL_AUTH_KEY_PREFIX}${endpointId}`);
   }
 
   /**
@@ -400,7 +456,7 @@ export class AuthStorage {
     }
 
     // Return if not expired (with a safety skew) and not force-refreshing
-    if (!opts?.forceRefresh && Date.now() < creds.expiresAt - REFRESH_SKEW_MS) {
+    if (!opts?.forceRefresh && Date.now() < creds.expiresAt - refreshThresholdMs(creds)) {
       return creds;
     }
 
@@ -425,7 +481,8 @@ export class AuthStorage {
         latestCreds.expiresAt !== creds.expiresAt;
       if (
         credentialWasReplaced ||
-        (!opts?.forceRefresh && Date.now() < latestCreds.expiresAt - REFRESH_SKEW_MS)
+        (!opts?.forceRefresh &&
+          Date.now() < latestCreds.expiresAt - refreshThresholdMs(latestCreds))
       ) {
         // Another process refreshed or re-logged in while this session still
         // held the rejected token. Trust that replacement even for a forced

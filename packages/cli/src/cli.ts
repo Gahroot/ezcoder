@@ -292,6 +292,7 @@ function main(): void {
       "max-turns": { type: "string" },
       "system-prompt": { type: "string" },
       tools: { type: "string" },
+      "mcp-servers": { type: "string" },
       "prompt-cache-key": { type: "string" },
       thinking: { type: "string" },
       resume: { type: "string" },
@@ -314,7 +315,7 @@ function main(): void {
   if (values.json) {
     const message = positionals[0] ?? "";
     const jsonProvider = (values.provider ?? "anthropic") as Provider;
-    const jsonModel = values.model ?? "claude-opus-4-8";
+    const jsonModel = values.model ?? "claude-opus-5";
     const maxTurns = values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined;
     const systemPrompt = values["system-prompt"];
     const promptCacheKey = values["prompt-cache-key"];
@@ -330,6 +331,16 @@ function main(): void {
           .filter(Boolean)
       : [];
     const allowedTools = parsedTools.length > 0 ? parsedTools : undefined;
+    // MCP servers the agent definition asked for (`mcp__<server>__<tool>` in its
+    // `tools:` list). Without this an allow-listed child connects no MCP at all,
+    // so a research agent silently loses live code search.
+    const parsedMcpServers = values["mcp-servers"]
+      ? values["mcp-servers"]
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const allowedMcpServers = parsedMcpServers.length > 0 ? parsedMcpServers : undefined;
     const cwd = process.cwd();
     runJsonMode({
       message,
@@ -339,6 +350,7 @@ function main(): void {
       systemPrompt,
       maxTurns,
       allowedTools,
+      allowedMcpServers,
       promptCacheKey,
       thinkingLevel,
     }).catch((err: unknown) => {
@@ -351,7 +363,7 @@ function main(): void {
   // RPC mode — headless JSON-over-stdio for IDE integrations
   if (values.rpc) {
     const rpcProvider = (values.provider ?? "anthropic") as Provider;
-    const rpcModel = values.model ?? "claude-opus-4-8";
+    const rpcModel = values.model ?? "claude-opus-5";
     const systemPrompt = values["system-prompt"];
     const cwd = process.cwd();
     runRpcMode({
@@ -382,7 +394,7 @@ function main(): void {
     if (p === "openrouter") return "qwen/qwen3.6-plus";
     if (p === "sakana") return "fugu";
     if (p === "xai") return "grok-4.5";
-    return "claude-opus-4-8";
+    return "claude-opus-5";
   }
 
   const model: string = saved.model ?? getHardcodedDefault(provider);
@@ -939,7 +951,7 @@ async function runSessions(): Promise<void> {
     if (p === "deepseek") return "deepseek-v4-pro";
     if (p === "sakana") return "fugu";
     if (p === "xai") return "grok-4.5";
-    return "claude-opus-4-8";
+    return "claude-opus-5";
   }
 
   const model = saved2.model ?? getDefault(provider);

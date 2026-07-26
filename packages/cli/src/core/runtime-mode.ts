@@ -5,6 +5,11 @@ export interface RuntimeModeRefs {
   goalModeRef?: { current: GoalMode };
 }
 
+/** True when this process is the ezcoder-app sidecar. */
+export function isGgApp(): boolean {
+  return process.env.GG_APP_PORT !== undefined;
+}
+
 export function isPlanModeActive(planModeRef?: { current: boolean }): boolean {
   return planModeRef?.current === true;
 }

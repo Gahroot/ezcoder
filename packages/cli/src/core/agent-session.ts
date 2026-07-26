@@ -54,7 +54,7 @@ import {
 } from "./model-registry.js";
 import { discoverSkills, type Skill } from "./skills.js";
 import { ensureAppDirs } from "../config.js";
-import { buildSystemPrompt } from "../system-prompt.js";
+import { buildSystemPrompt, type SystemPromptEnvironment } from "../system-prompt.js";
 import {
   createTools,
   createWebSearchTool,
@@ -97,6 +97,8 @@ import { findUserSessionPrompt, getUserSessionPrompt } from "./session-preview.j
 import { normalizeMessageImages } from "./message-images.js";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import type { Stats } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 // ── Options ────────────────────────────────────────────────
@@ -378,6 +380,8 @@ export class AgentSession {
    *  set, the system prompt carries the `[DONE:n]` progress contract so the
    *  model emits step-completion markers the UI's plan-progress widget reads. */
   private approvedPlanPath?: string;
+  /** Extra workspace roots added with `/add-dir` (resolved, de-duplicated). */
+  private additionalRoots: string[] = [];
 
   private sessionId = "";
   /** Stable identity shared by compaction and approved-plan checkpoint files. */
@@ -389,6 +393,23 @@ export class AgentSession {
   private readonly transportSessionId = crypto.randomUUID();
   private sessionPath = "";
   private lastPersistedIndex = 0;
+
+  /**
+   * Number of non-system messages guaranteed to be in the session file — the
+   * anchor base for transcript markers (Ken turns, autopilot verdicts, app
+   * markers). `this.messages` can run ahead of the file: the agent loop
+   * appends assistant/tool/steering messages in place but they are only
+   * persisted when the run SUCCEEDS, so after a failed run the in-memory list
+   * carries an unpersisted tail. Markers anchored against that tail point past
+   * their real position on resume — the row (notably an error) renders lower
+   * in the transcript than it happened, bunching at the bottom, or gets
+   * dropped as out-of-range. Anchoring to the persisted prefix keeps resume
+   * placement 1:1 with where the row appeared live.
+   */
+  private persistedTranscriptCount(): number {
+    return this.messages.slice(0, this.lastPersistedIndex).filter((m) => m.role !== "system")
+      .length;
+  }
   /** Current leaf entry ID in the session DAG — used to chain parentIds for branching. */
   private currentLeafId: string | null = null;
 
@@ -480,6 +501,11 @@ export class AgentSession {
       lspDiagnostics: this.settingsManager.get("lspDiagnostics"),
       getWriteGuardSettings: () => ({
         allowOutsideWorkspaceWrites: this.settingsManager.get("allowOutsideWorkspaceWrites"),
+        additionalRoots: this.additionalRoots,
+      }),
+      getNetworkPolicy: () => ({
+        mode: this.settingsManager.get("networkMode"),
+        allow: this.settingsManager.get("networkAllow"),
       }),
       authStorage: this.authStorage,
       onFileRead: (filePath) => this.reviewCoverage.recordRead(filePath),
@@ -553,6 +579,7 @@ export class AgentSession {
         this.tools.map((tool) => tool.name),
         undefined,
         this.provider,
+        this.promptEnvironment(),
       ));
     this.baseSystemPrompt = basePrompt;
     this.messages = [{ role: "system", content: this.withSystemPromptTail(basePrompt) }];
@@ -1507,7 +1534,12 @@ export class AgentSession {
         this.tools = this.tools.filter((t) => t.name !== "web_search");
       } else if (this.provider !== "anthropic" && !hasWebSearch) {
         // Switching FROM anthropic — add client-side web_search
-        this.tools.push(createWebSearchTool());
+        this.tools.push(
+          createWebSearchTool(() => ({
+            mode: this.settingsManager.get("networkMode"),
+            allow: this.settingsManager.get("networkAllow"),
+          })),
+        );
       }
 
       // Reconnect MCP servers ONLY when GLM is involved on either side — GLM
@@ -1670,6 +1702,7 @@ export class AgentSession {
         this.tools.map((tool) => tool.name),
         undefined,
         this.provider,
+        this.promptEnvironment(),
       ));
     this.baseSystemPrompt = basePrompt;
     this.messages = [{ role: "system", content: this.withSystemPromptTail(basePrompt) }];
@@ -1863,6 +1896,71 @@ export class AgentSession {
     await this.rebuildSystemPromptInPlace();
   }
 
+  /** Extra workspace roots added with `/add-dir`, in the order added. */
+  getAdditionalRoots(): string[] {
+    return [...this.additionalRoots];
+  }
+
+  /**
+   * Add another workspace root. Tools already accept absolute paths, so this
+   * only widens the write guard and tells the model the root exists. Rebuilding
+   * the system prompt costs one cache-miss turn — the alternative (an uncached
+   * suffix) would drift from the tool behaviour it describes.
+   *
+   * @returns the resolved root, or an error message for the user.
+   */
+  async addDirectory(
+    dir: string,
+  ): Promise<{ ok: true; root: string } | { ok: false; error: string }> {
+    const resolved = path.resolve(this.cwd, dir.replace(/^~(?=[/\\]|$)/, os.homedir()));
+    let stat: Stats;
+    try {
+      stat = await fs.stat(resolved);
+    } catch {
+      return { ok: false, error: `Not found: ${resolved}` };
+    }
+    if (!stat.isDirectory()) return { ok: false, error: `Not a directory: ${resolved}` };
+
+    const covered = [this.cwd, ...this.additionalRoots].some((root) => {
+      const relative = path.relative(path.resolve(root), resolved);
+      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    });
+    if (covered) return { ok: false, error: `Already in the workspace: ${resolved}` };
+
+    // Drop roots the new one subsumes so the list stays minimal.
+    this.additionalRoots = this.additionalRoots.filter((root) => {
+      const relative = path.relative(resolved, path.resolve(root));
+      return relative.startsWith("..") || path.isAbsolute(relative);
+    });
+    this.additionalRoots.push(resolved);
+    await this.rebuildSystemPromptInPlace();
+    return { ok: true, root: resolved };
+  }
+
+  /** Remove an exact root previously added with `/add-dir`. */
+  async removeDirectory(
+    dir: string,
+  ): Promise<{ ok: true; root: string } | { ok: false; error: string }> {
+    const resolved = path.resolve(this.cwd, dir.replace(/^~(?=[/\\]|$)/, os.homedir()));
+    const index = this.additionalRoots.findIndex((root) => path.resolve(root) === resolved);
+    if (index === -1) {
+      return { ok: false, error: `Not an additional workspace root: ${resolved}` };
+    }
+
+    this.additionalRoots.splice(index, 1);
+    await this.rebuildSystemPromptInPlace();
+    return { ok: true, root: resolved };
+  }
+
+  /** Environment facts that vary per session rather than per host. */
+  private promptEnvironment(): SystemPromptEnvironment {
+    const networkAllow =
+      this.settingsManager.get("networkMode") === "allowlist"
+        ? this.settingsManager.get("networkAllow")
+        : [];
+    return { additionalRoots: this.additionalRoots, networkAllow };
+  }
+
   /** Rebuild messages[0] from current plan-mode + approved-plan state. */
   private async rebuildSystemPromptInPlace(): Promise<void> {
     if (this.customSystemPrompt) return;
@@ -1874,6 +1972,7 @@ export class AgentSession {
       this.tools.map((tool) => tool.name),
       undefined,
       this.provider,
+      this.promptEnvironment(),
     );
     this.baseSystemPrompt = rebuilt;
     const content = this.withSystemPromptTail(rebuilt);
@@ -1963,7 +2062,7 @@ export class AgentSession {
    * appendEntry's own handling.
    */
   async persistNolanTurn(question: string, reply: string): Promise<void> {
-    const afterMessageCount = this.messages.filter((m) => m.role !== "system").length;
+    const afterMessageCount = this.persistedTranscriptCount();
     const payload: NolanTurnPayload = { version: 1, question, reply, afterMessageCount };
     this.nolanTurns.push(payload);
     if (!this.sessionPath) return;
@@ -2009,7 +2108,7 @@ export class AgentSession {
     phase: AutopilotMarkerPayload["phase"],
     extra?: { reason?: string; body?: string },
   ): Promise<void> {
-    const afterMessageCount = this.messages.filter((m) => m.role !== "system").length;
+    const afterMessageCount = this.persistedTranscriptCount();
     const payload: AutopilotMarkerPayload = {
       version: 1,
       phase,
@@ -2069,8 +2168,7 @@ export class AgentSession {
     data: Record<string, unknown>,
     anchorOffset = 0,
   ): Promise<void> {
-    const afterMessageCount =
-      this.messages.filter((m) => m.role !== "system").length + anchorOffset;
+    const afterMessageCount = this.persistedTranscriptCount() + anchorOffset;
     const payload: AppMarkerPayload = { version: 1, kind, afterMessageCount, data };
     this.appMarkers.push(payload);
     if (!this.sessionPath) return;
@@ -2424,6 +2522,9 @@ export class AgentSession {
         );
         return `${branches.length} branch(es):\n${lines.join("\n")}`;
       },
+      addDirectory: (dir) => this.addDirectory(dir),
+      removeDirectory: (dir) => this.removeDirectory(dir),
+      getAdditionalRoots: () => this.getAdditionalRoots(),
     };
   }
 }

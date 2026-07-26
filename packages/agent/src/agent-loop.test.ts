@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
-import { ProviderError } from "@prestyj/ai";
+import { EZCoderAIError, ProviderError } from "@prestyj/ai";
 import {
   agentLoop,
   capToolResults,
@@ -965,6 +965,47 @@ describe("agentLoop", () => {
     ).rejects.toThrow("authentication failed");
   });
 
+  it("allows silent OpenAI reasoning to exceed the normal 90-second hard cap", async () => {
+    vi.useFakeTimers();
+
+    mockStream.mockImplementation((opts: StreamOptions) => {
+      const response = makeResponse("Finished reasoning.");
+      return {
+        [Symbol.asyncIterator]: async function* () {
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(resolve, 120_000);
+            opts.signal?.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timer);
+                reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+              },
+              { once: true },
+            );
+          });
+          yield { type: "text_delta" as const, text: "Finished reasoning." };
+        },
+        response: Promise.resolve(response),
+      } as unknown as ReturnType<typeof stream>;
+    });
+
+    const loopPromise = collectLoop(
+      [
+        { role: "system", content: "sys" },
+        { role: "user", content: "solve this" },
+      ],
+      { provider: "openai", model: "gpt-test", thinking: "medium" },
+    );
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    const { events } = await loopPromise;
+    vi.useRealTimers();
+
+    expect(mockStream).toHaveBeenCalledTimes(1);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(events.some((event) => event.type === "agent_done")).toBe(true);
+  });
+
   it("flips to non-streaming fallback after repeated stream stalls", async () => {
     vi.useFakeTimers();
 
@@ -1028,6 +1069,50 @@ describe("agentLoop", () => {
     expect(
       turnEnd?.type === "turn_end" ? turnEnd.timing.providerDurationMs : 0,
     ).toBeGreaterThanOrEqual(90_000);
+  }, 30_000);
+
+  it("classifies exhausted stalls as a device or network-path failure", async () => {
+    vi.useFakeTimers();
+
+    mockStream.mockImplementation((opts: StreamOptions) => {
+      const abortPromise = new Promise<never>((_, reject) => {
+        opts.signal?.addEventListener(
+          "abort",
+          () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          { once: true },
+        );
+      });
+      abortPromise.catch(() => {});
+      return {
+        [Symbol.asyncIterator]: async function* () {
+          yield* [];
+          await abortPromise;
+        },
+        response: abortPromise,
+      } as unknown as ReturnType<typeof stream>;
+    });
+
+    const loopPromise = collectLoop(
+      [
+        { role: "system", content: "sys" },
+        { role: "user", content: "hi" },
+      ],
+      { provider: "openai", model: "test" },
+    );
+
+    // Two streaming attempts time out after 45s; the remaining attempts use
+    // the 5-minute non-streaming cap. Drive every timeout and retry backoff.
+    for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(310_000);
+    const { events } = await loopPromise;
+    vi.useRealTimers();
+
+    const terminal = events.find((event) => event.type === "error");
+    expect(terminal?.type).toBe("error");
+    if (terminal?.type !== "error") throw new Error("expected terminal error");
+    expect(terminal.error).toBeInstanceOf(GGAIError);
+    expect((terminal.error as GGAIError).source).toBe("network");
+    expect((terminal.error as GGAIError).hint).toContain("VPN or proxy");
+    expect(terminal.error.message).toContain("after 5 automatic retries");
   }, 30_000);
 
   it("automatically replays a turn after a runaway tool-call stream", async () => {
@@ -1925,4 +2010,77 @@ describe("tool-result cap divergence marker", () => {
     expect(r.capped?.originalChars).toBe(100_000);
     expect(r.capped?.scope).toBe("per-turn");
   });
+});
+
+describe("local-backend first-event watchdog", () => {
+  beforeEach(() => {
+    mockStream.mockReset();
+  });
+
+  /** A stream that never emits and only settles when its per-attempt signal aborts. */
+  function stallingStream(opts: StreamOptions) {
+    const abortPromise = new Promise<never>((_, reject) => {
+      opts.signal?.addEventListener(
+        "abort",
+        () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+        { once: true },
+      );
+    });
+    abortPromise.catch(() => {});
+    return {
+      [Symbol.asyncIterator]: async function* () {
+        yield* [];
+        await abortPromise;
+      },
+      response: abortPromise,
+    } as unknown as ReturnType<typeof stream>;
+  }
+
+  const messages: Message[] = [
+    { role: "system", content: "sys" },
+    { role: "user", content: "hi" },
+  ];
+
+  it("does not abort a silent local stream past the 45s first-event budget", async () => {
+    vi.useFakeTimers();
+    mockStream.mockImplementation((opts: StreamOptions) => stallingStream(opts));
+
+    const controller = new AbortController();
+    const loopPromise = collectLoop(messages, {
+      provider: "openai",
+      model: "local-model",
+      baseUrl: "http://localhost:8080/v1",
+      signal: controller.signal,
+    }).catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(200_000);
+    // Still the single original attempt — no idle abort, no retry.
+    expect(mockStream).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await loopPromise;
+    vi.useRealTimers();
+  }, 30_000);
+
+  it("still aborts and retries a silent remote stream", async () => {
+    vi.useFakeTimers();
+    mockStream.mockImplementation((opts: StreamOptions) => stallingStream(opts));
+
+    const controller = new AbortController();
+    const loopPromise = collectLoop(messages, {
+      provider: "openai",
+      model: "remote-model",
+      baseUrl: "https://api.example.com/v1",
+      signal: controller.signal,
+    }).catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(200_000);
+    expect(mockStream.mock.calls.length).toBeGreaterThan(1);
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await loopPromise;
+    vi.useRealTimers();
+  }, 30_000);
 });

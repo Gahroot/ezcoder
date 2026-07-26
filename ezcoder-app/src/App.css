@@ -969,14 +969,17 @@ body {
   padding: 0 14px 0 82px;
 }
 /* The visible window title shows project context: cwd, current branch, then the
-   uncommitted-file count. It grows into available space and truncates as one
-   unit on narrow windows so the usage meter and controls remain reachable. */
+   uncommitted-file count and GitHub issue/PR chips. It grows into available
+   space; on narrow windows the segments truncate in priority order (folder
+   name first, then branch) so the compact counts stay visible and the usage
+   meter and controls remain reachable. */
 .chat-head-title {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: baseline;
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 500;
@@ -984,16 +987,102 @@ body {
 }
 .chat-head-cwd {
   color: var(--text-dim);
+  /* Project identity — outlasts the branch, truncates before the counts. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chat-head-sep {
+  flex: none;
   margin: 0 8px;
   color: var(--border);
 }
 .chat-head-branch {
   color: var(--secondary);
+  /* Stable context, not a changing count — the FIRST segment to give way
+     (higher shrink factor than the folder), and fully hidden ≤600px below. */
+  flex: 0 3 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* Uncommitted-file count — teal (--info), deliberately NOT --warning amber:
+   the UI already leans on amber heavily (usage meter, plan mode, code tokens),
+   and an informational git status shouldn't compete with real warnings. */
 .chat-head-dirty {
-  color: var(--warning);
+  flex: none;
+  color: var(--info);
+}
+/* Narrow-window cascade (media = window width; halves ≈ 750px, quads ≈ 375px).
+   Segments drop WHOLE, highest-context-cost first, so every surviving count
+   stays complete and readable instead of all ellipsizing into uselessness.
+   The full string always remains in the strip's hover tooltip. */
+@media (max-width: 600px) {
+  /* Branch is the least glance-critical (it's stable context, not a changing
+     count) — drop it (+ its leading separator) so folder + counts stay whole. */
+  .chat-head-branch,
+  .chat-head-sep:has(+ .chat-head-branch) {
+    display: none;
+  }
+}
+@media (max-width: 440px) {
+  /* Quad-tile widths: keep identity (folder, elastic) + the GitHub counts. */
+  .chat-head-dirty,
+  .chat-head-sep:has(+ .chat-head-dirty) {
+    display: none;
+  }
+}
+/* Folder name + branch double as click targets: folder opens its location in the
+   OS file manager, branch opens the linked GitHub repo. Button reset only — the
+   base .chat-head-cwd / .chat-head-branch classes keep the color, flex, and
+   truncation. Hover brightens to signal the affordance. */
+.chat-head-link {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.chat-head-link:hover:not(:disabled) {
+  color: var(--text);
+}
+.chat-head-link:disabled {
+  cursor: default;
+}
+/* GitHub issue/PR counts — buttons when the repo URL is known (click opens the
+   issues/pulls page), static text otherwise. Font metrics come from the parent
+   .chat-head-title so the chip aligns with the branch/dirty segments. */
+.chat-head-github {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  /* Compact, high-signal counts — never truncate or wrap; the narrow-window
+     cascade above drops other segments whole so these stay readable. */
+  flex: none;
+  white-space: nowrap;
+}
+/* The trailing chip absorbs the final squeeze with a graceful ellipsis instead
+   of the container hard-clipping it mid-word (quad-tile widths). */
+.chat-head-github:last-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-head-github:hover:not(:disabled) {
+  color: var(--text);
+}
+.chat-head-github:disabled {
+  cursor: default;
 }
 /* Position pill — "1/4" reading-order indicator for multi-window orientation.
    Shown only when >1 window is open. Dimmed when this window is not focused. */
@@ -1646,12 +1735,38 @@ body {
   line-height: 1.5;
   padding: 8px 2px;
 }
+/* One local model per row: elastic name, right-aligned figure. Informational
+   only — models are selected in the footer picker. Capabilities live in the
+   row's tooltip; a chip per capability overflowed the modal on real names. */
+.local-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px 3px 20px;
+  font-size: 12px;
+  text-align: left;
+}
+.local-model-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.local-model-meta {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .mcp-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
   max-height: min(44vh, 320px);
   overflow-y: auto;
+  /* No rubber-band bounce at the ends, and no scroll chaining to whatever sits
+     behind the modal. */
+  overscroll-behavior: none;
   scrollbar-gutter: stable;
   padding-right: 4px;
   margin: 2px 0 14px;
@@ -1990,6 +2105,87 @@ body {
      spills onto the chat-head border or the tool panel/footer beyond this
      frame. */
   overflow: hidden;
+}
+
+/* ── Export-chat pill (hover-revealed) ───────────────────────────────────
+   Floats in the bottom-right of the chat viewport, anchored to
+   `.transcript-frame` — the NON-scrolling sibling. Anchoring to `.transcript`
+   would pin it to the top of the scrolled content instead of what's on screen
+   (same trap the Ken power banner comment above documents).
+
+   Always in the DOM so the exit transition can play; `visibility` joins the
+   transition (delayed on the way out, instant on the way in) so the hidden
+   button is fully inert rather than an invisible click target. */
+.export-chat {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  /* Hidden state: faded, nudged down, and untouchable. */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    background var(--t-fast),
+    border-color var(--t-fast),
+    color var(--t-fast),
+    visibility 0s linear 0.18s;
+}
+.export-chat.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    background var(--t-fast),
+    border-color var(--t-fast),
+    color var(--t-fast),
+    visibility 0s;
+}
+.export-chat.visible:hover {
+  background: color-mix(in srgb, var(--surface-2) 88%, var(--primary));
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.export-chat:disabled {
+  cursor: default;
+  color: var(--text-muted);
+}
+.export-chat:disabled:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .export-chat {
+    transform: none;
+    transition:
+      opacity 0.18s ease,
+      visibility 0s linear 0.18s;
+  }
+  .export-chat.visible {
+    transform: none;
+    transition:
+      opacity 0.18s ease,
+      visibility 0s;
+  }
 }
 .transcript {
   flex: 1 1 auto;
@@ -4139,6 +4335,8 @@ body {
   max-width: min(640px, 90vw);
   max-height: 50vh;
   overflow-y: auto;
+  /* No rubber-band bounce, and no scroll chaining to the transcript behind. */
+  overscroll-behavior: none;
   padding: 8px;
   border: 1px solid;
   border-radius: var(--radius-card);
@@ -4148,6 +4346,18 @@ body {
   padding: 2px 6px 6px;
   font-size: 11px;
   letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* Per-provider group heading. Quieter than the menu title so the hierarchy
+   reads title > provider > model. */
+.model-menu-section + .model-menu-section {
+  margin-top: 6px;
+}
+.model-menu-subtitle {
+  padding: 2px 6px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 .model-menu-grid {

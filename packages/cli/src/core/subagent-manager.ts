@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import path from "node:path";
 import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import { getAppPaths } from "@prestyj/core";
-import type { AgentDefinition } from "./agents.js";
+import { mcpServersForAgent, type AgentDefinition } from "./agents.js";
 import { SubAgentStore, type PersistedSubAgentRecord } from "./subagent-store.js";
 import { SessionManager } from "./session-manager.js";
 import { log } from "./logger.js";
@@ -247,6 +247,11 @@ export class SubAgentManager {
           systemPrompt: selection.agentDef?.systemPrompt,
           thinkingLevel: childThinkingLevel(this.options.getThinkingLevel()),
           allowedTools: selection.agentDef?.tools.length ? selection.agentDef.tools : undefined,
+          // Without this, an allow-listed child connects NO MCP servers — even
+          // when its `tools:` frontmatter names `mcp__<server>__<tool>`.
+          allowedMcpServers: selection.agentDef?.tools.length
+            ? mcpServersForAgent(selection.agentDef.tools)
+            : undefined,
           promptCacheKey: subAgentCacheKey(
             this.options.getCacheKey?.(),
             selection.model,
@@ -511,6 +516,9 @@ export class SubAgentManager {
           systemPrompt: agentDef?.systemPrompt,
           thinkingLevel: childThinkingLevel(this.options.getThinkingLevel()),
           allowedTools: agentDef?.tools.length ? agentDef.tools : undefined,
+          allowedMcpServers: agentDef?.tools.length
+            ? mcpServersForAgent(agentDef.tools)
+            : undefined,
           promptCacheKey: subAgentCacheKey(
             this.options.getCacheKey?.(),
             model,

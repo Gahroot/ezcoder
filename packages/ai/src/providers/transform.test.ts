@@ -7,6 +7,7 @@ import {
   toAnthropicThinking,
   toAnthropicTools,
   toOpenAIMessages,
+  toLocalReasoningEffort,
   toOpenAIReasoningEffort,
 } from "./transform.js";
 import type { Message, Tool } from "../types.js";
@@ -621,11 +622,15 @@ describe("OpenAI transform", () => {
 });
 
 describe("toAnthropicThinking", () => {
-  it("passes Anthropic adaptive effort levels through for Claude Opus 4.8", () => {
-    for (const level of ["low", "medium", "high", "xhigh", "max"] as const) {
-      expect(toAnthropicThinking(level, MAX_TOKENS, "claude-opus-4-8").outputConfig).toEqual({
-        effort: level,
-      });
+  // Opus 4.8 is no longer in ggcoder's model picker, but gg-ai is a standalone
+  // library and Anthropic still serves that ID — keep the wire format correct.
+  it("passes Anthropic adaptive effort levels through for Opus 5 (and legacy 4.8)", () => {
+    for (const model of ["claude-opus-5", "claude-opus-4-8"]) {
+      for (const level of ["low", "medium", "high", "xhigh", "max"] as const) {
+        const result = toAnthropicThinking(level, MAX_TOKENS, model);
+        expect(result.outputConfig).toEqual({ effort: level });
+        expect((result.thinking as { type: string }).type).toBe("adaptive");
+      }
     }
   });
 
@@ -717,5 +722,25 @@ describe("video content transforms", () => {
 
   it("keeps video untouched when the model supports it", () => {
     expect(downgradeUnsupportedVideos(videoMessage, true)).toEqual(videoMessage);
+  });
+});
+
+describe("toLocalReasoningEffort", () => {
+  it("maps every above-high level onto the only top rung local servers know", () => {
+    // Verified against Ollama 0.32: "xhigh" is rejected outright, "max" is not.
+    expect(toLocalReasoningEffort("max")).toBe("max");
+    expect(toLocalReasoningEffort("ultra")).toBe("max");
+    expect(toLocalReasoningEffort("xhigh")).toBe("max");
+  });
+
+  it("passes the three universal levels through untouched", () => {
+    expect(toLocalReasoningEffort("low")).toBe("low");
+    expect(toLocalReasoningEffort("medium")).toBe("medium");
+    expect(toLocalReasoningEffort("high")).toBe("high");
+  });
+
+  it("never emits xhigh, which no local server accepts", () => {
+    const levels = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
+    expect(levels.map((l) => toLocalReasoningEffort(l))).not.toContain("xhigh");
   });
 });
