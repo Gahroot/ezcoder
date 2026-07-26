@@ -67,6 +67,11 @@ import {
   restoreAssistantTexts,
   autopilotMarkerCopySeed,
 } from "./core/session-history.js";
+import {
+  sessionToMarkdown,
+  defaultExportFilename,
+  type ToolDetail,
+} from "./core/session-export.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { cleanupToolOutputs } from "./tools/overflow.js";
 import { readCappedBody } from "./utils/http-body.js";
@@ -550,6 +555,12 @@ async function searchProjectFiles(cwd: string, rawQuery: string): Promise<FileHi
  * hook prompt, by its distinctive opening phrase. Returns the hook kind so the
  * webview can render the short notice line instead of the full prompt body.
  */
+/** `?tools=` on /export. Anything unrecognised (including absent) falls back to
+ *  the human-facing `summary` default rather than dumping every payload. */
+function parseToolDetail(value: string | null): ToolDetail {
+  return value === "none" || value === "full" ? value : "summary";
+}
+
 function detectHookKind(text: string): "ideal" | "loop_break" | "regrounding" | null {
   const t = text.trimStart();
   if (t.startsWith("Ideal? Review the actual work")) return "ideal";
@@ -2833,6 +2844,35 @@ async function createSession(
           });
           json(res, 200, { files: [] });
         });
+      return;
+    }
+
+    // Markdown transcript export for the app's download button. Serialized
+    // here rather than in the webview because the webview's transcript model
+    // deliberately keeps tool activity in the LiveToolPanel — exporting from
+    // there would hand the user a coding session with the coding missing.
+    // `?name=1` asks for the suggested filename only (the save dialog needs it
+    // before there is a path), so the markdown never crosses IPC twice.
+    if (method === "GET" && (url === "/export" || url.startsWith("/export?"))) {
+      const query = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+      const st = session.getState();
+      const filename = defaultExportFilename(mode);
+      if (query.get("name") === "1") {
+        json(res, 200, { filename });
+        return;
+      }
+      const markdown = sessionToMarkdown(
+        {
+          mode,
+          cwd,
+          provider: st.provider,
+          model: st.model,
+          ...(st.sessionId ? { sessionId: st.sessionId } : {}),
+        },
+        session.getMessages(),
+        { toolDetail: parseToolDetail(query.get("tools")) },
+      );
+      json(res, 200, { filename, markdown });
       return;
     }
 

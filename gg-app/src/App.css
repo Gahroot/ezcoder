@@ -2033,6 +2033,87 @@ body {
      frame. */
   overflow: hidden;
 }
+
+/* ── Export-chat pill (hover-revealed) ───────────────────────────────────
+   Floats in the bottom-right of the chat viewport, anchored to
+   `.transcript-frame` — the NON-scrolling sibling. Anchoring to `.transcript`
+   would pin it to the top of the scrolled content instead of what's on screen
+   (same trap the Ken power banner comment above documents).
+
+   Always in the DOM so the exit transition can play; `visibility` joins the
+   transition (delayed on the way out, instant on the way in) so the hidden
+   button is fully inert rather than an invisible click target. */
+.export-chat {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  /* Hidden state: faded, nudged down, and untouchable. */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    background var(--t-fast),
+    border-color var(--t-fast),
+    color var(--t-fast),
+    visibility 0s linear 0.18s;
+}
+.export-chat.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    background var(--t-fast),
+    border-color var(--t-fast),
+    color var(--t-fast),
+    visibility 0s;
+}
+.export-chat.visible:hover {
+  background: color-mix(in srgb, var(--surface-2) 88%, var(--primary));
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.export-chat:disabled {
+  cursor: default;
+  color: var(--text-muted);
+}
+.export-chat:disabled:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .export-chat {
+    transform: none;
+    transition:
+      opacity 0.18s ease,
+      visibility 0s linear 0.18s;
+  }
+  .export-chat.visible {
+    transform: none;
+    transition:
+      opacity 0.18s ease,
+      visibility 0s;
+  }
+}
 .transcript {
   flex: 1 1 auto;
   /* Required so this scrollable flex child actually shrinks (default min-height

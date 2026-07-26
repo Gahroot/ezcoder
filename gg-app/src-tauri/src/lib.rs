@@ -1057,6 +1057,30 @@ async fn agent_history(
     sidecar_get_json(&webview, &client, "/history").await
 }
 
+/// Proxy: export this window's session as Markdown.
+///
+/// Called twice per export, deliberately. With `path: None` it returns only the
+/// suggested filename, so the webview can open the native save dialog without
+/// ever carrying the transcript. With `path: Some(_)` it fetches the markdown
+/// and writes it to disk here — a large transcript never crosses the IPC bridge.
+#[tauri::command]
+async fn agent_export_transcript(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let Some(path) = path else {
+        return sidecar_get_json(&webview, &client, "/export?name=1").await;
+    };
+    let body = sidecar_get_json(&webview, &client, "/export").await?;
+    let markdown = body
+        .get("markdown")
+        .and_then(|v| v.as_str())
+        .ok_or("sidecar returned no transcript")?;
+    std::fs::write(&path, markdown).map_err(|e| format!("could not save transcript: {e}"))?;
+    Ok(serde_json::json!({ "path": path, "bytes": markdown.len() }))
+}
+
 /// Proxy: start a fresh session (clears history) for this window's project.
 #[tauri::command]
 async fn agent_new_session(
@@ -4069,6 +4093,7 @@ pub fn run() {
             agent_accept_plan,
             agent_new_session,
             agent_history,
+            agent_export_transcript,
             agent_auth_apikey,
             agent_auth_oauth_start,
             agent_auth_oauth_code,

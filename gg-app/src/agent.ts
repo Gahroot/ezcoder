@@ -684,6 +684,29 @@ export async function listHistory(): Promise<HistoryEntry[]> {
   }
 }
 
+// ── Transcript export ──────────────────────────────────────
+
+/** Suggested filename for this session's Markdown export, e.g.
+ *  `your-chat-2026-07-26-1402.md`. Fetched before the save dialog opens. */
+export async function exportTranscriptName(): Promise<string | null> {
+  try {
+    await waitForReady();
+    const res = await invoke<{ filename: string }>("agent_export_transcript", { path: null });
+    return res.filename ?? null;
+  } catch (e) {
+    await logError(`agent_export_transcript(name) failed: ${String(e)}`);
+    return null;
+  }
+}
+
+/** Write this session's Markdown transcript to `path`. Rust does the fetch and
+ *  the write, so the transcript itself never crosses the IPC bridge. Throws
+ *  with a user-facing message so the caller can surface it in a toast. */
+export async function saveTranscript(path: string): Promise<{ path: string; bytes: number }> {
+  await waitForReady();
+  return invoke<{ path: string; bytes: number }>("agent_export_transcript", { path });
+}
+
 // ── Provider auth (login) ──────────────────────────────────
 export type AuthMethod = "oauth" | "apikey";
 

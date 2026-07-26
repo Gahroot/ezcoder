@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { save } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
 import {
   waitForReady,
@@ -16,6 +17,8 @@ import {
   switchKenModel,
   listCommands,
   listHistory,
+  exportTranscriptName,
+  saveTranscript,
   listTasks,
   runTask,
   runAllTasks,
@@ -69,6 +72,7 @@ import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
 import { KenPowerBanner } from "./KenPowerBanner";
+import { ExportChatButton } from "./ExportChatButton";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 // Experimental gaze focus — disabled for now (see main.tsx).
@@ -507,6 +511,45 @@ function App(): React.ReactElement {
     [toolsHidden, setToolsHiddenPersisted],
   );
   const [newSessionBusy, setNewSessionBusy] = useState(false);
+  // Transcript export (the download button in the activity bar). The chosen
+  // folder is remembered so the second export lands where the first one did —
+  // stored per-machine, not per-project, because that's how people organise
+  // exports (one "agent transcripts" folder, many projects).
+  const [exporting, setExporting] = useState(false);
+  // The export pill only exists while the pointer is over the chat area. Kept
+  // true while a save is in flight so the button doesn't vanish mid-click when
+  // the native dialog steals the pointer and fires mouseleave.
+  const [chatHovered, setChatHovered] = useState(false);
+  const exportTranscript = useCallback(async () => {
+    setExporting(true);
+    try {
+      const filename = (await exportTranscriptName()) ?? "your-chat.md";
+      let lastDir: string | null = null;
+      try {
+        lastDir = localStorage.getItem("gg-export-dir");
+      } catch {
+        /* ignore */
+      }
+      const target = await save({
+        title: "Save transcript",
+        defaultPath: lastDir ? `${lastDir}/${filename}` : filename,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (!target) return; // user cancelled — not an error, say nothing
+      await saveTranscript(target);
+      const dir = target.replace(/[/\\][^/\\]*$/, "");
+      try {
+        if (dir) localStorage.setItem("gg-export-dir", dir);
+      } catch {
+        /* ignore */
+      }
+      toast(`Saved ${target.split(/[/\\]/).pop() ?? "transcript"}`, "success");
+    } catch (e) {
+      toast(`Could not save transcript: ${String(e)}`, "error");
+    } finally {
+      setExporting(false);
+    }
+  }, []);
   // App self-update (GitHub releases). Drives the footer update banner.
   const appUpdate = useAppUpdate();
   // Initialize-git modal (shown via the top-right button when not yet a repo).
@@ -2026,7 +2069,11 @@ function App(): React.ReactElement {
           existing session scrolled down it rendered far above what's on
           screen. Anchoring to this non-scrolling sibling keeps it pinned to
           what the user is actually looking at, at any scroll position. */}
-      <div className="transcript-frame">
+      <div
+        className="transcript-frame"
+        onMouseEnter={() => setChatHovered(true)}
+        onMouseLeave={() => setChatHovered(false)}
+      >
         {workspaceMode === "code" && kenPowerBanner && (
           <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
         )}
@@ -2051,6 +2098,13 @@ function App(): React.ReactElement {
             </>
           )}
         </div>
+        {items.length > 0 && (
+          <ExportChatButton
+            visible={chatHovered || exporting}
+            busy={exporting}
+            onExport={() => void exportTranscript()}
+          />
+        )}
       </div>
 
       <div className="liveregion">
