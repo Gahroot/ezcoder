@@ -1109,9 +1109,9 @@ describe("agentLoop", () => {
     const terminal = events.find((event) => event.type === "error");
     expect(terminal?.type).toBe("error");
     if (terminal?.type !== "error") throw new Error("expected terminal error");
-    expect(terminal.error).toBeInstanceOf(GGAIError);
-    expect((terminal.error as GGAIError).source).toBe("network");
-    expect((terminal.error as GGAIError).hint).toContain("VPN or proxy");
+    expect(terminal.error).toBeInstanceOf(EZCoderAIError);
+    expect((terminal.error as EZCoderAIError).source).toBe("network");
+    expect((terminal.error as EZCoderAIError).hint).toContain("VPN or proxy");
     expect(terminal.error.message).toContain("after 5 automatic retries");
   }, 30_000);
 

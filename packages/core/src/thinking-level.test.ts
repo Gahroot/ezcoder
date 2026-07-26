@@ -5,7 +5,7 @@ import {
   getSupportedThinkingLevels,
   isThinkingLevelSupported,
 } from "./thinking-level.js";
-import type { ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { ThinkingLevel } from "@prestyj/ai";
 
 describe("thinking-level helpers", () => {
   it("cycles OpenAI GPT models through supported reasoning efforts", () => {

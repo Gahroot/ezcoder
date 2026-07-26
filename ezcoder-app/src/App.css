@@ -2111,7 +2111,7 @@ body {
    Floats in the bottom-right of the chat viewport, anchored to
    `.transcript-frame` — the NON-scrolling sibling. Anchoring to `.transcript`
    would pin it to the top of the scrolled content instead of what's on screen
-   (same trap the Ken power banner comment above documents).
+   (same trap the Nolan power banner comment above documents).
 
    Always in the DOM so the exit transition can play; `visibility` joins the
    transition (delayed on the way out, instant on the way in) so the hidden

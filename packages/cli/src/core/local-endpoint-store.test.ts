@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AuthStorage } from "@kenkaiiii/gg-core";
+import { AuthStorage } from "@prestyj/core";
 import {
   LocalEndpointError,
   addCustomEndpoint,
@@ -20,11 +20,11 @@ let auth: AuthStorage;
 
 // Both file paths are injected rather than redirected via $HOME: os.homedir()
 // reads USERPROFILE on Windows, so a HOME override silently writes to the real
-// ~/.gg there — which leaks state between tests and pollutes the user's files.
+// ~/.ezcoder there — which leaks state between tests and pollutes the user's files.
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-local-endpoints-"));
   auth = new AuthStorage(path.join(dir, "auth.json"));
-  opts = { settingsFile: path.join(dir, "gg-app.json"), auth };
+  opts = { settingsFile: path.join(dir, "ezcoder-app.json"), auth };
 });
 
 afterEach(async () => {
@@ -128,7 +128,7 @@ describe("custom endpoints", () => {
     await expect(removeCustomEndpoint("custom-nope", opts)).rejects.toThrow(/Unknown local/);
   });
 
-  it("preserves unrelated gg-app.json keys", async () => {
+  it("preserves unrelated ezcoder-app.json keys", async () => {
     await fs.writeFile(
       opts.settingsFile!,
       JSON.stringify({ projectsRoot: "/tmp/projects", autopilot: { "/a": true } }),

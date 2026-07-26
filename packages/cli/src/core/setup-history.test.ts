@@ -48,7 +48,7 @@ describe("setup-history", () => {
   });
 
   it("preserves legacy lastAuditedAt entries without clobbering", async () => {
-    const ggDir = path.join(tmpHome, ".gg");
+    const ggDir = path.join(tmpHome, ".ezcoder");
     fs.mkdirSync(ggDir, { recursive: true });
     const cwd = "/tmp/coexist";
     fs.writeFileSync(

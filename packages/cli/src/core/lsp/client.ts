@@ -218,7 +218,7 @@ export class LspClient {
 
   /**
    * Drain the server's stderr into a bounded ring, and mirror it to the debug
-   * log so a misbehaving server is diagnosable from `~/.gg/*.log` alone.
+   * log so a misbehaving server is diagnosable from `~/.ezcoder/*.log` alone.
    * Bounded because a looping server can emit stderr without limit.
    */
   private captureStderr(): void {

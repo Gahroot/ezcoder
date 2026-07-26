@@ -2,9 +2,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import type * as CompactorModule from "./compaction/compactor.js";
-import type * as GgAgentModule from "@kenkaiiii/gg-agent";
+import type * as GgAgentModule from "@prestyj/agent";
 import type * as McpModule from "./mcp/index.js";
 import { normalizeAppMarkersForHistory } from "./session-history.js";
 import { useFakeHome } from "../test-support/fake-home.js";
@@ -22,8 +22,8 @@ vi.mock("./compaction/compactor.js", async () => {
   };
 });
 
-vi.mock("@kenkaiiii/gg-agent", async () => {
-  const actual = await vi.importActual<typeof GgAgentModule>("@kenkaiiii/gg-agent");
+vi.mock("@prestyj/agent", async () => {
+  const actual = await vi.importActual<typeof GgAgentModule>("@prestyj/agent");
   return {
     ...actual,
     agentLoop: agentLoopMock,
@@ -53,7 +53,7 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
 }
 
 async function findSessionFile(): Promise<string> {
-  const root = path.join(tmpHome, ".gg", "sessions");
+  const root = path.join(tmpHome, ".ezcoder", "sessions");
   const found: string[] = [];
   for (const dir of await fs.readdir(root)) {
     for (const file of await fs.readdir(path.join(root, dir))) {
@@ -73,14 +73,14 @@ beforeEach(async () => {
   compactMock.mockReset();
   agentLoopMock.mockReset();
 
-  await writeJson(path.join(tmpHome, ".gg", "auth.json"), {
+  await writeJson(path.join(tmpHome, ".ezcoder", "auth.json"), {
     anthropic: {
       accessToken: "test" + "-access",
       refreshToken: "test-refresh",
       expiresAt: Date.now() + 3_600_000,
     },
   });
-  await writeJson(path.join(tmpHome, ".gg", "settings.json"), {
+  await writeJson(path.join(tmpHome, ".ezcoder", "settings.json"), {
     autoCompact: true,
     compactThreshold: 0.1,
   });
@@ -113,7 +113,7 @@ describe("AgentSession transcript marker anchors", () => {
 
     // Markers recorded while the session is settled: anchor = 2.
     await session.persistAppMarker("error", { headline: "mid error" });
-    await session.persistKenTurn("question", "reply");
+    await session.persistNolanTurn("question", "reply");
     await session.persistAutopilotMarker("done");
 
     // Failed second run: the loop appends partial messages in place, then
@@ -142,7 +142,7 @@ describe("AgentSession transcript marker anchors", () => {
 
     const markers = session.getAppMarkers().filter((m) => m.kind === "error");
     expect(markers.map((m) => m.afterMessageCount)).toEqual([2, 3]);
-    expect(session.getKenTurns().map((t) => t.afterMessageCount)).toEqual([2]);
+    expect(session.getNolanTurns().map((t) => t.afterMessageCount)).toEqual([2]);
     expect(session.getAutopilotMarkers().map((m) => m.afterMessageCount)).toEqual([2]);
     await session.dispose();
 

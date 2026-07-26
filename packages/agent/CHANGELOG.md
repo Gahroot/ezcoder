@@ -22,50 +22,50 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.24.0
+- @prestyj/ai@5.24.0
 
 ## 5.23.3
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.23.3
+- @prestyj/ai@5.23.3
 
 ## 5.23.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.23.2
+- @prestyj/ai@5.23.2
 
 ## 5.23.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.23.1
+- @prestyj/ai@5.23.1
 
 ## 5.23.0
 
 ### Patch Changes
 
 - Updated dependencies [a6a78c2]
-  - @kenkaiiii/gg-ai@5.23.0
+  - @prestyj/ai@5.23.0
 
 ## 5.22.6
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.22.6
+- @prestyj/ai@5.22.6
 
 ## 5.22.5
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.22.5
+- @prestyj/ai@5.22.5
 
 ## 5.22.4
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.22.4
+- @prestyj/ai@5.22.4
 
 ## 5.22.3
 

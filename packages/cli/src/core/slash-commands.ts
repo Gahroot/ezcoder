@@ -310,9 +310,9 @@ export function createBuiltinCommands(): SlashCommand[] {
       execute() {
         // The real implementation lives in App.tsx (it needs React state to
         // drive the picker) and intercepts before the registry, so this only
-        // runs where no picker exists — today that's the gg-app sidecar.
+        // runs where no picker exists — today that's the ezcoder-app sidecar.
         return isGgApp()
-          ? "/rewind is only available in the ggcoder terminal app — the desktop app has no checkpoint picker yet."
+          ? "/rewind is only available in the ezcoder terminal app — the desktop app has no checkpoint picker yet."
           : "Checkpoint picker unavailable in this context.";
       },
     },

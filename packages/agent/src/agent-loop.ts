@@ -1218,12 +1218,12 @@ export async function* agentLoop(
           });
           yield {
             type: "error" as const,
-            error: new GGAIError(
+            error: new EZCoderAIError(
               `The connection to the API provider stopped responding after ${MAX_STALL_RETRIES} automatic retries. ` +
                 `Your conversation is preserved.`,
               {
                 source: "network",
-                hint: "Retry once. If it keeps happening on this device, disable any VPN or proxy and allow GG Coder through firewall or antivirus web protection.",
+                hint: "Retry once. If it keeps happening on this device, disable any VPN or proxy and allow EZ Coder through firewall or antivirus web protection.",
                 cause: err,
               },
             ),

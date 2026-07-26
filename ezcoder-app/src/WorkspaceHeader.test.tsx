@@ -60,18 +60,18 @@ describe("WorkspaceHeader", () => {
   });
 
   it("shows GitHub issue/PR counts and appends them to the window title", () => {
-    expect(formatWorkspaceTitle("/work/app", "main", "GG Coder", 0, 4, 1)).toBe(
+    expect(formatWorkspaceTitle("/work/app", "main", "EZ Coder", 0, 4, 1)).toBe(
       "app │ ⎇ main │ 4 issues │ 1 PR",
     );
 
     render(
       <WorkspaceHeader
         workspaceMode="code"
-        cwd="/work/gg-coder"
+        cwd="/work/ezcoder"
         gitBranch="main"
         gitHubIssues={4}
         gitHubPRs={1}
-        gitHubRepoUrl="https://github.com/kenkaiiii/gg-coder"
+        gitHubRepoUrl="https://github.com/kenkaiiii/ezcoder"
         navHidden
         onToggleNav={() => {}}
       >
@@ -85,13 +85,13 @@ describe("WorkspaceHeader", () => {
 
   it("shows an added-roots badge and appends it to the window title", () => {
     expect(
-      formatWorkspaceTitle("/work/app", "main", "GG Coder", 0, null, null, ["/work/sdk"]),
+      formatWorkspaceTitle("/work/app", "main", "EZ Coder", 0, null, null, ["/work/sdk"]),
     ).toBe("app │ +1 root │ ⎇ main");
 
     render(
       <WorkspaceHeader
         workspaceMode="code"
-        cwd="/work/gg-coder"
+        cwd="/work/ezcoder"
         gitBranch="main"
         additionalRoots={["/work/sdk", "/work/docs"]}
         navHidden
@@ -108,7 +108,7 @@ describe("WorkspaceHeader", () => {
     render(
       <WorkspaceHeader
         workspaceMode="code"
-        cwd="/work/gg-coder"
+        cwd="/work/ezcoder"
         gitBranch="main"
         navHidden
         onToggleNav={() => {}}
@@ -123,18 +123,18 @@ describe("WorkspaceHeader", () => {
 
   it("hides a zero-count chip but keeps a non-zero one", () => {
     // 3 open issues, 0 open PRs → issues chip shows, PR chip is hidden.
-    expect(formatWorkspaceTitle("/work/app", "main", "GG Coder", 0, 3, 0)).toBe(
+    expect(formatWorkspaceTitle("/work/app", "main", "EZ Coder", 0, 3, 0)).toBe(
       "app │ ⎇ main │ 3 issues",
     );
 
     render(
       <WorkspaceHeader
         workspaceMode="code"
-        cwd="/work/gg-coder"
+        cwd="/work/ezcoder"
         gitBranch="main"
         gitHubIssues={3}
         gitHubPRs={0}
-        gitHubRepoUrl="https://github.com/kenkaiiii/gg-coder"
+        gitHubRepoUrl="https://github.com/kenkaiiii/ezcoder"
         navHidden
         onToggleNav={() => {}}
       >
@@ -150,9 +150,9 @@ describe("WorkspaceHeader", () => {
     render(
       <WorkspaceHeader
         workspaceMode="code"
-        cwd="/work/gg-coder"
+        cwd="/work/ezcoder"
         gitBranch="main"
-        gitHubRepoUrl="https://github.com/kenkaiiii/gg-coder"
+        gitHubRepoUrl="https://github.com/kenkaiiii/ezcoder"
         navHidden
         onToggleNav={() => {}}
       >
@@ -160,18 +160,18 @@ describe("WorkspaceHeader", () => {
       </WorkspaceHeader>,
     );
 
-    const folder = screen.getByRole("button", { name: "gg-coder" });
-    expect(folder.getAttribute("title")).toBe("/work/gg-coder — open folder");
+    const folder = screen.getByRole("button", { name: "ezcoder" });
+    expect(folder.getAttribute("title")).toBe("/work/ezcoder — open folder");
 
     const branch = screen.getByRole("button", { name: "⎇ main" });
-    expect(branch.getAttribute("title")).toContain("github.com/kenkaiiii/gg-coder");
+    expect(branch.getAttribute("title")).toContain("github.com/kenkaiiii/ezcoder");
   });
 
   it("leaves the branch as static text when there is no GitHub repo URL", () => {
     render(
       <WorkspaceHeader
         workspaceMode="code"
-        cwd="/work/gg-coder"
+        cwd="/work/ezcoder"
         gitBranch="main"
         navHidden
         onToggleNav={() => {}}

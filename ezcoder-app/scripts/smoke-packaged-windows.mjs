@@ -6,14 +6,14 @@
 //
 // Why this exists: `smoke-sidecar.mjs` proves the bundled RUNTIME loads, but it
 // runs the sidecar directly. It cannot catch the failures Windows users
-// actually hit after installing — the shell not finding `ggnode.exe` beside the
+// actually hit after installing — the shell not finding `eznode.exe` beside the
 // exe, the sidecar resource missing from the MSI, a console window flashing, or
 // the app starting with no window at all. Only launching real packaged output
 // exercises that path.
 //
 // Usage:
-//   node gg-app/scripts/smoke-packaged-windows.mjs                 # builds the MSI
-//   node gg-app/scripts/smoke-packaged-windows.mjs --artifact x.msi # reuses one
+//   node ezcoder-app/scripts/smoke-packaged-windows.mjs                 # builds the MSI
+//   node ezcoder-app/scripts/smoke-packaged-windows.mjs --artifact x.msi # reuses one
 //
 // Exits non-zero on any failure so it can gate CI. The pure helpers are
 // exported and unit-tested cross-platform in smoke-packaged-windows.test.mjs.
@@ -129,15 +129,15 @@ function findNamedFiles(root, expectedName) {
 
 /**
  * Locate the extracted install layout and assert the three files that must ship
- * together. A missing `ggnode.exe` or `sidecar/app-sidecar.mjs` is exactly the
+ * together. A missing `eznode.exe` or `sidecar/app-sidecar.mjs` is exactly the
  * "app installs but does nothing" bug this smoke exists to catch.
  */
 export function discoverPackagedLayout(extractRoot) {
-  const apps = findNamedFiles(extractRoot, "gg-app.exe");
-  if (apps.length !== 1) fail(`expected one extracted gg-app.exe, found ${apps.length}`);
+  const apps = findNamedFiles(extractRoot, "ezcoder-app.exe");
+  if (apps.length !== 1) fail(`expected one extracted ezcoder-app.exe, found ${apps.length}`);
   const executable = realpathSync.native(apps[0]);
   const installDir = dirname(executable);
-  const node = join(installDir, "ggnode.exe");
+  const node = join(installDir, "eznode.exe");
   const sidecar = join(installDir, "sidecar", "app-sidecar.mjs");
   if (!existsSync(node)) fail(`packaged Node runtime missing beside app: ${node}`);
   if (!existsSync(sidecar)) fail(`packaged sidecar resource missing: ${sidecar}`);
@@ -323,8 +323,8 @@ export async function cleanupOwnedProcesses(options) {
 
 /**
  * A throwaway user profile so the smoke can never read or write the real
- * `~/.gg` (auth tokens, settings, session store) and never collides with a
- * GG Coder the developer already has open.
+ * `~/.ezcoder` (auth tokens, settings, session store) and never collides with a
+ * EZ Coder the developer already has open.
  */
 function isolatedEnvironment(root, projectDir) {
   const home = join(root, "home");
@@ -367,7 +367,7 @@ function extractMsi(msi, extractRoot, logPath) {
 
 async function main() {
   if (process.platform !== "win32") fail("packaged launch smoke only supports Windows");
-  const smokeRoot = mkdtempSync(join(tmpdir(), "gg-app-packaged-smoke-"));
+  const smokeRoot = mkdtempSync(join(tmpdir(), "ezcoder-app-packaged-smoke-"));
   const extractRoot = join(smokeRoot, "package");
   const projectDir = join(smokeRoot, "project");
   const msiLog = join(smokeRoot, "msi-extract.log");
@@ -422,7 +422,7 @@ async function main() {
           entry.ExecutablePath &&
           normalizePath(entry.ExecutablePath) === normalizePath(layout.executable),
       );
-      // The sidecar must be the PACKAGED ggnode running the PACKAGED bundle,
+      // The sidecar must be the PACKAGED eznode running the PACKAGED bundle,
       // as a child of the app — not some node the runner happened to have.
       const node = processes.find(
         (entry) =>

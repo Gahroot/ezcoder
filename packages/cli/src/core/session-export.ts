@@ -1,4 +1,4 @@
-import type { Message, ToolResultContent } from "@kenkaiiii/gg-ai";
+import type { Message, ToolResultContent } from "@prestyj/ai";
 import { restoreUserRow, restoreAssistantTexts } from "./session-history.js";
 
 /**
@@ -369,7 +369,7 @@ export function sessionToMarkdown(
       flushPending();
       rows++;
       out.push("");
-      out.push("## ✨ GG Coder");
+      out.push("## ✨ EZ Coder");
       out.push("");
       out.push(blockText.trim());
     }

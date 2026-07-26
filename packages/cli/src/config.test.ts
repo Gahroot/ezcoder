@@ -76,7 +76,7 @@ describe("loadSavedSettings", () => {
 // These call seedDefaultAgents(dir) directly: getAppPaths() resolves
 // os.homedir() inside gg-core's prebuilt dist, which vitest does not transform,
 // so going via ensureAppDirs would ignore a homedir spy and mutate the real
-// ~/.gg.
+// ~/.ezcoder.
 describe("seedDefaultAgents shadowing-agent cleanup", () => {
   // Byte-exact copies of what v5.22.6 wrote, so the deletion path is tested
   // against the real thing rather than a paraphrase.
@@ -97,7 +97,7 @@ describe("seedDefaultAgents shadowing-agent cleanup", () => {
   });
 
   function tempAgentsDir(): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ggcoder-agents-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ezcoder-agents-"));
     tempDirs.push(dir);
     return dir;
   }

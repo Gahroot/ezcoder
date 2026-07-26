@@ -3771,7 +3771,7 @@ fn strip_extended_prefix(path: PathBuf) -> PathBuf {
 /// The current user's home directory.
 ///
 /// MUST agree with Node's `os.homedir()` in the sidecar — both sides read and
-/// write the same `~/.gg` files (auth.json, gg-app.json, the workspace file,
+/// write the same `~/.ezcoder` files (auth.json, ezcoder-app.json, the workspace file,
 /// the sidecar ledger). libuv resolves Windows homes as
 /// `USERPROFILE` → `HOMEDRIVE`+`HOMEPATH`, and ignores `HOME` entirely; a
 /// Windows box with `HOME` set (Git for Windows / MSYS sets it, often to a

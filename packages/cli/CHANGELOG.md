@@ -44,9 +44,9 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.24.0
-- @kenkaiiii/gg-agent@5.24.0
-- @kenkaiiii/gg-core@5.24.0
+- @prestyj/ai@5.24.0
+- @prestyj/agent@5.24.0
+- @prestyj/core@5.24.0
 
 ## 5.23.3
 
@@ -87,27 +87,27 @@
     threw. It now opens `"r+"`, and a failed flush is non-fatal (network shares
     and container overlays can reject fsync outright — losing durability there is
     acceptable, refusing to save the user's session is not).
-  - @kenkaiiii/gg-ai@5.23.3
-  - @kenkaiiii/gg-agent@5.23.3
-  - @kenkaiiii/gg-core@5.23.3
+  - @prestyj/ai@5.23.3
+  - @prestyj/agent@5.23.3
+  - @prestyj/core@5.23.3
 
 ## 5.23.2
 
 ### Patch Changes
 
 - Fix named sub-agents receiving no MCP tools: a session with a `tools:` allow-list skipped MCP entirely unless an MCP whitelist was also set, so an agent listing `mcp__kencode-search__searchCode` silently fell back to training data. The whitelist is now derived from the agent definition and forwarded through every spawn path. Also removes the v5.22.6 seeded `auditor.md`/`skeptic.md` that shadowed the richer bundled agents, with hash-gated cleanup that leaves user-edited files untouched.
-  - @kenkaiiii/gg-ai@5.23.2
-  - @kenkaiiii/gg-agent@5.23.2
-  - @kenkaiiii/gg-core@5.23.2
+  - @prestyj/ai@5.23.2
+  - @prestyj/agent@5.23.2
+  - @prestyj/core@5.23.2
 
 ## 5.23.1
 
 ### Patch Changes
 
 - fb85e4f: Fix Claude Opus 5's thinking-level cycle and retire Claude Opus 4.8. `thinking-level.ts` kept its own hardcoded Anthropic regexes, so Opus 5 was not recognised as adaptive and collapsed to a single non-cycling `max` level; it now exposes the full low → medium → high → xhigh → max ladder. Opus 4.8 is removed from the model registry, footers, provider descriptions, and the hardcoded JSON/RPC/sidecar/CLI defaults (all now `claude-opus-5`); gg-ai keeps wire-format support for the `claude-opus-4-8` ID since Anthropic still serves it. Also gave the Sol/Terra policy tests real timeouts so they stop flaking at vitest's 5s default.
-  - @kenkaiiii/gg-ai@5.23.1
-  - @kenkaiiii/gg-agent@5.23.1
-  - @kenkaiiii/gg-core@5.23.1
+  - @prestyj/ai@5.23.1
+  - @prestyj/agent@5.23.1
+  - @prestyj/core@5.23.1
 
 ## 5.23.0
 
@@ -118,36 +118,36 @@
 ### Patch Changes
 
 - Updated dependencies [a6a78c2]
-  - @kenkaiiii/gg-ai@5.23.0
-  - @kenkaiiii/gg-core@5.23.0
-  - @kenkaiiii/gg-agent@5.23.0
+  - @prestyj/ai@5.23.0
+  - @prestyj/core@5.23.0
+  - @prestyj/agent@5.23.0
 
 ## 5.22.6
 
 ### Patch Changes
 
 - Remove the retired /setup command and its auto-run/hint UI, fix /bullet-proof refusals with authorized-defensive-review framing plus seeded auditor/skeptic agents and batched skeptic verification, dedupe kencode/source_path guidance out of the Research section, gate the native-web-search claim to Anthropic, and slim the system prompt.
-  - @kenkaiiii/gg-ai@5.22.6
-  - @kenkaiiii/gg-agent@5.22.6
-  - @kenkaiiii/gg-core@5.22.6
+  - @prestyj/ai@5.22.6
+  - @prestyj/agent@5.22.6
+  - @prestyj/core@5.22.6
 
 ## 5.22.5
 
 ### Patch Changes
 
 - Proactive OAuth token refresh at a lifetime-scaled threshold. Short-lived tokens (e.g. Kimi's 15-minute access token) now refresh at their halfway point instead of riding to the expiry cliff, eliminating the recurring 401s and the misleading "API Key appears invalid" run failures caused by concurrent-session refresh races. Ported from MoonshotAI/kimi-code's OAuthManager: refresh when within max(300s, lifetime × 0.5) of expiry.
-  - @kenkaiiii/gg-ai@5.22.5
-  - @kenkaiiii/gg-agent@5.22.5
-  - @kenkaiiii/gg-core@5.22.5
+  - @prestyj/ai@5.22.5
+  - @prestyj/agent@5.22.5
+  - @prestyj/core@5.22.5
 
 ## 5.22.4
 
 ### Patch Changes
 
 - Fix memory tools killing the turn when the model sends content over the 600-character limit (over-limit input is now an ordinary, actionable tool error instead of a fatal "repeatedly issued invalid arguments" failure), make chat agents save durable memories proactively without being asked, fix false stream stalls for silent OpenAI reasoning, and anchor transcript error markers to persisted messages so resumed errors render at the bottom.
-  - @kenkaiiii/gg-ai@5.22.4
-  - @kenkaiiii/gg-agent@5.22.4
-  - @kenkaiiii/gg-core@5.22.4
+  - @prestyj/ai@5.22.4
+  - @prestyj/agent@5.22.4
+  - @prestyj/core@5.22.4
 
 ## 5.22.3
 

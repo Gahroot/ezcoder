@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { localWireModelId, stream } from "./stream.js";
-import { GGAIError } from "./errors.js";
+import { EZCoderAIError } from "./errors.js";
 
 describe("localWireModelId", () => {
   it("strips the endpoint routing prefix so the server sees its own id", () => {
@@ -24,6 +24,6 @@ describe("local provider", () => {
         messages: [{ role: "user", content: "hi" }],
         apiKey: "local",
       }),
-    ).toThrow(GGAIError);
+    ).toThrow(EZCoderAIError);
   });
 });

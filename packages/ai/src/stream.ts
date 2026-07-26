@@ -163,7 +163,7 @@ providerRegistry.register("local", {
   // something to paper over with a guess at someone else's port.
   stream: (options) => {
     if (!options.baseUrl) {
-      throw new GGAIError(
+      throw new EZCoderAIError(
         "Local provider requires a baseUrl (e.g. http://127.0.0.1:11434/v1). " +
           "No local endpoint was resolved for this model — re-scan for local models.",
       );

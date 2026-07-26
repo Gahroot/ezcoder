@@ -396,7 +396,7 @@ export class AgentSession {
 
   /**
    * Number of non-system messages guaranteed to be in the session file — the
-   * anchor base for transcript markers (Ken turns, autopilot verdicts, app
+   * anchor base for transcript markers (Nolan turns, autopilot verdicts, app
    * markers). `this.messages` can run ahead of the file: the agent loop
    * appends assistant/tool/steering messages in place but they are only
    * persisted when the run SUCCEEDS, so after a failed run the in-memory list

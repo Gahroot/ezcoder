@@ -4,7 +4,7 @@
 // MSI this build produced, deciding which PIDs we are allowed to kill — is pure
 // and must be verified everywhere. The PID-ownership rules in particular are
 // safety-critical: getting them wrong means taskkill'ing a developer's real
-// GG Coder, or an unrelated process that inherited a recycled PID.
+// EZ Coder, or an unrelated process that inherited a recycled PID.
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +23,7 @@ import {
 const temporaryDirectories = [];
 
 function temporaryDirectory() {
-  const directory = mkdtempSync(join(tmpdir(), "gg-app-packaged-smoke-test-"));
+  const directory = mkdtempSync(join(tmpdir(), "ezcoder-app-packaged-smoke-test-"));
   temporaryDirectories.push(directory);
   return directory;
 }
@@ -60,10 +60,10 @@ describe("packaged Windows smoke artifact discovery", () => {
 
   it("requires the app, Node runtime, and sidecar in one extracted layout", () => {
     const root = temporaryDirectory();
-    const install = join(root, "PFiles64", "GG Coder");
+    const install = join(root, "PFiles64", "EZ Coder");
     mkdirSync(join(install, "sidecar"), { recursive: true });
-    writeFileSync(join(install, "gg-app.exe"), "app");
-    writeFileSync(join(install, "ggnode.exe"), "node");
+    writeFileSync(join(install, "ezcoder-app.exe"), "app");
+    writeFileSync(join(install, "eznode.exe"), "node");
     writeFileSync(join(install, "sidecar", "app-sidecar.mjs"), "sidecar");
 
     expect(discoverPackagedLayout(root).installDir).toBe(realpathSync.native(install));
@@ -73,9 +73,9 @@ describe("packaged Windows smoke artifact discovery", () => {
     // The exact shape of "installs fine, does nothing" that this smoke exists
     // to catch: the shell is there but has no runtime to spawn the sidecar.
     const root = temporaryDirectory();
-    const install = join(root, "PFiles64", "GG Coder");
+    const install = join(root, "PFiles64", "EZ Coder");
     mkdirSync(join(install, "sidecar"), { recursive: true });
-    writeFileSync(join(install, "gg-app.exe"), "app");
+    writeFileSync(join(install, "ezcoder-app.exe"), "app");
     writeFileSync(join(install, "sidecar", "app-sidecar.mjs"), "sidecar");
 
     expect(() => discoverPackagedLayout(root)).toThrow("packaged Node runtime missing");
@@ -83,10 +83,10 @@ describe("packaged Windows smoke artifact discovery", () => {
 
   it("fails when the sidecar resource did not make it into the package", () => {
     const root = temporaryDirectory();
-    const install = join(root, "PFiles64", "GG Coder");
+    const install = join(root, "PFiles64", "EZ Coder");
     mkdirSync(install, { recursive: true });
-    writeFileSync(join(install, "gg-app.exe"), "app");
-    writeFileSync(join(install, "ggnode.exe"), "node");
+    writeFileSync(join(install, "ezcoder-app.exe"), "app");
+    writeFileSync(join(install, "eznode.exe"), "node");
 
     expect(() => discoverPackagedLayout(root)).toThrow("packaged sidecar resource missing");
   });
@@ -121,13 +121,13 @@ describe("packaged Windows smoke cleanup", () => {
     expect(source).not.toContain('stdio: ["ignore", "pipe", "pipe"]');
 
     const processes = [
-      { ProcessId: 10, ParentProcessId: 1, ExecutablePath: "C:\\package\\gg-app.exe" },
-      { ProcessId: 20, ParentProcessId: 10, ExecutablePath: "C:\\package\\ggnode.exe" },
+      { ProcessId: 10, ParentProcessId: 1, ExecutablePath: "C:\\package\\ezcoder-app.exe" },
+      { ProcessId: 20, ParentProcessId: 10, ExecutablePath: "C:\\package\\eznode.exe" },
       { ProcessId: 30, ParentProcessId: 20, ExecutablePath: "C:\\Windows\\helper.exe" },
       { ProcessId: 40, ParentProcessId: 1, CommandLine: "tool C:\\smoke\\sidecar.mjs" },
-      // A GG Coder the developer already had open: same exe name, different
+      // A EZ Coder the developer already had open: same exe name, different
       // path, unrelated parent. It must survive.
-      { ProcessId: 50, ParentProcessId: 1, ExecutablePath: "C:\\Users\\live\\gg-app.exe" },
+      { ProcessId: 50, ParentProcessId: 1, ExecutablePath: "C:\\Users\\live\\ezcoder-app.exe" },
     ];
 
     expect(collectOwnedProcessIds(processes, 10, ["C:\\package", "C:\\smoke"]).sort()).toEqual([
@@ -139,7 +139,7 @@ describe("packaged Windows smoke cleanup", () => {
     // Windows recycles PIDs aggressively; "the pid we launched" is not proof of
     // ownership once that process has exited.
     const processes = [
-      { ProcessId: 10, ParentProcessId: 1, ExecutablePath: "C:\\Users\\live\\gg-app.exe" },
+      { ProcessId: 10, ParentProcessId: 1, ExecutablePath: "C:\\Users\\live\\ezcoder-app.exe" },
     ];
 
     expect(collectOwnedProcessIds(processes, 10, ["C:\\package"])).toEqual([]);
@@ -167,9 +167,9 @@ describe("packaged Windows smoke cleanup", () => {
     const alive = new Set([10, 20, 50]);
     const killed = [];
     const processes = [
-      { ProcessId: 10, ParentProcessId: 1, ExecutablePath: "C:\\package\\gg-app.exe" },
-      { ProcessId: 20, ParentProcessId: 10, ExecutablePath: "C:\\package\\ggnode.exe" },
-      { ProcessId: 50, ParentProcessId: 1, ExecutablePath: "C:\\Users\\live\\gg-app.exe" },
+      { ProcessId: 10, ParentProcessId: 1, ExecutablePath: "C:\\package\\ezcoder-app.exe" },
+      { ProcessId: 20, ParentProcessId: 10, ExecutablePath: "C:\\package\\eznode.exe" },
+      { ProcessId: 50, ParentProcessId: 1, ExecutablePath: "C:\\Users\\live\\ezcoder-app.exe" },
     ];
 
     await cleanupOwnedProcesses({
@@ -195,7 +195,7 @@ describe("packaged Windows smoke cleanup", () => {
         rootPid: 10,
         ownedRoots: ["C:\\package"],
         snapshot: async () => [
-          { ProcessId: 10, ParentProcessId: 1, ExecutablePath: "C:\\package\\gg-app.exe" },
+          { ProcessId: 10, ParentProcessId: 1, ExecutablePath: "C:\\package\\ezcoder-app.exe" },
         ],
         exists: () => true,
         kill: async () => {},

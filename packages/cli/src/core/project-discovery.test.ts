@@ -382,7 +382,7 @@ describe.skipIf(process.platform !== "win32")("real Windows session round-trip",
 
   beforeEach(async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), "gg-win-rt-"));
-    state.sessionsDir = path.join(tmp, ".gg", "sessions");
+    state.sessionsDir = path.join(tmp, ".ezcoder", "sessions");
     await fs.mkdir(state.sessionsDir, { recursive: true });
     vi.spyOn(os, "homedir").mockReturnValue(path.join(tmp, "home"));
   });
@@ -421,7 +421,7 @@ describe.skipIf(process.platform !== "win32")("real Windows session round-trip",
     const found = projects.find((p) => p.path === projectPath);
     expect(found).toBeDefined();
     expect(found?.name).toBe("win-app");
-    expect(found?.sources).toContain("ggcoder");
+    expect(found?.sources).toContain("ezcoder");
 
     // …and the same path resolves back to the session for the picker's
     // "recent sessions" list.

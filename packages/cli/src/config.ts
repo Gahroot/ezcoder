@@ -155,7 +155,7 @@ export const SHADOWING_SEEDED_AGENT_HASHES: Record<string, string> = {
  *
  * Exported for tests: `getAppPaths()` resolves `os.homedir()` inside gg-core's
  * prebuilt dist, which vitest does not transform, so a homedir spy would not
- * apply and the test would operate on the developer's real `~/.gg`. Tests must
+ * apply and the test would operate on the developer's real `~/.ezcoder`. Tests must
  * call this with an explicit temp directory instead of going via ensureAppDirs.
  */
 export async function seedDefaultAgents(agentsDir: string): Promise<void> {

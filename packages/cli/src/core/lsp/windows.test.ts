@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 
 import { spawnSync } from "node:child_process";
 
-import { closeLogger, openLog } from "@kenkaiiii/gg-core";
+import { closeLogger, openLog } from "@prestyj/core";
 
 import { LspManager } from "./manager.js";
 import { removeWhenReleased } from "./test-support.js";
@@ -19,7 +19,7 @@ import { LSP_SERVER_CATALOG, findExecutable, serverForFile } from "./servers.js"
  * `windows-latest` matrix leg), skipped everywhere else.
  *
  * Unlike `integration.test.ts` (opt-in, npm-installs its own server), this uses
- * the `typescript-language-server` + `typescript` that ship as ggcoder
+ * the `typescript-language-server` + `typescript` that ship as ezcoder
  * dependencies, so it runs unattended on CI with no network.
  *
  * Why a Windows-specific test: diagnostics are cached in a Map keyed by
@@ -139,7 +139,7 @@ describe.skipIf(process.platform !== "win32")("LSP diagnostics on a real C:\\ pa
  * Isolates WHY Windows diagnostics time out, by changing exactly one variable.
  *
  * The suite above uses a bare project with no local `typescript`, so
- * `resolveCommand` takes the BUNDLED-tsserver fallback and passes ggcoder's own
+ * `resolveCommand` takes the BUNDLED-tsserver fallback and passes ezcoder's own
  * copy via `initializationOptions.tsserver.path`. On Windows that timed out
  * (measured: the full 60s budget) even though the language server resolves to
  * `process.execPath` + a real script and starts in ~100ms — so the failure is
@@ -175,7 +175,7 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
     // this bug hard in the first place.
     process.env.GG_LSP_TRACE = "1";
     traceLog = path.join(tmpDir, "lsp-trace.log");
-    traceOpen = openLog(traceLog, "ggcoder-test");
+    traceOpen = openLog(traceLog, "ezcoder-test");
     await fs.writeFile(
       path.join(tmpDir, "tsconfig.json"),
       JSON.stringify({
@@ -190,7 +190,7 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
     );
     await fs.mkdir(path.join(tmpDir, "src"), { recursive: true });
 
-    // Link ggcoder's own typescript in as if the project installed it.
+    // Link ezcoder's own typescript in as if the project installed it.
     const ours = findUpNodeModulesDir("typescript");
     if (ours) {
       await fs.mkdir(path.join(tmpDir, "node_modules"), { recursive: true });

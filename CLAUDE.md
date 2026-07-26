@@ -341,17 +341,17 @@ ezcoder mcp add --env AIRTABLE_API_KEY=key airtable -- npx -y airtable-mcp-serve
 
 Four homes, checked in this order. Add a command to the _first_ one that fits:
 
-| Kind            | Lives in                                              | Use when                                                           | Reaches gg-app?                      |
+| Kind            | Lives in                                              | Use when                                                           | Reaches ezcoder-app?                      |
 | --------------- | ----------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------ |
 | UI-handled      | `handleSubmit` in `ui/App.tsx`                        | needs React state (overlays, live items, token counters)           | no — app uses buttons                |
 | Registry        | `createBuiltinCommands()` in `core/slash-commands.ts` | needs session (messages, auth, settings) via `SlashCommandContext` | yes, via `AgentSession.prompt()`     |
 | Prompt-template | `core/prompt-commands.ts`                             | injects a prompt for the agent to execute                          | yes — listed in the app's slash menu |
-| Custom          | `.gg/commands/*.md`                                   | project-local prompt templates                                     | yes                                  |
+| Custom          | `.ezcoder/commands/*.md`                                   | project-local prompt templates                                     | yes                                  |
 
 Gotchas:
 
 - `/model`, `/compact`, `/quit` exist in **both** App.tsx and the registry — the TUI
-  handlers win (checked first); the registry copies are what gg-app actually runs.
+  handlers win (checked first); the registry copies are what ezcoder-app actually runs.
 - `/rewind` and `/clear` are TUI-only. A registry entry that has no app equivalent must
   say so (see `/rewind`'s `isGgApp()` branch) rather than echo a dead pointer.
 - Registry commands needing new capabilities: add the method to `SlashCommandContext`
@@ -368,12 +368,12 @@ prompt's Environment section gains `- Additional roots: …`. That section sits 
 the **cached prefix**, so each `/add-dir` costs exactly one cache-miss turn —
 accepted deliberately, since a root advertised only in the uncached suffix would
 drift from the tool behaviour it describes. The sidecar exposes the roots in
-`/state` + the `extras` SSE frame; gg-app's header shows a `+N roots` badge.
+`/state` + the `extras` SSE frame; ezcoder-app's header shows a `+N roots` badge.
 Project-context (`CLAUDE.md`) collection from extra roots is _not_ implemented.
 
 ## Network egress allowlist
 
-Off by default. `~/.gg/settings.json`: `"networkMode": "off" | "allowlist"` and
+Off by default. `~/.ezcoder/settings.json`: `"networkMode": "off" | "allowlist"` and
 `"networkAllow": ["github.com", "*.githubusercontent.com"]` (leading `*.` matches
 subdomains only). Two layers, with honestly different strength — see
 `core/network-guard.ts`:
@@ -409,7 +409,7 @@ user already runs into the same picker as the hosted ones. No config file, no CL
 flag — the four well-known servers are probed on their documented ports, and
 extra endpoints are added from the UI.
 
-- **Discovery** — `packages/gg-core/src/local-models.ts`. `probeEndpoint()` calls
+- **Discovery** — `packages/core/src/local-models.ts`. `probeEndpoint()` calls
   `GET {baseUrl}/models`, then enriches per server kind because `/v1/models`
   reports no capabilities: Ollama `POST /api/show` (`capabilities[]` +
   `model_info["<arch>.context_length"]`), LM Studio `GET /api/v0/models`
@@ -427,9 +427,9 @@ extra endpoints are added from the UI.
 - **Id scheme** — `local/<endpointId>/<rawModelId>`
   (`formatLocalModelId`/`parseLocalModelId`). The prefix is routing only:
   gg-ai's `localWireModelId()` strips it in the `local` provider so the server
-  sees its own id. A local stream with no `baseUrl` throws a clear `GGAIError`
+  sees its own id. A local stream with no `baseUrl` throws a clear `EZCoderAIError`
   instead of guessing someone else's port.
-- **Auth** — one `local:<endpointId>` entry per endpoint in `~/.gg/auth.json`
+- **Auth** — one `local:<endpointId>` entry per endpoint in `~/.ezcoder/auth.json`
   carrying that endpoint's `baseUrl` (+ optional key), written by
   `AuthStorage.setLocalEndpoint()`. Each local `ModelInfo` sets
   `authStorageKeys: ["local:<id>"]`, so the existing ordered-storage-key override
@@ -460,9 +460,9 @@ extra endpoints are added from the UI.
   (`localNetworkGuidance`) — never "disable your VPN".
 - **Surface** — sidecar `GET /local`, `POST /local/scan`, `POST /local/endpoints`,
   `DELETE /local/endpoints/:id` (+ the four `agent_local*` Rust proxies);
-  custom endpoints persist in `~/.gg/gg-app.json` under `localEndpoints`
-  (`packages/ggcoder/src/core/local-endpoint-store.ts`).
-  `gg-app/src/LocalModelsModal.tsx` (from the login hub) is **read-only status**:
+  custom endpoints persist in `~/.ezcoder/ezcoder-app.json` under `localEndpoints`
+  (`packages/cli/src/core/local-endpoint-store.ts`).
+  `ezcoder-app/src/LocalModelsModal.tsx` (from the login hub) is **read-only status**:
   which servers are up, each model's context + capabilities in a row tooltip.
   **Selection happens only in the footer `ModelSelect`** — one selection surface
   in the app. That picker groups **every** provider under its own heading
