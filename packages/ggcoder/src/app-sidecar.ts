@@ -887,7 +887,7 @@ async function main(): Promise<void> {
   });
 
   type UsageResult =
-    | (SubscriptionUsageSnapshot & { connected: true; error?: never })
+    | (SubscriptionUsageSnapshot & { connected: true; error?: never; stale?: boolean })
     | {
         provider: SubscriptionUsageProvider;
         displayName: string;
@@ -895,12 +895,20 @@ async function main(): Promise<void> {
         windows: [];
         fetchedAt: number;
         error?: string;
+        stale?: boolean;
       };
   const usageCache = new Map<
     SubscriptionUsageProvider,
     { expiresAt: number; result: UsageResult }
   >();
   const usageRequests = new Map<SubscriptionUsageProvider, Promise<UsageResult>>();
+  // Last snapshot that actually carried windows, per provider. Replayed while a
+  // fetch is failing so the title meter never blinks out of existence. Bounded
+  // by USAGE_LAST_GOOD_MAX_AGE_MS — a provider that never recovers must stop
+  // reporting rather than freeze a percentage (and a long-past reset time) on
+  // screen forever. The 429 backoff alone runs to 24h, far past any usefulness.
+  const usageLastGood = new Map<SubscriptionUsageProvider, UsageResult>();
+  const USAGE_LAST_GOOD_MAX_AGE_MS = 30 * 60_000;
   // 429 backoff: quota endpoints are auxiliary UI data. Honor Retry-After when
   // provided; otherwise retain the unavailable snapshot for 30 minutes. Clamp
   // the provider value so a malformed header can neither hammer the endpoint
@@ -917,6 +925,9 @@ async function main(): Promise<void> {
     // Moonshot platform API key is metered per-token, not per plan window.
     const authKey = provider === "moonshot" ? MOONSHOT_OAUTH_KEY : provider;
     if (!(await auth.hasProviderAuth(authKey))) {
+      // Logged out: drop the replay cache so a later login on a DIFFERENT
+      // account can never inherit the previous one's numbers.
+      usageLastGood.delete(provider);
       return { provider, displayName, connected: false, windows: [], fetchedAt: Date.now() };
     }
     try {
@@ -965,6 +976,17 @@ async function main(): Promise<void> {
       });
 
       const connected = await auth.hasProviderAuth(authKey);
+      // Transient failures (notably the 429s these auxiliary quota endpoints
+      // hand out) must not blank the meter. Keep serving the last good
+      // snapshot, flagged `stale`, so the bar stays put instead of flickering
+      // out for the whole backoff window and back in on the next success.
+      // Past the max age it's dropped — no data beats confidently wrong data.
+      const lastGood = usageLastGood.get(provider);
+      if (lastGood && Date.now() - lastGood.fetchedAt >= USAGE_LAST_GOOD_MAX_AGE_MS) {
+        usageLastGood.delete(provider);
+      } else if (connected && lastGood) {
+        return { ...lastGood, stale: true };
+      }
       return {
         provider,
         displayName,
@@ -985,6 +1007,11 @@ async function main(): Promise<void> {
     usageRequests.set(provider, request);
     try {
       const result = await request;
+      // Never re-store a replay — it would keep its original `fetchedAt`, but
+      // writing it back muddies the "last GOOD" contract for no gain.
+      if (result.connected && !result.error && !result.stale && result.windows.length > 0) {
+        usageLastGood.set(provider, result);
+      }
       // Anthropic can return utilization before it assigns reset timestamps
       // (notably before the account's first active request). Retry that partial
       // snapshot quickly; complete snapshots keep the normal one-minute cache.

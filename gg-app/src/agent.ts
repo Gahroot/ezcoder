@@ -372,6 +372,9 @@ export interface SubscriptionUsageProviderSnapshot {
   windows: SubscriptionUsageWindow[];
   fetchedAt: number;
   error?: string;
+  /** True when the sidecar is replaying its last good snapshot because the
+   *  provider's quota endpoint is currently failing (usually a 429). */
+  stale?: boolean;
 }
 
 /** Fetch OAuth subscription quota. Tokens never leave the sidecar. */
