@@ -103,7 +103,7 @@ replace_in_tracked_text_files() {
   local files
   files=$(git ls-files -- \
     '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.mjs' '*.yaml' '*.yml' '*.toml' '*.sh' \
-    '*.html' '*.css' '*.lock' \
+    '*.html' '*.css' '*.lock' '.gitattributes' '.prettierignore' \
     '*.py' '*.rb' '*.rs' '*.swift' '*.go' '*.gemspec' 'go.mod' 'Cargo.toml' 'Cargo.lock' 'Package.swift' \
     ':!pnpm-lock.yaml' ':!node_modules' ':!dist' ':!scripts/sync-upstream.sh')
 
@@ -317,6 +317,10 @@ main() {
   rename_if_exists "packages/gg-pixel" "packages/pixel"
   rename_if_exists "packages/gg-voice" "packages/voice"
   rename_if_exists "gg-app" "ezcoder-app"
+
+  # Files copied into an existing renamed directory are untracked until staged.
+  # Stage now so the git-ls-files based branding passes include every new file.
+  git add -A
 
   info "Fixing npm scope and branding..."
   replace_in_tracked_text_files
