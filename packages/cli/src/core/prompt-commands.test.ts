@@ -11,32 +11,26 @@ describe("prompt commands", () => {
     expect(goal?.prompt).toContain("durable Goal state");
   });
 
-  it("hands setup/bullet-proof fixes off to the tasks tool, not a Goal", () => {
+  it("retires /setup while handing bullet-proof fixes to tasks, not a Goal", () => {
     const setup = PROMPT_COMMANDS.find((command) => command.name === "setup");
     const bulletProof = PROMPT_COMMANDS.find((command) => command.name === "bullet-proof");
 
-    expect(setup?.prompt).toContain("`tasks` tool");
-    expect(setup?.prompt).toContain("Press Ctrl+T to open the task list");
-    expect(setup?.prompt).not.toContain("Create a Goal");
-    expect(setup?.prompt).not.toContain("Press CTRL + G");
+    expect(setup).toBeUndefined();
     expect(bulletProof?.prompt).toContain("`tasks` tool");
     expect(bulletProof?.prompt).toContain("Press Ctrl+T to open the task list");
     expect(bulletProof?.prompt).not.toContain("Create a Goal");
     expect(bulletProof?.prompt).not.toContain("Press CTRL + G");
   });
 
-  it("points at the app's Tasks button / New Session instead of CLI keybinds when run under the app", async () => {
+  it("points at the app's Tasks button / New Session instead of CLI keybinds", async () => {
     const previous = process.env.GG_APP_PORT;
     process.env.GG_APP_PORT = "0";
     vi.resetModules();
     try {
       const { PROMPT_COMMANDS: appPromptCommands } = await import("./prompt-commands.js");
-      const setup = appPromptCommands.find((command) => command.name === "setup");
       const bulletProof = appPromptCommands.find((command) => command.name === "bullet-proof");
       const init = appPromptCommands.find((command) => command.name === "init");
 
-      expect(setup?.prompt).toContain('Click the "Tasks" button');
-      expect(setup?.prompt).not.toContain("Ctrl+T");
       expect(bulletProof?.prompt).toContain('Click the "Tasks" button');
       expect(bulletProof?.prompt).not.toContain("Ctrl+T");
       expect(init?.prompt).toContain("New Session");
@@ -193,7 +187,9 @@ describe("prompt commands", () => {
     );
     expect(init?.prompt).toContain("Do NOT embed generated symbol maps");
     expect(init?.prompt).toContain("auto-generated project inventories");
-    expect(init?.prompt).toContain("CLAUDE.md must remain durable, agent-focused project context");
+    expect(init?.prompt).toContain(
+      "context file must remain durable, agent-focused project context",
+    );
     expect(init?.prompt).not.toContain("human-authored");
     expect(init?.prompt).not.toContain("one file per component");
     expect(init?.prompt).not.toContain("single responsibility");

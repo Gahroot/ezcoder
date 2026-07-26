@@ -102,8 +102,8 @@ rename_file_if_exists() {
 replace_in_tracked_text_files() {
   local files
   files=$(git ls-files -- \
-    '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.mjs' '*.yaml' '*.yml' '*.toml' '*.sh' \
-    '*.html' '*.css' '*.lock' '.gitattributes' '.prettierignore' \
+    '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.jsx' '*.mjs' '*.yaml' '*.yml' '*.toml' '*.sh' \
+    '*.html' '*.css' '*.xml' '*.lock' '.debug' '.gitattributes' '.prettierignore' \
     '*.py' '*.rb' '*.rs' '*.swift' '*.go' '*.gemspec' 'go.mod' 'Cargo.toml' 'Cargo.lock' 'Package.swift' \
     ':!pnpm-lock.yaml' ':!node_modules' ':!dist' ':!scripts/sync-upstream.sh')
 
@@ -193,6 +193,7 @@ replace_in_tracked_text_files() {
       -e 's|ggboss|ezboss|g' \
       -e 's|ggeditor|ezeditor|g' \
       -e 's|gg-editor-premiere-panel|ez-editor-premiere-panel|g' \
+      -e 's|gg-editor|ez-editor|g' \
       -e 's|GG CODER|EZ CODER|g' \
       -e 's|gg_app_lib|ezcoder_app_lib|g' \
       -e 's|gg-app|ezcoder-app|g' \
@@ -201,6 +202,8 @@ replace_in_tracked_text_files() {
       -e 's|ggblink|ezblink|g' \
       -e 's|com\.ggcoder\.app|com.prestyj.ezcoder|g' \
       -e 's|com\.ezcoder\.app|com.prestyj.ezcoder|g' \
+      -e 's|com\.kenkaiiii\.gg-editor-premiere-panel|com.prestyj.ez-editor-premiere-panel|g' \
+      -e 's|com\.kenkaiiii\.ez-editor-premiere-panel|com.prestyj.ez-editor-premiere-panel|g' \
       -e 's|description = "A Tauri App"|description = "EZ Coder \xe2\x80\x94 the coding agent, on your desktop"|g' \
       -e 's|authors = \["you"\]|authors = ["Nolan Grout <nolan@prestyj.com>"]|g' \
       -e 's|https://skool.com/kenkai|https://prestyj.com|g' \

@@ -108,9 +108,9 @@ When a host is connected (host=resolve / host=premiere), you EDIT THE LIVE TIMEL
 | Color | \`apply_lut\` / \`set_primary_correction\` / \`copy_grade\` (Resolve) | (live API) |
 | Markers / decisions | \`add_marker\` | (live API) |
 
-**The few file-first tools that gg-editor cannot currently perform as full live timeline operations**: when you call them, you MUST \`import_to_media_pool\` the result + \`replace_clip\` the source clip on the timeline so the user sees it. Resolve exposes some Fairlight/AI APIs in newer versions, but coverage is version-, Studio-, page-, and project-state-sensitive; do not promise end-to-end automation until a named tool or \`host_eval\` proves the exact call works locally. The current unavoidable file-first ops:
+**The few file-first tools that EZ Editor cannot currently perform as full live timeline operations**: when you call them, you MUST \`import_to_media_pool\` the result + \`replace_clip\` the source clip on the timeline so the user sees it. Resolve exposes some Fairlight/AI APIs in newer versions, but coverage is version-, Studio-, page-, and project-state-sensitive; do not promise end-to-end automation until a named tool or \`host_eval\` proves the exact call works locally. The current unavoidable file-first ops:
 
-- \`normalize_loudness\`, \`mix_audio\`, \`clean_audio\`, \`duck_audio\`, \`bleep_words\` (gg-editor uses ffmpeg pipelines; Resolve Fairlight scripting is partial and not a complete mix bus replacement yet)
+- \`normalize_loudness\`, \`mix_audio\`, \`clean_audio\`, \`duck_audio\`, \`bleep_words\` (EZ Editor uses ffmpeg pipelines; Resolve Fairlight scripting is partial and not a complete mix bus replacement yet)
 - \`speed_ramp\` (no scriptable speed curves)
 - \`face_reframe\`, \`stabilize_video\` (use Resolve Smart Reframe only when host capabilities/tooling prove Studio support; otherwise file-first)
 - \`burn_subtitles\` (only when the user wants pixel-baked vertical captions — default to sidecar SRT instead)
@@ -154,7 +154,7 @@ cwd=${cwd}
 | Multi-track / lanes  | partial (insert_broll)  | partial (insert_broll)     | compose_layered → import_edl |
 | Keyframes (opacity / pos / scale / volume) | NO  | NO     | write_fcpxml with keyframes → import_edl |
 | Title cards / lower-thirds | partial (Fusion/title import; version-sensitive) | NO scriptable     | write_lower_third / write_title_card → burn_subtitles or FCPXML titles |
-| Audio EQ / comp / gate | partial in Resolve docs; gg-editor uses file-first mix pipeline today | NO (Fairlight closed)   | mix_audio |
+| Audio EQ / comp / gate | partial in Resolve docs; EZ Editor uses file-first mix pipeline today | NO (Fairlight closed)   | mix_audio |
 | Speed ramps          | NO (constant only)      | NO (constant only)        | speed_ramp |
 | Ken-Burns zoom on stills | NO              | NO                        | ken_burns |
 | Transitions (xfade)  | NO scriptable           | NO scriptable             | crossfade_videos / transition_videos |

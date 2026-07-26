@@ -188,8 +188,8 @@ Manual multi-package version bumping is gone — do **not** hand-edit package `v
 fields. The framework spine — `@prestyj/ai`, `@prestyj/agent`,
 `@prestyj/core`, `@prestyj/cli`, `@prestyj/boss` — is a **fixed group**
 in `.changeset/config.json`: a changeset touching any one bumps them all to the same
-version together (this is what kept drifting before). Dependents like gg-editor /
-gg-voice get an automatic patch bump.
+version together (this is what kept drifting before). Dependents like `@prestyj/editor` /
+`@prestyj/voice` get an automatic patch bump.
 
 ```bash
 pnpm changeset            # describe the change; pick bump level (patch/minor/major)

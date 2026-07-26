@@ -7,7 +7,7 @@
  * wraps `{ ok: true, result }` and serialises errors via try/catch.
  *
  * Wire shapes intentionally mirror the CEP panel's JSX runtime so the
- * gg-editor adapter doesn't need to branch on transport.
+ * EZ Editor adapter doesn't need to branch on transport.
  */
 
 const ppro = require("premierepro");

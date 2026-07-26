@@ -1,5 +1,5 @@
 /**
- * JSX runtime for the gg-editor Premiere panel.
+ * JSX runtime for the EZ Editor Premiere panel.
  *
  * Exposes `gg_<method>(jsonString)` global functions. The Node-side panel
  * server calls these via CSInterface.evalScript and parses the JSON result.
@@ -14,7 +14,7 @@
  * Methods mirror the macOS bridge:
  *   ping, get_timeline, add_marker, append_clip, import_timeline
  *
- * Unsupported via live API (use write_edl + import_timeline on the gg-editor side):
+ * Unsupported via live API (use write_edl + import_timeline on the EZ Editor side):
  *   cut_at, ripple_delete, render
  */
 

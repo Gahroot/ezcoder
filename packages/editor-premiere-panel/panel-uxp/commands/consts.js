@@ -25,7 +25,7 @@ const TRACK_TYPE = {
 
 /**
  * Premiere's marker color palette is an 8-entry index. These are the names
- * the gg-editor adapter uses (see `../core/marker-colors.ts` on that side);
+ * the EZ Editor adapter uses (see `../core/marker-colors.ts` on that side);
  * we map them through Premiere's `Marker.MARKER_COLOR_*` enum if available
  * at runtime, falling back to the documented numeric ordering.
  */

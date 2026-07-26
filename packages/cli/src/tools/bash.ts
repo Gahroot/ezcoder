@@ -107,9 +107,7 @@ export function createBashTool(
       : shellOptsOrNetworkPolicy
     : goalModeRefOrShellOpts;
   const getNetworkPolicy =
-    typeof shellOptsOrNetworkPolicy === "function"
-      ? shellOptsOrNetworkPolicy
-      : getNetworkPolicyArg;
+    typeof shellOptsOrNetworkPolicy === "function" ? shellOptsOrNetworkPolicy : getNetworkPolicyArg;
   // Lazily created on the first persist:true call; one session per tool
   // instance (i.e. per agent session), killed when the process exits.
   let sessionShell: PersistentShell | null = null;

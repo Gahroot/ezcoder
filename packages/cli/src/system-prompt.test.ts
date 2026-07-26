@@ -380,9 +380,9 @@ describe("buildSystemPrompt", () => {
     console.info(`system prompt size measurements: ${JSON.stringify(measurements)}`);
 
     // Ceilings include the fork's longer branding and Goal guidance plus the
-    // upstream shell, context-precedence, and skill-routing instructions.
-    expect(measurements.normal.characters).toBeLessThan(5_400);
-    expect(measurements.planMode.characters).toBeLessThan(6_600);
+    // upstream shell, network-policy, context-precedence, and skill-routing instructions.
+    expect(measurements.normal.characters).toBeLessThan(5_500);
+    expect(measurements.planMode.characters).toBeLessThan(6_700);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(9_800);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(

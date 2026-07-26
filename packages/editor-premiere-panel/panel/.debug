@@ -7,7 +7,7 @@
   ignored in production / signed bundles.
 -->
 <ExtensionList>
-  <Extension Id="com.kenkaiiii.gg-editor-premiere-panel">
+  <Extension Id="com.prestyj.ez-editor-premiere-panel">
     <HostList>
       <Host Name="PPRO" Port="8088" />
     </HostList>

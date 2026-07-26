@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <!--
-  CSXS manifest for the gg-editor Premiere panel.
+  CSXS manifest for the ez-editor Premiere panel.
 
   Hosts:  PPRO (Adobe Premiere Pro), versions 14.0 → 99.9
   Node:   --enable-nodejs is required so the panel can run an HTTP server.
@@ -8,12 +8,12 @@
 
   v0 targets PPRO only. Add AEFT later if we want After Effects support.
 -->
-<ExtensionManifest Version="11.0" ExtensionBundleId="com.kenkaiiii.gg-editor-premiere-panel"
+<ExtensionManifest Version="11.0" ExtensionBundleId="com.prestyj.ez-editor-premiere-panel"
                    ExtensionBundleVersion="0.1.0"
-                   ExtensionBundleName="GG Editor Premiere Panel"
+                   ExtensionBundleName="EZ Editor Premiere Panel"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
-    <Extension Id="com.kenkaiiii.gg-editor-premiere-panel" Version="0.1.0" />
+    <Extension Id="com.prestyj.ez-editor-premiere-panel" Version="0.1.0" />
   </ExtensionList>
 
   <ExecutionEnvironment>
@@ -29,7 +29,7 @@
   </ExecutionEnvironment>
 
   <DispatchInfoList>
-    <Extension Id="com.kenkaiiii.gg-editor-premiere-panel">
+    <Extension Id="com.prestyj.ez-editor-premiere-panel">
       <DispatchInfo>
         <Resources>
           <MainPath>./index.html</MainPath>
@@ -47,7 +47,7 @@
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>GG Editor</Menu>
+          <Menu>EZ Editor</Menu>
           <Geometry>
             <Size><Height>240</Height><Width>320</Width></Size>
             <MinSize><Height>180</Height><Width>240</Width></MinSize>

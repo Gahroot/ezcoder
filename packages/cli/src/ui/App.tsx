@@ -3263,7 +3263,6 @@ export function App(props: AppProps) {
     cwdRef,
     currentToolsRef,
     injectedLanguagesRef,
-    setupHintShownRef,
     messagesRef,
     persistedIndexRef,
     sessionManagerRef,

@@ -344,7 +344,7 @@
 - 9e381ad: Extract `@prestyj/core` — a provider-agnostic, UI-free shared foundation
   that owns the model registry, thinking levels, app paths, OAuth + auth storage,
   the file-writer logger core, telegram + voice transcription, and the
-  self-updater. ezcoder, gg-boss, and gg-editor now inherit a single source of
+  self-updater. ezcoder, gg-boss, and ez-editor now inherit a single source of
   truth for provider-coupled code instead of maintaining duplicates.
 
   Move provider-error classification into `@prestyj/ai` as

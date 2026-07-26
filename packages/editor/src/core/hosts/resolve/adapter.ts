@@ -36,7 +36,7 @@ import { findPython, ResolveBridge, resolveEnv } from "./bridge.js";
  * Capability map (verified against Resolve 20 API docs):
  *   - canMoveClips: false (API only supports append-to-end)
  *   - canScriptColor: true (nodes, LUTs, CDLs, primary corrections)
- *   - canScriptAudio: false at gg-editor's tool level (Resolve exposes some
+ *   - canScriptAudio: false at EZ Editor's tool level (Resolve exposes some
  *     Fairlight APIs, but not the full mix/EQ/ducking pipeline we need yet)
  *   - canTriggerAI: partial / Studio-sensitive (Smart Reframe and similar calls
  *     may require Studio and runtime confirmation)

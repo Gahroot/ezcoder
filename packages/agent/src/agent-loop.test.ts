@@ -1101,7 +1101,7 @@ describe("agentLoop", () => {
     );
 
     // Two streaming attempts time out after 45s; the remaining attempts use
-    // the 5-minute non-streaming cap. Drive every timeout and retry backoff.
+    // the 5-minute non-streaming cap. Drive all ten retries and their backoffs.
     for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(310_000);
     const { events } = await loopPromise;
     vi.useRealTimers();
@@ -1112,7 +1112,7 @@ describe("agentLoop", () => {
     expect(terminal.error).toBeInstanceOf(EZCoderAIError);
     expect((terminal.error as EZCoderAIError).source).toBe("network");
     expect((terminal.error as EZCoderAIError).hint).toContain("VPN or proxy");
-    expect(terminal.error.message).toContain("after 5 automatic retries");
+    expect(terminal.error.message).toContain("after 10 automatic retries");
   }, 30_000);
 
   it("automatically replays a turn after a runaway tool-call stream", async () => {

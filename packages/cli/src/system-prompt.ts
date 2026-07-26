@@ -356,8 +356,7 @@ export async function buildSystemPrompt(
   goalModeOrEnvironment: GoalMode | SystemPromptEnvironment = "off",
   environmentArg?: SystemPromptEnvironment,
 ): Promise<string> {
-  const goalMode =
-    typeof goalModeOrEnvironment === "string" ? goalModeOrEnvironment : "off";
+  const goalMode = typeof goalModeOrEnvironment === "string" ? goalModeOrEnvironment : "off";
   const environment =
     typeof goalModeOrEnvironment === "string" ? environmentArg : goalModeOrEnvironment;
   const hasKencode = hasKencodeSearch(toolNames ?? DEFAULT_TOOL_NAMES);

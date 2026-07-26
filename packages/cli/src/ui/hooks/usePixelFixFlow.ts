@@ -37,7 +37,6 @@ interface UsePixelFixFlowOptions {
   cwdRef: MutableRefObject<string>;
   currentToolsRef: MutableRefObject<AgentTool[]>;
   injectedLanguagesRef: MutableRefObject<Set<LanguageId>>;
-  setupHintShownRef: MutableRefObject<boolean>;
   messagesRef: MutableRefObject<Message[]>;
   persistedIndexRef: MutableRefObject<number>;
   sessionManagerRef: MutableRefObject<SessionManager | null>;
@@ -80,7 +79,6 @@ export function usePixelFixFlow({
   cwdRef,
   currentToolsRef,
   injectedLanguagesRef,
-  setupHintShownRef,
   messagesRef,
   persistedIndexRef,
   sessionManagerRef,
@@ -128,11 +126,8 @@ export function usePixelFixFlow({
             setCurrentTools(toolsForPixelFix);
           }
           // Pixel-fix swaps the project root — reset injected packs so the
-          // new project re-detects from scratch on the next tool call. Also
-          // reset the setup-hint flag so the new project's first badge re-
-          // surfaces the tip (different project, may need the reminder).
+          // new project re-detects from scratch on the next tool call.
           injectedLanguagesRef.current = new Set();
-          setupHintShownRef.current = false;
           const detectedForPixelFix = detectLanguages(prep.projectPath);
           injectedLanguagesRef.current = detectedForPixelFix;
           const newSystemPrompt = await rebuildSystemPrompt({
