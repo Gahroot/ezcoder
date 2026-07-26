@@ -27,25 +27,34 @@ machine.
 
 Signed and notarized on macOS. It updates itself, so you install it once and forget about it.
 
+## Four projects. Four agents. One screen.
+
+This is the whole point. Open GG Coder on your side project in one window, your client's
+Next.js app in another, a Rust thing in a third, a landing page in a fourth. Each window
+runs its **own** agent, its own folder, its own model, its own history. Nothing bleeds
+between them. Tile them 2-up or 4-up and let all four go at once.
+
+<p align="center">
+  <img src="docs/screenshots/00-four-windows.png" alt="Four GG Coder windows tiled 2x2, each on a different project running a different model" width="980">
+</p>
+
+Four different projects, four different models (Claude, Codex, a local qwen3-coder, Gemini),
+four agents working at the same time. Try that in a terminal tab.
+
 <p align="center">
   <img src="docs/screenshots/01-home.png" alt="GG Coder home screen" width="900">
 </p>
 
-## Why it's different
+## Everything else it does
 
-### One window per project
+### It finds the projects you're already working on
 
-Open GG Coder on your side project in one window, your client's Next.js app in another, a
-Rust thing in a third. Each window runs its own agent, its own folder, its own model, its
-own history. Nothing bleeds between them. Tile them 2-up or 4-up and watch three agents
-work at the same time.
+Not just GG Coder ones. It digs up everything you've touched in **Claude Code and Codex**
+too. Pick one, keep going.
 
 <p align="center">
-  <img src="docs/screenshots/03-projects.png" alt="Project picker listing discovered projects" width="900">
+  <img src="docs/screenshots/04-projects.png" alt="Project picker listing discovered projects" width="900">
 </p>
-
-It also digs up projects you've already worked on in **Claude Code and Codex**, not just
-GG Coder. Pick one, keep going.
 
 ### You can actually see what it's doing
 
@@ -65,7 +74,7 @@ OpenRouter. OAuth or API key, your call. Swap models mid-conversation, nobody's 
 you.
 
 <p align="center">
-  <img src="docs/screenshots/04-providers.png" alt="Provider login hub with OAuth and API-key options" width="900">
+  <img src="docs/screenshots/05-providers.png" alt="Provider login hub with OAuth and API-key options" width="900">
 </p>
 
 ### Including the ones running on your own machine
@@ -76,19 +85,28 @@ model that can't call tools gets flagged right here instead of blowing up on you
 prompt.
 
 <p align="center">
-  <img src="docs/screenshots/05-local-models.png" alt="Local model discovery showing a running Ollama server and its models" width="900">
+  <img src="docs/screenshots/06-local-models.png" alt="Local model discovery showing a running Ollama server and its models" width="900">
 </p>
+
+### Autopilot, the one nobody knows about
+
+Flip Autopilot on and Ken (a mentor agent) reviews every finished run. If the work's not
+good enough he sends GG Coder straight back in with specific feedback, and it keeps going
+until he signs off. You go make coffee.
+
+<p align="center">
+  <img src="docs/screenshots/03-autopilot.png" alt="Autopilot loop: GG Coder ships a change, Ken bounces it with feedback, GG Coder fixes it, Ken signs off" width="900">
+</p>
+
+Real loop above: it built a rate limiter, Ken caught that the bucket was per-process and
+sent it back, it moved the thing into Redis and added a test, Ken signed off. Nobody
+typed anything in between.
 
 ### It can see
 
 Drag in a screenshot. Paste a design. Throw a video at it. Video goes straight to the
 models that handle it (Gemini 3.x, Kimi K3, MiniMax M3, MiMo-V2.5). For the ones that
 don't, the agent gets the file and reaches for ffmpeg itself.
-
-### Autopilot and Ken
-
-Flip Autopilot on and Ken (a mentor agent) reviews the work after each run, then pushes it
-back for another pass. A second opinion on your code without having to ask for one.
 
 ### Plan mode
 

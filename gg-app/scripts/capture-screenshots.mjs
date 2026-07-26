@@ -14,12 +14,14 @@
  * Output: docs/screenshots/*.png (referenced by the root README).
  */
 import { chromium } from "playwright";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(here, "../../docs/screenshots");
+// Individual quadrants for the 4-up composite. Intermediate, not committed.
+const tileDir = resolve(outDir, ".tiles");
 const url = process.env.GG_SHOT_URL ?? "http://localhost:1420";
 const viewport = { width: 1440, height: 900 };
 
@@ -350,6 +352,87 @@ async function playDemoConversation(page) {
   await page.waitForTimeout(400);
 }
 
+/**
+ * Autopilot: Ken silently reviews each finished turn and, when he isn't happy,
+ * sends GG Coder back in for another pass. Replayed here as a full loop — build,
+ * Ken bounces it, rebuild, Ken signs off — which is the whole point of the
+ * feature and impossible to show in a static UI shot.
+ */
+async function playAutopilotLoop(page) {
+  const emit = (type, data) => page.evaluate(([t, d]) => window.__ggEmit(t, d), [type, data ?? {}]);
+  const stream = async (chunks) => {
+    for (const chunk of chunks) {
+      await emit("text_delta", { text: chunk });
+      await page.waitForTimeout(80);
+    }
+  };
+  const runTools = async (tools) => {
+    for (const [id, name, args, result] of tools) {
+      await emit("tool_call_start", { toolCallId: id, name, args });
+      await page.waitForTimeout(140);
+      await emit("tool_call_end", { toolCallId: id, result, isError: false });
+      await page.waitForTimeout(80);
+    }
+  };
+  const turn = async () => {
+    await emit("turn_end", {
+      usage: { inputTokens: 21400, outputTokens: 820, cacheRead: 44100, cacheWrite: 1800 },
+    });
+    await emit("agent_done", {});
+    await emit("run_end", {});
+    await page.waitForTimeout(300);
+  };
+
+  await page.fill("textarea", "Add rate limiting to the public API");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(250);
+
+  // Round 1: GG Coder builds it.
+  await emit("run_start", {});
+  await emit("thinking_delta", { text: "…" });
+  await runTools([
+    ["a1", "write", { file_path: "src/middleware/rate-limit.ts" }, "wrote 48 lines"],
+    ["a2", "edit", { file_path: "src/app.ts" }, "1 edit applied"],
+  ]);
+  await stream([
+    "Added a token-bucket limiter in `src/middleware/rate-limit.ts` and mounted ",
+    "it on the public router. 100 req/min per IP.",
+  ]);
+  await turn();
+
+  // Ken reviews it and isn't happy.
+  await emit("autopilot_review_start", {});
+  await page.waitForTimeout(900);
+  await emit("autopilot_prompted", {
+    body: "The bucket lives in module scope, so every worker process gets its own \ncounter and the real limit ends up 4x what you configured. Move it behind \nthe shared Redis client and add a test that proves two instances share state.",
+  });
+  await page.waitForTimeout(500);
+
+  // Round 2: GG Coder fixes what Ken flagged.
+  await emit("run_start", {});
+  await emit("thinking_delta", { text: "…" });
+  await runTools([
+    ["a3", "edit", { file_path: "src/middleware/rate-limit.ts" }, "1 edit applied"],
+    ["a4", "write", { file_path: "src/middleware/rate-limit.test.ts" }, "wrote 41 lines"],
+    ["a5", "bash", { command: "pnpm vitest run src/middleware" }, "6 passed (6)"],
+  ]);
+  await stream(["Good catch. Moved the bucket into Redis so it's shared across workers."]);
+  await turn();
+
+  // Ken signs off.
+  await emit("autopilot_review_start", {});
+  await page.waitForTimeout(800);
+  await emit("autopilot_done", { copySeed: "clean" });
+  await page.waitForTimeout(600);
+}
+
+/** Open a project and land in a fresh session. Shared by every in-app shot. */
+const INTO_SESSION = [
+  { click: "text=Code" },
+  { click: ".picker-item" },
+  { click: "text=+ New session" },
+];
+
 // Noteworthy screens only — the ones that actually sell the app. Not a tour.
 const shots = [
   {
@@ -359,23 +442,33 @@ const shots = [
   {
     name: "02-chat",
     viewport: { width: 1440, height: 800 },
-    actions: [{ click: "text=Code" }, { click: ".picker-item" }, { click: "text=+ New session" }],
+    actions: INTO_SESSION,
     settle: 1200,
     play: playDemoConversation,
   },
   {
-    name: "03-projects",
+    name: "03-autopilot",
+    viewport: { width: 1440, height: 620 },
+    // The switch is a controlled input driven by the sidecar's state, so flip it
+    // in the demo data rather than clicking a visually-hidden checkbox.
+    responses: { agent_state: { ...state, autopilot: true } },
+    actions: INTO_SESSION,
+    settle: 1000,
+    play: playAutopilotLoop,
+  },
+  {
+    name: "04-projects",
     actions: [{ click: "text=Code" }],
     settle: 1400,
   },
   {
-    name: "04-providers",
+    name: "05-providers",
     viewport: { width: 1440, height: 1180 },
     actions: [{ click: "text=Login to AI Providers" }],
     settle: 900,
   },
   {
-    name: "05-local-models",
+    name: "06-local-models",
     actions: [{ click: "text=Login to AI Providers" }, { click: "text=Local models" }],
     settle: 1200,
   },
@@ -383,16 +476,219 @@ const shots = [
   // popup, which is an OS-level window Chromium cannot capture.
 ];
 
+// ── The 4-up money shot ─────────────────────────────────────────────────
+// Four windows, four different projects, four agents working at once. Each
+// quadrant is captured as its own browser context (mirroring the real per-window
+// sidecar isolation) and then composed into one image.
+// Deliberately short: at README width each quadrant is only ~450px wide, so a
+// tall window would render as mostly empty transcript with unreadable text.
+const QUAD_VIEWPORT = { width: 1100, height: 560 };
+
+/** Per-quadrant overrides: a different project, model and run in each window. */
+const quadrants = [
+  {
+    id: "q1",
+    cwd: "/Users/demo/projects/aurora-store",
+    project: "aurora-store",
+    branch: "checkout-retry",
+    model: "claude-sonnet-4-6",
+    modelLabel: "Claude Sonnet 4.6",
+    provider: "anthropic",
+    prompt: "Add a retry with idempotency keys to checkout",
+    tools: [
+      ["write", { file_path: "src/lib/idempotency.ts" }, "wrote 62 lines"],
+      ["edit", { file_path: "src/routes/checkout.ts" }, "1 edit applied"],
+      ["bash", { command: "pnpm vitest run src/routes" }, null],
+    ],
+    text: ["Wired the idempotency key through the checkout route. Running the tests"],
+  },
+  {
+    id: "q2",
+    cwd: "/Users/demo/projects/pixel-pipeline",
+    project: "pixel-pipeline",
+    branch: "sharp-migration",
+    model: "gpt-5-codex",
+    modelLabel: "GPT-5 Codex",
+    provider: "openai",
+    prompt: "Port the image resizer from jimp to sharp",
+    tools: [
+      ["grep", { pattern: "jimp", include: "*.ts" }, "9 matches in 4 files"],
+      ["edit", { file_path: "src/resize.ts" }, "1 edit applied"],
+      ["bash", { command: "pnpm bench resize" }, null],
+    ],
+    text: ["Swapped jimp for sharp in the resize path. Benchmarking both"],
+  },
+  {
+    id: "q3",
+    cwd: "/Users/demo/projects/rusty-parser",
+    project: "rusty-parser",
+    branch: "main",
+    model: "local/ollama/qwen3-coder:30b",
+    modelLabel: "qwen3-coder:30b",
+    provider: "local",
+    prompt: "Why does the tokenizer choke on nested comments?",
+    tools: [
+      ["read", { file_path: "src/lexer.rs" }, "read 240 lines"],
+      ["bash", { command: "cargo test lexer" }, "1 failed, 18 passed"],
+    ],
+    text: [
+      "`/* */` handling never tracks depth, so the first `*/` closes every ",
+      "nesting level. Needs a counter instead of a boolean",
+    ],
+  },
+  {
+    id: "q4",
+    cwd: "/Users/demo/projects/landing-page",
+    project: "landing-page",
+    branch: "pricing-table",
+    model: "gemini-3-pro",
+    modelLabel: "Gemini 3 Pro",
+    provider: "gemini",
+    prompt: "Make the pricing table work on mobile",
+    tools: [
+      ["read", { file_path: "src/components/Pricing.tsx" }, "read 118 lines"],
+      ["edit", { file_path: "src/components/Pricing.tsx" }, "1 edit applied"],
+      ["bash", { command: "pnpm playwright test pricing" }, null],
+    ],
+    text: ["Collapsed the table into stacked cards under 640px. Checking the snapshots"],
+  },
+];
+
+/** Drive one quadrant to a mid-run state so all four look alive at once. */
+async function playQuadrant(page, quad) {
+  const emit = (type, data) => page.evaluate(([t, d]) => window.__ggEmit(t, d), [type, data ?? {}]);
+  await page.fill("textarea", quad.prompt);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  await emit("run_start", {});
+  await emit("thinking_delta", { text: "…" });
+  for (const [index, [name, args, result]] of quad.tools.entries()) {
+    const id = `${quad.id}-t${index}`;
+    await emit("tool_call_start", { toolCallId: id, name, args });
+    await page.waitForTimeout(130);
+    // A null result leaves the last tool spinning, so the window reads as busy.
+    if (result !== null) {
+      await emit("tool_call_end", { toolCallId: id, result, isError: false });
+      await page.waitForTimeout(80);
+    }
+  }
+  for (const chunk of quad.text) {
+    await emit("text_delta", { text: chunk });
+    await page.waitForTimeout(80);
+  }
+  await page.waitForTimeout(300);
+}
+
+/**
+ * Compose the four captured quadrants into a single 2x2 image. The compositing
+ * is done in the browser (an HTML page of four <img> tags, screenshotted) so the
+ * script keeps its single dependency instead of pulling in an image library.
+ */
+async function captureWindowGrid(browser) {
+  await mkdir(tileDir, { recursive: true });
+  const tiles = [];
+  for (const quad of quadrants) {
+    const context = await browser.newContext({
+      viewport: QUAD_VIEWPORT,
+      deviceScaleFactor: 2,
+    });
+    // Each window gets its OWN project, model and git state, exactly what the
+    // real per-window sidecars give you.
+    const quadResponses = {
+      ...responses,
+      agent_state: {
+        ...state,
+        cwd: quad.cwd,
+        provider: quad.provider,
+        model: quad.model,
+        gitBranch: quad.branch,
+        kenProvider: quad.provider,
+        kenModel: quad.model,
+      },
+      agent_models: {
+        models: [
+          ...models,
+          { id: quad.model, name: quad.modelLabel, provider: quad.provider, contextWindow: 200000 },
+        ],
+      },
+      agent_sessions: { sessions: [] },
+      agent_projects: {
+        projects: [
+          { name: quad.project, path: quad.cwd, lastActiveDisplay: "now", sources: ["gg-coder"] },
+        ],
+      },
+    };
+    await context.addInitScript(initScript, { responses: quadResponses, appVersion: "0.29.0" });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(1500);
+    for (const action of INTO_SESSION) {
+      await page.click(action.click, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(500);
+    }
+    await playQuadrant(page, quad);
+    const tile = resolve(tileDir, `${quad.id}.png`);
+    await page.screenshot({ path: tile });
+    tiles.push(tile);
+    await context.close();
+  }
+
+  const gap = 14;
+  const composer = await browser.newContext({
+    viewport: {
+      width: QUAD_VIEWPORT.width * 2 + gap * 3,
+      height: QUAD_VIEWPORT.height * 2 + gap * 3,
+    },
+    deviceScaleFactor: 1,
+  });
+  const page = await composer.newPage();
+  // Inlined as data URLs: a `file://` <img> is blocked from the about:blank
+  // origin `setContent` runs on, which silently yields four broken images.
+  const sources = await Promise.all(
+    tiles.map(async (t) => `data:image/png;base64,${(await readFile(t)).toString("base64")}`),
+  );
+  await page.setContent(`<!doctype html>
+<style>
+  html, body { margin: 0; background: #0b0c0f; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, ${QUAD_VIEWPORT.width}px);
+    gap: ${gap}px;
+    padding: ${gap}px;
+  }
+  img {
+    width: ${QUAD_VIEWPORT.width}px;
+    height: ${QUAD_VIEWPORT.height}px;
+    display: block;
+    border-radius: 10px;
+  }
+</style>
+<div class="grid">
+  ${sources.map((src) => `<img src="${src}">`).join("\n  ")}
+</div>`);
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(600);
+  const file = resolve(outDir, "00-four-windows.png");
+  await page.screenshot({ path: file });
+  await composer.close();
+  await rm(tileDir, { recursive: true, force: true });
+  console.log("✓ 00-four-windows");
+  return file;
+}
+
 async function main() {
   await mkdir(outDir, { recursive: true });
   const browser = await chromium.launch();
-  const results = [];
+  const results = [await captureWindowGrid(browser)];
   for (const shot of shots) {
     const context = await browser.newContext({
       viewport: shot.viewport ?? viewport,
       deviceScaleFactor: 2,
     });
-    await context.addInitScript(initScript, { responses, appVersion: "0.29.0" });
+    await context.addInitScript(initScript, {
+      responses: { ...responses, ...shot.responses },
+      appVersion: "0.29.0",
+    });
     const page = await context.newPage();
     page.on("console", (m) => {
       if (m.type() === "error") console.log(`  [console] ${m.text().slice(0, 160)}`);

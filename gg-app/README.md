@@ -69,6 +69,15 @@ every screen renders from the fake demo data at the top of that script. No real 
 project paths, chat content, tokens or account names can end up in a committed image. Keep
 it that way when you add a shot, and only grab screens worth showing, not a full tour.
 
+`00-four-windows.png` (the 2x2 hero) is built from four separate browser contexts, one per
+quadrant, each with its own project, model and git state. They're composed into one image
+by a throwaway page of four `<img>` tags so the script keeps its single dependency. The
+tiles get inlined as data URLs, since a `file://` image is blocked on the `about:blank`
+origin `setContent` runs on.
+
+Runs that need a live UI state the mock can't click into (Autopilot's toggle is a
+controlled input) set `responses: { agent_state: … }` on the shot instead.
+
 The footer model picker is missing on purpose. On macOS it's a native `<select>` popup,
 which is an OS-level window Chromium can't capture.
 
