@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.25.0
+
+### Minor Changes
+
+- Add local model support (Ollama, LM Studio, llama.cpp, vLLM) with runtime discovery, capability-gated tool/thinking support, and per-endpoint auth; add `/remove-dir` workspace command; keep the subscription usage meter from blanking on transient provider rate limits.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.25.0
+- @kenkaiiii/gg-agent@5.25.0
+- @kenkaiiii/gg-core@5.25.0
+
 ## 5.24.0
 
 ### Minor Changes
