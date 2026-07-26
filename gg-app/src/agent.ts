@@ -167,6 +167,8 @@ export interface AgentState {
   gitHubPRs?: number | null;
   /** Web URL of the project's GitHub origin repo (title-bar chip links). */
   gitHubRepoUrl?: string | null;
+  /** Extra workspace roots added with /add-dir. Absent on older sidecars. */
+  additionalRoots?: string[];
   /** True when the active model can accept native video input. */
   supportsVideo?: boolean;
   /** Autopilot (auto-review) toggle for this window's project. Per-window,

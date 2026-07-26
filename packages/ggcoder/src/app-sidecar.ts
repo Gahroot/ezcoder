@@ -1630,6 +1630,7 @@ async function createSession(
     gitHubPRs: number | null;
     gitHubRepoUrl: string | null;
     tasks: ReturnType<typeof session.listBackgroundProcesses>;
+    additionalRoots: string[];
   } {
     return {
       contextWindow: currentContextWindow(),
@@ -1640,6 +1641,8 @@ async function createSession(
       gitHubPRs,
       gitHubRepoUrl: gitHubSlug ? `https://github.com/${gitHubSlug}` : null,
       tasks: session.listBackgroundProcesses(),
+      // Roots added with /add-dir — the header shows a badge when non-empty.
+      additionalRoots: session.getAdditionalRoots(),
     };
   }
 

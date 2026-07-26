@@ -4,13 +4,13 @@ A modular TypeScript framework for building LLM-powered apps — from raw stream
 
 ## npm Packages
 
-| Package | npm Name | Description |
-|---|---|---|
-| `packages/gg-ai` | `@kenkaiiii/gg-ai` | Unified LLM streaming API |
-| `packages/gg-agent` | `@kenkaiiii/gg-agent` | Agent loop with tool execution |
-| `packages/gg-core` | `@kenkaiiii/gg-core` | Provider-agnostic, UI-free shared foundation: model registry, thinking levels, app paths, OAuth + auth storage, file-writer logger core, telegram + voice transcription, self-updater |
-| `packages/ggcoder` | `@kenkaiiii/ggcoder` | CLI coding agent + `app-sidecar` (the gg-app backend) |
-| `gg-app` | (private — Tauri desktop app) | **The desktop app — primary product we ship to users** |
+| Package             | npm Name                      | Description                                                                                                                                                                           |
+| ------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/gg-ai`    | `@kenkaiiii/gg-ai`            | Unified LLM streaming API                                                                                                                                                             |
+| `packages/gg-agent` | `@kenkaiiii/gg-agent`         | Agent loop with tool execution                                                                                                                                                        |
+| `packages/gg-core`  | `@kenkaiiii/gg-core`          | Provider-agnostic, UI-free shared foundation: model registry, thinking levels, app paths, OAuth + auth storage, file-writer logger core, telegram + voice transcription, self-updater |
+| `packages/ggcoder`  | `@kenkaiiii/ggcoder`          | CLI coding agent + `app-sidecar` (the gg-app backend)                                                                                                                                 |
+| `gg-app`            | (private — Tauri desktop app) | **The desktop app — primary product we ship to users**                                                                                                                                |
 
 **Install CLI**: `npm i -g @kenkaiiii/ggcoder` · **Desktop app**: `cd gg-app && pnpm tauri dev`
 
@@ -97,7 +97,7 @@ resets).
   catch site that used to hand-roll `{ message: err.message }` (the session/Ken event-bus `error`
   handlers, `runAgent`'s catch, Ken's turn runner). It calls `formatError`, logs the full
   structured detail to `gg-app-sidecar.log`, and broadcasts `{ headline, message?, guidance,
-  provider?, statusCode?, resetsAt? }` under the `"error"` / `"ken_error"` SSE type. Add new
+provider?, statusCode?, resetsAt? }` under the `"error"` / `"ken_error"` SSE type. Add new
   error catch sites through this helper — never broadcast a bare message again.
 - **Webview**: the `Item` union's `error` variant carries `headline` / `message` / `guidance`
   (a legacy `text` fallback remains for any older flat-string frame). `useAgentEvents.ts` and
@@ -180,7 +180,7 @@ gg-ai → gg-agent → gg-core → { ggcoder, gg-boss, gg-editor, gg-voice }
 
 Anything coupled to provider behavior — model registry, context windows, thinking
 levels, app paths, auth/OAuth — has exactly **one home in gg-core**. Raw provider
-error *wording* lives in **gg-ai** (`classifyProviderError`, `isHardBillingMessage`).
+error _wording_ lives in **gg-ai** (`classifyProviderError`, `isHardBillingMessage`).
 Fix a model entry or an error string once and ggcoder, gg-boss, gg-editor, and
 gg-voice all inherit it on their next build. Do not re-add per-app copies; import
 from `@kenkaiiii/gg-core` (or `@kenkaiiii/gg-ai`) instead.
@@ -224,7 +224,7 @@ over running the steps by hand.
 
 Non-obvious invariants (full runbook lives in `.gg/commands/release.md`):
 
-- **Never hand-edit versions.** The npm spine is a *fixed group* in
+- **Never hand-edit versions.** The npm spine is a _fixed group_ in
   `.changeset/config.json` (one changeset bumps all of them together); the desktop
   version lives in four files kept in lockstep by `pnpm --filter gg-app bump`.
 - **Commit the version bump before `pnpm changeset publish`** — publish tags `HEAD`,
@@ -244,7 +244,6 @@ Non-obvious invariants (full runbook lives in `.gg/commands/release.md`):
 - Provider error classification → `@kenkaiiii/gg-ai` (`classifyProviderError` in `error-classification.ts`).
 - Tests → co-located with source files
 
-
 ## Key Patterns
 
 - **StreamResult/AgentStream**: dual-nature objects — async iterable (`for await`) + thenable (`await`)
@@ -258,7 +257,7 @@ Non-obvious invariants (full runbook lives in `.gg/commands/release.md`):
     sidecar process appends here (not truncated per-window), tagged with its own `sid=`. Same format:
     timestamped, category-tagged (`[app-sidecar]`, `[tool]`, `[cache]`, `[compaction]`, `[subagent]`,
     `[lsp]`, `[mcp]`, `[auth]`, …). Agent/provider errors land as `[ERROR] [app-sidecar] run failed
-    message=…` or `[ERROR] [app-sidecar] agent error message=…`. Both files share the core file-writer
+message=…` or `[ERROR] [app-sidecar] agent error message=…`. Both files share the core file-writer
     logger (`openLog`/`log` in `@kenkaiiii/gg-core`, rotated at 10MB to a single `.1` generation);
     ggcoder's thin wrapper is `src/core/logger.ts` (`initLogger`, `attachToEventBus`). The sidecar wires
     its own bus listeners directly in `app-sidecar.ts` instead of calling `attachToEventBus`.
@@ -330,14 +329,14 @@ ggcoder mcp add --env AIRTABLE_API_KEY=key airtable -- npx -y airtable-mcp-serve
 
 ## Slash Commands
 
-Four homes, checked in this order. Add a command to the *first* one that fits:
+Four homes, checked in this order. Add a command to the _first_ one that fits:
 
-| Kind | Lives in | Use when | Reaches gg-app? |
-|---|---|---|---|
-| UI-handled | `handleSubmit` in `ui/App.tsx` | needs React state (overlays, live items, token counters) | no — app uses buttons |
-| Registry | `createBuiltinCommands()` in `core/slash-commands.ts` | needs session (messages, auth, settings) via `SlashCommandContext` | yes, via `AgentSession.prompt()` |
-| Prompt-template | `core/prompt-commands.ts` | injects a prompt for the agent to execute | yes — listed in the app's slash menu |
-| Custom | `.gg/commands/*.md` | project-local prompt templates | yes |
+| Kind            | Lives in                                              | Use when                                                           | Reaches gg-app?                      |
+| --------------- | ----------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------ |
+| UI-handled      | `handleSubmit` in `ui/App.tsx`                        | needs React state (overlays, live items, token counters)           | no — app uses buttons                |
+| Registry        | `createBuiltinCommands()` in `core/slash-commands.ts` | needs session (messages, auth, settings) via `SlashCommandContext` | yes, via `AgentSession.prompt()`     |
+| Prompt-template | `core/prompt-commands.ts`                             | injects a prompt for the agent to execute                          | yes — listed in the app's slash menu |
+| Custom          | `.gg/commands/*.md`                                   | project-local prompt templates                                     | yes                                  |
 
 Gotchas:
 
@@ -347,3 +346,56 @@ Gotchas:
   say so (see `/rewind`'s `isGgApp()` branch) rather than echo a dead pointer.
 - Registry commands needing new capabilities: add the method to `SlashCommandContext`
   and wire it in `AgentSession.createSlashCommandContext()`.
+
+## Multi-root workspaces (`/add-dir`)
+
+`/add-dir <path>` (alias `/adddir`; no args lists current roots) adds a second
+workspace root for cross-repo work. Tools already resolve absolute paths and LSP
+does per-file root detection, so only three things change: `resolveWriteGuard`
+(`core/workspace-guard.ts`) allows writes under `additionalRoots`, `AgentSession`
+holds the resolved list (`addDirectory` / `getAdditionalRoots`), and the system
+prompt's Environment section gains `- Additional roots: …`. That section sits in
+the **cached prefix**, so each `/add-dir` costs exactly one cache-miss turn —
+accepted deliberately, since a root advertised only in the uncached suffix would
+drift from the tool behaviour it describes. The sidecar exposes the roots in
+`/state` + the `extras` SSE frame; gg-app's header shows a `+N roots` badge.
+Project-context (`CLAUDE.md`) collection from extra roots is _not_ implemented.
+
+## Network egress allowlist
+
+Off by default. `~/.gg/settings.json`: `"networkMode": "off" | "allowlist"` and
+`"networkAllow": ["github.com", "*.githubusercontent.com"]` (leading `*.` matches
+subdomains only). Two layers, with honestly different strength — see
+`core/network-guard.ts`:
+
+- **Real enforcement**: `web-fetch` and `web-search` check every request URL _and
+  every redirect hop_. These are our own egress paths, so nothing escapes them.
+- **Defence in depth, bypassable by design**: `extractCommandHosts` recognises
+  `curl`/`wget`, `git clone|fetch|pull|push|ls-remote`, `ssh`/`scp`/`rsync`, and
+  package-manager installs, and `bash` refuses a disallowed host. A command with
+  no recognised host is never blocked. `python -c`, a shell variable, or a
+  base64'd URL walks straight past it — this is not an OS sandbox.
+
+When allowlist mode is on, the Environment section lists the allowed hosts so the
+model plans around the policy instead of discovering it through failures.
+
+## Reasoning-field detection (gg-ai)
+
+OpenAI-compatible endpoints disagree on the thinking field name.
+`providers/reasoning-field.ts` reads the first of `reasoning_content`,
+`reasoning`, `reasoning_text` present (that order — `reasoning_content` stays
+authoritative, so every endpoint we ship today is byte-identical on the wire),
+remembers which one an endpoint used in a bounded 64-entry cache keyed by
+`provider|baseUrl|model`, and `toOpenAIMessages` echoes history back using that
+same name. Before this, endpoints naming it `reasoning` (newer vLLM, some
+gateways) lost 100% of their thinking content silently.
+
+## Local-backend stream watchdog (gg-agent)
+
+`isLocalBackendUrl` (`gg-agent/src/local-backend.ts`) is true for `localhost`,
+`127.0.0.0/8`, `::1`, `0.0.0.0`, and `*.local`. For those backends the agent loop
+disables the 45 s **first-event** timeout entirely (a llama.cpp/vLLM prefill of a
+large prompt takes minutes; aborting guarantees a cold-prefill retry loop that
+never converges) and raises the initial hard cap to 10 min. The 90 s inter-event
+idle timer still arms as soon as the first event lands, and ESC/Ctrl+C abort is
+untouched.

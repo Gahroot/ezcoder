@@ -12,6 +12,7 @@ import { PersistentShell } from "../core/persistent-shell.js";
 import { isReadOnlyCommand } from "./read-only-bash.js";
 import { isPlanModeActive, planModeRestriction } from "../core/runtime-mode.js";
 import { isCatastrophicCommand } from "../core/workspace-guard.js";
+import { checkCommandPolicy, type GetNetworkPolicy } from "../core/network-guard.js";
 
 const DEFAULT_TIMEOUT = 120_000; // 120 seconds
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024; // 10 MB — cap buffered output to prevent OOM
@@ -69,6 +70,7 @@ export function createBashTool(
   ops: ToolOperations = localOperations,
   planModeRef?: { current: boolean },
   shellOpts?: ResolveShellOpts,
+  getNetworkPolicy?: GetNetworkPolicy,
 ): AgentTool<typeof BashParams> {
   // Lazily created on the first persist:true call; one session per tool
   // instance (i.e. per agent session), killed when the process exits.
@@ -116,6 +118,13 @@ export function createBashTool(
       const catastrophic = isCatastrophicCommand(command, cwd);
       if (catastrophic) {
         return `Error: ${catastrophic}`;
+      }
+      // Network allowlist — defence in depth only. Recognises the common egress
+      // command shapes; an unrecognised command is never blocked (see
+      // core/network-guard.ts for why this is not a sandbox).
+      const networkBlocked = checkCommandPolicy(command, getNetworkPolicy);
+      if (networkBlocked) {
+        return `Error: ${networkBlocked}`;
       }
       // Persistent session mode — POSIX only; Windows-without-bash falls through
       // to the normal spawn path (cmd.exe fallback) below.

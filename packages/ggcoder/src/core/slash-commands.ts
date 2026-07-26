@@ -16,6 +16,10 @@ export interface SlashCommandContext {
   branch: (stepsBack?: number) => Promise<string>;
   /** List all branches in the current session. */
   listBranches: () => Promise<string>;
+  /** Add another workspace root (tools + write guard + system prompt). */
+  addDirectory: (dir: string) => Promise<{ ok: true; root: string } | { ok: false; error: string }>;
+  /** Extra workspace roots added this session. */
+  getAdditionalRoots: () => string[];
 }
 
 export interface SlashCommand {
@@ -185,6 +189,22 @@ export function createBuiltinCommands(): SlashCommand[] {
       usage: "/branches",
       async execute(_args, ctx) {
         return ctx.listBranches();
+      },
+    },
+    {
+      name: "add-dir",
+      aliases: ["adddir"],
+      description: "Add another directory to the workspace",
+      usage: "/add-dir [path] — no path lists the current roots",
+      async execute(args, ctx) {
+        const roots = ctx.getAdditionalRoots();
+        if (!args) {
+          return roots.length === 0
+            ? "No additional roots. Use /add-dir <path> to add one."
+            : `Additional roots:\n${roots.map((r) => `  ${r}`).join("\n")}`;
+        }
+        const result = await ctx.addDirectory(args);
+        return result.ok ? `Added workspace root: ${result.root}` : result.error;
       },
     },
     {

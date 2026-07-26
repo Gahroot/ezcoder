@@ -28,6 +28,12 @@ import {
 } from "./transform.js";
 import { normalizePromptCacheKey } from "./prompt-cache-key.js";
 import { uploadMoonshotVideos } from "./moonshot-video.js";
+import {
+  getReasoningField,
+  readReasoning,
+  reasoningFieldKey,
+  rememberReasoningField,
+} from "./reasoning-field.js";
 import { parseToolArguments } from "../utils/json.js";
 import { getEnvironment } from "../utils/env.js";
 
@@ -128,6 +134,9 @@ export function streamOpenAI(options: StreamOptions): StreamResult {
 async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, StreamResponse> {
   const providerName = options.provider ?? "openai";
   const useStreaming = options.streaming !== false;
+  // Endpoints disagree on the reasoning field name; remember what this one
+  // emitted so the echo-back on the next turn uses the same name.
+  const endpointKey = reasoningFieldKey(providerName, options.baseUrl, options.model);
 
   const client = createClient(options);
 
@@ -176,6 +185,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     // official CLI: reasoning is preserved only while thinking is enabled).
     thinking: isKimiK27 || !!options.thinking,
     supportsImages: options.supportsImages,
+    reasoningField: getReasoningField(endpointKey),
   });
 
   // GLM models default to 0.6 temperature when not in thinking mode
@@ -285,8 +295,8 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       const completion = (await client.chat.completions.create(params, {
         signal: options.signal ?? undefined,
       })) as OpenAI.ChatCompletion;
-      yield* synthesizeEventsFromCompletion(completion, !!options.thinking);
-      return completionToResponse(completion);
+      yield* synthesizeEventsFromCompletion(completion, !!options.thinking, endpointKey);
+      return completionToResponse(completion, endpointKey);
     } catch (err) {
       throw toError(err, providerName);
     }
@@ -335,11 +345,12 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       // messages).  Only yield thinking_delta to the UI when thinking is enabled
       // — reasoning models like MiMo always return reasoning_content even when
       // thinking is "off", which would cause a permanent "Thinking" indicator.
-      const reasoningContent = (delta as Record<string, unknown>).reasoning_content;
-      if (typeof reasoningContent === "string" && reasoningContent) {
-        thinkingAccum += reasoningContent;
+      const reasoning = readReasoning(delta as Record<string, unknown>);
+      if (reasoning) {
+        rememberReasoningField(endpointKey, reasoning.field);
+        thinkingAccum += reasoning.text;
         if (options.thinking) {
-          yield { type: "thinking_delta", text: reasoningContent };
+          yield { type: "thinking_delta", text: reasoning.text };
         }
       }
 
@@ -458,6 +469,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
 function* synthesizeEventsFromCompletion(
   completion: OpenAI.ChatCompletion,
   thinkingEnabled: boolean,
+  endpointKey: string,
 ): Generator<StreamEvent, void> {
   const choice = completion.choices?.[0];
   if (!choice) {
@@ -468,9 +480,10 @@ function* synthesizeEventsFromCompletion(
   const msg = choice.message as unknown as Record<string, unknown>;
 
   // Reasoning / thinking content (GLM, Moonshot, DeepSeek)
-  const reasoning = msg.reasoning_content;
-  if (typeof reasoning === "string" && reasoning && thinkingEnabled) {
-    yield { type: "thinking_delta", text: reasoning };
+  const reasoning = readReasoning(msg);
+  if (reasoning) {
+    rememberReasoningField(endpointKey, reasoning.field);
+    if (thinkingEnabled) yield { type: "thinking_delta", text: reasoning.text };
   }
 
   // Text content
@@ -507,7 +520,10 @@ function* synthesizeEventsFromCompletion(
 }
 
 /** Convert a non-streaming OpenAI ChatCompletion into our StreamResponse shape. */
-function completionToResponse(completion: OpenAI.ChatCompletion): StreamResponse {
+function completionToResponse(
+  completion: OpenAI.ChatCompletion,
+  endpointKey: string,
+): StreamResponse {
   const choice = completion.choices?.[0];
   const contentParts: ContentPart[] = [];
   let textAccum = "";
@@ -516,9 +532,10 @@ function completionToResponse(completion: OpenAI.ChatCompletion): StreamResponse
     const msg = choice.message as unknown as Record<string, unknown>;
 
     // Reasoning content -- always included for multi-turn round-tripping
-    const reasoning = msg.reasoning_content;
-    if (typeof reasoning === "string" && reasoning) {
-      contentParts.push({ type: "thinking", text: reasoning });
+    const reasoning = readReasoning(msg);
+    if (reasoning) {
+      rememberReasoningField(endpointKey, reasoning.field);
+      contentParts.push({ type: "thinking", text: reasoning.text });
     }
 
     if (typeof msg.content === "string" && msg.content) {

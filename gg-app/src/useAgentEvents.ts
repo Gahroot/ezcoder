@@ -1040,6 +1040,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
                     d.gitHubRepoUrl !== undefined
                       ? (d.gitHubRepoUrl as string | null)
                       : s.gitHubRepoUrl,
+                  additionalRoots: (d.additionalRoots as string[] | undefined) ?? s.additionalRoots,
                 }
               : s,
           );

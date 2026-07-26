@@ -1992,3 +1992,76 @@ describe("tool-result cap divergence marker", () => {
     expect(r.capped?.scope).toBe("per-turn");
   });
 });
+
+describe("local-backend first-event watchdog", () => {
+  beforeEach(() => {
+    mockStream.mockReset();
+  });
+
+  /** A stream that never emits and only settles when its per-attempt signal aborts. */
+  function stallingStream(opts: StreamOptions) {
+    const abortPromise = new Promise<never>((_, reject) => {
+      opts.signal?.addEventListener(
+        "abort",
+        () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+        { once: true },
+      );
+    });
+    abortPromise.catch(() => {});
+    return {
+      [Symbol.asyncIterator]: async function* () {
+        yield* [];
+        await abortPromise;
+      },
+      response: abortPromise,
+    } as unknown as ReturnType<typeof stream>;
+  }
+
+  const messages: Message[] = [
+    { role: "system", content: "sys" },
+    { role: "user", content: "hi" },
+  ];
+
+  it("does not abort a silent local stream past the 45s first-event budget", async () => {
+    vi.useFakeTimers();
+    mockStream.mockImplementation((opts: StreamOptions) => stallingStream(opts));
+
+    const controller = new AbortController();
+    const loopPromise = collectLoop(messages, {
+      provider: "openai",
+      model: "local-model",
+      baseUrl: "http://localhost:8080/v1",
+      signal: controller.signal,
+    }).catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(200_000);
+    // Still the single original attempt — no idle abort, no retry.
+    expect(mockStream).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await loopPromise;
+    vi.useRealTimers();
+  }, 30_000);
+
+  it("still aborts and retries a silent remote stream", async () => {
+    vi.useFakeTimers();
+    mockStream.mockImplementation((opts: StreamOptions) => stallingStream(opts));
+
+    const controller = new AbortController();
+    const loopPromise = collectLoop(messages, {
+      provider: "openai",
+      model: "remote-model",
+      baseUrl: "https://api.example.com/v1",
+      signal: controller.signal,
+    }).catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(200_000);
+    expect(mockStream.mock.calls.length).toBeGreaterThan(1);
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await loopPromise;
+    vi.useRealTimers();
+  }, 30_000);
+});

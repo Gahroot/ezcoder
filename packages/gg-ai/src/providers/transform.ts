@@ -16,6 +16,7 @@ import type {
   ToolResultContent,
 } from "../types.js";
 import { resolveToolSchema, zodToJsonSchema } from "../utils/zod-to-json-schema.js";
+import { DEFAULT_REASONING_FIELD } from "./reasoning-field.js";
 
 // ── Shared helpers ─────────────────────────────────────────
 
@@ -722,8 +723,15 @@ function remapToolCallId(id: string, idMap: Map<string, string>): string {
 
 export function toOpenAIMessages(
   messages: Message[],
-  options?: { provider?: string; thinking?: boolean; supportsImages?: boolean },
+  options?: {
+    provider?: string;
+    thinking?: boolean;
+    supportsImages?: boolean;
+    /** Wire name for reasoning on assistant messages. Defaults to `reasoning_content`. */
+    reasoningField?: string;
+  },
 ): OpenAI.ChatCompletionMessageParam[] {
+  const reasoningField = options?.reasoningField || DEFAULT_REASONING_FIELD;
   const out: OpenAI.ChatCompletionMessageParam[] = [];
   const idMap = new Map<string, string>();
   // GLM drops reasoning_content when a user message follows tool results.
@@ -841,9 +849,9 @@ export function toOpenAIMessages(
       // Moonshot/Kimi requires reasoning_content on assistant tool_call messages —
       // default to empty string.  GLM silently hangs on empty values, so skip it there.
       if (thinkingParts) {
-        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = thinkingParts;
+        (assistantMsg as unknown as Record<string, unknown>)[reasoningField] = thinkingParts;
       } else if (options?.thinking && hasToolCalls && options.provider !== "glm") {
-        (assistantMsg as unknown as Record<string, unknown>).reasoning_content = " ";
+        (assistantMsg as unknown as Record<string, unknown>)[reasoningField] = " ";
       }
       out.push(assistantMsg);
       continue;

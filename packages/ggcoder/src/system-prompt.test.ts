@@ -474,6 +474,26 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("- Shell: bash (POSIX)");
   });
 
+  it("lists additional roots and the network allowlist in the Environment section", async () => {
+    const cwd = await makeProject();
+    const plain = await buildSystemPrompt(cwd, undefined, false, undefined, ["read"]);
+    expect(plain).not.toContain("Additional roots:");
+    expect(plain).not.toContain("Network allowlist:");
+
+    const scoped = await buildSystemPrompt(
+      cwd,
+      undefined,
+      false,
+      undefined,
+      ["read"],
+      undefined,
+      undefined,
+      { additionalRoots: ["/work/sdk"], networkAllow: ["*.github.com"] },
+    );
+    expect(scoped).toContain("- Additional roots: /work/sdk");
+    expect(scoped).toContain("- Network allowlist: *.github.com");
+  });
+
   it("states the nearest-wins precedence rule in the project context section", async () => {
     const cwd = await makeProject({ "AGENTS.md": "Project rules." });
     const prompt = await buildSystemPrompt(cwd, undefined, false, undefined, ["read"]);

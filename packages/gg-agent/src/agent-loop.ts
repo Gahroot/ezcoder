@@ -22,6 +22,7 @@ import type {
   ToolExecuteResult,
   StructuredToolResult,
 } from "./types.js";
+import { isLocalBackendUrl } from "./local-backend.js";
 
 const DEFAULT_MAX_TURNS = 300;
 
@@ -474,12 +475,21 @@ export async function* agentLoop(
   // the normal mid-stream timeout takes over.
   const usesSilentReasoningBudget =
     options.provider === "sakana" || (options.provider === "openai" && options.thinking != null);
-  const firstEventTimeoutMs = usesSilentReasoningBudget
-    ? STREAM_THINKING_IDLE_TIMEOUT_MS // 5min before first visible token
-    : STREAM_FIRST_EVENT_TIMEOUT_MS; // 45s
-  const initialHardTimeoutMs = usesSilentReasoningBudget
-    ? STREAM_THINKING_HARD_TIMEOUT_MS // 10min absolute cap before output
-    : STREAM_HARD_TIMEOUT_MS; // 90s
+  // A local backend (llama.cpp, vLLM, Ollama, LM Studio) can prefill a large
+  // prompt for minutes before its first token. Aborting there guarantees a
+  // retry that prefills from cold again, so the first-event watchdog is off for
+  // loopback hosts entirely — the 90s inter-event timer still arms as soon as
+  // the first event lands, and the caller's abort signal is untouched.
+  const localBackend = isLocalBackendUrl(options.baseUrl);
+  const firstEventTimeoutMs = localBackend
+    ? Number.POSITIVE_INFINITY
+    : usesSilentReasoningBudget
+      ? STREAM_THINKING_IDLE_TIMEOUT_MS // 5min before first visible token
+      : STREAM_FIRST_EVENT_TIMEOUT_MS; // 45s
+  const initialHardTimeoutMs =
+    localBackend || usesSilentReasoningBudget
+      ? STREAM_THINKING_HARD_TIMEOUT_MS // 10min absolute cap before output
+      : STREAM_HARD_TIMEOUT_MS; // 90s
   // Runaway tool-call circuit breaker. When a model glitches mid-tool-call it
   // can emit tens of thousands of toolcall_delta events without ever closing.
   // Cap accumulated arg chars and event count so one bad stream cannot hang the
@@ -522,6 +532,7 @@ export async function* agentLoop(
           thinking: options.thinking ?? "off",
           firstEventTimeoutMs,
           initialHardTimeoutMs,
+          localBackend,
         });
       }
 
@@ -619,6 +630,8 @@ export async function* agentLoop(
           : hasReceivedThinking
             ? STREAM_THINKING_IDLE_TIMEOUT_MS
             : firstEventTimeoutMs;
+        // An infinite budget means "no watchdog" — never arm a timer for it.
+        if (!Number.isFinite(timeoutMs)) return;
         idleTimer = setTimeout(() => {
           diag("idle_timeout_fired", {
             events: streamEventCount,

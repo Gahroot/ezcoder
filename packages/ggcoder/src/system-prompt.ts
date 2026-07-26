@@ -241,13 +241,33 @@ function renderProjectContextSection(contextParts: readonly string[]): string | 
   );
 }
 
-function renderEnvironmentSection(cwd: string): string {
+/** Extra Environment-section facts that vary per session rather than per host. */
+export interface SystemPromptEnvironment {
+  /** Extra workspace roots added with `/add-dir`. */
+  additionalRoots?: readonly string[];
+  /** Hosts the network allowlist permits, when `networkMode` is `allowlist`. */
+  networkAllow?: readonly string[];
+}
+
+function renderEnvironmentSection(cwd: string, environment?: SystemPromptEnvironment): string {
   // Static per host, so it lives in the cached prompt body: which shell bash
   // commands actually execute under (cmd.exe fallback on bash-less Windows).
   const shellLine = resolveShell("").isCmdFallback
     ? "- Shell: cmd.exe (no bash found)"
     : "- Shell: bash (POSIX)";
-  return `## Environment\n\n- Working directory: ${cwd}\n- Platform: ${process.platform}\n${shellLine}`;
+  const lines = [`- Working directory: ${cwd}`];
+  const roots = environment?.additionalRoots ?? [];
+  if (roots.length > 0) {
+    // Added with /add-dir: tools take absolute paths into these roots and
+    // writes there are allowed.
+    lines.push(`- Additional roots: ${roots.join(", ")}`);
+  }
+  lines.push(`- Platform: ${process.platform}`, shellLine);
+  const allow = environment?.networkAllow ?? [];
+  if (allow.length > 0) {
+    lines.push(`- Network allowlist: ${allow.join(", ")} (other hosts are blocked)`);
+  }
+  return `## Environment\n\n${lines.join("\n")}`;
 }
 
 function renderUncachedDateSuffix(): string {
@@ -266,6 +286,9 @@ function renderUncachedDateSuffix(): string {
  *   exactly what the model can call. Defaults to the full built-in set.
  * @param provider — the active LLM provider. Drives the product identity
  *   (`anthropic` → "Claude Code", everything else → "GG Coder").
+ * @param environment — extra Environment-section facts (additional workspace
+ *   roots, network allowlist). This sits in the cached prefix, so changing it
+ *   costs exactly one cache-miss turn.
  */
 export async function buildSystemPrompt(
   cwd: string,
@@ -275,6 +298,7 @@ export async function buildSystemPrompt(
   toolNames?: readonly string[],
   activeLanguages?: Set<LanguageId>,
   provider?: Provider,
+  environment?: SystemPromptEnvironment,
 ): Promise<string> {
   const sections: string[] = [
     renderIdentitySection(provider),
@@ -309,7 +333,7 @@ export async function buildSystemPrompt(
     if (skillsSection) sections.push(skillsSection);
   }
 
-  sections.push(renderEnvironmentSection(cwd), renderUncachedDateSuffix());
+  sections.push(renderEnvironmentSection(cwd, environment), renderUncachedDateSuffix());
 
   return sections.join("\n\n");
 }

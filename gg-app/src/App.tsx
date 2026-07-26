@@ -1885,6 +1885,7 @@ function App(): React.ReactElement {
         gitHubIssues={state?.gitHubIssues}
         gitHubPRs={state?.gitHubPRs}
         gitHubRepoUrl={state?.gitHubRepoUrl}
+        additionalRoots={state?.additionalRoots}
         navHidden={navHidden}
         onToggleNav={toggleNav}
         stripExtras={
