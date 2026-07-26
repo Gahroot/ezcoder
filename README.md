@@ -27,19 +27,30 @@ machine.
 
 Signed and notarized on macOS. It updates itself, so you install it once and forget about it.
 
-## Four projects. Four agents. One screen.
+## As many projects as you want, all going at once
 
-This is the whole point. Open GG Coder on your side project in one window, your client's
-Next.js app in another, a Rust thing in a third, a landing page in a fourth. Each window
-runs its **own** agent, its own folder, its own model, its own history. Nothing bleeds
-between them. Tile them 2-up or 4-up and let all four go at once.
+Yeah, you can split a terminal into panes. That's where this workflow came from. The
+difference is this is **actual software** now: real OS windows you can move between
+desktops, tile with one click, full-screen individually, and pick up with your mouse.
+
+Open GG Coder on your side project in one window, your client's Next.js app in another, a
+Rust thing in a third, a landing page in a fourth. Each window runs its **own** agent, its
+own folder, its own model, its own history. Nothing bleeds between them.
 
 <p align="center">
-  <img src="docs/screenshots/00-four-windows.png" alt="Four GG Coder windows tiled 2x2, each on a different project running a different model" width="980">
+  <img src="docs/screenshots/00-many-windows.png" alt="Six GG Coder windows tiled in a grid, each on a different project running a different model" width="980">
 </p>
 
-Four different projects, four different models (Claude, Codex, a local qwen3-coder, Gemini),
-four agents working at the same time. Try that in a terminal tab.
+Six projects, six different models (Claude, Codex, a local qwen3-coder, Gemini, Kimi, GLM),
+all going at the same time. And six isn't the ceiling either. Tile 2, 4, 6, or hit
+auto-arrange and it lays out however many you've got open.
+
+### It stays light
+
+The whole shell is **Rust**. No Electron, no bundled browser engine sitting in RAM per
+window. It uses the renderer your OS already ships, and each window's agent only costs you
+something while it's actually running. Six windows open is a normal Tuesday, not a fan
+event.
 
 <p align="center">
   <img src="docs/screenshots/01-home.png" alt="GG Coder home screen" width="900">
@@ -189,13 +200,13 @@ Everything else is the exact same spine the CLI runs.
 
 ## What do I actually need?
 
-| You want to...                                      | Use                                                                               |
-| --------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Code with a real UI, on every project at once       | **[Download GG Coder](https://github.com/KenKaiii/gg-framework/releases/latest)** |
-| Code in your terminal                               | `npm i -g @kenkaiiii/ggcoder`                                                     |
-| Run a bunch of agents across projects from one chat | `npm i -g @kenkaiiii/gg-boss`                                                     |
-| Build your own agent that calls tools and loops     | `npm i @kenkaiiii/gg-agent`                                                       |
-| Stream from any LLM provider with one API           | `npm i @kenkaiiii/gg-ai`                                                          |
+| You want to...                                           | Use                                                                               |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Code with a real UI, across as many projects as you want | **[Download GG Coder](https://github.com/KenKaiii/gg-framework/releases/latest)** |
+| Code in your terminal                                    | `npm i -g @kenkaiiii/ggcoder`                                                     |
+| Run a bunch of agents across projects from one chat      | `npm i -g @kenkaiiii/gg-boss`                                                     |
+| Build your own agent that calls tools and loops          | `npm i @kenkaiiii/gg-agent`                                                       |
+| Stream from any LLM provider with one API                | `npm i @kenkaiiii/gg-ai`                                                          |
 
 ---
 
@@ -226,7 +237,8 @@ MIT
 ---
 
 <p align="center">
-  <strong>Less bloat. More coding. Every model. Every project. One window each.</strong>
+  <strong>Less bloat. More coding. Every model. Every project. One window each.<br>
+  Rust under the hood, so it stays out of your way.</strong>
 </p>
 
 <p align="center">

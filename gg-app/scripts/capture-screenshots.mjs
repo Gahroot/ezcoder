@@ -476,15 +476,17 @@ const shots = [
   // popup, which is an OS-level window Chromium cannot capture.
 ];
 
-// ── The 4-up money shot ─────────────────────────────────────────────────
-// Four windows, four different projects, four agents working at once. Each
-// quadrant is captured as its own browser context (mirroring the real per-window
-// sidecar isolation) and then composed into one image.
-// Deliberately short: at README width each quadrant is only ~450px wide, so a
-// tall window would render as mostly empty transcript with unreadable text.
+// ── The money shot ───────────────────────────────────────────────────────────
+// Six windows, six projects, six models, all running at once. The app tiles any
+// count, so the hero shouldn't imply a 4 cap. Each tile is captured as its own
+// browser context (mirroring the real per-window sidecar isolation) and then
+// composed into one image.
+// Deliberately short: at README width each tile is only ~320px wide, so a tall
+// window would render as mostly empty transcript with unreadable text.
 const QUAD_VIEWPORT = { width: 1100, height: 560 };
+const GRID_COLS = 3;
 
-/** Per-quadrant overrides: a different project, model and run in each window. */
+/** Per-window overrides: a different project, model and run in each one. */
 const quadrants = [
   {
     id: "q1",
@@ -552,6 +554,38 @@ const quadrants = [
     ],
     text: ["Collapsed the table into stacked cards under 640px. Checking the snapshots"],
   },
+  {
+    id: "q5",
+    cwd: "/Users/demo/projects/telemetry-api",
+    project: "telemetry-api",
+    branch: "batch-ingest",
+    model: "kimi-k3",
+    modelLabel: "Kimi K3",
+    provider: "moonshot",
+    prompt: "Batch the ingest writes, they're hammering the DB",
+    tools: [
+      ["grep", { pattern: "INSERT INTO events", include: "*.go" }, "4 matches in 2 files"],
+      ["edit", { file_path: "internal/ingest/writer.go" }, "1 edit applied"],
+      ["bash", { command: "go test ./internal/ingest" }, null],
+    ],
+    text: ["Buffering writes into 500-row batches with a 200ms flush. Running the tests"],
+  },
+  {
+    id: "q6",
+    cwd: "/Users/demo/projects/docs-site",
+    project: "docs-site",
+    branch: "search",
+    model: "glm-4-6",
+    modelLabel: "GLM-4.6",
+    provider: "glm",
+    prompt: "Add search to the docs sidebar",
+    tools: [
+      ["read", { file_path: "src/Sidebar.astro" }, "read 74 lines"],
+      ["write", { file_path: "src/search.ts" }, "wrote 88 lines"],
+      ["bash", { command: "pnpm build" }, null],
+    ],
+    text: ["Indexing headings at build time so search stays client-side. Building"],
+  },
 ];
 
 /** Drive one quadrant to a mid-run state so all four look alive at once. */
@@ -580,7 +614,7 @@ async function playQuadrant(page, quad) {
 }
 
 /**
- * Compose the four captured quadrants into a single 2x2 image. The compositing
+ * Compose the captured windows into a single grid image. The compositing
  * is done in the browser (an HTML page of four <img> tags, screenshotted) so the
  * script keeps its single dependency instead of pulling in an image library.
  */
@@ -634,16 +668,17 @@ async function captureWindowGrid(browser) {
   }
 
   const gap = 14;
+  const rows = Math.ceil(tiles.length / GRID_COLS);
   const composer = await browser.newContext({
     viewport: {
-      width: QUAD_VIEWPORT.width * 2 + gap * 3,
-      height: QUAD_VIEWPORT.height * 2 + gap * 3,
+      width: QUAD_VIEWPORT.width * GRID_COLS + gap * (GRID_COLS + 1),
+      height: QUAD_VIEWPORT.height * rows + gap * (rows + 1),
     },
     deviceScaleFactor: 1,
   });
   const page = await composer.newPage();
   // Inlined as data URLs: a `file://` <img> is blocked from the about:blank
-  // origin `setContent` runs on, which silently yields four broken images.
+  // origin `setContent` runs on, which silently yields broken images.
   const sources = await Promise.all(
     tiles.map(async (t) => `data:image/png;base64,${(await readFile(t)).toString("base64")}`),
   );
@@ -652,7 +687,7 @@ async function captureWindowGrid(browser) {
   html, body { margin: 0; background: #0b0c0f; }
   .grid {
     display: grid;
-    grid-template-columns: repeat(2, ${QUAD_VIEWPORT.width}px);
+    grid-template-columns: repeat(${GRID_COLS}, ${QUAD_VIEWPORT.width}px);
     gap: ${gap}px;
     padding: ${gap}px;
   }
@@ -668,11 +703,11 @@ async function captureWindowGrid(browser) {
 </div>`);
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(600);
-  const file = resolve(outDir, "00-four-windows.png");
+  const file = resolve(outDir, "00-many-windows.png");
   await page.screenshot({ path: file });
   await composer.close();
   await rm(tileDir, { recursive: true, force: true });
-  console.log("✓ 00-four-windows");
+  console.log("✓ 00-many-windows");
   return file;
 }
 
