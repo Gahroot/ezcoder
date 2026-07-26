@@ -29,11 +29,24 @@ export interface LocalEndpointInput {
 
 export class LocalEndpointError extends Error {}
 
+/**
+ * Where this store reads and writes. Both default to the real user's files;
+ * tests inject a temp directory so they never touch `~/.gg` — note that
+ * overriding `$HOME` is NOT a portable way to do that, since `os.homedir()`
+ * reads `USERPROFILE` on Windows.
+ */
+export interface LocalEndpointStoreOptions {
+  /** Path to the gg-app settings file (defaults to `~/.gg/gg-app.json`). */
+  settingsFile?: string;
+  /** Auth storage holding the `local:<id>` credentials. */
+  auth?: AuthStorage;
+}
+
 const RESERVED_IDS = new Set(DEFAULT_LOCAL_ENDPOINTS.map((e) => e.id));
 const MAX_CUSTOM_ENDPOINTS = 20;
 
-function appSettingsFile(): string {
-  return path.join(os.homedir(), ".gg", "gg-app.json");
+function appSettingsFile(override?: string): string {
+  return override ?? path.join(os.homedir(), ".gg", "gg-app.json");
 }
 
 /**
@@ -88,18 +101,19 @@ function labelFor(baseUrl: string, label?: string): string {
  * Read/modify/write the whole settings object rather than a typed subset, so a
  * key written by another part of the app (or a newer version) survives.
  */
-async function readSettings(): Promise<Record<string, unknown>> {
+async function readSettings(file?: string): Promise<Record<string, unknown>> {
   try {
-    const raw = JSON.parse(await fs.readFile(appSettingsFile(), "utf-8")) as unknown;
+    const raw = JSON.parse(await fs.readFile(appSettingsFile(file), "utf-8")) as unknown;
     return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   } catch {
     return {};
   }
 }
 
-async function writeSettings(settings: Record<string, unknown>): Promise<void> {
-  await fs.mkdir(path.dirname(appSettingsFile()), { recursive: true });
-  await fs.writeFile(appSettingsFile(), JSON.stringify(settings, null, 2), "utf-8");
+async function writeSettings(settings: Record<string, unknown>, file?: string): Promise<void> {
+  const target = appSettingsFile(file);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, JSON.stringify(settings, null, 2), "utf-8");
 }
 
 function parseStored(value: unknown): LocalEndpoint[] {
@@ -122,13 +136,17 @@ function parseStored(value: unknown): LocalEndpoint[] {
 }
 
 /** User-added endpoints, in insertion order. Never throws on a corrupt file. */
-export async function listCustomEndpoints(): Promise<LocalEndpoint[]> {
-  return parseStored((await readSettings())["localEndpoints"]);
+export async function listCustomEndpoints(
+  options: LocalEndpointStoreOptions = {},
+): Promise<LocalEndpoint[]> {
+  return parseStored((await readSettings(options.settingsFile))["localEndpoints"]);
 }
 
 /** Well-known endpoints first, then the user's own — the probe/scan order. */
-export async function listAllEndpoints(): Promise<LocalEndpoint[]> {
-  return [...DEFAULT_LOCAL_ENDPOINTS, ...(await listCustomEndpoints())];
+export async function listAllEndpoints(
+  options: LocalEndpointStoreOptions = {},
+): Promise<LocalEndpoint[]> {
+  return [...DEFAULT_LOCAL_ENDPOINTS, ...(await listCustomEndpoints(options))];
 }
 
 /**
@@ -138,14 +156,15 @@ export async function listAllEndpoints(): Promise<LocalEndpoint[]> {
  */
 export async function addCustomEndpoint(
   input: LocalEndpointInput,
-  auth: AuthStorage = new AuthStorage(),
+  options: LocalEndpointStoreOptions = {},
 ): Promise<LocalEndpoint> {
+  const auth = options.auth ?? new AuthStorage();
   const baseUrl = normalizeLocalBaseUrl(input.baseUrl);
   const id = endpointIdFor(baseUrl);
   if (RESERVED_IDS.has(id)) {
     throw new LocalEndpointError(`"${id}" is a built-in endpoint id.`);
   }
-  const existing = await listCustomEndpoints();
+  const existing = await listCustomEndpoints(options);
   const builtIn = DEFAULT_LOCAL_ENDPOINTS.find((e) => e.baseUrl === baseUrl);
   if (builtIn) {
     throw new LocalEndpointError(`${baseUrl} is already probed automatically as ${builtIn.label}.`);
@@ -166,14 +185,14 @@ export async function addCustomEndpoint(
     ? existing.map((e) => (e.id === id ? endpoint : e))
     : [...existing, endpoint];
 
-  const settings = await readSettings();
+  const settings = await readSettings(options.settingsFile);
   settings["localEndpoints"] = next.map(({ id: eid, label, baseUrl: url, apiKey }) => ({
     id: eid,
     label,
     baseUrl: url,
     ...(apiKey ? { apiKey } : {}),
   }));
-  await writeSettings(settings);
+  await writeSettings(settings, options.settingsFile);
   await auth.setLocalEndpoint(id, baseUrl, endpoint.apiKey);
   clearLocalDiscoveryCache();
   return endpoint;
@@ -186,16 +205,17 @@ export async function addCustomEndpoint(
  */
 export async function removeCustomEndpoint(
   id: string,
-  auth: AuthStorage = new AuthStorage(),
+  options: LocalEndpointStoreOptions = {},
 ): Promise<void> {
+  const auth = options.auth ?? new AuthStorage();
   if (RESERVED_IDS.has(id)) {
     throw new LocalEndpointError(`${id} is a built-in endpoint and can't be removed.`);
   }
-  const existing = await listCustomEndpoints();
+  const existing = await listCustomEndpoints(options);
   if (!existing.some((e) => e.id === id)) {
     throw new LocalEndpointError(`Unknown local endpoint "${id}".`);
   }
-  const settings = await readSettings();
+  const settings = await readSettings(options.settingsFile);
   settings["localEndpoints"] = existing
     .filter((e) => e.id !== id)
     .map(({ id: eid, label, baseUrl, apiKey }) => ({
@@ -204,7 +224,7 @@ export async function removeCustomEndpoint(
       baseUrl,
       ...(apiKey ? { apiKey } : {}),
     }));
-  await writeSettings(settings);
+  await writeSettings(settings, options.settingsFile);
   await auth.removeLocalEndpoint(id);
   clearLocalDiscoveryCache();
 }
@@ -216,8 +236,9 @@ export async function removeCustomEndpoint(
  */
 export async function syncEndpointCredentials(
   endpoints: readonly LocalEndpoint[],
-  auth: AuthStorage = new AuthStorage(),
+  options: LocalEndpointStoreOptions = {},
 ): Promise<void> {
+  const auth = options.auth ?? new AuthStorage();
   for (const endpoint of endpoints) {
     await auth.setLocalEndpoint(endpoint.id, endpoint.baseUrl, endpoint.apiKey);
   }

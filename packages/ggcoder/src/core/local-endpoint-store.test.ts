@@ -11,32 +11,28 @@ import {
   normalizeLocalBaseUrl,
   removeCustomEndpoint,
   syncEndpointCredentials,
+  type LocalEndpointStoreOptions,
 } from "./local-endpoint-store.js";
 
-let home: string;
-let originalHome: string | undefined;
+let dir: string;
+let opts: LocalEndpointStoreOptions;
 let auth: AuthStorage;
 
-/** The store resolves ~/.gg via os.homedir(), which honours $HOME on POSIX. */
+// Both file paths are injected rather than redirected via $HOME: os.homedir()
+// reads USERPROFILE on Windows, so a HOME override silently writes to the real
+// ~/.gg there — which leaks state between tests and pollutes the user's files.
 beforeEach(async () => {
-  home = await fs.mkdtemp(path.join(os.tmpdir(), "gg-local-endpoints-"));
-  originalHome = process.env.HOME;
-  process.env.HOME = home;
-  await fs.mkdir(path.join(home, ".gg"), { recursive: true });
-  auth = new AuthStorage(path.join(home, ".gg", "auth.json"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-local-endpoints-"));
+  auth = new AuthStorage(path.join(dir, "auth.json"));
+  opts = { settingsFile: path.join(dir, "gg-app.json"), auth };
 });
 
 afterEach(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  await fs.rm(home, { recursive: true, force: true });
+  await fs.rm(dir, { recursive: true, force: true });
 });
 
 async function settings(): Promise<Record<string, unknown>> {
-  return JSON.parse(await fs.readFile(path.join(home, ".gg", "gg-app.json"), "utf-8")) as Record<
-    string,
-    unknown
-  >;
+  return JSON.parse(await fs.readFile(opts.settingsFile!, "utf-8")) as Record<string, unknown>;
 }
 
 describe("normalizeLocalBaseUrl", () => {
@@ -66,7 +62,7 @@ describe("custom endpoints", () => {
   it("adds an endpoint, persists it, and writes its auth credential", async () => {
     const endpoint = await addCustomEndpoint(
       { label: "Workstation", baseUrl: "192.168.1.4:8000", apiKey: "secret" },
-      auth,
+      opts,
     );
 
     expect(endpoint).toMatchObject({
@@ -77,7 +73,7 @@ describe("custom endpoints", () => {
       custom: true,
       apiKey: "secret",
     });
-    expect(await listCustomEndpoints()).toEqual([endpoint]);
+    expect(await listCustomEndpoints(opts)).toEqual([endpoint]);
 
     const creds = await auth.getCredentials("local:custom-192-168-1-4-8000");
     expect(creds).toMatchObject({ accessToken: "secret", baseUrl: "http://192.168.1.4:8000/v1" });
@@ -86,9 +82,9 @@ describe("custom endpoints", () => {
   });
 
   it("defaults the label to the host and the key to a placeholder", async () => {
-    await addCustomEndpoint({ baseUrl: "http://localhost:9999" }, auth);
+    await addCustomEndpoint({ baseUrl: "http://localhost:9999" }, opts);
 
-    const stored = (await listCustomEndpoints())[0]!;
+    const stored = (await listCustomEndpoints(opts))[0]!;
     expect(stored.label).toBe("localhost:9999");
     expect(stored.apiKey).toBeUndefined();
     expect(await auth.getCredentials("local:custom-localhost-9999")).toMatchObject({
@@ -97,13 +93,13 @@ describe("custom endpoints", () => {
   });
 
   it("updates in place when the same host is re-added", async () => {
-    await addCustomEndpoint({ baseUrl: "http://localhost:9999", apiKey: "wrong" }, auth);
+    await addCustomEndpoint({ baseUrl: "http://localhost:9999", apiKey: "wrong" }, opts);
     await addCustomEndpoint(
       { label: "Fixed", baseUrl: "http://localhost:9999/v1", apiKey: "right" },
-      auth,
+      opts,
     );
 
-    const stored = await listCustomEndpoints();
+    const stored = await listCustomEndpoints(opts);
     expect(stored).toHaveLength(1);
     expect(stored[0]).toMatchObject({ label: "Fixed", apiKey: "right" });
     expect(await auth.getCredentials("local:custom-localhost-9999")).toMatchObject({
@@ -112,53 +108,53 @@ describe("custom endpoints", () => {
   });
 
   it("refuses a URL already covered by a built-in endpoint", async () => {
-    await expect(addCustomEndpoint({ baseUrl: "http://127.0.0.1:11434/v1" }, auth)).rejects.toThrow(
+    await expect(addCustomEndpoint({ baseUrl: "http://127.0.0.1:11434/v1" }, opts)).rejects.toThrow(
       /already probed automatically as Ollama/,
     );
   });
 
   it("removes an endpoint and its credential", async () => {
-    await addCustomEndpoint({ baseUrl: "http://localhost:9999" }, auth);
+    await addCustomEndpoint({ baseUrl: "http://localhost:9999" }, opts);
 
-    await removeCustomEndpoint("custom-localhost-9999", auth);
+    await removeCustomEndpoint("custom-localhost-9999", opts);
 
-    expect(await listCustomEndpoints()).toEqual([]);
+    expect(await listCustomEndpoints(opts)).toEqual([]);
     expect(await auth.getCredentials("local:custom-localhost-9999")).toBeUndefined();
     expect(await auth.hasProviderAuth("local")).toBe(false);
   });
 
   it("refuses to remove a built-in or unknown endpoint", async () => {
-    await expect(removeCustomEndpoint("ollama", auth)).rejects.toThrow(/built-in/);
-    await expect(removeCustomEndpoint("custom-nope", auth)).rejects.toThrow(/Unknown local/);
+    await expect(removeCustomEndpoint("ollama", opts)).rejects.toThrow(/built-in/);
+    await expect(removeCustomEndpoint("custom-nope", opts)).rejects.toThrow(/Unknown local/);
   });
 
   it("preserves unrelated gg-app.json keys", async () => {
     await fs.writeFile(
-      path.join(home, ".gg", "gg-app.json"),
+      opts.settingsFile!,
       JSON.stringify({ projectsRoot: "/tmp/projects", autopilot: { "/a": true } }),
       "utf-8",
     );
 
-    await addCustomEndpoint({ baseUrl: "http://localhost:9999" }, auth);
+    await addCustomEndpoint({ baseUrl: "http://localhost:9999" }, opts);
 
     expect(await settings()).toMatchObject({
       projectsRoot: "/tmp/projects",
       autopilot: { "/a": true },
     });
-    await removeCustomEndpoint("custom-localhost-9999", auth);
+    await removeCustomEndpoint("custom-localhost-9999", opts);
     expect(await settings()).toMatchObject({ projectsRoot: "/tmp/projects" });
   });
 
   it("ignores a corrupt settings file instead of throwing", async () => {
-    await fs.writeFile(path.join(home, ".gg", "gg-app.json"), "{not json", "utf-8");
+    await fs.writeFile(opts.settingsFile!, "{not json", "utf-8");
 
-    expect(await listCustomEndpoints()).toEqual([]);
+    expect(await listCustomEndpoints(opts)).toEqual([]);
   });
 
   it("lists built-in endpoints before custom ones", async () => {
-    await addCustomEndpoint({ baseUrl: "http://localhost:9999" }, auth);
+    await addCustomEndpoint({ baseUrl: "http://localhost:9999" }, opts);
 
-    expect((await listAllEndpoints()).map((e) => e.id)).toEqual([
+    expect((await listAllEndpoints(opts)).map((e) => e.id)).toEqual([
       "ollama",
       "lmstudio",
       "llamacpp",
@@ -170,7 +166,7 @@ describe("custom endpoints", () => {
 
 describe("syncEndpointCredentials", () => {
   it("writes a baseUrl-carrying credential for every endpoint", async () => {
-    await syncEndpointCredentials(await listAllEndpoints(), auth);
+    await syncEndpointCredentials(await listAllEndpoints(opts), opts);
 
     expect((await auth.listLocalEndpointIds()).sort()).toEqual([
       "llamacpp",
