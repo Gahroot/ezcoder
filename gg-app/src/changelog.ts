@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.29.0",
+    date: "2026-07-26",
+    items: [
+      "You can save any chat now. Hover over the conversation and an `Export chat` button glides into the corner, one click drops a clean Markdown file wherever you want it, and I remember your folder for next time. It reads like a real document, not a machine dump.",
+      "You can point me at a second folder without leaving your project. Run `/add-dir` and I work across both repos at once, with a `+1 root` badge up top so you always know what I can reach.",
+      "You can lock down exactly which sites I am allowed to touch. Flip on the network allowlist in your settings and everything I fetch, search, clone, or install gets checked against your list first.",
+      "Some models were silently losing their thinking. If you run a local or self-hosted setup, I now catch the reasoning no matter what the endpoint calls it, so you finally see the whole train of thought.",
+      "Local models get room to breathe. A big prompt on your own machine can take minutes to warm up, and I used to give up and retry forever. Now I wait it out, and a runaway search can no longer freeze me solid.",
+    ],
+  },
+  {
     version: "0.28.3",
     date: "2026-07-25",
     items: [
