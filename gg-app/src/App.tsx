@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
 import {
   waitForReady,
@@ -86,6 +86,7 @@ import { Badge } from "./Badge";
 import { AutopilotToggle } from "./AutopilotToggle";
 import { HomeScreen } from "./HomeScreen";
 import { initialEntryView, type EntryView } from "./app-entry-view";
+import { submitDisposition } from "./submit-disposition";
 import { Toaster } from "./Toaster";
 import { Confetti } from "./Confetti";
 import { RankBadge } from "./RankBadge";
@@ -1347,9 +1348,29 @@ function App(): React.ReactElement {
   const defaultRepoName = (state?.cwd ?? "").split(/[\\/]/).filter(Boolean).pop() ?? "";
 
   function pickSlashCommand(cmd: SlashCommand): void {
+    if (cmd.name === "add-dir" || cmd.name === "remove-dir") {
+      setInput("");
+      setSlashIndex(0);
+      void pickWorkspaceDirectory(cmd.name);
+      return;
+    }
+
     // Fill the input with the command; the user can add args or press Enter.
     setInput(`/${cmd.name} `);
     setSlashIndex(0);
+  }
+
+  async function pickWorkspaceDirectory(command: "add-dir" | "remove-dir"): Promise<void> {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title:
+        command === "add-dir"
+          ? "Add project folder to workspace"
+          : "Remove project folder from workspace",
+    });
+    if (typeof selected !== "string") return;
+    submitText(`/${command} ${selected}`, command === "add-dir" ? "/add-dir" : "/remove-dir");
   }
 
   // Detect an active `@`-mention token at the caret: a `@` that starts at a word
@@ -1420,12 +1441,19 @@ function App(): React.ReactElement {
     setMentionedPaths((prev) => prev.filter((x) => x !== p));
   }
 
-  // Submit arbitrary text as if typed + entered. Shared by the input and the
-  // top-right commit button. `label` shows a friendly shimmer phrase in the
-  // transcript while the full `text` is still sent to the agent.
+  // Submit arbitrary text as if typed + entered. Shared by the input, the
+  // top-right commit button, and the workspace directory picker. `label` shows
+  // a friendly shimmer phrase in the transcript while the full `text` is still
+  // sent to the agent.
   function submitText(text: string, label?: string): void {
     const trimmed = text.trim();
-    if (!trimmed || !readyRef.current || running) return;
+    // Mid-run this QUEUES as steering, exactly like a typed message (see
+    // submit()): the sidecar injects it into the running loop. Dropping it
+    // instead would be silent — the folder picker especially, which gives no
+    // hint that the directory you just chose went nowhere.
+    const disposition = submitDisposition(trimmed, readyRef.current, running);
+    if (disposition === "ignore") return;
+    const queued = disposition === "queue";
     // A user send always re-pins to the bottom — they want to see their message.
     stickToBottomRef.current = true;
     pushItem({
@@ -1434,10 +1462,11 @@ function App(): React.ReactElement {
       text: trimmed,
       command: label !== undefined || isWorkflowCommand(trimmed),
       ...(label !== undefined ? { label } : {}),
+      ...(queued ? { queued: true } : {}),
     });
     setInput("");
     setSlashIndex(0);
-    endStreamingText();
+    if (!queued) endStreamingText();
     void sendPrompt(trimmed);
   }
 

@@ -18,6 +18,10 @@ export interface SlashCommandContext {
   listBranches: () => Promise<string>;
   /** Add another workspace root (tools + write guard + system prompt). */
   addDirectory: (dir: string) => Promise<{ ok: true; root: string } | { ok: false; error: string }>;
+  /** Remove an exact workspace root previously added this session. */
+  removeDirectory: (
+    dir: string,
+  ) => Promise<{ ok: true; root: string } | { ok: false; error: string }>;
   /** Extra workspace roots added this session. */
   getAdditionalRoots: () => string[];
 }
@@ -194,7 +198,7 @@ export function createBuiltinCommands(): SlashCommand[] {
     {
       name: "add-dir",
       aliases: ["adddir"],
-      description: "Add another directory to the workspace",
+      description: "Add another project folder to this workspace",
       usage: "/add-dir [path] — no path lists the current roots",
       async execute(args, ctx) {
         const roots = ctx.getAdditionalRoots();
@@ -205,6 +209,22 @@ export function createBuiltinCommands(): SlashCommand[] {
         }
         const result = await ctx.addDirectory(args);
         return result.ok ? `Added workspace root: ${result.root}` : result.error;
+      },
+    },
+    {
+      name: "remove-dir",
+      aliases: ["removedir"],
+      description: "Remove an added project folder from this workspace",
+      usage: "/remove-dir [path] — no path lists roots available to remove",
+      async execute(args, ctx) {
+        const roots = ctx.getAdditionalRoots();
+        if (!args) {
+          return roots.length === 0
+            ? "No additional roots to remove."
+            : `Choose a root to remove:\n${roots.map((r) => `  ${r}`).join("\n")}`;
+        }
+        const result = await ctx.removeDirectory(args);
+        return result.ok ? `Removed workspace root: ${result.root}` : result.error;
       },
     },
     {

@@ -3387,16 +3387,37 @@ async function createSession(
           description: c.description,
           source: "built-in" as const,
         }));
+        // Desktop-safe registry actions belong in the same picker as workflows.
+        // Most registry commands have dedicated app controls or TUI-only flows;
+        // multi-root management has no other affordance, so expose only these.
+        const workspaceActions = [
+          {
+            name: "add-dir",
+            aliases: ["adddir"],
+            description: "Add another project folder to this workspace",
+            source: "built-in" as const,
+          },
+          {
+            name: "remove-dir",
+            aliases: ["removedir"],
+            description: "Remove an added project folder from this workspace",
+            source: "built-in" as const,
+          },
+        ];
         const custom = (await loadCustomCommands(cwd))
-          // A custom command can't shadow a built-in name.
-          .filter((c) => !PROMPT_COMMANDS.some((b) => b.name === c.name))
+          // A custom command can't shadow a built-in name or app action.
+          .filter(
+            (c) =>
+              !PROMPT_COMMANDS.some((b) => b.name === c.name) &&
+              !workspaceActions.some((action) => action.name === c.name),
+          )
           .map((c) => ({
             name: c.name,
             aliases: [] as string[],
             description: c.description,
             source: "custom" as const,
           }));
-        json(res, 200, { commands: [...builtins, ...custom] });
+        json(res, 200, { commands: [...workspaceActions, ...builtins, ...custom] });
       })();
       return;
     }

@@ -87,6 +87,22 @@ describe("AgentSession.addDirectory", () => {
     }
   }, 20_000);
 
+  it("removes an added root and rejects roots that were never added", async () => {
+    const session = await createSession();
+    try {
+      expect(await session.removeDirectory(sibling)).toMatchObject({ ok: false });
+      expect(await session.addDirectory(sibling)).toMatchObject({ ok: true });
+      expect(await session.removeDirectory(sibling)).toEqual({
+        ok: true,
+        root: path.resolve(sibling),
+      });
+      expect(session.getAdditionalRoots()).toEqual([]);
+      expect(String(session.getMessages()[0]?.content ?? "")).not.toContain("Additional roots:");
+    } finally {
+      await session.dispose();
+    }
+  }, 20_000);
+
   it("rejects a file, a missing path, and a duplicate", async () => {
     const session = await createSession();
     try {

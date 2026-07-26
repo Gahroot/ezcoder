@@ -1923,6 +1923,21 @@ export class AgentSession {
     return { ok: true, root: resolved };
   }
 
+  /** Remove an exact root previously added with `/add-dir`. */
+  async removeDirectory(
+    dir: string,
+  ): Promise<{ ok: true; root: string } | { ok: false; error: string }> {
+    const resolved = path.resolve(this.cwd, dir.replace(/^~(?=[/\\]|$)/, os.homedir()));
+    const index = this.additionalRoots.findIndex((root) => path.resolve(root) === resolved);
+    if (index === -1) {
+      return { ok: false, error: `Not an additional workspace root: ${resolved}` };
+    }
+
+    this.additionalRoots.splice(index, 1);
+    await this.rebuildSystemPromptInPlace();
+    return { ok: true, root: resolved };
+  }
+
   /** Environment facts that vary per session rather than per host. */
   private promptEnvironment(): SystemPromptEnvironment {
     const networkAllow =
@@ -2494,6 +2509,7 @@ export class AgentSession {
         return `${branches.length} branch(es):\n${lines.join("\n")}`;
       },
       addDirectory: (dir) => this.addDirectory(dir),
+      removeDirectory: (dir) => this.removeDirectory(dir),
       getAdditionalRoots: () => this.getAdditionalRoots(),
     };
   }

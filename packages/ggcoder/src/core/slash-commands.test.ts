@@ -24,10 +24,27 @@ function context(overrides: Partial<SlashCommandContext> = {}): SlashCommandCont
     branch: vi.fn(async () => ""),
     listBranches: vi.fn(async () => ""),
     addDirectory: vi.fn(async (dir: string) => ({ ok: true as const, root: `/resolved${dir}` })),
+    removeDirectory: vi.fn(async (dir: string) => ({ ok: true as const, root: `/resolved${dir}` })),
     getAdditionalRoots: vi.fn(() => []),
     ...overrides,
   };
 }
+
+describe("/remove-dir", () => {
+  it("requires a current root when no path is supplied", async () => {
+    await expect(registry().execute("/remove-dir", context())).resolves.toContain(
+      "No additional roots",
+    );
+  });
+
+  it("removes the selected root", async () => {
+    const ctx = context();
+    await expect(registry().execute("/remove-dir ../sdk", ctx)).resolves.toBe(
+      "Removed workspace root: /resolved../sdk",
+    );
+    expect(ctx.removeDirectory).toHaveBeenCalledWith("../sdk");
+  });
+});
 
 describe("/add-dir", () => {
   it("lists nothing when no roots were added", async () => {
