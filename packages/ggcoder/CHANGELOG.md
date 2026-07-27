@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.26.3
+
+### Patch Changes
+
+- Fix session transcript restore: rebase marker anchors when compaction rewrites a session, heal stale anchors in existing session files, skip duplicate autopilot-injected user bubbles, and restore slash commands from the persisted invocation instead of matching drifted templates
+  - @kenkaiiii/gg-ai@5.26.3
+  - @kenkaiiii/gg-agent@5.26.3
+  - @kenkaiiii/gg-core@5.26.3
+
 ## 5.26.2
 
 ### Patch Changes

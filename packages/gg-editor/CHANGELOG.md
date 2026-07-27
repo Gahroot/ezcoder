@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.123
+
+### Patch Changes
+
+- Updated dependencies
+  - @kenkaiiii/ggcoder@5.26.3
+  - @kenkaiiii/gg-ai@5.26.3
+  - @kenkaiiii/gg-agent@5.26.3
+
 ## 0.7.122
 
 ### Patch Changes
