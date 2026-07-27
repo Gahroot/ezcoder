@@ -60,6 +60,15 @@ import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
 import { CompactionNotice } from "./CompactionNotice";
 import { ModelSelect } from "./ModelSelect";
 import { SlashMenu } from "./SlashMenu";
+import { ScheduleHint } from "./ScheduleHint";
+import { RunningSchedulesButton } from "./RunningSchedulesButton";
+import {
+  describeSchedule,
+  isScheduleDraft,
+  parseScheduleCommand,
+  withInterval,
+} from "./scheduleCommand";
+import { useSchedules } from "./useSchedules";
 import { FileMentionMenu } from "./FileMentionMenu";
 import { ReferencedFiles, appendReferencedFiles, parseReferencedFiles } from "./ReferencedFiles";
 import { ContextMeter } from "./ContextMeter";
@@ -287,6 +296,16 @@ function FooterSep(): React.ReactElement {
 // BLACK_CIRCLE — ⏺ on mac (matches the TUI figure).
 const DOT = "\u23FA";
 
+// `/schedule` lives in the webview, not the sidecar's command registry: it
+// registers a recurring timer instead of prompting the agent. Declared here so
+// the palette can still discover it alongside the real slash commands.
+const SCHEDULE_COMMAND: SlashCommand = {
+  name: "schedule",
+  aliases: ["sched"],
+  description: "Run a prompt on a repeating schedule — <prompt> | 15m | [times]",
+  source: "built-in",
+};
+
 // Thinking-tier color, mirroring the ggcoder TUI footer's getThinkingColor:
 // warmer/more saturated as the tier rises; xhigh/max are "max power" hot pink.
 const MAX_POWER_COLOR = "#db2777";
@@ -434,6 +453,20 @@ function App(): React.ReactElement {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  // Caret offset in the composer, tracked so the `/schedule` hint can highlight
+  // the slot the user is currently typing in.
+  const [caret, setCaret] = useState(0);
+  // `/schedule` runtime. Fires each due prompt through the normal send path,
+  // skipping any occurrence that comes due mid-run rather than stacking agents.
+  // In-memory for the life of the window — see useSchedules.
+  const { schedules, addSchedule, stopSchedule } = useSchedules({
+    running,
+    onFire: useCallback((prompt: string) => {
+      // keepInput: the user did not press Enter for this — leave whatever they
+      // are typing untouched.
+      submitTextRef.current(prompt, undefined, { keepInput: true });
+    }, []),
+  });
   // `@`-mention file picker state. `mention` is the active token being typed
   // (its query + where it starts in the input); `fileMatches` is the live
   // search result; `fileIndex` is the keyboard-highlighted row.
@@ -1287,9 +1320,20 @@ function App(): React.ReactElement {
   // single `/token` with no space yet). Empty when not in slash mode.
   const slashQuery =
     input.startsWith("/") && !input.includes(" ") ? input.slice(1).toLowerCase() : null;
+  // `/schedule ` (past the command token) swaps the palette for the argument
+  // hint. An invalid draft is blocked from being sent to the agent.
+  const scheduleDraft = isScheduleDraft(input);
+  const scheduleParse = scheduleDraft ? parseScheduleCommand(input) : null;
+  // Drives the composer's invalid affordance; submit() enforces the block.
+  const scheduleInvalid = scheduleParse !== null && !scheduleParse.ok;
   // Commit lives in the top-right button, not the slash menu.
   const COMMIT_NAMES = ["commit", "setup-commit"];
-  const menuCommands = commands.filter((c) => !COMMIT_NAMES.includes(c.name));
+  // `/schedule` is handled entirely in the webview (it registers a timer rather
+  // than prompting the agent), so the sidecar's registry never lists it. Inject
+  // it here or it would be undiscoverable — typing `/sch` would show nothing.
+  const menuCommands = [SCHEDULE_COMMAND, ...commands].filter(
+    (c) => !COMMIT_NAMES.includes(c.name),
+  );
   const slashMatches =
     slashQuery !== null
       ? menuCommands.filter(
@@ -1347,6 +1391,23 @@ function App(): React.ReactElement {
   // Default repo name = the project folder name.
   const defaultRepoName = (state?.cwd ?? "").split(/[\\/]/).filter(Boolean).pop() ?? "";
 
+  /**
+   * Fill the interval slot from a preset chip. Replaces an existing interval
+   * rather than appending, so clicking `1h` after `15m` swaps it instead of
+   * producing a second bar. Keeps focus in the composer so typing continues.
+   */
+  function fillScheduleInterval(preset: string): void {
+    const { text, caret: caretAt } = withInterval(input, preset);
+    setInput(text);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(caretAt, caretAt);
+      setCaret(caretAt);
+    });
+  }
+
   function pickSlashCommand(cmd: SlashCommand): void {
     if (cmd.name === "add-dir" || cmd.name === "remove-dir") {
       setInput("");
@@ -1356,8 +1417,13 @@ function App(): React.ReactElement {
     }
 
     // Fill the input with the command; the user can add args or press Enter.
-    setInput(`/${cmd.name} `);
+    const next = `/${cmd.name} `;
+    setInput(next);
     setSlashIndex(0);
+    // Keep the caret state in sync with the filled text, so an argument hint
+    // (e.g. `/schedule`) highlights the right slot instead of a stale offset.
+    setCaret(next.length);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   async function pickWorkspaceDirectory(command: "add-dir" | "remove-dir"): Promise<void> {
@@ -1445,7 +1511,11 @@ function App(): React.ReactElement {
   // top-right commit button, and the workspace directory picker. `label` shows
   // a friendly shimmer phrase in the transcript while the full `text` is still
   // sent to the agent.
-  function submitText(text: string, label?: string): void {
+  //
+  // `keepInput` is for sends the user did not initiate right now — a scheduled
+  // prompt firing on its interval. Those must NOT clear the composer, or a
+  // schedule that comes due mid-sentence deletes what the user was typing.
+  function submitText(text: string, label?: string, opts?: { keepInput?: boolean }): void {
     const trimmed = text.trim();
     // Mid-run this QUEUES as steering, exactly like a typed message (see
     // submit()): the sidecar injects it into the running loop. Dropping it
@@ -1464,11 +1534,19 @@ function App(): React.ReactElement {
       ...(label !== undefined ? { label } : {}),
       ...(queued ? { queued: true } : {}),
     });
-    setInput("");
-    setSlashIndex(0);
+    if (!opts?.keepInput) {
+      setInput("");
+      setSlashIndex(0);
+    }
     if (!queued) endStreamingText();
     void sendPrompt(trimmed);
   }
+
+  // Scheduled prompts fire from a ticker that is set up once, so it can't close
+  // over this render's `submitText`. The ref keeps the ticker pointed at the
+  // current one without re-creating the interval on every render.
+  const submitTextRef = useRef(submitText);
+  submitTextRef.current = submitText;
 
   // Click handler for the "Send to GG Coder" button on Ken's recommended prompts.
   // Pushes a shimmering "Sent to GG Coder" user bubble (the full prompt body went
@@ -1630,9 +1708,13 @@ function App(): React.ReactElement {
     if (enhancing || !hydrated) return setEnhanceHintVisible(false);
     if (input.trim().length === 0) return setEnhanceHintVisible(false);
     if (slashOpen || mentionOpen) return setEnhanceHintVisible(false);
+    // Never offer to rewrite a `/schedule` draft: the enhancer rewrites prose
+    // and would happily mangle the `| 15m` argument tail into something the
+    // parser rejects.
+    if (scheduleDraft) return setEnhanceHintVisible(false);
     if (enhancement && enhancement.plain === input) return setEnhanceHintVisible(false);
     setEnhanceHintVisible(true);
-  }, [input, enhancing, hydrated, slashOpen, mentionOpen, enhancement]);
+  }, [input, enhancing, hydrated, slashOpen, mentionOpen, scheduleDraft, enhancement]);
 
   // Submit the current input together with any staged attachments. Images are
   // echoed inline in the user's bubble; all media is sent to the agent.
@@ -1640,6 +1722,30 @@ function App(): React.ReactElement {
     const trimmed = input.trim();
     if (!readyRef.current) return;
     if (!trimmed && attachments.length === 0 && mentionedPaths.length === 0) return;
+
+    // `/schedule` registers a recurring prompt instead of sending anything now.
+    // An invalid draft is refused outright — sending it would run the raw command
+    // text as a prompt — and the hint above the composer already says why.
+    if (isScheduleDraft(input)) {
+      const result = parseScheduleCommand(input);
+      if (!result.ok) return;
+      addSchedule(result.value);
+      // Confirm in the transcript, otherwise pressing Enter looks like it did
+      // nothing: the first run is a whole interval away, so there is no other
+      // feedback until then.
+      pushItem({
+        kind: "user",
+        id: nextId(),
+        text: trimmed,
+        command: true,
+        label: `Scheduled · ${describeSchedule(result.value)}`,
+      });
+      recordHistory(trimmed);
+      stickToBottomRef.current = true;
+      setInput("");
+      setSlashIndex(0);
+      return;
+    }
 
     // `@Ken <prompt>` (case-insensitive, optional colon) routes to Ken Kai, the
     // read-only mentor agent — NOT GG Coder. Ken runs concurrently with any
@@ -2180,14 +2286,22 @@ function App(): React.ReactElement {
         )}
       </div>
 
-      <div className={`inputwrap${isFileDragOver ? " dragover" : ""}`}>
-        {slashOpen && (
-          <SlashMenu
-            commands={slashMatches}
-            activeIndex={clampedSlashIndex}
-            onSelect={pickSlashCommand}
-            onHover={setSlashIndex}
-          />
+      <div
+        className={`inputwrap${isFileDragOver ? " dragover" : ""}${
+          scheduleInvalid ? " schedule-invalid" : ""
+        }`}
+      >
+        {scheduleDraft ? (
+          <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
+        ) : (
+          slashOpen && (
+            <SlashMenu
+              commands={slashMatches}
+              activeIndex={clampedSlashIndex}
+              onSelect={pickSlashCommand}
+              onHover={setSlashIndex}
+            />
+          )
         )}
         {mentionOpen && (
           <FileMentionMenu
@@ -2270,6 +2384,7 @@ function App(): React.ReactElement {
               onChange={(e) => {
                 setInput(e.target.value);
                 setSlashIndex(0);
+                setCaret(e.target.selectionStart ?? e.target.value.length);
                 // Typing exits history-recall mode so ↑/↓ start fresh next time.
                 if (historyIndex !== null) setHistoryIndex(null);
                 // Drop the enhancement the instant the text diverges from it, so
@@ -2279,11 +2394,13 @@ function App(): React.ReactElement {
               }}
               onClick={(e) => {
                 const el = e.currentTarget;
+                setCaret(el.selectionStart ?? el.value.length);
                 updateMention(el.value, el.selectionStart ?? el.value.length);
               }}
               onKeyUp={(e) => {
+                const el = e.currentTarget;
+                setCaret(el.selectionStart ?? el.value.length);
                 if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-                  const el = e.currentTarget;
                   updateMention(el.value, el.selectionStart ?? el.value.length);
                 }
               }}
@@ -2378,9 +2495,15 @@ function App(): React.ReactElement {
             ) : (
               <span className="footer-left footer-reveal" style={{ fontFamily: "var(--mono)" }}>
                 {runningTaskCount > 0 && <BackgroundTasksButton tasks={tasks} />}
-                {state?.planMode && (
+                {schedules.length > 0 && (
                   <>
                     {runningTaskCount > 0 && <FooterSep />}
+                    <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
+                  </>
+                )}
+                {state?.planMode && (
+                  <>
+                    {(runningTaskCount > 0 || schedules.length > 0) && <FooterSep />}
                     <span className="footer-plan">
                       <ShimmerText base={theme.secondary} bright="#ddd6fe">
                         {"\u25C6 plan mode"}
