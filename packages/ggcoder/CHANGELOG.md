@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.26.1
+
+### Patch Changes
+
+- Remove the project memory journal: it duplicated what the repo already tells the agent and suppressed real verification.
+  - @kenkaiiii/gg-ai@5.26.1
+  - @kenkaiiii/gg-agent@5.26.1
+  - @kenkaiiii/gg-core@5.26.1
+
 ## 5.26.0
 
 ### Minor Changes
