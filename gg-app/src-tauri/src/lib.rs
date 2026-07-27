@@ -2351,6 +2351,57 @@ async fn agent_telegram_get(
         .map_err(|e| e.to_string())
 }
 
+/// Proxy: read whether the durable project journal (.gg/memory.md) is enabled.
+#[tauri::command]
+async fn agent_project_memory_get(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .get(format!("{}/project-memory", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Proxy: enable/disable the durable project journal. Applies from the next
+/// session, so the caller should say so rather than implying a live change.
+#[tauri::command]
+async fn agent_project_memory_set(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    enabled: bool,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/project-memory", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "enabled": enabled }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        let msg = body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("failed to save the project memory setting");
+        return Err(msg.to_string());
+    }
+    Ok(body)
+}
+
 /// Proxy: local model endpoints + their last-scan status (no probing).
 #[tauri::command]
 async fn agent_local(
@@ -4215,6 +4266,8 @@ pub fn run() {
             app_auth_logout,
             agent_telegram_get,
             agent_telegram_save,
+            agent_project_memory_get,
+            agent_project_memory_set,
             agent_local,
             agent_local_scan,
             agent_local_endpoint_add,

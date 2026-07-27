@@ -1341,6 +1341,28 @@ export async function saveTelegramConfig(botToken: string, userId: string): Prom
   await invoke("agent_telegram_save", { botToken, userId });
 }
 
+/**
+ * Read whether the durable project journal (`<project>/.gg/memory.md`) is on.
+ * Falls back to true — the shipped default — so a transient read error never
+ * renders the toggle in the wrong position.
+ */
+export async function getProjectMemoryEnabled(): Promise<boolean> {
+  try {
+    await waitForReady();
+    const res = await invoke<{ enabled?: boolean }>("agent_project_memory_get");
+    return res?.enabled !== false;
+  } catch (e) {
+    await logError(`agent_project_memory_get failed: ${String(e)}`);
+    return true;
+  }
+}
+
+/** Enable/disable the durable project journal. Applies from the next session. */
+export async function setProjectMemoryEnabled(enabled: boolean): Promise<void> {
+  await waitForReady();
+  await invoke("agent_project_memory_set", { enabled });
+}
+
 export interface ServeStatus {
   running: boolean;
   configured: boolean;

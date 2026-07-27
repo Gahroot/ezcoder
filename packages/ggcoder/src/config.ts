@@ -33,6 +33,8 @@ export interface SavedSettings {
   thinkingLevel?: ThinkingLevel;
   theme: "auto" | ThemeName;
   idealReviewEnabled: boolean;
+  /** Record past-session history to `<project>/.gg/memory.md` on compaction. */
+  memoryEnabled: boolean;
   /** Append LSP diagnostics to edit/write tool results. */
   lspDiagnostics: boolean;
   /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.gg). */
@@ -73,6 +75,7 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     thinkingEnabled: false,
     theme: "auto",
     idealReviewEnabled: true,
+    memoryEnabled: true,
     lspDiagnostics: true,
     allowOutsideWorkspaceWrites: false,
     sessionRetentionDays: 30,
@@ -92,6 +95,7 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     if (isValidThinkingLevel(raw.thinkingLevel)) result.thinkingLevel = raw.thinkingLevel;
     if (typeof raw.theme === "string" && isValidThemeSetting(raw.theme)) result.theme = raw.theme;
     if (raw.idealReviewEnabled === false) result.idealReviewEnabled = false;
+    if (raw.memoryEnabled === false) result.memoryEnabled = false;
     if (raw.lspDiagnostics === false) result.lspDiagnostics = false;
     if (raw.allowOutsideWorkspaceWrites === true) result.allowOutsideWorkspaceWrites = true;
     if (

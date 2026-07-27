@@ -68,7 +68,10 @@ async function ask(s, prompt) {
 }
 
 try {
-  setMemoryEnabled(true);
+  // Honour an explicit off-switch request so the OFF path is testable too.
+  const wantEnabled = process.env.GG_BENCH_MEMORY !== "off";
+  setMemoryEnabled(wantEnabled);
+  console.log(`memoryEnabled for this run: ${wantEnabled}`);
 
   // Give the scratch project a real file so the work is genuine.
   await fsp.mkdir(path.join(cwd, "src"), { recursive: true });
