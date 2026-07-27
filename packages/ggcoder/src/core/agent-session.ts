@@ -370,7 +370,12 @@ export class AgentSession {
   // mid-loop steering boundary (user steering wins over the hooks), mirroring
   // the TUI's getSteeringMessages. Each entry carries its own attachments so a
   // user can queue media (images/video/files) mid-run, not just plain text.
-  private userQueue: Array<{ text: string; attachments: SessionAttachment[] }> = [];
+  // Each entry carries a stable id so a client can cancel one specific pending
+  // message by identity. Index-based removal would race: the queue drains at
+  // every turn boundary, so an index captured by the UI can point at a
+  // different message (or past the end) by the time the cancel arrives.
+  private userQueue: Array<{ id: string; text: string; attachments: SessionAttachment[] }> = [];
+  private queueSeq = 0;
   private processManager?: ProcessManager;
   private lspManager?: LspManager;
   private subAgentManager?: SubAgentManager;
@@ -1060,6 +1065,11 @@ export class AgentSession {
     // agent sees them mid-loop instead of after it stops.
     if (this.userQueue.length > 0) {
       const queued = this.userQueue.splice(0);
+      // The agent has now consumed these. Announce the new depth immediately so
+      // clients can drop the "queued" affordance at the turn boundary rather
+      // than holding it until the whole run ends — the message is already in
+      // the loop, and showing it as still-pending for minutes is a lie.
+      this.eventBus.emit("queue_drained", { count: this.userQueue.length });
       // Frame each queued item as concurrent steering — without this wrapper
       // the model treats a mid-run message as a fresh request that supersedes
       // the original task and silently drops it. ONE message per queued item
@@ -1955,8 +1965,25 @@ export class AgentSession {
    *  as steering. Returns the new queue length. No-op semantics are the caller's
    *  concern. */
   queueMessage(text: string, attachments: SessionAttachment[] = []): number {
-    this.userQueue.push({ text, attachments });
+    this.queueSeq += 1;
+    this.userQueue.push({ id: `q${this.queueSeq}`, text, attachments });
     return this.userQueue.length;
+  }
+
+  /** Pending queued messages (id + text), oldest first, for client display. */
+  listQueuedMessages(): Array<{ id: string; text: string }> {
+    return this.userQueue.map((m) => ({ id: m.id, text: m.text }));
+  }
+
+  /** Cancel one pending message by id. Returns true if it was still queued.
+   *  A false return is the normal race rather than an error: the message drained
+   *  into the run between the client rendering the cancel affordance and the
+   *  click arriving. */
+  cancelQueuedMessage(id: string): boolean {
+    const index = this.userQueue.findIndex((m) => m.id === id);
+    if (index === -1) return false;
+    this.userQueue.splice(index, 1);
+    return true;
   }
 
   /** Number of messages currently queued. */
@@ -1969,7 +1996,12 @@ export class AgentSession {
    *  reviewing (no run in flight to steer it into) — unlike {@link drainQueue},
    *  attachments survive so queued media isn't silently dropped. */
   takeNextQueuedMessage(): { text: string; attachments: SessionAttachment[] } | null {
-    return this.userQueue.shift() ?? null;
+    const next = this.userQueue.shift();
+    if (next === undefined) return null;
+    // Strip the internal queue id: it exists only so clients can cancel a
+    // specific pending message, and callers here feed the result straight into
+    // a run.
+    return { text: next.text, attachments: next.attachments };
   }
 
   /** Clear the queue, returning the combined text (to restore to the composer).

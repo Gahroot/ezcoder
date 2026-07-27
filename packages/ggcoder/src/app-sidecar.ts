@@ -1966,6 +1966,12 @@ async function createSession(
     recordApprovedPlanMarkers(d.text);
   });
   session.eventBus.on("thinking_delta", (d) => broadcast("thinking_delta", d));
+  // The agent consumed queued steering at a turn boundary. Re-broadcast as the
+  // usual `queued` depth update so the webview drops the pending affordance the
+  // moment the message lands in the loop, not at run_end.
+  session.eventBus.on("queue_drained", (d) =>
+    broadcast("queued", { count: d.count, messages: session.listQueuedMessages() }),
+  );
   session.eventBus.on("tool_call_start", (d) => {
     toolCallNames.set(d.toolCallId, d.name);
     broadcast("tool_call_start", d);
@@ -2351,7 +2357,10 @@ async function createSession(
       // runAutopilotCycle), NOT from this shared finally — that keeps injected
       // runs from recursively entering the same review loop.
       broadcast("tasks_list", { tasks: pruneDoneTasksSync(cwd) });
-      broadcast("queued", { count: session.getQueuedCount() });
+      broadcast("queued", {
+        count: session.getQueuedCount(),
+        messages: session.listQueuedMessages(),
+      });
       broadcast("extras", footerExtras());
     }
   }
@@ -2585,7 +2594,10 @@ async function createSession(
         if (running || autopilotActive) return;
         const next = session.takeNextQueuedMessage();
         if (!next) return;
-        broadcast("queued", { count: session.getQueuedCount() });
+        broadcast("queued", {
+          count: session.getQueuedCount(),
+          messages: session.listQueuedMessages(),
+        });
         if (!next.text.trim() && next.attachments.length === 0) continue;
         // A queued message draining as a fresh turn supersedes any pending
         // plan, exactly like a direct POST /prompt turn.
@@ -3488,7 +3500,7 @@ async function createSession(
           // path as a non-queued attachment prompt when it drains.
           const prepared = attachments.length > 0 ? await prepareAttachments(cwd, attachments) : [];
           const count = session.queueMessage(text, prepared);
-          broadcast("queued", { count });
+          broadcast("queued", { count, messages: session.listQueuedMessages() });
           json(res, 202, { queued: true, count });
           return;
         }
@@ -3972,6 +3984,38 @@ async function createSession(
       return;
     }
 
+    // Pending queued steering, for the composer's cancel affordance.
+    if (method === "GET" && url === "/queued") {
+      json(res, 200, { queued: session.listQueuedMessages() });
+      return;
+    }
+
+    // Cancel one pending queued message by id.
+    if (method === "POST" && url === "/queued/cancel") {
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
+        let id: string;
+        try {
+          id = (JSON.parse(raw) as { id?: string }).id ?? "";
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!id.trim()) {
+          json(res, 400, { error: "missing queued message id" });
+          return;
+        }
+        // `false` means it already drained into the run between render and
+        // click. That is a race, not an error, so report it as a normal result
+        // and let the client reconcile from the fresh list.
+        const cancelled = session.cancelQueuedMessage(id);
+        const queued = session.listQueuedMessages();
+        broadcast("queued", { count: queued.length, messages: queued });
+        json(res, 200, { cancelled, queued });
+      });
+      return;
+    }
+
     if (method === "POST" && url === "/kill") {
       void readBody(req, res).then(async (raw) => {
         if (raw === null) return;
@@ -4030,7 +4074,7 @@ async function createSession(
         const generation = runLifecycle.generation;
         if (!pendingCancelDrain || pendingCancelDrain.generation !== generation) {
           pendingCancelDrain = { generation, text: session.drainQueue() };
-          broadcast("queued", { count: 0 });
+          broadcast("queued", { count: 0, messages: [] });
         }
         const result = await runLifecycle.cancel(CANCEL_TIMEOUT_MS);
         const drained = pendingCancelDrain.text;

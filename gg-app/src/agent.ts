@@ -855,6 +855,33 @@ export async function setRadioVolume(volume: number): Promise<number> {
   return Number.isFinite(res.volume) ? res.volume : volume;
 }
 
+/** One user message waiting to be injected into the running turn. */
+export interface QueuedMessage {
+  id: string;
+  text: string;
+}
+
+/**
+ * Cancel one pending queued message by id.
+ *
+ * Returns the remaining queue, or null if the call itself failed. A `cancelled:
+ * false` from the sidecar is NOT a failure: it means the agent consumed the
+ * message between the row rendering and the click landing, so the caller should
+ * simply reconcile to the returned list.
+ */
+export async function cancelQueued(id: string): Promise<QueuedMessage[] | null> {
+  try {
+    const res = await invoke<{ cancelled?: boolean; queued?: QueuedMessage[] }>(
+      "agent_cancel_queued",
+      { id },
+    );
+    return res.queued ?? [];
+  } catch (e) {
+    await logError(`agent_cancel_queued failed: ${String(e)}`);
+    return null;
+  }
+}
+
 /** Stop a background task by id. Returns the sidecar's status message, if any. */
 export async function killTask(id: string): Promise<string | null> {
   try {

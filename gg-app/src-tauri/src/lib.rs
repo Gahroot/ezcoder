@@ -1184,6 +1184,29 @@ async fn agent_auth_logout(
         .map_err(|e| e.to_string())
 }
 
+/// Proxy: cancel one pending queued message by id. Returns
+/// `{ cancelled, queued }`. `cancelled: false` means it already drained into
+/// the run between render and click, which is a normal race, not an error.
+#[tauri::command]
+async fn agent_cancel_queued(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/queued/cancel", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "id": id }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Proxy: stop a background task by id. Returns `{ message }`.
 #[tauri::command]
 async fn agent_kill_task(
@@ -4185,6 +4208,7 @@ pub fn run() {
             agent_auth_oauth_code,
             agent_auth_logout,
             agent_kill_task,
+            agent_cancel_queued,
             agent_radio_state,
             agent_radio_set,
             agent_radio_volume,

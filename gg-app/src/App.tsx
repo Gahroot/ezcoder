@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
@@ -17,6 +17,8 @@ import {
   isSwitchModelError,
   switchKenModel,
   listCommands,
+  cancelQueued,
+  type QueuedMessage,
   listHistory,
   exportTranscriptName,
   saveTranscript,
@@ -60,6 +62,7 @@ import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
 import { CompactionNotice } from "./CompactionNotice";
 import { ModelSelect } from "./ModelSelect";
 import { SlashMenu } from "./SlashMenu";
+import { QueuedBar } from "./QueuedBar";
 import { ScheduleHint } from "./ScheduleHint";
 import { RunningSchedulesButton } from "./RunningSchedulesButton";
 import {
@@ -408,6 +411,9 @@ function App(): React.ReactElement {
   const pendingEnhanceRef = useRef<{ enhanced: string; segments: PromptSegment[] } | null>(null);
   // Number of messages queued mid-run (injected as steering by the sidecar).
   const [queuedCount, setQueuedCount] = useState(0);
+  // Pending queued messages, so each can be cancelled individually. Kept
+  // alongside the count because the sidecar is the source of truth for both.
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
   const [state, setState] = useState<AgentState | null>(null);
   // Transient "KEN IS ON"/"KEN IS OFF" takeover banner shown when Autopilot
   // is toggled. Null = not showing; the banner clears itself via `onDone`
@@ -460,7 +466,7 @@ function App(): React.ReactElement {
   // skipping any occurrence that comes due mid-run rather than stacking agents.
   // In-memory for the life of the window — see useSchedules.
   const { schedules, addSchedule, stopSchedule } = useSchedules({
-    running,
+    queuedPrompts: useMemo(() => queuedMessages.map((m) => m.text), [queuedMessages]),
     onFire: useCallback((prompt: string) => {
       // keepInput: the user did not press Enter for this — leave whatever they
       // are typing untouched.
@@ -1016,6 +1022,7 @@ function App(): React.ReactElement {
     setPlanDone,
     setPlanReview,
     setQueuedCount,
+    setQueuedMessages,
     setAttachments,
     setCommands,
     setModels,
@@ -1405,6 +1412,33 @@ function App(): React.ReactElement {
       el.focus();
       el.setSelectionRange(caretAt, caretAt);
       setCaret(caretAt);
+    });
+  }
+
+  /**
+   * Cancel one pending queued message. The sidecar returns the remaining queue,
+   * which we adopt wholesale rather than filtering locally: the agent may have
+   * consumed messages between render and click, so its list is authoritative.
+   */
+  function handleCancelQueued(id: string): void {
+    const cancelledText = queuedMessages.find((m) => m.id === id)?.text;
+    void cancelQueued(id).then((remaining) => {
+      if (remaining === null) return;
+      setQueuedMessages(remaining);
+      setQueuedCount(remaining.length);
+      // Drop the transcript bubble for a message that will now never run.
+      // Leaving it would clear its `queued` flag on the next queue broadcast and
+      // render it identically to a message the agent actually received.
+      // Only remove it if the sidecar really dropped it: a cancel that lost the
+      // race (already consumed) comes back with the text still in the queue.
+      if (cancelledText === undefined) return;
+      if (remaining.some((m) => m.id === id)) return;
+      setItems((prev) => {
+        const index = prev.findIndex(
+          (it) => it.kind === "user" && it.queued && it.text === cancelledText,
+        );
+        return index === -1 ? prev : [...prev.slice(0, index), ...prev.slice(index + 1)];
+      });
     });
   }
 
@@ -1976,6 +2010,7 @@ function App(): React.ReactElement {
     setPlanDone(new Set());
     setAttachments([]);
     setQueuedCount(0);
+    setQueuedMessages([]);
     setHydrated(false);
     setNeedsProject(false);
     setHydrateNonce((n) => n + 1);
@@ -2314,12 +2349,7 @@ function App(): React.ReactElement {
         )}
         <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
         <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
-        {queuedCount > 0 && (
-          <div className="queued-bar">
-            <span className="queued-dot" />
-            {`${queuedCount} message${queuedCount === 1 ? "" : "s"} queued · will send after this run`}
-          </div>
-        )}
+        <QueuedBar messages={queuedMessages} onCancel={handleCancelQueued} />
         <div className="inputrow">
           <input
             ref={fileInputRef}

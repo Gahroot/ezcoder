@@ -20,13 +20,17 @@ import type { ParsedSchedule } from "./scheduleCommand";
  * A monitoring prompt that fell four occurrences behind should check the logs
  * once, now — not launch four agents against a repo that has moved on.
  *
- * ## Never stack runs
+ * ## Firing mid-run queues, it does not drop
  *
- * A due schedule whose turn arrives while the agent is mid-run is skipped and
- * re-aimed at the next boundary; `runsCompleted` does not advance, because
- * nothing ran. Queueing it instead would let a 20-minute turn accumulate a
- * backlog of 15-minute schedules and then fire them back-to-back, with several
- * agents editing the same files.
+ * A due schedule whose turn arrives while the agent is working still fires. The
+ * send path queues it as steering, so the agent picks it up at the next turn
+ * boundary instead of the work being silently lost.
+ *
+ * The one guard is duplicate suppression: a schedule with an instance ALREADY
+ * waiting in the queue does not add another. Without it a 15-minute schedule
+ * against a two-hour run would stack eight identical copies, and the agent
+ * would work through all of them back to back. `runsCompleted` only advances
+ * when a prompt is actually sent.
  *
  * ## Lifetime
  *
@@ -38,6 +42,17 @@ import type { ParsedSchedule } from "./scheduleCommand";
 
 /** How often the ticker re-checks for due schedules. */
 export const TICK_MS = 1000;
+
+/**
+ * How long an optimistic "already sent" marker survives without the prompt
+ * appearing in the real queue.
+ *
+ * A fired prompt only shows up in `queuedPrompts` after a full async round trip
+ * (webview -> Rust -> HTTP -> sidecar -> SSE -> back), and if the agent was idle
+ * it runs immediately and never queues at all. The marker covers that gap; the
+ * expiry stops a prompt that never queued from suppressing its schedule forever.
+ */
+export const FIRE_GRACE_MS = 15_000;
 
 export interface Schedules {
   schedules: readonly ActiveSchedule[];
@@ -60,12 +75,16 @@ function advanceNextRun(nextRunAt: number, intervalMs: number, now: number): num
 let idCounter = 0;
 
 export function useSchedules(opts: {
-  /** True while the agent is mid-run; due schedules are skipped rather than stacked. */
-  running: boolean;
-  /** Sends one scheduled prompt through the normal send path. */
+  /**
+   * Prompts already waiting in the agent's steering queue. A schedule whose
+   * prompt is present does not fire again, so one schedule can never stack
+   * duplicate copies of itself behind a long run.
+   */
+  queuedPrompts: readonly string[];
+  /** Sends one scheduled prompt through the normal send path (queues if busy). */
   onFire: (prompt: string) => void;
 }): Schedules {
-  const { running, onFire } = opts;
+  const { queuedPrompts, onFire } = opts;
   const [schedules, setSchedules] = useState<readonly ActiveSchedule[]>([]);
 
   // The ref is authoritative for the ticker; `schedules` mirrors it for render.
@@ -73,12 +92,19 @@ export function useSchedules(opts: {
   // during the render phase, and double-fire under StrictMode's double
   // invocation.
   const schedulesRef = useRef<readonly ActiveSchedule[]>([]);
-  const runningRef = useRef(running);
   const onFireRef = useRef(onFire);
+  // Prompts we have sent but not yet seen echoed back in `queuedPrompts`.
+  // The queue depth arrives over SSE, so between firing and that event landing
+  // the dedupe check would otherwise read stale and fire the same prompt again.
+  const inFlightRef = useRef<Map<string, number>>(new Map());
+  const queuedRef = useRef<readonly string[]>(queuedPrompts);
 
   useEffect(() => {
-    runningRef.current = running;
-  }, [running]);
+    queuedRef.current = queuedPrompts;
+    // Anything now visible in the real queue no longer needs its optimistic
+    // in-flight marker.
+    for (const prompt of queuedPrompts) inFlightRef.current.delete(prompt);
+  }, [queuedPrompts]);
   useEffect(() => {
     onFireRef.current = onFire;
   }, [onFire]);
@@ -122,19 +148,35 @@ export function useSchedules(opts: {
 
       const now = Date.now();
       const next: ActiveSchedule[] = [];
-      let toFire: string | null = null;
+      const toFire: string[] = [];
       let changed = false;
+
+      // Expire optimistic in-flight markers whose prompt never showed up in the
+      // queue (it ran immediately because the agent was idle, or the send was
+      // dropped). Without this a schedule would suppress itself forever.
+      for (const [prompt, at] of inFlightRef.current) {
+        if (now - at >= FIRE_GRACE_MS) inFlightRef.current.delete(prompt);
+      }
+
+      const pending = new Set([...queuedRef.current, ...inFlightRef.current.keys()]);
+
+      // At most ONE prompt is sent per tick. The sidecar only sets its `running`
+      // flag after an await inside the /prompt handler, so two sends issued in
+      // the same tick can both clear its concurrency guard and end up calling
+      // `session.prompt()` against the same session at once.
+      let firedThisTick = false;
 
       for (const schedule of current) {
         if (now < schedule.nextRunAt) {
           next.push(schedule);
           continue;
         }
-        changed = true;
 
-        // A run is already in flight: skip this occurrence entirely and re-aim
-        // at the next boundary. runsCompleted is untouched because nothing ran.
-        if (runningRef.current) {
+        // This schedule already has a copy waiting for the agent. Skip the
+        // occurrence rather than queueing a duplicate, and re-aim at the next
+        // boundary. runsCompleted is untouched because nothing was sent.
+        if (pending.has(schedule.prompt)) {
+          changed = true;
           next.push({
             ...schedule,
             nextRunAt: advanceNextRun(schedule.nextRunAt, schedule.intervalMs, now),
@@ -142,22 +184,19 @@ export function useSchedules(opts: {
           continue;
         }
 
-        // Another schedule already claimed this tick. `runningRef` cannot flip
-        // mid-loop — the run it describes starts asynchronously — so firing both
-        // would start concurrent agents on the same repo, exactly what the
-        // no-stacking rule exists to prevent.
-        //
-        // Leave `nextRunAt` in the past rather than advancing it, so this one
-        // fires on the NEXT tick (a second later) instead of losing its turn.
-        // Advancing here would starve it forever when two schedules share a
-        // cadence: both would come due together every time and the first in the
-        // list would always win.
-        if (toFire !== null) {
+        // Another schedule claimed this tick. Keep the past-due `nextRunAt` so
+        // this one goes out on the very next tick instead of losing its turn --
+        // advancing it here would starve a schedule that always comes due
+        // alongside an earlier one.
+        if (firedThisTick) {
           next.push(schedule);
           continue;
         }
 
-        toFire = schedule.prompt;
+        changed = true;
+        firedThisTick = true;
+        toFire.push(schedule.prompt);
+        pending.add(schedule.prompt);
         const runsCompleted = schedule.runsCompleted + 1;
         // Bounded schedule that has run its course drops off the list; a null
         // runCount runs until stopped.
@@ -170,9 +209,14 @@ export function useSchedules(opts: {
       }
 
       if (changed) commit(next);
-      // Fire AFTER committing, so a prompt that synchronously flips `running`
-      // sees the already-updated schedule list.
-      if (toFire !== null) onFireRef.current(toFire);
+      // Fire AFTER committing, so a prompt that synchronously flips state sees
+      // the already-updated schedule list.
+      for (const prompt of toFire) {
+        // Mark optimistically BEFORE sending: the queue echo is async, and until
+        // it arrives this is the only thing preventing a duplicate.
+        inFlightRef.current.set(prompt, Date.now());
+        onFireRef.current(prompt);
+      }
     };
 
     const id = setInterval(tick, TICK_MS);
