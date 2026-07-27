@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.26.2
+
+### Patch Changes
+
+- Fix concurrent prompts starting two runs on the same session, and announce queue depth the moment the agent consumes queued steering.
+  - @kenkaiiii/gg-ai@5.26.2
+  - @kenkaiiii/gg-agent@5.26.2
+  - @kenkaiiii/gg-core@5.26.2
+
 ## 5.26.1
 
 ### Patch Changes
