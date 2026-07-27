@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.33.1",
+    date: "2026-07-28",
+    items: [
+      "Reopen a chat and everything sits exactly where it happened. Errors, `Ken` verdicts and plan banners used to pile up at the bottom of long conversations, sometimes `900` messages below where they belong. I went through every one of your saved chats and fixed the lot, old ones included.",
+      "No more seeing the same thing twice. When `Autopilot` hands me a job, reopening that chat used to show its instruction again as raw text underneath. Now you get the one clean handoff, exactly like you saw it live.",
+      "Your slash commands stay looking like commands. Reopen a chat and `/release` is still a neat little chip instead of the giant prompt hiding behind it, even after you have edited that command since.",
+    ],
+  },
+  {
     version: "0.33.0",
     date: "2026-07-27",
     items: [
