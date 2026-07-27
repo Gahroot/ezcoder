@@ -66,6 +66,7 @@ import {
   normalizeKenTurnsForHistory,
   restoreUserRow,
   restoreAssistantTexts,
+  resolveRestoredCommand,
   autopilotMarkerCopySeed,
 } from "./core/session-history.js";
 import {
@@ -584,33 +585,6 @@ function detectHookKind(text: string): "ideal" | "loop_break" | "regrounding" | 
   if (t.startsWith("Ideal? Review the actual work")) return "ideal";
   if (t.startsWith("Stuck? You've repeated essentially")) return "loop_break";
   if (t.startsWith("Re-ground. The conversation was just compacted")) return "regrounding";
-  return null;
-}
-
-// Separator AgentSession.prompt() inserts between a command's prompt body and
-// the user's trailing args. Must stay in sync with the expansion there.
-const COMMAND_ARGS_SEP = "\n\n## User Instructions\n\n";
-
-/**
- * Reverse a prompt-template command's expansion. When a `/name` command runs,
- * the agent persists the FULL expanded prompt body as the user message — so on
- * resume the raw body would render instead of the short `/name` chip the user
- * saw live. Given the candidate commands (built-in + custom) and a restored
- * message body, recover the original `/name [args]` invocation. Returns null
- * when the text isn't a known command body (an ordinary user message).
- */
-function detectPromptCommand(
-  text: string,
-  candidates: ReadonlyArray<{ name: string; prompt: string }>,
-): string | null {
-  for (const c of candidates) {
-    if (!c.prompt) continue;
-    if (text === c.prompt) return `/${c.name}`;
-    if (text.startsWith(c.prompt + COMMAND_ARGS_SEP)) {
-      const args = text.slice(c.prompt.length + COMMAND_ARGS_SEP.length).trim();
-      return args ? `/${c.name} ${args}` : `/${c.name}`;
-    }
-  }
   return null;
 }
 
@@ -2553,12 +2527,14 @@ async function createSession(
           // falling back to the raw verdict text (e.g. ALL_CLEAR).
           if (event.type === "autopilot_done") {
             // Broadcast the SAME copySeed the persisted marker will produce on
-            // resume, so the live all-clear wording matches the resumed one
-            // (computed before persist — same synchronous message count).
+            // resume, so the live all-clear wording matches the resumed one.
+            // Must use the PERSISTED count — that's what persistAutopilotMarker
+            // anchors against, and it trails the in-memory list after a run
+            // whose messages never made it to disk.
             const seed = autopilotMarkerCopySeed({
               version: 1,
               phase: "done",
-              afterMessageCount: session.getMessages().filter((m) => m.role !== "system").length,
+              afterMessageCount: session.getPersistedTranscriptCount(),
             });
             broadcast(event.type, { ...event.data, copySeed: seed });
             void session.persistAutopilotMarker("done");
@@ -3160,9 +3136,9 @@ async function createSession(
         // Autopilot verdict markers to interleave, same anchor scheme as Ken
         // turns — each becomes a single assistant row the webview renders
         // exactly like the live `autopilot` item (never a raw verdict string).
-        // Compact/continuation rewrites can carry old markers whose original
-        // afterMessageCount is beyond the restored message list; dropping those
-        // prevents stale all-clear bubbles from bunching at the bottom on resume.
+        // Normalization pulls anchors left over from an unrebased compaction
+        // back to where the marker was actually written, so stale all-clear
+        // bubbles no longer bunch at the bottom of a reopened session.
         const restoredMessageCount = messages.filter((m) => m.role !== "system").length;
         const autopilotByCount = new Map<
           number,
@@ -3319,10 +3295,26 @@ async function createSession(
             const text = restored.text;
             const hook = detectHookKind(text);
             const compacted = !hook && text.startsWith("[Previous conversation summary]");
+            const hint = userHintByCount.get(nonSystemCount);
+            // The typed invocation persisted alongside the prompt is
+            // authoritative. Reversing the expanded body only works while the
+            // template is byte-identical, and templates drift (edited
+            // `.gg/commands/*.md`, reworded built-ins, app-vs-CLI phrasing) —
+            // after which the resumed session dumped the raw multi-KB body
+            // instead of the `/name` chip. Older sessions have no hint, so the
+            // body match stays as the fallback.
             const command =
-              !hook && !compacted ? detectPromptCommand(text, commandCandidates) : null;
-            if (text.trim() || restored.images.length > 0) {
-              const hint = userHintByCount.get(nonSystemCount);
+              !hook && !compacted
+                ? resolveRestoredCommand(
+                    typeof hint?.command === "string" ? hint.command : null,
+                    text,
+                    commandCandidates,
+                  )
+                : null;
+            // Autopilot injected this turn — live showed only the Ken-tinted
+            // marker for it, never a user bubble. Emitting one here would print
+            // the injected instruction a second time, unstyled.
+            if (!restored.autopilotInjected && (text.trim() || restored.images.length > 0)) {
               history.push({
                 role: "user",
                 text: command ?? text,
@@ -3524,17 +3516,45 @@ async function createSession(
           // yield, and `running` does not flip until runAgent begins.
           claimedStart = runClaim.claim();
           json(res, 202, { accepted: true });
+          // Gate inputs captured around the run: whether this turn is a workflow
+          // slash command (attachment prompts skip slash expansion entirely), and
+          // how many assistant messages the run actually adds. Computed even when
+          // autopilot is currently off — the toggle can flip ON mid-run, and the
+          // gate reads the post-run value.
+          const workflowCommand =
+            attachments.length === 0 &&
+            isWorkflowCommandText(text, await loadWorkflowCommandSpecs());
+          // Does this input actually expand into a persisted user message? Asked
+          // of the session itself, because only it knows whether the command
+          // resolves here (name/alias casing, custom `.gg/commands`, non-coder
+          // agents that don't expand at all). A looser guess would anchor the
+          // hint at +1 with no message to land on — decorating an unrelated
+          // later bubble with the wrong `/name`.
+          const expandsToTemplate =
+            attachments.length === 0 && (await session.willExpandPromptTemplate(text));
           // Webview display hint for this prompt's user bubble (kenSent shimmer
-          // label / enhancer highlight segments). Anchored +1 so it attaches to
-          // the user message the prompt below is about to push. Queued prompts
-          // skip this (their position in the run is unpredictable).
-          if (meta && (meta.kenSent === true || Array.isArray(meta.enhancements))) {
+          // label / enhancer highlight segments / the `/name` a command was typed
+          // as). Anchored +1 so it attaches to the user message the prompt below
+          // is about to push. Queued prompts skip this (their position in the run
+          // is unpredictable).
+          //
+          // Recording the invocation matters because the agent persists the
+          // EXPANDED template as the user message. Resume used to recover
+          // `/name` by matching that body against the current templates, which
+          // silently fails the moment a template is edited or reworded — the
+          // reopened session then rendered the raw multi-KB prompt instead of
+          // the command chip.
+          if (
+            expandsToTemplate ||
+            (meta && (meta.kenSent === true || Array.isArray(meta.enhancements)))
+          ) {
             void session
               .persistAppMarker(
                 "user_hint",
                 {
-                  ...(meta.kenSent === true ? { kenSent: true } : {}),
-                  ...(Array.isArray(meta.enhancements) ? { enhancements: meta.enhancements } : {}),
+                  ...(expandsToTemplate ? { command: text.trim() } : {}),
+                  ...(meta?.kenSent === true ? { kenSent: true } : {}),
+                  ...(Array.isArray(meta?.enhancements) ? { enhancements: meta.enhancements } : {}),
                 },
                 1,
               )
@@ -3547,14 +3567,6 @@ async function createSession(
           // feedback, anything) supersedes the pending plan — the bump also
           // invalidates any in-flight Ken plan review.
           clearPendingPlan();
-          // Gate inputs captured around the run: whether this turn is a workflow
-          // slash command (attachment prompts skip slash expansion entirely), and
-          // how many assistant messages the run actually adds. Computed even when
-          // autopilot is currently off — the toggle can flip ON mid-run, and the
-          // gate reads the post-run value.
-          const workflowCommand =
-            attachments.length === 0 &&
-            isWorkflowCommandText(text, await loadWorkflowCommandSpecs());
           const assistantsBefore = countAssistantMessages(session.getMessages());
           const messagesBefore = session.getMessages().length;
           await runAgent(text, async () => {

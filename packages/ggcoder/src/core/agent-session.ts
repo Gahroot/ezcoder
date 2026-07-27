@@ -44,7 +44,8 @@ import {
 } from "./session-manager.js";
 import { ExtensionLoader } from "./extensions/loader.js";
 import type { ExtensionContext } from "./extensions/types.js";
-import { shouldCompact, compact } from "./compaction/compactor.js";
+import { shouldCompact, compact, type CompactionAnchorRemap } from "./compaction/compactor.js";
+import { remapAnchorForCompaction, stripRecordedPosition } from "./session-history.js";
 import {
   getAuthStorageKeys,
   getContextWindow,
@@ -818,9 +819,15 @@ export class AgentSession {
   }
 
   /**
-   * Process user input. Handles slash commands or runs agent loop.
+   * Resolve a `/name [args]` input to the prompt template it expands into, or
+   * null when it isn't a prompt-template command for THIS session (an ordinary
+   * message, a registry/action command, or any slash input on a non-coder
+   * agent). Shared by {@link prompt} and {@link willExpandPromptTemplate} so
+   * callers can't drift from the expansion that actually happens.
    */
-  async prompt(content: string): Promise<void> {
+  private async resolveSlashInput(
+    content: string,
+  ): Promise<{ kind: "template"; fullPrompt: string } | { kind: "command" } | null> {
     const parsedInput = this.slashCommands.parse(content);
     const coderCommands = this.opts.coderSlashCommands !== false;
     // Non-coder agents only intercept commands registered in their own registry.
@@ -829,29 +836,51 @@ export class AgentSession {
       parsedInput && (coderCommands || this.slashCommands.get(parsedInput.name))
         ? parsedInput
         : null;
-    if (parsed) {
-      // GG Coder alone can resolve its prompt-template and project commands.
-      const builtinPromptCmd = coderCommands ? getPromptCommand(parsed.name) : undefined;
-      const customCmds = coderCommands ? await loadCustomCommands(this.cwd) : [];
-      const customPromptCmd = !builtinPromptCmd
-        ? customCmds.find((c) => c.name === parsed.name)
-        : undefined;
-      const promptText = builtinPromptCmd?.prompt ?? customPromptCmd?.prompt;
+    if (!parsed) return null;
+    // GG Coder alone can resolve its prompt-template and project commands.
+    const builtinPromptCmd = coderCommands ? getPromptCommand(parsed.name) : undefined;
+    const customCmds = coderCommands ? await loadCustomCommands(this.cwd) : [];
+    const customPromptCmd = !builtinPromptCmd
+      ? customCmds.find((c) => c.name === parsed.name)
+      : undefined;
+    const promptText = builtinPromptCmd?.prompt ?? customPromptCmd?.prompt;
+    // No template body — a registry/action command that runs and returns text
+    // instead of becoming a user message.
+    if (!promptText) return { kind: "command" };
+    return {
+      kind: "template",
+      fullPrompt: parsed.args
+        ? `${promptText}\n\n## User Instructions\n\n${parsed.args}`
+        : promptText,
+    };
+  }
 
-      if (promptText) {
-        // Inject the prompt-template command as a user message to the agent
-        const fullPrompt = parsed.args
-          ? `${promptText}\n\n## User Instructions\n\n${parsed.args}`
-          : promptText;
-        // Run as a normal prompt (push message + agent loop)
-        const userMessage: Message = { role: "user", content: fullPrompt };
-        this.messages.push(userMessage);
-        await this.persistMessage(userMessage);
-        this.lastPersistedIndex = this.messages.length;
-        await this.runLoop();
-        return;
-      }
+  /**
+   * Whether {@link prompt} would expand this input into a template body and
+   * persist it as a user message. Hosts use it to record the typed `/name` for
+   * transcript restore — gating on anything looser risks tagging an unrelated
+   * message when the command turns out NOT to expand.
+   */
+  async willExpandPromptTemplate(content: string): Promise<boolean> {
+    return (await this.resolveSlashInput(content))?.kind === "template";
+  }
 
+  /**
+   * Process user input. Handles slash commands or runs agent loop.
+   */
+  async prompt(content: string): Promise<void> {
+    const slash = await this.resolveSlashInput(content);
+    if (slash?.kind === "template") {
+      // Inject the prompt-template command as a user message to the agent, then
+      // run as a normal prompt (push message + agent loop).
+      const userMessage: Message = { role: "user", content: slash.fullPrompt };
+      this.messages.push(userMessage);
+      await this.persistMessage(userMessage);
+      this.lastPersistedIndex = this.messages.length;
+      await this.runLoop();
+      return;
+    }
+    if (slash?.kind === "command") {
       const cmdContext = this.createSlashCommandContext();
       const result = await this.slashCommands.execute(content, cmdContext);
       if (result) {
@@ -1775,6 +1804,12 @@ export class AgentSession {
 
     this.providerContext = null;
 
+    // Compaction rewrote the message list, so every transcript anchor recorded
+    // against the old indices must move with it — otherwise the markers are
+    // re-persisted pointing at positions that no longer mean anything and
+    // replay far below where they happened (or past the end).
+    this.remapMarkerAnchors(result.result.anchorRemap);
+
     // Transient sessions (Ken chat/autopilot, subagent spawns) must NEVER touch
     // the session store: without this guard, the first auto-compaction called
     // sessionManager.create() and assigned a real sessionPath, silently turning
@@ -2251,6 +2286,30 @@ export class AgentSession {
     return this.autopilotMarkers;
   }
 
+  /** Non-system messages that are actually on disk. Transcript markers anchor
+   *  against this (not the in-memory list, which can run ahead after a failed
+   *  run), so hosts computing marker-derived values must use the same base. */
+  getPersistedTranscriptCount(): number {
+    return this.persistedTranscriptCount();
+  }
+
+  /**
+   * Rebase every transcript anchor (Ken turns, autopilot verdicts, app markers)
+   * onto a freshly compacted message list. Called right after `this.messages`
+   * is replaced and before the markers are re-persisted into the continuation
+   * file, so the new file carries positions that match its own transcript.
+   */
+  private remapMarkerAnchors(remap: CompactionAnchorRemap | undefined): void {
+    if (!remap) return;
+    const move = <T extends { afterMessageCount: number }>(payload: T): T => ({
+      ...payload,
+      afterMessageCount: remapAnchorForCompaction(payload.afterMessageCount, remap),
+    });
+    this.kenTurns = this.kenTurns.map(move);
+    this.autopilotMarkers = this.autopilotMarkers.map(move);
+    this.appMarkers = this.appMarkers.map(move);
+  }
+
   /**
    * Record one Ken Kai (mentor agent) turn against this build session: the
    * user's question + Ken's reply. Kept in memory for the live transcript and
@@ -2290,7 +2349,7 @@ export class AgentSession {
         id: crypto.randomUUID(),
         parentId: null,
         timestamp: new Date().toISOString(),
-        data: payload,
+        data: stripRecordedPosition(payload),
       };
       await this.sessionManager.appendEntry(this.sessionPath, entry);
     }
@@ -2341,7 +2400,7 @@ export class AgentSession {
         id: crypto.randomUUID(),
         parentId: null,
         timestamp: new Date().toISOString(),
-        data: payload,
+        data: stripRecordedPosition(payload),
       };
       await this.sessionManager.appendEntry(this.sessionPath, entry);
     }
@@ -2395,7 +2454,7 @@ export class AgentSession {
         id: crypto.randomUUID(),
         parentId: null,
         timestamp: new Date().toISOString(),
-        data: payload,
+        data: stripRecordedPosition(payload),
       };
       await this.sessionManager.appendEntry(this.sessionPath, entry);
     }
@@ -2536,11 +2595,17 @@ export class AgentSession {
       legacyLabel || loaded.header.preview || findUserSessionPrompt(loadedMessages);
     // Restore Ken's advisory turns (custom entries, not on the message branch) so
     // they reappear in the transcript and survive into the continuation file.
-    this.kenTurns = this.sessionManager.getKenTurns(loaded.entries);
+    // The leaf is passed so each marker also carries its FILE-order position,
+    // the fallback used when a legacy anchor is out of range (see
+    // RecordedPosition).
+    this.kenTurns = this.sessionManager.getKenTurns(loaded.entries, loaded.header.leafId);
     // Restore autopilot verdict markers the same way (not on the message DAG).
-    this.autopilotMarkers = this.sessionManager.getAutopilotMarkers(loaded.entries);
+    this.autopilotMarkers = this.sessionManager.getAutopilotMarkers(
+      loaded.entries,
+      loaded.header.leafId,
+    );
     // Restore app transcript markers (plan banner / task header / errors / hints).
-    this.appMarkers = this.sessionManager.getAppMarkers(loaded.entries);
+    this.appMarkers = this.sessionManager.getAppMarkers(loaded.entries, loaded.header.leafId);
     this.turnMetrics = this.sessionManager.getTurnMetrics(loaded.entries);
 
     // Track the current leaf for subsequent entries
@@ -2594,6 +2659,9 @@ export class AgentSession {
         signal: this.opts.signal,
       });
       this.messages = compacted.messages;
+      // Same anchor rebase as compact(): the restored markers were recorded
+      // against the pre-compaction transcript.
+      this.remapMarkerAnchors(compacted.result.anchorRemap);
       log("INFO", "session", `Auto-compaction complete`, {
         before: String(compacted.result.originalCount),
         after: String(compacted.result.newCount),
