@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.26.0
+
+### Minor Changes
+
+- Keep long tasks running and carry project history across sessions: the agent loop can now extend an exhausted turn budget when it is still making progress, finished sub-agents and background processes announce themselves instead of needing to be polled, mid-session model switches are recorded as durable replayable state, and compaction writes past-tense project history to `.gg/memory.md` (on by default, `/memory-off` to disable).
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.26.0
+- @kenkaiiii/gg-agent@5.26.0
+- @kenkaiiii/gg-core@5.26.0
+
 ## 5.25.0
 
 ### Minor Changes
