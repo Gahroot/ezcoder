@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.33.0",
+    date: "2026-07-27",
+    items: [
+      "Keep typing while I work. Messages you send mid-run now line up above the composer, and you can pull any one of them back out with a single `x` before I get to it. Change your mind, change the plan, no waiting.",
+      "You can finally see the moment I pick a message up. The `queued` tag disappears the second I actually read it instead of hanging around until I finish the whole job, so you always know exactly where you stand.",
+      "Fire off two things at once and nothing collides. I found a rare timing hole where two prompts landing together could kick off two runs on the same chat and trip over each other. Sealed shut.",
+    ],
+  },
+  {
     version: "0.32.0",
     date: "2026-07-27",
     items: [
