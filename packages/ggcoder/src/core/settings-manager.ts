@@ -65,6 +65,12 @@ const SettingsSchema = z.object({
    *  - "baseline": 5-min cache TTL, no pre-warm
    *  - "optimized": 1-h cache TTL, cache pre-warming on first prompt (default) */
   speedProfile: z.enum(["baseline", "optimized"]).default("optimized"),
+  /** Durable project journal at `<project>/.gg/memory.md`: past-tense entries
+   *  written when a session is compacted, plus a budgeted digest in the uncached
+   *  prompt tail. Off by default — it adds recurring per-turn tokens and writes
+   *  a file into the project. See core/memory/journal.ts for why only past-tense
+   *  history may be stored. */
+  memoryEnabled: z.boolean().default(false),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -85,6 +91,7 @@ export const DEFAULT_SETTINGS: Settings = {
   deferredMcpTools: true,
   sessionRetentionDays: 30,
   speedProfile: "optimized",
+  memoryEnabled: false,
 };
 
 // ── Settings Manager ───────────────────────────────────────

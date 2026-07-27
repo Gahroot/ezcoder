@@ -21,6 +21,7 @@ import { createTaskOutputTool } from "./task-output.js";
 import { createTaskStopTool } from "./task-stop.js";
 import { createTaskSendTool } from "./task-send.js";
 import { createTasksTool } from "./tasks.js";
+
 import { createSkillTool } from "./skill.js";
 import { createScreenshotTool } from "./screenshot.js";
 import { createGenerateImageTool, type GenerateImageAuth } from "./generate-image.js";
@@ -32,6 +33,7 @@ import type { WriteGuardSettings } from "../core/workspace-guard.js";
 import type { GetNetworkPolicy } from "../core/network-guard.js";
 import type { AgentDefinition } from "../core/agents.js";
 import type { Skill } from "../core/skills.js";
+import type { AgentNotificationQueue } from "../core/agent-notifications.js";
 
 export interface CreateToolsOptions {
   agents?: AgentDefinition[];
@@ -98,6 +100,13 @@ export interface CreateToolsOptions {
    * When omitted, no network restriction is applied.
    */
   getNetworkPolicy?: GetNetworkPolicy;
+  /**
+   * Push queue for out-of-band notifications (child completions, background
+   * process progress). When provided, producers enqueue here and the session
+   * drains it into steering, so the agent learns about them without spending a
+   * turn polling.
+   */
+  notifications?: AgentNotificationQueue;
 }
 
 export interface CreateToolsResult {
@@ -127,7 +136,7 @@ export async function createTools(
   opts?: CreateToolsOptions,
 ): Promise<CreateToolsResult> {
   const readFiles: ReadTracker = new Map();
-  const processManager = new ProcessManager();
+  const processManager = new ProcessManager({ notifications: opts?.notifications });
   const ops = opts?.operations ?? localOperations;
   const planModeRef = opts?.planModeRef;
 
@@ -210,6 +219,7 @@ export async function createTools(
         getBaseUrl: opts.getBaseUrl,
         getMaxPerModel: () => opts.getMaxPerModel?.(),
         onState: opts.onSubAgentState,
+        notifications: opts.notifications,
       });
       tools.push(...createSubAgentControlTools(subAgentManager, planModeRef));
     }

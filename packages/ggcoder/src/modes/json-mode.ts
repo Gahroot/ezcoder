@@ -4,6 +4,7 @@ import { isAbortError } from "@kenkaiiii/gg-agent";
 import { formatUserError } from "../utils/error-handler.js";
 import { closeLogger } from "../core/logger.js";
 import { captureSidecarError, flushSidecarErrors } from "../core/sidecar-error-reporter.js";
+import { SUB_AGENT_MAX_TURN_EXTENSIONS } from "../tools/subagent-shared.js";
 
 export interface JsonModeOptions {
   message: string;
@@ -57,6 +58,7 @@ export async function runJsonMode(options: JsonModeOptions): Promise<void> {
     cwd: options.cwd,
     thinkingLevel: options.thinkingLevel,
     maxTurns: options.maxTurns,
+    maxTurnExtensions: SUB_AGENT_MAX_TURN_EXTENSIONS,
     allowedTools: options.allowedTools,
     allowedMcpServers: options.allowedMcpServers,
     signal: ac.signal,
@@ -96,6 +98,9 @@ export async function runJsonMode(options: JsonModeOptions): Promise<void> {
   });
   session.eventBus.on("max_turns", (payload) => {
     emitJson({ type: "max_turns", ...payload });
+  });
+  session.eventBus.on("turn_budget_extended", (payload) => {
+    emitJson({ type: "turn_budget_extended", ...payload });
   });
   session.eventBus.on("truncated", (payload) => {
     emitJson({ type: "truncated", ...payload });

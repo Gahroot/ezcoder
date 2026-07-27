@@ -344,6 +344,26 @@ export function isTransportFailure(err: unknown): boolean {
 }
 
 /**
+ * Continuation injected when the host grants extra turns instead of letting the
+ * run stop mid-task.
+ *
+ * Deliberately carries NO copy of the original request. An earlier version
+ * echoed up to 600 chars of it, which was pure waste: the text was read out of
+ * the very `messages` array being sent, so the model already had it verbatim.
+ * Worse, after a compaction the first user message is the compaction summary,
+ * so the "original request" echo would have quoted the summary back instead.
+ * The instruction below is the only part that is not already in context.
+ */
+function turnBudgetContinuationPrompt(): string {
+  return (
+    "[You reached the turn limit for this segment but the work is not finished, " +
+    "so you have been granted more turns. Before continuing, state in one or two " +
+    "sentences what is already done and what remains, then keep going from there " +
+    "\u2014 do not restart work that is already complete.]"
+  );
+}
+
+/**
  * Promise-returning sleep that rejects with AbortError if `signal` fires.
  * Used by retry backoffs so ESC/Ctrl+C cancel immediately instead of having
  * to wait out the full delay (up to 30s per overload retry × 10 retries).
@@ -371,6 +391,11 @@ export async function* agentLoop(
   options: AgentOptions,
 ): AsyncGenerator<AgentEvent, AgentResult> {
   const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
+  // Raised in place by a granted turn-budget extension. The while-condition and
+  // the mid-task cut-off check both read this, never the base `maxTurns`.
+  let effectiveMaxTurns = maxTurns;
+  const maxTurnExtensions = Math.max(0, options.maxTurnExtensions ?? 2);
+  let turnExtensions = 0;
   const maxContinuations = options.maxContinuations ?? 5;
   // Rebuilt each turn: hosts may push tools onto the live `options.tools`
   // array mid-run (background MCP connect, tool_search promotion) — the
@@ -502,7 +527,7 @@ export async function* agentLoop(
   let providerDurationMs = 0;
 
   try {
-    while (turn < maxTurns) {
+    while (turn < effectiveMaxTurns) {
       options.signal?.throwIfAborted();
       turn++;
       if (logicalTurnStartedAt === 0) logicalTurnStartedAt = Date.now();
@@ -1451,10 +1476,49 @@ export async function* agentLoop(
       }
 
       // This turn ran tools and wants to continue, but the budget is spent —
-      // the while-condition will now end the loop mid-task. Flag it so the
-      // fall-through below emits an explicit cut-off signal.
-      if (turn >= maxTurns) {
-        hitMaxTurns = true;
+      // the while-condition will now end the loop mid-task. Offer the host a
+      // bounded extension first (same shape as the max_tokens continuation
+      // above); only flag the hard cut-off if it declines or the cap is spent.
+      if (turn >= effectiveMaxTurns) {
+        let extended = false;
+        if (options.onTurnBudgetExhausted && turnExtensions < maxTurnExtensions) {
+          const extension = turnExtensions + 1;
+          let granted = false;
+          try {
+            granted = await options.onTurnBudgetExhausted({
+              turn,
+              maxTurns: effectiveMaxTurns,
+              extension,
+            });
+          } catch {
+            granted = false;
+          }
+          if (granted) {
+            turnExtensions = extension;
+            effectiveMaxTurns += maxTurns;
+            extended = true;
+            diag("turn_budget_extended", {
+              turn,
+              grantedTurns: effectiveMaxTurns,
+              extension,
+              provider: options.provider,
+              model: options.model,
+            });
+            yield {
+              type: "turn_budget_extended" as const,
+              turn,
+              grantedTurns: effectiveMaxTurns,
+              extension,
+            };
+            messages.push({
+              role: "user" as const,
+              content: turnBudgetContinuationPrompt(),
+            });
+          }
+        }
+        if (!extended) {
+          hitMaxTurns = true;
+        }
       }
     }
   } finally {
@@ -1481,14 +1545,15 @@ export async function* agentLoop(
   if (hitMaxTurns) {
     diag("max_turns_reached", {
       turn,
-      maxTurns,
+      maxTurns: effectiveMaxTurns,
+      extensions: turnExtensions,
       provider: options.provider,
       model: options.model,
     });
     yield {
       type: "max_turns" as const,
       totalTurns: turn,
-      maxTurns,
+      maxTurns: effectiveMaxTurns,
     };
   }
 
