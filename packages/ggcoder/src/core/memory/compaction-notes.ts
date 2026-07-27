@@ -89,6 +89,71 @@ function toProse(text: string): string {
 }
 
 /**
+ * Sentences describing the agent's own tool-usage mechanics rather than the
+ * project: malformed calls, schema validation failures, retries.
+ *
+ * The compactor writes a chronological narrative because that is what an
+ * in-session resume needs. A durable journal wants the opposite — the outcome.
+ * A live run (bench I) produced an entry that spent its whole budget on
+ * "attempted an edit using an incorrect tool call format, which failed with a
+ * validation error" and was truncated BEFORE saying whether the edit landed,
+ * and the next session then repeated that fumble back to the user.
+ *
+ * These self-corrected seconds later, are about the harness rather than the
+ * code, and are worthless to a future session. Genuine engineering problems
+ * ("the first regex dropped unicode") are deliberately NOT matched here.
+ *
+ * This is a heuristic on free text, so it is matched on structural schema and
+ * call-mechanics vocabulary rather than on any single phrasing — the first
+ * version of this pattern was evaded when the model rewrote "validation error"
+ * as "failed validation". The all-sentences-match guard below bounds the damage
+ * if it ever over-matches.
+ */
+const TOOL_FUMBLE_PATTERN = new RegExp(
+  [
+    "tool[- ]calls?", // "an incorrect tool call"
+    "tool[- ]use",
+    "validation (?:error|failure)",
+    "failed validation",
+    "schema (?:error|validation|mismatch)",
+    "missing required", // "missing required edits array field"
+    "invalid (?:tool|argument|parameter|schema)",
+    "malformed (?:tool|call|argument|json|request)",
+    "incorrect (?:tool|call|argument|parameter) format",
+    "(?:first|initial|second) (?:call|attempt) failed",
+  ].join("|"),
+  "i",
+);
+
+/**
+ * Named tool + a failure word in the same sentence, e.g. "attempted an edit via
+ * the edit tool but the first call failed". Kept separate from the vocabulary
+ * list above because it needs both halves to co-occur — "the edit tool" alone is
+ * legitimate prose in a coding journal.
+ */
+const TOOL_FAILURE_PATTERN =
+  /\b(?:edit|write|read|bash|glob|grep|task|todo)\s+tool\b[^.!?]*\b(?:fail|error|invalid|incorrect|retri|retry|reject)/i;
+
+/** Split prose into sentences, keeping their terminal punctuation. */
+function splitSentences(text: string): string[] {
+  return text.split(/(?<=[.!?])\s+/).filter((sentence) => sentence.trim());
+}
+
+/**
+ * Drop harness-fumble sentences. If every sentence looks like a fumble the text
+ * is returned unchanged — a stripped-to-nothing entry would be worse than a
+ * noisy one, and it would also mean the pattern over-matched.
+ */
+function dropToolFumbles(text: string): string {
+  const sentences = splitSentences(text);
+  if (sentences.length <= 1) return text;
+  const kept = sentences.filter(
+    (sentence) => !TOOL_FUMBLE_PATTERN.test(sentence) && !TOOL_FAILURE_PATTERN.test(sentence),
+  );
+  return kept.length > 0 ? kept.join(" ").replace(/\s+/g, " ").trim() : text;
+}
+
+/**
  * The durable, non-duplicated part of a compaction summary. Falls back to the
  * whole summary when the expected headings are absent (the compactor's
  * extractive fallback path emits unstructured prose).
@@ -99,11 +164,11 @@ function summaryToProse(summary: string): string {
   if (sections.size > 0) {
     const kept = DURABLE_SUMMARY_SECTIONS.map((name) => sections.get(name.toLowerCase()))
       .filter((body): body is string => Boolean(body && body.trim()))
-      .map(toProse)
+      .map((body) => dropToolFumbles(toProse(body)))
       .filter(Boolean);
     if (kept.length > 0) return kept.join(" ");
   }
-  return toProse(stripped);
+  return dropToolFumbles(toProse(stripped));
 }
 
 const MUTATING_TOOLS = new Set(["write", "edit"]);

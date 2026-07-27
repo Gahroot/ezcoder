@@ -101,6 +101,68 @@ describe("buildCompactionNotes", () => {
     expect(summaryNote.text).not.toContain("Run the test suite");
   });
 
+  it("drops the agent's own tool-call fumbles but keeps real engineering problems", () => {
+    // Verbatim shape from a live run (bench I): the fumble consumed the whole
+    // budget and the entry was truncated before saying what actually happened.
+    const summary =
+      "### What Was Done\n" +
+      "Read src/slugify.ts, which originally only lowercased input. " +
+      "Attempted an edit using an incorrect tool call format (missing required edits array), " +
+      "which failed with a validation error. " +
+      "Rewrote the transform to replace spaces with hyphens.\n\n" +
+      "### Errors and Fixes\n" +
+      "The first regex dropped unicode characters; fixed with an explicit character class.";
+
+    const note = buildCompactionNotes([{ role: "assistant", content: "ok" }], summary)[0]!;
+
+    // Harness noise: self-corrected, about the tooling, useless to a future session.
+    expect(note.text).not.toContain("tool call format");
+    expect(note.text).not.toContain("validation error");
+    // Outcome and genuine engineering history both survive.
+    expect(note.text).toContain("Rewrote the transform");
+    expect(note.text).toContain("first regex dropped unicode");
+  });
+
+  it("catches the reworded fumble that evaded the first pattern", () => {
+    // Live run (bench I) after the first fix: the model rewrote "validation
+    // error" as "failed validation", slipping past a phrasing-specific pattern.
+    const summary =
+      "### What Was Done\n" +
+      "Read src/slugify.ts, which originally only lowercased input. " +
+      "Attempted an edit via the edit tool but the first call failed validation " +
+      "(missing required edits array field). " +
+      "Confirmed the transform now replaces spaces with hyphens.";
+
+    const note = buildCompactionNotes([{ role: "assistant", content: "ok" }], summary)[0]!;
+
+    expect(note.text).not.toContain("failed validation");
+    expect(note.text).not.toContain("missing required");
+    expect(note.text).toContain("Confirmed the transform");
+  });
+
+  it("keeps the text when every sentence looks like a fumble", () => {
+    // Stripping to nothing would be worse than noise, and would mean the
+    // pattern over-matched.
+    const summary = "### What Was Done\nThe tool call failed with a validation error.";
+
+    const note = buildCompactionNotes([{ role: "assistant", content: "ok" }], summary)[0]!;
+
+    expect(note.text).toContain("validation error");
+  });
+
+  it("does not mistake real code problems for harness fumbles", () => {
+    const summary =
+      "### What Was Done\n" +
+      "The parser rejected malformed user input and the retry loop was too aggressive. " +
+      "Reduced the backoff and added a guard.";
+
+    const note = buildCompactionNotes([{ role: "assistant", content: "ok" }], summary)[0]!;
+
+    // "malformed user input" and "retry loop" are the PROJECT's concerns.
+    expect(note.text).toContain("malformed user input");
+    expect(note.text).toContain("retry loop");
+  });
+
   it("renders each entry as one clean markdown-free line", () => {
     const note = buildCompactionNotes([{ role: "assistant", content: "ok" }], FULL_SUMMARY)[0]!;
 
