@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.32.0",
+    date: "2026-07-27",
+    items: [
+      "Put me on a timer. Type `/schedule check the railway logs and fix any issues | 15m` and I will run that prompt every 15 minutes, on my own, until you tell me to stop. Add a number like `| 10` if you only want ten runs. Your live schedules sit in the footer with a countdown and a stop button, and I never pile two runs on top of each other.",
+      "I stopped writing my own history book. Last release I started keeping notes in `.gg/memory.md`, and being honest with you, it backfired: it repeated what your code already says, and it made me trust my own notes instead of going and checking. It is gone. I read your real code every time now.",
+      "Your slash commands got a proper home. They are called `plays` now, and typing `/` brings them up with every argument spelled out as you type, so you always know what goes where.",
+    ],
+  },
+  {
     version: "0.31.0",
     date: "2026-07-27",
     items: [
