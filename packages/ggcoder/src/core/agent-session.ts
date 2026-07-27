@@ -94,8 +94,6 @@ import {
 import { buildRegroundingMessage } from "./regrounding.js";
 import { wrapSteeringText, buildNotificationSteeringText, STEERING_PREFIX } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
-import { ProjectJournal, buildJournalPromptTail } from "./memory/journal.js";
-import { buildCompactionNotes } from "./memory/compaction-notes.js";
 
 import { findUserSessionPrompt, getUserSessionPrompt } from "./session-preview.js";
 import { normalizeMessageImages } from "./message-images.js";
@@ -272,13 +270,6 @@ export function resolveSessionTurnToolResultCharLimit(
 }
 
 /** Marker the compactor prepends to the summary message it injects. */
-const COMPACTION_SUMMARY_MARKER = "[Previous conversation summary]";
-
-/** The compactor's summary text, identified by its marker. */
-function isCompactionSummary(content: Message["content"]): content is string {
-  return typeof content === "string" && content.startsWith(COMPACTION_SUMMARY_MARKER);
-}
-
 /**
  * True when an assistant message ends a turn with tool calls still awaiting
  * their results. Inserting a user message there would orphan the tool_use
@@ -389,12 +380,6 @@ export class AgentSession {
    * live turn so the agent never has to spend a turn asking.
    */
   private readonly notifications = new AgentNotificationQueue();
-  /**
-   * Durable cross-session journal at `<project>/.gg/memory.md`. Written only by
-   * the compactor, and only as past-tense history — see `memory/journal.ts` for
-   * why nothing else may write it. Undefined when `memoryEnabled` is off.
-   */
-  private journal?: ProjectJournal;
   private managerAbortSignal?: AbortSignal;
   private readonly managerAbortHandler = () => {
     void this.subAgentManager?.interruptAll();
@@ -499,13 +484,6 @@ export class AgentSession {
 
     this.authStorage = new AuthStorage(paths.authFile);
     await this.authStorage.load();
-
-    // Opt-in: it is the only feature here that adds tokens to every turn.
-    // Transient sessions (Ken, sub-agents) never write a project's journal —
-    // their compactions are not the project's history.
-    if (this.settingsManager.get("memoryEnabled") && !this.opts.transient) {
-      this.journal = new ProjectJournal(this.cwd);
-    }
 
     // Session manager. Agent-specific roots keep chat and coder histories isolated.
     this.sessionManager = new SessionManager(this.opts.sessionRootDir ?? paths.sessionsDir);
@@ -1762,8 +1740,6 @@ export class AgentSession {
       accountId: creds.accountId,
     });
     this.eventBus.emit("compaction_start", { messageCount: this.messages.length });
-    const messagesBefore = [...this.messages];
-
     const result = await compact(this.messages, {
       provider: this.provider,
       model: this.model,
@@ -1775,10 +1751,6 @@ export class AgentSession {
       signal: this.opts.signal,
     });
 
-    // Messages the summary is about to replace, identified by reference:
-    // compaction keeps the retained tail as the same objects it was handed.
-    const retained = new Set(result.messages);
-    const droppedMessages = messagesBefore.filter((message) => !retained.has(message));
     this.messages = result.messages;
     this.lastCompactionCompacted = result.result.compacted;
 
@@ -1792,7 +1764,6 @@ export class AgentSession {
     }
 
     this.providerContext = null;
-    await this.writeCompactionJournal(droppedMessages);
 
     // Transient sessions (Ken chat/autopilot, subagent spawns) must NEVER touch
     // the session store: without this guard, the first auto-compaction called
@@ -2159,14 +2130,6 @@ export class AgentSession {
     const tailParts: string[] = [];
     const orchestration = this.orchestrationPolicyTail();
     if (orchestration) tailParts.push(orchestration);
-    // Journal is re-read on every refresh, so an entry written this turn (or a
-    // human edit to .gg/memory.md) is visible on the next one. Uncached by
-    // construction: it changes as work proceeds and must never sit in the
-    // cached prefix.
-    if (this.journal) {
-      const journalTail = buildJournalPromptTail(this.journal);
-      if (journalTail) tailParts.push(journalTail);
-    }
     const hostTail = this.opts.getSystemPromptTail?.();
     if (hostTail) tailParts.push(hostTail);
     if (tailParts.length === 0) return basePrompt;
@@ -2386,32 +2349,6 @@ export class AgentSession {
       data: payload,
     };
     await this.sessionManager.appendEntry(this.sessionPath, entry);
-  }
-
-  /**
-   * Record what this compaction is about to discard as past-tense journal
-   * entries. Compaction is one-way — without this the specifics are gone for
-   * good, which is precisely the hole the journal exists to fill. No-op when
-   * memory is off, and bounded to a few entries so the file stays readable.
-   */
-  private async writeCompactionJournal(dropped: Message[]): Promise<void> {
-    if (!this.journal || dropped.length === 0) return;
-    const summary = this.messages.map((message) => message.content).find(isCompactionSummary) ?? "";
-    const notes = buildCompactionNotes(dropped, summary);
-    if (notes.length === 0) return;
-    try {
-      const written = await this.journal.append(notes);
-      if (written > 0) {
-        log("INFO", "memory", "Recorded compaction history", {
-          entries: String(written),
-          file: this.journal.filePath,
-        });
-      }
-    } catch (error) {
-      log("WARN", "memory", "Failed to write journal entries", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
   }
 
   /** Re-append the in-memory app markers to the current session file. Mirrors

@@ -217,8 +217,6 @@ export interface AppProps {
   version: string;
   showTokenUsage?: boolean;
   idealReviewEnabled?: boolean;
-  /** Persisted `memoryEnabled`, so /memory-on|off shows the opposite action. */
-  memoryEnabled?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
   credentialsByProvider?: Record<
@@ -541,10 +539,6 @@ export function App(props: AppProps) {
     props.sessionStore?.idealReviewEnabled ?? props.idealReviewEnabled ?? true,
   );
   const idealReviewEnabledRef = useRef(idealReviewEnabled);
-  // Mirrors the persisted `memoryEnabled` setting so the slash command can show
-  // the opposite action. Only the label is live — the journal itself is bound
-  // when the session starts.
-  const [memoryEnabled, setMemoryEnabled] = useState(props.memoryEnabled ?? true);
   /**
    * Languages whose style packs are currently injected into the system prompt.
    * Grown by `maybeInjectLanguagePacks` after `write`/`bash` tool results when
@@ -1942,29 +1936,6 @@ export function App(props: AppProps) {
         return;
       }
 
-      if (trimmed === "/memory-on" || trimmed === "/memory-off") {
-        const next = trimmed === "/memory-on";
-        setMemoryEnabled(next);
-        if (props.settingsFile) {
-          const sm = new SettingsManager(props.settingsFile);
-          await sm.load();
-          await sm.set("memoryEnabled", next);
-        }
-        setLiveItems((prev) => [
-          ...prev,
-          {
-            kind: "info",
-            // The journal handle is built at session start, so be explicit that
-            // this does not change the run already in progress.
-            text: next
-              ? "Project memory enabled for new sessions \u2014 past-tense notes are written to .gg/memory.md on compaction. Use /memory-off to disable it."
-              : "Project memory disabled for new sessions. An existing .gg/memory.md is left untouched. Use /memory-on to enable it.",
-            id: getId(),
-          },
-        ]);
-        return;
-      }
-
       // /rewind — open the checkpoint picker (needs React state + the store).
       if (trimmed === "/rewind") {
         const store = props.checkpointStore;
@@ -2472,14 +2443,6 @@ export function App(props: AppProps) {
         sectionTitle: "built-in",
       },
       {
-        name: memoryEnabled ? "memory-off" : "memory-on",
-        aliases: [],
-        description: memoryEnabled
-          ? "Stop recording project history to .gg/memory.md"
-          : "Record project history to .gg/memory.md",
-        sectionTitle: "built-in",
-      },
-      {
         name: "rewind",
         aliases: [],
         description: "Restore files/conversation to a checkpoint",
@@ -2500,7 +2463,7 @@ export function App(props: AppProps) {
         sectionTitle: "built-in",
       },
     ];
-  }, [customCommands, idealReviewEnabled, memoryEnabled]);
+  }, [customCommands, idealReviewEnabled]);
 
   const renderItem = (item: CompletedItem, index: number, items: CompletedItem[]) =>
     renderTranscriptItem({

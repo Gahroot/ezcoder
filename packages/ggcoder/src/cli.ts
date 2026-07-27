@@ -414,7 +414,6 @@ function main(): void {
     cwd,
     thinkingLevel,
     idealReviewEnabled: saved.idealReviewEnabled,
-    memoryEnabled: saved.memoryEnabled,
     lspDiagnostics: saved.lspDiagnostics,
     allowOutsideWorkspaceWrites: saved.allowOutsideWorkspaceWrites,
     subagentMaxPerModel: saved.subagentMaxPerModel,
@@ -440,7 +439,6 @@ async function runInkTUI(opts: {
   resumeSessionPath?: string;
   theme?: "auto" | ThemeName;
   idealReviewEnabled?: boolean;
-  memoryEnabled?: boolean;
   lspDiagnostics?: boolean;
   allowOutsideWorkspaceWrites?: boolean;
   subagentMaxPerModel?: number;
@@ -861,7 +859,6 @@ async function runInkTUI(opts: {
     skills,
     checkpointStore: checkpointRef.current ?? undefined,
     idealReviewEnabled: opts.idealReviewEnabled,
-    memoryEnabled: opts.memoryEnabled,
     rebuildReadTool,
     connectInitialMcpTools,
     planCallbacks: planToolCallbacks,
@@ -926,7 +923,6 @@ async function runSessions(): Promise<void> {
     cwd,
     thinkingLevel,
     idealReviewEnabled: saved2.idealReviewEnabled,
-    memoryEnabled: saved2.memoryEnabled,
     lspDiagnostics: saved2.lspDiagnostics,
     allowOutsideWorkspaceWrites: saved2.allowOutsideWorkspaceWrites,
     subagentMaxPerModel: saved2.subagentMaxPerModel,

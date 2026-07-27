@@ -56,8 +56,6 @@ export interface RenderAppConfig {
   theme?: "auto" | ThemeName;
   showTokenUsage?: boolean;
   idealReviewEnabled?: boolean;
-  /** Persisted `memoryEnabled`, forwarded so the slash command labels match. */
-  memoryEnabled?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
   credentialsByProvider?: Record<
@@ -583,7 +581,6 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
             version: config.version,
             showTokenUsage: config.showTokenUsage,
             idealReviewEnabled: sessionStore.idealReviewEnabled,
-            memoryEnabled: config.memoryEnabled,
             onSlashCommand: config.onSlashCommand,
             loggedInProviders: config.loggedInProviders,
             credentialsByProvider: config.credentialsByProvider,

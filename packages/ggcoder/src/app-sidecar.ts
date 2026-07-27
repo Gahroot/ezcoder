@@ -2847,48 +2847,6 @@ async function createSession(
       return;
     }
 
-    // Durable per-project journal (.gg/memory.md). Distinct from /memories,
-    // which is the personal chat-memory store shared by the chat agents.
-    if (method === "GET" && url === "/project-memory") {
-      void (async () => {
-        try {
-          const sm = new SettingsManager(paths.settingsFile);
-          await sm.load();
-          json(res, 200, { enabled: sm.get("memoryEnabled") });
-        } catch (error) {
-          captureSidecarError(error, "app-sidecar.project-memory.get");
-          json(res, 500, { error: error instanceof Error ? error.message : String(error) });
-        }
-      })();
-      return;
-    }
-
-    if (method === "POST" && url === "/project-memory") {
-      void readBody(req, res).then(async (raw) => {
-        if (raw === null) return;
-        let enabled: boolean;
-        try {
-          enabled = (JSON.parse(raw) as { enabled?: unknown }).enabled === true;
-        } catch {
-          json(res, 400, { error: "invalid JSON body" });
-          return;
-        }
-        try {
-          const sm = new SettingsManager(paths.settingsFile);
-          await sm.load();
-          await sm.set("memoryEnabled", enabled);
-          // Applies from the next session: the journal handle is built during
-          // AgentSession.initialize(), so a live run keeps its current behaviour
-          // rather than half-applying the change mid-task.
-          json(res, 200, { enabled });
-        } catch (error) {
-          captureSidecarError(error, "app-sidecar.project-memory.set");
-          json(res, 500, { error: error instanceof Error ? error.message : String(error) });
-        }
-      });
-      return;
-    }
-
     if (method === "GET" && url === "/jiwa") {
       void jiwaStore
         .snapshot()

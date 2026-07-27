@@ -39,23 +39,6 @@ describe("loadSavedSettings", () => {
     expect(settings.idealReviewEnabled).toBe(false);
   });
 
-  it("defaults project memory to enabled", () => {
-    const settings = loadSavedSettings(tempSettingsPath());
-
-    expect(settings.memoryEnabled).toBe(true);
-  });
-
-  it("honors an explicit project memory disable", () => {
-    const settingsPath = tempSettingsPath();
-    fs.writeFileSync(settingsPath, JSON.stringify({ memoryEnabled: false }), "utf-8");
-
-    const settings = loadSavedSettings(settingsPath);
-
-    // The off switch must survive the default flipping to on — a user who
-    // turned it off must never be silently re-opted-in by an upgrade.
-    expect(settings.memoryEnabled).toBe(false);
-  });
-
   it("accepts xai as a saved provider", () => {
     const settingsPath = tempSettingsPath();
     fs.writeFileSync(
