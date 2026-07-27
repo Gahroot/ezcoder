@@ -113,7 +113,7 @@ export function RunningSchedulesButton({ schedules, onStop }: Props): React.Reac
         ref={buttonRef}
         className="bgtasks-button"
         style={{ color: theme.secondary, borderColor: theme.border }}
-        title="Active schedules"
+        title="Active schedules — run only while this window is open"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
