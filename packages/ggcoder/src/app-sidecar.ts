@@ -31,6 +31,7 @@ import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
 import { AgentSession } from "./core/agent-session.js";
 import { RunLifecycle } from "./core/run-lifecycle.js";
+import { RunClaim } from "./core/run-claim.js";
 import {
   CHAT_AGENT_IDS,
   chatAgentSessionsDir,
@@ -2017,6 +2018,10 @@ async function createSession(
   session.eventBus.on("compaction_end", (d) => broadcast("compaction_end", d));
 
   let running = false;
+  // Closes the window between `/prompt` deciding to start a run and `runAgent`
+  // flipping `running` — that stretch awaits, so Node yields inside it. See
+  // RunClaim.
+  const runClaim = new RunClaim();
   const runLifecycle = new RunLifecycle((runState) => {
     running = runState !== "idle";
     if (runState === "cancelling") broadcast("run_cancelling", { runState });
@@ -3462,131 +3467,150 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/prompt") {
-      void readBody(req, res).then(async (raw) => {
-        if (raw === null) return;
-        let text: string;
-        let attachments: AppAttachment[];
-        let meta: { kenSent?: boolean; enhancements?: unknown[] } | undefined;
-        try {
-          const body = JSON.parse(raw) as {
-            text?: string;
-            attachments?: AppAttachment[];
-            meta?: { kenSent?: boolean; enhancements?: unknown[] };
-          };
-          text = body.text ?? "";
-          attachments = Array.isArray(body.attachments) ? body.attachments : [];
-          meta = typeof body.meta === "object" && body.meta !== null ? body.meta : undefined;
-        } catch {
-          json(res, 400, { error: "invalid JSON body" });
-          return;
-        }
-        if (!text.trim() && attachments.length === 0) {
-          json(res, 400, { error: "empty prompt" });
-          return;
-        }
-        if (runLifecycle.running && runLifecycle.isCancellationRequested(runLifecycle.generation)) {
-          json(res, 409, {
-            error: runLifecycle.state === "cancelling" ? "run_cancelling" : "cancel_failed",
-            runState: runLifecycle.state,
-          });
-          return;
-        }
-        if (running || autopilotActive) {
-          // Queue prompts as mid-run steering (mirrors the CLI). Also queue while
-          // an autopilot cycle is active but between injected runs (build idle,
-          // Ken reviewing) so the message never starts a run that collides with
-          // an injected one on the same session. Attachments are persisted to
-          // .gg/uploads first so the queued media rides the same native-block
-          // path as a non-queued attachment prompt when it drains.
-          const prepared = attachments.length > 0 ? await prepareAttachments(cwd, attachments) : [];
-          const count = session.queueMessage(text, prepared);
-          broadcast("queued", { count, messages: session.listQueuedMessages() });
-          json(res, 202, { queued: true, count });
-          return;
-        }
-        json(res, 202, { accepted: true });
-        // Webview display hint for this prompt's user bubble (kenSent shimmer
-        // label / enhancer highlight segments). Anchored +1 so it attaches to
-        // the user message the prompt below is about to push. Queued prompts
-        // skip this (their position in the run is unpredictable).
-        if (meta && (meta.kenSent === true || Array.isArray(meta.enhancements))) {
-          void session
-            .persistAppMarker(
-              "user_hint",
-              {
-                ...(meta.kenSent === true ? { kenSent: true } : {}),
-                ...(Array.isArray(meta.enhancements) ? { enhancements: meta.enhancements } : {}),
-              },
-              1,
-            )
-            .catch(() => {});
-        }
-        // Fresh user turn: clear any cancel flag left from a prior cycle so this
-        // turn's autopilot review can run.
-        autopilotCancelled = false;
-        // A typed message while a plan modal/review is pending (reject,
-        // feedback, anything) supersedes the pending plan — the bump also
-        // invalidates any in-flight Ken plan review.
-        clearPendingPlan();
-        // Gate inputs captured around the run: whether this turn is a workflow
-        // slash command (attachment prompts skip slash expansion entirely), and
-        // how many assistant messages the run actually adds. Computed even when
-        // autopilot is currently off — the toggle can flip ON mid-run, and the
-        // gate reads the post-run value.
-        const workflowCommand =
-          attachments.length === 0 && isWorkflowCommandText(text, await loadWorkflowCommandSpecs());
-        const assistantsBefore = countAssistantMessages(session.getMessages());
-        const messagesBefore = session.getMessages().length;
-        await runAgent(text, async () => {
-          if (attachments.length > 0) {
-            // Persist each attachment under .gg/uploads so files are inspectable
-            // by the agent's tools, then prompt with the media as native blocks.
-            const prepared = await prepareAttachments(cwd, attachments);
-            await session.promptWithAttachments(text, prepared);
-          } else {
-            // Pass the raw text straight through. AgentSession.prompt() is the
-            // single source of truth for slash-command expansion (built-in +
-            // `.gg/commands/*.md` custom), so the agent gets the right body
-            // while the webview keeps showing the short `/name`.
-            await session.prompt(text);
+      // Per-request: only the prompt that actually claimed the start may release
+      // it. A bare release would let an early-returning request (bad JSON, or a
+      // prompt that queued) clear a claim another request is still holding.
+      let claimedStart = false;
+      void readBody(req, res)
+        .then(async (raw) => {
+          if (raw === null) return;
+          let text: string;
+          let attachments: AppAttachment[];
+          let meta: { kenSent?: boolean; enhancements?: unknown[] } | undefined;
+          try {
+            const body = JSON.parse(raw) as {
+              text?: string;
+              attachments?: AppAttachment[];
+              meta?: { kenSent?: boolean; enhancements?: unknown[] };
+            };
+            text = body.text ?? "";
+            attachments = Array.isArray(body.attachments) ? body.attachments : [];
+            meta = typeof body.meta === "object" && body.meta !== null ? body.meta : undefined;
+          } catch {
+            json(res, 400, { error: "invalid JSON body" });
+            return;
           }
+          if (!text.trim() && attachments.length === 0) {
+            json(res, 400, { error: "empty prompt" });
+            return;
+          }
+          if (
+            runLifecycle.running &&
+            runLifecycle.isCancellationRequested(runLifecycle.generation)
+          ) {
+            json(res, 409, {
+              error: runLifecycle.state === "cancelling" ? "run_cancelling" : "cancel_failed",
+              runState: runLifecycle.state,
+            });
+            return;
+          }
+          // `runClaim` covers the gap before `runAgent` flips `running`: a
+          // prompt arriving in that window must queue, not start a second run.
+          if (running || runClaim.active || autopilotActive) {
+            // Queue prompts as mid-run steering (mirrors the CLI). Also queue while
+            // an autopilot cycle is active but between injected runs (build idle,
+            // Ken reviewing) so the message never starts a run that collides with
+            // an injected one on the same session. Attachments are persisted to
+            // .gg/uploads first so the queued media rides the same native-block
+            // path as a non-queued attachment prompt when it drains.
+            const prepared =
+              attachments.length > 0 ? await prepareAttachments(cwd, attachments) : [];
+            const count = session.queueMessage(text, prepared);
+            broadcast("queued", { count, messages: session.listQueuedMessages() });
+            json(res, 202, { queued: true, count });
+            return;
+          }
+          // Claim the run NOW, synchronously. Everything below this line may
+          // yield, and `running` does not flip until runAgent begins.
+          claimedStart = runClaim.claim();
+          json(res, 202, { accepted: true });
+          // Webview display hint for this prompt's user bubble (kenSent shimmer
+          // label / enhancer highlight segments). Anchored +1 so it attaches to
+          // the user message the prompt below is about to push. Queued prompts
+          // skip this (their position in the run is unpredictable).
+          if (meta && (meta.kenSent === true || Array.isArray(meta.enhancements))) {
+            void session
+              .persistAppMarker(
+                "user_hint",
+                {
+                  ...(meta.kenSent === true ? { kenSent: true } : {}),
+                  ...(Array.isArray(meta.enhancements) ? { enhancements: meta.enhancements } : {}),
+                },
+                1,
+              )
+              .catch(() => {});
+          }
+          // Fresh user turn: clear any cancel flag left from a prior cycle so this
+          // turn's autopilot review can run.
+          autopilotCancelled = false;
+          // A typed message while a plan modal/review is pending (reject,
+          // feedback, anything) supersedes the pending plan — the bump also
+          // invalidates any in-flight Ken plan review.
+          clearPendingPlan();
+          // Gate inputs captured around the run: whether this turn is a workflow
+          // slash command (attachment prompts skip slash expansion entirely), and
+          // how many assistant messages the run actually adds. Computed even when
+          // autopilot is currently off — the toggle can flip ON mid-run, and the
+          // gate reads the post-run value.
+          const workflowCommand =
+            attachments.length === 0 &&
+            isWorkflowCommandText(text, await loadWorkflowCommandSpecs());
+          const assistantsBefore = countAssistantMessages(session.getMessages());
+          const messagesBefore = session.getMessages().length;
+          await runAgent(text, async () => {
+            if (attachments.length > 0) {
+              // Persist each attachment under .gg/uploads so files are inspectable
+              // by the agent's tools, then prompt with the media as native blocks.
+              const prepared = await prepareAttachments(cwd, attachments);
+              await session.promptWithAttachments(text, prepared);
+            } else {
+              // Pass the raw text straight through. AgentSession.prompt() is the
+              // single source of truth for slash-command expansion (built-in +
+              // `.gg/commands/*.md` custom), so the agent gets the right body
+              // while the webview keeps showing the short `/name`.
+              await session.prompt(text);
+            }
+          });
+          // After the user's run settles, kick off Ken's auto-review loop — but
+          // only when the turn is actually reviewable (shouldStartAutopilotCycle):
+          // workflow commands (/compare, /bullet-proof, …) end with reports or
+          // A/B/C choices reserved for the USER; registry commands (/help) and
+          // failed runs add no assistant work to judge; a turn that ended in plan
+          // mode has a pending Accept/Reject modal Ken must not preempt. This is
+          // the ONLY entry point into the cycle besides the stranded-queue drain —
+          // it drives any follow-up GG Coder runs itself, so the shared runAgent
+          // finally never recurses.
+          const decision = shouldStartAutopilotCycle({
+            enabled: autopilot,
+            cancelled: autopilotCancelled,
+            planMode: session.getPlanMode(),
+            // A submitted plan (exit_plan fired) routes into the PLAN review
+            // branch — the cycle reviews the plan itself instead of skipping.
+            planPending: pendingPlanPath !== null,
+            workflowCommand,
+            assistantMessagesAdded:
+              countAssistantMessages(session.getMessages()) - assistantsBefore,
+            // Skip the review API call outright for turns that only started a
+            // background process (dev server/watcher), ran a read-only lookup, or
+            // committed/pushed — Ken's autopilot contract already IGNOREs these,
+            // so there's no reason to pay for that verdict.
+            mechanicalOnly: isMechanicalOnlyTurn(
+              extractTurnToolCalls(session.getMessages(), messagesBefore),
+            ),
+          });
+          if (decision.start) {
+            log("INFO", "app-sidecar", "autopilot cycle starting", { kind: decision.kind });
+            await runAutopilotCycle(text);
+          } else if (autopilot) {
+            log("INFO", "app-sidecar", "autopilot skipped", { reason: decision.reason });
+          }
+          // A prompt sent while Ken was reviewing (build idle) queued but had no
+          // run to steer into — run it now as a fresh turn so it never strands.
+          await runStrandedQueue();
+        })
+        .finally(() => {
+          if (claimedStart) runClaim.release();
         });
-        // After the user's run settles, kick off Ken's auto-review loop — but
-        // only when the turn is actually reviewable (shouldStartAutopilotCycle):
-        // workflow commands (/compare, /bullet-proof, …) end with reports or
-        // A/B/C choices reserved for the USER; registry commands (/help) and
-        // failed runs add no assistant work to judge; a turn that ended in plan
-        // mode has a pending Accept/Reject modal Ken must not preempt. This is
-        // the ONLY entry point into the cycle besides the stranded-queue drain —
-        // it drives any follow-up GG Coder runs itself, so the shared runAgent
-        // finally never recurses.
-        const decision = shouldStartAutopilotCycle({
-          enabled: autopilot,
-          cancelled: autopilotCancelled,
-          planMode: session.getPlanMode(),
-          // A submitted plan (exit_plan fired) routes into the PLAN review
-          // branch — the cycle reviews the plan itself instead of skipping.
-          planPending: pendingPlanPath !== null,
-          workflowCommand,
-          assistantMessagesAdded: countAssistantMessages(session.getMessages()) - assistantsBefore,
-          // Skip the review API call outright for turns that only started a
-          // background process (dev server/watcher), ran a read-only lookup, or
-          // committed/pushed — Ken's autopilot contract already IGNOREs these,
-          // so there's no reason to pay for that verdict.
-          mechanicalOnly: isMechanicalOnlyTurn(
-            extractTurnToolCalls(session.getMessages(), messagesBefore),
-          ),
-        });
-        if (decision.start) {
-          log("INFO", "app-sidecar", "autopilot cycle starting", { kind: decision.kind });
-          await runAutopilotCycle(text);
-        } else if (autopilot) {
-          log("INFO", "app-sidecar", "autopilot skipped", { reason: decision.reason });
-        }
-        // A prompt sent while Ken was reviewing (build idle) queued but had no
-        // run to steer into — run it now as a fresh turn so it never strands.
-        await runStrandedQueue();
-      });
       return;
     }
 
