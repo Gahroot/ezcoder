@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.31.0",
+    date: "2026-07-27",
+    items: [
+      "Big jobs now run all the way to the finish. When I hit the turn limit but I am still making real progress, I get handed more turns and carry on from exactly where I was instead of stopping halfway through your task. If I am just spinning my wheels, I still stop, so you never pay for a loop.",
+      "GG Coder remembers your project between sessions. When a long chat gets compacted I write down what happened in `.gg/memory.md`, so next time I already know what you asked for and what I changed. It is plain text right in your repo, so you can read it, fix it, or delete any line you disagree with. Turn it off any time in `Settings` or with `/memory-off`.",
+      "No more waiting on background work. Finished helper agents and long builds now tap me on the shoulder the second they are done, so I react immediately instead of stopping to go check on them and burning your tokens doing it.",
+      "Switching models mid-chat is clean now. I keep a proper record of which model did what, and I hold onto the cached part of your conversation right through the switch, so your next reply stays fast and cheap.",
+    ],
+  },
+  {
     version: "0.30.0",
     date: "2026-07-27",
     items: [
