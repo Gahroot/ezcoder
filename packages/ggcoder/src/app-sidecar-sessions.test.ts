@@ -21,7 +21,14 @@ async function writeClaudeTranscript(
   sessionId: string,
   prompt: string,
 ): Promise<string> {
-  const projectDir = path.join(homeDir, ".claude", "projects", `-${cwd.replace(/\//g, "-")}`);
+  // The folder name is deliberately only *shaped* like Claude's encoding: since
+  // discovery reads the cwd out of the records, the exact name is irrelevant to
+  // what these tests assert. It does have to be a VALID single directory name on
+  // the host though — collapsing only "/" left Windows paths as `-C:\Users\...`,
+  // whose drive colon and backslashes made `mkdir` fail with ENOENT. Fold both
+  // separators and the drive colon into dashes so the fixture is portable.
+  const encoded = `-${cwd.replace(/[\\/:]/g, "-")}`;
+  const projectDir = path.join(homeDir, ".claude", "projects", encoded);
   await fs.mkdir(projectDir, { recursive: true });
   const file = path.join(projectDir, `${sessionId}.jsonl`);
   const stamp = new Date().toISOString();
