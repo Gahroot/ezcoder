@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.35.0",
+    date: "2026-07-28",
+    items: [
+      "Your `Claude Code` and `Codex` conversations are now sitting right in your session list, labelled so you can spot them at a glance. Click one and it opens here with the whole history, ready to keep going. No command to remember, no file to hunt down, no setup.",
+    ],
+  },
+  {
     version: "0.34.0",
     date: "2026-07-28",
     items: [
