@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.34.0",
+    date: "2026-07-28",
+    items: [
+      "Bring your old conversations with you. `/import` pulls a Claude Code, Codex or Cursor thread straight into GG Coder and you carry on where you left off, full history intact. I tested it on a real `44` message thread and it picked up mid sentence.",
+      "I stopped saying done when I was not. If I kick off your tests or a build in the background and never actually read the result, I now go back and check before I hand the work over. No more cheerful all good sitting on top of a failed build.",
+      "Ask me what I can do and get a straight answer instantly. Your tools used to look missing for the first few seconds while everything booted up, so I would tell you a capability did not exist when it did. I remember them between launches now, so the answer is right from the very first message.",
+    ],
+  },
+  {
     version: "0.33.1",
     date: "2026-07-28",
     items: [
