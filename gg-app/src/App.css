@@ -1878,6 +1878,17 @@ body {
   font-family: var(--mono);
   font-size: 11px;
 }
+/* Origin tag on a session row that came from another coding tool. Sits inline
+   ahead of the message count; the hue is the signal, matching the project
+   list's source colors. */
+.picker-source-tag {
+  font-weight: 600;
+}
+.picker-source-tag::after {
+  content: " \00b7 ";
+  color: var(--text-dim);
+  font-weight: 400;
+}
 
 /* ── Reusable pill badge ── */
 .badge {

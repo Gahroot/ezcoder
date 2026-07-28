@@ -282,6 +282,9 @@ export interface DiscoveredProject {
   sources: string[];
 }
 
+/** Store a session row came from; absent means a native GG Coder session. */
+export type SessionSource = "ggcoder" | "claude-code" | "codex";
+
 export interface RecentSession {
   id: string;
   path: string;
@@ -289,6 +292,11 @@ export interface RecentSession {
   lastActiveDisplay: string;
   messageCount: number;
   chatAgent?: ChatAgentId;
+  /**
+   * Absent (or `ggcoder`) means this resumes directly. A foreign value means
+   * `path` is that tool's own transcript, imported before it opens.
+   */
+  source?: SessionSource;
 }
 
 export interface SwitchModelResult extends ThinkingState {

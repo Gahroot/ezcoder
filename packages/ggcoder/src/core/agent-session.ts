@@ -2946,14 +2946,6 @@ export class AgentSession {
       addDirectory: (dir) => this.addDirectory(dir),
       removeDirectory: (dir) => this.removeDirectory(dir),
       getAdditionalRoots: () => this.getAdditionalRoots(),
-      importTranscript: async (filePath) => {
-        const result = await this.importForeignTranscript(filePath);
-        return result.ok
-          ? `Imported ${result.messageCount} message(s) from a ${result.format} transcript into ${result.cwd}.\n` +
-              `Dropped: ${result.dropped}.\n` +
-              `Resume it with /resume (session ${result.sessionId.slice(0, 8)}).`
-          : `Import failed: ${result.error}`;
-      },
     };
   }
 
