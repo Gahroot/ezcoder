@@ -1245,6 +1245,57 @@ export async function onGazeTarget(cb: (e: GazeTargetEvent) => void): Promise<()
   return un;
 }
 
+// ── macOS menu-bar tray ────────────────────────────────────────────────────
+
+/** An action picked from the macOS menu-bar menu. */
+export type TrayIntent = "update" | "new-chat" | "new-code" | "remote" | "settings";
+
+/**
+ * Subscribe THIS window to tray actions routed to it. Returns an unlisten fn.
+ * Used when the tray reuses an already-open window.
+ */
+export async function onTrayIntent(cb: (intent: TrayIntent) => void): Promise<() => void> {
+  return await appWindow.listen<TrayIntent>("tray-intent", (e) => cb(e.payload));
+}
+
+/**
+ * Claim (once) the tray action THIS window was opened for, or null when the user
+ * opened it themselves. A window built by the tray isn't listening yet when the
+ * menu is clicked, so Rust parks the intent and the webview claims it on mount.
+ */
+export async function takeTrayIntent(): Promise<TrayIntent | null> {
+  try {
+    return await invoke<TrayIntent | null>("window_tray_intent");
+  } catch (e) {
+    await logError(`window_tray_intent failed: ${String(e)}`);
+    return null;
+  }
+}
+
+/**
+ * Tell the tray whether an app update is pending, so "Update now" appears in the
+ * menu-bar menu (and disappears again when up to date). `null` = up to date.
+ */
+export async function setUpdateAvailable(version: string | null): Promise<void> {
+  try {
+    await invoke("set_update_available", { version });
+  } catch (e) {
+    await logError(`set_update_available failed: ${String(e)}`);
+  }
+}
+
+/**
+ * Tell the tray whether Remote (the Telegram serve loop) is running, so its menu
+ * item reads "Remote" or "Remote · Turn off".
+ */
+export async function setRemoteActive(active: boolean): Promise<void> {
+  try {
+    await invoke("set_remote_active", { active });
+  } catch (e) {
+    await logError(`set_remote_active failed: ${String(e)}`);
+  }
+}
+
 /** Open a single new project window (Cmd/Ctrl+N). Never re-tiles existing ones. */
 export async function newWindow(): Promise<void> {
   try {
