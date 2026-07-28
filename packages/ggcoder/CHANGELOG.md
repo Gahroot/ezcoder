@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.27.0
+
+### Minor Changes
+
+- Add `/import` for resuming Claude Code, Codex and Cursor transcripts, gate turn completion on unread background processes, and migrate MCP to SDK v2 with an on-disk tool catalog cache
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.27.0
+- @kenkaiiii/gg-agent@5.27.0
+- @kenkaiiii/gg-core@5.27.0
+
 ## 5.26.3
 
 ### Patch Changes
