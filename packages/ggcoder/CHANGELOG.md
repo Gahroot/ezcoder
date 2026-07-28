@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.28.0
+
+### Minor Changes
+
+- List Claude Code and Codex sessions alongside GG Coder's own for a project, tagged with their source and resumable on open, replacing the `/import` slash command
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.28.0
+- @kenkaiiii/gg-agent@5.28.0
+- @kenkaiiii/gg-core@5.28.0
+
 ## 5.27.0
 
 ### Minor Changes
