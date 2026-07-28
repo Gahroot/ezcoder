@@ -4074,6 +4074,32 @@ async function createSession(
       return;
     }
 
+    // Import a Claude Code / Codex / Cursor transcript into a resumable GG
+    // Coder session. The importer never throws — it returns a typed failure so
+    // the app can show the reason verbatim.
+    if (method === "POST" && url === "/import-transcript") {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
+        let body: { path?: string; cwd?: string };
+        try {
+          body = JSON.parse(raw) as { path?: string; cwd?: string };
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        const filePath = body.path?.trim();
+        if (!filePath) {
+          json(res, 400, { error: "missing transcript path" });
+          return;
+        }
+        const result = await session.importForeignTranscript(filePath, {
+          ...(body.cwd ? { cwd: body.cwd } : {}),
+        });
+        json(res, result.ok ? 200 : 400, result);
+      });
+      return;
+    }
+
     if (method === "POST" && url === "/thinking") {
       const st = session.getState();
       const next = getNextThinkingLevel(st.provider, st.model, session.getThinkingLevel());

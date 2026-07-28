@@ -26,6 +26,7 @@ function context(overrides: Partial<SlashCommandContext> = {}): SlashCommandCont
     addDirectory: vi.fn(async (dir: string) => ({ ok: true as const, root: `/resolved${dir}` })),
     removeDirectory: vi.fn(async (dir: string) => ({ ok: true as const, root: `/resolved${dir}` })),
     getAdditionalRoots: vi.fn(() => []),
+    importTranscript: vi.fn(async () => ""),
     ...overrides,
   };
 }

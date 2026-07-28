@@ -55,6 +55,11 @@ const SettingsSchema = z.object({
   /** Defer MCP tool schemas out of the prompt until discovered via tool_search.
    *  Cuts ~8k tokens/cache-miss turn with two MCP servers (bench/RESULTS.md). */
   deferredMcpTools: z.boolean().default(true),
+  /** Opt into the 2026-07-28 MCP protocol revision. When on, a connect probes
+   *  with `server/discover` and falls back to the 2025 `initialize` handshake,
+   *  so a legacy server still connects. Off by default: the probe costs a round
+   *  trip, and a legacy stdio server that ignores it pays the probe timeout. */
+  mcpModernProtocol: z.boolean().default(false),
   /** Max concurrent subagents per resolved child model. Unset = only the
    *  global limit applies. Can only REDUCE concurrency, never raise it. */
   subagentMaxPerModel: z.number().int().min(1).max(4).optional(),
@@ -83,6 +88,7 @@ export const DEFAULT_SETTINGS: Settings = {
   networkMode: "off",
   networkAllow: [],
   deferredMcpTools: true,
+  mcpModernProtocol: false,
   sessionRetentionDays: 30,
   speedProfile: "optimized",
 };

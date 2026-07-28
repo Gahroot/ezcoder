@@ -1228,6 +1228,30 @@ async fn agent_kill_task(
         .map_err(|e| e.to_string())
 }
 
+/// Proxy: import a Claude Code / Codex / Cursor transcript into a resumable
+/// GG Coder session. Returns the importer's typed result (`{ ok, ... }`),
+/// including the failure case, so the webview can show the reason verbatim.
+#[tauri::command]
+async fn agent_import_transcript(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    path: String,
+    cwd: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/import-transcript", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .json(&serde_json::json!({ "path": path, "cwd": cwd }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Proxy: app-wide radio state — `{ stations, current, volume }`.
 /// All windows share the daemon's single player, preventing duplicate audio.
 #[tauri::command]
@@ -4208,6 +4232,7 @@ pub fn run() {
             agent_auth_oauth_code,
             agent_auth_logout,
             agent_kill_task,
+            agent_import_transcript,
             agent_cancel_queued,
             agent_radio_state,
             agent_radio_set,

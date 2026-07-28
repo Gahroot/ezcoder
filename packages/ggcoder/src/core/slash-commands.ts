@@ -24,6 +24,8 @@ export interface SlashCommandContext {
   ) => Promise<{ ok: true; root: string } | { ok: false; error: string }>;
   /** Extra workspace roots added this session. */
   getAdditionalRoots: () => string[];
+  /** Import a Claude Code / Codex / Cursor transcript as a resumable session. */
+  importTranscript: (filePath: string) => Promise<string>;
 }
 
 export interface SlashCommand {
@@ -184,6 +186,23 @@ export function createBuiltinCommands(): SlashCommand[] {
           return "Usage: /branch [N] — rewind N messages (default: 2)";
         }
         return ctx.branch(stepsBack);
+      },
+    },
+    {
+      name: "import",
+      aliases: [],
+      description: "Import a Claude Code, Codex or Cursor transcript as a resumable session",
+      usage: "/import <path-to-transcript.jsonl>",
+      async execute(args, ctx) {
+        const filePath = args.trim().replace(/^["']|["']$/g, "");
+        if (!filePath) {
+          return [
+            "Usage: /import <path-to-transcript.jsonl>",
+            "Claude Code: ~/.claude/projects/<project>/<session>.jsonl",
+            "Codex: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl",
+          ].join("\n");
+        }
+        return ctx.importTranscript(filePath);
       },
     },
     {

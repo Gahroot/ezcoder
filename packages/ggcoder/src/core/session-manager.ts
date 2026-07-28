@@ -211,7 +211,11 @@ export interface AppMarkerPayload extends RecordedPosition {
     | "compaction"
     | "agent_handoff"
     /** Mid-session model/provider change; `data` carries { from, to, provider }. */
-    | "model_switch";
+    | "model_switch"
+    /** Transcript imported from another agent; `data` carries
+     *  { source, sourcePath, messageCount, dropped }. Import is lossy, so this
+     *  marker is the record of what the imported thread is missing. */
+    | "import";
   afterMessageCount: number;
   /** Kind-specific display fields (reason/title/headline/kenSent/counts/…). */
   data: Record<string, unknown>;
@@ -865,7 +869,8 @@ export class SessionManager {
             kind === "user_hint" ||
             kind === "compaction" ||
             kind === "agent_handoff" ||
-            kind === "model_switch")
+            kind === "model_switch" ||
+            kind === "import")
         ) {
           return [
             {

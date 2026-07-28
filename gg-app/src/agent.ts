@@ -893,6 +893,38 @@ export async function killTask(id: string): Promise<string | null> {
   }
 }
 
+/** Result of importing a foreign coding-agent transcript. */
+export type ImportTranscriptResult =
+  | {
+      ok: true;
+      sessionId: string;
+      sessionPath: string;
+      cwd: string;
+      format: "claude" | "codex" | "cursor";
+      messageCount: number;
+      /** Human-readable summary of what the lossy import discarded. */
+      dropped: string;
+      preview?: string;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Import a Claude Code / Codex / Cursor transcript as a resumable GG Coder
+ * session. Failures come back as `{ ok: false, error }` rather than throwing,
+ * so the caller can render the reason directly.
+ */
+export async function importTranscript(
+  path: string,
+  cwd?: string,
+): Promise<ImportTranscriptResult> {
+  try {
+    return await invoke<ImportTranscriptResult>("agent_import_transcript", { path, cwd });
+  } catch (e) {
+    await logError(`agent_import_transcript failed: ${String(e)}`);
+    return { ok: false, error: String(e) };
+  }
+}
+
 /** Cycle the reasoning/thinking level to the next supported value (or off). */
 export async function cycleThinking(): Promise<ThinkingState | null> {
   try {

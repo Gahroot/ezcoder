@@ -63,10 +63,19 @@ import {
   type ProcessManager,
 } from "../tools/index.js";
 import type { BackgroundProcess } from "./process-manager.js";
+import { buildProcessCompletionFollowUp } from "./process-gate.js";
 import { buildSubAgentCompletionFollowUp, type SubAgentManager } from "./subagent-manager.js";
 import { applyAsyncSubagentPolicy } from "./subagent-policy.js";
+import { z } from "zod";
 import { MCPClientManager, getAllMcpServers } from "./mcp/index.js";
+import type { MCPServerConfig } from "./mcp/types.js";
 import { DeferredToolCatalog } from "./mcp/deferred-catalog.js";
+import { McpCatalogCache, type CachedTool } from "./mcp/catalog-cache.js";
+import {
+  describeDropped,
+  importForeignSession,
+  type ImportForeignTranscriptResult,
+} from "./foreign-session-import.js";
 import { createToolSearchTool } from "../tools/tool-search.js";
 import { log } from "./logger.js";
 import { setEstimatorModel, calibrateEstimatorFromUsage } from "./compaction/token-estimator.js";
@@ -361,6 +370,10 @@ export class AgentSession {
   /** 0 = none; 1 = first nudge sent; 2 = final stop-and-report injected. */
   private loopBreakInjected: 0 | 1 | 2 = 0;
   private regroundingInjected = false;
+  /** Wall-clock start of the current run; scopes the background-process gate. */
+  private runStartedAt = 0;
+  /** Gate injections spent this run, capped by MAX_PROCESS_GATE_INJECTIONS. */
+  private processGateInjected = 0;
   private compactionOccurred = false;
   private lastCompactionCompacted = false;
   private compactionRetryAfter = 0;
@@ -393,6 +406,11 @@ export class AgentSession {
   private mcpManager?: MCPClientManager;
   /** Deferred MCP tools awaiting discovery via tool_search (bench A win). */
   private mcpCatalog?: DeferredToolCatalog;
+  /** Live (connected) MCP tools by name — the reconcile target for cached stubs. */
+  private liveMcpTools = new Map<string, AgentTool>();
+  /** Server name for each cached-only tool, so a stub knows what to wait on. */
+  private cachedMcpToolServers = new Map<string, string>();
+  private readonly mcpCatalogCache = new McpCatalogCache();
   private provider: Provider;
   private model: string;
   private cwd: string;
@@ -587,7 +605,10 @@ export class AgentSession {
     // its listening handshake until this resolves), `backgroundMcpConnect`
     // moves the connect off the critical path so the session becomes usable
     // immediately and tools are appended whenever the servers come up.
-    this.mcpManager = new MCPClientManager();
+    this.mcpManager = new MCPClientManager({
+      catalogCache: this.mcpCatalogCache,
+      modernProtocol: this.settingsManager.get("mcpModernProtocol"),
+    });
     if (this.opts.backgroundMcpConnect) {
       void this.connectMcpServers();
     } else {
@@ -764,6 +785,12 @@ export class AgentSession {
       if (this.opts.allowedTools && mcpWhitelist) {
         servers = servers.filter((s) => mcpWhitelist.includes(s.name));
       }
+      // Seed the catalog from the on-disk cache BEFORE connecting. With
+      // `backgroundMcpConnect` the first turns would otherwise run against an
+      // empty catalog and tool_search would answer "the catalog is empty" for
+      // capabilities that genuinely exist — a wrong answer, not a slow one.
+      await this.seedMcpCatalogFromCache(servers);
+
       const connected = await this.mcpManager.connectAll(servers);
       // Defense-in-depth: even from a whitelisted server, only push tools that
       // pass the allow-list (no-op when there's no allow-list).
@@ -802,20 +829,140 @@ export class AgentSession {
    */
   private addMcpTools(mcpTools: AgentTool[]): void {
     if (mcpTools.length === 0) return;
+    for (const tool of mcpTools) {
+      this.liveMcpTools.set(tool.name, tool);
+      this.cachedMcpToolServers.delete(tool.name);
+    }
     const defer = !this.opts.allowedTools && this.settingsManager.get("deferredMcpTools");
     if (!defer) {
-      this.tools.push(...mcpTools);
+      this.replaceOrPushTools(mcpTools);
       return;
     }
     this.mcpCatalog ??= new DeferredToolCatalog();
+    // `add` is name-keyed, so live definitions replace cached stubs in place.
     this.mcpCatalog.add(mcpTools);
-    if (!this.tools.some((t) => t.name === "tool_search")) {
-      this.tools.push(
-        createToolSearchTool(this.mcpCatalog, (promoted) => {
+    // A stub the model already promoted lives in `this.tools`; swap it for the
+    // live tool so later calls dispatch directly instead of through the stub.
+    this.replaceLivePromotedTools(mcpTools);
+    this.ensureToolSearchTool();
+  }
+
+  /**
+   * Register `tool_search` once. Promotion of a cached-only entry waits for its
+   * server so the model is told immediately when that capability turns out to
+   * be unreachable, instead of promoting a tool that fails on first call.
+   */
+  private ensureToolSearchTool(): void {
+    if (!this.mcpCatalog) return;
+    if (this.tools.some((t) => t.name === "tool_search")) return;
+    this.tools.push(
+      createToolSearchTool(
+        this.mcpCatalog,
+        (promoted) => {
           this.tools.push(...promoted);
-        }),
-      );
+        },
+        async (toolName) => {
+          if (this.liveMcpTools.has(toolName)) return undefined;
+          const serverName = this.cachedMcpToolServers.get(toolName);
+          if (!serverName) return undefined;
+          const outcome = (await this.mcpManager?.whenConnected(serverName)) ?? {
+            ok: false as const,
+            error: "MCP is disabled for this session",
+          };
+          return outcome.ok
+            ? { serverName, ok: true }
+            : { serverName, ok: false, error: outcome.error };
+        },
+      ),
+    );
+  }
+
+  /** Append tools, replacing any same-named entry (cached stub → live tool). */
+  private replaceOrPushTools(tools: AgentTool[]): void {
+    for (const tool of tools) {
+      const index = this.tools.findIndex((t) => t.name === tool.name);
+      if (index >= 0) this.tools[index] = tool;
+      else this.tools.push(tool);
     }
+  }
+
+  /** Swap already-promoted cached stubs for their live equivalents, in place. */
+  private replaceLivePromotedTools(tools: AgentTool[]): void {
+    for (const tool of tools) {
+      const index = this.tools.findIndex((t) => t.name === tool.name);
+      if (index >= 0) this.tools[index] = tool;
+    }
+  }
+
+  /**
+   * Publish cached tool definitions into the deferred catalog so `tool_search`
+   * answers correctly on turn 1. A cached stub carries the real name, one-line
+   * description and input schema; calling it waits for the live connection and
+   * then dispatches against the real client, or returns a clear error when that
+   * server ultimately failed. Live tools replace stubs on connect.
+   */
+  private async seedMcpCatalogFromCache(servers: MCPServerConfig[]): Promise<void> {
+    if (!this.opts.backgroundMcpConnect) return;
+    if (this.opts.allowedTools || !this.settingsManager.get("deferredMcpTools")) return;
+    let entries: Awaited<ReturnType<McpCatalogCache["entriesFor"]>>;
+    try {
+      entries = await this.mcpCatalogCache.entriesFor(servers);
+    } catch {
+      return;
+    }
+    const stubs: AgentTool[] = [];
+    for (const [serverName, entry] of entries) {
+      for (const cached of entry.tools) {
+        if (this.liveMcpTools.has(cached.name)) continue;
+        this.cachedMcpToolServers.set(cached.name, serverName);
+        stubs.push(this.buildCachedMcpTool(serverName, cached));
+      }
+    }
+    if (stubs.length === 0) return;
+    log("INFO", "mcp", "Seeded deferred tool catalog from cache", {
+      tools: String(stubs.length),
+      servers: String(entries.size),
+    });
+    this.addCachedMcpTools(stubs);
+  }
+
+  /** Catalog-only registration for cached stubs — never marks them live. */
+  private addCachedMcpTools(stubs: AgentTool[]): void {
+    this.mcpCatalog ??= new DeferredToolCatalog();
+    this.mcpCatalog.add(stubs);
+    this.ensureToolSearchTool();
+  }
+
+  private buildCachedMcpTool(serverName: string, cached: CachedTool): AgentTool {
+    return {
+      name: cached.name,
+      description: cached.description,
+      parameters: z.record(z.string(), z.unknown()),
+      rawInputSchema: cached.rawInputSchema,
+      execute: async (args, context) => {
+        const live = this.liveMcpTools.get(cached.name);
+        if (live) return live.execute(args, context);
+        const outcome = (await this.mcpManager?.whenConnected(serverName)) ?? {
+          ok: false as const,
+          error: "MCP is disabled for this session",
+        };
+        if (!outcome.ok) {
+          return (
+            `MCP tool ${cached.name} is unavailable: server "${serverName}" did not connect ` +
+            `(${outcome.error}). This tool was offered from a cached catalog. ` +
+            `Use a different approach or ask the user to check their MCP configuration.`
+          );
+        }
+        const connected = this.liveMcpTools.get(cached.name);
+        if (!connected) {
+          return (
+            `MCP tool ${cached.name} no longer exists: server "${serverName}" connected but ` +
+            `does not expose it. The cached catalog entry was stale.`
+          );
+        }
+        return connected.execute(args, context);
+      },
+    };
   }
 
   /**
@@ -1001,6 +1148,8 @@ export class AgentSession {
     this.idealReviewPhase = "idle";
     this.loopBreakInjected = 0;
     this.regroundingInjected = false;
+    this.runStartedAt = Date.now();
+    this.processGateInjected = 0;
     this.compactionOccurred = false;
     this.originalRequest = originalRequest;
   }
@@ -1211,6 +1360,23 @@ export class AgentSession {
   private getHookFollowUpMessages(): Message[] | null {
     const childCompletionFollowUp = buildSubAgentCompletionFollowUp(this.subAgentManager);
     if (childCompletionFollowUp) return childCompletionFollowUp;
+
+    // Background processes started this run and never read block completion:
+    // their progress/exit checkpoints only land on the steering path, which an
+    // agent about to stop never reaches.
+    const processFollowUp = buildProcessCompletionFollowUp(
+      this.processManager?.list() ?? [],
+      this.runStartedAt,
+      this.processGateInjected,
+    );
+    if (processFollowUp) {
+      this.processGateInjected += 1;
+      log("INFO", "process-gate", "Injecting background-process completion gate", {
+        injected: String(this.processGateInjected),
+      });
+      return processFollowUp;
+    }
+
     if (this.opts.selfCorrectionHooks === false || this.idealReviewSuppressed) return null;
 
     if (this.idealReviewPhase === "reviewing") {
@@ -1727,6 +1893,8 @@ export class AgentSession {
           // re-adding. Some tools may already have been promoted out of the catalog.
           this.tools = this.tools.filter((t) => !t.name.startsWith("mcp__"));
           this.mcpCatalog?.removeWhere((name) => name.startsWith("mcp__"));
+          this.liveMcpTools.clear();
+          this.cachedMcpToolServers.clear();
           this.addMcpTools(mcpTools);
         } catch (err) {
           log(
@@ -2778,6 +2946,60 @@ export class AgentSession {
       addDirectory: (dir) => this.addDirectory(dir),
       removeDirectory: (dir) => this.removeDirectory(dir),
       getAdditionalRoots: () => this.getAdditionalRoots(),
+      importTranscript: async (filePath) => {
+        const result = await this.importForeignTranscript(filePath);
+        return result.ok
+          ? `Imported ${result.messageCount} message(s) from a ${result.format} transcript into ${result.cwd}.\n` +
+              `Dropped: ${result.dropped}.\n` +
+              `Resume it with /resume (session ${result.sessionId.slice(0, 8)}).`
+          : `Import failed: ${result.error}`;
+      },
     };
   }
+
+  /**
+   * Import a Claude Code / Codex / Cursor transcript as a resumable GG Coder
+   * session in this session's sessions directory. Never throws — a bad path or
+   * an unrecognized format comes back as `{ ok: false, error }` so both the CLI
+   * and the desktop app can show it verbatim.
+   */
+  async importForeignTranscript(
+    filePath: string,
+    opts: { cwd?: string } = {},
+  ): Promise<ImportForeignTranscriptResult> {
+    try {
+      const imported = await importForeignSession({
+        filePath: resolveHomePath(filePath),
+        sessionManager: this.sessionManager,
+        provider: this.provider,
+        model: this.model,
+        cwd: opts.cwd ?? undefined,
+      });
+      log("INFO", "import", "Imported foreign transcript", {
+        format: imported.format,
+        messages: String(imported.messageCount),
+      });
+      return {
+        ok: true,
+        sessionId: imported.sessionId,
+        sessionPath: imported.sessionPath,
+        cwd: imported.cwd,
+        format: imported.format,
+        messageCount: imported.messageCount,
+        dropped: describeDropped(imported.dropped),
+        ...(imported.preview ? { preview: imported.preview } : {}),
+      };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+}
+
+/** Expand a leading `~` so `/import ~/.codex/...` works from any shell. */
+function resolveHomePath(filePath: string): string {
+  if (filePath === "~") return os.homedir();
+  if (filePath.startsWith("~/") || filePath.startsWith("~\\")) {
+    return path.join(os.homedir(), filePath.slice(2));
+  }
+  return filePath;
 }
