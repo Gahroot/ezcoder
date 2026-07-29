@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.29.1
+
+### Patch Changes
+
+- Fix sub-agents hanging until their timeout instead of exiting when finished, and stop the Ideal review coverage gate from looping forever on deleted or unreadable files
+  - @kenkaiiii/gg-ai@5.29.1
+  - @kenkaiiii/gg-agent@5.29.1
+  - @kenkaiiii/gg-core@5.29.1
+
 ## 5.29.0
 
 ### Minor Changes
