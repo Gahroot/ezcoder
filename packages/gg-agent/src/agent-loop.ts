@@ -1433,6 +1433,11 @@ export async function* agentLoop(
         ? yield* executeToolCallsMixed(toolCalls, toolResults, executionOptions)
         : yield* executeToolCallsParallel(toolCalls, toolResults, executionOptions);
       messages.push({ role: "tool", content: executionResult.toolResults });
+      // The step is complete and durable-able: assistant message + every tool
+      // result are in `messages`, and the tools' side effects have already hit
+      // the filesystem. Hosts flush here so a crash before the next provider
+      // call cannot lose work that already happened.
+      yield { type: "checkpoint" as const, turn };
       const toolsAborted = executionResult.aborted;
 
       if (fatalToolArgumentError) {

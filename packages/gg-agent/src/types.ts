@@ -102,6 +102,22 @@ export interface AgentTurnEndEvent {
   timing: AgentTurnTiming;
 }
 
+/**
+ * A safe point between steps: the assistant message and every tool result for
+ * this turn are now in the message array, and no provider call is in flight.
+ *
+ * Hosts that persist a transcript flush here. Without it a crash mid-run loses
+ * the WHOLE turn — including tool results whose side effects already landed on
+ * disk — because the only flush happens after the loop returns.
+ *
+ * Yielded immediately after tool results are appended, so it pairs with
+ * `turn_end` (which covers the assistant half) to cover every message.
+ */
+export interface AgentCheckpointEvent {
+  type: "checkpoint";
+  turn: number;
+}
+
 export interface AgentDoneEvent {
   type: "agent_done";
   totalTurns: number;
@@ -227,6 +243,7 @@ export type AgentEvent =
   | AgentFollowUpMessageEvent
   | AgentRetryEvent
   | AgentTurnEndEvent
+  | AgentCheckpointEvent
   | AgentDoneEvent
   | AgentMaxTurnsEvent
   | AgentTurnBudgetExtendedEvent
