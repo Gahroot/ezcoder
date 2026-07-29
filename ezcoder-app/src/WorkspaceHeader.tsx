@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Pencil } from "lucide-react";
 import { openProjectPath, openUrl, type WorkspaceMode } from "./agent";
 
 interface WorkspaceHeaderProps {
@@ -13,6 +14,9 @@ interface WorkspaceHeaderProps {
   gitHubRepoUrl?: string | null;
   /** Extra workspace roots added with /add-dir. */
   additionalRoots?: string[];
+  /** User-defined window label. Null keeps the project folder as the default. */
+  customTitle?: string | null;
+  onCustomTitleChange?: (title: string | null) => void;
   navHidden: boolean;
   onToggleNav: () => void;
   stripExtras?: ReactNode;
@@ -31,10 +35,11 @@ export function formatWorkspaceTitle(
   gitHubIssues: number | null = null,
   gitHubPRs: number | null = null,
   additionalRoots: string[] = [],
+  customTitle: string | null = null,
 ): string {
   const directory = cwd?.split(/[\\/]/).filter(Boolean).pop();
   if (!directory) return fallback;
-  const segments = [directory];
+  const segments = [customTitle?.trim() || directory];
   if (additionalRoots.length > 0)
     segments.push(`+${pluralize(additionalRoots.length, "root", "roots")}`);
   if (gitBranch) segments.push(`⎇ ${gitBranch}`);
@@ -55,6 +60,8 @@ export function WorkspaceHeader({
   gitHubPRs = null,
   gitHubRepoUrl = null,
   additionalRoots = [],
+  customTitle = null,
+  onCustomTitleChange,
   navHidden,
   onToggleNav,
   stripExtras,
@@ -62,6 +69,26 @@ export function WorkspaceHeader({
 }: WorkspaceHeaderProps): React.ReactElement {
   const fallbackTitle = workspaceMode === "chat" ? "EZ Chat" : "EZ Coder";
   const directory = cwd?.split(/[\\/]/).filter(Boolean).pop();
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(customTitle ?? "");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editingTitle) setTitleDraft(customTitle ?? "");
+  }, [customTitle, editingTitle]);
+
+  useEffect(() => {
+    if (!editingTitle) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [editingTitle]);
+
+  function commitTitle(): void {
+    const nextTitle = titleDraft.trim() || null;
+    setEditingTitle(false);
+    setTitleDraft(nextTitle ?? "");
+    if (nextTitle !== customTitle) onCustomTitleChange?.(nextTitle);
+  }
 
   return (
     <div className="chat-head">
@@ -77,19 +104,54 @@ export function WorkspaceHeader({
             gitHubIssues,
             gitHubPRs,
             additionalRoots,
+            customTitle,
           )}
         >
           {directory ? (
             <>
-              <button
-                type="button"
-                className="chat-head-cwd chat-head-link"
-                disabled={!cwd}
-                title={cwd ? `${cwd} — open folder` : undefined}
-                onClick={() => cwd && void openProjectPath(cwd)}
-              >
-                {directory}
-              </button>
+              {editingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  className="chat-head-title-input"
+                  value={titleDraft}
+                  maxLength={80}
+                  aria-label="Tab name"
+                  placeholder={directory}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onBlur={commitTitle}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitTitle();
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      setTitleDraft(customTitle ?? "");
+                      setEditingTitle(false);
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="chat-head-cwd chat-head-link"
+                  disabled={!cwd}
+                  title={cwd ? `${cwd} — open folder` : undefined}
+                  onClick={() => cwd && void openProjectPath(cwd)}
+                >
+                  {customTitle || directory}
+                </button>
+              )}
+              {onCustomTitleChange && !editingTitle && (
+                <button
+                  type="button"
+                  className="chat-head-rename"
+                  title="Rename this tab"
+                  aria-label="Rename this tab"
+                  onClick={() => setEditingTitle(true)}
+                >
+                  <Pencil size={11} strokeWidth={2} aria-hidden="true" />
+                </button>
+              )}
               {gitBranch && (
                 <>
                   <span className="chat-head-sep" data-tauri-drag-region>

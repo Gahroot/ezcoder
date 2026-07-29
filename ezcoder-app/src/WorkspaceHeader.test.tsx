@@ -204,4 +204,40 @@ describe("WorkspaceHeader", () => {
     expect(screen.getByTitle("ezcoder │ ⎇ feature/titlebar │ 3 uncommitted")).toBeDefined();
     expect(screen.queryByText("EZ Coder")).toBeNull();
   });
+
+  it("renames the active tab and restores the project-name default when cleared", () => {
+    function RenameHarness(): React.ReactElement {
+      const [customTitle, setCustomTitle] = useState<string | null>(null);
+      return (
+        <WorkspaceHeader
+          workspaceMode="code"
+          cwd="/work/ezcoder"
+          customTitle={customTitle}
+          onCustomTitleChange={setCustomTitle}
+          navHidden
+          onToggleNav={() => {}}
+        >
+          <button>New session</button>
+        </WorkspaceHeader>
+      );
+    }
+
+    render(<RenameHarness />);
+    expect(screen.getByRole("button", { name: "ezcoder" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename this tab" }));
+    const input = screen.getByRole("textbox", { name: "Tab name" });
+    fireEvent.change(input, { target: { value: "Auth cleanup" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByRole("button", { name: "Auth cleanup" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename this tab" }));
+    const renamedInput = screen.getByRole("textbox", { name: "Tab name" });
+    fireEvent.change(renamedInput, { target: { value: "  " } });
+    fireEvent.keyDown(renamedInput, { key: "Enter" });
+    expect(screen.getByRole("button", { name: "ezcoder" })).toBeDefined();
+    expect(formatWorkspaceTitle("/work/ezcoder", "main", "EZ Coder", 0, null, null, [], "QA")).toBe(
+      "QA │ ⎇ main",
+    );
+  });
 });

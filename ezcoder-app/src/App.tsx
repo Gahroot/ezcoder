@@ -36,6 +36,8 @@ import {
   isSecondaryWindow,
   windowLabel,
   setWindowTitle,
+  getWindowCustomTitle,
+  saveWindowCustomTitle,
   openProjectPath,
   type AgentState,
   type WorkspaceMode,
@@ -474,6 +476,8 @@ function App(): React.ReactElement {
   const [entryView, setEntryView] = useState<EntryView>(initialEntryView(isSecondaryWindow));
   // Re-open the matching session picker over an already-open workspace.
   const [showPicker, setShowPicker] = useState(false);
+  // Optional per-window label, persisted natively with the workspace snapshot.
+  const [windowCustomTitle, setWindowCustomTitle] = useState<string | null>(null);
   // Bumped on each workspace/session choice to force re-hydration.
   const [hydrateNonce, setHydrateNonce] = useState(0);
   // New-session confirmation modal + in-flight guard.
@@ -795,6 +799,28 @@ function App(): React.ReactElement {
     };
   }, [insertDroppedFolderPaths]);
 
+  // Restore the per-window label before the workspace header becomes interactive.
+  useEffect(() => {
+    let cancelled = false;
+    void getWindowCustomTitle()
+      .then((title) => {
+        if (!cancelled) setWindowCustomTitle(title);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const updateWindowCustomTitle = useCallback((title: string | null): void => {
+    setWindowCustomTitle(title);
+    void saveWindowCustomTitle(title)
+      .then(setWindowCustomTitle)
+      .catch(() => {
+        toast("Could not save this tab name.", "error");
+      });
+  }, []);
+
   // Keep the native window title aligned with the visible title-bar context.
   useEffect(() => {
     const fallbackTitle = workspaceMode === "chat" ? "EZ Chat" : "EZ Coder";
@@ -807,6 +833,8 @@ function App(): React.ReactElement {
             state?.gitDirtyFileCount,
             state?.gitHubIssues ?? null,
             state?.gitHubPRs ?? null,
+            state?.additionalRoots,
+            windowCustomTitle,
           )
         : fallbackTitle;
     setWindowTitle(title);
@@ -818,6 +846,8 @@ function App(): React.ReactElement {
     state?.gitDirtyFileCount,
     state?.gitHubIssues,
     state?.gitHubPRs,
+    state?.additionalRoots,
+    windowCustomTitle,
     workspaceMode,
   ]);
 
@@ -2024,6 +2054,8 @@ function App(): React.ReactElement {
         gitHubPRs={state?.gitHubPRs}
         gitHubRepoUrl={state?.gitHubRepoUrl}
         additionalRoots={state?.additionalRoots}
+        customTitle={windowCustomTitle}
+        onCustomTitleChange={updateWindowCustomTitle}
         navHidden={navHidden}
         onToggleNav={toggleNav}
         stripExtras={

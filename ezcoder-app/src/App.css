@@ -993,6 +993,52 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A quiet, explicit edit affordance preserves the folder button's existing
+   click-to-open behavior. It brightens with the title so tab renaming is easy
+   to discover without competing with project context. */
+.chat-head-rename {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0 0 0 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  opacity: 0.45;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    opacity 120ms ease,
+    background 120ms ease;
+}
+.chat-head-title:hover .chat-head-rename,
+.chat-head-rename:focus-visible {
+  opacity: 1;
+}
+.chat-head-rename:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.chat-head-title-input {
+  flex: 0 1 220px;
+  width: min(220px, 40vw);
+  min-width: 72px;
+  height: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--primary);
+  border-radius: 5px;
+  outline: none;
+  background: var(--surface-1);
+  color: var(--text);
+  font: inherit;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+}
 .chat-head-sep {
   flex: none;
   margin: 0 8px;

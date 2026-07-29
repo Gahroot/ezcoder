@@ -1155,6 +1155,16 @@ export async function restoreTarget(): Promise<RestoreTarget | null> {
   }
 }
 
+/** Return the saved user-defined title for this window, if one exists. */
+export async function getWindowCustomTitle(): Promise<string | null> {
+  return await invoke<string | null>("window_title_get");
+}
+
+/** Persist this window's title. Null (or blank) restores the project-name default. */
+export async function saveWindowCustomTitle(title: string | null): Promise<string | null> {
+  return await invoke<string | null>("window_title_set", { title });
+}
+
 /**
  * Open enough new project windows (each with its own agent) to reach `count`
  * total, then tile the first `count` windows into a 2- or 4-up grid filling the

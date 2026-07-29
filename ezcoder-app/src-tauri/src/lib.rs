@@ -79,6 +79,8 @@ struct WindowSession {
     chat_agent: ChatAgent,
     cwd: Option<PathBuf>,
     session_path: Option<String>,
+    /// User-defined label for this app window. None uses the project directory.
+    custom_title: Option<String>,
     generation: u64,
 }
 
@@ -105,6 +107,8 @@ struct RestoreEntry {
     cwd: String,
     #[serde(rename = "sessionPath")]
     session_path: Option<String>,
+    #[serde(rename = "customTitle")]
+    custom_title: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -1964,6 +1968,12 @@ struct WorkspaceEntry {
         skip_serializing_if = "Option::is_none"
     )]
     session_path: Option<String>,
+    #[serde(
+        rename = "customTitle",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    custom_title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     x: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2069,6 +2079,7 @@ fn snapshot_workspace(app: &tauri::AppHandle) {
             chat_agent: inst.chat_agent,
             cwd,
             session_path: inst.session_path.clone(),
+            custom_title: inst.custom_title.clone(),
             x,
             y,
             width,
@@ -2114,6 +2125,64 @@ fn window_restore_target(webview: WebviewWindow) -> Option<RestoreEntry> {
     let state: State<RestoreTargets> = webview.state();
     let map = state.map.lock().unwrap();
     restore_target(&map, webview.label())
+}
+
+fn normalize_window_title(title: Option<String>) -> Option<String> {
+    let trimmed = title?.trim().to_string();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.chars().take(80).collect())
+}
+
+/// Return THIS window's persisted custom label. None means use the project name.
+#[tauri::command]
+fn window_title_get(webview: WebviewWindow) -> Option<String> {
+    let saved = webview
+        .state::<Windows>()
+        .map
+        .lock()
+        .unwrap()
+        .get(webview.label())
+        .and_then(|window| window.custom_title.clone());
+    if saved.is_some() {
+        return saved;
+    }
+    webview
+        .state::<RestoreTargets>()
+        .map
+        .lock()
+        .unwrap()
+        .get(webview.label())
+        .and_then(|target| target.custom_title.clone())
+}
+
+/// Save THIS window's custom label into the same snapshot that restores its workspace.
+#[tauri::command]
+fn window_title_set(
+    webview: WebviewWindow,
+    title: Option<String>,
+) -> Result<Option<String>, String> {
+    let title = normalize_window_title(title);
+    {
+        let windows: State<Windows> = webview.state();
+        let mut map = windows.map.lock().unwrap();
+        let window = map
+            .get_mut(webview.label())
+            .ok_or_else(|| "window session is not ready".to_string())?;
+        window.custom_title = title.clone();
+    }
+    if let Some(target) = webview
+        .state::<RestoreTargets>()
+        .map
+        .lock()
+        .unwrap()
+        .get_mut(webview.label())
+    {
+        target.custom_title = title.clone();
+    }
+    snapshot_workspace(webview.app_handle());
+    Ok(title)
 }
 
 // ── Native provider auth status (~/.ezcoder/auth.json) ─────────────────────────
@@ -3218,11 +3287,16 @@ async fn select_project(
     snapshot_workspace(&app);
 
     // Take the old session id (and clear it) so the old SSE bridge retires.
-    let old_id = {
+    // Keep the window label: it belongs to the window, not one project session.
+    let (old_id, custom_title) = {
         let windows: State<Windows> = app.state();
         let mut map = windows.map.lock().unwrap();
-        map.get_mut(&label)
-            .and_then(|window| window.session_id.take())
+        let window = map.get_mut(&label);
+        let custom_title = window
+            .as_ref()
+            .and_then(|window| window.custom_title.clone());
+        let old_id = window.and_then(|window| window.session_id.take());
+        (old_id, custom_title)
     };
     // Dispose the old session on the daemon (best-effort, off-thread).
     if let Some(id) = old_id {
@@ -3239,6 +3313,7 @@ async fn select_project(
         chat_agent,
         cwd: cwd.clone(),
         session_path: session_path.clone(),
+        custom_title,
     };
     let cwd = PathBuf::from(cwd);
     let generation = prepare_window_session(
@@ -4319,6 +4394,7 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
                     chat_agent: entry.chat_agent,
                     cwd: entry.cwd.clone(),
                     session_path: entry.session_path.clone(),
+                    custom_title: entry.custom_title.clone(),
                 },
             );
         }
@@ -4340,6 +4416,11 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
             PathBuf::from(&entry.cwd),
             entry.session_path.clone(),
         );
+        // Session preparation is synchronous; attach the saved label before the
+        // snapshot can be rewritten or the webview asks for it.
+        if let Some(window) = app.state::<Windows>().map.lock().unwrap().get_mut(&label) {
+            window.custom_title = entry.custom_title.clone();
+        }
         // Apply saved geometry when present; else we tile after the loop.
         if let (Some(x), Some(y)) = (entry.x, entry.y) {
             any_geometry = true;
@@ -4462,7 +4543,9 @@ pub fn run() {
             gaze_focus,
             focus_window_by_offset,
             arrange_all,
-            window_restore_target
+            window_restore_target,
+            window_title_get,
+            window_title_set
         ])
         .setup(|app| {
             // Windows-only: track per-window minimized state so restoring one
@@ -4731,6 +4814,7 @@ mod tests {
                     chat_agent: ChatAgent::Research,
                     cwd: "/p/a".into(),
                     session_path: Some("/s/a.jsonl".into()),
+                    custom_title: Some("Auth cleanup".into()),
                     x: Some(0),
                     y: Some(25),
                     width: Some(1280),
@@ -4749,8 +4833,10 @@ mod tests {
         assert_eq!(back.windows[0].chat_agent, ChatAgent::Research);
         assert!(json.contains(r#""mode":"chat""#));
         assert!(json.contains(r#""chatAgent":"research""#));
+        assert!(json.contains(r#""customTitle":"Auth cleanup""#));
         // The second entry omits optional fields entirely (skip_serializing_if).
         assert!(!json.contains("\"sessionPath\":null"));
+        assert!(!json.contains("\"customTitle\":null"));
     }
 
     #[test]
@@ -4773,12 +4859,30 @@ mod tests {
             chat_agent: ChatAgent::Therapist,
             cwd: "/p/a".into(),
             session_path: Some("/s/a.jsonl".into()),
+            custom_title: Some("Auth cleanup".into()),
         };
         let json = serde_json::to_value(target).unwrap();
         assert_eq!(json["mode"], "chat");
         assert_eq!(json["chatAgent"], "therapist");
         assert_eq!(json["cwd"], "/p/a");
         assert_eq!(json["sessionPath"], "/s/a.jsonl");
+        assert_eq!(json["customTitle"], "Auth cleanup");
+    }
+
+    #[test]
+    fn window_title_normalization_trims_resets_and_limits_length() {
+        assert_eq!(
+            normalize_window_title(Some("  Auth cleanup  ".into())).as_deref(),
+            Some("Auth cleanup")
+        );
+        assert_eq!(normalize_window_title(Some("   ".into())), None);
+        assert_eq!(
+            normalize_window_title(Some("x".repeat(100)))
+                .unwrap()
+                .chars()
+                .count(),
+            80
+        );
     }
 
     #[test]
@@ -5538,6 +5642,7 @@ mod tests {
                 chat_agent: ChatAgent::Research,
                 cwd: Some(PathBuf::from("/p/a")),
                 session_path: Some("/s/a.jsonl".into()),
+                custom_title: None,
                 generation: 1,
             },
         );
@@ -5562,6 +5667,7 @@ mod tests {
                 chat_agent: ChatAgent::General,
                 cwd: Some(PathBuf::from("/p/a")),
                 session_path: None,
+                custom_title: Some("Auth cleanup".into()),
                 generation: 1,
             },
         );
@@ -5623,6 +5729,7 @@ mod tests {
             chat_agent: ChatAgent::General,
             cwd: "/project".into(),
             session_path: Some("/sessions/one.jsonl".into()),
+            custom_title: Some("Auth cleanup".into()),
         };
 
         register_restore_target(&mut targets, "main".into(), entry);
