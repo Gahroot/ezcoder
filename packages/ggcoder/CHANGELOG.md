@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.29.0
+
+### Minor Changes
+
+- Add step-boundary transcript checkpoints and a run journal so crashes preserve completed work, MCP HTTP session recovery with single reconnect-and-replay, server-initiated elicitation support, a visual token budget for image downscaling, and capped backoff for background-process notifications.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.29.0
+- @kenkaiiii/gg-agent@5.29.0
+- @kenkaiiii/gg-core@5.29.0
+
 ## 5.28.0
 
 ### Minor Changes
