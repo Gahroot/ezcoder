@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.37.1",
+    date: "2026-07-29",
+    items: [
+      "Sub-agents are finally fast. Every single one used to sit there for a full `5 minutes` and then report failure, even when it had actually finished the job in seconds. Now they hand back their answer the moment they are done, so spawning a helper agent costs you seconds instead of stalling your whole task.",
+      "When something does go wrong with a sub-agent, it tells you what happened. No more staring at `unknown error` wondering if it crashed, timed out, or got cancelled. You get the real reason in plain words.",
+      "Fixed a rare loop where I would finish your task and then keep repeating the same final answer over and over. If I ever cannot double-check a file, I now just say so once and hand the work back to you.",
+    ],
+  },
+  {
     version: "0.37.0",
     date: "2026-07-29",
     items: [
