@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.60",
+    date: "2026-07-28",
+    items: [
+      "Every window can finally tell you what it is. I added editable `tab names` that stay put when you leave, restart, and come back, while your project name remains the default until you choose one.",
+    ],
+  },
+  {
     version: "0.1.59",
     date: "2026-07-26",
     items: [
