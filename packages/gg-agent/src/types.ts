@@ -39,6 +39,13 @@ export interface AgentTool<T extends z.ZodType = z.ZodType> extends Tool {
    * batch runs in source order so stateful mutations cannot race each other.
    */
   executionMode?: ToolExecutionMode;
+  /**
+   * Overrides the loop's default per-tool timeout. A tool that owns a longer
+   * internal budget than the default must declare it here, or the loop cancels
+   * it first and the tool's own timeout — with its specific, actionable error
+   * message — becomes unreachable.
+   */
+  timeoutMs?: number;
   execute: (
     args: z.infer<T>,
     context: ToolContext,

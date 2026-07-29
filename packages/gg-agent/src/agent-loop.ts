@@ -25,6 +25,8 @@ import type {
 import { isLocalBackendUrl } from "./local-backend.js";
 
 const DEFAULT_MAX_TURNS = 300;
+/** Per-tool cancellation ceiling; a tool may raise it via `timeoutMs`. */
+const DEFAULT_TOOL_TIMEOUT_MS = 300_000;
 
 /**
  * Lightweight stream diagnostic callback. When set, the agent loop calls this
@@ -1641,12 +1643,15 @@ async function executeSingleToolCall(
   } else {
     try {
       const parsed = tool.parameters.parse(toolCall.args);
-      // Per-tool timeout: combine the caller's signal with a 5-minute
-      // timeout so no single tool can block the agent loop indefinitely.
+      // Per-tool timeout: combine the caller's signal with a 5-minute default
+      // so no single tool can block the agent loop indefinitely.
       // When the caller has no signal, AbortSignal.timeout is used alone.
       // AbortSignal.any() merges them — either firing aborts the tool.
+      // A tool with a longer internal budget declares `timeoutMs`; without
+      // that, this default preempts the tool's own timeout and replaces its
+      // specific error with a generic cancellation.
       const callerSignal = options.signal;
-      const toolTimeout = AbortSignal.timeout(300_000);
+      const toolTimeout = AbortSignal.timeout(tool.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS);
       const ctx: ToolContext = {
         signal: callerSignal ? AbortSignal.any([callerSignal, toolTimeout]) : toolTimeout,
         toolCallId: toolCall.id,
