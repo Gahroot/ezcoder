@@ -956,12 +956,8 @@ body {
 }
 /* Per-project accent identity. `--project-accent` is set inline per window by
    WorkspaceHeader (derived from the project folder name, see projectAccent.ts).
-   Deliberately restrained: a hairline on the header's bottom edge plus a dot by
-   the project name. Enough to tell six windows apart at a glance, not enough to
-   turn the chrome into a colour field. */
-.chat-head-accented {
-  border-bottom-color: color-mix(in oklab, var(--project-accent) 42%, var(--border));
-}
+   Deliberately restrained: a single dot by the project name, nothing more. The
+   header keeps the standard `--border` hairline so the chrome stays neutral. */
 .chat-head-accent-dot {
   flex: 0 0 auto;
   width: 6px;

@@ -70,7 +70,7 @@ export function WorkspaceHeader({
 
   return (
     <div
-      className={`chat-head${accent ? " chat-head-accented" : ""}`}
+      className="chat-head"
       style={accent ? ({ "--project-accent": accent } as React.CSSProperties) : undefined}
     >
       <div className="chat-head-strip" data-tauri-drag-region>
