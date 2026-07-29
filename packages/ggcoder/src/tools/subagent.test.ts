@@ -122,6 +122,27 @@ describe("createSubAgentTool fast-model fallback", () => {
     expect(spawnedModels()).toEqual(["gpt-5.6-luna"]);
   });
 
+  it("does not mistake partial progress text for a successful final answer", async () => {
+    // Real failure shape: the model narrates before its first tool call, then
+    // the provider rate-limits the next turn and the child exits non-zero. The
+    // old collector returned only "I'll start..." as a successful tool result,
+    // hiding both the failure and the fact that no review/work was completed.
+    spawnMock.mockImplementationOnce(() =>
+      mockExit(
+        "Rate limited by Anthropic. Wait a moment and try again.",
+        1,
+        "I'll read both files now.",
+      ),
+    );
+
+    await expect(runOwl()).resolves.toMatchObject({
+      content:
+        "Sub-agent failed (exit 1): Rate limited by Anthropic. Wait a moment and try again.\n\n" +
+        "Partial output before failure:\nI'll read both files now.",
+    });
+    expect(spawnedModels()).toEqual(["gpt-5.6-luna"]);
+  });
+
   it("keeps the blocking contract while rejecting recursive process storms", async () => {
     const previousDepth = process.env[SUB_AGENT_DEPTH_ENV];
     process.env[SUB_AGENT_DEPTH_ENV] = String(MAX_BLOCKING_SUBAGENT_DEPTH);

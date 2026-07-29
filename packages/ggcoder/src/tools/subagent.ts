@@ -307,15 +307,29 @@ export function createSubAgentTool(
               model,
             });
 
-            if (code !== 0 && !textOutput) {
+            const body = boundSubAgentOutput(textOutput);
+            if (code !== 0) {
+              // A provider/process failure can happen AFTER the model has emitted
+              // a progress sentence (for example: "I'll read both files now.").
+              // Treating any partial text as a successful final answer hid the
+              // non-zero exit and handed that sentence to the parent as if the
+              // review/task had completed. Preserve the partial output for
+              // diagnosis, but make the failure impossible to mistake for a
+              // result.
+              const error = stderr.trim() || "unknown error";
               finish({
-                content: `Sub-agent failed (exit ${code}): ${stderr.trim() || "unknown error"}`,
+                // `boundSubAgentOutput("")` intentionally returns
+                // "(no output)" for successful empty children. Test the raw
+                // stream here so that placeholder is not mislabeled as partial
+                // model output on failures.
+                content: textOutput
+                  ? `Sub-agent failed (exit ${code}): ${error}\n\nPartial output before failure:\n${body}`
+                  : `Sub-agent failed (exit ${code}): ${error}`,
                 details,
               });
               return;
             }
 
-            const body = boundSubAgentOutput(textOutput);
             const content = hitMaxTurns
               ? `[Sub-agent reached its ${maxTurnsLimit}-turn limit — it stopped mid-task and this output may be incomplete.]\n\n${body}`
               : body;
