@@ -91,7 +91,9 @@ import {
   type IdealReviewStats,
   evaluateIdealReview,
   buildIdealReviewMessage,
+  buildReviewCoverageEscalationMessage,
   buildReviewCoverageMessage,
+  MAX_REVIEW_COVERAGE_INJECTIONS,
   withReviewCoverageRequirements,
   detectTestDrift,
   ReviewCoverageTracker,
@@ -377,6 +379,8 @@ export class AgentSession {
   /** Runtime-only suppression while Ken owns verification in autopilot mode. */
   private idealReviewSuppressed = false;
   private readonly reviewCoverage: ReviewCoverageTracker;
+  /** Coverage follow-ups spent this run, capped by MAX_REVIEW_COVERAGE_INJECTIONS. */
+  private reviewCoverageInjected = 0;
   /** 0 = none; 1 = first nudge sent; 2 = final stop-and-report injected. */
   private loopBreakInjected: 0 | 1 | 2 = 0;
   private regroundingInjected = false;
@@ -1165,6 +1169,7 @@ export class AgentSession {
     this.hookFileEditCounts.clear();
     this.hookToolCalls.clear();
     this.reviewCoverage.reset();
+    this.reviewCoverageInjected = 0;
     this.idealReviewPhase = "idle";
     this.loopBreakInjected = 0;
     this.regroundingInjected = false;
@@ -1444,9 +1449,20 @@ export class AgentSession {
         lspMissing: lspEvidence.missing,
       });
       if (coverage.missing.length > 0) {
-        return [
-          this.withReviewLspEvidence(buildReviewCoverageMessage(coverage.missing), lspEvidence),
-        ];
+        if (this.reviewCoverageInjected < MAX_REVIEW_COVERAGE_INJECTIONS) {
+          this.reviewCoverageInjected += 1;
+          return [
+            this.withReviewLspEvidence(buildReviewCoverageMessage(coverage.missing), lspEvidence),
+          ];
+        }
+        // Budget spent: close the gate so the run cannot spin on a file that
+        // never becomes readable, and require the gap be reported to the user.
+        this.idealReviewPhase = "complete";
+        log("INFO", "ideal", "Ideal review coverage escalated after retry budget", {
+          injected: String(this.reviewCoverageInjected),
+          missing: coverage.missing,
+        });
+        return [buildReviewCoverageEscalationMessage(coverage.missing)];
       }
       this.idealReviewPhase = "complete";
       return null;
