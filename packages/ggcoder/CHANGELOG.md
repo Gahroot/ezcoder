@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.30.0
+
+### Minor Changes
+
+- Add ACP session controls and make conversation compaction durable across resumes and concurrent processes.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.30.0
+- @kenkaiiii/gg-agent@5.30.0
+- @kenkaiiii/gg-core@5.30.0
+
 ## 5.29.1
 
 ### Patch Changes
