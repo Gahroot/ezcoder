@@ -246,8 +246,13 @@ describe("SubAgentManager", () => {
     const instance = manager({ idleTimeoutMs: 5 });
     const child = await instance.spawn("short", "fast", "fake");
     await instance.wait([child.agent_id], "all", 500);
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(instance.list().find((item) => item.agent_id === child.agent_id)?.state).toBe("closed");
+    await vi.waitFor(
+      () =>
+        expect(instance.list().find((item) => item.agent_id === child.agent_id)?.state).toBe(
+          "closed",
+        ),
+      { timeout: 2_000 },
+    );
     await expect(instance.followup(child.agent_id, "late")).rejects.toThrow("reaped");
   });
 
