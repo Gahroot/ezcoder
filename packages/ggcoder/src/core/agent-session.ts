@@ -1735,6 +1735,7 @@ export class AgentSession {
               this.providerContext = null;
               log("INFO", "compaction", "Pruned stale tool outputs", {
                 prunedResults: String(pruneResult.prunedResults),
+                compactedToolCalls: String(pruneResult.compactedToolCalls),
                 freedTokens: String(pruneResult.freedTokens),
               });
             }

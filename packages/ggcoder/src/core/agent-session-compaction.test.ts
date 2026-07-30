@@ -221,6 +221,14 @@ describe("AgentSession stale tool-output pruning", () => {
           role: "tool",
           content: [{ type: "tool_result", toolCallId: "new-read", content: "fresh" }],
         },
+        {
+          role: "assistant",
+          content: [{ type: "tool_call", id: "latest", name: "grep", args: { pattern: "x" } }],
+        },
+        {
+          role: "tool",
+          content: [{ type: "tool_result", toolCallId: "latest", content: "latest evidence" }],
+        },
         { role: "user", content: "turn 3" },
       );
       capturedMessages = await options.transformContext!(messages, { pendingMessages: [] });
@@ -279,6 +287,14 @@ describe("AgentSession stale tool-output pruning", () => {
         {
           role: "tool",
           content: [{ type: "tool_result", toolCallId: "new-read", content: "fresh" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "tool_call", id: "latest", name: "grep", args: { pattern: "x" } }],
+        },
+        {
+          role: "tool",
+          content: [{ type: "tool_result", toolCallId: "latest", content: "latest evidence" }],
         },
         { role: "user", content: "turn 3" },
       );

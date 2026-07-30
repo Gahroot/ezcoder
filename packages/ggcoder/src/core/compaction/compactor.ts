@@ -308,6 +308,11 @@ export const HISTORICAL_TOOL_ARG_MAX_CHARS = 8_000;
 
 function compactHistoricalToolArg(value: unknown): { value: unknown; changed: boolean } {
   if (typeof value === "string") {
+    // Already-compacted arguments can survive several later compactions. Do not
+    // shave another chunk off the retained prefix on every pass.
+    if (/\n\n\[\.\.\. \d+ more characters truncated\]$/.test(value)) {
+      return { value, changed: false };
+    }
     const compacted = truncateString(value, HISTORICAL_TOOL_ARG_MAX_CHARS);
     return { value: compacted, changed: compacted !== value };
   }
@@ -335,16 +340,20 @@ function compactHistoricalToolArg(value: unknown): { value: unknown; changed: bo
 }
 
 /**
- * Clone recent assistant tool-call messages and cap large historical arguments.
+ * Clone assistant tool-call messages and cap large completed arguments.
  * IDs, tool names, and short arguments remain byte-for-byte unchanged.
+ * `shouldCompact` lets the live pruner preserve the newest provider batches.
  */
-export function compactHistoricalToolCallArgs(messages: Message[]): Message[] {
+export function compactHistoricalToolCallArgs(
+  messages: Message[],
+  shouldCompact: (toolCallId: string) => boolean = () => true,
+): Message[] {
   return messages.map((message) => {
     if (message.role !== "assistant" || !Array.isArray(message.content)) return message;
 
     let messageChanged = false;
     const content = (message.content as ContentPart[]).map((part): ContentPart => {
-      if (part.type !== "tool_call") return part;
+      if (part.type !== "tool_call" || !shouldCompact(part.id)) return part;
 
       const toolCall = part as ContentPart & {
         type: "tool_call";
