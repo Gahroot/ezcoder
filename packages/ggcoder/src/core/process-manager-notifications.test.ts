@@ -54,7 +54,11 @@ async function waitForNotification(
 afterEach(async () => {
   for (const instance of managers.splice(0)) instance.shutdownAll();
   await Promise.all(
-    tempDirs.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })),
+    tempDirs
+      .splice(0)
+      .map((directory) =>
+        fs.rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+      ),
   );
 });
 
