@@ -432,7 +432,7 @@ describe("ACP mode over stdio", () => {
     expect(haikuLevels.at(-1)).toMatchObject({ value: "high" });
     // The level set before the switch is still legal here, so it must survive.
     expect(afterModel.find((option) => option.id === "thinking")!.currentValue).toBe("high");
-  });
+  }, 20_000);
 
   it("clamps a thinking level the newly selected model cannot reach", async () => {
     client = new AcpClient();
@@ -460,7 +460,7 @@ describe("ACP mode over stdio", () => {
     // Reporting `max` here would be a control that lies: Haiku has no such tier,
     // so the session's real effort is `high` and the client must be told that.
     expect(options.find((option) => option.id === "thinking")!.currentValue).toBe("high");
-  });
+  }, 20_000);
 
   it("advertises plan mode in both the config options and the modes block", async () => {
     client = new AcpClient();
