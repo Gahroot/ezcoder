@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Message } from "@kenkaiiii/gg-ai";
 import type {
   AutopilotMarkerPayload,
   AppMarkerPayload,
@@ -10,6 +11,7 @@ import {
   normalizeAutopilotMarkersForHistory,
   normalizeAppMarkersForHistory,
   normalizeKenTurnsForHistory,
+  replayMessagesInOrder,
   restoreUserRow,
   restoreAssistantTexts,
   detectPromptCommand,
@@ -221,5 +223,35 @@ describe("restoreAssistantTexts", () => {
   it("passes plain string content through as one bubble", () => {
     expect(restoreAssistantTexts("hello")).toEqual(["hello"]);
     expect(restoreAssistantTexts("  ")).toEqual([]);
+  });
+});
+
+describe("replayMessagesInOrder", () => {
+  it("flushes an anchored marker immediately after a tool result", async () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        content: [{ type: "tool_call", id: "t1", name: "read", args: {} }],
+      },
+      {
+        role: "tool",
+        content: [{ type: "tool_result", toolCallId: "t1", content: "result" }],
+      },
+      { role: "assistant", content: "after tool" },
+    ];
+    const replayed: string[] = [];
+
+    await replayMessagesInOrder(
+      messages,
+      (message) => {
+        replayed.push(message.role === "assistant" ? "assistant" : "tool");
+        if (message.role === "tool") return;
+      },
+      (count) => {
+        if (count === 2) replayed.push("error-marker");
+      },
+    );
+
+    expect(replayed).toEqual(["assistant", "tool", "error-marker", "assistant"]);
   });
 });

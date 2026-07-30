@@ -290,6 +290,12 @@ export interface SessionHeader {
   id: string;
   /** Stable identity shared by checkpoint files created during compaction. */
   conversationId?: string;
+  /** Monotonic physical checkpoint number; legacy and ordinary sessions are 0. */
+  generation?: number;
+  /** Physical checkpoint compacted to create this file. */
+  parentSessionId?: string;
+  /** SHA-256 of the non-system source messages compacted into this checkpoint. */
+  sourceFingerprint?: string;
   /** Stable display fallback retained when checkpoint messages contain only internal summaries. */
   preview?: string;
   timestamp: string;
@@ -368,6 +374,25 @@ export interface SessionMaintenanceMetrics extends StorageNormalizationMetrics {
   failures: number;
 }
 
+export interface CompactionAttemptState {
+  fingerprint: string;
+  policyKey: string;
+  outcome: "success" | "failed" | "noop";
+  checkpointId?: string;
+  updatedAt: string;
+  expiresAt?: string;
+}
+
+interface CompactionLeaseOwner {
+  token: string;
+  pid: number;
+  createdAt: string;
+}
+
+const COMPACTION_COORDINATION_DIR = ".compaction-coordination";
+const CORRUPT_LEASE_STALE_MS = 60_000;
+const LEASE_POLL_MS = 50;
+
 // ── Branch Info ───────────────────────────────────────────
 
 export interface BranchInfo {
@@ -396,6 +421,130 @@ export class SessionManager {
     this.sessionsDir = path.resolve(sessionsDir);
   }
 
+  private coordinationKey(conversationId: string): string {
+    return crypto.createHash("sha256").update(conversationId).digest("hex");
+  }
+
+  private coordinationRoot(): string {
+    return path.join(this.sessionsDir, COMPACTION_COORDINATION_DIR);
+  }
+
+  private async leaseOwner(lockPath: string): Promise<CompactionLeaseOwner | null> {
+    try {
+      const parsed = JSON.parse(
+        await fs.readFile(path.join(lockPath, "owner.json"), "utf-8"),
+      ) as Partial<CompactionLeaseOwner>;
+      return typeof parsed.token === "string" &&
+        typeof parsed.pid === "number" &&
+        typeof parsed.createdAt === "string"
+        ? (parsed as CompactionLeaseOwner)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private processIsAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    }
+  }
+
+  private async waitForLease(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    await new Promise<void>((resolve, reject) => {
+      const finish = () => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      };
+      const timer = setTimeout(finish, LEASE_POLL_MS);
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      timer.unref?.();
+    });
+  }
+
+  /** Serialize compaction work across processes for one logical conversation. */
+  async withCompactionLease<T>(
+    conversationId: string,
+    signal: AbortSignal | undefined,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const root = this.coordinationRoot();
+    await fs.mkdir(root, { recursive: true });
+    const lockPath = path.join(root, `${this.coordinationKey(conversationId)}.lock`);
+    const token = crypto.randomUUID();
+
+    while (true) {
+      try {
+        await fs.mkdir(lockPath);
+        const owner: CompactionLeaseOwner = {
+          token,
+          pid: process.pid,
+          createdAt: new Date().toISOString(),
+        };
+        await fs.writeFile(path.join(lockPath, "owner.json"), JSON.stringify(owner), "utf-8");
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        const owner = await this.leaseOwner(lockPath);
+        const stat = await fs.stat(lockPath).catch(() => null);
+        const corruptAndOld =
+          !owner && stat !== null && Date.now() - stat.mtimeMs > CORRUPT_LEASE_STALE_MS;
+        const deadOwner = owner !== null && !this.processIsAlive(owner.pid);
+        if (deadOwner || corruptAndOld) {
+          await fs.rm(lockPath, { recursive: true, force: true });
+          continue;
+        }
+        await this.waitForLease(signal);
+      }
+    }
+
+    try {
+      return await work();
+    } finally {
+      const owner = await this.leaseOwner(lockPath);
+      if (owner?.token === token) await fs.rm(lockPath, { recursive: true, force: true });
+    }
+  }
+
+  async readCompactionAttemptState(conversationId: string): Promise<CompactionAttemptState | null> {
+    const statePath = path.join(
+      this.coordinationRoot(),
+      `${this.coordinationKey(conversationId)}.state.json`,
+    );
+    try {
+      const state = JSON.parse(await fs.readFile(statePath, "utf-8")) as CompactionAttemptState;
+      return typeof state.fingerprint === "string" &&
+        typeof state.policyKey === "string" &&
+        ["success", "failed", "noop"].includes(state.outcome) &&
+        typeof state.updatedAt === "string"
+        ? state
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async writeCompactionAttemptState(
+    conversationId: string,
+    state: CompactionAttemptState,
+  ): Promise<void> {
+    const root = this.coordinationRoot();
+    await fs.mkdir(root, { recursive: true });
+    const statePath = path.join(root, `${this.coordinationKey(conversationId)}.state.json`);
+    const temporaryPath = `${statePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    await fs.writeFile(temporaryPath, JSON.stringify(state), "utf-8");
+    await fs.rename(temporaryPath, statePath);
+  }
+
   /**
    * Session persistence must never crash a live session. Disk-full (ENOSPC),
    * permission, or quota errors during transcript writes are reported once
@@ -421,7 +570,13 @@ export class SessionManager {
     cwd: string,
     provider: Provider,
     model: string,
-    options?: { conversationId?: string; preview?: string },
+    options?: {
+      conversationId?: string;
+      preview?: string;
+      generation?: number;
+      parentSessionId?: string;
+      sourceFingerprint?: string;
+    },
   ): Promise<{
     id: string;
     path: string;
@@ -444,6 +599,9 @@ export class SessionManager {
       version: 2,
       id,
       conversationId: options?.conversationId ?? id,
+      generation: options?.generation ?? 0,
+      ...(options?.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
+      ...(options?.sourceFingerprint ? { sourceFingerprint: options.sourceFingerprint } : {}),
       ...(safePreview ? { preview: safePreview } : {}),
       timestamp,
       cwd,
@@ -488,7 +646,8 @@ export class SessionManager {
   }> {
     // Resuming is a write operation, so transparently thaw a gzip archive and
     // return the effective plain path every future append must use.
-    const effectivePath = await thawSessionArchive(sessionPath);
+    const canonicalPath = (await this.resolveCanonicalSession(sessionPath)) ?? sessionPath;
+    const effectivePath = await thawSessionArchive(canonicalPath);
     const { stream } = await openSessionReadStream(effectivePath);
     let header: SessionHeader | null = null;
     const entries: SessionEntry[] = [];
@@ -508,6 +667,7 @@ export class SessionManager {
               version: 2,
               id: v1.id,
               conversationId: v1.id,
+              generation: 0,
               timestamp: v1.timestamp,
               cwd: v1.cwd,
               provider: v1.provider,
@@ -538,7 +698,7 @@ export class SessionManager {
 
   private async readSessionInfo(
     candidatePath: string,
-  ): Promise<(SessionInfo & { conversationId: string }) | null> {
+  ): Promise<(SessionInfo & { conversationId: string; generation: number }) | null> {
     try {
       const resolvedPath = await resolveSessionPath(candidatePath);
       const { stream } = await openSessionReadStream(resolvedPath);
@@ -566,8 +726,9 @@ export class SessionManager {
             // session is titled by what its user actually asked.
             if (!preview && parsed.message?.role === "user") {
               preview =
-                getUserSessionPrompt(parsed.message.content)?.replace(/\s+/g, " ").trim() ||
-                undefined;
+                getUserSessionPrompt(parsed.message.content, parsed.message.provenance)
+                  ?.replace(/\s+/g, " ")
+                  .trim() || undefined;
             }
           }
         } catch {
@@ -581,6 +742,8 @@ export class SessionManager {
           (first as SessionHeader).version === 2
             ? ((first as SessionHeader).conversationId ?? first.id)
             : first.id,
+        generation:
+          (first as SessionHeader).version === 2 ? ((first as SessionHeader).generation ?? 0) : 0,
         path: resolvedPath,
         timestamp: first.timestamp,
         lastActivity: lastActivity ?? first.timestamp,
@@ -614,7 +777,7 @@ export class SessionManager {
    */
   private async readSessionSummary(
     candidatePath: string,
-  ): Promise<(SessionSummary & { conversationId: string }) | null> {
+  ): Promise<(SessionSummary & { conversationId: string; generation: number }) | null> {
     try {
       const resolvedPath = await resolveSessionPath(candidatePath);
       const { stream } = await openSessionReadStream(resolvedPath);
@@ -641,8 +804,9 @@ export class SessionManager {
               if (preview) break;
               if (parsed.message?.role === "user") {
                 preview =
-                  getUserSessionPrompt(parsed.message.content)?.replace(/\s+/g, " ").trim() ||
-                  undefined;
+                  getUserSessionPrompt(parsed.message.content, parsed.message.provenance)
+                    ?.replace(/\s+/g, " ")
+                    .trim() || undefined;
                 if (preview) break;
               }
             }
@@ -662,6 +826,8 @@ export class SessionManager {
           (first as SessionHeader).version === 2
             ? ((first as SessionHeader).conversationId ?? first.id)
             : first.id,
+        generation:
+          (first as SessionHeader).version === 2 ? ((first as SessionHeader).generation ?? 0) : 0,
         path: resolvedPath,
         timestamp: first.timestamp,
         lastActivity: stat.mtime.toISOString(),
@@ -680,24 +846,45 @@ export class SessionManager {
    * A conversation can span several files (compaction forks a fresh one), so
    * without this collapse a resumed thread appears once per checkpoint.
    */
-  private static dedupeByConversation<T extends { path: string; lastActivity: string }>(
-    summaries: ((T & { conversationId: string }) | null)[],
-  ): T[] {
-    const byConversation = new Map<string, T>();
+  private static dedupeByConversation<
+    T extends {
+      path: string;
+      lastActivity: string;
+      timestamp: string;
+    },
+  >(summaries: ((T & { conversationId: string; generation: number }) | null)[]): T[] {
+    const byConversation = new Map<string, T & { conversationId: string; generation: number }>();
     const seenResolvedPaths = new Set<string>();
     for (const summary of summaries) {
       if (!summary || seenResolvedPaths.has(summary.path)) continue;
       seenResolvedPaths.add(summary.path);
-      const { conversationId, ...info } = summary;
-      const current = byConversation.get(conversationId);
-      // The destructure drops exactly the key we joined on, which is the whole
-      // point — the public type has no conversationId.
-      if (!current || summary.lastActivity > current.lastActivity) {
-        byConversation.set(conversationId, info as unknown as T);
+      const current = byConversation.get(summary.conversationId);
+      if (!current || SessionManager.compareCheckpoints(summary, current) > 0) {
+        byConversation.set(summary.conversationId, summary);
       }
     }
-    return [...byConversation.values()].sort((a, b) =>
-      b.lastActivity.localeCompare(a.lastActivity),
+    return [...byConversation.values()]
+      .sort(
+        (a, b) =>
+          b.lastActivity.localeCompare(a.lastActivity) ||
+          b.timestamp.localeCompare(a.timestamp) ||
+          b.path.localeCompare(a.path),
+      )
+      .map(
+        ({ conversationId: _conversationId, generation: _generation, ...info }) =>
+          info as unknown as T,
+      );
+  }
+
+  private static compareCheckpoints(
+    left: { generation?: number; lastActivity: string; timestamp: string; path: string },
+    right: { generation?: number; lastActivity: string; timestamp: string; path: string },
+  ): number {
+    return (
+      (left.generation ?? 0) - (right.generation ?? 0) ||
+      left.lastActivity.localeCompare(right.lastActivity) ||
+      left.timestamp.localeCompare(right.timestamp) ||
+      left.path.localeCompare(right.path)
     );
   }
 
@@ -754,66 +941,64 @@ export class SessionManager {
     return sessions.find((session) => session.messageCount > 0)?.path ?? null;
   }
 
-  async findById(cwd: string, sessionId: string): Promise<string | null> {
-    const candidates = await this.sessionCandidates(this.dirForCwd(cwd));
-    // Session files are named `<timestamp>_<id.slice(0,8)>.jsonl[.gz]`, so an
-    // id lookup can prefilter to the handful of files that could possibly
-    // match instead of summarizing every transcript in the project. A matched
-    // prefix that doesn't pan out still falls through to the full scan —
-    // conversationId lookups and legacy names don't share the pattern.
-    const shortId = sessionId.slice(0, 8);
-    const likely =
-      shortId.length === 8
-        ? candidates.filter((candidate) => {
-            const base = path.basename(candidate);
-            return base.endsWith(`_${shortId}.jsonl`) || base.endsWith(`_${shortId}.jsonl.gz`);
-          })
-        : [];
-    for (const candidate of likely) {
-      const summary = await this.readSessionSummary(candidate);
-      if (summary?.id === sessionId || summary?.conversationId === sessionId) return summary.path;
+  /** Resolve an id, conversation id, or stale physical path to the newest checkpoint. */
+  async resolveCanonicalSession(requested: string, cwd?: string): Promise<string | null> {
+    const looksLikePath =
+      path.isAbsolute(requested) || requested.includes(path.sep) || isSessionPath(requested);
+    let candidates: string[];
+    let requestedSummary: (SessionSummary & { conversationId: string; generation: number }) | null =
+      null;
+
+    if (looksLikePath) {
+      requestedSummary = await this.readSessionSummary(requested);
+      if (!requestedSummary) return null;
+      candidates = await this.sessionCandidates(path.dirname(requestedSummary.path));
+    } else if (cwd) {
+      candidates = await this.sessionCandidates(this.dirForCwd(cwd));
+    } else {
+      const directories = await this.storageDirectories();
+      candidates = (
+        await Promise.all(directories.map((dir) => this.sessionCandidates(dir)))
+      ).flat();
     }
-    // Prefix matched but the id didn't — could be a conversationId colliding
-    // with another file's prefix. The full scan settles it; it is the rare
-    // path, not the hot one.
-    // Fast summaries, not full reads: a resume by id would otherwise parse
-    // every transcript in the project just to match one header.
-    for (const candidate of candidates) {
-      const summary = await this.readSessionSummary(candidate);
-      if (summary?.id === sessionId || summary?.conversationId === sessionId) return summary.path;
+
+    const summaries = (
+      await Promise.all(candidates.map((candidate) => this.readSessionSummary(candidate)))
+    ).filter(
+      (summary): summary is SessionSummary & { conversationId: string; generation: number } =>
+        summary !== null,
+    );
+    if (requestedSummary && !summaries.some((summary) => summary.path === requestedSummary?.path)) {
+      summaries.push(requestedSummary);
     }
-    return null;
+
+    const identityMatches = requestedSummary
+      ? [requestedSummary]
+      : summaries.filter(
+          (summary) => summary.id === requested || summary.conversationId === requested,
+        );
+    if (identityMatches.length === 0) return null;
+    const requestedIdentity = identityMatches.sort((a, b) =>
+      SessionManager.compareCheckpoints(b, a),
+    )[0]!.conversationId;
+    const checkpoints = summaries.filter((summary) => summary.conversationId === requestedIdentity);
+    return (
+      checkpoints.sort((a, b) => SessionManager.compareCheckpoints(b, a))[0]?.path ??
+      identityMatches[0]!.path
+    );
   }
 
-  /**
-   * Locate a session by id across every project directory.
-   *
-   * Session ids are globally unique, but sessions are stored per working
-   * directory, so a caller holding only an id cannot know where to look.
-   * Remote clients are exactly that caller: they list sessions from one
-   * directory and reopen them from another, and a cwd-scoped lookup fails them
-   * for every session that did not happen to come from the same place.
-   *
-   * `cwd` is a hint for where to look FIRST — the common case hits there, which
-   * avoids walking every project on the machine.
-   */
+  async findById(cwd: string, sessionId: string): Promise<string | null> {
+    return this.resolveCanonicalSession(sessionId, cwd);
+  }
+
+  /** Locate and canonicalize a session identity across every project directory. */
   async findAnyById(sessionId: string, cwd?: string): Promise<string | null> {
     if (cwd) {
-      const local = await this.findById(cwd, sessionId);
+      const local = await this.resolveCanonicalSession(sessionId, cwd);
       if (local) return local;
     }
-
-    const searched = cwd ? path.resolve(this.dirForCwd(cwd)) : null;
-    for (const directory of await this.storageDirectories()) {
-      if (searched && path.resolve(directory) === searched) continue;
-      for (const candidate of await this.sessionCandidates(directory)) {
-        const summary = await this.readSessionSummary(candidate);
-        if (summary?.id === sessionId || summary?.conversationId === sessionId) {
-          return summary.path;
-        }
-      }
-    }
-    return null;
+    return this.resolveCanonicalSession(sessionId);
   }
 
   private async storageDirectories(): Promise<string[]> {
@@ -824,7 +1009,7 @@ export class SessionManager {
       return [];
     }
     return entries
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
       .map((entry) => path.join(this.sessionsDir, entry.name));
   }
 
