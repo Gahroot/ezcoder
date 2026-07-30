@@ -12,6 +12,7 @@ import {
 import type { AgentTurnTiming } from "@kenkaiiii/gg-agent";
 import { log } from "./logger.js";
 import { encodeCwd } from "./encode-cwd.js";
+import { getUserSessionPrompt } from "./session-preview.js";
 import type { CompletedItem } from "../ui/app-items.js";
 import {
   archiveColdSession,
@@ -321,6 +322,40 @@ export interface SessionInfo {
   lastActivity: string;
   cwd: string;
   messageCount: number;
+  /**
+   * First user-authored prompt, for use as a human title.
+   *
+   * Filled during the single pass `list()` already makes over each file, so a
+   * caller that needs titles — a session browser, a phone — does not have to
+   * reopen all of them. Undefined when the session has no user prompt of its
+   * own (empty, or only compaction/autopilot injections).
+   */
+  preview?: string;
+}
+
+/**
+ * Everything a session browser needs, at a fraction of the cost of {@link SessionInfo}.
+ *
+ * {@link SessionManager.list} parses every line of every session file to count
+ * messages — ~450 MB of JSON (some gzipped) on a well-used machine, several
+ * seconds per call. A summary reads only the header and the first user prompt,
+ * and takes `lastActivity` from the file's mtime (session files are
+ * append-only, so mtime IS the last activity). That is the difference between
+ * a phone waiting seconds for its session list and not noticing the wait.
+ *
+ * The trade: no exact `messageCount`, only `hasMessages`. Callers that need
+ * counts keep using {@link SessionManager.list}.
+ */
+export interface SessionSummary {
+  id: string;
+  path: string;
+  timestamp: string;
+  /** File mtime — the last append, i.e. the last activity. */
+  lastActivity: string;
+  cwd: string;
+  hasMessages: boolean;
+  /** Same sourcing rules as {@link SessionInfo.preview}. */
+  preview?: string;
 }
 
 export interface SessionMaintenanceMetrics extends StorageNormalizationMetrics {
@@ -511,6 +546,7 @@ export class SessionManager {
       let first: SessionLine | null = null;
       let messageCount = 0;
       let lastActivity: string | null = null;
+      let preview: string | undefined;
       for await (const line of rl) {
         if (!line) continue;
         try {
@@ -518,9 +554,21 @@ export class SessionManager {
           if (!first) {
             if (parsed.type !== "session") break;
             first = parsed;
+            // v2 headers usually carry the preview already; when they do,
+            // nothing below has to look for one.
+            preview = (parsed as SessionHeader).preview?.trim() || undefined;
           } else if (parsed.type === "message") {
             messageCount += 1;
             if (parsed.timestamp) lastActivity = parsed.timestamp;
+            // Recover a title for the sessions whose header predates `preview`.
+            // Free here: this pass already reads every line. `getUserSessionPrompt`
+            // rejects compaction summaries and autopilot/status injections, so a
+            // session is titled by what its user actually asked.
+            if (!preview && parsed.message?.role === "user") {
+              preview =
+                getUserSessionPrompt(parsed.message.content)?.replace(/\s+/g, " ").trim() ||
+                undefined;
+            }
           }
         } catch {
           // Skip malformed lines while retaining readable entries around them.
@@ -538,6 +586,7 @@ export class SessionManager {
         lastActivity: lastActivity ?? first.timestamp,
         cwd: first.cwd,
         messageCount,
+        ...(preview ? { preview: preview.slice(0, 100) } : {}),
       };
     } catch {
       return null;
@@ -554,23 +603,150 @@ export class SessionManager {
     return files.filter(isSessionPath).map((file) => path.join(directory, file));
   }
 
-  async list(cwd: string): Promise<SessionInfo[]> {
-    const candidates = await this.sessionCandidates(this.dirForCwd(cwd));
-    const summaries = await Promise.all(candidates.map((file) => this.readSessionInfo(file)));
-    const byConversation = new Map<string, SessionInfo>();
+  /**
+   * Read just enough of a session file to summarize it.
+   *
+   * Stops at the first user prompt (or the first message, when the header
+   * already carries a preview) instead of parsing the whole transcript — this
+   * is what makes listing every session on the machine cheap. Files whose
+   * first user message is far down (long tool runs before the user speaks)
+   * are capped rather than allowed to stall the list.
+   */
+  private async readSessionSummary(
+    candidatePath: string,
+  ): Promise<(SessionSummary & { conversationId: string }) | null> {
+    try {
+      const resolvedPath = await resolveSessionPath(candidatePath);
+      const { stream } = await openSessionReadStream(resolvedPath);
+      const rl = createInterface({ input: stream, crlfDelay: Infinity });
+      let first: SessionLine | null = null;
+      let preview: string | undefined;
+      let hasMessages = false;
+      let lines = 0;
+      const MAX_SCAN_LINES = 500;
+      try {
+        for await (const line of rl) {
+          if (!line) continue;
+          if (++lines > MAX_SCAN_LINES) break;
+          try {
+            const parsed = JSON.parse(line) as SessionLine;
+            if (!first) {
+              if (parsed.type !== "session") break;
+              first = parsed;
+              preview = (parsed as SessionHeader).preview?.trim() || undefined;
+            } else if (parsed.type === "message") {
+              hasMessages = true;
+              // Header preview + any message: done. Otherwise keep scanning for
+              // the first user-authored prompt to title by.
+              if (preview) break;
+              if (parsed.message?.role === "user") {
+                preview =
+                  getUserSessionPrompt(parsed.message.content)?.replace(/\s+/g, " ").trim() ||
+                  undefined;
+                if (preview) break;
+              }
+            }
+          } catch {
+            // Skip malformed lines while retaining readable entries around them.
+          }
+        }
+      } finally {
+        rl.close();
+        stream.destroy();
+      }
+      if (!first || first.type !== "session") return null;
+      const stat = await fs.stat(resolvedPath);
+      return {
+        id: first.id,
+        conversationId:
+          (first as SessionHeader).version === 2
+            ? ((first as SessionHeader).conversationId ?? first.id)
+            : first.id,
+        path: resolvedPath,
+        timestamp: first.timestamp,
+        lastActivity: stat.mtime.toISOString(),
+        cwd: first.cwd,
+        hasMessages,
+        ...(preview ? { preview: preview.slice(0, 100) } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Keep the newest file per conversation and sort newest first.
+   *
+   * A conversation can span several files (compaction forks a fresh one), so
+   * without this collapse a resumed thread appears once per checkpoint.
+   */
+  private static dedupeByConversation<T extends { path: string; lastActivity: string }>(
+    summaries: ((T & { conversationId: string }) | null)[],
+  ): T[] {
+    const byConversation = new Map<string, T>();
     const seenResolvedPaths = new Set<string>();
     for (const summary of summaries) {
       if (!summary || seenResolvedPaths.has(summary.path)) continue;
       seenResolvedPaths.add(summary.path);
-      const current = byConversation.get(summary.conversationId);
+      const { conversationId, ...info } = summary;
+      const current = byConversation.get(conversationId);
+      // The destructure drops exactly the key we joined on, which is the whole
+      // point — the public type has no conversationId.
       if (!current || summary.lastActivity > current.lastActivity) {
-        const { conversationId: _conversationId, ...info } = summary;
-        byConversation.set(summary.conversationId, info);
+        byConversation.set(conversationId, info as unknown as T);
       }
     }
     return [...byConversation.values()].sort((a, b) =>
       b.lastActivity.localeCompare(a.lastActivity),
     );
+  }
+
+  async list(cwd: string): Promise<SessionInfo[]> {
+    return this.summarize(await this.sessionCandidates(this.dirForCwd(cwd)));
+  }
+
+  /**
+   * One project's sessions, newest first, using the early-exit summary read.
+   *
+   * For callers that render a list rather than exact message counts — on a
+   * project with hundreds of sessions this is the difference between instant
+   * and a noticeable stall.
+   */
+  async listSummaries(cwd: string): Promise<SessionSummary[]> {
+    const candidates = await this.sessionCandidates(this.dirForCwd(cwd));
+    const summaries = await Promise.all(candidates.map((file) => this.readSessionSummary(file)));
+    return SessionManager.dedupeByConversation(summaries);
+  }
+
+  /**
+   * Every session on this machine, across every project, newest first.
+   *
+   * A remote client is not browsing one checkout the way the TUI is — it is
+   * asking "what have I been working on?", and the answer spans projects. Each
+   * entry carries its own `cwd`, so the caller can group by project. Uses the
+   * early-exit summary read, because "every session on the machine" is exactly
+   * where a full parse of each file becomes a multi-second stall.
+   */
+  async listAllSummaries(): Promise<SessionSummary[]> {
+    const directories = await this.storageDirectories();
+    const candidates = await Promise.all(
+      directories.map((directory) => this.sessionCandidates(directory)),
+    );
+    const summaries = await Promise.all(
+      candidates.flat().map((file) => this.readSessionSummary(file)),
+    );
+    return SessionManager.dedupeByConversation(summaries);
+  }
+
+  /**
+   * Summarize session files, keeping the newest file per conversation.
+   *
+   * A conversation can span several files (compaction forks a fresh one), so
+   * without this collapse a resumed thread appears once per checkpoint.
+   */
+  private async summarize(candidates: string[]): Promise<SessionInfo[]> {
+    const summaries = await Promise.all(candidates.map((file) => this.readSessionInfo(file)));
+    return SessionManager.dedupeByConversation(summaries);
   }
 
   async getMostRecent(cwd: string): Promise<string | null> {
@@ -580,9 +756,62 @@ export class SessionManager {
 
   async findById(cwd: string, sessionId: string): Promise<string | null> {
     const candidates = await this.sessionCandidates(this.dirForCwd(cwd));
-    for (const candidate of candidates) {
-      const summary = await this.readSessionInfo(candidate);
+    // Session files are named `<timestamp>_<id.slice(0,8)>.jsonl[.gz]`, so an
+    // id lookup can prefilter to the handful of files that could possibly
+    // match instead of summarizing every transcript in the project. A matched
+    // prefix that doesn't pan out still falls through to the full scan —
+    // conversationId lookups and legacy names don't share the pattern.
+    const shortId = sessionId.slice(0, 8);
+    const likely =
+      shortId.length === 8
+        ? candidates.filter((candidate) => {
+            const base = path.basename(candidate);
+            return base.endsWith(`_${shortId}.jsonl`) || base.endsWith(`_${shortId}.jsonl.gz`);
+          })
+        : [];
+    for (const candidate of likely) {
+      const summary = await this.readSessionSummary(candidate);
       if (summary?.id === sessionId || summary?.conversationId === sessionId) return summary.path;
+    }
+    // Prefix matched but the id didn't — could be a conversationId colliding
+    // with another file's prefix. The full scan settles it; it is the rare
+    // path, not the hot one.
+    // Fast summaries, not full reads: a resume by id would otherwise parse
+    // every transcript in the project just to match one header.
+    for (const candidate of candidates) {
+      const summary = await this.readSessionSummary(candidate);
+      if (summary?.id === sessionId || summary?.conversationId === sessionId) return summary.path;
+    }
+    return null;
+  }
+
+  /**
+   * Locate a session by id across every project directory.
+   *
+   * Session ids are globally unique, but sessions are stored per working
+   * directory, so a caller holding only an id cannot know where to look.
+   * Remote clients are exactly that caller: they list sessions from one
+   * directory and reopen them from another, and a cwd-scoped lookup fails them
+   * for every session that did not happen to come from the same place.
+   *
+   * `cwd` is a hint for where to look FIRST — the common case hits there, which
+   * avoids walking every project on the machine.
+   */
+  async findAnyById(sessionId: string, cwd?: string): Promise<string | null> {
+    if (cwd) {
+      const local = await this.findById(cwd, sessionId);
+      if (local) return local;
+    }
+
+    const searched = cwd ? path.resolve(this.dirForCwd(cwd)) : null;
+    for (const directory of await this.storageDirectories()) {
+      if (searched && path.resolve(directory) === searched) continue;
+      for (const candidate of await this.sessionCandidates(directory)) {
+        const summary = await this.readSessionSummary(candidate);
+        if (summary?.id === sessionId || summary?.conversationId === sessionId) {
+          return summary.path;
+        }
+      }
     }
     return null;
   }

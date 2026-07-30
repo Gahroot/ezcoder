@@ -6,6 +6,7 @@ import type { SessionHeader, SessionMessageEntry, SessionEntry, SessionInfo } fr
 import {
   SessionManager,
   type MessageEntry as ManagedMessageEntry,
+  type SessionSummary,
 } from "./core/session-manager.js";
 
 const SESSION_DIR = path.join(os.homedir(), ".gg", "sessions");
@@ -72,6 +73,48 @@ export async function loadSession(
 export async function listSessions(cwd: string, sessionsDir = SESSION_DIR): Promise<SessionInfo[]> {
   const manager = sessionsDir === SESSION_DIR ? sessionManager : new SessionManager(sessionsDir);
   return manager.list(cwd);
+}
+
+/**
+ * One project's sessions, newest first, as lightweight summaries.
+ *
+ * Early-exit reads instead of full parses — the right call for list UIs and
+ * remote clients, which need titles and recency rather than exact counts.
+ */
+export async function listSessionSummaries(
+  cwd: string,
+  sessionsDir = SESSION_DIR,
+): Promise<SessionSummary[]> {
+  const manager = sessionsDir === SESSION_DIR ? sessionManager : new SessionManager(sessionsDir);
+  return manager.listSummaries(cwd);
+}
+
+/**
+ * Every session on this machine, across every project, newest first.
+ *
+ * Returns lightweight {@link SessionSummary}s — early-exit reads, mtime for
+ * activity — because this scans hundreds of transcripts and callers here
+ * (remote clients) need titles and recency, not exact message counts.
+ */
+export async function listAllSessions(sessionsDir = SESSION_DIR): Promise<SessionSummary[]> {
+  const manager = sessionsDir === SESSION_DIR ? sessionManager : new SessionManager(sessionsDir);
+  return manager.listAllSummaries();
+}
+
+/**
+ * Find a stored session anywhere on this machine by its id.
+ *
+ * `cwd` narrows the search to the likely directory first; a remote client that
+ * listed sessions from one directory and reopens them from another still
+ * resolves, which a cwd-scoped lookup cannot do.
+ */
+export async function findSessionById(
+  sessionId: string,
+  cwd?: string,
+  sessionsDir = SESSION_DIR,
+): Promise<string | null> {
+  const manager = sessionsDir === SESSION_DIR ? sessionManager : new SessionManager(sessionsDir);
+  return manager.findAnyById(sessionId, cwd);
 }
 
 // ── Get Most Recent Session ─────────────────────────────────

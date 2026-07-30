@@ -55,6 +55,7 @@ import { runJsonMode } from "./modes/json-mode.js";
 import { runSubagentWorkerMode } from "./modes/subagent-worker-mode.js";
 import { runRpcMode } from "./modes/rpc-mode.js";
 import { runServeMode } from "./modes/serve-mode.js";
+import { runAcpModeCli } from "./modes/acp-mode.js";
 import {
   loadTelegramConfig,
   saveTelegramConfig,
@@ -157,6 +158,7 @@ function printHelp(): void {
     ["sessions", "Browse and resume previous sessions"],
     ["continue", "Resume the most recent session"],
     ["serve", "Start the HTTP/WebSocket API server"],
+    ["acp", "Serve as an Agent Client Protocol agent on stdio"],
     ["telegram", "Configure Telegram bot integration"],
     ["agent-home-login", "Configure Agent Home relay connection"],
     ["agent-home", "Connect to Agent Home as a remote agent"],
@@ -239,6 +241,7 @@ function createCliSubcommandHandlers(): Record<CliSubcommandName, () => void> {
     sessions: () => runWithStandardErrorHandling(runSessions),
     telegram: () => runWithStandardErrorHandling(runTelegramSetup),
     serve: () => runWithStandardErrorHandling(runServe),
+    acp: () => runWithStandardErrorHandling(runAcp),
     doctor: () => {
       runDoctor().catch((err) => {
         process.stderr.write(formatUserError(err) + "\n");
@@ -1126,6 +1129,60 @@ async function runServe(): Promise<void> {
     version: CLI_VERSION,
     thinkingLevel,
     telegram: { botToken, userId },
+  });
+}
+
+// ── ACP (Agent Client Protocol over stdio) ───────────────
+
+/**
+ * Serve ggcoder as an ACP agent on stdio, for editors and remote clients that
+ * speak the protocol (Zed, pew2, anything from the ACP registry).
+ *
+ * The client spawns this process and owns its lifetime, so there is no banner,
+ * no prompt and no exit of our own choosing. stdout is the protocol stream:
+ * NOTHING else may write to it, which is why every diagnostic here goes to the
+ * log file or stderr.
+ */
+async function runAcp(): Promise<void> {
+  const { values: acpValues } = parseArgs({
+    options: {
+      provider: { type: "string" },
+      model: { type: "string" },
+      cwd: { type: "string" },
+    },
+    strict: true,
+  });
+
+  const savedAcp = loadSavedSettings();
+  const paths = await ensureAppDirs();
+  const authStorage = new AuthStorage(paths.authFile);
+  await authStorage.load();
+
+  const preferredProvider: Provider =
+    (acpValues.provider as Provider | undefined) ?? savedAcp.provider ?? "anthropic";
+  const { provider, model } = await resolveActiveProvider(
+    authStorage,
+    preferredProvider,
+    acpValues.model ?? savedAcp.model,
+  );
+
+  const thinkingLevel: ThinkingLevel | undefined = savedAcp.thinkingEnabled
+    ? (savedAcp.thinkingLevel ??
+      getDefaultThinkingLevel(model, { baseUrl: authStorage.getStoredBaseUrl(provider) }))
+    : undefined;
+
+  initLogger(paths.logFile, { version: CLI_VERSION, provider, model });
+  setEstimatorModel(model);
+
+  await runAcpModeCli({
+    provider,
+    model,
+    // ACP clients pass the project directory per session; until `session/new`
+    // honours it, the process's own cwd is the project, which is exactly how a
+    // client that spawns one agent per workspace already behaves.
+    cwd: acpValues.cwd ?? process.cwd(),
+    version: CLI_VERSION,
+    thinkingLevel,
   });
 }
 
