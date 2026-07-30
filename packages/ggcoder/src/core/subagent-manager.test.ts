@@ -63,7 +63,11 @@ afterEach(async () => {
   await Promise.all(activeManagers.map((instance) => instance.shutdownAll()));
   await Promise.all(activeManagers.map((instance) => instance.waitForPersistence()));
   await Promise.all(
-    tempDirs.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })),
+    tempDirs
+      .splice(0)
+      .map((directory) =>
+        fs.rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+      ),
   );
 });
 

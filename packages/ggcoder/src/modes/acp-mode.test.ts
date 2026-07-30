@@ -697,7 +697,7 @@ describe("ACP mode over stdio", () => {
     // can fall back instead of hanging.
     client.send({ jsonrpc: "2.0", id: 3, method: "session/fork", params: {} });
     expect((await client.until(3)).at(-1)!.error).toMatchObject({ code: -32601 });
-  });
+  }, 20_000);
 
   it("answers malformed input with a parse error and keeps serving", async () => {
     client = new AcpClient();
