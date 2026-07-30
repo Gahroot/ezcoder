@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.30.1
+
+### Patch Changes
+
+- Keep long autonomous tool runs lean by pruning stale outputs and oversized completed tool arguments.
+  - @kenkaiiii/gg-ai@5.30.1
+  - @kenkaiiii/gg-agent@5.30.1
+  - @kenkaiiii/gg-core@5.30.1
+
 ## 5.30.0
 
 ### Minor Changes
