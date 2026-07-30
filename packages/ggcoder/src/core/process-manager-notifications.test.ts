@@ -198,7 +198,7 @@ describe("ProcessManager progress notifications", () => {
     );
 
     const spawnedAt = Date.now();
-    const started = await instance.start(`sh ${script}`, cwd);
+    const started = await instance.start("sh server.sh", cwd);
 
     // Consume the boot checkpoint (this one legitimately backs off to 10s).
     const boot = await waitForNotification(queue, (entry) => !entry.terminal);
