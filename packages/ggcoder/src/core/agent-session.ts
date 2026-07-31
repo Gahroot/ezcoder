@@ -607,7 +607,10 @@ export class AgentSession {
       getBaseUrl: () => this.baseUrl,
       getCacheKey: () => this.getPromptCacheKey(),
       getMaxPerModel: () => this.settingsManager.get("subagentMaxPerModel"),
-      disableAsyncSubagents: this.opts.subagentWorker,
+      // A persistent child is already the single allowed fan-out level. Blocking
+      // `subagent` here created a timeout sandwich: the nested call could consume
+      // the child's entire 10-minute turn budget, discarding all nested results.
+      disableSubagents: this.opts.subagentWorker,
       onSubAgentState: (snapshot) => this.eventBus.emit("subagent_state", snapshot),
       notifications: this.notifications,
       // Plan mode: only wired when the host supplies callbacks. The ref is
@@ -1057,6 +1060,7 @@ export class AgentSession {
       kind: "prompt",
       visibility: "transcript",
     },
+    options: { disableTools?: boolean } = {},
   ): Promise<void> {
     await this.adoptDeferredCheckpointBeforePrompt();
     const slash = await this.resolveSlashInput(content);
@@ -1066,7 +1070,7 @@ export class AgentSession {
       this.messages.push(userMessage);
       await this.persistMessage(userMessage);
       this.lastPersistedIndex = this.messages.length;
-      await this.runLoop();
+      await this.runLoop(options);
       return;
     }
     if (slash?.kind === "command") {
@@ -1084,7 +1088,7 @@ export class AgentSession {
     await this.persistMessage(userMessage);
     this.lastPersistedIndex = this.messages.length;
 
-    await this.runLoop();
+    await this.runLoop(options);
   }
 
   /**
@@ -1567,7 +1571,7 @@ export class AgentSession {
   }
 
   /** Auto-compact if needed, run agent loop with auth retry, and persist messages. */
-  private async runLoop(): Promise<void> {
+  private async runLoop(options: { disableTools?: boolean } = {}): Promise<void> {
     this.refreshSystemPromptTail();
     // One-shot cache-key marker per session so turn_end cacheRead numbers
     // in the log can be traced back to a specific routing namespace —
@@ -1669,8 +1673,8 @@ export class AgentSession {
       const generator = agentLoop(loopMessages, {
         provider: this.provider,
         model: this.model,
-        tools: this.tools,
-        webSearch: true,
+        tools: options.disableTools ? [] : this.tools,
+        webSearch: !options.disableTools,
         maxTokens: this.maxTokens,
         maxTurns: this.opts.maxTurns,
         maxTurnExtensions: this.opts.maxTurnExtensions,
