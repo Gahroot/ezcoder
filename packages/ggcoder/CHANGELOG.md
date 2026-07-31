@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.30.2
+
+### Patch Changes
+
+- Recover useful subagent findings after timeouts and prevent nested delegation from exhausting child turn budgets.
+  - @kenkaiiii/gg-ai@5.30.2
+  - @kenkaiiii/gg-agent@5.30.2
+  - @kenkaiiii/gg-core@5.30.2
+
 ## 5.30.1
 
 ### Patch Changes
