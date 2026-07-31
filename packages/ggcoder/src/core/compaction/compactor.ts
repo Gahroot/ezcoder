@@ -1166,12 +1166,16 @@ export async function compact(
   const summarizedCount = messages
     .slice(0, candidate.tailStart)
     .filter((message) => message.role !== "system").length;
-  const retainedCount = messages.slice(candidate.tailStart).length;
+  const prefixCount = candidate.skipAck ? 1 : 2;
+  const newNonSystemCount = newMessages.filter((message) => message.role !== "system").length;
+  // Count the final repaired tail, not the pre-repair source slice: pairing
+  // repair and trailing-assistant removal can shorten what was actually copied.
+  const retainedCount = Math.max(0, newNonSystemCount - prefixCount);
   const reduction = Math.round((1 - tokensAfterEstimate / tokensBeforeEstimate) * 100);
   const anchorRemap: CompactionAnchorRemap = {
     summarizedCount,
-    prefixCount: candidate.skipAck ? 1 : 2,
-    newNonSystemCount: newMessages.filter((message) => message.role !== "system").length,
+    prefixCount,
+    newNonSystemCount,
   };
 
   log("INFO", "compaction", `Compaction complete`, {

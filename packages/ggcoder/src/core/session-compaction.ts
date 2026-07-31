@@ -40,6 +40,7 @@ export async function createCompactedSessionCheckpoint(
     generation?: number;
     parentSessionId?: string;
     sourceFingerprint?: string;
+    retainedMessageCount?: number;
     preview?: string;
     title?: string;
   },
@@ -49,6 +50,7 @@ export async function createCompactedSessionCheckpoint(
     generation: options.generation,
     parentSessionId: options.parentSessionId,
     sourceFingerprint: options.sourceFingerprint,
+    retainedMessageCount: options.retainedMessageCount,
     preview: options.preview ?? options.title,
   });
   await appendMessagesToSession(sessionManager, session.path, options.messages, 0);

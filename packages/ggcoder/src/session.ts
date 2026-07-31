@@ -6,6 +6,7 @@ import type { SessionHeader, SessionMessageEntry, SessionEntry, SessionInfo } fr
 import {
   SessionManager,
   type MessageEntry as ManagedMessageEntry,
+  type SessionHeader as ManagedSessionHeader,
   type SessionSummary,
 } from "./core/session-manager.js";
 
@@ -66,6 +67,19 @@ export async function loadSession(
     header,
     messages: manager.getMessages(loaded.entries, loaded.header.leafId),
   };
+}
+
+/** Load every readable checkpoint generation for display replay, oldest first. */
+export async function loadSessionCheckpointChain(
+  sessionPath: string,
+  sessionsDir = SESSION_DIR,
+): Promise<Array<{ header: ManagedSessionHeader; messages: Message[] }>> {
+  const manager = sessionsDir === SESSION_DIR ? sessionManager : new SessionManager(sessionsDir);
+  const checkpoints = await manager.loadCheckpointChain(sessionPath);
+  return checkpoints.map(({ header, entries }) => ({
+    header,
+    messages: manager.getMessages(entries, header.leafId),
+  }));
 }
 
 // ── List Sessions ───────────────────────────────────────────

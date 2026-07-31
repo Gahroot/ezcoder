@@ -316,7 +316,27 @@ describe("ACP mode over stdio", () => {
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "Added the config panel." },
       },
+      {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "after first compaction" },
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "First follow-up complete." },
+      },
+      {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "after second compaction" },
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "Second follow-up complete." },
+      },
     ]);
+    const replayText = updates(frames)
+      .map((update) => (update.content as { text?: string } | undefined)?.text ?? "")
+      .join("\n");
+    expect(replayText).not.toContain("replacement summary");
 
     // Resuming is worthless if the session cannot then be prompted, and the
     // client must keep addressing it by the id it asked to load.
@@ -333,6 +353,25 @@ describe("ACP mode over stdio", () => {
         .filter((frame) => frame.method === "session/update")
         .every((frame) => frame.params!.sessionId === newest!.sessionId),
     ).toBe(true);
+
+    // Full replay is display-only: prompting still sees only generation 2.
+    const contextStart = client.received().length;
+    client.send({
+      jsonrpc: "2.0",
+      id: 93,
+      method: "session/prompt",
+      params: {
+        sessionId: newest!.sessionId,
+        prompt: [{ type: "text", text: "report loaded context" }],
+      },
+    });
+    const contextFrames = (await client.until(93)).slice(contextStart);
+    const contextText = updates(contextFrames)
+      .map((update) => (update.content as { text?: string } | undefined)?.text ?? "")
+      .join("\n");
+    expect(contextText).toContain("second replacement summary");
+    expect(contextText).toContain("after second compaction");
+    expect(contextText).not.toContain("newer: add the config panel");
   });
 
   it("loads a session listed under a different cwd than the one it is opened with", async () => {
@@ -356,6 +395,35 @@ describe("ACP mode over stdio", () => {
       sessionUpdate: "user_message_chunk",
       content: { type: "text", text: "newer: add the config panel" },
     });
+  });
+
+  it("replays a compaction summary when the parent checkpoint is missing", async () => {
+    client = new AcpClient();
+    await client.handshake();
+    const stored = await client.list(90, tmpProject);
+    const older = stored.find((entry) => entry.title === "older: rename the widget")!;
+
+    client.send({
+      jsonrpc: "2.0",
+      id: 91,
+      method: "session/load",
+      params: { sessionId: older.sessionId, cwd: tmpProject, mcpServers: [] },
+    });
+    const frames = await client.until(91);
+
+    expect(updates(frames)).toEqual([
+      {
+        sessionUpdate: "user_message_chunk",
+        content: {
+          type: "text",
+          text: "[Previous conversation summary]\n\nolder fallback summary",
+        },
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "Recovered from summary." },
+      },
+    ]);
   });
 
   it("refuses to load a session that does not exist", async () => {

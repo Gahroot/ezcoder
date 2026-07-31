@@ -53,7 +53,11 @@ import {
   type CompactionAnchorRemap,
   type CompactionResult,
 } from "./compaction/compactor.js";
-import { remapAnchorForCompaction, stripRecordedPosition } from "./session-history.js";
+import {
+  getHistoryMessageVisibility,
+  remapAnchorForCompaction,
+  stripRecordedPosition,
+} from "./session-history.js";
 import { sourceFingerprint as computeSourceFingerprint } from "./session-compaction.js";
 import {
   getAuthStorageKeys,
@@ -2126,6 +2130,12 @@ export class AgentSession {
       generation: this.checkpointGeneration + 1,
       parentSessionId,
       sourceFingerprint,
+      retainedMessageCount:
+        result.retainedCount === 0
+          ? 0
+          : this.messages
+              .slice(-result.retainedCount)
+              .filter((message) => getHistoryMessageVisibility(message) !== "hidden").length,
       preview: this.sessionPreview || undefined,
     });
     this.sessionId = session.id;

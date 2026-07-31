@@ -296,6 +296,8 @@ export interface SessionHeader {
   parentSessionId?: string;
   /** SHA-256 of the non-system source messages compacted into this checkpoint. */
   sourceFingerprint?: string;
+  /** Visible retained-tail size at checkpoint creation; later appends are outside this boundary. */
+  retainedMessageCount?: number;
   /** Stable display fallback retained when checkpoint messages contain only internal summaries. */
   preview?: string;
   timestamp: string;
@@ -576,6 +578,7 @@ export class SessionManager {
       generation?: number;
       parentSessionId?: string;
       sourceFingerprint?: string;
+      retainedMessageCount?: number;
     },
   ): Promise<{
     id: string;
@@ -602,6 +605,9 @@ export class SessionManager {
       generation: options?.generation ?? 0,
       ...(options?.parentSessionId ? { parentSessionId: options.parentSessionId } : {}),
       ...(options?.sourceFingerprint ? { sourceFingerprint: options.sourceFingerprint } : {}),
+      ...(typeof options?.retainedMessageCount === "number"
+        ? { retainedMessageCount: options.retainedMessageCount }
+        : {}),
       ...(safePreview ? { preview: safePreview } : {}),
       timestamp,
       cwd,
@@ -648,6 +654,84 @@ export class SessionManager {
     // return the effective plain path every future append must use.
     const canonicalPath = (await this.resolveCanonicalSession(sessionPath)) ?? sessionPath;
     const effectivePath = await thawSessionArchive(canonicalPath);
+    return this.loadPhysicalCheckpoint(effectivePath);
+  }
+
+  /**
+   * Load the contiguous checkpoint ancestry ending at the canonical newest file.
+   *
+   * The returned order is oldest → newest. A missing, corrupt, cyclic, or
+   * cross-conversation parent stops traversal at the oldest readable checkpoint,
+   * allowing display callers to retain that checkpoint's compaction summary as a
+   * fallback. Parent archives are read in place rather than thawed because this
+   * API is for history reconstruction, not resuming writes.
+   */
+  async loadCheckpointChain(
+    sessionPath: string,
+  ): Promise<Array<{ header: SessionHeader; entries: SessionEntry[]; path: string }>> {
+    const requestedSummary = await this.readSessionSummary(sessionPath);
+    // A resumed session can compact under a different cwd than its parent (for
+    // example, a remote ACP client reconnecting from another workspace). The
+    // physical ancestry is therefore machine-wide, not confined to the newest
+    // checkpoint's encoded-cwd directory.
+    const directories = await this.storageDirectories();
+    const candidates = (
+      await Promise.all(directories.map((directory) => this.sessionCandidates(directory)))
+    ).flat();
+    const summaries = (
+      await Promise.all(candidates.map((candidate) => this.readSessionSummary(candidate)))
+    ).filter(
+      (summary): summary is SessionSummary & { conversationId: string; generation: number } =>
+        summary !== null,
+    );
+    const requestedIdentity =
+      requestedSummary?.conversationId ??
+      summaries.find((summary) => summary.id === sessionPath)?.conversationId;
+    const newestSummary = requestedIdentity
+      ? summaries
+          .filter((summary) => summary.conversationId === requestedIdentity)
+          .sort((left, right) => SessionManager.compareCheckpoints(right, left))[0]
+      : undefined;
+    const newestPath = newestSummary?.path ?? sessionPath;
+    // Resuming the newest checkpoint is a write operation, so thaw only that
+    // generation. Historical parents stay archived and read-only.
+    const newest = await this.loadPhysicalCheckpoint(await thawSessionArchive(newestPath));
+    const newestConversationId = newest.header.conversationId ?? newest.header.id;
+    const byPhysicalId = new Map(summaries.map((summary) => [summary.id, summary.path]));
+    const newestResolvedPath = path.resolve(newest.path);
+    const visited = new Set<string>([newest.header.id]);
+    const chain = [newest];
+    let current = newest;
+
+    while (current.header.parentSessionId) {
+      const parentId = current.header.parentSessionId;
+      if (visited.has(parentId)) break;
+      const parentPath = byPhysicalId.get(parentId);
+      if (!parentPath || path.resolve(parentPath) === newestResolvedPath) break;
+
+      try {
+        const parent = await this.loadPhysicalCheckpoint(parentPath, true);
+        if ((parent.header.conversationId ?? parent.header.id) !== newestConversationId) break;
+        visited.add(parentId);
+        chain.unshift(parent);
+        current = parent;
+      } catch {
+        break;
+      }
+    }
+
+    return chain;
+  }
+
+  private async loadPhysicalCheckpoint(
+    sessionPath: string,
+    rejectMalformedLines = false,
+  ): Promise<{
+    header: SessionHeader;
+    entries: SessionEntry[];
+    path: string;
+  }> {
+    const effectivePath = await resolveSessionPath(sessionPath);
     const { stream } = await openSessionReadStream(effectivePath);
     let header: SessionHeader | null = null;
     const entries: SessionEntry[] = [];
@@ -684,7 +768,8 @@ export class SessionManager {
           (entry as MessageEntry).parentId = null;
         }
         entries.push(await hydrateSessionEntry(entry, effectivePath));
-      } catch {
+      } catch (error) {
+        if (rejectMalformedLines) throw error;
         // Skip malformed JSON lines — cold migration preserves their raw bytes
         // so a future recovery tool still has a chance to repair them.
       }

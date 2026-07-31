@@ -127,6 +127,36 @@ describe("SessionManager conversation identity", () => {
     expect((await manager.load(original.path)).header.id).toBe(newest.id);
     expect(await manager.getMostRecent("/repo")).toBe(newest.path);
   });
+
+  it("loads ancestry oldest first and stops before corrupt or missing parents", async () => {
+    const sessionsDir = await makeTempDir();
+    const manager = new SessionManager(sessionsDir);
+    const original = await manager.create("/original-repo", "anthropic", "test-model");
+    const first = await manager.create("/second-repo", "anthropic", "test-model", {
+      conversationId: original.id,
+      generation: 1,
+      parentSessionId: original.id,
+    });
+    const newest = await manager.create("/third-repo", "anthropic", "test-model", {
+      conversationId: original.id,
+      generation: 2,
+      parentSessionId: first.id,
+    });
+
+    expect(
+      (await manager.loadCheckpointChain(original.path)).map((item) => item.header.id),
+    ).toEqual([original.id, first.id, newest.id]);
+
+    await writeFile(first.path, `${JSON.stringify(first.header)}\nnot-json\n`);
+    expect((await manager.loadCheckpointChain(newest.path)).map((item) => item.header.id)).toEqual([
+      newest.id,
+    ]);
+
+    await rm(first.path);
+    expect((await manager.loadCheckpointChain(newest.path)).map((item) => item.header.id)).toEqual([
+      newest.id,
+    ]);
+  });
 });
 
 describe("SessionManager compaction coordination", () => {

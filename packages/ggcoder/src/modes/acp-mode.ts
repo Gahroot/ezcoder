@@ -25,7 +25,17 @@ import { isAbortError } from "@kenkaiiii/gg-agent";
 import { getAllModels, getMaxThinkingLevel, getModel } from "@kenkaiiii/gg-core";
 import { AgentSession } from "../core/agent-session.js";
 import type { EventBus } from "../core/event-bus.js";
-import { findSessionById, listAllSessions, listSessionSummaries } from "../session.js";
+import {
+  findSessionById,
+  listAllSessions,
+  listSessionSummaries,
+  loadSessionCheckpointChain,
+} from "../session.js";
+import {
+  getHistoryMessageVisibility,
+  reconstructCheckpointHistory,
+  restoreUserRow,
+} from "../core/session-history.js";
 import { formatUserError } from "../utils/error-handler.js";
 import { closeLogger } from "../core/logger.js";
 
@@ -314,14 +324,15 @@ export function historyUpdates(messages: readonly Message[]): Record<string, unk
   const updates: Record<string, unknown>[] = [];
 
   for (const message of messages) {
-    if (message.role === "system") continue;
+    if (getHistoryMessageVisibility(message) === "hidden") continue;
 
     if (message.role === "user") {
-      const text = messageText(message.content);
-      if (text) {
+      const restored = restoreUserRow(message.content, message.provenance);
+      if (restored.autopilotInjected || restored.notification) continue;
+      if (restored.text) {
         updates.push({
           sessionUpdate: "user_message_chunk",
-          content: { type: "text", text },
+          content: { type: "text", text: restored.text },
         });
       }
       continue;
@@ -667,12 +678,16 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
     if (!sessionPath) throw new InvalidParams(`Unknown session '${requested}'.`);
 
     const restored = await startSession(sessionPath);
+    // Display history is reconstructed separately. The live AgentSession above
+    // deliberately keeps only the canonical newest checkpoint as model context.
+    const checkpoints = await loadSessionCheckpointChain(sessionPath);
+    const displayMessages = reconstructCheckpointHistory(checkpoints);
     // The id the client asked for is the id it keeps using; `loadSession` may
     // adopt a different internal one, and answering with that would leave the
     // client addressing a session it never heard of.
     sessionId = requested;
 
-    for (const update of historyUpdates(restored.getMessages())) notifyUpdate(update);
+    for (const update of historyUpdates(displayMessages)) notifyUpdate(update);
 
     return { configOptions: configOptionsFor(restored), modes: sessionModes(restored) };
   }

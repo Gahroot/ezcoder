@@ -17,8 +17,11 @@
 // Usage: node --import tsx acp-stdio-agent.mjs <cwd> [otherCwd]
 // Requires HOME to point at a temp directory.
 
+import os from "node:os";
+import path from "node:path";
 import { EventBus } from "../../core/event-bus.js";
-import { createSession, loadSession, persistMessage } from "../../session.js";
+import { SessionManager } from "../../core/session-manager.js";
+import { loadSession } from "../../session.js";
 import { runAcpMode } from "../acp-mode.js";
 
 const cwd = process.argv[2];
@@ -27,39 +30,100 @@ const cwd = process.argv[2];
 const otherCwd = process.argv[3];
 if (!cwd) throw new Error("usage: acp-stdio-agent.mjs <cwd> [otherCwd]");
 
-// Two stored sessions in the main project, so the test can prove ordering
-// (newest first) and that the right one is loaded rather than just "a" session.
-async function seedSessions() {
-  const older = await createSession(cwd, "anthropic", "claude-opus-5");
-  await persistMessage(older, { role: "user", content: "older: rename the widget" });
-  await persistMessage(older, { role: "assistant", content: "Renamed it." });
+const manager = new SessionManager(path.join(os.homedir(), ".gg", "sessions"));
+let entrySequence = 0;
 
-  const newer = await createSession(cwd, "anthropic", "claude-opus-5");
-  await persistMessage(newer, { role: "user", content: "newer: add the config panel" });
-  await persistMessage(newer, {
+async function appendMessage(sessionPath, message) {
+  entrySequence += 1;
+  await manager.appendEntry(sessionPath, {
+    type: "message",
+    id: `fixture-message-${entrySequence}`,
+    parentId: null,
+    timestamp: new Date().toISOString(),
+    message,
+  });
+}
+
+const summary = (text) => ({
+  role: "user",
+  content: `[Previous conversation summary]\n\n${text}`,
+  provenance: { source: "runtime", kind: "compaction_summary", visibility: "summary" },
+});
+const compactionAck = {
+  role: "assistant",
+  content:
+    "I have the full context from the summary above, including where work left off and the next step.",
+  provenance: { source: "runtime", kind: "compaction_ack", visibility: "hidden" },
+};
+
+// Two stored conversations in the main project. The newer one has two real
+// compaction generations; the older one deliberately points at a missing parent.
+async function seedSessions() {
+  const older = await manager.create(cwd, "anthropic", "claude-opus-5", {
+    parentSessionId: "missing-parent-checkpoint",
+    generation: 1,
+    preview: "older: rename the widget",
+  });
+  await appendMessage(older.path, summary("older fallback summary"));
+  await appendMessage(older.path, { role: "assistant", content: "Recovered from summary." });
+
+  const original = await manager.create(cwd, "anthropic", "claude-opus-5");
+  await appendMessage(original.path, { role: "user", content: "newer: add the config panel" });
+  await appendMessage(original.path, {
     role: "assistant",
     content: [
       { type: "text", text: "Reading the panel first." },
       { type: "tool_call", id: "call-1", name: "read", args: { file_path: "/panel.tsx" } },
     ],
   });
-  await persistMessage(newer, {
+  await appendMessage(original.path, {
     role: "tool",
     content: [{ type: "tool_result", toolCallId: "call-1", content: "panel source" }],
   });
-  await persistMessage(newer, { role: "assistant", content: "Added the config panel." });
+  await appendMessage(original.path, { role: "assistant", content: "Added the config panel." });
+
+  const first = await manager.create(cwd, "anthropic", "claude-opus-5", {
+    conversationId: original.id,
+    generation: 1,
+    parentSessionId: original.id,
+    retainedMessageCount: 2,
+    preview: "newer: add the config panel",
+  });
+  await appendMessage(first.path, summary("first replacement summary"));
+  await appendMessage(first.path, compactionAck);
+  await appendMessage(first.path, {
+    role: "tool",
+    content: [{ type: "tool_result", toolCallId: "call-1", content: "panel source" }],
+  });
+  await appendMessage(first.path, { role: "assistant", content: "Added the config panel." });
+  await appendMessage(first.path, { role: "user", content: "after first compaction" });
+  await appendMessage(first.path, { role: "assistant", content: "First follow-up complete." });
+
+  const newest = await manager.create(cwd, "anthropic", "claude-opus-5", {
+    conversationId: original.id,
+    generation: 2,
+    parentSessionId: first.id,
+    retainedMessageCount: 2,
+    preview: "newer: add the config panel",
+  });
+  await appendMessage(newest.path, summary("second replacement summary"));
+  await appendMessage(newest.path, compactionAck);
+  await appendMessage(newest.path, { role: "user", content: "after first compaction" });
+  await appendMessage(newest.path, { role: "assistant", content: "First follow-up complete." });
+  await appendMessage(newest.path, { role: "user", content: "after second compaction" });
+  await appendMessage(newest.path, { role: "assistant", content: "Second follow-up complete." });
 
   // An empty session must never reach the phone: it has nothing to resume.
-  await createSession(cwd, "anthropic", "claude-opus-5");
+  await manager.create(cwd, "anthropic", "claude-opus-5");
 
   let other;
   if (otherCwd) {
-    other = await createSession(otherCwd, "anthropic", "claude-opus-5");
-    await persistMessage(other, { role: "user", content: "other project: fix the parser" });
-    await persistMessage(other, { role: "assistant", content: "Fixed." });
+    other = await manager.create(otherCwd, "anthropic", "claude-opus-5");
+    await appendMessage(other.path, { role: "user", content: "other project: fix the parser" });
+    await appendMessage(other.path, { role: "assistant", content: "Fixed." });
   }
 
-  return { older: older.id, newer: newer.id, other: other?.id };
+  return { older: older.id, newer: newest.id, other: other?.id };
 }
 
 const seeded = await seedSessions();
@@ -133,6 +197,25 @@ class ScriptedSession {
   }
 
   async prompt(content) {
+    if (content === "report loaded context") {
+      const text = this.#messages
+        .map((message) =>
+          typeof message.content === "string"
+            ? message.content
+            : message.content
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join(""),
+        )
+        .join(" | ");
+      this.eventBus.emit("text_delta", { text });
+      this.eventBus.emit("agent_done", {
+        totalTurns: 1,
+        totalUsage: { inputTokens: 0, outputTokens: 0 },
+      });
+      return;
+    }
+
     // The real `AgentSession.prompt` SWALLOWS cancellation — it returns
     // normally once the signal aborts rather than rejecting. The fixture must
     // match, or the test would pass against behaviour production never has.

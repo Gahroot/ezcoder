@@ -48,6 +48,7 @@ describe("session compaction persistence", () => {
       generation: 3,
       parentSessionId: "parent-checkpoint",
       sourceFingerprint: "f".repeat(64),
+      retainedMessageCount: 1,
       title: "Stable project title",
     });
 
@@ -61,6 +62,7 @@ describe("session compaction persistence", () => {
     expect(loaded.header.generation).toBe(3);
     expect(loaded.header.parentSessionId).toBe("parent-checkpoint");
     expect(loaded.header.sourceFingerprint).toBe("f".repeat(64));
+    expect(loaded.header.retainedMessageCount).toBe(1);
     expect(loaded.header.preview).toBe("Stable project title");
     expect(loaded.entries.find((entry) => entry.type === "label")?.label).toBe(
       "Stable project title",

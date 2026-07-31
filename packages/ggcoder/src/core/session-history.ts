@@ -35,6 +35,83 @@ export function getHistoryMessageVisibility(message: Message): HistoryMessageVis
   return "transcript";
 }
 
+export interface HistoryCheckpoint {
+  header: { id: string; parentSessionId?: string; retainedMessageCount?: number };
+  messages: readonly Message[];
+}
+
+function canonicalHistoryValue(value: unknown): unknown {
+  if (typeof value === "string") return value.replace(/\r\n?/g, "\n").trimEnd();
+  if (Array.isArray(value)) return value.map(canonicalHistoryValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalHistoryValue(entry)]),
+    );
+  }
+  return value;
+}
+
+/**
+ * Rebuild a display transcript from a contiguous checkpoint chain.
+ *
+ * Compaction writes the retained tail into the child with fresh session-entry
+ * ids. The largest ordered suffix/prefix overlap therefore compares normalized
+ * message role, content, and provenance rather than persistence ids. A child's
+ * summary is omitted only when its direct parent is readable; the oldest loaded
+ * checkpoint keeps its summary as the fallback for a broken chain.
+ */
+export function reconstructCheckpointHistory(checkpoints: readonly HistoryCheckpoint[]): Message[] {
+  const transcript: Message[] = [];
+  const transcriptKeys: string[] = [];
+
+  for (let index = 0; index < checkpoints.length; index += 1) {
+    const checkpoint = checkpoints[index]!;
+    const parent = checkpoints[index - 1];
+    const parentAvailable =
+      parent !== undefined && checkpoint.header.parentSessionId === parent.header.id;
+    const messages = checkpoint.messages.filter((message) => {
+      const visibility = getHistoryMessageVisibility(message);
+      return visibility !== "hidden" && !(visibility === "summary" && parentAvailable);
+    });
+    const keys = messages.map((message) =>
+      JSON.stringify(
+        canonicalHistoryValue({
+          role: message.role,
+          content: message.content,
+          provenance: message.provenance ?? null,
+        }),
+      ),
+    );
+
+    const maximumOverlap = Math.min(
+      transcriptKeys.length,
+      keys.length,
+      checkpoint.header.retainedMessageCount ?? keys.length,
+    );
+    let overlap = maximumOverlap;
+    while (overlap > 0) {
+      const transcriptStart = transcriptKeys.length - overlap;
+      let matches = true;
+      for (let offset = 0; offset < overlap; offset += 1) {
+        if (transcriptKeys[transcriptStart + offset] !== keys[offset]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) break;
+      overlap -= 1;
+    }
+
+    transcript.push(...messages.slice(overlap));
+    transcriptKeys.push(...keys.slice(overlap));
+  }
+
+  return transcript;
+}
+
 /** Replay every non-system message and flush anchor work after each one. */
 export async function replayMessagesInOrder(
   messages: readonly Message[],
