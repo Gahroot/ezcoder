@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.37.4",
+    date: "2026-07-31",
+    items: [
+      "Long research jobs no longer vanish at the finish line. If a `sub-agent` hits its time limit, I give it one focused `60-second` wrap-up to hand you everything it learned, and I stop helper agents from burying themselves in endless delegation. You keep the findings instead of getting an empty failure.",
+    ],
+  },
+  {
     version: "0.37.3",
     date: "2026-07-30",
     items: [
