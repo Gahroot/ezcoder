@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.30.3
+
+### Patch Changes
+
+- Restore complete compacted-session history in ACP clients without duplicate retained messages or internal replay noise.
+  - @kenkaiiii/gg-ai@5.30.3
+  - @kenkaiiii/gg-agent@5.30.3
+  - @kenkaiiii/gg-core@5.30.3
+
 ## 5.30.2
 
 ### Patch Changes
