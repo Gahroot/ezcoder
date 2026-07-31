@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.37.5",
+    date: "2026-07-31",
+    items: [
+      "Your longest conversations now reopen as the real back-and-forth, not a wall of generated memory. I rebuilt `ACP` session history to recover every older checkpoint, remove repeated tail messages and hide giant compaction summaries, while your agent keeps the lean context it needs to stay fast.",
+    ],
+  },
+  {
     version: "0.37.4",
     date: "2026-07-31",
     items: [
