@@ -105,13 +105,31 @@ describe("prepareSandboxLaunch", () => {
     ).resolves.toEqual({ ...shell, sandboxed: false });
   });
 
-  it("wraps the command when the platform supports OS isolation", async () => {
+  it("wraps the command where isolation is available, and honors the mode contract where it is not", async () => {
+    // Whether an OS sandbox is usable is a property of the host, not of this
+    // code: CI Linux has no bwrap/socat and CI Windows has no provisioned
+    // sandbox user. `auto` never throws, so it reports which branch applies.
+    const probe = await prepareSandboxLaunch(shell, os.tmpdir(), {
+      mode: "auto",
+      allowedDomains: [],
+    });
+
+    if (!probe.sandboxed) {
+      // Unsupported host: `auto` degrades and `workspace` fails closed.
+      expect(probe).toEqual({ ...shell, sandboxed: false });
+      await expect(
+        prepareSandboxLaunch(shell, os.tmpdir(), { mode: "workspace", allowedDomains: [] }),
+      ).rejects.toThrow(/Install the OS sandbox prerequisites/);
+      return;
+    }
+
     const launch = await prepareSandboxLaunch(shell, os.tmpdir(), {
       mode: "workspace",
       allowedDomains: [],
     });
 
     expect(launch.sandboxed).toBe(true);
+    expect(launch.file).toBe(process.execPath);
     expect(launch.args).toEqual(
       expect.arrayContaining(["--settings", "--", "bash", "-c", "echo ok"]),
     );
