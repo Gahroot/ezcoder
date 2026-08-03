@@ -282,6 +282,25 @@ async function writeStableSettings(settings: SandboxSettings): Promise<string> {
 }
 
 /**
+ * Known limitations when `sandboxMode` is enabled (upstream, not fixable here):
+ *
+ * - **Linux pipes/redirections**: `echo hi | grep hi` fails with "Permission
+ *   denied" on /proc/self/fd/3 because bash's pipe setup clobbers the fd the
+ *   seccomp filter arrives on (sandbox-runtime#261).
+ * - **git over SSH**: `git@host:` remotes fail the SOCKS handshake on macOS —
+ *   the injected ProxyCommand uses `nc`, which cannot authenticate. HTTPS
+ *   remotes work. `~/.ssh` is also unreadable by design.
+ * - **`git config --global`**: `~/.gitconfig` is a mandatory upstream write
+ *   protection with no opt-out. Repo-local `git config` works.
+ * - **Corporate TLS interception / private registries**: need the CA and
+ *   registry host configured explicitly.
+ * - **Ubuntu 24.04+**: AppArmor blocks the sandbox entirely, so `auto`
+ *   degrades to no isolation (sandbox-runtime#428, #429).
+ *
+ * These are why the default is `off`; revisit when fixed upstream.
+ */
+
+/**
  * Wrap an already-resolved shell with Anthropic's cross-platform OS sandbox.
  * Initialization and dependency failures remain visible and fail closed: the
  * original command is never spawned outside the sandbox as an implicit fallback.

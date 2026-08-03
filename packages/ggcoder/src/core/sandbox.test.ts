@@ -87,8 +87,12 @@ describe("buildSandboxSettings", () => {
 });
 
 describe("sandbox defaults", () => {
-  it("protects by default", () => {
-    expect(DEFAULT_SETTINGS.sandboxMode).toBe("auto");
+  it("stays opt-in while upstream breaks core workflows", () => {
+    // Verified upstream breakage: Linux pipes/redirections fail under seccomp,
+    // macOS git-over-SSH fails the SOCKS handshake, and `git config --global`
+    // is refused. Turning this on by default would break `git push` and piped
+    // commands right after an update. Revisit when those are fixed upstream.
+    expect(DEFAULT_SETTINGS.sandboxMode).toBe("off");
   });
 
   it("reaches mainstream toolchains out of the box, so the default is invisible", () => {
