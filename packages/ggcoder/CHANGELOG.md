@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.34.0
+
+### Minor Changes
+
+- Add ACP file diffs and tool locations, publish plan progress as `plan` updates, and implement session/resume, session/close, session/delete, session_info_update, and message ids
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.34.0
+- @kenkaiiii/gg-agent@5.34.0
+- @kenkaiiii/gg-core@5.34.0
+
 ## 5.33.0
 
 ### Minor Changes
