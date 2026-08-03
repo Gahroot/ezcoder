@@ -13,7 +13,19 @@ import { isReadOnlyCommand } from "./read-only-bash.js";
 import { isPlanModeActive, planModeRestriction } from "../core/runtime-mode.js";
 import { isCatastrophicCommand } from "../core/workspace-guard.js";
 import { checkCommandPolicy, type GetNetworkPolicy } from "../core/network-guard.js";
-import { prepareSandboxLaunch, type SandboxPolicy, type SandboxLaunch } from "../core/sandbox.js";
+import {
+  prepareSandboxLaunch,
+  SANDBOX_ENV_PATCH,
+  type SandboxPolicy,
+  type SandboxLaunch,
+} from "../core/sandbox.js";
+import { annotateSandboxDenial } from "../core/sandbox-feedback.js";
+
+/** Tool env, plus the tweaks that only make sense inside the OS sandbox. */
+function sandboxAwareEnv(sandboxed: boolean): Record<string, string> {
+  const env = getSafeToolEnv();
+  return sandboxed ? { ...env, ...SANDBOX_ENV_PATCH } : env;
+}
 
 const DEFAULT_TIMEOUT = 120_000; // 120 seconds
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024; // 10 MB — cap buffered output to prevent OOM
@@ -78,6 +90,7 @@ export function createBashTool(
   // instance (i.e. per agent session), killed when the process exits.
   let sessionShell: PersistentShell | null = null;
   let sessionSandboxKey: string | null = null;
+  let sessionSandboxed = false;
   // Shell selection doesn't depend on the command, so resolve ONCE at tool
   // creation and bake the true execution environment into the description —
   // promising bash on a cmd.exe fallback makes the model write POSIX commands
@@ -151,12 +164,13 @@ export function createBashTool(
             });
             sessionShell = new PersistentShell(
               cwd,
-              getSafeToolEnv(),
+              sandboxAwareEnv(launch.sandboxed),
               MAX_OUTPUT_BYTES,
               shellOpts,
               launch,
             );
             sessionSandboxKey = sandboxKey;
+            sessionSandboxed = launch.sandboxed;
           } catch (error) {
             return `Error: OS sandbox unavailable; command was not run: ${(error as Error).message}`;
           }
@@ -174,7 +188,7 @@ export function createBashTool(
           res.exitCode === "TIMEOUT"
             ? `TIMEOUT (${timeoutMs ?? DEFAULT_TIMEOUT}ms) — session shell was reset; cd/env state is gone`
             : String(res.exitCode);
-        return `Exit code: ${exitCode}\n${output}`;
+        return annotateSandboxDenial(`Exit code: ${exitCode}\n${output}`, sessionSandboxed);
       }
       if (run_in_background) {
         let launch: SandboxLaunch;
@@ -211,7 +225,7 @@ export function createBashTool(
           cwd,
           detached: true,
           stdio: ["ignore", "pipe", "pipe"],
-          env: getSafeToolEnv(),
+          env: sandboxAwareEnv(launch.sandboxed),
         });
 
         const chunks: Buffer[] = [];
@@ -284,7 +298,7 @@ export function createBashTool(
               ? "KILLED"
               : String(code ?? 1);
 
-          resolve(`Exit code: ${exitCode}\n${output}`);
+          resolve(annotateSandboxDenial(`Exit code: ${exitCode}\n${output}`, launch.sandboxed));
         });
 
         child.on("error", (err) => {

@@ -599,10 +599,11 @@ export class AgentSession {
       }),
       getSandboxPolicy: () => ({
         mode: this.settingsManager.get("sandboxMode"),
-        // Enabling the sandbox is itself the opt-in to enforced egress, so the
-        // allowlist applies whatever networkMode says: sandboxMode "off" is how
-        // a user keeps unrestricted network.
+        // networkAllow always applies. Choosing "allowlist" is the user taking
+        // over network policy, so the built-in developer defaults drop out and
+        // only their hosts remain reachable.
         allowedDomains: this.settingsManager.get("networkAllow"),
+        strictDomains: this.settingsManager.get("networkMode") === "allowlist",
         // Same source of truth as getWriteGuardSettings, so bash and the write
         // tool agree on which roots are writable.
         additionalRoots: this.additionalRoots,

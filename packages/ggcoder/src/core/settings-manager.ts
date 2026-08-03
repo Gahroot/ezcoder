@@ -56,11 +56,14 @@ const SettingsSchema = z.object({
    * OS-enforced command isolation for bash (filesystem + network), via
    * sandbox-runtime. `auto` isolates wherever the platform supports it and
    * degrades with a warning where it does not; `workspace` additionally fails
-   * closed. Opt-in, because the underlying sandbox is allowlist-only for
-   * egress: enabling it restricts network to `networkAllow`, so `git push`,
-   * package installs and other egress must be allowlisted first.
+   * closed on hosts that cannot isolate.
+   *
+   * On by default: writes stay in the workspace, credential directories are
+   * unreadable, and egress is limited to `sandbox-domains.ts` plus
+   * `networkAllow` — which covers mainstream toolchains, so ordinary work is
+   * unaffected.
    */
-  sandboxMode: z.enum(["auto", "workspace", "off"]).default("off"),
+  sandboxMode: z.enum(["auto", "workspace", "off"]).default("auto"),
   /** Defer MCP tool schemas out of the prompt until discovered via tool_search.
    *  Cuts ~8k tokens/cache-miss turn with two MCP servers (bench/RESULTS.md). */
   deferredMcpTools: z.boolean().default(true),
@@ -96,7 +99,7 @@ export const DEFAULT_SETTINGS: Settings = {
   allowOutsideWorkspaceWrites: false,
   networkMode: "off",
   networkAllow: [],
-  sandboxMode: "off",
+  sandboxMode: "auto",
   deferredMcpTools: true,
   mcpModernProtocol: false,
   sessionRetentionDays: 30,

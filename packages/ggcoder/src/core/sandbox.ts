@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "./logger.js";
 import { getAppPaths } from "../config.js";
+import { DEFAULT_ALLOWED_DOMAINS } from "./sandbox-domains.js";
 import type { ShellResolution } from "./shell.js";
 
 export interface SandboxPolicy {
@@ -14,14 +16,18 @@ export interface SandboxPolicy {
    * OS supports it and degrades with a warning where the prerequisites are
    * absent, because SRT needs bubblewrap/socat on Linux and an elevated
    * `windows-install` on Windows — enforcing there would break every command.
-   *
-   * Both isolating modes are opt-in (`off` by default): SRT's network model is
-   * allowlist-only and cannot express "unrestricted", so turning isolation on
-   * necessarily gates egress to {@link allowedDomains}.
    */
   mode: "auto" | "workspace" | "off";
-  /** Hosts reachable while sandboxed. Empty means no egress at all. */
+  /**
+   * Extra hosts reachable while sandboxed, on top of
+   * {@link DEFAULT_ALLOWED_DOMAINS} unless {@link strictDomains} is set.
+   */
   allowedDomains: string[];
+  /**
+   * Use only {@link allowedDomains}, dropping the built-in developer defaults.
+   * Set when the user has explicitly taken over network policy.
+   */
+  strictDomains?: boolean;
   /** Extra workspace roots (multi-root sessions), mirroring the write guard. */
   additionalRoots?: string[];
   /** The user consented to writes outside the workspace; do not contradict them. */
@@ -32,6 +38,18 @@ export interface SandboxLaunch extends ShellResolution {
   sandboxed: boolean;
 }
 
+/**
+ * Environment applied only to sandboxed commands.
+ *
+ * The sandbox permanently protects `.git/hooks`, and git's only reason to write
+ * there is copying inert `*.sample` templates during `init`/`clone` — which
+ * fails the whole command. Pointing git at an empty template directory removes
+ * that write, so cloning works with hook protection fully intact.
+ */
+export const SANDBOX_ENV_PATCH: Readonly<Record<string, string>> = {
+  GIT_TEMPLATE_DIR: "",
+};
+
 interface SandboxSettings {
   network: {
     allowedDomains: string[];
@@ -40,10 +58,22 @@ interface SandboxSettings {
     allowUnixSockets: string[];
     allowLocalBinding: boolean;
   };
+  /**
+   * macOS only: let sandboxed processes reach `com.apple.trustd.agent`.
+   *
+   * Without it, every client that verifies certificates through Security
+   * framework fails — pip (truststore) and Go-based CLIs like gh, terraform
+   * and kubectl. We do not terminate TLS, so certificates are still validated
+   * against the real upstream and the domain allowlist still applies; this only
+   * restores certificate checking itself.
+   */
+  enableWeakerNetworkIsolation?: boolean;
   filesystem: {
     denyRead: string[];
     allowWrite: string[];
     denyWrite: string[];
+    /** Git cannot initialise or clone a repository without writing its config. */
+    allowGitConfig: boolean;
   };
 }
 
@@ -63,6 +93,52 @@ function sensitiveReadPaths(home: string): string[] {
   ];
 }
 
+/**
+ * Package-manager caches that live outside the workspace.
+ *
+ * `npm install`, `cargo build`, `go mod download` and friends all write to a
+ * shared cache in $HOME; without these the sandbox looks like it "breaks npm".
+ * Everything here is regenerable build state — no credentials, which stay
+ * unreadable via {@link sensitiveReadPaths}.
+ */
+function toolCacheDirs(home: string): string[] {
+  return [
+    path.join(home, ".npm"),
+    path.join(home, ".cache"),
+    path.join(home, "Library", "Caches"),
+    path.join(home, ".pnpm-store"),
+    path.join(home, ".yarn"),
+    path.join(home, ".bun"),
+    path.join(home, ".deno"),
+    path.join(home, ".cargo"),
+    path.join(home, ".rustup"),
+    path.join(home, "go", "pkg", "mod"),
+    path.join(home, ".m2"),
+    path.join(home, ".gradle"),
+    path.join(home, ".gem"),
+    path.join(home, ".bundle"),
+    path.join(home, ".nuget"),
+    path.join(home, ".composer"),
+    path.join(home, ".local", "share", "virtualenvs"),
+  ];
+}
+
+/**
+ * A path plus its symlink-resolved twin.
+ *
+ * macOS resolves /tmp to /private/tmp and /var/folders to /private/var/folders.
+ * The sandbox matches on the real path, so listing only the symlink silently
+ * denies every write to the system temp directory.
+ */
+function withRealPath(target: string): string[] {
+  try {
+    const real = realpathSync(target);
+    return real === target ? [target] : [target, real];
+  } catch {
+    return [target];
+  }
+}
+
 /** Pure policy builder, exported so the security boundary is regression-tested. */
 export function buildSandboxSettings(
   cwd: string,
@@ -73,17 +149,28 @@ export function buildSandboxSettings(
   const temp = path.resolve(os.tmpdir());
   const home = os.homedir();
   const allowedDomains = [
-    ...new Set(policy.allowedDomains.map((host) => host.trim()).filter(Boolean)),
+    ...new Set(
+      [...(policy.strictDomains ? [] : DEFAULT_ALLOWED_DOMAINS), ...policy.allowedDomains]
+        .map((host) => host.trim())
+        .filter(Boolean),
+    ),
   ].sort();
   // Mirror resolveWriteGuard's roots. The sandbox must never be stricter than
   // the write guard the user already controls, or bash silently loses
   // multi-root workspaces and the documented outside-workspace opt-out.
   const writeRoots = [
-    workspace,
-    ...(policy.additionalRoots ?? []).map((root) => path.resolve(root)),
-    temp,
-    path.resolve(getAppPaths().agentDir),
-    ...(policy.allowOutsideWorkspaceWrites ? [home] : []),
+    ...new Set(
+      [
+        workspace,
+        ...(policy.additionalRoots ?? []).map((root) => path.resolve(root)),
+        temp,
+        // The conventional scratch dir, distinct from os.tmpdir() on macOS.
+        ...(platform === "win32" ? [] : ["/tmp"]),
+        path.resolve(getAppPaths().agentDir),
+        ...toolCacheDirs(home),
+        ...(policy.allowOutsideWorkspaceWrites ? [home] : []),
+      ].flatMap(withRealPath),
+    ),
   ];
 
   return {
@@ -97,17 +184,27 @@ export function buildSandboxSettings(
       // workflows without buying containment.
       allowLocalBinding: true,
     },
+    ...(platform === "darwin" ? { enableWeakerNetworkIsolation: true } : {}),
     filesystem: {
       denyRead: sensitiveReadPaths(home),
       // SRT adds its platform-required temporary paths; these are the only
       // product-owned write roots supplied by GG Coder.
       allowWrite: platform === "win32" ? writeRoots : [...writeRoots, "/dev/null"],
-      denyWrite: [
-        path.join(workspace, ".git", "hooks"),
-        path.join(workspace, ".git", "config"),
-        path.join(workspace, ".env"),
-        path.join(workspace, ".env.local"),
-      ],
+      // `.git/hooks` is a mandatory sandbox protection with no opt-out, which
+      // is worth keeping: it stops a command installing a hook that later runs
+      // unsandboxed. `git clone`/`git init` only write there to copy inert
+      // `.sample` files, which SANDBOX_ENV_PATCH turns off.
+      //
+      // `.git/config` must be writable or `git init`, `git remote add` and
+      // `git clone` all fail outright.
+      allowGitConfig: true,
+      // Resolve the workspace first: on macOS the sandbox matches real paths, so
+      // a deny rule built from the symlinked path (/var/... vs /private/var/...)
+      // silently never matches.
+      denyWrite: withRealPath(workspace).flatMap((root) => [
+        path.join(root, ".env"),
+        path.join(root, ".env.local"),
+      ]),
     },
   };
 }

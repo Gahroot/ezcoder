@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,22 +11,24 @@ import {
 } from "./sandbox.js";
 
 describe("buildSandboxSettings", () => {
-  it("limits writes to the workspace and temp directory while denying network by default", () => {
-    const cwd = path.join(os.tmpdir(), "gg-sandbox-workspace");
+  it("limits writes to the workspace and temp directory, and enforces an allowlist", () => {
+    // A real directory, so symlinked temp roots (macOS /var → /private/var) are
+    // exercised rather than silently skipped.
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "gg-sandbox-workspace-"));
     const settings = buildSandboxSettings(cwd, { mode: "workspace", allowedDomains: [] }, "darwin");
 
-    expect(settings.filesystem.allowWrite).toEqual([
-      path.resolve(cwd),
-      path.resolve(os.tmpdir()),
-      getAppPaths().agentDir,
-      "/dev/null",
-    ]);
-    expect(settings.filesystem.allowWrite).not.toContain(os.homedir());
-    expect(settings.filesystem.denyWrite).toEqual(
+    expect(settings.filesystem.allowWrite).toEqual(
       expect.arrayContaining([
-        path.join(path.resolve(cwd), ".git", "hooks"),
-        path.join(path.resolve(cwd), ".env"),
+        fs.realpathSync(path.resolve(cwd)),
+        fs.realpathSync(path.resolve(os.tmpdir())),
+        getAppPaths().agentDir,
       ]),
+    );
+    expect(settings.filesystem.allowWrite).not.toContain(os.homedir());
+    // The sandbox matches real paths, so a deny rule must cover the resolved
+    // workspace or it silently never fires (macOS /var → /private/var).
+    expect(settings.filesystem.denyWrite).toEqual(
+      expect.arrayContaining([path.join(fs.realpathSync(path.resolve(cwd)), ".env")]),
     );
     expect(settings.filesystem.denyRead).toEqual(
       expect.arrayContaining([
@@ -34,13 +37,14 @@ describe("buildSandboxSettings", () => {
       ]),
     );
     expect(settings.network).toMatchObject({
-      allowedDomains: [],
       strictAllowlist: true,
       allowUnixSockets: [],
       // Dev servers and the screenshot tool bind loopback; blocking it would
       // break core workflows without containing anything.
       allowLocalBinding: true,
     });
+    // Egress is an allowlist, never open: an unknown host stays unreachable.
+    expect(settings.network.allowedDomains).not.toContain("api.example.com");
   });
 
   it("keeps bash writable in the same roots the write guard already allows", () => {
@@ -71,10 +75,11 @@ describe("buildSandboxSettings", () => {
     expect(settings.filesystem.denyRead).toContain(path.join(os.homedir(), ".ssh"));
   });
 
-  it("normalizes and sorts explicit network domains deterministically", () => {
+  it("normalizes and de-duplicates explicit network domains deterministically", () => {
     const settings = buildSandboxSettings("/workspace", {
       mode: "workspace",
       allowedDomains: [" registry.npmjs.org ", "github.com", "github.com", ""],
+      strictDomains: true,
     });
 
     expect(settings.network.allowedDomains).toEqual(["github.com", "registry.npmjs.org"]);
@@ -82,11 +87,59 @@ describe("buildSandboxSettings", () => {
 });
 
 describe("sandbox defaults", () => {
-  it("ships opt-in, so existing users keep unrestricted network and egress", () => {
-    // SRT's network model is allowlist-only and cannot express "unrestricted",
-    // so defaulting isolation on would silently break git push, package
-    // installs and curl for every user.
-    expect(DEFAULT_SETTINGS.sandboxMode).toBe("off");
+  it("protects by default", () => {
+    expect(DEFAULT_SETTINGS.sandboxMode).toBe("auto");
+  });
+
+  it("reaches mainstream toolchains out of the box, so the default is invisible", () => {
+    const { network } = buildSandboxSettings("/workspace", {
+      mode: "auto",
+      allowedDomains: [],
+    });
+
+    // If any of these were missing, `npm install` / `pip install` / `git clone`
+    // would fail for every user the moment the sandbox shipped on.
+    for (const host of [
+      "github.com",
+      "registry.npmjs.org",
+      "pypi.org",
+      "files.pythonhosted.org",
+      "proxy.golang.org",
+      "crates.io",
+      "rubygems.org",
+    ]) {
+      expect(network.allowedDomains).toContain(host);
+    }
+  });
+
+  it("rejects patterns the sandbox itself refuses, so a bad entry cannot brick startup", () => {
+    const { network } = buildSandboxSettings("/workspace", {
+      mode: "auto",
+      allowedDomains: [],
+    });
+
+    for (const domain of network.allowedDomains) {
+      expect(domain).not.toBe("*");
+      // sandbox-runtime rejects overly broad wildcards like "*.com".
+      expect(domain).not.toMatch(/^\*\.[a-z]+$/);
+      expect(domain).not.toMatch(/[:/]/);
+    }
+  });
+
+  it("adds user hosts to the defaults, and honors an explicit takeover", () => {
+    const merged = buildSandboxSettings("/workspace", {
+      mode: "auto",
+      allowedDomains: ["internal.example.com"],
+    });
+    expect(merged.network.allowedDomains).toContain("internal.example.com");
+    expect(merged.network.allowedDomains).toContain("github.com");
+
+    const strict = buildSandboxSettings("/workspace", {
+      mode: "auto",
+      allowedDomains: ["internal.example.com"],
+      strictDomains: true,
+    });
+    expect(strict.network.allowedDomains).toEqual(["internal.example.com"]);
   });
 });
 
