@@ -13,6 +13,7 @@ import { isReadOnlyCommand } from "./read-only-bash.js";
 import { isPlanModeActive, planModeRestriction } from "../core/runtime-mode.js";
 import { isCatastrophicCommand } from "../core/workspace-guard.js";
 import { checkCommandPolicy, type GetNetworkPolicy } from "../core/network-guard.js";
+import { prepareSandboxLaunch, type SandboxPolicy, type SandboxLaunch } from "../core/sandbox.js";
 
 const DEFAULT_TIMEOUT = 120_000; // 120 seconds
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024; // 10 MB — cap buffered output to prevent OOM
@@ -71,10 +72,12 @@ export function createBashTool(
   planModeRef?: { current: boolean },
   shellOpts?: ResolveShellOpts,
   getNetworkPolicy?: GetNetworkPolicy,
+  getSandboxPolicy?: () => SandboxPolicy,
 ): AgentTool<typeof BashParams> {
   // Lazily created on the first persist:true call; one session per tool
   // instance (i.e. per agent session), killed when the process exits.
   let sessionShell: PersistentShell | null = null;
+  let sessionSandboxKey: string | null = null;
   // Shell selection doesn't depend on the command, so resolve ONCE at tool
   // creation and bake the true execution environment into the description —
   // promising bash on a cmd.exe fallback makes the model write POSIX commands
@@ -126,10 +129,38 @@ export function createBashTool(
       if (networkBlocked) {
         return `Error: ${networkBlocked}`;
       }
+      const sandboxPolicy = getSandboxPolicy?.() ?? { mode: "off", allowedDomains: [] };
+      const prepareLaunch = async (
+        shell: ReturnType<typeof resolveShell>,
+      ): Promise<SandboxLaunch> => prepareSandboxLaunch(shell, cwd, sandboxPolicy);
+
       // Persistent session mode — POSIX only; Windows-without-bash falls through
       // to the normal spawn path (cmd.exe fallback) below.
       if (persist && !run_in_background && !resolveShell(command, shellOpts).isCmdFallback) {
-        sessionShell ??= new PersistentShell(cwd, getSafeToolEnv(), MAX_OUTPUT_BYTES, shellOpts);
+        const sandboxKey = JSON.stringify(sandboxPolicy);
+        if (sessionShell && sessionSandboxKey !== sandboxKey) {
+          sessionShell.kill();
+          sessionShell = null;
+        }
+        if (!sessionShell) {
+          try {
+            const shell = resolveShell("", shellOpts);
+            const launch = await prepareLaunch({
+              ...shell,
+              args: ["--norc", "--noprofile"],
+            });
+            sessionShell = new PersistentShell(
+              cwd,
+              getSafeToolEnv(),
+              MAX_OUTPUT_BYTES,
+              shellOpts,
+              launch,
+            );
+            sessionSandboxKey = sandboxKey;
+          } catch (error) {
+            return `Error: OS sandbox unavailable; command was not run: ${(error as Error).message}`;
+          }
+        }
         const res = await sessionShell.run(
           command,
           timeoutMs ?? DEFAULT_TIMEOUT,
@@ -146,7 +177,13 @@ export function createBashTool(
         return `Exit code: ${exitCode}\n${output}`;
       }
       if (run_in_background) {
-        const result = await processManager.start(command, cwd);
+        let launch: SandboxLaunch;
+        try {
+          launch = await prepareLaunch(resolveShell(command, shellOpts));
+        } catch (error) {
+          return `Error: OS sandbox unavailable; command was not run: ${(error as Error).message}`;
+        }
+        const result = await processManager.start(command, cwd, launch);
         return (
           `Background process started.\n` +
           `ID: ${result.id}\n` +
@@ -159,17 +196,18 @@ export function createBashTool(
 
       const effectiveTimeout = timeoutMs ?? DEFAULT_TIMEOUT;
 
+      // Cross-platform shell: bash on macOS/Linux, Git Bash on Windows (or
+      // cmd.exe fallback), wrapped by the OS sandbox before any child starts.
+      const shell = resolveShell(command, shellOpts);
+      let launch: SandboxLaunch;
+      try {
+        launch = await prepareLaunch(shell);
+      } catch (error) {
+        return `Exit code: 1\nOS sandbox unavailable; command was not run: ${(error as Error).message}`;
+      }
+
       return new Promise<string>((resolve) => {
-        // Cross-platform shell: bash on macOS/Linux, Git Bash on Windows (or
-        // cmd.exe fallback). Hardcoding "bash" broke on Windows with `spawn
-        // bash ENOENT`, and accidentally hitting WSL's bash ran commands in a
-        // separate Linux filesystem (the "files not mounted" symptom).
-        // `shellOpts` MUST be threaded through here, not just into the
-        // description above: without it the tool advertised cmd.exe semantics
-        // while actually executing through bash, and no test could drive the
-        // Windows fallback path on a real Windows host.
-        const shell = resolveShell(command, shellOpts);
-        const child = ops.spawn(shell.file, shell.args, {
+        const child = ops.spawn(launch.file, launch.args, {
           cwd,
           detached: true,
           stdio: ["ignore", "pipe", "pipe"],

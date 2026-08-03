@@ -51,6 +51,7 @@ import {
   shouldCompact,
   compact,
   type CompactionAnchorRemap,
+  type CompactionContextSelection,
   type CompactionResult,
 } from "./compaction/compactor.js";
 import {
@@ -595,6 +596,17 @@ export class AgentSession {
       getNetworkPolicy: () => ({
         mode: this.settingsManager.get("networkMode"),
         allow: this.settingsManager.get("networkAllow"),
+      }),
+      getSandboxPolicy: () => ({
+        mode: this.settingsManager.get("sandboxMode"),
+        // Enabling the sandbox is itself the opt-in to enforced egress, so the
+        // allowlist applies whatever networkMode says: sandboxMode "off" is how
+        // a user keeps unrestricted network.
+        allowedDomains: this.settingsManager.get("networkAllow"),
+        // Same source of truth as getWriteGuardSettings, so bash and the write
+        // tool agree on which roots are writable.
+        additionalRoots: this.additionalRoots,
+        allowOutsideWorkspaceWrites: this.settingsManager.get("allowOutsideWorkspaceWrites"),
       }),
       authStorage: this.authStorage,
       onFileRead: (filePath) => this.reviewCoverage.recordRead(filePath),
@@ -2189,8 +2201,9 @@ export class AgentSession {
     const originalCount = this.messages.length;
     this.eventBus.emit("compaction_start", { messageCount: originalCount });
 
-    const runCompactor = () =>
-      compact(this.messages, {
+    let contextSelection: CompactionContextSelection | undefined;
+    const runCompactor = async () => {
+      const output = await compact(this.messages, {
         provider: this.provider,
         model: this.model,
         apiKey: creds.accessToken,
@@ -2202,9 +2215,11 @@ export class AgentSession {
         signal: this.opts.signal,
         approvedPlanPath: this.approvedPlanPath,
       });
+      contextSelection = output.result.contextSelection;
+      return output;
+    };
 
     let finalCount = originalCount;
-
     if (this.opts.transient || !this.conversationId) {
       const result = await runCompactor();
       finalCount = result.result.newCount;
@@ -2309,6 +2324,18 @@ export class AgentSession {
       compacted: this.lastCompactionCompacted,
       originalCount,
       newCount: finalCount,
+      ...(contextSelection
+        ? {
+            selectionStrategy: contextSelection.strategy,
+            selectedMessages: contextSelection.selectedMessages,
+            selectedTokens: contextSelection.selectedTokens,
+            droppedMessages: contextSelection.droppedMessages,
+            queryTerms: contextSelection.queryTerms,
+            ...(contextSelection.fallbackReason
+              ? { selectionFallback: contextSelection.fallbackReason }
+              : {}),
+          }
+        : {}),
     });
   }
 

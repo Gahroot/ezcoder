@@ -54,7 +54,11 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf-8");
 }
 
-function compactionResult(messages: Message[], compacted = true) {
+function compactionResult(
+  messages: Message[],
+  compacted = true,
+  contextSelection?: CompactorModule.CompactionContextSelection,
+) {
   return {
     messages,
     result: {
@@ -64,6 +68,7 @@ function compactionResult(messages: Message[], compacted = true) {
       newCount: messages.length,
       tokensBeforeEstimate: 180_000,
       tokensAfterEstimate: compacted ? 2_000 : 180_000,
+      ...(contextSelection ? { contextSelection } : {}),
     },
   };
 }
@@ -975,6 +980,46 @@ describe("AgentSession compaction events", () => {
     await session.compact({ accessToken: "token" });
 
     expect(events).toEqual([{ compacted: false, originalCount: 1, newCount: 1 }]);
+    await session.dispose();
+  });
+
+  it("emits query-selection token statistics when the compactor ran retrieval", async () => {
+    const { AgentSession } = await import("./agent-session.js");
+    const session = new AgentSession({
+      provider: "anthropic",
+      model: "claude-test",
+      cwd: tmpProject,
+      systemPrompt: "system prompt",
+      transient: true,
+    });
+    await session.initialize();
+
+    compactMock.mockResolvedValue(
+      compactionResult([...session.getMessages()], false, {
+        strategy: "query_aware",
+        selectedMessages: 8,
+        selectedTokens: 1200,
+        droppedMessages: 4,
+        queryTerms: 3,
+      }),
+    );
+    const events: unknown[] = [];
+    session.eventBus.on("compaction_end", (event) => events.push(event));
+
+    await session.compact({ accessToken: "token" });
+
+    expect(events).toEqual([
+      {
+        compacted: false,
+        originalCount: 1,
+        newCount: 1,
+        selectionStrategy: "query_aware",
+        selectedMessages: 8,
+        selectedTokens: 1200,
+        droppedMessages: 4,
+        queryTerms: 3,
+      },
+    ]);
     await session.dispose();
   });
 });
