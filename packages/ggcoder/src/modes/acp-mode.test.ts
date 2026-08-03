@@ -216,14 +216,25 @@ function updates(frames: Frame[]): Record<string, unknown>[] {
     .map((frame) => frame.params!.update!);
 }
 
+/** Updates a session announces on its own schedule, not as part of a turn. */
+const OUT_OF_BAND_UPDATES = new Set(["available_commands_update", "usage_update"]);
+
 /**
  * Conversation updates only.
  *
- * The command list is announced on its own schedule after a session opens, so
- * an exact-match transcript assertion would otherwise pass or fail on timing.
+ * The command list and the context-usage report are announced on their own
+ * schedule after a session opens, so an exact-match transcript assertion would
+ * otherwise pass or fail on timing.
  */
 function transcript(frames: Frame[]): Record<string, unknown>[] {
-  return updates(frames).filter((update) => update.sessionUpdate !== "available_commands_update");
+  return updates(frames).filter(
+    (update) => !OUT_OF_BAND_UPDATES.has(update.sessionUpdate as string),
+  );
+}
+
+/** Context-usage notifications only, in arrival order. */
+function usageUpdates(frames: Frame[]): Record<string, unknown>[] {
+  return updates(frames).filter((update) => update.sessionUpdate === "usage_update");
 }
 
 describe("ACP mode over stdio", () => {
@@ -305,7 +316,7 @@ describe("ACP mode over stdio", () => {
     const replay = frames.filter(
       (frame) =>
         frame.method === "session/update" &&
-        frame.params!.update!.sessionUpdate !== "available_commands_update",
+        !OUT_OF_BAND_UPDATES.has(frame.params!.update!.sessionUpdate as string),
     );
 
     // History must arrive BEFORE the response: a client draws a resumed session
@@ -380,7 +391,7 @@ describe("ACP mode over stdio", () => {
         .filter(
           (frame) =>
             frame.method === "session/update" &&
-            frame.params!.update!.sessionUpdate !== "available_commands_update",
+            !OUT_OF_BAND_UPDATES.has(frame.params!.update!.sessionUpdate as string),
         )
         .every((frame) => frame.params!.sessionId === newest!.sessionId),
     ).toBe(true);
@@ -786,6 +797,91 @@ describe("ACP mode over stdio", () => {
         toolCallId: "t2",
         status: "failed",
         content: [{ type: "content", content: { type: "text", text: "boom" } }],
+      },
+    ]);
+  });
+
+  it("reports context usage after session/new, before any prompt runs", async () => {
+    client = new AcpClient();
+    const sessionId = await client.handshake();
+
+    const usage = await client.untilUpdate("usage_update");
+    // A fresh session must show its window immediately: a client that only
+    // learns the size after the first reply cannot draw a context meter.
+    expect(usage).toEqual({ sessionUpdate: "usage_update", used: 4200, size: 200_000 });
+    const frame = client
+      .received()
+      .find((f) => f.params?.update?.sessionUpdate === "usage_update")!;
+    expect(frame.params!.sessionId).toBe(sessionId);
+  });
+
+  it("reports context usage on session/load so a resumed conversation shows it", async () => {
+    client = new AcpClient();
+    client.send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 1 } });
+    await client.until(1);
+    const [newest] = await client.list(90, tmpProject);
+
+    client.send({
+      jsonrpc: "2.0",
+      id: 91,
+      method: "session/load",
+      params: { sessionId: newest!.sessionId, cwd: tmpProject, mcpServers: [] },
+    });
+    await client.until(91);
+
+    const usage = await client.untilUpdate("usage_update");
+    expect(usage).toEqual({ sessionUpdate: "usage_update", used: 4200, size: 200_000 });
+    // Addressed to the id the client asked to load, not the session's internal
+    // one, or the update lands on a session the client never heard of.
+    const frame = client
+      .received()
+      .find((f) => f.params?.update?.sessionUpdate === "usage_update")!;
+    expect(frame.params!.sessionId).toBe(newest!.sessionId);
+  });
+
+  it("reports context usage after each model response", async () => {
+    client = new AcpClient();
+    const sessionId = await client.handshake();
+    await client.untilUpdate("usage_update");
+    const beforeTurn = client.received().length;
+
+    client.send({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "session/prompt",
+      params: { sessionId, prompt: [{ type: "text", text: "world" }] },
+    });
+    const frames = await client.until(3);
+
+    const turnUsage = usageUpdates(frames.slice(beforeTurn));
+    expect(turnUsage).toEqual([{ sessionUpdate: "usage_update", used: 9200, size: 200_000 }]);
+    // Like every other turn notification, it must precede the response.
+    expect(frames.at(-1)!.id).toBe(3);
+  });
+
+  it("reports the post-compaction count, so a client can see the drop", async () => {
+    client = new AcpClient();
+    const sessionId = await client.handshake();
+    await client.untilUpdate("usage_update");
+    const beforeTurn = client.received().length;
+
+    client.send({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "session/prompt",
+      params: { sessionId, prompt: [{ type: "text", text: "compact me" }] },
+    });
+    const frames = await client.until(3);
+
+    // Compaction is invisible on the wire except as a fall in `used` at an
+    // unchanged `size`, so the emit right after it is the whole signal.
+    expect(usageUpdates(frames.slice(beforeTurn))).toEqual([
+      { sessionUpdate: "usage_update", used: 900, size: 200_000 },
+      {
+        sessionUpdate: "usage_update",
+        used: 2400,
+        size: 200_000,
+        cost: { amount: 0.25, currency: "USD" },
       },
     ]);
   });

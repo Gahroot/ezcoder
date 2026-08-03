@@ -1024,6 +1024,43 @@ describe("AgentSession compaction events", () => {
   });
 });
 
+describe("AgentSession.getContextUsage", () => {
+  it("reports the model window and drops after a compaction", async () => {
+    const { AgentSession } = await import("./agent-session.js");
+    const model = MODELS[0]!;
+    const session = new AgentSession({
+      provider: model.provider,
+      model: model.id,
+      cwd: tmpProject,
+      systemPrompt: "system prompt",
+      transient: true,
+    });
+    await session.initialize();
+
+    const messages = session.getMessages();
+    for (let i = 0; i < 40; i += 1) {
+      messages.push({ role: "user", content: "a fairly long user message ".repeat(20) });
+    }
+
+    const before = session.getContextUsage();
+    expect(before.size).toBeGreaterThan(0);
+    expect(before.used).toBeGreaterThan(0);
+    // No authoritative pricing exists yet, so cost is omitted rather than
+    // reported as zero — a client showing $0.00 would be stating a fact we
+    // do not have.
+    expect(before.costUsd).toBeUndefined();
+
+    compactMock.mockResolvedValue(compactionResult([messages[0]!], true));
+    await session.compact({ accessToken: "test-token" });
+
+    const after = session.getContextUsage();
+    // Clients detect compaction from exactly this: used falls, size does not.
+    expect(after.used).toBeLessThan(before.used);
+    expect(after.size).toBe(before.size);
+    await session.dispose();
+  });
+});
+
 describe("load-time auto-compaction deferral (deferLoadCompaction)", () => {
   // Regression: resuming an over-context session ran a summary LLM call (30s
   // timeout) inline in loadExistingSession — inside initialize(), which the

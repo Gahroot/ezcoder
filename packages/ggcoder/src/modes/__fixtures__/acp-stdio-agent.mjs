@@ -156,6 +156,14 @@ class ScriptedSession {
     ],
   };
 
+  // Token accounting the mode reports as ACP `usage_update`. Scripted so the
+  // test can pin exact numbers, and so the post-compaction DROP at an unchanged
+  // window size — the only way a client can detect compaction — is observable
+  // without a real model.
+  #used = 4200;
+  #contextWindow = 200_000;
+  #costUsd = 0;
+
   #messages = [];
   #sessionId = "acp-fixture-session";
   #model = "claude-opus-5";
@@ -174,6 +182,14 @@ class ScriptedSession {
 
   getState() {
     return { sessionId: this.#sessionId, provider: this.#provider, model: this.#model };
+  }
+
+  getContextUsage() {
+    return {
+      used: this.#used,
+      size: this.#contextWindow,
+      ...(this.#costUsd > 0 ? { costUsd: this.#costUsd } : {}),
+    };
   }
 
   // Deliberately the REAL loader against the REAL file the fixture wrote, so
@@ -218,6 +234,26 @@ class ScriptedSession {
   }
 
   async prompt(content) {
+    // Auto-compaction: the real session compacts BEFORE the model runs, and
+    // emits `compaction_end` once the compacted messages are installed.
+    if (content === "compact me") {
+      this.eventBus.emit("compaction_start", { messageCount: 40 });
+      this.#used = 900;
+      this.eventBus.emit("compaction_end", { compacted: true, originalCount: 40, newCount: 4 });
+      this.#used += 1500;
+      this.#costUsd += 0.25;
+      this.eventBus.emit("turn_end", {
+        turn: 1,
+        stopReason: "end_turn",
+        usage: { inputTokens: 1500, outputTokens: 60 },
+      });
+      this.eventBus.emit("agent_done", {
+        totalTurns: 1,
+        totalUsage: { inputTokens: 1500, outputTokens: 60 },
+      });
+      return;
+    }
+
     if (content === "report loaded context") {
       const text = this.#messages
         .map((message) =>
@@ -280,6 +316,13 @@ class ScriptedSession {
     if (content === "refuse") {
       this.eventBus.emit("truncated", { reason: "refusal", continued: false });
     }
+
+    this.#used += 5000;
+    this.eventBus.emit("turn_end", {
+      turn: 1,
+      stopReason: "end_turn",
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
 
     this.eventBus.emit("agent_done", {
       totalTurns: 1,

@@ -2465,6 +2465,45 @@ export class AgentSession {
     };
   }
 
+  /**
+   * Tokens currently in context and the window they are measured against.
+   *
+   * Uses the same accounting as the compaction decision: authoritative provider
+   * usage when we have it (it includes the system prompt and tool schemas),
+   * plus a local estimate of anything appended after that sample. A client
+   * reading this right after a compaction sees the drop, because compaction
+   * clears the retained provider sample along with the messages it measured.
+   *
+   * `costUsd` is present only when EVERY recorded turn has an authoritative
+   * price; a partial sum would read as a full session cost and understate it.
+   */
+  getContextUsage(): { used: number; size: number; costUsd?: number } {
+    const size = getContextWindow(this.model, {
+      provider: this.provider,
+      accountId: this.lastAccountId,
+    });
+
+    let used: number;
+    const anchorIndex = this.providerContext
+      ? this.messages.lastIndexOf(this.providerContext.anchor)
+      : -1;
+    if (this.providerContext && anchorIndex >= 0) {
+      used = calculateActiveContextTokens(this.messages, {
+        usage: this.providerContext.usage,
+        pendingMessages: this.messages.slice(anchorIndex + 1),
+      });
+    } else {
+      used = calculateActiveContextTokens(this.messages);
+    }
+
+    const costUsd =
+      this.turnMetrics.length > 0 && this.turnMetrics.every((m) => m.cost.status === "known")
+        ? this.turnMetrics.reduce((sum, m) => sum + (m.cost.status === "known" ? m.cost.usd : 0), 0)
+        : undefined;
+
+    return costUsd === undefined ? { used, size } : { used, size, costUsd };
+  }
+
   getPlanMode(): boolean {
     return this.planModeRef.current;
   }

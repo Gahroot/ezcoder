@@ -84,6 +84,12 @@ export interface AcpAgentSession {
   initialize(): Promise<void>;
   prompt(content: string): Promise<void>;
   getState(): { sessionId: string; provider: Provider; model: string };
+  /**
+   * Context accounting for the ACP `usage_update` notification. Optional so a
+   * test double or an alternative session implementation need not carry token
+   * accounting — a session without it simply reports no usage.
+   */
+  getContextUsage?(): { used: number; size: number; costUsd?: number };
   dispose(): Promise<void>;
   /** Replace the turn-cancellation signal so the session remains reusable. */
   setSignal(signal: AbortSignal): void;
@@ -530,6 +536,48 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
   }
 
   /**
+   * Report context-window usage to the client.
+   *
+   * Sent whenever token accounting moves — after each model response and after
+   * a compaction — because a client's context meter is otherwise frozen at
+   * whatever it last inferred. Compaction is only visible to a client as a drop
+   * in `used` at unchanged `size`, so the post-compaction emit is what makes
+   * that detectable at all.
+   *
+   * `used`/`size` are required by the schema; a session that cannot count
+   * tokens sends nothing rather than a zero, which would render as an empty
+   * context the user does not have.
+   */
+  function notifyUsage(target: AcpAgentSession | null = session): void {
+    if (!target || target !== session || !sessionId) return;
+    const usage = target.getContextUsage?.();
+    if (!usage || !Number.isFinite(usage.used) || !Number.isFinite(usage.size)) return;
+    notifyUpdate({
+      sessionUpdate: "usage_update",
+      used: usage.used,
+      size: usage.size,
+      ...(usage.costUsd === undefined ? {} : { cost: { amount: usage.costUsd, currency: "USD" } }),
+    });
+  }
+
+  /**
+   * Usage for a session that was just created or restored, sent after the
+   * response that told the client the session exists.
+   *
+   * Same deferral (and same staleness guard) as {@link notifyAvailableCommands}:
+   * a notification addressed to a sessionId the client has not seen yet has
+   * nowhere to land. Without this a resumed conversation shows no usage until
+   * its first reply, which is exactly when the number matters least.
+   */
+  function notifyUsageSoon(target: AcpAgentSession): void {
+    const forSession = sessionId;
+    setTimeout(() => {
+      if (session !== target || sessionId !== forSession) return;
+      notifyUsage(target);
+    }, 0);
+  }
+
+  /**
    * Tell the client the session mode changed outside a request it made — the
    * model itself can enter/exit plan mode mid-run via the enter_plan/exit_plan
    * tools, and a picker that only tracks its own changes would lie.
@@ -638,6 +686,18 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
       bus.on("max_turns", () => {
         hitMaxTurns = true;
       }),
+
+      // Token accounting changes: after every model response, and after a
+      // compaction rebuilds the context. `compaction_end` fires once the
+      // compacted messages are installed, so the emit carries the POST-
+      // compaction count — the drop the client watches for.
+      bus.on("turn_end", () => {
+        notifyUsage(target);
+      }),
+
+      bus.on("compaction_end", () => {
+        notifyUsage(target);
+      }),
     ];
   }
 
@@ -737,6 +797,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
   async function handleNewSession(): Promise<unknown> {
     const created = await startSession();
     notifyAvailableCommands(created);
+    notifyUsageSoon(created);
     return { sessionId, configOptions: configOptionsFor(created), modes: sessionModes(created) };
   }
 
@@ -812,6 +873,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
 
     for (const update of historyUpdates(displayMessages)) notifyUpdate(update);
     notifyAvailableCommands(restored);
+    notifyUsageSoon(restored);
 
     return { configOptions: configOptionsFor(restored), modes: sessionModes(restored) };
   }
