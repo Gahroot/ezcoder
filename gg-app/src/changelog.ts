@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.39.0",
+    date: "2026-08-03",
+    items: [
+      "GG Coder can no longer tell you a check passed when it did not. I taught it to judge every command it runs, so a `--watch` that never finishes, a build that rewrites files, or a `--help` that proves nothing all get rejected as evidence. Only real, finished checks like `tsc --noEmit` count now.",
+      "Your long sessions stay sharper for longer. When the conversation gets trimmed, I now pick what to keep based on what you just asked, so the error, the file, and the decision that actually matter survive instead of whatever happened to be most recent.",
+      "You can install `Agent Plugins` straight from Settings. One portable file adds new commands and abilities, and I check every bundle before it lands so a bad one cannot touch anything outside its own folder.",
+      "Gemini usage finally reads true. Its thinking tokens were quietly missing from your totals, so every long reasoning run looked cheaper than it was. Now the number you see is the number you pay.",
+    ],
+  },
+  {
     version: "0.38.0",
     date: "2026-08-01",
     items: [
