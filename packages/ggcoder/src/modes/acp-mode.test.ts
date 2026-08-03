@@ -813,7 +813,10 @@ describe("ACP mode over stdio", () => {
       .received()
       .find((f) => f.params?.update?.sessionUpdate === "usage_update")!;
     expect(frame.params!.sessionId).toBe(sessionId);
-  });
+    // Spawning the agent and seeding its session files costs seconds on a CI
+    // runner, so every test here that drives a real child process buys headroom
+    // over vitest's 5s default rather than reporting a slow machine as a bug.
+  }, 20_000);
 
   it("reports context usage on session/load so a resumed conversation shows it", async () => {
     client = new AcpClient();
@@ -837,7 +840,7 @@ describe("ACP mode over stdio", () => {
       .received()
       .find((f) => f.params?.update?.sessionUpdate === "usage_update")!;
     expect(frame.params!.sessionId).toBe(newest!.sessionId);
-  });
+  }, 20_000);
 
   it("reports context usage after each model response", async () => {
     client = new AcpClient();
@@ -857,7 +860,7 @@ describe("ACP mode over stdio", () => {
     expect(turnUsage).toEqual([{ sessionUpdate: "usage_update", used: 9200, size: 200_000 }]);
     // Like every other turn notification, it must precede the response.
     expect(frames.at(-1)!.id).toBe(3);
-  });
+  }, 20_000);
 
   it("reports the post-compaction count, so a client can see the drop", async () => {
     client = new AcpClient();
@@ -884,7 +887,7 @@ describe("ACP mode over stdio", () => {
         cost: { amount: 0.25, currency: "USD" },
       },
     ]);
-  });
+  }, 20_000);
 
   it("reports a refusal as its own stop reason", async () => {
     client = new AcpClient();
