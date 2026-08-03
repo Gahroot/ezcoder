@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.33.0
+
+### Minor Changes
+
+- Emit ACP `usage_update` session notifications so clients can show context-window usage, including the post-compaction drop and usage on session/new and session/load
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.33.0
+- @kenkaiiii/gg-agent@5.33.0
+- @kenkaiiii/gg-core@5.33.0
+
 ## 5.32.0
 
 ### Minor Changes
