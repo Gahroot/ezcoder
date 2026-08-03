@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.32.0
+
+### Minor Changes
+
+- Count Gemini reasoning tokens toward billed output usage, gate verification claims behind a fail-closed command classifier, select context by relevance when compacting, and add portable Agent Plugin bundles. Also ships an opt-in OS command sandbox.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.32.0
+- @kenkaiiii/gg-agent@5.32.0
+- @kenkaiiii/gg-core@5.32.0
+
 ## 5.31.0
 
 ### Minor Changes
