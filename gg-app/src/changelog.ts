@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.39.2",
+    date: "2026-08-03",
+    items: [
+      "Watch me work inside your own editor. Every file I change now shows up as a proper side by side diff instead of a wall of text, and your editor follows along to the exact file and line I am touching. Reviewing my work just became a glance instead of a chore.",
+      "My plan is now your live to do list. When I map out a job in `Plan Mode`, you see every step appear in your editor and tick off in real time as I finish them. No more wondering how far along I am.",
+      "Your saved conversations are finally yours to manage from anywhere. Pick one back up right where you left it, close it, or delete it for good, all without leaving your editor. Each one even names itself from what you asked.",
+    ],
+  },
+  {
     version: "0.39.1",
     date: "2026-08-03",
     items: [
