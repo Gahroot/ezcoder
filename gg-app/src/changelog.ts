@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.39.3",
+    date: "2026-08-05",
+    items: [
+      "Every one of your projects is finally on the `Choose a project` screen. It used to only show the ones you had already opened with an agent, so most of your work was invisible. Now I read your project folders straight off disk and list the lot. On my own machine that took it from `31` projects to `97`.",
+      "Spot something you never want to see in that list again? Hover it and hit the `\u00d7`. It is gone for good, and it stays gone next time you launch. Great for the scratch folders and stray temp directories that used to clutter the place up.",
+      "The project list also opens noticeably quicker. I got it scanning everything at once instead of one folder at a time, so it lands almost `2x` faster even with a hundred projects to sift through.",
+      "Skills now stick. When I load a skill to do a job properly, it can no longer get quietly dropped from my memory partway through a long session, so I keep working the way you asked all the way to the end.",
+    ],
+  },
+  {
     version: "0.39.2",
     date: "2026-08-03",
     items: [
