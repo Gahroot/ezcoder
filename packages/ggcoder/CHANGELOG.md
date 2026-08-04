@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.34.1
+
+### Patch Changes
+
+- List project folders on disk in project discovery, add hidden-project support, and never prune skill output from context
+  - @kenkaiiii/gg-ai@5.34.1
+  - @kenkaiiii/gg-agent@5.34.1
+  - @kenkaiiii/gg-core@5.34.1
+
 ## 5.34.0
 
 ### Minor Changes
