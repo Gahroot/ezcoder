@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { createReadStream } from "node:fs";
+import { createReadStream, realpathSync } from "node:fs";
 import readline from "node:readline";
 import os from "node:os";
 import path from "node:path";
@@ -352,14 +352,25 @@ function resolveProjectRoots(
 }
 
 function isUnscannableRoot(dir: string): boolean {
-  const resolved = path.resolve(dir);
-  if (resolved === path.parse(resolved).root) return true;
-  if (resolved === path.resolve(os.homedir())) return true;
+  const resolved = resolveExistingPath(dir);
+  if (resolved === resolveExistingPath(path.parse(resolved).root)) return true;
+  if (resolved === resolveExistingPath(os.homedir())) return true;
   // Scratch checkouts and test fixtures cluster as direct children of the temp
   // dir, which would otherwise infer it as a root and list every stale
-  // `tmp.XXXX` as a project. Only the temp dir itself is barred — a real
-  // projects folder that happens to live below it is still scannable.
-  return resolved === path.resolve(os.tmpdir());
+  // `tmp.XXXX` as a project. Resolve symlinks before comparing because macOS
+  // reports the same temp directory through both `/var` and `/private/var`.
+  // Only the temp dir itself is barred — a real projects folder below it is
+  // still scannable.
+  return resolved === resolveExistingPath(os.tmpdir());
+}
+
+function resolveExistingPath(dir: string): string {
+  const resolved = path.resolve(dir);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
 }
 
 /**

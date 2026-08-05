@@ -220,6 +220,26 @@ describe("discoverProjects (ggcoder store)", () => {
     expect(found?.sources).toEqual(["folder"]);
   });
 
+  it("does not infer the temp directory through a symlink alias", async () => {
+    const transientRoot = path.join(tmp, "transient-real");
+    const tempAlias = path.join(tmp, "transient-alias");
+    await fs.mkdir(transientRoot, { recursive: true });
+    await fs.symlink(transientRoot, tempAlias, "dir");
+    vi.spyOn(os, "tmpdir").mockReturnValue(tempAlias);
+
+    for (const name of ["one", "two", "three"]) {
+      const projectPath = path.join(transientRoot, name);
+      await fs.mkdir(projectPath, { recursive: true });
+      await writeSession(path.join(state.sessionsDir, encodeCwd(projectPath)), projectPath);
+    }
+    const unrelatedFolder = path.join(transientRoot, "unrelated-temp-folder");
+    await fs.mkdir(unrelatedFolder, { recursive: true });
+
+    const projects = await discoverProjects();
+
+    expect(projects.some((project) => project.path === unrelatedFolder)).toBe(false);
+  });
+
   it("does not infer a root from too few projects, nor scan the home directory", async () => {
     const sparse = path.join(tmp, "sparse");
     for (const name of ["only-one", "only-two"]) {
