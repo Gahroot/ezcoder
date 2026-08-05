@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.34.3
+
+### Patch Changes
+
+- Rework auto-compaction summaries: lead with the next step, cut redundant user-message transcripts and read-file lists, and supersede prior summaries instead of concatenating them
+  - @kenkaiiii/gg-ai@5.34.3
+  - @kenkaiiii/gg-agent@5.34.3
+  - @kenkaiiii/gg-core@5.34.3
+
 ## 5.34.2
 
 ### Patch Changes
