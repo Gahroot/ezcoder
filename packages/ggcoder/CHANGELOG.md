@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.34.2
+
+### Patch Changes
+
+- Prevent macOS temp folders from flooding and blanking the desktop project picker.
+  - @kenkaiiii/gg-ai@5.34.2
+  - @kenkaiiii/gg-agent@5.34.2
+  - @kenkaiiii/gg-core@5.34.2
+
 ## 5.34.1
 
 ### Patch Changes
