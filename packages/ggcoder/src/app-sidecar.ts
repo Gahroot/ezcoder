@@ -2231,6 +2231,13 @@ async function createSession(
       allowedMcpServers: KEN_ALLOWED_MCP_SERVERS,
       transient: true,
       signal: kenAbort.signal,
+      // Ken belongs to THIS window, so its window is where an MCP prompt
+      // should appear. Passing the bridge also keeps every session in the
+      // daemon uniformly interactive, which is what lets them share ONE pooled
+      // MCP connection: the pool separates interactive from headless callers,
+      // because a connection declares its elicitation capability once, at
+      // initialize (see core/mcp/shared-pool.ts).
+      onMcpElicit: elicitations.onElicit,
       // Ken's bursty, spread-out turns (chat) outlast the default 5-min cache
       // TTL regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
@@ -2300,6 +2307,10 @@ async function createSession(
       allowedMcpServers: KEN_ALLOWED_MCP_SERVERS,
       transient: true,
       signal: kenAutoAbort.signal,
+      // Same as Ken chat: this reviewer belongs to a window, so route prompts
+      // there, and keep the daemon's sessions uniformly interactive so they
+      // share one pooled MCP connection.
+      onMcpElicit: elicitations.onElicit,
       // Autopilot review rounds routinely span the injected GG Coder run
       // (often >5 min) regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
