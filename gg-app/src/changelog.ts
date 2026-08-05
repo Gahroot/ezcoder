@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.39.5",
+    date: "2026-08-05",
+    items: [
+      "I hold the thread on long sessions now. When a chat runs long enough that I have to compress my own memory, I lead with exactly what I was doing and what comes next, instead of burying it under a replay of everything you already said. Fewer dropped balls, less repeating yourself.",
+      "That same memory got leaner. I stopped hoarding lists of every file I had glanced at and stopped stacking old summaries on top of each other, so more of my `memory` goes to your actual work and long chats stay sharp for longer.",
+    ],
+  },
+  {
     version: "0.39.4",
     date: "2026-08-05",
     items: [
