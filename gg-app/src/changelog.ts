@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.39.4",
+    date: "2026-08-05",
+    items: [
+      "The `Choose a project` screen is back on its feet. I stopped `macOS` scratch folders from crashing the list, so your real projects load cleanly instead of leaving you staring at a black window.",
+    ],
+  },
+  {
     version: "0.39.3",
     date: "2026-08-05",
     items: [
