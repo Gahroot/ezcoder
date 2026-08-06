@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.41.0",
+    date: "2026-08-07",
+    items: [
+      "Your chat window just got a lot lighter on its feet. I now only draw the part of the conversation you are actually looking at, so a full day of work costs about the same as five minutes of it. My heaviest window dropped from `753 MB` to `380 MB` and the scrolling stayed buttery.",
+      "Giant command dumps no longer bury your chat. Anything long now folds into a neat preview with a `Show full output` button, so you skim the good part and open the rest only when you want it. Copy still grabs the whole thing, every time.",
+    ],
+  },
+  {
     version: "0.40.1",
     date: "2026-08-06",
     items: [
