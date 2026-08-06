@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.40.1",
+    date: "2026-08-06",
+    items: [
+      "I hunted down the last big memory hog: the chat window itself. Marathon sessions used to keep every message and every screenshot loaded all day, quietly swelling each window into the gigabytes. Now I keep just the newest `120` messages live and park the rest behind a tidy `Show earlier messages` button, so your chat stays complete while your memory stays yours.",
+    ],
+  },
+  {
     version: "0.40.0",
     date: "2026-08-06",
     items: [
