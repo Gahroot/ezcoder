@@ -118,6 +118,7 @@ import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
 import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
 import { Markdown, PromptSendProvider } from "./Markdown";
+import { TranscriptList, type TranscriptListHandle } from "./TranscriptList";
 import { FooterSkeleton, TranscriptSkeleton, Skeleton } from "./Skeleton";
 import { useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
@@ -150,11 +151,6 @@ const RUNNING_INPUT_PLACEHOLDERS = [
   "Keep going. Your next message will queue up",
 ] as const;
 const INPUT_PLACEHOLDER_INTERVAL_MS = 12_000;
-// Transcript tail-window: how many newest items stay mounted, and how many
-// more each "Show earlier" click reveals. Bounds webview DOM + decoded-image
-// memory on long sessions without dropping anything from state.
-const TRANSCRIPT_TAIL_ITEMS = 120;
-const TRANSCRIPT_EXPAND_STEP = 300;
 const PLACEHOLDER_SHUFFLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const PLACEHOLDER_SHUFFLE_FRAMES = 18;
 const PLACEHOLDER_SHUFFLE_FRAME_MS = 24;
@@ -365,19 +361,12 @@ function canHandleWindowFileDrop(): boolean {
 
 function App(): React.ReactElement {
   const [items, setItems] = useState<Item[]>([]);
-  // Transcript tail-window: only the newest `transcriptCap` items stay mounted.
-  // Long sessions used to render every markdown row + full-size decoded image
-  // for the whole day, ballooning each window's webview into the GB range.
-  // Older rows unmount (freeing their DOM and WebKit's decoded image bitmaps)
-  // and come back via the "Show earlier" control. All items stay in state, so
-  // nothing is lost — this only bounds what's *rendered*.
-  const [transcriptCap, setTranscriptCap] = useState(TRANSCRIPT_TAIL_ITEMS);
-  const hiddenItemCount = Math.max(0, items.length - transcriptCap);
-  const visibleItems = hiddenItemCount > 0 ? items.slice(-transcriptCap) : items;
-  // A fresh transcript (new session / project switch) starts re-windowed.
-  useEffect(() => {
-    if (items.length === 0) setTranscriptCap(TRANSCRIPT_TAIL_ITEMS);
-  }, [items.length]);
+  // The transcript is virtualized (see TranscriptList): only rows near the
+  // viewport stay mounted, so cost tracks what's on screen instead of how long
+  // the session ran. Virtuoso needs the scroll element as a value, not just a
+  // ref, so keep it in state alongside `scrollRef` — which every existing
+  // stick-to-bottom path still uses unchanged.
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   // Ken Kai (mentor agent): own running flag, token/thinking metrics, streaming
   // bubble, and `ken_*` SSE handling. Lives in its own hook; App just consumes
   // the state for rendering and delegates ken events to `handleKenEvent`.
@@ -758,6 +747,7 @@ function App(): React.ReactElement {
   // provider without re-subscribing the SSE listener on every state change.
   const stateRef = useRef<AgentState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<TranscriptListHandle>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // NOTE: the build-session event machine's private refs (streaming bubble id,
   // rAF buffer, per-run accumulators, sub-agent / compaction group ids) now live
@@ -775,8 +765,20 @@ function App(): React.ReactElement {
   // and grow the content after this fires, so it's also called from each image's
   // onLoad to keep the newest content visible.
   const scrollToBottom = useCallback(() => {
+    // The transcript is virtualized, so the scroller's height is an estimate
+    // until rows materialize — `scrollHeight` alone lands short. Ask the list to
+    // scroll to its last row, and keep the raw scroll as a fallback for the
+    // states that render outside the list (wake screen, status line).
+    transcriptRef.current?.scrollToBottom();
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight });
+  }, []);
+
+  // Feed the same node to both the ref (existing scroll machinery) and state
+  // (Virtuoso's customScrollParent, which needs a value to react to).
+  const attachScrollEl = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    setScrollEl(node);
   }, []);
 
   // Same as scrollToBottom, but a no-op while the user has scrolled up to read.
@@ -2409,7 +2411,7 @@ function App(): React.ReactElement {
         {workspaceMode === "code" && kenPowerBanner && (
           <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
         )}
-        <div className="transcript" ref={scrollRef} onScroll={onTranscriptScroll}>
+        <div className="transcript" ref={attachScrollEl} onScroll={onTranscriptScroll}>
           {!hydrated && items.length === 0 ? (
             <TranscriptSkeleton />
           ) : (
@@ -2422,20 +2424,15 @@ function App(): React.ReactElement {
                     {`\u273b ${status}`}
                   </div>
                 ))}
-              {hiddenItemCount > 0 && (
-                <button
-                  type="button"
-                  className="transcript-earlier"
-                  style={{ color: theme.textDim, borderColor: theme.border }}
-                  onClick={() => setTranscriptCap((cap) => cap + TRANSCRIPT_EXPAND_STEP)}
-                >
-                  {`Show ${hiddenItemCount} earlier ${hiddenItemCount === 1 ? "message" : "messages"}`}
-                </button>
-              )}
               <PromptSendProvider value={sendKenRecommendedPrompt}>
-                {visibleItems.map((it) => (
-                  <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
-                ))}
+                <TranscriptList
+                  ref={transcriptRef}
+                  items={items}
+                  itemKey={(it) => it.id}
+                  scrollParent={scrollEl}
+                  isPinned={() => stickToBottomRef.current}
+                  renderItem={(it) => <TranscriptRow item={it} onImageLoad={maybeScrollToBottom} />}
+                />
               </PromptSendProvider>
             </>
           )}

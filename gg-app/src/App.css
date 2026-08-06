@@ -4014,24 +4014,33 @@ body {
   animation: reveal-up 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* ── Transcript tail-window: "Show N earlier messages" control ──
-   Older rows are unmounted to keep webview memory flat on long sessions;
-   this quiet pill at the top of the transcript brings them back on demand. */
-.transcript-earlier {
+/* ── "Show full output" control ──
+   Long fenced blocks and oversized rows fold to a preview so a single dump
+   cannot balloon the webview; this reveals the rest on demand. Sits under the
+   folded block, matching the code chrome around it. */
+.code-expand {
   display: block;
-  margin: 6px auto 10px;
-  padding: 4px 14px;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 4px 10px;
   font: inherit;
-  font-size: 12px;
+  font-size: 11px;
+  text-align: left;
+  color: var(--text-dim, #8b8b8b);
   background: transparent;
-  border: 1px solid;
-  border-radius: 999px;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
   cursor: pointer;
-  opacity: 0.75;
+  opacity: 0.8;
   transition: opacity 120ms ease;
 }
-.transcript-earlier:hover {
+.code-expand:hover {
   opacity: 1;
+}
+/* Fade the last preview line so a fold reads as "there is more", not "the end". */
+.code-block.folded pre {
+  mask-image: linear-gradient(to bottom, #000 60%, rgba(0, 0, 0, 0.25) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, rgba(0, 0, 0, 0.25) 100%);
 }
 
 /* ── Wake screen: Matrix-style empty state (the app addressing the user) ──
