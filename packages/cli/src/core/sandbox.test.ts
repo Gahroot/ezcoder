@@ -33,7 +33,7 @@ describe("buildSandboxSettings", () => {
     expect(settings.filesystem.denyRead).toEqual(
       expect.arrayContaining([
         path.join(os.homedir(), ".ssh"),
-        path.join(os.homedir(), ".gg", "auth.json"),
+        path.join(os.homedir(), ".ezcoder", "auth.json"),
       ]),
     );
     expect(settings.network).toMatchObject({
@@ -56,7 +56,7 @@ describe("buildSandboxSettings", () => {
       "darwin",
     );
 
-    // Multi-root sessions and ~/.gg must not silently lose bash writes.
+    // Multi-root sessions and ~/.ezcoder must not silently lose bash writes.
     expect(settings.filesystem.allowWrite).toEqual(
       expect.arrayContaining([path.resolve(cwd), path.resolve(extraRoot), getAppPaths().agentDir]),
     );

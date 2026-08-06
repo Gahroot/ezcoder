@@ -8,8 +8,8 @@ import type { MCPServerConfig } from "./types.js";
  * Process-wide pool of MCP connections that are safe for every session to
  * share, so one stdio child serves the whole daemon instead of one per session.
  *
- * The daemon hosts many `AgentSession`s at once — one per window, plus Ken chat
- * and Ken autopilot within each window — and each used to spawn its own child
+ * The daemon hosts many `AgentSession`s at once — one per window, plus Nolan chat
+ * and Nolan autopilot within each window — and each used to spawn its own child
  * for every configured stdio server. For a stateless proxy such as
  * `kencode-search` that is N identical processes doing identical work: measured
  * at 7 live children, ~43 MB each, purely duplicated.

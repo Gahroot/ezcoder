@@ -128,7 +128,7 @@ describe("ezcoder-app sidecar session listings", () => {
     expect(chatSessions.at(-1)).toMatchObject({ id: "chat-1", chatAgent: "general" });
   });
 
-  it("surfaces a Claude Code session for the project and opens it as a resumable GG Coder session", async () => {
+  it("surfaces a Claude Code session for the project and opens it as a resumable EZ Coder session", async () => {
     const home = path.join(tmp, "home");
     const transcript = await writeClaudeTranscript(
       home,
@@ -145,7 +145,7 @@ describe("ezcoder-app sidecar session listings", () => {
     expect(foreign?.preview).toBe("Add a retry to the fetch helper.");
     expect(foreign?.messageCount).toBe(2);
 
-    // 2. Clicking it (import-then-open) yields a real, loadable GG Coder session.
+    // 2. Clicking it (import-then-open) yields a real, loadable EZ Coder session.
     const sessionManager = new SessionManager(coderSessionsDir);
     const imported = await importForeignSession({
       filePath: foreign!.path,

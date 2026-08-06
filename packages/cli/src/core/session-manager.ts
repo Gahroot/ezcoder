@@ -229,7 +229,7 @@ export interface AppMarkerPayload extends RecordedPosition {
 /**
  * Run journal — a matched pair of custom entries bracketing every provider run.
  *
- * Same not-on-the-DAG treatment as Ken turns (`parentId: null`): the model never
+ * Same not-on-the-DAG treatment as Nolan turns (`parentId: null`): the model never
  * sees them, and they can't race the message branch's leaf pointer. A
  * `run_started` with no matching `run_finished` is the on-disk signature of a
  * run that died mid-flight — the host surfaces it on load instead of silently
@@ -1445,15 +1445,15 @@ export class SessionManager {
     return out;
   }
 
-  /** Read all persisted Ken turns in file order. Returns them regardless of
-   *  branch (Ken turns are not chained into the DAG), validated + normalized. */
-  getKenTurns(entries: SessionEntry[], leafId?: string | null): KenTurnPayload[] {
-    return this.mapCustomEntriesInFileOrder<KenTurnPayload>(
+  /** Read all persisted Nolan turns in file order. Returns them regardless of
+   *  branch (Nolan turns are not chained into the DAG), validated + normalized. */
+  getNolanTurns(entries: SessionEntry[], leafId?: string | null): NolanTurnPayload[] {
+    return this.mapCustomEntriesInFileOrder<NolanTurnPayload>(
       entries,
       leafId,
       (entry, recordedAfterMessageCount) => {
-        if (entry.kind !== KEN_TURN_CUSTOM_KIND) return [];
-        const p = entry.data as Partial<KenTurnPayload> | undefined;
+        if (entry.kind !== NOLAN_TURN_CUSTOM_KIND) return [];
+        const p = entry.data as Partial<NolanTurnPayload> | undefined;
         if (p?.version === 1 && typeof p.question === "string" && typeof p.reply === "string") {
           return [
             {
@@ -1471,7 +1471,7 @@ export class SessionManager {
   }
 
   /** Read all persisted app transcript markers in file order, validated +
-   *  normalized (same not-on-the-DAG treatment as Ken turns). */
+   *  normalized (same not-on-the-DAG treatment as Nolan turns). */
   getAppMarkers(entries: SessionEntry[], leafId?: string | null): AppMarkerPayload[] {
     return this.mapCustomEntriesInFileOrder<AppMarkerPayload>(
       entries,
@@ -1517,7 +1517,7 @@ export class SessionManager {
   }
 
   /** Read all persisted autopilot markers in file order, validated + normalized
-   *  (same not-on-the-DAG treatment as Ken turns). */
+   *  (same not-on-the-DAG treatment as Nolan turns). */
   getAutopilotMarkers(entries: SessionEntry[], leafId?: string | null): AutopilotMarkerPayload[] {
     return this.mapCustomEntriesInFileOrder<AutopilotMarkerPayload>(
       entries,

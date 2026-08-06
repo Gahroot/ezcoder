@@ -31,7 +31,7 @@ const cwd = process.argv[2];
 const otherCwd = process.argv[3];
 if (!cwd) throw new Error("usage: acp-stdio-agent.mjs <cwd> [otherCwd]");
 
-const manager = new SessionManager(path.join(os.homedir(), ".gg", "sessions"));
+const manager = new SessionManager(path.join(os.homedir(), ".ezcoder", "sessions"));
 let entrySequence = 0;
 
 async function appendMessage(sessionPath, message) {
@@ -198,7 +198,7 @@ class ScriptedSession {
   }
 
   // Deliberately the REAL loader against the REAL file the fixture wrote, so
-  // the replay assertions are about ggcoder's own transcript format.
+  // the replay assertions are about ezcoder's own transcript format.
   async loadSession(sessionPath) {
     const loaded = await loadSession(sessionPath);
     this.#messages = loaded.messages;

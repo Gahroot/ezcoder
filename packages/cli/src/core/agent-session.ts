@@ -201,7 +201,7 @@ export interface AgentSessionOptions {
   /**
    * Handler for a server-initiated MCP `elicitation/create` — a request for user
    * input in the middle of a tool call. Hosts that can render a form (the
-   * gg-app sidecar) supply this; without it the session declares no elicitation
+   * ezcoder-app sidecar) supply this; without it the session declares no elicitation
    * capability and servers fall back to their no-input behavior.
    */
   onMcpElicit?: MCPElicitHandler;
@@ -2108,7 +2108,7 @@ export class AgentSession {
     this.checkpointGeneration = loaded.header.generation ?? 0;
     this.currentLeafId = loaded.header.leafId;
     this.setSessionPath(loaded.path);
-    this.kenTurns = this.sessionManager.getKenTurns(loaded.entries, loaded.header.leafId);
+    this.nolanTurns = this.sessionManager.getNolanTurns(loaded.entries, loaded.header.leafId);
     this.autopilotMarkers = this.sessionManager.getAutopilotMarkers(
       loaded.entries,
       loaded.header.leafId,
@@ -2162,7 +2162,7 @@ export class AgentSession {
     }
     this.lastPersistedIndex = this.messages.length;
     await this.rePersistTurnMetrics();
-    await this.rePersistKenTurns();
+    await this.rePersistNolanTurns();
     await this.rePersistAutopilotMarkers();
     await this.rePersistAppMarkers();
     await this.persistAppMarker("compaction", {
@@ -2818,7 +2818,7 @@ export class AgentSession {
   }
 
   /**
-   * Rebase every transcript anchor (Ken turns, autopilot verdicts, app markers)
+   * Rebase every transcript anchor (Nolan turns, autopilot verdicts, app markers)
    * onto a freshly compacted message list. Called right after `this.messages`
    * is replaced and before the markers are re-persisted into the continuation
    * file, so the new file carries positions that match its own transcript.
@@ -2829,7 +2829,7 @@ export class AgentSession {
       ...payload,
       afterMessageCount: remapAnchorForCompaction(payload.afterMessageCount, remap),
     });
-    this.kenTurns = this.kenTurns.map(move);
+    this.nolanTurns = this.nolanTurns.map(move);
     this.autopilotMarkers = this.autopilotMarkers.map(move);
     this.appMarkers = this.appMarkers.map(move);
   }
@@ -3157,7 +3157,7 @@ export class AgentSession {
     // Restore Nolan's advisory turns (custom entries, not on the message branch) so
     // they reappear in the transcript and survive into the continuation file.
     // The leaf lets marker replay retain its independent file-order position.
-    this.kenTurns = this.sessionManager.getKenTurns(loaded.entries, loaded.header.leafId);
+    this.nolanTurns = this.sessionManager.getNolanTurns(loaded.entries, loaded.header.leafId);
     // Restore autopilot verdict markers the same way (not on the message DAG).
     this.autopilotMarkers = this.sessionManager.getAutopilotMarkers(
       loaded.entries,
@@ -3349,7 +3349,7 @@ export class AgentSession {
   }
 
   /**
-   * Import a Claude Code / Codex / Cursor transcript as a resumable GG Coder
+   * Import a Claude Code / Codex / Cursor transcript as a resumable EZ Coder
    * session in this session's sessions directory. Never throws — a bad path or
    * an unrecognized format comes back as `{ ok: false, error }` so both the CLI
    * and the desktop app can show it verbatim.

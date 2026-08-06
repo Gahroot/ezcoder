@@ -47,7 +47,7 @@ const PROJECT: DiscoveredProject = {
 const NATIVE_SESSION: RecentSession = {
   id: "gg-1",
   path: "/sessions/gg-1.jsonl",
-  preview: "Native GG Coder session",
+  preview: "Native EZ Coder session",
   lastActiveDisplay: "2m ago",
   messageCount: 4,
 };
@@ -82,7 +82,7 @@ const OTHER_PROJECT: DiscoveredProject = {
   name: "scratch",
   path: "/private/tmp",
   lastActiveDisplay: "1d ago",
-  sources: ["ggcoder"],
+  sources: ["ezcoder"],
 };
 
 /** Render the picker on the project list (no deep link). */
@@ -132,7 +132,7 @@ describe("ProjectPicker session list", () => {
 
     const foreignRow = screen.getByText(FOREIGN_SESSION.preview).closest("button");
     expect(foreignRow?.textContent).toContain("Claude Code");
-    expect(foreignRow?.getAttribute("title")).toContain("opens as a GG Coder session");
+    expect(foreignRow?.getAttribute("title")).toContain("opens as a EZ Coder session");
 
     const nativeRow = screen.getByText(NATIVE_SESSION.preview).closest("button");
     expect(nativeRow?.textContent).not.toContain("Claude Code");

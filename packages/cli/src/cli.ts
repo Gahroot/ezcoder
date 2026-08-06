@@ -1274,7 +1274,7 @@ async function runServe(): Promise<void> {
 // ── ACP (Agent Client Protocol over stdio) ───────────────
 
 /**
- * Serve ggcoder as an ACP agent on stdio, for editors and remote clients that
+ * Serve ezcoder as an ACP agent on stdio, for editors and remote clients that
  * speak the protocol (Zed, pew2, anything from the ACP registry).
  *
  * The client spawns this process and owns its lifetime, so there is no banner,

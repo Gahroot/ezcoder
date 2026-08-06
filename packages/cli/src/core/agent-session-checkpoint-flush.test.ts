@@ -2,15 +2,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
-import type * as GgAgentModule from "@kenkaiiii/gg-agent";
+import type { Message } from "@prestyj/ai";
+import type * as GgAgentModule from "@prestyj/agent";
 import type * as McpModule from "./mcp/index.js";
 import { useFakeHome } from "../test-support/fake-home.js";
 
 const agentLoopMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@kenkaiiii/gg-agent", async () => {
-  const actual = await vi.importActual<typeof GgAgentModule>("@kenkaiiii/gg-agent");
+vi.mock("@prestyj/agent", async () => {
+  const actual = await vi.importActual<typeof GgAgentModule>("@prestyj/agent");
   return { ...actual, agentLoop: agentLoopMock };
 });
 
@@ -37,7 +37,7 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
 }
 
 async function sessionFiles(): Promise<string[]> {
-  const root = path.join(tmpHome, ".gg", "sessions");
+  const root = path.join(tmpHome, ".ezcoder", "sessions");
   const found: string[] = [];
   for (const dir of await fs.readdir(root).catch(() => [])) {
     for (const file of await fs.readdir(path.join(root, dir))) {
@@ -63,14 +63,14 @@ beforeEach(async () => {
   tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-checkpoint-project-"));
   restoreHome = useFakeHome(tmpHome);
   agentLoopMock.mockReset();
-  await writeJson(path.join(tmpHome, ".gg", "auth.json"), {
+  await writeJson(path.join(tmpHome, ".ezcoder", "auth.json"), {
     anthropic: {
       accessToken: "test-access",
       refreshToken: "test-refresh",
       expiresAt: Date.now() + 3_600_000,
     },
   });
-  await writeJson(path.join(tmpHome, ".gg", "settings.json"), { autoCompact: false });
+  await writeJson(path.join(tmpHome, ".ezcoder", "settings.json"), { autoCompact: false });
 });
 
 afterEach(async () => {
@@ -225,7 +225,7 @@ describe("step-boundary persistence", () => {
 
     await session.prompt("do the thing");
 
-    // A subagent transcript must never reach `ggcoder continue`.
+    // A subagent transcript must never reach `ezcoder continue`.
     expect(await sessionFiles()).toEqual([]);
     await session.dispose();
   }, 15_000);

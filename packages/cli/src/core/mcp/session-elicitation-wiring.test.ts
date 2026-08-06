@@ -9,7 +9,7 @@ import type { MCPServerConfig } from "./types.js";
 /**
  * Guards the wiring that makes one MCP process serve a whole window.
  *
- * A daemon window runs THREE sessions — the coding agent, Ken chat, and Ken
+ * A daemon window runs THREE sessions — the coding agent, Nolan chat, and Nolan
  * autopilot — and every one of them connects to the same MCP servers. They only
  * collapse onto a single child process if they agree on one thing: whether they
  * can prompt the user.
@@ -20,7 +20,7 @@ import type { MCPServerConfig } from "./types.js";
  * headless one the same connection without lying to one of them. It keys them
  * apart instead (see shared-pool.ts `keyFor`).
  *
- * The regression this file exists to catch: Ken's two factories originally
+ * The regression this file exists to catch: Nolan's two factories originally
  * omitted `onMcpElicit`, which made them headless, which split the pool, which
  * produced a SECOND kencode-search process per daemon — measured, before the
  * fix, as 2 processes for 6 sessions instead of 1. Nothing else failed, which is
@@ -66,7 +66,7 @@ describe("app-sidecar wires every window session for elicitation", () => {
     const source = await fs.readFile(APP_SIDECAR, "utf8");
     const blocks = agentSessionOptionBlocks(source);
 
-    // Coding agent + Ken chat + Ken autopilot. If this count changes, a new
+    // Coding agent + Nolan chat + Nolan autopilot. If this count changes, a new
     // session kind was added and it needs the same wiring decision made
     // deliberately rather than inherited by accident.
     expect(blocks).toHaveLength(3);
@@ -83,10 +83,10 @@ describe("app-sidecar wires every window session for elicitation", () => {
    * Named factories specifically, so the assertion above cannot be satisfied by
    * three blocks that happen to be the wrong three.
    */
-  it("wires Ken chat and Ken autopilot specifically, not just the coding agent", async () => {
+  it("wires Nolan chat and Nolan autopilot specifically, not just the coding agent", async () => {
     const source = await fs.readFile(APP_SIDECAR, "utf8");
 
-    for (const factory of ["ensureKenSession", "ensureKenAutoSession"]) {
+    for (const factory of ["ensureNolanSession", "ensureNolanAutoSession"]) {
       const start = source.indexOf(`async function ${factory}(`);
       expect(start, `${factory} should exist`).toBeGreaterThan(-1);
       const [options] = agentSessionOptionBlocks(source.slice(start));
@@ -123,31 +123,31 @@ describe("pool keying for a window's three sessions", () => {
 
   const handler: MCPElicitHandler = async () => ({ action: "cancel" });
 
-  /** The shipped arrangement: coding + Ken chat + Ken autopilot, all windowed. */
+  /** The shipped arrangement: coding + Nolan chat + Nolan autopilot, all windowed. */
   it("gives all three a single shared connection when each can prompt", async () => {
     const pool = new SharedMcpPool();
     const spawns = { count: 0 };
 
     const coding = await pool.acquire(config, () => connector(spawns), { onElicit: handler });
-    const kenChat = await pool.acquire(config, () => connector(spawns), { onElicit: handler });
-    const kenAuto = await pool.acquire(config, () => connector(spawns), { onElicit: handler });
+    const nolanChat = await pool.acquire(config, () => connector(spawns), { onElicit: handler });
+    const nolanAuto = await pool.acquire(config, () => connector(spawns), { onElicit: handler });
 
     expect(spawns.count).toBe(1);
     expect(pool.size).toBe(1);
     expect(pool.refCount(config, { onElicit: handler })).toBe(3);
 
     await coding.release();
-    await kenChat.release();
-    await kenAuto.release();
+    await nolanChat.release();
+    await nolanAuto.release();
     expect(pool.size).toBe(0);
   });
 
   /**
-   * The regression, reproduced: drop the handler from Ken's sessions and the
+   * The regression, reproduced: drop the handler from Nolan's sessions and the
    * pool splits — one connection for the coding agent, a second for the two
-   * headless Ken sessions. Two processes where there should be one.
+   * headless Nolan sessions. Two processes where there should be one.
    */
-  it("splits into a second connection when Ken's sessions cannot prompt", async () => {
+  it("splits into a second connection when Nolan's sessions cannot prompt", async () => {
     const pool = new SharedMcpPool();
     const spawns = { count: 0 };
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { AgentTool, ToolContext } from "@kenkaiiii/gg-agent";
+import type { AgentTool, ToolContext } from "@prestyj/agent";
 import { DeferredToolCatalog } from "../core/mcp/deferred-catalog.js";
 import { createToolSearchTool, type CachedToolResolution } from "./tool-search.js";
 

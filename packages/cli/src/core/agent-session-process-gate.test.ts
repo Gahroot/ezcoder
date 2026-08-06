@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import { AgentSession } from "./agent-session.js";
 import { ProcessManager } from "./process-manager.js";
 

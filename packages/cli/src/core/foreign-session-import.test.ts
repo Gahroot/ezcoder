@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AssistantMessage, Message } from "@kenkaiiii/gg-ai";
+import type { AssistantMessage, Message } from "@prestyj/ai";
 import {
   detectForeignFormat,
   importForeignSession,

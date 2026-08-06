@@ -16,7 +16,7 @@ import {
 } from "./shared-pool.js";
 import type { MCPElicitHandler } from "./client.js";
 import type { MCPServerConfig } from "./types.js";
-import type { ToolContext } from "@kenkaiiii/gg-agent";
+import type { ToolContext } from "@prestyj/agent";
 
 function toolContext(): ToolContext {
   return { signal: new AbortController().signal, toolCallId: "call-1" };

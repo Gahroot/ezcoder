@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElicitResult } from "@modelcontextprotocol/client";
-import type { AgentTool, ToolContext } from "@kenkaiiii/gg-agent";
+import type { AgentTool, ToolContext } from "@prestyj/agent";
 import { MCPClientManager, type MCPElicitHandler } from "./client.js";
 import { createElicitationBridge, type ElicitationPrompt } from "./elicitation-bridge.js";
 import { McpCatalogCache } from "./catalog-cache.js";
@@ -83,12 +83,12 @@ describe("MCP elicitation round-trip", () => {
         "count",
         "confirm",
       ]);
-      return { action: "accept", content: { name: "Ken", count: 3, confirm: true } };
+      return { action: "accept", content: { name: "Nolan", count: 3, confirm: true } };
     }).connectAll([config()]);
 
     expect(JSON.parse(await callTool(tools, "ask"))).toEqual({
       action: "accept",
-      content: { name: "Ken", count: 3, confirm: true },
+      content: { name: "Nolan", count: 3, confirm: true },
     });
     expect(seen).toEqual({ server: "elicit-fixture", message: "The server needs some details" });
   }, 30_000);

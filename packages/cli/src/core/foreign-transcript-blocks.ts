@@ -1,4 +1,4 @@
-import type { ContentPart, TextContent, ToolCall } from "@kenkaiiii/gg-ai";
+import type { ContentPart, TextContent, ToolCall } from "@prestyj/ai";
 
 /**
  * Primitives shared by every foreign-transcript parser (Claude Code, Codex,

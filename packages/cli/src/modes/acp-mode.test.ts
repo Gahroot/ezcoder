@@ -43,7 +43,7 @@ interface StoredSession {
  *
  * Real files rather than a stub: `session/list` and `session/load` exist to
  * surface sessions the desktop wrote, so anything short of the real
- * `~/.gg/sessions` layout would prove nothing about that.
+ * `~/.ezcoder/sessions` layout would prove nothing about that.
  */
 let tmpHome: string;
 let tmpProject: string;
@@ -257,7 +257,7 @@ describe("ACP mode over stdio", () => {
     expect(initialize.result).toMatchObject({
       protocolVersion: ACP_PROTOCOL_VERSION,
       authMethods: [],
-      agentInfo: { name: "ggcoder", title: "GG Coder", version: "0.0.0-test" },
+      agentInfo: { name: "ezcoder", title: "EZ Coder", version: "0.0.0-test" },
     });
     // A client only offers resume and a session list when these are advertised,
     // and `{}` — not `true` — is how ACP spells "supported" for these two.
@@ -522,7 +522,7 @@ describe("ACP mode over stdio", () => {
     const thinking = initial.find((option) => option.id === "thinking")!;
 
     // Categories are what let a client place these correctly without knowing
-    // anything about ggcoder.
+    // anything about ezcoder.
     expect(model).toMatchObject({ category: "model", type: "select" });
     expect(thinking).toMatchObject({ category: "thought_level", type: "select" });
     expect(model.currentValue).toBe("claude-opus-5");
@@ -621,7 +621,7 @@ describe("ACP mode over stdio", () => {
 
   it("announces available commands after session/new, merging built-ins with project files", async () => {
     // A project command, and one whose name collides with a built-in template.
-    const commandsDir = path.join(tmpProject, ".gg", "commands");
+    const commandsDir = path.join(tmpProject, ".ezcoder", "commands");
     await fs.mkdir(commandsDir, { recursive: true });
     await fs.writeFile(
       path.join(commandsDir, "commit.md"),

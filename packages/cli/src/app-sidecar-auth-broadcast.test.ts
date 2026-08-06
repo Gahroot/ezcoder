@@ -148,11 +148,11 @@ async function waitFor(predicate: () => boolean, timeoutMs = 15_000): Promise<vo
 beforeEach(async () => {
   tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-models-home-"));
   tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-models-project-"));
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
   // No auth.json: the daemon is boot-tolerant when logged out, which is exactly
   // the state a user is in right before they connect their first provider.
   await fs.writeFile(
-    path.join(tmpHome, ".gg", "settings.json"),
+    path.join(tmpHome, ".ezcoder", "settings.json"),
     JSON.stringify({ autoCompact: false }),
   );
   await startDaemon();
@@ -195,7 +195,7 @@ describe("connecting a provider", () => {
     });
     expect(connect.status).toBe(200);
 
-    // Both windows must be told, because ~/.gg/auth.json is shared. Without the
+    // Both windows must be told, because ~/.ezcoder/auth.json is shared. Without the
     // fan-out, window B's picker stayed stale until the session was reopened.
     await waitFor(() => streamA.types.includes("models_change"));
     await waitFor(() => streamB.types.includes("models_change"));

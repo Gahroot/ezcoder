@@ -68,7 +68,7 @@ export async function listSidecarSessions(
 }
 
 /**
- * GG Coder's own sessions for this project plus any Claude Code / Codex
+ * EZ Coder's own sessions for this project plus any Claude Code / Codex
  * transcripts recorded against the same cwd.
  *
  * The project picker already surfaces those stores, so a project can appear

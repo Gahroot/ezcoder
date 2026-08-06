@@ -32,7 +32,7 @@ const themeColor = (key) => {
 };
 const TEXT = themeColor("text");
 const TEXT_MUTED = themeColor("textMuted");
-const out = resolve(process.argv[2] ?? join(here, "..", "..", ".gg", "screenshots", "session-list.html"));
+const out = resolve(process.argv[2] ?? join(here, "..", "..", ".ezcoder", "screenshots", "session-list.html"));
 
 /** Mirrors the SOURCE_STYLES map in src/Badge.tsx. */
 const SOURCE = {
@@ -60,7 +60,7 @@ const rows = sessions
       ? `<span class="picker-source-tag" style="color:${meta.color}">${meta.label}</span>`
       : "";
     return `
-      <button class="picker-item"${meta ? ` title="From ${meta.label} — opens as a GG Coder session"` : ""}>
+      <button class="picker-item"${meta ? ` title="From ${meta.label} — opens as a EZ Coder session"` : ""}>
         <span class="picker-row">
           <span class="picker-name picker-preview" style="color:${TEXT}">${s.preview}</span>
           <span class="badge">${s.when}</span>

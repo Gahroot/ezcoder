@@ -659,7 +659,7 @@ export interface RecentSession {
   lastActiveDisplay: string;
   messageCount: number;
   /**
-   * Which store this row came from. Absent means `ggcoder` — a session that is
+   * Which store this row came from. Absent means `ezcoder` — a session that is
    * already resumable as-is. A foreign value means `path` points at that tool's
    * own transcript, which the host imports before opening.
    */
@@ -704,7 +704,7 @@ export async function listRecentSessions(
  *
  * The project picker has always surfaced these stores (`discoverProjects`), so a
  * project can appear *because* it has Claude Code history — and then show an
- * empty session list, because that only read GG Coder's own directory. These
+ * empty session list, because that only read EZ Coder's own directory. These
  * rows close that gap: each one points at the foreign transcript, tagged with
  * its `source`, and the host imports it on click.
  *

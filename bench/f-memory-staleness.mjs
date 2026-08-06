@@ -20,7 +20,7 @@ import { pathToFileURL } from "node:url";
 import { measuredTurn, table, fmt } from "./lib.mjs";
 
 // zod is not a bench dependency; borrow the one gg-ai resolves (as bench A does).
-const req = createRequire(new URL("../packages/gg-ai/package.json", import.meta.url));
+const req = createRequire(new URL("../packages/ai/package.json", import.meta.url));
 const { z } = await import(pathToFileURL(req.resolve("zod")).href);
 
 const TRIALS = 5;

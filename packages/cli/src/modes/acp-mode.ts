@@ -1,11 +1,11 @@
 /**
- * ACP mode: expose GG Coder as an Agent Client Protocol agent over stdio.
+ * ACP mode: expose EZ Coder as an Agent Client Protocol agent over stdio.
  *
  * This is the integration surface for ACP clients (Zed, pew2, any editor that
  * speaks the protocol). It is deliberately a sibling of `rpc-mode.ts` — same
  * shape, same `AgentSession`, same NDJSON-on-stdio transport — but the frames
- * are the standard protocol instead of ggcoder's bespoke one, so a client
- * written against the spec works with no ggcoder-specific code.
+ * are the standard protocol instead of ezcoder's bespoke one, so a client
+ * written against the spec works with no ezcoder-specific code.
  *
  * Spec: https://agentclientprotocol.com/protocol/overview
  *
@@ -24,9 +24,9 @@ import readline from "node:readline";
 import path from "node:path";
 import { readFileSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
-import { isAbortError } from "@kenkaiiii/gg-agent";
-import { getAllModels, getMaxThinkingLevel, getModel } from "@kenkaiiii/gg-core";
+import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
+import { isAbortError } from "@prestyj/agent";
+import { getAllModels, getMaxThinkingLevel, getModel } from "@prestyj/core";
 import { AgentSession } from "../core/agent-session.js";
 import type { EventBus } from "../core/event-bus.js";
 import { PROMPT_COMMANDS } from "../core/prompt-commands.js";
@@ -163,7 +163,7 @@ export interface AcpModeOptions {
 // ── Tool mapping ───────────────────────────────────────────
 
 /**
- * ggcoder tool name → ACP `ToolKind`.
+ * ezcoder tool name → ACP `ToolKind`.
  *
  * Purely cosmetic on the client (icon + progress treatment), so an unmapped
  * tool falls back to `other` rather than failing. Keep in step with
@@ -336,7 +336,7 @@ type StopReason = "end_turn" | "max_tokens" | "max_turn_requests" | "refusal" | 
 /**
  * Why the current prompt turn ended.
  *
- * ACP has a closed set; ggcoder's `turn_end` carries whatever the provider
+ * ACP has a closed set; ezcoder's `turn_end` carries whatever the provider
  * said. Only the reasons that map cleanly are translated — everything else is
  * a normal completion, which is what the client renders anyway.
  */
@@ -405,8 +405,8 @@ function thinkingOptionsFor(modelId: string): ConfigSelectOption[] {
 /**
  * The selectors a client renders for a session, with their live values.
  *
- * Model and thinking come from ggcoder's own registry rather than anything
- * pew2- or Zed-specific, which is what lets a phone show GG Coder's real model
+ * Model and thinking come from ezcoder's own registry rather than anything
+ * pew2- or Zed-specific, which is what lets a phone show EZ Coder's real model
  * list without either side hard-coding the other's.
  */
 function configOptionsFor(session: AcpAgentSession): ConfigOption[] {
@@ -480,7 +480,7 @@ function hintFromUsage(name: string, usage: string): { hint: string } | undefine
 /**
  * Every slash command this session would actually honour, in the precedence
  * `AgentSession.resolveSlashInput` uses: built-in prompt templates, then
- * `.gg/commands/*.md` from the project, then registry commands.
+ * `.ezcoder/commands/*.md` from the project, then registry commands.
  *
  * That order is not cosmetic. `resolveSlashInput` looks for a template body
  * FIRST and only falls through to the registry when there is none, so a project
@@ -858,7 +858,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
    * timer, not a microtask, so it cannot overtake it): the payload is addressed
    * by sessionId, and a client that has not yet seen its own session/new result
    * has nowhere to put it. The agent is the only party that can know its
-   * built-ins, so a client scanning `.gg/commands` on its own would miss them.
+   * built-ins, so a client scanning `.ezcoder/commands` on its own would miss them.
    */
   function notifyAvailableCommands(target: AcpAgentSession): void {
     const forSession = sessionId;
@@ -917,7 +917,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
   }
 
   /**
-   * Bridge ggcoder's event bus onto `session/update` notifications.
+   * Bridge ezcoder's event bus onto `session/update` notifications.
    *
    * Every handler is synchronous and writes immediately, which is what keeps
    * updates ordered ahead of the `session/prompt` response — a client that sees
@@ -1061,7 +1061,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
   /**
    * Plan mode. Supplying these callbacks is what registers the
    * enter_plan/exit_plan tools at all — without them the mode exists but the
-   * model cannot move between states. GG Coder runs without approvals, so a
+   * model cannot move between states. EZ Coder runs without approvals, so a
    * submitted plan is auto-approved, the [DONE:n] contract is baked in so
    * progress markers work as on the desktop, and the client is told about every
    * mode change.
@@ -1122,7 +1122,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
         sessionCapabilities: { list: {}, resume: {}, close: {}, delete: {} },
       },
       authMethods: [],
-      agentInfo: { name: "ggcoder", title: "GG Coder", version: options.version },
+      agentInfo: { name: "ezcoder", title: "EZ Coder", version: options.version },
     };
   }
 
@@ -1162,8 +1162,8 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
   /**
    * Stored sessions, newest first.
    *
-   * This is the answer to "see everything that was on GG Coder": the phone asks
-   * the agent, and the agent reads the same `~/.gg/sessions` files the desktop
+   * This is the answer to "see everything that was on EZ Coder": the phone asks
+   * the agent, and the agent reads the same `~/.ezcoder/sessions` files the desktop
    * browses — no separate index to fall out of step.
    *
    * ACP makes `cwd` nullable here on purpose. Omitted means EVERY project, not

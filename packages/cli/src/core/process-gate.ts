@@ -1,4 +1,4 @@
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import type { BackgroundProcess } from "./process-manager.js";
 
 /**

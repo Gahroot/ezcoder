@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import { selectMessagesInBudget } from "./compactor.js";
 import { estimateConversationTokens } from "./token-estimator.js";
 import { findLatestHumanQuery, selectQueryAwareContext } from "./query-aware-selector.js";

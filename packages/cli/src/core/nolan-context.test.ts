@@ -172,7 +172,7 @@ describe("buildNolanDigest", () => {
       },
     ];
 
-    const digest = buildKenAutopilotContext({ ...base, messages });
+    const digest = buildNolanAutopilotContext({ ...base, messages });
     const evidence = digest
       .split("## Harness-classified verification evidence")[1]
       .split("## They just asked you")[0];

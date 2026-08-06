@@ -77,7 +77,7 @@ interface SandboxSettings {
   };
 }
 
-const SANDBOX_CONFIG_DIR = path.join(os.homedir(), ".gg", "sandbox-configs");
+const SANDBOX_CONFIG_DIR = path.join(os.homedir(), ".ezcoder", "sandbox-configs");
 const PROBE_TIMEOUT_MS = 20_000;
 let warnedUnsupported = false;
 
@@ -89,7 +89,7 @@ function sensitiveReadPaths(home: string): string[] {
     path.join(home, ".kube"),
     path.join(home, ".config", "gcloud"),
     path.join(home, ".azure"),
-    path.join(home, ".gg", "auth.json"),
+    path.join(home, ".ezcoder", "auth.json"),
   ];
 }
 
@@ -188,7 +188,7 @@ export function buildSandboxSettings(
     filesystem: {
       denyRead: sensitiveReadPaths(home),
       // SRT adds its platform-required temporary paths; these are the only
-      // product-owned write roots supplied by GG Coder.
+      // product-owned write roots supplied by EZ Coder.
       allowWrite: platform === "win32" ? writeRoots : [...writeRoots, "/dev/null"],
       // `.git/hooks` is a mandatory sandbox protection with no opt-out, which
       // is worth keeping: it stops a command installing a hook that later runs

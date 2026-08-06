@@ -777,7 +777,7 @@ describe("models_change", () => {
 
   it("refreshes the picker when a provider is connected", async () => {
     // Connecting a provider unlocks its models; the sidecar fans models_change
-    // out to every window because ~/.gg/auth.json is shared, not per-session.
+    // out to every window because ~/.ezcoder/auth.json is shared, not per-session.
     const unlocked = [
       { id: "claude-opus-5", name: "Claude Opus 5", provider: "anthropic" },
       { id: "gpt-6", name: "GPT-6", provider: "openai" },

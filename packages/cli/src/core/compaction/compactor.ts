@@ -196,7 +196,7 @@ export interface CompactionResult {
   /** Retrieval/compression diagnostics for the summarizer input. */
   contextSelection?: CompactionContextSelection;
   /** How the collapse shifted message positions, so callers can move transcript
-   *  anchors (Ken turns, autopilot verdicts, app markers) onto the rewritten
+   *  anchors (Nolan turns, autopilot verdicts, app markers) onto the rewritten
    *  message list instead of leaving them pointing at pre-compaction indices.
    *  Only set when `compacted` is true. */
   anchorRemap?: CompactionAnchorRemap;

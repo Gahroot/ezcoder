@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import {
   classifyVerificationCommand,
   collectVerificationEvidence,
@@ -9,7 +9,7 @@ describe("classifyVerificationCommand", () => {
   it.each([
     "tsc --noEmit",
     "pnpm exec tsc --noEmit --pretty false",
-    "pnpm --filter @kenkaiiii/gg-ai check",
+    "pnpm --filter @prestyj/ai check",
     "pnpm -w typecheck",
     "vitest run src/foo.test.ts",
     "pnpm test -- --runInBand",

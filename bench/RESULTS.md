@@ -83,7 +83,7 @@ Live (12 turns/arm):
 
 ## E — Model-switch prompt-cache cost (27 July 2026)  → NO measurable cache win
 
-`bench/e-model-switch-cache.mjs`. Anthropic `claude-sonnet-5`, real GG Coder system
+`bench/e-model-switch-cache.mjs`. Anthropic `claude-sonnet-5`, real EZ Coder system
 prompt (~4.7k tok cached prefix), 3 turns per arm with a model switch between turn 2
 and turn 3. Arms differ only in WHERE the model-dependent async-orchestration block
 lives: inside the `cache_control` block (`prefix-mutation`, the old composition) vs
@@ -177,7 +177,7 @@ earlier bench conclusion that relied on counting tool calls should be re-checked
 
 `bench/g-journal-live.mjs`. Real `AgentSession`, real credentials
 (`anthropic/claude-sonnet-5`), scratch project: 5 real turns → real compaction →
-inspect `.gg/memory.md` → **new session** → ask a question only the journal can answer.
+inspect `.ezcoder/memory.md` → **new session** → ask a question only the journal can answer.
 
 | check | result |
 |---|---|
@@ -236,11 +236,11 @@ ends. Cost of the cleaner ending: 25 chars (~7 tokens) per truncated entry.
 
 ## I — Why project memory was REMOVED (27 July 2026)
 
-The durable project journal (`.gg/memory.md`, benches F/G/H) shipped in `ggcoder@5.26.0`
+The durable project journal (`.ezcoder/memory.md`, benches F/G/H) shipped in `ezcoder@5.26.0`
 / app `v0.31.0` and was **removed the same day**. Recording why, so it is not rebuilt.
 
 **What it did:** on every compaction, wrote past-tense entries ("Was asked to X",
-"Edited Y", plus the summary's What Was Done / Errors and Fixes) into `.gg/memory.md`,
+"Edited Y", plus the summary's What Was Done / Errors and Fixes) into `.ezcoder/memory.md`,
 and auto-injected the recent ones into every later session's prompt.
 
 **Why that is the wrong design for a *coding* agent:**

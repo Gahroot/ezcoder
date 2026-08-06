@@ -320,8 +320,8 @@ export interface DiscoveredProject {
   sources: string[];
 }
 
-/** Store a session row came from; absent means a native GG Coder session. */
-export type SessionSource = "ggcoder" | "claude-code" | "codex";
+/** Store a session row came from; absent means a native EZ Coder session. */
+export type SessionSource = "ezcoder" | "claude-code" | "codex";
 
 export interface RecentSession {
   id: string;
@@ -331,7 +331,7 @@ export interface RecentSession {
   messageCount: number;
   chatAgent?: ChatAgentId;
   /**
-   * Absent (or `ggcoder`) means this resumes directly. A foreign value means
+   * Absent (or `ezcoder`) means this resumes directly. A foreign value means
    * `path` is that tool's own transcript, imported before it opens.
    */
   source?: SessionSource;
@@ -975,7 +975,7 @@ export type ImportTranscriptResult =
   | { ok: false; error: string };
 
 /**
- * Import a Claude Code / Codex / Cursor transcript as a resumable GG Coder
+ * Import a Claude Code / Codex / Cursor transcript as a resumable EZ Coder
  * session. Failures come back as `{ ok: false, error }` rather than throwing,
  * so the caller can render the reason directly.
  */

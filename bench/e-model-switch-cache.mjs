@@ -13,15 +13,15 @@
 //
 // Metric: cache-read tokens on the turn AFTER the switch. Run from repo root:
 //   node bench/e-model-switch-cache.mjs
-import { AuthStorage } from "../packages/gg-core/dist/index.js";
-import { stream } from "../packages/gg-ai/dist/index.js";
+import { AuthStorage } from "../packages/core/dist/index.js";
+import { stream } from "../packages/ai/dist/index.js";
 import { fmt, pct, table, freshCacheKey } from "./lib.mjs";
 
 const MODEL = "claude-sonnet-5";
 const TURNS_BEFORE_SWITCH = 2;
 
-const { buildSystemPrompt } = await import("../packages/ggcoder/dist/system-prompt.js");
-const { applyAsyncSubagentPolicy } = await import("../packages/ggcoder/dist/core/subagent-policy.js");
+const { buildSystemPrompt } = await import("../packages/cli/dist/system-prompt.js");
+const { applyAsyncSubagentPolicy } = await import("../packages/cli/dist/core/subagent-policy.js");
 
 const base = await buildSystemPrompt(process.cwd());
 

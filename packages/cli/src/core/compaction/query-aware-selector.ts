@@ -1,4 +1,4 @@
-import type { ContentPart, Message, ToolResult } from "@kenkaiiii/gg-ai";
+import type { ContentPart, Message, ToolResult } from "@prestyj/ai";
 import { estimateMessageTokens } from "./token-estimator.js";
 
 export interface RankedContextMessage {

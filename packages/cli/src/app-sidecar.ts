@@ -869,7 +869,7 @@ async function main(): Promise<void> {
   /**
    * Fan one frame out to every window.
    *
-   * For state that is genuinely global rather than per-session — `~/.gg/auth.json`
+   * For state that is genuinely global rather than per-session — `~/.ezcoder/auth.json`
    * is shared by all windows, so connecting a provider in one must refresh the
    * model picker in all of them. Mirrors the memory/jiwa/progress fan-outs.
    */
@@ -3471,7 +3471,7 @@ async function createSession(
                   scope: "interrupted_run",
                   headline: "A run was interrupted",
                   message:
-                    "GG Coder stopped mid-run, so this turn is incomplete. Any files its tools already changed are still on disk.",
+                    "EZ Coder stopped mid-run, so this turn is incomplete. Any files its tools already changed are still on disk.",
                   guidance:
                     "Review the working tree, then re-send the request if you still want it.",
                 },
@@ -3553,7 +3553,7 @@ async function createSession(
               // The typed invocation persisted alongside the prompt is
               // authoritative. Reversing the expanded body only works while the
               // template is byte-identical, and templates drift (edited
-              // `.gg/commands/*.md`, reworded built-ins, app-vs-CLI phrasing) —
+              // `.ezcoder/commands/*.md`, reworded built-ins, app-vs-CLI phrasing) —
               // after which the resumed session dumped the raw multi-KB body
               // instead of the `/name` chip. Older sessions have no hint, so the
               // body match stays as the fallback.
@@ -3565,7 +3565,7 @@ async function createSession(
                       commandCandidates,
                     )
                   : null;
-              // Autopilot injected this turn — live showed only the Ken-tinted
+              // Autopilot injected this turn — live showed only the Nolan-tinted
               // marker for it, never a user bubble. Emitting one here would print
               // the injected instruction a second time, unstyled.
               //
@@ -3590,7 +3590,7 @@ async function createSession(
                   ...(compacted && compactionCounts.length > 0
                     ? { compactionCounts: compactionCounts.pop() }
                     : {}),
-                  ...(hint?.kenSent === true ? { kenSent: true } : {}),
+                  ...(hint?.nolanSent === true ? { nolanSent: true } : {}),
                   ...(Array.isArray(hint?.enhancements) ? { enhancements: hint.enhancements } : {}),
                 });
                 // Live showed the video-capability warning right after the bubble.
@@ -3733,12 +3733,12 @@ async function createSession(
           if (raw === null) return;
           let text: string;
           let attachments: AppAttachment[];
-          let meta: { kenSent?: boolean; enhancements?: unknown[] } | undefined;
+          let meta: { nolanSent?: boolean; enhancements?: unknown[] } | undefined;
           try {
             const body = JSON.parse(raw) as {
               text?: string;
               attachments?: AppAttachment[];
-              meta?: { kenSent?: boolean; enhancements?: unknown[] };
+              meta?: { nolanSent?: boolean; enhancements?: unknown[] };
             };
             text = body.text ?? "";
             attachments = Array.isArray(body.attachments) ? body.attachments : [];
@@ -3766,9 +3766,9 @@ async function createSession(
           if (running || runClaim.active || autopilotActive) {
             // Queue prompts as mid-run steering (mirrors the CLI). Also queue while
             // an autopilot cycle is active but between injected runs (build idle,
-            // Ken reviewing) so the message never starts a run that collides with
+            // Nolan reviewing) so the message never starts a run that collides with
             // an injected one on the same session. Attachments are persisted to
-            // .gg/uploads first so the queued media rides the same native-block
+            // .ezcoder/uploads first so the queued media rides the same native-block
             // path as a non-queued attachment prompt when it drains.
             const prepared =
               attachments.length > 0 ? await prepareAttachments(cwd, attachments) : [];
@@ -3791,13 +3791,13 @@ async function createSession(
             isWorkflowCommandText(text, await loadWorkflowCommandSpecs());
           // Does this input actually expand into a persisted user message? Asked
           // of the session itself, because only it knows whether the command
-          // resolves here (name/alias casing, custom `.gg/commands`, non-coder
+          // resolves here (name/alias casing, custom `.ezcoder/commands`, non-coder
           // agents that don't expand at all). A looser guess would anchor the
           // hint at +1 with no message to land on — decorating an unrelated
           // later bubble with the wrong `/name`.
           const expandsToTemplate =
             attachments.length === 0 && (await session.willExpandPromptTemplate(text));
-          // Webview display hint for this prompt's user bubble (kenSent shimmer
+          // Webview display hint for this prompt's user bubble (nolanSent shimmer
           // label / enhancer highlight segments / the `/name` a command was typed
           // as). Anchored +1 so it attaches to the user message the prompt below
           // is about to push. Queued prompts skip this (their position in the run
@@ -3811,14 +3811,14 @@ async function createSession(
           // the command chip.
           if (
             expandsToTemplate ||
-            (meta && (meta.kenSent === true || Array.isArray(meta.enhancements)))
+            (meta && (meta.nolanSent === true || Array.isArray(meta.enhancements)))
           ) {
             void session
               .persistAppMarker(
                 "user_hint",
                 {
                   ...(expandsToTemplate ? { command: text.trim() } : {}),
-                  ...(meta?.kenSent === true ? { kenSent: true } : {}),
+                  ...(meta?.nolanSent === true ? { nolanSent: true } : {}),
                   ...(Array.isArray(meta?.enhancements) ? { enhancements: meta.enhancements } : {}),
                 },
                 1,
@@ -3830,32 +3830,32 @@ async function createSession(
           autopilotCancelled = false;
           // A typed message while a plan modal/review is pending (reject,
           // feedback, anything) supersedes the pending plan — the bump also
-          // invalidates any in-flight Ken plan review.
+          // invalidates any in-flight Nolan plan review.
           clearPendingPlan();
           const assistantsBefore = countAssistantMessages(session.getMessages());
           const messagesBefore = session.getMessages().length;
           await runAgent(text, async () => {
             if (attachments.length > 0) {
-              // Persist each attachment under .gg/uploads so files are inspectable
+              // Persist each attachment under .ezcoder/uploads so files are inspectable
               // by the agent's tools, then prompt with the media as native blocks.
               const prepared = await prepareAttachments(cwd, attachments);
               await session.promptWithAttachments(text, prepared);
             } else {
               // Pass the raw text straight through. AgentSession.prompt() is the
               // single source of truth for slash-command expansion (built-in +
-              // `.gg/commands/*.md` custom), so the agent gets the right body
+              // `.ezcoder/commands/*.md` custom), so the agent gets the right body
               // while the webview keeps showing the short `/name`.
               await session.prompt(text);
             }
           });
-          // After the user's run settles, kick off Ken's auto-review loop — but
+          // After the user's run settles, kick off Nolan's auto-review loop — but
           // only when the turn is actually reviewable (shouldStartAutopilotCycle):
           // workflow commands (/compare, /bullet-proof, …) end with reports or
           // A/B/C choices reserved for the USER; registry commands (/help) and
           // failed runs add no assistant work to judge; a turn that ended in plan
-          // mode has a pending Accept/Reject modal Ken must not preempt. This is
+          // mode has a pending Accept/Reject modal Nolan must not preempt. This is
           // the ONLY entry point into the cycle besides the stranded-queue drain —
-          // it drives any follow-up GG Coder runs itself, so the shared runAgent
+          // it drives any follow-up EZ Coder runs itself, so the shared runAgent
           // finally never recurses.
           const decision = shouldStartAutopilotCycle({
             enabled: autopilot,
@@ -3869,7 +3869,7 @@ async function createSession(
               countAssistantMessages(session.getMessages()) - assistantsBefore,
             // Skip the review API call outright for turns that only started a
             // background process (dev server/watcher), ran a read-only lookup, or
-            // committed/pushed — Ken's autopilot contract already IGNOREs these,
+            // committed/pushed — Nolan's autopilot contract already IGNOREs these,
             // so there's no reason to pay for that verdict.
             mechanicalOnly: isMechanicalOnlyTurn(
               extractTurnToolCalls(session.getMessages(), messagesBefore),
@@ -3881,7 +3881,7 @@ async function createSession(
           } else if (autopilot) {
             log("INFO", "app-sidecar", "autopilot skipped", { reason: decision.reason });
           }
-          // A prompt sent while Ken was reviewing (build idle) queued but had no
+          // A prompt sent while Nolan was reviewing (build idle) queued but had no
           // run to steer into — run it now as a fresh turn so it never strands.
           await runStrandedQueue();
         })
@@ -4690,7 +4690,7 @@ async function createSession(
           json(res, 409, { error: "a login is already in progress" });
           return;
         }
-        // A login writes the shared ~/.gg/auth.json, so two windows racing the
+        // A login writes the shared ~/.ezcoder/auth.json, so two windows racing the
         // same provider means two browser tabs and two token exchanges whose
         // writes clobber each other. The per-session flag above cannot see
         // that — guard the provider daemon-wide as well.

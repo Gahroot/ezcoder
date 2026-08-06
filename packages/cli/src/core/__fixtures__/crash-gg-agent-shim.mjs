@@ -1,11 +1,11 @@
-// Stands in for `@kenkaiiii/gg-agent` inside the crash-recovery fixture.
+// Stands in for `@prestyj/agent` inside the crash-recovery fixture.
 //
 // Everything is re-exported from the real package except `agentLoop`, which
 // replays a deterministic two-step run and then hard-kills the process in the
 // middle of the second step's tool batch — the shape of a real crash, where
 // tools have already mutated the filesystem but the loop never returns.
 
-export * from "@kenkaiiii/gg-agent";
+export * from "@prestyj/agent";
 
 const timing = {
   startedAt: Date.now(),

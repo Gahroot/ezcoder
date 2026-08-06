@@ -1,4 +1,4 @@
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider } from "@prestyj/ai";
 
 export const DEFAULT_COMPACTION_THRESHOLD = 0.85;
 

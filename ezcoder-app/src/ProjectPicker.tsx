@@ -22,7 +22,7 @@ import { RadioButton } from "./RadioButton";
 import { NewProjectModal } from "./NewProjectModal";
 
 /**
- * Does this row point at another tool's transcript rather than a GG Coder
+ * Does this row point at another tool's transcript rather than a EZ Coder
  * session? Those need an import before they can be opened.
  */
 function isForeignSession(session: RecentSession): boolean {
@@ -181,7 +181,7 @@ export function ProjectPicker({
 
   /**
    * Open a session row. A native row resumes directly; a Claude Code / Codex row
-   * is imported into a real GG Coder session first, then opened by its new path.
+   * is imported into a real EZ Coder session first, then opened by its new path.
    * The import is silent — from the user's side this is just "open that
    * conversation", which is why there is no separate import affordance.
    */
@@ -373,7 +373,7 @@ export function ProjectPicker({
                   onClick={() => chooseSession(selected.path, s)}
                   title={
                     isForeignSession(s)
-                      ? `From ${sourceStyle(s.source ?? "").label} — opens as a GG Coder session`
+                      ? `From ${sourceStyle(s.source ?? "").label} — opens as a EZ Coder session`
                       : undefined
                   }
                 >

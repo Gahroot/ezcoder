@@ -61,7 +61,7 @@ describe("McpElicitModal", () => {
     const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
 
-    fireEvent.change(screen.getByLabelText("Your name *"), { target: { value: "Ken" } });
+    fireEvent.change(screen.getByLabelText("Your name *"), { target: { value: "Nolan" } });
     fireEvent.change(screen.getByLabelText("How many"), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText("Region"), { target: { value: "eu" } });
     fireEvent.click(screen.getByRole("checkbox"));
@@ -76,7 +76,7 @@ describe("McpElicitModal", () => {
     // `count` must arrive as a number — the SDK validates the result against
     // the same schema and would reject the string "3".
     expect(mcpElicitMock).toHaveBeenCalledWith("elicit-1", "accept", {
-      name: "Ken",
+      name: "Nolan",
       count: 3,
       region: "eu",
       confirm: true,

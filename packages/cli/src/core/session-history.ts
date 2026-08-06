@@ -139,7 +139,7 @@ export async function replayMessagesInOrder(
  * conversation no longer exists); anchors in the retained tail shift by the
  * difference. Without this, re-persisted markers keep indices from a much
  * longer transcript — they then replay far too late, or past the end, which is
- * what bunches old Ken bubbles and error rows at the bottom on resume.
+ * what bunches old Nolan bubbles and error rows at the bottom on resume.
  */
 export function remapAnchorForCompaction(anchor: number, remap: CompactionAnchorRemap): number {
   const moved =
@@ -301,7 +301,7 @@ export function normalizeNolanTurnsForHistory(
     if (seen.has(key)) continue;
     seen.add(key);
     // File order first, EOF clamp only as a last resort — clamping is exactly
-    // what stacked resumed Ken exchanges at the bottom of the transcript.
+    // what stacked resumed Nolan exchanges at the bottom of the transcript.
     const anchor = resolveAnchor(turn, maxAfterMessageCount) ?? maxAfterMessageCount;
     normalized.push(
       anchor === turn.afterMessageCount ? turn : { ...turn, afterMessageCount: anchor },
@@ -337,9 +337,9 @@ export interface RestoredUserRow {
   videoWarning: boolean;
   /** True when autopilot injected this turn (the message carried the
    *  situational-awareness preamble). No human typed it, and the live
-   *  transcript showed NO user bubble for it — only the Ken-tinted autopilot
+   *  transcript showed NO user bubble for it — only the Nolan-tinted autopilot
    *  marker. Resume must skip the row, or the injected body renders twice:
-   *  once styled as Ken's marker, once raw as a user message. */
+   *  once styled as Nolan's marker, once raw as a user message. */
   autopilotInjected: boolean;
   /** True when this "user" message is a pushed background-work status update
    *  (a spawned child finished, a background process logged or exited) rather
@@ -447,7 +447,7 @@ const COMMAND_ARGS_SEP = "\n\n## User Instructions\n\n";
  * against the known templates.
  *
  * Best-effort only: it works while a template is byte-identical to the one that
- * produced the message, and templates drift (edited `.gg/commands/*.md`,
+ * produced the message, and templates drift (edited `.ezcoder/commands/*.md`,
  * reworded built-ins, app-vs-CLI phrasing). Prefer the invocation recorded at
  * send time — see {@link resolveRestoredCommand}. Returns null when the text
  * isn't a known command body (an ordinary user message).

@@ -11,7 +11,7 @@
  * injections.
  */
 import { describe, expect, it } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import { restoreUserRow } from "./session-history.js";
 import { findUserSessionPrompt, getUserSessionPrompt } from "./session-preview.js";
 import { sessionToMarkdown } from "./session-export.js";

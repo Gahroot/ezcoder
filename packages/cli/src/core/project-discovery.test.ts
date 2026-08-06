@@ -184,7 +184,7 @@ describe("discoverProjects (ezcoder store)", () => {
 
     const rows = projects.filter((p) => p.path === projectPath);
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.sources).toEqual(["ggcoder", "folder"]);
+    expect(rows[0]!.sources).toEqual(["ezcoder", "folder"]);
   });
 
   it("keeps session recency when a folder mtime is newer", async () => {

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AgentTool, ToolContext } from "@kenkaiiii/gg-agent";
+import type { AgentTool, ToolContext } from "@prestyj/agent";
 import { MCPClientManager } from "./client.js";
 import { McpCatalogCache } from "./catalog-cache.js";
 import type { MCPServerConfig } from "./types.js";

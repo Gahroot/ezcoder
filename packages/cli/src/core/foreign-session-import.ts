@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ContentPart, Message, Provider, ToolResult } from "@kenkaiiii/gg-ai";
+import type { ContentPart, Message, Provider, ToolResult } from "@prestyj/ai";
 import {
   APP_MARKER_CUSTOM_KIND,
   type AppMarkerPayload,
@@ -24,7 +24,7 @@ import {
 
 /**
  * Parse a foreign coding-agent transcript (Claude Code, Codex, Cursor) into
- * GG Coder messages so the thread can be resumed here.
+ * EZ Coder messages so the thread can be resumed here.
  *
  * `project-discovery.ts` already walks `~/.claude/projects` and
  * `~/.codex/sessions`, but only to recover a cwd. This module reads the message
@@ -604,7 +604,7 @@ export interface ImportForeignSessionOptions {
 }
 
 /**
- * Read a foreign transcript and write it out as a real GG Coder session, so it
+ * Read a foreign transcript and write it out as a real EZ Coder session, so it
  * resumes through the existing loader with no reader changes: a v2
  * `SessionHeader` from `SessionManager.create()`, one `MessageEntry` per
  * message chained through `parentId`, and a final leaf pointer.

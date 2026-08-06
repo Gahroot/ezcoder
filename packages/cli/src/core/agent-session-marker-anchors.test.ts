@@ -9,7 +9,7 @@ import type * as McpModule from "./mcp/index.js";
 import {
   normalizeAppMarkersForHistory,
   normalizeAutopilotMarkersForHistory,
-  normalizeKenTurnsForHistory,
+  normalizeNolanTurnsForHistory,
 } from "./session-history.js";
 import { useFakeHome } from "../test-support/fake-home.js";
 
@@ -184,7 +184,7 @@ describe("AgentSession transcript marker anchors", () => {
   }, 15_000);
 
   // The reported bug: an autopilot session that gets compacted mid-conversation
-  // shows every earlier Ken verdict / error row jammed at the BOTTOM (or missing)
+  // shows every earlier Nolan verdict / error row jammed at the BOTTOM (or missing)
   // when reopened, even though several turns happened after them. Compaction
   // re-persisted the markers into the continuation file still carrying anchors
   // from the far longer pre-compaction transcript.
@@ -204,13 +204,13 @@ describe("AgentSession transcript marker anchors", () => {
     });
 
     // Six turns (12 non-system messages), with markers recorded early on —
-    // exactly the shape of an autopilot run: Ken reviews, an error surfaces,
+    // exactly the shape of an autopilot run: Nolan reviews, an error surfaces,
     // and the conversation keeps going well past both.
     await session.prompt("turn 1");
     await session.prompt("turn 2");
     await session.persistAppMarker("error", { headline: "Rate limited" });
     await session.persistAutopilotMarker("done");
-    await session.persistKenTurn("is this right?", "looks good");
+    await session.persistNolanTurn("is this right?", "looks good");
     await session.prompt("turn 3");
     await session.prompt("turn 4");
     await session.prompt("turn 5");
@@ -277,18 +277,18 @@ describe("AgentSession transcript marker anchors", () => {
       resumed.getAutopilotMarkers(),
       restoredCount,
     );
-    const kenTurns = normalizeKenTurnsForHistory(resumed.getKenTurns(), restoredCount);
+    const nolanTurns = normalizeNolanTurnsForHistory(resumed.getNolanTurns(), restoredCount);
 
     // All of them survive the rewrite...
     expect(errors).toHaveLength(1);
     expect(verdicts).toHaveLength(2);
-    expect(kenTurns).toHaveLength(1);
+    expect(nolanTurns).toHaveLength(1);
 
     // ...the ones whose surrounding conversation was summarized away land just
     // after the summary block (the earliest honest position)...
     expect(errors[0]!.afterMessageCount).toBe(2);
     expect(verdicts[0]!.afterMessageCount).toBe(2);
-    expect(kenTurns[0]!.afterMessageCount).toBe(2);
+    expect(nolanTurns[0]!.afterMessageCount).toBe(2);
 
     // ...and the one in the retained tail merely shifts with it: message 10 of
     // the old transcript is message 4 of the new one. Unrebased it stayed at
@@ -301,7 +301,7 @@ describe("AgentSession transcript marker anchors", () => {
       errors[0]!.afterMessageCount,
       verdicts[0]!.afterMessageCount,
       verdicts[1]!.afterMessageCount,
-      kenTurns[0]!.afterMessageCount,
+      nolanTurns[0]!.afterMessageCount,
     ]) {
       expect(anchor).toBeLessThan(restoredCount - 3);
     }
@@ -316,9 +316,9 @@ describe("AgentSession transcript marker anchors", () => {
       SessionManager,
       APP_MARKER_CUSTOM_KIND,
       AUTOPILOT_MARKER_CUSTOM_KIND,
-      KEN_TURN_CUSTOM_KIND,
+      NOLAN_TURN_CUSTOM_KIND,
     } = await import("./session-manager.js");
-    const sessionsDir = path.join(tmpHome, ".gg", "sessions");
+    const sessionsDir = path.join(tmpHome, ".ezcoder", "sessions");
     const manager = new SessionManager(sessionsDir);
     const created = await manager.create(tmpProject, "anthropic", "claude-test");
 
@@ -366,7 +366,7 @@ describe("AgentSession transcript marker anchors", () => {
     );
     await manager.appendEntry(
       created.path,
-      custom("k1", KEN_TURN_CUSTOM_KIND, {
+      custom("k1", NOLAN_TURN_CUSTOM_KIND, {
         version: 1,
         question: "why did that fail?",
         reply: "transient rate limit",
@@ -388,8 +388,8 @@ describe("AgentSession transcript marker anchors", () => {
       manager.getAppMarkers(loaded.entries, loaded.header.leafId),
       restoredCount,
     );
-    const kenTurns = normalizeKenTurnsForHistory(
-      manager.getKenTurns(loaded.entries, loaded.header.leafId),
+    const nolanTurns = normalizeNolanTurnsForHistory(
+      manager.getNolanTurns(loaded.entries, loaded.header.leafId),
       restoredCount,
     );
 
@@ -398,7 +398,7 @@ describe("AgentSession transcript marker anchors", () => {
     // stacked at the bottom.
     expect(verdicts.map((m) => m.afterMessageCount)).toEqual([2]);
     expect(errors.map((m) => m.afterMessageCount)).toEqual([2]);
-    expect(kenTurns.map((t) => t.afterMessageCount)).toEqual([2]);
+    expect(nolanTurns.map((t) => t.afterMessageCount)).toEqual([2]);
     expect(restoredCount - 2).toBe(4);
   }, 15_000);
 });

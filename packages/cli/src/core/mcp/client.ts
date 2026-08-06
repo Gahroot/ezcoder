@@ -166,10 +166,10 @@ export class MCPClientManager {
    */
   private createClient(serverName: string, negotiate: NegotiationOptions): Client {
     const handler = this.onElicit;
-    if (!handler) return new Client({ name: "ggcoder", version: "1.0.0" }, negotiate);
+    if (!handler) return new Client({ name: "ezcoder", version: "1.0.0" }, negotiate);
 
     const client = new Client(
-      { name: "ggcoder", version: "1.0.0" },
+      { name: "ezcoder", version: "1.0.0" },
       { ...negotiate, capabilities: { elicitation: { form: {} } } },
     );
     client.setRequestHandler("elicitation/create", async (request: ElicitRequest) => {

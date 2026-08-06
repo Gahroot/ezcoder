@@ -541,7 +541,7 @@ describe("AgentSession mid-turn compaction", () => {
   });
 
   it("clears authoritative usage after compaction and does not recompact unchanged context", async () => {
-    await writeJson(path.join(tmpHome, ".gg", "settings.json"), {
+    await writeJson(path.join(tmpHome, ".ezcoder", "settings.json"), {
       autoCompact: true,
       compactThreshold: 0.85,
     });

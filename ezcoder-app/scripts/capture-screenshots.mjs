@@ -3,13 +3,13 @@
  *
  * Boots the Vite dev server's webview in headless Chromium with a FAKE Tauri IPC
  * layer (`window.__TAURI_INTERNALS__`), so every screenshot is rendered from
- * synthetic demo data defined in this file. Nothing from `~/.gg` — no real
+ * synthetic demo data defined in this file. Nothing from `~/.ezcoder` — no real
  * sessions, project paths, chat content, tokens, or account names — can ever
  * reach a committed image.
  *
  * Usage:
- *   pnpm --filter gg-app dev            # terminal 1 (http://localhost:1420)
- *   node gg-app/scripts/capture-screenshots.mjs
+ *   pnpm --filter ezcoder-app dev            # terminal 1 (http://localhost:1420)
+ *   node ezcoder-app/scripts/capture-screenshots.mjs
  *
  * Output: docs/screenshots/*.png (referenced by the root README).
  */
@@ -63,9 +63,9 @@ const state = {
   gitHubRepoUrl: "https://github.com/demo/aurora-store",
   supportsVideo: false,
   autopilot: false,
-  kenProvider: DEMO.provider,
-  kenModel: DEMO.model,
-  kenModelOverride: false,
+  nolanProvider: DEMO.provider,
+  nolanModel: DEMO.model,
+  nolanModelOverride: false,
   tasks: [],
 };
 
@@ -213,7 +213,7 @@ const responses = {
     projects: DEMO.projects.map((p, i) => ({
       ...p,
       lastActiveDisplay: ["2m ago", "1h ago", "yesterday", "3d ago"][i],
-      sources: [["gg-coder"], ["gg-coder", "claude-code"], ["codex"], ["gg-coder"]][i],
+      sources: [["ezcoder"], ["ezcoder", "claude-code"], ["codex"], ["ezcoder"]][i],
     })),
   },
   agent_sessions: {
@@ -353,9 +353,9 @@ async function playDemoConversation(page) {
 }
 
 /**
- * Autopilot: Ken silently reviews each finished turn and, when he isn't happy,
- * sends GG Coder back in for another pass. Replayed here as a full loop — build,
- * Ken bounces it, rebuild, Ken signs off — which is the whole point of the
+ * Autopilot: Nolan silently reviews each finished turn and, when he isn't happy,
+ * sends EZ Coder back in for another pass. Replayed here as a full loop — build,
+ * Nolan bounces it, rebuild, Nolan signs off — which is the whole point of the
  * feature and impossible to show in a static UI shot.
  */
 async function playAutopilotLoop(page) {
@@ -387,7 +387,7 @@ async function playAutopilotLoop(page) {
   await page.keyboard.press("Enter");
   await page.waitForTimeout(250);
 
-  // Round 1: GG Coder builds it.
+  // Round 1: EZ Coder builds it.
   await emit("run_start", {});
   await emit("thinking_delta", { text: "…" });
   await runTools([
@@ -400,7 +400,7 @@ async function playAutopilotLoop(page) {
   ]);
   await turn();
 
-  // Ken reviews it and isn't happy.
+  // Nolan reviews it and isn't happy.
   await emit("autopilot_review_start", {});
   await page.waitForTimeout(900);
   await emit("autopilot_prompted", {
@@ -408,7 +408,7 @@ async function playAutopilotLoop(page) {
   });
   await page.waitForTimeout(500);
 
-  // Round 2: GG Coder fixes what Ken flagged.
+  // Round 2: EZ Coder fixes what Nolan flagged.
   await emit("run_start", {});
   await emit("thinking_delta", { text: "…" });
   await runTools([
@@ -419,7 +419,7 @@ async function playAutopilotLoop(page) {
   await stream(["Good catch. Moved the bucket into Redis so it's shared across workers."]);
   await turn();
 
-  // Ken signs off.
+  // Nolan signs off.
   await emit("autopilot_review_start", {});
   await page.waitForTimeout(800);
   await emit("autopilot_done", { copySeed: "clean" });
@@ -636,8 +636,8 @@ async function captureWindowGrid(browser) {
         provider: quad.provider,
         model: quad.model,
         gitBranch: quad.branch,
-        kenProvider: quad.provider,
-        kenModel: quad.model,
+        nolanProvider: quad.provider,
+        nolanModel: quad.model,
       },
       agent_models: {
         models: [
@@ -648,7 +648,7 @@ async function captureWindowGrid(browser) {
       agent_sessions: { sessions: [] },
       agent_projects: {
         projects: [
-          { name: quad.project, path: quad.cwd, lastActiveDisplay: "now", sources: ["gg-coder"] },
+          { name: quad.project, path: quad.cwd, lastActiveDisplay: "now", sources: ["ezcoder"] },
         ],
       },
     };

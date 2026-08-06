@@ -13,11 +13,11 @@ import { pathToFileURL } from "node:url";
 
 const SHIM = pathToFileURL(path.join(import.meta.dirname, "crash-gg-agent-shim.mjs")).href;
 
-// Redirect the session's `@kenkaiiii/gg-agent` import to the shim. The shim
+// Redirect the session's `@prestyj/agent` import to the shim. The shim
 // itself must reach the real package, hence the parent check.
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === "@kenkaiiii/gg-agent" && context.parentURL !== SHIM) {
+    if (specifier === "@prestyj/agent" && context.parentURL !== SHIM) {
       return { url: SHIM, shortCircuit: true };
     }
     return nextResolve(specifier, context);

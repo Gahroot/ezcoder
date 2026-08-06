@@ -36,7 +36,7 @@ import type { ParsedSchedule } from "./scheduleCommand";
  *
  * Schedules live in memory for the life of the window. Closing the window (or
  * quitting the app) drops them — there is no persistence and no background
- * service, so a schedule only fires while GG Coder is open. The footer pill
+ * service, so a schedule only fires while EZ Coder is open. The footer pill
  * states this so the guarantee is visible where the schedules are.
  */
 

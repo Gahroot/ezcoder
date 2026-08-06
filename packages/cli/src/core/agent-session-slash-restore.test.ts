@@ -2,16 +2,16 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
-import type * as GgAgentModule from "@kenkaiiii/gg-agent";
+import type { Message } from "@prestyj/ai";
+import type * as GgAgentModule from "@prestyj/agent";
 import type * as McpModule from "./mcp/index.js";
 import { restoreUserRow, resolveRestoredCommand } from "./session-history.js";
 import { useFakeHome } from "../test-support/fake-home.js";
 
 const agentLoopMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@kenkaiiii/gg-agent", async () => {
-  const actual = await vi.importActual<typeof GgAgentModule>("@kenkaiiii/gg-agent");
+vi.mock("@prestyj/agent", async () => {
+  const actual = await vi.importActual<typeof GgAgentModule>("@prestyj/agent");
   return { ...actual, agentLoop: agentLoopMock };
 });
 
@@ -37,9 +37,9 @@ beforeEach(async () => {
     messages.push({ role: "assistant", content: "done" });
     yield { type: "agent_done" };
   });
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tmpHome, ".gg", "auth.json"),
+    path.join(tmpHome, ".ezcoder", "auth.json"),
     JSON.stringify({
       anthropic: {
         accessToken: "test-access",
@@ -59,7 +59,7 @@ afterEach(async () => {
 });
 
 async function writeCustomCommand(name: string, body: string): Promise<void> {
-  const dir = path.join(tmpProject, ".gg", "commands");
+  const dir = path.join(tmpProject, ".ezcoder", "commands");
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, `${name}.md`), body, "utf-8");
 }

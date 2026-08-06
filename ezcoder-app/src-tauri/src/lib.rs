@@ -1263,7 +1263,7 @@ async fn agent_kill_task(
 }
 
 /// Proxy: import a Claude Code / Codex / Cursor transcript into a resumable
-/// GG Coder session. Returns the importer's typed result (`{ ok, ... }`),
+/// EZ Coder session. Returns the importer's typed result (`{ ok, ... }`),
 /// including the failure case, so the webview can show the reason verbatim.
 #[tauri::command]
 async fn agent_import_transcript(
@@ -3773,7 +3773,7 @@ fn init_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         // Template tinting is a macOS concept; on Windows it must stay off or the
         // colour tile would be flattened.
         .icon_as_template(cfg!(target_os = "macos"))
-        .tooltip("GG Coder")
+        .tooltip("EZ Coder")
         .menu(&build_tray_menu(app, &TrayStatus::default())?)
         // The icon has no action other than its menu, so a click that did nothing
         // would read as broken. Right-click opens it too (tray-icon defaults

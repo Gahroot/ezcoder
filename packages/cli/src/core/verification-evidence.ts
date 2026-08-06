@@ -1,4 +1,4 @@
-import type { ContentPart, Message, ToolResult } from "@kenkaiiii/gg-ai";
+import type { ContentPart, Message, ToolResult } from "@prestyj/ai";
 import { hasUnsafeShellSyntax, splitShellCommandSegments } from "../tools/read-only-bash.js";
 
 export interface VerificationCommandClassification {

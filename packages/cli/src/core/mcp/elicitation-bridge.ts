@@ -26,7 +26,7 @@ export interface ElicitationBridge {
 
 /**
  * Bridge between MCP servers asking for input and a host that renders a form
- * asynchronously (the gg-app sidecar: broadcast over SSE, answer over HTTP).
+ * asynchronously (the ezcoder-app sidecar: broadcast over SSE, answer over HTTP).
  *
  * Requests are keyed by id rather than held in a single slot, because two
  * servers can be mid-tool-call at once.

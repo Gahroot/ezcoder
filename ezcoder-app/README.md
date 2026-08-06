@@ -1,9 +1,9 @@
-# GG Coder, the desktop app
+# EZ Coder, the desktop app
 
-The Tauri 2 desktop app. React 19 + Vite webview over the full GG Coder agent. This is the
+The Tauri 2 desktop app. React 19 + Vite webview over the full EZ Coder agent. This is the
 thing we ship. The CLI is the same engine without the face.
 
-**Download it:** [latest release](https://github.com/KenKaiii/gg-framework/releases/latest)
+**Download it:** [latest release](https://github.com/Gahroot/ezcoder/releases/latest)
 (macOS Apple Silicon `.dmg`, Windows `.exe`). Feature tour is in the
 [root README](../README.md).
 
@@ -11,17 +11,17 @@ thing we ship. The CLI is the same engine without the face.
 
 ```bash
 pnpm install                              # from the repo root
-pnpm --filter @kenkaiiii/ggcoder build    # build the sidecar first
-pnpm --filter gg-app tauri dev
+pnpm --filter @prestyj/cli build    # build the sidecar first
+pnpm --filter ezcoder-app tauri dev
 ```
 
 Webview edits hot-reload through Vite. **Restart the app** after Rust or sidecar changes,
-and rebuild `@kenkaiiii/ggcoder` any time you touch `packages/ggcoder/src/app-sidecar.ts`.
+and rebuild `@prestyj/cli` any time you touch `packages/cli/src/app-sidecar.ts`.
 
 ```bash
-pnpm --filter gg-app check    # tsc --noEmit
-pnpm --filter gg-app test     # vitest
-pnpm --filter gg-app lint
+pnpm --filter ezcoder-app check    # tsc --noEmit
+pnpm --filter ezcoder-app test     # vitest
+pnpm --filter ezcoder-app lint
 ```
 
 ## Architecture
@@ -42,7 +42,7 @@ React webview ──invoke()──▶ Rust commands ──HTTP──▶ Node sid
 - **`src/agent.ts`** is the only bridge to Rust. All IPC wrappers live here. The webview
   never `fetch`es the sidecar directly, since mixed content is blocked on the `tauri://`
   origin.
-- **`packages/ggcoder/src/app-sidecar.ts`** is the HTTP + SSE seam over `AgentSession`.
+- **`packages/cli/src/app-sidecar.ts`** is the HTTP + SSE seam over `AgentSession`.
 
 New IPC means a Rust `#[tauri::command]` proxying the sidecar, registered in
 `invoke_handler!`, plus a typed wrapper in `agent.ts`.
@@ -60,8 +60,8 @@ New IPC means a Rust `#[tauri::command]` proxying the sidecar, registered in
 `scripts/capture-screenshots.mjs` regenerates `docs/screenshots/*.png` for the root README.
 
 ```bash
-pnpm --filter gg-app dev                  # terminal 1
-node gg-app/scripts/capture-screenshots.mjs
+pnpm --filter ezcoder-app dev                  # terminal 1
+node ezcoder-app/scripts/capture-screenshots.mjs
 ```
 
 It drives the webview in headless Chromium with a **fake `window.__TAURI_INTERNALS__`**, so
@@ -85,7 +85,7 @@ which is an OS-level window Chromium can't capture.
 
 Packaging (bundled per-platform Node runtime, single-file esbuild sidecar, externals,
 signing/notarization) is in [DISTRIBUTION.md](DISTRIBUTION.md). Releases fire from a `v*`
-git tag. Version bumps go through `pnpm --filter gg-app bump`, never by hand.
+git tag. Version bumps go through `pnpm --filter ezcoder-app bump`, never by hand.
 
-Debug log: `~/.gg/gg-app-sidecar.log`. Each window's sidecar appends to it, tagged with its
+Debug log: `~/.ezcoder/ezcoder-app-sidecar.log`. Each window's sidecar appends to it, tagged with its
 own `sid=`.

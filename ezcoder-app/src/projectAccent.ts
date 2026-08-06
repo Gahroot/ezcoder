@@ -28,7 +28,7 @@ export const PROJECT_ACCENTS = [
 /**
  * FNV-1a (32-bit). Chosen over a hand-rolled `hash * 31 + c` because it
  * avalanches properly on short, highly-similar ASCII strings — which is exactly
- * what sibling project paths are (`.../gg-coder`, `.../gg-boss`). Weak hashes
+ * what sibling project paths are (`.../ezcoder`, `.../gg-boss`). Weak hashes
  * hand those neighbours the same bucket, defeating the whole point.
  */
 function fnv1a(text: string): number {
