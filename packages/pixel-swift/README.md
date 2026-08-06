@@ -9,7 +9,7 @@ Swift Package Manager — add to `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/kenkaiiii/ez-pixel-swift", from: "4.3.70")
+    .package(url: "https://github.com/Gahroot/ezcoder", from: "4.3.70")
 ]
 ```
 
