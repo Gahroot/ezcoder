@@ -4014,6 +4014,26 @@ body {
   animation: reveal-up 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* ── Transcript tail-window: "Show N earlier messages" control ──
+   Older rows are unmounted to keep webview memory flat on long sessions;
+   this quiet pill at the top of the transcript brings them back on demand. */
+.transcript-earlier {
+  display: block;
+  margin: 6px auto 10px;
+  padding: 4px 14px;
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 120ms ease;
+}
+.transcript-earlier:hover {
+  opacity: 1;
+}
+
 /* ── Wake screen: Matrix-style empty state (the app addressing the user) ──
    Fills the transcript area: faint brand-tinted digital rain behind a single
    line of terminal text that types itself out and rests on the invitation. */

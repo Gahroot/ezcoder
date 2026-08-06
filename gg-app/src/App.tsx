@@ -150,6 +150,11 @@ const RUNNING_INPUT_PLACEHOLDERS = [
   "Keep going. Your next message will queue up",
 ] as const;
 const INPUT_PLACEHOLDER_INTERVAL_MS = 12_000;
+// Transcript tail-window: how many newest items stay mounted, and how many
+// more each "Show earlier" click reveals. Bounds webview DOM + decoded-image
+// memory on long sessions without dropping anything from state.
+const TRANSCRIPT_TAIL_ITEMS = 120;
+const TRANSCRIPT_EXPAND_STEP = 300;
 const PLACEHOLDER_SHUFFLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const PLACEHOLDER_SHUFFLE_FRAMES = 18;
 const PLACEHOLDER_SHUFFLE_FRAME_MS = 24;
@@ -360,6 +365,19 @@ function canHandleWindowFileDrop(): boolean {
 
 function App(): React.ReactElement {
   const [items, setItems] = useState<Item[]>([]);
+  // Transcript tail-window: only the newest `transcriptCap` items stay mounted.
+  // Long sessions used to render every markdown row + full-size decoded image
+  // for the whole day, ballooning each window's webview into the GB range.
+  // Older rows unmount (freeing their DOM and WebKit's decoded image bitmaps)
+  // and come back via the "Show earlier" control. All items stay in state, so
+  // nothing is lost — this only bounds what's *rendered*.
+  const [transcriptCap, setTranscriptCap] = useState(TRANSCRIPT_TAIL_ITEMS);
+  const hiddenItemCount = Math.max(0, items.length - transcriptCap);
+  const visibleItems = hiddenItemCount > 0 ? items.slice(-transcriptCap) : items;
+  // A fresh transcript (new session / project switch) starts re-windowed.
+  useEffect(() => {
+    if (items.length === 0) setTranscriptCap(TRANSCRIPT_TAIL_ITEMS);
+  }, [items.length]);
   // Ken Kai (mentor agent): own running flag, token/thinking metrics, streaming
   // bubble, and `ken_*` SSE handling. Lives in its own hook; App just consumes
   // the state for rendering and delegates ken events to `handleKenEvent`.
@@ -2404,8 +2422,18 @@ function App(): React.ReactElement {
                     {`\u273b ${status}`}
                   </div>
                 ))}
+              {hiddenItemCount > 0 && (
+                <button
+                  type="button"
+                  className="transcript-earlier"
+                  style={{ color: theme.textDim, borderColor: theme.border }}
+                  onClick={() => setTranscriptCap((cap) => cap + TRANSCRIPT_EXPAND_STEP)}
+                >
+                  {`Show ${hiddenItemCount} earlier ${hiddenItemCount === 1 ? "message" : "messages"}`}
+                </button>
+              )}
               <PromptSendProvider value={sendKenRecommendedPrompt}>
-                {items.map((it) => (
+                {visibleItems.map((it) => (
                   <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
                 ))}
               </PromptSendProvider>
