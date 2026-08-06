@@ -51,7 +51,7 @@ export const theme = {
   // magenta it replaced (which vibrated as full paragraphs). Distinct from the
   // EZ Coder blue dot and the greener `info` teal — the color IS the only
   // signal that a reply is Nolan's, not EZ Coder's.
-  ken: "#5ad1e6",
+  nolan: "#5ad1e6",
 } as const;
 
 // User-message chip background — mirrors USER_MESSAGE_BACKGROUND in the TUI.

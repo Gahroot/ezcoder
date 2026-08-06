@@ -75,10 +75,10 @@ export function NolanActivityBar({
   return (
     <div className="statusrow running nolan-statusrow" style={{ color: theme.textMuted }}>
       <span className="statusrow-left">
-        <span className="statusrow-icon spinner nolan-spinner" style={{ color: theme.ken }}>
+        <span className="statusrow-icon spinner nolan-spinner" style={{ color: theme.nolan }}>
           {SPINNER_FRAMES[frame]}
         </span>
-        <span className="working" style={{ color: theme.ken }}>
+        <span className="working" style={{ color: theme.nolan }}>
           {"Nolan is thinking\u2026"}
         </span>
         <span style={{ color: theme.textMuted }}>
@@ -90,7 +90,7 @@ export function NolanActivityBar({
                 style={{
                   color: part.thinking
                     ? isThinking
-                      ? theme.ken
+                      ? theme.nolan
                       : theme.textMuted
                     : theme.textMuted,
                 }}

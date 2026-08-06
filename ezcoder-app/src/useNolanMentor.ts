@@ -59,7 +59,7 @@ export function useNolanMentor(opts: {
   const nolanStreamingIdRef = useRef<number | null>(null);
 
   // Nolan's streaming bubble. Nolan's replies are short, so a direct setItems per
-  // delta (no rAF buffering) is fine and keeps his path independent of GG
+  // delta (no rAF buffering) is fine and keeps his path independent of EZ
   // Coder's. First delta creates the magenta bubble; later deltas append to it.
   const appendNolan = useCallback(
     (text: string) => {
@@ -67,11 +67,11 @@ export function useNolanMentor(opts: {
       if (current === null) {
         const id = nextId();
         nolanStreamingIdRef.current = id;
-        setItems((prev) => [...prev, { kind: "ken", id, text }]);
+        setItems((prev) => [...prev, { kind: "nolan", id, text }]);
       } else {
         setItems((prev) =>
           prev.map((it) =>
-            it.kind === "ken" && it.id === current ? { ...it, text: it.text + text } : it,
+            it.kind === "nolan" && it.id === current ? { ...it, text: it.text + text } : it,
           ),
         );
       }

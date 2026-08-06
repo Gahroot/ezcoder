@@ -12,7 +12,7 @@ interface Props {
   disabled?: boolean;
   /** Tooltip + accessible name (e.g. "Switch EZ Coder's model"). */
   title: string;
-  /** Accent color for the closed control (GG = text, Nolan = ken). */
+  /** Accent color for the closed control (EZ Coder = text, Nolan = nolan). */
   color?: string;
   /** When set, adds a "Follow EZ Coder" choice (Nolan's picker) — selecting it
    *  clears the pin. `followActive` makes it the selected value. */

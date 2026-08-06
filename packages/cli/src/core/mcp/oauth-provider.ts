@@ -63,7 +63,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   get clientMetadata(): OAuthClientMetadata {
     return {
       client_name: "EZ Coder",
-      client_uri: "https://github.com/kenkaiii/ezcoder",
+      client_uri: "https://github.com/Gahroot/ezcoder",
       redirect_uris: [this.redirectUrl],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],

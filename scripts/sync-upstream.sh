@@ -143,6 +143,9 @@ replace_in_tracked_text_files() {
       -e 's|"gg-framework"|"ezcoder"|g' \
       -e 's|KenKaiii/gg-framework|Gahroot/ezcoder|g' \
       -e 's|kenkaiiii/gg-framework|Gahroot/ezcoder|g' \
+      -e 's|github.com/KenKaiii/ezcoder|github.com/Gahroot/ezcoder|g' \
+      -e 's|github.com/kenkaiiii/ezcoder|github.com/Gahroot/ezcoder|g' \
+      -e 's|github.com/KenKaiii|github.com/Gahroot|g' \
       -e 's|github.com/kenkaiiii/gg-pixel-go|github.com/Gahroot/ezcoder/packages/pixel-go|g' \
       -e 's|gg-framework|ezcoder|g' \
       -e 's|~/\.gg/|~/.ezcoder/|g' \
@@ -234,18 +237,31 @@ rebrand_ken_mentor() {
     perl -0777 -pi -e '
       # ALL-CAPS mentor consts (anchored; TOKEN_ has no boundary before KEN)
       s/\bKEN_(PROMPT_FENCE|ALLOWED_MCP_SERVERS|ALLOWED_TOOLS|RECENT_MESSAGE_LIMIT|TURN_CUSTOM_KIND)\b/NOLAN_$1/g;
-      # snake_case SSE event + route names (explicit list excludes ken_burns)
-      s/\bken_(run_start|run_end|text_delta|thinking_delta|tool_call_start|tool_call_update|tool_call_end|server_tool_call|turn_end|turn|error|cancel|prompt)\b/nolan_$1/g;
-      s/_ken_(cancel|prompt)\b/_nolan_$1/g;
+      # snake_case SSE events, Tauri commands, and route names (explicit list excludes ken_burns)
+      s/\bken_(run_start|run_end|text_delta|thinking_delta|tool_call_start|tool_call_update|tool_call_end|server_tool_call|turn_end|turn|error|cancel|prompt|model|model_change)\b/nolan_$1/g;
+      s/_ken_(cancel|prompt|model)\b/_nolan_$1/g;
+      s|/ken/(prompt|cancel|model)|/nolan/$1|g;
       # kebab-case CSS classes + file stems (explicit list excludes ken-burns)
-      s/\bken-(context|input|model|msg|power|prompt|sent|spinner|statusrow)\b/nolan-$1/g;
+      s/\bken-(autopilot-on|autopilot-off|context|input|model|msg|power|prompt|sent|spinner|statusrow)\b/nolan-$1/g;
       # camelCase mentor vars: word-start ken + UpperCase (tokenUsage fails \b)
       s/\bken([A-Z]\w*)/nolan$1/g;
+      # Exact lowercase mentor symbols in known type/property/string contexts.
+      s/\bken\?: boolean\b/nolan?: boolean/g;
+      s/\bken: true\b/nolan: true/g;
+      s/\.ken\b/.nolan/g;
+      s/\bkind: "ken"\b/kind: "nolan"/g;
+      s/\bcase "ken":/case "nolan":/g;
+      s/\bconst ken =/const nolanAgent =/g;
+      s/\bken\./nolanAgent./g;
+      s/= ken;/= nolanAgent;/g;
+      s/\breturn ken;/return nolanAgent;/g;
+      s/--ken\b/--nolan/g;
       # lowercase @ken mention trigger in regex literals (\b after "ken" keeps
       # @kenkaiiii and @kennedy safe — both have a letter, not a boundary, next)
       s/\@ken\b/\@nolan/g;
       # stale comment refs to the renamed SSE event family + delegate prose
       s/ken_\*/nolan_*/g;
+      s/ken_-prefixed/nolan_-prefixed/g;
       s/\bken events\b/nolan events/g;
       # any remaining capital Ken (PascalCase types, compound fns, @Ken, prose),
       # excluding the protected roots above
@@ -364,6 +380,8 @@ main() {
   rename_file_if_exists "ezcoder-app/src/KenActivityBar.tsx" "ezcoder-app/src/NolanActivityBar.tsx"
   rename_file_if_exists "ezcoder-app/src/useKenMentor.ts" "ezcoder-app/src/useNolanMentor.ts"
   rename_file_if_exists "ezcoder-app/src/useKenMentor.test.ts" "ezcoder-app/src/useNolanMentor.test.ts"
+  rename_file_if_exists "ezcoder-app/src/assets/ken-autopilot-on.mp3" "ezcoder-app/src/assets/nolan-autopilot-on.mp3"
+  rename_file_if_exists "ezcoder-app/src/assets/ken-autopilot-off.mp3" "ezcoder-app/src/assets/nolan-autopilot-off.mp3"
 
   git add -A
   if git diff --cached --quiet; then

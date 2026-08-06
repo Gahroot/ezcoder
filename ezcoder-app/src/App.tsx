@@ -207,7 +207,7 @@ function shufflePlaceholderFrame(target: string, frame: number): string {
 
 // ── Transcript model ───────────────────────────────────────
 // Tool activity lives in the pinned LiveToolPanel, never in the transcript.
-// Exported (type-only) so the Nolan mentor hook can produce/typecheck ken + error
+// Exported (type-only) so the Nolan mentor hook can produce/typecheck Nolan + error
 // transcript items without a runtime import cycle.
 export type Item =
   // `command` marks a workflow slash command — rendered as just the short
@@ -230,7 +230,7 @@ export type Item =
       queued?: boolean;
       // True when this prompt was addressed to Nolan (`@Nolan …`). Renders the bubble
       // in Nolan's color so the transcript shows it went to the mentor, not EZ Coder.
-      ken?: boolean;
+      nolan?: boolean;
       // True when this bubble came from clicking a "Send to EZ Coder" button on
       // one of Nolan's recommended prompts. Renders as a shimmering "Sent to EZ
       // Coder" label in Nolan's color (like a slash command shows `/name`), instead
@@ -240,7 +240,7 @@ export type Item =
   | { kind: "assistant"; id: number; text: string }
   // Nolan Grout (mentor agent) reply — magenta-tinted bubble + "Nolan Grout" badge,
   // streamed from the nolan_* SSE events. Never mistaken for EZ Coder.
-  | { kind: "ken"; id: number; text: string }
+  | { kind: "nolan"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
   // Structured error (see gg-ai's formatError): headline always answers "is this
   // me or them", message is the raw detail (omitted when redundant with the
@@ -1364,9 +1364,9 @@ function App(): React.ReactElement {
               return { kind: "user", id: nextId(), text: h.text, nolanSent: true };
             // Persisted Nolan (mentor) turns: his reply restores as a Nolan bubble,
             // the `@Nolan` question as a Nolan-tinted user bubble (matches live).
-            if (h.ken && h.role === "assistant") return { kind: "ken", id: nextId(), text: h.text };
-            if (h.ken && h.role === "user")
-              return { kind: "user", id: nextId(), text: h.text, ken: true };
+            if (h.nolan && h.role === "assistant") return { kind: "nolan", id: nextId(), text: h.text };
+            if (h.nolan && h.role === "user")
+              return { kind: "user", id: nextId(), text: h.text, nolan: true };
             // Persisted autopilot verdict marker: render identically to the
             // live item so a resumed session never shows the raw verdict text
             // (e.g. "ALL_CLEAR") the model actually replied with.
@@ -1506,7 +1506,7 @@ function App(): React.ReactElement {
   );
 
   // Pin Nolan to a model (or null → clear the pin, follow EZ Coder). The
-  // sidecar's ken_model_change broadcast updates state; the .then is just a
+  // sidecar's nolan_model_change broadcast updates state; the .then is just a
   // faster local echo of the same payload.
   function onSelectNolanModel(modelId: string | null): void {
     if (state && modelId !== null && state.nolanModelOverride && modelId === state.nolanModel)
@@ -2020,7 +2020,7 @@ function App(): React.ReactElement {
       if (!question) return;
       recordHistory(trimmed);
       stickToBottomRef.current = true;
-      pushItem({ kind: "user", id: nextId(), text: trimmed, ken: true });
+      pushItem({ kind: "user", id: nextId(), text: trimmed, nolan: true });
       setInput("");
       setSlashIndex(0);
       setMention(null);
@@ -2628,7 +2628,7 @@ function App(): React.ReactElement {
             {nolanActive && nolanInputParts && (
               <div className="nolan-input-highlight" aria-hidden="true">
                 {nolanInputParts.lead}
-                <ShimmerText base={theme.ken} bright="#ffffff">
+                <ShimmerText base={theme.nolan} bright="#ffffff">
                   {nolanInputParts.token}
                 </ShimmerText>
                 {nolanInputParts.rest}
@@ -2636,7 +2636,7 @@ function App(): React.ReactElement {
             )}
             <textarea
               ref={inputRef}
-              className={`input${enhanceAnim ? " input-anim" : ""}${nolanActive ? " input-ken" : ""}`}
+              className={`input${enhanceAnim ? " input-anim" : ""}${nolanActive ? " input-nolan" : ""}`}
               rows={1}
               // Lock the input while the dissolve→decode animation plays: the caret
               // is invisible, so typing would be silently discarded and Enter would
@@ -2836,14 +2836,14 @@ function App(): React.ReactElement {
                 <>
                   <FooterSep />
                   <span className="model-anchor">
-                    <span className="model-label" style={{ color: theme.ken }}>
+                    <span className="model-label" style={{ color: theme.nolan }}>
                       Nolan
                     </span>
                     <ModelSelect
                       models={models}
                       currentModel={state?.nolanModel ?? state?.model ?? ""}
                       onSelect={(id) => onSelectNolanModel(id)}
-                      color={theme.ken}
+                      color={theme.nolan}
                       title={
                         state?.nolanModelOverride
                           ? "Nolan is pinned to his own model — click to change"
@@ -2992,7 +2992,7 @@ const TranscriptRow = memo(function TranscriptRow({
         // full prompt body. The full body still went to EZ Coder.
         return (
           <div className="user-msg command labelled user-nolan-sent">
-            <span className="command-shimmer" style={{ color: theme.ken }}>
+            <span className="command-shimmer" style={{ color: theme.nolan }}>
               Sent to EZ Coder
             </span>
           </div>
@@ -3011,7 +3011,7 @@ const TranscriptRow = memo(function TranscriptRow({
         );
       }
       return (
-        <div className={`user-msg${item.queued ? " queued" : ""}${item.ken ? " user-ken" : ""}`}>
+        <div className={`user-msg${item.queued ? " queued" : ""}${item.nolan ? " user-nolan" : ""}`}>
           {item.queued && <span className="queued-pill">queued</span>}
           {item.images && item.images.length > 0 && (
             <div className="user-img-row">
@@ -3067,14 +3067,14 @@ const TranscriptRow = memo(function TranscriptRow({
         </>
       );
     }
-    case "ken":
+    case "nolan":
       // Nolan Grout's reply: the whole bubble is tinted in Nolan's color (dot + all
       // text), which is the ONLY differentiator from a normal EZ Coder reply.
       // No badge, no byline. The Markdown component special-cases ```prompt
       // fences into a "Send to EZ Coder" button.
       return (
         <div className="assistant-msg nolan-msg">
-          <span className="assistant-dot" style={{ color: theme.ken }}>
+          <span className="assistant-dot" style={{ color: theme.nolan }}>
             {DOT}
           </span>
           <div className="assistant-text">
@@ -3101,7 +3101,7 @@ const TranscriptRow = memo(function TranscriptRow({
       };
       return (
         <div className="assistant-msg nolan-msg">
-          <span className="assistant-dot" style={{ color: theme.ken }}>
+          <span className="assistant-dot" style={{ color: theme.nolan }}>
             {DOT}
           </span>
           <div className="assistant-text">

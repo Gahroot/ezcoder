@@ -41,7 +41,7 @@ export function PlanReviewModal({
       </div>
 
       {nolanReviewing && (
-        <div className="plan-review-ken" style={{ color: theme.ken }}>
+        <div className="plan-review-nolan" style={{ color: theme.nolan }}>
           Nolan is reviewing this plan… you can still accept or reject it yourself.
         </div>
       )}

@@ -394,7 +394,7 @@ interface HistoryEntryForWire {
   /** True when this entry is a Nolan Grout (mentor) turn: a `user` row is the `@Nolan`
    *  question, an `assistant` row is Nolan's reply. The webview renders these in
    *  Nolan's color (user bubble tinted; assistant as a Nolan bubble). */
-  ken?: boolean;
+  nolan?: boolean;
   /** Present when this entry is a persisted autopilot verdict marker (an
    *  `assistant` row with empty `text`). The webview renders it exactly like
    *  the live `autopilot` item — never the raw verdict keyword the model
@@ -2184,7 +2184,7 @@ async function createSession(
   // with `@Nolan …`; he reads EZ Coder's transcript (one-way — EZ Coder never sees
   // Nolan's) and hands back runnable prompts + mentorship. Created lazily on the
   // first `@Nolan` so windows that never use Nolan pay zero cost. His events ride the
-  // SAME SSE stream with `ken_`-prefixed types, routed to the Nolan bubble.
+  // SAME SSE stream with `nolan_`-prefixed types, routed to the Nolan bubble.
   let nolanSession: AgentSession | null = null;
   let nolanAbort = new AbortController();
   let nolanRunning = false;
@@ -2219,7 +2219,7 @@ async function createSession(
   }
 
   /** Footer payload: Nolan's effective model + whether it's a pin. Merged into
-   *  /state, the SSE ready frame, and every ken_model_change broadcast. */
+   *  /state, the SSE ready frame, and every nolan_model_change broadcast. */
   function nolanStatePayload(): ReturnType<typeof effectiveNolanModel> {
     const st = session.getState();
     return effectiveNolanModel(nolanModelOverride, { provider: st.provider, model: st.model });
@@ -2234,13 +2234,13 @@ async function createSession(
     const st = nolanSession.getState();
     if (st.provider === provider && st.model === model) return;
     await nolanSession.switchModel(provider, model);
-    log("INFO", "app-sidecar", "ken session model synced", { provider, model });
+    log("INFO", "app-sidecar", "nolan session model synced", { provider, model });
   }
 
   async function ensureNolanSession(): Promise<AgentSession> {
     if (nolanSession) return nolanSession;
     const target = nolanCurrentModel();
-    const ken = new AgentSession({
+    const nolanAgent = new AgentSession({
       provider: target.provider,
       model: target.model,
       cwd,
@@ -2256,34 +2256,34 @@ async function createSession(
       // TTL regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
     });
-    await ken.initialize();
-    // Bridge Nolan's bus to the shared SSE fan-out with ken_-prefixed types so the
+    await nolanAgent.initialize();
+    // Bridge Nolan's bus to the shared SSE fan-out with nolan_-prefixed types so the
     // webview routes them to the Nolan bubble, never EZ Coder's.
-    ken.eventBus.on("text_delta", (d) => broadcast("nolan_text_delta", d));
-    ken.eventBus.on("thinking_delta", (d) => broadcast("nolan_thinking_delta", d));
-    ken.eventBus.on("tool_call_start", (d) => {
+    nolanAgent.eventBus.on("text_delta", (d) => broadcast("nolan_text_delta", d));
+    nolanAgent.eventBus.on("thinking_delta", (d) => broadcast("nolan_thinking_delta", d));
+    nolanAgent.eventBus.on("tool_call_start", (d) => {
       nolanToolCallNames.set(d.toolCallId, d.name);
       broadcast("nolan_tool_call_start", d);
     });
-    ken.eventBus.on("tool_call_update", (d) => broadcast("nolan_tool_call_update", d));
-    ken.eventBus.on("tool_call_end", (d) => {
+    nolanAgent.eventBus.on("tool_call_update", (d) => broadcast("nolan_tool_call_update", d));
+    nolanAgent.eventBus.on("tool_call_end", (d) => {
       nolanToolCallNames.delete(d.toolCallId);
       broadcast("nolan_tool_call_end", d);
     });
     // Native server tools (Anthropic web_search) stream text both before AND
     // after them in the same turn; forward so the webview can break the bubble
     // (otherwise "...work.Local tools..." glues together). Mirrors the build bus.
-    ken.eventBus.on("server_tool_call", (d) => broadcast("nolan_server_tool_call", d));
-    ken.eventBus.on("turn_end", (d) => broadcast("nolan_turn_end", d));
-    ken.eventBus.on("error", (d) => {
-      broadcastError("nolan_error", "ken error", d.error);
+    nolanAgent.eventBus.on("server_tool_call", (d) => broadcast("nolan_server_tool_call", d));
+    nolanAgent.eventBus.on("turn_end", (d) => broadcast("nolan_turn_end", d));
+    nolanAgent.eventBus.on("error", (d) => {
+      broadcastError("nolan_error", "nolan error", d.error);
     });
-    nolanSession = ken;
-    log("INFO", "app-sidecar", "ken session ready", {
+    nolanSession = nolanAgent;
+    log("INFO", "app-sidecar", "nolan session ready", {
       provider: target.provider,
       model: target.model,
     });
-    return ken;
+    return nolanAgent;
   }
 
   // ── Autopilot Nolan (auto-reviewer) ──────────────────────────
@@ -2306,13 +2306,13 @@ async function createSession(
     const st = nolanAutoSession.getState();
     if (st.provider === provider && st.model === model) return;
     await nolanAutoSession.switchModel(provider, model);
-    log("INFO", "app-sidecar", "ken autopilot session model synced", { provider, model });
+    log("INFO", "app-sidecar", "nolan autopilot session model synced", { provider, model });
   }
 
   async function ensureNolanAutoSession(): Promise<AgentSession> {
     if (nolanAutoSession) return nolanAutoSession;
     const target = nolanCurrentModel();
-    const ken = new AgentSession({
+    const nolanAgent = new AgentSession({
       provider: target.provider,
       model: target.model,
       cwd,
@@ -2329,16 +2329,16 @@ async function createSession(
     });
     // Nolan is already the independent autopilot reviewer; recursively running
     // his own Ideal self-review adds latency and can corrupt the verdict shape.
-    ken.setIdealReviewSuppressed(true);
-    await ken.initialize();
+    nolanAgent.setIdealReviewSuppressed(true);
+    await nolanAgent.initialize();
     // Deliberately no bus bridge: the review is silent. Errors surface via the
     // runAutopilotReview try/catch as autopilot_error frames.
-    nolanAutoSession = ken;
-    log("INFO", "app-sidecar", "ken autopilot session ready", {
+    nolanAutoSession = nolanAgent;
+    log("INFO", "app-sidecar", "nolan autopilot session ready", {
       provider: target.provider,
       model: target.model,
     });
-    return ken;
+    return nolanAgent;
   }
 
   function abortOwnedWork(): void {
@@ -2482,7 +2482,7 @@ async function createSession(
     autopilotReviewing = true;
     broadcast("autopilot_review_start", {});
     try {
-      const ken = await ensureNolanAutoSession();
+      const nolanAgent = await ensureNolanAutoSession();
       const digest = buildNolanAutopilotContext({
         cwd,
         gitBranch,
@@ -2491,8 +2491,8 @@ async function createSession(
         injectedPrompts: [...injectedAutopilotPrompts],
         workflowCommands: await loadWorkflowCommandSpecs(),
       });
-      await ken.prompt(digest);
-      return parseAutopilotVerdict(lastAssistantText(ken.getMessages()));
+      await nolanAgent.prompt(digest);
+      return parseAutopilotVerdict(lastAssistantText(nolanAgent.getMessages()));
     } catch (err) {
       if (!autopilotCancelled) broadcastError("autopilot_error", "autopilot review failed", err);
       return null;
@@ -2518,7 +2518,7 @@ async function createSession(
     autopilotReviewing = true;
     broadcast("autopilot_review_start", {});
     try {
-      const ken = await ensureNolanAutoSession();
+      const nolanAgent = await ensureNolanAutoSession();
       // Re-read the plan file (the run may have revised it in place); fall
       // back to the content captured at exit_plan time.
       const planContent = await fs.readFile(planPath, "utf-8").catch(() => pendingPlanContent);
@@ -2531,9 +2531,9 @@ async function createSession(
         workflowCommands: await loadWorkflowCommandSpecs(),
         planContent,
       });
-      await ken.prompt(digest);
+      await nolanAgent.prompt(digest);
       if (autopilotCancelled || planGeneration !== genAtStart) return null;
-      return parseAutopilotVerdict(lastAssistantText(ken.getMessages()));
+      return parseAutopilotVerdict(lastAssistantText(nolanAgent.getMessages()));
     } catch (err) {
       // User action mid-review (manual Accept aborts the nolanAuto run): drop
       // the review silently — the user's decision supersedes Nolan's.
@@ -2558,7 +2558,7 @@ async function createSession(
 
   // Drive the review→prompt→review loop for one finished user turn. Only ever
   // called after shouldStartAutopilotCycle approves the turn (POST /prompt or
-  // the stranded-queue drain) — never from the task runner, resume, /ken, or
+  // the stranded-queue drain) — never from the task runner, resume, /nolan, or
   // error paths, so there's no recursion and no guard tangle. The loop's
   // control flow lives in driveAutopilotCycle (core/autopilot-cycle.ts) so
   // every exit path is unit-tested; this only wires the real dependencies.
@@ -3343,7 +3343,7 @@ async function createSession(
         // Nolan (mentor) turns to interleave: group by the non-system message count
         // they were recorded after, so each lands right after that message. A
         // turn becomes two wire rows: the `@Nolan` question (user) + Nolan's reply
-        // (assistant), both flagged `ken` so the webview tints them.
+        // (assistant), both flagged `nolan` so the webview tints them.
         // Deduped; stale anchors are clamped to the last message (Nolan turns
         // carry real conversation, so they render at the end instead of
         // vanishing).
@@ -3361,8 +3361,8 @@ async function createSession(
           if (!turns) return;
           nolanByCount.delete(count);
           for (const turn of turns) {
-            history.push({ role: "user", text: `@Nolan ${turn.question}`, ken: true });
-            history.push({ role: "assistant", text: turn.reply, ken: true });
+            history.push({ role: "user", text: `@Nolan ${turn.question}`, nolan: true });
+            history.push({ role: "assistant", text: turn.reply, nolan: true });
           }
         };
 
@@ -3892,10 +3892,10 @@ async function createSession(
     }
 
     // Nolan Grout (mentor): an independent read-only advisory run on the nolanSession.
-    // Runs concurrently with a build run — its events are ken_-prefixed so the
+    // Runs concurrently with a build run — its events are nolan_-prefixed so the
     // webview keeps the bubbles separate. The context digest is assembled fresh
     // from the BUILD session's transcript each turn (one-way mirror).
-    if (method === "POST" && url === "/ken/prompt") {
+    if (method === "POST" && url === "/nolan/prompt") {
       if (mode === "chat") {
         json(res, 404, { error: "Nolan is not available in EZ Chat." });
         return;
@@ -3921,7 +3921,7 @@ async function createSession(
         nolanRunning = true;
         broadcast("nolan_run_start", { text });
         try {
-          const ken = await ensureNolanSession();
+          const nolanAgent = await ensureNolanSession();
           const digest = await buildNolanContext(
             session,
             cwd,
@@ -3930,14 +3930,14 @@ async function createSession(
             await loadWorkflowCommandSpecs(),
             injectedAutopilotPrompts,
           );
-          await ken.prompt(digest);
+          await nolanAgent.prompt(digest);
           // Record the turn against the BUILD session so it persists + survives
           // resume (advisory custom entry, never an LLM message). Reply is Nolan's
           // last assistant message; skip persistence if he produced nothing.
-          const reply = lastAssistantText(ken.getMessages());
+          const reply = lastAssistantText(nolanAgent.getMessages());
           if (reply.trim()) await session.persistNolanTurn(text, reply);
         } catch (err) {
-          broadcastError("nolan_error", "ken run failed", err);
+          broadcastError("nolan_error", "nolan run failed", err);
         } finally {
           nolanRunning = false;
           broadcast("nolan_run_end", {});
@@ -3949,7 +3949,7 @@ async function createSession(
       return;
     }
 
-    if (method === "POST" && url === "/ken/cancel") {
+    if (method === "POST" && url === "/nolan/cancel") {
       nolanAbort.abort();
       nolanAbort = new AbortController();
       nolanSession?.setSignal(nolanAbort.signal);
@@ -4322,7 +4322,7 @@ async function createSession(
         // When Nolan is pinned, his effective model did not change, so skip the
         // no-op event (keeps footer/event tests from treating an EZ Coder
         // switch as a Nolan switch).
-        if (!nolanModelOverride) broadcast("ken_model_change", nolanStatePayload());
+        if (!nolanModelOverride) broadcast("nolan_model_change", nolanStatePayload());
         // The new model usually has a different context window — push extras so
         // the footer's context meter rescales immediately.
         broadcast("extras", footerExtras());
@@ -4335,7 +4335,7 @@ async function createSession(
     // { model: null } / "" to clear (Nolan resumes following EZ Coder). Applies
     // to BOTH Nolan sessions (chat + autopilot reviewer); a switch landing while
     // either is mid-run defers via the pending-model mechanics.
-    if (method === "POST" && url === "/ken/model") {
+    if (method === "POST" && url === "/nolan/model") {
       void readBody(req, res).then(async (raw) => {
         if (raw === null) return;
         let modelId: string | null;
@@ -4367,13 +4367,13 @@ async function createSession(
           await saveNolanModelPref(cwd, nolanModelOverride);
           await syncNolanModel(target.provider, target.id);
           await syncNolanAutoModel(target.provider, target.id);
-          log("INFO", "app-sidecar", "ken model pinned", {
+          log("INFO", "app-sidecar", "nolan model pinned", {
             provider: target.provider,
             model: target.id,
           });
         }
         const payload = nolanStatePayload();
-        broadcast("ken_model_change", payload);
+        broadcast("nolan_model_change", payload);
         json(res, 200, payload);
       });
       return;

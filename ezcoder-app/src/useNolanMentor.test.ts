@@ -26,14 +26,14 @@ const ev = (type: string, data: Record<string, unknown> = {}): SidecarEvent =>
   ({ type, data }) as SidecarEvent;
 
 describe("useNolanMentor", () => {
-  it("nolan_text_delta appends a single kind:'ken' item via setItems", () => {
+  it("nolan_text_delta appends a single kind:'nolan' item via setItems", () => {
     const { hook, getItems } = setup();
     act(() => {
       hook.result.current.handleNolanEvent(ev("nolan_text_delta", { text: "hello" }));
     });
     const items = getItems();
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ kind: "ken", text: "hello" });
+    expect(items[0]).toMatchObject({ kind: "nolan", text: "hello" });
 
     // A second delta appends to the SAME bubble, not a new item.
     act(() => {
@@ -41,7 +41,7 @@ describe("useNolanMentor", () => {
     });
     const after = getItems();
     expect(after).toHaveLength(1);
-    expect(after[0]).toMatchObject({ kind: "ken", text: "hello world" });
+    expect(after[0]).toMatchObject({ kind: "nolan", text: "hello world" });
   });
 
   it("nolan_run_start flips nolanRunning true and resets tokens", () => {
@@ -115,7 +115,7 @@ describe("useNolanMentor", () => {
     expect(hook.result.current.nolanRunning).toBe(false);
   });
 
-  it("returns true for nolan events and false for a non-ken event", () => {
+  it("returns true for nolan events and false for a non-Nolan event", () => {
     const { hook, getItems } = setup();
     let nolanHandled = false;
     let buildHandled = true;
@@ -125,7 +125,7 @@ describe("useNolanMentor", () => {
     });
     expect(nolanHandled).toBe(true);
     expect(buildHandled).toBe(false);
-    // A non-ken event must NOT have touched the transcript.
+    // A non-Nolan event must NOT have touched the transcript.
     expect(getItems()).toHaveLength(0);
   });
 });

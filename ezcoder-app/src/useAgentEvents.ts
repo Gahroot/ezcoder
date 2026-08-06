@@ -898,7 +898,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
         // Nolan's effective model changed — either his pin was set/cleared or he
         // followed a EZ Coder switch. Payload keys (nolanProvider/nolanModel/
         // nolanModelOverride) match AgentState, so a spread is enough.
-        case "ken_model_change":
+        case "nolan_model_change":
           setState((s) => (s ? { ...s, ...(d as Partial<AgentState>) } : s));
           break;
         case "thinking_change":

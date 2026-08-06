@@ -27,9 +27,9 @@
   --user-bg: #313a49;
 
   /* Nolan Grout (mentor agent) — soft cyan/green. Single source of truth with
-     theme.ken in theme.ts; both MUST match or the inline-styled @Nolan input
+     theme.nolan in theme.ts; both MUST match or the inline-styled @Nolan input
      drifts from the CSS-styled chat bubbles. Marks every Nolan element. */
-  --ken: #5ad1e6;
+  --nolan: #5ad1e6;
 
   /* Shape system (Linear capsule-vs-card + Warp three radii). */
   --radius-button: 6px;
@@ -641,7 +641,7 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--ken) 45%, transparent));
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--nolan) 45%, transparent));
   animation:
     nolan-power-flash 1150ms cubic-bezier(0.22, 1, 0.36, 1) both,
     ggshimmer 1.4s linear infinite;
@@ -2371,7 +2371,7 @@ body {
   padding: 20px 24px;
   font-size: 15px;
 }
-.plan-review-ken {
+.plan-review-nolan {
   flex: 0 0 auto;
   padding: 8px 24px;
   font-size: 13px;
@@ -2470,14 +2470,14 @@ body {
 /* `@Nolan` prompt bubble: tinted in Nolan's color (matching his replies + the input
    highlight) so the transcript shows this message went to the mentor, not EZ
    Coder. A faint Nolan-tinted fill keeps it readable on the right edge. */
-.user-msg.user-ken {
-  color: var(--ken);
-  background: color-mix(in srgb, var(--ken) 12%, var(--user-bg));
+.user-msg.user-nolan {
+  color: var(--nolan);
+  background: color-mix(in srgb, var(--nolan) 12%, var(--user-bg));
 }
 /* "Sent to EZ Coder" bubble (from a Nolan prompt-block button): same faint Nolan
    tint as a @Nolan bubble, with the shimmer label carrying Nolan's color. */
 .user-msg.user-nolan-sent {
-  background: color-mix(in srgb, var(--ken) 12%, var(--user-bg));
+  background: color-mix(in srgb, var(--nolan) 12%, var(--user-bg));
 }
 
 /* ── Queued steering message: still waiting to be injected mid-run. Dim it
@@ -2754,18 +2754,18 @@ body {
 .nolan-msg .assistant-text,
 .nolan-msg .assistant-text .markdown,
 .nolan-msg .assistant-text .markdown :is(p, li, h1, h2, h3, h4, strong, em, blockquote, code) {
-  color: var(--ken);
+  color: var(--nolan);
 }
 .nolan-msg .assistant-text .markdown a {
-  color: var(--ken);
-  text-decoration-color: color-mix(in srgb, var(--ken) 50%, transparent);
+  color: var(--nolan);
+  text-decoration-color: color-mix(in srgb, var(--nolan) 50%, transparent);
 }
 /* Nolan's activity bar reuses the EZ Coder ActivityBar's running statusrow as-is
    (same top border, padding, spinner, layout, meta readout) so it's the same
    control aligned to what we have, just tinted to Nolan. Only the spinner glow is
    re-tinted from brand-blue to Nolan's color. */
 .nolan-spinner {
-  text-shadow: 0 0 8px color-mix(in srgb, var(--ken) 55%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--nolan) 55%, transparent);
 }
 
 /* Nolan's runnable-prompt block: Nolan-tinted, with a Send-to-EZ-Coder button. */
@@ -2805,7 +2805,7 @@ body {
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
-  color: var(--ken);
+  color: var(--nolan);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-button);
@@ -3188,11 +3188,11 @@ body {
 /* `@Nolan` active: the textarea text goes transparent (caret stays via caret-color)
    so only the aligned highlight overlay shows, with the leading `@Nolan` shimmering
    in Nolan's color. This is the signal the message is addressed to the mentor. */
-.input-stack .input.input-ken {
+.input-stack .input.input-nolan {
   color: transparent;
-  caret-color: var(--ken);
+  caret-color: var(--nolan);
 }
-.input-stack .input.input-ken::placeholder {
+.input-stack .input.input-nolan::placeholder {
   color: var(--text-dim);
 }
 .nolan-input-highlight {

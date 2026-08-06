@@ -56,7 +56,7 @@ function setup(
   const setTokens = vi.fn() as unknown as AgentEventsDeps["setTokens"];
 
   // Real reducer-style state holder so functional setState updates (used by
-  // model_change / ken_model_change spreads) apply against a base state.
+  // model_change / nolan_model_change spreads) apply against a base state.
   let agentState: AgentState | null = {
     provider: "anthropic",
     model: "claude-opus-5",
@@ -502,7 +502,7 @@ describe("useAgentEvents", () => {
     const handleNolanEvent = vi.fn(() => true);
     const { hook, getItems, setRunning } = setup(handleNolanEvent);
     act(() => {
-      hook.result.current.handleEvent(ev("nolan_text_delta", { text: "from ken" }));
+      hook.result.current.handleEvent(ev("nolan_text_delta", { text: "from nolan" }));
       hook.result.current.handleEvent(ev("nolan_run_start"));
     });
     expect(handleNolanEvent).toHaveBeenCalledTimes(2);
@@ -511,14 +511,14 @@ describe("useAgentEvents", () => {
     expect(setRunning).not.toHaveBeenCalled();
   });
 
-  it("ken_model_change updates Nolan's footer model state (falls through ken_ delegation)", () => {
-    // useNolanMentor's handleNolanEvent returns false for ken_model_change (it only
+  it("nolan_model_change updates Nolan's footer model state (falls through nolan_ delegation)", () => {
+    // useNolanMentor's handleNolanEvent returns false for nolan_model_change (it only
     // owns the chat-bubble events), so the event must reach the main switch —
     // the default setup handleNolanEvent mirrors that by returning false.
     const { hook, getState } = setup();
     act(() => {
       hook.result.current.handleEvent(
-        ev("ken_model_change", {
+        ev("nolan_model_change", {
           nolanProvider: "openai",
           nolanModel: "gpt-5.5",
           nolanModelOverride: true,
@@ -537,7 +537,7 @@ describe("useAgentEvents", () => {
     // Clearing the pin: sidecar broadcasts Nolan back on EZ Coder's model.
     act(() => {
       hook.result.current.handleEvent(
-        ev("ken_model_change", {
+        ev("nolan_model_change", {
           nolanProvider: "anthropic",
           nolanModel: "claude-opus-5",
           nolanModelOverride: false,

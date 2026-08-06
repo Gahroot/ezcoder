@@ -900,7 +900,7 @@ describe("transient sessions never leak to the session store", () => {
     shouldCompactMock.mockReturnValue(true);
     compactMock.mockResolvedValue({
       messages: [
-        { role: "system", content: "ken system prompt" },
+        { role: "system", content: "nolan system prompt" },
         { role: "user", content: "[compacted]" },
       ],
       result: {
@@ -921,7 +921,7 @@ describe("transient sessions never leak to the session store", () => {
       provider: "anthropic",
       model: "claude-test",
       cwd: tmpProject,
-      systemPrompt: "ken system prompt",
+      systemPrompt: "nolan system prompt",
       transient: true,
     });
     await session.initialize();
@@ -947,7 +947,7 @@ describe("transient sessions never leak to the session store", () => {
       provider: "anthropic",
       model: "claude-test",
       cwd: tmpProject,
-      systemPrompt: "ken system prompt",
+      systemPrompt: "nolan system prompt",
       transient: true,
     });
     await session.initialize();

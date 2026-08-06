@@ -599,7 +599,7 @@ export async function cancel(): Promise<CancelResult> {
 // Nolan is a second, read-only agent in this window. The user reaches him with
 // `@Nolan …`; he reads EZ Coder's transcript and hands back runnable prompts +
 // blunt mentorship. His replies stream over the SAME SSE channel as EZ Coder's
-// but with `ken_`-prefixed event types, so the webview routes them to a separate
+// but with `nolan_`-prefixed event types, so the webview routes them to a separate
 // magenta bubble:
 //   nolan_run_start { text }         — Nolan started thinking
 //   nolan_text_delta { text }        — streaming reply text
@@ -629,7 +629,7 @@ export async function cancel(): Promise<CancelResult> {
 /** Ask Nolan Grout. Fires the read-only mentor run; reply arrives via `nolan_*`
  *  SSE events. Lazily boots Nolan's session on first use. */
 export async function sendNolanPrompt(text: string): Promise<void> {
-  await logInfo(`ken prompt: ${text.slice(0, 80)}`);
+  await logInfo(`nolan prompt: ${text.slice(0, 80)}`);
   try {
     await waitForReady();
     await invoke("agent_nolan_prompt", { text });
@@ -696,7 +696,7 @@ export interface HistoryEntry {
   /** True when this entry is a persisted Nolan Grout (mentor) turn: a `user` row is
    *  the `@Nolan` question, an `assistant` row is Nolan's reply. Rendered in Nolan's
    *  color (user bubble tinted, assistant as a Nolan bubble) on resume. */
-  ken?: boolean;
+  nolan?: boolean;
   /** Present when this entry is a persisted autopilot verdict marker. Rendered
    *  identically to the live `autopilot` item (Nolan-tinted bubble), never as
    *  the raw verdict keyword the model replied with (e.g. `ALL_CLEAR`). */
@@ -1072,9 +1072,9 @@ export async function switchNolanModel(
   model: string | null,
 ): Promise<SwitchNolanModelResult | null> {
   try {
-    return await invoke<SwitchNolanModelResult>("agent_switch_ken_model", { model });
+    return await invoke<SwitchNolanModelResult>("agent_switch_nolan_model", { model });
   } catch (e) {
-    await logError(`agent_switch_ken_model failed: ${String(e)}`);
+    await logError(`agent_switch_nolan_model failed: ${String(e)}`);
     return null;
   }
 }

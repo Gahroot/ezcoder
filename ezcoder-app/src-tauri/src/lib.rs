@@ -1538,7 +1538,7 @@ async fn agent_cancel(
 }
 
 /// Proxy: ask Nolan Grout (the read-only mentor agent). Reply streams back via the
-/// `agent-event` event with `ken_`-prefixed types. Lazily boots Nolan's session.
+/// `agent-event` event with `nolan_`-prefixed types. Lazily boots Nolan's session.
 #[tauri::command]
 async fn agent_nolan_prompt(
     webview: WebviewWindow,
@@ -1548,7 +1548,7 @@ async fn agent_nolan_prompt(
     let port = port_for(&webview).ok_or("daemon not ready")?;
     let gg_sid = session_for(&webview).ok_or("session not ready")?;
     client
-        .post(format!("{}/ken/prompt", sidecar_base(port)))
+        .post(format!("{}/nolan/prompt", sidecar_base(port)))
         .header("x-gg-session", &gg_sid)
         .json(&serde_json::json!({ "text": text }))
         .send()
@@ -1566,7 +1566,7 @@ async fn agent_nolan_cancel(
     let port = port_for(&webview).ok_or("daemon not ready")?;
     let gg_sid = session_for(&webview).ok_or("session not ready")?;
     client
-        .post(format!("{}/ken/cancel", sidecar_base(port)))
+        .post(format!("{}/nolan/cancel", sidecar_base(port)))
         .header("x-gg-session", &gg_sid)
         .send()
         .await
@@ -1659,7 +1659,7 @@ async fn agent_switch_model(
 /// follows EZ Coder's model again. `model: None` clears. Returns
 /// `{ nolanProvider, nolanModel, nolanModelOverride }`.
 #[tauri::command]
-async fn agent_switch_ken_model(
+async fn agent_switch_nolan_model(
     webview: WebviewWindow,
     client: State<'_, reqwest::Client>,
     model: Option<String>,
@@ -1667,7 +1667,7 @@ async fn agent_switch_ken_model(
     let port = port_for(&webview).ok_or("daemon not ready")?;
     let gg_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
-        .post(format!("{}/ken/model", sidecar_base(port)))
+        .post(format!("{}/nolan/model", sidecar_base(port)))
         .header("x-gg-session", &gg_sid)
         .json(&serde_json::json!({ "model": model }))
         .send()
@@ -5002,7 +5002,7 @@ pub fn run() {
             agent_cycle_thinking,
             agent_models,
             agent_switch_model,
-            agent_switch_ken_model,
+            agent_switch_nolan_model,
             agent_enhance_prompt,
             agent_commands,
             setup_windows,

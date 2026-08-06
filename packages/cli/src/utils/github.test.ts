@@ -3,14 +3,14 @@ import { parseGitHubSlug } from "./github.js";
 
 describe("parseGitHubSlug", () => {
   it("parses https remotes", () => {
-    expect(parseGitHubSlug("https://github.com/kenkaiiii/ezcoder")).toBe("kenkaiiii/ezcoder");
-    expect(parseGitHubSlug("https://github.com/kenkaiiii/ezcoder.git")).toBe("kenkaiiii/ezcoder");
+    expect(parseGitHubSlug("https://github.com/Gahroot/ezcoder")).toBe("Gahroot/ezcoder");
+    expect(parseGitHubSlug("https://github.com/Gahroot/ezcoder.git")).toBe("Gahroot/ezcoder");
     expect(parseGitHubSlug("https://user@github.com/o/r.git")).toBe("o/r");
     expect(parseGitHubSlug("http://github.com/o/r/")).toBe("o/r");
   });
 
   it("parses ssh remotes", () => {
-    expect(parseGitHubSlug("git@github.com:kenkaiiii/ezcoder.git")).toBe("kenkaiiii/ezcoder");
+    expect(parseGitHubSlug("git@github.com:Gahroot/ezcoder.git")).toBe("Gahroot/ezcoder");
     expect(parseGitHubSlug("git@github.com:o/r")).toBe("o/r");
     expect(parseGitHubSlug("ssh://git@github.com/o/r.git")).toBe("o/r");
   });

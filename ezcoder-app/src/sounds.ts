@@ -6,8 +6,8 @@ import warningUrl from "./assets/ui-warning.mp3";
 import hoverUrl from "./assets/ui-hover.mp3";
 import doneUrl from "./assets/ui-done.mp3";
 import fuguUrl from "./assets/fugu.mp3";
-import nolanAutopilotOnUrl from "./assets/ken-autopilot-on.mp3";
-import nolanAutopilotOffUrl from "./assets/ken-autopilot-off.mp3";
+import nolanAutopilotOnUrl from "./assets/nolan-autopilot-on.mp3";
+import nolanAutopilotOffUrl from "./assets/nolan-autopilot-off.mp3";
 import levelUpUrl from "./assets/levelup.mp3";
 import expUrl from "./assets/exp-new.mp3";
 

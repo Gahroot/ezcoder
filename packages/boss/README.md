@@ -9,7 +9,7 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
   <a href="https://prestyj.com"><img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
   <a href="https://prestyj.com"><img src="https://img.shields.io/badge/Skool-Community-7C3AED?style=for-the-badge" alt="Skool"></a>
-  <a href="https://github.com/KenKaiii"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
+  <a href="https://github.com/Gahroot"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
 </p>
 
 You talk to the boss. The boss drives the workers — one per project — in parallel. Dispatch work, watch them finish, keep a backlog, swap models on the fly. All from one terminal.
@@ -147,9 +147,8 @@ On every launch the boss installs any pending update from the prior run (effecti
 
 ## 👥 Community
 
-- [YouTube @kenkaidoesai](https://prestyj.com) — tutorials and demos
-- [Skool community](https://prestyj.com) — come hang out
-- [GitHub @KenKaiii](https://github.com/KenKaiii)
+- [Prestyj website](https://prestyj.com) — tutorials and updates
+- [GitHub @Gahroot](https://github.com/Gahroot)
 
 ---
 

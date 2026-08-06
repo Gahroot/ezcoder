@@ -71,7 +71,7 @@ describe("WorkspaceHeader", () => {
         gitBranch="main"
         gitHubIssues={4}
         gitHubPRs={1}
-        gitHubRepoUrl="https://github.com/kenkaiiii/ezcoder"
+        gitHubRepoUrl="https://github.com/Gahroot/ezcoder"
         navHidden
         onToggleNav={() => {}}
       >
@@ -134,7 +134,7 @@ describe("WorkspaceHeader", () => {
         gitBranch="main"
         gitHubIssues={3}
         gitHubPRs={0}
-        gitHubRepoUrl="https://github.com/kenkaiiii/ezcoder"
+        gitHubRepoUrl="https://github.com/Gahroot/ezcoder"
         navHidden
         onToggleNav={() => {}}
       >
@@ -152,7 +152,7 @@ describe("WorkspaceHeader", () => {
         workspaceMode="code"
         cwd="/work/ezcoder"
         gitBranch="main"
-        gitHubRepoUrl="https://github.com/kenkaiiii/ezcoder"
+        gitHubRepoUrl="https://github.com/Gahroot/ezcoder"
         navHidden
         onToggleNav={() => {}}
       >
@@ -164,7 +164,7 @@ describe("WorkspaceHeader", () => {
     expect(folder.getAttribute("title")).toBe("/work/ezcoder — open folder");
 
     const branch = screen.getByRole("button", { name: "⎇ main" });
-    expect(branch.getAttribute("title")).toContain("github.com/kenkaiiii/ezcoder");
+    expect(branch.getAttribute("title")).toContain("github.com/Gahroot/ezcoder");
   });
 
   it("leaves the branch as static text when there is no GitHub repo URL", () => {
