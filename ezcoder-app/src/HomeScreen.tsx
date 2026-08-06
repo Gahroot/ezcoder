@@ -17,6 +17,7 @@ import {
   stopServe,
   openWhatsNewWindow,
   getProgress,
+  setRemoteActive,
   type ProgressSnapshot,
 } from "./agent";
 import { RankBadge } from "./RankBadge";
@@ -28,6 +29,12 @@ interface Props {
   onProjects: () => void;
   onChat: () => void;
   onLogin: () => void;
+  /**
+   * Bumped when something OUTSIDE this screen changed serve/auth state (the
+   * macOS tray toggling Remote, or its Settings modal saving a projects
+   * folder). A counter, not a boolean, so repeats always re-fire.
+   */
+  refreshSignal?: number;
 }
 
 /**
@@ -35,7 +42,12 @@ interface Props {
  * Code and Chat require a configured workspace folder and connected AI provider.
  * Settings (project folder) lives here beside the workspace actions.
  */
-export function HomeScreen({ onProjects, onChat, onLogin }: Props): React.ReactElement {
+export function HomeScreen({
+  onProjects,
+  onChat,
+  onLogin,
+  refreshSignal = 0,
+}: Props): React.ReactElement {
   const [folderSet, setFolderSet] = useState(false);
   const [providerCount, setProviderCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
@@ -76,6 +88,7 @@ export function HomeScreen({ onProjects, onChat, onLogin }: Props): React.ReactE
       .then((serve) => {
         setServing(serve.running);
         setTelegramConfigured(serve.configured);
+        void setRemoteActive(serve.running);
       })
       .catch(() => {});
   }
@@ -88,6 +101,11 @@ export function HomeScreen({ onProjects, onChat, onLogin }: Props): React.ReactE
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  // Skips the initial 0 so mounting doesn't double-refresh.
+  useEffect(() => {
+    if (refreshSignal > 0) void refresh().catch(() => {});
+  }, [refreshSignal]);
 
   const ready = folderSet && providerCount > 0;
 
@@ -107,10 +125,13 @@ export function HomeScreen({ onProjects, onChat, onLogin }: Props): React.ReactE
       if (serving) {
         await stopServe();
         setServing(false);
+        // Keep the macOS tray's Remote label in step with this button.
+        void setRemoteActive(false);
         toast("Stopped serving.", "success");
       } else {
         await startServe();
         setServing(true);
+        void setRemoteActive(true);
         toast("Serving on Telegram — message your bot.", "success");
       }
     } catch (e) {

@@ -103,6 +103,7 @@
     "verify:goal:e2e": "pnpm dlx tsx scripts/verify-goal-e2e.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.67",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@kenkaiiii/agent-home-sdk": "^0.3.8",
     "@prestyj/agent": "workspace:*",
@@ -110,7 +111,7 @@
     "@prestyj/core": "workspace:*",
     "@prestyj/pixel": "workspace:*",
     "@kenkaiiii/kencode-search": "^0.1.17",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/client": "^2.0.0",
     "ansi-regex": "^6.2.2",
     "chalk": "^5.6.2",
     "cli-highlight": "^2.1.11",

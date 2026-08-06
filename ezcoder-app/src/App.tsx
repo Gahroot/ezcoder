@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, memo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
@@ -17,6 +17,8 @@ import {
   isSwitchModelError,
   switchNolanModel,
   listCommands,
+  cancelQueued,
+  type QueuedMessage,
   listHistory,
   exportTranscriptName,
   saveTranscript,
@@ -31,6 +33,14 @@ import {
   arrangeAllWindows,
   onWindowOrder,
   restoreTarget,
+  onTrayIntent,
+  takeTrayIntent,
+  setUpdateAvailable,
+  setRemoteActive as setRemoteActiveIPC,
+  startServe,
+  stopServe,
+  getServeStatus,
+  type TrayIntent,
   acceptPlan as acceptPlanIPC,
   subscribe,
   isSecondaryWindow,
@@ -64,6 +74,16 @@ import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
 import { CompactionNotice } from "./CompactionNotice";
 import { ModelSelect } from "./ModelSelect";
 import { SlashMenu } from "./SlashMenu";
+import { QueuedBar } from "./QueuedBar";
+import { ScheduleHint } from "./ScheduleHint";
+import { RunningSchedulesButton } from "./RunningSchedulesButton";
+import {
+  describeSchedule,
+  isScheduleDraft,
+  parseScheduleCommand,
+  withInterval,
+} from "./scheduleCommand";
+import { useSchedules } from "./useSchedules";
 import { FileMentionMenu } from "./FileMentionMenu";
 import { ReferencedFiles, appendReferencedFiles, parseReferencedFiles } from "./ReferencedFiles";
 import { ContextMeter } from "./ContextMeter";
@@ -79,6 +99,7 @@ import { PlanModeLogo } from "./PlanModeLogo";
 import { NolanPowerBanner } from "./NolanPowerBanner";
 import { ExportChatButton } from "./ExportChatButton";
 import { PlanReviewModal } from "./PlanReviewModal";
+import { McpElicitModal } from "./McpElicitModal";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 // Experimental gaze focus — disabled for now (see main.tsx).
 // import { GazeButton } from "./GazeButton";
@@ -89,6 +110,7 @@ import { BackButton } from "./BackButton";
 import { Badge } from "./Badge";
 import { AutopilotToggle } from "./AutopilotToggle";
 import { HomeScreen } from "./HomeScreen";
+import { SettingsModal } from "./SettingsModal";
 import { initialEntryView, type EntryView } from "./app-entry-view";
 import { submitDisposition } from "./submit-disposition";
 import { Toaster } from "./Toaster";
@@ -100,6 +122,7 @@ import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
 import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
 import { Markdown, PromptSendProvider } from "./Markdown";
+import { TranscriptList, type TranscriptListHandle } from "./TranscriptList";
 import { FooterSkeleton, TranscriptSkeleton, Skeleton } from "./Skeleton";
 import { useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
@@ -291,6 +314,15 @@ function FooterSep(): React.ReactElement {
 // BLACK_CIRCLE — ⏺ on mac (matches the TUI figure).
 const DOT = "\u23FA";
 
+// `/schedule` lives in the webview, not the sidecar's command registry: it
+// registers a recurring timer instead of prompting the agent.
+const SCHEDULE_COMMAND: SlashCommand = {
+  name: "schedule",
+  aliases: ["sched"],
+  description: "Run a prompt on a repeating schedule — <prompt> | 15m | [times]",
+  source: "built-in",
+};
+
 // Thinking-tier color, mirroring the ezcoder TUI footer's getThinkingColor:
 // warmer/more saturated as the tier rises; xhigh/max are "max power" hot pink.
 const MAX_POWER_COLOR = "#db2777";
@@ -332,6 +364,8 @@ function canHandleWindowFileDrop(): boolean {
 
 function App(): React.ReactElement {
   const [items, setItems] = useState<Item[]>([]);
+  // The transcript is virtualized (see TranscriptList): only nearby rows stay mounted.
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   // Nolan Grout (mentor agent): own running flag, token/thinking metrics, streaming
   // bubble, and `nolan_*` SSE handling. Lives in its own hook; App just consumes
   // the state for rendering and delegates nolan events to `handleNolanEvent`.
@@ -393,6 +427,9 @@ function App(): React.ReactElement {
   const pendingEnhanceRef = useRef<{ enhanced: string; segments: PromptSegment[] } | null>(null);
   // Number of messages queued mid-run (injected as steering by the sidecar).
   const [queuedCount, setQueuedCount] = useState(0);
+  // Pending queued messages, so each can be cancelled individually. Kept
+  // alongside the count because the sidecar is the source of truth for both.
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
   const [state, setState] = useState<AgentState | null>(null);
   // Transient "KEN IS ON"/"KEN IS OFF" takeover banner shown when Autopilot
   // is toggled. Null = not showing; the banner clears itself via `onDone`
@@ -439,6 +476,20 @@ function App(): React.ReactElement {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  // Caret offset in the composer, tracked so the `/schedule` hint can highlight
+  // the slot the user is currently typing in.
+  const [caret, setCaret] = useState(0);
+  // `/schedule` runtime. Fires each due prompt through the normal send path,
+  // skipping any occurrence that comes due mid-run rather than stacking agents.
+  // In-memory for the life of the window — see useSchedules.
+  const { schedules, addSchedule, stopSchedule } = useSchedules({
+    queuedPrompts: useMemo(() => queuedMessages.map((m) => m.text), [queuedMessages]),
+    onFire: useCallback((prompt: string) => {
+      // keepInput: the user did not press Enter for this — leave whatever they
+      // are typing untouched.
+      submitTextRef.current(prompt, undefined, { keepInput: true });
+    }, []),
+  });
   // `@`-mention file picker state. `mention` is the active token being typed
   // (its query + where it starts in the input); `fileMatches` is the live
   // search result; `fileIndex` is the keyboard-highlighted row.
@@ -567,6 +618,129 @@ function App(): React.ReactElement {
   }, []);
   // App self-update (GitHub releases). Drives the footer update banner.
   const appUpdate = useAppUpdate();
+
+  // ── macOS menu-bar tray ───────────────────────────────────────────────────
+  // Settings opened from the tray. Owned HERE, not by HomeScreen, because the
+  // tray targets a WINDOW and that window may be showing Home, a picker, or a
+  // live workspace — only App renders in all three.
+  const [showTraySettings, setShowTraySettings] = useState(false);
+  // Bumped to ask HomeScreen to re-read serve/auth state after the tray changed
+  // it. A counter, not a boolean, so repeat tray clicks always re-fire.
+  const [homeRefreshSignal, setHomeRefreshSignal] = useState(0);
+
+  const closeTraySettings = useCallback((): void => {
+    setShowTraySettings(false);
+    // Home gates Code/Chat on the projects folder + a provider; re-read them in
+    // case this modal is where they were just set.
+    setHomeRefreshSignal((n) => n + 1);
+  }, []);
+
+  // Rust owns the tray menu but not the updater — the webview polls GitHub. Push
+  // availability down so "Update now" shows only while an update is pending.
+  const updateVersion = appUpdate.phase === "available" ? appUpdate.version : null;
+  useEffect(() => {
+    void setUpdateAvailable(updateVersion);
+  }, [updateVersion]);
+
+  // Remote (the Telegram serve loop) lives in the sidecar, so the tray can't
+  // know its state — poll it and push it down, which keeps the menu item's label
+  // honest even when Remote is toggled from Home or another window. Nothing in
+  // React renders it, so this returns the value instead of holding state; Rust
+  // is the one that needs it, and it already de-dupes unchanged pushes.
+  const syncRemote = useCallback(async (): Promise<boolean> => {
+    try {
+      await waitForReady();
+      const { running } = await getServeStatus();
+      void setRemoteActiveIPC(running);
+      return running;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    void syncRemote();
+    const id = setInterval(() => void syncRemote(), 30_000);
+    return () => clearInterval(id);
+  }, [syncRemote]);
+
+  const applyTrayIntent = useCallback(
+    (intent: TrayIntent): void => {
+      switch (intent) {
+        case "update":
+          void appUpdate.install();
+          break;
+        // Route to the session picker for the requested mode. On Home that's the
+        // entry view; over an open workspace it's the picker overlay, which keeps
+        // the running session intact until a different one is chosen.
+        case "new-chat":
+        case "new-code": {
+          const mode = intent === "new-chat" ? "chat" : "code";
+          setWorkspaceMode(mode);
+          if (needsProject) setEntryView(mode === "chat" ? "chats" : "projects");
+          else setShowPicker(true);
+          break;
+        }
+        // A toggle, matching the menu item's label. Re-read the live status
+        // first rather than trusting the poll, so a stale cache can't start a
+        // second serve loop or stop one the user just started elsewhere.
+        case "remote":
+          void syncRemote()
+            .then(async (running) => {
+              if (running) {
+                await stopServe();
+                toast("Remote is off.", "success");
+              } else {
+                await startServe();
+                toast("Remote is on.", "success");
+              }
+            })
+            .catch((e: unknown) => toast(`Remote failed: ${String(e)}`, "error"))
+            .finally(() => {
+              void syncRemote();
+              setHomeRefreshSignal((n) => n + 1);
+            });
+          break;
+        case "settings":
+          setShowTraySettings(true);
+          break;
+      }
+    },
+    [appUpdate, needsProject, syncRemote],
+  );
+
+  // The handler is re-created on most renders (it closes over `appUpdate`, a
+  // fresh object each render). Holding it in a ref keeps the Tauri listener
+  // registered exactly ONCE for the window's lifetime — re-subscribing per
+  // render raced listen/unlisten and threw inside the event plugin.
+  const trayIntentRef = useRef(applyTrayIntent);
+  useEffect(() => {
+    trayIntentRef.current = applyTrayIntent;
+  }, [applyTrayIntent]);
+
+  // Two delivery paths, because a window built BY the tray isn't listening yet
+  // when the menu is clicked: an existing window gets the event, a new one
+  // claims the parked intent on mount.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+    void onTrayIntent((intent) => trayIntentRef.current(intent)).then((un) => {
+      if (disposed) un();
+      else unlisten = un;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    void takeTrayIntent().then((intent) => {
+      if (intent) applyTrayIntent(intent);
+    });
+    // Mount-only: the parked intent is consumed once, by the window it opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Initialize-git modal (shown via the top-right button when not yet a repo).
   const [showInitGit, setShowInitGit] = useState(false);
   // True once the initial hydrate (state + models + commands + history) has
@@ -581,6 +755,7 @@ function App(): React.ReactElement {
   // provider without re-subscribing the SSE listener on every state change.
   const stateRef = useRef<AgentState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<TranscriptListHandle>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // NOTE: the build-session event machine's private refs (streaming bubble id,
   // rAF buffer, per-run accumulators, sub-agent / compaction group ids) now live
@@ -598,8 +773,20 @@ function App(): React.ReactElement {
   // and grow the content after this fires, so it's also called from each image's
   // onLoad to keep the newest content visible.
   const scrollToBottom = useCallback(() => {
+    // The transcript is virtualized, so the scroller's height is an estimate
+    // until rows materialize — `scrollHeight` alone lands short. Ask the list to
+    // scroll to its last row, and keep the raw scroll as a fallback for the
+    // states that render outside the list (wake screen, status line).
+    transcriptRef.current?.scrollToBottom();
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight });
+  }, []);
+
+  // Feed the same node to both the ref (existing scroll machinery) and state
+  // (Virtuoso's customScrollParent, which needs a value to react to).
+  const attachScrollEl = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    setScrollEl(node);
   }, []);
 
   // Same as scrollToBottom, but a no-op while the user has scrolled up to read.
@@ -1044,6 +1231,7 @@ function App(): React.ReactElement {
     setPlanDone,
     setPlanReview,
     setQueuedCount,
+    setQueuedMessages,
     setAttachments,
     setCommands,
     setModels,
@@ -1088,7 +1276,8 @@ function App(): React.ReactElement {
         setStatus(st.runState === "cancelling" ? "cancelling..." : "ready");
       }
       const available = await listModels();
-      if (available.length > 0) setModels(available);
+      // null = the fetch failed; keep whatever the picker already had.
+      if (available) setModels(available);
       const cmds = await listCommands();
       if (cmds.length > 0) setCommands(cmds);
       // Project task list for the Tasks modal + nav button.
@@ -1376,9 +1565,20 @@ function App(): React.ReactElement {
   // single `/token` with no space yet). Empty when not in slash mode.
   const slashQuery =
     input.startsWith("/") && !input.includes(" ") ? input.slice(1).toLowerCase() : null;
+  // `/schedule ` (past the command token) swaps the palette for the argument
+  // hint. An invalid draft is blocked from being sent to the agent.
+  const scheduleDraft = isScheduleDraft(input);
+  const scheduleParse = scheduleDraft ? parseScheduleCommand(input) : null;
+  // Drives the composer's invalid affordance; submit() enforces the block.
+  const scheduleInvalid = scheduleParse !== null && !scheduleParse.ok;
   // Commit lives in the top-right button, not the slash menu.
   const COMMIT_NAMES = ["commit", "setup-commit"];
-  const menuCommands = commands.filter((c) => !COMMIT_NAMES.includes(c.name));
+  // `/schedule` is handled entirely in the webview (it registers a timer rather
+  // than prompting the agent), so the sidecar's registry never lists it. Inject
+  // it here or it would be undiscoverable — typing `/sch` would show nothing.
+  const menuCommands = [SCHEDULE_COMMAND, ...commands].filter(
+    (c) => !COMMIT_NAMES.includes(c.name),
+  );
   const slashMatches =
     slashQuery !== null
       ? menuCommands.filter(
@@ -1436,6 +1636,50 @@ function App(): React.ReactElement {
   // Default repo name = the project folder name.
   const defaultRepoName = (state?.cwd ?? "").split(/[\\/]/).filter(Boolean).pop() ?? "";
 
+  /**
+   * Fill the interval slot from a preset chip. Replaces an existing interval
+   * rather than appending, so clicking `1h` after `15m` swaps it instead of
+   * producing a second bar. Keeps focus in the composer so typing continues.
+   */
+  function fillScheduleInterval(preset: string): void {
+    const { text, caret: caretAt } = withInterval(input, preset);
+    setInput(text);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(caretAt, caretAt);
+      setCaret(caretAt);
+    });
+  }
+
+  /**
+   * Cancel one pending queued message. The sidecar returns the remaining queue,
+   * which we adopt wholesale rather than filtering locally: the agent may have
+   * consumed messages between render and click, so its list is authoritative.
+   */
+  function handleCancelQueued(id: string): void {
+    const cancelledText = queuedMessages.find((m) => m.id === id)?.text;
+    void cancelQueued(id).then((remaining) => {
+      if (remaining === null) return;
+      setQueuedMessages(remaining);
+      setQueuedCount(remaining.length);
+      // Drop the transcript bubble for a message that will now never run.
+      // Leaving it would clear its `queued` flag on the next queue broadcast and
+      // render it identically to a message the agent actually received.
+      // Only remove it if the sidecar really dropped it: a cancel that lost the
+      // race (already consumed) comes back with the text still in the queue.
+      if (cancelledText === undefined) return;
+      if (remaining.some((m) => m.id === id)) return;
+      setItems((prev) => {
+        const index = prev.findIndex(
+          (it) => it.kind === "user" && it.queued && it.text === cancelledText,
+        );
+        return index === -1 ? prev : [...prev.slice(0, index), ...prev.slice(index + 1)];
+      });
+    });
+  }
+
   function pickSlashCommand(cmd: SlashCommand): void {
     if (cmd.name === "add-dir" || cmd.name === "remove-dir") {
       setInput("");
@@ -1445,8 +1689,13 @@ function App(): React.ReactElement {
     }
 
     // Fill the input with the command; the user can add args or press Enter.
-    setInput(`/${cmd.name} `);
+    const next = `/${cmd.name} `;
+    setInput(next);
     setSlashIndex(0);
+    // Keep the caret state in sync with the filled text, so an argument hint
+    // (e.g. `/schedule`) highlights the right slot instead of a stale offset.
+    setCaret(next.length);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   async function pickWorkspaceDirectory(command: "add-dir" | "remove-dir"): Promise<void> {
@@ -1534,7 +1783,11 @@ function App(): React.ReactElement {
   // top-right commit button, and the workspace directory picker. `label` shows
   // a friendly shimmer phrase in the transcript while the full `text` is still
   // sent to the agent.
-  function submitText(text: string, label?: string): void {
+  //
+  // `keepInput` is for sends the user did not initiate right now — a scheduled
+  // prompt firing on its interval. Those must NOT clear the composer, or a
+  // schedule that comes due mid-sentence deletes what the user was typing.
+  function submitText(text: string, label?: string, opts?: { keepInput?: boolean }): void {
     const trimmed = text.trim();
     // Mid-run this QUEUES as steering, exactly like a typed message (see
     // submit()): the sidecar injects it into the running loop. Dropping it
@@ -1553,11 +1806,18 @@ function App(): React.ReactElement {
       ...(label !== undefined ? { label } : {}),
       ...(queued ? { queued: true } : {}),
     });
-    setInput("");
-    setSlashIndex(0);
+    if (!opts?.keepInput) {
+      setInput("");
+      setSlashIndex(0);
+    }
     if (!queued) endStreamingText();
     void sendPrompt(trimmed);
   }
+
+  // Scheduled prompts fire from a ticker set up once; keep it pointed at the
+  // current submit function without recreating the interval on every render.
+  const submitTextRef = useRef(submitText);
+  submitTextRef.current = submitText;
 
   // Click handler for the "Send to EZ Coder" button on Nolan's recommended prompts.
   // Pushes a shimmering "Sent to EZ Coder" user bubble (the full prompt body went
@@ -1719,9 +1979,13 @@ function App(): React.ReactElement {
     if (enhancing || !hydrated) return setEnhanceHintVisible(false);
     if (input.trim().length === 0) return setEnhanceHintVisible(false);
     if (slashOpen || mentionOpen) return setEnhanceHintVisible(false);
+    // Never offer to rewrite a `/schedule` draft: the enhancer rewrites prose
+    // and would happily mangle the `| 15m` argument tail into something the
+    // parser rejects.
+    if (scheduleDraft) return setEnhanceHintVisible(false);
     if (enhancement && enhancement.plain === input) return setEnhanceHintVisible(false);
     setEnhanceHintVisible(true);
-  }, [input, enhancing, hydrated, slashOpen, mentionOpen, enhancement]);
+  }, [input, enhancing, hydrated, slashOpen, mentionOpen, scheduleDraft, enhancement]);
 
   // Submit the current input together with any staged attachments. Images are
   // echoed inline in the user's bubble; all media is sent to the agent.
@@ -1730,9 +1994,26 @@ function App(): React.ReactElement {
     if (!readyRef.current) return;
     if (!trimmed && attachments.length === 0 && mentionedPaths.length === 0) return;
 
-    // `@Nolan <prompt>` (case-insensitive, optional colon) routes to Nolan Grout, the
-    // read-only mentor agent — NOT EZ Coder. Nolan runs concurrently with any
-    // build run; his reply streams into a magenta bubble via nolan_* events.
+    // `/schedule` registers a recurring prompt instead of sending anything now.
+    if (isScheduleDraft(input)) {
+      const result = parseScheduleCommand(input);
+      if (!result.ok) return;
+      addSchedule(result.value);
+      pushItem({
+        kind: "user",
+        id: nextId(),
+        text: trimmed,
+        command: true,
+        label: `Scheduled · ${describeSchedule(result.value)}`,
+      });
+      recordHistory(trimmed);
+      stickToBottomRef.current = true;
+      setInput("");
+      setSlashIndex(0);
+      return;
+    }
+
+    // `@Nolan <prompt>` routes to Nolan Grout, the read-only mentor agent.
     const nolanMatch = workspaceMode === "code" ? /^@nolan\b:?\s*/i.exec(trimmed) : null;
     if (nolanMatch) {
       const question = trimmed.slice(nolanMatch[0].length).trim();
@@ -1959,6 +2240,7 @@ function App(): React.ReactElement {
     setPlanDone(new Set());
     setAttachments([]);
     setQueuedCount(0);
+    setQueuedMessages([]);
     setHydrated(false);
     setNeedsProject(false);
     setHydrateNonce((n) => n + 1);
@@ -1992,6 +2274,7 @@ function App(): React.ReactElement {
               setEntryView("chats");
             }}
             onLogin={() => setEntryView("login")}
+            refreshSignal={homeRefreshSignal}
           />
         ) : entryView === "login" ? (
           <LoginScreen onClose={() => setEntryView("home")} />
@@ -2004,6 +2287,7 @@ function App(): React.ReactElement {
             onClose={() => setEntryView("home")}
           />
         )}
+        {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
         <Toaster />
       </div>
     );
@@ -2030,6 +2314,7 @@ function App(): React.ReactElement {
         ) : (
           <ProjectPicker initialProjectPath={state?.cwd ?? null} {...pickerProps} />
         )}
+        {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
       </div>
     );
   }
@@ -2204,7 +2489,7 @@ function App(): React.ReactElement {
         {workspaceMode === "code" && nolanPowerBanner && (
           <NolanPowerBanner mode={nolanPowerBanner} onDone={() => setNolanPowerBanner(null)} />
         )}
-        <div className="transcript" ref={scrollRef} onScroll={onTranscriptScroll}>
+        <div className="transcript" ref={attachScrollEl} onScroll={onTranscriptScroll}>
           {!hydrated && items.length === 0 ? (
             <TranscriptSkeleton />
           ) : (
@@ -2218,9 +2503,14 @@ function App(): React.ReactElement {
                   </div>
                 ))}
               <PromptSendProvider value={sendNolanRecommendedPrompt}>
-                {items.map((it) => (
-                  <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
-                ))}
+                <TranscriptList
+                  ref={transcriptRef}
+                  items={items}
+                  itemKey={(it) => it.id}
+                  scrollParent={scrollEl}
+                  isPinned={() => stickToBottomRef.current}
+                  renderItem={(it) => <TranscriptRow item={it} onImageLoad={maybeScrollToBottom} />}
+                />
               </PromptSendProvider>
             </>
           )}
@@ -2271,14 +2561,22 @@ function App(): React.ReactElement {
         )}
       </div>
 
-      <div className={`inputwrap${isFileDragOver ? " dragover" : ""}`}>
-        {slashOpen && (
-          <SlashMenu
-            commands={slashMatches}
-            activeIndex={clampedSlashIndex}
-            onSelect={pickSlashCommand}
-            onHover={setSlashIndex}
-          />
+      <div
+        className={`inputwrap${isFileDragOver ? " dragover" : ""}${
+          scheduleInvalid ? " schedule-invalid" : ""
+        }`}
+      >
+        {scheduleDraft ? (
+          <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
+        ) : (
+          slashOpen && (
+            <SlashMenu
+              commands={slashMatches}
+              activeIndex={clampedSlashIndex}
+              onSelect={pickSlashCommand}
+              onHover={setSlashIndex}
+            />
+          )
         )}
         {mentionOpen && (
           <FileMentionMenu
@@ -2291,12 +2589,7 @@ function App(): React.ReactElement {
         )}
         <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
         <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
-        {queuedCount > 0 && (
-          <div className="queued-bar">
-            <span className="queued-dot" />
-            {`${queuedCount} message${queuedCount === 1 ? "" : "s"} queued · will send after this run`}
-          </div>
-        )}
+        <QueuedBar messages={queuedMessages} onCancel={handleCancelQueued} />
         <div className="inputrow">
           <input
             ref={fileInputRef}
@@ -2361,6 +2654,7 @@ function App(): React.ReactElement {
               onChange={(e) => {
                 setInput(e.target.value);
                 setSlashIndex(0);
+                setCaret(e.target.selectionStart ?? e.target.value.length);
                 // Typing exits history-recall mode so ↑/↓ start fresh next time.
                 if (historyIndex !== null) setHistoryIndex(null);
                 // Drop the enhancement the instant the text diverges from it, so
@@ -2370,11 +2664,13 @@ function App(): React.ReactElement {
               }}
               onClick={(e) => {
                 const el = e.currentTarget;
+                setCaret(el.selectionStart ?? el.value.length);
                 updateMention(el.value, el.selectionStart ?? el.value.length);
               }}
               onKeyUp={(e) => {
+                const el = e.currentTarget;
+                setCaret(el.selectionStart ?? el.value.length);
                 if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-                  const el = e.currentTarget;
                   updateMention(el.value, el.selectionStart ?? el.value.length);
                 }
               }}
@@ -2469,9 +2765,15 @@ function App(): React.ReactElement {
             ) : (
               <span className="footer-left footer-reveal" style={{ fontFamily: "var(--mono)" }}>
                 {runningTaskCount > 0 && <BackgroundTasksButton tasks={tasks} />}
-                {state?.planMode && (
+                {schedules.length > 0 && (
                   <>
                     {runningTaskCount > 0 && <FooterSep />}
+                    <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
+                  </>
+                )}
+                {state?.planMode && (
+                  <>
+                    {(runningTaskCount > 0 || schedules.length > 0) && <FooterSep />}
                     <span className="footer-plan">
                       <ShimmerText base={theme.secondary} bright="#ddd6fe">
                         {"\u25C6 plan mode"}
@@ -2612,6 +2914,10 @@ function App(): React.ReactElement {
         />
       )}
 
+      {/* Always mounted: an MCP server can ask for input at any moment, in any
+          workspace mode, and its tool call stays blocked until we answer. */}
+      <McpElicitModal />
+
       {workspaceMode === "code" && planReview !== null && (
         <PlanReviewModal
           content={planReview}
@@ -2639,6 +2945,11 @@ function App(): React.ReactElement {
       {showScorecard && progress && (
         <ScorecardModal snapshot={progress} onClose={() => setShowScorecard(false)} />
       )}
+
+      {/* Settings reached from the menu-bar tray. Rendered in every view branch
+          (Home, picker, workspace) because the tray targets a WINDOW and can't
+          know which of the three it is showing. */}
+      {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
 
       {workspaceMode === "code" && showTasks && (
         <TasksModal

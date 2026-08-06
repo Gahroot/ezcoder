@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Pencil } from "lucide-react";
 import { openProjectPath, openUrl, type WorkspaceMode } from "./agent";
+import { projectAccent } from "./projectAccent";
 
 interface WorkspaceHeaderProps {
   workspaceMode: WorkspaceMode;
@@ -90,8 +91,15 @@ export function WorkspaceHeader({
     if (nextTitle !== customTitle) onCustomTitleChange?.(nextTitle);
   }
 
+  // Stable per-project colour, so a wall of identical dark windows becomes
+  // identifiable at a glance. Published as a CSS variable for descendants.
+  const accent = projectAccent(cwd);
+
   return (
-    <div className="chat-head">
+    <div
+      className="chat-head"
+      style={accent ? ({ "--project-accent": accent } as CSSProperties) : undefined}
+    >
       <div className="chat-head-strip" data-tauri-drag-region>
         <span
           className="chat-head-title"
@@ -109,6 +117,7 @@ export function WorkspaceHeader({
         >
           {directory ? (
             <>
+              {accent && <span className="chat-head-accent-dot" aria-hidden="true" />}
               {editingTitle ? (
                 <input
                   ref={titleInputRef}

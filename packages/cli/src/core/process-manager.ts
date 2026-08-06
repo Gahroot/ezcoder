@@ -7,7 +7,8 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { killProcessTree } from "../utils/process.js";
 import { getSafeToolEnv } from "../tools/safe-env.js";
-import { resolveShell } from "./shell.js";
+import { resolveShell, type ShellResolution } from "./shell.js";
+import type { AgentNotificationQueue } from "./agent-notifications.js";
 
 export interface BackgroundProcess {
   id: string;
@@ -17,6 +18,13 @@ export interface BackgroundProcess {
   startedAt: number;
   exitCode: number | null;
   lastReadOffset: number;
+  /**
+   * Last known size of `logFile` in bytes. Kept current by the progress
+   * watcher, the exit handler and every `readOutput`, so consumers (notably
+   * the pre-stop process gate) can tell "output was never consumed" from
+   * "output was read" without an fs stat per check.
+   */
+  logSize: number;
 }
 
 export interface StartResult {
@@ -34,11 +42,63 @@ export interface ReadOutputResult {
 
 const BG_DIR = path.join(os.homedir(), ".ezcoder", "bg");
 
+/** Delay before a running process may first report progress. */
+const WATCH_INTERVAL_MS = 5_000;
+/** Ceiling on the progress interval as it backs off between reports. */
+const WATCH_INTERVAL_MAX_MS = 120_000;
+/**
+ * How many progress checkpoints one background process may push, ever.
+ *
+ * A progress checkpoint is worth most early ("the build is underway", "it died
+ * on startup") and approaches zero after that: a dev server the agent started
+ * itself, still logging an hour on, tells it nothing it doesn't already know
+ * and can always be inspected on demand with `task_output`.
+ *
+ * At a flat interval with no budget, such a server produced a fresh checkpoint
+ * for essentially every loop step — measured here at ~2k tokens per minute of
+ * overlap, i.e. a whole context window per hour spent restating "still
+ * running".
+ *
+ * Anthropic reached the same conclusion the hard way: Claude Code shipped
+ * periodic background status into the model's context as `task_progress` and
+ * `background_task_status` attachments, then REMOVED both (they survive only in
+ * a `LEGACY_ATTACHMENT_TYPES` list that drops them from resumed sessions).
+ * Their progress is now a host-side stream event for the UI, and the only thing
+ * pushed into context is the terminal completion notice.
+ *
+ * We keep a small early budget rather than going to zero: the first few reports
+ * are what let the agent notice a build that died on startup without blocking
+ * on it. Combined with the backoff those land at ~5s, ~15s and ~35s, after
+ * which the watcher retires and only the exit notification remains.
+ */
+const WATCH_MAX_REPORTS = 3;
+/** Chars of log tail carried in a progress checkpoint. */
+const CHECKPOINT_TAIL_CHARS = 320;
+
+/** Last line(s) of the log, collapsed and bounded — never the raw log. */
+function tailDigest(text: string): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  if (!collapsed) return "";
+  return collapsed.length <= CHECKPOINT_TAIL_CHARS
+    ? collapsed
+    : `\u2026${collapsed.slice(collapsed.length - CHECKPOINT_TAIL_CHARS)}`;
+}
+
+function formatElapsed(ms: number): string {
+  return ms >= 60_000 ? `${Math.round(ms / 6_000) / 10}m` : `${Math.round(ms / 1_000)}s`;
+}
+
 export interface ProcessManagerOps {
   platform?: NodeJS.Platform;
   kill?: typeof process.kill;
   killProcessTree?: (pid: number) => void;
   spawnSync?: typeof spawnSync;
+  /**
+   * Push queue for background-process progress checkpoints. When set, a long
+   * build reports progress and its exit code into the agent's next turn
+   * instead of waiting to be polled with `task_output`.
+   */
+  notifications?: AgentNotificationQueue;
 }
 
 function stopProcessTree(pid: number, ops: ProcessManagerOps = {}): void {
@@ -53,10 +113,14 @@ function stopProcessTree(pid: number, ops: ProcessManagerOps = {}): void {
 export class ProcessManager {
   private processes = new Map<string, BackgroundProcess>();
   private children = new Map<string, ChildProcess>();
+  /** Per-process progress timers. Cleared on exit, stop and shutdown. */
+  private watchers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Log size at the last emitted checkpoint, so a quiet process stays quiet. */
+  private watchedSizes = new Map<string, number>();
 
   constructor(private readonly ops: ProcessManagerOps = {}) {}
 
-  async start(command: string, cwd: string): Promise<StartResult> {
+  async start(command: string, cwd: string, launch?: ShellResolution): Promise<StartResult> {
     await fsp.mkdir(BG_DIR, { recursive: true });
 
     const id = crypto.randomUUID().slice(0, 8);
@@ -65,7 +129,7 @@ export class ProcessManager {
 
     // Cross-platform shell (see core/shell.ts): bash on POSIX, Git Bash on
     // Windows, cmd.exe fallback. Same resolution as the foreground bash tool.
-    const shell = resolveShell(command);
+    const shell = launch ?? resolveShell(command);
     const child = spawn(shell.file, shell.args, {
       cwd,
       detached: true,
@@ -92,6 +156,7 @@ export class ProcessManager {
       startedAt: Date.now(),
       exitCode: null,
       lastReadOffset: 0,
+      logSize: 0,
     };
 
     this.processes.set(id, proc);
@@ -100,9 +165,152 @@ export class ProcessManager {
     child.on("close", (code) => {
       proc.exitCode = code ?? 1;
       this.children.delete(id);
+      this.disposeWatcher(id);
+      // Refresh unconditionally: the gate needs a final size even when no
+      // notification queue is wired and notifyExit is a no-op.
+      void this.refreshLogSize(proc).then(() => this.notifyExit(proc));
     });
 
+    this.armWatcher(proc);
+
     return { id, pid, logFile };
+  }
+
+  /**
+   * Arm a backing-off, budgeted progress watcher for one background process.
+   * Emits at most one latest-only checkpoint per interval, only when the log
+   * actually grew, and at most {@link WATCH_MAX_REPORTS} times in total — so a
+   * build reports itself early without the agent ever calling `task_output`,
+   * while an idle or long-lived process stops costing context.
+   *
+   * Once the budget is spent the watcher retires completely (no timer, no
+   * further injections). The terminal exit notification is unaffected: it is
+   * produced by the exit handler, not this watcher, so "it finished" always
+   * still reaches the agent.
+   *
+   * Self-rescheduling rather than `setInterval` because the delay changes; a
+   * tick is only scheduled once the previous one has been handled.
+   *
+   * No-op when no notification queue is wired, so hosts that never drain
+   * notifications pay nothing.
+   */
+  private armWatcher(proc: BackgroundProcess): void {
+    const queue = this.ops.notifications;
+    if (!queue) return;
+    this.watchedSizes.set(proc.id, 0);
+
+    let delay = WATCH_INTERVAL_MS;
+    let reports = 0;
+    const schedule = (): void => {
+      const timer = setTimeout(() => {
+        // The process may have exited between ticks; the terminal checkpoint
+        // owns that case and must not be overwritten by a stale progress line.
+        if (proc.exitCode !== null) {
+          this.disposeWatcher(proc.id);
+          return;
+        }
+        void this.emitProgress(proc).then((emitted) => {
+          // Re-check: the process can exit while the tail read is in flight,
+          // and disposeWatcher may already have cleared this entry.
+          if (proc.exitCode !== null || !this.watchers.has(proc.id)) return;
+          if (emitted && ++reports >= WATCH_MAX_REPORTS) {
+            // Budget spent: stop watching for good. `task_output` remains the
+            // way to inspect this process, and its exit still notifies.
+            this.disposeWatcher(proc.id);
+            return;
+          }
+          // Back off only on an actual report. A process that goes quiet must
+          // NOT drift towards the cap while emitting nothing — otherwise a dev
+          // server that idles and then fails a recompile is heard about minutes
+          // late. Silence is already free; only chattiness needs damping.
+          if (emitted) delay = Math.min(delay * 2, WATCH_INTERVAL_MAX_MS);
+          schedule();
+        });
+      }, delay);
+      // Never hold the event loop open for a detached background process.
+      timer.unref?.();
+      this.watchers.set(proc.id, timer);
+    };
+    schedule();
+  }
+
+  /** Stat the log once and cache its size on the record. Returns 0 if unreadable. */
+  private async refreshLogSize(proc: BackgroundProcess): Promise<number> {
+    try {
+      proc.logSize = (await fsp.stat(proc.logFile)).size;
+    } catch {
+      // Log may be gone (pruned, or never created); keep the last known size.
+    }
+    return proc.logSize;
+  }
+
+  /** Emit one progress checkpoint if the log grew. Returns whether it did. */
+  private async emitProgress(proc: BackgroundProcess): Promise<boolean> {
+    const queue = this.ops.notifications;
+    if (!queue) return false;
+    const size = await this.refreshLogSize(proc);
+    const previous = this.watchedSizes.get(proc.id) ?? 0;
+    if (size <= previous) return false;
+    this.watchedSizes.set(proc.id, size);
+    if (proc.exitCode !== null) return false;
+
+    const tail = await this.readTail(proc.logFile, size);
+    queue.enqueue(
+      "process",
+      proc.id,
+      `Background process ${proc.id} (${proc.command}) is still running after ` +
+        `${formatElapsed(Date.now() - proc.startedAt)}, ${size} bytes logged` +
+        `${tail ? `. Latest: ${tail}` : ""}`,
+    );
+    return true;
+  }
+
+  private notifyExit(proc: BackgroundProcess): void {
+    const queue = this.ops.notifications;
+    if (!queue) return;
+    void (async () => {
+      const size = proc.logSize;
+      const tail = size > 0 ? await this.readTail(proc.logFile, size) : "";
+      queue.enqueue(
+        "process",
+        proc.id,
+        `Background process ${proc.id} (${proc.command}) exited with code ${proc.exitCode} ` +
+          `after ${formatElapsed(Date.now() - proc.startedAt)}` +
+          `${tail ? `. Last output: ${tail}` : ""}. ` +
+          `Read it with task_output id="${proc.id}".`,
+        { terminal: true },
+      );
+    })();
+  }
+
+  /** Read the trailing bytes of a log without loading the whole file. */
+  private async readTail(logFile: string, size: number): Promise<string> {
+    const start = Math.max(0, size - CHECKPOINT_TAIL_CHARS * 4);
+    try {
+      const fh = await fsp.open(logFile, "r");
+      try {
+        const buf = Buffer.alloc(size - start);
+        const { bytesRead } = await fh.read(buf, 0, buf.length, start);
+        return tailDigest(buf.subarray(0, bytesRead).toString("utf-8"));
+      } finally {
+        await fh.close();
+      }
+    } catch {
+      return "";
+    }
+  }
+
+  /** Stop and forget a process's watcher. A finished process keeps no timer. */
+  private disposeWatcher(id: string): void {
+    const timer = this.watchers.get(id);
+    if (timer) clearTimeout(timer);
+    this.watchers.delete(id);
+    this.watchedSizes.delete(id);
+  }
+
+  /** Live watcher ids. Exposed for leak assertions in tests. */
+  activeWatchers(): string[] {
+    return [...this.watchers.keys()];
   }
 
   async readOutput(id: string, fromStart?: boolean): Promise<ReadOutputResult> {
@@ -121,6 +329,7 @@ export class ProcessManager {
 
     try {
       const stat = await fsp.stat(proc.logFile);
+      proc.logSize = stat.size;
       if (stat.size > offset) {
         const buf = Buffer.alloc(stat.size - offset);
         const fh = await fsp.open(proc.logFile, "r");
@@ -235,6 +444,7 @@ export class ProcessManager {
     for (const [id, proc] of this.processes) {
       if (proc.exitCode !== null && !this.children.has(id) && proc.startedAt < cutoff) {
         this.processes.delete(id);
+        this.disposeWatcher(id);
       }
     }
     return Array.from(this.processes.values());
@@ -247,6 +457,7 @@ export class ProcessManager {
         proc.exitCode = proc.exitCode ?? 1;
         this.children.delete(id);
       }
+      this.disposeWatcher(id);
     }
   }
 }
