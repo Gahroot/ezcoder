@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.41.2",
+    date: "2026-08-07",
+    items: [
+      "Your chat window works properly again. My last update tried to get clever about how the conversation is drawn and got it badly wrong: messages went invisible, new replies never appeared, and the spacing at the bottom fell apart. I tore that change back out and put the solid original rendering back, so every message shows up exactly where it should.",
+    ],
+  },
+  {
     version: "0.41.1",
     date: "2026-08-07",
     items: [
