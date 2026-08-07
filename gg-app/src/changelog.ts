@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.41.1",
+    date: "2026-08-07",
+    items: [
+      "Killed a nasty crash that could poison a whole conversation. One stray half-emoji, from a model, a long file, or a wild terminal dump, used to make every single message after it bounce with a `Bad Request`, even after a retry or a model switch. I now clean it before it ever leaves your machine, and chats that were already stuck heal themselves on the very next message.",
+    ],
+  },
+  {
     version: "0.41.0",
     date: "2026-08-07",
     items: [
