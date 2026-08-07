@@ -2236,28 +2236,36 @@ fn snapshot_workspace(app: &tauri::AppHandle) {
     write_workspace(&Workspace { windows: entries });
 }
 
-/// Remove one window's entry from the snapshot (deliberate user close). Keyed by
-/// the window's recorded mode + cwd, since the snapshot has no labels.
+/// Remove one window's entry from the snapshot after a deliberate close. The
+/// custom title disambiguates duplicate windows on the same project so closing
+/// one cannot transfer another window's saved name on the next launch.
 fn remove_window_from_workspace(app: &tauri::AppHandle, label: &str) {
     let target = {
         let state: State<Windows> = app.state();
         let map = state.map.lock().unwrap();
-        map.get(label).and_then(|i| {
-            i.cwd
-                .as_ref()
-                .map(|cwd| (i.mode, i.chat_agent, cwd.to_string_lossy().to_string()))
+        map.get(label).and_then(|window| {
+            window.cwd.as_ref().map(|cwd| {
+                (
+                    window.mode,
+                    window.chat_agent,
+                    cwd.to_string_lossy().to_string(),
+                    window.custom_title.clone(),
+                )
+            })
         })
     };
-    let Some((mode, chat_agent, cwd)) = target else {
+    let Some((mode, chat_agent, cwd, custom_title)) = target else {
         return;
     };
     let mut ws = read_workspace();
-    // Remove a SINGLE matching entry: duplicate windows must restore independently.
-    if let Some(idx) = ws
-        .windows
-        .iter()
-        .position(|w| w.mode == mode && w.chat_agent == chat_agent && w.cwd == cwd)
-    {
+    // Remove one exact identity. Identically named duplicate windows are
+    // interchangeable; differently named duplicates must remain independent.
+    if let Some(idx) = ws.windows.iter().position(|window| {
+        window.mode == mode
+            && window.chat_agent == chat_agent
+            && window.cwd == cwd
+            && window.custom_title == custom_title
+    }) {
         ws.windows.remove(idx);
         write_workspace(&ws);
     }

@@ -104,6 +104,22 @@ function mockRunawayToolCallResult(kind: "events" | "chars") {
   };
 }
 
+function mockProgressingToolCallResult(deltaCount: number) {
+  return {
+    [Symbol.asyncIterator]: async function* () {
+      for (let index = 0; index < deltaCount; index++) {
+        yield {
+          type: "toolcall_delta" as const,
+          id: "large-write",
+          name: "write",
+          argsJson: "x",
+        };
+      }
+    },
+    response: Promise.resolve(makeResponse("Large tool call completed.")),
+  };
+}
+
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((r) => {
@@ -1195,6 +1211,26 @@ describe("agentLoop", () => {
     expect(result.totalTurns).toBe(1);
   });
 
+  it("allows more than 20k tool-call deltas when arguments keep progressing", async () => {
+    mockStream.mockReturnValueOnce(
+      mockProgressingToolCallResult(20_001) as unknown as ReturnType<typeof stream>,
+    );
+
+    const { events, result } = await collectLoop(
+      [
+        { role: "system", content: "sys" },
+        { role: "user", content: "write a large file" },
+      ],
+      { provider: "openai", model: "test" },
+    );
+
+    expect(mockStream).toHaveBeenCalledTimes(1);
+    expect(events.some((event) => event.type === "retry")).toBe(false);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(events.some((event) => event.type === "agent_done")).toBe(true);
+    expect(result.totalTurns).toBe(1);
+  });
+
   it("bounds runaway tool-call auto-retries", async () => {
     vi.useFakeTimers();
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -1216,14 +1252,13 @@ describe("agentLoop", () => {
     expect(
       events.filter((event) => event.type === "retry" && event.reason === "runaway_toolcall"),
     ).toHaveLength(2);
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "error",
-        error: expect.objectContaining({
-          message: expect.stringContaining("after 2 automatic retries"),
-        }),
-      }),
-    );
+    const terminal = events.find((event) => event.type === "error");
+    expect(terminal?.type).toBe("error");
+    if (terminal?.type !== "error") throw new Error("expected terminal error");
+    expect(terminal.error).toBeInstanceOf(EZCoderAIError);
+    expect((terminal.error as EZCoderAIError).source).toBe("provider");
+    expect((terminal.error as EZCoderAIError).hint).toContain("switch models");
+    expect(terminal.error.message).toContain("after 2 automatic retries");
   });
 
   it("preserves partial streamed text across a transport-failure retry", async () => {

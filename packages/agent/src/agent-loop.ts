@@ -590,12 +590,13 @@ export async function* agentLoop(
       ? STREAM_THINKING_HARD_TIMEOUT_MS // 10min absolute cap before output
       : STREAM_HARD_TIMEOUT_MS; // 90s
   // Runaway tool-call circuit breaker. When a model glitches mid-tool-call it
-  // can emit tens of thousands of toolcall_delta events without ever closing.
-  // Cap accumulated arg chars and event count so one bad stream cannot hang the
-  // run indefinitely. The loop automatically replays the untouched turn twice;
-  // only repeated failures surface to the user.
+  // can emit argument data forever or emit deltas without making any argument
+  // progress. Bound accumulated argument chars and consecutive empty deltas, but
+  // do not cap progressing delta events: some providers legitimately split a
+  // large tool call into more than 20k tiny chunks. The loop automatically
+  // replays the untouched turn twice; only repeated failures surface to the user.
   const MAX_TOOLCALL_DELTA_CHARS = 1_000_000; // 1 MB of accumulated tool-call args
-  const MAX_TOOLCALL_DELTA_EVENTS = 20_000; // 20k delta events in one stream
+  const MAX_TOOLCALL_NO_PROGRESS_EVENTS = 20_000; // consecutive empty argument deltas
   let logicalTurnStartedAt = 0;
   let firstProviderEventAt: number | undefined;
   let providerDurationMs = 0;
@@ -690,12 +691,18 @@ export async function* agentLoop(
       const eventTypeCounts: Record<string, number> = {};
       let lastEventType = "";
       // Runaway tool-call detection — accumulated across all toolcall_delta
-      // events in this stream attempt. When tripped we abort the stream and
-      // bail out without retrying (the model has glitched, retries won't help).
+      // events in this stream attempt. A high event count is only suspicious
+      // while arguments make no progress; valid providers may stream one
+      // argument character per event.
       let toolcallDeltaChars = 0;
       let toolcallDeltaCount = 0;
-      let runawayDetected: { kind: "chars" | "events"; chars: number; events: number } | null =
-        null;
+      let toolcallNoProgressCount = 0;
+      let runawayDetected: {
+        kind: "chars" | "events";
+        chars: number;
+        events: number;
+        noProgressEvents: number;
+      } | null = null;
       // Text streamed this attempt — preserved across transport-failure retries
       // instead of being discarded and re-billed (see the retry branch below).
       let attemptText = "";
@@ -925,15 +932,17 @@ export async function* agentLoop(
             const chunkChars = event.argsJson?.length ?? 0;
             toolcallDeltaChars += chunkChars;
             toolcallDeltaCount++;
+            toolcallNoProgressCount = chunkChars > 0 ? 0 : toolcallNoProgressCount + 1;
             if (
               !runawayDetected &&
               (toolcallDeltaChars > MAX_TOOLCALL_DELTA_CHARS ||
-                toolcallDeltaCount > MAX_TOOLCALL_DELTA_EVENTS)
+                toolcallNoProgressCount > MAX_TOOLCALL_NO_PROGRESS_EVENTS)
             ) {
               runawayDetected = {
                 kind: toolcallDeltaChars > MAX_TOOLCALL_DELTA_CHARS ? "chars" : "events",
                 chars: toolcallDeltaChars,
                 events: toolcallDeltaCount,
+                noProgressEvents: toolcallNoProgressCount,
               };
               diag("runaway_toolcall_detected", {
                 ...runawayDetected,
@@ -1153,12 +1162,16 @@ export async function* agentLoop(
           const detail =
             runawayDetected.kind === "chars"
               ? `${(runawayDetected.chars / 1024).toFixed(0)} KB of tool-call arguments`
-              : `${runawayDetected.events} tool-call delta events`;
+              : `${runawayDetected.noProgressEvents} consecutive tool-call delta events without argument progress`;
           yield {
             type: "error" as const,
-            error: new Error(
+            error: new EZCoderAIError(
               `The model repeatedly failed to close a tool call after ${MAX_RUNAWAY_TOOLCALL_RETRIES} automatic retries ` +
-                `(${detail}). Switch models and retry; your conversation is preserved.`,
+                `(${detail}). Your conversation is preserved.`,
+              {
+                source: "provider",
+                hint: "Retry once. If it keeps happening, switch models and continue the preserved conversation.",
+              },
             ),
           };
           break;
