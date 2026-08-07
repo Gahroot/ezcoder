@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.11.0
+
+### Minor Changes
+
+- Add durable agent sessions, ACP integrations, scheduled and queued workflows, shared MCP/LSP pooling, safer compaction and sandboxing, and malformed UTF-16 request recovery.
+
+### Patch Changes
+
+- @prestyj/ai@5.11.0
+- @prestyj/agent@5.11.0
+- @prestyj/core@5.11.0
+
 ## 5.10.0
 
 ### Minor Changes
