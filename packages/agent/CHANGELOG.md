@@ -41,7 +41,7 @@
   character boundaries instead of splitting surrogate pairs.
 
 - Updated dependencies [8e124fd]
-  - @kenkaiiii/gg-ai@5.35.1
+  - @prestyj/ai@5.35.1
 
 ## 5.35.0
 

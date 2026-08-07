@@ -241,7 +241,7 @@ rebrand_ken_mentor() {
       # snake_case SSE events, Tauri commands, and route names (explicit list excludes ken_burns)
       s/\bken_(run_start|run_end|text_delta|thinking_delta|tool_call_start|tool_call_update|tool_call_end|server_tool_call|turn_end|turn|error|cancel|prompt|model|model_change)\b/nolan_$1/g;
       s/_ken_(cancel|prompt|model)\b/_nolan_$1/g;
-      s|/ken/(prompt|cancel|model)|/nolan/$1|g;
+      s{/ken/(prompt|cancel|model)}{/nolan/$1}g;
       # kebab-case CSS classes + file stems (explicit list excludes ken-burns)
       s/\bken-(autopilot-on|autopilot-off|context|input|model|msg|power|prompt|sent|spinner|statusrow)\b/nolan-$1/g;
       # camelCase mentor vars: word-start ken + UpperCase (tokenUsage fails \b)
