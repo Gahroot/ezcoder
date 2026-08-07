@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.61",
+    date: "2026-08-07",
+    items: [
+      "Your routine work can run itself now. Schedule repeating prompts with `/schedule`, see every active run in one place, and queue or cancel follow-ups without interrupting the job already in motion.",
+      "All your coding sessions finally live together. EZ Coder now finds `Claude Code` and `Codex` conversations beside native chats, with stronger checkpoints that bring long runs back after crashes or compaction.",
+      "Big projects just got a faster command center. I added shared `MCP` and language-server connections, richer project discovery, a system tray, and per-project accents so every workspace is easier to find and quicker to resume.",
+      "Autonomous runs now prove their work instead of merely declaring victory. New verification gates, safer command sandboxing, clearer background-process completion, and stronger recovery keep ambitious tasks honest and moving.",
+      "Provider requests and chat rendering are tougher under pressure. I repaired malformed emoji and Unicode payloads, restored messages hidden by broken transcript virtualization, and kept huge tool output neatly folded instead of flooding the screen.",
+    ],
+  },
+  {
     version: "0.1.60",
     date: "2026-07-28",
     items: [
