@@ -1348,7 +1348,8 @@ function App(): React.ReactElement {
               return { kind: "user", id: nextId(), text: h.text, nolanSent: true };
             // Persisted Nolan (mentor) turns: his reply restores as a Nolan bubble,
             // the `@Nolan` question as a Nolan-tinted user bubble (matches live).
-            if (h.nolan && h.role === "assistant") return { kind: "nolan", id: nextId(), text: h.text };
+            if (h.nolan && h.role === "assistant")
+              return { kind: "nolan", id: nextId(), text: h.text };
             if (h.nolan && h.role === "user")
               return { kind: "user", id: nextId(), text: h.text, nolan: true };
             // Persisted autopilot verdict marker: render identically to the
@@ -2990,7 +2991,9 @@ const TranscriptRow = memo(function TranscriptRow({
         );
       }
       return (
-        <div className={`user-msg${item.queued ? " queued" : ""}${item.nolan ? " user-nolan" : ""}`}>
+        <div
+          className={`user-msg${item.queued ? " queued" : ""}${item.nolan ? " user-nolan" : ""}`}
+        >
           {item.queued && <span className="queued-pill">queued</span>}
           {item.images && item.images.length > 0 && (
             <div className="user-img-row">
