@@ -24,6 +24,13 @@
 
 - @prestyj/ai@5.7.0
 
+## 5.35.1
+
+### Patch Changes
+
+- Updated dependencies [8e124fd]
+  - @kenkaiiii/gg-ai@5.35.1
+
 ## 5.35.0
 
 ### Patch Changes
