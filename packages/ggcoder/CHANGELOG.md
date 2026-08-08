@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.37.0
+
+### Minor Changes
+
+- Add Grok subscription OAuth (SuperGrok / X Premium) with OAuth-first credential resolution and automatic API-key fallback, plus a session-archive file-descriptor leak fix
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.37.0
+- @kenkaiiii/gg-agent@5.37.0
+- @kenkaiiii/gg-core@5.37.0
+
 ## 5.36.0
 
 ### Minor Changes
