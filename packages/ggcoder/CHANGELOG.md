@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.36.0
+
+### Minor Changes
+
+- Extend the rank ladder from 50 to 1000 levels with 145 named ranks across 29 tiers. Levels 1-50 keep their exact names, tiers, and XP costs, so existing progress is never re-ranked; past level 50 the XP curve switches from the exponential to a steady ramp that starts at the level-50 step and grows to ~3.6k per level.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.36.0
+- @kenkaiiii/gg-agent@5.36.0
+- @kenkaiiii/gg-core@5.36.0
+
 ## 5.35.1
 
 ### Patch Changes
