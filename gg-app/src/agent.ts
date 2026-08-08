@@ -744,6 +744,19 @@ export interface ApiKeyVariant {
   baseUrl?: string;
 }
 
+/** What one auth method bills against and when to pick it. */
+export interface AuthMethodGuidance {
+  method: AuthMethod;
+  /** Button/row label, e.g. "Sign in with Grok". */
+  label: string;
+  /** What the user spends on this method. */
+  billing: string;
+  /** When to choose it. */
+  when: string;
+  /** Prerequisite the user must already have, if any. */
+  requires?: string;
+}
+
 export interface AuthProvider {
   value: string;
   label: string;
@@ -755,6 +768,23 @@ export interface AuthProvider {
   apiKeyVariants?: ApiKeyVariant[];
   /** Live connection status from ~/.gg/auth.json. */
   connected: boolean;
+  /**
+   * Which methods actually hold a credential. Providers supporting both (Kimi,
+   * Grok) can have two at once, so `connected` alone cannot say whether the user
+   * is on their subscription, their API key, or both.
+   */
+  connectedMethods: AuthMethod[];
+  /**
+   * The method a request would use right now: OAuth wins when connected, unless
+   * its usage window is exhausted and an API key is configured to cover it.
+   */
+  activeMethod?: AuthMethod;
+  /** Epoch ms until which OAuth is sidelined for spent plan usage, if it is. */
+  oauthExhaustedUntil?: number;
+  /** How the two methods interact — only set when a provider has both. */
+  priorityNote?: string;
+  /** Per-method guidance — only set when a provider offers a real choice. */
+  methodGuidance?: AuthMethodGuidance[];
 }
 
 /**
@@ -825,11 +855,15 @@ export async function mcpElicit(
 
 /**
  * Disconnect a provider (clear stored credentials). Handled NATIVELY in Rust
- * (removes the provider from ~/.gg/auth.json; moonshot also clears its OAuth
- * key) so it never depends on the sidecar.
+ * (removes the provider from ~/.gg/auth.json, including a dual-auth provider's
+ * separate OAuth key) so it never depends on the sidecar.
+ *
+ * `method` disconnects just ONE credential of a provider that holds both — e.g.
+ * drop a spent xAI API key without signing out of the Grok subscription. Omit it
+ * to disconnect the provider entirely.
  */
-export async function authLogout(provider: string): Promise<void> {
-  await invoke("app_auth_logout", { provider });
+export async function authLogout(provider: string, method?: AuthMethod): Promise<void> {
+  await invoke("app_auth_logout", { provider, method });
 }
 
 /** Start a fresh session (clears history) for this window's current project. */

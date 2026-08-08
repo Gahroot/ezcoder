@@ -27,9 +27,10 @@ import { PROMPT_COMMANDS, getPromptCommand } from "./prompt-commands.js";
 import { loadCustomCommands } from "./custom-commands.js";
 import { SettingsManager } from "./settings-manager.js";
 import { AuthStorage } from "./auth-storage.js";
-import { MOONSHOT_OAUTH_KEY } from "@kenkaiiii/gg-core";
+import { dualAuthProvider } from "@kenkaiiii/gg-core";
 import { getClaudeCliUserAgent } from "./claude-code-version.js";
 import { kimiCodingHeaders, isKimiCodingEndpoint } from "./oauth/kimi.js";
+import { isGrokCliEndpoint } from "./oauth/xai.js";
 import {
   SessionManager,
   KEN_TURN_CUSTOM_KIND,
@@ -1882,28 +1883,46 @@ export class AgentSession {
       if (isAbortError(err) || this.opts.signal?.aborted) {
         return;
       }
-      // Kimi OAuth plan ran out of usage (hard usage-limit stop, or an HTTP 402
-      // billing stop). If the user ALSO configured a Moonshot API key, mark
-      // the OAuth credential usage-exhausted (honoring the provider-stated
-      // reset time when present) and retry this turn on the API key — OAuth
-      // stays the preferred credential and resumes automatically once the mark
-      // lapses. A generic 429 is deliberately excluded: it may be a transient
-      // rate limit and must not silently switch the user to a billed API key.
-      // Guarded on the Kimi managed endpoint actually being in use: if the API
-      // key was already active, the same error means BOTH are out and must surface.
+      // A subscription OAuth plan ran out of usage (hard usage-limit stop, or an
+      // HTTP 402 billing stop). If the user ALSO configured that provider's API
+      // key, mark the OAuth credential usage-exhausted (honoring the
+      // provider-stated reset time when present) and retry this turn on the API
+      // key — OAuth stays the preferred credential and resumes automatically once
+      // the mark lapses. A generic 429 is deliberately excluded: it may be a
+      // transient rate limit and must not silently switch the user to a billed
+      // API key.
+      //
+      // Grok adds one case Kimi doesn't have: xAI gates its CLI chat proxy by
+      // subscription tier, so an entitled-looking account can be refused outright
+      // with a 403. That means "OAuth cannot serve this", not a transient error,
+      // so it counts as exhausted too — otherwise a dual-configured user would
+      // hard-fail while holding a perfectly good API key.
+      //
+      // Guarded on the subscription endpoint actually being in use: if the API key
+      // was already active, the same error means BOTH are out and must surface.
+      const dualAuth = dualAuthProvider(this.provider);
+      const onSubscriptionEndpoint =
+        (this.provider === "moonshot" && isKimiCodingEndpoint(creds.baseUrl)) ||
+        (this.provider === "xai" && isGrokCliEndpoint(creds.baseUrl));
+      const tierRefusal =
+        this.provider === "xai" && err instanceof ProviderError && err.statusCode === 403;
+      const oauthIsOut =
+        isUsageLimitError(err) ||
+        (err instanceof ProviderError && err.statusCode === 402) ||
+        tierRefusal;
       if (
-        this.provider === "moonshot" &&
+        dualAuth &&
         !this.baseUrl &&
-        isKimiCodingEndpoint(creds.baseUrl) &&
-        (isUsageLimitError(err) || (err instanceof ProviderError && err.statusCode === 402)) &&
-        (await this.authStorage.hasCredentials("moonshot"))
+        onSubscriptionEndpoint &&
+        oauthIsOut &&
+        (await this.authStorage.hasCredentials(dualAuth.provider))
       ) {
         const resetsAt = err instanceof ProviderError ? err.resetsAt : undefined;
-        await this.authStorage.markUsageExhausted(MOONSHOT_OAUTH_KEY, resetsAt);
+        await this.authStorage.markUsageExhausted(dualAuth.oauthKey, resetsAt);
         log(
           "WARN",
           "auth",
-          "Kimi OAuth usage limit reached — retrying this turn on the Moonshot API key",
+          `${dualAuth.oauthLabel} usage limit reached — retrying this turn on the ${dualAuth.apiKeyLabel}`,
           { resetsAt: resetsAt !== undefined ? String(resetsAt) : "unknown" },
         );
         creds = await this.authStorage.resolveCredentials(this.provider, {
@@ -1911,7 +1930,8 @@ export class AgentSession {
         });
         this.lastAccountId = creds.accountId;
         // The runAgentLoop closure re-reads `creds`, so the retry picks up the
-        // API key's baseUrl (api.moonshot.ai) and drops the Kimi coding headers.
+        // API key's public baseUrl (api.moonshot.ai / api.x.ai) and drops the
+        // subscription endpoint's client-identity headers.
         try {
           await runAgentLoop(creds.accessToken, creds.accountId, creds.projectId);
         } catch (fallbackErr) {
@@ -1924,9 +1944,9 @@ export class AgentSession {
       } else if (err instanceof ProviderError && err.statusCode === 401) {
         // Static API-key providers (GLM, Moonshot API key, etc.) have no refresh
         // mechanism — retrying with the same key is pointless. Clear the
-        // credential and surface the error so the user re-logins. Kimi OAuth
-        // (active for `moonshot` when present) is refreshable, so it falls
-        // through to the force-refresh path below.
+        // credential and surface the error so the user re-logins. Subscription
+        // OAuth (active for `moonshot`/`xai` when present) is refreshable, so it
+        // falls through to the force-refresh path below.
         if (await clearInvalidStaticApiKey(err)) throw err;
 
         log("INFO", "auth", "Got 401, force-refreshing token and retrying");
