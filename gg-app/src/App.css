@@ -4824,7 +4824,14 @@ body {
 }
 .rank-fx-gradient,
 .rank-fx-gradient-glow,
-.rank-fx-gold {
+.rank-fx-gold,
+.rank-fx-ember,
+.rank-fx-nebula,
+.rank-fx-rift,
+.rank-fx-prism,
+.rank-fx-eternal,
+.rank-fx-platinum,
+.rank-fx-omega {
   color: transparent;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -4852,6 +4859,44 @@ body {
   color: #a99cff;
   text-shadow: 0 0 12px rgba(125, 249, 255, 0.2);
 }
+/* Past the Singularity (levels 51+): one look per two tiers, ending on Origin. */
+.rank-fx-ember {
+  background-image: linear-gradient(90deg, #ff9d4d, #ffd48a, #ff7a3d);
+}
+.rank-fx-nebula {
+  background-image: linear-gradient(90deg, #c77dff, #7ad7ff, #ff8fd0);
+}
+.rank-fx-rift {
+  background-image: linear-gradient(90deg, #6ef2ff, #8f7bff);
+}
+.rank-fx-void {
+  color: #b39dff;
+  text-shadow: 0 0 14px rgba(122, 90, 255, 0.32);
+}
+.rank-fx-aether {
+  color: #b8fff0;
+  text-shadow: 0 0 12px rgba(125, 249, 255, 0.22);
+}
+.rank-fx-prism {
+  background-image: linear-gradient(90deg, #ff8bd2, #ffe38a, #7df9ff, #b88cff);
+}
+.rank-fx-eternal {
+  background-image: linear-gradient(90deg, #ffd77a, #fff8e6, #ffc861);
+}
+.rank-fx-platinum {
+  background-image: linear-gradient(90deg, #c9d6e6, #ffffff, #a9b8cc);
+}
+.rank-fx-radiant {
+  color: #eaf6ff;
+  text-shadow: 0 0 14px rgba(165, 243, 255, 0.34);
+}
+.rank-fx-omega {
+  background-image: linear-gradient(90deg, #ff6b6b, #ffd166, #ff8fab);
+}
+.rank-fx-origin {
+  color: #d7ccff;
+  text-shadow: 0 0 16px rgba(125, 249, 255, 0.3);
+}
 @media (prefers-reduced-motion: no-preference) {
   .rank-badge-celebrate::before {
     animation: rankBadgePulse 2.2s ease-out both;
@@ -4876,6 +4921,12 @@ body {
   }
   .rank-fx-iridescent {
     animation: rankIridescentShift 12s ease-in-out infinite;
+  }
+  .rank-fx-radiant {
+    animation: rankRadiantShift 9s ease-in-out infinite;
+  }
+  .rank-fx-origin {
+    animation: rankOriginShift 10s ease-in-out infinite;
   }
 }
 @keyframes rankXpChip {
@@ -4982,6 +5033,30 @@ body {
   }
   66% {
     color: #ff8bd2;
+  }
+}
+@keyframes rankRadiantShift {
+  0%,
+  100% {
+    color: #eaf6ff;
+  }
+  50% {
+    color: #a5f3ff;
+  }
+}
+@keyframes rankOriginShift {
+  0%,
+  100% {
+    color: #d7ccff;
+  }
+  25% {
+    color: #7df9ff;
+  }
+  50% {
+    color: #ffe9b0;
+  }
+  75% {
+    color: #ff9ede;
   }
 }
 
@@ -5102,6 +5177,14 @@ body {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+/* The milestone the bar is filling toward — present but never louder than the count. */
+.scorecard-stat-goal {
+  margin-left: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
 }
 .scorecard-footer {
   display: flex;

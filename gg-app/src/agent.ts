@@ -317,7 +317,8 @@ export async function getState(): Promise<AgentState> {
 
 // ── Progress (Ranks) ─────────────────────────────────────────────────────
 
-/** One rung of the 50-rank ladder, as computed by the sidecar. */
+/** One named rank of the 1000-level ladder, as computed by the sidecar.
+ *  Ranks span 10 levels above level 50, so `level` is the rank's first level. */
 export interface RankLadderEntry {
   level: number;
   name: string;
