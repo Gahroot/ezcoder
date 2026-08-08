@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.42.0",
+    date: "2026-08-08",
+    items: [
+      "Your rank no longer stops at the top. I stretched the ladder from `50` levels all the way to `1000`, with `145` fresh rank names waiting past Singularity, from Starforge and Voidwalker to Omega and Origin. Every level you already earned stays exactly where it is, so you just keep climbing.",
+      "The stat bars on your scorecard actually mean something now. Instead of sitting pinned at full forever, each one chases your next real milestone and empties the moment you smash it. Glance at your card and you can see exactly how close you are to `1K` commits or your next `60` day streak.",
+    ],
+  },
+  {
     version: "0.41.2",
     date: "2026-08-07",
     items: [
