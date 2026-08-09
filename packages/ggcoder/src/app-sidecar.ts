@@ -153,6 +153,7 @@ import {
   markTaskInProgress,
 } from "./core/tasks-store.js";
 import { initLogger, log } from "./core/logger.js";
+import { installTerminationHandlers } from "./core/shutdown.js";
 import {
   RADIO_STATIONS,
   getCurrentStation,
@@ -721,6 +722,8 @@ async function runJsonModeIfRequested(): Promise<boolean> {
       model: { type: "string" },
       "max-turns": { type: "string" },
       "system-prompt": { type: "string" },
+      "agent-prompt": { type: "string" },
+      "agent-context": { type: "string" },
       tools: { type: "string" },
       "mcp-servers": { type: "string" },
       "prompt-cache-key": { type: "string" },
@@ -754,6 +757,8 @@ async function runJsonModeIfRequested(): Promise<boolean> {
     model: values.model ?? "claude-opus-5",
     cwd: process.cwd(),
     systemPrompt: values["system-prompt"],
+    agentPrompt: values["agent-prompt"],
+    agentContext: values["agent-context"] === "none" ? "none" : undefined,
     maxTurns: maxTurnsRaw ? parseInt(maxTurnsRaw, 10) : undefined,
     allowedTools,
     allowedMcpServers,
@@ -1199,22 +1204,31 @@ async function main(): Promise<void> {
   });
 
   const shellPid = process.ppid;
-  let shuttingDown = false;
-  async function shutdown(): Promise<void> {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    clearInterval(parentWatch);
-    // Radio playback is app-wide (one stream across all windows), so it stops
-    // at the daemon level, not per session.
-    stopRadio();
-    // Close the ~/.gg progress fs.watch handle (baseline #8 leak fix).
-    progress.dispose();
-    await Promise.all([...sessions.values()].map((c) => c.dispose().catch(() => {})));
-    server.close();
-    process.exit(0);
-  }
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
+  // Session teardown awaits MCP servers, LSP servers and third-party extension
+  // `deactivate()` hooks. Any of those can hang, and an unbounded await here
+  // means the daemon never exits: the app looks quit while this process keeps
+  // the port and the radio stream alive. The deadline exits regardless.
+  const shutdown = installTerminationHandlers({
+    scope: "app-sidecar",
+    teardown: async () => {
+      clearInterval(parentWatch);
+      // Radio playback is app-wide (one stream across all windows), so it stops
+      // at the daemon level, not per session.
+      stopRadio();
+      // Close the ~/.gg progress fs.watch handle (baseline #8 leak fix).
+      progress.dispose();
+      await Promise.all([...sessions.values()].map((c) => c.dispose().catch(() => {})));
+      server.close();
+    },
+    onTimeout: (timeoutMs) => {
+      // Radio is audible, so it must stop even when the rest is wedged.
+      stopRadio();
+      log("WARN", "app-sidecar", "daemon teardown hung; exiting on deadline", {
+        timeoutMs: String(timeoutMs),
+        sessions: String(sessions.size),
+      });
+    },
+  });
   process.once("exit", stopRadio);
 
   // Tauri can disappear without delivering a signal (force-quit, dev runner
@@ -1229,7 +1243,7 @@ async function main(): Promise<void> {
         parentAlive = (error as NodeJS.ErrnoException).code === "EPERM";
       }
     }
-    if (!parentAlive) void shutdown();
+    if (!parentAlive) shutdown();
   }, 1_000);
   parentWatch.unref?.();
 }
