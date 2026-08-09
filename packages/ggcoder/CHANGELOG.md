@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.39.1
+
+### Patch Changes
+
+- Fix the `code_nav` file outline: list symbols in document order instead of the language server's name-grouped order, and drop locals declared inside function bodies so real declarations are no longer buried or truncated away. `definition`, `references` and `hover` now also resolve from a symbol name alone, with no line number required.
+  - @kenkaiiii/gg-ai@5.39.1
+  - @kenkaiiii/gg-agent@5.39.1
+  - @kenkaiiii/gg-core@5.39.1
+
 ## 5.39.0
 
 ### Minor Changes
