@@ -80,6 +80,25 @@ describe("code_nav", () => {
     expect(result).toContain("method Widget.render (): void");
   });
 
+  it("lists the outline in document order, not the server's order", async () => {
+    const result = String(await tool().execute({ op: "symbols", file: "widget.fake" }, context()));
+    const lines = result.split("\n");
+    const lineNumbers = lines.map((l) => Number(l.split(":")[0]));
+    // The fixture answers grouped by name (helper before Widget) exactly as
+    // tsserver does; the outline has to be readable against the file instead.
+    expect(lineNumbers).toEqual([...lineNumbers].sort((a, b) => a - b));
+    expect(lines[0]).toContain("Widget");
+  });
+
+  it("keeps class members but drops locals from inside function bodies", async () => {
+    const result = String(await tool().execute({ op: "symbols", file: "widget.fake" }, context()));
+    expect(result).toContain("method Widget.render");
+    expect(result).toContain("function helper");
+    // `tmp` and `i` live inside helper's body — noise, not structure.
+    expect(result).not.toContain("helper.tmp");
+    expect(result).not.toContain("helper.i");
+  });
+
   it("filters the outline by symbol name", async () => {
     const result = String(
       await tool().execute({ op: "symbols", file: "widget.fake", symbol: "render" }, context()),
@@ -148,9 +167,28 @@ describe("code_nav", () => {
     expect(result).toContain("No language server is configured");
   });
 
-  it("requires a line for position ops", async () => {
+  it("asks for a symbol or a line when given neither", async () => {
     const result = String(await tool().execute({ op: "hover", file: "widget.fake" }, context()));
-    expect(result).toContain("`line` is required");
+    expect(result).toContain("Pass `symbol`");
+  });
+
+  it("resolves from the symbol name alone, with no line", async () => {
+    // The common case: you know what it is called, not where it sits. Needing
+    // both forced a grep round-trip before every call.
+    const result = String(
+      await tool().execute({ op: "definition", file: "widget.fake", symbol: "Widget" }, context()),
+    );
+    expect(result).toBe("widget.fake:1:7 — class Widget {");
+  });
+
+  it("says so plainly when the symbol is nowhere in the file", async () => {
+    const result = String(
+      await tool().execute(
+        { op: "references", file: "widget.fake", symbol: "nonexistentSymbol" },
+        context(),
+      ),
+    );
+    expect(result).toContain("does not appear in this file");
   });
 
   it("rejects a symbol that is not on the given line", async () => {

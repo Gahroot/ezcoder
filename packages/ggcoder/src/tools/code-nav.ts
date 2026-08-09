@@ -20,7 +20,7 @@ const CodeNavParams = z.object({
     .int()
     .min(1)
     .optional()
-    .describe("1-based line of the symbol. Required for every op except `symbols`."),
+    .describe("1-based line of the symbol. Optional when `symbol` is given; unused by `symbols`."),
   column: z
     .number()
     .int()
@@ -30,7 +30,9 @@ const CodeNavParams = z.object({
   symbol: z
     .string()
     .optional()
-    .describe("Symbol name — used to locate the column on `line`, and to filter `symbols`"),
+    .describe(
+      "Symbol name. Enough on its own for definition/references/hover — no `line` needed. Filters the `symbols` outline.",
+    ),
   max_results: z
     .number()
     .int()
@@ -150,6 +152,29 @@ export function createCodeNavTool(
  * Returning a string means the request cannot be built at all, which is a
  * clearer answer than sending the server a position that resolves to nothing.
  */
+/**
+ * First line where `symbol` appears as a whole word, preferring real code.
+ *
+ * Comment lines are skipped: a doc comment mentioning the name carries no
+ * resolvable symbol, so the server answers nothing there and the caller would
+ * read that empty reply as "no references". A comment-only hit is still
+ * returned as a last resort, which beats claiming the name is absent.
+ */
+function findSymbolLine(lines: readonly string[], symbol: string): number | undefined {
+  const word = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+  let commentHit: number | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    if (!word.test(lines[i])) continue;
+    const trimmed = lines[i].trim();
+    if (/^(\/\/|\/\*|\*|#)/.test(trimmed)) {
+      commentHit ??= i + 1;
+      continue;
+    }
+    return i + 1;
+  }
+  return commentHit;
+}
+
 function resolvePosition(
   lines: string[],
   line: number | undefined,
@@ -157,7 +182,18 @@ function resolvePosition(
   symbol: string | undefined,
 ): { line: number; character: number } | string {
   if (line === undefined) {
-    return '`line` is required for this op. Pass the 1-based line the symbol appears on (op: "symbols" needs no position).';
+    // You almost always know the NAME and not the line. Requiring both forced a
+    // grep round-trip before every single call, so `symbol` alone is enough:
+    // any occurrence resolves, since the server walks from a reference to its
+    // declaration anyway.
+    if (!symbol) {
+      return 'Pass `symbol` (its name) or `line` (1-based) so I know what to resolve. op: "symbols" needs neither.';
+    }
+    const found = findSymbolLine(lines, symbol);
+    if (found === undefined) {
+      return `\`${symbol}\` does not appear in this file. Check the name, or pass \`line\` directly.`;
+    }
+    line = found;
   }
   if (line > lines.length) {
     return `Line ${line} is past the end of the file (${lines.length} lines).`;
@@ -214,14 +250,58 @@ function describeFailure(
   }
 }
 
+/**
+ * Ancestor kinds that make a nested symbol part of a file's STRUCTURE rather
+ * than an implementation detail: a method inside a class belongs in an outline,
+ * a `const` inside a function body does not.
+ */
+const STRUCTURAL_CONTAINER_KINDS = new Set([
+  1, // file
+  2, // module
+  3, // namespace
+  4, // package
+  5, // class
+  10, // enum
+  11, // interface
+  23, // struct
+]);
+
+/**
+ * Is this symbol part of the file's outline, or noise from inside a body?
+ *
+ * Language servers return the FULL symbol tree, so an unfiltered outline buries
+ * the eight declarations you wanted under every loop counter, local `const` and
+ * nested object-literal key in the file. Measured on a real 300-line source
+ * file: 89 symbols, with the truncation limit reached before the last real
+ * function was ever printed — the outline actively hid what it exists to show.
+ *
+ * A symbol survives only when every ancestor is structural. Servers that send
+ * flat `SymbolInformation` report no ancestor kinds at all; those pass through,
+ * since that shape is already a top-level list.
+ */
+function isOutlineSymbol(entry: LspSymbolEntry): boolean {
+  return entry.containerKinds.every((kind) => STRUCTURAL_CONTAINER_KINDS.has(kind));
+}
+
 function formatSymbols(
   symbols: LspSymbolEntry[],
   filter: string | undefined,
   maxResults: number,
 ): string {
+  // Document order, not server order. An outline is read against the file, but
+  // tsserver groups its reply by name, so line numbers arrived scrambled
+  // (22, 63, 51, 78…) and the outline could not be followed top to bottom.
+  const outline = symbols
+    .filter(isOutlineSymbol)
+    .slice()
+    .sort(
+      (a, b) =>
+        a.range.start.line - b.range.start.line ||
+        a.range.start.character - b.range.start.character,
+    );
   const matched = filter
-    ? symbols.filter((s) => s.name.toLowerCase().includes(filter.toLowerCase()))
-    : symbols;
+    ? outline.filter((s) => s.name.toLowerCase().includes(filter.toLowerCase()))
+    : outline;
   if (matched.length === 0) {
     return filter ? `No symbol matching \`${filter}\` in this file.` : "No symbols in this file.";
   }

@@ -155,7 +155,19 @@ function navigationResult(msg) {
         },
       ];
     }
+    // Shaped like a real tsserver reply: grouped by name rather than document
+    // order, and carrying body-locals nested under a function.
     return [
+      {
+        name: "helper",
+        kind: 12,
+        range: range(10, 0, 6),
+        selectionRange: range(10, 9, 15),
+        children: [
+          { name: "tmp", kind: 13, range: range(11, 2, 5) },
+          { name: "i", kind: 13, range: range(12, 2, 3) },
+        ],
+      },
       {
         name: "Widget",
         kind: 5,

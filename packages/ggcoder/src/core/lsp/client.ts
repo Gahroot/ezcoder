@@ -40,6 +40,13 @@ export interface LspSymbolEntry {
   range: LspRange;
   /** Ancestor names, outermost first — `["ClassName"]` for a method. */
   containers: string[];
+  /**
+   * SymbolKind of each ancestor, parallel to `containers`. Lets a caller tell a
+   * class member from a local variable buried in a function body — the two are
+   * indistinguishable by name alone, and only one belongs in a file outline.
+   * Empty when the server sent flat `SymbolInformation` (no hierarchy to read).
+   */
+  containerKinds: number[];
 }
 
 /**
@@ -157,7 +164,7 @@ function parseLocations(raw: unknown): LspLocation[] {
 function parseSymbols(raw: unknown): LspSymbolEntry[] {
   if (!Array.isArray(raw)) return [];
   const entries: LspSymbolEntry[] = [];
-  const visit = (node: unknown, containers: string[]): void => {
+  const visit = (node: unknown, containers: string[], containerKinds: number[]): void => {
     if (!node || typeof node !== "object") return;
     const record = node as Record<string, unknown>;
     const name = record.name;
@@ -168,9 +175,10 @@ function parseSymbols(raw: unknown): LspSymbolEntry[] {
       | undefined;
     if (!range) return;
     const containerName = record.containerName;
+    const kind = typeof record.kind === "number" ? record.kind : 0;
     entries.push({
       name,
-      kind: typeof record.kind === "number" ? record.kind : 0,
+      kind,
       detail: typeof record.detail === "string" ? record.detail : undefined,
       range,
       containers:
@@ -179,13 +187,14 @@ function parseSymbols(raw: unknown): LspSymbolEntry[] {
           : typeof containerName === "string" && containerName
             ? [containerName]
             : [],
+      containerKinds,
     });
     const children = record.children;
     if (Array.isArray(children)) {
-      for (const child of children) visit(child, [...containers, name]);
+      for (const child of children) visit(child, [...containers, name], [...containerKinds, kind]);
     }
   };
-  for (const node of raw) visit(node, []);
+  for (const node of raw) visit(node, [], []);
   return entries;
 }
 

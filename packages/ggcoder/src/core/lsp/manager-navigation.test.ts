@@ -77,7 +77,9 @@ describe("LspManager navigation", () => {
     const outcome = await makeManager(fakeSpec()).documentSymbols(file(), SOURCE);
     expect(outcome.kind).toBe("ok");
     if (outcome.kind !== "ok") return;
-    expect(outcome.value.map((s) => s.name)).toEqual(["Widget", "render"]);
+    // The manager passes the server's tree through untouched; trimming it to a
+    // readable outline is the code_nav tool's job.
+    expect(outcome.value.map((s) => s.name)).toEqual(["helper", "tmp", "i", "Widget", "render"]);
   });
 
   it("returns hover text", async () => {

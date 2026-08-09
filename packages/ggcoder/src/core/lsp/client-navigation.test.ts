@@ -82,10 +82,26 @@ describe("LspClient navigation", () => {
     const outcome = await client.documentSymbols(uri, 5000);
     expect(outcome.status).toBe("ok");
     if (outcome.status !== "ok") return;
+    // The client stays faithful to the server: full tree, server order, no
+    // filtering. Presentation decisions belong to the outline, not here.
     expect(outcome.value.map((s) => ({ name: s.name, containers: s.containers }))).toEqual([
+      { name: "helper", containers: [] },
+      { name: "tmp", containers: ["helper"] },
+      { name: "i", containers: ["helper"] },
       { name: "Widget", containers: [] },
       { name: "render", containers: ["Widget"] },
     ]);
+  });
+
+  it("records each ancestor's kind so locals can be told from class members", async () => {
+    const { client, uri } = await connect();
+    const outcome = await client.documentSymbols(uri, 5000);
+    expect(outcome.status).toBe("ok");
+    if (outcome.status !== "ok") return;
+    const byName = new Map(outcome.value.map((s) => [s.name, s]));
+    expect(byName.get("helper")!.containerKinds).toEqual([]);
+    expect(byName.get("tmp")!.containerKinds).toEqual([12]); // inside a function
+    expect(byName.get("render")!.containerKinds).toEqual([5]); // inside a class
   });
 
   it("flattens legacy SymbolInformation replies the same way", async () => {
