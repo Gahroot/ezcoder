@@ -1106,8 +1106,8 @@ export async function* agentLoop(
           // Preserve partial output: everything streamed before the drop is
           // already paid for (output tokens) and already shown to the user.
           // Keep it as a completed assistant message + continuation instruction
-          // instead of replaying the whole turn from scratch (bench/RESULTS.md,
-          // bench C — replay re-bills 100% of pre-drop output). Skipped when a
+          // instead of replaying the whole turn from scratch (a replay re-bills
+          // 100% of the pre-drop output). Skipped when a
           // tool call was mid-stream: partial tool-call JSON is unusable, and
           // the model must re-issue the call intact on the replay.
           let preservedChars = 0;

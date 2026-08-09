@@ -10,7 +10,6 @@
     "format": "prettier --write 'packages/*/src/**/*.{ts,tsx}' && pnpm --filter gg-app format",
     "format:check": "prettier --check 'packages/*/src/**/*.{ts,tsx}' && pnpm --filter gg-app format:check",
     "test": "pnpm -r test",
-    "bench": "pnpm build && npx tsx benchmarks/run-comparison.ts",
     "prepare": "pnpm build"
   },
   "devDependencies": {

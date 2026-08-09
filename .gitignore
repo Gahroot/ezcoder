@@ -26,7 +26,6 @@ test_*.js
 Thumbs.db
 
 # Editor
-CLAUDE.md
 .vscode/
 .idea/
 
@@ -60,14 +59,17 @@ packages/ggcoder/ideal-sim/
 # prompt-bench scratch sandboxes
 experiments/prompt-bench/.bench-sandbox-*
 
-# Local agent config, benchmarks and one-off tooling. These are working
-# directories, not shipped source: no CI job or package build reads them.
+# Local agent config, benchmarks and one-off tooling. These are personal working
+# directories, not shipped source: no CI job, package build or npm script reads
+# them, so a fresh clone is unaffected by their absence.
 /.gg/
 /.claude/
 /bench/
 /benchmarks/
 /experiments/bench-mark/
 /scripts/
+CLAUDE.md
+packages/*/.bench-*.mjs
 
 # Local research/strategy notes
 /*-vs-*.md

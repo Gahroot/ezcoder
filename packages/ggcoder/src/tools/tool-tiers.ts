@@ -16,7 +16,8 @@ import type { AgentTool } from "@kenkaiiii/gg-agent";
  * name is required to carry a `TOOL_PROMPT_HINTS` entry (enforced by test).
  *
  * Tier membership rule: a tool stays core if it is reached in more than roughly
- * one in five sessions. Measured by bench/baseline/14-tool-tiering.mjs.
+ * one in five sessions. Deferring a tool is only safe while capability-discovery
+ * rates hold: measure that, not just the token saving, before moving a name.
  */
 export const CORE_TOOL_NAMES: readonly string[] = [
   "read",

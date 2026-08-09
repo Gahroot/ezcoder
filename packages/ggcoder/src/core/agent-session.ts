@@ -453,7 +453,7 @@ export class AgentSession {
     void this.subAgentManager?.interruptAll();
   };
   private mcpManager?: MCPClientManager;
-  /** Deferred MCP tools awaiting discovery via tool_search (bench A win). */
+  /** Deferred MCP tools awaiting discovery via tool_search. */
   private mcpCatalog?: DeferredToolCatalog;
   /**
    * Built-in tools held in the catalog instead of the live toolset. Their names
@@ -911,8 +911,8 @@ export class AgentSession {
 
   /**
    * Route freshly connected MCP tools: deferred into the tool_search catalog
-   * (default — keeps ~8k tokens of schema out of every cache-miss turn, see
-   * bench/RESULTS.md bench A) or pushed eagerly when the user opted out.
+   * (default — keeps ~8k tokens of schema out of every cache-miss turn) or
+   * pushed eagerly when the user opted out.
    * Allow-listed sessions (Ken) always get the eager path — their fixed tool
    * expectations predate the catalog, and tool_search isn't allow-listed.
    * Promotion pushes onto the live `this.tools` array the running agent loop
