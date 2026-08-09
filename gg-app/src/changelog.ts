@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.45.0",
+    date: "2026-08-10",
+    items: [
+      "Your agent now understands your code the way your editor does. It can `go to definition` and `find all references` across your whole project instead of guessing from text matches. Renames catch every caller and edits land where they should.",
+      "Search stopped missing your files. It now looks inside folders like `.github` that it used to skip completely, leaves out the build junk your project already ignores, and runs nearly twice as fast while doing it.",
+      "Smart code search finally speaks your language. I taught it `five` more: Python, Go, Rust, Java and C#. Describe what a function does and it finds the right one, even when you cannot recall the name.",
+      "Every conversation got cheaper. I stripped out invisible baggage riding along with your requests and cut billed input by `15%` in my testing, and your agent still reaches for every tool it needs.",
+    ],
+  },
+  {
     version: "0.44.0",
     date: "2026-08-09",
     items: [
