@@ -81,6 +81,7 @@ import {
   type LspManager,
   type ProcessManager,
 } from "../tools/index.js";
+import { partitionToolsByTier } from "../tools/tool-tiers.js";
 import type { BackgroundProcess } from "./process-manager.js";
 import { buildProcessCompletionFollowUp } from "./process-gate.js";
 import { buildSubAgentCompletionFollowUp, type SubAgentManager } from "./subagent-manager.js";
@@ -454,6 +455,12 @@ export class AgentSession {
   private mcpManager?: MCPClientManager;
   /** Deferred MCP tools awaiting discovery via tool_search (bench A win). */
   private mcpCatalog?: DeferredToolCatalog;
+  /**
+   * Built-in tools held in the catalog instead of the live toolset. Their names
+   * still render as one-line hints in the prompt's Tools section, so the model
+   * can discover and promote them; a promoted name drops out of this list.
+   */
+  private deferredBuiltinToolNames: string[] = [];
   /** Live (connected) MCP tools by name — the reconcile target for cached stubs. */
   private liveMcpTools = new Map<string, AgentTool>();
   /** Server name for each cached-only tool, so a stub knows what to wait on. */
@@ -631,6 +638,7 @@ export class AgentSession {
         additionalRoots: this.additionalRoots,
         allowOutsideWorkspaceWrites: this.settingsManager.get("allowOutsideWorkspaceWrites"),
       }),
+      getUseExternalGrep: () => this.settingsManager.get("grepUseRipgrep"),
       authStorage: this.authStorage,
       onFileRead: (filePath) => this.reviewCoverage.recordRead(filePath),
       onFileMutated: (filePath) => {
@@ -668,6 +676,23 @@ export class AgentSession {
     // a hallucinated call can't mutate the repo — and buildSystemPrompt below is
     // fed the same filtered names so the Tools section matches exactly.
     this.tools = this.opts.allowedTools ? tools.filter((t) => this.isToolAllowed(t.name)) : tools;
+    // Tier the built-ins: rarely reached schemas move into the tool_search
+    // catalog and cost one hint line each instead of a full parameter schema on
+    // every request. Allow-listed sessions keep the eager path — their fixed
+    // tool expectations predate the catalog, and tool_search isn't allow-listed.
+    if (!this.opts.allowedTools && this.settingsManager.get("deferredBuiltinTools")) {
+      const { core, deferred } = partitionToolsByTier(this.tools);
+      if (deferred.length > 0) {
+        // Append-only: `core` preserves the original relative order and
+        // tool_search is pushed after it, so the serialized tool block that
+        // sits inside the cached prefix stays byte-stable across turns.
+        this.tools = core;
+        this.deferredBuiltinToolNames = deferred.map((t) => t.name);
+        this.mcpCatalog ??= new DeferredToolCatalog();
+        this.mcpCatalog.add(deferred);
+        this.ensureToolSearchTool();
+      }
+    }
     this.rebuildReadTool = rebuildReadTool;
     this.processManager = processManager;
     this.lspManager = lspManager;
@@ -917,9 +942,13 @@ export class AgentSession {
    * Register `tool_search` once. Promotion of a cached-only entry waits for its
    * server so the model is told immediately when that capability turns out to
    * be unreachable, instead of promoting a tool that fails on first call.
+   *
+   * The catalog is created on demand rather than required up front: deferred
+   * built-in tools populate it with zero MCP servers connected, so gating
+   * registration on an existing catalog would leave those tools unreachable.
    */
   private ensureToolSearchTool(): void {
-    if (!this.mcpCatalog) return;
+    this.mcpCatalog ??= new DeferredToolCatalog();
     if (this.tools.some((t) => t.name === "tool_search")) return;
     this.tools.push(
       createToolSearchTool(
@@ -2698,6 +2727,17 @@ export class AgentSession {
     return { ok: true, root: resolved };
   }
 
+  /**
+   * Names to advertise as available-on-demand. A tool the model already
+   * promoted lives in `this.tools` and carries its own schema, so it drops out
+   * of the index rather than being listed twice.
+   */
+  private deferredToolNamesForPrompt(liveNames: readonly string[]): string[] {
+    if (this.deferredBuiltinToolNames.length === 0) return [];
+    const live = new Set(liveNames);
+    return this.deferredBuiltinToolNames.filter((name) => !live.has(name));
+  }
+
   /** Environment facts that vary per session rather than per host. */
   private promptEnvironment(): SystemPromptEnvironment {
     const networkAllow =
@@ -2717,10 +2757,12 @@ export class AgentSession {
   private async buildBasePrompt(planMode: boolean, approvedPlanPath?: string): Promise<string> {
     if (this.customSystemPrompt) return this.customSystemPrompt;
     const toolNames = this.tools.map((tool) => tool.name);
+    const deferredToolNames = this.deferredToolNamesForPrompt(toolNames);
     if (this.agentPrompt !== undefined) {
       return buildSubAgentSystemPrompt(this.agentPrompt, {
         cwd: this.cwd,
         toolNames,
+        deferredToolNames,
         context: this.opts.agentContext,
         environment: this.promptEnvironment(),
       });
@@ -2734,6 +2776,7 @@ export class AgentSession {
       undefined,
       this.provider,
       this.promptEnvironment(),
+      deferredToolNames,
     );
   }
 

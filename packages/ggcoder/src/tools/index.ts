@@ -11,6 +11,7 @@ import { createBashTool } from "./bash.js";
 import { createFindTool } from "./find.js";
 import { createGrepTool } from "./grep.js";
 import { createSearchCodeTool } from "./search-code.js";
+import { createCodeNavTool } from "./code-nav.js";
 import { createLsTool } from "./ls.js";
 import { createSubAgentTool } from "./subagent.js";
 import { createSubAgentControlTools } from "./subagent-control.js";
@@ -109,6 +110,11 @@ export interface CreateToolsOptions {
   /** Lazily read the OS command-sandbox mode and allowed network domains. */
   getSandboxPolicy?: () => SandboxPolicy;
   /**
+   * Lazily read whether `grep` may use the external `rg` scanner when present
+   * (grepUseRipgrep). Defaults to enabled when omitted.
+   */
+  getUseExternalGrep?: () => boolean;
+  /**
    * Push queue for out-of-band notifications (child completions, background
    * process progress). When provided, producers enqueue here and the session
    * drains it into steering, so the agent learns about them without spending a
@@ -195,8 +201,9 @@ export async function createTools(
       ops === localOperations ? opts?.getSandboxPolicy : undefined,
     ),
     createFindTool(cwd),
-    createGrepTool(cwd, ops),
+    createGrepTool(cwd, ops, { useExternalScanner: opts?.getUseExternalGrep }),
     createSearchCodeTool(cwd, ops),
+    createCodeNavTool(cwd, lspManager, ops),
     createLsTool(cwd, ops),
     createSourcePathTool(cwd),
     createWebFetchTool(opts?.getNetworkPolicy),
@@ -283,6 +290,7 @@ export { createBashTool } from "./bash.js";
 export { createFindTool } from "./find.js";
 export { createGrepTool } from "./grep.js";
 export { createSearchCodeTool } from "./search-code.js";
+export { createCodeNavTool } from "./code-nav.js";
 export { createLsTool } from "./ls.js";
 export { createWebFetchTool } from "./web-fetch.js";
 export { createWebSearchTool } from "./web-search.js";
