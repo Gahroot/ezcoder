@@ -70,4 +70,20 @@ describe("grep external scanner spawn options", () => {
     expect(searchCall[2]).toEqual(expect.objectContaining({ windowsHide: true }));
     expect(searchCall[2]).toEqual(expect.objectContaining({ cwd: tmpDir }));
   });
+
+  it("never spawns a scan once the budget is already spent", async () => {
+    const tool = createGrepTool(tmpDir, undefined, {
+      useExternalScanner: () => true,
+      deadlineMs: 0,
+    });
+
+    const result = String(await tool.execute({ pattern: "marker" }, context()));
+
+    // The child's budget is floored at 1ms, so spawning here would race the
+    // scanner: whenever the child won, an expired budget still returned real
+    // matches — and only sometimes, which is how it slipped through as a flake.
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(result).toContain("No matches found.");
+    expect(result).not.toContain("a.ts:1:");
+  });
 });

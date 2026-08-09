@@ -96,12 +96,22 @@ describe("grep scan ordering", () => {
   });
 });
 
-/** Reference implementation: one file at a time, candidates in sorted order. */
+/**
+ * Reference implementation: one file at a time, candidates in sorted order.
+ *
+ * fast-glob always yields POSIX-separated paths, while the tool reports
+ * `path.relative` output — native separators, so backslashes on Windows.
+ * Normalizing here keeps this test about ORDER and CONTENT; asserting the raw
+ * glob strings instead silently made it a path-format test that only failed on
+ * Windows.
+ */
 async function sequentialScan(dir: string, regex: RegExp): Promise<string[]> {
   const fg = await import("fast-glob");
   const entries = (
     await fg.default("**/*", { cwd: dir, dot: true, onlyFiles: true, suppressErrors: true })
-  ).sort();
+  )
+    .sort()
+    .map((entry) => path.normalize(entry));
 
   const results: string[] = [];
   for (const entry of entries) {

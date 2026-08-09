@@ -214,8 +214,15 @@ export function createGrepTool(
         return formatResults(results, maxResults, false, deadline.hit, deadlineMs);
       }
 
+      // An already-spent budget must not start a scan it cannot honour.
+      // `runExternalScan` floors the child's budget at 1ms, so without this
+      // guard an expired deadline still races ripgrep and returns real matches
+      // whenever the child wins — reporting results the caller's budget had
+      // already ruled out, and non-deterministically at that. The in-process
+      // path below reports the expiry directly instead.
       const useExternal =
         externalAllowed &&
+        !isExpired(deadline) &&
         (options.useExternalScanner?.() ?? true) &&
         isExternallySupported(normalizedPattern) &&
         (await detectExternalScanner()) !== undefined;
@@ -471,6 +478,8 @@ async function runExternalScan(req: ExternalScanRequest): Promise<string[] | und
   if (await fileExists(rootIgnore)) args.push("--ignore-file", rootIgnore);
   if (req.caseInsensitive) args.push("--ignore-case");
   if (req.include) args.push("--glob", req.include.replace(/\\/g, "/"));
+  // Relative root on purpose — `formatExternalMatches` parses `path:line:text`
+  // by first colon, which an absolute Windows path would break.
   args.push("--regexp", req.pattern, "--", ".");
 
   const remainingMs = Math.max(1, req.deadline.expiresAt - Date.now());
@@ -529,6 +538,11 @@ function formatExternalMatches(stdout: string, req: ExternalScanRequest): string
   const byPath = new Map<string, string[]>();
   for (const raw of stdout.split("\n")) {
     if (!raw) continue;
+    // Splitting on the first colon is only safe because the scan is rooted at a
+    // RELATIVE path (see the `.` argument above), so no Windows drive prefix
+    // ("C:\") can appear here. Keep it that way: the guards below fail CLOSED,
+    // so a misparsed line number drops the match silently — the exact
+    // "silence looks like no results" failure this scanner exists to avoid.
     const firstSep = raw.indexOf(":");
     if (firstSep <= 0) continue;
     const secondSep = raw.indexOf(":", firstSep + 1);
