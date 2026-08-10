@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.45.4",
+    date: "2026-08-11",
+    items: [
+      "Long runs stop dying halfway through. If anything else refreshed your login while your agent was working, every remaining turn used to fail with an `authentication error` until you restarted. Now each turn picks up your live credentials, and your windows quit logging each other out.",
+      "A slow provider no longer ends your run. `Request timed out` used to escape straight to you as a dead end. Now it quietly replays the turn like any other blip and carries on.",
+      "Your `MCP` tools can finally show pictures. A server sending back a screenshot, chart, or rendered diagram used to arrive as `(empty response)`, so your agent saw nothing at all. Those images now go straight to the model, sized to fit.",
+      "A small touch up in the title bar: when your provider reports only one usage window, the meter stops pretending to be a button. No phantom hover, no click sound for a press that does nothing.",
+    ],
+  },
+  {
     version: "0.45.3",
     date: "2026-08-10",
     items: [
