@@ -21,11 +21,81 @@ describe("toToolResult", () => {
     expect(result).toBe("hello");
   });
 
-  it("reports an empty response when there is nothing usable", async () => {
+  it("reports an empty response only when there is genuinely nothing", async () => {
     expect(await toToolResult([], "mcp__x__y")).toBe("(empty response)");
-    expect(await toToolResult([{ type: "audio", data: "aGk=" }], "mcp__x__y")).toBe(
-      "(empty response)",
+  });
+
+  // Every one of these used to return "(empty response)" — the same defect as the
+  // image case, one block type over.
+  describe("non-image blocks reach the model instead of vanishing", () => {
+    it("surfaces an embedded text resource in full", async () => {
+      const result = await toToolResult(
+        [
+          {
+            type: "resource",
+            resource: { uri: "file:///notes.md", mimeType: "text/markdown", text: "THE ANSWER" },
+          },
+        ],
+        "mcp__s__t",
+      );
+      expect(result).toContain("THE ANSWER");
+      expect(result).toContain("file:///notes.md");
+    });
+
+    it("passes a resource link's address through", async () => {
+      const result = await toToolResult(
+        [{ type: "resource_link", uri: "https://example.com/a", name: "report" }],
+        "mcp__s__t",
+      );
+      expect(result).toContain("https://example.com/a");
+      expect(result).toContain("report");
+    });
+
+    it("names audio rather than returning nothing", async () => {
+      const result = await toToolResult(
+        [{ type: "audio", data: "aGk=", mimeType: "audio/wav" }],
+        "mcp__s__t",
+      );
+      expect(result).toContain("audio");
+      expect(result).not.toBe("(empty response)");
+    });
+
+    it("notes a non-image binary blob with its size", async () => {
+      const result = await toToolResult(
+        [
+          {
+            type: "resource",
+            resource: { uri: "file:///a.zip", mimeType: "application/zip", blob: "AAAA" },
+          },
+        ],
+        "mcp__s__t",
+      );
+      expect(result).toContain("file:///a.zip");
+      expect(result).toContain("application/zip");
+      expect(result).toContain("3 bytes");
+    });
+
+    it("falls back to text on an unknown future block type", async () => {
+      const result = await toToolResult([{ type: "video", text: "a clip" }], "mcp__s__t");
+      expect(result).toBe("a clip");
+    });
+  });
+
+  // Servers use this shape when the image also has a URI; it is just as viewable.
+  it("forwards an image delivered as an embedded resource blob", async () => {
+    const data = await pngBase64(8, 8);
+    const result = await toToolResult(
+      [
+        {
+          type: "resource",
+          resource: { uri: "file:///shot.png", mimeType: "image/png", blob: data },
+        },
+      ],
+      "mcp__s__t",
     );
+
+    const parts = (result as { content: { type: string }[] }).content;
+    expect(parts.some((p) => p.type === "image")).toBe(true);
   });
 
   it("forwards an image-only response instead of dropping it", async () => {

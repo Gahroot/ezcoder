@@ -18,29 +18,102 @@ interface McpImagePart {
   mimeType: string;
 }
 
+function record(item: unknown): Record<string, unknown> | null {
+  if (item == null || typeof item !== "object") return null;
+  return item as Record<string, unknown>;
+}
+
+function str(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 /**
  * An MCP image part, per spec: `{ type: "image", data: <base64>, mimeType }`.
  * Validated structurally because the payload crosses a trust boundary — a
  * server can send anything, including a `type` that lies about the shape.
  */
 function asImagePart(item: unknown): McpImagePart | null {
-  if (item == null || typeof item !== "object") return null;
-  const part = item as Record<string, unknown>;
-  if (part.type !== "image") return null;
-  if (typeof part.data !== "string" || part.data.length === 0) return null;
-  const mimeType = typeof part.mimeType === "string" ? part.mimeType : "image/png";
-  return { data: part.data, mimeType };
+  const part = record(item);
+  if (!part || part.type !== "image") return null;
+  const data = str(part.data);
+  if (!data) return null;
+  return { data, mimeType: str(part.mimeType) ?? "image/png" };
 }
 
-function asText(item: unknown): string | null {
-  if (item == null || typeof item !== "object") return null;
-  const part = item as Record<string, unknown>;
-  return typeof part.text === "string" ? part.text : null;
+/**
+ * An image delivered as an embedded resource rather than an `image` block:
+ * `{ type: "resource", resource: { uri, mimeType: "image/png", blob } }`. Servers
+ * use this shape when the image also has a URI, and it is just as viewable, so
+ * it must not be reduced to a note.
+ */
+function asEmbeddedImage(item: unknown): McpImagePart | null {
+  const part = record(item);
+  if (!part || part.type !== "resource") return null;
+  const resource = record(part.resource);
+  if (!resource) return null;
+  const mimeType = str(resource.mimeType);
+  const blob = str(resource.blob);
+  if (!blob || !mimeType?.startsWith("image/")) return null;
+  return { data: blob, mimeType };
+}
+
+/**
+ * Render a non-image block as text.
+ *
+ * Every branch returns *something*: a block this function drops is a block the
+ * model never learns existed, which is the defect this module exists to fix.
+ * `null` means "carries no information" (an empty text block), not "unsupported".
+ */
+function asText(item: unknown, toolName: string): string | null {
+  const part = record(item);
+  if (!part) return null;
+
+  switch (part.type) {
+    case "text":
+      return typeof part.text === "string" ? part.text : null;
+
+    // Audio is not viewable by any provider we target; name it so the model can
+    // say what it received rather than behaving as though nothing came back.
+    case "audio":
+      return `[${toolName} returned audio (${str(part.mimeType) ?? "unknown format"})]`;
+
+    // A link is a reference, not content: pass the address through so the model
+    // can fetch or cite it.
+    case "resource_link": {
+      const label = str(part.title) ?? str(part.name);
+      const uri = str(part.uri) ?? "(no uri)";
+      return label ? `[resource link: ${label}] ${uri}` : `[resource link] ${uri}`;
+    }
+
+    case "resource": {
+      const resource = record(part.resource);
+      if (!resource) return null;
+      const uri = str(resource.uri) ?? "(no uri)";
+      // An embedded text resource carries its content inline — this is usually
+      // the substantive answer (a file, a query result), so surface it in full
+      // under a header rather than describing it.
+      const text = typeof resource.text === "string" ? resource.text : undefined;
+      if (text !== undefined) return `[resource ${uri}]\n${text}`;
+      const blob = str(resource.blob);
+      if (blob) {
+        // Non-image binary: unusable by the model, but its existence and size
+        // are what let it reason about what the server actually returned.
+        const kind = str(resource.mimeType) ?? "binary";
+        return `[resource ${uri} (${kind}, ${Buffer.byteLength(blob, "base64")} bytes) omitted]`;
+      }
+      return `[resource ${uri}]`;
+    }
+
+    default:
+      // Unknown block type: a future spec addition. Prefer a fallback over
+      // silence, but only when it actually carries text.
+      return typeof part.text === "string" ? part.text : null;
+  }
 }
 
 /**
  * Convert an MCP tool's content array into a result the model can actually
- * consume, preserving image parts instead of dropping them.
+ * consume, covering the whole `ContentBlock` union rather than text alone.
  *
  * Text-only results stay plain strings so the overwhelmingly common path keeps
  * its existing shape (and the agent loop's string budgeting still applies).
@@ -49,9 +122,10 @@ function asText(item: unknown): string | null {
  * exceed provider size limits and fail the whole turn. A media type the buffer
  * contradicts is corrected there too, since providers reject mismatches.
  *
- * Every image failure degrades to a text note: a partially readable answer beats
- * an error, and the model is told what it is not seeing rather than silently
- * receiving less than the server sent.
+ * Anything not viewable — audio, a resource link, a binary blob, an unreadable
+ * image — becomes a text note instead of vanishing. A block silently dropped is
+ * one the model never learns existed, so it answers as though the server
+ * returned nothing; a note lets it say what it actually got.
  */
 export async function toToolResult(
   content: unknown[],
@@ -61,12 +135,12 @@ export async function toToolResult(
   const rawImages: McpImagePart[] = [];
 
   for (const item of content) {
-    const image = asImagePart(item);
+    const image = asImagePart(item) ?? asEmbeddedImage(item);
     if (image) {
       rawImages.push(image);
       continue;
     }
-    const text = asText(item);
+    const text = asText(item, toolName);
     if (text !== null) texts.push(text);
   }
 
