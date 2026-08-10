@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.39.4
+
+### Patch Changes
+
+- Keep long runs alive across cross-process OAuth token rotation, stop the debug log from wedging just under its size cap, retry provider timeouts that carry no error code, render the full MCP content-block union including images, theme the TUI banner and tool output instead of hardcoding dark hexes, and offer the OAuth paste route immediately on headless hosts.
+  - @kenkaiiii/gg-ai@5.39.4
+  - @kenkaiiii/gg-agent@5.39.4
+  - @kenkaiiii/gg-core@5.39.4
+
 ## 5.39.3
 
 ### Patch Changes
