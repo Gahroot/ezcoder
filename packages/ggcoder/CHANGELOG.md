@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.39.2
+
+### Patch Changes
+
+- Surface gateway error frames delivered inside HTTP 200 streams instead of swallowing them, and stop treating tokens-per-minute rate limits as context overflow.
+  - @kenkaiiii/gg-ai@5.39.2
+  - @kenkaiiii/gg-agent@5.39.2
+  - @kenkaiiii/gg-core@5.39.2
+
 ## 5.39.1
 
 ### Patch Changes
