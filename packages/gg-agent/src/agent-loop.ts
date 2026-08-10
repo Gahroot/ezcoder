@@ -323,6 +323,33 @@ export function isMalformedStream(err: unknown): boolean {
 }
 
 /**
+ * Timeouts that arrive with no errno and no undici code.
+ *
+ * Both the Anthropic and OpenAI SDKs throw `APIConnectionTimeoutError`, whose
+ * only distinguishing feature is the message "Request timed out." — it sets no
+ * `code`, no `status`, and leaves `name` at the default "Error". Matching has
+ * to go on the message, so the patterns are deliberately request-scoped:
+ * a bare /timeout/ would also swallow a tool that timed out or a config error
+ * mentioning a timeout option, neither of which should replay the turn.
+ *
+ * `AbortSignal.timeout()` is the other source. It rejects with a DOMException
+ * whose `code` is the numeric legacy constant (23) rather than a string, so it
+ * is identifiable only by `name === "TimeoutError"`.
+ */
+const TIMEOUT_NAMES = new Set(["TimeoutError", "ConnectTimeoutError", "HeadersTimeoutError"]);
+const TIMEOUT_MESSAGES = [
+  /^request timed out\.?$/i,
+  /\brequest to [\w .-]+ timed out\b/i,
+  /\b(?:connection|socket|headers|stream) timed out\b/i,
+];
+
+function isBareTimeout(e: { name?: unknown; message?: unknown }): boolean {
+  if (typeof e.name === "string" && TIMEOUT_NAMES.has(e.name)) return true;
+  if (typeof e.message !== "string") return false;
+  return TIMEOUT_MESSAGES.some((re) => re.test(e.message as string));
+}
+
+/**
  * Detect socket-level transport failures — the remote peer (or an
  * intermediary) closed the TCP connection mid-stream before the response
  * finished.  Surfaces as `TypeError: terminated` from undici/fetch, or as
@@ -362,11 +389,24 @@ export function isTransportFailure(err: unknown): boolean {
   let cur: unknown = err;
   while (cur && typeof cur === "object" && !seen.has(cur)) {
     seen.add(cur);
-    const e = cur as { code?: unknown; message?: unknown; cause?: unknown };
+    const e = cur as {
+      code?: unknown;
+      message?: unknown;
+      cause?: unknown;
+      name?: unknown;
+      status?: unknown;
+    };
     if (typeof e.code === "string" && codes.has(e.code)) return true;
     if (typeof e.message === "string") {
       for (const re of messages) if (re.test(e.message)) return true;
     }
+    // A 4xx is a permanent client error: the request is malformed, unauthorised
+    // or too large, and replaying it five times with backoff costs the user time
+    // and money without any chance of succeeding. Timeout *shape* must not
+    // override an explicit client-error status. 5xx and status-less timeouts
+    // stay on the retry path.
+    const clientError = typeof e.status === "number" && e.status >= 400 && e.status < 500;
+    if (!clientError && isBareTimeout(e)) return true;
     cur = e.cause;
   }
   return false;
