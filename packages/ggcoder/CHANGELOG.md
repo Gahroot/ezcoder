@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.39.3
+
+### Patch Changes
+
+- Add 14 deep ambient, space ambient, and synthwave stations to the radio picker, including SomaFM's The Dark Zone, Echoes of Bluemars Cryosleep, Ambient Sleeping Pill, and Nightride FM.
+  - @kenkaiiii/gg-ai@5.39.3
+  - @kenkaiiii/gg-agent@5.39.3
+  - @kenkaiiii/gg-core@5.39.3
+
 ## 5.39.2
 
 ### Patch Changes
