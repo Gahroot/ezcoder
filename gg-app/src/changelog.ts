@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.45.2",
+    date: "2026-08-10",
+    items: [
+      "When your provider or proxy throttles you, you finally see why. Errors buried inside a `200` response used to surface as a mystery stall, then quietly burn `10` retries that re-billed your whole prompt every time. Now the real reason lands straight away and your credits stay yours.",
+      "Your conversation stops getting thrown away for no reason. A per-minute token limit used to look like a full context overflow, so your agent would compact your history, lose the thread, and still fail. Now it waits the limit out and picks up right where you left off.",
+    ],
+  },
+  {
     version: "0.45.1",
     date: "2026-08-10",
     items: [
