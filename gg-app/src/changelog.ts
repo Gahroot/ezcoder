@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.46.0",
+    date: "2026-08-11",
+    items: [
+      "Find out what you're legally missing *before* you launch, not after a demand letter. Ask GG Coder if your app is safe to ship and the new `compliance-guard` skill reads your actual code \u2014 your schema, your tracking scripts, your checkout, your uploads \u2014 then tells you what you owe in plain English, fixes what code can fix, and ranks the rest by what really gets small apps sued.",
+      "It tells you straight when something can't legally ship. An `AI vet` that prescribes medication, cash prizes for spins, cashing out a wallet balance, cloning someone's voice without asking \u2014 these are licensed or banned, not to-do items, and you get told before the code gets written, with the version you *can* build.",
+      "Skills stay out of your way now. They used to jump in whenever a task merely sounded like their topic; they now match the actual work, skip routine changes, and never reload themselves mid-conversation.",
+    ],
+  },
+  {
     version: "0.45.4",
     date: "2026-08-11",
     items: [
