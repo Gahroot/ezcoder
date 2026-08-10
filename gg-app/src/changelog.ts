@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.45.3",
+    date: "2026-08-10",
+    items: [
+      "The radio just grew a whole dark side. I added `14` new stations built to drop you into another world while you work: `The Dark Zone` for staring into the abyss, `Cryosleep` for zero-beat deep space, and `Nightride FM` when you want rain on neon. I streamed every single one before shipping it, so nothing in that list is dead air.",
+    ],
+  },
+  {
     version: "0.45.2",
     date: "2026-08-10",
     items: [
