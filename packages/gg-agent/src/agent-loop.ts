@@ -765,6 +765,26 @@ export async function* agentLoop(
         diag("stream_call", { nonStreaming: useNonStreamingFallback });
         streamCallStart = Date.now();
         providerAttemptStartedAt = streamCallStart;
+        // Re-resolve auth per turn. A refresh performed by any process sharing
+        // auth.json invalidates the access token captured when this run began,
+        // so a pinned key silently dies partway through a long run. A resolver
+        // failure is not fatal here: fall back to the captured credential and
+        // let the provider report the real auth error.
+        let liveApiKey = options.apiKey;
+        let liveAccountId = options.accountId;
+        let liveProjectId = options.projectId;
+        if (options.resolveCredentials) {
+          try {
+            const fresh = await options.resolveCredentials();
+            liveApiKey = fresh.apiKey;
+            if (fresh.accountId !== undefined) liveAccountId = fresh.accountId;
+            if (fresh.projectId !== undefined) liveProjectId = fresh.projectId;
+          } catch (credErr) {
+            diag("credential_refresh_failed", {
+              error: (credErr instanceof Error ? credErr.message : String(credErr)).slice(0, 200),
+            });
+          }
+        }
         const result = stream({
           provider: options.provider,
           model: options.model,
@@ -776,12 +796,12 @@ export async function* agentLoop(
           maxTokens: options.maxTokens,
           temperature: options.temperature,
           thinking: options.thinking,
-          apiKey: options.apiKey,
+          apiKey: liveApiKey,
           baseUrl: options.baseUrl,
           signal: streamController.signal,
-          accountId: options.accountId,
+          accountId: liveAccountId,
           transportSessionId: options.transportSessionId,
-          projectId: options.projectId,
+          projectId: liveProjectId,
           cacheRetention: options.cacheRetention,
           promptCacheKey: options.promptCacheKey,
           serviceTier: options.serviceTier,

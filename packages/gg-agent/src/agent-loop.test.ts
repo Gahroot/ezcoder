@@ -2315,3 +2315,62 @@ describe("local-backend first-event watchdog", () => {
     vi.useRealTimers();
   }, 30_000);
 });
+
+describe("agentLoop — per-turn credential resolution", () => {
+  beforeEach(() => {
+    mockStream.mockReset();
+  });
+
+  it("re-resolves the token every turn so a mid-run rotation can't kill the run", async () => {
+    // A run spanning several turns can outlive the access token it started with:
+    // any process sharing auth.json that refreshes the grant invalidates it
+    // server-side. Pinning one key made every remaining turn fail with an
+    // authentication error until the user restarted.
+    mockStream
+      .mockReturnValueOnce(
+        mockToolCallResult("context_probe", {
+          inputTokens: 10,
+          outputTokens: 5,
+        }) as unknown as ReturnType<typeof stream>,
+      )
+      .mockReturnValueOnce(mockOkResult("Done") as unknown as ReturnType<typeof stream>);
+
+    const rotated = ["token-a", "token-b"];
+    let calls = 0;
+
+    await collectLoop([{ role: "user", content: "test" }], {
+      provider: "anthropic",
+      model: "test",
+      apiKey: "token-stale",
+      resolveCredentials: async () => ({ apiKey: rotated[calls++] ?? "token-b" }),
+      tools: [
+        {
+          name: "context_probe",
+          description: "continue the test",
+          parameters: emptyParams,
+          execute: () => "ok",
+        },
+      ],
+    });
+
+    expect(mockStream.mock.calls[0]?.[0].apiKey).toBe("token-a");
+    expect(mockStream.mock.calls[1]?.[0].apiKey).toBe("token-b");
+  });
+
+  it("falls back to the captured key when the resolver fails", async () => {
+    // A transient failure reading auth.json must not abort a live run — let the
+    // provider report the real auth error instead.
+    mockStream.mockReturnValueOnce(mockOkResult("Done") as unknown as ReturnType<typeof stream>);
+
+    await collectLoop([{ role: "user", content: "test" }], {
+      provider: "anthropic",
+      model: "test",
+      apiKey: "token-captured",
+      resolveCredentials: async () => {
+        throw new Error("auth.json is temporarily unreadable");
+      },
+    });
+
+    expect(mockStream.mock.calls[0]?.[0].apiKey).toBe("token-captured");
+  });
+});
