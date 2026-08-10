@@ -77,7 +77,9 @@ export function isContextOverflow(err: unknown): boolean {
   if (overflowStatus === 402) return false;
   if (isBillingError(err)) return false;
   const msg = err.message.toLowerCase();
-  return (
+
+  // Explicit overflow wording from the provider always wins.
+  if (
     msg.includes("prompt is too long") ||
     msg.includes("prompt too long") ||
     msg.includes("input is too long") ||
@@ -89,9 +91,32 @@ export function isContextOverflow(err: unknown): boolean {
     msg.includes("content_too_large") ||
     msg.includes("request_too_large") ||
     msg.includes("reduce the length") ||
-    msg.includes("please shorten") ||
-    (msg.includes("token") && msg.includes("exceed"))
-  );
+    msg.includes("please shorten")
+  ) {
+    return true;
+  }
+
+  // Throughput limits are not overflow. A tokens-per-minute 429 ("20000
+  // tokens/min exceeded") satisfies the loose token+exceed heuristic below,
+  // but compacting in response throws away context AND still fails — the quota
+  // is per unit time, not per request. The loop must back off instead.
+  const rateLimited =
+    overflowStatus === 429 ||
+    msg.includes("rate limit") ||
+    msg.includes("rate_limit") ||
+    msg.includes("too many requests");
+  const perUnitTime =
+    msg.includes("per min") ||
+    msg.includes("/min") ||
+    msg.includes("per minute") ||
+    msg.includes("per hour") ||
+    msg.includes("per day") ||
+    msg.includes("tpm") ||
+    msg.includes("rpm");
+  if (rateLimited && perUnitTime) return false;
+
+  // Loose fallback for providers that only say e.g. "token limit exceeded".
+  return msg.includes("token") && msg.includes("exceed");
 }
 
 export interface ContextOverflowDetails {

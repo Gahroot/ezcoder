@@ -211,6 +211,30 @@ describe("isContextOverflow", () => {
     expect(isContextOverflow(new Error("rate limit exceeded"))).toBe(false);
   });
 
+  it("treats a tokens-per-minute 429 as a throughput limit, not overflow", () => {
+    // These satisfy the loose token+exceed heuristic but compacting cannot help:
+    // the quota is per unit time, so the loop must back off and retry instead.
+    const cases = [
+      new ProviderError("openai", "rate limited: 20000 tokens/min exceeded", { statusCode: 429 }),
+      new ProviderError("openai", "Rate limit reached: token quota per minute exceeded", {
+        statusCode: 429,
+      }),
+      new ProviderError("anthropic", "too many requests: input tokens per day exceeded", {
+        statusCode: 429,
+      }),
+    ];
+    for (const err of cases) {
+      expect(isContextOverflow(err), err.message).toBe(false);
+    }
+  });
+
+  it("still detects a real overflow that arrives with a 429 status", () => {
+    const err = new ProviderError("openai", "maximum context length is 128000 tokens", {
+      statusCode: 429,
+    });
+    expect(isContextOverflow(err)).toBe(true);
+  });
+
   it("returns false for non-Error values", () => {
     expect(isContextOverflow("some string")).toBe(false);
     expect(isContextOverflow(null)).toBe(false);
