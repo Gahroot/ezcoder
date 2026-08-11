@@ -11,7 +11,7 @@ function context() {
 
 describe("createGrepTool", () => {
   it("stops after max_results before scanning later files", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-limit-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-limit-"));
     await fs.writeFile(path.join(tmpDir, "a.txt"), "needle\n");
     await fs.writeFile(path.join(tmpDir, "z.txt"), "needle\n");
 
@@ -26,7 +26,7 @@ describe("createGrepTool", () => {
   });
 
   it("accepts a leading (?i) as a case-insensitive regex flag", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-inline-flag-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-inline-flag-"));
     await fs.writeFile(path.join(tmpDir, "deploy.txt"), "Deploy to Railway\n");
 
     const result = await createGrepTool(tmpDir).execute(
@@ -57,7 +57,7 @@ describe("createGrepTool", () => {
   );
 
   it("allows a quantified group whose body has no quantifier", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-safe-quant-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-safe-quant-"));
     await fs.writeFile(path.join(tmpDir, "a.txt"), "abab\n");
 
     const result = await createGrepTool(tmpDir).execute(
@@ -71,7 +71,7 @@ describe("createGrepTool", () => {
   it.each(["(?:ab)+", "(?:ab|ba)+", "(?:a|b)*b", "(\\d+)?ab", "(a+){1,3}"])(
     "allows benign pattern %s",
     async (pattern) => {
-      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-benign-"));
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-benign-"));
       await fs.writeFile(path.join(tmpDir, "a.txt"), "abab\n");
 
       const result = await createGrepTool(tmpDir).execute({ pattern, include: "*.txt" }, context());
@@ -87,7 +87,7 @@ describe("createGrepTool", () => {
   });
 
   it("returns partial results plus a notice when the deadline expires", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-deadline-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-deadline-"));
     // More candidates than the scan pool is wide, so the files past the first
     // wave are genuinely never reached once the budget expires.
     const names = Array.from({ length: 40 }, (_, i) => `f${String(i).padStart(2, "0")}.txt`);
@@ -113,7 +113,7 @@ describe("createGrepTool", () => {
   });
 
   it("reports the deadline notice when nothing matched", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-deadline-empty-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-deadline-empty-"));
     await fs.writeFile(path.join(tmpDir, "a.txt"), "needle\n");
 
     const result = await createGrepTool(tmpDir, localOperations, { deadlineMs: 0 }).execute(

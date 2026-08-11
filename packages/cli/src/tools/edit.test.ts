@@ -1427,7 +1427,7 @@ describe("edit anchor guard", () => {
 
   it("blocks edits outside the workspace with the guard error", async () => {
     const tool = createEditTool(tmpDir);
-    const outside = path.join(os.homedir(), "Documents", "gg-guard-test-outside.txt");
+    const outside = path.join(os.homedir(), "Documents", "ez-guard-test-outside.txt");
 
     const raw = await tool.execute(
       { file_path: outside, edits: [{ old_text: "a", new_text: "b" }] },

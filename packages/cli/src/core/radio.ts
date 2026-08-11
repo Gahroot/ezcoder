@@ -336,7 +336,7 @@ function sendMpvVolume(ipcPath: string, volume: number, attempt = 1): void {
 }
 
 function nextMpvIpcPath(): string {
-  const name = `gg-radio-${process.pid}-${++ipcSequence}`;
+  const name = `ez-radio-${process.pid}-${++ipcSequence}`;
   return process.platform === "win32"
     ? `\\\\.\\pipe\\${name}`
     : path.join(os.tmpdir(), `${name}.sock`);
@@ -400,8 +400,8 @@ function tryPlayOnWindowsHost(station: RadioStation): ChildProcess | null {
     "Add-Type -AssemblyName presentationCore;",
     "Add-Type -AssemblyName WindowsBase;",
     "$p = New-Object System.Windows.Media.MediaPlayer;",
-    "$p.Open([uri]$env:GG_RADIO_URL);",
-    "$p.Volume = [double]$env:GG_RADIO_VOLUME;",
+    "$p.Open([uri]$env:EZ_RADIO_URL);",
+    "$p.Volume = [double]$env:EZ_RADIO_VOLUME;",
     "$p.Play();",
     "[System.Windows.Threading.Dispatcher]::Run();",
   ].join(" ");
@@ -411,10 +411,10 @@ function tryPlayOnWindowsHost(station: RadioStation): ChildProcess | null {
       stdio: "ignore",
       env: {
         ...process.env,
-        GG_RADIO_URL: station.url,
-        GG_RADIO_VOLUME: String(currentVolume / 100),
+        EZ_RADIO_URL: station.url,
+        EZ_RADIO_VOLUME: String(currentVolume / 100),
         WSLENV:
-          (process.env.WSLENV ? process.env.WSLENV + ":" : "") + "GG_RADIO_URL:GG_RADIO_VOLUME",
+          (process.env.WSLENV ? process.env.WSLENV + ":" : "") + "EZ_RADIO_URL:EZ_RADIO_VOLUME",
       },
     });
   } catch {

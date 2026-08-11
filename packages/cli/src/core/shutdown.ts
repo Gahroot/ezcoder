@@ -15,7 +15,7 @@
 
 import { log } from "./logger.js";
 
-/** Signals that must terminate a long-running GG process. */
+/** Signals that must terminate a long-running EZ process. */
 export const TERMINATION_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
 export type TerminationSignal = (typeof TERMINATION_SIGNALS)[number];
@@ -31,7 +31,7 @@ const SIGNAL_NUMBERS: Record<TerminationSignal, number> = {
 export const DEFAULT_EXIT_TIMEOUT_MS = 5_000;
 
 /** Env override, in seconds. `0` disables the deadline (debugging teardown). */
-export const EXIT_TIMEOUT_ENV = "GG_EXIT_TIMEOUT_SECS";
+export const EXIT_TIMEOUT_ENV = "EZ_EXIT_TIMEOUT_SECS";
 
 /** Upper bound on the override — a deadline nobody will wait for is no deadline. */
 const MAX_EXIT_TIMEOUT_MS = 120_000;

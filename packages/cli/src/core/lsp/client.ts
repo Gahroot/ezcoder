@@ -91,7 +91,7 @@ const SHUTDOWN_TIMEOUT_MS = 2000;
 const KILL_GRACE_MS = 1500;
 
 /**
- * JSON-RPC wire tracer, enabled only by `GG_LSP_TRACE=1`.
+ * JSON-RPC wire tracer, enabled only by `EZ_LSP_TRACE=1`.
  *
  * When a server accepts a document and then never publishes diagnostics, the
  * outcome (`timeout`) looks identical whether our `didOpen` never went out, the
@@ -101,7 +101,7 @@ const KILL_GRACE_MS = 1500;
  * log.
  */
 function wireTracer(serverId: string): WireTracer | undefined {
-  if (process.env.GG_LSP_TRACE !== "1") return undefined;
+  if (process.env.EZ_LSP_TRACE !== "1") return undefined;
   return (direction, message) => {
     const params = message.params as
       | {

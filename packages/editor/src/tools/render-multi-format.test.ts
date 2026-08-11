@@ -13,7 +13,7 @@ function makeCtx(signal?: AbortSignal) {
 }
 
 function mkScratch(): string {
-  return mkdtempSync(join(tmpdir(), "gg-multifmt-"));
+  return mkdtempSync(join(tmpdir(), "ez-multifmt-"));
 }
 
 const fakeProbe: MediaProbe = {

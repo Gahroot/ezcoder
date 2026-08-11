@@ -675,7 +675,7 @@ export class AuthStorage {
           log(
             "INFO",
             "auth",
-            `${provider} token was rotated by another gg process — adopting it instead of refreshing again`,
+            `${provider} token was rotated by another EZ Coder process — adopting it instead of refreshing again`,
           );
         }
         this.data = latest;

@@ -3,8 +3,9 @@
 # sync-upstream.sh — Pull updates from KenKaiii/gg-framework and rebrand
 #
 # Usage:
-#   ./scripts/sync-upstream.sh           # merge upstream/main, rename dirs, fix branding
-#   ./scripts/sync-upstream.sh --dry-run # show what would change without doing it
+#   ./scripts/sync-upstream.sh                  # merge, rename, and rebrand
+#   ./scripts/sync-upstream.sh --dry-run        # show incoming upstream commits
+#   ./scripts/sync-upstream.sh --normalize-only # normalize legacy product tokens only
 #
 # What it does:
 #   1. Fetches upstream (KenKaiii/gg-framework)
@@ -36,9 +37,11 @@ readonly REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 DRY_RUN=false
-if [[ "${1:-}" == "--dry-run" ]]; then
-  DRY_RUN=true
-fi
+NORMALIZE_ONLY=false
+case "${1:-}" in
+  --dry-run) DRY_RUN=true ;;
+  --normalize-only) NORMALIZE_ONLY=true ;;
+esac
 
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -233,11 +236,23 @@ replace_legacy_product_tokens() {
       -e 's|GGCODER_|EZCODER_|g' \
       -e 's|GGCoder|EZCoder|g' \
       -e 's|Ggcoder|Ezcoder|g' \
+      -e 's|gg-core-auth-storage-test|ezcoder-core-auth-storage-test|g' \
+      -e 's|gg-agent-plugin|ezcoder-agent-plugin|g' \
+      -e 's|gg-agents-|ezcoder-agents-|g' \
+      -e 's|crash-gg-agent-shim|crash-ezcoder-agent-shim|g' \
       -e 's|gg-ai|@prestyj/ai|g' \
       -e 's|gg-agent|@prestyj/agent|g' \
       -e 's|gg-core|@prestyj/core|g' \
       -e 's|gg-boss|ezboss|g' \
       -e 's|gg-voice|@prestyj/voice|g' \
+      -e 's|__SYNC_PRESERVE_EZ_APP__|GG_APP_|g' \
+      -e 's|GG_APP_|__SYNC_APP_CONTRACT__|g' \
+      -e 's|GG_|EZ_|g' \
+      -e 's|__SYNC_APP_CONTRACT__|GG_APP_|g' \
+      -e 's|gg-|ez-|g' \
+      -e 's|oez-opus-decoder|ogg-opus-decoder|g' \
+      -e 's|OEZ Opus|OGG Opus|g' \
+      -e 's|gg_|ez_|g' \
       -e 's|GG tools|EZ tools|g' \
       -e 's|GG remotes|EZ remotes|g' \
       -e 's|GG bridge|EZ bridge|g' \
@@ -310,6 +325,12 @@ fix_bin() {
 }
 
 main() {
+  if $NORMALIZE_ONLY; then
+    replace_legacy_product_tokens
+    ok "Legacy product tokens normalized"
+    return
+  fi
+
   ensure_upstream
 
   info "Fetching upstream..."

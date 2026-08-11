@@ -1778,7 +1778,7 @@ package main
 
 import (
 	"os"
-	gg "github.com/Gahroot/ezcoder/packages/pixel-go"
+	ez "github.com/Gahroot/ezcoder/packages/pixel-go"
 )
 
 func init() {
@@ -1786,7 +1786,7 @@ func init() {
 	if key == "" {
 		key = ${JSON.stringify(created.key)}
 	}
-	_ = gg.Init(gg.Options{ProjectKey: key, IngestURL: ${JSON.stringify(`${ingestUrl}/ingest`)}})
+	_ = ez.Init(ez.Options{ProjectKey: key, IngestURL: ${JSON.stringify(`${ingestUrl}/ingest`)}})
 }
 `,
     "utf8",

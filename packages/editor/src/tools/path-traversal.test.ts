@@ -93,7 +93,7 @@ vi.mock("../core/frames.js", () => ({
 // ---------------------------------------------------------------------------
 
 const TRAVERSAL = "../../etc/passwd";
-const SAFE_CWD = "/tmp/gg-test-safe-cwd";
+const SAFE_CWD = "/tmp/ez-test-safe-cwd";
 
 /** Shared ctx stub accepted by all tool execute() calls. */
 const ctx = {

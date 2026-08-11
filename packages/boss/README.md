@@ -163,5 +163,5 @@ MIT
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@prestyj/boss"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40Gahroot%2Fgg--boss-blue?style=for-the-badge" alt="Install"></a>
+  <a href="https://www.npmjs.com/package/@prestyj/boss"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40Gahroot%2Fez--boss-blue?style=for-the-badge" alt="Install"></a>
 </p>

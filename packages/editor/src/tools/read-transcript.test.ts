@@ -11,7 +11,7 @@ import type { Transcript } from "../core/whisper.js";
  */
 
 function makeTranscriptFile(t: Transcript): { dir: string; path: string } {
-  const dir = mkdtempSync(join(tmpdir(), "gg-rt-"));
+  const dir = mkdtempSync(join(tmpdir(), "ez-rt-"));
   const path = join(dir, "transcript.json");
   writeFileSync(path, JSON.stringify(t), "utf8");
   return { dir, path };

@@ -27,7 +27,7 @@ const WATCH_MAX_REPORTS_EXPECTED = 3;
  * `~/.ezcoder/bg` history when the suite runs.
  */
 async function bgDir(): Promise<string> {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gg-process-bg-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ez-process-bg-"));
   tempDirs.push(directory);
   return directory;
 }
@@ -39,7 +39,7 @@ async function manager(notifications: AgentNotificationQueue): Promise<ProcessMa
 }
 
 async function tempDir(): Promise<string> {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gg-process-notify-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ez-process-notify-"));
   tempDirs.push(directory);
   return directory;
 }

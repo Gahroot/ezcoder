@@ -1,5 +1,20 @@
 # @prestyj/cli
 
+## 5.12.0
+
+### Minor Changes
+
+- Bring the latest upstream capabilities into EZ Coder while preserving the fork's Goal orchestration, desktop sessions, provider limits, and Nolan persona.
+
+  Add LSP-backed code navigation, broader code search, schema-saving tool tiers, bundled child agents, Grok subscription OAuth with API-key fallback, resilient provider retries and streamed gateway errors, MCP image forwarding, themed terminal output, and the bundled compliance-guard skill.
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/ai@5.12.0
+  - @prestyj/agent@5.12.0
+  - @prestyj/core@5.12.0
+
 ## 5.11.0
 
 ### Minor Changes

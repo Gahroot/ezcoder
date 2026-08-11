@@ -628,17 +628,17 @@ describe("streamAnthropic error normalization", () => {
   });
 
   it("does not send eager tool-input streaming by default (fine-grained flag off)", () => {
-    const prev = process.env.GG_FINE_GRAINED_TOOL_STREAMING;
+    const prev = process.env.EZ_FINE_GRAINED_TOOL_STREAMING;
     const prevCC = process.env.CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING;
-    delete process.env.GG_FINE_GRAINED_TOOL_STREAMING;
+    delete process.env.EZ_FINE_GRAINED_TOOL_STREAMING;
     delete process.env.CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING;
     try {
       expect(fineGrainedToolStreamingEnabled()).toBe(false);
-      process.env.GG_FINE_GRAINED_TOOL_STREAMING = "1";
+      process.env.EZ_FINE_GRAINED_TOOL_STREAMING = "1";
       expect(fineGrainedToolStreamingEnabled()).toBe(true);
     } finally {
-      if (prev === undefined) delete process.env.GG_FINE_GRAINED_TOOL_STREAMING;
-      else process.env.GG_FINE_GRAINED_TOOL_STREAMING = prev;
+      if (prev === undefined) delete process.env.EZ_FINE_GRAINED_TOOL_STREAMING;
+      else process.env.EZ_FINE_GRAINED_TOOL_STREAMING = prev;
       if (prevCC === undefined) delete process.env.CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING;
       else process.env.CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING = prevCC;
     }

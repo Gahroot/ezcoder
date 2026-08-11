@@ -105,11 +105,11 @@ describe("radio", () => {
 
     expect(mocks.spawn).not.toHaveBeenCalled();
     // mpv's IPC endpoint is a Unix socket on POSIX but a NAMED PIPE on Windows
-    // (`\\.\pipe\gg-radio-…`), which radio.ts already builds correctly — only
+    // (`\\.\pipe\ez-radio-…`), which radio.ts already builds correctly — only
     // this assertion assumed the POSIX spelling.
     expect(mocks.createConnection).toHaveBeenCalledWith(
       expect.stringMatching(
-        process.platform === "win32" ? /^\\\\\.\\pipe\\gg-radio-/ : /gg-radio-.+\.sock$/,
+        process.platform === "win32" ? /^\\\\\.\\pipe\\ez-radio-/ : /ez-radio-.+\.sock$/,
       ),
     );
     expect(mocks.socket.end).toHaveBeenCalledWith(

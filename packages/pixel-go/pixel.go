@@ -1,11 +1,11 @@
 // Package ezpixel — Go SDK for ez-pixel error tracking.
 //
-//	import gg "github.com/Gahroot/ezcoder/packages/pixel-go"
+//	import ez "github.com/Gahroot/ezcoder/packages/pixel-go"
 //
 //	func main() {
-//	    gg.Init(gg.Options{ProjectKey: os.Getenv("EZCODER_PIXEL_KEY")})
-//	    defer gg.Close()
-//	    defer gg.Recover() // captures panics + re-panics
+//	    ez.Init(ez.Options{ProjectKey: os.Getenv("EZCODER_PIXEL_KEY")})
+//	    defer ez.Close()
+//	    defer ez.Recover() // captures panics + re-panics
 //	    // your code
 //	}
 package ezpixel
@@ -174,7 +174,7 @@ func CaptureError(err error) {
 //
 // Idiomatic use:
 //
-//	defer gg.Recover()
+//	defer ez.Recover()
 func Recover() {
 	r := recover()
 	if r == nil {

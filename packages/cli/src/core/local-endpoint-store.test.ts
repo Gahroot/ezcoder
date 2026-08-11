@@ -22,7 +22,7 @@ let auth: AuthStorage;
 // reads USERPROFILE on Windows, so a HOME override silently writes to the real
 // ~/.ezcoder there — which leaks state between tests and pollutes the user's files.
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-local-endpoints-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-local-endpoints-"));
   auth = new AuthStorage(path.join(dir, "auth.json"));
   opts = { settingsFile: path.join(dir, "ezcoder-app.json"), auth };
 });

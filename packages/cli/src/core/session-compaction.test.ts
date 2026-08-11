@@ -15,7 +15,7 @@ import {
 const tempDirs: string[] = [];
 
 async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "gg-session-compaction-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "ez-session-compaction-"));
   tempDirs.push(dir);
   return dir;
 }

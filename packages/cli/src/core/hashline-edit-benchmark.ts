@@ -30,8 +30,8 @@
  *   npx tsx src/core/hashline-edit-benchmark.ts
  *
  * Env overrides:
- *   GG_HL_PROVIDER / GG_HL_MODEL   (default anthropic / claude-sonnet-5)
- *   GG_HL_REPEAT                   (runs per task, default 1 — raise to average noise)
+ *   EZ_HL_PROVIDER / EZ_HL_MODEL   (default anthropic / claude-sonnet-5)
+ *   EZ_HL_REPEAT                   (runs per task, default 1 — raise to average noise)
  */
 
 import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
@@ -508,9 +508,9 @@ interface Row {
 }
 
 async function main(): Promise<void> {
-  const provider = process.env.GG_HL_PROVIDER ?? "anthropic";
-  const model = process.env.GG_HL_MODEL ?? "claude-sonnet-5";
-  const repeat = Math.max(1, parseInt(process.env.GG_HL_REPEAT ?? "1", 10));
+  const provider = process.env.EZ_HL_PROVIDER ?? "anthropic";
+  const model = process.env.EZ_HL_MODEL ?? "claude-sonnet-5";
+  const repeat = Math.max(1, parseInt(process.env.EZ_HL_REPEAT ?? "1", 10));
 
   const auth = new AuthStorage();
   await auth.load();
@@ -553,7 +553,7 @@ async function main(): Promise<void> {
         8192,
       );
       const baseOut = applyBaseline(base.text, task);
-      if (!baseOut.correct && process.env.GG_HL_DEBUG) {
+      if (!baseOut.correct && process.env.EZ_HL_DEBUG) {
         process.stdout.write(`   [debug] baseline raw:\n${base.text.slice(0, 1200)}\n`);
       }
       agg.baseOutTok += base.outputTokens;
@@ -577,7 +577,7 @@ async function main(): Promise<void> {
         8192,
       );
       const hlOut = applyHashline(hl.text, task, anchored);
-      if (!hlOut.correct && process.env.GG_HL_DEBUG) {
+      if (!hlOut.correct && process.env.EZ_HL_DEBUG) {
         process.stdout.write(`   [debug] hashline raw:\n${hl.text.slice(0, 1200)}\n`);
       }
       agg.hlOutTok += hl.outputTokens;

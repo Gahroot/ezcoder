@@ -59,8 +59,8 @@ async function persistedRoles(sessionPath: string): Promise<string[]> {
 }
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-checkpoint-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-checkpoint-project-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-checkpoint-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-checkpoint-project-"));
   restoreHome = useFakeHome(tmpHome);
   agentLoopMock.mockReset();
   await writeJson(path.join(tmpHome, ".ezcoder", "auth.json"), {

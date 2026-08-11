@@ -32,7 +32,7 @@ const managers: MCPClientManager[] = [];
 const pools: SharedMcpPool[] = [];
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-shared-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-shared-"));
   cachePath = path.join(dir, "mcp-catalog.json");
 });
 
@@ -67,7 +67,7 @@ function sharedFixture(overrides: Partial<MCPServerConfig> = {}): MCPServerConfi
   return {
     name: "shared-fixture",
     command: process.execPath,
-    args: [FIXTURE, `--gg-marker=${crypto.randomUUID()}`],
+    args: [FIXTURE, `--ez-marker=${crypto.randomUUID()}`],
     timeout: 10_000,
     ...overrides,
   };
@@ -75,7 +75,7 @@ function sharedFixture(overrides: Partial<MCPServerConfig> = {}): MCPServerConfi
 
 /** Live child processes carrying this config's marker argument. */
 function processCount(config: MCPServerConfig): number {
-  const marker = config.args?.find((arg) => arg.startsWith("--gg-marker="));
+  const marker = config.args?.find((arg) => arg.startsWith("--ez-marker="));
   if (!marker) throw new Error("fixture config has no marker argument");
   const out = execFileSync("ps", ["-eo", "command"], { encoding: "utf8" });
   return out.split("\n").filter((line) => line.includes(marker)).length;
@@ -422,7 +422,7 @@ describe.skipIf(process.platform === "win32")(
       // Kill the child out from under the pool, exactly like a crash. Located
       // with `ps` rather than `pgrep`, whose BSD build reads this fixture's
       // leading `--` marker as an illegal option.
-      const marker = config.args!.find((arg) => arg.startsWith("--gg-marker="))!;
+      const marker = config.args!.find((arg) => arg.startsWith("--ez-marker="))!;
       const row = execFileSync("ps", ["-eo", "pid,command"], { encoding: "utf8" })
         .split("\n")
         .find((line) => line.includes(marker));
@@ -457,7 +457,7 @@ describe.skipIf(process.platform === "win32")(
       const config: MCPServerConfig = {
         name: "elicit-fixture",
         command: process.execPath,
-        args: [ELICIT_FIXTURE, `--gg-marker=${crypto.randomUUID()}`],
+        args: [ELICIT_FIXTURE, `--ez-marker=${crypto.randomUUID()}`],
         timeout: 10_000,
       };
       const pool = newPool();

@@ -21,11 +21,11 @@ interface ReporterStub {
   flush: ReturnType<typeof vi.fn<() => Promise<void>>>;
 }
 
-const trackedGlobal = globalThis as typeof globalThis & { __GG_ERROR_MOM__?: ReporterStub };
+const trackedGlobal = globalThis as typeof globalThis & { __EZ_ERROR_MOM__?: ReporterStub };
 const originalArgv = [...process.argv];
 
 afterEach(() => {
-  delete trackedGlobal.__GG_ERROR_MOM__;
+  delete trackedGlobal.__EZ_ERROR_MOM__;
   process.argv.splice(0, process.argv.length, ...originalArgv);
 });
 
@@ -35,7 +35,7 @@ function installReporter(): ReporterStub {
     wrap: vi.fn((fn) => fn),
     flush: vi.fn(async () => {}),
   };
-  trackedGlobal.__GG_ERROR_MOM__ = reporter;
+  trackedGlobal.__EZ_ERROR_MOM__ = reporter;
   return reporter;
 }
 

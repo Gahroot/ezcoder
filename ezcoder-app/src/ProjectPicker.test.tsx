@@ -45,8 +45,8 @@ const PROJECT: DiscoveredProject = {
 };
 
 const NATIVE_SESSION: RecentSession = {
-  id: "gg-1",
-  path: "/sessions/gg-1.jsonl",
+  id: "ez-1",
+  path: "/sessions/ez-1.jsonl",
   preview: "Native EZ Coder session",
   lastActiveDisplay: "2m ago",
   messageCount: 4,

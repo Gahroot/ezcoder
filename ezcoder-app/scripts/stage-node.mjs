@@ -11,7 +11,7 @@
 //
 // Because each OS/arch bundle is produced on its own CI runner, the staged
 // binary always matches the platform it ships to. Override the version with
-// GG_NODE_VERSION, or point GG_NODE_SOURCE at a prebuilt standalone binary to
+// EZ_NODE_VERSION, or point EZ_NODE_SOURCE at a prebuilt standalone binary to
 // skip the download.
 import { execFileSync } from "node:child_process";
 import {
@@ -32,7 +32,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const srcTauri = join(here, "..", "src-tauri");
 const binDir = join(srcTauri, "binaries");
 
-const NODE_VERSION = process.env.GG_NODE_VERSION || "22.12.0";
+const NODE_VERSION = process.env.EZ_NODE_VERSION || "22.12.0";
 
 /** Resolve the Rust host target triple (e.g. aarch64-apple-darwin). */
 function hostTriple() {
@@ -98,7 +98,7 @@ async function main() {
   mkdirSync(binDir, { recursive: true });
   const dest = join(binDir, `eznode-${triple}${ext}`);
 
-  let source = process.env.GG_NODE_SOURCE;
+  let source = process.env.EZ_NODE_SOURCE;
   let work;
   if (!source) {
     work = mkdtempSync(join(tmpdir(), "eznode-"));

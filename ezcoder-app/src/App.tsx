@@ -534,14 +534,14 @@ function App(): React.ReactElement {
   // Persisted across reloads.
   const [navHidden, setNavHidden] = useState(() => {
     try {
-      return localStorage.getItem("gg-nav-hidden") === "1";
+      return localStorage.getItem("ez-nav-hidden") === "1";
     } catch {
       return false;
     }
   });
   const setNavHiddenPersisted = useCallback((hidden: boolean) => {
     try {
-      localStorage.setItem("gg-nav-hidden", hidden ? "1" : "0");
+      localStorage.setItem("ez-nav-hidden", hidden ? "1" : "0");
     } catch {
       /* ignore */
     }
@@ -556,14 +556,14 @@ function App(): React.ReactElement {
   // are tiled (tight space) so freshly opened windows boot with it collapsed.
   const [toolsHidden, setToolsHidden] = useState(() => {
     try {
-      return localStorage.getItem("gg-tools-hidden") === "1";
+      return localStorage.getItem("ez-tools-hidden") === "1";
     } catch {
       return false;
     }
   });
   const setToolsHiddenPersisted = useCallback((hidden: boolean) => {
     try {
-      localStorage.setItem("gg-tools-hidden", hidden ? "1" : "0");
+      localStorage.setItem("ez-tools-hidden", hidden ? "1" : "0");
     } catch {
       /* ignore */
     }
@@ -589,7 +589,7 @@ function App(): React.ReactElement {
       const filename = (await exportTranscriptName()) ?? "your-chat.md";
       let lastDir: string | null = null;
       try {
-        lastDir = localStorage.getItem("gg-export-dir");
+        lastDir = localStorage.getItem("ez-export-dir");
       } catch {
         /* ignore */
       }
@@ -602,7 +602,7 @@ function App(): React.ReactElement {
       await saveTranscript(target);
       const dir = target.replace(/[/\\][^/\\]*$/, "");
       try {
-        if (dir) localStorage.setItem("gg-export-dir", dir);
+        if (dir) localStorage.setItem("ez-export-dir", dir);
       } catch {
         /* ignore */
       }
@@ -1464,7 +1464,7 @@ function App(): React.ReactElement {
   // Per-project notes: load from localStorage whenever the active project (cwd)
   // changes, and write back on every edit. Keyed by cwd so each project keeps
   // its own notebook; windows pointed at the same project share one.
-  const notesKey = state?.cwd ? `gg-notes:${state.cwd}` : null;
+  const notesKey = state?.cwd ? `ez-notes:${state.cwd}` : null;
   useEffect(() => {
     if (!notesKey) {
       setNotes("");

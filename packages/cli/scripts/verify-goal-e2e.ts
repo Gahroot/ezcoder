@@ -29,10 +29,10 @@ async function executeGoalHarnessTool(cwd: string, args: Parameters<ReturnType<t
 }
 
 async function runDurableToolLifecycleHarness() {
-  const previousGoalsBase = process.env.GG_GOALS_BASE;
+  const previousGoalsBase = process.env.EZ_GOALS_BASE;
   const tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "goal-e2e-base-"));
   const tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "goal-e2e-project-"));
-  process.env.GG_GOALS_BASE = tmpBase;
+  process.env.EZ_GOALS_BASE = tmpBase;
   try {
     await fs.writeFile(path.join(tmpProject, "fixture.txt"), "ready\n", "utf-8");
     await executeGoalHarnessTool(tmpProject, {
@@ -61,8 +61,8 @@ async function runDurableToolLifecycleHarness() {
     assert.ok(run?.evidence.some((item) => item.label === "Verifier result"), "verifier evidence persisted");
     assert.ok(run?.evidence.some((item) => item.label === "Final completion audit pass"), "final audit evidence persisted");
   } finally {
-    if (previousGoalsBase === undefined) delete process.env.GG_GOALS_BASE;
-    else process.env.GG_GOALS_BASE = previousGoalsBase;
+    if (previousGoalsBase === undefined) delete process.env.EZ_GOALS_BASE;
+    else process.env.EZ_GOALS_BASE = previousGoalsBase;
     await fs.rm(tmpBase, { recursive: true, force: true });
     await fs.rm(tmpProject, { recursive: true, force: true });
   }
@@ -71,10 +71,10 @@ async function runDurableToolLifecycleHarness() {
 await runDurableToolLifecycleHarness();
 
 async function runFullAzReliabilityContractHarness() {
-  const previousGoalsBase = process.env.GG_GOALS_BASE;
+  const previousGoalsBase = process.env.EZ_GOALS_BASE;
   const tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "goal-az-base-"));
   const tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "goal-az-project-"));
-  process.env.GG_GOALS_BASE = tmpBase;
+  process.env.EZ_GOALS_BASE = tmpBase;
   try {
     const originalPrompt = "Improve feature X/Y/Z using https://github.com/acme/product-reference and attached screenshot/instructions.";
     const goalPlan = "GOAL_PLAN\nresearch=local\nfacts=goal-store.ts goal-references.ts goals.ts system-prompt.ts goal-controller.ts package scripts\nsuccess=original prompt durable; GOAL_PLAN durable; verifier handoff clear; A-Z contract\nproof=domain-agnostic durable state verifier audit contract\nsetup=references worker proof verifier final audit\nEND_GOAL_PLAN";
@@ -167,8 +167,8 @@ async function runFullAzReliabilityContractHarness() {
     if (run?.status !== "passed") throw new Error(`A-Z completion failed: ${canCompleteGoalRun(run as GoalRun).reason}`);
     assert.equal(canCompleteGoalRun(run as GoalRun).ok, true, "completion contract accepts full A-Z run");
   } finally {
-    if (previousGoalsBase === undefined) delete process.env.GG_GOALS_BASE;
-    else process.env.GG_GOALS_BASE = previousGoalsBase;
+    if (previousGoalsBase === undefined) delete process.env.EZ_GOALS_BASE;
+    else process.env.EZ_GOALS_BASE = previousGoalsBase;
     await fs.rm(tmpBase, { recursive: true, force: true });
     await fs.rm(tmpProject, { recursive: true, force: true });
   }

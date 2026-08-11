@@ -168,7 +168,7 @@ export function createTextBasedCutTool(cwd: string): AgentTool<typeof TextBasedC
         });
         const outAbs = args.edlOutput
           ? safeOutputPath(cwd, args.edlOutput)
-          : join(mkdtempSync(join(tmpdir(), "gg-textcut-")), "cuts.edl");
+          : join(mkdtempSync(join(tmpdir(), "ez-textcut-")), "cuts.edl");
         if (args.edlOutput) mkdirSync(dirname(outAbs), { recursive: true });
         writeFileSync(outAbs, edl, "utf8");
 

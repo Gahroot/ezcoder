@@ -26,7 +26,7 @@ const managers: SubAgentManager[] = [];
 const tempDirs: string[] = [];
 
 async function tempDir(): Promise<string> {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gg-subagent-manager-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ez-subagent-manager-"));
   tempDirs.push(directory);
   return directory;
 }

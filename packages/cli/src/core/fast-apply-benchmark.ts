@@ -19,8 +19,8 @@
  *   npx tsx src/core/fast-apply-benchmark.ts
  *
  * Env overrides:
- *   GG_FA_FRONTIER_PROVIDER / GG_FA_FRONTIER_MODEL   (default openai / gpt-5.5)
- *   GG_FA_APPLY_PROVIDER     / GG_FA_APPLY_MODEL      (default gemini / gemini-3.1-flash-lite)
+ *   EZ_FA_FRONTIER_PROVIDER / EZ_FA_FRONTIER_MODEL   (default openai / gpt-5.5)
+ *   EZ_FA_APPLY_PROVIDER     / EZ_FA_APPLY_MODEL      (default gemini / gemini-3.1-flash-lite)
  */
 
 import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
@@ -276,10 +276,10 @@ interface Row {
 }
 
 async function main(): Promise<void> {
-  const frontierProvider = process.env.GG_FA_FRONTIER_PROVIDER ?? "openai";
-  const frontierModel = process.env.GG_FA_FRONTIER_MODEL ?? "gpt-5.5";
-  const applyProvider = process.env.GG_FA_APPLY_PROVIDER ?? "gemini";
-  const applyModel = process.env.GG_FA_APPLY_MODEL ?? "gemini-3.1-flash-lite";
+  const frontierProvider = process.env.EZ_FA_FRONTIER_PROVIDER ?? "openai";
+  const frontierModel = process.env.EZ_FA_FRONTIER_MODEL ?? "gpt-5.5";
+  const applyProvider = process.env.EZ_FA_APPLY_PROVIDER ?? "gemini";
+  const applyModel = process.env.EZ_FA_APPLY_MODEL ?? "gemini-3.1-flash-lite";
 
   const auth = new AuthStorage();
   await auth.load();

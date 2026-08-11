@@ -10,9 +10,9 @@
  *   npx tsx src/core/api-benchmark.ts
  *
  * Environment overrides:
- *   GG_BENCH_PROVIDER  — provider name (default: "glm")
- *   GG_BENCH_MODEL     — model id (default: "glm-5.2")
- *   GG_BENCH_TURNS     — number of turns (default: 5)
+ *   EZ_BENCH_PROVIDER  — provider name (default: "glm")
+ *   EZ_BENCH_MODEL     — model id (default: "glm-5.2")
+ *   EZ_BENCH_TURNS     — number of turns (default: 5)
  */
 
 import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
@@ -352,10 +352,10 @@ export function formatApiComparison(c: ApiComparisonResult): string {
 }
 
 async function main(): Promise<void> {
-  const provider = process.env.GG_BENCH_PROVIDER ?? "glm";
-  const model = process.env.GG_BENCH_MODEL ?? "glm-5.2";
-  const turns = parseInt(process.env.GG_BENCH_TURNS ?? "5", 10);
-  const mode = process.env.GG_BENCH_MODE ?? "compare"; // "single" or "compare"
+  const provider = process.env.EZ_BENCH_PROVIDER ?? "glm";
+  const model = process.env.EZ_BENCH_MODEL ?? "glm-5.2";
+  const turns = parseInt(process.env.EZ_BENCH_TURNS ?? "5", 10);
+  const mode = process.env.EZ_BENCH_MODE ?? "compare"; // "single" or "compare"
 
   // Resolve credentials using gg's AuthStorage (same path as a real session).
   const authStorage = new AuthStorage();

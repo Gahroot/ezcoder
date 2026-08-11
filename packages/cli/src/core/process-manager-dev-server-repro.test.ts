@@ -11,7 +11,7 @@ import { ProcessManager } from "./process-manager.js";
  * one sweeps the developer's real `~/.ezcoder/bg` when the suite runs.
  */
 async function bgTempDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-logs-"));
+  return fs.mkdtemp(path.join(os.tmpdir(), "ez-bg-logs-"));
 }
 
 async function waitForOutput(
@@ -81,21 +81,21 @@ describe("ProcessManager dev-server lifecycle repro", () => {
   });
 
   it("scrubs unsafe inherited environment for background commands", async () => {
-    const oldSecret = process.env.GG_TEST_SHOULD_NOT_LEAK;
-    process.env.GG_TEST_SHOULD_NOT_LEAK = "super-secret";
+    const oldSecret = process.env.EZ_TEST_SHOULD_NOT_LEAK;
+    process.env.EZ_TEST_SHOULD_NOT_LEAK = "super-secret";
     manager = new ProcessManager({ bgDir: await bgTempDir() });
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-env-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-bg-env-"));
     try {
       const started = await manager.start(
-        `${JSON.stringify(process.execPath)} -e "console.log(process.env.GG_TEST_SHOULD_NOT_LEAK || 'scrubbed')"`,
+        `${JSON.stringify(process.execPath)} -e "console.log(process.env.EZ_TEST_SHOULD_NOT_LEAK || 'scrubbed')"`,
         tmpDir,
       );
       const output = await waitForOutput(manager, started.id, (text) => text.includes("scrubbed"));
       expect(output).toContain("scrubbed");
       expect(output).not.toContain("super-secret");
     } finally {
-      if (oldSecret === undefined) delete process.env.GG_TEST_SHOULD_NOT_LEAK;
-      else process.env.GG_TEST_SHOULD_NOT_LEAK = oldSecret;
+      if (oldSecret === undefined) delete process.env.EZ_TEST_SHOULD_NOT_LEAK;
+      else process.env.EZ_TEST_SHOULD_NOT_LEAK = oldSecret;
     }
   });
 
@@ -113,7 +113,7 @@ describe("ProcessManager dev-server lifecycle repro", () => {
       }) as typeof process.kill,
       spawnSync: taskkill as never,
     });
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-win-taskkill-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-win-taskkill-"));
     const started = await manager.start(
       `${JSON.stringify(process.execPath)} -e "setInterval(()=>{},1000)"`,
       tmpDir,
@@ -140,7 +140,7 @@ describe("ProcessManager dev-server lifecycle repro", () => {
 
   it("starts, reads, and stops a long-running Node HTTP server through the worker background path", async () => {
     manager = new ProcessManager({ bgDir: await bgTempDir() });
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-dev-server-repro-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-dev-server-repro-"));
     const fixture = path.join(tmpDir, "dev-server.mjs");
     await fs.writeFile(
       fixture,
@@ -204,7 +204,7 @@ describe("ProcessManager dev-server lifecycle repro", () => {
     "kills the whole detached process group on POSIX/WSL shutdown",
     async () => {
       manager = new ProcessManager({ bgDir: await bgTempDir() });
-      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-posix-process-group-"));
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-posix-process-group-"));
       const childFixture = path.join(tmpDir, "grandchild.mjs");
       const parentFixture = path.join(tmpDir, "parent.mjs");
 
@@ -252,8 +252,8 @@ describe("ProcessManager dev-server lifecycle repro", () => {
  */
 describe("background log isolation", () => {
   it("writes logs only inside the injected bgDir", async () => {
-    const logs = await fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-isolation-"));
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-isolation-cwd-"));
+    const logs = await fs.mkdtemp(path.join(os.tmpdir(), "ez-bg-isolation-"));
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ez-bg-isolation-cwd-"));
     const realBgDir = path.join(os.homedir(), ".ezcoder", "bg");
     const before = await fs.readdir(realBgDir).catch(() => [] as string[]);
 

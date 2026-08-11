@@ -19,21 +19,34 @@ const LOGO_LINES = [
   " \u2588\u2584\u2584\u2584 \u2588\u2584\u2584\u2584",
 ];
 
-// Extended gradient with reverse path for smooth animation loop
-const GRADIENT = [
-  "#60a5fa",
-  "#6da1f9",
-  "#7a9df7",
-  "#8799f5",
-  "#9495f3",
-  "#a18ff1",
-  "#a78bfa",
-  "#a18ff1",
-  "#9495f3",
-  "#8799f5",
-  "#7a9df7",
-  "#6da1f9",
-];
+// Ping-pong across active theme tokens so every theme gets a readable logo.
+const GRADIENT_STEPS = 7;
+
+function hexToRgb(hex: string): [number, number, number] {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
+}
+
+function lerpColor(from: string, to: string, amount: number): string {
+  const [fromRed, fromGreen, fromBlue] = hexToRgb(from);
+  const [toRed, toGreen, toBlue] = hexToRgb(to);
+  const mix = (start: number, end: number): number => Math.round(start + (end - start) * amount);
+  return `#${(
+    (1 << 24) |
+    (mix(fromRed, toRed) << 16) |
+    (mix(fromGreen, toGreen) << 8) |
+    mix(fromBlue, toBlue)
+  )
+    .toString(16)
+    .slice(1)}`;
+}
+
+function buildGradient(from: string, to: string): string[] {
+  const oneWay = Array.from({ length: GRADIENT_STEPS }, (_, index) =>
+    lerpColor(from, to, index / (GRADIENT_STEPS - 1)),
+  );
+  return [...oneWay, ...oneWay.slice(1, -1).reverse()];
+}
 
 const GAP = "   ";
 // Logo is 9 visible chars wide + GAP (3) = 12 chars before info text
@@ -130,6 +143,11 @@ function ShortcutHints({ taskCount }: { taskCount?: number }) {
 }
 
 function GradientText({ text, shift = 0 }: { text: string; shift?: number }) {
+  const theme = useTheme();
+  const gradient = React.useMemo(
+    () => buildGradient(theme.primary, theme.secondary),
+    [theme.primary, theme.secondary],
+  );
   const chars: React.ReactNode[] = [];
   let colorIdx = 0;
   for (let i = 0; i < text.length; i++) {
@@ -137,7 +155,7 @@ function GradientText({ text, shift = 0 }: { text: string; shift?: number }) {
     if (ch === " ") {
       chars.push(ch);
     } else {
-      const color = GRADIENT[(colorIdx + shift) % GRADIENT.length];
+      const color = gradient[(colorIdx + shift) % gradient.length];
       chars.push(
         <Text key={i} color={color}>
           {ch}

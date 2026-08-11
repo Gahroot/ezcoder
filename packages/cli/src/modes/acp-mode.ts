@@ -221,7 +221,7 @@ const PATH_ARG_KEYS = ["file_path", "path", "out_path"] as const;
 
 /**
  * The file a tool call touches, which is what drives "follow the agent" in a
- * client: the editor jumps to whatever GG is reading or editing right now.
+ * client: the editor jumps to whatever EZ is reading or editing right now.
  *
  * Paths are resolved to absolute against the session cwd, because the client
  * runs somewhere else entirely and cannot know what a relative path was
@@ -820,7 +820,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
   /**
    * Give the session a human-readable title, once.
    *
-   * ACP expects this "after the first meaningful exchange", and GG already
+   * ACP expects this "after the first meaningful exchange", and EZ already
    * derives the same first-prompt title for its own session list — reusing it
    * means a session is named identically on a phone, in the picker, and on
    * disk instead of three near-misses.

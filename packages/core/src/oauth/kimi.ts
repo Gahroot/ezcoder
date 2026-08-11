@@ -87,7 +87,7 @@ function deviceModel(): string {
   return `${os} ${version} ${osArch}`.trim();
 }
 
-/** Stable per-machine device id, persisted under the gg config dir. */
+/** Stable per-machine device id, persisted under the EZ Coder config directory. */
 function deviceId(): string {
   const idPath = path.join(getAppPaths().agentDir, "kimi_device_id");
   if (existsSync(idPath)) {

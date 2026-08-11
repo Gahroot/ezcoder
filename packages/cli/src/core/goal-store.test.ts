@@ -33,11 +33,11 @@ async function readGoalsFile(cwd: string): Promise<GoalRun[]> {
 beforeEach(async () => {
   tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "goal-store-test-base-"));
   tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "goal-store-test-project-"));
-  process.env.GG_GOALS_BASE = tmpBase;
+  process.env.EZ_GOALS_BASE = tmpBase;
 });
 
 afterEach(async () => {
-  delete process.env.GG_GOALS_BASE;
+  delete process.env.EZ_GOALS_BASE;
   await fs.rm(tmpBase, { recursive: true, force: true });
   await fs.rm(tmpProject, { recursive: true, force: true });
 });

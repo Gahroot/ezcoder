@@ -18,7 +18,7 @@
  *   npx tsx src/core/bash-spawn-benchmark.ts
  *
  * Env overrides:
- *   GG_BASH_BENCH_N  (commands per strategy, default 30)
+ *   EZ_BASH_BENCH_N  (commands per strategy, default 30)
  */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -68,7 +68,7 @@ class PersistentShell {
 
   run(cmd: string): Promise<number> {
     const start = performance.now();
-    const sentinel = `__GG_DONE_${randomUUID()}__`;
+    const sentinel = `__EZ_DONE_${randomUUID()}__`;
     return new Promise((resolve) => {
       this.waiter = { sentinel, resolve: () => resolve(performance.now() - start) };
       this.child.stdin.write(`${cmd}\necho ${sentinel}\n`);
@@ -77,8 +77,8 @@ class PersistentShell {
 
   /** Prove state persistence: cd + env var survive across run() calls. */
   async statePersists(): Promise<boolean> {
-    await this.run("cd /tmp && export GG_BENCH_STATE=alive");
-    const sentinel = `__GG_STATE_${randomUUID()}__`;
+    await this.run("cd /tmp && export EZ_BENCH_STATE=alive");
+    const sentinel = `__EZ_STATE_${randomUUID()}__`;
     const out = await new Promise<string>((resolve) => {
       let acc = "";
       const onData = (d: Buffer): void => {
@@ -89,7 +89,7 @@ class PersistentShell {
         }
       };
       this.child.stdout.on("data", onData);
-      this.child.stdin.write(`pwd; echo "$GG_BENCH_STATE"; echo ${sentinel}\n`);
+      this.child.stdin.write(`pwd; echo "$EZ_BENCH_STATE"; echo ${sentinel}\n`);
     });
     return out.includes("/tmp") && out.includes("alive");
   }
@@ -118,7 +118,7 @@ function fmt(s: { total: number; mean: number; p50: number; p95: number }): stri
 }
 
 async function main(): Promise<void> {
-  const n = Math.max(5, parseInt(process.env.GG_BASH_BENCH_N ?? "30", 10));
+  const n = Math.max(5, parseInt(process.env.EZ_BASH_BENCH_N ?? "30", 10));
   const cmds = buildCommandList(n);
 
   console.log(`\n🐚 Bash harness overhead — ${n} commands per strategy\n`);

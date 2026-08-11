@@ -17,7 +17,7 @@ to make that work:
    `process.execPath` because package-manager Node (e.g. Homebrew) is
    dynamically linked to `libnode.dylib` and is not self-contained; official
    nodejs.org builds link only against system libraries. Pin/override with
-   `GG_NODE_VERSION`, or skip the download with `GG_NODE_SOURCE=<path>`.
+   `EZ_NODE_VERSION`, or skip the download with `EZ_NODE_SOURCE=<path>`.
 
 2. **A single-file sidecar bundle** (`scripts/bundle-sidecar.mjs`). esbuild
    bundles `packages/cli/dist/app-sidecar.js` → `src-tauri/sidecar/app-sidecar.mjs`
@@ -30,7 +30,7 @@ to make that work:
 
 At runtime the Rust shell resolves both from the bundle in production and falls
 back to the workspace in dev (`src-tauri/src/lib.rs`, `resolve_node` /
-`resolve_sidecar`): a debug build, or `GG_NODE_BIN` / `GG_SIDECAR_PATH` being
+`resolve_sidecar`): a debug build, or `EZ_NODE_BIN` / `EZ_SIDECAR_PATH` being
 set, keeps the dev PATH/workspace behavior.
 
 ### Excluded / external packages

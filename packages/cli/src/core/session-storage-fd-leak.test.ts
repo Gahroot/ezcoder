@@ -40,7 +40,7 @@ describe("openSessionReadStream fd hygiene", () => {
   };
 
   beforeAll(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-session-fd-"));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-session-fd-"));
     archivePath = path.join(dir, "leak-probe.jsonl.gz");
 
     await new Promise<void>((resolve, reject) => {

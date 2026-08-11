@@ -32,7 +32,7 @@ const managers: ProcessManager[] = [];
 function trackedManager(): ProcessManager {
   // Own log dir: start() prunes bgDir, whose default is the real ~/.ezcoder/bg.
   const manager = new ProcessManager({
-    bgDir: mkdtempSync(path.join(os.tmpdir(), "gg-bg-gate-")),
+    bgDir: mkdtempSync(path.join(os.tmpdir(), "ez-bg-gate-")),
   });
   managers.push(manager);
   return manager;

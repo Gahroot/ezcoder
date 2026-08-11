@@ -7,13 +7,13 @@ import { SubAgentStore, type PersistedSubAgentRecord } from "./subagent-store.js
 const tempDirs: string[] = [];
 
 async function tempDir(): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-subagent-store-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-subagent-store-"));
   tempDirs.push(dir);
   return dir;
 }
 
 afterEach(async () => {
-  delete process.env.GG_SUBAGENT_TEST_SECRET;
+  delete process.env.EZ_SUBAGENT_TEST_SECRET;
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
@@ -39,7 +39,7 @@ describe("SubAgentStore", () => {
     const root = await tempDir();
     const store = new SubAgentStore(root);
     const secret = "opaque-subagent-canary-value-123456";
-    process.env.GG_SUBAGENT_TEST_SECRET = secret;
+    process.env.EZ_SUBAGENT_TEST_SECRET = secret;
     const records = Array.from({ length: 25 }, (_, index) => record(index, `${secret}-${index}`));
 
     await store.save("/project", "parent-a", records);

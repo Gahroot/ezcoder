@@ -71,10 +71,10 @@ function assertNoSecret(value: unknown, label: string) {
 
 const rows: string[] = [];
 let passed = 0;
-const previousGoalsBase = process.env.GG_GOALS_BASE;
+const previousGoalsBase = process.env.EZ_GOALS_BASE;
 const tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "goal-scenario-base-"));
 const tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "goal-scenario-project-"));
-process.env.GG_GOALS_BASE = tmpBase;
+process.env.EZ_GOALS_BASE = tmpBase;
 
 try {
   for (const scenario of scenarios) {
@@ -141,8 +141,8 @@ try {
     passed++;
   }
 } finally {
-  if (previousGoalsBase === undefined) delete process.env.GG_GOALS_BASE;
-  else process.env.GG_GOALS_BASE = previousGoalsBase;
+  if (previousGoalsBase === undefined) delete process.env.EZ_GOALS_BASE;
+  else process.env.EZ_GOALS_BASE = previousGoalsBase;
   await fs.rm(tmpBase, { recursive: true, force: true });
   await fs.rm(tmpProject, { recursive: true, force: true });
 }

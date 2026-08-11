@@ -19,7 +19,7 @@ interface ReviewInternals {
 // so these fixtures live in a real temp workspace.
 const workspaces: string[] = [];
 function makeWorkspace(files: readonly string[]): string {
-  const root = mkdtempSync(path.join(os.tmpdir(), "gg-review-coverage-"));
+  const root = mkdtempSync(path.join(os.tmpdir(), "ez-review-coverage-"));
   workspaces.push(root);
   for (const file of files) {
     const target = path.join(root, file);

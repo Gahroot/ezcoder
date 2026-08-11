@@ -9,14 +9,14 @@ import { findExecutable } from "./servers.js";
 /**
  * Opt-in integration test against a REAL typescript-language-server:
  *
- *   GG_LSP_INTEGRATION=1 npx vitest run src/core/lsp/integration.test.ts
+ *   EZ_LSP_INTEGRATION=1 npx vitest run src/core/lsp/integration.test.ts
  *
  * Skipped in CI and normal runs. Self-contained: when the server binary isn't
  * already on PATH it is npm-installed into the throwaway temp project (this
  * is a local, explicitly opted-in test — the production runtime NEVER
  * installs anything).
  */
-const enabled = process.env.GG_LSP_INTEGRATION === "1";
+const enabled = process.env.EZ_LSP_INTEGRATION === "1";
 
 describe.skipIf(!enabled)("LspManager + real typescript-language-server", () => {
   let tmpDir: string;

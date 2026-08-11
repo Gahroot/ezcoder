@@ -6,7 +6,7 @@ import { createTools } from "./index.js";
 import { buildSystemPrompt } from "../system-prompt.js";
 
 async function makeTempDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), "gg-plan-mode-"));
+  return fs.mkdtemp(path.join(os.tmpdir(), "ez-plan-mode-"));
 }
 
 function toolContext(): { signal: AbortSignal; toolCallId: string } {

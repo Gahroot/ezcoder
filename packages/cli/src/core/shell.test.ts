@@ -9,10 +9,10 @@ describe("resolveShell", () => {
     }
   });
 
-  it("honors the GG_BASH override on any platform", () => {
+  it("honors the EZ_BASH override on any platform", () => {
     const r = resolveShell("echo hi", {
       platform: "win32",
-      env: { GG_BASH: "C:\\msys64\\usr\\bin\\bash.exe" },
+      env: { EZ_BASH: "C:\\msys64\\usr\\bin\\bash.exe" },
       // Even though Git Bash also 'exists', the override wins.
       exists: () => true,
     });

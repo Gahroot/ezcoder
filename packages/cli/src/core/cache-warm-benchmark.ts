@@ -15,8 +15,8 @@
  * regardless of throughput noise.
  *
  * Usage: npx tsx src/core/cache-warm-benchmark.ts
- * Env:   GG_CW_PROVIDER (default anthropic), GG_CW_MODEL (default claude-haiku-4-5-20251001),
- *        GG_CW_REPS (default 4)
+ * Env:   EZ_CW_PROVIDER (default anthropic), EZ_CW_MODEL (default claude-haiku-4-5-20251001),
+ *        EZ_CW_REPS (default 4)
  */
 
 import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
@@ -147,9 +147,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const provider = process.env.GG_CW_PROVIDER ?? "anthropic";
-  const model = process.env.GG_CW_MODEL ?? "claude-haiku-4-5-20251001";
-  const reps = parseInt(process.env.GG_CW_REPS ?? "4", 10);
+  const provider = process.env.EZ_CW_PROVIDER ?? "anthropic";
+  const model = process.env.EZ_CW_MODEL ?? "claude-haiku-4-5-20251001";
+  const reps = parseInt(process.env.EZ_CW_REPS ?? "4", 10);
 
   const auth = new AuthStorage();
   await auth.load();

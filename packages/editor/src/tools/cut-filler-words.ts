@@ -195,7 +195,7 @@ export function createCutFillerWordsTool(cwd: string): AgentTool<typeof CutFille
 
         const outAbs = args.edlOutput
           ? safeOutputPath(cwd, args.edlOutput)
-          : join(mkdtempSync(join(tmpdir(), "gg-fillercut-")), "fillers.edl");
+          : join(mkdtempSync(join(tmpdir(), "ez-fillercut-")), "fillers.edl");
         if (args.edlOutput) mkdirSync(dirname(outAbs), { recursive: true });
         writeFileSync(outAbs, edl, "utf8");
 

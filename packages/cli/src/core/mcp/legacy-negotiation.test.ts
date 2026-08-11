@@ -39,7 +39,7 @@ function legacyServer(overrides: Partial<MCPServerConfig> = {}): MCPServerConfig
 }
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-legacy-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-legacy-"));
   cachePath = path.join(dir, "mcp-catalog.json");
 });
 
@@ -73,7 +73,7 @@ describe("2025-only stdio server under version negotiation", () => {
   it("connects a server that stays silent on the discovery probe", async () => {
     const config = legacyServer({
       name: "silent-legacy-fixture",
-      env: { GG_FIXTURE_SILENT_ON_UNKNOWN: "1" },
+      env: { EZ_FIXTURE_SILENT_ON_UNKNOWN: "1" },
       // Generous connect budget: the point is that the PROBE does not consume
       // it. Without a stdio-specific probe timeout the probe inherits this
       // value, so a silent server would burn the full 30s before falling back.

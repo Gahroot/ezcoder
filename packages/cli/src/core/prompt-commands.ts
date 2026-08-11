@@ -12,16 +12,16 @@ export interface PromptCommand {
   prompt: string;
 }
 
-const IS_GG_APP = isGgApp();
+const IS_EZ_APP = isGgApp();
 
-const TASKS_ADDED_NOTICE = IS_GG_APP
+const TASKS_ADDED_NOTICE = IS_EZ_APP
   ? 'Tasks added. Click the "Tasks" button to open the task list and run them.'
   : "Tasks added. Press Ctrl+T to open the task list and run them.";
 
 // The context file is whichever name won CONTEXT_FILES priority for this repo
 // (AGENTS.override.md > AGENTS.md > CLAUDE.md > …), so the notice stays
 // filename-agnostic — /init picks the winner at run time.
-const CLAUDE_MD_RESTART_NOTICE = IS_GG_APP
+const CLAUDE_MD_RESTART_NOTICE = IS_EZ_APP
   ? '> ⚠️ The project context file was created/updated. EZ Coder loads it fresh per session, so start a **New Session** (click "+ New") before continuing. Without a new session, I won\'t see the new context.'
   : "> ⚠️ The project context file was created/updated. ezcoder loads it at startup, so **exit and restart ezcoder** (`/quit` then run `ezcoder` again) before continuing. Without a restart, I won't see the new context.";
 

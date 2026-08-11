@@ -78,7 +78,7 @@ async function start(onComplete = vi.fn()) {
 beforeEach(async () => {
   tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "goal-worker-test-base-"));
   tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "goal-worker-test-project-"));
-  process.env.GG_GOALS_BASE = tmpBase;
+  process.env.EZ_GOALS_BASE = tmpBase;
   child = new FakeChild();
   spawnMock.mockReturnValue(child as unknown as ChildProcess);
   killProcessTreeMock.mockReset();
@@ -90,7 +90,7 @@ afterEach(async () => {
   const mod = await import("./goal-worker.js");
   mod.shutdownGoalWorkers(tmpProject);
   vi.clearAllMocks();
-  delete process.env.GG_GOALS_BASE;
+  delete process.env.EZ_GOALS_BASE;
   await fs.rm(tmpBase, { recursive: true, force: true });
   await fs.rm(tmpProject, { recursive: true, force: true });
 });

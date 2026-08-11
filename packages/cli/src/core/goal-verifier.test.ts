@@ -41,7 +41,7 @@ beforeEach(async () => {
   vi.useFakeTimers();
   tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "goal-verifier-test-base-"));
   tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "goal-verifier-test-project-"));
-  process.env.GG_GOALS_BASE = tmpBase;
+  process.env.EZ_GOALS_BASE = tmpBase;
   child = new FakeChild();
   spawnMock.mockReturnValue(child as unknown as ChildProcess);
   killProcessTreeMock.mockResolvedValue(undefined);
@@ -50,7 +50,7 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.useRealTimers();
   vi.clearAllMocks();
-  delete process.env.GG_GOALS_BASE;
+  delete process.env.EZ_GOALS_BASE;
   await fs.rm(tmpBase, { recursive: true, force: true });
   await fs.rm(tmpProject, { recursive: true, force: true });
 });

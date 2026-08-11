@@ -72,7 +72,7 @@ function request(
         method,
         headers: {
           ...(payload ? { "content-type": "application/json" } : {}),
-          ...(opts.session ? { "x-gg-session": opts.session } : {}),
+          ...(opts.session ? { "x-ez-session": opts.session } : {}),
         },
       },
       (res) => {
@@ -146,8 +146,8 @@ async function waitFor(predicate: () => boolean, timeoutMs = 15_000): Promise<vo
 }
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-models-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-models-project-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-models-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-models-project-"));
   await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
   // No auth.json: the daemon is boot-tolerant when logged out, which is exactly
   // the state a user is in right before they connect their first provider.

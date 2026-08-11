@@ -58,7 +58,7 @@ describe("Goal worker dev-server lifecycle", () => {
 
   it("keeps worker-owned background dev servers available during the worker and cleans them up on worker CLI shutdown", async () => {
     manager = new ProcessManager();
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-worker-dev-server-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-worker-dev-server-"));
     const fixture = await writeDevServerFixture(tmpDir);
     const bash = createBashTool(tmpDir, manager);
     const taskOutput = createTaskOutputTool(manager);

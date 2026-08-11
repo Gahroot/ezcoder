@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	gg "github.com/Gahroot/ezcoder/packages/pixel-go"
+	ez "github.com/Gahroot/ezcoder/packages/pixel-go"
 )
 
 func main() {
@@ -15,15 +15,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "set EZCODER_PIXEL_KEY=pk_live_...")
 		os.Exit(1)
 	}
-	if err := gg.Init(gg.Options{ProjectKey: key}); err != nil {
+	if err := ez.Init(ez.Options{ProjectKey: key}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer gg.Close()
-	defer gg.Recover()
+	defer ez.Close()
+	defer ez.Recover()
 
-	gg.Report("go-smoke: manual report from main()")
-	gg.CaptureError(errors.New("go-smoke: captured error via CaptureError"))
+	ez.Report("go-smoke: manual report from main()")
+	ez.CaptureError(errors.New("go-smoke: captured error via CaptureError"))
 
 	time.Sleep(500 * time.Millisecond)
 

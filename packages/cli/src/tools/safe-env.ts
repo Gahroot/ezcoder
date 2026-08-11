@@ -65,7 +65,7 @@ const ENV_ALLOWLIST = new Set([
   "NUMBER_OF_PROCESSORS",
   "PROCESSOR_ARCHITECTURE",
   // Git Bash override for the agent shell (see core/shell.ts).
-  "GG_BASH",
+  "EZ_BASH",
 ]);
 
 export function getSafeToolEnv(sourceEnv: NodeJS.ProcessEnv = process.env): Record<string, string> {

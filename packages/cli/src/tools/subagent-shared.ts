@@ -16,7 +16,7 @@ export const SUB_AGENT_MAX_OUTPUT_CHARS = 100_000;
 export const SUB_AGENT_MAX_OUTPUT_LINES = 500;
 export const SUB_AGENT_MAX_STDERR_CHARS = 10_000;
 export const SUB_AGENT_TIMEOUT_MS = 10 * 60 * 1000;
-export const SUB_AGENT_DEPTH_ENV = "GG_SUBAGENT_DEPTH";
+export const SUB_AGENT_DEPTH_ENV = "EZ_SUBAGENT_DEPTH";
 export const MAX_BLOCKING_SUBAGENT_DEPTH = 3;
 
 export interface SubAgentTokenUsage {
@@ -114,7 +114,7 @@ export function childSubAgentEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.P
 }
 
 export function resolveSubAgentCliEntry(env: NodeJS.ProcessEnv = process.env): string {
-  const monitoredEntry = env.GG_SUBAGENT_WORKER_ENTRY;
+  const monitoredEntry = env.EZ_SUBAGENT_WORKER_ENTRY;
   if (monitoredEntry) return monitoredEntry;
   const cliPath = fileURLToPath(new URL("../cli.js", import.meta.url));
   return existsSync(cliPath) ? cliPath : process.argv[1];

@@ -35,8 +35,8 @@ d("PersistentShell", () => {
 
   it("persists cd and env vars across calls — the point of the feature", async () => {
     const sh = make();
-    await sh.run("cd / && export GG_PSH_TEST=alive", 10_000, signal());
-    const res = await sh.run('pwd; echo "$GG_PSH_TEST"', 10_000, signal());
+    await sh.run("cd / && export EZ_PSH_TEST=alive", 10_000, signal());
+    const res = await sh.run('pwd; echo "$EZ_PSH_TEST"', 10_000, signal());
     expect(res.output).toBe("/\nalive");
   });
 
@@ -51,24 +51,24 @@ d("PersistentShell", () => {
 
   it("timeout kills the session; the next call gets a fresh shell", async () => {
     const sh = make();
-    await sh.run("export GG_PSH_STATE=set", 10_000, signal());
+    await sh.run("export EZ_PSH_STATE=set", 10_000, signal());
     const timedOut = await sh.run("sleep 30", 300, signal());
     expect(timedOut.exitCode).toBe("TIMEOUT");
     // Fresh shell: the exported var from before the timeout is gone.
-    const res = await sh.run('echo "[$GG_PSH_STATE]"', 10_000, signal());
+    const res = await sh.run('echo "[$EZ_PSH_STATE]"', 10_000, signal());
     expect(res.output).toBe("[]");
   });
 
   it("over-cap output still finds the sentinel — no hang, session survives", async () => {
     shell = new PersistentShell(os.tmpdir(), { ...process.env, TERM: "dumb" }, 512);
     const sh = shell;
-    await sh.run("export GG_PSH_CAP=kept", 10_000, signal());
+    await sh.run("export EZ_PSH_CAP=kept", 10_000, signal());
     // ~40KB of output, way past the 512-byte cap.
     const res = await sh.run('yes x | head -n 20000; echo "end"', 10_000, signal());
     expect(res.exitCode).toBe(0);
     expect(res.output).toContain("[Output capped at 512 bytes]");
     // Session state survived — the command completed instead of timing out.
-    const after = await sh.run('echo "$GG_PSH_CAP"', 10_000, signal());
+    const after = await sh.run('echo "$EZ_PSH_CAP"', 10_000, signal());
     expect(after.output).toBe("kept");
   });
 

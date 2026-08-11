@@ -10,7 +10,7 @@ import {
 } from "./auto-update.js";
 
 // Use a temp directory for state file instead of the real ~/.ezcoder
-const tmpDir = path.join(os.tmpdir(), `gg-update-test-${process.pid}`);
+const tmpDir = path.join(os.tmpdir(), `ez-update-test-${process.pid}`);
 
 // Mock the state file path
 vi.mock("node:os", async () => {

@@ -66,7 +66,7 @@ try {
   decoder.free();
   console.log("Decoder freed");
 } catch (err) {
-  console.error("OGG decoder error:", err.message);
+  console.error("OEZ decoder error:", err.message);
 }
 
 // ── Summary ──────────────────────────────────────────────────

@@ -21,7 +21,7 @@ import {
 const tempDirs: string[] = [];
 
 async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "gg-session-storage-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "ez-session-storage-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -146,7 +146,7 @@ describe("session entry storage normalization", () => {
     expect(assets).toEqual([crypto.createHash("sha256").update(mediaBytes).digest("hex")]);
     const raw = await readFile(created.path, "utf8");
     expect(raw).not.toContain(base64);
-    expect(raw).toContain("gg-session-asset:v1:");
+    expect(raw).toContain("ez-session-asset:v1:");
 
     const loaded = await manager.load(created.path);
     const messages = manager.getMessages(loaded.entries);

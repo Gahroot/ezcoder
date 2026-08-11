@@ -36,7 +36,7 @@ describe("UXP plugin install round-trip", () => {
   beforeEach(() => {
     // Redirect both the parent External dir and the destination plugin dir
     // into a tempdir so the test never touches the user's real Adobe folder.
-    scratch = mkdtempSync(join(tmpdir(), "gg-uxp-install-"));
+    scratch = mkdtempSync(join(tmpdir(), "ez-uxp-install-"));
     vi.spyOn(paths, "userUxpPluginsDir").mockReturnValue(scratch);
     vi.spyOn(paths, "installedUxpPluginDir").mockReturnValue(join(scratch, paths.BUNDLE_ID_UXP));
   });

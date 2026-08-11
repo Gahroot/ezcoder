@@ -433,7 +433,7 @@ def scriptapp(name): return _Resolve()
   });
 
   it("applies a LUT", async () => {
-    const lutDir = mkdtempSync(join(tmpdir(), "gg-lut-"));
+    const lutDir = mkdtempSync(join(tmpdir(), "ez-lut-"));
     const lutPath = join(lutDir, "x.cube");
     writeFileSync(lutPath, "# LUT\n");
     const b = new ResolveBridge();

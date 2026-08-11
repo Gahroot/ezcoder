@@ -43,7 +43,7 @@ async function commitFile(name: string, lines: number, message: string): Promise
 
 d("detectNewCommits", () => {
   beforeEach(async () => {
-    repo = await fs.mkdtemp(path.join(os.tmpdir(), "gg-gitxp-"));
+    repo = await fs.mkdtemp(path.join(os.tmpdir(), "ez-gitxp-"));
     git("init", "-q");
   });
 
@@ -91,7 +91,7 @@ d("detectNewCommits", () => {
   });
 
   it("returns null for a non-repo directory", async () => {
-    const plain = await fs.mkdtemp(path.join(os.tmpdir(), "gg-plain-"));
+    const plain = await fs.mkdtemp(path.join(os.tmpdir(), "ez-plain-"));
     const result = await detectNewCommits(plain, undefined, Date.now());
     expect(result).toBeNull();
     await fs.rm(plain, { recursive: true, force: true });

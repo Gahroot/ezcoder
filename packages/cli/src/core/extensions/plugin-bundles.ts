@@ -33,7 +33,7 @@ export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
 const PluginBundleSchema = z
   .object({
-    format: z.literal("@prestyj/agent-plugin"),
+    format: z.literal("ezcoder-agent-plugin"),
     schemaVersion: z.literal(1),
     manifest: PluginManifestSchema,
     files: z
@@ -131,7 +131,7 @@ export async function packPlugin(sourceDir: string, outputFile: string): Promise
   if (totalBytes > MAX_BUNDLE_BYTES) throw new Error("Plugin exceeds the 5 MB bundle limit");
 
   const bundle = {
-    format: "@prestyj/agent-plugin" as const,
+    format: "ezcoder-agent-plugin" as const,
     schemaVersion: 1 as const,
     manifest,
     files: files.map((file) => ({ path: file.path, contentBase64: file.data.toString("base64") })),

@@ -16,10 +16,10 @@ export const SESSION_MEDIA_MARKER_VERSION = 1;
 export const SESSION_PLAIN_SUFFIX = ".jsonl";
 export const SESSION_ARCHIVE_SUFFIX = ".jsonl.gz";
 export const SESSION_ASSET_SUFFIX = ".jsonl.assets";
-export const SESSION_TEMP_MARKER = ".gg-session-tmp-";
+export const SESSION_TEMP_MARKER = ".ez-session-tmp-";
 
-const REDIRECT_TYPE = "gg_session_redirect";
-const MEDIA_MARKER_PREFIX = `gg-session-asset:v${SESSION_MEDIA_MARKER_VERSION}:`;
+const REDIRECT_TYPE = "ez_session_redirect";
+const MEDIA_MARKER_PREFIX = `ez-session-asset:v${SESSION_MEDIA_MARKER_VERSION}:`;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_REDIRECT_BYTES = 4096;
 
@@ -375,7 +375,7 @@ function mediaMarker(sha256: string): string {
 }
 
 function parseMediaMarker(value: unknown): { valid: boolean; sha256?: string } | null {
-  if (typeof value !== "string" || !value.startsWith("gg-session-asset:")) return null;
+  if (typeof value !== "string" || !value.startsWith("ez-session-asset:")) return null;
   if (!value.startsWith(MEDIA_MARKER_PREFIX)) return { valid: false };
   const sha256 = value.slice(MEDIA_MARKER_PREFIX.length);
   return SHA256_PATTERN.test(sha256) ? { valid: true, sha256 } : { valid: false };

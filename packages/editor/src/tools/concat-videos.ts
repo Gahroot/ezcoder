@@ -55,7 +55,7 @@ export function createConcatVideosTool(cwd: string): AgentTool<typeof ConcatVide
           // concat demuxer: build a list file `file 'path'\n` and feed it.
           // The list file is a temp scratch artifact — clean it up no matter
           // how this branch exits (success, ffmpeg non-zero, or thrown error).
-          const listPath = join(tmpdir(), `gg-concat-${Date.now()}.txt`);
+          const listPath = join(tmpdir(), `ez-concat-${Date.now()}.txt`);
           const body = buildConcatListBody(absInputs);
           writeFileSync(listPath, body, "utf8");
           try {

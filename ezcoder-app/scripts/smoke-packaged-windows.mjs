@@ -350,8 +350,8 @@ function isolatedEnvironment(root, projectDir) {
   };
   // Dev-only overrides must never leak in: they would point the packaged app
   // back at workspace files and hide a broken bundle.
-  delete env.GG_NODE_BIN;
-  delete env.GG_SIDECAR_PATH;
+  delete env.EZ_NODE_BIN;
+  delete env.EZ_SIDECAR_PATH;
   delete env.GG_APP_WORKSPACE_PATH;
   return env;
 }

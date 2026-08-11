@@ -11,7 +11,7 @@ function context() {
 }
 
 async function makeFixture(files: Record<string, string>): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-recall-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-recall-"));
   for (const [rel, content] of Object.entries(files)) {
     const abs = path.join(dir, rel);
     await fs.mkdir(path.dirname(abs), { recursive: true });

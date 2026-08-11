@@ -1,6 +1,6 @@
 // Per-project accent identity.
 //
-// Six GG windows are six identical dark rectangles. Giving each project a stable
+// Six EZ windows are six identical dark rectangles. Giving each project a stable
 // colour makes "which window is which" a glance instead of a read. The colour is
 // DERIVED from the project path, not stored — so it is instantly consistent
 // across windows, launches and machines, with nothing to configure and no state

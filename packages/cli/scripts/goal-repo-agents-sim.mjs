@@ -60,7 +60,7 @@ async function run(model, worktree) {
       systemPrompt,
       PROMPT,
     ],
-    { cwd: worktree, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GG_GOALS_BASE: goalsBase } },
+    { cwd: worktree, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, EZ_GOALS_BASE: goalsBase } },
   );
 
   let text = "";

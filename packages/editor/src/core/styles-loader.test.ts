@@ -10,14 +10,14 @@ function tmp(prefix: string): string {
 
 describe("discoverStyles", () => {
   it("returns empty when neither dir exists", () => {
-    const cwd = tmp("gg-styles-cwd-");
-    const home = tmp("gg-styles-home-");
+    const cwd = tmp("ez-styles-cwd-");
+    const home = tmp("ez-styles-home-");
     expect(discoverStyles({ cwd, homeDir: home })).toEqual([]);
   });
 
   it("loads project + user styles", () => {
-    const cwd = tmp("gg-styles-cwd-");
-    const home = tmp("gg-styles-home-");
+    const cwd = tmp("ez-styles-cwd-");
+    const home = tmp("ez-styles-home-");
     mkdirSync(join(cwd, ".ezcoder/editor-styles"), { recursive: true });
     mkdirSync(join(home, ".ezcoder/editor-styles"), { recursive: true });
     writeFileSync(join(cwd, ".ezcoder/editor-styles/voice.md"), "# voice\nproject voice");
@@ -29,8 +29,8 @@ describe("discoverStyles", () => {
   });
 
   it("project overrides user on name collision (opposite of skills)", () => {
-    const cwd = tmp("gg-styles-cwd-");
-    const home = tmp("gg-styles-home-");
+    const cwd = tmp("ez-styles-cwd-");
+    const home = tmp("ez-styles-home-");
     mkdirSync(join(cwd, ".ezcoder/editor-styles"), { recursive: true });
     mkdirSync(join(home, ".ezcoder/editor-styles"), { recursive: true });
     writeFileSync(join(cwd, ".ezcoder/editor-styles/x.md"), "project");
@@ -41,8 +41,8 @@ describe("discoverStyles", () => {
   });
 
   it("skips empty files", () => {
-    const cwd = tmp("gg-styles-cwd-");
-    const home = tmp("gg-styles-home-");
+    const cwd = tmp("ez-styles-cwd-");
+    const home = tmp("ez-styles-home-");
     mkdirSync(join(home, ".ezcoder/editor-styles"), { recursive: true });
     writeFileSync(join(home, ".ezcoder/editor-styles/empty.md"), "   \n  \n");
     expect(discoverStyles({ cwd, homeDir: home })).toEqual([]);

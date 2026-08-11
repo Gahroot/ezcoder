@@ -92,7 +92,7 @@ describe("RunLifecycle journalling", () => {
 });
 
 describe("run journal reconstruction", () => {
-  const manager = new SessionManager(path.join(os.tmpdir(), "gg-run-journal-unused"));
+  const manager = new SessionManager(path.join(os.tmpdir(), "ez-run-journal-unused"));
 
   it("pairs each start with its own generation's finish", () => {
     const entries = [
@@ -178,7 +178,7 @@ describe("run journal reconstruction", () => {
 
 describe("run journal on disk", () => {
   it("round-trips through a real session file", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-run-journal-"));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-run-journal-"));
     try {
       const manager = new SessionManager(dir);
       const session = await manager.create(process.cwd(), "anthropic", "claude-test");

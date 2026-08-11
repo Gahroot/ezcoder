@@ -170,7 +170,7 @@ describe("bundled agents", () => {
   });
 
   it("does not shadow bundled agents unless the user defines that name", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "@prestyj/agents-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ezcoder-agents-"));
     try {
       const agents = await discoverAgents({ globalAgentsDir: dir });
       const auditor = agents.find((a) => a.name === "auditor");
@@ -181,7 +181,7 @@ describe("bundled agents", () => {
   });
 
   it("lets a user-defined agent of the same name win", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "@prestyj/agents-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ezcoder-agents-"));
     try {
       fs.writeFileSync(
         path.join(dir, "auditor.md"),

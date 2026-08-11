@@ -5,18 +5,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { closeLogger, isLoggerOpen, log, openLog, registerLogCleanup } from "./logger.js";
 
 const dirs: string[] = [];
-const originalSecret = process.env.GG_LOGGER_TEST_SECRET;
+const originalSecret = process.env.EZ_LOGGER_TEST_SECRET;
 
 afterEach(async () => {
   closeLogger({ shutdownLine: false });
-  if (originalSecret === undefined) delete process.env.GG_LOGGER_TEST_SECRET;
-  else process.env.GG_LOGGER_TEST_SECRET = originalSecret;
+  if (originalSecret === undefined) delete process.env.EZ_LOGGER_TEST_SECRET;
+  else process.env.EZ_LOGGER_TEST_SECRET = originalSecret;
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 describe("logger rotation", () => {
   it("rotates a log left just under the cap instead of wedging forever", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "gg-logger-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "ez-logger-"));
     dirs.push(dir);
     const file = path.join(dir, "debug.log");
 
@@ -39,11 +39,11 @@ describe("logger rotation", () => {
 
 describe("logger redaction boundary", () => {
   it("removes canary secrets from messages and success/failure fields", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "gg-logger-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "ez-logger-"));
     dirs.push(dir);
     const file = path.join(dir, "debug.log");
     const canary = "opaque-logger-canary-value-123456";
-    process.env.GG_LOGGER_TEST_SECRET = canary;
+    process.env.EZ_LOGGER_TEST_SECRET = canary;
     expect(openLog(file, "test")).toBe(true);
 
     log("INFO", "test", `success ${canary}`, {
@@ -61,7 +61,7 @@ describe("logger redaction boundary", () => {
   });
 
   it("hard-caps writes during a noisy long-lived process", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "gg-logger-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "ez-logger-"));
     dirs.push(dir);
     const file = path.join(dir, "debug.log");
     const cleanup = vi.fn();

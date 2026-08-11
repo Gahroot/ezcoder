@@ -209,7 +209,7 @@ function httpConfig(): MCPServerConfig {
 }
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-session-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-session-"));
   stub = await startStubServer();
 });
 

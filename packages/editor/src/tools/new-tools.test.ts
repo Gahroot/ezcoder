@@ -199,7 +199,7 @@ describe("write_ass tool", () => {
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "gg-ass-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-ass-"));
     const tool = createWriteAssTool(dir);
     const r = await tool.execute(
       {
@@ -243,7 +243,7 @@ describe("compose_layered tool", () => {
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "gg-compose-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-compose-"));
     const tool = createComposeLayeredTool(new NoneAdapter(), dir);
     const r = await tool.execute(
       {
@@ -297,7 +297,7 @@ describe("write_lower_third tool", () => {
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "gg-lt-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-lt-"));
     const tool = createWriteLowerThirdTool(dir);
     const r = await tool.execute(
       {
@@ -329,7 +329,7 @@ describe("write_title_card tool", () => {
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "gg-tc-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-tc-"));
     const tool = createWriteTitleCardTool(dir);
     const r = await tool.execute(
       {
@@ -476,7 +476,7 @@ describe("cut_filler_words tool", () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "gg-fillercut-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-fillercut-"));
     const path = join(dir, "transcript.json");
     writeFileSync(
       path,
@@ -543,7 +543,7 @@ describe("write_keyword_captions tool", () => {
     const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "gg-kw-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-kw-"));
     const transcriptPath = join(dir, "t.json");
     writeFileSync(
       transcriptPath,
@@ -582,7 +582,7 @@ describe("write_keyword_captions tool", () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "gg-kw-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-kw-"));
     const path = join(dir, "t.json");
     writeFileSync(
       path,

@@ -179,7 +179,7 @@ describe("importForeignSession", () => {
   let sessionManager: SessionManager;
 
   beforeEach(async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-import-"));
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-import-"));
     sessionManager = new SessionManager(path.join(root, "sessions"));
   });
 

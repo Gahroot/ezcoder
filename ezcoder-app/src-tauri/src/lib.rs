@@ -608,7 +608,7 @@ fn sweep_orphan_sidecars() {
 
 /// The shared daemon port (same for every window). Named `port_for` so the ~35
 /// proxy commands keep their call shape; the per-window routing is the session
-/// id (`session_for`), attached as the `x-gg-session` header.
+/// id (`session_for`), attached as the `x-ez-session` header.
 fn port_for(webview: &WebviewWindow) -> Option<u16> {
     let daemon: State<Daemon> = webview.state();
     let port = *daemon.port.lock().unwrap();
@@ -806,10 +806,10 @@ async fn agent_state(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/state", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -825,10 +825,10 @@ async fn agent_memories(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/memories", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -855,14 +855,14 @@ async fn agent_delete_memory(
     id: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .delete(format!(
             "{}/memories/{}",
             sidecar_base(port),
             urlencoding(&id)
         ))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -888,10 +888,10 @@ async fn agent_jiwa(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/jiwa", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -918,10 +918,10 @@ async fn agent_delete_jiwa(
     id: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .delete(format!("{}/jiwa/{}", sidecar_base(port), urlencoding(&id)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1004,10 +1004,10 @@ async fn agent_prompt(
     meta: Option<serde_json::Value>,
 ) -> Result<(), String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     client
         .post(format!("{}/prompt", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({
             "text": text,
             "attachments": attachments.unwrap_or(serde_json::Value::Array(vec![])),
@@ -1025,10 +1025,10 @@ async fn sidecar_get_json(
     path: &str,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(webview).ok_or("session not ready")?;
+    let ez_sid = session_for(webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}{}", sidecar_base(port), path))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1092,10 +1092,10 @@ async fn agent_new_session(
     client: State<'_, reqwest::Client>,
 ) -> Result<(), String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     client
         .post(format!("{}/new-session", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1111,10 +1111,10 @@ async fn agent_auth_apikey(
     key: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/auth/apikey", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "provider": provider, "key": key }))
         .send()
         .await
@@ -1133,10 +1133,10 @@ async fn agent_auth_oauth_start(
     provider: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/auth/oauth/start", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "provider": provider }))
         .send()
         .await
@@ -1154,10 +1154,10 @@ async fn agent_auth_oauth_code(
     code: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/auth/oauth/code", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "code": code }))
         .send()
         .await
@@ -1180,14 +1180,14 @@ async fn agent_mcp_elicit(
     content: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!(
             "{}/mcp/elicit/{}",
             sidecar_base(port),
             urlencoding(&id)
         ))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "action": action, "content": content }))
         .send()
         .await
@@ -1205,10 +1205,10 @@ async fn agent_auth_logout(
     provider: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/auth/logout", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "provider": provider }))
         .send()
         .await
@@ -1228,10 +1228,10 @@ async fn agent_cancel_queued(
     id: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/queued/cancel", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "id": id }))
         .send()
         .await
@@ -1249,10 +1249,10 @@ async fn agent_kill_task(
     id: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/kill", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "id": id }))
         .send()
         .await
@@ -1273,10 +1273,10 @@ async fn agent_import_transcript(
     cwd: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/import-transcript", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "path": path, "cwd": cwd }))
         .send()
         .await
@@ -1294,10 +1294,10 @@ async fn agent_radio_state(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/radio", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1315,10 +1315,10 @@ async fn agent_radio_set(
     station: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/radio", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "station": station }))
         .send()
         .await
@@ -1347,10 +1347,10 @@ async fn agent_radio_volume(
     volume: f64,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/radio/volume", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "volume": volume }))
         .send()
         .await
@@ -1377,10 +1377,10 @@ async fn agent_tasks(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/tasks", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1400,10 +1400,10 @@ async fn agent_run_tasks(
     all: bool,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/tasks/run", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "id": id, "all": all }))
         .send()
         .await
@@ -1422,10 +1422,10 @@ async fn agent_add_task(
     prompt: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/tasks/add", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "title": title, "prompt": prompt }))
         .send()
         .await
@@ -1445,10 +1445,10 @@ async fn agent_update_task(
     prompt: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/tasks/update", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({
             "id": id,
             "status": status,
@@ -1469,10 +1469,10 @@ async fn agent_delete_task(
     id: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/tasks/delete", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "id": id }))
         .send()
         .await
@@ -1492,10 +1492,10 @@ async fn agent_accept_plan(
     plan_path: Option<String>,
 ) -> Result<(), String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     client
         .post(format!("{}/plan/accept", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "planPath": plan_path }))
         .send()
         .await
@@ -1522,10 +1522,10 @@ async fn agent_cancel(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let response = client
         .post(format!("{}/cancel", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1546,10 +1546,10 @@ async fn agent_nolan_prompt(
     text: String,
 ) -> Result<(), String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     client
         .post(format!("{}/nolan/prompt", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "text": text }))
         .send()
         .await
@@ -1564,10 +1564,10 @@ async fn agent_nolan_cancel(
     client: State<'_, reqwest::Client>,
 ) -> Result<(), String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     client
         .post(format!("{}/nolan/cancel", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1583,10 +1583,10 @@ async fn agent_autopilot_set(
     enabled: bool,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/autopilot", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "enabled": enabled }))
         .send()
         .await
@@ -1603,10 +1603,10 @@ async fn agent_commands(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/commands", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1622,10 +1622,10 @@ async fn agent_models(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/models", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1642,10 +1642,10 @@ async fn agent_switch_model(
     model: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/model", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "model": model }))
         .send()
         .await
@@ -1665,10 +1665,10 @@ async fn agent_switch_nolan_model(
     model: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/nolan/model", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "model": model }))
         .send()
         .await
@@ -1687,10 +1687,10 @@ async fn agent_enhance_prompt(
     text: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/enhance", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "text": text }))
         .send()
         .await
@@ -1708,10 +1708,10 @@ async fn agent_cycle_thinking(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/thinking", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1727,10 +1727,10 @@ async fn agent_settings(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/settings", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1747,10 +1747,10 @@ async fn agent_save_settings(
     projects_root: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/settings", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "projectsRoot": projects_root }))
         .send()
         .await
@@ -1766,10 +1766,10 @@ async fn agent_plugins(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/plugins", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -1787,10 +1787,10 @@ async fn agent_install_plugin(
     bundle_path: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/plugins/install", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "bundlePath": bundle_path }))
         .send()
         .await
@@ -1809,7 +1809,7 @@ async fn agent_remove_plugin(
     plugin_id: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let mut endpoint = reqwest::Url::parse(&format!("{}/plugins/", sidecar_base(port)))
         .map_err(|e| e.to_string())?;
     endpoint
@@ -1818,7 +1818,7 @@ async fn agent_remove_plugin(
         .push(&plugin_id);
     let res = client
         .delete(endpoint)
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -2995,10 +2995,10 @@ async fn agent_telegram_get(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/telegram", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3014,10 +3014,10 @@ async fn agent_local(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/local", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3034,10 +3034,10 @@ async fn agent_local_scan(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/local/scan", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3056,10 +3056,10 @@ async fn agent_local_endpoint_add(
     api_key: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/local/endpoints", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "baseUrl": base_url, "label": label, "apiKey": api_key }))
         .send()
         .await
@@ -3077,14 +3077,14 @@ async fn agent_local_endpoint_remove(
     id: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .delete(format!(
             "{}/local/endpoints/{}",
             sidecar_base(port),
             urlencoding(&id)
         ))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3103,10 +3103,10 @@ async fn agent_telegram_save(
     user_id: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/telegram", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "botToken": bot_token, "userId": user_id }))
         .send()
         .await
@@ -3133,10 +3133,10 @@ async fn agent_serve_status(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/serve", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3152,10 +3152,10 @@ async fn agent_serve_start(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/serve/start", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3181,10 +3181,10 @@ async fn agent_serve_stop(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/serve/stop", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3202,10 +3202,10 @@ async fn agent_mcp_list(
     cwd: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let mut req = client
         .get(format!("{}/mcp", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid);
+        .header("x-ez-session", &ez_sid);
     if let Some(c) = cwd.as_deref().filter(|c| !c.trim().is_empty()) {
         req = req.query(&[("cwd", c)]);
     }
@@ -3228,10 +3228,10 @@ async fn agent_mcp_add(
     cwd: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/mcp/add", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "line": line, "scope": scope, "cwd": cwd }))
         .send()
         .await
@@ -3262,10 +3262,10 @@ async fn agent_mcp_remove(
     cwd: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/mcp/remove", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "name": name, "scope": scope, "cwd": cwd }))
         .send()
         .await
@@ -3289,10 +3289,10 @@ async fn agent_mcp_login(
     cwd: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/mcp/login", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "name": name, "scope": scope, "cwd": cwd }))
         .send()
         .await
@@ -3321,10 +3321,10 @@ async fn agent_create_project(
     name: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/create-project", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "name": name }))
         .send()
         .await
@@ -3353,10 +3353,10 @@ async fn agent_set_project_hidden(
     hidden: bool,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/projects/hidden", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "path": path, "hidden": hidden }))
         .send()
         .await
@@ -3383,10 +3383,10 @@ async fn agent_projects(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/projects", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3404,7 +3404,7 @@ async fn agent_sessions(
     chat_agent: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let encoded = urlencoding(&cwd);
     let mut url = format!("{}/sessions?cwd={}", sidecar_base(port), encoded);
     if let Some(agent) = chat_agent {
@@ -3413,7 +3413,7 @@ async fn agent_sessions(
     }
     let res = client
         .get(url)
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3431,11 +3431,11 @@ async fn agent_files(
     query: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let encoded = urlencoding(&query);
     let res = client
         .get(format!("{}/files?q={}", sidecar_base(port), encoded))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -4433,7 +4433,7 @@ fn start_event_bridge(app: tauri::AppHandle, label: String, port: u16, session_i
 
 /// Resolve the Node runtime used to run the sidecar.
 ///
-/// Dev (debug build, or `GG_NODE_BIN` set): use `GG_NODE_BIN`, else bare
+/// Dev (debug build, or `EZ_NODE_BIN` set): use `EZ_NODE_BIN`, else bare
 /// `"node"` from PATH — matches the workspace developer flow.
 ///
 /// Bundled (release): use the per-platform Node staged as a Tauri `externalBin`,
@@ -4445,14 +4445,14 @@ fn resolve_node(_app: &tauri::AppHandle) -> PathBuf {
         .ok()
         .and_then(|exe| exe.parent().map(|d| d.to_path_buf()));
     pick_node(
-        std::env::var("GG_NODE_BIN").ok(),
+        std::env::var("EZ_NODE_BIN").ok(),
         cfg!(debug_assertions),
         exe_dir.as_deref(),
     )
 }
 
 /// Pure node-path decision (testable without an AppHandle).
-/// - `env_override` (GG_NODE_BIN) always wins.
+/// - `env_override` (EZ_NODE_BIN) always wins.
 /// - dev build → bare `"node"` from PATH.
 /// - bundled → `eznode(.exe)` next to the executable if present, else `"node"`.
 fn pick_node(env_override: Option<String>, is_dev: bool, exe_dir: Option<&Path>) -> PathBuf {
@@ -4475,7 +4475,7 @@ fn pick_node(env_override: Option<String>, is_dev: bool, exe_dir: Option<&Path>)
 
 /// Resolve the built sidecar JS.
 ///
-/// Dev (debug build, or `GG_SIDECAR_PATH` set): use `GG_SIDECAR_PATH`, else the
+/// Dev (debug build, or `EZ_SIDECAR_PATH` set): use `EZ_SIDECAR_PATH`, else the
 /// workspace Error Mom wrapper relative to this crate.
 ///
 /// Bundled (release): resolve the single-file ESM sidecar shipped under
@@ -4489,7 +4489,7 @@ fn resolve_sidecar(app: &tauri::AppHandle) -> PathBuf {
         )
         .ok();
     pick_sidecar(
-        std::env::var("GG_SIDECAR_PATH").ok(),
+        std::env::var("EZ_SIDECAR_PATH").ok(),
         cfg!(debug_assertions),
         resource.as_deref(),
     )
@@ -4502,7 +4502,7 @@ fn workspace_sidecar() -> PathBuf {
 }
 
 /// Pure sidecar-path decision (testable without an AppHandle).
-/// - `env_override` (GG_SIDECAR_PATH) always wins.
+/// - `env_override` (EZ_SIDECAR_PATH) always wins.
 /// - dev build → workspace Error Mom sidecar wrapper.
 /// - bundled → the resolved bundle resource, falling back to the workspace path.
 fn pick_sidecar(env_override: Option<String>, is_dev: bool, resource: Option<&Path>) -> PathBuf {
@@ -5399,7 +5399,7 @@ pub fn run() {
 }
 
 /// Before the final exit snapshot, re-read each live session's `/state` (via the
-/// shared daemon, keyed by the window's `x-gg-session` header) so a window that
+/// shared daemon, keyed by the window's `x-ez-session` header) so a window that
 /// started a new session mid-run (changing its session file) is recorded at its
 /// CURRENT session, not the one it was created with. Best-effort + time-boxed:
 /// any window we can't reach keeps its last-known session_path.
@@ -5428,7 +5428,7 @@ fn refresh_live_sessions(app: &tauri::AppHandle) {
                 let url = format!("{}/state", sidecar_base(port));
                 let req = client
                     .get(&url)
-                    .header("x-gg-session", &sid)
+                    .header("x-ez-session", &sid)
                     .timeout(std::time::Duration::from_millis(400))
                     .send()
                     .await;

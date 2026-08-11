@@ -239,7 +239,7 @@ function ThemeProvider({
 }
 
 const INK_OPTIONS = {
-  // [gg ink patch] Scrollback-mode safety net: clip frames to terminal height
+  // [EZ Ink patch] Scrollback-mode safety net: clip frames to terminal height
   // (rows - 2) so a single mis-estimated live-area clamp can never produce a
   // frame that reaches the screen height. Once a frame hits `rows`, Ink's
   // eraseLines clamps at the screen top on the next shrink and rewrites the
@@ -248,7 +248,7 @@ const INK_OPTIONS = {
   // bottom-anchored clamp. The fullscreen alt-screen path must NOT set this —
   // it intentionally owns the whole screen.
   clipFrameToTerminalHeight: true,
-  // [gg ink patch] Bottom anchoring: the frame bottom (footer) must never move
+  // [EZ Ink patch] Bottom anchoring: the frame bottom (footer) must never move
   // UP. Any rewrite that nets fewer rows than the previous frame (shrink not
   // fully compensated by enqueued scrollback bytes — tool panel hiding, status
   // row swaps, turn finalization after mid-stream flushes) is padded with
@@ -329,12 +329,12 @@ const ALT_SCREEN_LEAVE = "\x1b[?1049l";
 /**
  * Fullscreen alternate-screen viewport mode. Default OFF: native terminal
  * scrollback is the default (smooth, GPU-accelerated, real mouse-wheel scroll).
- * Set `GG_FULLSCREEN=1` to opt into the alternate-screen in-Ink viewport
+ * Set `EZ_FULLSCREEN=1` to opt into the alternate-screen in-Ink viewport
  * (pinned footer, but no native scrollback). Non-TTY / CI / print modes never
  * use it.
  */
 export function isFullscreenViewportEnabled(): boolean {
-  if (process.env.GG_FULLSCREEN === "1") {
+  if (process.env.EZ_FULLSCREEN === "1") {
     return Boolean(process.stdout.isTTY && process.stdin.isTTY);
   }
   return false;
@@ -508,8 +508,8 @@ export async function renderApp(config: RenderAppConfig): Promise<void> {
   // blank rows (injected whitespace). It fires on nearly every turn. Without a
   // provider installed, ink falls back to a cursor-up pad-consume that never
   // repaints content — eliminating both failure modes. Opt back in (to debug or
-  // revisit) with GG_SHRINK_BACKFILL=1.
-  const shrinkBackfillEnabled = process.env.GG_SHRINK_BACKFILL === "1";
+  // revisit) with EZ_SHRINK_BACKFILL=1.
+  const shrinkBackfillEnabled = process.env.EZ_SHRINK_BACKFILL === "1";
   const buildShrinkBackfill = (needRows: number): string | undefined => {
     const history = sessionStore.history;
     if (needRows <= 0 || !history || history.length === 0) return undefined;

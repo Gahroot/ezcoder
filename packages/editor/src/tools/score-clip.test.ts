@@ -50,7 +50,7 @@ describe("score_clip tool", () => {
 
   it("errors on transcript with no segments", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-sc-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-sc-"));
     writeTranscript(dir, { language: "en", durationSec: 10, segments: [] });
     const tool = createScoreClipTool(dir);
     const r = await tool.execute({ transcript: "t.json", startSec: 0, endSec: 5 }, ctx);
@@ -59,7 +59,7 @@ describe("score_clip tool", () => {
 
   it("returns a JSON-shaped success when LLM responds correctly", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-sc-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-sc-"));
     writeTranscript(dir, {
       language: "en",
       durationSec: 60,

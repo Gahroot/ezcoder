@@ -44,7 +44,7 @@ describe("audit_retention_structure tool", () => {
 
   it("errors on transcript with no segments", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-ars-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-ars-"));
     writeTranscript(dir, { language: "en", durationSec: 600, segments: [] });
     const tool = createAuditRetentionStructureTool(dir);
     const r = await tool.execute({ transcript: "t.json" }, ctx);
@@ -53,7 +53,7 @@ describe("audit_retention_structure tool", () => {
 
   it("returns parseable JSON with default checkpoints", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-ars-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-ars-"));
     writeTranscript(dir, {
       language: "en",
       durationSec: 600,

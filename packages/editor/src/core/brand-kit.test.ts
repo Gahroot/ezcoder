@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { BRAND_KIT_PATH, loadBrandKit, validateBrandKit, type BrandKit } from "./brand-kit.js";
 
 function makeCwd(brand?: string): string {
-  const cwd = mkdtempSync(join(tmpdir(), "gg-brandkit-test-"));
+  const cwd = mkdtempSync(join(tmpdir(), "ez-brandkit-test-"));
   if (brand !== undefined) {
     mkdirSync(join(cwd, ".ezcoder"), { recursive: true });
     writeFileSync(join(cwd, BRAND_KIT_PATH), brand, "utf8");

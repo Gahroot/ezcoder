@@ -100,7 +100,7 @@ export function createComposeLayeredTool(
         const xml = buildFcpxml({ title, frameRate, width, height, events });
         const outAbs = fcpxmlOutput
           ? safeOutputPath(cwd, fcpxmlOutput)
-          : join(mkdtempSync(join(tmpdir(), "gg-compose-")), "composed.fcpxml");
+          : join(mkdtempSync(join(tmpdir(), "ez-compose-")), "composed.fcpxml");
         if (fcpxmlOutput) mkdirSync(dirname(outAbs), { recursive: true });
         writeFileSync(outAbs, xml, "utf8");
         if (dryRun) {

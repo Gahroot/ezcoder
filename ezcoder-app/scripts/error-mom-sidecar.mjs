@@ -17,10 +17,10 @@ const errorMom = initErrorMom({
   captureConsoleErrors: false,
 });
 
-globalThis.__GG_ERROR_MOM__ = errorMom;
+globalThis.__EZ_ERROR_MOM__ = errorMom;
 // Subagent workers launch the same entry so each child process initializes its
 // own Node SDK before loading any provider or agent code.
-process.env.GG_SUBAGENT_WORKER_ENTRY ??= process.argv[1];
+process.env.EZ_SUBAGENT_WORKER_ENTRY ??= process.argv[1];
 
 try {
   await import("../../packages/cli/dist/app-sidecar.js");

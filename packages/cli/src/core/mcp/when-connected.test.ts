@@ -10,7 +10,7 @@ let dir: string;
 let manager: MCPClientManager;
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-when-connected-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-when-connected-"));
   manager = new MCPClientManager({
     catalogCache: new McpCatalogCache(path.join(dir, "mcp-catalog.json")),
   });
@@ -24,7 +24,7 @@ afterEach(async () => {
 /** A stdio command that cannot possibly start, so the connect fails fast. */
 const BROKEN: MCPServerConfig = {
   name: "broken",
-  command: "gg-nonexistent-mcp-binary",
+  command: "ez-nonexistent-mcp-binary",
   args: [],
   timeout: 2_000,
 };

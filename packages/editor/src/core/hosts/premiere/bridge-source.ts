@@ -187,7 +187,7 @@ const METHODS: Record<string, string> = {
 
   create_timeline: String.raw`
     if (!app.project) throw new Error("No project open in Premiere.");
-    var name = String(P.name || "GG Sequence");
+    var name = String(P.name || "EZ Sequence");
     var preset = P.presetPath || "";
     var newSeq = null;
     if (preset) {

@@ -80,7 +80,7 @@ async function makeRepo() {
 }
 
 async function reload() {
-  return (await store.loadGoalRuns(process.env.GG_GOAL_PROJECT_PATH)).find((r) => r.id === RUN_ID);
+  return (await store.loadGoalRuns(process.env.EZ_GOAL_PROJECT_PATH)).find((r) => r.id === RUN_ID);
 }
 
 async function recordVerifierResult(projectPath, verification) {
@@ -192,8 +192,8 @@ async function runWorker(projectPath, task) {
 async function main() {
   const { root, proj } = await makeRepo();
   const goalsBase = await mkdtemp(join(tmpdir(), "goal-e2e-store-"));
-  process.env.GG_GOALS_BASE = goalsBase;
-  process.env.GG_GOAL_PROJECT_PATH = proj;
+  process.env.EZ_GOALS_BASE = goalsBase;
+  process.env.EZ_GOAL_PROJECT_PATH = proj;
   process.argv[1] = cliPath; // so startGoalWorker spawns the real CLI
 
   await store.upsertGoalRun(proj, {

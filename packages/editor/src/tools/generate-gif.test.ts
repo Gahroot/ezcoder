@@ -27,7 +27,7 @@ describe("generate_gif temp-file cleanup", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    workDir = mkdtempSync(join(tmpdir(), "gg-gif-test-"));
+    workDir = mkdtempSync(join(tmpdir(), "ez-gif-test-"));
     writeFileSync(join(workDir, "in.mp4"), "");
     vi.spyOn(ffmpegMod, "checkFfmpeg").mockReturnValue(true);
   });
@@ -57,7 +57,7 @@ describe("generate_gif temp-file cleanup", () => {
 
     expect(r).not.toMatch(/^error:/);
     expect(palettePath).toBeDefined();
-    expect(palettePath!).toMatch(/gg-gif-palette-/);
+    expect(palettePath!).toMatch(/ez-gif-palette-/);
     // ffmpeg ran twice (palettegen + paletteuse).
     expect(call).toBe(2);
     expect(existsSync(palettePath!)).toBe(false);

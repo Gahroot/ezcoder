@@ -17,7 +17,7 @@ let dir: string;
 let opts: ProgressStoreOptions;
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-progress-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-progress-"));
   opts = {
     filePath: path.join(dir, "progress.json"),
     backupPath: path.join(dir, "progress.backup.json"),

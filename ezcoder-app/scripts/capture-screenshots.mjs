@@ -22,7 +22,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(here, "../../docs/screenshots");
 // Individual quadrants for the 4-up composite. Intermediate, not committed.
 const tileDir = resolve(outDir, ".tiles");
-const url = process.env.GG_SHOT_URL ?? "http://localhost:1420";
+const url = process.env.EZ_SHOT_URL ?? "http://localhost:1420";
 const viewport = { width: 1440, height: 900 };
 
 // ── Demo data ────────────────────────────────────────────────────────────────

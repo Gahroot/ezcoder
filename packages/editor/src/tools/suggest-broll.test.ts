@@ -24,7 +24,7 @@ const TX: Transcript = {
 };
 
 function makeTranscriptFile(t: Transcript): { dir: string; path: string } {
-  const dir = mkdtempSync(join(tmpdir(), "gg-sbr-"));
+  const dir = mkdtempSync(join(tmpdir(), "ez-sbr-"));
   const path = join(dir, "transcript.json");
   writeFileSync(path, JSON.stringify(t), "utf8");
   return { dir, path };
@@ -117,14 +117,14 @@ describe("suggest_broll", () => {
   });
 
   it("errors when transcript file is missing", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-sbr-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-sbr-"));
     const tool = createSuggestBrollTool(dir);
     const r = (await tool.execute({ transcript: "nope.json" }, ctx)) as string;
     expect(r).toMatch(/^error: cannot read transcript/);
   });
 
   it("errors when transcript is malformed JSON", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "gg-sbr-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-sbr-"));
     writeFileSync(join(dir, "t.json"), "{not json", "utf8");
     const tool = createSuggestBrollTool(dir);
     const r = (await tool.execute({ transcript: "t.json" }, ctx)) as string;
@@ -218,7 +218,7 @@ describe("suggest_broll", () => {
   });
 
   it("downloads to outDir when download=true and writes the file", async () => {
-    const downloadDir = mkdtempSync(join(tmpdir(), "gg-sbr-out-"));
+    const downloadDir = mkdtempSync(join(tmpdir(), "ez-sbr-out-"));
     const fakeBytes = Buffer.from("FAKE_VIDEO_BYTES");
 
     const fetchMock = vi

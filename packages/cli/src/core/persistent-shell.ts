@@ -86,7 +86,7 @@ export class PersistentShell {
     }
     this.busy = true;
     const child = this.ensureChild();
-    const sentinel = `__GG_PSH_${randomUUID()}__`;
+    const sentinel = `__EZ_PSH_${randomUUID()}__`;
     // `</dev/null` keeps stdin-reading commands (cat, read) from eating the
     // next sentinel line instead of hanging the session.
     const wrapped = `{ ${command}\n} </dev/null; echo "${sentinel}$?"\n`;

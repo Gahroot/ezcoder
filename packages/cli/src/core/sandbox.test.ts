@@ -14,7 +14,7 @@ describe("buildSandboxSettings", () => {
   it("limits writes to the workspace and temp directory, and enforces an allowlist", () => {
     // A real directory, so symlinked temp roots (macOS /var → /private/var) are
     // exercised rather than silently skipped.
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "gg-sandbox-workspace-"));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "ez-sandbox-workspace-"));
     const settings = buildSandboxSettings(cwd, { mode: "workspace", allowedDomains: [] }, "darwin");
 
     expect(settings.filesystem.allowWrite).toEqual(
@@ -48,8 +48,8 @@ describe("buildSandboxSettings", () => {
   });
 
   it("keeps bash writable in the same roots the write guard already allows", () => {
-    const cwd = path.join(os.tmpdir(), "gg-sandbox-workspace");
-    const extraRoot = path.join(os.tmpdir(), "gg-sandbox-second-root");
+    const cwd = path.join(os.tmpdir(), "ez-sandbox-workspace");
+    const extraRoot = path.join(os.tmpdir(), "ez-sandbox-second-root");
     const settings = buildSandboxSettings(
       cwd,
       { mode: "workspace", allowedDomains: [], additionalRoots: [extraRoot] },
@@ -65,7 +65,7 @@ describe("buildSandboxSettings", () => {
 
   it("honors the outside-workspace opt-out instead of contradicting the user", () => {
     const settings = buildSandboxSettings(
-      path.join(os.tmpdir(), "gg-sandbox-workspace"),
+      path.join(os.tmpdir(), "ez-sandbox-workspace"),
       { mode: "workspace", allowedDomains: [], allowOutsideWorkspaceWrites: true },
       "darwin",
     );
@@ -195,7 +195,7 @@ describe("prepareSandboxLaunch", () => {
   it("degrades instead of breaking every command when prerequisites are missing", async () => {
     // An unusable interpreter makes the probe child exit non-zero, standing in
     // for bwrap-less Linux or an unprovisioned Windows sandbox user.
-    vi.spyOn(process, "execPath", "get").mockReturnValue("/nonexistent/gg-node");
+    vi.spyOn(process, "execPath", "get").mockReturnValue("/nonexistent/ez-node");
 
     await expect(
       prepareSandboxLaunch(shell, os.tmpdir(), { mode: "auto", allowedDomains: [] }),
@@ -203,7 +203,7 @@ describe("prepareSandboxLaunch", () => {
   });
 
   it("fails closed in strict workspace mode with actionable install guidance", async () => {
-    vi.spyOn(process, "execPath", "get").mockReturnValue("/nonexistent/gg-node");
+    vi.spyOn(process, "execPath", "get").mockReturnValue("/nonexistent/ez-node");
 
     await expect(
       prepareSandboxLaunch(shell, os.tmpdir(), { mode: "workspace", allowedDomains: [] }),

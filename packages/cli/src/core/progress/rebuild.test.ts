@@ -8,7 +8,7 @@ import { rebuildFromSessions } from "./rebuild.js";
 let sessionsDir: string;
 
 beforeEach(async () => {
-  sessionsDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-sessions-"));
+  sessionsDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-sessions-"));
 });
 
 afterEach(async () => {

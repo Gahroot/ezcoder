@@ -148,7 +148,7 @@ function formatFrame(label: string, lines: readonly string[]): string {
 }
 
 function maybeWriteFrames(frames: readonly { label: string; lines: string[] }[]): void {
-  if (process.env.GG_TUI_RECORD !== "1") return;
+  if (process.env.EZ_TUI_RECORD !== "1") return;
   const outPath = path.join(process.cwd(), ".ezcoder", "tui-terminal-recorder.txt");
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(

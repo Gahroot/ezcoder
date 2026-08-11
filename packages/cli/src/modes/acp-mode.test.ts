@@ -74,7 +74,7 @@ class AcpClient {
           ...process.env,
           HOME: tmpHome,
           USERPROFILE: tmpHome,
-          GG_DISABLE_TELEMETRY: "1",
+          EZ_DISABLE_TELEMETRY: "1",
         },
         stdio: ["pipe", "pipe", "pipe"],
       },
@@ -196,9 +196,9 @@ class AcpClient {
 let client: AcpClient | undefined;
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-acp-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-acp-project-"));
-  tmpOtherProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-acp-other-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-acp-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-acp-project-"));
+  tmpOtherProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-acp-other-"));
 });
 
 afterEach(async () => {

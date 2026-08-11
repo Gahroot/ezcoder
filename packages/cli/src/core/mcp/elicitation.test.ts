@@ -50,7 +50,7 @@ async function callTool(tools: AgentTool[], suffix: string): Promise<string> {
 }
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-elicit-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-elicit-"));
 });
 
 afterEach(async () => {

@@ -19,7 +19,7 @@ afterEach(async () => {
 
 describe("legacy session API storage delegation", () => {
   it("lists and resumes compressed v2 storage through stale plain and archive paths", async () => {
-    const sessionsDir = await mkdtemp(path.join(tmpdir(), "gg-legacy-session-"));
+    const sessionsDir = await mkdtemp(path.join(tmpdir(), "ez-legacy-session-"));
     tempDirs.push(sessionsDir);
     const cwd = "/project/legacy-api";
     const session = await createSession(cwd, "anthropic", "test-model", sessionsDir);

@@ -205,7 +205,7 @@ need server-side symbolication:
 2. New endpoint `POST /api/projects/:id/sourcemaps` (uploads `.map` files,
    stored by `release + filename`)
 3. Browser SDK: send `release` field on each event (e.g.
-   `import.meta.env.GG_PIXEL_RELEASE`)
+   `import.meta.env.EZ_PIXEL_RELEASE`)
 4. Server-side resolution at fetch time: when the runner queries an error,
    the worker resolves the stack using R2-stored maps before returning.
 

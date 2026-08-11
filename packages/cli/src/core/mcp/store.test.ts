@@ -14,7 +14,7 @@ vi.mock("../../config.js", async () => {
     ...actual,
     getAppPaths: () => ({
       ...actual.getAppPaths(),
-      mcpFile: path.join(process.env.GG_TEST_HOME!, ".ezcoder", "mcp.json"),
+      mcpFile: path.join(process.env.EZ_TEST_HOME!, ".ezcoder", "mcp.json"),
     }),
   };
 });
@@ -30,15 +30,15 @@ import {
 } from "./store.js";
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-proj-"));
-  process.env.GG_TEST_HOME = tmpHome;
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-proj-"));
+  process.env.EZ_TEST_HOME = tmpHome;
 });
 
 afterEach(async () => {
   await fs.rm(tmpHome, { recursive: true, force: true });
   await fs.rm(tmpProject, { recursive: true, force: true });
-  delete process.env.GG_TEST_HOME;
+  delete process.env.EZ_TEST_HOME;
 });
 
 describe("mcp store", () => {

@@ -215,7 +215,7 @@ async function main() {
   }
 
   // The daemon holds sessions as in-process objects keyed by id. Create one
-  // (POST /session), then read its /state via the `x-gg-session` header — the
+  // (POST /session), then read its /state via the `x-ez-session` header — the
   // same protocol the Rust shell uses. This proves both the bundle loads AND
   // the session multiplexing works on this OS.
   let sessionId;
@@ -243,7 +243,7 @@ async function main() {
   let res;
   try {
     res = await fetch(`http://127.0.0.1:${port}/state`, {
-      headers: { "x-gg-session": sessionId },
+      headers: { "x-ez-session": sessionId },
     });
   } catch (err) {
     child.kill("SIGKILL");

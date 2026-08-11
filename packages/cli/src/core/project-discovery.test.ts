@@ -82,7 +82,7 @@ describe("discoverProjects (ezcoder store)", () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "gg-discovery-"));
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "ez-discovery-"));
     state.sessionsDir = path.join(tmp, ".ezcoder", "sessions");
     await fs.mkdir(state.sessionsDir, { recursive: true });
     // Point Claude/Codex discovery at an empty home so they contribute nothing.
@@ -113,7 +113,7 @@ describe("discoverProjects (ezcoder store)", () => {
   });
 
   it("lists folders in the configured projects root that have no sessions yet", async () => {
-    const root = path.join(tmp, "gg-projects");
+    const root = path.join(tmp, "ez-projects");
     await fs.mkdir(path.join(root, "never-opened"), { recursive: true });
     await fs.mkdir(path.join(root, "node_modules"), { recursive: true });
     await fs.mkdir(path.join(root, ".hidden"), { recursive: true });
@@ -129,7 +129,7 @@ describe("discoverProjects (ezcoder store)", () => {
   });
 
   it("follows a symlinked project folder (readdir reports it as neither file nor dir)", async () => {
-    const root = path.join(tmp, "gg-projects");
+    const root = path.join(tmp, "ez-projects");
     await fs.mkdir(root, { recursive: true });
     const real = path.join(tmp, "elsewhere", "linked-project");
     await fs.mkdir(real, { recursive: true });
@@ -144,7 +144,7 @@ describe("discoverProjects (ezcoder store)", () => {
   });
 
   it("omits hidden projects regardless of which store surfaced them", async () => {
-    const root = path.join(tmp, "gg-projects");
+    const root = path.join(tmp, "ez-projects");
     const hidden = path.join(root, "scratch");
     const kept = path.join(root, "kept");
     await fs.mkdir(hidden, { recursive: true });
@@ -162,7 +162,7 @@ describe("discoverProjects (ezcoder store)", () => {
   });
 
   it("scans explicitly configured extra roots", async () => {
-    const root = path.join(tmp, "gg-projects");
+    const root = path.join(tmp, "ez-projects");
     const extra = path.join(tmp, "second-home");
     await fs.mkdir(root, { recursive: true });
     await fs.mkdir(path.join(extra, "over-here"), { recursive: true });
@@ -175,7 +175,7 @@ describe("discoverProjects (ezcoder store)", () => {
   });
 
   it("merges a folder row into the session row instead of duplicating it", async () => {
-    const root = path.join(tmp, "gg-projects");
+    const root = path.join(tmp, "ez-projects");
     const projectPath = path.join(root, "opened");
     await fs.mkdir(projectPath, { recursive: true });
     await writeSession(path.join(state.sessionsDir, encodeCwd(projectPath)), projectPath);
@@ -188,7 +188,7 @@ describe("discoverProjects (ezcoder store)", () => {
   });
 
   it("keeps session recency when a folder mtime is newer", async () => {
-    const root = path.join(tmp, "gg-projects");
+    const root = path.join(tmp, "ez-projects");
     const projectPath = path.join(root, "opened");
     await fs.mkdir(projectPath, { recursive: true });
     const store = path.join(state.sessionsDir, encodeCwd(projectPath));
@@ -534,7 +534,7 @@ describe.skipIf(process.platform !== "win32")("real Windows session round-trip",
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "gg-win-rt-"));
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "ez-win-rt-"));
     state.sessionsDir = path.join(tmp, ".ezcoder", "sessions");
     await fs.mkdir(state.sessionsDir, { recursive: true });
     vi.spyOn(os, "homedir").mockReturnValue(path.join(tmp, "home"));
@@ -585,14 +585,14 @@ describe.skipIf(process.platform !== "win32")("real Windows session round-trip",
   it("survives a path with spaces and a literal underscore", async () => {
     // `C:\Users\<name>\…` routinely contains spaces; the underscore is the
     // separator `encodeCwd` uses, so a literal one is the lossy-decode trap.
-    const projectPath = path.join(tmp, "My Projects", "gg_app");
+    const projectPath = path.join(tmp, "My Projects", "ez_app");
     await fs.mkdir(projectPath, { recursive: true });
 
     const manager = new SessionManager(state.sessionsDir);
     await manager.create(projectPath, "anthropic", "claude-sonnet-5");
 
     const projects = await discoverProjects();
-    expect(projects.find((p) => p.path === projectPath)?.name).toBe("gg_app");
+    expect(projects.find((p) => p.path === projectPath)?.name).toBe("ez_app");
   });
 
   it("normalizes an extended-length cwd so it isn't a duplicate project", async () => {

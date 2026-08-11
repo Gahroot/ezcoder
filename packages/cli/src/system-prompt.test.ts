@@ -116,7 +116,7 @@ describe("buildSystemPrompt", () => {
       "ONE recommended approach — default to X, switch to Y only when [condition] — not a menu, unless a command's flow defines its own options.",
     );
     // The user-facing ask gets a dedicated markdown blockquote (rendered with a
-    // left gutter in both the TUI and GG App), and nothing else may use one, so
+    // left gutter in both the TUI and EZ App), and nothing else may use one, so
     // a `>` in a reply always means "the agent is waiting on you".
     expect(prompt).toContain("**Blockquote = the ask.**");
     expect(prompt).toContain("Blockquote nothing else");
@@ -422,9 +422,9 @@ describe("buildSystemPrompt", () => {
 
     // Ceilings include EZ branding and Goal guidance plus the upstream reply-shape,
     // shell, network-policy, context-precedence, and skill-routing instructions.
-    expect(measurements.normal.characters).toBeLessThan(5_800);
-    expect(measurements.planMode.characters).toBeLessThan(7_000);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(10_150);
+    expect(measurements.normal.characters).toBeLessThan(6_200);
+    expect(measurements.planMode.characters).toBeLessThan(7_450);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(10_600);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -462,7 +462,7 @@ describe("buildSystemPrompt", () => {
     console.info(`system prompt audit: ${JSON.stringify(audit)}`);
 
     expect(audit.flags).toEqual([]);
-    expect(audit.size.characters).toBeLessThan(9_800);
+    expect(audit.size.characters).toBeLessThan(10_250);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 

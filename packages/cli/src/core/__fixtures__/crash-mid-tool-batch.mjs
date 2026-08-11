@@ -11,7 +11,7 @@ import path from "node:path";
 import { registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
 
-const SHIM = pathToFileURL(path.join(import.meta.dirname, "crash-@prestyj/agent-shim.mjs")).href;
+const SHIM = pathToFileURL(path.join(import.meta.dirname, "crash-ezcoder-agent-shim.mjs")).href;
 
 // Redirect the session's `@prestyj/agent` import to the shim. The shim
 // itself must reach the real package, hence the parent check.

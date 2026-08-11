@@ -32,7 +32,7 @@ function tasksBase(): string {
 
 function legacyTasksBase(): string | null {
   if (process.env.EZCODER_TASKS_BASE) return null;
-  return process.env.GG_TASKS_BASE ?? LEGACY_TASKS_BASE;
+  return process.env.EZ_TASKS_BASE ?? LEGACY_TASKS_BASE;
 }
 
 export function taskProjectHash(cwd: string): string {

@@ -124,7 +124,7 @@ describe("resolveStdioCommand npx-cache fallback (covers user-added MCPs)", () =
   });
 
   it("rewrites a non-bundled but npx-cached server to `node <binScript>`", () => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gg-npx-cache-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ez-npx-cache-"));
     seedNpxCache(tmp, "hash1", "@vendor/cool-mcp", "1.0.0");
     process.env.npm_config_cache = tmp;
 
@@ -134,7 +134,7 @@ describe("resolveStdioCommand npx-cache fallback (covers user-added MCPs)", () =
   });
 
   it("honours a version pin: a mismatched cached version falls through to npx", () => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gg-npx-cache-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ez-npx-cache-"));
     seedNpxCache(tmp, "hash1", "@vendor/cool-mcp", "1.0.0");
     process.env.npm_config_cache = tmp;
 
@@ -146,7 +146,7 @@ describe("resolveStdioCommand npx-cache fallback (covers user-added MCPs)", () =
   });
 
   it("uses a cached copy whose version matches the pin exactly", () => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gg-npx-cache-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ez-npx-cache-"));
     seedNpxCache(tmp, "hash1", "@vendor/cool-mcp", "2.0.0");
     process.env.npm_config_cache = tmp;
 
@@ -156,7 +156,7 @@ describe("resolveStdioCommand npx-cache fallback (covers user-added MCPs)", () =
   });
 
   it("picks the highest cached version when the spec is unpinned", () => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gg-npx-cache-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ez-npx-cache-"));
     seedNpxCache(tmp, "old", "@vendor/cool-mcp", "1.2.0", "build/old.js");
     seedNpxCache(tmp, "new", "@vendor/cool-mcp", "1.10.0", "build/new.js");
     process.env.npm_config_cache = tmp;
@@ -170,7 +170,7 @@ describe("resolveStdioCommand npx-cache fallback (covers user-added MCPs)", () =
   it("resolves a sole bin whose key differs from the package name (e.g. zai)", () => {
     // @z_ai/mcp-server exposes bin `zai-mcp-server`, NOT `mcp-server`. A sole
     // bin must be used regardless of its key, or the rewrite silently misses.
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gg-npx-cache-"));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ez-npx-cache-"));
     const pkgDir = path.join(tmp, "_npx", "h", "node_modules", "@z_ai", "mcp-server");
     fs.mkdirSync(path.join(pkgDir, "build"), { recursive: true });
     fs.writeFileSync(path.join(pkgDir, "build", "index.js"), "#!/usr/bin/env node\n");

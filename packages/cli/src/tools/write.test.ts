@@ -284,7 +284,7 @@ describe("createWriteTool", () => {
   describe("workspace write guard", () => {
     it("blocks writes outside the workspace and does not create the file", async () => {
       const tool = createWriteTool(tmpDir);
-      const outside = path.join(os.homedir(), "Documents", "gg-guard-test-outside.txt");
+      const outside = path.join(os.homedir(), "Documents", "ez-guard-test-outside.txt");
 
       const raw = await tool.execute(
         { file_path: outside, content: "nope\n" },

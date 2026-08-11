@@ -1,7 +1,7 @@
 // Goal "thinking" simulation harness.
 //
 // Feeds diverse goal prompts to the REAL planner/setup reasoning (real models via
-// the installed gg auth) and captures the proof-design it produces — the GOAL_PLAN
+// the installed EZ Coder auth) and captures the proof-design it produces — the GOAL_PLAN
 // for planner scenarios, and the actual `goals` tool calls (evidence_plan /
 // verifier / tasks) for setup scenarios. Runs a model matrix so you can compare
 // how different models reason about proof from first principles.
@@ -139,7 +139,7 @@ async function runScenario(scenario, model) {
   const child = spawn(process.execPath, cliArgs, {
     cwd: scenario.cwd,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, GG_GOALS_BASE: goalsBase },
+    env: { ...process.env, EZ_GOALS_BASE: goalsBase },
   });
 
   let text = "";

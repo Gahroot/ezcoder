@@ -55,7 +55,7 @@ describe("encodeCwd — produces a valid folder name (no mkdir failure)", () => 
   it("never emits a name with a Windows-illegal character for realistic inputs", () => {
     const inputs = [
       "\\\\?\\C:\\Users\\brams",
-      "\\\\?\\C:\\Users\\brams\\gg-projects\\my-app",
+      "\\\\?\\C:\\Users\\brams\\ez-projects\\my-app",
       "\\\\?\\UNC\\fileserver\\shared\\repo",
       "/Users/kenkai/Documents/ezcoder",
       "D:\\dev\\workspace",

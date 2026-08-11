@@ -52,11 +52,11 @@ owns its own `AgentSession` *inside* that daemon, addressed by a session id and 
 own project cwd — separate agents, separate projects, still fully isolated. This is the core
 model: multiple windows = multiple projects open at once (one could be ezcoder, another
 Claude Code, another Codex). The daemon hands back a session id from `POST /session`; the Rust
-shell attaches it as the `x-gg-session` header on every proxy request to route to the right
+shell attaches it as the `x-ez-session` header on every proxy request to route to the right
 window's session (one daemon process replaced the old per-window-sidecar model).
 
 ```
-React webview ──invoke()──▶ Rust commands ──HTTP (x-gg-session)──▶ shared Node daemon
+React webview ──invoke()──▶ Rust commands ──HTTP (x-ez-session)──▶ shared Node daemon
      ▲                          │                                    │  (AgentSession per window)
      └────── emit_to(window) ◀──┴──── SSE /events ◀───────────────────┘
 ```
@@ -65,7 +65,7 @@ React webview ──invoke()──▶ Rust commands ──HTTP (x-gg-session)─
   per-window session registry keyed by window label (`main`, `project-1`, …). Every command
   (`agent_prompt`, `agent_state`, `select_project`, …) hits the shared daemon port via
   `port_for(&webview)` and routes to the calling window's session via `session_for` (the
-  `x-gg-session` header). SSE frames are re-emitted with `emit_to(webview_window(label))` so
+  `x-ez-session` header). SSE frames are re-emitted with `emit_to(webview_window(label))` so
   **windows never see each other's events**. Window background is painted `#111317` before first
   frame (no white flash). New windows are tiled like macOS fill&arrange (`setup_windows` →
   `arrange_windows`, 2-up halves / 4-up quads).
@@ -75,7 +75,7 @@ React webview ──invoke()──▶ Rust commands ──HTTP (x-gg-session)─
 - **`app-sidecar.ts`** — HTTP+SSE daemon over `AgentSession`. Session lifecycle: `POST /session`
   (create, returns the id) / `DELETE /session/:id` (dispose); per-session endpoints `/state`,
   `/events`, `/prompt`, `/cancel`, `/thinking`, `/model(s)`, `/commands`, `/projects`, `/sessions`,
-  `/settings`, `/create-project`, selected by the `x-gg-session` header. Slash-command expansion
+  `/settings`, `/create-project`, selected by the `x-ez-session` header. Slash-command expansion
   is delegated to `AgentSession.prompt()` (single source of truth — built-in + `.ezcoder/commands`
   custom). Env: `GG_APP_CWD` (project root), `GG_APP_PORT` (0 = ephemeral), `GG_APP_SESSION_ID`
   (resume a session file).
@@ -299,7 +299,7 @@ Hard rules:
   `lspManager.shutdownAll()` alongside `processManager`.
 - Tests: `src/core/lsp/*.test.ts` run against a fake stdio server fixture
   (`src/tools/__fixtures__/fake-lsp-server.mjs`) — CI never needs real language servers.
-  Opt-in real-tsserver test: `GG_LSP_INTEGRATION=1 npx vitest run src/core/lsp/integration.test.ts`.
+  Opt-in real-tsserver test: `EZ_LSP_INTEGRATION=1 npx vitest run src/core/lsp/integration.test.ts`.
 
 ## MCP Servers
 

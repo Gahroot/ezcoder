@@ -61,7 +61,7 @@ function getBase(sound: UiSound): HTMLAudioElement {
   return el;
 }
 
-const STORAGE_KEY = "gg-sound-enabled";
+const STORAGE_KEY = "ez-sound-enabled";
 
 function loadEnabled(): boolean {
   try {

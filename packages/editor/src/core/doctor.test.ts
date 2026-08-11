@@ -67,12 +67,12 @@ describe("runDoctor", () => {
 
 describe("isOnboarded / onboardedMarkerPath", () => {
   it("returns false when the marker is absent", () => {
-    const home = mkdtempSync(join(tmpdir(), "gg-doctor-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-doctor-"));
     expect(isOnboarded(home)).toBe(false);
   });
 
   it("returns true once the marker file exists", () => {
-    const home = mkdtempSync(join(tmpdir(), "gg-doctor-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-doctor-"));
     const path = onboardedMarkerPath(home);
     mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(path, "2026-04-30T00:00:00.000Z\n", "utf8");
@@ -80,14 +80,14 @@ describe("isOnboarded / onboardedMarkerPath", () => {
   });
 
   it("returns false when the marker path exists but isn't a regular file", () => {
-    const home = mkdtempSync(join(tmpdir(), "gg-doctor-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-doctor-"));
     // Create a directory at the marker path instead of a file.
     mkdirSync(onboardedMarkerPath(home), { recursive: true });
     expect(isOnboarded(home)).toBe(false);
   });
 
   it("auth check sees a present auth.json under the synthetic home", () => {
-    const home = mkdtempSync(join(tmpdir(), "gg-doctor-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-doctor-"));
     mkdirSync(join(home, ".ezcoder"), { recursive: true });
     writeFileSync(join(home, ".ezcoder", "auth.json"), "{}", "utf8");
     const r = runDoctor(home);
@@ -97,7 +97,7 @@ describe("isOnboarded / onboardedMarkerPath", () => {
   });
 
   it("auth check reports missing on a fresh home", () => {
-    const home = mkdtempSync(join(tmpdir(), "gg-doctor-"));
+    const home = mkdtempSync(join(tmpdir(), "ez-doctor-"));
     const r = runDoctor(home);
     const auth = r.checks.find((c) => c.id === "auth")!;
     expect(auth.status).toBe("missing");

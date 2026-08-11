@@ -40,7 +40,7 @@ describe("concat_videos temp-file cleanup", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    workDir = mkdtempSync(join(tmpdir(), "gg-concat-test-"));
+    workDir = mkdtempSync(join(tmpdir(), "ez-concat-test-"));
     // Make the inputs and output resolve to real-looking files so the
     // pre-flight identity check doesn't trip.
     writeFileSync(join(workDir, "a.mp4"), "");
@@ -65,7 +65,7 @@ describe("concat_videos temp-file cleanup", () => {
     expect(r).not.toMatch(/^error:/);
     const listPath = captured.current();
     expect(listPath).toBeDefined();
-    expect(listPath!).toMatch(/gg-concat-/);
+    expect(listPath!).toMatch(/ez-concat-/);
     expect(existsSync(listPath!)).toBe(false);
   });
 

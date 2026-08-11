@@ -98,7 +98,7 @@ describe("ezcoder-app sidecar session listings", () => {
   let coderSessionsDir: string;
 
   beforeEach(async () => {
-    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "gg-sidecar-sessions-"));
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "ez-sidecar-sessions-"));
     cwd = path.join(tmp, "project");
     coderSessionsDir = path.join(tmp, "sessions");
     await fs.mkdir(cwd, { recursive: true });

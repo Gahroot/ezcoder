@@ -188,7 +188,7 @@ export interface GoalEvidenceInput {
   createdAt?: string;
 }
 
-const GOALS_BASE_ENV = "GG_GOALS_BASE";
+const GOALS_BASE_ENV = "EZ_GOALS_BASE";
 const DEFAULT_PROJECT_DIR_NAME = "projects";
 
 let writeQueue: Promise<void> = Promise.resolve();

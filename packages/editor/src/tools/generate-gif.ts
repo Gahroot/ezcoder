@@ -59,7 +59,7 @@ export function createGenerateGifTool(cwd: string): AgentTool<typeof GenerateGif
           );
         }
         mkdirSync(dirname(outAbs), { recursive: true });
-        const palettePath = join(tmpdir(), `gg-gif-palette-${Date.now()}.png`);
+        const palettePath = join(tmpdir(), `ez-gif-palette-${Date.now()}.png`);
         const filterChain = `fps=${fps},scale=${width}:-1:flags=lanczos`;
 
         // The palette PNG is a temp scratch artifact between the two ffmpeg

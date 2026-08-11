@@ -17,7 +17,7 @@ const refreshOpenAIToken = vi.hoisted(() => vi.fn());
 vi.mock("./oauth/openai.js", () => ({ refreshOpenAIToken }));
 
 async function tempAuthFile(): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "@prestyj/core-auth-storage-test-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ezcoder-core-auth-storage-test-"));
   return path.join(dir, "auth.json");
 }
 

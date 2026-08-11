@@ -141,8 +141,8 @@ describe("tool tiering in the system prompt", () => {
     const indexBlockStart = prompt.indexOf("Available on demand");
     const indexBlock = prompt.slice(indexBlockStart, prompt.indexOf("\n\n", indexBlockStart));
     expect(indexBlock.length).toBeLessThan(1_200);
-    // Raised with the "How to Talk" reply-shape rules; the index block cap above
-    // is the one that guards tiering itself.
-    expect(prompt.length).toBeLessThan(8_600);
+    // Includes the fork's Goal tool plus upstream reply-shape guidance; the
+    // index-block cap above remains the guard that specifically protects tiering.
+    expect(prompt.length).toBeLessThan(9_000);
   });
 });

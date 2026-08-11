@@ -13,7 +13,7 @@ import { createTaskOutputTool } from "./task-output.js";
  * sweeps the developer's real `~/.ezcoder/bg` when the suite runs.
  */
 async function bgTempDir(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-task-send-"));
+  return fs.mkdtemp(path.join(os.tmpdir(), "ez-bg-task-send-"));
 }
 
 async function waitForOutput(
@@ -40,7 +40,7 @@ describe("interactive background processes (task_send)", () => {
 
   it("answers an interactive prompt and completes", async () => {
     manager = new ProcessManager({ bgDir: await bgTempDir() });
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-task-send-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-task-send-"));
 
     // Programs that print their prompt explicitly (echo) are visible over a
     // pipe; bash's `read -p` writes its prompt only to a tty, so use echo here.
@@ -57,7 +57,7 @@ describe("interactive background processes (task_send)", () => {
 
   it("drives a REPL across multiple inputs", async () => {
     manager = new ProcessManager({ bgDir: await bgTempDir() });
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-task-send-repl-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-task-send-repl-"));
 
     // A tiny line-reading loop that echoes back, then exits on EOF.
     const started = await manager.start(
@@ -87,7 +87,7 @@ describe("interactive background processes (task_send)", () => {
 
   it("returns a clear message when the process has already exited", async () => {
     manager = new ProcessManager({ bgDir: await bgTempDir() });
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-task-send-dead-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-task-send-dead-"));
 
     const started = await manager.start('echo "done"', tmpDir);
     await waitForOutput(manager, started.id, (o) => o.includes("done"));
@@ -106,7 +106,7 @@ describe("interactive background processes (task_send)", () => {
 
   it("exposes a task_send tool that pairs with task_output", async () => {
     manager = new ProcessManager({ bgDir: await bgTempDir() });
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-task-send-tool-"));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-task-send-tool-"));
     const sendTool = createTaskSendTool(manager);
     const outputTool = createTaskOutputTool(manager);
 

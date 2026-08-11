@@ -26,7 +26,7 @@ function context() {
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-spawn-"));
+  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-spawn-"));
   await fs.writeFile(path.join(tmpDir, "a.ts"), "const marker = 1;\n");
   resetExternalScannerProbe();
   spawnMock.mockReset();

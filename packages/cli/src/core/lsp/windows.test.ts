@@ -38,7 +38,7 @@ describe.skipIf(process.platform !== "win32")("LSP diagnostics on a real C:\\ pa
   let manager: LspManager;
 
   beforeAll(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-lsp-win-"));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-lsp-win-"));
     await fs.writeFile(
       path.join(tmpDir, "tsconfig.json"),
       JSON.stringify({
@@ -166,14 +166,14 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
   let traceOpen = false;
 
   beforeAll(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-lsp-own-ts-"));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-lsp-own-ts-"));
 
     // Turn on JSON-RPC wire tracing and give it somewhere to land. The tracer
     // writes via the shared debug logger, which DISCARDS everything until a log
     // file is open (`fd === null` → return), so without this the trace would
     // silently produce nothing — the same class of silent-degradation that made
     // this bug hard in the first place.
-    process.env.GG_LSP_TRACE = "1";
+    process.env.EZ_LSP_TRACE = "1";
     traceLog = path.join(tmpDir, "lsp-trace.log");
     traceOpen = openLog(traceLog, "ezcoder-test");
     await fs.writeFile(
@@ -202,7 +202,7 @@ describe("LSP diagnostics with the project's OWN typescript (control arm)", () =
 
   afterAll(async () => {
     manager?.shutdownAll();
-    delete process.env.GG_LSP_TRACE;
+    delete process.env.EZ_LSP_TRACE;
     if (traceOpen) closeLogger();
     await removeWhenReleased(tmpDir);
   });

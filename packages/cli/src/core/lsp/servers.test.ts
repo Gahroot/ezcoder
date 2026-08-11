@@ -28,7 +28,7 @@ afterAll(async () => {
 
 /** A project root with no `typescript` of its own — exercises the bundled path. */
 async function bareProjectRoot(): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-lsp-servers-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-lsp-servers-"));
   tempDirs.push(dir);
   await fs.writeFile(path.join(dir, "tsconfig.json"), "{}");
   return dir;

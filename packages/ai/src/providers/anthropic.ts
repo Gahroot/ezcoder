@@ -77,12 +77,12 @@ const anthropicClientCache = new Map<string, Anthropic>();
  * `args:{}` call, which the tool layer rejected with "Invalid arguments".
  * Claude Code itself gates this behind a default-false flag
  * (`CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING` / the `tengu_fgts`
- * experiment); we mirror that. Opt in with `GG_FINE_GRAINED_TOOL_STREAMING=1`
+ * experiment); we mirror that. Opt in with `EZ_FINE_GRAINED_TOOL_STREAMING=1`
  * (or the Claude Code env var, for parity).
  */
 export function fineGrainedToolStreamingEnabled(): boolean {
   const raw =
-    process.env.GG_FINE_GRAINED_TOOL_STREAMING ??
+    process.env.EZ_FINE_GRAINED_TOOL_STREAMING ??
     process.env.CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING;
   if (!raw) return false;
   const v = raw.trim().toLowerCase();

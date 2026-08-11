@@ -18,7 +18,7 @@ import {
 const tempDirs: string[] = [];
 
 async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "gg-session-manager-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "ez-session-manager-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -43,8 +43,8 @@ describe("SessionManager redaction boundary", () => {
     const file = path.join(dir, "session.jsonl");
     await writeFile(file, "", "utf-8");
     const canary = "opaque-session-canary-value-123456";
-    const previous = process.env.GG_SESSION_TEST_SECRET;
-    process.env.GG_SESSION_TEST_SECRET = canary;
+    const previous = process.env.EZ_SESSION_TEST_SECRET;
+    process.env.EZ_SESSION_TEST_SECRET = canary;
     const manager = new SessionManager(dir);
     const messageEntry: SessionEntry = {
       type: "message",
@@ -66,8 +66,8 @@ describe("SessionManager redaction boundary", () => {
       await manager.appendEntry(file, messageEntry);
       await manager.appendEntry(file, customEntry);
     } finally {
-      if (previous === undefined) delete process.env.GG_SESSION_TEST_SECRET;
-      else process.env.GG_SESSION_TEST_SECRET = previous;
+      if (previous === undefined) delete process.env.EZ_SESSION_TEST_SECRET;
+      else process.env.EZ_SESSION_TEST_SECRET = previous;
     }
 
     const persisted = await readFile(file, "utf-8");
@@ -238,7 +238,7 @@ describe("SessionManager compaction coordination", () => {
 describe("SessionManager persistence failure handling", () => {
   it("appendEntry does not throw when the write fails (e.g. disk full)", async () => {
     const manager = new SessionManager(await makeTempDir());
-    const badPath = path.join("/nonexistent-gg-dir", "session.jsonl");
+    const badPath = path.join("/nonexistent-ez-dir", "session.jsonl");
 
     const errors: NodeJS.ErrnoException[] = [];
     manager.onPersistError = (error) => errors.push(error);
@@ -250,7 +250,7 @@ describe("SessionManager persistence failure handling", () => {
 
   it("reports a persistence failure only once per error code", async () => {
     const manager = new SessionManager(await makeTempDir());
-    const badPath = path.join("/nonexistent-gg-dir", "session.jsonl");
+    const badPath = path.join("/nonexistent-ez-dir", "session.jsonl");
 
     let calls = 0;
     manager.onPersistError = () => {

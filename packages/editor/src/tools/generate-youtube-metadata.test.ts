@@ -44,7 +44,7 @@ describe("generate_youtube_metadata tool", () => {
 
   it("errors on transcript with no segments", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-yt-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-yt-"));
     writeTranscript(dir, { language: "en", durationSec: 10, segments: [] });
     const tool = createGenerateYouTubeMetadataTool(dir);
     const r = await tool.execute({ transcript: "t.json" }, ctx);
@@ -53,7 +53,7 @@ describe("generate_youtube_metadata tool", () => {
 
   it("returns parseable JSON on success and drops chapters for short videos", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-yt-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-yt-"));
     writeTranscript(dir, {
       language: "en",
       durationSec: 120, // < 5 min → chapters dropped
@@ -91,7 +91,7 @@ describe("generate_youtube_metadata tool", () => {
 
   it("uses json_object response format and temperature 0", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-yt-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-yt-"));
     writeTranscript(dir, {
       language: "en",
       durationSec: 60,

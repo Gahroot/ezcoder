@@ -9,7 +9,7 @@ let tempDir: string;
 let filePath: string;
 
 beforeEach(async () => {
-  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-jiwa-test-"));
+  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-jiwa-test-"));
   filePath = path.join(tempDir, "nested", "chat-jiwa.json");
 });
 

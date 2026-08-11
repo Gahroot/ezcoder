@@ -14,7 +14,7 @@ function context() {
  * CRLF endings, a line past the truncation cap, and a binary blob.
  */
 async function makeFixture(): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-grep-parity-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-grep-parity-"));
   const files: Record<string, string> = {
     ".gitignore": "ignored/\n*.min.js\n",
     ".github/workflows/ci.yml": "name: ci\njobs:\n  build:\n    runs-on: ubuntu-latest\n",

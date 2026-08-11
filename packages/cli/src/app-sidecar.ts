@@ -876,7 +876,7 @@ async function main(): Promise<void> {
 
   // Every window's session lives here as an in-process object, keyed by the id
   // the daemon hands back from POST /session. The Rust shell routes each proxy
-  // request to its window's session via the `x-gg-session` header (and the
+  // request to its window's session via the `x-ez-session` header (and the
   // `?session=` query for the SSE /events stream).
   const sessions = new Map<string, SessionContext>();
 
@@ -1072,10 +1072,10 @@ async function main(): Promise<void> {
     }
   }
 
-  /** Resolve the target session id: the `x-gg-session` header, else a
+  /** Resolve the target session id: the `x-ez-session` header, else a
    *  `?session=` query param (used by the SSE /events connection). */
   function sessionIdFromReq(req: http.IncomingMessage, url: string): string | null {
-    const header = req.headers["x-gg-session"];
+    const header = req.headers["x-ez-session"];
     if (typeof header === "string" && header.length > 0) return header;
     try {
       return new URL(url, `http://${host}`).searchParams.get("session");
@@ -1094,7 +1094,7 @@ async function main(): Promise<void> {
         res.writeHead(204, {
           "access-control-allow-origin": "*",
           "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
-          "access-control-allow-headers": "content-type, x-gg-session",
+          "access-control-allow-headers": "content-type, x-ez-session",
         });
         res.end();
         return;

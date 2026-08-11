@@ -45,8 +45,8 @@ export function shouldCaptureToolFailure(toolName: string, result: string): bool
 }
 
 function errorMomReporter(): SidecarErrorReporter | undefined {
-  return (globalThis as typeof globalThis & { __GG_ERROR_MOM__?: SidecarErrorReporter })
-    .__GG_ERROR_MOM__;
+  return (globalThis as typeof globalThis & { __EZ_ERROR_MOM__?: SidecarErrorReporter })
+    .__EZ_ERROR_MOM__;
 }
 
 function sidecarProcessTag(): string {

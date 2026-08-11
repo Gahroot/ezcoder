@@ -35,7 +35,7 @@ describe("find_viral_moments tool", () => {
 
   it("errors on empty transcript", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-fvm-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-fvm-"));
     writeTranscript(dir, { language: "en", durationSec: 60, segments: [] });
     const tool = createFindViralMomentsTool(dir);
     const r = await tool.execute({ transcript: "t.json" }, ctx);
@@ -44,7 +44,7 @@ describe("find_viral_moments tool", () => {
 
   it("errors on durationRange[1] <= durationRange[0]", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-fvm-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-fvm-"));
     writeTranscript(dir, {
       language: "en",
       durationSec: 60,
@@ -57,7 +57,7 @@ describe("find_viral_moments tool", () => {
 
   it("returns ranked candidates after proposal+score+dedup", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-fvm-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-fvm-"));
     writeTranscript(dir, {
       language: "en",
       durationSec: 200,
@@ -123,7 +123,7 @@ describe("find_viral_moments tool", () => {
 
   it("threshold drops low-scoring candidates", async () => {
     process.env.OPENAI_API_KEY = "k";
-    const dir = mkdtempSync(join(tmpdir(), "gg-fvm-"));
+    const dir = mkdtempSync(join(tmpdir(), "ez-fvm-"));
     writeTranscript(dir, {
       language: "en",
       durationSec: 100,

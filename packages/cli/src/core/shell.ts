@@ -97,7 +97,7 @@ function findGitBash(env: NodeJS.ProcessEnv, exists: (p: string) => boolean): st
 /**
  * Resolve the shell executable + args to run a single command string.
  *
- * `GG_BASH` env override always wins (point it at any POSIX bash, e.g. a custom
+ * `EZ_BASH` env override always wins (point it at any POSIX bash, e.g. a custom
  * Git Bash or msys2 install). Otherwise: non-Windows → `bash`; Windows → Git
  * Bash if found, else `cmd.exe`.
  */
@@ -107,7 +107,7 @@ export function resolveShell(command: string, opts: ResolveShellOpts = {}): Shel
   const exists = opts.exists ?? existsSync;
 
   // Explicit override (power users / tests): treat as a POSIX bash.
-  const override = env.GG_BASH?.trim();
+  const override = env.EZ_BASH?.trim();
   if (override) {
     return { file: override, args: ["-c", command], isCmdFallback: false };
   }

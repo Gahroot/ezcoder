@@ -114,7 +114,7 @@ describe("subAgentCacheKey", () => {
 describe("resolveSubAgentCliEntry", () => {
   it("keeps app subagent workers behind the monitored sidecar entry", () => {
     expect(
-      resolveSubAgentCliEntry({ GG_SUBAGENT_WORKER_ENTRY: "/app/error-mom-sidecar.mjs" }),
+      resolveSubAgentCliEntry({ EZ_SUBAGENT_WORKER_ENTRY: "/app/error-mom-sidecar.mjs" }),
     ).toBe("/app/error-mom-sidecar.mjs");
   });
 });

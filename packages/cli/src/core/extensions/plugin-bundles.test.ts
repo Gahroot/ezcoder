@@ -31,7 +31,7 @@ async function writePlugin(id = "example.plugin", version = "1.2.3"): Promise<vo
 }
 
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-plugin-test-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-plugin-test-"));
   source = path.join(root, "source");
   extensions = path.join(root, "extensions");
   artifact = path.join(root, "example.ggplugin");
@@ -119,7 +119,7 @@ describe("plugin bundles", () => {
     await fs.writeFile(
       artifact,
       JSON.stringify({
-        format: "@prestyj/agent-plugin",
+        format: "ezcoder-agent-plugin",
         schemaVersion: 1,
         manifest,
         files: [

@@ -64,7 +64,7 @@ export const JSON_MODE_FLUSH_TIMEOUT_MS = 2000;
  * End a finished one-shot JSON-mode run, flushing stdout first.
  *
  * Returning from `main()` is not enough. In the desktop build the sub-agent
- * worker entry IS the app-sidecar bundle (`GG_SUBAGENT_WORKER_ENTRY` defaults
+ * worker entry IS the app-sidecar bundle (`EZ_SUBAGENT_WORKER_ENTRY` defaults
  * to `process.argv[1]`, and no `cli.js` ships in the app — see
  * json-mode-flag-parity.test.ts), whose module graph installs long-lived
  * handles at import time. Those keep the event loop alive forever, so a child

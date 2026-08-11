@@ -10,7 +10,7 @@ describe("McpOAuthStore", () => {
   let file: string;
 
   beforeEach(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-auth-"));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-auth-"));
     file = path.join(dir, "mcp-auth.json");
   });
 
@@ -57,7 +57,7 @@ describe("McpOAuthProvider", () => {
   let store: McpOAuthStore;
 
   beforeEach(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-prov-"));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-prov-"));
     store = new McpOAuthStore(path.join(dir, "mcp-auth.json"));
   });
 

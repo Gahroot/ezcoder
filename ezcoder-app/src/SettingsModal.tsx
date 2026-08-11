@@ -61,7 +61,7 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
     const picked = await open({
       directory: false,
       multiple: false,
-      filters: [{ name: "GG Agent Plugin", extensions: ["ggplugin"] }],
+      filters: [{ name: "EZ Agent Plugin", extensions: ["ggplugin"] }],
       title: "Install Agent Plugin",
     });
     if (typeof picked !== "string") return;

@@ -1,7 +1,7 @@
 /**
  * JSX runtime for the EZ Editor Premiere panel.
  *
- * Exposes `gg_<method>(jsonString)` global functions. The Node-side panel
+ * Exposes `ez_<method>(jsonString)` global functions. The Node-side panel
  * server calls these via CSInterface.evalScript and parses the JSON result.
  *
  * Each method:
@@ -62,13 +62,13 @@ function _findClipBin(name) {
 
 // ── Method implementations ──────────────────────────────────
 
-function gg_ping(_jsonParams) {
+function ez_ping(_jsonParams) {
   try {
     return _ok({ product: "Premiere Pro", version: app.version || "?" });
   } catch (e) { return _fail(e); }
 }
 
-function gg_get_timeline(_jsonParams) {
+function ez_get_timeline(_jsonParams) {
   try {
     var seq = _seq();
     var fps = _fps(seq);
@@ -112,7 +112,7 @@ function gg_get_timeline(_jsonParams) {
   } catch (e) { return _fail(e); }
 }
 
-function gg_add_marker(jsonParams) {
+function ez_add_marker(jsonParams) {
   try {
     var P = JSON.parse(jsonParams || "{}");
     var seq = _seq();
@@ -128,7 +128,7 @@ function gg_add_marker(jsonParams) {
   } catch (e) { return _fail(e); }
 }
 
-function gg_append_clip(jsonParams) {
+function ez_append_clip(jsonParams) {
   try {
     var P = JSON.parse(jsonParams || "{}");
     var seq = _seq();
@@ -153,7 +153,7 @@ function gg_append_clip(jsonParams) {
   } catch (e) { return _fail(e); }
 }
 
-function gg_import_timeline(jsonParams) {
+function ez_import_timeline(jsonParams) {
   try {
     var P = JSON.parse(jsonParams || "{}");
     var ok = app.project.importFiles([P.filePath], true, app.project.rootItem, false);

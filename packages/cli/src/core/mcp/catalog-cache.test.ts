@@ -15,7 +15,7 @@ const server: MCPServerConfig = {
 };
 
 beforeEach(async () => {
-  dir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcp-catalog-"));
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcp-catalog-"));
   file = path.join(dir, "mcp-catalog.json");
 });
 

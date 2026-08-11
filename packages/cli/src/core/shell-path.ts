@@ -60,7 +60,7 @@ function wellKnownBinDirs(): readonly string[] {
   return [];
 }
 
-const DELIMITER = "_GG_SHELL_ENV_DELIMITER_";
+const DELIMITER = "_EZ_SHELL_ENV_DELIMITER_";
 
 /**
  * Ask the user's login shell for its PATH. Best-effort: resolves to null on any

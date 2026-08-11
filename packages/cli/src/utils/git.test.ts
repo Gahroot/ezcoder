@@ -15,11 +15,11 @@ afterEach(async () => {
 
 describe("getGitDirtyFileCount", () => {
   it("counts staged, modified, and untracked files", async () => {
-    const cwd = await mkdtemp(path.join(tmpdir(), "gg-git-dirty-"));
+    const cwd = await mkdtemp(path.join(tmpdir(), "ez-git-dirty-"));
     tempDirs.push(cwd);
     await execFileAsync("git", ["init"], { cwd });
     await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd });
-    await execFileAsync("git", ["config", "user.name", "GG Test"], { cwd });
+    await execFileAsync("git", ["config", "user.name", "EZ Test"], { cwd });
 
     await writeFile(path.join(cwd, "modified.txt"), "original\n");
     await execFileAsync("git", ["add", "modified.txt"], { cwd });
@@ -35,7 +35,7 @@ describe("getGitDirtyFileCount", () => {
   });
 
   it("rejects outside a git repository so callers can preserve the last known count", async () => {
-    const cwd = await mkdtemp(path.join(tmpdir(), "gg-not-git-"));
+    const cwd = await mkdtemp(path.join(tmpdir(), "ez-not-git-"));
     tempDirs.push(cwd);
 
     await expect(getGitDirtyFileCount(cwd)).rejects.toBeDefined();

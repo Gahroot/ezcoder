@@ -40,6 +40,7 @@ export const CORE_TOOL_NAMES: readonly string[] = [
   "enter_plan",
   "exit_plan",
   "tool_search",
+  "goals",
 ];
 
 /**

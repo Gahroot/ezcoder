@@ -38,7 +38,7 @@ function runFixture(): Promise<CrashRun> {
         HOME: tmpHome,
         USERPROFILE: tmpHome,
         // Keep the fixture off the user's real config and away from the network.
-        GG_DISABLE_TELEMETRY: "1",
+        EZ_DISABLE_TELEMETRY: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -72,8 +72,8 @@ async function readMessages(sessionPath: string): Promise<{ role: string; text: 
 }
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-crash-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-crash-project-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-crash-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-crash-project-"));
   await writeJson(path.join(tmpHome, ".ezcoder", "auth.json"), {
     anthropic: {
       accessToken: "test-access",

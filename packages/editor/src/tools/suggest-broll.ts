@@ -475,5 +475,5 @@ async function downloadVideo(opts: DownloadOpts): Promise<string> {
 
 // Re-export for tests that want to seed a tempdir without poking the cwd.
 export function _tempBrollDir(): string {
-  return mkdtempSync(join(tmpdir(), "gg-broll-"));
+  return mkdtempSync(join(tmpdir(), "ez-broll-"));
 }

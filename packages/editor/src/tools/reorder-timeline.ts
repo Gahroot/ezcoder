@@ -59,7 +59,7 @@ export function createReorderTimelineTool(
         });
         const outAbs = fcpxmlOutput
           ? safeOutputPath(cwd, fcpxmlOutput)
-          : join(mkdtempSync(join(tmpdir(), "gg-reorder-")), "reorder.fcpxml");
+          : join(mkdtempSync(join(tmpdir(), "ez-reorder-")), "reorder.fcpxml");
         if (fcpxmlOutput) mkdirSync(dirname(outAbs), { recursive: true });
         writeFileSync(outAbs, xml, "utf8");
         if (dryRun) {

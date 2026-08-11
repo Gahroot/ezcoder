@@ -8,13 +8,13 @@
 // Used to prove that enabling `versionNegotiation: { mode: "auto" }` still
 // connects such a server instead of failing or hanging.
 //
-// `GG_FIXTURE_SILENT_ON_UNKNOWN=1` makes it ignore unknown methods entirely
+// `EZ_FIXTURE_SILENT_ON_UNKNOWN=1` makes it ignore unknown methods entirely
 // (no reply at all), the harsher shape of legacy server that forces the probe
 // to fall back on timeout rather than on an error response.
 
 import process from "node:process";
 
-const SILENT_ON_UNKNOWN = process.env.GG_FIXTURE_SILENT_ON_UNKNOWN === "1";
+const SILENT_ON_UNKNOWN = process.env.EZ_FIXTURE_SILENT_ON_UNKNOWN === "1";
 const PROTOCOL_VERSION = "2025-11-25";
 
 function send(message) {

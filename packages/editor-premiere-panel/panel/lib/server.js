@@ -55,11 +55,11 @@
 
   /**
    * JSX is loaded automatically by CEP via manifest <ScriptPath>. We invoke
-   * named functions defined there: gg_ping, gg_get_timeline, etc.
+   * named functions defined there: ez_ping, ez_get_timeline, etc.
    */
   function callJsx(method, params) {
     return new Promise(function (resolve) {
-      var fn = "gg_" + method;
+      var fn = "ez_" + method;
       // Stringify params safely for embedding in a JSX call.
       var jsonParams = JSON.stringify(params || {})
         .replace(/\\/g, "\\\\")
