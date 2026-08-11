@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { CORE_TOOL_NAMES, DEFERRED_TOOL_NAMES, partitionToolsByTier } from "./tool-tiers.js";
 import { TOOL_PROMPT_HINTS, DEFAULT_TOOL_NAMES, BUILTIN_TOOL_NAMES } from "./prompt-hints.js";
 

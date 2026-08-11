@@ -34,61 +34,61 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.40.1
+- @prestyj/ai@5.40.1
 
 ## 5.40.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.40.0
+- @prestyj/ai@5.40.0
 
 ## 5.39.4
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.39.4
+- @prestyj/ai@5.39.4
 
 ## 5.39.3
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.39.3
+- @prestyj/ai@5.39.3
 
 ## 5.39.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.39.2
+- @prestyj/ai@5.39.2
 
 ## 5.39.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.39.1
+- @prestyj/ai@5.39.1
 
 ## 5.39.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.39.0
+- @prestyj/ai@5.39.0
 
 ## 5.38.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.38.0
+- @prestyj/ai@5.38.0
 
 ## 5.37.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.37.0
+- @prestyj/ai@5.37.0
 
 ## 5.36.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.36.0
+- @prestyj/ai@5.36.0
 
 ## 5.35.1
 

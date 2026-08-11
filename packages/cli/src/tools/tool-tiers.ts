@@ -1,4 +1,4 @@
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 
 /**
  * Two-tier split of the built-in toolset.

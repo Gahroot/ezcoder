@@ -2371,7 +2371,7 @@ struct ApiKeyVariant {
 
 /// Guidance for one auth method — what it bills against and when to pick it.
 /// Only providers offering a real choice (the dual-auth ones) carry these.
-/// Mirrors `AuthMethodMeta` in packages/ggcoder/src/core/auth-providers.ts.
+/// Mirrors `AuthMethodMeta` in packages/cli/src/core/auth-providers.ts.
 struct MethodDetail {
     /// "oauth" or "apikey".
     method: &'static str,

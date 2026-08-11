@@ -1,4 +1,4 @@
-import type { ToolExecuteResult } from "@kenkaiiii/gg-agent";
+import type { ToolExecuteResult } from "@prestyj/agent";
 import { log } from "../logger.js";
 import { shrinkToFit } from "../../utils/image.js";
 

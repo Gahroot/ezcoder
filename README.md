@@ -41,8 +41,8 @@ Four packages. Each one works on its own. Stack them together and you get a full
 | Drive many coding agents across multiple projects from one chat | [`@prestyj/boss`](packages/boss/README.md) |
 
 <p align="center">
-  <a href="https://github.com/KenKaiii/gg-framework/releases/latest"><img src="https://img.shields.io/badge/⬇%20Download%20for%20macOS-Apple%20Silicon%20·%20.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS"></a>
-  <a href="https://github.com/KenKaiii/gg-framework/releases/latest"><img src="https://img.shields.io/badge/⬇%20Download%20for%20Windows-.exe%20installer-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
+  <a href="https://github.com/Gahroot/ezcoder/releases/latest"><img src="https://img.shields.io/badge/⬇%20Download%20for%20macOS-Apple%20Silicon%20·%20.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS"></a>
+  <a href="https://github.com/Gahroot/ezcoder/releases/latest"><img src="https://img.shields.io/badge/⬇%20Download%20for%20Windows-.exe%20installer-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"></a>
 </p>
 
 Signed and notarized on macOS. It updates itself, so you install it once and forget about it.
@@ -53,12 +53,12 @@ Yeah, you can split a terminal into panes. That's where this workflow came from.
 difference is this is **actual software** now: real OS windows you can move between
 desktops, tile with one click, full-screen individually, and pick up with your mouse.
 
-Open GG Coder on your side project in one window, your client's Next.js app in another, a
+Open EZ Coder on your side project in one window, your client's Next.js app in another, a
 Rust thing in a third, a landing page in a fourth. Each window runs its **own** agent, its
 own folder, its own model, its own history. Nothing bleeds between them.
 
 <p align="center">
-  <img src="docs/screenshots/00-many-windows.png" alt="Six GG Coder windows tiled in a grid, each on a different project running a different model" width="980">
+  <img src="docs/screenshots/00-many-windows.png" alt="Six EZ Coder windows tiled in a grid, each on a different project running a different model" width="980">
 </p>
 
 Six projects, six different models (Claude, Codex, a local qwen3-coder, Gemini, Kimi, GLM),
@@ -73,14 +73,14 @@ something while it's actually running. Six windows open is a normal Tuesday, not
 event.
 
 <p align="center">
-  <img src="docs/screenshots/01-home.png" alt="GG Coder home screen" width="900">
+  <img src="docs/screenshots/01-home.png" alt="EZ Coder home screen" width="900">
 </p>
 
 ## Everything else it does
 
 ### It finds the projects you're already working on
 
-Not just GG Coder ones. It digs up everything you've touched in **Claude Code and Codex**
+Not just EZ Coder ones. It digs up everything you've touched in **Claude Code and Codex**
 too. Pick one, keep going.
 
 <p align="center">
@@ -95,7 +95,7 @@ JSON. Git branch, uncommitted count, open issues and PRs up top. Context %, thin
 level and both models down bottom.
 
 <p align="center">
-  <img src="docs/screenshots/02-chat.png" alt="GG Coder mid-run, with the live tool panel streaming edits and a test run" width="900">
+  <img src="docs/screenshots/02-chat.png" alt="EZ Coder mid-run, with the live tool panel streaming edits and a test run" width="900">
 </p>
 
 ### Use whatever model you want
@@ -122,16 +122,16 @@ prompt.
 
 ### Autopilot, the one nobody knows about
 
-Flip Autopilot on and Ken (a mentor agent) reviews every finished run. If the work's not
-good enough he sends GG Coder straight back in with specific feedback, and it keeps going
+Flip Autopilot on and Nolan (a mentor agent) reviews every finished run. If the work's not
+good enough he sends EZ Coder straight back in with specific feedback, and it keeps going
 until he signs off. You go make coffee.
 
 <p align="center">
-  <img src="docs/screenshots/03-autopilot.png" alt="Autopilot loop: GG Coder ships a change, Ken bounces it with feedback, GG Coder fixes it, Ken signs off" width="900">
+  <img src="docs/screenshots/03-autopilot.png" alt="Autopilot loop: EZ Coder ships a change, Nolan bounces it with feedback, EZ Coder fixes it, Nolan signs off" width="900">
 </p>
 
-Real loop above: it built a rate limiter, Ken caught that the bucket was per-process and
-sent it back, it moved the thing into Redis and added a test, Ken signed off. Nobody
+Real loop above: it built a rate limiter, Nolan caught that the bucket was per-process and
+sent it back, it moved the thing into Redis and added a test, Nolan signed off. Nobody
 typed anything in between.
 
 ### It can see
@@ -155,7 +155,7 @@ Rust and C/C++ kick in if their toolchain is on your PATH.
 
 Paste any `claude mcp add …` line and it just works. Spawn subagents for parallel work.
 Project memory, notes, chat export, prompt enhancement, your own slash commands in
-`.gg/commands/*.md`.
+`.ezcoder/commands/*.md`.
 
 ### It watches your quota
 

@@ -113,7 +113,7 @@ export interface ProcessManagerOps {
    */
   notifications?: AgentNotificationQueue;
   /**
-   * Directory for background process logs. Defaults to the real `~/.gg/bg`.
+   * Directory for background process logs. Defaults to the real `~/.ezcoder/bg`.
    *
    * Injectable because this manager both writes AND prunes here: a test that
    * calls `start()` without an override operates on the developer's own log

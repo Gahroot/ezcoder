@@ -84,7 +84,7 @@ describe("loadSavedSettings", () => {
   });
 });
 
-// ggcoder used to seed agent files into the user agents dir, where they
+// ezcoder used to seed agent files into the user agents dir, where they
 // silently shadowed the richer BUNDLED_AGENTS of the same name and froze at
 // whatever version wrote them. Nothing is seeded anymore, and seedDefaultAgents
 // cleans up the old copies on next launch — but only when the file is untouched.

@@ -373,7 +373,7 @@ describe("dual-auth providers (OAuth + API key)", () => {
     // Write both credentials directly: an OAuth login needs a real browser, and
     // what matters here is the two-credential state the app has to manage.
     await fs.writeFile(
-      path.join(tmpHome, ".gg", "auth.json"),
+      path.join(tmpHome, ".ezcoder", "auth.json"),
       JSON.stringify({
         xai: { accessToken: "key", refreshToken: "", expiresAt: Date.now() + 1_000_000 },
         "xai-oauth": {

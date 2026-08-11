@@ -152,7 +152,7 @@ providerRegistry.register("xai", {
       ? {
           "X-XAI-Token-Auth": "xai-grok-cli",
           "x-grok-client-version": GROK_CLI_VERSION,
-          "x-grok-client-identifier": "ggcoder",
+          "x-grok-client-identifier": "ezcoder",
           "x-grok-model-override": options.model,
           ...options.defaultHeaders,
         }

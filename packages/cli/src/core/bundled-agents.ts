@@ -1,16 +1,16 @@
 import type { AgentDefinition } from "./agents.js";
 
 /**
- * Agent definitions that ship with every ggcoder install.
+ * Agent definitions that ship with every ezcoder install.
  *
  * These are TypeScript constants rather than `assets/*.md` on purpose: the
  * desktop sidecar bundler (`bundle-sidecar.mjs`) externalizes asset trees, so a
  * new one is a packaging risk, while constants compile straight into `dist`.
  *
- * They are also NOT seeded into `~/.gg/agents`. A seeded file shadows every
+ * They are also NOT seeded into `~/.ezcoder/agents`. A seeded file shadows every
  * future improvement forever (user-dir agents win by design), which is exactly
  * the bug `removeShadowingSeededAgents` exists to undo. Users who want to
- * customize one still can — writing `~/.gg/agents/<name>.md` overrides the
+ * customize one still can — writing `~/.ezcoder/agents/<name>.md` overrides the
  * bundled definition of the same name.
  *
  * `description` is the routing signal the dispatcher reads, so each one names

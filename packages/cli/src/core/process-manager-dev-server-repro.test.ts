@@ -8,7 +8,7 @@ import { ProcessManager } from "./process-manager.js";
  * A throwaway background-log directory per manager.
  *
  * `start()` writes AND prunes inside `bgDir`, so a manager constructed without
- * one sweeps the developer's real `~/.gg/bg` when the suite runs.
+ * one sweeps the developer's real `~/.ezcoder/bg` when the suite runs.
  */
 async function bgTempDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-logs-"));
@@ -244,7 +244,7 @@ describe("ProcessManager dev-server lifecycle repro", () => {
 
 /**
  * `start()` both writes and prunes inside its log directory, and the default is
- * the user's real `~/.gg/bg`. A suite run once deleted ~12.7k genuine logs off a
+ * the user's real `~/.ezcoder/bg`. A suite run once deleted ~12.7k genuine logs off a
  * developer machine that way, silently, because the tests only sandboxed cwd.
  *
  * This asserts the isolation seam itself: a manager given a `bgDir` must confine
@@ -254,7 +254,7 @@ describe("background log isolation", () => {
   it("writes logs only inside the injected bgDir", async () => {
     const logs = await fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-isolation-"));
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-isolation-cwd-"));
-    const realBgDir = path.join(os.homedir(), ".gg", "bg");
+    const realBgDir = path.join(os.homedir(), ".ezcoder", "bg");
     const before = await fs.readdir(realBgDir).catch(() => [] as string[]);
 
     const isolated = new ProcessManager({ bgDir: logs });

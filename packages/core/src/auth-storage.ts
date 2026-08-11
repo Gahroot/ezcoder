@@ -67,14 +67,14 @@ const DUAL_AUTH_PROVIDERS: readonly DualAuthProvider[] = [
     oauthKey: MOONSHOT_OAUTH_KEY,
     oauthLabel: "Kimi OAuth",
     apiKeyLabel: "Moonshot API key",
-    restoreHint: 'Run "ggcoder login" and choose Kimi OAuth to restore OAuth auth.',
+    restoreHint: 'Run "ezcoder login" and choose Kimi OAuth to restore OAuth auth.',
   },
   {
     provider: "xai",
     oauthKey: XAI_OAUTH_KEY,
     oauthLabel: "Grok OAuth",
     apiKeyLabel: "xAI API key",
-    restoreHint: 'Run "ggcoder login" and choose Grok OAuth to restore OAuth auth.',
+    restoreHint: 'Run "ezcoder login" and choose Grok OAuth to restore OAuth auth.',
   },
 ];
 
@@ -337,7 +337,7 @@ export class AuthStorage {
 
   async load(): Promise<void> {
     // A reload (the file changed under us) is routine — log it once at first
-    // load so ~/.gg/debug.log doesn't fill with identical lines on every read.
+    // load so ~/.ezcoder/debug.log doesn't fill with identical lines on every read.
     const first = !this.loaded;
     await withFileLock(this.filePath, async () => {
       try {

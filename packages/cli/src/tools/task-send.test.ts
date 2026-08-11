@@ -10,7 +10,7 @@ import { createTaskOutputTool } from "./task-output.js";
  * A throwaway background-log directory per manager.
  *
  * `start()` writes AND prunes inside `bgDir`, so a manager built without one
- * sweeps the developer's real `~/.gg/bg` when the suite runs.
+ * sweeps the developer's real `~/.ezcoder/bg` when the suite runs.
  */
 async function bgTempDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "gg-bg-task-send-"));

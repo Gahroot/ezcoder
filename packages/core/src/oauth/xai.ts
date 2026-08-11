@@ -111,7 +111,7 @@ export function grokCliHeaders(modelId?: string): Record<string, string> {
   return {
     "X-XAI-Token-Auth": "xai-grok-cli",
     "x-grok-client-version": grokCliVersion(),
-    "x-grok-client-identifier": "ggcoder",
+    "x-grok-client-identifier": "ezcoder",
     ...(modelId ? { "x-grok-model-override": modelId } : {}),
   };
 }

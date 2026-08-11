@@ -24,7 +24,7 @@ const WATCH_MAX_REPORTS_EXPECTED = 3;
 /**
  * Every manager here gets its own log directory. `start()` writes AND prunes
  * inside `bgDir`, so an un-overridden instance would sweep the developer's real
- * `~/.gg/bg` history when the suite runs.
+ * `~/.ezcoder/bg` history when the suite runs.
  */
 async function bgDir(): Promise<string> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gg-process-bg-"));

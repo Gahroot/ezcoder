@@ -199,7 +199,7 @@ export function parseAgentFile(rawInput: string, source: "global" | "project"): 
           if (normalized === "project" || normalized === "none") context = normalized;
         }
         // Unknown keys are ignored on purpose: agent files stay
-        // forward-compatible with fields a newer ggcoder understands.
+        // forward-compatible with fields a newer ezcoder understands.
       }
     }
   }

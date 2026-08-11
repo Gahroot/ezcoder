@@ -30,7 +30,7 @@ function makeSession(): { session: AgentSession; internal: GateInternals } {
 const managers: ProcessManager[] = [];
 
 function trackedManager(): ProcessManager {
-  // Own log dir: start() prunes bgDir, whose default is the real ~/.gg/bg.
+  // Own log dir: start() prunes bgDir, whose default is the real ~/.ezcoder/bg.
   const manager = new ProcessManager({
     bgDir: mkdtempSync(path.join(os.tmpdir(), "gg-bg-gate-")),
   });

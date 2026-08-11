@@ -155,7 +155,7 @@ function isValidThemeSetting(value: string): value is "auto" | ThemeName {
 }
 
 /**
- * SHA-256 of every agent body ggcoder has ever seeded into `~/.gg/agents`.
+ * SHA-256 of every agent body ezcoder has ever seeded into `~/.ezcoder/agents`.
  *
  * All of those names now ship as BUNDLED_AGENTS with richer prompts, and user-dir
  * agents take precedence — so a seeded copy silently shadows the bundled one
@@ -182,11 +182,11 @@ export const SHADOWING_SEEDED_AGENT_HASHES: Record<string, readonly string[]> = 
 };
 
 /**
- * Reclaim agent files ggcoder seeded into the user agents dir in past versions.
+ * Reclaim agent files ezcoder seeded into the user agents dir in past versions.
  *
  * Nothing is seeded anymore: bee/owl/researcher/worker/auditor/skeptic ship as
  * BUNDLED_AGENTS, which stay improvable across upgrades. A file written to
- * `~/.gg/agents` never would.
+ * `~/.ezcoder/agents` never would.
  *
  * Exported for tests: `getAppPaths()` resolves `os.homedir()` inside gg-core's
  * prebuilt dist, which vitest does not transform, so a homedir spy would not

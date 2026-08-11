@@ -10,7 +10,7 @@ import { CORE_TOOL_NAMES, DEFERRED_TOOL_NAMES, partitionToolsByTier } from "./to
 const tempDirs: string[] = [];
 
 async function makeProject(): Promise<string> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ggcoder-tiering-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ezcoder-tiering-"));
   tempDirs.push(cwd);
   return cwd;
 }

@@ -1,4 +1,4 @@
-// Lives in @kenkaiiii/gg-core — re-exported here so ggcoder call sites import
+// Lives in @prestyj/core — re-exported here so ezcoder call sites import
 // Grok OAuth the same way they import the other providers.
 export {
   loginXai,
@@ -6,4 +6,4 @@ export {
   grokCliBaseUrl,
   grokCliHeaders,
   isGrokCliEndpoint,
-} from "@kenkaiiii/gg-core";
+} from "@prestyj/core";

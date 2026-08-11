@@ -177,7 +177,7 @@ Write or update **`COMPLIANCE.md`** at the repo root (or extend an existing regi
 
 ```markdown
 # Compliance Register
-Snapshot: <date> · Reviewed by: GG Coder compliance-guard · NOT LEGAL ADVICE
+Snapshot: <date> · Reviewed by: EZ Coder compliance-guard · NOT LEGAL ADVICE
 
 ## Assumed exposure profile
 <reach, jurisdictions, data classes, minors, money, domain, third parties — mark each Confirmed or Assumed>

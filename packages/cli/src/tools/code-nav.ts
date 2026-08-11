@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import type { LspManager, LspNavigationOutcome } from "../core/lsp/manager.js";
 import type { LspLocation, LspSymbolEntry } from "../core/lsp/client.js";
 import { resolvePath, toPosixPath } from "./path-utils.js";
