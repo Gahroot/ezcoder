@@ -17,6 +17,7 @@ import {
   childSubAgentEnv,
   currentSubAgentDepth,
   MAX_BLOCKING_SUBAGENT_DEPTH,
+  renderAgentRoster,
   resolveSubAgentCliEntry,
   selectSubAgent,
   subAgentCacheKey,
@@ -63,16 +64,11 @@ export function createSubAgentTool(
   planModeRef?: { current: boolean },
   goalModeRef?: { current: GoalMode },
 ): AgentTool<typeof SubAgentParams> {
-  const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
-  const agentDesc = agentList
-    ? `\n\nAvailable named agents:\n${agentList}`
-    : "\n\nNo named agents configured.";
-
   return {
     name: "subagent",
     description:
-      `Spawn an isolated sub-agent to handle a focused task. The sub-agent runs as a separate process with its own context window, tools, and system prompt. Use this for tasks that benefit from isolation or parallelism — issue multiple subagent calls in the same tool batch to run them concurrently.` +
-      agentDesc,
+      `Spawn an isolated sub-agent to handle a focused task. The child has its own context, tools, and system prompt and sees none of this conversation, so its task must stand alone. Use this for isolation or parallelism; multiple calls in one tool batch run concurrently.` +
+      renderAgentRoster(agents),
     parameters: SubAgentParams,
     // Sub-agents are isolated child processes (own cwd, context, and PID), so
     // they're safe to run concurrently — unlike bash/edit/write, which mutate
@@ -130,7 +126,14 @@ export function createSubAgentTool(
           cliArgs.push("--prompt-cache-key", childCacheKey);
         }
         if (agentDef?.systemPrompt) {
-          cliArgs.push("--system-prompt", agentDef.systemPrompt);
+          // --agent-prompt, not --system-prompt: the definition body is composed
+          // with the Tools/project-context/Environment scaffolding instead of
+          // replacing it. A replaced prompt left the child blind to its own
+          // toolset and to where it was running.
+          cliArgs.push("--agent-prompt", agentDef.systemPrompt);
+          if (agentDef.context === "none") {
+            cliArgs.push("--agent-context", "none");
+          }
         }
         if (agentDef?.tools.length) {
           cliArgs.push("--tools", agentDef.tools.join(","));

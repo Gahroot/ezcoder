@@ -60,6 +60,115 @@
 - @prestyj/agent@5.7.0
 - @prestyj/core@5.7.0
 
+## 5.40.1
+
+### Patch Changes
+
+- 356db7d: Make replies answerable at a glance: the "How to Talk" section now reserves markdown blockquotes for the one thing only the user can decide (`> **<the ask>?** <what happens next>`) and forbids them everywhere else, so a `>` in a reply always means "you're up". Adds a compression rule (reasoning, findings, and history earn a clause only when they change the next move) and a plain-language rule: keep the exact term or identifier, but say what it does or risks in the same sentence the first time it appears, so a reply is answerable without knowing the codebase. Overlapping progress/scannability lines were folded together to pay for part of the added length.
+
+  The rules are also reconciled so they can't pull the model in two directions: the ask defers to How to Work's single stop list instead of publishing a second one, the sentence cap says what it counts (prose — not a step list or the ask), and mid-turn speech is gated on "the plan changes" so a bare finding can't both trigger a message and be cut for not changing the next move. A new test locks all four in place.
+  - @kenkaiiii/gg-ai@5.40.1
+  - @kenkaiiii/gg-agent@5.40.1
+  - @kenkaiiii/gg-core@5.40.1
+
+## 5.40.0
+
+### Minor Changes
+
+- f56f240: Add a bundled `compliance-guard` skill that reviews what you are shipping for legal, privacy, and regulatory exposure — profiling the product from its own code, mapping observable facts to the obligations they trigger, flagging the litigation patterns that actually hit small teams, and saying plainly when a feature cannot lawfully ship as described. It never certifies compliance and routes genuinely legal questions to a lawyer.
+
+  Skill routing now also damps unnecessary invocation: match the work rather than the topic, skip routine or narrow changes, and never re-invoke a skill already loaded in the conversation.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.40.0
+- @kenkaiiii/gg-agent@5.40.0
+- @kenkaiiii/gg-core@5.40.0
+
+## 5.39.4
+
+### Patch Changes
+
+- Keep long runs alive across cross-process OAuth token rotation, stop the debug log from wedging just under its size cap, retry provider timeouts that carry no error code, render the full MCP content-block union including images, theme the TUI banner and tool output instead of hardcoding dark hexes, and offer the OAuth paste route immediately on headless hosts.
+  - @kenkaiiii/gg-ai@5.39.4
+  - @kenkaiiii/gg-agent@5.39.4
+  - @kenkaiiii/gg-core@5.39.4
+
+## 5.39.3
+
+### Patch Changes
+
+- Add 14 deep ambient, space ambient, and synthwave stations to the radio picker, including SomaFM's The Dark Zone, Echoes of Bluemars Cryosleep, Ambient Sleeping Pill, and Nightride FM.
+  - @kenkaiiii/gg-ai@5.39.3
+  - @kenkaiiii/gg-agent@5.39.3
+  - @kenkaiiii/gg-core@5.39.3
+
+## 5.39.2
+
+### Patch Changes
+
+- Surface gateway error frames delivered inside HTTP 200 streams instead of swallowing them, and stop treating tokens-per-minute rate limits as context overflow.
+  - @kenkaiiii/gg-ai@5.39.2
+  - @kenkaiiii/gg-agent@5.39.2
+  - @kenkaiiii/gg-core@5.39.2
+
+## 5.39.1
+
+### Patch Changes
+
+- Fix the `code_nav` file outline: list symbols in document order instead of the language server's name-grouped order, and drop locals declared inside function bodies so real declarations are no longer buried or truncated away. `definition`, `references` and `hover` now also resolve from a symbol name alone, with no line number required.
+  - @kenkaiiii/gg-ai@5.39.1
+  - @kenkaiiii/gg-agent@5.39.1
+  - @kenkaiiii/gg-core@5.39.1
+
+## 5.39.0
+
+### Minor Changes
+
+- Add the `code_nav` language-server tool (definition, references, file outline, hover), tier rarely used built-in tool schemas behind `tool_search` to cut per-request tokens, widen `code_search` to Python, Go, Rust, Java and C#, and fix `grep` recall so dot-directories are searched and `.gitignore` is honoured.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.39.0
+- @kenkaiiii/gg-agent@5.39.0
+- @kenkaiiii/gg-core@5.39.0
+
+## 5.38.0
+
+### Minor Changes
+
+- 1e8efde: Make sub-agent delegation reliable: ship six bundled agents (bee, owl, researcher, worker, auditor, skeptic) on every install instead of seeding two into `~/.gg/agents`, compose a child's prompt from its agent body PLUS the Tools, project context, return contract and Environment sections rather than replacing everything, resolve a child's model from explicit `model:` frontmatter (`inherit` by default) instead of silently downgrading read-only agents to the cheap tier, expose the agent roster in `spawn_agent`'s schema, validate `tools:` names, and align wait/output budgets with the child's real timeout.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.38.0
+- @kenkaiiii/gg-agent@5.38.0
+- @kenkaiiii/gg-core@5.38.0
+
+## 5.37.0
+
+### Minor Changes
+
+- Add Grok subscription OAuth (SuperGrok / X Premium) with OAuth-first credential resolution and automatic API-key fallback, plus a session-archive file-descriptor leak fix
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.37.0
+- @kenkaiiii/gg-agent@5.37.0
+- @kenkaiiii/gg-core@5.37.0
+
+## 5.36.0
+
+### Minor Changes
+
+- Extend the rank ladder from 50 to 1000 levels with 145 named ranks across 29 tiers. Levels 1-50 keep their exact names, tiers, and XP costs, so existing progress is never re-ranked; past level 50 the XP curve switches from the exponential to a steady ramp that starts at the level-50 step and grows to ~3.6k per level.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.36.0
+- @kenkaiiii/gg-agent@5.36.0
+- @kenkaiiii/gg-core@5.36.0
+
 ## 5.35.1
 
 ### Patch Changes

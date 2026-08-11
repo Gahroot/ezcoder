@@ -21,7 +21,6 @@ test_*.js
 Thumbs.db
 
 # Editor
-CLAUDE.md
 .vscode/
 .idea/
 
@@ -53,8 +52,6 @@ packages/editor/src/skills.ts
 .goal-evidence/
 artifacts/
 packages/cli/.goal-evidence/
-scripts/goal-deep-audit/*.json
-scripts/goal-deep-audit/*.log
 .ezcoder/ideal-sim/
 packages/cli/ideal-sim/
 
@@ -67,15 +64,15 @@ experiments/prompt-bench/.bench-sandbox-*
 *.key
 *.key.pub
 
-# Local benchmark experiments and raw samples (may contain provider metadata)
-bench/benchmark-results/
-bench/LATENCY_RESULTS.md
-bench/latency-matrix.ts
-bench/api-benchmark.test.ts
+# Local agent config and benchmark scratch
+/.gg/
+/.claude/
+/experiments/bench-mark/
+CLAUDE.md
+packages/*/.bench-*.mjs
 
-# scratch — top coding agents scan
-top-coding-agents.md
-coding-agent-72h-adoption-report.md
-
-# Local research scratch
-coding-agents.md
+# Local research/strategy notes
+/*-vs-*.md
+/*-report.md
+/fixes.md
+/*coding-agent*.md

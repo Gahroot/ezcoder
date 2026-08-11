@@ -4,117 +4,694 @@
  * `WhatsNewModal.tsx`, rendered by `WhatsNewWindow.tsx`).
  *
  * MAINTENANCE: this list is rewritten by the `/release` flow — see
- * `.ezcoder/commands/release.md` (Track B). When cutting a desktop release, the diff
- * since the last `v*` tag is parsed and rephrased into exciting, non-technical
- * copy, then a new entry is PREPENDED here for the new version. Keep entries
- * newest-first and the voice punchy — every line should make the update sound
- * worth installing, never a dry technical note.
+ * `.gg/commands/release.md` (Track B). Each item is one distinct user-facing
+ * feature, never one feature split into several bullets. Backticks wrap concrete
+ * names, controls, models, and numbers that render as themed inline highlights.
+ * Keep entries newest-first and the voice punchy — every line should make the
+ * update sound worth installing, never a dry technical note.
  */
 export interface ChangelogEntry {
   /** App version this entry ships in, e.g. "0.4.1" (no leading "v"). */
   version: string;
   /** Release date, ISO `YYYY-MM-DD`. */
   date: string;
-  /** Hype-toned bullet points, one user-facing win per line. */
+  /** One cohesive bullet per distinct feature; backticks highlight specifics. */
   items: string[];
 }
 
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.1.61",
+    version: "0.46.1",
+    date: "2026-08-11",
+    items: [
+      "You never have to hunt for what I need from you again. When I get stuck on something only you can decide, that one question now lands in its own highlighted quote block at the very end of my reply. One question, never five. If you see that block, you know instantly that I am waiting on you.",
+      "I stopped burying the answer in a wall of text. My replies now lead with what actually happened, cut the reasoning you cannot act on, and never re-explain something I already told you. Same work, a fraction of the reading.",
+      "Jargon now comes with the stakes attached. I still use the real file name, the real command, the real setting, but the first time it shows up I tell you what it actually does or risks in the same breath. You get the precision without needing to know the codebase.",
+    ],
+  },
+  {
+    version: "0.46.0",
+    date: "2026-08-11",
+    items: [
+      "Find out what you're legally missing *before* you launch, not after a demand letter. Ask GG Coder if your app is safe to ship and the new `compliance-guard` skill reads your actual code \u2014 your schema, your tracking scripts, your checkout, your uploads \u2014 then tells you what you owe in plain English, fixes what code can fix, and ranks the rest by what really gets small apps sued.",
+      "It tells you straight when something can't legally ship. An `AI vet` that prescribes medication, cash prizes for spins, cashing out a wallet balance, cloning someone's voice without asking \u2014 these are licensed or banned, not to-do items, and you get told before the code gets written, with the version you *can* build.",
+      "Skills stay out of your way now. They used to jump in whenever a task merely sounded like their topic; they now match the actual work, skip routine changes, and never reload themselves mid-conversation.",
+    ],
+  },
+  {
+    version: "0.45.4",
+    date: "2026-08-11",
+    items: [
+      "Long runs stop dying halfway through. If anything else refreshed your login while your agent was working, every remaining turn used to fail with an `authentication error` until you restarted. Now each turn picks up your live credentials, and your windows quit logging each other out.",
+      "A slow provider no longer ends your run. `Request timed out` used to escape straight to you as a dead end. Now it quietly replays the turn like any other blip and carries on.",
+      "Your `MCP` tools can finally show pictures. A server sending back a screenshot, chart, or rendered diagram used to arrive as `(empty response)`, so your agent saw nothing at all. Those images now go straight to the model, sized to fit.",
+      "A small touch up in the title bar: when your provider reports only one usage window, the meter stops pretending to be a button. No phantom hover, no click sound for a press that does nothing.",
+    ],
+  },
+  {
+    version: "0.45.3",
+    date: "2026-08-10",
+    items: [
+      "The radio just grew a whole dark side. I added `14` new stations built to drop you into another world while you work: `The Dark Zone` for staring into the abyss, `Cryosleep` for zero-beat deep space, and `Nightride FM` when you want rain on neon. I streamed every single one before shipping it, so nothing in that list is dead air.",
+    ],
+  },
+  {
+    version: "0.45.2",
+    date: "2026-08-10",
+    items: [
+      "When your provider or proxy throttles you, you finally see why. Errors buried inside a `200` response used to surface as a mystery stall, then quietly burn `10` retries that re-billed your whole prompt every time. Now the real reason lands straight away and your credits stay yours.",
+      "Your conversation stops getting thrown away for no reason. A per-minute token limit used to look like a full context overflow, so your agent would compact your history, lose the thread, and still fail. Now it waits the limit out and picks up right where you left off.",
+    ],
+  },
+  {
+    version: "0.45.1",
+    date: "2026-08-10",
+    items: [
+      "Your code map got a serious cleanup. Ask for a file's structure and you get a clean list that reads straight down the file, real declarations only. On one of my own files that took the outline from `89` cluttered entries to the `17` that actually matter.",
+      "Now you can just say the name. No hunting for a line number first: give `code_nav` any function or class and it goes straight to where that lives and every place it gets used.",
+    ],
+  },
+  {
+    version: "0.45.0",
+    date: "2026-08-10",
+    items: [
+      "Your agent now understands your code the way your editor does. It can `go to definition` and `find all references` across your whole project instead of guessing from text matches. Renames catch every caller and edits land where they should.",
+      "Search stopped missing your files. It now looks inside folders like `.github` that it used to skip completely, leaves out the build junk your project already ignores, and runs nearly twice as fast while doing it.",
+      "Smart code search finally speaks your language. I taught it `five` more: Python, Go, Rust, Java and C#. Describe what a function does and it finds the right one, even when you cannot recall the name.",
+      "Every conversation got cheaper. I stripped out invisible baggage riding along with your requests and cut billed input by `15%` in my testing, and your agent still reaches for every tool it needs.",
+    ],
+  },
+  {
+    version: "0.44.0",
+    date: "2026-08-09",
+    items: [
+      "Your agent now has a real crew. `Six` specialists ship with every install: `bee` builds things, `owl` maps your codebase, `researcher` digs through real docs, `worker` opens PRs, plus an auditor and a skeptic for security passes. They arrive ready to go and quietly refresh themselves with each update, so you never get stuck with a stale copy.",
+      "Delegated work comes back sharper. Helpers used to get silently dropped onto the cheap model and handed a stripped down brief, so they missed things you would never accept from your main agent. Now they inherit your model by default and keep your project rules, tools, and environment, and I stretched their time budget so long jobs actually finish.",
+      "Quitting means quitting. Closing a terminal or hitting `Ctrl+C` no longer leaves a stubborn background process clinging to its port when a slow plugin refuses to let go. Shutdown gets `5` seconds, then it exits for real.",
+    ],
+  },
+  {
+    version: "0.43.0",
+    date: "2026-08-08",
+    items: [
+      "You can now sign in to `Grok` with your SuperGrok or `X Premium` subscription. No API key, no per-token bill, just log in and start building. Add a key as well and I will always spend your subscription first, then slide over to the key the moment your plan usage runs dry, and back again once it resets.",
+      "Long sessions stay rock solid. I sealed a slow leak that ate system resources every time GG Coder reopened your archived chats, and background logs in `~/.gg` now tidy up after themselves instead of quietly growing on your disk forever.",
+    ],
+  },
+  {
+    version: "0.42.0",
+    date: "2026-08-08",
+    items: [
+      "Your rank no longer stops at the top. I stretched the ladder from `50` levels all the way to `1000`, with `145` fresh rank names waiting past Singularity, from Starforge and Voidwalker to Omega and Origin. Every level you already earned stays exactly where it is, so you just keep climbing.",
+      "The stat bars on your scorecard actually mean something now. Instead of sitting pinned at full forever, each one chases your next real milestone and empties the moment you smash it. Glance at your card and you can see exactly how close you are to `1K` commits or your next `60` day streak.",
+    ],
+  },
+  {
+    version: "0.41.2",
     date: "2026-08-07",
     items: [
-      "Your routine work can run itself now. Schedule repeating prompts with `/schedule`, see every active run in one place, and queue or cancel follow-ups without interrupting the job already in motion.",
-      "All your coding sessions finally live together. EZ Coder now finds `Claude Code` and `Codex` conversations beside native chats, with stronger checkpoints that bring long runs back after crashes or compaction.",
-      "Big projects just got a faster command center. I added shared `MCP` and language-server connections, richer project discovery, a system tray, and per-project accents so every workspace is easier to find and quicker to resume.",
-      "Autonomous runs now prove their work instead of merely declaring victory. New verification gates, safer command sandboxing, clearer background-process completion, and stronger recovery keep ambitious tasks honest and moving.",
-      "Provider requests and chat rendering are tougher under pressure. I repaired malformed emoji and Unicode payloads, restored messages hidden by broken transcript virtualization, and kept huge tool output neatly folded instead of flooding the screen.",
+      "Your chat window works properly again. My last update tried to get clever about how the conversation is drawn and got it badly wrong: messages went invisible, new replies never appeared, and the spacing at the bottom fell apart. I tore that change back out and put the solid original rendering back, so every message shows up exactly where it should.",
     ],
   },
   {
-    version: "0.1.60",
+    version: "0.41.1",
+    date: "2026-08-07",
+    items: [
+      "Killed a nasty crash that could poison a whole conversation. One stray half-emoji, from a model, a long file, or a wild terminal dump, used to make every single message after it bounce with a `Bad Request`, even after a retry or a model switch. I now clean it before it ever leaves your machine, and chats that were already stuck heal themselves on the very next message.",
+    ],
+  },
+  {
+    version: "0.41.0",
+    date: "2026-08-07",
+    items: [
+      "Your chat window just got a lot lighter on its feet. I now only draw the part of the conversation you are actually looking at, so a full day of work costs about the same as five minutes of it. My heaviest window dropped from `753 MB` to `380 MB` and the scrolling stayed buttery.",
+      "Giant command dumps no longer bury your chat. Anything long now folds into a neat preview with a `Show full output` button, so you skim the good part and open the rest only when you want it. Copy still grabs the whole thing, every time.",
+    ],
+  },
+  {
+    version: "0.40.1",
+    date: "2026-08-06",
+    items: [
+      "I hunted down the last big memory hog: the chat window itself. Marathon sessions used to keep every message and every screenshot loaded all day, quietly swelling each window into the gigabytes. Now I keep just the newest `120` messages live and park the rest behind a tidy `Show earlier messages` button, so your chat stays complete while your memory stays yours.",
+    ],
+  },
+  {
+    version: "0.40.0",
+    date: "2026-08-06",
+    items: [
+      "GG Coder just got dramatically lighter. I used to spin up a private set of background helpers for every single window, so four projects open meant four copies of everything doing identical work. Now they all share, and a four window session on my machine dropped from `3.3 GB` to about `900 MB`. Same speed, same features, far more room for everything else you are running.",
+      "Projects you walk away from now hand their memory back. Leave one alone for `5 minutes` and I quietly release the code intelligence holding it, then spin it straight back up the moment you return. No more watching the app get heavier all day just because you opened something once this morning.",
+    ],
+  },
+  {
+    version: "0.39.5",
+    date: "2026-08-05",
+    items: [
+      "I hold the thread on long sessions now. When a chat runs long enough that I have to compress my own memory, I lead with exactly what I was doing and what comes next, instead of burying it under a replay of everything you already said. Fewer dropped balls, less repeating yourself.",
+      "That same memory got leaner. I stopped hoarding lists of every file I had glanced at and stopped stacking old summaries on top of each other, so more of my `memory` goes to your actual work and long chats stay sharp for longer.",
+    ],
+  },
+  {
+    version: "0.39.4",
+    date: "2026-08-05",
+    items: [
+      "The `Choose a project` screen is back on its feet. I stopped `macOS` scratch folders from crashing the list, so your real projects load cleanly instead of leaving you staring at a black window.",
+    ],
+  },
+  {
+    version: "0.39.3",
+    date: "2026-08-05",
+    items: [
+      "Every one of your projects is finally on the `Choose a project` screen. It used to only show the ones you had already opened with an agent, so most of your work was invisible. Now I read your project folders straight off disk and list the lot. On my own machine that took it from `31` projects to `97`.",
+      "Spot something you never want to see in that list again? Hover it and hit the `\u00d7`. It is gone for good, and it stays gone next time you launch. Great for the scratch folders and stray temp directories that used to clutter the place up.",
+      "The project list also opens noticeably quicker. I got it scanning everything at once instead of one folder at a time, so it lands almost `2x` faster even with a hundred projects to sift through.",
+      "Skills now stick. When I load a skill to do a job properly, it can no longer get quietly dropped from my memory partway through a long session, so I keep working the way you asked all the way to the end.",
+    ],
+  },
+  {
+    version: "0.39.2",
+    date: "2026-08-03",
+    items: [
+      "Watch me work inside your own editor. Every file I change now shows up as a proper side by side diff instead of a wall of text, and your editor follows along to the exact file and line I am touching. Reviewing my work just became a glance instead of a chore.",
+      "My plan is now your live to do list. When I map out a job in `Plan Mode`, you see every step appear in your editor and tick off in real time as I finish them. No more wondering how far along I am.",
+      "Your saved conversations are finally yours to manage from anywhere. Pick one back up right where you left it, close it, or delete it for good, all without leaving your editor. Each one even names itself from what you asked.",
+    ],
+  },
+  {
+    version: "0.39.1",
+    date: "2026-08-03",
+    items: [
+      "Your phone remote and other `ACP` clients now show a live context meter. I report exactly how full the window is as the conversation moves, so you can see the room you have left instead of guessing. Best part: when GG Coder compacts a long session, you watch the usage drop on the spot, and a resumed chat shows its context the moment it opens rather than after the first reply.",
+    ],
+  },
+  {
+    version: "0.39.0",
+    date: "2026-08-03",
+    items: [
+      "GG Coder can no longer tell you a check passed when it did not. I taught it to judge every command it runs, so a `--watch` that never finishes, a build that rewrites files, or a `--help` that proves nothing all get rejected as evidence. Only real, finished checks like `tsc --noEmit` count now.",
+      "Your long sessions stay sharper for longer. When the conversation gets trimmed, I now pick what to keep based on what you just asked, so the error, the file, and the decision that actually matter survive instead of whatever happened to be most recent.",
+      "You can install `Agent Plugins` straight from Settings. One portable file adds new commands and abilities, and I check every bundle before it lands so a bad one cannot touch anything outside its own folder.",
+      "Gemini usage finally reads true. Its thinking tokens were quietly missing from your totals, so every long reasoning run looked cheaper than it was. Now the number you see is the number you pay.",
+    ],
+  },
+  {
+    version: "0.38.0",
+    date: "2026-08-01",
+    items: [
+      "Your phone remote and other `ACP` clients now know every command GG Coder can run the instant a session opens. I wired in built-ins plus project favorites like `/commit`, with the exact descriptions and inputs you need, so command pickers are complete without brittle file scanning.",
+    ],
+  },
+  {
+    version: "0.37.5",
+    date: "2026-07-31",
+    items: [
+      "Your longest conversations now reopen as the real back-and-forth, not a wall of generated memory. I rebuilt `ACP` session history to recover every older checkpoint, remove repeated tail messages and hide giant compaction summaries, while your agent keeps the lean context it needs to stay fast.",
+    ],
+  },
+  {
+    version: "0.37.4",
+    date: "2026-07-31",
+    items: [
+      "Long research jobs no longer vanish at the finish line. If a `sub-agent` hits its time limit, I give it one focused `60-second` wrap-up to hand you everything it learned, and I stop helper agents from burying themselves in endless delegation. You keep the findings instead of getting an empty failure.",
+    ],
+  },
+  {
+    version: "0.37.3",
+    date: "2026-07-30",
+    items: [
+      "Big autonomous jobs can now run longer without drowning in their own history. I taught `GG Coder` to clear away old research and bulky working scraps as it goes, so you get more useful context, fewer interruptions and a steadier finish on massive tasks.",
+    ],
+  },
+  {
+    version: "0.37.2",
+    date: "2026-07-30",
+    items: [
+      "GG Coder now plugs straight into `ACP` editors like `Zed`. Run `ggcoder acp` and you get your real sessions, model controls, thinking levels, plan mode, streaming answers and clean cancellation right inside the tools you already use.",
+      "Your longest chats are now much harder to lose or scramble. I rebuilt conversation compaction so your original request, newest work and approved plan stay together, reopening an old checkpoint always lands on the latest one, and two windows can no longer race each other into duplicate histories.",
+    ],
+  },
+  {
+    version: "0.37.1",
+    date: "2026-07-29",
+    items: [
+      "Sub-agents are finally fast. Every single one used to sit there for a full `5 minutes` and then report failure, even when it had actually finished the job in seconds. Now they hand back their answer the moment they are done, so spawning a helper agent costs you seconds instead of stalling your whole task.",
+      "When something does go wrong with a sub-agent, it tells you what happened. No more staring at `unknown error` wondering if it crashed, timed out, or got cancelled. You get the real reason in plain words.",
+      "Fixed a rare loop where I would finish your task and then keep repeating the same final answer over and over. If I ever cannot double-check a file, I now just say so once and hand the work back to you.",
+    ],
+  },
+  {
+    version: "0.37.0",
+    date: "2026-07-29",
+    items: [
+      "MCP servers can now ask you questions mid-task, and you answer right in the app. When a server needs a name, a choice, or a quick confirmation, a clean little form pops up instead of the whole task stalling out. You decide, it keeps going.",
+      "Connecting a model now updates every open window instantly. Drop in an API key or finish a login and the new models show up in the picker right away, no more closing and reopening your session to see them. Disconnecting cleans them up just as fast.",
+      "A crash no longer eats your work. I now save your session at every step, so if GG Coder dies mid-task everything it already did is still there when you come back, and it tells you exactly where things stopped.",
+      "Images and screenshots just got a lot cheaper to send. A big `2000x2000` shot now costs about a third of the tokens it used to, with zero difference in what the model actually sees.",
+      "Background tasks learned some manners. A chatty dev server used to burn around `2,000 tokens a minute` repeating that it was still running. Now it checks in early, then goes quiet, so your context stays free for real work.",
+    ],
+  },
+  {
+    version: "0.36.0",
     date: "2026-07-28",
     items: [
-      "Every window can finally tell you what it is. I added editable `tab names` that stay put when you leave, restart, and come back, while your project name remains the default until you choose one.",
+      "GG Coder now lives in your menu bar, so it is one click away even when every window is buried behind a fullscreen editor. Hit the little `G` and start a chat or a code session, flip `Remote` on and off, or jump straight into settings. It knows what you already have open: one window and it uses that one, several and it opens a fresh one instead of hijacking the work you are watching. When an update is ready, `Update now` appears right at the top.",
+      "Every project gets its own colour now. A stack of identical dark windows turns into something you can read at a glance, with a coloured dot beside the project name and a matching tint along the top edge. The colour comes from the project itself, so it is the same on every window, every launch, every machine, and there is nothing to set up.",
     ],
   },
   {
-    version: "0.1.59",
+    version: "0.35.0",
+    date: "2026-07-28",
+    items: [
+      "Your `Claude Code` and `Codex` conversations are now sitting right in your session list, labelled so you can spot them at a glance. Click one and it opens here with the whole history, ready to keep going. No command to remember, no file to hunt down, no setup.",
+    ],
+  },
+  {
+    version: "0.34.0",
+    date: "2026-07-28",
+    items: [
+      "Bring your old conversations with you. `/import` pulls a Claude Code, Codex or Cursor thread straight into GG Coder and you carry on where you left off, full history intact. I tested it on a real `44` message thread and it picked up mid sentence.",
+      "I stopped saying done when I was not. If I kick off your tests or a build in the background and never actually read the result, I now go back and check before I hand the work over. No more cheerful all good sitting on top of a failed build.",
+      "Ask me what I can do and get a straight answer instantly. Your tools used to look missing for the first few seconds while everything booted up, so I would tell you a capability did not exist when it did. I remember them between launches now, so the answer is right from the very first message.",
+    ],
+  },
+  {
+    version: "0.33.1",
+    date: "2026-07-28",
+    items: [
+      "Reopen a chat and everything sits exactly where it happened. Errors, `Ken` verdicts and plan banners used to pile up at the bottom of long conversations, sometimes `900` messages below where they belong. I went through every one of your saved chats and fixed the lot, old ones included.",
+      "No more seeing the same thing twice. When `Autopilot` hands me a job, reopening that chat used to show its instruction again as raw text underneath. Now you get the one clean handoff, exactly like you saw it live.",
+      "Your slash commands stay looking like commands. Reopen a chat and `/release` is still a neat little chip instead of the giant prompt hiding behind it, even after you have edited that command since.",
+    ],
+  },
+  {
+    version: "0.33.0",
+    date: "2026-07-27",
+    items: [
+      "Keep typing while I work. Messages you send mid-run now line up above the composer, and you can pull any one of them back out with a single `x` before I get to it. Change your mind, change the plan, no waiting.",
+      "You can finally see the moment I pick a message up. The `queued` tag disappears the second I actually read it instead of hanging around until I finish the whole job, so you always know exactly where you stand.",
+      "Fire off two things at once and nothing collides. I found a rare timing hole where two prompts landing together could kick off two runs on the same chat and trip over each other. Sealed shut.",
+    ],
+  },
+  {
+    version: "0.32.0",
+    date: "2026-07-27",
+    items: [
+      "Put me on a timer. Type `/schedule check the railway logs and fix any issues | 15m` and I will run that prompt every 15 minutes, on my own, until you tell me to stop. Add a number like `| 10` if you only want ten runs. Your live schedules sit in the footer with a countdown and a stop button, and I never pile two runs on top of each other.",
+      "I stopped writing my own history book. Last release I started keeping notes in `.gg/memory.md`, and being honest with you, it backfired: it repeated what your code already says, and it made me trust my own notes instead of going and checking. It is gone. I read your real code every time now.",
+      "Your slash commands got a proper home. They are called `plays` now, and typing `/` brings them up with every argument spelled out as you type, so you always know what goes where.",
+    ],
+  },
+  {
+    version: "0.31.0",
+    date: "2026-07-27",
+    items: [
+      "Big jobs now run all the way to the finish. When I hit the turn limit but I am still making real progress, I get handed more turns and carry on from exactly where I was instead of stopping halfway through your task. If I am just spinning my wheels, I still stop, so you never pay for a loop.",
+      "GG Coder remembers your project between sessions. When a long chat gets compacted I write down what happened in `.gg/memory.md`, so next time I already know what you asked for and what I changed. It is plain text right in your repo, so you can read it, fix it, or delete any line you disagree with. Turn it off any time in `Settings` or with `/memory-off`.",
+      "No more waiting on background work. Finished helper agents and long builds now tap me on the shoulder the second they are done, so I react immediately instead of stopping to go check on them and burning your tokens doing it.",
+      "Switching models mid-chat is clean now. I keep a proper record of which model did what, and I hold onto the cached part of your conversation right through the switch, so your next reply stays fast and cheap.",
+    ],
+  },
+  {
+    version: "0.30.0",
+    date: "2026-07-27",
+    items: [
+      "Your own models are really here this time. `Ollama`, `LM Studio`, llama.cpp and vLLM get found on their usual ports with no setup, and I read each one's true context size straight off your server. A model that can't call tools gets greyed out with the reason instead of quietly wasting your turn.",
+      "Picking a model is no longer a wall of names. Everything is grouped under its provider now, your local machine pinned at the bottom, so you spot the one you want instantly.",
+      "Changed your mind about a folder? `/remove-dir` drops it from the workspace, and running it bare lists exactly what you can remove. Fire it off mid-run and I queue it up rather than losing it.",
+      "Your usage bar stopped playing hide and seek. It used to vanish for minutes whenever the provider got moody about being asked, so now I hold the last real reading and tell you plainly when it's not fresh.",
+    ],
+  },
+  {
+    version: "0.29.0",
     date: "2026-07-26",
     items: [
-      "Your own hardware can run the show now. I added polished local-model support for `Ollama`, `LM Studio`, `llama.cpp`, and `vLLM`, with smart thinking and tool controls matched to each model.",
-      "Your workspace can finally stretch across every folder the job needs. Add or remove directories with `/add-dir` and `/remove-dir`, use the native folder picker, and keep queued work moving without losing your place.",
-      "Your best conversations are yours to keep. I added one-click `Markdown` export so you can save, share, and search a complete chat transcript anytime.",
-      "The title bar just became a command center. Click straight into your project or `Git branch`, watch live issue and pull-request counts, and keep the useful details visible even when the window gets tight.",
-      "Meet `Claude Opus 5`, now wired in with adaptive thinking. I also toughened sign-in refreshes and silent reasoning streams so ambitious runs stay connected and keep moving.",
+      "Every model you already run on your machine now shows up in the picker. I look for Ollama, LM Studio, llama.cpp and vLLM on their usual ports, read each model's real context size, and refuse the ones that can't call tools instead of letting them waste your turn. No key, no cost, and you can add your own endpoint if you moved a port.",
+      "You can save any chat now. Hover over the conversation and an `Export chat` button glides into the corner, one click drops a clean Markdown file wherever you want it, and I remember your folder for next time. It reads like a real document, not a machine dump.",
+      "You can point me at a second folder without leaving your project. Run `/add-dir` and I work across both repos at once, with a `+1 root` badge up top so you always know what I can reach.",
+      "You can lock down exactly which sites I am allowed to touch. Flip on the network allowlist in your settings and everything I fetch, search, clone, or install gets checked against your list first.",
+      "Local and self-hosted models were silently losing their thinking. I now catch the reasoning no matter what the endpoint calls it, so you finally see the whole train of thought — and a model that doesn't reason never gets asked to.",
+      "Local models get room to breathe. A big prompt on your own machine can take minutes to warm up, and I used to give up and retry forever. Now I wait it out, and a runaway search can no longer freeze me solid.",
     ],
   },
   {
-    version: "0.1.58",
+    version: "0.28.3",
+    date: "2026-07-25",
+    items: [
+      "Windows finally feels like home. Your projects and recent sessions show up the moment you open the app, and you stay signed in instead of landing on an empty picker. I was hunting for your files in a folder Windows never actually uses.",
+      "Your work on Windows now genuinely saves. Every session write, resume, and archive was quietly failing behind the scenes, so your history could vanish when you closed the app. Nothing slips away anymore.",
+      "Inline error checking is live on Windows. I spot type errors the instant I create them and fix them in the same turn, exactly like on Mac. Before this I was getting nothing back and never knew it.",
+      "Your `MCP` servers connect on Windows. Anything set up through `npx`, which is very nearly all of them, died with a dead end error before it ever started. They boot properly now.",
+      "No more black console windows flashing when you launch or quit. I also make sure a cancelled command takes its entire process tree down with it, so runaway dev servers stop quietly piling up in the background.",
+    ],
+  },
+  {
+    version: "0.28.2",
+    date: "2026-07-25",
+    items: [
+      "Your specialist agents now research with real, live code instead of guessing from memory. Anything you point at `kencode-search` can finally reach it, so answers come back grounded in code that actually exists today. They were quietly cut off from it before.",
+      "`/bullet-proof` got its sharpest reviewers back. The deep `auditor` and `skeptic` agents were being shadowed by weaker stand-ins, so your security reports now come from the real thing again. Anything you wrote yourself stays exactly as you left it.",
+    ],
+  },
+  {
+    version: "0.28.1",
+    date: "2026-07-24",
+    items: [
+      "`Claude Opus 5` is now fully dialed in. You can cycle its thinking all the way from `low` up through `xhigh` and `max`, so you decide exactly how hard it pushes on any task. It was locked to one setting before. I also cleared the retired `Opus 4.8` out of the model menu, so you only ever see models worth picking.",
+    ],
+  },
+  {
+    version: "0.28.0",
+    date: "2026-07-24",
+    items: [
+      "`Claude Opus 5` just landed, and you can pick it right now. It is Anthropic's newest flagship: near-frontier smarts at half the price of the model it replaces, a full `1M token` context so it holds way more of your project in mind, and image understanding baked in. Open the model menu and give it a spin.",
+    ],
+  },
+  {
+    version: "0.27.7",
+    date: "2026-07-24",
+    items: [
+      "`/bullet-proof` now actually finishes the job. Some models used to chicken out halfway through the security review, so I reworked the whole flow and gave it two new specialist agents, `auditor` and `skeptic`, that hunt down real weaknesses and then try to disprove every single finding. You get a clean, verified report every time, and it runs leaner too.",
+      "I put the agent's instructions on a diet. Less repeated fluff in every request means snappier replies and cheaper sessions, with zero smarts lost. I also retired the old `/setup` command so the menu only shows tools that earn their spot.",
+    ],
+  },
+  {
+    version: "0.27.6",
+    date: "2026-07-24",
+    items: [
+      "Your title bar is now a launchpad. Click the `project name` to pop its folder straight open in Finder or Explorer, and click the `branch` to jump right to the repo on GitHub. It works the same on Mac and Windows.",
+      "No more staring at a lonely `0`. Your `issues` and `PRs` chips now show up only when you actually have some, so the title bar stays clean and only tells you what matters.",
+    ],
+  },
+  {
+    version: "0.27.5",
+    date: "2026-07-24",
+    items: [
+      "`Kimi` and `Moonshot` just got rock solid. They used to drop out mid-task with a bogus `API Key appears invalid` roughly every 15 minutes, especially with a few windows open at once. I now refresh your login well before it can ever expire, so your sessions just keep running.",
+    ],
+  },
+  {
+    version: "0.27.4",
+    date: "2026-07-24",
+    items: [
+      "Your project's GitHub pulse now lives in the title bar. Open `issues` and `PRs` sit right next to your branch, and one click jumps you straight to them on GitHub.",
+      "Your chat agents finally remember on their own. They now save the durable facts you share the moment you share them, no nagging required. I also fixed a nasty bug where a long memory update could abruptly kill your whole conversation.",
+      "No more phantom stalls. Quiet `OpenAI` reasoning models used to look frozen while they were silently thinking. Now the app knows the difference between thinking and stuck.",
+      "Resumed sessions tell the truth. Errors now land exactly where they happened instead of jumping to the bottom of the transcript.",
+    ],
+  },
+  {
+    version: "0.27.3",
     date: "2026-07-23",
     items: [
-      "Marathon runs just got relentless. I made EZ Coder recover dropped replies, continue answers up to `2 times`, retry runaway tools, and break repeating loops before they waste your time. You get the whole job, not a confident half-finish.",
-      "Your workspace has stronger guardrails and sharper eyes. I block dangerous writes outside your project, restore `TypeScript diagnostics`, and inspect dependency source directly so mistakes get caught before they become cleanup.",
-      "Your work now comes back exactly where you left it. I expanded chat history to `30` conversations, archive quiet sessions without losing them, and restore every project window with a clear `Restoring workspace` state instead of an empty screen.",
-      "Kimi users just got the full cockpit. I added `Kimi K3` thinking controls, live `Kimi For Coding` usage tracking, and a polished provider login grid so choosing and managing your AI feels effortless.",
-      "Every interface I build for you starts smarter and more inclusive. I upgraded the `Evidence-Led UI` skill with `WCAG 2.2 AA` standards, stronger spacing, cleaner status colors, and tighter keyboard behavior so polished never means generic or inaccessible.",
+      "Your workspace windows now know exactly where they belong. I made every window recover its active project instead of dumping you on `Home`, and slow wake-ups now show `Restoring workspace` instead of an empty black screen.",
+      "Your `rank badge` keeps the flex without the flicker. I rebuilt its color-shifting shine so your tier stays visible and smooth, even while other video-heavy apps are fighting for the screen.",
     ],
   },
   {
-    version: "0.1.57",
+    version: "0.27.2",
+    date: "2026-07-23",
+    items: [
+      "Windows and Linux menus are back in fighting shape. I fixed the `model picker` and `Arrange` controls so every click lands, every choice sticks, and keyboard navigation feels crisp, while keeping the exact clean controls you already know.",
+    ],
+  },
+  {
+    version: "0.27.1",
+    date: "2026-07-23",
+    items: [
+      "Long builds no longer stall out waiting for you to type `Continue`. I taught GG Coder to catch runaway tool calls, retry them `2 times`, and keep your conversation moving without losing its place.",
+      "GG's built-in coding senses are fully loaded again. I restored `TypeScript diagnostics` and `source inspection` inside the desktop app, then made search more forgiving, so it catches mistakes sooner and digs through dependencies without missing a beat.",
+    ],
+  },
+  {
+    version: "0.27.0",
+    date: "2026-07-22",
+    items: [
+      "The `model picker` and `Arrange` button now open real native menus while keeping the exact clean controls you already know. They feel faster, behave properly with your keyboard, and look right at home on your machine.",
+      "Reading while several `subagents` work in parallel just got silky smooth. I cut the pointless background chatter and keep every real activity update, so you can scroll through the conversation without fighting the app.",
+      "Updates now show their work. Tap the new `Install` badge and both the footer and home screen turn into live percentage progress, with zero jumping around while GG Coder downloads the good stuff.",
+      "The idle footer finally developed a personality. I added `10` dry little status lines, from professional napping to token polishing, so waiting around is at least mildly entertaining.",
+    ],
+  },
+  {
+    version: "0.26.1",
+    date: "2026-07-22",
+    items: [
+      "Every answer now arrives whole. If your provider's connection drops mid-reply, I catch the cut-off and `retry` cleanly instead of quietly handing you half an answer dressed up as a finished one. No more silent half-answers.",
+      "Random error popups, evicted. I hunted down a sneaky class of `400` rejections that could crash a chat out of nowhere, so your conversations just keep flowing.",
+      "GG now runs lighter for longer. I capped runaway memory at `10 MB` per request and `50k` files per search, and plugged a background leak, so marathon sessions stay snappy instead of slowly bloating.",
+    ],
+  },
+  {
+    version: "0.26.0",
+    date: "2026-07-22",
+    items: [
+      "The login screen just got a glow-up. Every AI provider now shows up as a glossy tile with its real logo, from `Claude` clay to the `DeepSeek` whale, so connecting a new brain feels like picking a fighter. Connected ones get a little green dot so you always know who is ready to roll.",
+      "Kimi users, your quota is no longer a mystery. The title-bar usage meter now tracks your `Kimi For Coding` plan right alongside Claude and ChatGPT, so you can see exactly how much runway you have before you hit a wall.",
+    ],
+  },
+  {
+    version: "0.25.0",
+    date: "2026-07-21",
+    items: [
+      "Kimi `K3` now lets you dial its brainpower with a full `low / high / max` thinking ladder, and you can switch thinking off entirely for quick asks. On the Kimi Code plan it starts at the friendlier `high` default, so your usage stretches further without you lifting a finger.",
+      "GG now just gets on with it. I retuned its marching orders so it stops asking permission for safe, reversible steps and powers through to a verified finish. Fewer pauses, more done.",
+      "Giant sessions stay on the rails. I fixed a compaction bug that could overshoot the context window on monster turns, so long hauls now compress cleanly instead of derailing mid-task.",
+      "Resuming a project tells the truth now. If a session cannot resume, the `project picker` shows the real reason right there instead of leaving you staring at a loading screen that never arrives.",
+    ],
+  },
+  {
+    version: "0.24.5",
+    date: "2026-07-21",
+    items: [
+      "Every interface GG Coder builds now starts with accessibility as a hard requirement. I made `WCAG 2.2 AA` and `ADA-aligned` design non-negotiable across keyboard navigation, screen readers, contrast, motion, forms, media, zoom, and complete user flows. Better UI now means more people can actually use it.",
+    ],
+  },
+  {
+    version: "0.24.4",
+    date: "2026-07-21",
+    items: [
+      "GG Coder's `UI skill` just got pickier about color. I taught it to reject the muddy red-on-red and green-on-green `status pills` AI loves to repeat, then choose styling that actually fits your product instead of forcing another template. Your interfaces get cleaner without all looking the same.",
+    ],
+  },
+  {
+    version: "0.24.3",
+    date: "2026-07-21",
+    items: [
+      "Interfaces GG Coder builds just got a serious taste upgrade. I taught the `UI skill` to lock navigation and content to one clean rail, give `dropdowns` proper breathing room, and kill sticky click outlines without sacrificing `keyboard focus`. The tiny details finally behave like they belong together.",
+    ],
+  },
+  {
+    version: "0.24.2",
+    date: "2026-07-20",
+    items: [
+      "Your conversations now clean up after themselves without disappearing. I keep the last `30 days`, squeeze quiet sessions after `7 days`, and cap runaway saved tool output at `40,000 characters`. You get your disk space back and every archived chat still resumes right where you left it.",
+      "GG Coder refuses to melt down in the background now. I give the engine `5 retries`, then stop it cleanly, and cap each run's logs at `10 MB` so a bad crash can never spiral into a process or disk-space storm.",
+    ],
+  },
+  {
+    version: "0.24.1",
+    date: "2026-07-20",
+    items: [
+      "Your chat history just got six times deeper. I expanded the picker from `5` recent conversations to `30`, so the thread you want is far less likely to disappear while coding history stays lean.",
+    ],
+  },
+  {
+    version: "0.24.0",
+    date: "2026-07-20",
+    items: [
+      "Long answers no longer vanish at the finish line. When a model hits its output limit, I now resume it automatically up to `2 times` and warn you plainly if anything is still incomplete.",
+      "GG Coder knows when it is stuck now. I taught it to spot repeating tool cycles up to `5 steps` long, break the pattern once, then stop cleanly and tell you exactly what is blocking it instead of burning time on endless retries.",
+      "Your workspace has a real safety rail. I now block writes outside your project by default and stop catastrophic commands like `rm -rf /` before they run, while keeping normal cleanup commands flowing.",
+      "Project rules land in the right order every time. I added `AGENTS.override.md`, nearest-folder precedence, a smart `32 KiB` budget, and tougher plan checks so GG Coder follows the instructions you actually meant without silently losing them.",
+    ],
+  },
+  {
+    version: "0.23.7",
+    date: "2026-07-19",
+    items: [
+      "`Error Mom` got a sharper nose. I taught it to ignore routine `429` checks, cancelled requests, and harmless edit retries, so real failures stand out instantly and I can fix what actually interrupted you.",
+    ],
+  },
+  {
+    version: "0.23.6",
+    date: "2026-07-19",
+    items: [
+      "When an `LLM`, tool, or specialist agent stumbles, I now get the full story automatically. I expanded `Error Mom` across every conversation path so I can trace those mystery `502` errors and squash them faster without asking you to reconstruct the crash.",
+    ],
+  },
+  {
+    version: "0.23.5",
+    date: "2026-07-19",
+    items: [
+      "When GG Coder hits a snag, I can see it faster now. I wired in `Error Mom` monitoring so startup failures and unexpected crashes reach me automatically, helping me squash problems before they derail you again.",
+    ],
+  },
+  {
+    version: "0.23.4",
+    date: "2026-07-18",
+    items: [
+      "`Anthropic` image-heavy chats are rock-solid now. I automatically resize oversized screenshots to the safe `2000px` limit, including images already buried in restored conversations, so long visual sessions keep rolling instead of dying on a surprise error.",
+    ],
+  },
+  {
+    version: "0.23.3",
+    date: "2026-07-18",
+    items: [
+      "`GPT-5.6` long chats just got dramatically tougher. I squeeze huge conversations down before sending them and recover automatically when `OpenAI` briefly stumbles, so massive prompts, images, and tool-heavy sessions keep moving instead of crashing into that request buffer error.",
+    ],
+  },
+  {
+    version: "0.23.2",
     date: "2026-07-17",
     items: [
-      "Your workspace tells the truth at a glance. I moved the project, `Git branch`, and live `uncommitted` count into the title bar, so you always know exactly where you are before you ship.",
-      "Huge chats now stay fast instead of folding under their own weight. I made `Context Compaction` trim stale tool noise, recover oversized results, and resume without that brutal `30-second` freeze.",
-      "More model power, fewer dead ends. I added `Kimi K3` and `Grok`, strengthened fallbacks, and hardened Codex streaming so long runs keep moving when a provider gets weird.",
-      "Agent runs are much easier to trust. I fixed live `Plan Steps`, removed stale completion badges and draft answers, and now show cached token usage for every `Sub-agent`.",
+      "Long chats just got another serious efficiency boost. I taught GG Coder to learn each model's real token footprint, wait until `85%` before compacting, then carry a leaner `8K` recent tail forward. In my live torture test, total input fell `31%` with the answer intact.",
+      "Monster command output is no longer a dead end. I save the full result for `48 hours` and point GG Coder straight to the missing slice, so it can recover one buried line without rerunning the whole command or stuffing your context twice.",
     ],
   },
   {
-    version: "0.1.56",
+    version: "0.23.1",
+    date: "2026-07-17",
+    items: [
+      "Your token bill on OpenAI models just took a serious haircut. I capped how much raw tool output a single turn can dump into context, so those runaway `400K` token spikes from parallel file reads are gone for good.",
+      "Long sessions now clean up after themselves. I quietly drop stale file reads and ancient command output the moment newer versions exist, keeping conversations lean, cutting rebilled context by up to `60%`, and pushing full compaction much further away.",
+      "`Autopilot` stopped double-checking itself. When Ken reviews your work he now owns the whole verification, so runs finish faster with one clean verdict instead of two overlapping reviews.",
+    ],
+  },
+  {
+    version: "0.23.0",
+    date: "2026-07-17",
+    items: [
+      "`Grok 4.5` just joined the lineup. I wired in xAI's new flagship with a huge `500K` context window, image vision, and adjustable reasoning, so you can throw serious coding and knowledge work at it from day one.",
+      "`Kimi` sign-in finally knows which wallet to use. I make OAuth your first choice, switch to your API key only when plan usage runs dry, then move you back automatically when it resets. No more crossed wires or fake dead-end limits.",
+      "Huge sessions wake up fast now. I stopped `resume` from freezing the app for up to `30 seconds`, and long compactions keep going while the provider is still working instead of collapsing into a rough fallback.",
+      "`Ideal review` now lands exactly where it belongs, before the answer you keep. I hide the scratch draft, show the review, then leave you with one clean final response.",
+    ],
+  },
+  {
+    version: "0.22.0",
+    date: "2026-07-16",
+    items: [
+      "`Kimi K3` is here, and I made Moonshot's new flagship your default from day one. You get maximum reasoning, a massive `1M-token` brain, and native image plus video understanding, while `Kimi K2.7 Code` stays ready when you want the lean coding specialist.",
+      "Your workspace tells you the truth at a glance now. I moved the project, `branch`, and live `uncommitted` file count into the title bar, so every window shows exactly where you are without stealing space from your tools.",
+      "Your recent sessions stop multiplying and losing their names after long chats. I made titles and conversation identity survive `compaction`, then collapsed old checkpoints into one clean, resumable session.",
+      "`Plan Steps` finally stays locked to the real plan while GG Coder works. I made it follow live edits, count completed steps honestly, and disappear the instant the run ends, so stale progress never hangs around pretending work is still moving.",
+      "Your specialist crew now shows where every token really went, including fresh input, cached input, and output. I also tightened `Codex` tool results so oversized reads stop devouring the context your agents need to finish strong.",
+    ],
+  },
+  {
+    version: "0.21.1",
     date: "2026-07-15",
     items: [
-      "Long builds are tougher to lose. I made `Sub-agents` keep durable progress and recover after interruptions, so you can continue the job instead of starting over.",
-      "Cancel now tells you exactly what is happening. I added a live `Cancelling...` state and honest recovery when a provider keeps running, so you never mistake a stuck request for a finished one.",
-      "Provider failures are cleaner and safer. I strip `tokens`, credentials, and noisy raw payloads before they reach your screen or logs, while keeping the guidance you actually need.",
-      "Every `Modal` now keeps keyboard focus exactly where it belongs. I tightened tab controls, Escape behavior, and focus return so the whole app feels smoother with a keyboard or screen reader.",
+      "`Ultra` specialists can survive an app restart and keep their place. I made child agents durable, reconnectable, and safe to continue, so long missions no longer vanish when a process hiccups.",
+      "Cancel means cancelled now. I made `Esc` wait for the active run to settle before the app returns to idle, with a clear `Cancelling...` state and honest recovery if the provider refuses to stop.",
+      "`Autopilot` now proves it actually checked every changed file. I tightened final review around real reads, edits, and diagnostics, so a green finish means the work earned it.",
+      "Provider failures are cleaner and safer. I scrub secrets before they reach logs or sessions and replace broken `HTML` error pages with a useful status-aware message, so support is easier and your credentials stay out of the mess.",
+      "`Context` tracking got sharper across every route and model. I taught GG Coder to use the right limits and timing evidence, so long sessions compact at the right moment instead of guessing.",
     ],
   },
   {
-    version: "0.1.55",
-    date: "2026-07-14",
+    version: "0.21.0",
+    date: "2026-07-15",
     items: [
-      "Your interfaces just got a real design brain. I packed `Evidence-Led UI` with proven patterns from standout products, so every screen I build for you starts sharper, cleaner, and more accessible.",
-      "I taught `Memory` to learn how you like to work, not just what you told me. Your preferences now follow you into future chats so EZ Coder feels more like your own teammate every time.",
-      "Long agent runs are harder to derail. I tightened `loop detection` so repeated dead ends get caught earlier and your work gets moving again instead of burning time in circles.",
-      "Project controls are right where you need them now. I polished the `Workspace Header` so moving around your work feels quicker and more natural.",
+      "Your chat agents finally have a soul. I built `Jiwa` so they remember how you want them to speak, behave, and even what name to use, then tucked it beside Memories inside one clean `Brain` switcher where you can inspect or clear every instruction.",
+      "Beautiful interfaces are no longer a lucky roll. I bundled `Evidence-Led UI` into every install, so GG Coder now checks real design craft, accessibility, and responsive behavior before it touches your frontend.",
+      "Long jobs stay focused without getting slapped by a false alarm. I stopped healthy `background tasks` and iterative edits from tripping the stuck detector, while genuine no-progress loops still get snapped out fast.",
+      "Chat gives you more room and more awareness. I added a collapsible `Chat` header and brought the `context meter` into view, so you can reclaim space and see exactly how much conversation room remains.",
     ],
   },
   {
-    version: "0.1.54",
-    date: "2026-07-14",
+    version: "0.20.1",
+    date: "2026-07-13",
     items: [
-      "I gave you a full specialist crew. `Chat Agents` handle focused conversations while async `Sub-agents` tackle multiple jobs at once, so bigger builds move without babysitting.",
-      "`GPT-5.6 Ultra` now brings serious orchestration power to your hardest work. I tuned the model routing so the right agent stays on task and finishes strong.",
-      "Moving between ideas feels effortless now. I polished the `Chat Picker`, handoffs, and `Memory` controls so your conversations stay organized and useful.",
-      "Long sessions are tougher and smoother. I tightened caching, compaction, session history, and the packaged sidecar so you wait less and recover cleanly when the work gets heavy.",
+      "Your coding history is back where it belongs. I fixed the `Projects` picker so moving through `Chat` no longer hides your recent coding sessions, and you can jump straight back into the work you left.",
     ],
   },
   {
-    version: "0.1.53",
+    version: "0.20.0",
+    date: "2026-07-13",
+    items: [
+      "Your conversation can now move to the right expert without missing a beat. I made `General`, `Therapist`, and `Research` hand off the active chat itself, keep every message, update the agent you see, and stay switched when you come back later.",
+      "Finding your way around Chat is cleaner and faster. I rolled every conversation into one unified `Chats` list, removed the agent tabs, and made every new window begin on `Home` so Code and Chat are always one click away.",
+      "Your `Memories` view just got tighter and calmer. I replaced the confusing limits with one clear count badge, reclaimed the extra space, and stopped the table header from bouncing when you scroll.",
+    ],
+  },
+  {
+    version: "0.19.0",
+    date: "2026-07-13",
+    items: [
+      "Chat just became a whole new side of GG Coder. I built `General`, `Therapist`, and `Research` companions with their own conversation history, then gave them durable memory you can inspect and clean up anytime.",
+      "Your windows now wake up exactly where you left them. I hardened restored sessions, rapid project switches, and reused window slots, so even a `4 window` workspace opens cleanly with every chat attached to the right place.",
+      "Web research is faster, cleaner, and much harder to knock over. I made `Web Search` share fresh results across windows and gave `Web Fetch` smarter extraction, strict download guards, and quicker document discovery.",
+      "Image batches finally deliver what you asked for. I fixed `Generate Image` so requests for up to `4 images` produce the full set instead of getting rejected by the provider.",
+      "Your `Codex` limit meter tells the truth at a glance. I taught it to recognize weekly windows wherever the provider sends them and made long reset times read naturally in days.",
+    ],
+  },
+  {
+    version: "0.18.3",
+    date: "2026-07-12",
+    items: [
+      "OpenAI sessions just got smarter about every token. I aligned `Codex` caching across your main chat and specialist crew, so long jobs stay snappy, reuse more work, and keep each agent safely in its own lane.",
+    ],
+  },
+  {
+    version: "0.18.2",
+    date: "2026-07-12",
+    items: [
+      "Long sessions and `/compact` now bounce back faster instead of getting buried under giant old file edits. I slimmed down oversized history and cut off stalled cleanup attempts fast, so you spend less time waiting and more time shipping.",
+      "`Apple silicon` is cleaner and ready for what comes next. I stripped unused Intel baggage out of the app bundle, cutting roughly `180 MB` before compression and keeping GG Coder fully native as macOS moves beyond Rosetta.",
+    ],
+  },
+  {
+    version: "0.18.1",
+    date: "2026-07-12",
+    items: [
+      "Your `Radio` volume control is finally silky and instant. I stopped the music from cutting out, made every level change land right away, and kept the slider locked to your hand while you drag.",
+    ],
+  },
+  {
+    version: "0.18.0",
+    date: "2026-07-11",
+    items: [
+      "`Ultra` now runs a real specialist crew. I made every expert visible while it works, steerable mid-job, and ready to pick up another mission with full context intact.",
+      "`Radio` finally behaves like part of the app. I added a volume slider, made your level stick across windows, and guaranteed the music stops when GG Coder closes, even after a force quit.",
+      "`What's new` is easier to scan. I put the latest release in one clean card, grouped each feature into a single story, and gave the details just enough emphasis to pop.",
+    ],
+  },
+  {
+    version: "0.17.0",
+    date: "2026-07-11",
+    items: [
+      "`Ultra` just learned true teamwork. I gave it a visible crew of specialists that work at the same time, take new direction mid-job, recover cleanly, and keep their full context for the next mission.",
+      "Settings feel cleaner and calmer. I moved sound controls where they belong and erased the strange shimmer from the home buttons.",
+    ],
+  },
+  {
+    version: "0.16.0",
+    date: "2026-07-11",
+    items: [
+      "GPT-5.6 Ultra is here. I taught Sol and Terra to split big jobs across parallel specialists, pull the best work back together, and keep charging until the result is done right.",
+    ],
+  },
+  {
+    version: "0.15.2",
+    date: "2026-07-11",
+    items: [
+      "GPT-5.6 is fully unlocked. I fixed the hidden handshake blocking Sol, Terra, and Luna, so every tier now answers the moment you pick it.",
+    ],
+  },
+  {
+    version: "0.15.1",
     date: "2026-07-10",
     items: [
-      "GPT-5.6 Sol, Terra, and Luna now connect cleanly through Codex. I fixed the handshake behind the scenes, so every tier answers the moment you choose it.",
-      "Apps you launch through EZ Coder can now use your microphone for recording and audio testing, so your dev workflow hears exactly what it needs to.",
+      "Apps you launch through GG Coder can finally hear you. I unlocked microphone access for recorders, voice tools, and every other project you run, so testing audio now just works.",
     ],
   },
   {
     version: "0.15.0",
     date: "2026-07-10",
     items: [
-      "Your Claude and Codex limits now live right in the title bar. I built a tiny glowing meter that shows how much of your current window is gone and how long until it resets, so you can keep shipping without surprises.",
-      "Tap the meter and your weekly view slides in instantly. I made it follow the model you are using and disappear when it has nothing useful to say.",
+      "Your `Claude` and `Codex` limits now live in one glowing title-bar meter. It follows the model you are using, shows the current window and reset time, and opens your weekly view with one tap.",
     ],
   },
   {
@@ -135,8 +712,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.14.16",
     date: "2026-07-10",
     items: [
-      "GPT-5.6 is here and ready to go. I added all three tiers, Sol, Terra, and Luna, straight from OpenAI's latest Codex catalog, so you can pick the exact balance of power and speed your task needs. Sol is the frontier heavyweight, Terra is your daily driver, and Luna is the fast and affordable one.",
-      "Older OpenAI models have been retired. GPT-5.4, 5.4 Mini, and 5.3 Codex are gone, making room for the new 5.6 family and keeping your model picker clean.",
+      "`GPT-5.6` is here in all three tiers: `Sol` is the frontier heavyweight, `Terra` is your daily driver, and `Luna` is fast and affordable. I retired the older OpenAI lineup so the model picker stays clean.",
       "Error messages finally speak app, not terminal. Every hint now tells you to use the model selector or compact button instead of referencing slash commands that only exist in the CLI.",
     ],
   },
@@ -145,17 +721,14 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-07-09",
     items: [
       "Big sessions no longer hit a wall. When a chat grew too large for the model, the app used to just stop with an error. Now I catch it, quietly trim the history, and keep the conversation rolling so you never lose your flow.",
-      "Error messages read like a human wrote them. Everything now says EZ Coder in plain, friendly language, and points you to the exact button to click instead of some command you'd never type.",
+      "Error messages read like a human wrote them. Everything now says GG Coder in plain, friendly language, and points you to the exact button to click instead of some command you'd never type.",
     ],
   },
   {
     version: "0.14.14",
     date: "2026-07-08",
     items: [
-      "Gemini is back and firing on all cylinders. Google renamed their models and it quietly broke sign-ins for everyone, so I matched every latest name and got you connected again.",
-      "Gemini 3.5 Flash and Gemini 3.1 Pro now show up in the model picker, ready to use the moment your account has them.",
-      "Model names read like actual names now. The picker and footer say Gemini 3.5 Flash instead of some cryptic code, so you always know exactly what you're running.",
-      "If your Google account can't reach a model, I now tell you why in plain English and point you straight to one that works, instead of dumping a scary error at you.",
+      "`Gemini` is back and firing on all cylinders. I repaired sign-in after Google's model rename, added `Gemini 3.5 Flash` and `Gemini 3.1 Pro`, cleaned up every model name, and made unavailable-model errors point you straight to one that works.",
     ],
   },
   {
@@ -176,8 +749,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.14.11",
     date: "2026-07-07",
     items: [
-      "Kencode search is back. My code search engine that digs through millions of real repositories was silently failing to start inside the app, and every session quietly lost it. I traced it deep into the build pipeline, fixed it at the root, and confirmed live searches flow again.",
-      "I also wired a tripwire into every future build that refuses to ship if this ever breaks again. You get the fix today and the insurance forever.",
+      "`Kencode search` is back. I fixed the silent startup failure, confirmed live searches flow again, and wired a build-time tripwire so this cannot quietly ship broken again.",
     ],
   },
   {
@@ -186,49 +758,43 @@ export const CHANGELOG: ChangelogEntry[] = [
     items: [
       "Edits just got surgical. I taught the agent to pin the exact lines it wants to change with tiny fingerprints instead of retyping your code, so edits land right the first time, burn fewer tokens, and can never scribble over a file that changed under its feet. On repetitive code it now says in 39 tokens what used to take 160.",
       "The agent's terminal grew a memory. Multi-step shell work can now run in one living session where cd, environment variables, and setup carry over between commands. Less repeating itself, more getting things done.",
-      "I benchmarked all of this against a live model before shipping it. Equal or better accuracy, faster on almost every task, cheaper on every one. Receipts, not vibes.",
     ],
   },
   {
     version: "0.14.9",
     date: "2026-07-06",
     items: [
-      "Your session list is yours again. Nolan's silent autopilot reviews were quietly leaving behind a fake 2-message session every few minutes, burying your real work under a wall of clones. I plugged the leak for good, so what you see in the picker is exactly what you built. Nothing else.",
-      "Autopilot got tougher to derail. When Nolan hands EZ Coder the next move, the app now catches his instruction even when he wraps it in chatter, so autopilot keeps rolling instead of stopping to ask you about something it could handle itself.",
-      "I also drilled Nolan on keeping his reviews clean and machine-tight, so autopilot cycles run leaner and stall less.",
+      "Your session list is yours again. Ken's silent autopilot reviews were quietly leaving behind a fake 2-message session every few minutes, burying your real work under a wall of clones. I plugged the leak for good, so what you see in the picker is exactly what you built. Nothing else.",
+      "`Autopilot` got tougher to derail. I made Ken's handoffs land even when they arrive wrapped in chatter, then tightened his reviews so cycles run leaner and stall less.",
     ],
   },
   {
     version: "0.14.8",
     date: "2026-07-05",
     items: [
-      "Your search and tool helpers just went on a diet. Each one used to drag along a chunky launcher that ate around 90 MB for no reason, and with a few windows open that really added up. I taught EZ Coder to run the real thing directly and skip the dead weight, so you get the same power for a fraction of the memory.",
-      "This covers every tool, not just mine. Whatever MCP tools you plug in, they now start lean instead of hauling that extra baggage, so your machine stays snappy no matter how loaded up you get.",
+      "Your search and `MCP` helpers just went on a diet. I removed a launcher that wasted around `90 MB` per tool, so built-in and custom tools now start lean and keep your machine snappy.",
     ],
   },
   {
     version: "0.14.7",
     date: "2026-07-05",
     items: [
-      "Your machine breathes easier now. EZ Coder used to leave stray search and tool helpers running every time you closed a project, and they quietly piled up and ate your memory for days. I taught it to hunt down every one of those leftovers on startup, no matter which tools you plugged in, so your RAM stays yours.",
-      "This works for any tool you add, not just the ones I ship. However exotic your setup gets, EZ Coder now cleans up after itself instead of slowly bogging down your computer in the background.",
-      "Nolan gives sharper advice. He now knows exactly what EZ Coder can do under the hood, so his guidance is grounded in the real tools at hand instead of guesses, and his handoffs back to the agent come through clean.",
+      "Your machine breathes easier now. `GG Coder` hunts down leftover built-in and custom tool helpers on startup, so closed projects stop quietly eating your memory for days.",
+      "Ken gives sharper advice. He now knows exactly what GG Coder can do under the hood, so his guidance is grounded in the real tools at hand instead of guesses, and his handoffs back to the agent come through clean.",
     ],
   },
   {
     version: "0.14.6",
     date: "2026-07-05",
     items: [
-      "Autopilot just got a lot more independent. When Nolan sends EZ Coder back in, it now knows nobody is looking over its shoulder, so it proves its own work before calling it done instead of stopping to check with a human who isn't there.",
-      "Fewer pointless pauses. EZ Coder stops asking permission for the obvious next step when it's already clear what you want, so autopilot keeps moving and finishes more in one run.",
+      "`Autopilot` just got more independent. GG Coder now proves its own work and handles the obvious safe next step without asking for a human who is not there, so more jobs finish in one run.",
     ],
   },
   {
     version: "0.14.5",
     date: "2026-07-04",
     items: [
-      "Your research helpers just got faster and cheaper. When EZ Coder sends a scout off to read your code or dig through the project, I now put it on the quickest model for the job. Answers come back sooner and cost you less.",
-      "No tradeoff on quality. The helpers that actually change your code still run on the big brain, so your edits stay sharp while the quick lookups fly.",
+      "Your research helpers just got faster and cheaper. I route quick lookups to the fastest model while code-changing helpers keep the big brain, so answers fly without trading away edit quality.",
     ],
   },
   {
@@ -246,17 +812,14 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Big tool catalogs no longer slow down your first reply. I keep the essentials ready, then pull in the heavy stuff only when you actually need it.",
       "Connection hiccups feel way less annoying now. If a reply gets cut off after real progress, I keep what you already saw and continue instead of making you watch the same answer again.",
       "Streaming feels calmer and lighter. I tuned the live text updates so long answers stay smooth without making your machine work so hard.",
-      "I trimmed the instruction stack again. EZ Coder spends less attention on boilerplate and more attention on your code.",
+      "I trimmed the instruction stack again. GG Coder spends less attention on boilerplate and more attention on your code.",
     ],
   },
   {
     version: "0.14.2",
     date: "2026-07-03",
     items: [
-      "Reopening a session now looks exactly like you never left. I rebuilt the whole resume path so every bubble, label, and highlight comes back precisely the way you saw it live.",
-      "No more ghost messages. Old sessions sometimes piled duplicate all-clear notes from me at the bottom, and I hunted every last one down.",
-      "Messages you sent mid-run come back clean too. The internal plumbing that used to leak into reopened chats is gone for good.",
-      "Plan banners, task headers, and error details now survive a restart, so the story of what happened in a session stays complete forever.",
+      "Reopening a session now looks exactly like you never left. Every bubble, label, highlight, queued message, plan banner, task header, and error detail comes back clean, with ghost messages and leaked internals gone for good.",
     ],
   },
   {
@@ -270,20 +833,15 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.14.0",
     date: "2026-07-03",
     items: [
-      "Autopilot can handle plans on its own now. When EZ Coder drafts a solid plan, I review it, approve it, and kick off the build without making you babysit the button.",
-      "Bad plans get bounced back cleanly. I send EZ Coder the exact revision it needs, then review the new plan again until it is ready to ship.",
-      "Plan popups stay out of your way when Autopilot is on. You still get the normal review screen when you are driving manually, but when I am on watch I keep the flow moving.",
-      "I got better at spotting fake blockers. If EZ Coder asks permission for safe work that is already implied by your request, I tell it to keep going instead of dragging you back in.",
+      "`Autopilot` can handle plans on its own now. I review, approve, revise, and launch them without making you babysit a popup, while manual mode keeps the normal review screen.",
+      "I got better at spotting fake blockers. If GG Coder asks permission for safe work that is already implied by your request, I tell it to keep going instead of dragging you back in.",
     ],
   },
   {
     version: "0.13.0",
     date: "2026-07-03",
     items: [
-      "Coding just became a game. I now award you XP for every bit of real work you ship, and you climb through ranks as you go. Check your shiny new rank badge right on the home screen.",
-      "Open your Scorecard to see your level, your progress bar, and how close you are to the next rank. Your grind finally has a scoreboard.",
-      "Level ups come with a proper celebration: sound, confetti, the works. You earned it, so I make sure it feels like it.",
-      "Your XP is built from your actual git history, so the progress you already made counts from day one. No starting from zero.",
+      "Coding just became a game. Real work earns `XP` from your existing git history, the `Scorecard` shows your climb, and every level-up lands with sound and confetti.",
     ],
   },
   {
@@ -307,9 +865,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.12.2",
     date: "2026-07-02",
     items: [
-      "Autopilot is calmer and harder to fool now. I judge EZ Coder against your original request, not my own follow-up nudges, so I stop inventing extra work after the job is already done.",
-      "When EZ Coder asks you a question or puts a plan in front of you, I keep my hands off the wheel. I will call for you instead of answering on your behalf.",
-      "Nolan gets his own model switch. Pin me to a different brain or let me follow EZ Coder, right from the footer.",
+      "`Autopilot` is calmer and harder to fool. I judge GG Coder against your original request, stop inventing work after the job is done, and call you in instead of answering real questions or plan decisions on your behalf.",
+      "Ken gets his own model switch. Pin me to a different brain or let me follow GG Coder, right from the footer.",
       "Queued messages land cleaner now. If you send one while I am reviewing and there is no live run to steer, I treat it as a fresh turn instead of mixing it into the next unrelated job.",
     ],
   },
@@ -317,17 +874,14 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.12.1",
     date: "2026-07-02",
     items: [
-      "Squashed a bug in the brand new KEN IS ON banner: in a scrolled-down session it was flashing up above your chat instead of right over it. I pinned it to what you are actually looking at, every time, no matter how deep you have scrolled.",
-      "Also polished off a hairline sliver of chat text that could peek through the top edge of the banner. Full coverage now, clean every time.",
+      "The `KEN IS ON` banner now lands over exactly what you are viewing, even deep in a session, with full edge-to-edge coverage and no chat text peeking through.",
     ],
   },
   {
     version: "0.12.0",
     date: "2026-07-02",
     items: [
-      'Autopilot got sharper. I now know the difference between real work and a quick hello. Small talk, a plain answer, or a routine commit and push no longer get a pointless "all clear" from me, I just stay quiet and let you keep moving.',
-      "Flipping Autopilot mid-run is off the table now, and that is a good thing. The switch locks while I am working or reviewing so you never yank the rug out from under your own build.",
-      "You'll know exactly when I'm watching. A bold KEN IS ON banner flashes across the chat the moment you flip Autopilot on, and KEN IS OFF when you pull me back, so there is never any doubt whose eyes are on the work.",
+      "`Autopilot` got sharper and clearer. I skip pointless reviews for small talk and routine chores, lock the switch during active work, and flash `KEN IS ON` or `KEN IS OFF` so you always know who is watching.",
     ],
   },
   {
@@ -342,35 +896,31 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.11.0",
     date: "2026-07-02",
     items: [
-      "Meet Autopilot. Flip it on and I stay in the room after every job, reviewing what EZ Coder just built the moment it finishes. If something is broken or half-done I send it right back in with a sharp fix, if it nailed it I call it clear, and if it is a real judgment call I tap you on the shoulder. You get a second set of eyes on every single turn without lifting a finger.",
-      "You can watch me work now too. While I review, a little Nolan line lights up in the status bar, and my verdict lands right in the chat like I am talking straight to you. No mystery, no black box.",
+      "Meet `Autopilot`. I review every finished job, send broken work straight back with a sharp fix, call clear work done, and tap you for real judgment calls, all while a live Ken status and in-chat verdict show exactly what I am doing.",
       "Your workspace tidies itself. The second a task is done it slips out of your Tasks list on its own, so all you ever see is what still needs doing. No more hunting for the checkbox.",
-      "Un-minimizing one window now brings the whole crew back. Click a single EZ Coder window back up and its siblings rise with it, so you are never left digging through the dock for the rest.",
+      "Un-minimizing one window now brings the whole crew back. Click a single GG Coder window back up and its siblings rise with it, so you are never left digging through the dock for the rest.",
     ],
   },
   {
     version: "0.10.3",
     date: "2026-07-02",
     items: [
-      "Your helper agents just got a lot more capable. I gave them room to run five times longer, so instead of quitting halfway through a real job they now see it all the way to the finish. And if one ever does run out of road, it tells you straight up instead of handing back a mysterious blank.",
-      "Read-only agents are now genuinely read-only. When I send a scout out to explore your code, it physically cannot touch or change a thing. Peace of mind baked right in.",
-      "The tips EZ Coder gives you now actually match the app. No more being told to press some terminal shortcut that does not exist here. It points you at the real buttons you can see and click.",
+      "Your helper agents just got more capable and safer. They can run `5 times` longer, report clearly if they hit a limit, and read-only scouts physically cannot change your code.",
+      "The tips GG Coder gives you now actually match the app. No more being told to press some terminal shortcut that does not exist here. It points you at the real buttons you can see and click.",
     ],
   },
   {
     version: "0.10.2",
     date: "2026-07-01",
     items: [
-      "Anthropic occasionally drops a tool call mid-stream with nothing in it, and it used to make EZ Coder throw up its hands and blame itself. I taught it to recognize that exact glitch and just quietly pick the work back up, so a rare hiccup doesn't kill your session anymore.",
-      "When something really does go wrong, I fixed the message so it points at the actual culprit instead of guessing it's a EZ Coder bug. Clearer errors, less confusion about who to blame.",
+      "Rare empty tool calls from `Anthropic` no longer kill your session. GG Coder quietly picks the work back up, and real failures now name the actual culprit instead of blaming itself.",
     ],
   },
   {
     version: "0.10.1",
     date: "2026-07-01",
     items: [
-      "Big sessions on GPT-5.5 just got sturdier. I fixed a bug where long chats could blow past the real context limit right after a compaction and choke with a context-window error. Now I always leave enough headroom, so those marathon sessions keep running instead of stalling out.",
-      "The context meter in the footer is honest now too. It reads the real window for however you're connected, so the percentage you see actually means something.",
+      "Big sessions on `GPT-5.5` just got sturdier. Compaction now leaves the right headroom, and the footer reads the real context window for your connection, so marathon chats keep running with an honest meter.",
     ],
   },
   {
@@ -385,8 +935,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.9.0",
     date: "2026-07-01",
     items: [
-      "Xiaomi just got a turbo button. MiMo-V2.5-Pro-UltraSpeed is in the model picker now, built for when you want answers fast and don't mind paying a bit more for the speed.",
-      "Connecting Xiaomi now gives you a real choice. Pick Token Plan or API Credits right in the login screen, and I'll route every MiMo model to whichever one you've actually got set up. No more guessing which key goes where.",
+      "Xiaomi just got a turbo button. `MiMo-V2.5-Pro-UltraSpeed` is in the picker, and login now lets you choose `Token Plan` or `API Credits` so every MiMo model uses the right connection automatically.",
     ],
   },
   {
@@ -401,26 +950,21 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.7.2",
     date: "2026-06-30",
     items: [
-      "EZ Coder just got faster at the boring part. When it needs to read a few files or search around, it now grabs them all at once instead of one at a time. Less waiting on every step, more time actually building.",
+      "GG Coder just got faster at the boring part. When it needs to read a few files or search around, it now grabs them all at once instead of one at a time. Less waiting on every step, more time actually building.",
     ],
   },
   {
     version: "0.7.1",
     date: "2026-06-30",
     items: [
-      "I made @Nolan much easier to remember right when you are about to type. The input now quietly rotates in helpful Nolan hints, then shuffles into place instead of snapping.",
-      "Nolan now follows your model switch. Pick a new model and @Nolan uses it too, so his advice comes from the same brain you chose for the main agent.",
+      "`@Ken` is easier to remember and stays in sync. Helpful hints rotate into the input, and every model switch carries over so his advice comes from the same brain you chose for GG Coder.",
     ],
   },
   {
     version: "0.7.0",
     date: "2026-06-30",
     items: [
-      "Say hey to Nolan. I put myself right inside the app as your mentor. Type @Nolan and I'll tell you what to build next, call out when something is off, and hand you the exact prompt to run. I am not the one writing the code, I am the one keeping you on the rails.",
-      "I do not guess and I do not just nod along. When I size up your code or a plan I actually go check it. I search real shipping repos and read the live docs before I answer, and if something smells unverified I dig in and tell you what I found.",
-      "I have taste and I am hard on tools. Ask me what to use and I will not parrot whatever is trendy. I research what is actually good right now and steer you to the lean pick that fits your project, not the bloated mainstream one.",
-      "Every prompt I write comes with a Send to EZ Coder button. One click and it runs. No copy paste, no fuss. I keep it one focused step at a time so nothing snowballs into a mess.",
-      "Our chats stick around. Close the app, come back later, and my advice plus everything you sent is right where you left it.",
+      "Say hey to `@Ken`, your research-first mentor inside the app. I check real code and live docs, challenge shaky plans, recommend tools with taste, turn advice into one-click `Send to GG Coder` prompts, and keep our chats waiting for you after a restart.",
     ],
   },
   {
@@ -464,8 +1008,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.5.1",
     date: "2026-06-27",
     items: [
-      "Squashed a nasty one. On some Macs, clicking Enhance could black out the whole app. I tracked it down and killed it for good, so the screen stays rock solid every single time.",
-      "The Enhance button found its home. It now rides the top edge of your chat box and sticks around the moment you start typing, gliding in and out smooth as glass instead of crowding your words.",
+      "`Enhance` is rock solid and right where it belongs. I killed the Mac blackout bug and pinned the button to your chat box, where it glides in smoothly without crowding your words.",
     ],
   },
   {
@@ -480,8 +1023,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.4.1",
     date: "2026-06-24",
     items: [
-      "The Prompt Enhancer now glides in glassy-smooth. I hunted down the split-second flash on handoff and erased it. Pure silk.",
-      "Your input gently dims while the enhancer works its magic, so you always know exactly when it's cooking.",
+      "The `Prompt Enhancer` now glides in glassy-smooth. I erased the handoff flash and gently dim the input while it works, so every transition feels deliberate. Pure silk.",
     ],
   },
   {
@@ -513,8 +1055,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: "0.2.0",
     date: "2026-06-14",
     items: [
-      "Fresh AI firepower: the Sakana Fugu and Fugu Ultra models are now one tap away in the model menu.",
-      "More creative range under the hood means more ways to get exactly the answer you're chasing.",
+      "Fresh AI firepower: `Sakana Fugu` and `Fugu Ultra` are now one tap away, giving you more creative range for the exact answer you are chasing.",
     ],
   },
 ];

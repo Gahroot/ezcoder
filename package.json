@@ -6,12 +6,11 @@
   "scripts": {
     "build": "pnpm -r build",
     "check": "pnpm -r check",
-    "lint": "eslint 'packages/*/src/**/*.{ts,tsx}' && pnpm --filter matey lint && pnpm --filter ezcoder-app lint",
-    "lint:fix": "eslint 'packages/*/src/**/*.{ts,tsx}' --fix && pnpm --filter matey lint:fix && pnpm --filter ezcoder-app lint:fix",
-    "format": "prettier --write 'packages/*/src/**/*.{ts,tsx}' 'Matey/**/*.{ts,tsx,css,html,json,md,yml}' && pnpm --filter ezcoder-app format",
-    "format:check": "prettier --check 'packages/*/src/**/*.{ts,tsx}' 'Matey/**/*.{ts,tsx,css,html,json,md,yml}' && pnpm --filter ezcoder-app format:check",
+    "lint": "eslint 'packages/*/src/**/*.{ts,tsx}' && pnpm --filter ezcoder-app lint",
+    "lint:fix": "eslint 'packages/*/src/**/*.{ts,tsx}' --fix && pnpm --filter ezcoder-app lint:fix",
+    "format": "prettier --write 'packages/*/src/**/*.{ts,tsx}' && pnpm --filter ezcoder-app format",
+    "format:check": "prettier --check 'packages/*/src/**/*.{ts,tsx}' && pnpm --filter ezcoder-app format:check",
     "test": "pnpm -r test",
-    "bench": "pnpm build && npx tsx benchmarks/run-comparison.ts",
     "prepare": "pnpm build"
   },
   "devDependencies": {
