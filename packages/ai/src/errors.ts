@@ -1,5 +1,5 @@
 /**
- * Error model for gg-ai and downstream consumers.
+ * Error model for @prestyj/ai and downstream consumers.
  *
  * Every error users see should answer one question: "is this me or them?"
  * That answer drives whether they retry, switch model, log in, or report a
@@ -163,7 +163,7 @@ function providerDisplayName(provider: string): string {
  * transient per-minute throttle)? These don't clear with a quick retry — the
  * user has to wait for the window to reset — so callers must surface them as a
  * hard stop, not silently retry for minutes. Detected from the canonical
- * "usage limit reached" message gg-ai stamps onto the ProviderError.
+ * "usage limit reached" message @prestyj/ai stamps onto the ProviderError.
  */
 export function isUsageLimitError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;

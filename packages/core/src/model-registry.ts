@@ -34,7 +34,7 @@ export interface ModelInfo {
    * The top reasoning tier this model genuinely uses. Used when thinking is
    * enabled to pick the strongest setting per model:
    *   - OpenAI GPT-5.6-era (Sol/Terra/Luna): `max` (the 5.6 ladder adds `max`
-   *     and `ultra`; gg-ai caps at `max` — `ultra` needs a ThinkingLevel bump)
+   *     and `ultra`; @prestyj/ai caps at `max` — `ultra` needs a ThinkingLevel bump)
    *   - OpenAI GPT-5.5-era: `xhigh`
    *   - OpenAI Pro/Codex/old: clamped to what the model accepts
    *   - Claude Fable 5 / Mythos 5, Opus 5 and Sonnet 5: `max` (Fable 5 /
@@ -288,7 +288,7 @@ export const MODELS: ModelInfo[] = [
   {
     // Gemini 3.1 Pro is public preview — gated behind Code Assist preview
     // enablement, so free/personal OAuth accounts 404 on it (see
-    // ACCOUNT_GATED_MODELS in gg-ai's gemini provider).
+    // ACCOUNT_GATED_MODELS in @prestyj/ai's gemini provider).
     id: "gemini-3.1-pro-preview",
     name: "Gemini 3.1 Pro (Preview)",
     provider: "gemini",

@@ -12,8 +12,8 @@ import { isTransportFailure } from "./agent-loop.js";
  * every other transient transport failure. The Anthropic client is built with
  * `maxRetries: 0`, so the agent loop is the only retry layer.
  *
- * The error is replicated structurally rather than imported: gg-agent depends
- * only on gg-ai and zod, and pulling a provider SDK in as a devDependency to
+ * The error is replicated structurally rather than imported: @prestyj/agent depends
+ * only on @prestyj/ai and zod, and pulling a provider SDK in as a devDependency to
  * construct one object is not worth the coupling. Values below are copied from
  * the real classes (@anthropic-ai/sdk 0.94.0 core/error.js:86, openai 6.34.0
  * core/error.js:88).

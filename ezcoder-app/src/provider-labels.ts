@@ -1,7 +1,7 @@
 /**
  * Provider id → display label for grouping headings.
  *
- * Keys match `ModelInfo.provider` in gg-core's model registry, which is the same
+ * Keys match `ModelInfo.provider` in @prestyj/core's model registry, which is the same
  * id set as `AuthProviderMeta.value` in ezcoder's `core/auth-providers.ts` (and
  * therefore `PROVIDER_LOGOS`) — so the model picker's group names read exactly
  * like the login hub's tiles.

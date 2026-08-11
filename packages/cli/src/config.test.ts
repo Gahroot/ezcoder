@@ -90,7 +90,7 @@ describe("loadSavedSettings", () => {
 // cleans up the old copies on next launch — but only when the file is untouched.
 //
 // These call seedDefaultAgents(dir) directly: getAppPaths() resolves
-// os.homedir() inside gg-core's prebuilt dist, which vitest does not transform,
+// os.homedir() inside @prestyj/core's prebuilt dist, which vitest does not transform,
 // so going via ensureAppDirs would ignore a homedir spy and mutate the real
 // ~/.ezcoder.
 describe("seedDefaultAgents shadowing-agent cleanup", () => {

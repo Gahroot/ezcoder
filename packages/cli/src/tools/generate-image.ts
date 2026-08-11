@@ -7,7 +7,7 @@ import { downscaleForPreview, shrinkToFit } from "../utils/image.js";
 
 /**
  * Structural subset of AuthStorage the tool needs at execute time. Using a
- * structural type avoids importing the full class (and its gg-core dependency
+ * structural type avoids importing the full class (and its @prestyj/core dependency
  * chain) into the tool module — the caller satisfies this with its real
  * AuthStorage instance.
  */

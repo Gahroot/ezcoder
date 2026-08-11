@@ -1,10 +1,10 @@
 # @prestyj/voice
 
-Provider-agnostic realtime voice orchestration for GG tools, agents, and remote coding sessions.
+Provider-agnostic realtime voice orchestration for EZ tools, agents, and remote coding sessions.
 
 ## Architecture
 
-`gg-voice` keeps the package root mobile-safe: it exports normalized voice session types, tool conversion helpers, in-memory tests, and platform interfaces without importing Node-only `ezcoder` internals. Provider and bridge integrations live behind subpath exports so Expo, web, desktop, and Node relays can choose only the pieces they need.
+`@prestyj/voice` keeps the package root mobile-safe: it exports normalized voice session types, tool conversion helpers, in-memory tests, and platform interfaces without importing Node-only `@prestyj/cli` internals. Provider and bridge integrations live behind subpath exports so Expo, web, desktop, and Node relays can choose only the pieces they need.
 
 Core concepts:
 
@@ -12,7 +12,7 @@ Core concepts:
 - `VoiceTransport`: injectable WebRTC, WebSocket, or custom transport.
 - `VoiceEvent`: normalized session, transcript, text, audio, tool, error, and close events.
 - `VoiceTool`: realtime-safe tool contract with optional confirmation policies.
-- `VoiceBridgeCommand` / `VoiceBridgeEvent`: small control surface for GG remotes.
+- `VoiceBridgeCommand` / `VoiceBridgeEvent`: small control surface for EZ remotes.
 
 ## Provider support
 
@@ -34,7 +34,7 @@ This route is intentionally marked experimental because Codex backend request sh
 
 ## Tools
 
-Convert existing GG tools into realtime function tools:
+Convert existing EZ tools into realtime function tools:
 
 ```ts
 import { agentToolToVoiceTool, voiceToolToRealtimeFunctionTool } from "@prestyj/voice";
@@ -56,7 +56,7 @@ await session.sendToolResult(result);
 
 Use confirmation policies such as `"always"` or `"destructive"` for high-risk voice actions.
 
-## GG bridges
+## EZ bridges
 
 `@prestyj/voice/bridges/ezcoder-rpc` maps the voice bridge command surface to existing `ezcoder rpc` NDJSON commands such as `prompt`, `get_state`, `abort`, `new_session`, and `switch_model`.
 
@@ -74,6 +74,6 @@ Recommended first path:
 
 1. A trusted backend uses an OpenAI API key to create a Realtime client secret or call session.
 2. The mobile/web app uses the ephemeral credential or backend SDP exchange.
-3. The app sends local device tools and remote GG bridge tools through `gg-voice`.
+3. The app sends local device tools and remote EZ bridge tools through `@prestyj/voice`.
 
 Experimental Codex auth should remain behind explicit user opt-in and separate imports.

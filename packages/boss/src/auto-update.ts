@@ -1,5 +1,5 @@
 // The update engine now lives in @prestyj/core. This module pins it to
-// gg-boss's npm package + its own state file under ~/.ezcoder/boss/ so it can't
+// ezboss's npm package + its own state file under ~/.ezcoder/boss/ so it can't
 // fight with ezcoder's checker, and supplies the ezboss restart wording.
 import path from "node:path";
 import os from "node:os";

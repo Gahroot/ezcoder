@@ -622,7 +622,7 @@ describe("OpenAI transform", () => {
 });
 
 describe("toAnthropicThinking", () => {
-  // Opus 4.8 is no longer in ezcoder's model picker, but gg-ai is a standalone
+  // Opus 4.8 is no longer in ezcoder's model picker, but @prestyj/ai is a standalone
   // library and Anthropic still serves that ID — keep the wire format correct.
   it("passes Anthropic adaptive effort levels through for Opus 5 (and legacy 4.8)", () => {
     for (const model of ["claude-opus-5", "claude-opus-4-8"]) {

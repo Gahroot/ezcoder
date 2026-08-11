@@ -21,7 +21,7 @@ const KIMI_CODE_USER_AGENT = `kimi-code-cli/${process.env.KIMI_CODE_VERSION ?? "
 
 /**
  * Grok CLI chat proxy — the endpoint a Grok subscription OAuth token is valid
- * against (gg-core's `grokCliBaseUrl()` persists it on the credential). Matched
+ * against (@prestyj/core's `grokCliBaseUrl()` persists it on the credential). Matched
  * by host so an env override of that base URL still gets the identity headers.
  */
 const GROK_CLI_PROXY_HOST = "cli-chat-proxy.grok.com";
@@ -31,7 +31,7 @@ const GROK_CLI_PROXY_HOST = "cli-chat-proxy.grok.com";
  * no version it answers "Your Grok CLI version (none) is outdated. Please update
  * to version 0.1.202 or later", so the value must look like a real Grok CLI build
  * (they ship 0.1.x/0.2.x) rather than a placeholder. Overridable via
- * GROK_CLI_VERSION. Keep in sync with gg-core's `grokCliHeaders()`, the
+ * GROK_CLI_VERSION. Keep in sync with @prestyj/core's `grokCliHeaders()`, the
  * login-side source of truth.
  */
 const GROK_CLI_VERSION = process.env.GROK_CLI_VERSION ?? "0.2.101";
@@ -179,7 +179,7 @@ providerRegistry.register("minimax", {
  * Local model ids are namespaced by endpoint (`local/<endpointId>/<rawId>`) so
  * the same model name served by two machines stays distinct in the registry.
  * The server only knows the raw id, so strip the routing prefix here — at the
- * one place that talks to the wire. Counterpart to gg-core's
+ * one place that talks to the wire. Counterpart to @prestyj/core's
  * `formatLocalModelId`/`parseLocalModelId`.
  */
 export function localWireModelId(id: string): string {

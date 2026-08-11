@@ -2395,7 +2395,7 @@ struct ProviderMeta {
     /// Supported auth methods, e.g. `["oauth"]`, `["apikey"]`, or both.
     methods: &'static [&'static str],
     /// Distinct auth.json key holding subscription OAuth credentials, for the
-    /// providers that can hold OAuth *and* an API key at once. Mirrors gg-core's
+    /// providers that can hold OAuth *and* an API key at once. Mirrors @prestyj/core's
     /// DUAL_AUTH_PROVIDERS — OAuth-only providers store under `value` itself and
     /// leave this `None`.
     oauth_key: Option<&'static str>,
@@ -2743,7 +2743,7 @@ fn app_auth_status() -> serde_json::Value {
                 obj["methodGuidance"] = serde_json::json!(guidance);
             }
             // Only a provider with two methods has a priority to explain. Keep the
-            // wording in sync with gg-core's DUAL_AUTH_PROVIDERS resolution order.
+            // wording in sync with @prestyj/core's DUAL_AUTH_PROVIDERS resolution order.
             if let (Some(oauth_label), Some(key_label)) = (p.oauth_label, p.api_key_label) {
                 obj["priorityNote"] = serde_json::json!(format!(
                     "With both connected, {oauth_label} is used first. The {key_label} API key takes over automatically while subscription usage is out (or if the OAuth login expires), then {oauth_label} resumes on its own."

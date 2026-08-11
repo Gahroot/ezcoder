@@ -122,11 +122,11 @@ async function discoverEzcoderProjects(): Promise<DiscoveredProject[]> {
   // had dozens of session stores.
   const results = await mapConcurrent(entries, async (entry): Promise<DiscoveredProject | null> => {
     const dir = path.join(sessionsDir, entry);
-    const mtime = await maxGgcoderSessionMtime(dir);
+    const mtime = await maxEzcoderSessionMtime(dir);
     if (mtime === null) return null;
 
     const rawCwd =
-      (await readFirstFromGgcoderDir(dir, ezcoderCwdExtractor)) ?? fallbackUnderscoreDecode(entry);
+      (await readFirstFromEzcoderDir(dir, ezcoderCwdExtractor)) ?? fallbackUnderscoreDecode(entry);
     if (!rawCwd) return null;
     // Normalize traversal segments (e.g. an agent launched with cwd
     // `.../src-tauri/../..`) so the basename isn't a stray "..", and drop any
@@ -416,9 +416,9 @@ async function maxJsonlMtime(dir: string): Promise<number | null> {
   return max > 0 ? max : null;
 }
 
-async function maxGgcoderSessionMtime(dir: string): Promise<number | null> {
+async function maxEzcoderSessionMtime(dir: string): Promise<number | null> {
   if (!(await isDirectory(dir))) return null;
-  const files = await collectGgcoderSessionFiles(dir, 2);
+  const files = await collectEzcoderSessionFiles(dir, 2);
   if (files.length === 0) return null;
   return Math.max(...files.map((file) => file.mtime));
 }
@@ -459,7 +459,7 @@ async function collectJsonlFiles(
   }
 }
 
-async function collectGgcoderSessionFiles(
+async function collectEzcoderSessionFiles(
   dir: string,
   maxDepth: number,
 ): Promise<{ path: string; mtime: number }[]> {
@@ -556,11 +556,11 @@ async function readFirstFromJsonlDir(
   return null;
 }
 
-async function readFirstFromGgcoderDir(
+async function readFirstFromEzcoderDir(
   dir: string,
   extractor: LineExtractor,
 ): Promise<string | null> {
-  const files = await collectGgcoderSessionFiles(dir, 2);
+  const files = await collectEzcoderSessionFiles(dir, 2);
   files.sort((a, b) => b.mtime - a.mtime);
   for (const file of files) {
     try {
@@ -687,7 +687,7 @@ export async function listRecentSessions(
   sessionsDir = getAppPaths().sessionsDir,
 ): Promise<RecentSession[]> {
   const dir = path.join(sessionsDir, encodeCwd(cwd));
-  const files = await collectGgcoderSessionFiles(dir, 1);
+  const files = await collectEzcoderSessionFiles(dir, 1);
   if (files.length === 0) return [];
   files.sort((a, b) => b.mtime - a.mtime);
 

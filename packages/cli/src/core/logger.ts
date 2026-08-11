@@ -1,6 +1,6 @@
 // The file-writer logger core (open/log/rotate/close) now lives in
 // @prestyj/core. This module keeps ezcoder's "ezcoder"-branded startup
-// line and the EventBus bridge (`attachToEventBus`), which needs the gg-agent
+// line and the EventBus bridge (`attachToEventBus`), which needs the @prestyj/agent
 // `EventBus` type and therefore must stay out of the UI-free core.
 import { openLog, log, registerLogCleanup } from "@prestyj/core";
 import type { EventBus } from "./event-bus.js";
@@ -11,7 +11,7 @@ type LogLevel = "INFO" | "ERROR" | "WARN";
 
 /**
  * Initialize the debug logger for ezcoder. Opens the shared log file in append
- * mode (via gg-core) and writes a one-time "ezcoder started …" line tagged with
+ * mode (via @prestyj/core) and writes a one-time "ezcoder started …" line tagged with
  * the session id. No-op if already initialized.
  */
 export function initLogger(

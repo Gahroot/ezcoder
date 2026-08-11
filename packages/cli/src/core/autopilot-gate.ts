@@ -106,7 +106,7 @@ export function countAssistantMessages(messages: ReadonlyArray<{ role: string }>
 /** Extract every tool call made by assistant messages from `startIndex`
  *  onward — i.e. the tool calls added during one turn, given the message
  *  array length captured before that turn ran. Used to feed
- *  isMechanicalOnlyTurn without the gate module depending on gg-ai's full
+ *  isMechanicalOnlyTurn without the gate module depending on @prestyj/ai's full
  *  Message type (kept structurally typed so it's easy to unit test). */
 export function extractTurnToolCalls(
   messages: ReadonlyArray<{
@@ -186,7 +186,7 @@ export function shouldStartAutopilotCycle(input: AutopilotGateInput): AutopilotG
 }
 
 /** A tool call made during a turn, as recorded on an assistant message's
- *  content parts. Mirrors gg-ai's `ToolCall` shape minus the fields the gate
+ *  content parts. Mirrors @prestyj/ai's `ToolCall` shape minus the fields the gate
  *  doesn't need (id). */
 export interface TurnToolCall {
   name: string;

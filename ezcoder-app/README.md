@@ -49,7 +49,7 @@ New IPC means a Rust `#[tauri::command]` proxying the sidecar, registered in
 
 ## Rules
 
-- The agent spine (gg-ai → gg-agent → gg-core → `AgentSession`) gets reused **verbatim**.
+- The agent spine (@prestyj/ai → @prestyj/agent → @prestyj/core → `AgentSession`) gets reused **verbatim**.
   Never fork agent logic into the app.
 - App-only stuff (windows, IPC, picker, settings) lives here. Anything provider- or
   agent-coupled stays in its package and the app just consumes it.

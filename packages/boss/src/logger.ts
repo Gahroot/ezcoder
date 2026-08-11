@@ -25,7 +25,7 @@ export function getLogPath(): string {
 }
 
 /**
- * Open the boss log in append mode and write a one-time "gg-boss started …"
+ * Open the boss log in append mode and write a one-time "ezboss started …"
  * line. Idempotent — re-calling once open is a no-op.
  */
 export function initLogger(meta?: {
@@ -37,8 +37,8 @@ export function initLogger(meta?: {
   workerModel?: string;
   projectCount?: number;
 }): void {
-  if (!openLog(getLogPath(), "gg-boss")) return;
-  const parts = ["gg-boss"];
+  if (!openLog(getLogPath(), "ezboss")) return;
+  const parts = ["ezboss"];
   if (meta?.version) parts[0] += ` v${meta.version}`;
   parts.push("started");
   if (meta?.bossProvider) parts.push(`boss=${meta.bossProvider}/${meta.bossModel ?? "?"}`);

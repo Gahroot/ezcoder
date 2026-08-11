@@ -55,19 +55,14 @@ packages/cli/.goal-evidence/
 .ezcoder/ideal-sim/
 packages/cli/ideal-sim/
 
-# prompt-bench scratch sandboxes
-experiments/prompt-bench/.bench-sandbox-*
-
 # Signing key material / personal secrets (never commit)
 *update_key*.rtf
 *.rtf
 *.key
 *.key.pub
 
-# Local agent config and benchmark scratch
-/.gg/
+# Local agent config and package scratch
 /.claude/
-/experiments/bench-mark/
 CLAUDE.md
 packages/*/.bench-*.mjs
 

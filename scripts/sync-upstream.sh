@@ -216,6 +216,35 @@ replace_in_tracked_text_files() {
   done <<< "$files"
 }
 
+# Normalize legacy product/package tokens that may survive when upstream prose
+# or identifiers split the basic branding replacements (for example GGCoder or gg-ai).
+# Changelogs remain historical records; generated dist/sidecar files are rebuilt.
+replace_legacy_product_tokens() {
+  local files
+  files=$(git ls-files -- \
+    '*.ts' '*.tsx' '*.json' '*.md' '*.js' '*.jsx' '*.mjs' '*.yaml' '*.yml' '*.toml' \
+    '*.html' '*.css' '*.xml' '*.rs' \
+    ':!**/CHANGELOG.md' ':!dist' ':!**/dist/**' ':!ezcoder-app/src-tauri/sidecar/**' \
+    ':!scripts/sync-upstream.sh')
+
+  while IFS= read -r file; do
+    [[ -f "$file" ]] || continue
+    sed "${SED_INPLACE[@]}" \
+      -e 's|GGCODER_|EZCODER_|g' \
+      -e 's|GGCoder|EZCoder|g' \
+      -e 's|Ggcoder|Ezcoder|g' \
+      -e 's|gg-ai|@prestyj/ai|g' \
+      -e 's|gg-agent|@prestyj/agent|g' \
+      -e 's|gg-core|@prestyj/core|g' \
+      -e 's|gg-boss|ezboss|g' \
+      -e 's|gg-voice|@prestyj/voice|g' \
+      -e 's|GG tools|EZ tools|g' \
+      -e 's|GG remotes|EZ remotes|g' \
+      -e 's|GG bridge|EZ bridge|g' \
+      "$file"
+  done <<< "$files"
+}
+
 # Rename the upstream "@Ken" mentor agent persona to our "@Nolan" persona.
 #
 # This is SEPARATE from the GG→EZ branding sed block because it needs real
@@ -344,6 +373,7 @@ main() {
 
   info "Fixing npm scope and branding..."
   replace_in_tracked_text_files
+  replace_legacy_product_tokens
 
   info "Renaming @Ken mentor agent → @Nolan..."
   rebrand_ken_mentor

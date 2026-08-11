@@ -7,7 +7,7 @@ import type { Writable } from "node:stream";
 import { log } from "./logger.js";
 
 /**
- * Internet radio — stream a free station while you work. Ported from gg-boss's
+ * Internet radio — stream a free station while you work. Ported from ezboss's
  * radio so the ezcoder-app windows offer the same curated, royalty-free, no-API-key
  * streams (SomaFM started in 2000, Radio Paradise in 2006).
  *

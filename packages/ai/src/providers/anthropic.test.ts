@@ -612,8 +612,8 @@ describe("streamAnthropic error normalization", () => {
     expect((error as ProviderError).statusCode).toBeUndefined();
     // The SyntaxError cause is what agent-loop's isMalformedStream() walks to
     // classify this as a retryable transport failure (flips to non-streaming).
-    // Asserting the shape here (rather than importing the gg-agent classifiers,
-    // which sit above gg-ai) keeps the package dependency direction intact.
+    // Asserting the shape here (rather than importing the @prestyj/agent classifiers,
+    // which sit above @prestyj/ai) keeps the package dependency direction intact.
     expect((error as { cause?: unknown }).cause).toBeInstanceOf(SyntaxError);
     expect(((error as { cause?: Error }).cause as Error).name).toBe("SyntaxError");
 

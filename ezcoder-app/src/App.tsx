@@ -241,7 +241,7 @@ export type Item =
   // streamed from the nolan_* SSE events. Never mistaken for EZ Coder.
   | { kind: "nolan"; id: number; text: string }
   | { kind: "info"; id: number; text: string }
-  // Structured error (see gg-ai's formatError): headline always answers "is this
+  // Structured error (see @prestyj/ai's formatError): headline always answers "is this
   // me or them", message is the raw detail (omitted when redundant with the
   // headline), guidance is the action line (retry / switch model / log in /
   // wait until a reset time). `text` is a legacy fallback for older items.
@@ -3099,7 +3099,7 @@ const TranscriptRow = memo(function TranscriptRow({
         </div>
       );
     case "error": {
-      // Structured errors (see gg-ai's formatError) always answer "is this me or
+      // Structured errors (see @prestyj/ai's formatError) always answer "is this me or
       // them" and, for usage-limit stops, when it resets — mirrors the CLI's
       // ErrorRow instead of dumping the raw provider string. `text` is the
       // legacy fallback for items that only ever carried a flat string.

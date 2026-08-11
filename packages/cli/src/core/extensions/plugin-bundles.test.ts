@@ -119,7 +119,7 @@ describe("plugin bundles", () => {
     await fs.writeFile(
       artifact,
       JSON.stringify({
-        format: "gg-agent-plugin",
+        format: "@prestyj/agent-plugin",
         schemaVersion: 1,
         manifest,
         files: [

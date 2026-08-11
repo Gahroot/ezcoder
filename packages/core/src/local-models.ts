@@ -3,7 +3,7 @@
  * and any other OpenAI-compatible server the user points us at.
  *
  * Everything rides the OpenAI-compatible `/v1` transport (see the `local`
- * provider in gg-ai's stream.ts); the only per-server difference is where the
+ * provider in @prestyj/ai's stream.ts); the only per-server difference is where the
  * *capabilities* come from, because `GET /v1/models` reports nothing useful:
  *
  *   - Ollama    → `POST /api/show`      → `capabilities[]` + `model_info["<arch>.context_length"]`

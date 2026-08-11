@@ -21,7 +21,7 @@
  * bills against the user's SuperGrok / X Premium subscription instead of metered
  * API credits. We persist that base URL on the credential so the runtime routes
  * there automatically; `grokCliHeaders()` supplies the client identity the proxy
- * requires (attached centrally in gg-ai's `xai` transport).
+ * requires (attached centrally in @prestyj/ai's `xai` transport).
  *
  * Caveats worth knowing, both observed in the wild and surfaced to users rather
  * than hidden here:

@@ -1,34 +1,34 @@
 import type { JsonObject, VoiceBridgeCommand, VoiceBridgeEvent, VoiceTool } from "../types.js";
 
-export interface GGCoderRpcMessageSink {
+export interface EZCoderRpcMessageSink {
   send(message: JsonObject, signal?: AbortSignal): Promise<void>;
 }
 
-export interface GGCoderRpcBridgeOptions {
-  readonly sink: GGCoderRpcMessageSink;
+export interface EZCoderRpcBridgeOptions {
+  readonly sink: EZCoderRpcMessageSink;
   readonly idFactory?: () => string;
 }
 
-export interface GGCoderRpcBridge {
+export interface EZCoderRpcBridge {
   send(command: VoiceBridgeCommand, signal?: AbortSignal): Promise<string>;
   toTool(): VoiceTool;
 }
 
-export function createGGCoderRpcBridge(options: GGCoderRpcBridgeOptions): GGCoderRpcBridge {
+export function createEZCoderRpcBridge(options: EZCoderRpcBridgeOptions): EZCoderRpcBridge {
   const idFactory = options.idFactory ?? (() => `ezcoder_${Date.now()}`);
   return {
     async send(command, signal): Promise<string> {
       const id = idFactory();
-      await options.sink.send(toGGCoderRpcCommand(id, command), signal);
+      await options.sink.send(toEZCoderRpcCommand(id, command), signal);
       return id;
     },
     toTool(): VoiceTool {
-      return createSendToGGCoderTool(this);
+      return createSendToEZCoderTool(this);
     },
   };
 }
 
-export function toGGCoderRpcCommand(id: string, command: VoiceBridgeCommand): JsonObject {
+export function toEZCoderRpcCommand(id: string, command: VoiceBridgeCommand): JsonObject {
   switch (command.type) {
     case "prompt":
       return { id, command: "prompt", text: command.text };
@@ -43,11 +43,11 @@ export function toGGCoderRpcCommand(id: string, command: VoiceBridgeCommand): Js
     case "switch_project":
       return { id, command: "prompt", text: `Switch project to ${command.project}` };
     case "list_projects":
-      return { id, command: "prompt", text: "List available GG projects." };
+      return { id, command: "prompt", text: "List available EZ Coder projects." };
   }
 }
 
-export function normalizeGGCoderRpcEvent(message: unknown): VoiceBridgeEvent | null {
+export function normalizeEZCoderRpcEvent(message: unknown): VoiceBridgeEvent | null {
   if (!isJsonObject(message)) {
     return null;
   }
@@ -81,7 +81,7 @@ export function normalizeGGCoderRpcEvent(message: unknown): VoiceBridgeEvent | n
   }
 }
 
-function createSendToGGCoderTool(bridge: GGCoderRpcBridge): VoiceTool {
+function createSendToEZCoderTool(bridge: EZCoderRpcBridge): VoiceTool {
   return {
     name: "send_to_ezcoder",
     description: "Send a prompt or control command to a running ezcoder RPC session.",

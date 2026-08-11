@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import { generatePKCE } from "./pkce.js";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types.js";
 
-const CLIENT_ID_ENV = "GGCODER_GEMINI_OAUTH_CLIENT_ID";
-const CLIENT_SECRET_ENV = "GGCODER_GEMINI_OAUTH_CLIENT_SECRET";
+const CLIENT_ID_ENV = "EZCODER_GEMINI_OAUTH_CLIENT_ID";
+const CLIENT_SECRET_ENV = "EZCODER_GEMINI_OAUTH_CLIENT_SECRET";
 // Public "installed application" OAuth client shipped with the official Gemini CLI.
 // Unlike the OpenAI/Anthropic flows (pure PKCE, no secret), Google's token endpoint
 // requires a client_secret for the installed-app authorization_code / refresh_token

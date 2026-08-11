@@ -434,7 +434,7 @@ function BossAppInner({ boss, resetUI, terminalHistoryPrinter }: BossAppProps): 
   );
 }
 
-// ── Scope pill (gg-boss specific) ──────────────────────────
+// ── Scope pill (ezboss specific) ──────────────────────────
 
 function ScopePill({ scope }: { scope: string }): React.ReactElement {
   const theme = useTheme();

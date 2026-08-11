@@ -8,7 +8,7 @@
  *   POST /prompt   → { text } ; runs AgentSession.prompt(text)
  *   POST /cancel   → aborts the in-flight run
  *
- * The agent spine (gg-ai → gg-agent → gg-core) and every tool are reused
+ * The agent spine (@prestyj/ai → @prestyj/agent → @prestyj/core) and every tool are reused
  * unchanged via AgentSession — this file is only a network seam.
  */
 import http from "node:http";
@@ -1609,7 +1609,7 @@ async function createSession(
   }
 
   // Turn any thrown value into the same clear headline/message/guidance shape
-  // the TUI shows (see gg-ai's formatError) instead of a bare `err.message`, log
+  // the TUI shows (see @prestyj/ai's formatError) instead of a bare `err.message`, log
   // the full detail, and broadcast it under `type` ("error" or "nolan_error").
   // Without this the webview only ever saw a raw provider string like
   // `400 {"code":"400",...}` with no "is this me or them / when does it reset"

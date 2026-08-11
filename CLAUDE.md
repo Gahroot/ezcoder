@@ -1,8 +1,8 @@
 # ezcoder
 
-pnpm monorepo (ESM, TypeScript) for an AI coding-agent toolchain published under the `@prestyj/*` npm scope. Foundation is `@prestyj/ai`; everything LLM-facing builds up `ai → agent → cli → (editor, boss)`. The `pixel-*` family is a separate multi-language error-tracking product. Repo is a fork of `KenKaiii/ezcoder`.
+pnpm monorepo (ESM, TypeScript) for an AI coding-agent toolchain published under the `@prestyj/*` npm scope. Foundation is `@prestyj/ai`; everything LLM-facing builds up `ai → agent → cli → (editor, boss)`. The `pixel-*` family is a separate multi-language error-tracking product. Repo is maintained at `Gahroot/ezcoder`.
 
-Workspace globs (`pnpm-workspace.yaml`): `packages/*`, `Matey`, `experiments/*`.
+Workspace globs (`pnpm-workspace.yaml`): `packages/*`, `ezcoder-app`.
 
 ## Packages (`packages/`)
 
@@ -22,7 +22,7 @@ Workspace globs (`pnpm-workspace.yaml`): `packages/*`, `Matey`, `experiments/*`.
 
 Workspace deps: `agent→ai`; `voice→agent,ai`; `cli→agent,ai,pixel`; `editor→agent,ai,cli`; `boss→agent,ai,cli` (devDeps). `pixel*` ports are independent.
 
-Non-package dirs: `Matey/` (separate Electron + Vite + React app, own tsconfigs/eslint), `ruby/` (Ruby agent stack: `ez_agent`, `ez_agent-rails`, `ez_llm`), `experiments/prompt-bench/`, `scripts/`.
+Non-package dirs: `ruby/` (Ruby agent stack: `ez_agent`, `ez_agent-rails`, `ez_llm`) and `scripts/`.
 
 The MiniMax provider defaults to **MiniMax M3** (1M context, image + video). Video-capable
 models are Gemini 3.x, Kimi K3/K2.7 Code, MiniMax M3, and Xiaomi **MiMo-V2.5** (the omnimodal model;
@@ -93,14 +93,14 @@ projects + their recent 5 sessions, New Project, Settings), `NewProjectModal`,
 ### Error display (ezcoder-app)
 
 ezcoder-app never shows a raw provider string (e.g. `400 {"code":"400",...}`) — every error is run
-through gg-ai's `formatError` server-side before it reaches the webview, mirroring the TUI's
+through @prestyj/ai's `formatError` server-side before it reaches the webview, mirroring the TUI's
 headline/message/guidance split ("is this me or them", and — for usage-limit stops — when it
 resets).
 
 - **Root cause of the raw-JSON blob**: the OpenAI and Anthropic SDKs both build `err.message` by
   `JSON.stringify`-ing the whole error body whenever the provider's response has no usable string
   `message` (e.g. Xiaomi MiMo returning `{"code":"400","message":"","param":"","type":""}`) — so
-  the blob was baked into `err.message` before it ever reached gg-ai's formatting layer.
+  the blob was baked into `err.message` before it ever reached @prestyj/ai's formatting layer.
   `isRawJsonErrorEcho` / `emptyProviderErrorMessage` in `packages/ai/src/errors.ts` detect that
   shape and swap in a clean "provider returned an empty error response" fallback; both provider
   `toError()`s (`providers/openai.ts`, `providers/anthropic.ts`) apply it before constructing the
@@ -122,7 +122,7 @@ resets).
 
 ### Project discovery + app settings
 
-- **Discovery** lives in `packages/cli/src/core/project-discovery.ts` (one home — gg-boss
+- **Discovery** lives in `packages/cli/src/core/project-discovery.ts` (one home — @prestyj/boss
   re-exports it). `discoverProjects()` scans ezcoder + Claude Code + Codex session stores;
   `listRecentSessions(cwd)` fast-paths the newest 5 ezcoder sessions (mtime sort → single-pass
   parse, no full-store scan). Decoded ezcoder paths are `path.resolve`d so traversal segments
@@ -134,7 +134,7 @@ resets).
 
 ### Rules
 
-- The agent spine (gg-ai → gg-agent → gg-core → ezcoder `AgentSession`) is reused **verbatim**.
+- The agent spine (@prestyj/ai → @prestyj/agent → @prestyj/core → @prestyj/cli `AgentSession`) is reused **verbatim**.
   App-only concerns (windows, IPC, picker, settings) live in `ezcoder-app/`; anything provider- or
   agent-coupled stays in its existing home and the app consumes it.
 - New IPC = add a Rust `#[tauri::command]` that proxies the sidecar + register it in
@@ -146,7 +146,7 @@ resets).
 
 TypeScript `^6.0.3` · Vitest `^4.1` · ESLint `^10.2` flat config + typescript-eslint · Prettier `^3.8` (NOT Biome) · Ink 6/7 + React 19. Build: **tsup** for libs (`ai`, `agent`, `boss`, `pixel`, `voice`); raw **tsc** for `cli`, `editor`, `eyes`, `editor-premiere-panel`. No `packageManager` or `engines` field is pinned anywhere. `tsconfig.json`: ES2022, `moduleResolution: bundler`, strict, `verbatimModuleSyntax`. `.prettierrc`: 100 print width, 2-space, double quotes, trailing commas.
 
-Note version skew: Matey pins ESLint `^9.39`; `ink` is **patched** (`patches/`, both 6.8.0 and 7.0.2) — relevant when touching TUI rendering.
+`ink` 7.0.2 is **patched** under `patches/` — relevant when touching TUI rendering.
 
 ## Commands
 
@@ -154,11 +154,11 @@ Note version skew: Matey pins ESLint `^9.39`; `ink` is **patched** (`patches/`, 
 pnpm build        # pnpm -r build
 pnpm check        # pnpm -r check (tsc --noEmit)
 pnpm test         # pnpm -r test (vitest run)
-pnpm lint         # eslint packages/*/src + Matey ; lint:fix to auto-fix
+pnpm lint         # eslint packages/*/src + ezcoder-app ; lint:fix to auto-fix
 pnpm format       # prettier write ; format:check to verify
 ```
 
-Per-package: `pnpm --filter @prestyj/<pkg> <build|check|test>`. `cli` adds `verify:goal:*` scripts (the goal subsystem test suite). `pixel-server` uses `wrangler dev|deploy` + `db:local|db:remote` (D1 migrations). `experiments/prompt-bench`: `pnpm bench`. Root `prepare` runs `pnpm build` on install.
+Per-package: `pnpm --filter @prestyj/<pkg> <build|check|test>`. `cli` adds `verify:goal:*` scripts (the goal subsystem test suite). `pixel-server` uses `wrangler dev|deploy` + `db:local|db:remote` (D1 migrations). Root `prepare` runs `pnpm build` on install.
 
 ## Releasing
 
@@ -166,8 +166,8 @@ There are **two independent release tracks**. The `/release` command (project-lo
 lives in `.ezcoder/commands/release.md`) orchestrates both in the correct order — prefer it
 over running the steps by hand.
 
-- **Track A — npm framework packages** (`@prestyj/ai`, `gg-agent`, `gg-core`,
-  `ezcoder`, `gg-boss`, + dependents) via **Changesets**. This is the CLI engine.
+- **Track A — npm framework packages** (`@prestyj/ai`, `@prestyj/agent`, `@prestyj/core`,
+  `@prestyj/cli`, `@prestyj/boss`, + dependents) via **Changesets**. This is the CLI engine.
 - **Track B — ezcoder-app desktop** (`ezcoder-app`, the `0.1.x` line, `private: true`, never on
   npm). Released by pushing a `v*` git tag, which fires
   `.github/workflows/release.yml` to build/sign/notarize installers and publish a
@@ -176,8 +176,8 @@ over running the steps by hand.
 ### How ezcoder-app consumes the packages
 
 ezcoder-app does **not** depend on the published npm versions. Its CI runs
-`pnpm install --frozen-lockfile` (resolving `workspace:*` locally), builds gg-ai →
-gg-agent → ezcoder **from source**, then bundles `packages/cli/dist/app-sidecar.js`
+`pnpm install --frozen-lockfile` (resolving `workspace:*` locally), builds @prestyj/ai →
+@prestyj/agent → @prestyj/cli **from source**, then bundles `packages/cli/dist/app-sidecar.js`
 into the Tauri app. So a desktop release ships whatever is in the workspace at tag time —
 npm need not be published first for the app to build. Still, publish npm first (Track A
 then Track B) so the shipped CLI and app stay in lockstep.
@@ -244,15 +244,15 @@ If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
 
 ## Architecture notes (project-specific)
 
-- **Auth/config**: OAuth-only (no API keys), PKCE flows in `cli/src/core/oauth/`; tokens + all config under `~/.ezcoder/`. Debug log at `~/.ezcoder/debug.log`, truncated each CLI restart (singleton in `core/logger.ts`).
-- **Goal subsystem** is first-class, split across `cli/src/core/goal-*`, `cli/src/ui/goal-*`, `cli/src/tools/goals.ts`, `scripts/goal-deep-audit/`.
+- **Auth/config**: OAuth and API-key credentials live under `~/.ezcoder/`; PKCE flows are in `cli/src/core/oauth/`. Debug logging and rotation are owned by `core/logger.ts`.
+- **Goal subsystem** is first-class, split across `cli/src/core/goal-*`, `cli/src/ui/goal-*`, and `cli/src/tools/goals.ts`.
 - **MCP** connects **once at startup** (`connectInitialMcpTools` in `cli.ts`) — adding a server mid-session needs a restart. Scope files: global `~/.ezcoder/mcp.json`, project `./.ezcoder/mcp.json`. Project wins on name collision; provider defaults (`kencode-search`) can't be overridden. `add` grammar mirrors `claude mcp add`. WebSocket transport is parsed but rejected; `${VAR}` expansion is not done.
 - **Pixel fix flow** swaps cwd mid-session: `startPixelFix` in `ui/App.tsx` must do all of `process.chdir`, `rebuildToolsForCwd` (tools bake cwd at creation), rebuild the system prompt into `messagesRef.current[0]`, and bump `staticKey` — chdir alone is not enough, and project-scoped MCP servers do NOT follow this swap.
 - **Slash commands** are two systems: UI commands needing React state live inline in `handleSubmit` in `ui/App.tsx`; the rest live in `createBuiltinCommands()` in `core/slash-commands.ts`. `/model`, `/compact`, `/quit` exist in both — the App.tsx handler wins (checked first). Prompt-template commands load from `.ezcoder/commands/`.
 
 ## Upstream sync
 
-`./scripts/sync-upstream.sh` (`--dry-run` to preview) fetches + merges `upstream/main`, then rewrites fork-specific identity: dirs `gg-ai→ai`, `gg-agent→agent`, `ezcoder→cli`; scope `@kenkaiiii→@prestyj`; branding `GG→EZ`, `~/.ezcoder/`, `EZCoderAIError`. On merge conflicts: resolve, `git merge --continue`, re-run the script. The EZ block-art logo in `Banner.tsx`/`cli.ts` can't be auto-detected — verify visually with `ezcoder --help` after syncing.
+`./scripts/sync-upstream.sh` (`--dry-run` to preview) fetches + merges `upstream/main`, then rewrites fork-specific identity: dirs `@prestyj/ai→ai`, `@prestyj/agent→agent`, `ezcoder→cli`; scope `@kenkaiiii→@prestyj`; branding `GG→EZ`, `~/.ezcoder/`, `EZCoderAIError`. On merge conflicts: resolve, `git merge --continue`, re-run the script. The EZ block-art logo in `Banner.tsx`/`cli.ts` can't be auto-detected — verify visually with `ezcoder --help` after syncing.
 
 ## Key Patterns
 
@@ -389,7 +389,7 @@ subdomains only). Two layers, with honestly different strength — see
 When allowlist mode is on, the Environment section lists the allowed hosts so the
 model plans around the policy instead of discovering it through failures.
 
-## Reasoning-field detection (gg-ai)
+## Reasoning-field detection (@prestyj/ai)
 
 OpenAI-compatible endpoints disagree on the thinking field name.
 `providers/reasoning-field.ts` reads the first of `reasoning_content`,
@@ -404,7 +404,7 @@ There is also support for **prompt-template commands** (built-in from `core/prom
 
 ## Local models (Ollama / LM Studio / llama.cpp / vLLM)
 
-A `local` provider (gg-ai) plus runtime discovery (gg-core) puts every model the
+A `local` provider (@prestyj/ai) plus runtime discovery (@prestyj/core) puts every model the
 user already runs into the same picker as the hosted ones. No config file, no CLI
 flag — the four well-known servers are probed on their documented ports, and
 extra endpoints are added from the UI.
@@ -426,7 +426,7 @@ extra endpoints are added from the UI.
   Embedding/rerank models are dropped (LM Studio `type`, or an `embed|rerank` id).
 - **Id scheme** — `local/<endpointId>/<rawModelId>`
   (`formatLocalModelId`/`parseLocalModelId`). The prefix is routing only:
-  gg-ai's `localWireModelId()` strips it in the `local` provider so the server
+  @prestyj/ai's `localWireModelId()` strips it in the `local` provider so the server
   sees its own id. A local stream with no `baseUrl` throws a clear `EZCoderAIError`
   instead of guessing someone else's port.
 - **Auth** — one `local:<endpointId>` entry per endpoint in `~/.ezcoder/auth.json`
@@ -472,9 +472,9 @@ extra endpoints are added from the UI.
   download/load/unload, embeddings, per-model context override, and a CLI screen
   for local endpoints (the CLI still inherits the models via the shared registry).
 
-## Local-backend stream watchdog (gg-agent)
+## Local-backend stream watchdog (@prestyj/agent)
 
-`isLocalBackendUrl` (`gg-agent/src/local-backend.ts`) is true for `localhost`,
+`isLocalBackendUrl` (`packages/agent/src/local-backend.ts`) is true for `localhost`,
 `127.0.0.0/8`, `::1`, `0.0.0.0`, and `*.local`. For those backends the agent loop
 disables the 45 s **first-event** timeout entirely (a llama.cpp/vLLM prefill of a
 large prompt takes minutes; aborting guarantees a cold-prefill retry loop that

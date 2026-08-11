@@ -33,7 +33,7 @@ export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
 const PluginBundleSchema = z
   .object({
-    format: z.literal("gg-agent-plugin"),
+    format: z.literal("@prestyj/agent-plugin"),
     schemaVersion: z.literal(1),
     manifest: PluginManifestSchema,
     files: z
@@ -131,7 +131,7 @@ export async function packPlugin(sourceDir: string, outputFile: string): Promise
   if (totalBytes > MAX_BUNDLE_BYTES) throw new Error("Plugin exceeds the 5 MB bundle limit");
 
   const bundle = {
-    format: "gg-agent-plugin" as const,
+    format: "@prestyj/agent-plugin" as const,
     schemaVersion: 1 as const,
     manifest,
     files: files.map((file) => ({ path: file.path, contentBase64: file.data.toString("base64") })),

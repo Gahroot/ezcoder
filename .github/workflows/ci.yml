@@ -13,7 +13,7 @@ on:
 # We deliberately keep the ez-editor + ez-pixel packages out of the matrix
 # for now — they have heavier native deps (sharp, transformers) that slow CI
 # without buying us much for the framework's release-critical packages
-# (gg-ai, gg-agent, ezcoder, gg-boss).
+# (@prestyj/ai, @prestyj/agent, ezcoder, ezboss).
 
 jobs:
   test:
@@ -41,7 +41,7 @@ jobs:
       # On Windows the default shell is PowerShell, which does not abort a
       # multi-line script when an intermediate command exits non-zero — only the
       # LAST line decides the step's outcome. So `ezcoder test` failing was
-      # silently swallowed by `gg-boss test` succeeding right after it, and the
+      # silently swallowed by `ezboss test` succeeding right after it, and the
       # Windows leg reported SUCCESS while 72 ezcoder tests were failing. Every
       # Windows bug this suite was supposed to catch shipped through that gap.
       # bash's `-e` (set by the runner) makes each line fail the step.

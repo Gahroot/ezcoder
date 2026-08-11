@@ -15,14 +15,14 @@ import { log } from "./logger.js";
  * event instead of cascading up through ezcoder's eventBus.emit and
  * potentially killing the boss process. Worker bus handlers do non-trivial
  * work (state mutations, queue pushes); a bug in any of them must NEVER
- * crash gg-boss because that would take down all 6+ workers in the same
+ * crash ezboss because that would take down all 6+ workers in the same
  * process.
  */
 /**
  * Provider-error classification moved to @prestyj/ai
  * (`classifyProviderError`) so provider-wording changes are a one-file edit
  * next to `formatError` / `isHardBillingMessage`. Re-exported under the
- * historical name so existing callers and tests in gg-boss are unchanged.
+ * historical name so existing callers and tests in ezboss are unchanged.
  */
 export const classifyWorkerError = classifyProviderError;
 

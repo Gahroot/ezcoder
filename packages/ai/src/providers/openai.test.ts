@@ -601,7 +601,7 @@ describe("streamOpenAI silent-partial truncation guard", () => {
 
   // The OpenAI SDK does NOT throw on a clean premature close (the body iterator
   // just ends), so a stream that produced chunks but never a finish_reason must
-  // be caught by gg-ai and surfaced as a retryable 504 -- otherwise
+  // be caught by @prestyj/ai and surfaced as a retryable 504 -- otherwise
   // normalizeOpenAIStopReason(null) silently maps it to "end_turn".
   function truncatedStream(): AsyncIterable<OpenAI.ChatCompletionChunk> {
     return (async function* () {

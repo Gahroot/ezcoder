@@ -16,7 +16,7 @@ import path from "node:path";
 import { createEditTool } from "../src/tools/edit.js";
 
 // Mirror of `normalizeToolResult` in @prestyj/agent agent-loop.ts.
-// Kept inline so this script doesn't need a dist build of gg-agent.
+// Kept inline so this script doesn't need a dist build of @prestyj/agent.
 type ToolReturn = string | { content: string; details?: unknown };
 function normalizeToolResult(raw: ToolReturn): { content: string; details?: unknown } {
   return typeof raw === "string" ? { content: raw } : raw;

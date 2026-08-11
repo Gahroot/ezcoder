@@ -73,7 +73,7 @@ export async function runLogin(): Promise<void> {
     // Dual-auth providers (Moonshot/Kimi, xAI/Grok) accept subscription OAuth
     // *and* a metered API key. Let the user pick; OAuth credentials are stored
     // under a distinct key so both can coexist (OAuth wins at runtime, the key
-    // covers OAuth being out — see gg-core's DUAL_AUTH_PROVIDERS).
+    // covers OAuth being out — see @prestyj/core's DUAL_AUTH_PROVIDERS).
     const dual = dualAuthProvider(provider);
     let useOAuth = false;
     if (dual) {

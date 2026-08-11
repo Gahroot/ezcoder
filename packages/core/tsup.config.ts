@@ -8,6 +8,6 @@ export default defineConfig({
   sourcemap: true,
   // Keep heavy optional, dynamic-imported deps external so they are resolved at
   // runtime by the consuming app (and stay genuinely optional) rather than
-  // bundled into gg-core's published tarball.
+  // bundled into @prestyj/core's published tarball.
   external: ["@huggingface/transformers", "ogg-opus-decoder"],
 });

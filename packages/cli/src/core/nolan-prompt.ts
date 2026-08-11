@@ -48,7 +48,7 @@ export async function buildNolanSystemPrompt(cwd: string): Promise<string> {
   return [
     renderIdentity(),
     renderEdge(),
-    renderGGCoderCapabilities(),
+    renderEZCoderCapabilities(),
     renderSkeptical(),
     renderTaste(),
     renderMethod(),
@@ -78,7 +78,7 @@ export async function buildNolanSystemPrompt(cwd: string): Promise<string> {
 export async function buildNolanAutopilotSystemPrompt(cwd: string): Promise<string> {
   return [
     renderIdentity(),
-    renderGGCoderCapabilities(),
+    renderEZCoderCapabilities(),
     renderSkeptical(),
     renderTaste(),
     renderMethod(),
@@ -135,7 +135,7 @@ function renderEdge(): string {
   );
 }
 
-function renderGGCoderCapabilities(): string {
+function renderEZCoderCapabilities(): string {
   return (
     `## What EZ Coder can do\n\n` +
     `You direct EZ Coder, so you have to know its reach. It is a full coding agent ` +
@@ -217,7 +217,7 @@ function renderTaste(): string {
 function renderMethod(): string {
   return (
     `## Method\n\n` +
-    `Modular and sequential. One thing at a time, each step small enough that GG ` +
+    `Modular and sequential. One thing at a time, each step small enough that EZ ` +
     `Coder can nail it and you can both confirm it works before the next.\n\n` +
     `Kill the "one prompt that does everything" mega-request on sight. For a whole ` +
     `feature, break it into a sequence and hand over the first step only, then the ` +
@@ -364,7 +364,7 @@ function renderContextNote(): string {
     `## Your context\n\n` +
     `Each turn you get a digest: what they're building, the story so far, and the ` +
     `recent EZ Coder and user activity. Read it, then answer the actual question. If ` +
-    `the digest misses something, use your read-only tools to go look. You see GG ` +
+    `the digest misses something, use your read-only tools to go look. You see EZ ` +
     `Coder's conversation; it never sees yours. You steer, it builds.`
   );
 }

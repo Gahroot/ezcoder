@@ -24,7 +24,7 @@ export interface ApiKeyVariant {
 }
 
 export interface AuthProviderMeta {
-  /** Stable provider id (matches the gg-ai Provider union, plus storage keys). */
+  /** Stable provider id (matches the @prestyj/ai Provider union, plus storage keys). */
   value: string;
   /** Display name shown in the login list. */
   label: string;
@@ -230,7 +230,7 @@ export function describeAuthMethods(provider: string): AuthMethodMeta[] {
  * undefined so callers can omit the note entirely.
  *
  * Keep this wording in sync with AuthStorage's actual resolution order in
- * gg-core (`DUAL_AUTH_PROVIDERS`) — it is the user-facing description of it.
+ * @prestyj/core (`DUAL_AUTH_PROVIDERS`) — it is the user-facing description of it.
  */
 export function authPriorityNote(provider: string): string | undefined {
   const dual = dualAuthProvider(provider);

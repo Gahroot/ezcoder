@@ -83,7 +83,7 @@ async function createSession() {
 
 /**
  * System-prompt bytes that carry cache_control. Mirrors the provider split in
- * gg-ai `transform.ts`: everything before the marker, trimmed at the end.
+ * @prestyj/ai `transform.ts`: everything before the marker, trimmed at the end.
  */
 function cachedPrefix(content: string): string {
   const index = content.indexOf(CACHE_MARKER);
