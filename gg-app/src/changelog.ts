@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.46.1",
+    date: "2026-08-11",
+    items: [
+      "You never have to hunt for what I need from you again. When I get stuck on something only you can decide, that one question now lands in its own highlighted quote block at the very end of my reply. One question, never five. If you see that block, you know instantly that I am waiting on you.",
+      "I stopped burying the answer in a wall of text. My replies now lead with what actually happened, cut the reasoning you cannot act on, and never re-explain something I already told you. Same work, a fraction of the reading.",
+      "Jargon now comes with the stakes attached. I still use the real file name, the real command, the real setting, but the first time it shows up I tell you what it actually does or risks in the same breath. You get the precision without needing to know the codebase.",
+    ],
+  },
+  {
     version: "0.46.0",
     date: "2026-08-11",
     items: [
