@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.41.1
+
+### Patch Changes
+
+- Security hardening: authenticate the app sidecar daemon with a per-launch bearer token, drop open CORS, gate repo-controlled `.gg/mcp.json` servers behind a trust setting, and bump vulnerable dependencies.
+  - @kenkaiiii/gg-ai@5.41.1
+  - @kenkaiiii/gg-agent@5.41.1
+  - @kenkaiiii/gg-core@5.41.1
+
 ## 5.41.0
 
 ### Minor Changes
