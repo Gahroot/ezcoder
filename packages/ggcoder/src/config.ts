@@ -39,6 +39,10 @@ export interface SavedSettings {
   lspDiagnostics: boolean;
   /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.gg). */
   allowOutsideWorkspaceWrites: boolean;
+  /** Connect MCP servers declared in the opened repo's .gg/mcp.json. That file
+   *  is repo-controlled, so a malicious repo could run a command the moment
+   *  the project opens. Default false — enable only for repos you trust. */
+  trustProjectMcpServers: boolean;
   /** Max concurrent subagents per resolved child model (1–4). Unset = global limit only. */
   subagentMaxPerModel?: number;
   /** Days to keep session transcripts before startup pruning. 0 disables. */
@@ -80,6 +84,7 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     lspDiagnostics: true,
     allowOutsideWorkspaceWrites: false,
     sessionRetentionDays: 30,
+    trustProjectMcpServers: false,
   };
   try {
     const raw = JSON.parse(fsSync.readFileSync(filePath, "utf-8"));
@@ -125,6 +130,7 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     if (raw.speedProfile === "optimized" || raw.speedProfile === "baseline") {
       result.speedProfile = raw.speedProfile;
     }
+    if (raw.trustProjectMcpServers === true) result.trustProjectMcpServers = true;
   } catch {
     // No settings file or invalid JSON — use defaults
   }

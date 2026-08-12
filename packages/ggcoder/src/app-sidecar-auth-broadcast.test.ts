@@ -25,6 +25,7 @@ let tmpProject: string;
 type Daemon = ChildProcessByStdio<null, Readable, Readable>;
 let daemon: Daemon | undefined;
 let port = 0;
+let token = "";
 const openStreams: http.IncomingMessage[] = [];
 
 /** Start the daemon on an ephemeral port and wait for its listening handshake. */
@@ -46,9 +47,10 @@ async function startDaemon(): Promise<void> {
     const timer = setTimeout(() => reject(new Error(`daemon never listened: ${out}`)), 60_000);
     daemon!.stdout.on("data", (chunk) => {
       out += chunk;
-      const match = /GG_APP_LISTENING (\d+)/.exec(out);
+      const match = /GG_APP_LISTENING (\d+) (\S+)/.exec(out);
       if (match) {
         clearTimeout(timer);
+        token = match[2];
         resolve(Number(match[1]));
       }
     });
@@ -60,7 +62,7 @@ async function startDaemon(): Promise<void> {
 function request(
   method: string,
   urlPath: string,
-  opts: { session?: string; body?: unknown } = {},
+  opts: { session?: string; body?: unknown; token?: string; host?: string } = {},
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const payload = opts.body === undefined ? undefined : JSON.stringify(opts.body);
@@ -73,6 +75,13 @@ function request(
         headers: {
           ...(payload ? { "content-type": "application/json" } : {}),
           ...(opts.session ? { "x-gg-session": opts.session } : {}),
+          // Default to the real token; pass token: "" to exercise the 401 path.
+          ...(opts.token !== undefined
+            ? opts.token
+              ? { "x-gg-token": opts.token }
+              : {}
+            : { "x-gg-token": token }),
+          ...(opts.host ? { host: opts.host } : {}),
         },
       },
       (res) => {
@@ -100,7 +109,13 @@ function openEventStream(session: string): Promise<{ types: string[] }> {
   return new Promise((resolve, reject) => {
     const types: string[] = [];
     const req = http.request(
-      { host: "127.0.0.1", port, path: `/events?session=${session}`, method: "GET" },
+      {
+        host: "127.0.0.1",
+        port,
+        path: `/events?session=${session}`,
+        method: "GET",
+        headers: { "x-gg-token": token },
+      },
       (res) => {
         openStreams.push(res);
         let buf = "";
@@ -175,6 +190,26 @@ afterEach(async () => {
   const removeOptions = { recursive: true, force: true, maxRetries: 10, retryDelay: 100 };
   await fs.rm(tmpHome, removeOptions);
   await fs.rm(tmpProject, removeOptions);
+});
+
+describe("loopback daemon auth", () => {
+  it("rejects requests without the per-launch token", async () => {
+    const res = await request("POST", "/session", {
+      body: { mode: "code", cwd: tmpProject },
+      token: "",
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects requests with a wrong token", async () => {
+    const res = await request("GET", "/progress", { token: "not-the-token" });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects requests with a non-loopback Host (DNS rebinding)", async () => {
+    const res = await request("GET", "/progress", { host: "attacker.example" });
+    expect(res.status).toBe(403);
+  });
 });
 
 describe("connecting a provider", () => {

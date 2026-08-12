@@ -868,7 +868,9 @@ export class AgentSession {
           // GLM not configured — skip Z.AI MCP servers
         }
       }
-      let servers = await getAllMcpServers(this.provider, apiKey, this.cwd);
+      let servers = await getAllMcpServers(this.provider, apiKey, this.cwd, {
+        allowProjectScope: this.settingsManager.get("trustProjectMcpServers"),
+      });
       // Whitelisted allow-listed session: connect ONLY the named servers, never
       // the user's full configured set (which could include mutating tools). The
       // whitelist only restricts in allow-list mode (the documented contract) so
@@ -2141,7 +2143,9 @@ export class AgentSession {
             }
           }
           // Use getAllMcpServers so user-configured servers survive the reconnect.
-          const servers = await getAllMcpServers(this.provider, apiKey, this.cwd);
+          const servers = await getAllMcpServers(this.provider, apiKey, this.cwd, {
+            allowProjectScope: this.settingsManager.get("trustProjectMcpServers"),
+          });
           const mcpTools = await this.mcpManager.connectAll(servers);
           // Drop stale MCP tools from both the live set and deferred catalog before
           // re-adding. Some tools may already have been promoted out of the catalog.

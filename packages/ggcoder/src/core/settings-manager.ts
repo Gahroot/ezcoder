@@ -86,6 +86,11 @@ const SettingsSchema = z.object({
    *  so a legacy server still connects. Off by default: the probe costs a round
    *  trip, and a legacy stdio server that ignores it pays the probe timeout. */
   mcpModernProtocol: z.boolean().default(false),
+  /** Connect MCP servers declared in the OPENED REPO's `.gg/mcp.json`. That
+   *  file is repo-controlled: a malicious repo can declare a stdio `command`
+   *  that executes the moment the project opens. Off by default — enable only
+   *  for repos you trust (global ~/.gg/mcp.json is always connected). */
+  trustProjectMcpServers: z.boolean().default(false),
   /** Max concurrent subagents per resolved child model. Unset = only the
    *  global limit applies. Can only REDUCE concurrency, never raise it. */
   subagentMaxPerModel: z.number().int().min(1).max(4).optional(),
@@ -118,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
   deferredBuiltinTools: true,
   grepUseRipgrep: true,
   mcpModernProtocol: false,
+  trustProjectMcpServers: false,
   sessionRetentionDays: 30,
   speedProfile: "optimized",
 };

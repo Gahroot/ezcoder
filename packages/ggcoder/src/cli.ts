@@ -668,7 +668,9 @@ async function runInkTUI(opts: {
     initialMcpConnectPromise ??= (async () => {
       const providerApiKey =
         provider === "glm" ? credentialsByProvider["glm"]?.accessToken : undefined;
-      const servers = await getAllMcpServers(provider, providerApiKey, cwd);
+      const servers = await getAllMcpServers(provider, providerApiKey, cwd, {
+        allowProjectScope: savedSettings.trustProjectMcpServers,
+      });
       return mcpManager.connectAll(servers);
     })();
     return initialMcpConnectPromise;
