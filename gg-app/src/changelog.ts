@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.47.0",
+    date: "2026-08-12",
+    items: [
+      "Attackers now use AI to find holes in your code at machine speed, so I stopped waiting to be asked about security. The new `bulletproof` skill hardens what you're building while you build it — it writes the version that survives a real attacker the first time, instead of handing you a scary report after launch. It ranks by what actually breaks small teams: a key left in your code, a page that quietly shows one customer another customer's data, a package that runs someone else's script the moment you install it.",
+      "It protects whatever you're actually making, not just websites. A `CLI` tool, a desktop app, an iPhone or Android app, a smart contract, firmware, an `MCP` server, an AI pipeline — it reads what your project really is and applies the controls that fit it. It also refuses to ever tell you your code is `secure`, because nobody can promise that; you get what was checked, what got fixed, and what is still open.",
+      "`/bullet-proof` is gone from your slash menu, and that is the upgrade. It only ever ran when you remembered to type it, which was usually after the risky code already shipped. The skill now shows up on its own the moment you touch a login, an upload, a payment, or a new dependency — and you can still just ask me if something is safe to ship.",
+    ],
+  },
+  {
     version: "0.46.1",
     date: "2026-08-11",
     items: [

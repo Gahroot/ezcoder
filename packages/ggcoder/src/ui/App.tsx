@@ -2441,7 +2441,6 @@ export function App(props: AppProps) {
       // Project audits / one-shot analysis
       "init",
       "expand",
-      "bullet-proof",
       "compare",
       // Setup / installers
       "setup-commit",
