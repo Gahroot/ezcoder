@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.47.1",
+    date: "2026-08-13",
+    items: [
+      "Your agent now has a locked front door. I sealed the internal connection between GG Coder and its engine so no other app or website on your machine can silently drive it, run commands, or touch your keys. What happens in your workspace stays in your workspace.",
+      "Opening a project is now safe from booby-trapped repos. A repo's config files can no longer launch commands the moment you open them. If a project needs that kind of power, you flip it on yourself with `trustProjectMcpServers`.",
+    ],
+  },
+  {
     version: "0.47.0",
     date: "2026-08-12",
     items: [
