@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.42.0
+
+### Minor Changes
+
+- Add per-repo MCP trust: adding a project-scope MCP server now auto-trusts that repo so its `.gg/mcp.json` servers connect on next load without enabling the global `trustProjectMcpServers` toggle.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.42.0
+- @kenkaiiii/gg-agent@5.42.0
+- @kenkaiiii/gg-core@5.42.0
+
 ## 5.41.1
 
 ### Patch Changes
