@@ -219,9 +219,12 @@ describe("connecting a provider", () => {
     const streamA = await openEventStream(windowA);
     const streamB = await openEventStream(windowB);
 
-    // Logged out: no provider's models are offered yet.
+    // Logged out: no cloud provider's models are offered yet. Local providers
+    // (Ollama, LM Studio) need no auth and may already be running on this
+    // machine, so exclude them — the assertion is about auth-gated models only.
     const before = await request("GET", "/models", { session: windowA });
-    expect(before.json.models).toEqual([]);
+    const beforeCloud = (before.json.models as { local?: boolean }[]).filter((m) => !m.local);
+    expect(beforeCloud).toEqual([]);
 
     // Connect a provider from window A only.
     const connect = await request("POST", "/auth/apikey", {
@@ -237,9 +240,11 @@ describe("connecting a provider", () => {
 
     // And the refetch each window now performs actually returns the new models.
     const after = await request("GET", "/models", { session: windowB });
-    const models = after.json.models as { provider: string }[];
-    expect(models.length).toBeGreaterThan(0);
-    expect(models.every((m) => m.provider === "xai")).toBe(true);
+    const cloudModels = (after.json.models as { provider: string; local?: boolean }[]).filter(
+      (m) => !m.local,
+    );
+    expect(cloudModels.length).toBeGreaterThan(0);
+    expect(cloudModels.every((m) => m.provider === "xai")).toBe(true);
   }, 90_000);
 
   it("closes the login modal in every window via auth_done", async () => {
