@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.47.2",
+    date: "2026-08-13",
+    items: [
+      "Your home screen and wake screen no longer choke when you have multiple project windows open. I made each window pause its canvas the moment it loses focus, so only the window you are looking at is doing the work. No more black frames, frozen star fields, or matrix rain bunched into a corner when you restore a minimized window.",
+      "Those meme cards on your home screen actually show up now. They were loading from a remote CDN that your app's own security policy blocks, so you were staring at blank cards. I bundled every `GIF` locally so they load instantly every time with zero network calls.",
+      "Project-scoped MCP servers just got way less annoying. Adding a server to a repo's `.gg/mcp.json` now trusts that one project automatically. You never have to flip the global `trustProjectMcpServers` toggle and trust every repo on your machine just to use one project's tools.",
+    ],
+  },
+  {
     version: "0.47.1",
     date: "2026-08-13",
     items: [
