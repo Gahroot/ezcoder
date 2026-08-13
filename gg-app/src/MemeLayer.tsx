@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMemesEnabled } from "./memes";
 
 // Home-screen meme cards. Each has a bundled GIF `src` plus an emoji/caption
 // that double as the offline fallback if the GIF fails to load (onError swap),
@@ -212,18 +213,21 @@ function pickFour(): Placed[] {
  * per corner), rotating every few seconds with a fade. Purely for flair;
  * pointer-events disabled so it never blocks the buttons.
  */
-export function MemeLayer(): React.ReactElement {
+export function MemeLayer(): React.ReactElement | null {
+  const on = useMemesEnabled();
   const [picks, setPicks] = useState<Placed[]>(() => pickFour());
   // Re-roll the set on an interval; keyed remount drives the fade-in.
   const [cycle, setCycle] = useState(0);
 
   useEffect(() => {
+    // No rotation timer while the GIF layer is hidden.
+    if (!on) return;
     const id = setInterval(() => {
       setPicks(pickFour());
       setCycle((c) => c + 1);
     }, 6000);
     return () => clearInterval(id);
-  }, []);
+  }, [on]);
 
   const cards = useMemo(
     () =>
@@ -246,6 +250,8 @@ export function MemeLayer(): React.ReactElement {
       )),
     [picks, cycle],
   );
+
+  if (!on) return null;
 
   return (
     <div className="meme-layer" aria-hidden="true">
