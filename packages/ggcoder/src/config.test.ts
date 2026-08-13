@@ -191,12 +191,15 @@ describe("projectScopeAllowed", () => {
   });
 
   it("returns true when the cwd is in trustedProjects", () => {
-    expect(projectScopeAllowed(false, ["/trusted/repo"], "/trusted/repo")).toBe(true);
+    const trusted = path.resolve("/trusted/repo");
+    expect(projectScopeAllowed(false, [trusted], trusted)).toBe(true);
   });
 
   it("returns false when neither global nor per-repo trust applies", () => {
-    expect(projectScopeAllowed(false, ["/other/repo"], "/this/repo")).toBe(false);
-    expect(projectScopeAllowed(false, [], "/this/repo")).toBe(false);
+    const other = path.resolve("/other/repo");
+    const here = path.resolve("/this/repo");
+    expect(projectScopeAllowed(false, [other], here)).toBe(false);
+    expect(projectScopeAllowed(false, [], here)).toBe(false);
   });
 
   it("resolves relative paths before checking trustedProjects", () => {
