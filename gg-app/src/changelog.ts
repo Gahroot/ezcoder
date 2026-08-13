@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.47.3",
+    date: "2026-08-13",
+    items: [
+      "You can now switch the meme GIFs on your home screen on or off whenever you want. Pop into `Settings` and you will find a new toggle right next to the sound effects switch. Your pick sticks across restarts, so your home screen stays exactly how you like it.",
+    ],
+  },
+  {
     version: "0.47.2",
     date: "2026-08-13",
     items: [
