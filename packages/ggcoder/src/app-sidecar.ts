@@ -117,7 +117,7 @@ import {
   type AuthMethodMeta,
   type AuthProviderMeta,
 } from "./core/auth-providers.js";
-import { ensureAppDirs, loadSavedSettings } from "./config.js";
+import { ensureAppDirs, loadSavedSettings, projectScopeAllowed } from "./config.js";
 import { SettingsManager, type Settings } from "./core/settings-manager.js";
 import {
   installPlugin,
@@ -660,9 +660,14 @@ async function buildMcpRows(cwd: string, settingsFile: string): Promise<McpWireR
   const scoped = await loadServers(cwd);
   if (scoped.length === 0) return [];
 
-  const trustProject = loadSavedSettings(settingsFile).trustProjectMcpServers;
-  const connectable = scoped.filter((s) => trustProject || s.scope !== "project");
-  const blocked = scoped.filter((s) => !trustProject && s.scope === "project");
+  const settings = loadSavedSettings(settingsFile);
+  const allowProject = projectScopeAllowed(
+    settings.trustProjectMcpServers,
+    settings.trustedProjects,
+    cwd,
+  );
+  const connectable = scoped.filter((s) => allowProject || s.scope !== "project");
+  const blocked = scoped.filter((s) => !allowProject && s.scope === "project");
 
   const manager = new MCPClientManager();
   try {
@@ -692,7 +697,8 @@ async function buildMcpRows(cwd: string, settingsFile: string): Promise<McpWireR
           toolCount: 0,
           error:
             "Project-scope server not connected — this repo's .gg/mcp.json runs " +
-            "repo-controlled commands. Enable trustProjectMcpServers only if you trust it.",
+            "repo-controlled commands. Add or re-add a server in this project via " +
+            "the MCP modal to trust it.",
           kind: (s.config.url ? "http" : "stdio") as "http" | "stdio",
           summary: mcpRowSummary(s.config),
         }),
@@ -5090,6 +5096,12 @@ async function createSession(
           if (!saved.ok) {
             json(res, 400, { error: saved.error });
             return;
+          }
+          // Adding a project-scope server is an explicit trust signal — the
+          // user chose to put a server in this repo's .gg/mcp.json. Auto-trust
+          // the project so all project-scope servers connect on next load.
+          if (scope === "project") {
+            await session.trustProject(targetCwd);
           }
           json(res, 200, {
             ok: true,

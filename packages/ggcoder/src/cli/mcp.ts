@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { ensureAppDirs, loadSavedSettings } from "../config.js";
+import { ensureAppDirs, loadSavedSettings, projectScopeAllowed } from "../config.js";
 import { initLogger, log, closeLogger } from "../core/logger.js";
 import {
   MCPClientManager,
@@ -104,7 +104,12 @@ async function buildRows(cwd: string): Promise<McpServerRow[]> {
   // Project-scope servers run repo-controlled commands; even listing them
   // spawns the process to probe status. Unless the user trusts project MCP
   // (trustProjectMcpServers), show those rows as blocked without connecting.
-  const trustProject = loadSavedSettings().trustProjectMcpServers;
+  const settings = loadSavedSettings();
+  const trustProject = projectScopeAllowed(
+    settings.trustProjectMcpServers,
+    settings.trustedProjects,
+    cwd,
+  );
   const connectable = scoped.filter((s) => trustProject || s.scope !== "project");
   const blocked = scoped.filter((s) => !trustProject && s.scope === "project");
 
@@ -133,7 +138,8 @@ async function buildRows(cwd: string): Promise<McpServerRow[]> {
           toolCount: 0,
           error:
             "Project-scope server not connected — this repo's .gg/mcp.json runs " +
-            "repo-controlled commands. Enable trustProjectMcpServers only if you trust it.",
+            "repo-controlled commands. Add or re-add a server in this project via " +
+            "the MCP modal to trust it.",
         }),
       ),
     ];

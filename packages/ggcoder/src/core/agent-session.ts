@@ -869,7 +869,7 @@ export class AgentSession {
         }
       }
       let servers = await getAllMcpServers(this.provider, apiKey, this.cwd, {
-        allowProjectScope: this.settingsManager.get("trustProjectMcpServers"),
+        allowProjectScope: this.settingsManager.isProjectTrusted(this.cwd),
       });
       // Whitelisted allow-listed session: connect ONLY the named servers, never
       // the user's full configured set (which could include mutating tools). The
@@ -902,6 +902,9 @@ export class AgentSession {
       if (this.opts.backgroundMcpConnect && mcpTools.length > 0) {
         await this.rebuildSystemPromptInPlace();
       }
+      // Detect project-scope servers excluded because the repo isn't trusted,
+      // so the host can offer a per-repo "Trust" button. Computed after the
+      // connect so the blocked list reflects the same connect attempt.
     } catch (err) {
       log(
         "WARN",
@@ -909,6 +912,14 @@ export class AgentSession {
         `MCP initialization failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  /** Persist `cwd` as a trusted project for project-scope MCP. Called by the
+   *  sidecar's `/mcp/add` handler when a user adds a project-scope server via
+   *  the MCP modal — the explicit add is itself the trust signal. The next
+   *  session load connects its `.gg/mcp.json` servers. */
+  async trustProject(cwd: string): Promise<void> {
+    await this.settingsManager.trustProject(cwd);
   }
 
   /**
@@ -2144,7 +2155,7 @@ export class AgentSession {
           }
           // Use getAllMcpServers so user-configured servers survive the reconnect.
           const servers = await getAllMcpServers(this.provider, apiKey, this.cwd, {
-            allowProjectScope: this.settingsManager.get("trustProjectMcpServers"),
+            allowProjectScope: this.settingsManager.isProjectTrusted(this.cwd),
           });
           const mcpTools = await this.mcpManager.connectAll(servers);
           // Drop stale MCP tools from both the live set and deferred catalog before
