@@ -2123,6 +2123,54 @@ describe("agentLoop truncation handling", () => {
     expect(echo.execute).toHaveBeenCalledTimes(1);
     expect(events.some((e) => e.type === "agent_done")).toBe(true);
   });
+
+  it("warns with empty_response and keeps the dud out of history when retries exhaust", async () => {
+    // Provider returns a contentless response every time — mirrors an
+    // Anthropic stream that completes with only keepalives + done.
+    mockStream.mockReturnValue(mockOkResult("") as unknown as ReturnType<typeof stream>);
+
+    const messages: Message[] = [{ role: "user", content: "go" }];
+    const { events } = await collectLoop(messages, {
+      provider: "anthropic",
+      model: "test",
+    });
+
+    // Retries first, then a terminal empty_response warning — never a silent end.
+    const retries = events.filter(
+      (e): e is Extract<AgentEvent, { type: "retry" }> => e.type === "retry",
+    );
+    expect(retries.map((r) => r.reason)).toEqual(["empty_response", "empty_response"]);
+    expect(truncatedEvents(events)).toEqual([
+      { type: "truncated", reason: "empty_response", continued: false },
+    ]);
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+
+    // The empty assistant message must NOT be appended — it poisons the
+    // session history and makes every later request come back empty too.
+    expect(messages.filter((m) => m.role === "assistant")).toEqual([]);
+  });
+
+  it("terminates on exhausted empty responses even with a tool_use stop reason", async () => {
+    // Degenerate edge: empty content but stopReason "tool_use". Must still hit
+    // the terminal branch — falling into the tool path would push an unpaired
+    // empty tool message into history.
+    mockStream.mockReturnValue(
+      mockStopResult("", "tool_use") as unknown as ReturnType<typeof stream>,
+    );
+
+    const messages: Message[] = [{ role: "user", content: "go" }];
+    const { events } = await collectLoop(messages, {
+      provider: "anthropic",
+      model: "test",
+    });
+
+    expect(truncatedEvents(events)).toEqual([
+      { type: "truncated", reason: "empty_response", continued: false },
+    ]);
+    expect(events.some((e) => e.type === "agent_done")).toBe(true);
+    // No assistant dud and no orphan tool message in history.
+    expect(messages.filter((m) => m.role !== "user")).toEqual([]);
+  });
 });
 
 describe("capTurnToolResults", () => {

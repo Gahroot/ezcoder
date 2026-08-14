@@ -176,7 +176,7 @@ export interface AgentTurnBudgetExtendedEvent {
  */
 export interface AgentTruncatedEvent {
   type: "truncated";
-  reason: "max_tokens" | "refusal" | "provider_error";
+  reason: "max_tokens" | "refusal" | "provider_error" | "empty_response";
   /** True when the loop injected a continuation and will keep going. */
   continued: boolean;
 }

@@ -40,7 +40,10 @@ export interface BusEventMap {
   max_turns: { totalTurns: number; maxTurns: number };
   /** Turn budget was exhausted but extended because the run showed progress. */
   turn_budget_extended: { turn: number; grantedTurns: number; extension: number };
-  truncated: { reason: "max_tokens" | "refusal" | "provider_error"; continued: boolean };
+  truncated: {
+    reason: "max_tokens" | "refusal" | "provider_error" | "empty_response";
+    continued: boolean;
+  };
   error: { error: Error };
 
   // Server tool events

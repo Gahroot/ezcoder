@@ -1350,8 +1350,10 @@ export async function* agentLoop(
           // will stall again with the same upstream problem.
           continue;
         }
-        // Exhausted retries — fall through and let the agent finish
+        // Exhausted retries — fall through and let the agent finish, but flag
+        // it so the terminal branch warns instead of ending silently.
       }
+      const emptyExhausted = !hasActionableContent;
       emptyResponseRetries = 0;
 
       // Only clear the non-streaming fallback after an actionable response —
@@ -1376,9 +1378,14 @@ export async function* agentLoop(
       // Append assistant message and anchor the provider's authoritative usage
       // at that exact history position. Later tool/user messages stay pending
       // until the next provider request observes them.
-      messages.push(response.message);
-      latestProviderUsage = response.usage;
-      usageAnchorIndex = messages.length - 1;
+      // EXCEPTION: an empty message (retries exhausted) is NOT appended — a
+      // contentless assistant turn poisons the history and every subsequent
+      // request in the session replays it and comes back empty again.
+      if (!emptyExhausted) {
+        messages.push(response.message);
+        latestProviderUsage = response.usage;
+        usageAnchorIndex = messages.length - 1;
+      }
 
       const completedAt = Date.now();
       const outputTokensPerSecond =
@@ -1427,12 +1434,24 @@ export async function* agentLoop(
       // If no tool calls to execute, check for steering messages before stopping.
       // Check content (not just stopReason) because some providers (e.g. GLM)
       // return finish_reason="stop" even when tool calls are present.
-      if (response.stopReason !== "tool_use" && allToolCalls.length === 0) {
+      // emptyExhausted is terminal regardless of stopReason: a contentless
+      // response has no tool calls to execute, and falling into the tool path
+      // would push an unpaired empty tool message into history.
+      if (emptyExhausted || (response.stopReason !== "tool_use" && allToolCalls.length === 0)) {
         // Honest terminal states: a max_tokens / refusal / error stop with no
         // tool calls is NOT a clean completion. For max_tokens, auto-continue
         // a bounded number of times; otherwise warn and preserve the
         // conversation (hosts render the incomplete-output warning).
-        if (response.stopReason === "max_tokens") {
+        if (emptyExhausted) {
+          // Provider returned no content after all retries — tell the host so
+          // the user sees a failure instead of a prompt that silently ends.
+          diag("empty_response_exhausted", {
+            provider: options.provider,
+            model: options.model,
+            stopReason: response.stopReason,
+          });
+          yield { type: "truncated" as const, reason: "empty_response" as const, continued: false };
+        } else if (response.stopReason === "max_tokens") {
           if (maxTokensContinuations < MAX_OUTPUT_CONTINUATIONS) {
             maxTokensContinuations++;
             diag("max_tokens_continuation", {

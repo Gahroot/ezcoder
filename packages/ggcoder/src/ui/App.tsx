@@ -159,6 +159,7 @@ import {
   REGROUNDING_NOTICE_TEXT,
   TRUNCATED_CONTINUING_NOTICE_TEXT,
   TRUNCATED_INCOMPLETE_NOTICE_TEXT,
+  TRUNCATED_EMPTY_RESPONSE_NOTICE_TEXT,
   TRUNCATED_PROVIDER_ERROR_NOTICE_TEXT,
   TRUNCATED_REFUSAL_NOTICE_TEXT,
   lastVisibleTranscriptItem,
@@ -1809,7 +1810,10 @@ export function App(props: AppProps) {
         streamedAssistantFlushRef.current = { flushedChars: 0, text: "" };
       }, []),
       onTruncated: useCallback(
-        (reason: "max_tokens" | "refusal" | "provider_error", continued: boolean) => {
+        (
+          reason: "max_tokens" | "refusal" | "provider_error" | "empty_response",
+          continued: boolean,
+        ) => {
           const text =
             reason === "max_tokens"
               ? continued
@@ -1817,7 +1821,9 @@ export function App(props: AppProps) {
                 : TRUNCATED_INCOMPLETE_NOTICE_TEXT
               : reason === "refusal"
                 ? TRUNCATED_REFUSAL_NOTICE_TEXT
-                : TRUNCATED_PROVIDER_ERROR_NOTICE_TEXT;
+                : reason === "empty_response"
+                  ? TRUNCATED_EMPTY_RESPONSE_NOTICE_TEXT
+                  : TRUNCATED_PROVIDER_ERROR_NOTICE_TEXT;
           setLiveItems((prev) => [
             ...prev,
             { kind: "ideal_hook", text, tone: "warning", id: getId() },

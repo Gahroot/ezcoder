@@ -2142,7 +2142,20 @@ async function createSession(
   session.eventBus.on("agent_done", (d) => broadcast("agent_done", d));
   // Non-clean stop (max_tokens/refusal/provider error) — info-style frame so
   // the webview can warn instead of presenting truncated output as complete.
-  session.eventBus.on("truncated", (d) => broadcast("truncated", d));
+  // empty_response is a hard failure (no output at all): route it through
+  // broadcastError so the app renders an error row — the webview does not
+  // render bare "truncated" frames.
+  session.eventBus.on("truncated", (d) => {
+    if (d.reason === "empty_response") {
+      broadcastError(
+        "error",
+        "empty response",
+        new Error("The model returned an empty response after retries — try sending again."),
+      );
+      return;
+    }
+    broadcast("truncated", d);
+  });
   session.eventBus.on("error", (d) => {
     broadcastError("error", "agent error", d.error);
   });
