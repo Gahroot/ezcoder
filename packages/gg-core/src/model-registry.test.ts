@@ -14,6 +14,7 @@ import {
   getDefaultThinkingLevel,
   getFastModel,
   getModelsForProvider,
+  getSummaryModel,
   getToolResultCharLimit,
   usesOpenAICodexTransport,
 } from "./model-registry.js";
@@ -197,6 +198,32 @@ describe("model registry context windows", () => {
     ).toBe("high");
     expect(getDefaultThinkingLevel("claude-opus-5")).toBe("max");
     expect(getDefaultThinkingLevel("claude-opus-5")).toBe("max");
+  });
+
+  it("makes GLM-5.3 the sole GLM model, at a max thinking ceiling", () => {
+    expect(getDefaultModel("glm")).toMatchObject({
+      id: "glm-5.3",
+      name: "GLM-5.3",
+      provider: "glm",
+      contextWindow: 1_000_000,
+      maxOutputTokens: 131_072,
+      supportsThinking: true,
+      // `max` is the top rung GLM declares, and Z.AI's own default effort.
+      maxThinkingLevel: "max",
+    });
+    expect(getDefaultThinkingLevel("glm-5.3")).toBe("max");
+    // 5.3 is the ONLY GLM entry: the older ids route to strictly worse coding
+    // for the same plan quota, and the coding endpoint already answers
+    // glm-5.2 requests as glm-5.3. Saved sessions on any of them fall back to
+    // the provider default.
+    expect(getModelsForProvider("glm").map((model) => model.id)).toEqual(["glm-5.3"]);
+    for (const retired of ["glm-5.2", "glm-5.1", "glm-4.7", "glm-4.7-flash"]) {
+      expect(getModel(retired), `${retired} retired`).toBeUndefined();
+    }
+    // No cheap sibling left, so scout/summary routing must keep 5.3 rather
+    // than crash or jump to another provider's login.
+    expect(getFastModel("glm", "glm-5.3").id).toBe("glm-5.3");
+    expect(getSummaryModel("glm", "glm-5.3").id).toBe("glm-5.3");
   });
 
   it("defaults MiniMax to the multimodal M3 with a 1M context window", () => {
