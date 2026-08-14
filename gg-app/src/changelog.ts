@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.48.1",
+    date: "2026-08-15",
+    items: [
+      "Edits that used to kill a run now recover on the spot. Roughly `1%` of file edits came back garbled, and GG Coder would resend the exact same broken payload until `three strikes` ended your whole turn. I made the error tell it precisely what broke, so a long task stops collapsing seconds from the finish line.",
+    ],
+  },
+  {
     version: "0.48.0",
     date: "2026-08-15",
     items: [
