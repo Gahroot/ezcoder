@@ -123,6 +123,21 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain(
       "Do not default to generic tests, scripts, screenshots, benchmarks, or simulations",
     );
+    // The ladder's value is the *order* and the stop-at-first-hit rule, not the
+    // individual rungs — "reuse what this repo already has" ranking above
+    // stdlib, and both above reaching for a dependency, is what stops the model
+    // rewriting a helper that already exists. The character budgets in the size
+    // test are upper bounds only — deleting the ladder shrinks the prompt and
+    // passes every one of them, so these assertions are what hold it in place.
+    expect(prompt).toContain("stop at the first rung that holds");
+    expect(prompt).toContain("Already in this codebase? Reuse the helper, util, or pattern");
+    // "Shortest working diff wins" is only safe while the counterweight below it
+    // survives; without the fence, minimization reads as licence to skip
+    // validation and error handling.
+    expect(prompt).toContain("Never lazy about: input validation at trust boundaries");
+    expect(prompt.indexOf("Shortest working diff wins")).toBeLessThan(
+      prompt.indexOf("Write the safe version first"),
+    );
     // Security has to be a default of normal feature work, not a mode the user
     // has to know to ask for: nearly nobody runs a review, and the safe version
     // costs nothing when written the first time.
