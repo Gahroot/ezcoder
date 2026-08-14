@@ -16,8 +16,11 @@ The best-understood surface; the failures are still the same three.
 | **Parameterized queries** | No string concatenation or f-strings into SQL/NoSQL/LDAP/XPath; ORM `raw`/`literal`/`$where` calls audited individually | The ORM covers 95% and the last 5% is a report filter or a dynamic sort column |
 | **Output encoding** | Framework escaping left on; explicit unsafe sinks (`dangerouslySetInnerHTML`, `v-html`, `bypassSecurityTrust*`, `innerHTML`, raw template filters) each justified | XSS is still CWE-25 rank 1. Modern frameworks make the safe path default and the unsafe path a one-liner |
 | **Server-side validation** | A schema at every entry point, allowlist-shaped, rejecting unknown fields; never trust client validation | Mass assignment: the model accepts `is_admin` because the schema was permissive |
-| **CSRF** | State-changing routes require a token or `SameSite=Lax/Strict` cookies plus origin checks; API-token auth is exempt, cookie auth is not | Cookie-authenticated JSON endpoints assumed safe because "it's an API" |
-| **SSRF** | Any URL from input: allowlist hosts, resolve then validate the IP, block private and link-local ranges, disable redirects or re-validate each hop | Metadata endpoints on cloud hosts turn SSRF into credential theft. Folded into A01 in the 2025 Top 10 |
+| **CSRF** | State-changing routes require a token or `SameSite=Lax/Strict` cookies plus origin checks; API-token auth is exempt, cookie auth is not. Pre-auth flows need it too — login, signup, password reset (login CSRF is real). Validation must reject a **missing** token, not just a wrong one | Cookie-authenticated JSON endpoints assumed safe because "it's an API"; token checks that only run when a token is present |
+| **SSRF** | Any URL from input: allowlist hosts, resolve then validate the IP, block private and link-local ranges, disable redirects or re-validate each hop — full sweep below | Metadata endpoints on cloud hosts turn SSRF into credential theft. Folded into A01 in the 2025 Top 10 |
+| **Open redirect** | Any redirect target from input: prefer relative paths starting `/` (reject `//` and `/\`), or map named keys to URLs server-side; if full URLs are required, parse, canonicalize to Punycode, then match the hostname against an allowlist | Raw-string checks fall to `legit.com@evil.com` (userinfo trick), `legit.com.evil.com` (attacker subdomain), protocol-relative `//evil.com`, `javascript:`/`data:` schemes, backslash and double-encoded variants, and IDN homographs. Validate the **parsed hostname**, never the string |
+| **File upload** | Three independent checks: extension allowlist **and** magic-byte sniff **and** a parse as the claimed type. Random generated names, original discarded; stored outside the web root; served from a separate origin with `Content-Disposition: attachment` and `nosniff`; size caps server-side | Any single check falls to double extensions (`x.php.jpg`), null bytes in names, spoofed `Content-Type`, prepended magic bytes, or polyglot files. SVG is a scriptable XML document — sanitize or refuse it. Archives get zip-slip path checks per entry |
+| **XXE** | Every XML parse of untrusted input has DTDs, external entities, and XInclude disabled at the parser. XML hides in DOCX/XLSX/PPTX (ZIP of XML), SVG, SAML, RSS, SOAP — and in JSON APIs converted to XML server-side | Several stacks still default entity resolution on: Java needs `disallow-doctype-decl`; Python should parse with `defusedxml`; .NET needs `DtdProcessing.Prohibit` and a null resolver |
 | **Rate limits on credential paths** | Login, reset, MFA, token exchange, invite acceptance | These are the endpoints where volume converts directly to account takeover |
 | **Errors** | Generic message to the client, detail to the log; no stack traces, SQL text, or env in responses | A10:2025 is new and is exactly this: fail-open and mishandled exceptional conditions |
 
@@ -31,6 +34,18 @@ The best-understood surface; the failures are still the same three.
 6. Assume table names are known — generated schemas converge on `users`, `profiles`, `messages`, `orders`, `subscriptions`. The REST layer self-describes to anyone holding the public anon key.
 
 **Verification that actually proves it:** call the endpoint as user B for user A's row and require a 403/404. One such test per protected resource is worth more than a header audit.
+
+**SSRF, hardened** — the naive "block 127.0.0.1 and 10.x" string check is the one that gets bypassed:
+
+1. Validate the **resolved IP** with a canonical IP parser, not the hostname string. Internal ranges are reachable as decimal (`2130706433`), octal (`0177.0.0.1`), hex, shortened (`127.1`), IPv6 loopback (`[::1]`, `[::]`), and IPv4-mapped IPv6 (`[::ffff:127.0.0.1]`) forms — canonicalization collapses all of them; a denylist of spellings never will.
+2. **Pin the resolved IP for the actual connection** (connect to the IP, send the hostname in the Host/SNI). Resolve-validate-then-fetch re-resolves, and that second resolution is the DNS-rebinding hole. A CNAME to an internal hostname is the same trick.
+3. Block link-local `169.254.0.0/16` and metadata hostnames (`169.254.169.254`, `metadata.google.internal`) explicitly, and enforce IMDSv2 anyway — SSRF plus legacy metadata service equals cloud credentials.
+4. Disable redirect following, or re-run the **full** validation on every hop; a compliant external URL that 302s to an internal address is the standard bypass.
+5. Scheme allowlist `http`/`https` only; bounded timeout and response size.
+
+**XSS enters from more than form fields.** When auditing sinks, sweep the indirect sources too: URL query **and fragment**, request headers the app displays (Referer, User-Agent), third-party API data rendered to users, WebSocket and `postMessage` payloads (validate `event.origin`), localStorage/sessionStorage values rendered later, uploaded file names, error messages that reflect input, markdown and rich-text renderers with HTML enabled, admin log viewers, and HTML-to-PDF or email-template generators — an injection there executes in the generator's context, often server-side. Sanitize rich text with an allowlist library (DOMPurify), never a homemade regex. Trusted Types plus nonce CSP (see `secure-defaults.md`) backstop the misses.
+
+**GraphQL, if present:** introspection off in production; server-enforced depth limit (~10) and query cost/complexity limit; cap operations per request — batching turns one HTTP request into a thousand login attempts and walks past per-request rate limits; authorization still happens per-object in resolvers, because the graph is one endpoint and route-level auth checks nothing.
 
 ---
 
@@ -158,4 +173,4 @@ Apply only to languages actually present. A grep hit here is a lead, not a findi
 | **PHP** | `unserialize`, `eval`, `assert(string)`, `include`/`require` with a dynamic path, `preg_replace` with the `/e` modifier |
 | **C / C++** | `strcpy`/`sprintf`/`gets`, integer overflow in size arithmetic, `printf(userInput)`, use-after-free, double-free. New parsing code here needs a written justification, sanitizers, and fuzzing |
 | **Shell** | Unquoted variable expansion, `eval`, word splitting on filenames, `curl | sh`, missing `set -euo pipefail` |
-| **SQL** | String-built queries, dynamic identifiers (table and column names cannot be parameterized — allowlist them), `SECURITY DEFINER` functions without a locked `search_path` |
+| **SQL** | String-built queries, dynamic identifiers and `ORDER BY` columns (cannot be parameterized — allowlist them), `LIKE` patterns built from input without escaping `%`/`_`, `IN` lists interpolated instead of expanded as placeholders, `SECURITY DEFINER` functions without a locked `search_path` |
