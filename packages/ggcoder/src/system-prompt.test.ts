@@ -444,9 +444,18 @@ describe("buildSystemPrompt", () => {
     // queries, secrets, dependency existence, never weakening a control) have
     // to live in the prefix instead. Keep these caps tight so drift stays
     // deliberate.
-    expect(measurements.normal.characters).toBeLessThan(6_300);
-    expect(measurements.planMode.characters).toBeLessThan(7_500);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(10_650);
+    //
+    // Raised again (~1.6k chars) for the Code Quality minimization ladder.
+    // This spend is the rare one that pays for itself inside the same budget:
+    // A/B benchmarked at 5 iterations per cell with every generated artifact
+    // executed against functional tests, the ladder held correctness flat
+    // (100% exec pass, no new dependencies, no turn-cap hits) while cutting
+    // generated code 50–76% and output tokens 21–38%. Input tokens fell too,
+    // despite the longer prefix: stopping at the first rung that holds costs
+    // fewer turns than re-deriving an over-built solution.
+    expect(measurements.normal.characters).toBeLessThan(7_900);
+    expect(measurements.planMode.characters).toBeLessThan(9_100);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(12_300);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -484,7 +493,9 @@ describe("buildSystemPrompt", () => {
     console.info(`system prompt audit: ${JSON.stringify(audit)}`);
 
     expect(audit.flags).toEqual([]);
-    expect(audit.size.characters).toBeLessThan(10_300);
+    // Raised with the Code Quality minimization ladder — see the size-budget
+    // test above for the measured return that justifies the spend.
+    expect(audit.size.characters).toBeLessThan(11_900);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 

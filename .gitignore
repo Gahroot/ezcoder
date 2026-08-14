@@ -67,6 +67,7 @@ experiments/prompt-bench/.bench-sandbox-*
 /bench/
 /benchmarks/
 /experiments/bench-mark/
+/experiments/lean-code-bench/
 /scripts/
 CLAUDE.md
 packages/*/.bench-*.mjs
