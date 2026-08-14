@@ -1,5 +1,21 @@
 # @kenkaiiii/ggcoder
 
+## 5.43.0
+
+### Minor Changes
+
+- Add an explicit code-minimization ladder to the Code Quality prompt section, and a `hook_armed` event so clients can hold a candidate final answer back until the Ideal review decides.
+
+  The ladder is ordered and stop-at-first-hit (YAGNI, reuse what the repo already has, standard library, native platform feature, installed dependency, one line, then the minimum code that works). Benchmarked A/B against the previous prose-only section — 5 iterations per cell, every artifact executed against functional tests — it holds correctness (100% exec pass, no new dependencies, no turn-cap hits) while producing 50-76% less code and 21-38% fewer output tokens. Safety is explicitly exempt: input validation at trust boundaries, error handling that prevents data loss, security, accessibility, and anything explicitly requested are never minimized away.
+
+  `hook_armed` fires on both edges as soon as a run crosses the Ideal-review gate, before the candidate final answer streams, so a client renders hook then reviewed answer instead of flashing a draft it deletes.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.43.0
+- @kenkaiiii/gg-agent@5.43.0
+- @kenkaiiii/gg-core@5.43.0
+
 ## 5.42.0
 
 ### Minor Changes
