@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.47.4",
+    date: "2026-08-14",
+    items: [
+      "GG Coder now writes dramatically less code to do the exact same job. I taught it to think like a lazy senior dev getting paged at 3am: reuse what your repo already has, reach for the standard library, never bolt on a dependency for something a few lines can do. I benchmarked it head to head against the old brain with every single result executed against real tests, and it holds a `100%` pass rate while shipping `50-76%` less code and up to `38%` fewer output tokens. Smaller diffs, cheaper runs, far less to review. The one thing it will never trim is your safety net: validation, error handling, security and accessibility stay untouchable.",
+      "No more watching an answer appear and then vanish. When GG Coder decides to double check its own work, it now knows that before it starts typing, so you only ever see the final reviewed answer land whole. `Zero` ghost drafts.",
+      "Your queued messages now glide into the conversation instead of snapping into place, and the view stays pinned to your newest message while everything settles. I also fixed the chat box landing at the wrong height when you zoom with `Cmd +/-` or resize the window.",
+    ],
+  },
+  {
     version: "0.47.3",
     date: "2026-08-13",
     items: [
