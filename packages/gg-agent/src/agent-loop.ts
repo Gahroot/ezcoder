@@ -1747,6 +1747,7 @@ async function executeSingleToolCall(
   let resultContent: ToolResultContent;
   let details: unknown;
   let isError = false;
+  let invalidArgAttempt: number | undefined;
 
   const tool = options.toolMap.get(toolCall.name);
   if (!tool) {
@@ -1792,6 +1793,7 @@ async function executeSingleToolCall(
         const failureKey = `${toolCall.name}:${prettyError}`;
         const failureCount = (options.invalidToolArgumentCounts.get(failureKey) ?? 0) + 1;
         options.invalidToolArgumentCounts.set(failureKey, failureCount);
+        invalidArgAttempt = failureCount;
         resultContent =
           `Invalid arguments for tool \`${toolCall.name}\`:\n` +
           prettyError +
@@ -1844,6 +1846,7 @@ async function executeSingleToolCall(
     details,
     isError,
     durationMs,
+    ...(invalidArgAttempt === undefined ? {} : { invalidArgAttempt }),
   });
 
   return { toolCallId: toolCall.id, content: resultContent, isError };

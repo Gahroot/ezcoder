@@ -2374,3 +2374,96 @@ describe("agentLoop — per-turn credential resolution", () => {
     expect(mockStream.mock.calls[0]?.[0].apiKey).toBe("token-captured");
   });
 });
+
+/**
+ * Schema rejections are counted per (tool, message) so a model that re-sends an
+ * identical bad payload ends the turn instead of looping forever. Surfacing the
+ * count on the event is what makes the difference visible in logs: attempt 1
+ * followed by a success means the model self-corrected; reaching 3 means it did
+ * not. Real case: `edit` payloads arriving as strings, where the stock Zod
+ * message gave the model nothing to correct.
+ */
+describe("invalid tool argument attempt counter", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  const strictParams = z.object({ items: z.array(z.string()) });
+
+  function badArgsCall(id: string, args: Record<string, unknown>) {
+    return {
+      [Symbol.asyncIterator]: async function* () {
+        yield* [];
+      },
+      response: Promise.resolve({
+        message: {
+          role: "assistant" as const,
+          content: [{ type: "tool_call" as const, id, name: "strict", args }],
+        },
+        stopReason: "tool_use" as const,
+        usage: { inputTokens: 10, outputTokens: 5 },
+      }),
+    } as unknown as ReturnType<typeof stream>;
+  }
+
+  const strictTool: AgentTool<typeof strictParams> = {
+    name: "strict",
+    description: "tool with a strict schema",
+    parameters: strictParams,
+    async execute() {
+      return "ok";
+    },
+  };
+
+  const attempts = (events: AgentEvent[]) =>
+    events
+      .filter((e): e is AgentEvent & { type: "tool_call_end" } => e.type === "tool_call_end")
+      .map((e) => e.invalidArgAttempt);
+
+  it("counts repeats of the same rejection and omits the field on success", async () => {
+    // Same bad payload twice, then a valid one.
+    mockStream
+      .mockReturnValueOnce(badArgsCall("t1", { items: "not-an-array" }))
+      .mockReturnValueOnce(badArgsCall("t2", { items: "not-an-array" }))
+      .mockReturnValueOnce(badArgsCall("t3", { items: ["fine"] }))
+      .mockReturnValueOnce(mockOkResult("done") as unknown as ReturnType<typeof stream>);
+
+    const { events } = await collectLoop(
+      [
+        { role: "system", content: "sys" },
+        { role: "user", content: "test" },
+      ],
+      { provider: "anthropic", model: "test", tools: [strictTool] },
+    );
+
+    // 1, 2, then undefined — the success carries no counter, which is the
+    // signal that the model self-corrected before the turn was killed.
+    expect(attempts(events)).toEqual([1, 2, undefined]);
+  });
+
+  it("still emits the third strike that ends the turn", async () => {
+    // `invalidArgAttempt=3` is the value that distinguishes a loop from a
+    // self-correction in the logs, and it is emitted on the same call that
+    // marks the turn fatal. If that path ever short-circuits before pushing
+    // the event, the counter goes silent exactly when it matters most.
+    mockStream
+      .mockReturnValueOnce(badArgsCall("t1", { items: "not-an-array" }))
+      .mockReturnValueOnce(badArgsCall("t2", { items: "not-an-array" }))
+      .mockReturnValueOnce(badArgsCall("t3", { items: "not-an-array" }));
+
+    const { events } = await collectLoop(
+      [
+        { role: "system", content: "sys" },
+        { role: "user", content: "test" },
+      ],
+      { provider: "anthropic", model: "test", tools: [strictTool] },
+    );
+
+    expect(attempts(events)).toEqual([1, 2, 3]);
+    // Non-empty args are not the empty-stream provider glitch, so there is no
+    // auto-continue — the turn ends. This is the case seen in the wild with
+    // `edit` payloads sent as strings.
+    expect(events.some((e) => e.type === "error")).toBe(true);
+    expect(events.some((e) => e.type === "retry")).toBe(false);
+  });
+});

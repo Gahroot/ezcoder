@@ -84,6 +84,13 @@ export interface AgentToolCallEndEvent {
   details?: unknown;
   isError: boolean;
   durationMs: number;
+  /**
+   * Set only when the call failed schema validation: how many consecutive
+   * times this tool produced this same validation error. 1 means the model
+   * still has room to self-correct; 3 is the threshold that ends the turn.
+   * Logged so a retry loop shows up as a count instead of identical lines.
+   */
+  invalidArgAttempt?: number;
 }
 
 export interface AgentTurnTiming {

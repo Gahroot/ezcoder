@@ -16,6 +16,8 @@ export interface BusEventMap {
     durationMs: number;
     /** Tool-specific extras (e.g. screenshot/read image previews). */
     details?: unknown;
+    /** Consecutive count for a repeated schema-validation failure; see AgentToolCallEndEvent. */
+    invalidArgAttempt?: number;
   };
   turn_end: {
     turn: number;
@@ -165,6 +167,7 @@ export class EventBus {
           isError: event.isError,
           durationMs: event.durationMs,
           details: event.details,
+          invalidArgAttempt: event.invalidArgAttempt,
         });
         break;
       case "turn_end":

@@ -2120,6 +2120,12 @@ async function createSession(
       durationMs: String(d.durationMs),
       isError: String(d.isError),
       ...(d.isError ? { result: d.result.slice(0, 500) } : {}),
+      // Consecutive-failure count for schema rejections. Attempt 1 followed by
+      // a success means the model self-corrected; reaching 3 means it looped
+      // and the turn was ended. Grep this to tell the two apart.
+      ...(d.invalidArgAttempt === undefined
+        ? {}
+        : { invalidArgAttempt: String(d.invalidArgAttempt) }),
     });
     broadcast("tool_call_end", d);
     // Any tool can mutate the approved plan (including bash), so refresh after
