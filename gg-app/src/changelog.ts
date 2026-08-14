@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.48.0",
+    date: "2026-08-15",
+    items: [
+      "`GLM-5.3` just landed and it is a monster at coding. Z.AI says it is `50%` better at code than the model it replaces, and it is the strongest open model out there right now on real terminal work. I made it the one and only GLM you get, so picking a weaker sibling by accident is no longer a thing. Same `1M` context, same login, way more firepower.",
+      "GLM thinking levels are finally real. Every level you picked used to secretly run at full blast, burning your quota and your patience on questions that never needed it. Now `low` truly is a quick think and `max` truly is a deep one, so you can spend big on the hard stuff and fly through the easy stuff. Nothing gets slower by default, you just got the dial you thought you already had.",
+    ],
+  },
+  {
     version: "0.47.4",
     date: "2026-08-14",
     items: [
