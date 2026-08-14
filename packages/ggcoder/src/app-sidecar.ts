@@ -2142,6 +2142,10 @@ async function createSession(
   });
   session.eventBus.on("model_change", (d) => broadcast("model_change", d));
   session.eventBus.on("hook", (d) => broadcast("hook", d));
+  // Fires BEFORE the candidate final answer streams. The webview holds assistant
+  // text back while armed, so an Ideal review supersedes a draft that was never
+  // painted instead of deleting one the user already started reading.
+  session.eventBus.on("hook_armed", (d) => broadcast("hook_armed", d));
   session.eventBus.on("subagent_state", (d) => broadcast("subagent_state", d));
   session.eventBus.on("compaction_start", (d) => broadcast("compaction_start", d));
   session.eventBus.on("compaction_end", (d) => broadcast("compaction_end", d));

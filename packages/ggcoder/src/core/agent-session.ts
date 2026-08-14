@@ -411,6 +411,14 @@ export class AgentSession {
   private idealReviewPhase: "idle" | "reviewing" | "complete" = "idle";
   /** Runtime-only suppression while Ken owns verification in autopilot mode. */
   private idealReviewSuppressed = false;
+  /** Mirror of the last `hook_armed` value broadcast this run, so the event
+   *  fires only on a real edge. */
+  private idealReviewArmed = false;
+  /** Cached test-drift probe, keyed by the size of the edited-file set. Drift
+   *  depends only on WHICH files were edited and that set only grows, so this
+   *  keeps the arming check off the filesystem on most tool results — the probe
+   *  is several sync existsSync calls per edited file. */
+  private idealDriftProbe: { files: number; drifted: boolean } | null = null;
   private readonly reviewCoverage: ReviewCoverageTracker;
   /** Coverage follow-ups spent this run, capped by MAX_REVIEW_COVERAGE_INJECTIONS. */
   private reviewCoverageInjected = 0;
@@ -1268,6 +1276,9 @@ export class AgentSession {
     this.reviewCoverage.reset();
     this.reviewCoverageInjected = 0;
     this.idealReviewPhase = "idle";
+    // No event here: clients reset their own hold on run_start.
+    this.idealReviewArmed = false;
+    this.idealDriftProbe = null;
     this.loopBreakInjected = 0;
     this.regroundingInjected = false;
     this.runStartedAt = Date.now();
@@ -1317,10 +1328,15 @@ export class AgentSession {
           const removed = (diff.match(/^-[^-]/gm) ?? []).length;
           this.hookStats.changedLines += added + removed;
         }
+        // Tool results are what push the run over the review gate, and they all
+        // land before the model writes its candidate final answer — so this is
+        // the point where arming still beats the draft's first token.
+        this.refreshIdealReviewArmed();
         break;
       }
       case "turn_end":
         this.hookStats.turns = event.turn;
+        this.refreshIdealReviewArmed();
         for (let index = this.messages.length - 1; index >= 0; index--) {
           const anchor = this.messages[index];
           if (anchor?.role === "assistant") {
@@ -1517,6 +1533,48 @@ export class AgentSession {
   }
 
   /**
+   * Would the stop AFTER the current turn inject the Ideal review? Same inputs
+   * as the pre-stop gate below, evaluated early so clients know a candidate
+   * final answer is a review draft BEFORE it streams.
+   *
+   * The turn count is looked ahead by one on purpose. `hookStats.turns` only
+   * advances at `turn_end`, so while the model is writing the draft the counter
+   * still reads the PREVIOUS turn; the real gate sees one more. Without the
+   * lookahead a run sitting on score 3 crosses to 4 on the draft's own
+   * `turn_end` — after the text already streamed — which is precisely the
+   * appear-then-vanish flash. Over-arming by one turn point costs only live
+   * token streaming on a final answer that then shows whole; under-arming costs
+   * the flash, so this errs toward arming.
+   */
+  private wouldInjectIdealReview(): boolean {
+    if (this.opts.selfCorrectionHooks === false || this.idealReviewSuppressed) return false;
+    if (this.idealReviewPhase !== "idle") return false;
+    if (!this.settingsManager.get("idealReviewEnabled")) return false;
+    if (evaluateIdealReview({ ...this.hookStats, turns: this.hookStats.turns + 1 }).shouldReview) {
+      return true;
+    }
+    const files = this.hookFileEditCounts.size;
+    if (files === 0) return false;
+    if (this.idealDriftProbe?.files !== files) {
+      this.idealDriftProbe = {
+        files,
+        drifted: detectTestDrift(this.hookFileEditCounts.keys(), this.cwd).length > 0,
+      };
+    }
+    return this.idealDriftProbe.drifted;
+  }
+
+  /** Broadcast Ideal-review arming on change. Both edges matter: armed=false
+   *  after the review fires is what lets a client stream the REVIEWED final
+   *  answer live again. */
+  private refreshIdealReviewArmed(): void {
+    const armed = this.wouldInjectIdealReview();
+    if (armed === this.idealReviewArmed) return;
+    this.idealReviewArmed = armed;
+    this.eventBus.emit("hook_armed", { kind: "ideal", armed });
+  }
+
+  /**
    * Pre-stop Ideal review phase machine. Once review starts, completion is
    * blocked until harness-owned post-injection reads cover every changed file.
    */
@@ -1588,6 +1646,11 @@ export class AgentSession {
       coverageExpected: coverage.expected,
       coverageMissing: coverage.missing,
     });
+    // Disarm strictly AFTER the hook event. Clients release held text on
+    // disarm, so the reverse order would paint the draft and then delete it —
+    // the exact flash arming exists to prevent. Leaving `idle` is what lets the
+    // reviewed final answer stream live instead of being held.
+    this.refreshIdealReviewArmed();
     log("INFO", "ideal", "Injecting ideal review before final response", {
       coverageExpected: coverage.expected,
       coverageMissing: coverage.missing,
@@ -2610,6 +2673,9 @@ export class AgentSession {
       this.idealReviewPhase = "idle";
       this.reviewCoverage.reset();
     }
+    // Suppression flips mid-run (autopilot takes over verification), so a client
+    // holding a draft under a stale arming must be released.
+    this.refreshIdealReviewArmed();
   }
 
   /** Queue a user message (optionally with attachments) to be injected mid-run

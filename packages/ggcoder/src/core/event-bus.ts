@@ -53,6 +53,12 @@ export interface BusEventMap {
     coverageMissing?: string[];
   };
 
+  /** The Ideal review would fire if the agent stopped right now. Emitted as soon
+   *  as the run's stats cross the gate — i.e. BEFORE the candidate final answer
+   *  streams — so a client can hold that answer back instead of painting a draft
+   *  the review then discards. */
+  hook_armed: { kind: "ideal"; armed: boolean };
+
   // Persistent async child lifecycle (bounded metadata/output snapshot).
   subagent_state: SubAgentSnapshot;
 
