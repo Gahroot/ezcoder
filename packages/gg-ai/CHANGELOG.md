@@ -1,5 +1,7 @@
 # @kenkaiiii/gg-ai
 
+## 5.44.1
+
 ## 5.44.0
 
 ### Minor Changes

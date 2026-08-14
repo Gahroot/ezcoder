@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.44.1
+
+### Patch Changes
+
+- Tell the model what went wrong when `edit` receives `edits` as a JSON-encoded string, and log the consecutive schema-rejection count so retry loops are visible.
+  - @kenkaiiii/gg-ai@5.44.1
+  - @kenkaiiii/gg-agent@5.44.1
+  - @kenkaiiii/gg-core@5.44.1
+
 ## 5.44.0
 
 ### Minor Changes
