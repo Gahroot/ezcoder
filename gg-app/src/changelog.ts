@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.48.2",
+    date: "2026-08-15",
+    items: [
+      "No more prompts that just vanish into thin air. Once in a while a model would come back with literally nothing, and GG Coder would quietly stop like nothing happened, leaving you staring at a dead chat. Now I retry it for you, and if the model truly ghosts, you get a clear `empty response` warning instead of silence. Even better, that blank reply used to poison the whole session so every message after it came back empty too. That is gone for good.",
+    ],
+  },
+  {
     version: "0.48.1",
     date: "2026-08-15",
     items: [
