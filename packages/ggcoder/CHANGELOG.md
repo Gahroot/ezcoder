@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.44.2
+
+### Patch Changes
+
+- Fix silent agent stop when the provider returns empty responses: after retries exhaust, the loop now emits an `empty_response` truncated event, keeps the contentless assistant message out of session history so later requests aren't poisoned, and hosts (TUI + desktop sidecar) surface a clear warning instead of ending silently. Also refreshed the bulletproof skill references.
+  - @kenkaiiii/gg-ai@5.44.2
+  - @kenkaiiii/gg-agent@5.44.2
+  - @kenkaiiii/gg-core@5.44.2
+
 ## 5.44.1
 
 ### Patch Changes
