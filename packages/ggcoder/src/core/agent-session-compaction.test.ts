@@ -255,9 +255,7 @@ describe("AgentSession compaction persistence", () => {
           ? row.message!.content
           : JSON.stringify(row.message!.content),
       );
-    expect(texts.some((t) => t.includes("[session compacted] Summary of earlier work"))).toBe(
-      true,
-    );
+    expect(texts.some((t) => t.includes("[session compacted] Summary of earlier work"))).toBe(true);
     expect(texts.some((t) => t.includes("Do the task."))).toBe(false);
   }, 15_000);
 });

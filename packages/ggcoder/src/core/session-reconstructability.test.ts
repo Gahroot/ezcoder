@@ -21,10 +21,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  registerPalsuProvider,
-  type PalsuProviderHandle,
-} from "@kenkaiiii/gg-ai";
+import { registerPalsuProvider, type PalsuProviderHandle } from "@kenkaiiii/gg-ai";
 import type { Message } from "@kenkaiiii/gg-ai";
 import { useFakeHome } from "../test-support/fake-home.js";
 import type * as CompactorModule from "./compaction/compactor.js";
@@ -82,11 +79,10 @@ describe("session log reconstructs exactly what the model received", () => {
       { content: [{ type: "tool_call" as const, id: "call_1", name: "boom", args: {} }] },
       { content: [{ type: "text" as const, text: "Recovered after the failed call." }] },
     ];
-    let call = 0;
     palsu.setResponses(
       replies.map((reply) => (messages: Message[]) => {
         capturedRequests.push(structuredClone(messages));
-        return { role: "assistant" as const, ...replies[call++] };
+        return { role: "assistant" as const, ...reply };
       }),
     );
 
@@ -117,9 +113,7 @@ describe("session log reconstructs exactly what the model received", () => {
     // (source/kind/visibility) that persistence adds and the wire strips —
     // it never reaches the model, so the model-visible comparison drops it.
     const stripProvenance = (messages: Message[]): unknown[] =>
-      messages
-        .filter((m) => m.role !== "system")
-        .map(({ provenance: _p, ...rest }) => rest);
+      messages.filter((m) => m.role !== "system").map(({ provenance: _p, ...rest }) => rest);
     const derivedRows = stripProvenance(derived);
     const sentRows = stripProvenance(finalRequest);
     // The final assistant reply is persisted AFTER the last request (it IS the

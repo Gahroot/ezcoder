@@ -91,9 +91,8 @@ describe("model-visible injections persist to the session log", () => {
     // initial steering poll drains them ahead of the first LLM call (the
     // "catch messages queued before the first request" boundary).
     session.queueMessage("Steering: use option B instead.");
-    const notifications = (
-      session as unknown as { notifications: AgentNotificationQueue }
-    ).notifications; // deliberate reach-in: notifications have no public session API
+    const notifications = (session as unknown as { notifications: AgentNotificationQueue })
+      .notifications; // deliberate reach-in: notifications have no public session API
     notifications.enqueue(
       "subagent",
       "agent-test-1",

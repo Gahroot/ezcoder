@@ -34,12 +34,12 @@ const MODEL = "claude-sonnet-5";
  * test measures cache behavior, not the model's mood.
  */
 const TASK_PROMPT =
-  "Call the lookup tool with key \"falcon\" exactly once, wait for its result, " +
+  'Call the lookup tool with key "falcon" exactly once, wait for its result, ' +
   "then reply with a single short sentence that repeats the returned value " +
   "verbatim. No markdown, no explanations, no follow-up questions.";
 
 const FOLLOW_UP_PROMPT =
-  "Now call the lookup tool with key \"heron\" exactly once and reply with a " +
+  'Now call the lookup tool with key "heron" exactly once and reply with a ' +
   "single short sentence repeating that returned value verbatim.";
 
 const lookupTool: AgentTool = {
@@ -115,43 +115,50 @@ async function runTurn(
 describe("provider prompt-cache hit (live Anthropic)", () => {
   const live = !!process.env.GG_LIVE_E2E;
 
-  it.skipIf(!live)("reports cacheRead > 0 on every request after the first", async () => {
-    const creds = await resolveCreds();
-    expect(creds, "no Anthropic credential (env ANTHROPIC_API_KEY or ggcoder login)").toBeTruthy();
-    const cwd = path.resolve(import.meta.dirname, "../../.."); // repo root: real project context
+  it.skipIf(!live)(
+    "reports cacheRead > 0 on every request after the first",
+    async () => {
+      const creds = await resolveCreds();
+      expect(
+        creds,
+        "no Anthropic credential (env ANTHROPIC_API_KEY or ggcoder login)",
+      ).toBeTruthy();
+      const cwd = path.resolve(import.meta.dirname, "../../.."); // repo root: real project context
 
-    // Real system prompt with the real default tool names and the real
-    // project context (CLAUDE.md et al). The prefix MUST exceed Anthropic's
-    // 1024-token minimum cacheable prefix — a smaller prompt is silently
-    // never cached, and the assertion below would misread that as a miss.
-    const system = await buildSystemPrompt(cwd, [], false, undefined, DEFAULT_TOOL_NAMES);
-    expect(system.length).toBeGreaterThan(6_000); // comfortably over the cache floor
+      // Real system prompt with the real default tool names and the real
+      // project context (CLAUDE.md et al). The prefix MUST exceed Anthropic's
+      // 1024-token minimum cacheable prefix — a smaller prompt is silently
+      // never cached, and the assertion below would misread that as a miss.
+      const system = await buildSystemPrompt(cwd, [], false, undefined, DEFAULT_TOOL_NAMES);
+      expect(system.length).toBeGreaterThan(6_000); // comfortably over the cache floor
 
-    // The system prompt rides as messages[0] — the loop ignores
-    // AgentOptions.system and the session's own convention is messages[0].
-    const messages: Message[] = [
-      { role: "system", content: system },
-      { role: "user", content: TASK_PROMPT },
-    ];
-    const promptCacheKey = "gg-live-cache-e2e";
+      // The system prompt rides as messages[0] — the loop ignores
+      // AgentOptions.system and the session's own convention is messages[0].
+      const messages: Message[] = [
+        { role: "system", content: system },
+        { role: "user", content: TASK_PROMPT },
+      ];
+      const promptCacheKey = "gg-live-cache-e2e";
 
-    // Turn 1: user → tool call → tool result → final answer (2+ requests).
-    const turn1 = await runTurn(messages, { promptCacheKey, creds: creds! });
-    // Turn 2 (fresh loop call, same system + key — the session-resume path):
-    // the whole prior conversation is now the cached prefix.
-    messages.push({ role: "user", content: FOLLOW_UP_PROMPT });
-    const turn2 = await runTurn(messages, { promptCacheKey, creds: creds! });
+      // Turn 1: user → tool call → tool result → final answer (2+ requests).
+      const turn1 = await runTurn(messages, { promptCacheKey, creds: creds! });
+      // Turn 2 (fresh loop call, same system + key — the session-resume path):
+      // the whole prior conversation is now the cached prefix.
+      messages.push({ role: "user", content: FOLLOW_UP_PROMPT });
+      const turn2 = await runTurn(messages, { promptCacheKey, creds: creds! });
 
-    const perTurnUsage = [...turn1, ...turn2];
-    if (process.env.GG_CACHE_E2E_DEBUG) console.log("[cache-e2e]", JSON.stringify(perTurnUsage));
-    expect(perTurnUsage.length).toBeGreaterThanOrEqual(3);
+      const perTurnUsage = [...turn1, ...turn2];
+      if (process.env.GG_CACHE_E2E_DEBUG) console.log("[cache-e2e]", JSON.stringify(perTurnUsage));
+      expect(perTurnUsage.length).toBeGreaterThanOrEqual(3);
 
-    // ── The assertion that matters ──
-    const misses = perTurnUsage.slice(1).filter((u) => !u.cacheRead || u.cacheRead <= 0);
-    expect(
-      misses,
-      `cache misses on turns ${misses.map((m) => m.turn).join(", ")} — a prefix-cache ` +
-        `regression (tool reorder, volatile system-prompt section, or unstable serialization)`,
-    ).toEqual([]);
-  }, 240_000);
+      // ── The assertion that matters ──
+      const misses = perTurnUsage.slice(1).filter((u) => !u.cacheRead || u.cacheRead <= 0);
+      expect(
+        misses,
+        `cache misses on turns ${misses.map((m) => m.turn).join(", ")} — a prefix-cache ` +
+          `regression (tool reorder, volatile system-prompt section, or unstable serialization)`,
+      ).toEqual([]);
+    },
+    240_000,
+  );
 });
