@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.48.3",
+    date: "2026-08-17",
+    items: [
+      "Armor under the hood. I added release guardrails that prove prompt caching and session replay stay intact on every build, so long chats keep hitting the cache and cost less, and a resumed chat always replays exactly what really happened. Every release now clears `2,400+` automated checks before it reaches you.",
+    ],
+  },
+  {
     version: "0.48.2",
     date: "2026-08-15",
     items: [
