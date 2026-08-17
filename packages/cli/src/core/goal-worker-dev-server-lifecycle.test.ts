@@ -64,7 +64,10 @@ describe("Goal worker dev-server lifecycle", () => {
     const taskOutput = createTaskOutputTool(manager);
 
     const startOutput = await bash.execute(
-      { command: `${process.execPath} ${fixture}`, run_in_background: true },
+      {
+        command: `${JSON.stringify(process.execPath)} ${JSON.stringify(fixture)}`,
+        run_in_background: true,
+      },
       toolContext(),
     );
     const id = parseBackgroundId(String(startOutput));
