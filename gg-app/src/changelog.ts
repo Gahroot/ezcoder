@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.49.0",
+    date: "2026-08-17",
+    items: [
+      "Finished now means proven. If the agent edits code, it literally cannot wrap up until it has run the tests or the typecheck after the last change, so `done` means `verified`, not `trust me`.",
+      "Background builds stopped needing babysitters. The agent now gets woken the instant a build prints an `error`, a dev server says `listening`, or a task goes quiet on its own, instead of checking every few seconds. Faster reactions, fewer wasted turns, smaller bills.",
+      "`Plan mode` got real teeth. Destructive commands like `git branch -D` and `find -delete` used to sneak past the read-only guard wearing a harmless disguise. I shut every door I could find, including sneaky flag clusters like `sort -ro`.",
+    ],
+  },
+  {
     version: "0.48.3",
     date: "2026-08-17",
     items: [
