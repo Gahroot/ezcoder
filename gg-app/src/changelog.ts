@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.50.1",
+    date: "2026-08-17",
+    items: [
+      "Big cleanup runs no longer stop dead halfway. I caught the `lean` specialist shutting down the very engine it runs inside, taking your session with it mid-task, and taught it to never touch its own host again. Long jobs now run to the end, every time.",
+    ],
+  },
+  {
     version: "0.50.0",
     date: "2026-08-17",
     items: [
