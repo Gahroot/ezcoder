@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.50.0",
+    date: "2026-08-17",
+    items: [
+      "Two new specialists joined the crew. `lean` hunts down slow loads, memory leaks, and zombie processes in any stack, so everything I build stays fast and light. `durable` makes sure one bad migration or runaway script can't wipe you out, with verified backups and a guard on every destructive operation.",
+      "The whole team got more proactive. Skills like `bulletproof` and the new duo now engage while I'm building, not just when you ask for a checkup, so the right patterns land from the very first line. Less rework, fewer surprises, better software.",
+    ],
+  },
+  {
     version: "0.49.0",
     date: "2026-08-17",
     items: [
