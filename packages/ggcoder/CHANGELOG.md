@@ -1,5 +1,18 @@
 # @kenkaiiii/ggcoder
 
+## 5.46.0
+
+### Minor Changes
+
+- 7a4a613: Add a bundled `durable` skill for data durability — user data must survive bad migrations, crashed writes, retried webhooks, and dead servers. Two modes like its siblings: binding defaults while building (migration tooling from the first table, guards on destructive operations, constraints in the store, transactions around multi-write invariants, idempotency keys on retried writes, batched resumable backfills, backups the moment real data exists, connection/session hygiene, SQLite runtime rules) and a full pass for existing projects (backups & recovery, destructive paths, migration health, transactions & idempotency, schema integrity, runtime data safety — ranked by survivability, verified with restore/guard/migration drills). References cover the expand-contract pattern with concrete lock behavior, ORM migration traps, backup tiers with 2026 managed-provider baselines, the restore drill, outbox/idempotency patterns, and transaction-pooling session-state pitfalls.
+- 7a4a613: Add a bundled `lean` skill for performance and resource efficiency — two modes like its siblings: binding defaults while building (teardown ships with the feature, bounded accumulation, lazy loading, right-sized media, streamed I/O, timeout everything) and a full-pass workflow for existing projects (baseline, sweep six areas — loading/startup, runtime responsiveness, memory, processes & lifecycle, payload & dead weight, styling consistency — rank by user impact, fix, re-verify with numbers, leave a CI guard). Covers every stack (web, backend, Electron, Tauri, mobile, native, Python, data) via per-stack playbooks, plus a memory-leak catalog and zombie/orphan process lifecycle playbook (process-tree kills, graceful shutdown, startup sweeps, container PID 1).
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.46.0
+- @kenkaiiii/gg-agent@5.46.0
+- @kenkaiiii/gg-core@5.46.0
+
 ## 5.45.0
 
 ### Minor Changes
