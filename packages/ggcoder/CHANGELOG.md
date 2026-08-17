@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.45.0
+
+### Minor Changes
+
+- Add background-task wake rules (bash `wake` pattern/silence conditions that notify the agent instead of task_output polling), a pre-stop verification gate (a run that edited code cannot finish until a test/typecheck/lint/build command ran after the last edit), and a flag-aware read-only bash classifier for plan mode (blocks `git branch -D`, `find -delete`, `date -s`, clustered flags like `sort -ro`, and sed exec/write scripting).
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.45.0
+- @kenkaiiii/gg-agent@5.45.0
+- @kenkaiiii/gg-core@5.45.0
+
 ## 5.44.3
 
 ### Patch Changes
