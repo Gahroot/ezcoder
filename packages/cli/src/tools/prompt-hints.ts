@@ -115,6 +115,7 @@ export const BUILTIN_TOOL_NAMES: readonly string[] = [
   "followup_task",
   "generate_image",
   "grep",
+  "goals",
   "interrupt_agent",
   "list_agents",
   "ls",

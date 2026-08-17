@@ -146,6 +146,6 @@ describe("tool tiering in the system prompt", () => {
     // Quality minimization ladder (benchmarked: same correctness, 50–76% less
     // generated code); the index block cap above is the one that guards
     // tiering itself, and it is unchanged.
-    expect(prompt.length).toBeLessThan(10_700);
+    expect(prompt.length).toBeLessThan(11_300);
   });
 });

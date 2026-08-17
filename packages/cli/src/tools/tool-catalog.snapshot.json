@@ -273,6 +273,328 @@
       "hash": "aeb5afe8517d6418bf488be23527e3d88da309039248d2a9f2ae112d6f80cf8f"
     },
     {
+      "name": "goals",
+      "description": "Manage durable Goal runs for /goal and Ctrl+G workflows. Use this instead of tasks when the user wants a programmatic goal loop: define success criteria first, check prerequisites before launching workers, persist harness/diagnostics/evidence, add standalone worker tasks, record final completion audits, and only mark the goal complete when verifier plus final-audit evidence proves the original objective. Do not require paid services or signups without recording a blocker and asking the user for the missing prerequisite.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "prerequisite",
+              "task",
+              "evidence",
+              "evidence_plan",
+              "verify",
+              "audit",
+              "status",
+              "pause",
+              "resume",
+              "complete"
+            ],
+            "description": "Goal action to perform"
+          },
+          "run_id": {
+            "description": "Goal run id; omitted actions use the active/latest run",
+            "type": "string"
+          },
+          "title": {
+            "description": "Goal or task title",
+            "type": "string"
+          },
+          "goal": {
+            "description": "Original user objective for create",
+            "type": "string"
+          },
+          "success_criteria": {
+            "description": "Concrete criteria that must be proven before completion",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prerequisites": {
+            "description": "Prerequisites that must be met before launching workers",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "description": "Stable prerequisite id",
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string",
+                  "description": "Human-readable prerequisite label"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "unknown",
+                    "met",
+                    "missing"
+                  ]
+                },
+                "check_command": {
+                  "description": "Optional command used to check this prerequisite",
+                  "type": "string"
+                },
+                "instructions": {
+                  "description": "What the user must provide when missing",
+                  "type": "string"
+                },
+                "evidence": {
+                  "description": "Short evidence, never secret values",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "prerequisite_id": {
+            "description": "Prerequisite id to update",
+            "type": "string"
+          },
+          "prerequisite_status": {
+            "description": "Updated prerequisite status",
+            "type": "string",
+            "enum": [
+              "unknown",
+              "met",
+              "missing"
+            ]
+          },
+          "prerequisite_label": {
+            "description": "Label for an added/updated prerequisite",
+            "type": "string"
+          },
+          "instructions": {
+            "description": "User-facing instructions for missing prerequisite",
+            "type": "string"
+          },
+          "harness": {
+            "description": "Harness/diagnostic commands and files",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "description": "Stable harness item id",
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string",
+                  "description": "Harness/diagnostic label"
+                },
+                "command": {
+                  "description": "Command that runs this harness item",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "File path for a harness artifact",
+                  "type": "string"
+                },
+                "description": {
+                  "description": "What this harness observes or verifies",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "evidence_plan": {
+            "description": "Planned proof paths for end-to-end verification",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "description": "Stable evidence-plan item id",
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string",
+                  "description": "Short evidence path label"
+                },
+                "mechanism": {
+                  "type": "string",
+                  "enum": [
+                    "command",
+                    "test",
+                    "script",
+                    "fixture",
+                    "log",
+                    "screenshot",
+                    "video",
+                    "browser",
+                    "device",
+                    "source",
+                    "file",
+                    "manual"
+                  ],
+                  "description": "How this proof will be gathered"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "What this evidence proves"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "planned",
+                    "ready",
+                    "blocked"
+                  ]
+                },
+                "command": {
+                  "description": "Runnable command when available",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Artifact path when available",
+                  "type": "string"
+                },
+                "instructions": {
+                  "description": "Exact user instructions when blocked",
+                  "type": "string"
+                },
+                "evidence": {
+                  "description": "Observed evidence summary when ready",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "mechanism",
+                "description"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "evidence_plan_item_id": {
+            "description": "Evidence-plan item id to update",
+            "type": "string"
+          },
+          "evidence_plan_status": {
+            "description": "Updated evidence-plan item status",
+            "type": "string",
+            "enum": [
+              "planned",
+              "ready",
+              "blocked"
+            ]
+          },
+          "verifier_command": {
+            "description": "Command that verifies the goal end-to-end",
+            "type": "string"
+          },
+          "verifier_description": {
+            "description": "Natural-language verifier description",
+            "type": "string"
+          },
+          "task_id": {
+            "description": "Goal task id to update",
+            "type": "string"
+          },
+          "task_title": {
+            "description": "Short worker task title",
+            "type": "string"
+          },
+          "task_prompt": {
+            "description": "Standalone prompt for a disposable Goal worker in this same project",
+            "type": "string"
+          },
+          "task_status": {
+            "description": "Goal task status",
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "verifying",
+              "done",
+              "failed",
+              "blocked"
+            ]
+          },
+          "worker_id": {
+            "description": "Worker id associated with a task",
+            "type": "string"
+          },
+          "attempts": {
+            "description": "Task attempt count",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "summary": {
+            "description": "Short summary or verification note",
+            "type": "string"
+          },
+          "evidence_kind": {
+            "description": "Evidence kind",
+            "type": "string",
+            "enum": [
+              "log",
+              "command",
+              "screenshot",
+              "file",
+              "summary"
+            ]
+          },
+          "evidence_label": {
+            "description": "Evidence label",
+            "type": "string"
+          },
+          "evidence_path": {
+            "description": "Evidence file/log/screenshot path",
+            "type": "string"
+          },
+          "evidence_content": {
+            "description": "Short evidence content",
+            "type": "string"
+          },
+          "verification_status": {
+            "description": "Verifier result status",
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "unknown"
+            ]
+          },
+          "exit_code": {
+            "description": "Verifier command exit code",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "output_path": {
+            "description": "Path to verifier output/log",
+            "type": "string"
+          },
+          "blockers": {
+            "description": "Current blockers",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "hash": "bd63229eafd21075cd20f5ab09d814a6e9daca4b187435266e1f87cb97c4b404"
+    },
+    {
       "name": "grep",
       "description": "Search file contents using regex. Returns filepath:line_number:content for matches, ordered by path. Skips files matched by the search root's .gitignore (pass an explicit `path` inside an ignored directory to search it anyway), skips binary files, and searches dot-directories. Lookaround and backreferences are supported but scan more slowly.",
       "schema": {
@@ -446,7 +768,7 @@
         ],
         "additionalProperties": false
       },
-      "hash": "4ea2a1bd8c3f454abaaf4d7766d3a5f25e0b9db32501ee0eb4ca9983e665498f"
+      "hash": "bcd85a30d799f0abbee283450f046139610f4b1c04168879171d2ecdd1b53452"
     },
     {
       "name": "source_path",
@@ -543,7 +865,7 @@
     },
     {
       "name": "tasks",
-      "description": "Manage the project task list. Each task has a short title (shown in the task pane) and a prompt (sent as a standalone instruction to an agent with no context). Write prompts as concise, actionable directives with specific file paths — the agent must complete it from the prompt alone. When adding multiple tasks, order them by dependency — foundational work first, then core logic, integration, UI, and tests. Do not use this tool proactively — only manage the task list when the user explicitly requests it.",
+      "description": "Manage the project task list. Each task has a short title (shown in the task pane) and a prompt (sent as a standalone instruction to an agent with no context). Write prompts as concise, actionable directives with specific file paths — the agent must complete it from the prompt alone. When adding multiple tasks, order them by dependency — foundational work first, then core logic, integration, UI, and tests. Use the update action to change a task's status (pending/in-progress/done) or edit its title/prompt without recreating it. Do not use this tool proactively — only manage the task list when the user explicitly requests it.",
       "schema": {
         "type": "object",
         "properties": {
@@ -552,10 +874,11 @@
             "enum": [
               "add",
               "list",
+              "update",
               "done",
               "remove"
             ],
-            "description": "Action: add a task, list tasks, mark done, or remove"
+            "description": "Action: add a task, list tasks, update a task's status/title/prompt, mark done, or remove"
           },
           "title": {
             "description": "Short task title for display (max ~10 words, required for add)",
@@ -565,8 +888,17 @@
             "description": "The standalone prompt sent to an agent with no context (required for add). Concise, actionable instruction with file paths and what to change.",
             "type": "string"
           },
+          "status": {
+            "description": "New status for the update action (pending, in-progress, or done).",
+            "type": "string",
+            "enum": [
+              "pending",
+              "in-progress",
+              "done"
+            ]
+          },
           "id": {
-            "description": "Task ID (required for done/remove — use list to find IDs)",
+            "description": "Task ID (required for update/done/remove — use list to find IDs)",
             "type": "string"
           }
         },
@@ -575,7 +907,7 @@
         ],
         "additionalProperties": false
       },
-      "hash": "a8101bcaaff3cb643b11a63a96b5d00833317cacf02a3ee6cb2b708d5b4e41b3"
+      "hash": "9fd6bd66459365ec22da68b7644e11f664ebd6dd8a922e4154989341ffde5970"
     },
     {
       "name": "web_fetch",

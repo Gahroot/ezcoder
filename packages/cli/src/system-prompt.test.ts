@@ -469,9 +469,10 @@ describe("buildSystemPrompt", () => {
     // generated code 50–76% and output tokens 21–38%. Input tokens fell too,
     // despite the longer prefix: stopping at the first rung that holds costs
     // fewer turns than re-deriving an over-built solution.
-    expect(measurements.normal.characters).toBeLessThan(7_900);
-    expect(measurements.planMode.characters).toBeLessThan(9_100);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(12_300);
+    // The fork's Goal workflow adds ~250 characters across representative prompts.
+    expect(measurements.normal.characters).toBeLessThan(8_400);
+    expect(measurements.planMode.characters).toBeLessThan(9_700);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(12_900);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -511,7 +512,7 @@ describe("buildSystemPrompt", () => {
     expect(audit.flags).toEqual([]);
     // Raised with the Code Quality minimization ladder — see the size-budget
     // test above for the measured return that justifies the spend.
-    expect(audit.size.characters).toBeLessThan(11_900);
+    expect(audit.size.characters).toBeLessThan(12_600);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 

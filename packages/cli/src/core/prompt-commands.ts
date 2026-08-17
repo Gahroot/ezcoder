@@ -738,7 +738,6 @@ Defensive reference material from public incident reports and OWASP — patterns
 - **Report only.** Wait for the user to pick what to fix in Phase 6.`,
   },
   {
-
     name: "init",
     aliases: [],
     description: "Generate or update CLAUDE.md for this project",
