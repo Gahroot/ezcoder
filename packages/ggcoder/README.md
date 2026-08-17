@@ -204,13 +204,15 @@ Reusable behaviors across projects. Drop `.md` files in:
 
 They get loaded into the system prompt automatically. The agent knows what it can do without you explaining it each session. <kbd>Ctrl+S</kbd> opens a pane to browse and toggle them.
 
-Three ship built in, and route themselves when the work matches:
+Five ship built in, and route themselves when the work matches:
 
 | Skill              | Fires on                                                                                                                                                                                                                            |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bulletproof`      | Code an attacker will reach — auth, untrusted input, secrets, dependencies, CI/release, agent/MCP tool surfaces — and "is this safe to ship" reviews. Works on any target: web, API, CLI, desktop, mobile, embedded, contracts, ML. |
 | `compliance-guard` | Legal exposure — personal data, payments, UGC, email/SMS, minors, or a licensed/regulated feature.                                                                                                                                  |
+| `durable`          | User data must not be lost — first database/table, migrations, backfills/imports, destructive operations, backups and recovery; any store (Postgres, MySQL, SQLite, Mongo, serverless).                                              |
 | `evidence-led-ui`  | Broad or design-sensitive UI work — new screens, redesigns, design systems, accessibility passes.                                                                                                                                   |
+| `lean`             | Speed and resource efficiency — slow loading/startup, jank, high CPU, memory leaks and hogging, zombie/orphan processes, bundle bloat, dead code/styles, Core Web Vitals; while building anything that should stay fast, or a perf pass on an existing project. Any stack: web, backend, Electron, Tauri, mobile, native, game, ML. |
 
 ---
 

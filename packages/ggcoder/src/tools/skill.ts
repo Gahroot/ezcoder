@@ -49,6 +49,7 @@ function generateSkillDescription(skills: Skill[]): string {
   return (
     `Invoke a skill by name to get specialized instructions for a task. ` +
     `Before acting, invoke a skill when the request matches its scope and respect explicit exclusions. ` +
+    `Invoke as soon as the work enters a skill's scope — while building or when checking — not only for reviews. ` +
     `Match the work rather than the topic, skip it for routine or narrow changes, and do not re-invoke a skill already loaded in this conversation.\n\n` +
     `Available skills:\n${list}`
   );
