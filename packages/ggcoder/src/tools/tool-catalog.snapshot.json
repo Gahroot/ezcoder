@@ -3,7 +3,7 @@
   "tools": [
     {
       "name": "bash",
-      "description": "Execute a bash command. The shell's working directory is already set to the project root — don't cd into it redundantly. Use cd only when you need a different directory. Returns exit code and combined stdout/stderr. Commands run in a non-interactive bash shell with TERM=dumb. Long output is truncated (tail kept). Set run_in_background=true for long-running OR interactive processes (dev servers, watchers, REPLs, scaffolders, programs that prompt for input). Use task_output to read output, task_send to type input/answer prompts, and task_stop to stop background processes. Set persist=true to run in a session shell where cd/env state survives across persist:true calls.",
+      "description": "Execute a bash command. The shell's working directory is already set to the project root — don't cd into it redundantly. Use cd only when you need a different directory. Returns exit code and combined stdout/stderr. Commands run in a non-interactive bash shell with TERM=dumb. Long output is truncated (tail kept). Set run_in_background=true for long-running OR interactive processes (dev servers, watchers, REPLs, scaffolders, programs that prompt for input). Use task_output to read output, task_send to type input/answer prompts, and task_stop to stop background processes. Set persist=true to run in a session shell where cd/env state survives across persist:true calls. With run_in_background, also set wake (pattern and/or silence_seconds) to be actively notified the moment matching output appears or the task stalls.",
       "schema": {
         "type": "object",
         "properties": {
@@ -24,6 +24,25 @@
           "persist": {
             "description": "Run in the persistent session shell: cd, exported env vars, and shell state survive across persist:true calls. Use for multi-step workflows in another directory or with sourced environments. Default false (fresh shell per call).",
             "type": "boolean"
+          },
+          "wake": {
+            "description": "Wake conditions for a background task (run_in_background only). You are notified automatically the instant one holds, instead of polling task_output. Each condition fires once; exit always notifies regardless.",
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "description": "A regex; the moment NEW output matches it you are actively woken with the matching line — no task_output polling. Use for signals in long builds, dev servers and watchers (e.g. 'compiled with errors', 'listening on').",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "silence_seconds": {
+                "description": "Wake me if the task produces no output at all for this many seconds while still running — a stall/hang detector for commands that should be chatty.",
+                "type": "integer",
+                "minimum": 10,
+                "maximum": 3600
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [
@@ -31,7 +50,7 @@
         ],
         "additionalProperties": false
       },
-      "hash": "4f039f9a060626f55712d72855f35e09337520d441811debbc2766a1a98a2065"
+      "hash": "e2ecb31ee9ad2d3f8a0d15fa98a4e861edacbce846fabdcf4c10de13f9ff0e4a"
     },
     {
       "name": "code_nav",

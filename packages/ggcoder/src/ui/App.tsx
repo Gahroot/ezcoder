@@ -32,6 +32,11 @@ import {
   type SubAgentSnapshot,
 } from "../core/subagent-manager.js";
 import { buildProcessCompletionFollowUp } from "../core/process-gate.js";
+import {
+  VerificationGate,
+  isCodeFilePath,
+  isVerificationCommand,
+} from "../core/verification-gate.js";
 import { useAgentLoop, type StreamSnapshot, type UserContent } from "./hooks/useAgentLoop.js";
 import { useTranscriptHistory } from "./hooks/useTranscriptHistory.js";
 import type { PasteInfo } from "./components/InputArea.js";
@@ -219,6 +224,8 @@ export interface AppProps {
   version: string;
   showTokenUsage?: boolean;
   idealReviewEnabled?: boolean;
+  /** Kill switch for the pre-stop verification gate (default on). */
+  verificationGateEnabled?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
   credentialsByProvider?: Record<
@@ -338,6 +345,7 @@ export interface AppProps {
     planMode?: boolean;
     sessionStats?: SessionStats;
     idealReviewEnabled?: boolean;
+    verificationGateEnabled?: boolean;
   };
 }
 
@@ -548,6 +556,11 @@ export function App(props: AppProps) {
     props.sessionStore?.idealReviewEnabled ?? props.idealReviewEnabled ?? true,
   );
   const idealReviewEnabledRef = useRef(idealReviewEnabled);
+  /** Pre-stop verification gate: code edited this run, nothing proved it since. */
+  const verificationGateRef = useRef(new VerificationGate());
+  const verificationGateEnabledRef = useRef(
+    props.sessionStore?.verificationGateEnabled ?? props.verificationGateEnabled ?? true,
+  );
   /**
    * Languages whose style packs are currently injected into the system prompt.
    * Grown by `maybeInjectLanguagePacks` after `write`/`bash` tool results when
@@ -1305,7 +1318,31 @@ export function App(props: AppProps) {
           isError: boolean,
           durationMs: number,
           details?: unknown,
+          args?: Record<string, unknown>,
         ) => {
+          // Verification-gate bookkeeping, mirroring AgentSession.trackHookEvent:
+          // successful code mutations vs completed foreground verification runs.
+          if (!isError && args) {
+            const filePath = String(args.file_path ?? "");
+            if ((name === "edit" || name === "write") && isCodeFilePath(filePath)) {
+              verificationGateRef.current.recordMutation(filePath);
+            }
+            if (
+              name === "bash" &&
+              !args.run_in_background &&
+              isVerificationCommand(String(args.command ?? ""))
+            ) {
+              verificationGateRef.current.recordVerification();
+            }
+            // Reading the final output of an EXITED background verification run
+            // counts as verification — mirrors AgentSession.trackHookEvent.
+            if (name === "task_output") {
+              const proc = props.processManager?.list().find((p) => p.id === args.id);
+              if (proc && proc.exitCode !== null && isVerificationCommand(proc.command)) {
+                verificationGateRef.current.recordVerification();
+              }
+            }
+          }
           recordToolEnd(sessionStatsRef.current, name, isError, durationMs);
           setLiveToolFeed((prev) =>
             prev.map((entry) =>
@@ -1767,6 +1804,7 @@ export function App(props: AppProps) {
         if (gate.runStartedAt !== runStartedAt) {
           gate.runStartedAt = runStartedAt;
           gate.injected = 0;
+          verificationGateRef.current.reset();
         }
         const processFollowUp = buildProcessCompletionFollowUp(
           props.processManager?.list() ?? [],
@@ -1776,6 +1814,14 @@ export function App(props: AppProps) {
         if (processFollowUp) {
           gate.injected += 1;
           return processFollowUp;
+        }
+
+        // Verification gate: code was edited but no test/typecheck/lint/build
+        // completed since the last edit — block "done" until it runs (or the
+        // budget escalates to an honest unverified statement).
+        if (verificationGateEnabledRef.current) {
+          const verificationFollowUp = verificationGateRef.current.followUp();
+          if (verificationFollowUp) return verificationFollowUp;
         }
 
         const steps = planStepsRef.current;

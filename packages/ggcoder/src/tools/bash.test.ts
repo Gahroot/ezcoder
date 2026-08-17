@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createBashTool, renderBashOutput } from "./bash.js";
 import { getToolOutputRoot } from "./overflow.js";
 import { ProcessManager } from "../core/process-manager.js";
+import { AgentNotificationQueue } from "../core/agent-notifications.js";
 import { resolveShell } from "../core/shell.js";
 import { existsSync } from "node:fs";
 import { useFakeHome } from "../test-support/fake-home.js";
@@ -111,6 +112,58 @@ describe("catastrophic-command guard", () => {
 
     expect(String(result)).toContain("Refusing to run");
     expect(String(result)).toContain("user confirmation");
+  });
+});
+
+describe("wake-condition validation", () => {
+  it("refuses wake without run_in_background", async () => {
+    const tool = createBashTool(tmpHome, new ProcessManager());
+    const result = await tool.execute(
+      { command: "echo hi", wake: { pattern: "done" } },
+      { signal: new AbortController().signal, toolCallId: "wake-1" },
+    );
+    expect(String(result)).toContain("run_in_background=true");
+  });
+
+  it("refuses an invalid wake pattern instead of arming a broken watcher", async () => {
+    const tool = createBashTool(tmpHome, new ProcessManager());
+    const result = await tool.execute(
+      { command: "echo hi", run_in_background: true, wake: { pattern: "([unclosed" } },
+      { signal: new AbortController().signal, toolCallId: "wake-2" },
+    );
+    expect(String(result)).toContain("not a valid regex");
+  });
+
+  it("arms wake rules and says so on a background start", async () => {
+    const manager = new ProcessManager({
+      bgDir: `${tmpHome}/bg-test`,
+      notifications: new AgentNotificationQueue(),
+    });
+    const tool = createBashTool(tmpHome, manager);
+    const result = await tool.execute(
+      {
+        command: "sleep 1",
+        run_in_background: true,
+        wake: { pattern: "READY", silence_seconds: 30 },
+      },
+      { signal: new AbortController().signal, toolCallId: "wake-3" },
+    );
+    expect(String(result)).toContain("Wake rules armed");
+    expect(String(result)).toContain("silence 30s");
+    await manager.shutdownAll();
+  });
+
+  it("does not promise a wake when no notification path exists", async () => {
+    // TUI-style manager: no notifications queue wired.
+    const manager = new ProcessManager({ bgDir: `${tmpHome}/bg-noqueue` });
+    const tool = createBashTool(tmpHome, manager);
+    const result = await tool.execute(
+      { command: "sleep 1", run_in_background: true, wake: { pattern: "READY" } },
+      { signal: new AbortController().signal, toolCallId: "wake-4" },
+    );
+    expect(String(result)).toContain("NOT armed");
+    expect(String(result)).toContain("Poll task_output");
+    await manager.shutdownAll();
   });
 });
 

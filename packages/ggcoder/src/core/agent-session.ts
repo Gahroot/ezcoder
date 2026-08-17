@@ -128,6 +128,7 @@ import {
 import { buildRegroundingMessage } from "./regrounding.js";
 import { wrapSteeringText, buildNotificationSteeringText, STEERING_PREFIX } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
+import { VerificationGate, isCodeFilePath, isVerificationCommand } from "./verification-gate.js";
 
 import { findUserSessionPrompt, getUserSessionPrompt } from "./session-preview.js";
 import { normalizeMessageImages } from "./message-images.js";
@@ -429,6 +430,8 @@ export class AgentSession {
   private runStartedAt = 0;
   /** Gate injections spent this run, capped by MAX_PROCESS_GATE_INJECTIONS. */
   private processGateInjected = 0;
+  /** Verification gate: code edited this run, nothing proved it since. */
+  private readonly verificationGate = new VerificationGate();
   private compactionOccurred = false;
   private lastCompactionCompacted = false;
   private compactionRetryAfter = 0;
@@ -1283,6 +1286,7 @@ export class AgentSession {
     this.regroundingInjected = false;
     this.runStartedAt = Date.now();
     this.processGateInjected = 0;
+    this.verificationGate.reset();
     this.compactionOccurred = false;
     this.originalRequest = originalRequest;
   }
@@ -1327,6 +1331,37 @@ export class AgentSession {
           const added = (diff.match(/^\+[^+]/gm) ?? []).length;
           const removed = (diff.match(/^-[^-]/gm) ?? []).length;
           this.hookStats.changedLines += added + removed;
+        }
+        // Verification-gate bookkeeping: successful code mutations and completed
+        // foreground verification commands, in occurrence order.
+        if (!event.isError && args) {
+          if (
+            (name === "edit" || name === "write") &&
+            isCodeFilePath(String((args as { file_path?: unknown }).file_path ?? ""))
+          ) {
+            this.verificationGate.recordMutation(
+              String((args as { file_path?: unknown }).file_path),
+            );
+          }
+          if (
+            name === "bash" &&
+            !(args as { run_in_background?: unknown }).run_in_background &&
+            isVerificationCommand(String((args as { command?: unknown }).command ?? ""))
+          ) {
+            this.verificationGate.recordVerification();
+          }
+          // Reading the final output of an EXITED background verification run
+          // counts: the process gate forces this read anyway, so without it the
+          // gate would demand a redundant foreground re-run of tests the agent
+          // already watched finish.
+          if (name === "task_output") {
+            const proc = this.processManager
+              ?.list()
+              .find((p) => p.id === (args as { id?: unknown }).id);
+            if (proc && proc.exitCode !== null && isVerificationCommand(proc.command)) {
+              this.verificationGate.recordVerification();
+            }
+          }
         }
         // Tool results are what push the run over the review gate, and they all
         // land before the model writes its candidate final answer — so this is
@@ -1596,6 +1631,21 @@ export class AgentSession {
         injected: String(this.processGateInjected),
       });
       return processFollowUp;
+    }
+
+    // Verification gate: code was edited but nothing verified since the last
+    // edit. Above the Ideal review so checks RUN before the read-based review
+    // starts; off for allow-listed sessions that cannot run commands at all.
+    if (
+      this.opts.selfCorrectionHooks !== false &&
+      this.settingsManager.get("verificationGateEnabled") &&
+      (!this.opts.allowedTools || this.opts.allowedTools.includes("bash"))
+    ) {
+      const verificationFollowUp = this.verificationGate.followUp();
+      if (verificationFollowUp) {
+        log("INFO", "verification-gate", "Injecting verification follow-up", {});
+        return verificationFollowUp;
+      }
     }
 
     if (this.opts.selfCorrectionHooks === false || this.idealReviewSuppressed) return null;
