@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.63",
+    date: "2026-08-17",
+    items: [
+      "The local sidecar now authenticates every request, and project MCP servers ask for trust before they can run.",
+      "GLM-5.3 is ready, with new Bulletproof, Lean, and Durable skills bundled in.",
+      "EZ now verifies code after edits, wakes background jobs when they need attention, and tracks review coverage more clearly.",
+      "Queued prompts promote smoothly, while meme controls and rendering behave themselves again.",
+      "Safer edits and empty-response recovery mean fewer weird dead ends. Tiny miracles, shipped.",
+    ],
+  },
+  {
     version: "0.1.62",
     date: "2026-08-11",
     items: [
