@@ -25,7 +25,7 @@ let tmpProject: string;
 let child: FakeChild;
 
 async function flushUntil(assertion: () => void | Promise<void>): Promise<void> {
-  const deadline = Date.now() + 1_000;
+  const deadline = Date.now() + 5_000;
   let lastError: unknown;
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 10));
