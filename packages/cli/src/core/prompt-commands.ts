@@ -17,7 +17,6 @@ const IS_EZ_APP = isGgApp();
 const TASKS_ADDED_NOTICE = IS_EZ_APP
   ? 'Tasks added. Click the "Tasks" button to open the task list and run them.'
   : "Tasks added. Press Ctrl+T to open the task list and run them.";
-
 // The context file is whichever name won CONTEXT_FILES priority for this repo
 // (AGENTS.override.md > AGENTS.md > CLAUDE.md > …), so the notice stays
 // filename-agnostic — /init picks the winner at run time.
@@ -739,6 +738,7 @@ Defensive reference material from public incident reports and OWASP — patterns
 - **Report only.** Wait for the user to pick what to fix in Phase 6.`,
   },
   {
+
     name: "init",
     aliases: [],
     description: "Generate or update CLAUDE.md for this project",

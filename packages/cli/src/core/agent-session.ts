@@ -128,6 +128,7 @@ import {
 import { buildRegroundingMessage } from "./regrounding.js";
 import { wrapSteeringText, buildNotificationSteeringText, STEERING_PREFIX } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
+import { VerificationGate, isCodeFilePath, isVerificationCommand } from "./verification-gate.js";
 
 import { findUserSessionPrompt, getUserSessionPrompt } from "./session-preview.js";
 import { normalizeMessageImages } from "./message-images.js";
@@ -416,6 +417,14 @@ export class AgentSession {
   private idealReviewPhase: "idle" | "reviewing" | "complete" = "idle";
   /** Runtime-only suppression while Nolan owns verification in autopilot mode. */
   private idealReviewSuppressed = false;
+  /** Mirror of the last `hook_armed` value broadcast this run, so the event
+   *  fires only on a real edge. */
+  private idealReviewArmed = false;
+  /** Cached test-drift probe, keyed by the size of the edited-file set. Drift
+   *  depends only on WHICH files were edited and that set only grows, so this
+   *  keeps the arming check off the filesystem on most tool results — the probe
+   *  is several sync existsSync calls per edited file. */
+  private idealDriftProbe: { files: number; drifted: boolean } | null = null;
   private readonly reviewCoverage: ReviewCoverageTracker;
   /** Coverage follow-ups spent this run, capped by MAX_REVIEW_COVERAGE_INJECTIONS. */
   private reviewCoverageInjected = 0;
@@ -426,6 +435,8 @@ export class AgentSession {
   private runStartedAt = 0;
   /** Gate injections spent this run, capped by MAX_PROCESS_GATE_INJECTIONS. */
   private processGateInjected = 0;
+  /** Verification gate: code edited this run, nothing proved it since. */
+  private readonly verificationGate = new VerificationGate();
   private compactionOccurred = false;
   private lastCompactionCompacted = false;
   private compactionRetryAfter = 0;
@@ -869,7 +880,9 @@ export class AgentSession {
           // GLM not configured — skip Z.AI MCP servers
         }
       }
-      let servers = await getAllMcpServers(this.provider, apiKey, this.cwd);
+      let servers = await getAllMcpServers(this.provider, apiKey, this.cwd, {
+        allowProjectScope: this.settingsManager.isProjectTrusted(this.cwd),
+      });
       // Whitelisted allow-listed session: connect ONLY the named servers, never
       // the user's full configured set (which could include mutating tools). The
       // whitelist only restricts in allow-list mode (the documented contract) so
@@ -901,6 +914,9 @@ export class AgentSession {
       if (this.opts.backgroundMcpConnect && mcpTools.length > 0) {
         await this.rebuildSystemPromptInPlace();
       }
+      // Detect project-scope servers excluded because the repo isn't trusted,
+      // so the host can offer a per-repo "Trust" button. Computed after the
+      // connect so the blocked list reflects the same connect attempt.
     } catch (err) {
       log(
         "WARN",
@@ -908,6 +924,14 @@ export class AgentSession {
         `MCP initialization failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  /** Persist `cwd` as a trusted project for project-scope MCP. Called by the
+   *  sidecar's `/mcp/add` handler when a user adds a project-scope server via
+   *  the MCP modal — the explicit add is itself the trust signal. The next
+   *  session load connects its `.gg/mcp.json` servers. */
+  async trustProject(cwd: string): Promise<void> {
+    await this.settingsManager.trustProject(cwd);
   }
 
   /**
@@ -1254,10 +1278,14 @@ export class AgentSession {
     this.reviewCoverage.reset();
     this.reviewCoverageInjected = 0;
     this.idealReviewPhase = "idle";
+    // No event here: clients reset their own hold on run_start.
+    this.idealReviewArmed = false;
+    this.idealDriftProbe = null;
     this.loopBreakInjected = 0;
     this.regroundingInjected = false;
     this.runStartedAt = Date.now();
     this.processGateInjected = 0;
+    this.verificationGate.reset();
     this.compactionOccurred = false;
     this.originalRequest = originalRequest;
   }
@@ -1303,10 +1331,46 @@ export class AgentSession {
           const removed = (diff.match(/^-[^-]/gm) ?? []).length;
           this.hookStats.changedLines += added + removed;
         }
+        // Verification-gate bookkeeping: successful code mutations and completed
+        // foreground verification commands, in occurrence order.
+        if (!event.isError && args) {
+          if (
+            (name === "edit" || name === "write") &&
+            isCodeFilePath(String((args as { file_path?: unknown }).file_path ?? ""))
+          ) {
+            this.verificationGate.recordMutation(
+              String((args as { file_path?: unknown }).file_path),
+            );
+          }
+          if (
+            name === "bash" &&
+            !(args as { run_in_background?: unknown }).run_in_background &&
+            isVerificationCommand(String((args as { command?: unknown }).command ?? ""))
+          ) {
+            this.verificationGate.recordVerification();
+          }
+          // Reading the final output of an EXITED background verification run
+          // counts: the process gate forces this read anyway, so without it the
+          // gate would demand a redundant foreground re-run of tests the agent
+          // already watched finish.
+          if (name === "task_output") {
+            const proc = this.processManager
+              ?.list()
+              .find((p) => p.id === (args as { id?: unknown }).id);
+            if (proc && proc.exitCode !== null && isVerificationCommand(proc.command)) {
+              this.verificationGate.recordVerification();
+            }
+          }
+        }
+        // Tool results are what push the run over the review gate, and they all
+        // land before the model writes its candidate final answer — so this is
+        // the point where arming still beats the draft's first token.
+        this.refreshIdealReviewArmed();
         break;
       }
       case "turn_end":
         this.hookStats.turns = event.turn;
+        this.refreshIdealReviewArmed();
         for (let index = this.messages.length - 1; index >= 0; index--) {
           const anchor = this.messages[index];
           if (anchor?.role === "assistant") {
@@ -1503,6 +1567,48 @@ export class AgentSession {
   }
 
   /**
+   * Would the stop AFTER the current turn inject the Ideal review? Same inputs
+   * as the pre-stop gate below, evaluated early so clients know a candidate
+   * final answer is a review draft BEFORE it streams.
+   *
+   * The turn count is looked ahead by one on purpose. `hookStats.turns` only
+   * advances at `turn_end`, so while the model is writing the draft the counter
+   * still reads the PREVIOUS turn; the real gate sees one more. Without the
+   * lookahead a run sitting on score 3 crosses to 4 on the draft's own
+   * `turn_end` — after the text already streamed — which is precisely the
+   * appear-then-vanish flash. Over-arming by one turn point costs only live
+   * token streaming on a final answer that then shows whole; under-arming costs
+   * the flash, so this errs toward arming.
+   */
+  private wouldInjectIdealReview(): boolean {
+    if (this.opts.selfCorrectionHooks === false || this.idealReviewSuppressed) return false;
+    if (this.idealReviewPhase !== "idle") return false;
+    if (!this.settingsManager.get("idealReviewEnabled")) return false;
+    if (evaluateIdealReview({ ...this.hookStats, turns: this.hookStats.turns + 1 }).shouldReview) {
+      return true;
+    }
+    const files = this.hookFileEditCounts.size;
+    if (files === 0) return false;
+    if (this.idealDriftProbe?.files !== files) {
+      this.idealDriftProbe = {
+        files,
+        drifted: detectTestDrift(this.hookFileEditCounts.keys(), this.cwd).length > 0,
+      };
+    }
+    return this.idealDriftProbe.drifted;
+  }
+
+  /** Broadcast Ideal-review arming on change. Both edges matter: armed=false
+   *  after the review fires is what lets a client stream the REVIEWED final
+   *  answer live again. */
+  private refreshIdealReviewArmed(): void {
+    const armed = this.wouldInjectIdealReview();
+    if (armed === this.idealReviewArmed) return;
+    this.idealReviewArmed = armed;
+    this.eventBus.emit("hook_armed", { kind: "ideal", armed });
+  }
+
+  /**
    * Pre-stop Ideal review phase machine. Once review starts, completion is
    * blocked until harness-owned post-injection reads cover every changed file.
    */
@@ -1524,6 +1630,21 @@ export class AgentSession {
         injected: String(this.processGateInjected),
       });
       return processFollowUp;
+    }
+
+    // Verification gate: code was edited but nothing verified since the last
+    // edit. Above the Ideal review so checks RUN before the read-based review
+    // starts; off for allow-listed sessions that cannot run commands at all.
+    if (
+      this.opts.selfCorrectionHooks !== false &&
+      this.settingsManager.get("verificationGateEnabled") &&
+      (!this.opts.allowedTools || this.opts.allowedTools.includes("bash"))
+    ) {
+      const verificationFollowUp = this.verificationGate.followUp();
+      if (verificationFollowUp) {
+        log("INFO", "verification-gate", "Injecting verification follow-up", {});
+        return verificationFollowUp;
+      }
     }
 
     if (this.opts.selfCorrectionHooks === false || this.idealReviewSuppressed) return null;
@@ -1574,6 +1695,11 @@ export class AgentSession {
       coverageExpected: coverage.expected,
       coverageMissing: coverage.missing,
     });
+    // Disarm strictly AFTER the hook event. Clients release held text on
+    // disarm, so the reverse order would paint the draft and then delete it —
+    // the exact flash arming exists to prevent. Leaving `idle` is what lets the
+    // reviewed final answer stream live instead of being held.
+    this.refreshIdealReviewArmed();
     log("INFO", "ideal", "Injecting ideal review before final response", {
       coverageExpected: coverage.expected,
       coverageMissing: coverage.missing,
@@ -2140,7 +2266,9 @@ export class AgentSession {
             }
           }
           // Use getAllMcpServers so user-configured servers survive the reconnect.
-          const servers = await getAllMcpServers(this.provider, apiKey, this.cwd);
+          const servers = await getAllMcpServers(this.provider, apiKey, this.cwd, {
+            allowProjectScope: this.settingsManager.isProjectTrusted(this.cwd),
+          });
           const mcpTools = await this.mcpManager.connectAll(servers);
           // Drop stale MCP tools from both the live set and deferred catalog before
           // re-adding. Some tools may already have been promoted out of the catalog.
@@ -2594,6 +2722,9 @@ export class AgentSession {
       this.idealReviewPhase = "idle";
       this.reviewCoverage.reset();
     }
+    // Suppression flips mid-run (autopilot takes over verification), so a client
+    // holding a draft under a stale arming must be released.
+    this.refreshIdealReviewArmed();
   }
 
   /** Queue a user message (optionally with attachments) to be injected mid-run

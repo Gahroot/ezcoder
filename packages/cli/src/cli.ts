@@ -71,7 +71,7 @@ import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import type { ThemeName } from "./ui/theme/theme.js";
 import { AuthStorage, readStoredBaseUrlSync } from "./core/auth-storage.js";
 import { SessionManager, type TurnMetricPayload } from "./core/session-manager.js";
-import { ensureAppDirs, getAppPaths, loadSavedSettings } from "./config.js";
+import { ensureAppDirs, getAppPaths, loadSavedSettings, projectScopeAllowed } from "./config.js";
 import { initLogger, log, closeLogger } from "./core/logger.js";
 import { setStreamDiagnostic } from "@prestyj/agent";
 import { setProviderDiagnostic } from "@prestyj/ai";
@@ -403,7 +403,7 @@ function main(): void {
   function getHardcodedDefault(p: string): string {
     if (p === "openai") return "gpt-5.5";
     if (p === "gemini") return "gemini-3.1-flash-lite";
-    if (p === "glm") return "glm-5.2";
+    if (p === "glm") return "glm-5.3";
     if (p === "moonshot") return "kimi-k3";
     if (p === "minimax") return "MiniMax-M3";
     if (p === "deepseek") return "deepseek-v4-pro";
@@ -706,7 +706,13 @@ async function runInkTUI(opts: {
     initialMcpConnectPromise ??= (async () => {
       const providerApiKey =
         provider === "glm" ? credentialsByProvider["glm"]?.accessToken : undefined;
-      const servers = await getAllMcpServers(provider, providerApiKey, cwd);
+      const servers = await getAllMcpServers(provider, providerApiKey, cwd, {
+        allowProjectScope: projectScopeAllowed(
+          savedSettings.trustProjectMcpServers,
+          savedSettings.trustedProjects,
+          cwd,
+        ),
+      });
       return mcpManager.connectAll(servers);
     })();
     return initialMcpConnectPromise;
@@ -1049,7 +1055,7 @@ async function runSessions(): Promise<void> {
   function getDefault(p: string): string {
     if (p === "openai") return "gpt-5.5";
     if (p === "gemini") return "gemini-3.1-flash-lite";
-    if (p === "glm") return "glm-5.2";
+    if (p === "glm") return "glm-5.3";
     if (p === "moonshot") return "kimi-k3";
     if (p === "minimax") return "MiniMax-M3";
     if (p === "deepseek") return "deepseek-v4-pro";

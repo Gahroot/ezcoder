@@ -11,7 +11,7 @@
  *
  * Environment overrides:
  *   EZ_BENCH_PROVIDER  — provider name (default: "glm")
- *   EZ_BENCH_MODEL     — model id (default: "glm-5.2")
+ *   EZ_BENCH_MODEL     — model id (default: "glm-5.3")
  *   EZ_BENCH_TURNS     — number of turns (default: 5)
  */
 
@@ -353,7 +353,7 @@ export function formatApiComparison(c: ApiComparisonResult): string {
 
 async function main(): Promise<void> {
   const provider = process.env.EZ_BENCH_PROVIDER ?? "glm";
-  const model = process.env.EZ_BENCH_MODEL ?? "glm-5.2";
+  const model = process.env.EZ_BENCH_MODEL ?? "glm-5.3";
   const turns = parseInt(process.env.EZ_BENCH_TURNS ?? "5", 10);
   const mode = process.env.EZ_BENCH_MODE ?? "compare"; // "single" or "compare"
 

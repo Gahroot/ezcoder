@@ -63,6 +63,11 @@ packages/cli/ideal-sim/
 
 # Local agent config and package scratch
 /.claude/
+/bench/
+/benchmarks/
+/experiments/bench-mark/
+/experiments/lean-code-bench/
+/scripts/
 CLAUDE.md
 packages/*/.bench-*.mjs
 

@@ -28,6 +28,11 @@ import {
   type SubAgentSnapshot,
 } from "../core/subagent-manager.js";
 import { buildProcessCompletionFollowUp } from "../core/process-gate.js";
+import {
+  VerificationGate,
+  isCodeFilePath,
+  isVerificationCommand,
+} from "../core/verification-gate.js";
 import { useAgentLoop, type StreamSnapshot, type UserContent } from "./hooks/useAgentLoop.js";
 import { useTranscriptHistory } from "./hooks/useTranscriptHistory.js";
 import type { PasteInfo } from "./components/InputArea.js";
@@ -206,6 +211,7 @@ import {
   REGROUNDING_NOTICE_TEXT,
   TRUNCATED_CONTINUING_NOTICE_TEXT,
   TRUNCATED_INCOMPLETE_NOTICE_TEXT,
+  TRUNCATED_EMPTY_RESPONSE_NOTICE_TEXT,
   TRUNCATED_PROVIDER_ERROR_NOTICE_TEXT,
   TRUNCATED_REFUSAL_NOTICE_TEXT,
   lastVisibleTranscriptItem,
@@ -421,6 +427,8 @@ export interface AppProps {
   showTokenUsage?: boolean;
   idealReviewEnabled?: boolean;
   autoApprovePlans?: boolean;
+  /** Kill switch for the pre-stop verification gate (default on). */
+  verificationGateEnabled?: boolean;
   onSlashCommand?: (input: string) => Promise<string | null>;
   loggedInProviders?: Provider[];
   credentialsByProvider?: Record<
@@ -550,6 +558,7 @@ export interface AppProps {
     idealReviewEnabled?: boolean;
     autoApprovePlans?: boolean;
     taskRunning?: boolean;
+    verificationGateEnabled?: boolean;
   };
 }
 
@@ -781,6 +790,11 @@ export function App(props: AppProps) {
     props.sessionStore?.autoApprovePlans ?? props.autoApprovePlans ?? true,
   );
   const autoApprovePlansEnabledRef = useRef(autoApprovePlansEnabled);
+  /** Pre-stop verification gate: code edited this run, nothing proved it since. */
+  const verificationGateRef = useRef(new VerificationGate());
+  const verificationGateEnabledRef = useRef(
+    props.sessionStore?.verificationGateEnabled ?? props.verificationGateEnabled ?? true,
+  );
   /**
    * Languages whose style packs are currently injected into the system prompt.
    * Grown by `maybeInjectLanguagePacks` after `write`/`bash` tool results when
@@ -1653,7 +1667,31 @@ export function App(props: AppProps) {
           isError: boolean,
           durationMs: number,
           details?: unknown,
+          args?: Record<string, unknown>,
         ) => {
+          // Verification-gate bookkeeping, mirroring AgentSession.trackHookEvent:
+          // successful code mutations vs completed foreground verification runs.
+          if (!isError && args) {
+            const filePath = String(args.file_path ?? "");
+            if ((name === "edit" || name === "write") && isCodeFilePath(filePath)) {
+              verificationGateRef.current.recordMutation(filePath);
+            }
+            if (
+              name === "bash" &&
+              !args.run_in_background &&
+              isVerificationCommand(String(args.command ?? ""))
+            ) {
+              verificationGateRef.current.recordVerification();
+            }
+            // Reading the final output of an EXITED background verification run
+            // counts as verification — mirrors AgentSession.trackHookEvent.
+            if (name === "task_output") {
+              const proc = props.processManager?.list().find((p) => p.id === args.id);
+              if (proc && proc.exitCode !== null && isVerificationCommand(proc.command)) {
+                verificationGateRef.current.recordVerification();
+              }
+            }
+          }
           recordToolEnd(sessionStatsRef.current, name, isError, durationMs);
           setLiveToolFeed((prev) =>
             prev.map((entry) =>
@@ -2157,6 +2195,7 @@ export function App(props: AppProps) {
         if (gate.runStartedAt !== runStartedAt) {
           gate.runStartedAt = runStartedAt;
           gate.injected = 0;
+          verificationGateRef.current.reset();
         }
         const processFollowUp = buildProcessCompletionFollowUp(
           props.processManager?.list() ?? [],
@@ -2166,6 +2205,14 @@ export function App(props: AppProps) {
         if (processFollowUp) {
           gate.injected += 1;
           return processFollowUp;
+        }
+
+        // Verification gate: code was edited but no test/typecheck/lint/build
+        // completed since the last edit — block "done" until it runs (or the
+        // budget escalates to an honest unverified statement).
+        if (verificationGateEnabledRef.current) {
+          const verificationFollowUp = verificationGateRef.current.followUp();
+          if (verificationFollowUp) return verificationFollowUp;
         }
 
         const steps = planStepsRef.current;
@@ -2200,7 +2247,10 @@ export function App(props: AppProps) {
         streamedAssistantFlushRef.current = { flushedChars: 0, text: "" };
       }, []),
       onTruncated: useCallback(
-        (reason: "max_tokens" | "refusal" | "provider_error", continued: boolean) => {
+        (
+          reason: "max_tokens" | "refusal" | "provider_error" | "empty_response",
+          continued: boolean,
+        ) => {
           const text =
             reason === "max_tokens"
               ? continued
@@ -2208,7 +2258,9 @@ export function App(props: AppProps) {
                 : TRUNCATED_INCOMPLETE_NOTICE_TEXT
               : reason === "refusal"
                 ? TRUNCATED_REFUSAL_NOTICE_TEXT
-                : TRUNCATED_PROVIDER_ERROR_NOTICE_TEXT;
+                : reason === "empty_response"
+                  ? TRUNCATED_EMPTY_RESPONSE_NOTICE_TEXT
+                  : TRUNCATED_PROVIDER_ERROR_NOTICE_TEXT;
           setLiveItems((prev) => [
             ...prev,
             { kind: "ideal_hook", text, tone: "warning", id: getId() },

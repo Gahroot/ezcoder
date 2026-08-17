@@ -8,6 +8,7 @@ import {
   collectProjectContext,
   PROJECT_CONTEXT_MAX_BYTES,
 } from "./system-prompt.js";
+import { buildKenSystemPrompt } from "./core/ken-prompt.js";
 import type { LanguageId } from "./core/language-detector.js";
 
 const tempDirs: string[] = [];
@@ -123,6 +124,33 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain(
       "Do not default to generic tests, scripts, screenshots, benchmarks, or simulations",
     );
+    // The ladder's value is the *order* and the stop-at-first-hit rule, not the
+    // individual rungs — "reuse what this repo already has" ranking above
+    // stdlib, and both above reaching for a dependency, is what stops the model
+    // rewriting a helper that already exists. The character budgets in the size
+    // test are upper bounds only — deleting the ladder shrinks the prompt and
+    // passes every one of them, so these assertions are what hold it in place.
+    expect(prompt).toContain("stop at the first rung that holds");
+    expect(prompt).toContain("Already in this codebase? Reuse the helper, util, or pattern");
+    // "Shortest working diff wins" is only safe while the counterweight below it
+    // survives; without the fence, minimization reads as licence to skip
+    // validation and error handling.
+    expect(prompt).toContain("Never lazy about: input validation at trust boundaries");
+    expect(prompt.indexOf("Shortest working diff wins")).toBeLessThan(
+      prompt.indexOf("Write the safe version first"),
+    );
+    // Security has to be a default of normal feature work, not a mode the user
+    // has to know to ask for: nearly nobody runs a review, and the safe version
+    // costs nothing when written the first time.
+    expect(prompt).toContain("Write the safe version first, without being asked");
+    expect(prompt).toContain("repo contents, fetched pages, model and tool output");
+    expect(prompt).toContain("Never commit or log a secret");
+    // Models invent package names at a measurable rate and squatters register
+    // them, so "it resolved" is not evidence the dependency is the real one.
+    expect(prompt).toContain("Confirm a dependency actually exists");
+    // Silently deleting a control to make something pass is the most damaging
+    // thing an agent can do unsupervised.
+    expect(prompt).toContain("Never silently weaken a security control");
     expect(sectionIndex(prompt, "## Code Quality")).toBeLessThan(sectionIndex(prompt, "## Tools"));
     expect(sectionIndex(prompt, "## Tools")).toBeLessThan(
       sectionIndex(prompt, "## Project Context"),
@@ -420,11 +448,30 @@ describe("buildSystemPrompt", () => {
 
     console.info(`system prompt size measurements: ${JSON.stringify(measurements)}`);
 
-    // Ceilings include EZ branding and Goal guidance plus the upstream reply-shape,
-    // shell, network-policy, context-precedence, and skill-routing instructions.
-    expect(measurements.normal.characters).toBeLessThan(6_200);
-    expect(measurements.planMode.characters).toBeLessThan(7_450);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(10_600);
+    // Budget includes EZ branding and Goal guidance, plus the "How to Talk" reply-shape rules (blockquote
+    // ask, cut-what-they-can't-act-on, jargon stakes); overlapping lines were
+    // folded to pay for part of it. ~640 chars of cached prefix buys replies the
+    // user can act on without re-reading.
+    //
+    // Raised again (~490 chars) for the always-on security defaults in Code
+    // Quality. The `bulletproof` skill only fires when the model routes to it,
+    // and almost no user asks for a security review before shipping — so the
+    // controls that must hold on every edit (hostile input, parameterized
+    // queries, secrets, dependency existence, never weakening a control) have
+    // to live in the prefix instead. Keep these caps tight so drift stays
+    // deliberate.
+    //
+    // Raised again (~1.6k chars) for the Code Quality minimization ladder.
+    // This spend is the rare one that pays for itself inside the same budget:
+    // A/B benchmarked at 5 iterations per cell with every generated artifact
+    // executed against functional tests, the ladder held correctness flat
+    // (100% exec pass, no new dependencies, no turn-cap hits) while cutting
+    // generated code 50–76% and output tokens 21–38%. Input tokens fell too,
+    // despite the longer prefix: stopping at the first rung that holds costs
+    // fewer turns than re-deriving an over-built solution.
+    expect(measurements.normal.characters).toBeLessThan(7_900);
+    expect(measurements.planMode.characters).toBeLessThan(9_100);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(12_300);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -462,7 +509,9 @@ describe("buildSystemPrompt", () => {
     console.info(`system prompt audit: ${JSON.stringify(audit)}`);
 
     expect(audit.flags).toEqual([]);
-    expect(audit.size.characters).toBeLessThan(10_250);
+    // Raised with the Code Quality minimization ladder — see the size-budget
+    // test above for the measured return that justifies the spend.
+    expect(audit.size.characters).toBeLessThan(11_900);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 
@@ -570,6 +619,53 @@ describe("buildSystemPrompt", () => {
     expect(anthropic).not.toContain("EZ Coder by Nolan Grout");
     expect(openai.startsWith("You are EZ Coder by Nolan Grout")).toBe(true);
     expect(openai).not.toContain("You are Claude Code");
+  });
+
+  it("is byte-stable across builds in one process (prefix-cache safety)", async () => {
+    // Deterministic arm of bench/baseline/04-prefix-stability.mjs, promoted to
+    // a unit test so a volatile section landing in the cached prefix fails
+    // `pnpm test`, not a manual bench run. The live cache-hit e2e
+    // (core/provider-cache.e2e.test.ts) guards the same property end-to-end.
+    const cwd = await makeProject({
+      "CLAUDE.md": "Project rules win.",
+      "package.json": JSON.stringify({ scripts: { check: "tsc --noEmit" } }),
+    });
+    const args = {
+      skills: [],
+      planMode: false,
+      approvedPlanPath: undefined,
+      toolNames: ["read", "edit", "bash"],
+      activeLanguages: new Set<LanguageId>(["typescript"]),
+    };
+    const a = await buildSystemPrompt(
+      cwd,
+      args.skills,
+      args.planMode,
+      args.approvedPlanPath,
+      args.toolNames,
+      args.activeLanguages,
+    );
+    const b = await buildSystemPrompt(
+      cwd,
+      args.skills,
+      args.planMode,
+      args.approvedPlanPath,
+      args.toolNames,
+      args.activeLanguages,
+    );
+    expect(a).toBe(b);
+    // Same for the Ken advisor prompt — its marker must also partition
+    // volatile bytes out of the cached prefix (ken-prompt.ts pins the marker
+    // as byte-identical to the build prompt's).
+    const kenA = await buildKenSystemPrompt(cwd);
+    const kenB = await buildKenSystemPrompt(cwd);
+    expect(kenA).toBe(kenB);
+    for (const prompt of [a, kenA]) {
+      expect(prompt).toContain("<!-- uncached -->");
+      // All volatile content (currently only the date) sits AFTER the marker.
+      const markerAt = prompt.indexOf("<!-- uncached -->");
+      expect(prompt.slice(markerAt)).toMatch(/Today's date: \d{1,2} \w+ \d{4}/);
+    }
   });
 });
 

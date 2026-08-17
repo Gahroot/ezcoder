@@ -1,3 +1,4 @@
+import path from "node:path";
 import fs from "node:fs/promises";
 import { z } from "zod";
 import { getAppPaths } from "../config.js";
@@ -40,6 +41,10 @@ const SettingsSchema = z.object({
   showTokenUsage: z.boolean().default(true),
   idealReviewEnabled: z.boolean().default(true),
   autoApprovePlans: z.boolean().default(true),
+  /** Pre-stop gate: when code was edited but no test/typecheck/lint/build
+   *  command completed since the last edit, the turn is continued once with a
+   *  demand to verify (then one escalation demanding an honest statement). */
+  verificationGateEnabled: z.boolean().default(true),
   /** Append LSP diagnostics to edit/write tool results. */
   lspDiagnostics: z.boolean().default(true),
   /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.ezcoder). Off by
@@ -87,6 +92,16 @@ const SettingsSchema = z.object({
    *  so a legacy server still connects. Off by default: the probe costs a round
    *  trip, and a legacy stdio server that ignores it pays the probe timeout. */
   mcpModernProtocol: z.boolean().default(false),
+  /** Connect MCP servers declared in the OPENED REPO's `.gg/mcp.json`. That
+   *  file is repo-controlled: a malicious repo can declare a stdio `command`
+   *  that executes the moment the project opens. Off by default — enable only
+   *  for repos you trust (global ~/.gg/mcp.json is always connected). */
+  trustProjectMcpServers: z.boolean().default(false),
+  /** Repo paths the user has individually trusted for project-scope MCP (the
+   *  per-repo complement to the global `trustProjectMcpServers`). Stored as
+   *  resolved absolute paths so symlink/relative mismatches can't flip the
+   *  decision. */
+  trustedProjects: z.array(z.string()).default([]),
   /** Max concurrent subagents per resolved child model. Unset = only the
    *  global limit applies. Can only REDUCE concurrency, never raise it. */
   subagentMaxPerModel: z.number().int().min(1).max(4).optional(),
@@ -111,6 +126,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showTokenUsage: true,
   idealReviewEnabled: true,
   autoApprovePlans: true,
+  verificationGateEnabled: true,
   lspDiagnostics: true,
   allowOutsideWorkspaceWrites: false,
   networkMode: "off",
@@ -120,6 +136,8 @@ export const DEFAULT_SETTINGS: Settings = {
   deferredBuiltinTools: true,
   grepUseRipgrep: true,
   mcpModernProtocol: false,
+  trustProjectMcpServers: false,
+  trustedProjects: [],
   sessionRetentionDays: 30,
   speedProfile: "optimized",
 };
@@ -164,5 +182,24 @@ export class SettingsManager {
 
   getAll(): Settings {
     return { ...this.settings };
+  }
+
+  /** Whether the project at `cwd` is trusted for project-scope MCP. True when
+   *  EITHER the global `trustProjectMcpServers` toggle is on OR the resolved
+   *  cwd appears in `trustedProjects`. */
+  isProjectTrusted(cwd: string): boolean {
+    if (this.settings.trustProjectMcpServers) return true;
+    const resolved = path.resolve(cwd);
+    return this.settings.trustedProjects.includes(resolved);
+  }
+
+  /** Persist `cwd` as a trusted project (resolved absolute path, deduped) and
+   *  save settings immediately. */
+  async trustProject(cwd: string): Promise<void> {
+    const resolved = path.resolve(cwd);
+    if (!this.settings.trustedProjects.includes(resolved)) {
+      this.settings.trustedProjects = [...this.settings.trustedProjects, resolved];
+      await this.save();
+    }
   }
 }

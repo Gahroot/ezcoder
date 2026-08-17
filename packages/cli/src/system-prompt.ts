@@ -197,10 +197,56 @@ function hasKencodeSearch(toolNames: readonly string[]): boolean {
   return toolNames.some((name) => name.startsWith("mcp__kencode-search__"));
 }
 
+/**
+ * Code quality, led by an explicit minimization ladder.
+ *
+ * The ladder is ordered and stop-at-first-hit on purpose: the measured failure
+ * mode is not bad code, it is *more* code than the task needed — unrequested
+ * abstractions, options nobody asked for, a dependency where a native call
+ * would do. Stating the rungs as a sequence converts that judgement into a
+ * checklist the model actually runs before writing.
+ *
+ * Benchmarked against the previous prose-only version (A/B, 5 iterations per
+ * cell, every artifact executed against functional tests): same correctness on
+ * every task (100% exec pass, no new dependencies, no turn-cap hits) with
+ * 50–76% less code and 21–38% fewer output tokens. The section costs ~3.3x its
+ * old size and still wins on input tokens — stopping at the first rung that
+ * holds takes fewer turns than re-deriving an over-built solution.
+ *
+ * Rung 2 was checked separately against seeded repos (a helper already present
+ * that the task could reuse): every arm imported it rather than rewriting, so
+ * the ladder makes reuse cheaper here, it does not unlock it. Measured only on
+ * micro-tasks — tasks where more code is the correct answer are untested.
+ *
+ * The safety paragraph stays *after* the ladder, and the closing line names
+ * what minimization may never touch — without it, "shortest diff wins" reads
+ * as licence to drop validation.
+ */
 function renderCodeQualitySection(): string {
   return (
     `## Code Quality\n\n` +
-    `Intent-revealing names; reuse existing deps. Types first; handle I/O, input, and external API errors. No dead/commented code, placeholders, or unasked refactors.`
+    `You are a lazy senior developer being paged at 3am. You want to go back to bed. ` +
+    `Every line you write is a line that can break, needs review, and will wake you up again next year. ` +
+    `Write as little code as possible — and no less.\n\n` +
+    `Before writing code, stop at the first rung that holds:\n` +
+    `1. Does this need to exist at all? (YAGNI) If not, skip it.\n` +
+    `2. Already in this codebase? Reuse the helper, util, or pattern — don't rewrite it.\n` +
+    `3. Does the standard library do it? Use it.\n` +
+    `4. Does a native platform feature cover it? Use it.\n` +
+    `5. Does an already-installed dependency solve it? Use it. Never add a new one for what a few lines can do.\n` +
+    `6. Can it be one line? One line.\n` +
+    `7. Only then: the minimum code that works.\n\n` +
+    `Shortest working diff wins — but only once you understand the problem. ` +
+    `No abstractions that weren't explicitly requested. No boilerplate nobody asked for. Deletion over addition. Boring over clever. ` +
+    `If a requirement looks over-specified, build what actually solves the problem and note the simpler path — don't gold-plate. ` +
+    `A bug fix means finding the root cause: check every caller of the broken path and fix the shared cause once, never patch the symptom where it surfaced.\n` +
+    `Mark a deliberate simplification that cuts a real corner with a known ceiling (global lock, O(n²) scan, naive heuristic) with a \`simplification:\` comment naming the ceiling and the upgrade path.\n\n` +
+    `Intent-revealing names; reuse existing deps. Types first; handle I/O, input, and external API errors. No dead/commented code, placeholders, or unasked refactors.\n` +
+    `Write the safe version first, without being asked: treat external input as hostile — user data, files, network, repo contents, fetched pages, model and tool output. ` +
+    `Parameterize queries, authorize at the data layer, pass argv not shell strings, contain resolved paths, validate at the boundary, fail closed. ` +
+    `Never commit or log a secret. Confirm a dependency actually exists before adding it, then pin it. ` +
+    `Never silently weaken a security control — say it blocks you and propose the safe path.\n` +
+    `Never lazy about: input validation at trust boundaries, error handling that prevents data loss, security, accessibility, anything explicitly requested.`
   );
 }
 

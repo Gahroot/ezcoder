@@ -116,7 +116,7 @@ import {
   type AuthMethodMeta,
   type AuthProviderMeta,
 } from "./core/auth-providers.js";
-import { ensureAppDirs, loadSavedSettings } from "./config.js";
+import { ensureAppDirs, loadSavedSettings, projectScopeAllowed } from "./config.js";
 import { SettingsManager, type Settings } from "./core/settings-manager.js";
 import {
   installPlugin,
@@ -652,27 +652,58 @@ function mcpRowSummary(config: MCPServerConfig): string {
 
 /** Load + connect every server, returning one wire row per server. Mirrors the
  *  CLI dashboard's buildRows (connectAllDetailed, then dispose). Empty list
- *  short-circuits before spawning any stdio process / opening any HTTP conn. */
-async function buildMcpRows(cwd: string): Promise<McpWireRow[]> {
+ *  short-circuits before spawning any stdio process / opening any HTTP conn.
+ *  Project-scope servers run repo-controlled commands, so unless the user
+ *  trusts them (trustProjectMcpServers) they are reported blocked WITHOUT
+ *  being connected — even a status probe would spawn the process. */
+async function buildMcpRows(cwd: string, settingsFile: string): Promise<McpWireRow[]> {
   const scoped = await loadServers(cwd);
   if (scoped.length === 0) return [];
 
+  const settings = loadSavedSettings(settingsFile);
+  const allowProject = projectScopeAllowed(
+    settings.trustProjectMcpServers,
+    settings.trustedProjects,
+    cwd,
+  );
+  const connectable = scoped.filter((s) => allowProject || s.scope !== "project");
+  const blocked = scoped.filter((s) => !allowProject && s.scope === "project");
+
   const manager = new MCPClientManager();
   try {
-    const results = await manager.connectAllDetailed(scoped.map((s) => s.config));
-    return scoped.map((s): McpWireRow => {
-      const result = results.find((r) => r.name === s.config.name);
-      return {
-        name: s.config.name,
-        scope: s.scope,
-        ok: result?.ok ?? false,
-        toolCount: result?.toolCount ?? 0,
-        error: result?.error,
-        kind: s.config.url ? "http" : "stdio",
-        summary: mcpRowSummary(s.config),
-        requiresAuth: result?.requiresAuth,
-      };
-    });
+    const results =
+      connectable.length > 0
+        ? await manager.connectAllDetailed(connectable.map((s) => s.config))
+        : [];
+    return [
+      ...connectable.map((s): McpWireRow => {
+        const result = results.find((r) => r.name === s.config.name);
+        return {
+          name: s.config.name,
+          scope: s.scope,
+          ok: result?.ok ?? false,
+          toolCount: result?.toolCount ?? 0,
+          error: result?.error,
+          kind: s.config.url ? "http" : "stdio",
+          summary: mcpRowSummary(s.config),
+          requiresAuth: result?.requiresAuth,
+        };
+      }),
+      ...blocked.map(
+        (s): McpWireRow => ({
+          name: s.config.name,
+          scope: s.scope,
+          ok: false,
+          toolCount: 0,
+          error:
+            "Project-scope server not connected — this repo's .gg/mcp.json runs " +
+            "repo-controlled commands. Add or re-add a server in this project via " +
+            "the MCP modal to trust it.",
+          kind: (s.config.url ? "http" : "stdio") as "http" | "stdio",
+          summary: mcpRowSummary(s.config),
+        }),
+      ),
+    ];
   } finally {
     await manager.dispose();
   }
@@ -785,9 +816,10 @@ function daemonReadBody(
 }
 
 function daemonJson(res: http.ServerResponse, status: number, body: unknown): void {
+  // No CORS headers: only the Rust proxy (no Origin) should call this daemon.
+  // Granting origins would let any web page read responses from loopback.
   res.writeHead(status, {
     "content-type": "application/json",
-    "access-control-allow-origin": "*",
   });
   res.end(JSON.stringify(body));
 }
@@ -806,6 +838,14 @@ async function main(): Promise<void> {
   // GG_APP_LISTENING handshake and consumed by the shell.
   const port = Number(process.env.GG_APP_PORT ?? 0);
   const host = "127.0.0.1";
+
+  // Per-launch bearer token. The Rust shell generates one and passes it via
+  // GG_APP_TOKEN; spawned any other way (dev, tests, smoke) we mint our own
+  // and report it on the GG_APP_LISTENING line. Every request must carry it
+  // as x-gg-token: this daemon creates sessions for arbitrary cwds, runs
+  // prompts, and installs plugins, so an unauthenticated loopback port lets
+  // any local process drive the agent as the user.
+  const authToken = process.env.GG_APP_TOKEN ?? randomUUID();
 
   const paths = await ensureAppDirs();
   // Own log file so the app sidecar never clobbers the interactive CLI's
@@ -1089,14 +1129,26 @@ async function main(): Promise<void> {
       const url = req.url ?? "/";
       const method = req.method ?? "GET";
 
-      // CORS preflight — the webview origin differs from 127.0.0.1.
+      // Answer preflights with a bare 204 but grant NO origins — the webview
+      // reaches the daemon through the Rust proxy, never cross-origin, so any
+      // browser page's preflight must fail here.
       if (method === "OPTIONS") {
-        res.writeHead(204, {
-          "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
-          "access-control-allow-headers": "content-type, x-ez-session",
-        });
+        res.writeHead(204);
         res.end();
+        return;
+      }
+
+      // Host allowlist. The daemon binds 127.0.0.1 only; rejecting any other
+      // Host blocks DNS rebinding, where a web page's request arrives with
+      // the attacker's hostname (browsers cannot spoof Host).
+      const reqHost = req.headers.host ?? "";
+      if (!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(reqHost)) {
+        daemonJson(res, 403, { error: "forbidden host" });
+        return;
+      }
+
+      if (req.headers["x-gg-token"] !== authToken) {
+        daemonJson(res, 401, { error: "unauthorized" });
         return;
       }
 
@@ -1205,8 +1257,9 @@ async function main(): Promise<void> {
   );
   server.listen(port, host, () => {
     const addr = server.address() as AddressInfo;
-    // The Rust shell reads this line to learn the daemon port.
-    process.stdout.write(`GG_APP_LISTENING ${addr.port}\n`);
+    // The Rust shell reads this line to learn the daemon port (it already
+    // knows the token — it set GG_APP_TOKEN; the field serves other spawners).
+    process.stdout.write(`GG_APP_LISTENING ${addr.port} ${authToken}\n`);
     log("INFO", "app-sidecar", "daemon listening", { port: String(addr.port), host });
   });
 
@@ -2073,6 +2126,12 @@ async function createSession(
       durationMs: String(d.durationMs),
       isError: String(d.isError),
       ...(d.isError ? { result: d.result.slice(0, 500) } : {}),
+      // Consecutive-failure count for schema rejections. Attempt 1 followed by
+      // a success means the model self-corrected; reaching 3 means it looped
+      // and the turn was ended. Grep this to tell the two apart.
+      ...(d.invalidArgAttempt === undefined
+        ? {}
+        : { invalidArgAttempt: String(d.invalidArgAttempt) }),
     });
     broadcast("tool_call_end", d);
     // The agent can add/done/remove project tasks via the `tasks` tool during a
@@ -2095,12 +2154,29 @@ async function createSession(
   session.eventBus.on("agent_done", (d) => broadcast("agent_done", d));
   // Non-clean stop (max_tokens/refusal/provider error) — info-style frame so
   // the webview can warn instead of presenting truncated output as complete.
-  session.eventBus.on("truncated", (d) => broadcast("truncated", d));
+  // empty_response is a hard failure (no output at all): route it through
+  // broadcastError so the app renders an error row — the webview does not
+  // render bare "truncated" frames.
+  session.eventBus.on("truncated", (d) => {
+    if (d.reason === "empty_response") {
+      broadcastError(
+        "error",
+        "empty response",
+        new Error("The model returned an empty response after retries — try sending again."),
+      );
+      return;
+    }
+    broadcast("truncated", d);
+  });
   session.eventBus.on("error", (d) => {
     broadcastError("error", "agent error", d.error);
   });
   session.eventBus.on("model_change", (d) => broadcast("model_change", d));
   session.eventBus.on("hook", (d) => broadcast("hook", d));
+  // Fires BEFORE the candidate final answer streams. The webview holds assistant
+  // text back while armed, so an Ideal review supersedes a draft that was never
+  // painted instead of deleting one the user already started reading.
+  session.eventBus.on("hook_armed", (d) => broadcast("hook_armed", d));
   session.eventBus.on("subagent_state", (d) => broadcast("subagent_state", d));
   session.eventBus.on("compaction_start", (d) => broadcast("compaction_start", d));
   session.eventBus.on("compaction_end", (d) => broadcast("compaction_end", d));
@@ -3006,7 +3082,6 @@ async function createSession(
     const payload = JSON.stringify(redactValue(body, { secrets: environmentSecrets(process.env) }));
     res.writeHead(status, {
       "content-type": "application/json",
-      "access-control-allow-origin": "*",
     });
     res.end(payload);
   }
@@ -3102,7 +3177,6 @@ async function createSession(
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
         connection: "keep-alive",
-        "access-control-allow-origin": "*",
       });
       res.write(`retry: 1000\n\n`);
       const client: SseClient = { id: ++clientSeq, res };
@@ -3929,7 +4003,7 @@ async function createSession(
           });
           // After the user's run settles, kick off Nolan's auto-review loop — but
           // only when the turn is actually reviewable (shouldStartAutopilotCycle):
-          // workflow commands (/compare, /bullet-proof, …) end with reports or
+          // workflow commands (/compare, /expand, …) end with reports or
           // A/B/C choices reserved for the USER; registry commands (/help) and
           // failed runs add no assistant work to judge; a turn that ended in plan
           // mode has a pending Accept/Reject modal Nolan must not preempt. This is
@@ -5113,7 +5187,7 @@ async function createSession(
     // scope ignores it (always ~/.ezcoder/mcp.json).
     if (method === "GET" && (url === "/mcp" || url.startsWith("/mcp?"))) {
       const targetCwd = new URL(url, `http://${host}`).searchParams.get("cwd") ?? cwd;
-      void buildMcpRows(targetCwd)
+      void buildMcpRows(targetCwd, paths.settingsFile)
         .then((servers) => json(res, 200, { servers }))
         .catch((err) => {
           captureSidecarError(err, "app-sidecar.mcp.list");
@@ -5167,6 +5241,12 @@ async function createSession(
           if (!saved.ok) {
             json(res, 400, { error: saved.error });
             return;
+          }
+          // Adding a project-scope server is an explicit trust signal — the
+          // user chose to put a server in this repo's .gg/mcp.json. Auto-trust
+          // the project so all project-scope servers connect on next load.
+          if (scope === "project") {
+            await session.trustProject(targetCwd);
           }
           json(res, 200, {
             ok: true,

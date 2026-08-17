@@ -25,6 +25,7 @@ import {
   type SandboxPolicy,
   type SandboxLaunch,
 } from "../core/sandbox.js";
+import type { WakeRules } from "../core/process-manager.js";
 import { annotateSandboxDenial } from "../core/sandbox-feedback.js";
 
 /** Tool env, plus the tweaks that only make sense inside the OS sandbox. */
@@ -97,6 +98,38 @@ const BashParams = z.object({
         "survive across persist:true calls. Use for multi-step workflows in another " +
         "directory or with sourced environments. Default false (fresh shell per call).",
     ),
+  wake: z
+    .object({
+      pattern: z
+        .string()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe(
+          "A regex; the moment NEW output matches it you are actively woken with the " +
+            "matching line — no task_output polling. Use for signals in long builds, " +
+            "dev servers and watchers (e.g. 'compiled with errors', 'listening on').",
+        ),
+      silence_seconds: z
+        .number()
+        .int()
+        .min(10)
+        .max(3600)
+        .optional()
+        .describe(
+          "Wake me if the task produces no output at all for this many seconds while " +
+            "still running — a stall/hang detector for commands that should be chatty.",
+        ),
+    })
+    .refine((rules) => rules.pattern !== undefined || rules.silence_seconds !== undefined, {
+      message: "Provide wake.pattern, wake.silence_seconds, or both.",
+    })
+    .optional()
+    .describe(
+      "Wake conditions for a background task (run_in_background only). You are " +
+        "notified automatically the instant one holds, instead of polling " +
+        "task_output. Each condition fires once; exit always notifies regardless.",
+    ),
 });
 
 export function createBashTool(
@@ -156,19 +189,36 @@ export function createBashTool(
       "Use task_output to read output, task_send to type input/answer prompts, and " +
       "task_stop to stop background processes. " +
       "Set persist=true to run in a session shell where cd/env state survives across " +
-      "persist:true calls.";
+      "persist:true calls. " +
+      "With run_in_background, also set wake (pattern and/or silence_seconds) to be " +
+      "actively notified the moment matching output appears or the task stalls.";
   return {
     name: "bash",
     description,
     parameters: BashParams,
     executionMode: "sequential",
-    async execute({ command, timeout: timeoutMs, run_in_background, persist }, context) {
+    async execute({ command, timeout: timeoutMs, run_in_background, persist, wake }, context) {
       const goalModeRestriction = goalModeBashRestriction(
         getActiveGoalMode(goalModeRef),
         run_in_background === true,
       );
       if (goalModeRestriction) {
         return goalModeRestriction;
+      }
+      if (wake && !run_in_background) {
+        return "Error: wake conditions require run_in_background=true — there is nothing to watch on a foreground call.";
+      }
+      let wakeRules: WakeRules | undefined;
+      if (wake?.pattern) {
+        try {
+          // No flags: lastIndex-free exec/test keeps the watcher's scans pure.
+          wakeRules = { pattern: new RegExp(wake.pattern) };
+        } catch (error) {
+          return `Error: wake.pattern is not a valid regex (${(error as Error).message}). Fix the pattern and retry.`;
+        }
+      }
+      if (wake?.silence_seconds) {
+        wakeRules = { ...wakeRules, silenceMs: wake.silence_seconds * 1000 };
       }
       if (isPlanModeActive(planModeRef) && !isReadOnlyCommand(command)) {
         return planModeRestriction("bash");
@@ -241,12 +291,24 @@ export function createBashTool(
         } catch (error) {
           return `Error: OS sandbox unavailable; command was not run: ${(error as Error).message}`;
         }
-        const result = await processManager.start(command, cwd, launch);
+        const result = await processManager.start(command, cwd, launch, wakeRules);
         return (
           `Background process started.\n` +
           `ID: ${result.id}\n` +
           `PID: ${result.pid}\n` +
           `Log: ${result.logFile}\n` +
+          (wakeRules
+            ? result.wakeArmed
+              ? `Wake rules armed: ${[
+                  wakeRules.pattern ? `pattern /${wakeRules.pattern.source}/` : null,
+                  wakeRules.silenceMs ? `silence ${wakeRules.silenceMs / 1000}s` : null,
+                ]
+                  .filter(Boolean)
+                  .join(
+                    " + ",
+                  )}. You will be notified automatically when one fires or the process exits.\n`
+              : `Wake conditions were NOT armed: this session has no notification path, so nothing will wake you automatically. Poll task_output periodically instead.\n`
+            : "") +
           `Use task_output with id="${result.id}" to read output, ` +
           `task_send to type input/answer prompts, task_stop to stop it.`
         );
