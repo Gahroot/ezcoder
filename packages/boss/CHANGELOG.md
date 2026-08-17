@@ -1,5 +1,11 @@
 # @prestyj/boss
 
+## 5.13.0
+
+### Minor Changes
+
+- Add GLM-5.3 support, bundled Bulletproof/Lean/Durable skills, project MCP trust controls, authenticated desktop sidecar access, verification gates, background wake rules, review coverage events, and safer editing and empty-response handling.
+
 ## 5.12.0
 
 ### Minor Changes
