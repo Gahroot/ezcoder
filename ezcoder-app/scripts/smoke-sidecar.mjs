@@ -223,7 +223,7 @@ async function main() {
   try {
     const mk = await fetch(`http://127.0.0.1:${port}/session`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-gg-token": token },
+      headers: { "content-type": "application/json", "x-ez-token": token },
       body: JSON.stringify({ cwd: process.cwd() }),
     });
     if (mk.status !== 200) {
@@ -244,7 +244,7 @@ async function main() {
   let res;
   try {
     res = await fetch(`http://127.0.0.1:${port}/state`, {
-      headers: { "x-ez-session": sessionId, "x-gg-token": token },
+      headers: { "x-ez-session": sessionId, "x-ez-token": token },
     });
   } catch (err) {
     child.kill("SIGKILL");

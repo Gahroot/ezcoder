@@ -78,9 +78,9 @@ function request(
           // Default to the real token; pass token: "" to exercise the 401 path.
           ...(opts.token !== undefined
             ? opts.token
-              ? { "x-gg-token": opts.token }
+              ? { "x-ez-token": opts.token }
               : {}
-            : { "x-gg-token": token }),
+            : { "x-ez-token": token }),
           ...(opts.host ? { host: opts.host } : {}),
         },
       },
@@ -114,7 +114,7 @@ function openEventStream(session: string): Promise<{ types: string[] }> {
         port,
         path: `/events?session=${session}`,
         method: "GET",
-        headers: { "x-gg-token": token },
+        headers: { "x-ez-token": token },
       },
       (res) => {
         openStreams.push(res);

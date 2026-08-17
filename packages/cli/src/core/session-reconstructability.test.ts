@@ -21,8 +21,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerPalsuProvider, type PalsuProviderHandle } from "@kenkaiiii/gg-ai";
-import type { Message } from "@kenkaiiii/gg-ai";
+import { registerPalsuProvider, type PalsuProviderHandle } from "@prestyj/ai";
+import type { Message } from "@prestyj/ai";
 import { useFakeHome } from "../test-support/fake-home.js";
 import type * as CompactorModule from "./compaction/compactor.js";
 
@@ -40,16 +40,16 @@ let tmpProject: string;
 let palsu: PalsuProviderHandle;
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-replay-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-replay-project-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-replay-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-replay-project-"));
   restoreHome = useFakeHome(tmpHome);
   palsu = registerPalsuProvider();
   shouldCompactMock.mockReset().mockReturnValue(false);
   compactMock.mockReset();
 
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tmpHome, ".gg", "auth.json"),
+    path.join(tmpHome, ".ezcoder", "auth.json"),
     JSON.stringify({
       palsu: { accessToken: "t", refreshToken: "r", expiresAt: Date.now() + 3_600_000 },
     }),
@@ -103,7 +103,7 @@ describe("session log reconstructs exactly what the model received", () => {
     const finalRequest = capturedRequests[capturedRequests.length - 1];
 
     // Re-derive history exactly as resume does.
-    const manager = new SessionManager(path.join(tmpHome, ".gg", "sessions"));
+    const manager = new SessionManager(path.join(tmpHome, ".ezcoder", "sessions"));
     const { entries } = await manager.load(sessionPath);
     const derived = manager.getMessages(entries);
 

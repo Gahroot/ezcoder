@@ -696,7 +696,7 @@ async function buildMcpRows(cwd: string, settingsFile: string): Promise<McpWireR
           ok: false,
           toolCount: 0,
           error:
-            "Project-scope server not connected — this repo's .gg/mcp.json runs " +
+            "Project-scope server not connected — this repo's .ezcoder/mcp.json runs " +
             "repo-controlled commands. Add or re-add a server in this project via " +
             "the MCP modal to trust it.",
           kind: (s.config.url ? "http" : "stdio") as "http" | "stdio",
@@ -842,7 +842,7 @@ async function main(): Promise<void> {
   // Per-launch bearer token. The Rust shell generates one and passes it via
   // GG_APP_TOKEN; spawned any other way (dev, tests, smoke) we mint our own
   // and report it on the GG_APP_LISTENING line. Every request must carry it
-  // as x-gg-token: this daemon creates sessions for arbitrary cwds, runs
+  // as x-ez-token: this daemon creates sessions for arbitrary cwds, runs
   // prompts, and installs plugins, so an unauthenticated loopback port lets
   // any local process drive the agent as the user.
   const authToken = process.env.GG_APP_TOKEN ?? randomUUID();
@@ -1147,7 +1147,7 @@ async function main(): Promise<void> {
         return;
       }
 
-      if (req.headers["x-gg-token"] !== authToken) {
+      if (req.headers["x-ez-token"] !== authToken) {
         daemonJson(res, 401, { error: "unauthorized" });
         return;
       }
@@ -5243,7 +5243,7 @@ async function createSession(
             return;
           }
           // Adding a project-scope server is an explicit trust signal — the
-          // user chose to put a server in this repo's .gg/mcp.json. Auto-trust
+          // user chose to put a server in this repo's .ezcoder/mcp.json. Auto-trust
           // the project so all project-scope servers connect on next load.
           if (scope === "project") {
             await session.trustProject(targetCwd);

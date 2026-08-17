@@ -1464,7 +1464,7 @@ describe("edit stringified `edits` handling", () => {
     expect(result.success && result.data.edits).toEqual([{ old_text: "a", new_text: "b" }]);
   });
 
-  // Verbatim payloads recovered from ~/.gg session logs. Each broke a real
+  // Verbatim payloads recovered from ~/.ezcoder session logs. Each broke a real
   // turn: unescaped control characters, a dropped `new_text` key, a `":`
   // corrupted into `>`, and a stream truncated mid-string.
   it.each([

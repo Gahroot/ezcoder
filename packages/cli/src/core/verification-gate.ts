@@ -14,7 +14,7 @@
  * directions are safe — a missed recognition leaves the gate silent (today's
  * behavior), a false positive merely skips one continuation.
  */
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 
 /** Follow-ups per run before the gate escalates to "state what went unverified". */
 export const MAX_VERIFICATION_INJECTIONS = 1;

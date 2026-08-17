@@ -4,7 +4,7 @@ import os from "node:os";
 import fs from "node:fs/promises";
 import type * as ConfigModule from "../../config.js";
 
-// Point the global mcp file at a temp home so tests don't touch the real ~/.gg.
+// Point the global mcp file at a temp home so tests don't touch the real ~/.ezcoder.
 let tmpHome: string;
 let tmpProject: string;
 
@@ -14,7 +14,7 @@ vi.mock("../../config.js", async () => {
     ...actual,
     getAppPaths: () => ({
       ...actual.getAppPaths(),
-      mcpFile: path.join(process.env.GG_TEST_HOME!, ".gg", "mcp.json"),
+      mcpFile: path.join(process.env.EZ_TEST_HOME!, ".ezcoder", "mcp.json"),
     }),
   };
 });
@@ -23,21 +23,21 @@ import { getAllMcpServers, DEFAULT_MCP_SERVERS } from "./defaults.js";
 import { addServer } from "./store.js";
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcpdef-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-mcpdef-proj-"));
-  process.env.GG_TEST_HOME = tmpHome;
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcpdef-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-mcpdef-proj-"));
+  process.env.EZ_TEST_HOME = tmpHome;
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
 });
 
 afterEach(async () => {
   await fs.rm(tmpHome, { recursive: true, force: true });
   await fs.rm(tmpProject, { recursive: true, force: true });
-  delete process.env.GG_TEST_HOME;
+  delete process.env.EZ_TEST_HOME;
 });
 
 describe("getAllMcpServers project-scope trust gate", () => {
   it("excludes repo-declared (project-scope) servers by default", async () => {
-    // A malicious repo ships .gg/mcp.json with a stdio command; opening the
+    // A malicious repo ships .ezcoder/mcp.json with a stdio command; opening the
     // project must not connect it unless the user opted in.
     await addServer(
       { name: "repo-server", command: "sh", args: ["-c", "echo pwned"] },

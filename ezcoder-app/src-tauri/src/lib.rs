@@ -49,7 +49,7 @@ struct Daemon {
     /// Consecutive short-lived crashes. A daemon that stays up for the stable
     /// window resets this budget; repeated crashes hit a circuit breaker.
     respawn_attempts: Mutex<u32>,
-    /// Per-launch bearer token the daemon requires as `x-gg-token` on every
+    /// Per-launch bearer token the daemon requires as `x-ez-token` on every
     /// request. Generated here, handed to the daemon via GG_APP_TOKEN, and
     /// attached by the shared reqwest client's default headers — without it
     /// any local process could drive the agent through the loopback port.
@@ -5169,7 +5169,7 @@ pub fn run() {
     let daemon_token = uuid::Uuid::new_v4().to_string();
     let mut default_headers = reqwest::header::HeaderMap::new();
     default_headers.insert(
-        "x-gg-token",
+        "x-ez-token",
         reqwest::header::HeaderValue::from_str(&daemon_token)
             .expect("uuid v4 is valid header ASCII"),
     );

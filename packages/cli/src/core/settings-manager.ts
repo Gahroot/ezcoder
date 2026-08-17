@@ -92,10 +92,10 @@ const SettingsSchema = z.object({
    *  so a legacy server still connects. Off by default: the probe costs a round
    *  trip, and a legacy stdio server that ignores it pays the probe timeout. */
   mcpModernProtocol: z.boolean().default(false),
-  /** Connect MCP servers declared in the OPENED REPO's `.gg/mcp.json`. That
+  /** Connect MCP servers declared in the OPENED REPO's `.ezcoder/mcp.json`. That
    *  file is repo-controlled: a malicious repo can declare a stdio `command`
    *  that executes the moment the project opens. Off by default — enable only
-   *  for repos you trust (global ~/.gg/mcp.json is always connected). */
+   *  for repos you trust (global ~/.ezcoder/mcp.json is always connected). */
   trustProjectMcpServers: z.boolean().default(false),
   /** Repo paths the user has individually trusted for project-scope MCP (the
    *  per-repo complement to the global `trustProjectMcpServers`). Stored as

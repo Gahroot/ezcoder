@@ -8,7 +8,7 @@ import {
   collectProjectContext,
   PROJECT_CONTEXT_MAX_BYTES,
 } from "./system-prompt.js";
-import { buildKenSystemPrompt } from "./core/ken-prompt.js";
+import { buildNolanSystemPrompt } from "./core/nolan-prompt.js";
 import type { LanguageId } from "./core/language-detector.js";
 
 const tempDirs: string[] = [];
@@ -654,13 +654,13 @@ describe("buildSystemPrompt", () => {
       args.activeLanguages,
     );
     expect(a).toBe(b);
-    // Same for the Ken advisor prompt — its marker must also partition
-    // volatile bytes out of the cached prefix (ken-prompt.ts pins the marker
+    // Same for the Nolan advisor prompt — its marker must also partition
+    // volatile bytes out of the cached prefix (nolan-prompt.ts pins the marker
     // as byte-identical to the build prompt's).
-    const kenA = await buildKenSystemPrompt(cwd);
-    const kenB = await buildKenSystemPrompt(cwd);
-    expect(kenA).toBe(kenB);
-    for (const prompt of [a, kenA]) {
+    const nolanA = await buildNolanSystemPrompt(cwd);
+    const nolanB = await buildNolanSystemPrompt(cwd);
+    expect(nolanA).toBe(nolanB);
+    for (const prompt of [a, nolanA]) {
       expect(prompt).toContain("<!-- uncached -->");
       // All volatile content (currently only the date) sits AFTER the marker.
       const markerAt = prompt.indexOf("<!-- uncached -->");

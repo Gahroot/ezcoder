@@ -6,7 +6,7 @@ import { useSyncExternalStore } from "react";
 // this also exposes a tiny subscribe/notify store + a React hook
 // (useSyncExternalStore). That lets MemeLayer re-render the instant the setting
 // flips — even when the flip happens in the Settings modal, a sibling subtree.
-const STORAGE_KEY = "gg-memes-enabled";
+const STORAGE_KEY = "ez-memes-enabled";
 
 function loadEnabled(): boolean {
   try {

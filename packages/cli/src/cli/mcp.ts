@@ -137,7 +137,7 @@ async function buildRows(cwd: string): Promise<McpServerRow[]> {
           ok: false,
           toolCount: 0,
           error:
-            "Project-scope server not connected — this repo's .gg/mcp.json runs " +
+            "Project-scope server not connected — this repo's .ezcoder/mcp.json runs " +
             "repo-controlled commands. Add or re-add a server in this project via " +
             "the MCP modal to trust it.",
         }),

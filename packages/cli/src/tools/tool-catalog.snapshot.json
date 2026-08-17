@@ -372,7 +372,7 @@
             "description": "URL or local dev-server address to open (e.g. http://localhost:3000)"
           },
           "out_path": {
-            "description": "Output PNG path (defaults to .gg/screenshots/<timestamp>.png)",
+            "description": "Output PNG path (defaults to .ezcoder/screenshots/<timestamp>.png)",
             "type": "string"
           },
           "wait_for": {

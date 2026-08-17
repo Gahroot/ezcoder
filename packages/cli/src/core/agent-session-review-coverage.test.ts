@@ -193,7 +193,7 @@ describe("AgentSession Ideal review coverage gate", () => {
     expect(internal.getHookFollowUpMessages()?.[0]?.content).toContain("Ideal?");
   });
 
-  it("stays disarmed while Ken owns autopilot verification", () => {
+  it("stays disarmed while Nolan owns autopilot verification", () => {
     const cwd = makeWorkspace(["src/a.ts"]);
     const internal = makeReviewSession(cwd, ["src/a.ts"]);
     const armed: boolean[] = [];

@@ -80,9 +80,9 @@
 ### Patch Changes
 
 - Guard the `lean` skill against killing its own host daemon: the process-cleanup reference now leads with a hard rule to trace PPID ancestry before any kill, treat memory-heavy processes as findings rather than kill targets, and leave orphan cleanup to the host startup sweep. Fixes lean sessions dying mid-run after SIGTERM-ing the app-sidecar they run inside.
-  - @kenkaiiii/gg-ai@5.46.1
-  - @kenkaiiii/gg-agent@5.46.1
-  - @kenkaiiii/gg-core@5.46.1
+  - @prestyj/ai@5.46.1
+  - @prestyj/agent@5.46.1
+  - @prestyj/core@5.46.1
 
 ## 5.46.0
 
@@ -93,9 +93,9 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.46.0
-- @kenkaiiii/gg-agent@5.46.0
-- @kenkaiiii/gg-core@5.46.0
+- @prestyj/ai@5.46.0
+- @prestyj/agent@5.46.0
+- @prestyj/core@5.46.0
 
 ## 5.45.0
 
@@ -105,36 +105,36 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.45.0
-- @kenkaiiii/gg-agent@5.45.0
-- @kenkaiiii/gg-core@5.45.0
+- @prestyj/ai@5.45.0
+- @prestyj/agent@5.45.0
+- @prestyj/core@5.45.0
 
 ## 5.44.3
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@5.44.3
-  - @kenkaiiii/gg-agent@5.44.3
-  - @kenkaiiii/gg-core@5.44.3
+  - @prestyj/ai@5.44.3
+  - @prestyj/agent@5.44.3
+  - @prestyj/core@5.44.3
 
 ## 5.44.2
 
 ### Patch Changes
 
 - Fix silent agent stop when the provider returns empty responses: after retries exhaust, the loop now emits an `empty_response` truncated event, keeps the contentless assistant message out of session history so later requests aren't poisoned, and hosts (TUI + desktop sidecar) surface a clear warning instead of ending silently. Also refreshed the bulletproof skill references.
-  - @kenkaiiii/gg-ai@5.44.2
-  - @kenkaiiii/gg-agent@5.44.2
-  - @kenkaiiii/gg-core@5.44.2
+  - @prestyj/ai@5.44.2
+  - @prestyj/agent@5.44.2
+  - @prestyj/core@5.44.2
 
 ## 5.44.1
 
 ### Patch Changes
 
 - Tell the model what went wrong when `edit` receives `edits` as a JSON-encoded string, and log the consecutive schema-rejection count so retry loops are visible.
-  - @kenkaiiii/gg-ai@5.44.1
-  - @kenkaiiii/gg-agent@5.44.1
-  - @kenkaiiii/gg-core@5.44.1
+  - @prestyj/ai@5.44.1
+  - @prestyj/agent@5.44.1
+  - @prestyj/core@5.44.1
 
 ## 5.44.0
 
@@ -144,7 +144,7 @@
 
   Same GLM-5 base as 5.2 with every gain from post-training: Z.AI reports ~50% better coding and open-source SOTA on Terminal-Bench 3.0 and Agent's Last Exam. Context window (1M) and max output (131K) are unchanged, so compaction budgeting is untouched.
 
-  **GLM thinking is now a real effort ladder, not an on/off toggle.** ggcoder previously sent only `thinking: { type: "enabled" }`, which silently ran Z.AI's `max` default at every setting. The endpoint in fact declares `none, minimal, low, medium, high, xhigh, max` (an unknown value 400s with that list), so `low / medium / high / xhigh / max` are now selectable and sent as `reasoning_effort` alongside the toggle. Measured end-to-end on one hard reasoning prompt: `low` → 0.8K reasoning chars in 15s, `high` → 3.2K in 28s, `max` → 24.9K in 129s. The default stays `max`, matching what the server was already doing, so existing behaviour is unchanged — but dialing effort _down_ is now possible for the first time.
+  **GLM thinking is now a real effort ladder, not an on/off toggle.** ezcoder previously sent only `thinking: { type: "enabled" }`, which silently ran Z.AI's `max` default at every setting. The endpoint in fact declares `none, minimal, low, medium, high, xhigh, max` (an unknown value 400s with that list), so `low / medium / high / xhigh / max` are now selectable and sent as `reasoning_effort` alongside the toggle. Measured end-to-end on one hard reasoning prompt: `low` → 0.8K reasoning chars in 15s, `high` → 3.2K in 28s, `max` → 24.9K in 129s. The default stays `max`, matching what the server was already doing, so existing behaviour is unchanged — but dialing effort _down_ is now possible for the first time.
 
   Note `max` is kept as `max` on the wire for GLM rather than remapped to `xhigh` the way OpenAI-compatible efforts are: GLM spells its own top rung `max`.
 
@@ -153,9 +153,9 @@
 ### Patch Changes
 
 - Updated dependencies [bc99e74]
-  - @kenkaiiii/gg-ai@5.44.0
-  - @kenkaiiii/gg-core@5.44.0
-  - @kenkaiiii/gg-agent@5.44.0
+  - @prestyj/ai@5.44.0
+  - @prestyj/core@5.44.0
+  - @prestyj/agent@5.44.0
 
 ## 5.43.0
 
@@ -169,30 +169,30 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.43.0
-- @kenkaiiii/gg-agent@5.43.0
-- @kenkaiiii/gg-core@5.43.0
+- @prestyj/ai@5.43.0
+- @prestyj/agent@5.43.0
+- @prestyj/core@5.43.0
 
 ## 5.42.0
 
 ### Minor Changes
 
-- Add per-repo MCP trust: adding a project-scope MCP server now auto-trusts that repo so its `.gg/mcp.json` servers connect on next load without enabling the global `trustProjectMcpServers` toggle.
+- Add per-repo MCP trust: adding a project-scope MCP server now auto-trusts that repo so its `.ezcoder/mcp.json` servers connect on next load without enabling the global `trustProjectMcpServers` toggle.
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.42.0
-- @kenkaiiii/gg-agent@5.42.0
-- @kenkaiiii/gg-core@5.42.0
+- @prestyj/ai@5.42.0
+- @prestyj/agent@5.42.0
+- @prestyj/core@5.42.0
 
 ## 5.41.1
 
 ### Patch Changes
 
-- Security hardening: authenticate the app sidecar daemon with a per-launch bearer token, drop open CORS, gate repo-controlled `.gg/mcp.json` servers behind a trust setting, and bump vulnerable dependencies.
-  - @kenkaiiii/gg-ai@5.41.1
-  - @kenkaiiii/gg-agent@5.41.1
-  - @kenkaiiii/gg-core@5.41.1
+- Security hardening: authenticate the app sidecar daemon with a per-launch bearer token, drop open CORS, gate repo-controlled `.ezcoder/mcp.json` servers behind a trust setting, and bump vulnerable dependencies.
+  - @prestyj/ai@5.41.1
+  - @prestyj/agent@5.41.1
+  - @prestyj/core@5.41.1
 
 ## 5.41.0
 
@@ -208,9 +208,9 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.41.0
-- @kenkaiiii/gg-agent@5.41.0
-- @kenkaiiii/gg-core@5.41.0
+- @prestyj/ai@5.41.0
+- @prestyj/agent@5.41.0
+- @prestyj/core@5.41.0
 
 ## 5.40.1
 

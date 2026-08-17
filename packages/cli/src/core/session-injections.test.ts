@@ -24,8 +24,8 @@ import {
   palsuText,
   palsuToolCall,
   type PalsuProviderHandle,
-} from "@kenkaiiii/gg-ai";
-import type { Message } from "@kenkaiiii/gg-ai";
+} from "@prestyj/ai";
+import type { Message } from "@prestyj/ai";
 import { useFakeHome } from "../test-support/fake-home.js";
 import type { AgentNotificationQueue } from "./agent-notifications.js";
 import { STEERING_PREFIX, NOTIFICATION_PREFIX } from "./steering.js";
@@ -37,14 +37,14 @@ let tmpProject: string;
 let palsu: PalsuProviderHandle;
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-injections-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-injections-project-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-injections-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-injections-project-"));
   restoreHome = useFakeHome(tmpHome);
   palsu = registerPalsuProvider();
 
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tmpHome, ".gg", "auth.json"),
+    path.join(tmpHome, ".ezcoder", "auth.json"),
     JSON.stringify({
       palsu: { accessToken: "t", refreshToken: "r", expiresAt: Date.now() + 3_600_000 },
     }),

@@ -5,23 +5,23 @@
  * turn preserves its prompt prefix: every provider request after the first
  * must report cacheRead > 0. A reorder in the tool array, a volatile section
  * leaking into the system prompt, or an unstable serialization anywhere in
- * gg-ai/gg-agent collapses cacheRead to 0 here — and passes every mock-based
+ * @prestyj/ai/@prestyj/agent collapses cacheRead to 0 here — and passes every mock-based
  * test on the way to the user's bill (deepseek-harness takeaway: a with-key
  * run is the only proof the agent works against a real provider).
  *
- * Gates: skips unless GG_LIVE_E2E is set, so plain `pnpm test` never spends
+ * Gates: skips unless EZ_LIVE_E2E is set, so plain `pnpm test` never spends
  * tokens. Credentials come from ANTHROPIC_API_KEY or the logged-in AuthStorage
- * (the same path a real session uses); opting into GG_LIVE_E2E without either
+ * (the same path a real session uses); opting into EZ_LIVE_E2E without either
  * is a hard failure, not a silent skip.
- * Intentional runs: GG_LIVE_E2E=1 pnpm vitest run src/core/provider-cache.e2e.test.ts
+ * Intentional runs: EZ_LIVE_E2E=1 pnpm vitest run src/core/provider-cache.e2e.test.ts
  * (~4 live requests).
  */
 import { describe, it, expect } from "vitest";
 import path from "node:path";
 import { z } from "zod";
-import type { AgentEvent, AgentTool } from "@kenkaiiii/gg-agent";
-import { agentLoop } from "@kenkaiiii/gg-agent";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { AgentEvent, AgentTool } from "@prestyj/agent";
+import { agentLoop } from "@prestyj/agent";
+import type { Message } from "@prestyj/ai";
 import { buildSystemPrompt } from "../system-prompt.js";
 import { DEFAULT_TOOL_NAMES } from "../tools/prompt-hints.js";
 import { AuthStorage } from "./auth-storage.js";
@@ -113,7 +113,7 @@ async function runTurn(
 }
 
 describe("provider prompt-cache hit (live Anthropic)", () => {
-  const live = !!process.env.GG_LIVE_E2E;
+  const live = !!process.env.EZ_LIVE_E2E;
 
   it.skipIf(!live)(
     "reports cacheRead > 0 on every request after the first",
@@ -121,7 +121,7 @@ describe("provider prompt-cache hit (live Anthropic)", () => {
       const creds = await resolveCreds();
       expect(
         creds,
-        "no Anthropic credential (env ANTHROPIC_API_KEY or ggcoder login)",
+        "no Anthropic credential (env ANTHROPIC_API_KEY or ezcoder login)",
       ).toBeTruthy();
       const cwd = path.resolve(import.meta.dirname, "../../.."); // repo root: real project context
 
@@ -138,7 +138,7 @@ describe("provider prompt-cache hit (live Anthropic)", () => {
         { role: "system", content: system },
         { role: "user", content: TASK_PROMPT },
       ];
-      const promptCacheKey = "gg-live-cache-e2e";
+      const promptCacheKey = "ez-live-cache-e2e";
 
       // Turn 1: user → tool call → tool result → final answer (2+ requests).
       const turn1 = await runTurn(messages, { promptCacheKey, creds: creds! });
@@ -148,7 +148,7 @@ describe("provider prompt-cache hit (live Anthropic)", () => {
       const turn2 = await runTurn(messages, { promptCacheKey, creds: creds! });
 
       const perTurnUsage = [...turn1, ...turn2];
-      if (process.env.GG_CACHE_E2E_DEBUG) console.log("[cache-e2e]", JSON.stringify(perTurnUsage));
+      if (process.env.EZ_CACHE_E2E_DEBUG) console.log("[cache-e2e]", JSON.stringify(perTurnUsage));
       expect(perTurnUsage.length).toBeGreaterThanOrEqual(3);
 
       // ── The assertion that matters ──

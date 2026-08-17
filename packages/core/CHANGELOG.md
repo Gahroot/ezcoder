@@ -47,38 +47,38 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.46.1
+- @prestyj/ai@5.46.1
 
 ## 5.46.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.46.0
+- @prestyj/ai@5.46.0
 
 ## 5.45.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.45.0
+- @prestyj/ai@5.45.0
 
 ## 5.44.3
 
 ### Patch Changes
 
 - Updated dependencies
-  - @kenkaiiii/gg-ai@5.44.3
+  - @prestyj/ai@5.44.3
 
 ## 5.44.2
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.44.2
+- @prestyj/ai@5.44.2
 
 ## 5.44.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.44.1
+- @prestyj/ai@5.44.1
 
 ## 5.44.0
 
@@ -88,7 +88,7 @@
 
   Same GLM-5 base as 5.2 with every gain from post-training: Z.AI reports ~50% better coding and open-source SOTA on Terminal-Bench 3.0 and Agent's Last Exam. Context window (1M) and max output (131K) are unchanged, so compaction budgeting is untouched.
 
-  **GLM thinking is now a real effort ladder, not an on/off toggle.** ggcoder previously sent only `thinking: { type: "enabled" }`, which silently ran Z.AI's `max` default at every setting. The endpoint in fact declares `none, minimal, low, medium, high, xhigh, max` (an unknown value 400s with that list), so `low / medium / high / xhigh / max` are now selectable and sent as `reasoning_effort` alongside the toggle. Measured end-to-end on one hard reasoning prompt: `low` → 0.8K reasoning chars in 15s, `high` → 3.2K in 28s, `max` → 24.9K in 129s. The default stays `max`, matching what the server was already doing, so existing behaviour is unchanged — but dialing effort _down_ is now possible for the first time.
+  **GLM thinking is now a real effort ladder, not an on/off toggle.** ezcoder previously sent only `thinking: { type: "enabled" }`, which silently ran Z.AI's `max` default at every setting. The endpoint in fact declares `none, minimal, low, medium, high, xhigh, max` (an unknown value 400s with that list), so `low / medium / high / xhigh / max` are now selectable and sent as `reasoning_effort` alongside the toggle. Measured end-to-end on one hard reasoning prompt: `low` → 0.8K reasoning chars in 15s, `high` → 3.2K in 28s, `max` → 24.9K in 129s. The default stays `max`, matching what the server was already doing, so existing behaviour is unchanged — but dialing effort _down_ is now possible for the first time.
 
   Note `max` is kept as `max` on the wire for GLM rather than remapped to `xhigh` the way OpenAI-compatible efforts are: GLM spells its own top rung `max`.
 
@@ -97,31 +97,31 @@
 ### Patch Changes
 
 - Updated dependencies [bc99e74]
-  - @kenkaiiii/gg-ai@5.44.0
+  - @prestyj/ai@5.44.0
 
 ## 5.43.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.43.0
+- @prestyj/ai@5.43.0
 
 ## 5.42.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.42.0
+- @prestyj/ai@5.42.0
 
 ## 5.41.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.41.1
+- @prestyj/ai@5.41.1
 
 ## 5.41.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.41.0
+- @prestyj/ai@5.41.0
 
 ## 5.40.1
 

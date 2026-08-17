@@ -14,7 +14,7 @@ const managers: ProcessManager[] = [];
 const tempDirs: string[] = [];
 
 async function bgDir(): Promise<string> {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gg-process-wake-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ez-process-wake-"));
   tempDirs.push(directory);
   return directory;
 }

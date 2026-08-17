@@ -40,7 +40,7 @@ export interface SavedSettings {
   lspDiagnostics: boolean;
   /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.ezcoder). */
   allowOutsideWorkspaceWrites: boolean;
-  /** Connect MCP servers declared in the opened repo's .gg/mcp.json. That file
+  /** Connect MCP servers declared in the opened repo's .ezcoder/mcp.json. That file
    *  is repo-controlled, so a malicious repo could run a command the moment
    *  the project opens. Default false — enable only for repos you trust. */
   trustProjectMcpServers: boolean;

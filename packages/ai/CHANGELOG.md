@@ -28,7 +28,7 @@
 
 ### Patch Changes
 
-- Export `resolveToolSchema` from gg-ai so the exact request-path tool-schema serialization (raw input-schema passthrough for MCP tools, zod-to-JSON otherwise) is reusable; ggcoder's new tool-catalog test pins every default tool's name, description, and schema against a committed snapshot so accidental schema drift fails CI instead of silently invalidating cached prompt prefixes.
+- Export `resolveToolSchema` from gg-ai so the exact request-path tool-schema serialization (raw input-schema passthrough for MCP tools, zod-to-JSON otherwise) is reusable; ezcoder's new tool-catalog test pins every default tool's name, description, and schema against a committed snapshot so accidental schema drift fails CI instead of silently invalidating cached prompt prefixes.
 
 ## 5.44.2
 
@@ -42,7 +42,7 @@
 
   Same GLM-5 base as 5.2 with every gain from post-training: Z.AI reports ~50% better coding and open-source SOTA on Terminal-Bench 3.0 and Agent's Last Exam. Context window (1M) and max output (131K) are unchanged, so compaction budgeting is untouched.
 
-  **GLM thinking is now a real effort ladder, not an on/off toggle.** ggcoder previously sent only `thinking: { type: "enabled" }`, which silently ran Z.AI's `max` default at every setting. The endpoint in fact declares `none, minimal, low, medium, high, xhigh, max` (an unknown value 400s with that list), so `low / medium / high / xhigh / max` are now selectable and sent as `reasoning_effort` alongside the toggle. Measured end-to-end on one hard reasoning prompt: `low` → 0.8K reasoning chars in 15s, `high` → 3.2K in 28s, `max` → 24.9K in 129s. The default stays `max`, matching what the server was already doing, so existing behaviour is unchanged — but dialing effort _down_ is now possible for the first time.
+  **GLM thinking is now a real effort ladder, not an on/off toggle.** ezcoder previously sent only `thinking: { type: "enabled" }`, which silently ran Z.AI's `max` default at every setting. The endpoint in fact declares `none, minimal, low, medium, high, xhigh, max` (an unknown value 400s with that list), so `low / medium / high / xhigh / max` are now selectable and sent as `reasoning_effort` alongside the toggle. Measured end-to-end on one hard reasoning prompt: `low` → 0.8K reasoning chars in 15s, `high` → 3.2K in 28s, `max` → 24.9K in 129s. The default stays `max`, matching what the server was already doing, so existing behaviour is unchanged — but dialing effort _down_ is now possible for the first time.
 
   Note `max` is kept as `max` on the wire for GLM rather than remapped to `xhigh` the way OpenAI-compatible efforts are: GLM spells its own top rung `max`.
 

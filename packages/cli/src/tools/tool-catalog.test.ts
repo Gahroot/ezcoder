@@ -20,7 +20,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveToolSchema } from "@kenkaiiii/gg-ai";
+import { resolveToolSchema } from "@prestyj/ai";
 import { createTools } from "./index.js";
 import { BUILTIN_TOOL_NAMES } from "./prompt-hints.js";
 
@@ -62,7 +62,7 @@ async function buildCatalog(): Promise<
 > {
   // Fixed temp cwd so no tool state leaks between runs; descriptions do not
   // embed cwd (verified — factories use static description text).
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "gg-tool-catalog-"));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "ez-tool-catalog-"));
   try {
     const { tools } = await createTools(cwd);
     return tools.map((tool) => {

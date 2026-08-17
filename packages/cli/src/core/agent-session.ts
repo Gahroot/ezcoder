@@ -929,7 +929,7 @@ export class AgentSession {
   /** Persist `cwd` as a trusted project for project-scope MCP. Called by the
    *  sidecar's `/mcp/add` handler when a user adds a project-scope server via
    *  the MCP modal — the explicit add is itself the trust signal. The next
-   *  session load connects its `.gg/mcp.json` servers. */
+   *  session load connects its `.ezcoder/mcp.json` servers. */
   async trustProject(cwd: string): Promise<void> {
     await this.settingsManager.trustProject(cwd);
   }

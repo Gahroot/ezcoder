@@ -8,9 +8,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import { useFakeHome } from "../test-support/fake-home.js";
-import type { AgentEvent } from "@kenkaiiii/gg-agent";
+import type { AgentEvent } from "@prestyj/agent";
 import type { AgentSession } from "./agent-session.js";
 import { ProcessManager } from "./process-manager.js";
 
@@ -34,12 +34,12 @@ let session: AgentSession | undefined;
 const managers: ProcessManager[] = [];
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-verify-gate-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-verify-gate-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-verify-gate-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-verify-gate-"));
   restoreHome = useFakeHome(tmpHome);
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tmpHome, ".gg", "auth.json"),
+    path.join(tmpHome, ".ezcoder", "auth.json"),
     JSON.stringify({
       anthropic: {
         accessToken: "test-token",
