@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.46.1
+
+### Patch Changes
+
+- Guard the `lean` skill against killing its own host daemon: the process-cleanup reference now leads with a hard rule to trace PPID ancestry before any kill, treat memory-heavy processes as findings rather than kill targets, and leave orphan cleanup to the host startup sweep. Fixes lean sessions dying mid-run after SIGTERM-ing the app-sidecar they run inside.
+  - @kenkaiiii/gg-ai@5.46.1
+  - @kenkaiiii/gg-agent@5.46.1
+  - @kenkaiiii/gg-core@5.46.1
+
 ## 5.46.0
 
 ### Minor Changes
