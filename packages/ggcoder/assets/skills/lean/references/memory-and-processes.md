@@ -63,6 +63,7 @@ Fix the lifetime, not the symptom: remove the registration (or disconnect the ob
 
 `kill(pid)` kills one process; its spawned children (MCP servers, LSPs, shells, helpers) survive as orphans. Correct patterns:
 
+- **Never kill the host you run in.** Before killing any long-lived daemon, node process, or "orphan", trace its ancestry (`ps -o pid,ppid,command` up the PPID chain) and check it is not your own host or an ancestor of it — agent sessions live *inside* a host daemon process, so a session killing that daemon kills itself mid-turn, and a child killing its parent kills the whole app's sessions. A process that is merely using lots of memory is a measurement finding, not a kill target; report it. Live-session agents do not kill host daemons at all — orphan cleanup belongs to the host's startup sweep (below), never to a session that might be running inside the thing it aims at.
 - **Unix:** start the child in its own process group (`detached: true` in Node, `setsid`/`process_group` elsewhere), then kill the group: `process.kill(-pid, sig)` — the negative PID addresses the whole group. Escalate SIGTERM → grace period → SIGKILL.
 - **Windows:** there are no process groups; `taskkill /PID <pid> /T /F` kills the tree (`/T` = tree, `/F` = force), or use a Job Object assigned to children so closing the handle terminates them all.
 - **Both:** kill children *before* the parent exits, in order — parents can't clean up after they're dead; and children of an interactive app must die when the app does, normal exit *and* crash.
