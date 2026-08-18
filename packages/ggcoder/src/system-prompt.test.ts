@@ -308,13 +308,23 @@ describe("buildSystemPrompt", () => {
       "Do not rely on memory for APIs",
       "Use `source_path`",
       "web_search` then `web_fetch",
-      "use the kencode-search tools (usage in Tools below)",
+      "mcp__kencode-search__searchCode",
+      "Build from real samples, not assumptions",
       "curated, categorized reference repos",
       "Search GitHub repos live",
       "literal text or RE2 regex; NOT semantic",
       "Skip checks after simple edits",
       "At coherent checkpoints or after risky/non-obvious changes",
       "run one targeted check",
+      // Guardrails added in the 2026-08 prompt audit (P1/P2):
+      "A question is not a fix request",
+      "only when the user explicitly asks — never update git config or force-push",
+      "Never revert or reset changes you did not make",
+      "reproduce it first",
+      "If the same fix fails three times, stop retrying",
+      "Never make a failing check pass by weakening it",
+      "never fork them into variants",
+      "exercise real code paths rather than mocks",
     ]) {
       expect(prompt).toContain(required);
     }
@@ -469,9 +479,14 @@ describe("buildSystemPrompt", () => {
     // generated code 50–76% and output tokens 21–38%. Input tokens fell too,
     // despite the longer prefix: stopping at the first rung that holds costs
     // fewer turns than re-deriving an over-built solution.
-    expect(measurements.normal.characters).toBeLessThan(7_900);
-    expect(measurements.planMode.characters).toBeLessThan(9_100);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(12_300);
+    // Raised with the 2026-08 guardrail additions (git safety, anti-fake-green,
+    // reproduce-first, circuit-breaker, question-vs-fix, no-variants, test
+    // guidance) — each line field-verified as load-bearing across Tier-1 agents.
+    // Raised once more for the explicit kencode-search staple sentence in
+    // Research (names the MCP tools + build-from-samples philosophy).
+    expect(measurements.normal.characters).toBeLessThan(9_400);
+    expect(measurements.planMode.characters).toBeLessThan(10_600);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(13_800);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -511,7 +526,9 @@ describe("buildSystemPrompt", () => {
     expect(audit.flags).toEqual([]);
     // Raised with the Code Quality minimization ladder — see the size-budget
     // test above for the measured return that justifies the spend.
-    expect(audit.size.characters).toBeLessThan(11_900);
+    // Raised again with the 2026-08 guardrail additions (see size-budget test).
+    // And again for the kencode-search staple sentence in Research.
+    expect(audit.size.characters).toBeLessThan(13_500);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 
