@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.46.2
+
+### Patch Changes
+
+- System prompt guardrails (git safety, anti-fake-green verification, reproduce-before-fix, retry circuit-breaker, question-vs-fix), bash tool safety lines (git only when asked, no shell backgrounding, PID-specific kills), and an explicit kencode-search staple in Research. Bench A/B'd with zero regressions.
+  - @kenkaiiii/gg-ai@5.46.2
+  - @kenkaiiii/gg-agent@5.46.2
+  - @kenkaiiii/gg-core@5.46.2
+
 ## 5.46.1
 
 ### Patch Changes
