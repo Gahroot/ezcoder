@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.50.3",
+    date: "2026-08-18",
+    items: [
+      "GG Coder got a fresh set of guardrails, and it shows. It now treats your git history like the precious thing it is: no surprise commits, no force pushes, and it stops to ask instead of touching changes it doesn't recognize. It also refuses to make a failing test pass by weakening it, reproduces a bug before fixing it, and knows the difference between you asking a question and asking for a fix.",
+      "The `kencode` superpower is now front and center. When building something nontrivial, GG Coder reaches for real code from `millions of GitHub repos` to see how it's actually done before writing a single line, instead of guessing from memory.",
+    ],
+  },
+  {
     version: "0.50.2",
     date: "2026-08-18",
     items: [
