@@ -178,7 +178,9 @@ export function createBashTool(
       "Set run_in_background=true for long-running OR interactive processes " +
       "(dev servers, watchers, REPLs, scaffolders, programs that prompt for input). " +
       "Use task_output to read output, task_send to type input/answer prompts, and " +
-      "task_stop to stop background processes."
+      "task_stop to stop background processes. " +
+      "Commit, push, amend, or rewrite git history only when the user explicitly asked. " +
+      "Kill processes by exact PID (taskkill /PID), never by image name alone."
     : "Execute a bash command. The shell's working directory is already set to the project root — " +
       "don't cd into it redundantly. Use cd only when you need a different directory. " +
       "Returns exit code and combined stdout/stderr. " +
@@ -188,6 +190,9 @@ export function createBashTool(
       "(dev servers, watchers, REPLs, scaffolders, programs that prompt for input). " +
       "Use task_output to read output, task_send to type input/answer prompts, and " +
       "task_stop to stop background processes. " +
+      "Commit, push, amend, or rewrite git history only when the user explicitly asked. " +
+      "Never background a command with a trailing & or nohup — use run_in_background instead. " +
+      "Kill processes by exact PID, never broad patterns like pkill -f node. " +
       "Set persist=true to run in a session shell where cd/env state survives across " +
       "persist:true calls. " +
       "With run_in_background, also set wake (pattern and/or silence_seconds) to be " +

@@ -85,6 +85,11 @@ describe("createBashTool shell snapshot", () => {
     expect(tool.description).toContain("dir, findstr, type");
     expect(tool.description).toContain("will fail");
     expect(tool.description).not.toContain("Execute a bash command");
+    // 2026-08 guardrail additions (audit P1/P2) must survive in both shells.
+    expect(tool.description).toContain(
+      "Commit, push, amend, or rewrite git history only when the user explicitly asked",
+    );
+    expect(tool.description).toContain("Kill processes by exact PID");
   });
 
   it("keeps the bash description byte-for-byte when a POSIX shell resolves", () => {
@@ -97,6 +102,12 @@ describe("createBashTool shell snapshot", () => {
     expect(tool.description.startsWith("Execute a bash command.")).toBe(true);
     expect(tool.description).toContain("non-interactive bash shell with TERM=dumb");
     expect(tool.description).not.toContain("cmd.exe");
+    // 2026-08 guardrail additions (audit P1/P2); bash-only line below.
+    expect(tool.description).toContain(
+      "Commit, push, amend, or rewrite git history only when the user explicitly asked",
+    );
+    expect(tool.description).toContain("Never background a command with a trailing & or nohup");
+    expect(tool.description).toContain("Kill processes by exact PID");
   });
 });
 
