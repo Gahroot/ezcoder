@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.51.0",
+    date: "2026-08-19",
+    items: [
+      "GG Coder just got five new built-in superpowers, and they switch on by themselves. When a plan is fuzzy it reaches for `clarify`, builds test-first with `tdd` when you ask for it, chases stubborn bugs from red repro to real fix with `root-cause`, keeps your project's vocabulary tight with `shared-language`, and checks both what you asked for and how well it's built with `code-review`. No setup, no config, they just show up when the work needs them.",
+      "It asks you better questions, way less often. I taught it the difference between facts and decisions: facts it now digs up on its own, and real decisions come to you as one batched list with a recommended answer next to each. The one-question-at-a-time interrogation drip is dead.",
+    ],
+  },
+  {
     version: "0.50.3",
     date: "2026-08-18",
     items: [
