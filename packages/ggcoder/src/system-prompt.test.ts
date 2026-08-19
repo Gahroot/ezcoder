@@ -325,6 +325,14 @@ describe("buildSystemPrompt", () => {
       "Never make a failing check pass by weakening it",
       "never fork them into variants",
       "exercise real code paths rather than mocks",
+      // Facts-vs-decisions + batched questions (alignment guardrails):
+      // asking is sanctioned for decisions only, and asking well means one
+      // batched, recommendation-annotated list instead of an interrogation drip.
+      "only decisions (taste, product calls, real tradeoffs) reach the user",
+      "one numbered list, every open question",
+      // The exemption must name both caps: a batched question list that
+      // violates the 5-item list cap would put the two rules in conflict.
+      "exempt from the reply and list caps",
     ]) {
       expect(prompt).toContain(required);
     }
@@ -484,9 +492,13 @@ describe("buildSystemPrompt", () => {
     // guidance) — each line field-verified as load-bearing across Tier-1 agents.
     // Raised once more for the explicit kencode-search staple sentence in
     // Research (names the MCP tools + build-from-samples philosophy).
-    expect(measurements.normal.characters).toBeLessThan(9_400);
-    expect(measurements.planMode.characters).toBeLessThan(10_600);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(13_800);
+    // Raised for the alignment guardrails (facts-vs-decisions sorting,
+    // batched questions with recommended answers) — misalignment is the most
+    // common failure mode, and these two lines are the always-on floor the
+    // `clarify` skill then deepens on demand.
+    expect(measurements.normal.characters).toBeLessThan(9_600);
+    expect(measurements.planMode.characters).toBeLessThan(10_800);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(14_000);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -528,7 +540,8 @@ describe("buildSystemPrompt", () => {
     // test above for the measured return that justifies the spend.
     // Raised again with the 2026-08 guardrail additions (see size-budget test).
     // And again for the kencode-search staple sentence in Research.
-    expect(audit.size.characters).toBeLessThan(13_500);
+    // And again for the alignment guardrails (see size-budget test).
+    expect(audit.size.characters).toBeLessThan(13_700);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 

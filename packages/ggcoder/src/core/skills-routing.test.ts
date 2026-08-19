@@ -228,6 +228,62 @@ describe("skill routing prompts", () => {
     }
   });
 
+  it("discovers the workflow skills for a fresh user from bundled assets", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bundled-skills-"));
+    try {
+      const skills = await discoverSkills({ globalSkillsDir: path.join(root, "global") });
+
+      // Each bundled workflow skill carries the one discipline marker that
+      // makes it work — a skill that loses its marker has become prose.
+      const expectations: Array<{ name: string; markers: string[] }> = [
+        // Interviews must not outsource homework to the user.
+        { name: "clarify", markers: ["Never ask for facts", "Ask only the frontier"] },
+        // Seams are agreed before tests exist; expected values never recompute
+        // the implementation's logic.
+        { name: "tdd", markers: ["No test at an unagreed seam", "outside source of truth"] },
+        // Theory is gated behind a red, deterministic, fast repro command;
+        // a "why" question must end at the answer, not a fix the user never
+        // asked for (skills outrank the prompt, so the guard lives here too).
+        {
+          name: "root-cause",
+          markers: [
+            "No red command, no Phase 2",
+            "One variable",
+            "change code only when the user asks for the fix",
+            // Suiteless projects: a mandated regression test would contradict
+            // the prompt's "no suite unless asked" rule.
+            "never introduce a suite unasked",
+          ],
+        },
+        // The glossary stays a glossary; ADRs are superseded, never edited.
+        // CONTEXT.md is not in CONTEXT_FILES, so the glossary only pays off
+        // across sessions via the pointer line the skill plants.
+        {
+          name: "shared-language",
+          markers: [
+            "glossary and nothing else",
+            "supersede, never edit",
+            "CONTEXT.md is not auto-loaded",
+          ],
+        },
+        // Spec and standards findings stay unlabeled-merge-proof; security
+        // defers to bulletproof instead of duplicating its lane.
+        { name: "code-review", markers: ["never merge the lists", "bulletproof"] },
+      ];
+
+      for (const { name, markers } of expectations) {
+        const skill = skills.find((candidate) => candidate.name === name);
+        expect(skill?.source, name).toBe("bundled");
+        expect(skill?.root, name).toContain(path.join("assets", "skills", name));
+        for (const marker of markers) {
+          expect(skill?.content, `${name}: ${marker}`).toContain(marker);
+        }
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("lets project skills override global and bundled definitions by name", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "skill-precedence-"));
     const globalSkillsDir = path.join(root, "global");
