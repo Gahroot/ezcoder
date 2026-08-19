@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.47.0
+
+### Minor Changes
+
+- 8d8a93b: Add five bundled workflow skills that ship by default and route themselves: `clarify` (frontier-based requirements interview — facts self-served, only decisions reach the user), `tdd` (red-green loop with pre-agreed seams and independent expected values), `root-cause` (gated diagnosis: red repro command → ranked falsifiable hypotheses → regression test before fix), `shared-language` (CONTEXT.md glossary + ADR discipline), and `code-review` (spec and standards axes kept separate; security defers to `bulletproof`). Plus two system-prompt lines: facts-vs-decisions sorting and batched questions with recommended answers.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.47.0
+- @kenkaiiii/gg-agent@5.47.0
+- @kenkaiiii/gg-core@5.47.0
+
 ## 5.46.2
 
 ### Patch Changes
