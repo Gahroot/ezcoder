@@ -65,6 +65,15 @@ jobs:
           pnpm --filter @kenkaiiii/ggcoder build
           pnpm --filter @kenkaiiii/gg-boss build
 
+      # Deterministic perf budgets (fx-pattern ratchet): bundle size + CLI
+      # startup. Baseline lives in bench/baseline/sizes.json; intentional
+      # growth re-baselines via `node bench/size-gate.mjs --update`.
+      - name: Size + startup gates
+        shell: bash
+        run: |
+          node bench/size-gate.mjs dist:ggcoder
+          node bench/startup-gate.mjs
+
       - name: Typecheck
         shell: bash
         run: |
@@ -156,6 +165,13 @@ jobs:
 
       - name: Sidecar smoke (bundled runtime + bundle, per-OS)
         run: node gg-app/scripts/smoke-sidecar.mjs
+        shell: bash
+
+      # OS-independent slice of the sidecar bundle (app-sidecar.mjs + skills;
+      # node_modules carries platform-conditional binaries so one baseline
+      # cannot hold across the matrix).
+      - name: Sidecar size gate
+        run: node bench/size-gate.mjs --only sidecar
         shell: bash
 
       - name: Frontend platform-class test
