@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.48.0
+
+### Minor Changes
+
+- Add /setup-ci command: dual-mode CI setup for any stack (generate hardened CI from scratch, or audit + harden existing workflows) with Dependabot, branch-protection rulesets, and AGENTS.md
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.48.0
+- @kenkaiiii/gg-agent@5.48.0
+- @kenkaiiii/gg-core@5.48.0
+
 ## 5.47.0
 
 ### Minor Changes
