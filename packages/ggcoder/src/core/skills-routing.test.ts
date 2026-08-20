@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { discoverSkills, formatSkillsForPrompt, type Skill } from "./skills.js";
 import { createSkillTool } from "../tools/skill.js";
+import { resolveContextLimits } from "./context-limits.js";
 
 const skill: Skill = {
   name: "evidence-led-ui",
@@ -310,5 +311,53 @@ describe("skill routing prompts", () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("skill catalog byte budgets", () => {
+  it("clamps an over-long description to the budget on a codepoint boundary", () => {
+    const bloated: Skill = {
+      ...skill,
+      description: `Use for UI work. ${"😀".repeat(600)}`, // ~2.4KB, multibyte
+    };
+    const prompt = formatSkillsForPrompt([bloated]);
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(2000);
+    expect(prompt).toContain("evidence-led-ui");
+    expect(prompt).toContain("\u2026");
+    expect(prompt).not.toContain("\ufffd");
+  });
+
+  it("drops overflow skills and names them in the section", () => {
+    const many: Skill[] = Array.from({ length: 60 }, (_, i) => ({
+      ...skill,
+      name: `skill-${i}`,
+      description: "x".repeat(500), // 60 × ~520B > 16KB catalog budget
+    }));
+    const prompt = formatSkillsForPrompt(many);
+    expect(prompt).toContain("Skills omitted (catalog byte budget)");
+    expect(prompt).toContain("skill-59");
+    // Kept prefix skills still listed.
+    expect(prompt).toContain("skill-0");
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(20 * 1024);
+  });
+
+  it("applies the same budget to the skill tool description", () => {
+    const many: Skill[] = Array.from({ length: 60 }, (_, i) => ({
+      ...skill,
+      name: `skill-${i}`,
+      description: "x".repeat(500),
+    }));
+    const tool = createSkillTool(many);
+    expect(tool.description).toContain("Skills omitted (catalog byte budget)");
+    expect(Buffer.byteLength(tool.description, "utf8")).toBeLessThan(20 * 1024);
+  });
+
+  it("honors raised limits", () => {
+    const bloated: Skill = { ...skill, description: "x".repeat(2048) };
+    const prompt = formatSkillsForPrompt(
+      [bloated],
+      resolveContextLimits({ skillDescriptionBytes: 4096 }),
+    );
+    expect(prompt).toContain("x".repeat(2048));
   });
 });

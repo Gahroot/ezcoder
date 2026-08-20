@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { clampToBytes, CONTEXT_LIMITS, type ContextLimits } from "./context-limits.js";
 import { stripBom } from "../utils/text.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -131,15 +132,52 @@ export function parseSkillFile(rawInput: string, source: string): Skill {
 }
 
 /**
+ * Render the per-skill catalog lines under byte budgets: each description is
+ * clamped to `skillDescriptionBytes`, then lines are admitted into a shared
+ * `skillCatalogBytes` budget in listed order. Skills dropped by the catalog
+ * budget are named in `dropped` so callers can surface them — a silently
+ * missing skill is indistinguishable from one that does not exist.
+ *
+ * Shared by the prompt's Skills section and the skill tool's description: both
+ * are attacker-bloatable surfaces for the same list.
+ */
+export function renderSkillLines(
+  skills: Skill[],
+  limits: ContextLimits = CONTEXT_LIMITS,
+): { lines: string[]; dropped: string[] } {
+  const lines: string[] = [];
+  const dropped: string[] = [];
+  let used = 0;
+  for (const skill of skills) {
+    const description = skill.description
+      ? clampToBytes(skill.description, limits.skillDescriptionBytes).text
+      : "";
+    const line = `- **${skill.name}**${description ? `: ${description}` : ""}`;
+    const bytes = Buffer.byteLength(line, "utf8") + 1; // + newline
+    if (used + bytes <= limits.skillCatalogBytes) {
+      lines.push(line);
+      used += bytes;
+    } else {
+      dropped.push(skill.name);
+    }
+  }
+  return { lines, dropped };
+}
+
+/**
  * Format skills as a summary list for the system prompt.
  * Only includes names and descriptions — full content is loaded on-demand via the skill tool.
  */
-export function formatSkillsForPrompt(skills: Skill[]): string {
+export function formatSkillsForPrompt(
+  skills: Skill[],
+  limits: ContextLimits = CONTEXT_LIMITS,
+): string {
   if (skills.length === 0) return "";
 
-  const list = skills
-    .map((s) => `- **${s.name}**${s.description ? `: ${s.description}` : ""}`)
-    .join("\n");
+  const { lines, dropped } = renderSkillLines(skills, limits);
+  const list = lines.join("\n");
+  const overflow =
+    dropped.length > 0 ? `\n\n_Skills omitted (catalog byte budget): ${dropped.join(", ")}_` : "";
 
   return (
     `## Skills\n\n` +
@@ -149,6 +187,6 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
     `Match the work, not the topic: a skill's subject matter appearing in the request is not a match when the actual change falls outside its scope. ` +
     `Skip the skill when the task is routine, narrow, or already covered by existing patterns in the codebase \u2014 an unnecessary invocation costs context and slows the task. ` +
     `Invoke at most one skill unless the task genuinely spans two, and do not re-invoke a skill whose instructions are already in this conversation.\n\n` +
-    list
+    list + overflow
   );
 }

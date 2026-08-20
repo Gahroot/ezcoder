@@ -9,6 +9,7 @@ import {
   PROJECT_CONTEXT_MAX_BYTES,
 } from "./system-prompt.js";
 import { buildKenSystemPrompt } from "./core/ken-prompt.js";
+import { resolveContextLimits } from "./core/context-limits.js";
 import type { LanguageId } from "./core/language-detector.js";
 
 const tempDirs: string[] = [];
@@ -862,5 +863,43 @@ describe("buildSubAgentSystemPrompt", () => {
 
     expect(prompt).toContain("## Delegation");
     expect(prompt).toContain("sees none of this conversation");
+  });
+});
+
+describe("system prompt byte ceiling", () => {
+  it("bounds a hostile AGENTS.md + skill catalog by per-input budgets, not the ceiling", async () => {
+    const cwd = await makeProject({
+      "AGENTS.md": `# Hostile\n\n${"inject ".repeat(20_000)}`, // ~120KB
+    });
+    const skills = Array.from({ length: 80 }, (_, i) => ({
+      name: `skill-${i}`,
+      description: "y".repeat(2_000), // 160KB raw descriptions
+      content: "x",
+      source: "global",
+    }));
+    const prompt = await buildSystemPrompt(cwd, skills);
+    // Per-input budgets do the work: well under the 1MB ceiling regardless.
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(64 * 1024);
+    expect(prompt).toContain("Skipped (context budget)");
+  });
+
+  it("enforces the emergency ceiling when sections overflow it", async () => {
+    const cwd = await makeProject({
+      "AGENTS.md": `${"a".repeat(31 * 1024)}`, // just under the 32KB file budget
+    });
+    const prompt = await buildSystemPrompt(
+      cwd,
+      [],
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      resolveContextLimits({ systemPromptCeilingBytes: 16 * 1024 }),
+    );
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThanOrEqual(16 * 1024);
+    expect(prompt).toContain("system prompt exceeded the 16384-byte ceiling");
   });
 });

@@ -104,6 +104,19 @@ const SettingsSchema = z.object({
   /** Max concurrent subagents per resolved child model. Unset = only the
    *  global limit applies. Can only REDUCE concurrency, never raise it. */
   subagentMaxPerModel: z.number().int().min(1).max(4).optional(),
+  /** Per-input byte budgets for prompt-injected content (skills, MCP tool
+   *  descriptions/schemas, project instructions, total prompt ceiling).
+   *  Unset keys fall back to the built-in defaults (core/context-limits.ts). */
+  contextLimits: z
+    .object({
+      skillDescriptionBytes: z.number().int().min(64).optional(),
+      skillCatalogBytes: z.number().int().min(1024).optional(),
+      mcpToolDescriptionBytes: z.number().int().min(64).optional(),
+      mcpToolSchemaBytes: z.number().int().min(1024).optional(),
+      projectContextBytes: z.number().int().min(1024).optional(),
+      systemPromptCeilingBytes: z.number().int().min(16 * 1024).optional(),
+    })
+    .optional(),
   enabledTools: z.array(z.string()).optional(),
   /** Delete session transcripts older than this many days at startup. 0 disables pruning. */
   sessionRetentionDays: z.number().int().min(0).default(30),
