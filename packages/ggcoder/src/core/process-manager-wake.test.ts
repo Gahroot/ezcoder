@@ -50,23 +50,31 @@ afterEach(async () => {
 });
 
 describe("ProcessManager wake rules", () => {
-  it("notifies with the matching line the moment new output matches the pattern", async () => {
-    const queue = new AgentNotificationQueue();
-    const pm = await manager(queue);
+  // 45s, not the suite's 20s: the watcher ticks every 5s (WAKE_INTERVAL_MS),
+  // and this test's own 30s budget throws a diagnostic ("Saw: ...") when the
+  // watcher is broken. vitest's bare 20s cap must not fire first on a loaded
+  // runner (observed on the macOS CI leg) or that diagnosis is lost.
+  it(
+    "notifies with the matching line the moment new output matches the pattern",
+    { timeout: 45_000 },
+    async () => {
+      const queue = new AgentNotificationQueue();
+      const pm = await manager(queue);
 
-    const started = await pm.start(
-      "echo building; sleep 1; echo 'error TS2304: cannot find name'; sleep 60",
-      process.cwd(),
-      undefined,
-      { pattern: /error TS\d+/, silenceMs: 120_000 },
-    );
+      const started = await pm.start(
+        "echo building; sleep 1; echo 'error TS2304: cannot find name'; sleep 60",
+        process.cwd(),
+        undefined,
+        { pattern: /error TS\d+/, silenceMs: 120_000 },
+      );
 
-    const entry = await waitForNotification(queue, (e) => e.text.includes("wake pattern"));
-    expect(entry.text).toContain(started.id);
-    expect(entry.text).toContain("cannot find name");
-    expect(entry.text).toContain("Still running");
-    expect(entry.terminal).toBe(false);
-  });
+      const entry = await waitForNotification(queue, (e) => e.text.includes("wake pattern"));
+      expect(entry.text).toContain(started.id);
+      expect(entry.text).toContain("cannot find name");
+      expect(entry.text).toContain("Still running");
+      expect(entry.terminal).toBe(false);
+    },
+  );
 
   it("retires the wake watcher once every declared rule has fired", async () => {
     const queue = new AgentNotificationQueue();
@@ -83,7 +91,7 @@ describe("ProcessManager wake rules", () => {
     );
   });
 
-  it("notifies when a running task goes silent past silenceMs", async () => {
+  it("notifies when a running task goes silent past silenceMs", { timeout: 45_000 }, async () => {
     const queue = new AgentNotificationQueue();
     const pm = await manager(queue);
 
