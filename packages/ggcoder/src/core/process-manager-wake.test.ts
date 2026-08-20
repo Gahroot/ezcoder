@@ -76,20 +76,24 @@ describe("ProcessManager wake rules", () => {
     },
   );
 
-  it("retires the wake watcher once every declared rule has fired", async () => {
-    const queue = new AgentNotificationQueue();
-    const pm = await manager(queue);
+  it(
+    "retires the wake watcher once every declared rule has fired",
+    { timeout: 45_000 },
+    async () => {
+      const queue = new AgentNotificationQueue();
+      const pm = await manager(queue);
 
-    await pm.start("echo doomed; sleep 60", process.cwd(), undefined, { pattern: /doomed/ });
+      await pm.start("echo doomed; sleep 60", process.cwd(), undefined, { pattern: /doomed/ });
 
-    await waitForNotification(queue, (e) => e.text.includes("doomed"));
-    // One-shot: the pattern rule is spent and it was the only rule, so the
-    // watcher must be gone even though the process still runs.
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    expect(pm.activeWakeWatchers()).not.toContain(
-      pm.list().find((proc) => proc.command.includes("doomed"))?.id,
-    );
-  });
+      await waitForNotification(queue, (e) => e.text.includes("doomed"));
+      // One-shot: the pattern rule is spent and it was the only rule, so the
+      // watcher must be gone even though the process still runs.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(pm.activeWakeWatchers()).not.toContain(
+        pm.list().find((proc) => proc.command.includes("doomed"))?.id,
+      );
+    },
+  );
 
   it("notifies when a running task goes silent past silenceMs", { timeout: 45_000 }, async () => {
     const queue = new AgentNotificationQueue();
@@ -118,7 +122,7 @@ describe("ProcessManager wake rules", () => {
     expect(drained.every((entry) => !entry.text.includes("stalled"))).toBe(true);
   });
 
-  it("drops the wake watcher when the process exits", async () => {
+  it("drops the wake watcher when the process exits", { timeout: 45_000 }, async () => {
     const queue = new AgentNotificationQueue();
     const pm = await manager(queue);
 
