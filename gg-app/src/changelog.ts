@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.52.0",
+    date: "2026-08-20",
+    items: [
+      "New projects now launch fully loaded. Hit `Initialize Git` and I create your GitHub repo plus a hardened `CI` pipeline, `Dependabot` updates, branch protection, and an `AGENTS.md`, all matched to your exact stack. Any language, one click, zero config.",
+      "Existing repos got a fast pass too. The new `/setup-ci` command audits what you already have or generates it fresh: leaner runners, quicker builds, tighter security. I even collapse expensive matrix legs and cancel stale runs so your CI bill stays tiny.",
+    ],
+  },
+  {
     version: "0.51.0",
     date: "2026-08-19",
     items: [
