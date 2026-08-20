@@ -371,10 +371,16 @@ export class ProcessManager {
     const size = await this.refreshLogSize(proc);
     const previous = this.watchedSizes.get(proc.id) ?? 0;
     if (size <= previous) return false;
-    this.watchedSizes.set(proc.id, size);
     if (proc.exitCode !== null) return false;
 
     const tail = await this.readTail(proc.logFile, size);
+    // The tail read can race a dispose: a wake rule firing (its declared
+    // signal outranks generic progress) or the process exiting (the terminal
+    // notification owns that case). An enqueue after that would supersede
+    // that notification in the latest-only queue, so a disposed watcher
+    // stays silent.
+    if (!this.watchers.has(proc.id)) return false;
+    this.watchedSizes.set(proc.id, size);
     queue.enqueue(
       "process",
       proc.id,
