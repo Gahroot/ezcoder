@@ -99,10 +99,15 @@ describe("buildSandboxSettings", () => {
     // treating "anywhere under $HOME" as intended authority would accept it.
     // This list governs WRITES, so the ~/.ssh read denial does not cover it,
     // and a writable authorized_keys is persistence.
-    // The home dir must sit OUTSIDE the temp dir here, or it would land inside
-    // the legitimate temp zone and the test would pass for the wrong reason.
-    // Real machines satisfy this; a mkdtemp home would not.
-    const base = fs.mkdtempSync(path.join(os.tmpdir(), "gg-sandbox-base-"));
+    // The fake home must sit outside `/tmp`, which is itself an intended zone.
+    // os.tmpdir() IS /tmp on Linux, so building the home under it would put
+    // ~/.ssh legitimately inside a permitted zone and the assertion would fail
+    // for the wrong reason (it passed on macOS only because os.tmpdir() there
+    // is /var/folders/…). node_modules is writable, git-ignored, and never a
+    // zone. Real machines put $HOME outside /tmp, which is the case under test.
+    const base = fs.mkdtempSync(
+      path.join(import.meta.dirname, "..", "..", "node_modules", ".gg-sandbox-base-"),
+    );
     const fakeHome = path.join(base, "home");
     const fakeTmp = path.join(base, "tmp");
     const ssh = path.join(fakeHome, ".ssh");
@@ -125,6 +130,7 @@ describe("buildSandboxSettings", () => {
     } finally {
       homeSpy.mockRestore();
       tmpSpy.mockRestore();
+      fs.rmSync(base, { recursive: true, force: true });
     }
   });
 
