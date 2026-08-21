@@ -30,7 +30,8 @@ export class DeferredToolCatalog {
   constructor(private readonly limits: ContextLimits = CONTEXT_LIMITS) {}
 
   add(tools: AgentTool[]): void {
-    for (const tool of tools) this.byName.set(tool.name, clampMcpToolDescription(tool, this.limits));
+    for (const tool of tools)
+      this.byName.set(tool.name, clampMcpToolDescription(tool, this.limits));
   }
 
   /** Remove tools (e.g. when their MCP server is reloaded/removed). */

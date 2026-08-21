@@ -67,6 +67,7 @@ const VALID_PROVIDERS = new Set<Provider>([
   "minimax",
   "deepseek",
   "openrouter",
+  "huggingface",
   "sakana",
   "xai",
 ]);

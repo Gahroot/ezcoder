@@ -41,10 +41,7 @@ export function createSkillTool(
   };
 }
 
-function generateSkillDescription(
-  skills: Skill[],
-  limits: ContextLimits = CONTEXT_LIMITS,
-): string {
+function generateSkillDescription(skills: Skill[], limits: ContextLimits = CONTEXT_LIMITS): string {
   if (skills.length === 0) {
     return "Invoke a skill by name. No skills are currently available.";
   }

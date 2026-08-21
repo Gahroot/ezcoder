@@ -404,9 +404,10 @@ function main(): void {
     if (p === "moonshot") return "kimi-k3";
     if (p === "minimax") return "MiniMax-M3";
     if (p === "deepseek") return "deepseek-v4-pro";
+    if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
     if (p === "openrouter") return "qwen/qwen3.6-plus";
     if (p === "sakana") return "fugu";
-    if (p === "xai") return "grok-4.5";
+    if (p === "xai") return "grok-4.6";
     return "claude-opus-5";
   }
 
@@ -1012,8 +1013,9 @@ async function runSessions(): Promise<void> {
     if (p === "moonshot") return "kimi-k3";
     if (p === "minimax") return "MiniMax-M3";
     if (p === "deepseek") return "deepseek-v4-pro";
+    if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
     if (p === "sakana") return "fugu";
-    if (p === "xai") return "grok-4.5";
+    if (p === "xai") return "grok-4.6";
     return "claude-opus-5";
   }
 

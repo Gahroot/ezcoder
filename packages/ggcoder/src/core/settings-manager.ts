@@ -19,6 +19,7 @@ const SettingsSchema = z.object({
       "xiaomi",
       "deepseek",
       "openrouter",
+      "huggingface",
       "sakana",
       "xai",
     ])
@@ -114,7 +115,11 @@ const SettingsSchema = z.object({
       mcpToolDescriptionBytes: z.number().int().min(64).optional(),
       mcpToolSchemaBytes: z.number().int().min(1024).optional(),
       projectContextBytes: z.number().int().min(1024).optional(),
-      systemPromptCeilingBytes: z.number().int().min(16 * 1024).optional(),
+      systemPromptCeilingBytes: z
+        .number()
+        .int()
+        .min(16 * 1024)
+        .optional(),
     })
     .optional(),
   enabledTools: z.array(z.string()).optional(),

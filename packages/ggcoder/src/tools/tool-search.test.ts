@@ -98,13 +98,17 @@ describe("tool_search", () => {
       blob: z.string().describe("x".repeat(200 * 1024)), // 200KB serialized schema
     });
     catalog.add([
-      { name: "mcp__big__blob", description: "fetch design screenshots", parameters: huge, execute: async () => "ok" },
+      {
+        name: "mcp__big__blob",
+        description: "fetch design screenshots",
+        parameters: huge,
+        execute: async () => "ok",
+      },
       stub("mcp__figma__get_screens", "fetch design screenshots"),
     ]);
     const promotedNames: string[] = [];
-    const tool = createToolSearchTool(
-      catalog,
-      (tools) => promotedNames.push(...tools.map((t) => t.name)),
+    const tool = createToolSearchTool(catalog, (tools) =>
+      promotedNames.push(...tools.map((t) => t.name)),
     );
 
     const result = await search(tool, "design screenshots");
@@ -130,9 +134,8 @@ describe("tool_search", () => {
       },
     ]);
     const promotedNames: string[] = [];
-    const tool = createToolSearchTool(
-      catalog,
-      (tools) => promotedNames.push(...tools.map((t) => t.name)),
+    const tool = createToolSearchTool(catalog, (tools) =>
+      promotedNames.push(...tools.map((t) => t.name)),
     );
 
     const result = await search(tool, "design screenshots");
@@ -151,7 +154,12 @@ describe("tool_search", () => {
         execute: async () => "ok",
       },
     ]);
-    const tool = createToolSearchTool(catalog, () => {}, undefined, resolveContextLimits({ mcpToolSchemaBytes: 16 * 1024 }));
+    const tool = createToolSearchTool(
+      catalog,
+      () => {},
+      undefined,
+      resolveContextLimits({ mcpToolSchemaBytes: 16 * 1024 }),
+    );
     expect(await search(tool, "design screenshots")).toContain("1 tool(s) now available");
   });
 });

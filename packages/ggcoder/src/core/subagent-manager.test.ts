@@ -620,13 +620,17 @@ describe("durable turn-record adoption on hydrate", () => {
     const snapshot = instance.list().find((s) => s.agent_id === "a1")!;
     expect(snapshot.state).toBe("completed");
     expect(snapshot.output).toBe("late orphan result");
-    expect(notifications.drain().some((n) => n.text.includes("late") || n.text.includes("restart"))).toBe(true);
+    expect(
+      notifications.drain().some((n) => n.text.includes("late") || n.text.includes("restart")),
+    ).toBe(true);
   });
 
   it("leaves terminal snapshots alone", async () => {
     const { root, sessionRootDir, childPath, record } = await adoptionFixture();
     const store = new SubAgentStore(path.join(root, "store"));
-    await store.save(root, PARENT, [{ ...record, state: "completed", output: "done before crash" }]);
+    await store.save(root, PARENT, [
+      { ...record, state: "completed", output: "done before crash" },
+    ]);
     await writeTurnRecord(childPath, {
       status: "completed",
       output: "should not overwrite",

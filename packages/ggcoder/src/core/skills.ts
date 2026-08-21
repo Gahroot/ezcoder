@@ -187,6 +187,7 @@ export function formatSkillsForPrompt(
     `Match the work, not the topic: a skill's subject matter appearing in the request is not a match when the actual change falls outside its scope. ` +
     `Skip the skill when the task is routine, narrow, or already covered by existing patterns in the codebase \u2014 an unnecessary invocation costs context and slows the task. ` +
     `Invoke at most one skill unless the task genuinely spans two, and do not re-invoke a skill whose instructions are already in this conversation.\n\n` +
-    list + overflow
+    list +
+    overflow
   );
 }

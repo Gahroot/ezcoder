@@ -64,11 +64,14 @@ export function createToolSearchTool(
       }
       if (promotable.length === 0) {
         const details = oversized
-          .map((t) => `- ${t.name}: schema is ${Math.round(t.bytes / 1024)}KB (budget ${Math.round(limits.mcpToolSchemaBytes / 1024)}KB)`)
+          .map(
+            (t) =>
+              `- ${t.name}: schema is ${Math.round(t.bytes / 1024)}KB (budget ${Math.round(limits.mcpToolSchemaBytes / 1024)}KB)`,
+          )
           .join("\n");
         return (
           `No tools promoted — every match exceeds the schema byte budget.\n${details}\n` +
-            `Raise the contextLimits.mcpToolSchemaBytes setting if this tool is trusted.`
+          `Raise the contextLimits.mcpToolSchemaBytes setting if this tool is trusted.`
         );
       }
       const promoted = catalog.promote(promotable.map((t) => t.name));
@@ -97,9 +100,10 @@ export function createToolSearchTool(
         (t) => `- ${t.name}: ${t.description.split("\n")[0].slice(0, 200)}`,
       );
       const body = `${available.length} tool(s) now available:\n${lines.join("\n")}`;
-      const refused = oversized.length > 0
-        ? `\n\nRefused (schema byte budget):\n${oversized.map((t) => `- ${t.name} (${Math.round(t.bytes / 1024)}KB schema)`).join("\n")}\nRaise the contextLimits.mcpToolSchemaBytes setting if a refused tool is trusted.`
-        : "";
+      const refused =
+        oversized.length > 0
+          ? `\n\nRefused (schema byte budget):\n${oversized.map((t) => `- ${t.name} (${Math.round(t.bytes / 1024)}KB schema)`).join("\n")}\nRaise the contextLimits.mcpToolSchemaBytes setting if a refused tool is trusted.`
+          : "";
       const unreachable = failures.length > 0 ? `\n\nUnreachable:\n${failures.join("\n")}` : "";
       return `${body}${refused}${unreachable}`;
     },

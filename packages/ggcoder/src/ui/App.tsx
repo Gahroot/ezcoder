@@ -2441,6 +2441,7 @@ export function App(props: AppProps) {
               | "xiaomi"
               | "deepseek"
               | "openrouter"
+              | "huggingface"
               | "sakana"
               | "xai",
           );

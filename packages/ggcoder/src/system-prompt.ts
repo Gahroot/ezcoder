@@ -1,11 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { formatSkillsForPrompt, type Skill } from "./core/skills.js";
-import {
-  clampToBytes,
-  CONTEXT_LIMITS,
-  type ContextLimits,
-} from "./core/context-limits.js";
+import { clampToBytes, CONTEXT_LIMITS, type ContextLimits } from "./core/context-limits.js";
 import { TOOL_PROMPT_HINTS, buildToolSteering, DEFAULT_TOOL_NAMES } from "./tools/prompt-hints.js";
 import type { LanguageId } from "./core/language-detector.js";
 import { stripBom } from "./utils/text.js";
