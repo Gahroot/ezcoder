@@ -1,5 +1,24 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.0
+
+### Minor Changes
+
+- 05685fe: Add Gemini 3.7 Flash (`gemini-3.7-flash`, released 2026-08-13) and retarget `deepseek-v4-pro` to DeepSeek-V4-Pro-0813 under the same API id. 3.7 Flash is Google's most capable Flash for coding and agents — 1M context, 64K output, thinking low/medium/high, video input (20 MB inline cap) — listed as a selectable option for Gemini but kept non-default because it ships on our Code Assist transport ahead of gemini-cli (issue #28802 tracks upstream); free/personal accounts get the existing account-gated 404 guidance while entitled Code Assist Standard/Enterprise accounts can use it. DeepSeek's `deepseek-v4-pro` alias now serves the first stable V4 Pro (0813, supersedes the April preview, calling name unchanged): max output corrected to 393,216 and costTier dropped to `medium` to match the ~$0.43/$0.87 per-MTok pricing; saved sessions keep working since the id is unchanged.
+- 05685fe: Add Grok 4.6 (`grok-4.6`, released 2026-08-12) to the model registry and make it the xAI default — 500K context, image input, $2/$6 MTok (under 200K prompt tokens), and a `reasoning_effort` ladder that adds a new `xhigh` top rung (`low`/`medium`/`high` default/`xhigh`), which `XAI_THINKING_LEVELS` now exposes; thinking starts at `xhigh`. Grok 4.5 stays registered as a legacy option, still capped at `high` since it rejects `xhigh`. The OpenAI-compatible transport needs no changes — `xhigh` passes through `toOpenAIReasoningEffort` unchanged — so both the public API and the Grok CLI OAuth proxy serve the new model; CLI/app login defaults point at `grok-4.6`.
+- 05685fe: Add "Add from Hugging Face" to the desktop app: search the Hub and pull models with Ollama, in one modal. From Connect AI Providers, the Hugging Face tile offers "Search Hugging Face and download with Ollama" next to its hosted-token login, and the Local models modal gains an "Add from Hugging Face" button. The modal debounces typed queries into a live dropdown of GGUF repos (downloads/likes inline, full keyboard navigation), and clicking a model starts `ollama pull hf.co/<repo>:<quant>` immediately — the sidecar picks the quant from the repo's real file list (Q4_K_M preferred), streams `hf_pull` progress events into a cancellable progress bar, re-scans local endpoints on success so the model appears in the picker without a restart, and maps known failures to fixes (the Ollama 0.32 hf.co pull bug → upgrade; 401 → connect an HF token, which is also passed to pulls for gated repos). Pull state lives in the sidecar, so closing the modal mid-download never cancels it — reopening reattaches. One pull at a time; client sends only validated `org/repo` ids, and the child is spawned with argv (never a shell string).
+- 05685fe: Add a first-class `huggingface` provider backed by Hugging Face's Inference Providers router (`https://router.huggingface.co/v1`, OpenAI-compatible Chat Completions, one HF token with "Make calls to Inference Providers" permission). Model ids are Hub repo paths: `Qwen/Qwen3-Coder-480B-A35B-Instruct` (default; 262K context, tool-native, non-thinking Coder line) and `openai/gpt-oss-120b` (low-tier sibling for summaries and scout sub-agents; reasoning effort low/medium/high). Auth is a static API key wired through the existing apikey login flow in both TUI and desktop app, with label/logo/order entries everywhere providers are enumerated (`config`/`settings-manager`/`app-sidecar`/`auth-providers`/`ModelSelector`/`login`/`provider-labels`/`provider-logos`). Local-weight users keep the existing routes: Ollama `hf.co/...` pulls and any self-hosted OpenAI-compatible server via local endpoints.
+
+### Patch Changes
+
+- Updated dependencies [05685fe]
+- Updated dependencies [05685fe]
+- Updated dependencies [05685fe]
+- Updated dependencies [05685fe]
+  - @kenkaiiii/gg-ai@5.49.0
+  - @kenkaiiii/gg-core@5.49.0
+  - @kenkaiiii/gg-agent@5.49.0
+
 ## 5.48.0
 
 ### Minor Changes
