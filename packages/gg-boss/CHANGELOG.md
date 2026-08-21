@@ -1,5 +1,7 @@
 # @kenkaiiii/gg-boss
 
+## 5.49.1
+
 ## 5.49.0
 
 ### Minor Changes

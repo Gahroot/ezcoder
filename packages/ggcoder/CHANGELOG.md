@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.1
+
+### Patch Changes
+
+- Close a sandbox write-root symlink escape, translate Git-Bash paths on Windows, and add a low-token outline mode to web_fetch
+  - @kenkaiiii/gg-ai@5.49.1
+  - @kenkaiiii/gg-agent@5.49.1
+  - @kenkaiiii/gg-core@5.49.1
+
 ## 5.49.0
 
 ### Minor Changes
