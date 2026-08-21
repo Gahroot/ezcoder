@@ -579,7 +579,7 @@
     },
     {
       "name": "web_fetch",
-      "description": "Fetch and read web page content. Accepts a single `url` or a `urls` array (up to 10, fetched concurrently). Returns clean Markdown by default (`format`: markdown|text|html) via main-content extraction. Extracts text from PDFs, follows safe redirects automatically, and prefers a site's curated /llms.txt for docs pages when available.",
+      "description": "Fetch and read web page content. Accepts a single `url` or a `urls` array (up to 10, fetched concurrently). Returns clean Markdown by default (`format`: markdown|text|html|outline) via main-content extraction. Extracts text from PDFs, follows safe redirects automatically, and prefers a site's curated /llms.txt for docs pages when available.\n`format: \"outline\"` is the cheap mode: main content only, every hyperlink replaced by a number (`anchor text [12]`) with a numbered URL index at the end, and a small default `max_length`. Use it when hunting for the right page; then pass `follow: 12` (instead of `url`) to fetch link 12 from the last outline. Repeat views of a page in the same session are served from cache. Outline mode skips the /llms.txt probe.",
       "schema": {
         "type": "object",
         "properties": {
@@ -595,17 +595,24 @@
               "type": "string"
             }
           },
+          "follow": {
+            "description": "Fetch link N from the most recent outline render, instead of `url`. Followed links are SSRF/allowlist-checked exactly like a supplied URL.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
           "max_length": {
-            "description": "Maximum characters to return (default: 10000)",
+            "description": "Maximum characters to return (default: 10000; 2000 for outline)",
             "type": "number"
           },
           "format": {
-            "description": "Output format: markdown (default, main-content extraction), text, or html",
+            "description": "Output format: markdown (default, main-content extraction), text, html, or outline (compact main content with each link replaced by a number plus a numbered URL index, capped at 100 links — cheapest; follow links with `follow`)",
             "type": "string",
             "enum": [
               "markdown",
               "text",
-              "html"
+              "html",
+              "outline"
             ]
           },
           "prefer_llms_txt": {
@@ -615,7 +622,7 @@
         },
         "additionalProperties": false
       },
-      "hash": "3bd9190f12da3f0f2e42b44309fb5b3cc039cbf2f6dd6470c22ce404ac58a165"
+      "hash": "622727bec4893750cb75703d2193b8476cfdc49b063865ed2980d46305145286"
     },
     {
       "name": "write",
