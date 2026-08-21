@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.0",
+    date: "2026-08-21",
+    items: [
+      "You can now fill your machine with models without leaving the app. Hit the new `Hugging Face` tile on the Connect page, search anything, click once, and I download it straight into `Ollama` with a live progress bar you can cancel. Fresh models appear in your picker instantly, no restart.",
+      "Three heavyweights joined the roster: `Grok 4.6` with a new extra-deep thinking mode, `Gemini 3.7 Flash` at a full `1M` context, and the stable `DeepSeek V4 Pro 0813` build.",
+      "Hugging Face accounts now plug in directly. One token unlocks hosted `Qwen3 Coder 480B` and `GPT-OSS 120B` with zero setup.",
+      "The Connect page got a strict diet. One clean `Ollama` tile with its real logo, one-line descriptions everywhere, and none of the dead servers nobody used.",
+    ],
+  },
+  {
     version: "0.52.0",
     date: "2026-08-20",
     items: [
