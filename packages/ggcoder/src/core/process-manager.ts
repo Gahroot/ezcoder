@@ -164,6 +164,17 @@ export interface ProcessManagerOps {
    * real logs off a machine before this parameter existed.
    */
   bgDir?: string;
+  /**
+   * Base delay before the first progress report, in ms. Defaults to
+   * {@link WATCH_INTERVAL_MS}.
+   *
+   * Injectable so tests can assert the watcher's BEHAVIOUR (reports, backoff,
+   * budget, retirement) without waiting out the production 5s/10s/20s cadence.
+   * A test that waits real seconds for a real subprocess is a test whose result
+   * depends on how loaded the machine is: the budget test used to fail under
+   * `pnpm test` (12 packages in parallel) while passing when run alone.
+   */
+  watchIntervalMs?: number;
 }
 
 function stopProcessTree(pid: number, ops: ProcessManagerOps = {}): void {
@@ -319,7 +330,7 @@ export class ProcessManager {
     if (!queue) return;
     this.watchedSizes.set(proc.id, 0);
 
-    let delay = WATCH_INTERVAL_MS;
+    let delay = this.ops.watchIntervalMs ?? WATCH_INTERVAL_MS;
     let reports = 0;
     const schedule = (): void => {
       const timer = setTimeout(() => {
