@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.1",
+    date: "2026-08-21",
+    items: [
+      "Your model picker never gets stuck again. If the model list lost a race while the app was booting, the dropdown could stay greyed out for the whole session with no way back. Now I retry until it loads, and if it ever is locked I tell you exactly why instead of just ignoring your click.",
+      "Windows just got a lot smoother. I taught GG Coder to read the `Git Bash` style paths Windows hands back, so files it finds are files it can actually open. No more mystery failures on paths that looked perfectly fine.",
+      "Reading the web is now dramatically cheaper. The new `outline` mode turns a page into a tight numbered map and follows links by number, cutting a six page research run from `16,402` tokens down to `1,936`. That is money straight back in your pocket.",
+      "I hardened the sandbox. A sneaky repo could plant a shortcut in a cache folder and trick a later run into handing over write access to your whole machine, including your `SSH` keys. That door is now shut and locked.",
+    ],
+  },
+  {
     version: "0.53.0",
     date: "2026-08-21",
     items: [
