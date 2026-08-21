@@ -71,7 +71,10 @@ jobs:
       - name: Size + startup gates
         shell: bash
         run: |
-          node bench/size-gate.mjs dist:ggcoder
+          # --only: a positional arg is ignored by the script, which then checks
+          # every artifact — including the sidecar this job never builds (that
+          # one is gated in the `app` job, which bundles it).
+          node bench/size-gate.mjs --only dist:ggcoder
           node bench/startup-gate.mjs
 
       - name: Typecheck
