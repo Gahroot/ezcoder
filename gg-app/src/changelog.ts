@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.2",
+    date: "2026-08-23",
+    items: [
+      "GG Coder stops repeating itself at the end of a task. It used to hand you an answer, quietly send itself back to work, then hand you a second and even a third version of the same thing. Now you get one answer, once, and a clear `Hook engaged` note whenever it goes back to double-check its work.",
+      "Answers land a lot faster too. GG Coder ran your tests with commands like `cd project && npm test` and then failed to notice it had run them at all, so it kept re-checking work it had already proven. That blind spot is gone, and the wait at the end of every task went with it.",
+    ],
+  },
+  {
     version: "0.53.1",
     date: "2026-08-21",
     items: [
