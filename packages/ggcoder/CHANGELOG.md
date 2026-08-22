@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.3
+
+### Patch Changes
+
+- Fix a crash that disabled autopilot entirely, and lock Ken's model plus the reasoning level while a run is in flight
+  - @kenkaiiii/gg-ai@5.49.3
+  - @kenkaiiii/gg-agent@5.49.3
+  - @kenkaiiii/gg-core@5.49.3
+
 ## 5.49.2
 
 ### Patch Changes
