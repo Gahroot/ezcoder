@@ -50,19 +50,20 @@ export interface BusEventMap {
   server_tool_call: { id: string; name: string; input: unknown };
   server_tool_result: { toolUseId: string; resultType: string; data: unknown };
 
-  // Agent self-correction hooks (ideal review / loop-break / re-grounding).
-  // Carries only the semantic kind; the presentation layer owns text + color.
+  // Agent self-correction hooks (ideal review / verification / loop-break /
+  // re-grounding). Carries only the semantic kind; the presentation layer owns
+  // text + color.
   hook: {
-    kind: "ideal" | "loop_break" | "regrounding";
+    kind: "ideal" | "verification" | "loop_break" | "regrounding";
     coverageExpected?: string[];
     coverageMissing?: string[];
   };
 
-  /** The Ideal review would fire if the agent stopped right now. Emitted as soon
-   *  as the run's stats cross the gate — i.e. BEFORE the candidate final answer
-   *  streams — so a client can hold that answer back instead of painting a draft
-   *  the review then discards. */
-  hook_armed: { kind: "ideal"; armed: boolean };
+  /** A pre-final hook would fire if the agent stopped right now: the Ideal
+   *  review, or the verification gate. Emitted as soon as the run crosses the
+   *  gate — i.e. BEFORE the candidate final answer streams — so a client can
+   *  hold that answer back instead of painting a draft the hook then discards. */
+  hook_armed: { kind: "ideal" | "verification"; armed: boolean };
 
   // Persistent async child lifecycle (bounded metadata/output snapshot).
   subagent_state: SubAgentSnapshot;

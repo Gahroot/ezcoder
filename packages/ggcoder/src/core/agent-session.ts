@@ -433,6 +433,9 @@ export class AgentSession {
   private processGateInjected = 0;
   /** Verification gate: code edited this run, nothing proved it since. */
   private readonly verificationGate = new VerificationGate();
+  /** Mirror of the last verification `hook_armed` value, so the event fires
+   *  only on a real edge. */
+  private verificationArmed = false;
   private compactionOccurred = false;
   private lastCompactionCompacted = false;
   private compactionRetryAfter = 0;
@@ -1290,6 +1293,7 @@ export class AgentSession {
     this.idealReviewPhase = "idle";
     // No event here: clients reset their own hold on run_start.
     this.idealReviewArmed = false;
+    this.verificationArmed = false;
     this.idealDriftProbe = null;
     this.loopBreakInjected = 0;
     this.regroundingInjected = false;
@@ -1375,12 +1379,12 @@ export class AgentSession {
         // Tool results are what push the run over the review gate, and they all
         // land before the model writes its candidate final answer — so this is
         // the point where arming still beats the draft's first token.
-        this.refreshIdealReviewArmed();
+        this.refreshHookArming();
         break;
       }
       case "turn_end":
         this.hookStats.turns = event.turn;
-        this.refreshIdealReviewArmed();
+        this.refreshHookArming();
         for (let index = this.messages.length - 1; index >= 0; index--) {
           const anchor = this.messages[index];
           if (anchor?.role === "assistant") {
@@ -1608,9 +1612,26 @@ export class AgentSession {
     return this.idealDriftProbe.drifted;
   }
 
-  /** Broadcast Ideal-review arming on change. Both edges matter: armed=false
-   *  after the review fires is what lets a client stream the REVIEWED final
+  /** Would a stop right now inject the verification gate? Same conditions as
+   *  the pre-stop branch below, so arming and injection cannot disagree. */
+  private wouldInjectVerification(): boolean {
+    if (this.opts.selfCorrectionHooks === false) return false;
+    if (!this.settingsManager.get("verificationGateEnabled")) return false;
+    if (this.opts.allowedTools && !this.opts.allowedTools.includes("bash")) return false;
+    return this.verificationGate.willInject();
+  }
+
+  /** Broadcast pre-final hook arming on change. Both edges matter: armed=false
+   *  after the hook fires is what lets a client stream the REVIEWED final
    *  answer live again. */
+  private refreshHookArming(): void {
+    this.refreshIdealReviewArmed();
+    const armed = this.wouldInjectVerification();
+    if (armed === this.verificationArmed) return;
+    this.verificationArmed = armed;
+    this.eventBus.emit("hook_armed", { kind: "verification", armed });
+  }
+
   private refreshIdealReviewArmed(): void {
     const armed = this.wouldInjectIdealReview();
     if (armed === this.idealReviewArmed) return;
@@ -1653,6 +1674,11 @@ export class AgentSession {
       const verificationFollowUp = this.verificationGate.followUp();
       if (verificationFollowUp) {
         log("INFO", "verification-gate", "Injecting verification follow-up", {});
+        // Announce, THEN disarm: clients release held text on disarm, so the
+        // reverse order paints the draft and immediately deletes it — the exact
+        // flash arming exists to prevent.
+        this.eventBus.emit("hook", { kind: "verification" });
+        this.refreshHookArming();
         return verificationFollowUp;
       }
     }
@@ -2734,7 +2760,7 @@ export class AgentSession {
     }
     // Suppression flips mid-run (autopilot takes over verification), so a client
     // holding a draft under a stale arming must be released.
-    this.refreshIdealReviewArmed();
+    this.refreshHookArming();
   }
 
   /** Queue a user message (optionally with attachments) to be injected mid-run

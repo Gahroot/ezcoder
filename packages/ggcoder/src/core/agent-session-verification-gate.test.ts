@@ -136,16 +136,17 @@ describe("AgentSession verification gate", () => {
     expect(internal.verificationGate.isOwed()).toBe(true); // background ≠ verified
   });
 
-  it("escalates once, then goes silent", async () => {
+  it("demands once, then lets the session stop instead of blocking again", async () => {
     const internal = await makeSession();
 
     await simulateToolCall(internal, "edit", { file_path: "src/a.ts" });
     const demand = internal.getHookFollowUpMessages()!;
-    expect(String(demand[0]!.content)).not.toContain("unverified");
+    expect(String(demand[0]!.content)).toContain("Run the project's verification");
 
-    const escalation = internal.getHookFollowUpMessages()!;
-    expect(String(escalation[0]!.content)).toContain("unverified");
-
+    // Second stop, still unverified: no further follow-up, so the run ends on
+    // the model's next final answer rather than a third restated one.
+    expect(internal.verificationGate.isOwed()).toBe(true);
+    expect(internal.getHookFollowUpMessages()).toBeNull();
     expect(internal.getHookFollowUpMessages()).toBeNull();
   });
 
