@@ -3165,6 +3165,7 @@ export function App(props: AppProps) {
               | "xiaomi"
               | "deepseek"
               | "openrouter"
+              | "huggingface"
               | "sakana"
               | "xai",
           );
@@ -3223,6 +3224,7 @@ export function App(props: AppProps) {
       "compare",
       // Setup / installers
       "setup-commit",
+      "setup-ci",
       "setup-skills",
     ];
     const orderedPromptCommands = promptOrder

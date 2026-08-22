@@ -100,6 +100,7 @@ beforeEach(async () => {
     "xiaomi-credits",
     "deepseek",
     "openrouter",
+    "huggingface",
   ];
   await writeJson(
     path.join(tmpHome, ".ezcoder", "auth.json"),

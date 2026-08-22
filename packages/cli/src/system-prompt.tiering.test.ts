@@ -147,8 +147,8 @@ describe("tool tiering in the system prompt", () => {
     // generated code); the index block cap above is the one that guards
     // tiering itself, and it is unchanged. Raised again with the 2026-08
     // guardrail additions (git safety, anti-fake-green, reproduce-first,
-    // circuit-breaker, question-vs-fix, no-variants, test guidance), plus
-    // the fork's Goal tool and reply-shape rules.
-    expect(prompt.length).toBeLessThan(12_400);
+    // circuit-breaker, question-vs-fix, no-variants, test guidance), alignment
+    // guardrails, and the fork's Goal tool and reply-shape rules.
+    expect(prompt.length).toBeLessThan(12_600);
   });
 });

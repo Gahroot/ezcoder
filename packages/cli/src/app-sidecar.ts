@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
+import { spawn, type ChildProcess } from "node:child_process";
 import { environmentSecrets, formatError, redactValue, type ToolResultContent } from "@prestyj/ai";
 import type { AddressInfo } from "node:net";
 import { runJsonMode } from "./modes/json-mode.js";
@@ -76,6 +77,16 @@ import {
   type ToolDetail,
 } from "./core/session-export.js";
 import { AuthStorage } from "./core/auth-storage.js";
+import {
+  explainPullFailure,
+  isValidHfRepoId,
+  parseOllamaPullLine,
+  pickGgufQuant,
+  toHfSearchRow,
+  type GgufFile,
+  type HfSearchRow,
+  type PullPhase,
+} from "./hf-pull.js";
 import { cleanupToolOutputs } from "./tools/overflow.js";
 import { readCappedBody } from "./utils/http-body.js";
 import {
@@ -212,6 +223,8 @@ const ALL_PROVIDERS: Provider[] = [
   "minimax",
   "xiaomi",
   "deepseek",
+  // Open-community gateway, before the provider-agnostic one
+  "huggingface",
   // Japan, then provider-agnostic gateway last
   "sakana",
   "openrouter",
@@ -1807,8 +1820,8 @@ async function createSession(
   }
   log("INFO", "app-sidecar", "session ready", { provider, model, mode, chatAgent, cwd });
 
-  // ── Local models (Ollama / LM Studio / llama.cpp / vLLM) ──
-  // Probing four HTTP endpoints must never delay readiness, so this runs in the
+  // ── Local models (Ollama, plus user-added custom endpoints) ──
+  // Probing endpoints must never delay readiness, so this runs in the
   // background (same shape as backgroundMcpConnect) and pushes a models_change
   // frame when it lands.
   let localProbes: LocalEndpointProbe[] = [];
@@ -1874,6 +1887,200 @@ async function createSession(
         })),
       })),
     };
+  }
+
+  // ── Hugging Face → Ollama pulls (the "Add from Hugging Face" modal) ──
+  // One pull at a time: multi-GB downloads, one progress surface. State lives
+  // here (not in the webview) so a closed modal or app restart mid-pull keeps
+  // streaming; the terminal state is kept until the next pull so reopening the
+  // modal shows how the last one ended.
+  interface HfPullState {
+    repo: string;
+    model: string;
+    tag: string | null;
+    file: string;
+    sizeBytes: number;
+    phase: PullPhase;
+    percent: number;
+    detail?: string;
+    error?: string;
+    child: ChildProcess | null;
+  }
+  let hfPull: HfPullState | null = null;
+
+  const hfPullPayload = (s: HfPullState): Record<string, unknown> => ({
+    repo: s.repo,
+    model: s.model,
+    tag: s.tag,
+    file: s.file,
+    sizeBytes: s.sizeBytes,
+    phase: s.phase,
+    percent: s.percent,
+    ...(s.detail ? { detail: s.detail } : {}),
+    ...(s.error ? { error: s.error } : {}),
+  });
+
+  /** Stored HF token, if the user connected the huggingface provider. */
+  async function hfToken(): Promise<string | undefined> {
+    try {
+      const auth = new AuthStorage(paths.authFile);
+      const creds = await auth.resolveCredentials("huggingface");
+      return creds.accessToken || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function hfHubJson(pathname: string): Promise<unknown> {
+    const token = await hfToken();
+    const res = await fetch(`https://huggingface.co${pathname}`, {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Hugging Face responded ${res.status}`);
+    return res.json();
+  }
+
+  /** Search the Hub for GGUF repos (what Ollama can pull). */
+  async function hfSearch(query: string): Promise<HfSearchRow[]> {
+    const params = new URLSearchParams({
+      search: query,
+      library: "gguf",
+      sort: "downloads",
+      direction: "-1",
+      limit: "8",
+    });
+    const data = (await hfHubJson(`/api/models?${params.toString()}`)) as {
+      id?: unknown;
+      downloads?: unknown;
+      likes?: unknown;
+      lastModified?: unknown;
+    }[];
+    return (Array.isArray(data) ? data : [])
+      .map(toHfSearchRow)
+      .filter((r): r is HfSearchRow => r !== null);
+  }
+
+  /**
+   * Start `ollama pull hf.co/<repo>[:quant]`. Resolves once the child is
+   * spawned; progress streams as `hf_pull` events. The chosen quant comes from
+   * the repo's real file list — the client only ever sends a repo id, so there
+   * is no injection surface into argv.
+   */
+  async function startHfPull(repo: string): Promise<Record<string, unknown>> {
+    if (hfPull?.child) {
+      throw Object.assign(new Error("A download is already running."), { status: 409 });
+    }
+    const tree = (await hfHubJson(`/api/models/${repo}/tree/main`)) as unknown[];
+    const files: GgufFile[] = (Array.isArray(tree) ? tree : []).flatMap((entry) => {
+      const e = entry as { path?: unknown; size?: unknown; lfs?: { size?: unknown } };
+      if (typeof e.path !== "string" || !e.path.toLowerCase().endsWith(".gguf")) return [];
+      const size = Number(e.lfs?.size ?? e.size ?? 0);
+      return [{ path: e.path, sizeBytes: Number.isFinite(size) ? size : 0 }];
+    });
+    const choice = pickGgufQuant(files);
+    if (!choice) {
+      throw Object.assign(new Error("That repo has no GGUF file for Ollama to pull."), {
+        status: 400,
+      });
+    }
+    const model = `hf.co/${repo}${choice.tag ? `:${choice.tag}` : ""}`;
+    const token = await hfToken();
+    const state: HfPullState = {
+      repo,
+      model,
+      tag: choice.tag,
+      file: choice.file.path,
+      sizeBytes: choice.file.sizeBytes,
+      phase: "preparing",
+      percent: 0,
+      child: null,
+    };
+    hfPull = state;
+    broadcast("hf_pull", hfPullPayload(state));
+
+    // ollama prints progress to stderr (stdout on some builds); parse both.
+    let stderrTail = "";
+    const feed = (chunk: string): void => {
+      // Once the pull is terminal (success, failure, or user cancel) stop
+      // parsing: a killed ollama dumps a burst of stderr that would otherwise
+      // spam the modal with garbage frames after the outcome is already shown.
+      if (state.phase === "success" || state.phase === "error") return;
+      for (const line of chunk.split(/\r\n|\r|\n/)) {
+        const parsed = parseOllamaPullLine(line);
+        if (!parsed) continue;
+        if (parsed.phase !== "error") {
+          state.phase = parsed.phase;
+          if (parsed.percent !== undefined) state.percent = parsed.percent;
+          state.detail = parsed.detail;
+        }
+        broadcast("hf_pull", hfPullPayload(state));
+      }
+    };
+
+    try {
+      const child = spawn("ollama", ["pull", model], {
+        env: { ...process.env, ...(token ? { HF_TOKEN: token } : {}) },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      state.child = child;
+      child.stdout?.setEncoding("utf8");
+      child.stderr?.setEncoding("utf8");
+      child.stdout?.on("data", feed);
+      child.stderr?.on("data", (d: string) => {
+        stderrTail = (stderrTail + d).slice(-2000);
+        feed(d);
+      });
+      child.on("error", (err: NodeJS.ErrnoException) => {
+        state.child = null;
+        state.phase = "error";
+        state.error =
+          err.code === "ENOENT"
+            ? "Ollama isn't installed (or isn't on PATH). Install it from ollama.com, then retry."
+            : `Could not start Ollama: ${err.message}`;
+        broadcast("hf_pull", hfPullPayload(state));
+      });
+      child.on("close", (code: number | null) => {
+        state.child = null;
+        if (state.phase === "success" || state.phase === "error") return; // cancelled
+        if (code === 0) {
+          state.phase = "success";
+          state.percent = 100;
+          state.detail = undefined;
+          broadcast("hf_pull", hfPullPayload(state));
+          // The new model only exists to the app once Ollama lists it.
+          void scanLocalModels(true)
+            .then(() => broadcast("models_change", { local: localStatePayload() }))
+            .catch(() => undefined);
+        } else {
+          state.phase = "error";
+          state.error = state.error ?? explainPullFailure(stderrTail);
+          broadcast("hf_pull", hfPullPayload(state));
+        }
+      });
+    } catch (err) {
+      state.child = null;
+      state.phase = "error";
+      state.error = `Could not start Ollama: ${err instanceof Error ? err.message : String(err)}`;
+      broadcast("hf_pull", hfPullPayload(state));
+    }
+    return hfPullPayload(state);
+  }
+
+  function cancelHfPull(): boolean {
+    const child = hfPull?.child;
+    if (!child) return false;
+    // Terminal state FIRST, then the kill: the child's death rattle must not
+    // overwrite the clean "cancelled" outcome with raw stderr.
+    if (hfPull) {
+      hfPull.phase = "error";
+      hfPull.error = "Download cancelled.";
+      hfPull.detail = undefined;
+      hfPull.child = null;
+      broadcast("hf_pull", hfPullPayload(hfPull));
+    }
+    child.kill("SIGTERM");
+    return true;
   }
 
   /**
@@ -5070,6 +5277,78 @@ async function createSession(
           json(res, 500, { error: "Could not remove the endpoint — see the sidecar log." });
         }
       })();
+      return;
+    }
+
+    // ── Hugging Face search & pull (the "Add from Hugging Face" modal) ──
+    if (method === "GET" && url === "/hf/pull") {
+      json(res, 200, hfPull ? { active: hfPullPayload(hfPull) } : { active: null });
+      return;
+    }
+
+    if (method === "POST" && url === "/hf/search") {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
+        let body: { query?: unknown };
+        try {
+          body = JSON.parse(raw) as typeof body;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        // Strip control characters and cap length — this goes into a URL query.
+        const query = String(body.query ?? "")
+          // eslint-disable-next-line no-control-regex -- stripping control characters is the point
+          .replace(/[\u0000-\u001f]/g, "")
+          .trim()
+          .slice(0, 100);
+        if (!query) {
+          json(res, 400, { error: "Type something to search for." });
+          return;
+        }
+        try {
+          json(res, 200, { models: await hfSearch(query) });
+        } catch (err) {
+          broadcastError("error", "hugging face search failed", err);
+          json(res, 502, {
+            error: `Hugging Face search failed — ${err instanceof Error ? err.message : "network error"}.`,
+          });
+        }
+      });
+      return;
+    }
+
+    if (method === "POST" && url === "/hf/pull") {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
+        let body: { repo?: unknown };
+        try {
+          body = JSON.parse(raw) as typeof body;
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        const repo = String(body.repo ?? "").trim();
+        if (!isValidHfRepoId(repo)) {
+          json(res, 400, { error: 'Expected a Hugging Face repo like "org/model".' });
+          return;
+        }
+        try {
+          json(res, 200, await startHfPull(repo));
+        } catch (err) {
+          const status =
+            err instanceof Error && "status" in err && typeof err.status === "number"
+              ? err.status
+              : 502;
+          if (status >= 500) broadcastError("error", "hugging face pull failed", err);
+          json(res, status, { error: err instanceof Error ? err.message : "Pull failed." });
+        }
+      });
+      return;
+    }
+
+    if (method === "POST" && url === "/hf/pull/cancel") {
+      json(res, 200, { ok: cancelHfPull() });
       return;
     }
 

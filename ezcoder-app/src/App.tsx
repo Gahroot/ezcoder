@@ -72,7 +72,7 @@ import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEven
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
 import { CompactionNotice } from "./CompactionNotice";
-import { ModelSelect } from "./ModelSelect";
+import { ModelSelect, loadModelsInto } from "./ModelSelect";
 import { SlashMenu } from "./SlashMenu";
 import { QueuedBar } from "./QueuedBar";
 import { ScheduleHint } from "./ScheduleHint";
@@ -751,6 +751,9 @@ function App(): React.ReactElement {
   const [hydrated, setHydrated] = useState(false);
 
   const readyRef = useRef(false);
+  // Bumped by every hydrate. Lets work that outlives a hydrate (a project
+  // switch, or re-selecting a session) tell whether its result is still wanted.
+  const hydrateGenerationRef = useRef(0);
   // Mirror of `state` for use inside the memoized event handler (which doesn't
   // re-capture state). Lets turn_end pick the right context-token formula by
   // provider without re-subscribing the SSE listener on every state change.
@@ -1340,6 +1343,7 @@ function App(): React.ReactElement {
   }, []);
 
   const hydrate = useCallback(async (): Promise<void> => {
+    const generation = ++hydrateGenerationRef.current;
     readyRef.current = false;
     setHydrated(false);
     setStatus("connecting to agent\u2026");
@@ -1352,9 +1356,15 @@ function App(): React.ReactElement {
         setRunning(st.running);
         setStatus(st.runState === "cancelling" ? "cancelling..." : "ready");
       }
-      const available = await listModels();
-      // null = the fetch failed; keep whatever the picker already had.
-      if (available) setModels(available);
+      // Retries: this is the only unprompted model load, and an empty list
+      // disables the picker for the whole session (see loadModelsWithRetry).
+      // Deliberately NOT awaited — nothing below needs the list, and blocking on
+      // the backoff would hold the transcript behind up to ~4s of retries on
+      // exactly the slow-booting machines the retry exists for. The picker
+      // fills itself in when an answer arrives, unless this hydrate has since
+      // been superseded (project switch) — then the old sidecar's answer is
+      // dropped rather than overwriting the new project's picker.
+      void loadModelsInto(listModels, setModels, () => hydrateGenerationRef.current !== generation);
       const cmds = await listCommands();
       if (cmds.length > 0) setCommands(cmds);
       // Project task list for the Tasks modal + nav button.

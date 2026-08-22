@@ -90,7 +90,8 @@ import { z } from "zod";
 import { MCPClientManager, getAllMcpServers } from "./mcp/index.js";
 import type { MCPElicitHandler } from "./mcp/index.js";
 import type { MCPServerConfig } from "./mcp/types.js";
-import { DeferredToolCatalog } from "./mcp/deferred-catalog.js";
+import { clampMcpToolDescription, DeferredToolCatalog } from "./mcp/deferred-catalog.js";
+import { CONTEXT_LIMITS, resolveContextLimits, type ContextLimits } from "./context-limits.js";
 import { McpCatalogCache, type CachedTool } from "./mcp/catalog-cache.js";
 import {
   describeDropped,
@@ -471,6 +472,8 @@ export class AgentSession {
   private mcpManager?: MCPClientManager;
   /** Deferred MCP tools awaiting discovery via tool_search. */
   private mcpCatalog?: DeferredToolCatalog;
+  /** Resolved prompt-injection byte budgets (contextLimits setting). */
+  private contextLimits: ContextLimits = CONTEXT_LIMITS;
   /**
    * Built-in tools held in the catalog instead of the live toolset. Their names
    * still render as one-line hints in the prompt's Tools section, so the model
@@ -589,6 +592,7 @@ export class AgentSession {
     // Load settings & auth
     this.settingsManager = new SettingsManager(paths.settingsFile);
     await this.settingsManager.load();
+    this.contextLimits = resolveContextLimits(this.settingsManager.get("contextLimits"));
 
     this.authStorage = new AuthStorage(paths.authFile);
     await this.authStorage.load();
@@ -631,6 +635,7 @@ export class AgentSession {
     } = await createTools(this.cwd, {
       agents,
       skills: this.skills,
+      contextLimits: this.contextLimits,
       provider: this.provider,
       model: this.model,
       lspDiagnostics: this.settingsManager.get("lspDiagnostics"),
@@ -704,7 +709,7 @@ export class AgentSession {
         // sits inside the cached prefix stays byte-stable across turns.
         this.tools = core;
         this.deferredBuiltinToolNames = deferred.map((t) => t.name);
-        this.mcpCatalog ??= new DeferredToolCatalog();
+        this.mcpCatalog ??= new DeferredToolCatalog(this.contextLimits);
         this.mcpCatalog.add(deferred);
         this.ensureToolSearchTool();
       }
@@ -951,10 +956,13 @@ export class AgentSession {
     }
     const defer = !this.opts.allowedTools && this.settingsManager.get("deferredMcpTools");
     if (!defer) {
-      this.replaceOrPushTools(mcpTools);
+      // Eager path bypasses the catalog, so budget descriptions here too.
+      this.replaceOrPushTools(
+        mcpTools.map((tool) => clampMcpToolDescription(tool, this.contextLimits)),
+      );
       return;
     }
-    this.mcpCatalog ??= new DeferredToolCatalog();
+    this.mcpCatalog ??= new DeferredToolCatalog(this.contextLimits);
     // `add` is name-keyed, so live definitions replace cached stubs in place.
     this.mcpCatalog.add(mcpTools);
     // A stub the model already promoted lives in `this.tools`; swap it for the
@@ -973,7 +981,7 @@ export class AgentSession {
    * registration on an existing catalog would leave those tools unreachable.
    */
   private ensureToolSearchTool(): void {
-    this.mcpCatalog ??= new DeferredToolCatalog();
+    this.mcpCatalog ??= new DeferredToolCatalog(this.contextLimits);
     if (this.tools.some((t) => t.name === "tool_search")) return;
     this.tools.push(
       createToolSearchTool(
@@ -993,6 +1001,7 @@ export class AgentSession {
             ? { serverName, ok: true }
             : { serverName, ok: false, error: outcome.error };
         },
+        this.contextLimits,
       ),
     );
   }
@@ -1048,7 +1057,7 @@ export class AgentSession {
 
   /** Catalog-only registration for cached stubs — never marks them live. */
   private addCachedMcpTools(stubs: AgentTool[]): void {
-    this.mcpCatalog ??= new DeferredToolCatalog();
+    this.mcpCatalog ??= new DeferredToolCatalog(this.contextLimits);
     this.mcpCatalog.add(stubs);
     this.ensureToolSearchTool();
   }
@@ -2923,6 +2932,7 @@ export class AgentSession {
         deferredToolNames,
         context: this.opts.agentContext,
         environment: this.promptEnvironment(),
+        contextLimits: this.contextLimits,
       });
     }
     return buildSystemPrompt(
@@ -2935,6 +2945,7 @@ export class AgentSession {
       this.provider,
       this.promptEnvironment(),
       deferredToolNames,
+      this.contextLimits,
     );
   }
 

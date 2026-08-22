@@ -9,6 +9,7 @@ import {
   PROJECT_CONTEXT_MAX_BYTES,
 } from "./system-prompt.js";
 import { buildNolanSystemPrompt } from "./core/nolan-prompt.js";
+import { resolveContextLimits } from "./core/context-limits.js";
 import type { LanguageId } from "./core/language-detector.js";
 
 const tempDirs: string[] = [];
@@ -325,6 +326,14 @@ describe("buildSystemPrompt", () => {
       "Never make a failing check pass by weakening it",
       "never fork them into variants",
       "exercise real code paths rather than mocks",
+      // Facts-vs-decisions + batched questions (alignment guardrails):
+      // asking is sanctioned for decisions only, and asking well means one
+      // batched, recommendation-annotated list instead of an interrogation drip.
+      "only decisions (taste, product calls, real tradeoffs) reach the user",
+      "one numbered list, every open question",
+      // The exemption must name both caps: a batched question list that
+      // violates the 5-item list cap would put the two rules in conflict.
+      "exempt from the reply and list caps",
     ]) {
       expect(prompt).toContain(required);
     }
@@ -481,11 +490,12 @@ describe("buildSystemPrompt", () => {
     // fewer turns than re-deriving an over-built solution.
     // Raised with the 2026-08 guardrail additions (git safety, anti-fake-green,
     // reproduce-first, circuit-breaker, question-vs-fix, no-variants, test
-    // guidance) and the explicit kencode-search staple sentence in Research.
-    // The fork's Goal workflow adds ~500–700 characters across representative prompts.
-    expect(measurements.normal.characters).toBeLessThan(9_900);
-    expect(measurements.planMode.characters).toBeLessThan(11_200);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(14_400);
+    // guidance), the explicit kencode-search staple sentence in Research, and
+    // alignment guardrails (facts-vs-decisions, batched questions). The fork's
+    // Goal workflow adds ~500–700 characters across representative prompts.
+    expect(measurements.normal.characters).toBeLessThan(10_100);
+    expect(measurements.planMode.characters).toBeLessThan(11_400);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(14_600);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -525,8 +535,9 @@ describe("buildSystemPrompt", () => {
     expect(audit.flags).toEqual([]);
     // Raised with the Code Quality minimization ladder — see the size-budget
     // test above for the measured return that justifies the spend.
-    // Raised again with the 2026-08 guardrails, kencode-search staple, and fork Goal workflow.
-    expect(audit.size.characters).toBeLessThan(14_200);
+    // Raised again with the 2026-08 guardrails, kencode-search staple, alignment
+    // guidance, and the fork Goal workflow.
+    expect(audit.size.characters).toBeLessThan(14_500);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 
@@ -847,5 +858,43 @@ describe("buildSubAgentSystemPrompt", () => {
 
     expect(prompt).toContain("## Delegation");
     expect(prompt).toContain("sees none of this conversation");
+  });
+});
+
+describe("system prompt byte ceiling", () => {
+  it("bounds a hostile AGENTS.md + skill catalog by per-input budgets, not the ceiling", async () => {
+    const cwd = await makeProject({
+      "AGENTS.md": `# Hostile\n\n${"inject ".repeat(20_000)}`, // ~120KB
+    });
+    const skills = Array.from({ length: 80 }, (_, i) => ({
+      name: `skill-${i}`,
+      description: "y".repeat(2_000), // 160KB raw descriptions
+      content: "x",
+      source: "global",
+    }));
+    const prompt = await buildSystemPrompt(cwd, skills);
+    // Per-input budgets do the work: well under the 1MB ceiling regardless.
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThan(64 * 1024);
+    expect(prompt).toContain("Skipped (context budget)");
+  });
+
+  it("enforces the emergency ceiling when sections overflow it", async () => {
+    const cwd = await makeProject({
+      "AGENTS.md": `${"a".repeat(31 * 1024)}`, // just under the 32KB file budget
+    });
+    const prompt = await buildSystemPrompt(
+      cwd,
+      [],
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      resolveContextLimits({ systemPromptCeilingBytes: 16 * 1024 }),
+    );
+    expect(Buffer.byteLength(prompt, "utf8")).toBeLessThanOrEqual(16 * 1024);
+    expect(prompt).toContain("system prompt exceeded the 16384-byte ceiling");
   });
 });

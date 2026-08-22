@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { formatSkillsForPrompt, type Skill } from "./core/skills.js";
+import { clampToBytes, CONTEXT_LIMITS, type ContextLimits } from "./core/context-limits.js";
 import { TOOL_PROMPT_HINTS, buildToolSteering, DEFAULT_TOOL_NAMES } from "./tools/prompt-hints.js";
 import type { LanguageId } from "./core/language-detector.js";
 import { stripBom } from "./utils/text.js";
@@ -22,7 +23,7 @@ const CONTEXT_FILES = [
 ];
 
 /** Combined byte budget for all project instruction files (Codex default). */
-export const PROJECT_CONTEXT_MAX_BYTES = 32 * 1024;
+export const PROJECT_CONTEXT_MAX_BYTES = CONTEXT_LIMITS.projectContextBytes;
 const UNCACHED_MARKER = "<!-- uncached -->";
 
 /**
@@ -69,6 +70,7 @@ function renderTalkSection(): string {
     `**First line = actionable state.** Done: lead with the outcome. Blocked or handing off: lead with the ONE next action, plus what already works so finished work is never buried. Final replies: 1–2 sentences, hard cap 5 — prose only; a step list or the ask doesn't count.\n\n` +
     `**Default to action.** Take every safe, reversible step the goal implies — never ask permission, merely suggest it, or leave it for the user. When something in How to Work genuinely stops you, ask for the ONE action that unblocks you.\n\n` +
     `**Blockquote = the ask.** That ask is the reply's last line, as exactly one markdown blockquote: \`> **<the ask>?** <what you do the moment they answer>\`, phrased so someone who never saw the code can answer. One per reply — the blocking one. Blockquote nothing else, so \`>\` in your reply always means "you're up".\n\n` +
+    `**Batch the questions.** When you do ask: one numbered list, every open question with its recommended answer; the blockquote stays the blocking ask. Question lists are payload — exempt from the reply and list caps.\n\n` +
     `**Keep the real word, add the stakes.** Never dumb a term down or drop an identifier; the first time one appears that the user must judge, say what it does or risks in the same sentence (≤8 words, dash or parens). Once per term, never a glossary.\n\n` +
     `**Cut what they can't act on.** Reasoning, findings, and history earn a clause only when they change the next move: conclusion, not investigation; never re-explain yourself.\n\n` +
     `**Concrete and scannable.** One idea per line; **bold** key words. Number steps; cap lists at 5. Give measured outcomes and ONE recommended approach — default to X, switch to Y only when [condition] — not a menu, unless a command's flow defines its own options.\n\n` +
@@ -84,6 +86,7 @@ function renderWorkSection(): string {
     `- Compute in bash; write with \`edit\`/\`write\` so read-tracking, partial apply, and diagnostics stay intact.\n` +
     `- Match neighbors (components/tokens/tone). When none exist, infer from the task and project; ask only when a missing product or taste decision would materially change the result. Keep edits small; plan only complex/risky multi-file work—edit routine changes directly.\n` +
     `- Stop only for user decisions, secrets/access, cost, destructive risk, data loss, or unrelated disruption; otherwise continue through completion.\n` +
+    `- Facts vs. decisions: if code, docs, or a run can answer it, it is a fact — find it yourself; only decisions (taste, product calls, real tradeoffs) reach the user.\n` +
     `- A question is not a fix request: when the user asks why something happens, answer it — change code only when they ask for the change.\n` +
     `- Preserve user work: investigate unexpected files, branches, or locks before touching them. \`.gitignore\` generated artifacts, secrets, logs, scratch, and \`.env\`.\n` +
     `- Git: commit, push, amend, or rewrite history only when the user explicitly asks — never update git config or force-push. Never revert or reset changes you did not make; if the worktree holds changes you don't recognize, stop and ask.\n` +
@@ -335,7 +338,10 @@ function renderToolsSection(
  * combined budget is filled nearest-first (the nearest instructions are the
  * most binding); files dropped by the cap are reported in a one-line note.
  */
-export async function collectProjectContext(cwd: string): Promise<string[]> {
+export async function collectProjectContext(
+  cwd: string,
+  limits: ContextLimits = CONTEXT_LIMITS,
+): Promise<string[]> {
   // Nearest-first collection order (cwd → root).
   const collected: Array<{ relPath: string; content: string; bytes: number }> = [];
   let dir = cwd;
@@ -366,7 +372,7 @@ export async function collectProjectContext(cwd: string): Promise<string[]> {
   }
 
   // Budget nearest-first: the closest files are the most binding.
-  let budget = PROJECT_CONTEXT_MAX_BYTES;
+  let budget = limits.projectContextBytes;
   const kept = new Set<number>();
   const skipped: string[] = [];
   for (let i = 0; i < collected.length; i++) {
@@ -440,6 +446,18 @@ function renderUncachedDateSuffix(): string {
 }
 
 /**
+ * Emergency ceiling on the assembled prompt. Normal prompts are 15–25 KB; a
+ * hostile AGENTS.md stack plus a bloated skill catalog is the threat. Every
+ * individual input is already budgeted upstream — this is the backstop that
+ * bounds the total no matter what a future section adds.
+ */
+function enforcePromptCeiling(prompt: string, ceilingBytes: number): string {
+  if (Buffer.byteLength(prompt, "utf8") <= ceilingBytes) return prompt;
+  const marker = `\n[system prompt exceeded the ${ceilingBytes}-byte ceiling and was truncated]`;
+  return `${clampToBytes(prompt, ceilingBytes - Buffer.byteLength(marker, "utf8")).text}${marker}`;
+}
+
+/**
  * What every sub-agent owes its parent.
  *
  * Appended by `buildSubAgentSystemPrompt`, so user-authored agent files inherit
@@ -481,8 +499,11 @@ export async function buildSubAgentSystemPrompt(
     deferredToolNames?: readonly string[];
     context?: "project" | "none";
     environment?: SystemPromptEnvironment;
+    /** Byte budgets for skill catalog / project instructions / total ceiling. */
+    contextLimits?: ContextLimits;
   },
 ): Promise<string> {
+  const limits = opts.contextLimits ?? CONTEXT_LIMITS;
   const sections: string[] = [agentBody.trim()];
 
   const toolsSection = renderToolsSection(opts.toolNames, opts.deferredToolNames);
@@ -495,7 +516,7 @@ export async function buildSubAgentSystemPrompt(
 
   if ((opts.context ?? "project") === "project") {
     const projectContextSection = renderProjectContextSection(
-      await collectProjectContext(opts.cwd),
+      await collectProjectContext(opts.cwd, limits),
     );
     if (projectContextSection) sections.push(projectContextSection);
   }
@@ -508,7 +529,7 @@ export async function buildSubAgentSystemPrompt(
     renderUncachedDateSuffix(),
   );
 
-  return sections.join("\n\n");
+  return enforcePromptCeiling(sections.join("\n\n"), limits.systemPromptCeilingBytes);
 }
 
 /**
@@ -536,7 +557,8 @@ export async function buildSystemPrompt(
   provider?: Provider,
   goalModeOrEnvironment: GoalMode | SystemPromptEnvironment = "off",
   environmentArgOrDeferred?: SystemPromptEnvironment | readonly string[],
-  deferredToolNamesArg?: readonly string[],
+  deferredToolNamesArgOrLimits?: readonly string[] | ContextLimits,
+  contextLimitsArg?: ContextLimits,
 ): Promise<string> {
   const goalMode = typeof goalModeOrEnvironment === "string" ? goalModeOrEnvironment : "off";
   const legacyDeferredToolNames = Array.isArray(environmentArgOrDeferred)
@@ -547,9 +569,15 @@ export async function buildSystemPrompt(
     : (environmentArgOrDeferred as SystemPromptEnvironment | undefined);
   const environment =
     typeof goalModeOrEnvironment === "string" ? environmentArg : goalModeOrEnvironment;
-  const deferredToolNames = deferredToolNamesArg ?? legacyDeferredToolNames;
+  const deferredToolNames = Array.isArray(deferredToolNamesArgOrLimits)
+    ? deferredToolNamesArgOrLimits
+    : (legacyDeferredToolNames as readonly string[] | undefined);
+  const limits =
+    contextLimitsArg ??
+    (Array.isArray(deferredToolNamesArgOrLimits)
+      ? CONTEXT_LIMITS
+      : ((deferredToolNamesArgOrLimits as ContextLimits | undefined) ?? CONTEXT_LIMITS));
   const hasKencode = hasKencodeSearch(toolNames ?? DEFAULT_TOOL_NAMES);
-
   const sections: string[] = [
     renderIdentitySection(provider, goalMode),
     renderTalkSection(),
@@ -572,7 +600,9 @@ export async function buildSystemPrompt(
   const delegationSection = renderDelegationSection(toolNames);
   if (delegationSection) sections.push(delegationSection);
 
-  const projectContextSection = renderProjectContextSection(await collectProjectContext(cwd));
+  const projectContextSection = renderProjectContextSection(
+    await collectProjectContext(cwd, limits),
+  );
   if (projectContextSection) sections.push(projectContextSection);
 
   if (activeLanguages && activeLanguages.size > 0) {
@@ -585,11 +615,11 @@ export async function buildSystemPrompt(
   }
 
   if (skills && skills.length > 0) {
-    const skillsSection = formatSkillsForPrompt(skills);
+    const skillsSection = formatSkillsForPrompt(skills, limits);
     if (skillsSection) sections.push(skillsSection);
   }
 
   sections.push(renderEnvironmentSection(cwd, environment), renderUncachedDateSuffix());
 
-  return sections.join("\n\n");
+  return enforcePromptCeiling(sections.join("\n\n"), limits.systemPromptCeilingBytes);
 }
