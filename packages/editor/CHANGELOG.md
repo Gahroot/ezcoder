@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0
+
+### Minor Changes
+
+- Add Hugging Face model downloads, current flagship model definitions, recoverable subagent results, bounded prompt context, safer sandbox and web-fetch handling, and five bundled engineering workflows.
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/cli@5.14.0
+  - @prestyj/ai@5.14.0
+  - @prestyj/agent@5.14.0
+
 ## 0.7.62
 
 ### Patch Changes
