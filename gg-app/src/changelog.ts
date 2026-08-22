@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.3",
+    date: "2026-08-23",
+    items: [
+      "`Autopilot` is back, and it is bulletproof. Yesterday's build had a bug that killed every single review the instant it started, so Ken never got to check your work and you just got an error. I found it, crushed it, and locked it down with a test so it can never come back.",
+      "Your settings no longer lie to you mid task. The `Ken` model picker and the `Thinking` level looked clickable while GG Coder was working, but changing them did nothing to the run you were watching. Now they dim politely and tell you exactly why, so what you see is always what you get.",
+    ],
+  },
+  {
     version: "0.53.2",
     date: "2026-08-23",
     items: [
