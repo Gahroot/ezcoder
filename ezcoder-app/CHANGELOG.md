@@ -1,4 +1,4 @@
-# gg-app
+# ezcoder-app
 
 ## 0.53.0
 

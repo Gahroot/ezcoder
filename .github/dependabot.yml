@@ -17,15 +17,15 @@ updates:
       - /
       - /packages/*
       - /experiments/*
-      - /gg-app
+      - /ezcoder-app
     schedule:
       interval: weekly
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
 
-  # Tauri desktop app (gg-app).
+  # Tauri desktop app (ezcoder-app).
   - package-ecosystem: cargo
-    directory: /gg-app/src-tauri
+    directory: /ezcoder-app/src-tauri
     schedule:
       interval: weekly

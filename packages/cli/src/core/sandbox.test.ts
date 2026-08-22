@@ -68,12 +68,12 @@ describe("buildSandboxSettings", () => {
     // can delete one and leave a symlink: `rm -rf ~/.deno && ln -s / ~/.deno`.
     // Resolving that root would hand the next run write access to all of `/` —
     // an escape that outlives the run that planted it.
-    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "gg-sandbox-home-"));
+    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "ez-sandbox-home-"));
     const planted = path.join(fakeHome, ".deno");
     fs.symlinkSync(path.parse(os.tmpdir()).root, planted);
     const homeSpy = vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
     try {
-      const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "gg-sandbox-workspace-"));
+      const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "ez-sandbox-workspace-"));
       const settings = buildSandboxSettings(
         cwd,
         { mode: "workspace", allowedDomains: [] },
@@ -106,7 +106,7 @@ describe("buildSandboxSettings", () => {
     // is /var/folders/…). node_modules is writable, git-ignored, and never a
     // zone. Real machines put $HOME outside /tmp, which is the case under test.
     const base = fs.mkdtempSync(
-      path.join(import.meta.dirname, "..", "..", "node_modules", ".gg-sandbox-base-"),
+      path.join(import.meta.dirname, "..", "..", "node_modules", ".ez-sandbox-base-"),
     );
     const fakeHome = path.join(base, "home");
     const fakeTmp = path.join(base, "tmp");
@@ -137,7 +137,7 @@ describe("buildSandboxSettings", () => {
   it("still follows the OS temp alias, so writes to /tmp are not silently denied", () => {
     // The guard above must not break the reason withRealPath exists: macOS
     // reaches the temp dir through /var → /private/var.
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "gg-sandbox-workspace-"));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "ez-sandbox-workspace-"));
     const settings = buildSandboxSettings(cwd, { mode: "workspace", allowedDomains: [] }, "darwin");
 
     expect(settings.filesystem.allowWrite).toEqual(

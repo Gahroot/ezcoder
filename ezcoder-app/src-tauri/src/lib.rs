@@ -3104,10 +3104,10 @@ async fn agent_hf_search(
     query: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/hf/search", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "query": query }))
         .send()
         .await
@@ -3135,10 +3135,10 @@ async fn agent_hf_pull(
     repo: String,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/hf/pull", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "repo": repo }))
         .send()
         .await
@@ -3164,10 +3164,10 @@ async fn agent_hf_pull_status(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/hf/pull", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3183,10 +3183,10 @@ async fn agent_hf_pull_cancel(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/hf/pull/cancel", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;

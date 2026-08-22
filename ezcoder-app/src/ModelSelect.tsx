@@ -101,7 +101,7 @@ export function ModelSelect({
   // A locked picker has to SAY it is locked. Both controls render the model as
   // plain footer text, so without this the disabled state is invisible: the
   // label looks identical, the click does nothing, and the tooltip still
-  // promises "Switch GG Coder's model". Users read that as a broken dropdown
+  // promises "Switch EZ Coder's model". Users read that as a broken dropdown
   // (and the sidecar agrees with the lock — POST /model answers 409 while a run
   // is in flight), so name the reason instead of going quietly inert.
   const unavailableReason = disabled

@@ -12,7 +12,7 @@ import {
 const tempDirs: string[] = [];
 
 async function tempDir(): Promise<string> {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gg-turn-record-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ez-turn-record-"));
   tempDirs.push(directory);
   return directory;
 }

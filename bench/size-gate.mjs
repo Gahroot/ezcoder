@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // size-gate — deterministic bundle-size regression gate (fx-pattern CI ratchet).
 // Artifacts:
-//   dist:ggcoder — total bytes of packages/ggcoder/dist (the shipped CLI).
-//   sidecar      — app-sidecar.mjs + bundled skills bytes (gg-app/src-tauri/sidecar).
+//   dist:ezcoder — total bytes of packages/cli/dist (the shipped CLI).
+//   sidecar      — app-sidecar.mjs + bundled skills bytes (ezcoder-app/src-tauri/sidecar).
 //                  Deliberately EXCLUDES node_modules: it carries platform-
 //                  conditional binaries (sharp, onnxruntime), so one baseline
 //                  cannot hold across the CI matrix's three OSes. Dependency-
-//                  tree churn is still caught by the dist:ggcoder artifact.
+//                  tree churn is still caught by the dist:ezcoder artifact.
 // Usage:
 //   node bench/size-gate.mjs                 # check all artifacts against baseline
 //   node bench/size-gate.mjs --only sidecar  # check one artifact
@@ -32,10 +32,10 @@ function dirBytes(target) {
 }
 
 const ARTIFACTS = {
-  "dist:ggcoder": () => dirBytes(path.join(REPO_ROOT, "packages/ggcoder/dist")),
+  "dist:ezcoder": () => dirBytes(path.join(REPO_ROOT, "packages/cli/dist")),
   sidecar: () =>
-    dirBytes(path.join(REPO_ROOT, "gg-app/src-tauri/sidecar/app-sidecar.mjs")) +
-    dirBytes(path.join(REPO_ROOT, "gg-app/src-tauri/sidecar/skills")),
+    dirBytes(path.join(REPO_ROOT, "ezcoder-app/src-tauri/sidecar/app-sidecar.mjs")) +
+    dirBytes(path.join(REPO_ROOT, "ezcoder-app/src-tauri/sidecar/skills")),
 };
 
 const fmt = (bytes) => `${(bytes / 1024).toFixed(1)}KB`;
