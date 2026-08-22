@@ -4584,6 +4584,14 @@ async function createSession(
           json(res, 400, { error: "invalid JSON body" });
           return;
         }
+        // Same lock as POST /model, for the same reason: this retargets Ken's
+        // chat session AND the autopilot reviewer, and `switchModel` on a
+        // session mid-turn races the stream it is already consuming. The
+        // footer picker is disabled to match; this is the enforcement.
+        if (running || kenRunning || autopilotReviewing) {
+          json(res, 409, { error: "cannot switch Ken's model while running" });
+          return;
+        }
         if (modelId === null) {
           // Clear the pin → follow GG Coder again, syncing both sessions back.
           kenModelOverride = null;
@@ -4698,6 +4706,14 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/thinking") {
+      // The in-flight request already carries its reasoning config, so a
+      // mid-run cycle cannot affect the turn the user is watching — it just
+      // persists a level the footer then reports for a run that never used it.
+      // Locked like POST /model; the footer button is disabled to match.
+      if (running) {
+        json(res, 409, { error: "cannot change reasoning level while running" });
+        return;
+      }
       const st = session.getState();
       const next = getNextThinkingLevel(st.provider, st.model, session.getThinkingLevel());
       session.setThinkingLevel(next);

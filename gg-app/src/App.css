@@ -4344,8 +4344,13 @@ body {
   line-height: 1.55;
   transition: color var(--t-fast);
 }
-.thinking-toggle:hover {
+.thinking-toggle:hover:not(:disabled) {
   text-decoration: underline;
+}
+/* Locked mid-run: drop the hover affordance and the pointer, so the control
+   reads as unavailable before the click. Mirrors `.model-select:disabled`. */
+.thinking-toggle:disabled {
+  cursor: default;
 }
 
 /* ── Footer: context percentage ── */

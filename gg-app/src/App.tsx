@@ -2795,18 +2795,28 @@ function App(): React.ReactElement {
                   const level = state?.thinkingLevel ?? null;
                   const label = level ? `Thinking ${level}` : "Thinking off";
                   const maxPower = level === "xhigh" || level === "max";
+                  // Reasoning level is baked into the request the run is already
+                  // streaming, so a mid-turn cycle changes nothing about it and
+                  // silently disagrees with what the footer shows. Lock it like
+                  // the model pickers, and say why rather than going inert.
+                  const locked = running;
                   return (
                     <>
                       <button
                         className="thinking-toggle"
                         style={{
-                          color: thinkingColor(level),
+                          color: locked ? theme.textDim : thinkingColor(level),
                           fontWeight: level === "high" ? 600 : 400,
                         }}
-                        title="Cycle reasoning level"
+                        title={
+                          locked
+                            ? "Can't change reasoning level while the agent is running — cancel the run or wait for it to finish"
+                            : "Cycle reasoning level"
+                        }
+                        disabled={locked}
                         onClick={() => void cycleThinking()}
                       >
-                        {maxPower ? (
+                        {maxPower && !locked ? (
                           <ShimmerText base={MAX_POWER_COLOR} bright={MAX_POWER_SHIMMER}>
                             {label}
                           </ShimmerText>
@@ -2842,6 +2852,11 @@ function App(): React.ReactElement {
                       currentModel={state?.kenModel ?? state?.model ?? ""}
                       onSelect={(id) => onSelectKenModel(id)}
                       color={theme.ken}
+                      // Ken's pin retargets BOTH his sessions (chat + the
+                      // autopilot reviewer), so it has to stay locked while
+                      // either is mid-turn — same rule the GG picker follows,
+                      // and the sidecar now answers 409 to match.
+                      disabled={running || kenRunning || autopilotReviewing}
                       title={
                         state?.kenModelOverride
                           ? "Ken is pinned to his own model — click to change"

@@ -1623,8 +1623,15 @@ export class AgentSession {
 
   /** Broadcast pre-final hook arming on change. Both edges matter: armed=false
    *  after the hook fires is what lets a client stream the REVIEWED final
-   *  answer live again. */
+   *  answer live again.
+   *
+   *  Callable before `initialize()`: the sidecar sets Ken's review suppression
+   *  on a freshly constructed session, and every arming predicate below reads
+   *  settings that `initialize()` has not loaded yet. Nothing can be armed
+   *  before the session can run a turn, and the first `tool_result`/`turn_end`
+   *  recomputes both edges — so skipping is the correct answer, not a patch. */
   private refreshHookArming(): void {
+    if (!this.settingsManager) return;
     this.refreshIdealReviewArmed();
     const armed = this.wouldInjectVerification();
     if (armed === this.verificationArmed) return;
