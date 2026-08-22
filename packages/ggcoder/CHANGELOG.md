@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.2
+
+### Patch Changes
+
+- Verification gate now recognizes compound commands like `cd pkg && npm test`, demands verification at most once per run, and announces itself so it no longer surfaces as a second unexplained final answer.
+  - @kenkaiiii/gg-ai@5.49.2
+  - @kenkaiiii/gg-agent@5.49.2
+  - @kenkaiiii/gg-core@5.49.2
+
 ## 5.49.1
 
 ### Patch Changes
