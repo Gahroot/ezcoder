@@ -875,7 +875,9 @@ async function main(): Promise<void> {
       phase === "idle_timeout_fired" ||
       phase === "hard_timeout_fired" ||
       phase === "stall_exhausted";
-    log("INFO", "stream", phase, {
+    // A session stuck on the non-streaming fallback costs real money and real
+    // latency; it does not belong in the INFO noise floor.
+    log(phase === "non_streaming_session" ? "WARN" : "INFO", "stream", phase, {
       ...(data ?? {}),
       ...(includeRuntime
         ? {

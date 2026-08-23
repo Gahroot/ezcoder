@@ -656,6 +656,7 @@ export class AgentSession {
         // tool agree on which roots are writable.
         additionalRoots: this.additionalRoots,
         allowOutsideWorkspaceWrites: this.settingsManager.get("allowOutsideWorkspaceWrites"),
+        allowUnixSockets: this.settingsManager.get("sandboxAllowUnixSockets"),
       }),
       getUseExternalGrep: () => this.settingsManager.get("grepUseRipgrep"),
       authStorage: this.authStorage,
