@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.6",
+    date: "2026-08-23",
+    items: [
+      "GG Coder just went on a diet. I found `3.4 MB` of test code riding along inside every install for no reason at all, and cut it clean out. Same power, lighter download, faster updates from here on.",
+    ],
+  },
+  {
     version: "0.53.5",
     date: "2026-08-23",
     items: [
