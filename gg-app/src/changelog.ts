@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.5",
+    date: "2026-08-23",
+    items: [
+      "A booby-trapped web page can no longer hijack your agent. Attackers hide instructions inside characters that are completely invisible to you, then wait for GG Coder to read them and obey. I now scrub every one of those out of web pages and `MCP` tool results before GG Coder ever sees them, and it tells you when it caught someone trying.",
+      "The safety sandbox finally keeps the promise it makes. It used to leave the `Docker` socket reachable by sandboxed commands, which is a straight shot at your whole machine, and on Linux it would quietly run with protections missing while still calling itself safe. Both are shut now, and your dev servers keep working exactly as they always did.",
+      "No more hunting bugs you never caused. When GG Coder edits a file it now says plainly whether it `introduced` those errors or whether they were `already present`, so you stop chasing ghosts through code that was never the problem.",
+      "Long sessions stop dying on you. When a provider rejects a request for being too big, GG Coder now learns the real limit and quietly fits inside it for the next `24 hours` instead of failing the exact same way on every turn after.",
+    ],
+  },
+  {
     version: "0.53.4",
     date: "2026-08-23",
     items: [
