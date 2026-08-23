@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.6
+
+### Patch Changes
+
+- Shrink the published CLI bundle by 3.4MB by excluding the test suite from the build output
+  - @kenkaiiii/gg-ai@5.49.6
+  - @kenkaiiii/gg-agent@5.49.6
+  - @kenkaiiii/gg-core@5.49.6
+
 ## 5.49.5
 
 ### Patch Changes
