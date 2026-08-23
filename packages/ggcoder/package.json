@@ -92,7 +92,7 @@
   ],
   "scripts": {
     "clean": "node --eval \"fs.rmSync('dist', { recursive: true, force: true })\"",
-    "build": "pnpm clean && tsc",
+    "build": "pnpm clean && tsc -p tsconfig.build.json",
     "check": "tsc --noEmit",
     "test": "vitest run",
     "bench:edit": "tsx src/core/hashline-edit-benchmark.ts",
