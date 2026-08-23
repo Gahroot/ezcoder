@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.5
+
+### Patch Changes
+
+- Harden the sandbox against unix-socket and degraded-isolation escapes, strip invisible Unicode from MCP and web-fetch output, and attribute new diagnostics to the edit that caused them
+  - @kenkaiiii/gg-ai@5.49.5
+  - @kenkaiiii/gg-agent@5.49.5
+  - @kenkaiiii/gg-core@5.49.5
+
 ## 5.49.4
 
 ### Patch Changes
