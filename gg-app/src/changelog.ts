@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.7",
+    date: "2026-08-24",
+    items: [
+      "Downloading models from `Hugging Face` finally just works. Loads of models used to refuse to install, and the ones that did could quietly hand you the wrong file: a vision add-on or a tiny helper model instead of the real thing. I fixed how GG Coder finds and picks the file, then checked it against the `66` most popular model repos. Every single one installs now, and it lands in your model dropdown the moment it finishes.",
+      "The download progress is smooth as glass. That percentage and speed readout used to flicker and jump backwards while you watched it. Now it only ever moves forward, in one clean line: `161 MB / 18 GB`, speed, time left. When something does go wrong you get a straight answer, like being told you hit a rate limit and should wait a minute, instead of a wall of terminal gibberish.",
+    ],
+  },
+  {
     version: "0.53.6",
     date: "2026-08-23",
     items: [
