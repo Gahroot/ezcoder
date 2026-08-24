@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.8",
+    date: "2026-08-24",
+    items: [
+      "Drop an image in the chat with a `GLM` model and it finally gets seen. I rewired attachments so they reach the real `zai vision` engine instead of a dead-end name, and gave slow, careful analysis room to breathe by lifting the cutoff from `60s` to `180s`. Big screenshots now come back with real answers instead of a timeout.",
+    ],
+  },
+  {
     version: "0.53.7",
     date: "2026-08-24",
     items: [
