@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.7
+
+### Patch Changes
+
+- Fix Hugging Face model downloads picking unpullable files and flickering progress: search now filters to real GGUF repos, repo trees are read recursively so quants in subfolders are found, split shards / vision projectors / imatrix blobs / speculative-decoding drafts are never chosen as the model, pull phase no longer jumps backwards, and failures explain rate limits instead of dumping raw terminal output.
+  - @kenkaiiii/gg-ai@5.49.7
+  - @kenkaiiii/gg-agent@5.49.7
+  - @kenkaiiii/gg-core@5.49.7
+
 ## 5.49.6
 
 ### Patch Changes
