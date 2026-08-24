@@ -1,4 +1,6 @@
 import { writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { Provider, TextContent, ImageContent, VideoContent } from "@kenkaiiii/gg-ai";
 import type { ImageAttachment } from "../utils/image.js";
 import { VIDEO_MEDIA_TYPES } from "../utils/image.js";
@@ -38,7 +40,9 @@ function resolveVideoPath(img: ImageAttachment): string | null {
   if (!img.data) return null;
   const ext =
     Object.entries(VIDEO_MEDIA_TYPES).find(([, mt]) => mt === img.mediaType)?.[0] ?? ".mp4";
-  const tmpPath = `/tmp/ggcoder-video-${Date.now()}${ext}`;
+  // os.tmpdir(), never a hardcoded /tmp: Windows has no /tmp and this write
+  // would throw, silently dropping the video for no-vision models.
+  const tmpPath = path.join(os.tmpdir(), `ggcoder-video-${Date.now()}${ext}`);
   try {
     writeFileSync(tmpPath, Buffer.from(img.data, "base64"));
     return tmpPath;
@@ -100,7 +104,10 @@ export function buildUserContentWithAttachments(
       // Non-GLM providers must not see this hint: the server never connects for
       // them, so naming it would be a phantom tool. Their text is unchanged.
       const ext = img.mediaType.split("/")[1] ?? "png";
-      const tmpPath = `/tmp/ggcoder-img-${Date.now()}.${ext}`;
+      // os.tmpdir(), never a hardcoded /tmp: Windows has no /tmp and the write
+      // would throw, degrading every GLM image hint to the "could not be saved"
+      // fallback on the Windows CI leg (and for Windows users).
+      const tmpPath = path.join(os.tmpdir(), `ggcoder-img-${Date.now()}.${ext}`);
       try {
         writeFileSync(tmpPath, Buffer.from(img.data, "base64"));
         const hint =
