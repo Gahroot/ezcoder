@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.8
+
+### Patch Changes
+
+- Fix GLM image attachments: route them to the real `mcp__zai_vision__analyze_image` MCP tool (with its `tool_search` unlock path) instead of a phantom tool name, gate the hint to the GLM provider only so other providers keep inline images, and raise the `zai_vision` tool-call timeout from 60s to 180s so long GLM-4.6V analyses stop getting killed mid-flight.
+  - @kenkaiiii/gg-ai@5.49.8
+  - @kenkaiiii/gg-agent@5.49.8
+  - @kenkaiiii/gg-core@5.49.8
+
 ## 5.49.7
 
 ### Patch Changes
