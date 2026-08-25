@@ -60,6 +60,7 @@ import {
   type PromptSegment,
 } from "./agent";
 import { ActivityBar } from "./ActivityBar";
+import { autosizeComposer } from "./composer-autosize";
 import { KenActivityBar } from "./KenActivityBar";
 import { AutopilotReviewBar } from "./AutopilotReviewBar";
 import { useKenMentor } from "./useKenMentor";
@@ -1022,28 +1023,11 @@ function App(): React.ReactElement {
     workspaceMode,
   ]);
 
-  // Auto-grow the chat textarea to fit its content, up to a CSS max-height
-  // after which it scrolls.
-  //
-  // Measure with the scrollbar suppressed. `height: auto` collapses the
-  // textarea to its rows=1 intrinsic height, so any wrapped draft overflows
-  // during measurement, and `.input::-webkit-scrollbar` is a classic
-  // (space-consuming) scrollbar in WebKit — verified 8px of content width lost
-  // while it shows. Suppressing it first means every read below sees the width
-  // the text is actually laid out at, including the overflow decision itself.
+  // Auto-grow the chat textarea, keeping the transcript's scroll position
+  // intact across the measurement (see composer-autosize.ts for why both
+  // halves matter).
   const autosizeInput = useCallback(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.overflowY = "hidden";
-    el.style.height = "auto";
-    const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
-    const content = el.scrollHeight;
-    el.style.height = `${Math.min(content, max)}px`;
-    // Only past the cap does the scrollbar earn its width. Below it, keeping
-    // overflow hidden also avoids a phantom grey scrollbar under CSS zoom > 1,
-    // where scrollHeight rounds down to an integer of unzoomed px and leaves
-    // the content a hair taller than the height just set.
-    if (content > max) el.style.overflowY = "auto";
+    autosizeComposer(inputRef.current, scrollRef.current);
   }, []);
 
   // useLayoutEffect (not useEffect) so the height is recomputed BEFORE the
