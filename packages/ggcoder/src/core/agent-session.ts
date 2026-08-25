@@ -129,7 +129,13 @@ import {
 import { buildRegroundingMessage } from "./regrounding.js";
 import { wrapSteeringText, buildNotificationSteeringText, STEERING_PREFIX } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
-import { VerificationGate, isCodeFilePath, isVerificationCommand } from "./verification-gate.js";
+import {
+  VerificationGate,
+  extractAddedLines,
+  isCheckOwnFile,
+  isCodeFilePath,
+  isVerificationCommand,
+} from "./verification-gate.js";
 
 import { findUserSessionPrompt, getUserSessionPrompt } from "./session-preview.js";
 import { normalizeMessageImages } from "./message-images.js";
@@ -1365,13 +1371,20 @@ export class AgentSession {
         // Verification-gate bookkeeping: successful code mutations and completed
         // foreground verification commands, in occurrence order.
         if (!event.isError && args) {
-          if (
-            (name === "edit" || name === "write") &&
-            isCodeFilePath(String((args as { file_path?: unknown }).file_path ?? ""))
-          ) {
-            this.verificationGate.recordMutation(
-              String((args as { file_path?: unknown }).file_path),
-            );
+          if (name === "edit" || name === "write") {
+            const filePath = String((args as { file_path?: unknown }).file_path ?? "");
+            // Check-owning files (tsconfig.json, pytest.ini, vitest.config.ts …)
+            // are tracked even when they are not source code: editing one is how
+            // a red suite is turned green without fixing anything.
+            if (filePath && (isCodeFilePath(filePath) || isCheckOwnFile(filePath))) {
+              const addedText =
+                name === "write"
+                  ? String((args as { content?: unknown }).content ?? "")
+                  : extractAddedLines(
+                      (event.details as { diff?: string } | undefined)?.diff ?? event.result,
+                    );
+              this.verificationGate.recordMutation(filePath, addedText);
+            }
           }
           if (
             name === "bash" &&
