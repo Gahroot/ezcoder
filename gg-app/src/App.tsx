@@ -1027,7 +1027,7 @@ function App(): React.ReactElement {
   // intact across the measurement (see composer-autosize.ts for why both
   // halves matter).
   const autosizeInput = useCallback(() => {
-    autosizeComposer(inputRef.current, scrollRef.current);
+    autosizeComposer(inputRef.current, scrollRef.current, stickToBottomRef.current);
   }, []);
 
   // useLayoutEffect (not useEffect) so the height is recomputed BEFORE the
@@ -2224,6 +2224,11 @@ function App(): React.ReactElement {
     setState(null);
     setTasks([]);
     setContextTokens(0);
+    // The done line + token tail belong to the run we're navigating away from;
+    // leaving them up makes a brand-new session open on someone else's
+    // "Brewed up a response in 14s · 800 tokens".
+    setTokens(0);
+    setDoneStatus(null);
     setPlanReview(null);
     planTotalRef.current = 0;
     planDoneRef.current = new Set();
