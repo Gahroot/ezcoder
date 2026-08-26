@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.49.10
+
+### Patch Changes
+
+- Harden the verification gate: an edited check now discloses the tamper instead of passing as proof, and a golden snapshot of the cached system-prompt prefix blocks unreviewed tool or prompt edits.
+  - @kenkaiiii/gg-ai@5.49.10
+  - @kenkaiiii/gg-agent@5.49.10
+  - @kenkaiiii/gg-core@5.49.10
+
 ## 5.49.9
 
 ### Patch Changes
