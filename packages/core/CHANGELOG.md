@@ -1,5 +1,12 @@
 # @prestyj/core
 
+## 5.14.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/ai@5.14.1
+
 ## 5.14.0
 
 ### Patch Changes

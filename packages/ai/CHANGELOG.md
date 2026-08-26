@@ -1,5 +1,13 @@
 # @prestyj/ai
 
+## 5.14.1
+
+### Patch Changes
+
+- Import upstream improvements for verification, autopilot review, reply limits, model downloads, GLM vision, cross-platform attachments, transcript stability, and sandbox controls.
+
+  Exclude tests from the published CLI and refresh vulnerable transitive dependencies.
+
 ## 5.14.0
 
 ## 5.13.0
