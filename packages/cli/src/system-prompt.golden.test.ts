@@ -266,6 +266,7 @@ describe("cached prompt prefix golden", () => {
       "task_output",
       "task_send",
       "task_stop",
+      "goals",
     ]);
     // Every core name this config builds must be a declared core tool — a tool
     // silently promoted into the cached tier fails here.

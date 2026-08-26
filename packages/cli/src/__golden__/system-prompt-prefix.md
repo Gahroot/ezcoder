@@ -37,7 +37,7 @@ Give ONE recommended approach — default to X, switch to Y only when [condition
 
 ## Research & Verification
 
-Your training data has a cutoff; the real current date is the final line of this prompt. Assume your knowledge of library versions, APIs, CLI flags, config schema, defaults, and best practices has changed since then — treat it as a stale hint to verify, never as ground truth. Do not rely on memory for APIs, CLI flags, config schema, internals, or error wording — verify first. Use `source_path` for installed deps; use `web_fetch` for authoritative docs (native web search is available).
+Your training data has a cutoff; the real current date is the final line of this prompt. Assume your knowledge of library versions, APIs, CLI flags, config schema, defaults, and best practices has changed since then — treat it as a stale hint to verify, never as ground truth. Do not rely on memory for APIs, CLI flags, config schema, internals, or error wording — verify first. Use `source_path` for installed deps and inspect with read/grep/find/ls; use `web_fetch` for authoritative docs (native web search is available). When driving a programmatic Goal run, model the intended experience, choose proportional local/free proof, and block only with exact user instructions for true external prerequisites. Run targeted checks when they are relevant to the change; read/fix failures; never report unrun or failing checks as passing.
 
 ## Code Quality
 
@@ -584,6 +584,328 @@ Today's date: <DATE>
     },
     "required": [
       "id"
+    ],
+    "additionalProperties": false
+  }
+}
+{
+  "name": "goals",
+  "description": "Manage durable Goal runs for /goal and Ctrl+G workflows. Use this instead of tasks when the user wants a programmatic goal loop: define success criteria first, check prerequisites before launching workers, persist harness/diagnostics/evidence, add standalone worker tasks, record final completion audits, and only mark the goal complete when verifier plus final-audit evidence proves the original objective. Do not require paid services or signups without recording a blocker and asking the user for the missing prerequisite.",
+  "input_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "create",
+          "prerequisite",
+          "task",
+          "evidence",
+          "evidence_plan",
+          "verify",
+          "audit",
+          "status",
+          "pause",
+          "resume",
+          "complete"
+        ],
+        "description": "Goal action to perform"
+      },
+      "run_id": {
+        "description": "Goal run id; omitted actions use the active/latest run",
+        "type": "string"
+      },
+      "title": {
+        "description": "Goal or task title",
+        "type": "string"
+      },
+      "goal": {
+        "description": "Original user objective for create",
+        "type": "string"
+      },
+      "success_criteria": {
+        "description": "Concrete criteria that must be proven before completion",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "prerequisites": {
+        "description": "Prerequisites that must be met before launching workers",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "Stable prerequisite id",
+              "type": "string"
+            },
+            "label": {
+              "type": "string",
+              "description": "Human-readable prerequisite label"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "unknown",
+                "met",
+                "missing"
+              ]
+            },
+            "check_command": {
+              "description": "Optional command used to check this prerequisite",
+              "type": "string"
+            },
+            "instructions": {
+              "description": "What the user must provide when missing",
+              "type": "string"
+            },
+            "evidence": {
+              "description": "Short evidence, never secret values",
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "prerequisite_id": {
+        "description": "Prerequisite id to update",
+        "type": "string"
+      },
+      "prerequisite_status": {
+        "description": "Updated prerequisite status",
+        "type": "string",
+        "enum": [
+          "unknown",
+          "met",
+          "missing"
+        ]
+      },
+      "prerequisite_label": {
+        "description": "Label for an added/updated prerequisite",
+        "type": "string"
+      },
+      "instructions": {
+        "description": "User-facing instructions for missing prerequisite",
+        "type": "string"
+      },
+      "harness": {
+        "description": "Harness/diagnostic commands and files",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "Stable harness item id",
+              "type": "string"
+            },
+            "label": {
+              "type": "string",
+              "description": "Harness/diagnostic label"
+            },
+            "command": {
+              "description": "Command that runs this harness item",
+              "type": "string"
+            },
+            "path": {
+              "description": "File path for a harness artifact",
+              "type": "string"
+            },
+            "description": {
+              "description": "What this harness observes or verifies",
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "evidence_plan": {
+        "description": "Planned proof paths for end-to-end verification",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "Stable evidence-plan item id",
+              "type": "string"
+            },
+            "label": {
+              "type": "string",
+              "description": "Short evidence path label"
+            },
+            "mechanism": {
+              "type": "string",
+              "enum": [
+                "command",
+                "test",
+                "script",
+                "fixture",
+                "log",
+                "screenshot",
+                "video",
+                "browser",
+                "device",
+                "source",
+                "file",
+                "manual"
+              ],
+              "description": "How this proof will be gathered"
+            },
+            "description": {
+              "type": "string",
+              "description": "What this evidence proves"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "planned",
+                "ready",
+                "blocked"
+              ]
+            },
+            "command": {
+              "description": "Runnable command when available",
+              "type": "string"
+            },
+            "path": {
+              "description": "Artifact path when available",
+              "type": "string"
+            },
+            "instructions": {
+              "description": "Exact user instructions when blocked",
+              "type": "string"
+            },
+            "evidence": {
+              "description": "Observed evidence summary when ready",
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "mechanism",
+            "description"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "evidence_plan_item_id": {
+        "description": "Evidence-plan item id to update",
+        "type": "string"
+      },
+      "evidence_plan_status": {
+        "description": "Updated evidence-plan item status",
+        "type": "string",
+        "enum": [
+          "planned",
+          "ready",
+          "blocked"
+        ]
+      },
+      "verifier_command": {
+        "description": "Command that verifies the goal end-to-end",
+        "type": "string"
+      },
+      "verifier_description": {
+        "description": "Natural-language verifier description",
+        "type": "string"
+      },
+      "task_id": {
+        "description": "Goal task id to update",
+        "type": "string"
+      },
+      "task_title": {
+        "description": "Short worker task title",
+        "type": "string"
+      },
+      "task_prompt": {
+        "description": "Standalone prompt for a disposable Goal worker in this same project",
+        "type": "string"
+      },
+      "task_status": {
+        "description": "Goal task status",
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "verifying",
+          "done",
+          "failed",
+          "blocked"
+        ]
+      },
+      "worker_id": {
+        "description": "Worker id associated with a task",
+        "type": "string"
+      },
+      "attempts": {
+        "description": "Task attempt count",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "summary": {
+        "description": "Short summary or verification note",
+        "type": "string"
+      },
+      "evidence_kind": {
+        "description": "Evidence kind",
+        "type": "string",
+        "enum": [
+          "log",
+          "command",
+          "screenshot",
+          "file",
+          "summary"
+        ]
+      },
+      "evidence_label": {
+        "description": "Evidence label",
+        "type": "string"
+      },
+      "evidence_path": {
+        "description": "Evidence file/log/screenshot path",
+        "type": "string"
+      },
+      "evidence_content": {
+        "description": "Short evidence content",
+        "type": "string"
+      },
+      "verification_status": {
+        "description": "Verifier result status",
+        "type": "string",
+        "enum": [
+          "pass",
+          "fail",
+          "unknown"
+        ]
+      },
+      "exit_code": {
+        "description": "Verifier command exit code",
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      },
+      "output_path": {
+        "description": "Path to verifier output/log",
+        "type": "string"
+      },
+      "blockers": {
+        "description": "Current blockers",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "action"
     ],
     "additionalProperties": false
   }
