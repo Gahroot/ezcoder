@@ -64,6 +64,7 @@ import {
   type PromptSegment,
 } from "./agent";
 import { ActivityBar } from "./ActivityBar";
+import { autosizeComposer } from "./composer-autosize";
 import { NolanActivityBar } from "./NolanActivityBar";
 import { AutopilotReviewBar } from "./AutopilotReviewBar";
 import { useNolanMentor } from "./useNolanMentor";
@@ -1060,28 +1061,11 @@ function App(): React.ReactElement {
     workspaceMode,
   ]);
 
-  // Auto-grow the chat textarea to fit its content, up to a CSS max-height
-  // after which it scrolls.
-  //
-  // Measure with the scrollbar suppressed. `height: auto` collapses the
-  // textarea to its rows=1 intrinsic height, so any wrapped draft overflows
-  // during measurement, and `.input::-webkit-scrollbar` is a classic
-  // (space-consuming) scrollbar in WebKit — verified 8px of content width lost
-  // while it shows. Suppressing it first means every read below sees the width
-  // the text is actually laid out at, including the overflow decision itself.
+  // Auto-grow the chat textarea, keeping the transcript's scroll position
+  // intact across the measurement (see composer-autosize.ts for why both
+  // halves matter).
   const autosizeInput = useCallback(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.overflowY = "hidden";
-    el.style.height = "auto";
-    const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
-    const content = el.scrollHeight;
-    el.style.height = `${Math.min(content, max)}px`;
-    // Only past the cap does the scrollbar earn its width. Below it, keeping
-    // overflow hidden also avoids a phantom grey scrollbar under CSS zoom > 1,
-    // where scrollHeight rounds down to an integer of unzoomed px and leaves
-    // the content a hair taller than the height just set.
-    if (content > max) el.style.overflowY = "auto";
+    autosizeComposer(inputRef.current, scrollRef.current, stickToBottomRef.current);
   }, []);
 
   // useLayoutEffect (not useEffect) so the height is recomputed BEFORE the
@@ -2321,6 +2305,11 @@ function App(): React.ReactElement {
     setState(null);
     setTasks([]);
     setContextTokens(0);
+    // The done line + token tail belong to the run we're navigating away from;
+    // leaving them up makes a brand-new session open on someone else's
+    // "Brewed up a response in 14s · 800 tokens".
+    setTokens(0);
+    setDoneStatus(null);
     setPlanReview(null);
     planTotalRef.current = 0;
     planDoneRef.current = new Set();
@@ -2878,18 +2867,28 @@ function App(): React.ReactElement {
                   const level = state?.thinkingLevel ?? null;
                   const label = level ? `Thinking ${level}` : "Thinking off";
                   const maxPower = level === "xhigh" || level === "max";
+                  // Reasoning level is baked into the request the run is already
+                  // streaming, so a mid-turn cycle changes nothing about it and
+                  // silently disagrees with what the footer shows. Lock it like
+                  // the model pickers, and say why rather than going inert.
+                  const locked = running;
                   return (
                     <>
                       <button
                         className="thinking-toggle"
                         style={{
-                          color: thinkingColor(level),
+                          color: locked ? theme.textDim : thinkingColor(level),
                           fontWeight: level === "high" ? 600 : 400,
                         }}
-                        title="Cycle reasoning level"
+                        title={
+                          locked
+                            ? "Can't change reasoning level while the agent is running — cancel the run or wait for it to finish"
+                            : "Cycle reasoning level"
+                        }
+                        disabled={locked}
                         onClick={() => void cycleThinking()}
                       >
-                        {maxPower ? (
+                        {maxPower && !locked ? (
                           <ShimmerText base={MAX_POWER_COLOR} bright={MAX_POWER_SHIMMER}>
                             {label}
                           </ShimmerText>
@@ -2927,6 +2926,10 @@ function App(): React.ReactElement {
                       currentModel={state?.nolanModel ?? state?.model ?? ""}
                       onSelect={(id) => onSelectNolanModel(id)}
                       color={theme.nolan}
+                      // Nolan's pin retargets both his sessions (chat + the
+                      // autopilot reviewer), so it stays locked while either
+                      // is mid-turn; the sidecar returns 409 to match.
+                      disabled={running || nolanRunning || autopilotReviewing}
                       title={
                         state?.nolanModelOverride
                           ? "Nolan is pinned to his own model — click to change"

@@ -78,10 +78,13 @@ import {
 } from "./core/session-export.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import {
+  advancesPhase,
   explainPullFailure,
+  isGgufShard,
   isValidHfRepoId,
   parseOllamaPullLine,
   pickGgufQuant,
+  SHARDED_MESSAGE,
   toHfSearchRow,
   type GgufFile,
   type HfSearchRow,
@@ -875,7 +878,9 @@ async function main(): Promise<void> {
       phase === "idle_timeout_fired" ||
       phase === "hard_timeout_fired" ||
       phase === "stall_exhausted";
-    log("INFO", "stream", phase, {
+    // A session stuck on the non-streaming fallback costs real money and real
+    // latency; it does not belong in the INFO noise floor.
+    log(phase === "non_streaming_session" ? "WARN" : "INFO", "stream", phase, {
       ...(data ?? {}),
       ...(includeRuntime
         ? {
@@ -1943,18 +1948,25 @@ async function createSession(
 
   /** Search the Hub for GGUF repos (what Ollama can pull). */
   async function hfSearch(query: string): Promise<HfSearchRow[]> {
+    // `filter=gguf` (the tag the Hub applies to repos that actually contain
+    // GGUF files) — `library=gguf` also matches safetensors-only base repos,
+    // which then fail at pull time. `expand[]=gguf` confirms per row.
     const params = new URLSearchParams({
       search: query,
-      library: "gguf",
+      filter: "gguf",
       sort: "downloads",
       direction: "-1",
-      limit: "8",
+      limit: "12",
     });
+    for (const field of ["gguf", "downloads", "likes", "lastModified"]) {
+      params.append("expand[]", field);
+    }
     const data = (await hfHubJson(`/api/models?${params.toString()}`)) as {
       id?: unknown;
       downloads?: unknown;
       likes?: unknown;
       lastModified?: unknown;
+      gguf?: unknown;
     }[];
     return (Array.isArray(data) ? data : [])
       .map(toHfSearchRow)
@@ -1971,18 +1983,30 @@ async function createSession(
     if (hfPull?.child) {
       throw Object.assign(new Error("A download is already running."), { status: 409 });
     }
-    const tree = (await hfHubJson(`/api/models/${repo}/tree/main`)) as unknown[];
+    // `recursive=true`: many repos (unsloth, mradermacher) keep quants in
+    // per-quant subfolders, and a flat listing reports them as GGUF-less.
+    const tree = (await hfHubJson(`/api/models/${repo}/tree/main?recursive=true`)) as unknown[];
     const files: GgufFile[] = (Array.isArray(tree) ? tree : []).flatMap((entry) => {
-      const e = entry as { path?: unknown; size?: unknown; lfs?: { size?: unknown } };
+      const e = entry as {
+        path?: unknown;
+        type?: unknown;
+        size?: unknown;
+        lfs?: { size?: unknown };
+      };
+      // `type` guards a directory entry (size 0) from beating real files in the
+      // size fallback; the Hub marks folders as "directory".
+      if (e.type !== undefined && e.type !== "file") return [];
       if (typeof e.path !== "string" || !e.path.toLowerCase().endsWith(".gguf")) return [];
       const size = Number(e.lfs?.size ?? e.size ?? 0);
       return [{ path: e.path, sizeBytes: Number.isFinite(size) ? size : 0 }];
     });
     const choice = pickGgufQuant(files);
     if (!choice) {
-      throw Object.assign(new Error("That repo has no GGUF file for Ollama to pull."), {
-        status: 400,
-      });
+      const sharded = files.some((f) => isGgufShard(f.path));
+      throw Object.assign(
+        new Error(sharded ? SHARDED_MESSAGE : "That repo has no GGUF file for Ollama to pull."),
+        { status: 400 },
+      );
     }
     const model = `hf.co/${repo}${choice.tag ? `:${choice.tag}` : ""}`;
     const token = await hfToken();
@@ -2001,6 +2025,7 @@ async function createSession(
 
     // ollama prints progress to stderr (stdout on some builds); parse both.
     let stderrTail = "";
+    let lastBroadcast = "";
     const feed = (chunk: string): void => {
       // Once the pull is terminal (success, failure, or user cancel) stop
       // parsing: a killed ollama dumps a burst of stderr that would otherwise
@@ -2009,11 +2034,20 @@ async function createSession(
       for (const line of chunk.split(/\r\n|\r|\n/)) {
         const parsed = parseOllamaPullLine(line);
         if (!parsed) continue;
+        // A redrawn frame repeats `pulling manifest` next to live progress; it
+        // must not drag the modal back to "Contacting Ollama…".
+        if (!advancesPhase(state.phase, parsed.phase)) continue;
         if (parsed.phase !== "error") {
           state.phase = parsed.phase;
           if (parsed.percent !== undefined) state.percent = parsed.percent;
           state.detail = parsed.detail;
         }
+        // ollama redraws its TUI frame several times a second, mostly with
+        // identical numbers. Broadcasting each one re-rendered the modal for no
+        // visible change; only a frame that actually reads differently ships.
+        const next = JSON.stringify(hfPullPayload(state));
+        if (next === lastBroadcast) continue;
+        lastBroadcast = next;
         broadcast("hf_pull", hfPullPayload(state));
       }
     };
@@ -2048,9 +2082,11 @@ async function createSession(
           state.percent = 100;
           state.detail = undefined;
           broadcast("hf_pull", hfPullPayload(state));
-          // The new model only exists to the app once Ollama lists it.
+          // The new model only exists to the app once Ollama lists it. Ollama's
+          // library is machine-wide, like the shared auth file, so every window
+          // gets the refresh — not just the one that ran the download.
           void scanLocalModels(true)
-            .then(() => broadcast("models_change", { local: localStatePayload() }))
+            .then(() => broadcastAll("models_change", { local: localStatePayload() }))
             .catch(() => undefined);
         } else {
           state.phase = "error";
@@ -4706,6 +4742,14 @@ async function createSession(
           json(res, 400, { error: "invalid JSON body" });
           return;
         }
+        // Same lock as POST /model, for the same reason: this retargets Ken's
+        // chat session AND the autopilot reviewer, and `switchModel` on a
+        // session mid-turn races the stream it is already consuming. The
+        // footer picker is disabled to match; this is the enforcement.
+        if (running || kenRunning || autopilotReviewing) {
+          json(res, 409, { error: "cannot switch Ken's model while running" });
+          return;
+        }
         if (modelId === null) {
           // Clear the pin → follow EZ Coder again, syncing both sessions back.
           nolanModelOverride = null;
@@ -4820,6 +4864,14 @@ async function createSession(
     }
 
     if (method === "POST" && url === "/thinking") {
+      // The in-flight request already carries its reasoning config, so a
+      // mid-run cycle cannot affect the turn the user is watching — it just
+      // persists a level the footer then reports for a run that never used it.
+      // Locked like POST /model; the footer button is disabled to match.
+      if (running) {
+        json(res, 409, { error: "cannot change reasoning level while running" });
+        return;
+      }
       const st = session.getState();
       const next = getNextThinkingLevel(st.provider, st.model, session.getThinkingLevel());
       session.setThinkingLevel(next);

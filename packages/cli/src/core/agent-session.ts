@@ -129,7 +129,13 @@ import {
 import { buildRegroundingMessage } from "./regrounding.js";
 import { wrapSteeringText, buildNotificationSteeringText, STEERING_PREFIX } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
-import { VerificationGate, isCodeFilePath, isVerificationCommand } from "./verification-gate.js";
+import {
+  VerificationGate,
+  extractAddedLines,
+  isCheckOwnFile,
+  isCodeFilePath,
+  isVerificationCommand,
+} from "./verification-gate.js";
 
 import { findUserSessionPrompt, getUserSessionPrompt } from "./session-preview.js";
 import { normalizeMessageImages } from "./message-images.js";
@@ -438,6 +444,9 @@ export class AgentSession {
   private processGateInjected = 0;
   /** Verification gate: code edited this run, nothing proved it since. */
   private readonly verificationGate = new VerificationGate();
+  /** Mirror of the last verification `hook_armed` value, so the event fires
+   *  only on a real edge. */
+  private verificationArmed = false;
   private compactionOccurred = false;
   private lastCompactionCompacted = false;
   private compactionRetryAfter = 0;
@@ -658,6 +667,7 @@ export class AgentSession {
         // tool agree on which roots are writable.
         additionalRoots: this.additionalRoots,
         allowOutsideWorkspaceWrites: this.settingsManager.get("allowOutsideWorkspaceWrites"),
+        allowUnixSockets: this.settingsManager.get("sandboxAllowUnixSockets"),
       }),
       getUseExternalGrep: () => this.settingsManager.get("grepUseRipgrep"),
       authStorage: this.authStorage,
@@ -1213,12 +1223,28 @@ export class AgentSession {
   ): Array<TextContent | ImageContent | VideoContent> {
     const parts: Array<TextContent | ImageContent | VideoContent> = [];
     const fileNotes: string[] = [];
-    const modelSupportsVideo = getModel(this.model)?.supportsVideo ?? false;
+    const modelInfo = getModel(this.model);
+    const modelSupportsVideo = modelInfo?.supportsVideo ?? false;
+    // GLM only: GLM models have no native image input, but the GLM session is
+    // the only one with the zai_vision MCP server connected (core/mcp/defaults.ts).
+    // Point at the real tool instead of an inline image the provider layer would
+    // blank into a placeholder. Every other provider keeps inline images.
+    const glmImageHint = this.provider === "glm" && modelInfo?.supportsImages === false;
     for (const a of attachments) {
       if (a.kind === "image") {
-        parts.push({ type: "image", mediaType: a.mediaType, data: a.data });
-        if (a.path) {
-          parts.push({ type: "text", text: `[Image saved at ${a.path}]` });
+        if (glmImageHint && a.path) {
+          parts.push({
+            type: "text",
+            text:
+              `[User attached an image saved at: ${a.path} — analyze it with the ` +
+              `mcp__zai_vision__analyze_image tool (if that tool is not available yet, ` +
+              `call tool_search with "analyze image" to unlock it first, then call it with image_source=${a.path})]`,
+          });
+        } else {
+          parts.push({ type: "image", mediaType: a.mediaType, data: a.data });
+          if (a.path) {
+            parts.push({ type: "text", text: `[Image saved at ${a.path}]` });
+          }
         }
       } else if (a.kind === "video") {
         // Mirror the CLI's buildUserContentWithAttachments: never send inline
@@ -1289,6 +1315,7 @@ export class AgentSession {
     this.idealReviewPhase = "idle";
     // No event here: clients reset their own hold on run_start.
     this.idealReviewArmed = false;
+    this.verificationArmed = false;
     this.idealDriftProbe = null;
     this.loopBreakInjected = 0;
     this.regroundingInjected = false;
@@ -1343,13 +1370,20 @@ export class AgentSession {
         // Verification-gate bookkeeping: successful code mutations and completed
         // foreground verification commands, in occurrence order.
         if (!event.isError && args) {
-          if (
-            (name === "edit" || name === "write") &&
-            isCodeFilePath(String((args as { file_path?: unknown }).file_path ?? ""))
-          ) {
-            this.verificationGate.recordMutation(
-              String((args as { file_path?: unknown }).file_path),
-            );
+          if (name === "edit" || name === "write") {
+            const filePath = String((args as { file_path?: unknown }).file_path ?? "");
+            // Check-owning files (tsconfig.json, pytest.ini, vitest.config.ts …)
+            // are tracked even when they are not source code: editing one is how
+            // a red suite is turned green without fixing anything.
+            if (filePath && (isCodeFilePath(filePath) || isCheckOwnFile(filePath))) {
+              const addedText =
+                name === "write"
+                  ? String((args as { content?: unknown }).content ?? "")
+                  : extractAddedLines(
+                      (event.details as { diff?: string } | undefined)?.diff ?? event.result,
+                    );
+              this.verificationGate.recordMutation(filePath, addedText);
+            }
           }
           if (
             name === "bash" &&
@@ -1374,12 +1408,12 @@ export class AgentSession {
         // Tool results are what push the run over the review gate, and they all
         // land before the model writes its candidate final answer — so this is
         // the point where arming still beats the draft's first token.
-        this.refreshIdealReviewArmed();
+        this.refreshHookArming();
         break;
       }
       case "turn_end":
         this.hookStats.turns = event.turn;
-        this.refreshIdealReviewArmed();
+        this.refreshHookArming();
         for (let index = this.messages.length - 1; index >= 0; index--) {
           const anchor = this.messages[index];
           if (anchor?.role === "assistant") {
@@ -1607,9 +1641,33 @@ export class AgentSession {
     return this.idealDriftProbe.drifted;
   }
 
-  /** Broadcast Ideal-review arming on change. Both edges matter: armed=false
-   *  after the review fires is what lets a client stream the REVIEWED final
-   *  answer live again. */
+  /** Would a stop right now inject the verification gate? Same conditions as
+   *  the pre-stop branch below, so arming and injection cannot disagree. */
+  private wouldInjectVerification(): boolean {
+    if (this.opts.selfCorrectionHooks === false) return false;
+    if (!this.settingsManager.get("verificationGateEnabled")) return false;
+    if (this.opts.allowedTools && !this.opts.allowedTools.includes("bash")) return false;
+    return this.verificationGate.willInject();
+  }
+
+  /** Broadcast pre-final hook arming on change. Both edges matter: armed=false
+   *  after the hook fires is what lets a client stream the REVIEWED final
+   *  answer live again.
+   *
+   *  Callable before `initialize()`: the sidecar sets Ken's review suppression
+   *  on a freshly constructed session, and every arming predicate below reads
+   *  settings that `initialize()` has not loaded yet. Nothing can be armed
+   *  before the session can run a turn, and the first `tool_result`/`turn_end`
+   *  recomputes both edges — so skipping is the correct answer, not a patch. */
+  private refreshHookArming(): void {
+    if (!this.settingsManager) return;
+    this.refreshIdealReviewArmed();
+    const armed = this.wouldInjectVerification();
+    if (armed === this.verificationArmed) return;
+    this.verificationArmed = armed;
+    this.eventBus.emit("hook_armed", { kind: "verification", armed });
+  }
+
   private refreshIdealReviewArmed(): void {
     const armed = this.wouldInjectIdealReview();
     if (armed === this.idealReviewArmed) return;
@@ -1652,6 +1710,11 @@ export class AgentSession {
       const verificationFollowUp = this.verificationGate.followUp();
       if (verificationFollowUp) {
         log("INFO", "verification-gate", "Injecting verification follow-up", {});
+        // Announce, THEN disarm: clients release held text on disarm, so the
+        // reverse order paints the draft and immediately deletes it — the exact
+        // flash arming exists to prevent.
+        this.eventBus.emit("hook", { kind: "verification" });
+        this.refreshHookArming();
         return verificationFollowUp;
       }
     }
@@ -2733,7 +2796,7 @@ export class AgentSession {
     }
     // Suppression flips mid-run (autopilot takes over verification), so a client
     // holding a draft under a stale arming must be released.
-    this.refreshIdealReviewArmed();
+    this.refreshHookArming();
   }
 
   /** Queue a user message (optionally with attachments) to be injected mid-run

@@ -4,6 +4,7 @@ import type { ContextLimits } from "../core/context-limits.js";
 import { SubAgentManager, type SubAgentSnapshot } from "../core/subagent-manager.js";
 import { ProcessManager } from "../core/process-manager.js";
 import { LspManager } from "../core/lsp/manager.js";
+import type { EditSource } from "../core/lsp/edit-telemetry.js";
 import { createReadTool } from "./read.js";
 import { getVideoByteLimit } from "../core/model-registry.js";
 import { createWriteTool } from "./write.js";
@@ -178,8 +179,8 @@ export async function createTools(
   const lspEnabled = (opts?.lspDiagnostics ?? true) && ops === localOperations;
   const lspManager = lspEnabled ? new LspManager(cwd) : undefined;
   const getDiagnostics = lspManager
-    ? (filePath: string, content: string): Promise<string> =>
-        lspManager.diagnosticsAfterWrite(filePath, content)
+    ? (filePath: string, content: string, source?: EditSource): Promise<string> =>
+        lspManager.diagnosticsAfterWrite(filePath, content, source)
     : undefined;
 
   const tools: AgentTool[] = [

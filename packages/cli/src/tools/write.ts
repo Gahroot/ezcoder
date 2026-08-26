@@ -16,7 +16,7 @@ import { resolveWriteGuard, type WriteGuardSettings } from "../core/workspace-gu
 type MutationCallback = (filePath: string) => void | Promise<void>;
 
 /** Post-write diagnostics provider (LSP). Non-empty results are appended to successful tool output. */
-type DiagnosticsProvider = (filePath: string, content: string) => Promise<string>;
+type DiagnosticsProvider = (filePath: string, content: string, source?: "write") => Promise<string>;
 
 function isMutationCallback(value: unknown): value is MutationCallback {
   return typeof value === "function";
@@ -115,7 +115,7 @@ export function createWriteTool(
       let diagnosticsNote = "";
       if (getDiagnostics) {
         try {
-          diagnosticsNote = await getDiagnostics(resolved, content);
+          diagnosticsNote = await getDiagnostics(resolved, content, "write");
         } catch {
           // Diagnostics must never break a successful write.
         }

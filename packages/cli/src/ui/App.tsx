@@ -209,6 +209,7 @@ import {
   IDEAL_HOOK_NOTICE_TEXT,
   LOOP_BREAK_NOTICE_TEXT,
   REGROUNDING_NOTICE_TEXT,
+  VERIFICATION_HOOK_NOTICE_TEXT,
   TRUNCATED_CONTINUING_NOTICE_TEXT,
   TRUNCATED_INCOMPLETE_NOTICE_TEXT,
   TRUNCATED_EMPTY_RESPONSE_NOTICE_TEXT,
@@ -2208,11 +2209,23 @@ export function App(props: AppProps) {
         }
 
         // Verification gate: code was edited but no test/typecheck/lint/build
-        // completed since the last edit — block "done" until it runs (or the
-        // budget escalates to an honest unverified statement).
+        // completed since the last edit — demand it once, then let the run stop.
         if (verificationGateEnabledRef.current) {
           const verificationFollowUp = verificationGateRef.current.followUp();
-          if (verificationFollowUp) return verificationFollowUp;
+          if (verificationFollowUp) {
+            // Say why the run is continuing past its apparent end, or the extra
+            // answer reads as the agent talking to itself.
+            setLiveItems((prev) => [
+              ...prev,
+              {
+                kind: "ideal_hook",
+                text: VERIFICATION_HOOK_NOTICE_TEXT,
+                tone: "review",
+                id: getId(),
+              },
+            ]);
+            return verificationFollowUp;
+          }
         }
 
         const steps = planStepsRef.current;
@@ -2875,6 +2888,7 @@ export function App(props: AppProps) {
         inputImages,
         modelSupportsImages,
         modelSupportsVideo,
+        modelInfo?.provider,
       );
 
       // ── Queue message if agent is already running ──
