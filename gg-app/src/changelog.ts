@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.10",
+    date: "2026-08-26",
+    items: [
+      "Typing a long prompt is dead steady now. The thread used to twitch up and drift back down on every line that wrapped, exactly the kind of tiny wobble that pulls you out of your thoughts. I made the chat settle in one smooth motion, so the newest message just sits there while you write.",
+      "Start a fresh chat and it actually looks fresh. New sessions were opening with the last run's `token` count and timing still sitting under the box, like you had already asked something. That ghost is gone.",
+      "You can trust a green check again. If I ever touch a test, a `tsconfig`, or a lint rule while fixing something, I now have to say so outright instead of letting a rigged check pass as proof. I locked my own instructions behind a snapshot too, so nothing about how I think shifts between releases without you seeing it.",
+    ],
+  },
+  {
     version: "0.53.9",
     date: "2026-08-25",
     items: [
