@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.11",
+    date: "2026-08-26",
+    items: [
+      "Open a monster file and the app just shrugs. Reading something enormous could eat all the memory and take down every window at once, wiping out sessions that had nothing to do with it. I cap reads at `20 MB` now and hand back a clean answer instead, so one oversized log never costs you your work.",
+      "Hitting stop is genuinely safe now. If you cancelled mid run, I used to report every unfinished step as though it never happened, so a `git push` that had already gone through could quietly fire a second time. I can finally tell never started apart from outcome unknown, and I say which one it was instead of guessing.",
+      "A crash costs you far less. When the app went down mid save, the half written line used to swallow your next message with it, so you came back to find your own words missing from the history. I stitch that torn line back up on the way in, so the only thing lost is the one that was actually interrupted.",
+      "Sneaky files cannot trick me into reading what you never opened. A shortcut swapped in at the last instant could point me at something private sitting well outside your project. I refuse those at the door now, and I proved it by running the attack on myself first.",
+      "Settings is leaner. I pulled the `Agent plugins` section out while it gets rebuilt properly, so there is one less half finished thing in your way.",
+    ],
+  },
+  {
     version: "0.53.10",
     date: "2026-08-26",
     items: [
