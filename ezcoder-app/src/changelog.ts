@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.64",
+    date: "2026-08-26",
+    items: [
+      "Download local Hugging Face models from a searchable picker with live progress, and send images to GLM models across macOS, Linux, and Windows.",
+      "Long transcripts stay pinned while streaming, stale status text clears correctly, and the composer resizes without jumping around.",
+      "Autopilot now reviews plan structure, respects whole-reply limits, handles compound verification commands, and recovers from more interrupted runs.",
+      "Sandbox socket access is explicit, invisible Unicode is stripped from fetched and MCP content, and vulnerable transitive dependencies were refreshed.",
+      "Settings no longer shows the inactive Agent plugins installer.",
+    ],
+  },
+  {
     version: "0.1.63",
     date: "2026-08-17",
     items: [
