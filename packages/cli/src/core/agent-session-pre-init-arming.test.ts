@@ -1,7 +1,7 @@
 /**
  * Arming refreshes must survive being called BEFORE `initialize()`.
  *
- * `app-sidecar.ts` builds Ken's autopilot reviewer by constructing the session,
+ * `app-sidecar.ts` builds Nolan's autopilot reviewer by constructing the session,
  * calling `setIdealReviewSuppressed(true)`, and only THEN awaiting
  * `initialize()` — suppression has to be set before the session can ever run a
  * turn. That setter refreshes hook arming, and every arming predicate reads
@@ -10,7 +10,7 @@
  * The ideal-review predicate returns early on `idealReviewSuppressed`, so it
  * never noticed. The verification predicate has no such early-return, so once
  * arming started refreshing BOTH, this path threw
- * `Cannot read properties of undefined (reading 'get')` and Ken's autopilot
+ * `Cannot read properties of undefined (reading 'get')` and Nolan's autopilot
  * session could never be created — every review failed with an error frame.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -26,10 +26,10 @@ let tmpProject: string;
 let session: AgentSession | undefined;
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-preinit-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-preinit-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-preinit-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-preinit-"));
   restoreHome = useFakeHome(tmpHome);
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
 });
 
 afterEach(async () => {
@@ -53,14 +53,14 @@ async function construct(): Promise<AgentSession> {
 }
 
 describe("arming before initialize()", () => {
-  it("suppressing ideal review before initialize does not throw (Ken autopilot boot order)", async () => {
-    const ken = await construct();
-    expect(() => ken.setIdealReviewSuppressed(true)).not.toThrow();
-    await expect(ken.initialize()).resolves.not.toThrow();
+  it("suppressing ideal review before initialize does not throw (Nolan autopilot boot order)", async () => {
+    const nolanAgent = await construct();
+    expect(() => nolanAgent.setIdealReviewSuppressed(true)).not.toThrow();
+    await expect(nolanAgent.initialize()).resolves.not.toThrow();
   });
 
   it("un-suppressing before initialize does not throw either", async () => {
-    const ken = await construct();
-    expect(() => ken.setIdealReviewSuppressed(false)).not.toThrow();
+    const nolanAgent = await construct();
+    expect(() => nolanAgent.setIdealReviewSuppressed(false)).not.toThrow();
   });
 });

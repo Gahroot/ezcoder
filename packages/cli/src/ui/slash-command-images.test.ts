@@ -94,7 +94,7 @@ describe("prompt-template slash commands with attachments", () => {
     expect(parts[1]!.text).toContain("mcp__zai_vision__analyze_image");
     expect(parts[1]!.text).toContain("tool_search");
     expect(parts[1]!.text).not.toContain("image_analysis tool");
-    expect(parts[1]!.text).toMatch(/ggcoder-img-\d+\.png/);
+    expect(parts[1]!.text).toMatch(/ezcoder-img-\d+\.png/);
   });
 
   it("keeps the non-GLM no-vision hint byte-identical (no zai tool named)", () => {
@@ -121,7 +121,7 @@ describe("prompt-template slash commands with attachments", () => {
     expect(parts[1]!.text).not.toContain("zai_vision");
     expect(parts[1]!.text).not.toContain("tool_search");
     expect(parts[1]!.text).toMatch(
-      /^\[User attached an image saved at: .*ggcoder-img-\d+\.png — use the image_analysis tool to view and analyze it]$/,
+      /^\[User attached an image saved at: .*ezcoder-img-\d+\.png — use the image_analysis tool to view and analyze it]$/,
     );
   });
 

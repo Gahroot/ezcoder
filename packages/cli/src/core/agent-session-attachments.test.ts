@@ -2,12 +2,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as GgAgentModule from "@kenkaiiii/gg-agent";
+import type * as GgAgentModule from "@prestyj/agent";
 import type * as McpModule from "./mcp/index.js";
 import { useFakeHome } from "../test-support/fake-home.js";
 
-vi.mock("@kenkaiiii/gg-agent", async () => {
-  const actual = await vi.importActual<typeof GgAgentModule>("@kenkaiiii/gg-agent");
+vi.mock("@prestyj/agent", async () => {
+  const actual = await vi.importActual<typeof GgAgentModule>("@prestyj/agent");
   return { ...actual, agentLoop: vi.fn(() => (async function* emptyLoop() {})()) };
 });
 
@@ -29,9 +29,9 @@ beforeEach(async () => {
   tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "attach-home-"));
   tempProject = await fs.mkdtemp(path.join(os.tmpdir(), "attach-project-"));
   restoreHome = useFakeHome(tempHome);
-  await fs.mkdir(path.join(tempHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tempHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tempHome, ".gg", "auth.json"),
+    path.join(tempHome, ".ezcoder", "auth.json"),
     JSON.stringify({
       anthropic: {
         accessToken: "test-anthropic-token",
@@ -57,7 +57,7 @@ const image = {
   mediaType: "image/png",
   data: "iVBORw0KGgo=",
   name: "screenshot.png",
-  path: "/tmp/ggcoder-img-123.png",
+  path: "/tmp/ezcoder-img-123.png",
 };
 
 async function createSession(provider: "anthropic" | "glm", model: string) {

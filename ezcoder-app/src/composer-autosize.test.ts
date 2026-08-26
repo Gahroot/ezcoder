@@ -143,7 +143,7 @@ describe("autosizeComposer", () => {
 
   // Second regression: the pin was restored a frame LATE (the ResizeObserver
   // did it), so every keystroke that wrapped a line showed the transcript sit a
-  // row off the bottom and then settle — the jitter Ken saw while typing.
+  // row off the bottom and then settle — the jitter Nolan saw while typing.
   it("lands at the bottom in the same pass, leaving nothing for the observer", () => {
     const { offBottomAfterAutosize } = typeLineBreaks(6);
     expect(offBottomAfterAutosize).toEqual([0, 0, 0, 0, 0, 0]);

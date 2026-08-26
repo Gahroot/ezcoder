@@ -4742,12 +4742,12 @@ async function createSession(
           json(res, 400, { error: "invalid JSON body" });
           return;
         }
-        // Same lock as POST /model, for the same reason: this retargets Ken's
+        // Same lock as POST /model, for the same reason: this retargets Nolan's
         // chat session AND the autopilot reviewer, and `switchModel` on a
         // session mid-turn races the stream it is already consuming. The
         // footer picker is disabled to match; this is the enforcement.
-        if (running || kenRunning || autopilotReviewing) {
-          json(res, 409, { error: "cannot switch Ken's model while running" });
+        if (running || nolanRunning || autopilotReviewing) {
+          json(res, 409, { error: "cannot switch Nolan's model while running" });
           return;
         }
         if (modelId === null) {

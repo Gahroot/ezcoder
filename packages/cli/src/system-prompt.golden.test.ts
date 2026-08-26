@@ -26,7 +26,7 @@ import { CORE_TOOL_NAMES, DEFERRED_TOOL_NAMES, partitionToolsByTier } from "./to
  * tool description, or a tool's parameter schema fails this test until the
  * golden is regenerated on purpose:
  *
- *     UPDATE_GOLDEN=1 pnpm --filter @kenkaiiii/ggcoder test -- system-prompt.golden
+ *     UPDATE_GOLDEN=1 pnpm --filter @prestyj/cli test -- system-prompt.golden
  *
  * Regenerating is one command and always legitimate — the point is that it is a
  * DELIBERATE act that shows up in the diff of the commit that caused it.
@@ -46,15 +46,15 @@ let previousGgBash: string | undefined;
 beforeEach(() => {
   // The bash tool's description branches on whether a POSIX shell exists, so on
   // a bash-less Windows host it would differ from every other platform. Pinning
-  // GG_BASH forces the POSIX branch everywhere, keeping ONE golden valid on
+  // EZ_BASH forces the POSIX branch everywhere, keeping ONE golden valid on
   // Linux, macOS and the blocking Windows CI leg.
-  previousGgBash = process.env.GG_BASH;
-  process.env.GG_BASH = "/bin/bash";
+  previousGgBash = process.env.EZ_BASH;
+  process.env.EZ_BASH = "/bin/bash";
 });
 
 afterEach(async () => {
-  if (previousGgBash === undefined) delete process.env.GG_BASH;
-  else process.env.GG_BASH = previousGgBash;
+  if (previousGgBash === undefined) delete process.env.EZ_BASH;
+  else process.env.EZ_BASH = previousGgBash;
   while (tempDirs.length > 0) {
     await fs.rm(tempDirs.pop()!, { recursive: true, force: true });
   }
@@ -103,7 +103,7 @@ async function buildPrefix(): Promise<{
   coreNames: string[];
   deferredNames: string[];
 }> {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ggcoder-golden-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ezcoder-golden-"));
   tempDirs.push(cwd);
 
   const { tools, processManager } = await createTools(cwd, {
@@ -192,7 +192,7 @@ describe("cached prompt prefix golden", () => {
     const golden = await fs.readFile(GOLDEN_PATH, "utf8").catch(() => null);
     expect(
       golden,
-      `No golden prefix on disk. Create it with:\n  UPDATE_GOLDEN=1 pnpm --filter @kenkaiiii/ggcoder test -- system-prompt.golden`,
+      `No golden prefix on disk. Create it with:\n  UPDATE_GOLDEN=1 pnpm --filter @prestyj/cli test -- system-prompt.golden`,
     ).not.toBeNull();
 
     const expected = golden!.replace(/\r\n/g, "\n");
@@ -209,7 +209,7 @@ describe("cached prompt prefix golden", () => {
           "",
           "If this change was intended, regenerate the golden so it lands in the",
           "same commit and gets reviewed:",
-          "  UPDATE_GOLDEN=1 pnpm --filter @kenkaiiii/ggcoder test -- system-prompt.golden",
+          "  UPDATE_GOLDEN=1 pnpm --filter @prestyj/cli test -- system-prompt.golden",
           "",
         ].join("\n"),
       );

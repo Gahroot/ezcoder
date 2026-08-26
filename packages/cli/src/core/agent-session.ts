@@ -1654,7 +1654,7 @@ export class AgentSession {
    *  after the hook fires is what lets a client stream the REVIEWED final
    *  answer live again.
    *
-   *  Callable before `initialize()`: the sidecar sets Ken's review suppression
+   *  Callable before `initialize()`: the sidecar sets Nolan's review suppression
    *  on a freshly constructed session, and every arming predicate below reads
    *  settings that `initialize()` has not loaded yet. Nothing can be armed
    *  before the session can run a turn, and the first `tool_result`/`turn_end`

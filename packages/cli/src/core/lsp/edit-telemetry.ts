@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getAppPaths } from "@kenkaiiii/gg-core";
+import { getAppPaths } from "@prestyj/core";
 
 /**
  * Which mechanism produced the change, so a regression can be traced back to

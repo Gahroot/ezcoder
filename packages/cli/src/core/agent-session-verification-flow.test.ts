@@ -11,9 +11,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { Message } from "@prestyj/ai";
 import { useFakeHome } from "../test-support/fake-home.js";
-import type { AgentEvent } from "@kenkaiiii/gg-agent";
+import type { AgentEvent } from "@prestyj/agent";
 import type { AgentSession } from "./agent-session.js";
 
 interface FlowInternals {
@@ -30,12 +30,12 @@ let tmpProject: string;
 let session: AgentSession | undefined;
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-verify-flow-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-verify-flow-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-verify-flow-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-verify-flow-"));
   restoreHome = useFakeHome(tmpHome);
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tmpHome, ".gg", "auth.json"),
+    path.join(tmpHome, ".ezcoder", "auth.json"),
     JSON.stringify({
       anthropic: {
         accessToken: "test-token",
@@ -145,7 +145,7 @@ describe("verification gate flow", () => {
     expect(VERIFICATION_HOOK_NOTICE_TEXT).toContain("verification");
 
     const appEvents = await fs.readFile(
-      path.join(__dirname, "..", "..", "..", "..", "gg-app", "src", "useAgentEvents.ts"),
+      path.join(__dirname, "..", "..", "..", "..", "ezcoder-app", "src", "useAgentEvents.ts"),
       "utf-8",
     );
     const presentation = appEvents.slice(
