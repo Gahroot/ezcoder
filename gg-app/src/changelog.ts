@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.53.12",
+    date: "2026-08-27",
+    items: [
+      "No new buttons this time, just fresher foundations. I updated the core libraries GG Coder runs on, including `tokio` and `serde`, so the app stays current and steady underneath you while I build the next batch.",
+    ],
+  },
+  {
     version: "0.53.11",
     date: "2026-08-26",
     items: [
