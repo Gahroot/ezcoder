@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.55.1",
+    date: "2026-08-29",
+    items: [
+      "Your chat box finally sits still. Type all the way to the edge of the first line and it used to bounce up and down on every keystroke, yanking the text out from under your eyes. I taught it to make up its mind once and hold, so writing long prompts is calm again.",
+      "The bar along the bottom feels smoother to use. Hovering `Thinking` or a model name no longer slaps an underline on it. The text just warms up brightly under your cursor and stays exactly where it is, so nothing twitches while you aim.",
+    ],
+  },
+  {
     version: "0.55.0",
     date: "2026-08-29",
     items: [
