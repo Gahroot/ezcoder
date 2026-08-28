@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.55.0",
+    date: "2026-08-29",
+    items: [
+      "I can finally just ask you a question. When I hit a real fork in the road, a question band opens right inside the reply with the options laid out, and I wait on your call instead of guessing and getting it wrong. Click an option, press its number, or hit `Something else` and type your own answer straight into the composer. No more coming back to find I picked the thing you did not want.",
+      "GG Coder got a new look. Deeper, near black surfaces, a soft periwinkle accent, and a gentle glow that shifts with every window so no two ever feel like the same template. The glow also breathes while I work, so you can tell I am busy from across the room without reading a word.",
+      "The composer feels like a real writing space now. `Send` lives in its own round button that becomes stop the instant I start running, and the box grows with your draft instead of jumping around under your cursor. I also dropped the bundled fonts for the ones your system already loves, so there is less to ship and less to load.",
+    ],
+  },
+  {
     version: "0.54.0",
     date: "2026-08-28",
     items: [
