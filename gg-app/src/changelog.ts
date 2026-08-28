@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.55.2",
+    date: "2026-08-29",
+    items: [
+      "My questions are clickable again. I had started slipping them back into the reply as a line of text, so you were stuck typing out an answer to something that should take one tap. Now every question I end on, even a casual `want me to also do this?`, opens the real question band with the options ready to pick.",
+    ],
+  },
+  {
     version: "0.55.1",
     date: "2026-08-29",
     items: [
