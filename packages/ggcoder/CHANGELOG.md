@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.51.0
+
+### Minor Changes
+
+- Add the `ask_user` tool so the agent can ask a structured question mid-run and block on the answer, with the request parked until the user replies or it times out
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.51.0
+- @kenkaiiii/gg-agent@5.51.0
+- @kenkaiiii/gg-core@5.51.0
+
 ## 5.50.0
 
 ### Patch Changes
