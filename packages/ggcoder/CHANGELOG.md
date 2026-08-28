@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.51.1
+
+### Patch Changes
+
+- Route every end-of-reply question through the `ask_user` tool when it is registered, instead of writing it as a markdown blockquote the user has to type an answer to.
+  - @kenkaiiii/gg-ai@5.51.1
+  - @kenkaiiii/gg-agent@5.51.1
+  - @kenkaiiii/gg-core@5.51.1
+
 ## 5.51.0
 
 ### Minor Changes
