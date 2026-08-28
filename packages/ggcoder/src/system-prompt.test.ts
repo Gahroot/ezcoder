@@ -117,10 +117,21 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(
       "ONE recommended approach — default to X, switch to Y only when [condition] — not a menu, unless a command's flow defines its own options.",
     );
-    // The user-facing ask gets a dedicated markdown blockquote (rendered with a
-    // left gutter in both the TUI and GG App), and nothing else may use one, so
-    // a `>` in a reply always means "the agent is waiting on you".
-    expect(prompt).toContain("**Blockquote = the ask.**");
+    // The ask has exactly one channel, and the routing rule is about WHETHER a
+    // question exists, not how important it is. Any question the reply would end
+    // on — a blocking decision or a soft "want me to also…?" — goes through
+    // `ask_user` when it is registered, and no asking line may follow: a card
+    // AND a blockquote asking the same thing was the regression. Equally, the
+    // rule must not manufacture questions, so "no question" stays a valid ending.
+    // Without the tool, the ask falls back to a dedicated markdown blockquote
+    // (rendered with a left gutter in both the TUI and GG App), and nothing else
+    // may use one, so a `>` in a reply always means "the agent is waiting on you".
+    expect(prompt).toContain("**The ask = ONE channel, never two.**");
+    expect(prompt).toContain("No question? Just end; never invent one.");
+    expect(prompt).toContain('Any question — blocker or soft "want me to also…?"');
+    expect(prompt).toContain("the reply ends with NO asking line");
+    expect(prompt).toContain("never restated as text");
+    expect(prompt).toContain("Without it, the ask is the last line");
     expect(prompt).toContain("Blockquote nothing else");
     expect(prompt).not.toContain(
       "Do not default to generic tests, scripts, screenshots, benchmarks, or simulations",
@@ -218,7 +229,7 @@ describe("buildSystemPrompt", () => {
     // ask, batched question lists), so a 900-word reply satisfied every rule.
     // These assertions keep the cap total and the escape hatches deleted.
     expect(talk).toContain("Prose, lists, headers, the ask — everything counts, nothing is exempt");
-    expect(talk).toContain("still inside the budget");
+    expect(talk).toContain("each with your pick, inside the budget");
     expect(talk).not.toContain("prose only; a step list or the ask doesn't count");
     expect(talk).not.toContain("exempt from the reply and list caps");
     expect(talk).not.toContain("Question lists are payload");
@@ -347,7 +358,7 @@ describe("buildSystemPrompt", () => {
       // asking is sanctioned for decisions only, and asking well means one
       // batched, recommendation-annotated list instead of an interrogation drip.
       "only decisions (taste, product calls, real tradeoffs) reach the user",
-      "one numbered list, every open question",
+      "Several: one numbered list, each with your pick",
     ]) {
       expect(prompt).toContain(required);
     }

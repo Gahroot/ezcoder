@@ -58,7 +58,11 @@ import {
   readDroppedFileAttachment,
   type Attachment,
   type PromptSegment,
+  type AskUserPrompt,
+  answerAskUser,
 } from "./agent";
+import { mergeAskAnswers } from "./ask-user";
+import { glowPlacement, glowStateFor, glowVars } from "./window-glow";
 import { ActivityBar } from "./ActivityBar";
 import { autosizeComposer } from "./composer-autosize";
 import { KenActivityBar } from "./KenActivityBar";
@@ -98,6 +102,7 @@ import { KenPowerBanner } from "./KenPowerBanner";
 import { ExportChatButton } from "./ExportChatButton";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { McpElicitModal } from "./McpElicitModal";
+import { AskBand } from "./AskBand";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 // Experimental gaze focus — disabled for now (see main.tsx).
 // import { GazeButton } from "./GazeButton";
@@ -125,7 +130,7 @@ import { useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
 import { playSound } from "./sounds";
 import { segmentDoneMarkers, hasDoneMarker, countPlanSteps } from "./plan-steps";
-import { Paperclip, AtSign } from "lucide-react";
+import { Paperclip, AtSign, ArrowUp, Square } from "lucide-react";
 import { AttachmentBar } from "./AttachmentBar";
 import { EnhancedSegments } from "./PromptEnhancement";
 import { EnhanceDissolve } from "./EnhanceDissolve";
@@ -155,6 +160,9 @@ const INPUT_PLACEHOLDER_INTERVAL_MS = 12_000;
 const PLACEHOLDER_SHUFFLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const PLACEHOLDER_SHUFFLE_FRAMES = 18;
 const PLACEHOLDER_SHUFFLE_FRAME_MS = 24;
+// A drag that stops delivering events for this long is over: the platform
+// swallowed the terminal leave/drop (see the drag-overlay watchdog below).
+const STALE_DRAG_OVERLAY_MS = 2_500;
 
 // Autopilot Ken's "all clear" line, rotated so the auto-review loop doesn't
 // repeat the exact same sentence every time GG Coder's work checks out.
@@ -265,6 +273,19 @@ export type Item =
   | { kind: "generating_image"; id: number; prompt: string }
   // Plan-mode entry banner (ASCII logo + optional reason).
   | { kind: "plan"; id: number; reason: string }
+  // A question from the `ask_user` tool — clickable options rendered in the
+  // thread. The turn is blocked until the answers are sent, or until the run
+  // ends without them (`cancelled`, which closes the band).
+  | {
+      kind: "ask";
+      id: number;
+      prompt: AskUserPrompt;
+      /** Answers so far. Partial until every question in the band has one. */
+      answers?: Record<string, string | string[]>;
+      /** The complete set reached the blocked tool call. */
+      sent?: boolean;
+      cancelled?: boolean;
+    }
   // A task kicked off from the Tasks modal (shown at the top of its session).
   | { kind: "task"; id: number; title: string }
   // Sub-agents delegated in a turn — a live, in-chat feed of each one's tools.
@@ -436,6 +457,30 @@ function App(): React.ReactElement {
   // once its slide-out animation finishes.
   const [kenPowerBanner, setKenPowerBanner] = useState<"on" | "off" | null>(null);
   const [running, setRunning] = useState(false);
+  // Whether a run has completed in this window. Drives the ambient glow's
+  // "done" state, which PERSISTS until the next run starts — the window really
+  // is finished until you ask for something else (see window-glow.ts).
+  const [hasFinishedRun, setHasFinishedRun] = useState(false);
+
+  // Stable per window: seeded off the label, so a tiled grid never shows the
+  // same glow twice, and a given window keeps its placement across reloads.
+  const glowStyle = useMemo(() => glowVars(glowPlacement(windowLabel)), []);
+  const glowState = glowStateFor(running, hasFinishedRun);
+
+  // Watching the `running` flag keeps this in one place rather than threaded
+  // through every path that can end a run (finish, cancel, error). No timers:
+  // the state is durable, so there is nothing to retire.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (running) {
+      wasRunning.current = true;
+      setHasFinishedRun(false);
+      return;
+    }
+    if (!wasRunning.current) return;
+    wasRunning.current = false;
+    setHasFinishedRun(true);
+  }, [running]);
   const cancelling = state?.runState === "cancelling";
   const requestCancel = useCallback(() => {
     if (cancelling) return;
@@ -786,6 +831,32 @@ function App(): React.ReactElement {
     stickToBottomRef.current = distanceFromBottom <= 48;
   }, []);
 
+  // The "Drop files to attach" overlay must never outlive the drag. macOS keeps
+  // Tauri's native drag-drop handler (so folder drops carry a real path), and
+  // that handler can swallow the terminal `leave`/`drop` event — a drag that is
+  // cancelled, or released where the webview refuses the drop, then pinned the
+  // overlay to the screen forever. So: every drag event re-arms a watchdog, and
+  // any real pointer/key input clears a stale overlay (no pointer or key events
+  // are delivered while a drag session is actually in flight).
+  const dragWatchdogRef = useRef<number | null>(null);
+  const setDragOverActive = useCallback((active: boolean): void => {
+    setIsFileDragOver(active);
+    if (dragWatchdogRef.current !== null) window.clearTimeout(dragWatchdogRef.current);
+    dragWatchdogRef.current = active
+      ? window.setTimeout(() => setIsFileDragOver(false), STALE_DRAG_OVERLAY_MS)
+      : null;
+  }, []);
+
+  useEffect(() => {
+    if (!isFileDragOver) return;
+    const clear = (): void => setDragOverActive(false);
+    const events = ["pointermove", "pointerdown", "keydown", "blur"] as const;
+    for (const name of events) window.addEventListener(name, clear);
+    return () => {
+      for (const name of events) window.removeEventListener(name, clear);
+    };
+  }, [isFileDragOver, setDragOverActive]);
+
   const insertDroppedFolderPaths = useCallback((paths: string[]): void => {
     if (paths.length === 0) return;
     const text = paths.join(" ");
@@ -972,14 +1043,14 @@ function App(): React.ReactElement {
         if (disposed) return;
         const payload = event.payload;
         if (payload.type === "enter" || payload.type === "over") {
-          if (canHandleWindowFileDrop()) setIsFileDragOver(true);
+          if (canHandleWindowFileDrop()) setDragOverActive(true);
           return;
         }
         if (payload.type === "leave") {
-          setIsFileDragOver(false);
+          setDragOverActive(false);
           return;
         }
-        setIsFileDragOver(false);
+        setDragOverActive(false);
         if (!canHandleWindowFileDrop() || payload.paths.length === 0) return;
         void getDroppedPathInfo(payload.paths).then((infos) => {
           if (disposed) return;
@@ -996,7 +1067,7 @@ function App(): React.ReactElement {
       disposed = true;
       unlisten?.();
     };
-  }, [insertDroppedFolderPaths]);
+  }, [insertDroppedFolderPaths, setDragOverActive]);
 
   // Keep the native window title aligned with the visible title-bar context.
   useEffect(() => {
@@ -1074,12 +1145,11 @@ function App(): React.ReactElement {
     [autosizeInput],
   );
 
-  // Geist Mono is a webfont, so an early draft (a restored one, or fast typing
-  // right after launch) is measured in the fallback mono — which is WIDER than
-  // Geist Mono (8.65 vs 8.40px per char, measured in WebKit), wrapping text near
-  // a boundary a line further and leaving the box a line too tall. Re-measure
-  // once the real metrics are in. `ready` specifically: WebKit never dispatches
-  // the `loadingdone` event, so a listener there would be dead code.
+  // Re-measure once font metrics are settled: an early draft (a restored one,
+  // or fast typing right at launch) can be measured before the final face is
+  // resolved, wrapping a line further and leaving the box a line too tall.
+  // `ready` specifically: WebKit never dispatches `loadingdone`, so a listener
+  // there would be dead code.
   useEffect(() => {
     let cancelled = false;
     void document.fonts?.ready.then(() => {
@@ -1820,6 +1890,45 @@ function App(): React.ReactElement {
     [pushItem, endStreamingText],
   );
 
+  // A question whose answer the user chose to TYPE rather than click. The next
+  // composer submit belongs to it, not to a new prompt.
+  const typingAskRef = useRef<{ itemId: number; promptId: string; questionId: string } | null>(
+    null,
+  );
+
+  // Record answers for an `ask_user` band, and settle the parked tool call once
+  // every question in it has one. App owns the merge because an answer can also
+  // arrive from the composer, outside the band.
+  //
+  // The POST is optimistic: a failed one means the question already timed out or
+  // the run was cancelled, and re-opening the band would hand the user a button
+  // that can no longer reach anyone.
+  const answerAsk = useCallback(
+    (itemId: number, promptId: string, delta: Record<string, string | string[]>) => {
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.kind !== "ask" || it.id !== itemId || it.sent) return it;
+          const { answers, complete } = mergeAskAnswers(it.answers, delta, it.prompt.questions);
+          if (complete) void answerAskUser(promptId, "answer", answers).catch(() => {});
+          return { ...it, answers, ...(complete ? { sent: true } : {}) };
+        }),
+      );
+    },
+    [setItems],
+  );
+
+  // "Something else" on a question: send the user to the composer they already
+  // type in (seeded, when they got here by typing a character) instead of a
+  // second input inside the transcript.
+  const typeAskInstead = useCallback(
+    (itemId: number, promptId: string, questionId: string, seed?: string) => {
+      typingAskRef.current = { itemId, promptId, questionId };
+      if (seed) setInput((current) => current + seed);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [],
+  );
+
   // Record a sent prompt for ↑/↓ recall (skips consecutive duplicates, capped).
   function recordHistory(text: string): void {
     const h = promptHistoryRef.current;
@@ -1976,6 +2085,20 @@ function App(): React.ReactElement {
   // echoed inline in the user's bubble; all media is sent to the agent.
   function submit(): void {
     const trimmed = input.trim();
+    // "Type instead" on an open question band parks the answer here: the agent's
+    // tool call is blocked on it, so this text is the ANSWER, not a new prompt.
+    // Queueing it as steering would leave the tool call hanging until it times
+    // out, and the model would never see what the user typed. Only composer
+    // sends the user typed count — a command or scheduled prompt firing through
+    // submitText() must not consume the answer.
+    const typed = typingAskRef.current;
+    if (typed && trimmed) {
+      typingAskRef.current = null;
+      setInput("");
+      setSlashIndex(0);
+      answerAsk(typed.itemId, typed.promptId, { [typed.questionId]: trimmed });
+      return;
+    }
     if (!readyRef.current) return;
     if (!trimmed && attachments.length === 0 && mentionedPaths.length === 0) return;
 
@@ -2123,27 +2246,27 @@ function App(): React.ReactElement {
     if (!hasDraggedFiles(e.dataTransfer) || !canHandleWindowFileDrop()) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-    setIsFileDragOver(true);
+    setDragOverActive(true);
   }
 
   function handleWindowDragOver(e: React.DragEvent<HTMLDivElement>): void {
     if (!hasDraggedFiles(e.dataTransfer) || !canHandleWindowFileDrop()) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-    setIsFileDragOver(true);
+    setDragOverActive(true);
   }
 
   function handleWindowDragLeave(e: React.DragEvent<HTMLDivElement>): void {
     if (!hasDraggedFiles(e.dataTransfer)) return;
     const nextTarget = e.relatedTarget;
     if (nextTarget instanceof Node && e.currentTarget.contains(nextTarget)) return;
-    setIsFileDragOver(false);
+    setDragOverActive(false);
   }
 
   function handleWindowDrop(e: React.DragEvent<HTMLDivElement>): void {
     if (!hasDraggedFiles(e.dataTransfer)) return;
     e.preventDefault();
-    setIsFileDragOver(false);
+    setDragOverActive(false);
     if (!canHandleWindowFileDrop()) return;
     const files = filesForAttachment(e.dataTransfer);
     if (files.length > 0) void addFiles(files);
@@ -2319,7 +2442,8 @@ function App(): React.ReactElement {
   return (
     <div
       className={`app${isFileDragOver ? " app-file-dragover" : ""}${windowFocused ? " window-focused" : ""}`}
-      style={{ background: theme.background }}
+      data-glow={glowState}
+      style={{ background: theme.background, ...glowStyle }}
       onDragEnter={handleWindowDragEnter}
       onDragOver={handleWindowDragOver}
       onDragLeave={handleWindowDragLeave}
@@ -2499,7 +2623,13 @@ function App(): React.ReactElement {
                 ))}
               <PromptSendProvider value={sendKenRecommendedPrompt}>
                 {items.map((it) => (
-                  <TranscriptRow key={it.id} item={it} onContentGrow={maybeScrollToBottom} />
+                  <TranscriptRow
+                    key={it.id}
+                    item={it}
+                    onContentGrow={maybeScrollToBottom}
+                    onAskAnswer={answerAsk}
+                    onAskType={typeAskInstead}
+                  />
                 ))}
               </PromptSendProvider>
             </>
@@ -2593,15 +2723,12 @@ function App(): React.ReactElement {
             }}
           />
           <button
-            className="attach-btn"
+            className="icon-circle"
             title="Attach files"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Paperclip size={16} />
+            <Paperclip size={15} />
           </button>
-          <span className="prompt" style={{ color: theme.primary }}>
-            {">"}
-          </span>
           <div className="input-stack">
             {enhanceAnim && (
               <EnhanceDissolve
@@ -2713,6 +2840,28 @@ function App(): React.ReactElement {
               autoFocus
             />
           </div>
+          {/* Send doubles as the stop control mid-run, so the primary action
+              never moves. It stays on the text's line while the draft fits one
+              line, and drops below with the field once the text wraps. */}
+          <div className="inputactions-trailing">
+            <button
+              className="icon-circle icon-circle-primary"
+              title={running ? "Stop the run" : "Send"}
+              disabled={
+                cancelling ||
+                (!running &&
+                  !input.trim() &&
+                  attachments.length === 0 &&
+                  mentionedPaths.length === 0)
+              }
+              onClick={() => {
+                if (running) requestCancel();
+                else submit();
+              }}
+            >
+              {running ? <Square size={12} fill="currentColor" /> : <ArrowUp size={16} />}
+            </button>
+          </div>
         </div>
         {!enhanceAnim && (
           // Pill pinned to the center of the input box (.inputwrap) top border,
@@ -2742,10 +2891,7 @@ function App(): React.ReactElement {
         ) : (
           <>
             {workspaceMode === "chat" ? (
-              <span
-                className="footer-left footer-reveal"
-                style={{ color: theme.textDim, fontFamily: "var(--mono)" }}
-              >
+              <span className="footer-left footer-reveal" style={{ color: theme.textDim }}>
                 {state?.chatAgent === "therapist"
                   ? "Therapist Agent"
                   : state?.chatAgent === "research"
@@ -2753,7 +2899,7 @@ function App(): React.ReactElement {
                     : "General Agent"}
               </span>
             ) : (
-              <span className="footer-left footer-reveal" style={{ fontFamily: "var(--mono)" }}>
+              <span className="footer-left footer-reveal">
                 {runningTaskCount > 0 && <BackgroundTasksButton tasks={tasks} />}
                 {schedules.length > 0 && (
                   <>
@@ -2905,10 +3051,13 @@ function App(): React.ReactElement {
       {confirmNewSession && (
         <ConfirmModal
           title={workspaceMode === "chat" ? "New Chat" : "New Session"}
+          // Nothing is cleared: `newSession()` writes a NEW session file and
+          // leaves the old one on disk, still listed and re-openable. Saying
+          // "will be cleared" made a safe action read as destructive.
           message={
             workspaceMode === "chat"
-              ? "This will create a new chat. The current conversation will be cleared. Are you sure?"
-              : "This will create a new session for this project. The current conversation will be cleared. Are you sure?"
+              ? "Start a fresh chat with an empty context. This conversation stays saved \u2014 reopen it any time from the session list."
+              : "Start a fresh session with an empty context. This conversation stays saved \u2014 reopen it any time from the session list."
           }
           confirmLabel={workspaceMode === "chat" ? "New Chat" : "New Session"}
           busy={newSessionBusy}
@@ -3001,9 +3150,19 @@ function StreamingMarkdown({
 const TranscriptRow = memo(function TranscriptRow({
   item,
   onContentGrow,
+  onAskAnswer,
+  onAskType,
 }: {
   item: Item;
   onContentGrow?: () => void;
+  /** Record answers for an `ask_user` band (App settles the tool call). */
+  onAskAnswer?: (
+    itemId: number,
+    promptId: string,
+    delta: Record<string, string | string[]>,
+  ) => void;
+  /** Answer this question by typing in the composer instead of clicking. */
+  onAskType?: (itemId: number, promptId: string, questionId: string, seed?: string) => void;
 }): React.ReactElement | null {
   switch (item.kind) {
     case "user":
@@ -3238,6 +3397,19 @@ const TranscriptRow = memo(function TranscriptRow({
       );
     case "plan":
       return <PlanModeLogo reason={item.reason} />;
+    case "ask":
+      return (
+        <AskBand
+          prompt={item.prompt}
+          answers={item.answers}
+          sent={item.sent}
+          cancelled={item.cancelled}
+          onAnswer={(delta) => onAskAnswer?.(item.id, item.prompt.id, delta)}
+          onTypeInstead={(questionId, seed) =>
+            onAskType?.(item.id, item.prompt.id, questionId, seed)
+          }
+        />
+      );
     case "task":
       return (
         <div className="line task-row">

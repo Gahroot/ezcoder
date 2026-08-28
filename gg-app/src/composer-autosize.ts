@@ -28,15 +28,64 @@ export function autosizeComposer(
   // event, carrying the restored offset.
   const savedTop = transcript?.scrollTop;
   el.style.overflowY = "hidden";
+  // `.input` transitions its height, and reading scrollHeight below forces a
+  // synchronous layout — so without care the browser takes the collapsed `auto`
+  // height as the transition's start value and animates 1 line → N on EVERY
+  // keystroke. Snapshot the real height, restore it, and force ONE more layout
+  // so that restored value is what the browser commits as the start; only then
+  // write the target. Skipping the second read makes the restore invisible
+  // (the browser coalesces both writes) and the animation breaks again.
+  const before = el.style.height;
   el.style.height = "auto";
   const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
   const content = el.scrollHeight;
-  el.style.height = `${Math.min(content, max)}px`;
+  const next = `${Math.min(content, max)}px`;
+  if (before !== next) {
+    el.style.height = before;
+    void el.offsetHeight;
+  }
+  el.style.height = next;
   // Only past the cap does the scrollbar earn its width. Below it, keeping
   // overflow hidden also avoids a phantom grey scrollbar under CSS zoom > 1,
   // where scrollHeight rounds down to an integer of unzoomed px and leaves the
   // content a hair taller than the height just set.
   if (content > max) el.style.overflowY = "auto";
+  // One line keeps the caret beside the paperclip; past that the field claims
+  // the whole row and the circles drop beneath it, moving the text up and left.
+  // Compared against the padded height of a single line (scrollHeight includes
+  // the field's vertical padding), so an empty draft with one newline counts as
+  // exactly two lines rather than tipping over a pixel guess.
+  const row = el.closest(".inputrow");
+  if (row) {
+    const cs = getComputedStyle(el);
+    const line = parseFloat(cs.lineHeight) || 0;
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) || 0;
+    const next = line > 0 && content > line + pad + 1;
+    if (next !== row.classList.contains("is-multiline")) {
+      // A flex reflow cannot be transitioned — the field teleports up and left
+      // the instant it claims the row. FLIP it instead: measure where it was,
+      // let the reflow happen, then translate it back to the old position and
+      // release, so CSS animates the offset away. The browser only ever paints
+      // the smooth path.
+      const stack = el.parentElement;
+      const first = stack?.getBoundingClientRect();
+      row.classList.toggle("is-multiline", next);
+      const last = stack?.getBoundingClientRect();
+      if (stack && first && last) {
+        const dx = first.left - last.left;
+        const dy = first.top - last.top;
+        if (dx || dy) {
+          stack.style.transition = "none";
+          stack.style.transform = `translate(${dx}px, ${dy}px)`;
+          // Commit the inverted position before clearing it, or both writes
+          // coalesce and nothing animates.
+          void stack.offsetHeight;
+          stack.style.transition = "";
+          stack.style.transform = "";
+        }
+      }
+    }
+  }
   if (!transcript || savedTop === undefined) return;
   // Where the transcript belongs now that the composer has its final height.
   // While pinned that is the true bottom, NOT the snapshot: a grown composer
