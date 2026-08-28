@@ -4767,10 +4767,16 @@ select {
   padding: 0;
   cursor: pointer;
   line-height: 1.55;
-  transition: color var(--t-fast);
+  transition:
+    color var(--t-fast),
+    filter var(--t-fast);
 }
+/* Hover lifts the text brightness rather than underlining it — these footer
+   controls carry their own inline color (thinking level is hue-graded, Ken's
+   picker is purple), so a fixed hover color would flatten the grading while
+   `filter` brightens whatever hue the control already has. */
 .thinking-toggle:hover:not(:disabled) {
-  text-decoration: underline;
+  filter: brightness(1.25);
 }
 /* Locked mid-run: drop the hover affordance and the pointer, so the control
    reads as unavailable before the click. Mirrors `.model-select:disabled`. */
@@ -4856,9 +4862,10 @@ select {
   font-size: 12px;
   cursor: pointer;
   padding: 0;
+  transition: filter var(--t-fast);
 }
 .bgtasks-kill:hover {
-  text-decoration: underline;
+  filter: brightness(1.25);
 }
 
 /* ── Model picker (footer, native <select>) ── */
@@ -4891,10 +4898,12 @@ select {
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1;
-  transition: color var(--t-fast);
+  transition:
+    color var(--t-fast),
+    filter var(--t-fast);
 }
 .model-picker:has(.model-select:not(:disabled)):hover .model-select-text {
-  text-decoration: underline;
+  filter: brightness(1.25);
 }
 .model-select {
   position: absolute;
@@ -4919,10 +4928,12 @@ select {
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  transition: color var(--t-fast);
+  transition:
+    color var(--t-fast),
+    filter var(--t-fast);
 }
 .model-button:hover:not(:disabled) {
-  text-decoration: underline;
+  filter: brightness(1.25);
 }
 .model-button:disabled {
   cursor: default;
