@@ -66,6 +66,7 @@ import { AutopilotReviewBar } from "./AutopilotReviewBar";
 import { useKenMentor } from "./useKenMentor";
 import { useAutopilot } from "./useAutopilot";
 import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEvents";
+import { useSmoothText } from "./useSmoothText";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
 import { CompactionNotice } from "./CompactionNotice";
@@ -2498,7 +2499,7 @@ function App(): React.ReactElement {
                 ))}
               <PromptSendProvider value={sendKenRecommendedPrompt}>
                 {items.map((it) => (
-                  <TranscriptRow key={it.id} item={it} onImageLoad={maybeScrollToBottom} />
+                  <TranscriptRow key={it.id} item={it} onContentGrow={maybeScrollToBottom} />
                 ))}
               </PromptSendProvider>
             </>
@@ -2967,19 +2968,42 @@ function App(): React.ReactElement {
   );
 }
 
+/**
+ * Assistant prose while it streams: the text is revealed at a steady rate
+ * (rather than in whatever bursts the network delivered) and each new word
+ * fades in as it lands.
+ *
+ * `onGrow` re-pins the transcript to the bottom. The reveal adds height
+ * BETWEEN item updates, which the transcript's `items`-keyed scroll effect
+ * cannot see, so without this the tail of a reply drifts under the fold.
+ */
+function StreamingMarkdown({
+  text,
+  onGrow,
+}: {
+  text: string;
+  onGrow?: () => void;
+}): React.ReactElement {
+  const { text: revealed, animating } = useSmoothText(text);
+  useLayoutEffect(() => {
+    onGrow?.();
+  }, [revealed, onGrow]);
+  return <Markdown animate={animating}>{revealed}</Markdown>;
+}
+
 // ── Row renderers ──────────────────────────────────────────
 // Memoized per row: the streaming run rebuilds the `items` array on every
 // `text_delta`, but `appendAssistant` returns the SAME object reference for
-// every non-streaming row, and `onImageLoad` is a stable useCallback. So a
+// every non-streaming row, and `onContentGrow` is a stable useCallback. So a
 // default shallow `memo` re-renders ONLY the row whose `item` reference changed
 // (the one actively streaming) — the rest bail out, keeping per-token cost O(1)
 // instead of O(transcript length).
 const TranscriptRow = memo(function TranscriptRow({
   item,
-  onImageLoad,
+  onContentGrow,
 }: {
   item: Item;
-  onImageLoad?: () => void;
+  onContentGrow?: () => void;
 }): React.ReactElement | null {
   switch (item.kind) {
     case "user":
@@ -3026,7 +3050,13 @@ const TranscriptRow = memo(function TranscriptRow({
           {item.images && item.images.length > 0 && (
             <div className="user-img-row">
               {item.images.map((src, i) => (
-                <img key={i} className="user-img" src={src} alt="attachment" onLoad={onImageLoad} />
+                <img
+                  key={i}
+                  className="user-img"
+                  src={src}
+                  alt="attachment"
+                  onLoad={onContentGrow}
+                />
               ))}
             </div>
           )}
@@ -3069,7 +3099,7 @@ const TranscriptRow = memo(function TranscriptRow({
                   {DOT}
                 </span>
                 <div className="assistant-text">
-                  <Markdown>{seg.text}</Markdown>
+                  <StreamingMarkdown text={seg.text} onGrow={onContentGrow} />
                 </div>
               </div>
             ),
@@ -3088,7 +3118,7 @@ const TranscriptRow = memo(function TranscriptRow({
             {DOT}
           </span>
           <div className="assistant-text">
-            <Markdown>{item.text}</Markdown>
+            <StreamingMarkdown text={item.text} onGrow={onContentGrow} />
           </div>
         </div>
       );
@@ -3183,7 +3213,7 @@ const TranscriptRow = memo(function TranscriptRow({
                   className="img-thumb"
                   src={img.src}
                   alt={img.path ?? "image"}
-                  onLoad={onImageLoad}
+                  onLoad={onContentGrow}
                 />
                 {img.path && (
                   <figcaption className="img-cap" title={img.path}>
