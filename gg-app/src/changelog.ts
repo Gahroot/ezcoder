@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.55.3",
+    date: "2026-08-29",
+    items: [
+      "You can now ignore my question and just tell me what you actually want. Typing your own reply instead of tapping an option used to leave me frozen for up to `10 minutes` before I even read it. Now your message reaches me instantly, the question card clears itself out of the way, and the chat holds perfectly still while it goes.",
+    ],
+  },
+  {
     version: "0.55.2",
     date: "2026-08-29",
     items: [
