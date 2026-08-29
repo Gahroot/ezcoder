@@ -47,6 +47,21 @@ export function mergeAskAnswers(
   return { answers, complete: questions.every((q) => answers[q.id] !== undefined) };
 }
 
+/**
+ * Drop the question bands a freshly sent prompt supersedes.
+ *
+ * Sending a message of your own IS the answer: the sidecar releases the parked
+ * tool call the moment that prompt arrives, so an open band is left pointing at
+ * a question nobody is waiting on — its buttons would silently do nothing. A
+ * band that already reached the agent (`sent`) or was closed by a cancelled run
+ * (`cancelled`) is transcript history and stays put.
+ */
+export function dropSupersededAsks<T extends { kind: string; sent?: boolean; cancelled?: boolean }>(
+  items: readonly T[],
+): T[] {
+  return items.filter((it) => !(it.kind === "ask" && it.sent !== true && it.cancelled !== true));
+}
+
 export function isAskUserPrompt(data: unknown): data is AskUserPrompt {
   if (typeof data !== "object" || data === null) return false;
   const { id, questions } = data as { id?: unknown; questions?: unknown };

@@ -43,7 +43,11 @@ export interface AskUserPrompt extends AskUserRequest {
 
 export type AskUserResult =
   | { action: "answer"; answers: Record<string, string | string[]> }
-  | { action: "cancel" };
+  /**
+   * No answer. `superseded` means the user replied with a message of their own
+   * instead of picking — the question is moot, but they are still talking.
+   */
+  | { action: "cancel"; superseded?: boolean };
 
 export type AskUserBridge = ParkedRequests<AskUserRequest, AskUserResult>;
 
@@ -70,6 +74,12 @@ export function createAskUserBridge(opts: {
  */
 export function formatAskResult(questions: AskQuestion[], result: AskUserResult): string {
   if (result.action === "cancel") {
+    if (result.superseded) {
+      return (
+        "The user ignored the question and sent their own message instead. " +
+        "It arrives next — treat it as their answer and continue. Do not ask this again."
+      );
+    }
     return (
       "The user did not answer (dismissed or timed out). Do not ask again — " +
       "state the assumption you are proceeding with, or stop and wait for them."

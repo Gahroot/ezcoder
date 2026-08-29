@@ -61,7 +61,7 @@ import {
   type AskUserPrompt,
   answerAskUser,
 } from "./agent";
-import { mergeAskAnswers } from "./ask-user";
+import { dropSupersededAsks, mergeAskAnswers } from "./ask-user";
 import { glowPlacement, glowStateFor, glowVars } from "./window-glow";
 import { ActivityBar } from "./ActivityBar";
 import { autosizeComposer } from "./composer-autosize";
@@ -115,7 +115,11 @@ import { AutopilotToggle } from "./AutopilotToggle";
 import { HomeScreen } from "./HomeScreen";
 import { SettingsModal } from "./SettingsModal";
 import { initialEntryView, type EntryView } from "./app-entry-view";
-import { submitDisposition } from "./submit-disposition";
+import {
+  showsQueuedBubble,
+  submitDisposition,
+  withoutSupersedingMessage,
+} from "./submit-disposition";
 import { Toaster } from "./Toaster";
 import { Confetti } from "./Confetti";
 import { RankBadge } from "./RankBadge";
@@ -1849,7 +1853,14 @@ function App(): React.ReactElement {
     // hint that the directory you just chose went nowhere.
     const disposition = submitDisposition(trimmed, readyRef.current, running);
     if (disposition === "ignore") return;
-    const queued = disposition === "queue";
+    // A send that supersedes an open question is consumed the moment it lands
+    // (the sidecar releases the parked call), so it must not wear the queued
+    // look for the one frame before that, nor open the queued strip below the
+    // transcript — see showsQueuedBubble / withoutSupersedingMessage.
+    const supersedesQuestion = hasOpenAsk();
+    const queued = showsQueuedBubble(disposition, supersedesQuestion);
+    if (disposition === "queue" && supersedesQuestion) noteSupersedingSend(trimmed);
+    dismissOpenAsks();
     // A user send always re-pins to the bottom — they want to see their message.
     stickToBottomRef.current = true;
     pushItem({
@@ -1864,7 +1875,7 @@ function App(): React.ReactElement {
       setInput("");
       setSlashIndex(0);
     }
-    if (!queued) endStreamingText();
+    if (disposition !== "queue") endStreamingText();
     void sendPrompt(trimmed);
   }
 
@@ -1873,6 +1884,62 @@ function App(): React.ReactElement {
   // current one without re-creating the interval on every render.
   const submitTextRef = useRef(submitText);
   submitTextRef.current = submitText;
+
+  // A question whose answer the user chose to TYPE rather than click. The next
+  // composer submit belongs to it, not to a new prompt.
+  const typingAskRef = useRef<{ itemId: number; promptId: string; questionId: string } | null>(
+    null,
+  );
+
+  // Is a question still waiting on the user? Checked at send time only — the
+  // transcript can run to thousands of rows, so this must not scan on every
+  // keystroke-driven render.
+  function hasOpenAsk(): boolean {
+    return items.some((it) => it.kind === "ask" && it.sent !== true && it.cancelled !== true);
+  }
+
+  // A prompt sent while a question band is open supersedes it: the user chose
+  // to say something else entirely. The sidecar releases the parked tool call
+  // when that prompt lands, so the band can never be answered again — drop it
+  // instead of leaving dead buttons in the transcript.
+  const dismissOpenAsks = useCallback(() => {
+    setItems(dropSupersededAsks);
+    typingAskRef.current = null;
+  }, [setItems]);
+
+  // Text of the prompt that superseded a question and is now briefly sitting in
+  // the sidecar's steering queue. Kept out of the queued strip until the agent
+  // consumes it — see withoutSupersedingMessage.
+  const supersedingTextRef = useRef<string | null>(null);
+  const [supersedingText, setSupersedingText] = useState<string | null>(null);
+  const supersedeClearRef = useRef<number | null>(null);
+  const noteSupersedingSend = useCallback((text: string) => {
+    supersedingTextRef.current = text;
+    setSupersedingText(text);
+    // Safety net: if the message never shows up in a queue broadcast at all
+    // (the run ended between typing and sending, so it started a fresh turn),
+    // nothing would ever clear the filter and a later identical message would
+    // be missing from the strip.
+    if (supersedeClearRef.current !== null) window.clearTimeout(supersedeClearRef.current);
+    supersedeClearRef.current = window.setTimeout(() => {
+      supersedingTextRef.current = null;
+      setSupersedingText(null);
+    }, 5000);
+  }, []);
+  useEffect(() => {
+    const text = supersedingTextRef.current;
+    if (text === null) return;
+    // Gone from the queue: the agent took it, so stop filtering — otherwise a
+    // later identical message would be hidden from the strip forever.
+    if (!queuedMessages.some((m) => m.text === text)) {
+      supersedingTextRef.current = null;
+      setSupersedingText(null);
+    }
+  }, [queuedMessages]);
+  const visibleQueuedMessages = useMemo(
+    () => withoutSupersedingMessage(queuedMessages, supersedingText),
+    [queuedMessages, supersedingText],
+  );
 
   // Click handler for the "Send to GG Coder" button on Ken's recommended prompts.
   // Pushes a shimmering "Sent to GG Coder" user bubble (the full prompt body went
@@ -1883,17 +1950,12 @@ function App(): React.ReactElement {
       const trimmed = text.trim();
       if (!trimmed || !readyRef.current) return;
       stickToBottomRef.current = true;
+      dismissOpenAsks();
       pushItem({ kind: "user", id: nextId(), text: trimmed, kenSent: true });
       endStreamingText();
       void sendPrompt(trimmed, [], { kenSent: true }).catch(() => {});
     },
-    [pushItem, endStreamingText],
-  );
-
-  // A question whose answer the user chose to TYPE rather than click. The next
-  // composer submit belongs to it, not to a new prompt.
-  const typingAskRef = useRef<{ itemId: number; promptId: string; questionId: string } | null>(
-    null,
+    [pushItem, endStreamingText, dismissOpenAsks],
   );
 
   // Record answers for an `ask_user` band, and settle the parked tool call once
@@ -2146,6 +2208,12 @@ function App(): React.ReactElement {
     }
 
     recordHistory(trimmed);
+    // Read BEFORE the dismissal clears the band: a prompt that supersedes a
+    // question is consumed as soon as it lands, so it must neither flash the
+    // queued look on the way in nor open the queued strip below the transcript
+    // (see showsQueuedBubble / withoutSupersedingMessage).
+    const supersedesQuestion = hasOpenAsk();
+    dismissOpenAsks();
     // A user send always re-pins to the bottom — they want to see their message.
     stickToBottomRef.current = true;
     // Referenced files are appended to the prompt as a small block so the agent
@@ -2161,6 +2229,7 @@ function App(): React.ReactElement {
     // the same native-block path when the queue drains. Queued rows render
     // dimmed until run_end clears the flag.
     if (running) {
+      if (supersedesQuestion) noteSupersedingSend(prompt);
       const queuedWire = attachments.map(toWire);
       const queuedImgs = attachments.filter((a) => a.previewUrl).map((a) => a.previewUrl!);
       pushItem({
@@ -2171,7 +2240,7 @@ function App(): React.ReactElement {
         images: queuedImgs.length > 0 ? queuedImgs : undefined,
         files: mentionedPaths.length > 0 ? mentionedPaths : undefined,
         enhancements: sentEnhancements,
-        queued: true,
+        queued: showsQueuedBubble("queue", supersedesQuestion) ? true : undefined,
       });
       setInput("");
       setAttachments([]);
@@ -2709,7 +2778,7 @@ function App(): React.ReactElement {
         )}
         <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
         <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
-        <QueuedBar messages={queuedMessages} onCancel={handleCancelQueued} />
+        <QueuedBar messages={visibleQueuedMessages} onCancel={handleCancelQueued} />
         <div className="inputrow">
           <input
             ref={fileInputRef}

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { AskQuestion, AskUserPrompt } from "./ask-user";
 import { AskBand } from "./AskBand";
-import { mergeAskAnswers } from "./ask-user";
+import { dropSupersededAsks, mergeAskAnswers } from "./ask-user";
 
 const prompt = (...questions: AskQuestion[]): AskUserPrompt => ({ id: "ask-1", questions });
 
@@ -370,5 +370,39 @@ describe("mergeAskAnswers", () => {
       answers: { a: ["x", "y"] },
       complete: true,
     });
+  });
+});
+
+// What a send does to the transcript. The sidecar releases the parked tool call
+// as soon as the prompt lands, so a still-open band is unanswerable from that
+// moment on and must not stay on screen offering buttons that reach nobody.
+describe("dropSupersededAsks", () => {
+  const band = (
+    id: number,
+    extra: Partial<{ sent: boolean; cancelled: boolean }> = {},
+  ): { kind: string; id: number; sent?: boolean; cancelled?: boolean } => ({
+    kind: "ask",
+    id,
+    ...extra,
+  });
+
+  it("drops an unanswered band when the user sends a prompt instead", () => {
+    expect(dropSupersededAsks([band(1)])).toEqual([]);
+  });
+
+  it("keeps answered and cancelled bands — they are history, not live questions", () => {
+    const items = [band(1, { sent: true }), band(2, { cancelled: true }), band(3)];
+    expect(dropSupersededAsks(items)).toEqual([
+      band(1, { sent: true }),
+      band(2, { cancelled: true }),
+    ]);
+  });
+
+  it("leaves every other transcript row untouched", () => {
+    const items = [band(1), { kind: "user", id: 2 }, { kind: "assistant", id: 3 }];
+    expect(dropSupersededAsks(items)).toEqual([
+      { kind: "user", id: 2 },
+      { kind: "assistant", id: 3 },
+    ]);
   });
 });

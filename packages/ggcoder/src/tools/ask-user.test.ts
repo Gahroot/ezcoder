@@ -153,6 +153,24 @@ describe("ask_user", () => {
     await expect(result).resolves.toContain("did not answer");
   });
 
+  // Typing a prompt instead of clicking an option is itself an answer: the
+  // sidecar releases the parked call on POST /prompt, so the turn resumes and
+  // reads the typed message rather than sitting out the ten-minute timeout.
+  it("releases the turn when the user replies with their own message", async () => {
+    const { bridge, call, prompt } = harness();
+    const result = call({
+      questions: [{ id: "go", question: "Run the migration against prod?", kind: "confirm" }],
+    });
+    await prompt();
+    bridge.cancelAll({ action: "cancel", superseded: true });
+    const text = await result;
+    expect(text).toContain("sent their own message instead");
+    // Not the dead-end wording: another message is on its way, so "stop and
+    // wait for them" would strand the user's actual instruction.
+    expect(text).not.toContain("stop and wait");
+    expect(bridge.pendingCount).toBe(0);
+  });
+
   it("reports a question that cannot be rendered instead of parking the turn", async () => {
     const { call, broadcast } = harness();
     await expect(

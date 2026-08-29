@@ -15,8 +15,12 @@ export interface ParkedRequests<Req, Res> {
   park: (request: Req) => Promise<Res>;
   /** Resolve one parked request. False when the id is unknown (already settled). */
   settle: (id: string, result: Res) => boolean;
-  /** Cancel every parked request — for run abort and host teardown. */
-  cancelAll: () => void;
+  /**
+   * Cancel every parked request — for run abort and host teardown. Pass a
+   * result to release them with something other than the default cancel value
+   * (e.g. "superseded by a typed message").
+   */
+  cancelAll: (result?: Res) => void;
   /** How many requests are currently awaiting the user. */
   readonly pendingCount: number;
 }
@@ -65,8 +69,8 @@ export function createParkedRequests<Req extends object, Res>(
         opts.broadcast(prompt);
       }),
     settle,
-    cancelAll: () => {
-      for (const id of [...pending.keys()]) settle(id, opts.cancelValue());
+    cancelAll: (result) => {
+      for (const id of [...pending.keys()]) settle(id, result ?? opts.cancelValue());
     },
     get pendingCount() {
       return pending.size;

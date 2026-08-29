@@ -4138,6 +4138,13 @@ async function createSession(
             json(res, 400, { error: "empty prompt" });
             return;
           }
+          // A typed prompt supersedes any question parked on the user: they
+          // answered with a message of their own. Release the blocked tool call
+          // NOW — otherwise it waits out its ten-minute timeout while this very
+          // message sits behind it as steering that only drains once the tool
+          // returns, so the turn looks frozen. The webview closes the band on
+          // send; a racing /ask POST just 409s.
+          asks.cancelAll({ action: "cancel", superseded: true });
           if (
             runLifecycle.running &&
             runLifecycle.isCancellationRequested(runLifecycle.generation)
