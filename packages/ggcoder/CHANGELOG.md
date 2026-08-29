@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.51.2
+
+### Patch Changes
+
+- Release a parked `ask_user` question when the user sends their own prompt instead of picking an option, so the turn resumes immediately rather than waiting out the ten-minute timeout.
+  - @kenkaiiii/gg-ai@5.51.2
+  - @kenkaiiii/gg-agent@5.51.2
+  - @kenkaiiii/gg-core@5.51.2
+
 ## 5.51.1
 
 ### Patch Changes
