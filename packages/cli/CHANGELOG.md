@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.15.0
+
+### Minor Changes
+
+- Add interactive questions, GLM-5.3-Flash support, smoother streaming, and safer session recovery.
+
+### Patch Changes
+
+- @prestyj/ai@5.15.0
+- @prestyj/agent@5.15.0
+- @prestyj/core@5.15.0
+
 ## 5.14.1
 
 ### Patch Changes

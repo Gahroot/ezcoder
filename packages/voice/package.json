@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/voice",
-  "version": "4.6.1",
+  "version": "4.6.2",
   "type": "module",
   "description": "Provider-agnostic realtime voice orchestration for EZ tools and agents",
   "license": "MIT",
