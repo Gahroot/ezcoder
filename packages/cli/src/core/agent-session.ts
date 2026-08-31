@@ -127,6 +127,7 @@ import {
   type CycleDetection,
 } from "./loop-breaker.js";
 import { buildRegroundingMessage } from "./regrounding.js";
+import { buildEnvDeltaMessage } from "./env-delta.js";
 import { wrapSteeringText, buildNotificationSteeringText, STEERING_PREFIX } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
 import {
@@ -438,6 +439,12 @@ export class AgentSession {
   /** 0 = none; 1 = first nudge sent; 2 = final stop-and-report injected. */
   private loopBreakInjected: 0 | 1 | 2 = 0;
   private regroundingInjected = false;
+  /**
+   * The environment as the cached system prompt currently describes it.
+   * Re-recorded on every prompt build, so a rebuild (e.g. `/add-dir`) needs no
+   * delta; anything that changes WITHOUT one is caught by the hook below.
+   */
+  private renderedEnvironment: SystemPromptEnvironment = {};
   /** Wall-clock start of the current run; scopes the background-process gate. */
   private runStartedAt = 0;
   /** Gate injections spent this run, capped by MAX_PROCESS_GATE_INJECTIONS. */
@@ -1468,6 +1475,23 @@ export class AgentSession {
    * Mirrors the TUI's getSteeringMessages ordering.
    */
   private getHookSteeringMessages(): Message[] | null {
+    // Environment drift: settings can move the network allowlist mid-session
+    // with no prompt rebuild, leaving the cached Environment section describing
+    // hosts that are no longer the real policy. Correcting it by appending is
+    // ~30 tokens; re-rendering the prompt would invalidate every cached byte
+    // from that section onward. Unconditional and cheap: identical facts
+    // produce no message at all.
+    // A verbatim custom prompt has no Environment section to correct, so a
+    // note pointing at one would describe something the model cannot see.
+    const environmentDelta = this.customSystemPrompt
+      ? null
+      : buildEnvDeltaMessage(this.renderedEnvironment, this.promptEnvironment());
+    if (environmentDelta) {
+      // The model has now been told; only a further change re-triggers this.
+      this.renderedEnvironment = this.promptEnvironment();
+      log("INFO", "session", "Injecting an environment update the prompt is too stale to show");
+    }
+
     // Push notifications: a child that finished or a background build that
     // exited is new *fact*, not a correction, and it is cheap (bounded to 1 KiB
     // per drain). Drained above the loop-break checks so the agent can act on
@@ -1521,9 +1545,18 @@ export class AgentSession {
         ];
         return { role: "user", content: parts, provenance };
       });
-      return notificationMessage ? [...steeringMessages, notificationMessage] : steeringMessages;
+      return [
+        ...(environmentDelta ? [environmentDelta] : []),
+        ...steeringMessages,
+        ...(notificationMessage ? [notificationMessage] : []),
+      ];
     }
-    if (notificationMessage) return [notificationMessage];
+    if (environmentDelta || notificationMessage) {
+      return [
+        ...(environmentDelta ? [environmentDelta] : []),
+        ...(notificationMessage ? [notificationMessage] : []),
+      ];
+    }
     if (this.opts.selfCorrectionHooks === false) return null;
     if (!this.settingsManager.get("idealReviewEnabled")) return null;
     // Two-stage loop-breaker: stage 1 nudges; a FRESH detection after that
@@ -1625,6 +1658,14 @@ export class AgentSession {
    */
   private wouldInjectIdealReview(): boolean {
     if (this.opts.selfCorrectionHooks === false || this.idealReviewSuppressed) return false;
+    // Mid-review a stop still injects: the coverage follow-up while files are
+    // unread, or its escalation once the budget is spent. Both make the model
+    // answer again, so the candidate answer is a draft exactly as it is before
+    // the review starts — without arming here it paints and the reviewed answer
+    // lands under it as a duplicate.
+    if (this.idealReviewPhase === "reviewing") {
+      return this.reviewCoverage.evidence().missing.length > 0;
+    }
     if (this.idealReviewPhase !== "idle") return false;
     if (!this.settingsManager.get("idealReviewEnabled")) return false;
     if (evaluateIdealReview({ ...this.hookStats, turns: this.hookStats.turns + 1 }).shouldReview) {
@@ -1731,8 +1772,20 @@ export class AgentSession {
         lspMissing: lspEvidence.missing,
       });
       if (coverage.missing.length > 0) {
+        // Announce like any other pre-final injection: this follow-up makes the
+        // model answer again, so the answer it interrupts is a draft and the
+        // hook event is what tells clients to discard it. Injecting silently is
+        // what let the pre-coverage answer paint above the reviewed one.
+        this.eventBus.emit("hook", {
+          kind: "ideal",
+          coverageExpected: coverage.expected,
+          coverageMissing: coverage.missing,
+        });
         if (this.reviewCoverageInjected < MAX_REVIEW_COVERAGE_INJECTIONS) {
           this.reviewCoverageInjected += 1;
+          // Stays armed (coverage is still outstanding) — this call is here so a
+          // client that missed the earlier edge is armed before the next draft.
+          this.refreshIdealReviewArmed();
           return [
             this.withReviewLspEvidence(buildReviewCoverageMessage(coverage.missing), lspEvidence),
           ];
@@ -1740,6 +1793,9 @@ export class AgentSession {
         // Budget spent: close the gate so the run cannot spin on a file that
         // never becomes readable, and require the gap be reported to the user.
         this.idealReviewPhase = "complete";
+        // The gate is shut, so this is the real disarm: the answer to the
+        // escalation is final and streams live.
+        this.refreshIdealReviewArmed();
         log("INFO", "ideal", "Ideal review coverage escalated after retry budget", {
           injected: String(this.reviewCoverageInjected),
           missing: coverage.missing,
@@ -1767,10 +1823,12 @@ export class AgentSession {
       coverageExpected: coverage.expected,
       coverageMissing: coverage.missing,
     });
-    // Disarm strictly AFTER the hook event. Clients release held text on
+    // Recompute strictly AFTER the hook event: clients release held text on
     // disarm, so the reverse order would paint the draft and then delete it —
-    // the exact flash arming exists to prevent. Leaving `idle` is what lets the
-    // reviewed final answer stream live instead of being held.
+    // the exact flash arming exists to prevent. Arming normally PERSISTS here,
+    // because review starts with every changed file uncovered and a stop while
+    // coverage is outstanding injects again. Disarm lands later, on the read
+    // that closes the last gap (or when the retry budget escalates).
     this.refreshIdealReviewArmed();
     log("INFO", "ideal", "Injecting ideal review before final response", {
       coverageExpected: coverage.expected,
@@ -2968,6 +3026,17 @@ export class AgentSession {
     return this.deferredBuiltinToolNames.filter((name) => !live.has(name));
   }
 
+  /**
+   * The environment about to be rendered into a prompt, remembered as the
+   * truth the model has been told. Pairs with the env-delta hook: whatever the
+   * prompt states, the model is only corrected when reality moves away from it.
+   */
+  private recordRenderedEnvironment(): SystemPromptEnvironment {
+    const environment = this.promptEnvironment();
+    this.renderedEnvironment = environment;
+    return environment;
+  }
+
   /** Environment facts that vary per session rather than per host. */
   private promptEnvironment(): SystemPromptEnvironment {
     const networkAllow =
@@ -2994,7 +3063,7 @@ export class AgentSession {
         toolNames,
         deferredToolNames,
         context: this.opts.agentContext,
-        environment: this.promptEnvironment(),
+        environment: this.recordRenderedEnvironment(),
         contextLimits: this.contextLimits,
       });
     }
@@ -3006,7 +3075,7 @@ export class AgentSession {
       toolNames,
       undefined,
       this.provider,
-      this.promptEnvironment(),
+      this.recordRenderedEnvironment(),
       deferredToolNames,
       this.contextLimits,
     );

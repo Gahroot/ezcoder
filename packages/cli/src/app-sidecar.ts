@@ -194,6 +194,8 @@ import {
   type MCPServerConfig,
 } from "./core/mcp/index.js";
 import type { ElicitResult } from "@modelcontextprotocol/client";
+import { createAskUserBridge, type AskUserResult } from "./core/ask-user.js";
+import { createAskUserTool } from "./tools/ask-user.js";
 import { buildSnapshot, levelForXp, rankForLevel } from "./core/progress/ranks.js";
 import { loadProgress, peekProgress, updateProgress } from "./core/progress/store.js";
 import { awardPrompt, awardCommits } from "./core/progress/engine.js";
@@ -1739,6 +1741,17 @@ async function createSession(
       }),
   });
 
+  // ── ask_user bridge ────────────────────────────────────────
+  // The `ask_user` tool parks the turn on a human answer. Same shape as the
+  // MCP bridge above: broadcast over SSE, resolved when the webview POSTs
+  // /ask/:id. Registered ONLY here — a TUI/headless/subagent run has nobody to
+  // answer, so the tool is absent there rather than hanging on a dead channel.
+  const asks = createAskUserBridge({
+    broadcast: (prompt) => broadcast("ask_user", prompt),
+    onTimeout: (prompt) => log("WARN", "app-sidecar", "ask_user timed out", { id: prompt.id }),
+  });
+  const askUserTool = createAskUserTool(asks.park);
+
   // The session file path to resume (passed by the daemon's POST /session);
   // empty/unset starts a fresh session.
   const resumeSessionPath = opts.sessionPath;
@@ -1765,7 +1778,11 @@ async function createSession(
     session = createChatAgent(chatAgent, {
       ...baseSessionOptions,
       sessionsDir: paths.sessionsDir,
-      additionalTools: [...buildMemoryTools(memoryStore), ...buildJiwaTools(jiwaStore)],
+      additionalTools: [
+        askUserTool,
+        ...buildMemoryTools(memoryStore),
+        ...buildJiwaTools(jiwaStore),
+      ],
       getSystemPromptTail: () =>
         `${memoryStore.renderForPrompt()}\n\n${jiwaStore.renderForPrompt()}`,
       onAgentChange: async (nextAgent) => {
@@ -1782,6 +1799,7 @@ async function createSession(
   } else {
     session = new AgentSession({
       ...baseSessionOptions,
+      additionalTools: [askUserTool],
       // Plan mode belongs only to the coding agent.
       onEnterPlan: async (reason) => {
         // Unattended task runs cannot approve plans; implement directly instead.
@@ -2692,8 +2710,9 @@ async function createSession(
     abort.abort();
     // An MCP tool call parked on user input is not cancelled by the signal —
     // the promise lives in the bridge. Release it, or the aborted turn's tool
-    // call never returns.
+    // call never returns. Same for a question parked on the user.
     elicitations.cancelAll();
+    asks.cancelAll();
     // Stop a run-all sweep and every async child through AgentSession's signal.
     taskRunAll = false;
     autopilotCancelled = true;
@@ -4147,6 +4166,13 @@ async function createSession(
             json(res, 400, { error: "empty prompt" });
             return;
           }
+          // A typed prompt supersedes any question parked on the user: they
+          // answered with a message of their own. Release the blocked tool call
+          // NOW — otherwise it waits out its ten-minute timeout while this very
+          // message sits behind it as steering that only drains once the tool
+          // returns, so the turn looks frozen. The webview closes the band on
+          // send; a racing /ask POST just 409s.
+          asks.cancelAll({ action: "cancel", superseded: true });
           if (
             runLifecycle.running &&
             runLifecycle.isCancellationRequested(runLifecycle.generation)
@@ -5216,6 +5242,50 @@ async function createSession(
       return;
     }
 
+    // Answer (or dismiss) an `ask_user` question band. The turn is blocked on
+    // this, so both paths must land: "answer" carries the picked values,
+    // "cancel" releases the tool call with no answer.
+    if (method === "POST" && url.startsWith("/ask/")) {
+      const id = decodeURIComponent(url.slice("/ask/".length));
+      void readBody(req, res).then((raw) => {
+        if (raw === null) return;
+        let result: AskUserResult;
+        try {
+          const parsed = JSON.parse(raw) as {
+            action?: string;
+            answers?: Record<string, unknown>;
+          };
+          if (parsed.action !== "answer" && parsed.action !== "cancel") {
+            json(res, 400, { error: "action must be answer or cancel" });
+            return;
+          }
+          if (parsed.action === "cancel") {
+            result = { action: "cancel" };
+          } else {
+            // Only strings and string arrays are answers; anything else is a
+            // malformed client, not a value to hand the model.
+            const answers: Record<string, string | string[]> = {};
+            for (const [key, value] of Object.entries(parsed.answers ?? {})) {
+              if (typeof value === "string") answers[key] = value;
+              else if (Array.isArray(value) && value.every((v) => typeof v === "string")) {
+                answers[key] = value as string[];
+              }
+            }
+            result = { action: "answer", answers };
+          }
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        if (!asks.settle(id, result)) {
+          json(res, 409, { error: "no question is awaiting an answer" });
+          return;
+        }
+        json(res, 200, { ok: true });
+      });
+      return;
+    }
+
     if (method === "POST" && url === "/auth/logout") {
       void readBody(req, res).then(async (raw) => {
         if (raw === null) return;
@@ -5699,6 +5769,7 @@ async function createSession(
 
   async function dispose(): Promise<void> {
     elicitations.cancelAll();
+    asks.cancelAll();
     tasksPollStopped = true;
     if (tasksPoll) clearTimeout(tasksPoll);
     gitPollStopped = true;
