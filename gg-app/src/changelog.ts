@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.55.4",
+    date: "2026-08-31",
+    items: [
+      "No more double answers. When I double-check my own work before replying, my rough first draft used to slip onto the screen and sit there right above the polished one. Now you only ever see the final answer, and I stop repeating the same `reviewing` notice over and over while I dig through the files.",
+    ],
+  },
+  {
     version: "0.55.3",
     date: "2026-08-29",
     items: [
