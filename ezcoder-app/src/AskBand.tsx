@@ -302,7 +302,7 @@ export function AskBand({
   const hasRecommendations = questions.every((q) => q.options?.some((o) => o.recommended));
 
   return (
-    <div className="ask-band" ref={bandRef} role="group" aria-label="GG Coder needs your answer">
+    <div className="ask-band" ref={bandRef} role="group" aria-label="EZ Coder needs your answer">
       {questions.map((q, i) => (
         <Question
           key={q.id}

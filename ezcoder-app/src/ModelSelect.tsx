@@ -123,7 +123,7 @@ export function ModelSelect({
   //
   // Rest one step below full ink: hover lifts the label with `filter: brightness`
   // (App.css), and `theme.text` is so close to white that brightening it clips to
-  // #fff with no visible change. Callers passing their own `color` (Ken's picker)
+  // #fff with no visible change. Callers passing their own `color` (Nolan's picker)
   // are mid-range already and keep it.
   const controlColor = unavailable ? theme.textDim : (color ?? theme.textSecondary);
 

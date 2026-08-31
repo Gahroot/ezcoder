@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import {
   ASK_USER_TIMEOUT_MS,
   formatAskResult,
@@ -122,7 +122,7 @@ function normalize(question: z.infer<typeof Question>): AskQuestion {
 /**
  * Ask the user a question and block the turn until they answer.
  *
- * Registered only by hosts that can actually render it (the gg-app sidecar).
+ * Registered only by hosts that can actually render it (the ezcoder-app sidecar).
  * A subagent, a headless run or the TUI has nobody to answer, so the tool is
  * simply absent there and the agent falls back to asking in prose.
  */

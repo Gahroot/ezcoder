@@ -53,10 +53,10 @@
   --user-text: var(--text);
   --user-bg: color-mix(in srgb, var(--text) 12%, transparent);
 
-  /* Ken Kai (mentor agent) — single source of truth with theme.ken in
-     theme.ts; both MUST match or the inline-styled @Ken input drifts from the
-     CSS-styled chat bubbles. Marks every Ken element. */
-  --ken: #62e8d8;
+  /* Nolan Grout (mentor agent) — single source of truth with theme.nolan in
+     theme.ts; both MUST match or the inline-styled @Nolan input drifts from the
+     CSS-styled chat bubbles. Marks every Nolan element. */
+  --nolan: #62e8d8;
 
   /* Shape system — generous and soft, matching the reference: pills for
      controls, heavy rounding on cards, no hairline boxes. */
@@ -3685,7 +3685,7 @@ select {
 }
 /* Multi-line draft: the field takes the full row and the circles fall beneath
    it. `order` moves it above them without changing the DOM (so tab order and
-   the @Ken overlay stay put). */
+   the @Nolan overlay stay put). */
 .inputrow.is-multiline .input-stack {
   flex-basis: 100%;
   order: -1;
@@ -4865,7 +4865,7 @@ select {
     filter var(--t-fast);
 }
 /* Hover lifts the text brightness rather than underlining it — these footer
-   controls carry their own inline color (thinking level is hue-graded, Ken's
+   controls carry their own inline color (thinking level is hue-graded, Nolan's
    picker is purple), so a fixed hover color would flatten the grading while
    `filter` brightens whatever hue the control already has. */
 .thinking-toggle:hover:not(:disabled) {

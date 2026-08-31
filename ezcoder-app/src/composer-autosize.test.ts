@@ -305,7 +305,7 @@ describe("one-line vs wrapped composer row", () => {
   });
 });
 
-// The bounce Ken saw: typing to the exact edge of the one-line field wrapped
+// The bounce Nolan saw: typing to the exact edge of the one-line field wrapped
 // it, which handed it the whole row (wider), which un-wrapped the text, which
 // took the row away again — one flip per keystroke, each animated.
 describe("at the wrap edge", () => {

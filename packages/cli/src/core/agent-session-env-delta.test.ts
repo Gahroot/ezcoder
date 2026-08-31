@@ -9,12 +9,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as GgAgentModule from "@kenkaiiii/gg-agent";
+import type * as GgAgentModule from "@prestyj/agent";
 import type * as McpModule from "./mcp/index.js";
 import { useFakeHome } from "../test-support/fake-home.js";
 
-vi.mock("@kenkaiiii/gg-agent", async () => {
-  const actual = await vi.importActual<typeof GgAgentModule>("@kenkaiiii/gg-agent");
+vi.mock("@prestyj/agent", async () => {
+  const actual = await vi.importActual<typeof GgAgentModule>("@prestyj/agent");
   return { ...actual, agentLoop: vi.fn(() => (async function* emptyLoop() {})()) };
 });
 
@@ -36,9 +36,9 @@ beforeEach(async () => {
   tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "env-delta-home-"));
   tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "env-delta-project-"));
   restoreHome = useFakeHome(tmpHome);
-  await fs.mkdir(path.join(tmpHome, ".gg"), { recursive: true });
+  await fs.mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tmpHome, ".gg", "auth.json"),
+    path.join(tmpHome, ".ezcoder", "auth.json"),
     JSON.stringify({
       anthropic: {
         accessToken: "test-token",
