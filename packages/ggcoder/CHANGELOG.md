@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.51.3
+
+### Patch Changes
+
+- Fix a duplicate final response when the Ideal review's coverage gate re-injects: the pre-coverage draft now stays held until the reviewed answer lands, and repeated injections announce themselves without stacking identical notices.
+  - @kenkaiiii/gg-ai@5.51.3
+  - @kenkaiiii/gg-agent@5.51.3
+  - @kenkaiiii/gg-core@5.51.3
+
 ## 5.51.2
 
 ### Patch Changes
