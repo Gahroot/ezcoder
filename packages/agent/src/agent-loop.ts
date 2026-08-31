@@ -2018,6 +2018,8 @@ async function executeSingleToolCall(
             toolCall.name,
           );
         }
+      } else if (options.signal?.aborted && isAbortError(err)) {
+        resultContent = indeterminateOutcomeText(toolCall.name);
       } else {
         resultContent = redactValue(err instanceof Error ? err.message : String(err));
       }
