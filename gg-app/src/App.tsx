@@ -125,6 +125,7 @@ import { Confetti } from "./Confetti";
 import { RankBadge } from "./RankBadge";
 import { ScorecardModal } from "./ScorecardModal";
 import { TitleUsageMeter } from "./TitleUsageMeter";
+import { useWindowFocused } from "./useWindowFocused";
 import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
 import { useProgress } from "./useProgress";
 import { LoginScreen } from "./LoginScreen";
@@ -1196,9 +1197,8 @@ function App(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Track whether THIS window holds OS focus (for the prominent input border).
-  // The webview's own focus/blur events are instant — no IPC round-trip.
-  const [windowFocused, setWindowFocused] = useState(true);
+  // Whether THIS window holds OS focus — input border + animation pausing.
+  const windowFocused = useWindowFocused();
 
   // Position in the multi-window reading order (e.g. window 2 of 4), plus
   // whether this window is the focused one. Driven by the Rust `window-order`
@@ -1231,17 +1231,10 @@ function App(): React.ReactElement {
       }
       inputRef.current?.focus();
     };
-    const onFocus = (): void => {
-      setWindowFocused(true);
-      focusInput();
-    };
-    const onBlur = (): void => setWindowFocused(false);
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", focusInput);
     window.addEventListener("mouseup", focusInput);
     return () => {
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", focusInput);
       window.removeEventListener("mouseup", focusInput);
     };
   }, []);

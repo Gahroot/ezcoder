@@ -488,6 +488,34 @@ select {
     animation: none;
   }
 }
+
+/* ── Unfocused windows freeze their looping decoration. ──
+   Every looping animation below forces a repaint each frame, and every repaint
+   is a round trip through WebKit's single shared GPU process ("GG Coder
+   Graphics and Media"): allocate an IOSurface, rasterize, flush, wait. One
+   window doing that is fine; seven idle windows doing it all day pinned that
+   process at 400%+ CPU on a user's machine. Only the window the user is looking
+   at animates. Paused (not `none`) so focus resumes mid-cycle without a jump.
+   One-shot reveals are deliberately NOT listed: paused at 0% with `both` they
+   would hold new content invisible in a background window. */
+.app:not(.window-focused)::before,
+.app:not(.window-focused) .ascii-logo,
+.app:not(.window-focused) .queued-pill,
+.app:not(.window-focused) .queued-dot,
+.app:not(.window-focused) .shimmer-text,
+.app:not(.window-focused) .command-shimmer,
+.app:not(.window-focused) .blink,
+.app:not(.window-focused) .wake-cursor,
+.app:not(.window-focused) .skeleton,
+.app:not(.window-focused) .enh-diss-skeleton .skeleton::after,
+.app:not(.window-focused) .enhance-pill.enhancing,
+.app:not(.window-focused) .update-banner::after,
+.app:not(.window-focused) .update-banner-dot,
+.app:not(.window-focused) .rank-name,
+.app:not(.window-focused) .title-usage-fill::before,
+.app:not(.window-focused) .title-usage-particle {
+  animation-play-state: paused;
+}
 /* Everything else in the shell paints above the glow. Modals are portalled to
    <body> (see Modal.tsx), so they sit outside this stacking context entirely
    rather than being trapped by it. */
