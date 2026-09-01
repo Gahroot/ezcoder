@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.51.4
+
+### Patch Changes
+
+- Block symlink escapes from the workspace write guard, and tell custom-prompt sessions when a root is added
+  - @kenkaiiii/gg-ai@5.51.4
+  - @kenkaiiii/gg-agent@5.51.4
+  - @kenkaiiii/gg-core@5.51.4
+
 ## 5.51.3
 
 ### Patch Changes
