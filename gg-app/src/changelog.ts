@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.55.5",
+    date: "2026-09-02",
+    items: [
+      "Every question I ask you now looks the same: one clean stack of options, whatever I am asking. No chips on one question and rows on the next, no stray `Something else` link, no send button to hunt for. Answer in any order, change an early pick while you think about the rest, and the last answer sends it.",
+      "Flipping `Autopilot` on and off finally feels as good as it sounds. The blocky sign and the flat black slab behind it are gone, replaced by one calm glowing line over your chat, and I muted the loud toggle chimes.",
+      "Your files stay exactly where you put them. A repo can no longer hide a shortcut in a folder and trick me into writing outside your project, into things like `~/.ssh` or your shell config. If something does get blocked, I now tell you precisely which path redirected where.",
+      "Hand me a new folder mid-chat and I actually know about it. `/add-dir` used to go unheard in my sessions, so I would turn around and refuse to work in the very folder you just gave me.",
+    ],
+  },
+  {
     version: "0.55.4",
     date: "2026-08-31",
     items: [
