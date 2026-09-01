@@ -8,6 +8,7 @@ import { stripBom } from "./utils/text.js";
 import { resolveShell } from "./core/shell.js";
 import { renderStylePacksSection } from "./core/style-packs/index.js";
 import { detectVerifyCommands, renderVerifySection } from "./core/verify-commands.js";
+import { detectPlatformClis, renderPlatformClisSection } from "./core/platform-clis.js";
 import { extractPlanSteps } from "./utils/plan-steps.js";
 import type { Provider } from "@kenkaiiii/gg-ai";
 
@@ -484,6 +485,8 @@ export async function buildSubAgentSystemPrompt(
       await collectProjectContext(opts.cwd, limits),
     );
     if (projectContextSection) sections.push(projectContextSection);
+    const platformClis = renderPlatformClisSection(detectPlatformClis(opts.cwd));
+    if (platformClis) sections.push(platformClis);
   }
 
   sections.push(
@@ -563,6 +566,11 @@ export async function buildSystemPrompt(
     const skillsSection = formatSkillsForPrompt(skills, limits);
     if (skillsSection) sections.push(skillsSection);
   }
+
+  // Hosted-platform CLIs (railway, vercel, gh, ...) the project uses. Stable
+  // per host+project, so it sits in the cached body next to Environment.
+  const platformClis = renderPlatformClisSection(detectPlatformClis(cwd));
+  if (platformClis) sections.push(platformClis);
 
   sections.push(renderEnvironmentSection(cwd, environment), renderUncachedDateSuffix());
 
