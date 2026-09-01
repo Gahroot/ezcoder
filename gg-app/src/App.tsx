@@ -1959,8 +1959,9 @@ function App(): React.ReactElement {
   );
 
   // Record answers for an `ask_user` band, and settle the parked tool call once
-  // every question in it has one. App owns the merge because an answer can also
-  // arrive from the composer, outside the band.
+  // every question in it has one — the band carries no send button, so the last
+  // answer IS the send. App owns the merge because an answer can also arrive
+  // from the composer, outside the band.
   //
   // The POST is optimistic: a failed one means the question already timed out or
   // the run was cancelled, and re-opening the band would hand the user a button
@@ -2594,9 +2595,6 @@ function App(): React.ReactElement {
                   setState((s) => (s ? { ...s, autopilot: next } : s));
                   void setAutopilot(next);
                   setKenPowerBanner(next ? "on" : "off");
-                  // Dedicated cues for turning autopilot on/off (not the generic
-                  // click, suppressed via data-suppress-click-sound).
-                  playSound(next ? "autopilotOn" : "autopilotOff");
                 }}
               />
               <button

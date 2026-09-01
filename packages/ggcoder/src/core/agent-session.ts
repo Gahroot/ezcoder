@@ -1476,17 +1476,22 @@ export class AgentSession {
    * Mirrors the TUI's getSteeringMessages ordering.
    */
   private getHookSteeringMessages(): Message[] | null {
-    // Environment drift: settings can move the network allowlist mid-session
-    // with no prompt rebuild, leaving the cached Environment section describing
-    // hosts that are no longer the real policy. Correcting it by appending is
-    // ~30 tokens; re-rendering the prompt would invalidate every cached byte
-    // from that section onward. Unconditional and cheap: identical facts
-    // produce no message at all.
-    // A verbatim custom prompt has no Environment section to correct, so a
-    // note pointing at one would describe something the model cannot see.
-    const environmentDelta = this.customSystemPrompt
-      ? null
-      : buildEnvDeltaMessage(this.renderedEnvironment, this.promptEnvironment());
+    // Environment drift: settings can move the network allowlist mid-session,
+    // and `/add-dir` can widen the workspace, with no prompt rebuild — leaving
+    // the cached Environment section describing facts that are no longer real.
+    // Correcting it by appending is ~30 tokens; re-rendering the prompt would
+    // invalidate every cached byte from that section onward. Unconditional and
+    // cheap: identical facts produce no message at all.
+    //
+    // This runs for a verbatim custom prompt TOO. Those sessions (Ken's) never
+    // rebuild their prompt, so this note is the only channel that can tell them
+    // a root was added — skipping it meant Ken could write into a folder it had
+    // never been told about. The note states the facts outright rather than
+    // referring to a section such a prompt does not have.
+    const environmentDelta = buildEnvDeltaMessage(
+      this.renderedEnvironment,
+      this.promptEnvironment(),
+    );
     if (environmentDelta) {
       // The model has now been told; only a further change re-triggers this.
       this.renderedEnvironment = this.promptEnvironment();
