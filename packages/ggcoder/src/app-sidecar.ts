@@ -1650,10 +1650,7 @@ async function createSession(
           "Start a new session to reset the context.",
         )
         // /model: handle each phrasing pattern
-        .replaceAll(
-          /switch to claude-fable-5 with \/model/gi,
-          "switch to claude-fable-5 using the model selector",
-        )
+        .replaceAll(/switch to (\S+) with \/model/gi, "switch to $1 using the model selector")
         .replaceAll(/Switch with \/model\./gi, "Switch using the model selector.")
         .replaceAll(
           /try a different model with \/model\./gi,
