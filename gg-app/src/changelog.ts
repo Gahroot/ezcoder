@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.56.0",
+    date: "2026-09-02",
+    items: [
+      "`Claude Fable 5.1` just landed and it is yours right now. Anthropic's newest and sharpest model, with a `1 million` token memory and thinking that dials itself up when the problem gets hard. Pick it in the model selector and go.",
+      "The connect screen finally tells you the truth about what you are signing into. Every provider now lists the exact models you get, so `Z.AI` shows its Flash sibling and `OpenRouter` names the model it actually runs instead of hiding behind a label.",
+    ],
+  },
+  {
     version: "0.55.5",
     date: "2026-09-02",
     items: [
