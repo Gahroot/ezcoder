@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.16.1
+
+### Patch Changes
+
+- 533e19e: Fix Steroids installation by downloading verified release assets from the repository that publishes them.
+  - @prestyj/ai@5.16.1
+  - @prestyj/agent@5.16.1
+  - @prestyj/core@5.16.1
+
 ## 5.16.0
 
 ### Minor Changes
