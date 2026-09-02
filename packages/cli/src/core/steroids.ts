@@ -28,7 +28,7 @@ export interface SteroidsStatus {
 }
 
 const RELEASE_API = "https://api.github.com/repos/KenKaiii/agent-steroids/releases/latest";
-const DOWNLOAD_PREFIX = "https://github.com/Gahroot/agent-steroids/releases/download/";
+const DOWNLOAD_PREFIX = "https://github.com/KenKaiii/agent-steroids/releases/download/";
 /** Same cap as upgrade.rs: applied to the download AND the inflated binary. */
 export const MAX_ASSET_BYTES = 100 * 1024 * 1024;
 const PROBE_TIMEOUT_MS = 5_000;
@@ -145,7 +145,7 @@ export function releaseTarget(
 }
 
 export const CARGO_FALLBACK =
-  "No prebuilt Steroids binary for this platform. Install with: cargo install --git https://github.com/Gahroot/agent-steroids";
+  "No prebuilt Steroids binary for this platform. Install with: cargo install --git https://github.com/KenKaiii/agent-steroids";
 
 /** Check `archive` against the SHA256SUMS line for `name`. */
 export function verifySha256(archive: Uint8Array, sums: string, name: string): void {

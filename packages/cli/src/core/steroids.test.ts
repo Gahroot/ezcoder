@@ -118,7 +118,7 @@ describe("findSteroidsBinary", () => {
 describe("installSteroids", () => {
   const target = "aarch64-apple-darwin";
   const asset = `steroids-${target}.tar.gz`;
-  const prefix = "https://github.com/Gahroot/agent-steroids/releases/download/v9.9.9/";
+  const prefix = "https://github.com/KenKaiii/agent-steroids/releases/download/v9.9.9/";
 
   function fakeFetch(archive: Buffer, sums: string): typeof fetch {
     const bodies: Record<string, Buffer | string> = {

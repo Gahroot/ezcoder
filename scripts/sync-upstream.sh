@@ -150,6 +150,7 @@ replace_in_tracked_text_files() {
       -e 's|github.com/kenkaiiii/ezcoder|github.com/Gahroot/ezcoder|g' \
       -e 's|github.com/kenkaiiii/ez-pixel-swift|github.com/Gahroot/ezcoder|g' \
       -e 's|github.com/KenKaiii|github.com/Gahroot|g' \
+      -e 's|github.com/Gahroot/agent-steroids|github.com/KenKaiii/agent-steroids|g' \
       -e 's|github.com/kenkaiiii/gg-pixel-go|github.com/Gahroot/ezcoder/packages/pixel-go|g' \
       -e 's|gg-framework|ezcoder|g' \
       -e 's|~/\.gg/|~/.ezcoder/|g' \
