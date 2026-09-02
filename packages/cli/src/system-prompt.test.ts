@@ -521,7 +521,7 @@ describe("buildSystemPrompt", () => {
     // fewer turns than re-deriving an over-built solution.
     // Raised with the 2026-08 guardrail additions (git safety, anti-fake-green,
     // reproduce-first, circuit-breaker, question-vs-fix, no-variants, test
-    // guidance), the explicit kencode-search staple sentence in Research, and
+    // guidance), the explicit steroids staple sentence in Research, and
     // alignment guardrails (facts-vs-decisions, batched questions). The fork's
     // Goal workflow adds ~500–700 characters across representative prompts.
     expect(measurements.normal.characters).toBeLessThan(10_100);
@@ -564,7 +564,7 @@ describe("buildSystemPrompt", () => {
     expect(audit.flags).toEqual([]);
     // Raised with the Code Quality minimization ladder — see the size-budget
     // test above for the measured return that justifies the spend.
-    // Raised again with the 2026-08 guardrails, kencode-search staple, alignment
+    // Raised again with the 2026-08 guardrails, steroids staple, alignment
     // guidance, and the fork Goal workflow.
     expect(audit.size.characters).toBeLessThan(14_500);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);

@@ -108,7 +108,7 @@ describe("prompt commands", () => {
     expect(raiseFloor?.prompt).toContain("`tasks` tool");
     expect(raiseFloor?.prompt).toContain("Press Ctrl+T to open the task list");
     expect(raiseFloor?.prompt).toContain(
-      "use kencode to reference working code. /commit when done.",
+      "use steroids to reference working code. /commit when done.",
     );
     expect(raiseFloor?.prompt).toContain("A) Add tasks for all floor-raising fixes");
     expect(raiseFloor?.prompt).toContain("B) Add tasks for the app-wide fixes only");
@@ -132,7 +132,7 @@ describe("prompt commands", () => {
     expect(elon?.prompt).toContain("deletion ledger");
     expect(elon?.prompt).toContain("`tasks` tool");
     expect(elon?.prompt).toContain("Press Ctrl+T to open the task list");
-    expect(elon?.prompt).toContain("use kencode to reference working code. /commit when done.");
+    expect(elon?.prompt).toContain("use steroids to reference working code. /commit when done.");
     expect(elon?.prompt).toContain("A) Add tasks for all confirmed deletions");
     expect(elon?.prompt).toContain("D) None — report only");
     expect(elon?.prompt).toContain("Do not delete or start implementing until the user chooses");
@@ -156,7 +156,7 @@ describe("prompt commands", () => {
     expect(elon2?.prompt).toContain("completion ledger");
     expect(elon2?.prompt).toContain("`tasks` tool");
     expect(elon2?.prompt).toContain("Press Ctrl+T to open the task list");
-    expect(elon2?.prompt).toContain("use kencode to reference working code. /commit when done.");
+    expect(elon2?.prompt).toContain("use steroids to reference working code. /commit when done.");
     expect(elon2?.prompt).toContain("B) Add tasks for the add-backs only");
     expect(elon2?.prompt).toContain("D) None — report only");
     expect(elon2?.prompt).toContain("Do not start implementing until the user chooses");
@@ -176,10 +176,10 @@ describe("prompt commands", () => {
     expect(testDrive?.prompt).toContain("DEFERRABLE");
     expect(testDrive?.prompt).toContain("Fix these immediately");
     expect(testDrive?.prompt).toContain("`tasks` tool");
-    expect(testDrive?.prompt).toContain("mcp__kencode-search__searchCode");
+    expect(testDrive?.prompt).toContain("`steroids` tool");
     expect(testDrive?.prompt).toContain("Press Ctrl+T to open the task list");
     expect(testDrive?.prompt).toContain(
-      "use kencode to reference working code. /commit when done.",
+      "use steroids to reference working code. /commit when done.",
     );
     expect(testDrive?.prompt).not.toContain("Create a Goal");
   });

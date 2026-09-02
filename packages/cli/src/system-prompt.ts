@@ -132,11 +132,11 @@ function renderPlanModeSection(): string {
   );
 }
 
-function renderGoalPlannerSection(hasKencode: boolean): string {
-  const kencodeProbe = hasKencode ? "kencode reference/discover/searchCode, or " : "";
+function renderGoalPlannerSection(hasSteroids: boolean): string {
+  const publicCodeProbe = hasSteroids ? "`steroids`, or " : "";
   return (
     `## Goal Planner Mode (ACTIVE)\n\n` +
-    `Protocol: classify uncertainty; if low, do no research; otherwise use only the smallest needed probes: read/grep/find/ls, \`source_path\`, \`web_search\`/\`web_fetch\`, ${kencodeProbe}cheap foreground non-mutating bash checks. Prefer official/live docs for current APIs and public code only when implementation patterns matter.\n\n` +
+    `Protocol: classify uncertainty; if low, do no research; otherwise use only the smallest needed probes: read/grep/find/ls, \`source_path\`, \`web_search\`/\`web_fetch\`, ${publicCodeProbe}cheap foreground non-mutating bash checks. Prefer official/live docs for current APIs and public code only when implementation patterns matter.\n\n` +
     `Output exactly one \`GOAL_PLAN\` block and stop. Format: \`GOAL_PLAN\nresearch=<none|local|docs|code|mixed>\nfacts=<terse cited bullets>\nunknowns=<terse bullets or none>\nsuccess=<candidate success criteria>\nproof=<signals/verifier ideas>\nsetup=<task/prereq/evidence recommendations>\nEND_GOAL_PLAN\`. Keep it under 1800 chars, no narrative recap.\n\n` +
     `Forbidden: \`edit\`, \`write\`, \`subagent\`, \`goals\`, background processes, verifier execution, and implementation/refactor/file generation.`
   );
@@ -197,7 +197,7 @@ function renderResearchSection(
   // the `steroids` binary is on the machine; otherwise point at tool_search
   // discovery instead. Never reference an unavailable tool.
   const publicCode = active.has("steroids")
-    ? ` Ground nontrivial code in real usage with the \`steroids\` tool — a local corpus of real repos: \`search\` for exact snippets, \`define\` for where a symbol lives, \`discover\` when the topic isn't covered. Build from real samples, not assumptions.`
+    ? ` Use the \`steroids\` tool: \`search\`, \`define\`, or \`discover\` gaps. Build from real samples, not assumptions.`
     : active.has("tool_search")
       ? ` For public GitHub code and design references, call \`tool_search\` first (e.g. "search public code" or "UI design screens") — it unlocks the matching tools for your next step.`
       : "";
@@ -213,16 +213,11 @@ function renderResearchSection(
   return (
     `## Research & Verification\n\n` +
     `Your training data has a cutoff; the real current date is the final line of this prompt. Assume your knowledge of library versions, APIs, CLI flags, config schema, defaults, and best practices has changed since then — treat it as a stale hint to verify, never as ground truth. ` +
-    `Do not rely on memory for APIs, CLI flags, config schema, internals, or error wording — verify first. Use \`source_path\` for installed deps and inspect with read/grep/find/ls; ${docs}. ` +
+    `Do not rely on memory for APIs, CLI flags, config schema, internals, or error wording — verify first. Use \`source_path\` for installed deps and inspect with read/grep/find/ls; ${docs}.` +
     publicCode +
-    `When driving a programmatic Goal run, model the intended experience, choose proportional local/free proof, and block only with exact user instructions for true external prerequisites. ` +
+    ` For Goal runs, model the experience, choose local/free proof, and block only on external prerequisites. ` +
     `Run targeted checks when they are relevant to the change; read/fix failures; never report unrun or failing checks as passing.`
   );
-}
-
-/** Whether any kencode-search MCP tool is in the active tool set. */
-function hasKencodeSearch(toolNames: readonly string[]): boolean {
-  return toolNames.some((name) => name.startsWith("mcp__kencode-search__"));
 }
 
 /**
@@ -599,7 +594,7 @@ export async function buildSystemPrompt(
     (Array.isArray(deferredToolNamesArgOrLimits)
       ? CONTEXT_LIMITS
       : ((deferredToolNamesArgOrLimits as ContextLimits | undefined) ?? CONTEXT_LIMITS));
-  const hasKencode = hasKencodeSearch(toolNames ?? DEFAULT_TOOL_NAMES);
+  const hasSteroids = (toolNames ?? DEFAULT_TOOL_NAMES).includes("steroids");
   const sections: string[] = [
     renderIdentitySection(provider, goalMode),
     renderTalkSection(toolNames),
@@ -607,7 +602,7 @@ export async function buildSystemPrompt(
   ];
 
   if (planMode && goalMode === "off") sections.push(renderPlanModeSection());
-  if (goalMode === "planner") sections.push(renderGoalPlannerSection(hasKencode));
+  if (goalMode === "planner") sections.push(renderGoalPlannerSection(hasSteroids));
   if (goalMode === "setup") sections.push(renderGoalSetupSection());
   if (goalMode === "coordinator") sections.push(renderGoalCoordinatorSection());
 

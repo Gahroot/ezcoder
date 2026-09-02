@@ -206,7 +206,7 @@ If the user chooses A, B, or C, do not fix directly. Add one task per selected f
 
 End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
 
-use kencode to reference working code. /commit when done.
+use steroids to reference working code. /commit when done.
 
 After adding the tasks, tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and run them." Do not begin executing them unless the user explicitly says so.
 
@@ -218,7 +218,7 @@ If the user chooses D, stop after the report.
 - **Existing features only.** Net-new capability is /expand; security is /bullet-proof; pure refactors/tooling are out of scope.
 - **No finding without a concrete, code-grounded first-run scenario.** No "could be polished" nudges.
 - **Report-first.** No edits, installs, or commits until the user picks an option.
-- **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
+- **Every generated task must end with the exact line:** use steroids to reference working code. /commit when done.`,
   },
   {
     name: "test-drive",
@@ -266,7 +266,7 @@ For every bug, decide one of two paths:
 **A) BLOCKING — it stops you from testing further.** The app won't start, a screen crashes, a flow can't be completed, or a broken gate hides everything behind it. You cannot meaningfully continue the test pass until it's fixed. **Fix these immediately**, right now, so you can keep testing:
 
 1. Reproduce it and find the root cause in the code.
-2. Use the \`mcp__kencode-search__searchCode\` tool to reference how real projects implement the same pattern correctly, and base your fix on that working code. (If the kencode-search MCP tool isn't connected, note that and fix using project conventions + authoritative docs.)
+2. Use the \`steroids\` tool (\`search\`, then \`show\`) to reference how real projects implement the same pattern correctly, and base your fix on that working code. (If the tool isn't available, fix using project conventions and authoritative docs.)
 3. Implement the fix, then re-run the app and CONFIRM with your eyes (re-screenshot / re-read output) that the bug is actually gone.
 4. Commit the fix by running the \`/commit\` command, so each fix lands on working, committed code before you continue.
 5. Resume the test pass from where you were blocked.
@@ -287,9 +287,9 @@ For every deferrable bug (or a tightly-coupled group), add one task with the \`t
 
 End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
 
-use kencode to reference working code. /commit when done.
+use steroids to reference working code. /commit when done.
 
-That line guarantees the next agent bases its fix on real working code (via the kencode MCP) and commits it.
+That line guarantees the next agent bases its fix on real working code (via steroids) and commits it.
 
 ## Phase 4: Report
 
@@ -306,9 +306,9 @@ Then tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and
 - **Actually run the app and look.** Don't claim a screen works without observing it — a screenshot, captured output, or log line. No "this should work." But observation alone is not a filed bug: confirming a defect requires tracing the cause, which means reading the code/data/inputs.
 - **Trace cause before filing.** A symptom is not a bug until you've traced it to a code defect and ruled out bad seed/test/mock data, misconfig, and expected behavior. For numeric/calculation bugs, reproduce the arithmetic from the underlying inputs.
 - **An AI/agent (or the model itself) noticing something looks wrong is NOT evidence** — a model flags "big number vs small position" the same way whether the cause is data or logic. Only reproduced behavior plus a traced cause counts.
-- **Only fix what blocks you.** Blocking bugs get fixed inline (kencode-referenced + \`/commit\`); everything else becomes a task. When in doubt, defer.
-- **Every fix is on working, committed code** — reference real code via kencode, verify the fix by re-running, then \`/commit\`.
-- **Every filed task ends with the exact line:** use kencode to reference working code. /commit when done.
+- **Only fix what blocks you.** Blocking bugs get fixed inline (steroids-referenced + \`/commit\`); everything else becomes a task. When in doubt, defer.
+- **Every fix is on working, committed code** — reference real code via steroids, verify the fix by re-running, then \`/commit\`.
+- **Every filed task ends with the exact line:** use steroids to reference working code. /commit when done.
 - **File only reproduced bugs with a traced root cause.** No speculative or "could be improved" tasks, and no symptoms with an unverified cause — this is a bug hunt, not a polish wishlist.`,
   },
   {
@@ -407,7 +407,7 @@ If the user chooses A, B, or C, do not delete directly. Add one task per selecte
 
 End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
 
-use kencode to reference working code. /commit when done.
+use steroids to reference working code. /commit when done.
 
 After adding the tasks, tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and run them." Do not begin executing them unless the user explicitly says so.
 
@@ -421,7 +421,7 @@ If the user chooses D, stop after the report.
 - **App-wide first, specific areas second** — in both the hunt and the ledger.
 - **No deletion without code-grounded evidence** that the thing is dead weight (no callers / write-only / unreachable / redundant). No "feels bloated" nudges.
 - **Report-first. No deletions, edits, installs, or commits until the user picks an option.**
-- **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
+- **Every generated task must end with the exact line:** use steroids to reference working code. /commit when done.`,
   },
   {
     name: "elon-2",
@@ -520,7 +520,7 @@ If the user chooses A, B, or C, do not implement directly. Add one task per sele
 
 End EVERY task's standalone prompt with this exact line, verbatim, on its own line:
 
-use kencode to reference working code. /commit when done.
+use steroids to reference working code. /commit when done.
 
 After adding the tasks, tell the user exactly: "Tasks added. Press Ctrl+T to open the task list and run them." Do not begin executing them unless the user explicitly says so.
 
@@ -533,7 +533,7 @@ If the user chooses D, stop after the report.
 - **Algorithm order is law.** Add-back → simplify → accelerate → automate. Never accelerate or automate before simplifying.
 - **Survivors only for steps 3–5.** Don't optimize something that should have been deleted; don't re-add scope (that's /expand).
 - **Report-first. No edits, installs, or commits until the user picks an option.**
-- **Every generated task must end with the exact line:** use kencode to reference working code. /commit when done.`,
+- **Every generated task must end with the exact line:** use steroids to reference working code. /commit when done.`,
   },
   {
     name: "bullet-proof",
@@ -684,7 +684,7 @@ After the report, ask:
 
 **Do not start fixing until the user picks.**
 
-If the user chooses A, B, or C, do not fix directly. Instead, add one task per selected finding or tightly coupled finding group using the \`tasks\` tool (action=add), ordered by severity, exploitability, and dependency. Each task needs a short title and a standalone prompt that includes the finding ID, vulnerability scenario, affected local files/anchors, concrete remediation, instructions to compare security-sensitive implementation details with kencode search or authoritative docs before editing, project verification commands, and instructions to compare the final fix with kencode search or authoritative docs again before completing the task. After adding the tasks, tell the user exactly: "${TASKS_ADDED_NOTICE}" Do not begin executing them unless the user explicitly says so.
+If the user chooses A, B, or C, do not fix directly. Instead, add one task per selected finding or tightly coupled finding group using the \`tasks\` tool (action=add), ordered by severity, exploitability, and dependency. Each task needs a short title and a standalone prompt that includes the finding ID, vulnerability scenario, affected local files/anchors, concrete remediation, instructions to compare security-sensitive implementation details with steroids or authoritative docs before editing, project verification commands, and instructions to compare the final fix with steroids or authoritative docs again before completing the task. After adding the tasks, tell the user exactly: "${TASKS_ADDED_NOTICE}" Do not begin executing them unless the user explicitly says so.
 
 ## Threat reference (May 2026)
 
