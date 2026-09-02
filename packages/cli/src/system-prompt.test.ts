@@ -316,9 +316,7 @@ describe("buildSystemPrompt", () => {
       "web_search",
       "web_fetch",
       "source_path",
-      "mcp__kencode-search__referenceSources",
-      "mcp__kencode-search__discoverRepos",
-      "mcp__kencode-search__searchCode",
+      "steroids",
     ]);
 
     for (const required of [
@@ -356,11 +354,11 @@ describe("buildSystemPrompt", () => {
       "Do not rely on memory for APIs",
       "Use `source_path`",
       "web_search` then `web_fetch",
-      "mcp__kencode-search__searchCode",
+      "`steroids` tool",
       "Build from real samples, not assumptions",
-      "curated, categorized reference repos",
-      "Search GitHub repos live",
-      "literal text or RE2 regex; NOT semantic",
+      "Local corpus of real, current open-source repos",
+      "regex, NOT semantic",
+      "Topic not covered = corpus gap",
       "Skip checks after simple edits",
       "At coherent checkpoints or after risky/non-obvious changes",
       "run one targeted check",
@@ -389,43 +387,36 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain("Run only targeted verification needed for the change");
   });
 
-  it("keeps kencode guidance concise while separating repo discovery from exact search", async () => {
+  it("keeps steroids guidance concise: regex search, symbol lookup, corpus-gap rule", async () => {
     const cwd = await makeProject();
-    const prompt = await buildSystemPrompt(cwd, undefined, false, undefined, [
-      "mcp__kencode-search__referenceSources",
-      "mcp__kencode-search__discoverRepos",
-      "mcp__kencode-search__searchCode",
-    ]);
+    const prompt = await buildSystemPrompt(cwd, undefined, false, undefined, ["steroids"]);
     const tools = toolsSection(prompt);
 
-    expect(tools).toContain("curated, categorized reference repos");
-    expect(tools).toContain("Search GitHub repos live");
-    expect(tools).toContain("returns metadata, not snippets");
-    expect(tools).toContain("literal text or RE2 regex");
-    expect(tools).toContain("NOT semantic");
-    expect(tools).toContain("path` is a literal file-path substring");
-    expect(tools).not.toContain("zero hits, every time");
-    expect(tools.length).toBeLessThan(950);
+    expect(tools).toContain("Local corpus of real, current open-source repos");
+    expect(tools).toContain("regex, NOT semantic");
+    expect(tools).toContain("`define` for where a symbol lives");
+    expect(tools).toContain("Topic not covered = corpus gap");
+    expect(tools).toContain("don't retry variants");
+    expect(tools.length).toBeLessThan(600);
   });
 
   it("routes public-code research guidance through tool_search when MCP tools are deferred", async () => {
     const cwd = await makeProject();
-    // Deferred MCP loading: kencode tools live in the catalog, tool_search is active.
+    // No steroids binary on this machine, tool_search is active.
     const deferred = await buildSystemPrompt(cwd, undefined, false, undefined, [
       "read",
       "bash",
       "tool_search",
     ]);
     // Research section must not name tools the model can't call yet…
-    expect(deferred).not.toContain("kencode-search tools");
-    expect(deferred).not.toContain("ReferenceSources");
+    expect(deferred).not.toContain("`steroids` tool");
     // …and must point discovery at tool_search instead (research + tools hint).
     expect(deferred).toContain("call `tool_search` first");
     expect(deferred).toContain("Check the catalog BEFORE concluding");
 
-    // Neither kencode nor tool_search active: the public-code sentence is omitted.
+    // Neither steroids nor tool_search active: the public-code sentence is omitted.
     const bare = await buildSystemPrompt(cwd, undefined, false, undefined, ["read", "bash"]);
-    expect(bare).not.toContain("kencode-search tools");
+    expect(bare).not.toContain("`steroids` tool");
     expect(bare).not.toContain("tool_search");
   });
 
@@ -439,9 +430,7 @@ describe("buildSystemPrompt", () => {
       "web_search",
       "web_fetch",
       "source_path",
-      "mcp__kencode-search__referenceSources",
-      "mcp__kencode-search__discoverRepos",
-      "mcp__kencode-search__searchCode",
+      "steroids",
     ];
     const normalPrompt = await buildSystemPrompt(
       normalCwd,
@@ -496,9 +485,7 @@ describe("buildSystemPrompt", () => {
         "web_fetch",
         "source_path",
         "skill",
-        "mcp__kencode-search__referenceSources",
-        "mcp__kencode-search__discoverRepos",
-        "mcp__kencode-search__searchCode",
+        "steroids",
       ],
       new Set<LanguageId>(["typescript"]),
     );
@@ -566,9 +553,7 @@ describe("buildSystemPrompt", () => {
         "web_fetch",
         "source_path",
         "skill",
-        "mcp__kencode-search__referenceSources",
-        "mcp__kencode-search__discoverRepos",
-        "mcp__kencode-search__searchCode",
+        "steroids",
       ],
       new Set<LanguageId>(["typescript"]),
     );

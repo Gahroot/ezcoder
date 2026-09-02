@@ -147,8 +147,11 @@ describe("tool tiering in the system prompt", () => {
     // generated code); the index block cap above is the one that guards
     // tiering itself, and it is unchanged. Raised again with the 2026-08
     // guardrail additions (git safety, anti-fake-green, reproduce-first,
-    // circuit-breaker, question-vs-fix, no-variants, test guidance), alignment
-    // guardrails, and the fork's Goal tool and reply-shape rules.
-    expect(prompt.length).toBeLessThan(12_600);
+    // circuit-breaker, question-vs-fix, no-variants, test guidance). Raised
+    // again for the alignment guardrails (facts-vs-decisions, batched
+    // questions) — see the size-budget test in system-prompt.test.ts. Raised
+    // once more when `steroids` joined the core tier (its hint + the Research
+    // staple sentence); the index block cap is still the tiering guard.
+    expect(prompt.length).toBeLessThan(12_700);
   });
 });

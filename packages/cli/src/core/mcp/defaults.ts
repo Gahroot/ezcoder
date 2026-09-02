@@ -2,14 +2,10 @@ import type { Provider } from "@prestyj/ai";
 import type { MCPServerConfig } from "./types.js";
 import { loadServers } from "./store.js";
 
-export const DEFAULT_MCP_SERVERS: MCPServerConfig[] = [
-  // kencode-search ships as a ezcoder dependency, so `connectServer` rewrites
-  // this `npx -y` form to a direct `node <binScript>` invocation at connect
-  // time (see core/mcp/resolve-stdio.ts) — skipping the ~100 MB npx wrapper
-  // process. The `npx` form is kept here so it still works if the dependency
-  // is ever unavailable (graceful fallback to npx resolution).
-  { name: "kencode-search", command: "npx", args: ["-y", "@kenkaiiii/kencode-search"] },
-];
+/** Servers every provider gets. Real-code research is the native `steroids`
+ *  tool now, so nothing ships here by default; provider-specific servers are
+ *  added in `getMCPServers`. */
+export const DEFAULT_MCP_SERVERS: MCPServerConfig[] = [];
 
 /**
  * Get MCP servers for a specific provider.
@@ -66,9 +62,8 @@ export function getMCPServers(provider: Provider, apiKey?: string): MCPServerCon
 
 /**
  * Full startup set: provider defaults + user-configured servers from
- * ~/.ezcoder/mcp.json and ./.ezcoder/mcp.json. Provider defaults stay authoritative —
- * a user server can only ADD a new name, never override a default like
- * `kencode-search`.
+ * ~/.gg/mcp.json and ./.gg/mcp.json. Provider defaults stay authoritative —
+ * a user server can only ADD a new name, never override a default.
  */
 export async function getAllMcpServers(
   provider: Provider,

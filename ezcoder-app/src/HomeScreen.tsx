@@ -8,11 +8,15 @@ import { MemeLayer } from "./MemeLayer";
 import { SettingsModal } from "./SettingsModal";
 import { TelegramSettingsModal } from "./TelegramSettingsModal";
 import { McpModal } from "./McpModal";
+import { SteroidsModal } from "./SteroidsModal";
 import {
   waitForReady,
   getSettings,
   authStatus,
   getServeStatus,
+  getSteroidsStatus,
+  onSteroidsChange,
+  type SteroidsStatus,
   startServe,
   stopServe,
   openWhatsNewWindow,
@@ -53,6 +57,8 @@ export function HomeScreen({
   const [showSettings, setShowSettings] = useState(false);
   const [showTelegram, setShowTelegram] = useState(false);
   const [showMcp, setShowMcp] = useState(false);
+  const [showSteroids, setShowSteroids] = useState(false);
+  const [steroids, setSteroids] = useState<SteroidsStatus | null>(null);
   const [serving, setServing] = useState(false);
   const [telegramConfigured, setTelegramConfigured] = useState(false);
   const [serveBusy, setServeBusy] = useState(false);
@@ -69,6 +75,11 @@ export function HomeScreen({
       .then(() => getProgress())
       .then(setProgress)
       .catch(() => {});
+    void waitForReady()
+      .then(() => getSteroidsStatus())
+      .then(setSteroids)
+      .catch(() => {});
+    return onSteroidsChange(setSteroids);
   }, []);
 
   async function refresh(): Promise<void> {
@@ -245,9 +256,18 @@ export function HomeScreen({
           </button>
         </div>
         <div className="home-projects-row">
+          <button
+            className={`btn btn-lg home-btn home-steroids-btn${steroids && !steroids.connected ? " is-unroided" : ""}`}
+            title="Agent Steroids: real, current code for your agent to read"
+            onClick={() => setShowSteroids(true)}
+          >
+            Steroids
+          </button>
           <button className="btn btn-ghost btn-lg home-btn" onClick={onLogin}>
             Login to AI Providers
           </button>
+        </div>
+        <div className="home-projects-row">
           <button
             className="btn btn-ghost btn-lg home-btn"
             title="Manage MCP servers"
@@ -255,8 +275,6 @@ export function HomeScreen({
           >
             MCP
           </button>
-        </div>
-        <div className="home-projects-row">
           <button
             className={`btn btn-ghost btn-lg home-btn${serving ? " home-serve-active" : ""}`}
             disabled={serveBusy}
@@ -290,6 +308,13 @@ export function HomeScreen({
         />
       )}
       {showMcp && <McpModal onClose={() => setShowMcp(false)} />}
+      {showSteroids && (
+        <SteroidsModal
+          status={steroids}
+          onStatus={setSteroids}
+          onClose={() => setShowSteroids(false)}
+        />
+      )}
       {showScorecard && progress && (
         <ScorecardModal snapshot={progress} onClose={() => setShowScorecard(false)} />
       )}

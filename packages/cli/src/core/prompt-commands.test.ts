@@ -11,15 +11,21 @@ describe("prompt commands", () => {
     expect(goal?.prompt).toContain("durable Goal state");
   });
 
-  it("retires /setup while handing bullet-proof fixes to tasks, not a Goal", () => {
-    const setup = PROMPT_COMMANDS.find((command) => command.name === "setup");
-    const bulletProof = PROMPT_COMMANDS.find((command) => command.name === "bullet-proof");
+  it("defines /steroids as profile, discover, ask, then index only what was chosen", () => {
+    const cmd = PROMPT_COMMANDS.find((command) => command.name === "steroids");
+    expect(cmd?.prompt).toContain("Profile the project");
+    expect(cmd?.prompt).toContain("`discover` queries WITHOUT `add`");
+    expect(cmd?.prompt).toContain("`ask_user` tool");
+    expect(cmd?.prompt).toContain("Do not index anything until the user answers");
+    expect(cmd?.prompt).toContain("`steroids` `add`");
+  });
 
-    expect(setup).toBeUndefined();
-    expect(bulletProof?.prompt).toContain("`tasks` tool");
-    expect(bulletProof?.prompt).toContain("Press Ctrl+T to open the task list");
-    expect(bulletProof?.prompt).not.toContain("Create a Goal");
-    expect(bulletProof?.prompt).not.toContain("Press CTRL + G");
+  it("routes real-code comparison through the native steroids tool", () => {
+    for (const name of ["compare", "expand"]) {
+      const cmd = PROMPT_COMMANDS.find((command) => command.name === name);
+      expect(cmd?.prompt, name).toContain("`steroids`");
+      expect(cmd?.prompt, name).not.toContain("kencode");
+    }
   });
 
   it("points at the app's Tasks button / New Session instead of CLI keybinds", async () => {

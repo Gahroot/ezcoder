@@ -3322,6 +3322,55 @@ async fn agent_serve_stop(
         .map_err(|e| e.to_string())
 }
 
+/// Proxy: Agent Steroids status (`{ installed, connected, version?, repos?, … }`).
+#[tauri::command]
+async fn agent_steroids_status(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .get(format!("{}/steroids", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Proxy: download + verify + install the `steroids` binary. Returns the
+/// post-install status or the sidecar's error text.
+#[tauri::command]
+async fn agent_steroids_install(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/steroids/install", sidecar_base(port)))
+        .header("x-gg-session", &gg_sid)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        let msg = body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("failed to install Steroids");
+        return Err(msg.to_string());
+    }
+    Ok(body)
+}
+
 /// Proxy: list MCP servers with live connection status (`{ servers: […] }`).
 /// `cwd` (project scope) scopes the project servers to a specific project path.
 #[tauri::command]
@@ -4604,8 +4653,8 @@ fn pick_node(env_override: Option<String>, is_dev: bool, exe_dir: Option<&Path>)
 
 /// Resolve the built sidecar JS.
 ///
-/// Dev (debug build, or `EZ_SIDECAR_PATH` set): use `EZ_SIDECAR_PATH`, else the
-/// workspace Error Mom wrapper relative to this crate.
+/// Dev (debug build, or `GG_SIDECAR_PATH` set): use `GG_SIDECAR_PATH`, else the
+/// workspace `dist/app-sidecar.js` relative to this crate.
 ///
 /// Bundled (release): resolve the single-file ESM sidecar shipped under
 /// `bundle.resources` via the Tauri resource directory.
@@ -4624,15 +4673,14 @@ fn resolve_sidecar(app: &tauri::AppHandle) -> PathBuf {
     )
 }
 
-/// Path to the workspace dev sidecar wrapper, relative to this crate. The
-/// wrapper initializes Error Mom before importing EZ Coder's built sidecar.
+/// Path to the workspace dev sidecar, relative to this crate.
 fn workspace_sidecar() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/error-mom-sidecar.mjs")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packages/ggcoder/dist/app-sidecar.js")
 }
 
 /// Pure sidecar-path decision (testable without an AppHandle).
-/// - `env_override` (EZ_SIDECAR_PATH) always wins.
-/// - dev build → workspace Error Mom sidecar wrapper.
+/// - `env_override` (GG_SIDECAR_PATH) always wins.
+/// - dev build → workspace `dist/app-sidecar.js`.
 /// - bundled → the resolved bundle resource, falling back to the workspace path.
 fn pick_sidecar(env_override: Option<String>, is_dev: bool, resource: Option<&Path>) -> PathBuf {
     if let Some(p) = env_override {
@@ -4838,7 +4886,6 @@ fn spawn_daemon(app: tauri::AppHandle, is_respawn: bool) {
         // GG_APP_LISTENING handshake.
         .env("GG_APP_PORT", "0")
         .env("GG_APP_TOKEN", &app.state::<Daemon>().token)
-        .env("ERROR_MOM_RELEASE", env!("CARGO_PKG_VERSION"))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(unix)]
@@ -5414,6 +5461,8 @@ pub fn run() {
             agent_serve_status,
             agent_serve_start,
             agent_serve_stop,
+            agent_steroids_status,
+            agent_steroids_install,
             agent_mcp_list,
             agent_mcp_add,
             agent_mcp_remove,
@@ -6267,13 +6316,13 @@ mod tests {
 
     #[test]
     fn orphan_descendant_tree_is_collected() {
-        // sidecar(500, orphaned) → npm exec(501) → node kencode-search(502).
+        // sidecar(500, orphaned) → npm exec(501) → node some-mcp-server(502).
         // Children still linked to the in-snapshot dead sidecar are caught by
         // the descendant walk regardless of their names.
         let snap = vec![
             proc(500, 1, "node app-sidecar.js"),
-            proc(501, 500, "npm exec @kenkaiiii/kencode-search"),
-            proc(502, 501, "node kencode-search"),
+            proc(501, 500, "npm exec @scope/some-mcp-server"),
+            proc(502, 501, "node some-mcp-server"),
         ];
         let ks = orphan_killset(&snap, 100, &no_ledger());
         assert!(ks.contains(&500));
@@ -6375,7 +6424,7 @@ mod tests {
         // Real PowerShell CIM output: pid|ppid|CommandLine.
         let raw = "4|0|\n\
                    5204|5200|C:\\Program Files\\nodejs\\node.exe app-sidecar.mjs\n\
-                   5300|5204|C:\\Program Files\\nodejs\\node.exe kencode-search";
+                   5300|5204|C:\\Program Files\\nodejs\\node.exe some-mcp-server";
         let rows = parse_cim_output(raw);
         assert_eq!(rows.len(), 3);
         // Kernel process with empty CommandLine.
@@ -6384,9 +6433,9 @@ mod tests {
         assert_eq!(rows[0].command, "");
         // Sidecar with full path.
         assert!(rows[1].command.contains("app-sidecar.mjs"));
-        // kencode grandchild.
+        // MCP grandchild.
         assert_eq!(rows[2].ppid, 5204);
-        assert!(rows[2].command.contains("kencode-search"));
+        assert!(rows[2].command.contains("some-mcp-server"));
     }
 
     #[test]
@@ -6420,8 +6469,8 @@ mod tests {
         let raw = "4|0|\n\
                    1000|4|C:\\Windows\\System32\\cmd.exe\n\
                    5000|9999|C:\\nodejs\\node.exe app-sidecar.mjs\n\
-                   5001|5000|C:\\nodejs\\node.exe kencode-search\n\
-                   6000|4|C:\\Program Files\\EZ Coder\\ezcoder-app.exe\n\
+                   5001|5000|C:\\nodejs\\node.exe some-mcp-server\n\
+                   6000|4|C:\\Program Files\\GG Coder\\gg-app.exe\n\
                    6001|6000|C:\\nodejs\\node.exe app-sidecar.mjs";
         let snapshot = parse_cim_output(raw);
         assert_eq!(snapshot.len(), 6);
@@ -6429,7 +6478,7 @@ mod tests {
         // Windows has no pgid (all 0), so classification relies on the sidecar
         // name (5000) + descendant walk (5001) — ledger is irrelevant here.
         let killset = orphan_killset(&snapshot, 6000, &no_ledger());
-        // Orphaned sidecar (5000, parent 9999 dead) + its kencode child (5001).
+        // Orphaned sidecar (5000, parent 9999 dead) + its MCP child (5001).
         assert!(killset.contains(&5000));
         assert!(killset.contains(&5001));
         // Live sidecar (6001) must NOT be killed.

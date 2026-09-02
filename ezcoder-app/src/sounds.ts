@@ -6,21 +6,10 @@ import warningUrl from "./assets/ui-warning.mp3";
 import hoverUrl from "./assets/ui-hover.mp3";
 import doneUrl from "./assets/ui-done.mp3";
 import fuguUrl from "./assets/fugu.mp3";
-import nolanAutopilotOnUrl from "./assets/nolan-autopilot-on.mp3";
-import nolanAutopilotOffUrl from "./assets/nolan-autopilot-off.mp3";
 import levelUpUrl from "./assets/levelup.mp3";
 import expUrl from "./assets/exp-new.mp3";
 
-export type UiSound =
-  | "click"
-  | "warning"
-  | "hover"
-  | "done"
-  | "fugu"
-  | "autopilotOn"
-  | "autopilotOff"
-  | "levelUp"
-  | "xp";
+export type UiSound = "click" | "warning" | "hover" | "done" | "fugu" | "levelUp" | "xp";
 
 const SOURCES: Record<UiSound, string> = {
   click: clickUrl,
@@ -28,8 +17,6 @@ const SOURCES: Record<UiSound, string> = {
   hover: hoverUrl,
   done: doneUrl,
   fugu: fuguUrl,
-  autopilotOn: nolanAutopilotOnUrl,
-  autopilotOff: nolanAutopilotOffUrl,
   levelUp: levelUpUrl,
   xp: expUrl,
 };
@@ -42,8 +29,6 @@ const VOLUME: Record<UiSound, number> = {
   hover: 0.45,
   done: 0.5,
   fugu: 0.6,
-  autopilotOn: 0.55,
-  autopilotOff: 0.55,
   levelUp: 0.6,
   xp: 0.42,
 };
