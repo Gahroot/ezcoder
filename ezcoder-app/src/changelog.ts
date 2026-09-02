@@ -17,7 +17,7 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.2.0",
+    version: "0.1.65",
     date: "2026-09-02",
     items: [
       "I gave EZ Coder a built-in research engine. The new `Steroids` tool finds proven patterns in real projects without extra setup, so your code starts from stronger examples.",
