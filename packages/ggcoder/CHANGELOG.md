@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.53.0
+
+### Minor Changes
+
+- Add the native `steroids` tool (Agent Steroids local code corpus: search, define, show, files, repos, discover, recent, add) and the `/steroids` command that profiles the project, discovers matching repos and indexes the ones you pick. Replaces the kencode-search MCP default. Removes the Error Mom error reporter.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.53.0
+- @kenkaiiii/gg-agent@5.53.0
+- @kenkaiiii/gg-core@5.53.0
+
 ## 5.52.0
 
 ### Minor Changes
