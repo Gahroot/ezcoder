@@ -17,6 +17,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.66",
+    date: "2026-09-02",
+    items: [
+      "I fixed `Install Steroids` so one click works again. EZ Coder now grabs the right verified download on macOS and Windows.",
+    ],
+  },
+  {
     version: "0.1.65",
     date: "2026-09-02",
     items: [
