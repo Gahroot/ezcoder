@@ -3722,7 +3722,7 @@ fn build_app_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow
 /// issues" note.
 #[tauri::command]
 async fn setup_windows(app: tauri::AppHandle, count: usize) -> Result<(), String> {
-    let existing = app.webview_windows().len();
+    let existing = arrangeable_windows(&app).len();
     let to_create = count.saturating_sub(existing);
     for _ in 0..to_create {
         let label = next_window_label(&app);
@@ -3845,8 +3845,8 @@ fn focus_window_by_offset(app: tauri::AppHandle, offset: i32) -> Result<(), Stri
 /// hits the main-thread queue.
 #[tauri::command]
 async fn arrange_all(app: tauri::AppHandle) -> Result<(), String> {
-    let count = app.webview_windows().len();
-    let tiles = sorted_windows(&app, count);
+    let tiles = sorted_windows(&app, usize::MAX);
+    let count = tiles.len();
     let (rects, scale) = if tiles.is_empty() {
         (Vec::new(), 1.0)
     } else {
@@ -4370,11 +4370,25 @@ fn tile_area(win: &WebviewWindow) -> Option<(i32, i32, i32, i32, f64)> {
     ))
 }
 
-/// The first `count` open windows (main first, then project-N ascending). Returns
-/// the live window handles in label order. `take`-limited by `count`.
+/// Only project windows participate in arrangement and keyboard cycling. Auxiliary
+/// windows such as the What's New dialog must remain untouched.
+fn is_arrangeable_window_label(label: &str) -> bool {
+    label == "main"
+        || label
+            .strip_prefix("project-")
+            .is_some_and(|suffix| suffix.parse::<u32>().is_ok())
+}
+
+fn arrangeable_windows(app: &tauri::AppHandle) -> Vec<WebviewWindow> {
+    app.webview_windows()
+        .into_values()
+        .filter(|window| is_arrangeable_window_label(window.label()))
+        .collect()
+}
+
+/// The first `count` project windows (main first, then project-N ascending).
 fn sorted_windows(app: &tauri::AppHandle, count: usize) -> Vec<WebviewWindow> {
-    let mut windows: Vec<WebviewWindow> = app.webview_windows().into_values().collect();
-    // Deterministic order: main first, then project-N ascending.
+    let mut windows = arrangeable_windows(app);
     windows.sort_by_key(|w| label_rank(w.label()));
     windows.into_iter().take(count).collect()
 }
@@ -4490,10 +4504,10 @@ fn grid_cols(count: usize) -> i32 {
 /// within a row). Tolerance ≈ half the smallest window height so tiled same-row
 /// windows group reliably while free-floating windows still get a stable order.
 fn compute_window_order(app: &tauri::AppHandle) -> Vec<String> {
-    let windows = app.webview_windows();
+    let windows = arrangeable_windows(app);
     let mut positions: Vec<(String, i32, i32)> = Vec::with_capacity(windows.len());
     let mut min_height: i32 = i32::MAX;
-    for (label, win) in &windows {
+    for win in &windows {
         let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else {
             continue;
         };
@@ -4501,7 +4515,7 @@ fn compute_window_order(app: &tauri::AppHandle) -> Vec<String> {
         if h > 0 && h < min_height {
             min_height = h;
         }
-        positions.push((label.clone(), pos.x, pos.y));
+        positions.push((win.label().to_string(), pos.x, pos.y));
     }
     // Floor the tolerance so a single tiny window doesn't collapse rows together.
     let tolerance = (min_height / 2).max(40);
@@ -6491,6 +6505,14 @@ mod tests {
     /// Helper: build a (label, x, y) position tuple.
     fn pos(label: &str, x: i32, y: i32) -> (String, i32, i32) {
         (label.to_string(), x, y)
+    }
+
+    #[test]
+    fn arranger_excludes_auxiliary_windows() {
+        assert!(is_arrangeable_window_label("main"));
+        assert!(is_arrangeable_window_label("project-7"));
+        assert!(!is_arrangeable_window_label("whatsnew"));
+        assert!(!is_arrangeable_window_label("project-preview"));
     }
 
     #[test]
