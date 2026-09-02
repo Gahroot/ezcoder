@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.16.0
+
+### Minor Changes
+
+- Add built-in Steroids code research, expanded platform detection, Fable 5.1, and workspace-write protections.
+
+### Patch Changes
+
+- @prestyj/ai@5.16.0
+- @prestyj/agent@5.16.0
+- @prestyj/core@5.16.0
+
 ## 5.15.0
 
 ### Minor Changes
