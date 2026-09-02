@@ -59,7 +59,7 @@ describe("parseNpxPackage", () => {
 });
 
 describe("findPackageBinScript", () => {
-  it("resolves a bundled dependency's bin script from ggcoder's install", () => {
+  it("resolves a bundled dependency's bin script from ezcoder's install", () => {
     const script = findPackageBinScript("opensrc", "opensrc");
     expect(script).toMatch(/opensrc[/\\].*opensrc\.js$/);
   });

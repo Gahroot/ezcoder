@@ -1151,7 +1151,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (req.headers["x-gg-token"] !== authToken) {
+    if (req.headers["x-ez-token"] !== authToken) {
       daemonJson(res, 401, { error: "unauthorized" });
       return;
     }
@@ -1318,13 +1318,13 @@ const NOLAN_ALLOWED_TOOLS = [
   "web_fetch",
   "web_search",
   "screenshot",
-  // Local corpus of real repos: lets Ken verify against code that ships
+  // Local corpus of real repos: lets Nolan verify against code that ships
   // instead of assuming — core to how he's meant to work. Read-only.
   "steroids",
 ];
 
-/** Extract the plain text of the most recent assistant message (Ken's reply).
- *  Strips tool-call / image blocks, returning just the prose Ken streamed. */
+/** Extract the plain text of the most recent assistant message (Nolan's reply).
+ *  Strips tool-call / image blocks, returning just the prose Nolan streamed. */
 function lastAssistantText(messages: ReturnType<AgentSession["getMessages"]>): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -2570,8 +2570,8 @@ async function createSession(
       provider: target.provider,
       model: target.model,
       cwd,
-      systemPrompt: await buildKenSystemPrompt(cwd),
-      allowedTools: KEN_ALLOWED_TOOLS,
+      systemPrompt: await buildNolanSystemPrompt(cwd),
+      allowedTools: NOLAN_ALLOWED_TOOLS,
       transient: true,
       signal: nolanAbort.signal,
       // Nolan belongs to this window, so route MCP elicitation prompts there.
@@ -2641,8 +2641,8 @@ async function createSession(
       provider: target.provider,
       model: target.model,
       cwd,
-      systemPrompt: await buildKenAutopilotSystemPrompt(cwd),
-      allowedTools: KEN_ALLOWED_TOOLS,
+      systemPrompt: await buildNolanAutopilotSystemPrompt(cwd),
+      allowedTools: NOLAN_ALLOWED_TOOLS,
       transient: true,
       signal: nolanAutoAbort.signal,
       // Route this window's MCP elicitation prompts through the shared bridge.
@@ -5540,7 +5540,7 @@ async function createSession(
       return;
     }
 
-    // ── MCP server management (mirrors `ggcoder mcp`) ──────────────────
+    // ── MCP server management (mirrors `ezcoder mcp`) ──────────────────
     // `targetCwd` (project scope) overrides the window cwd so a server can be
     // added/removed for ANY discovered project, not just this window's. Global
     // scope ignores it (always ~/.ezcoder/mcp.json).

@@ -27,10 +27,10 @@ const NOLAN_ALLOWED_TOOLS = [
   "steroids",
 ];
 
-// Mirror of AgentSession.isToolAllowed (which is private): Ken whitelists no
+// Mirror of AgentSession.isToolAllowed (which is private): Nolan whitelists no
 // MCP server, so a tool passes only when its name is in the allow-list.
 function isToolAllowed(name: string): boolean {
-  return KEN_ALLOWED_TOOLS.includes(name);
+  return NOLAN_ALLOWED_TOOLS.includes(name);
 }
 
 describe("Nolan allowedTools filter", () => {
@@ -48,7 +48,7 @@ describe("Nolan allowedTools filter", () => {
       }
       // The read-only research/vision tools must survive.
       for (const allowed of ["read", "grep", "find", "ls", "screenshot", "steroids"]) {
-        expect(kenTools).toContain(allowed);
+        expect(nolanTools).toContain(allowed);
       }
     } finally {
       processManager.shutdownAll();
@@ -57,7 +57,7 @@ describe("Nolan allowedTools filter", () => {
   });
 
   it("allows the native steroids tool but blocks every MCP tool", () => {
-    // steroids is Ken's research corpus: a native tool, no MCP server needed.
+    // steroids is Nolan's research corpus: a native tool, no MCP server needed.
     expect(isToolAllowed("steroids")).toBe(true);
     // Any MCP server (e.g. a user-configured one) is blocked, even if it
     // exposes an innocuous-looking name.

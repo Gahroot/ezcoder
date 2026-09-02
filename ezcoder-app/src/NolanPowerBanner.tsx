@@ -1,8 +1,8 @@
-// "Ken is on." / "Ken is off." notice shown over the chat BODY (inside
+// "Nolan is on." / "Nolan is off." notice shown over the chat BODY (inside
 // `.transcript-frame`, a non-scrolling sibling of `.transcript` sized to the
 // same viewport — NOT inside `.transcript` itself, which scrolls, so an
 // absolutely positioned overlay there would pin to the scrolled content
-// instead of what's on screen) when Autopilot (Ken's auto-review loop) is
+// instead of what's on screen) when Autopilot (Nolan's auto-review loop) is
 // toggled — the chat head/nav and footer stay visible around it. Plain single
 // line styled exactly like the wake screen's, so both states render identically
 // and only the words differ.
@@ -16,14 +16,14 @@ interface Props {
   onDone: () => void;
 }
 
-export function KenPowerBanner({ mode, onDone }: Props): React.ReactElement {
+export function NolanPowerBanner({ mode, onDone }: Props): React.ReactElement {
   return (
     <div className="nolan-power-overlay" aria-hidden="true">
       {/* Keyed on `mode` so flipping the toggle again mid-animation remounts
           this node instead of restyling it in place — the flash always plays
           from a clean start, even on a rapid on/off/on flip. */}
-      <div key={mode} className="ken-power-banner" onAnimationEnd={onDone}>
-        {mode === "on" ? "Ken is on." : "Ken is off."}
+      <div key={mode} className="nolan-power-banner" onAnimationEnd={onDone}>
+        {mode === "on" ? "Nolan is on." : "Nolan is off."}
       </div>
     </div>
   );

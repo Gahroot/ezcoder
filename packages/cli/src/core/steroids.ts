@@ -2,7 +2,7 @@
 //
 // The agent's `steroids` tool and the desktop Home screen both key off the
 // same detection: a binary on the enriched PATH (see shell-path.ts) or the
-// copy we install ourselves into ~/.gg/bin. Install mirrors the CLI's own
+// copy we install ourselves into ~/.ezcoder/bin. Install mirrors the CLI's own
 // self-upgrade (upgrade.rs): hard-coded GitHub release URL, sha256 verified
 // against the release's SHA256SUMS, size-capped, single-entry tar extraction to
 // a fixed path, then a `--version` smoke test. No shell anywhere.
@@ -28,7 +28,7 @@ export interface SteroidsStatus {
 }
 
 const RELEASE_API = "https://api.github.com/repos/KenKaiii/agent-steroids/releases/latest";
-const DOWNLOAD_PREFIX = "https://github.com/KenKaiii/agent-steroids/releases/download/";
+const DOWNLOAD_PREFIX = "https://github.com/Gahroot/agent-steroids/releases/download/";
 /** Same cap as upgrade.rs: applied to the download AND the inflated binary. */
 export const MAX_ASSET_BYTES = 100 * 1024 * 1024;
 const PROBE_TIMEOUT_MS = 5_000;
@@ -43,7 +43,7 @@ const BIN_NAME = process.platform === "win32" ? "steroids.exe" : "steroids";
 
 /** Where the desktop install lands; also the last place detection looks. */
 export function defaultInstallDir(): string {
-  return path.join(os.homedir(), ".gg", "bin");
+  return path.join(os.homedir(), ".ezcoder", "bin");
 }
 
 function isFile(p: string): boolean {
@@ -56,7 +56,7 @@ function isFile(p: string): boolean {
 
 /**
  * Locate the `steroids` binary: every PATH entry first (Cargo installs land
- * in ~/.cargo/bin, already on the enriched PATH), then ~/.gg/bin. `null` when
+ * in ~/.cargo/bin, already on the enriched PATH), then ~/.ezcoder/bin. `null` when
  * absent — callers hide the tool and drop the prompt sentence, never guess.
  */
 export function findSteroidsBinary(
@@ -145,7 +145,7 @@ export function releaseTarget(
 }
 
 export const CARGO_FALLBACK =
-  "No prebuilt Steroids binary for this platform. Install with: cargo install --git https://github.com/KenKaiii/agent-steroids";
+  "No prebuilt Steroids binary for this platform. Install with: cargo install --git https://github.com/Gahroot/agent-steroids";
 
 /** Check `archive` against the SHA256SUMS line for `name`. */
 export function verifySha256(archive: Uint8Array, sums: string, name: string): void {
@@ -206,7 +206,7 @@ interface ReleaseAsset {
 }
 
 async function download(fetchFn: typeof fetch, url: string, cap: number): Promise<Buffer> {
-  const res = await fetchFn(url, { headers: { "user-agent": "gg-coder" } });
+  const res = await fetchFn(url, { headers: { "user-agent": "ezcoder" } });
   if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
   const declared = Number(res.headers.get("content-length") ?? 0);
   if (declared > cap) throw new Error(`asset exceeds ${cap} bytes`);
@@ -236,7 +236,7 @@ export async function installSteroids(opts: InstallOptions = {}): Promise<Steroi
   const wanted = `steroids-${target}.tar.gz`;
 
   const release = (await (
-    await fetchFn(RELEASE_API, { headers: { "user-agent": "gg-coder" } })
+    await fetchFn(RELEASE_API, { headers: { "user-agent": "ezcoder" } })
   ).json()) as {
     assets?: ReleaseAsset[];
   };

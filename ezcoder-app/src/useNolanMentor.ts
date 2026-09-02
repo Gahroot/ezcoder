@@ -136,8 +136,8 @@ export function useNolanMentor(opts: {
         // text ("...work.Local tools..."). Mirrors the build session's
         // tool_call_start / server_tool_call handling. Covers both client tools
         // (read/grep/steroids) and Anthropic's native server web_search.
-        case "ken_tool_call_start":
-        case "ken_server_tool_call":
+        case "nolan_tool_call_start":
+        case "nolan_server_tool_call":
           // Close any open thinking span (mirrors the build's finalizeThinking on
           // tool_call_start) so the timer doesn't keep counting while a tool runs.
           finalizeNolanThinking();

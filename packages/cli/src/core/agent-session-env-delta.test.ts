@@ -145,8 +145,8 @@ describe("AgentSession environment drift", () => {
   }, 20_000);
 
   it("tells a verbatim custom prompt about an added root, since its prompt never rebuilds", async () => {
-    // Ken's sessions run a fixed prompt. `/add-dir` widens the write guard for
-    // them like anyone else, so staying silent let Ken write into a folder it
+    // Nolan's sessions run a fixed prompt. `/add-dir` widens the write guard for
+    // them like anyone else, so staying silent let Nolan write into a folder it
     // had never been told existed. This note is their only channel.
     const { session, internals } = await makeSession({ systemPrompt: "verbatim prompt" });
     const sibling = await fs.mkdtemp(path.join(os.tmpdir(), "env-delta-custom-"));

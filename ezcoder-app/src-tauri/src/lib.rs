@@ -3329,10 +3329,10 @@ async fn agent_steroids_status(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/steroids", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -3349,10 +3349,10 @@ async fn agent_steroids_install(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/steroids/install", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -4653,7 +4653,7 @@ fn pick_node(env_override: Option<String>, is_dev: bool, exe_dir: Option<&Path>)
 
 /// Resolve the built sidecar JS.
 ///
-/// Dev (debug build, or `GG_SIDECAR_PATH` set): use `GG_SIDECAR_PATH`, else the
+/// Dev (debug build, or `EZ_SIDECAR_PATH` set): use `EZ_SIDECAR_PATH`, else the
 /// workspace `dist/app-sidecar.js` relative to this crate.
 ///
 /// Bundled (release): resolve the single-file ESM sidecar shipped under
@@ -4675,11 +4675,11 @@ fn resolve_sidecar(app: &tauri::AppHandle) -> PathBuf {
 
 /// Path to the workspace dev sidecar, relative to this crate.
 fn workspace_sidecar() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packages/ggcoder/dist/app-sidecar.js")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packages/cli/dist/app-sidecar.js")
 }
 
 /// Pure sidecar-path decision (testable without an AppHandle).
-/// - `env_override` (GG_SIDECAR_PATH) always wins.
+/// - `env_override` (EZ_SIDECAR_PATH) always wins.
 /// - dev build → workspace `dist/app-sidecar.js`.
 /// - bundled → the resolved bundle resource, falling back to the workspace path.
 fn pick_sidecar(env_override: Option<String>, is_dev: bool, resource: Option<&Path>) -> PathBuf {
@@ -6470,7 +6470,7 @@ mod tests {
                    1000|4|C:\\Windows\\System32\\cmd.exe\n\
                    5000|9999|C:\\nodejs\\node.exe app-sidecar.mjs\n\
                    5001|5000|C:\\nodejs\\node.exe some-mcp-server\n\
-                   6000|4|C:\\Program Files\\GG Coder\\gg-app.exe\n\
+                   6000|4|C:\\Program Files\\EZ Coder\\ezcoder-app.exe\n\
                    6001|6000|C:\\nodejs\\node.exe app-sidecar.mjs";
         let snapshot = parse_cim_output(raw);
         assert_eq!(snapshot.len(), 6);

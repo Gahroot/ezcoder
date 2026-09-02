@@ -4,7 +4,7 @@
 // (`{"error"}` on stdout, exit 1) becomes the tool error.
 import { execFile } from "node:child_process";
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { steroidsEnv } from "../core/steroids.js";
 
 const TIMEOUT_MS = 30_000;

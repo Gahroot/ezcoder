@@ -75,7 +75,7 @@ export const MODELS: ModelInfo[] = [
   {
     // Released 2026-09-01 — replaces Fable 5 at the same $10/$50 MTok (cache
     // reads drop to $0.25). Always-on adaptive thinking steered by effort;
-    // forced tool use is rejected with a 400, which gg-ai never sends on the
+    // forced tool use is rejected with a 400, which @prestyj/ai never sends on the
     // Anthropic path. Fable 5 is retired here — a session that still has it
     // saved falls back to the provider default on next start.
     id: "claude-fable-5-1",

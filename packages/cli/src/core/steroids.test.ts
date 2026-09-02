@@ -102,13 +102,13 @@ describe("releaseTarget", () => {
 
 describe("findSteroidsBinary", () => {
   it("returns null when nothing is on PATH or in the install dir", () => {
-    const empty = fs.mkdtempSync(path.join(os.tmpdir(), "gg-steroids-empty-"));
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), "ez-steroids-empty-"));
     expect(findSteroidsBinary({ pathEnv: "", installDir: empty })).toBeNull();
     fs.rmSync(empty, { recursive: true, force: true });
   });
 
   it("finds the install-dir copy", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gg-steroids-bin-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ez-steroids-bin-"));
     fs.writeFileSync(path.join(dir, BIN), payload);
     expect(findSteroidsBinary({ pathEnv: "", installDir: dir })).toBe(path.join(dir, BIN));
     fs.rmSync(dir, { recursive: true, force: true });
@@ -118,7 +118,7 @@ describe("findSteroidsBinary", () => {
 describe("installSteroids", () => {
   const target = "aarch64-apple-darwin";
   const asset = `steroids-${target}.tar.gz`;
-  const prefix = "https://github.com/KenKaiii/agent-steroids/releases/download/v9.9.9/";
+  const prefix = "https://github.com/Gahroot/agent-steroids/releases/download/v9.9.9/";
 
   function fakeFetch(archive: Buffer, sums: string): typeof fetch {
     const bodies: Record<string, Buffer | string> = {
@@ -150,7 +150,7 @@ describe("installSteroids", () => {
   });
 
   it("writes nothing when the checksum does not match", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gg-steroids-install-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ez-steroids-install-"));
     await expect(
       installSteroids({
         fetchFn: fakeFetch(archive, `${"0".repeat(64)}  ${asset}\n`),
@@ -165,7 +165,7 @@ describe("installSteroids", () => {
   });
 
   it("installs the binary when the checksum matches", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gg-steroids-install-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ez-steroids-install-"));
     const status = await installSteroids({
       fetchFn: fakeFetch(archive, `${goodSum}  ${asset}\n`),
       installDir: dir,

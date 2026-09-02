@@ -2670,7 +2670,7 @@ function App(): React.ReactElement {
                 onChange={(next) => {
                   setState((s) => (s ? { ...s, autopilot: next } : s));
                   void setAutopilot(next);
-                  setKenPowerBanner(next ? "on" : "off");
+                  setNolanPowerBanner(next ? "on" : "off");
                 }}
               />
               <button

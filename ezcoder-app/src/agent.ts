@@ -1805,7 +1805,7 @@ export function onSteroidsChange(cb: (status: SteroidsStatus) => void): () => vo
   });
 }
 
-// ── MCP server management (mirrors `ggcoder mcp`) ────────────
+// ── MCP server management (mirrors `ezcoder mcp`) ────────────
 
 /** One configured MCP server joined with its live connection status. */
 export interface McpServerRow {

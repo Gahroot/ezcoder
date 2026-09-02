@@ -576,7 +576,7 @@ export class MCPClientManager {
       // `npx -y <pkg>` self-resolve to the local source (no built bin
       // shim) and fail with "command not found".
       //
-      // For an `npx -y <pkg>` of a package that ships as a ggcoder dependency
+      // For an `npx -y <pkg>` of a package that ships as a ezcoder dependency
       // rewrite to a direct
       // `node <binScript>` invocation. `npx` otherwise spawns a ~100 MB Node
       // wrapper whose only job is to resolve+launch the real server, doubling

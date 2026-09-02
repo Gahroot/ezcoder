@@ -1481,9 +1481,9 @@ export class AgentSession {
     // invalidate every cached byte from that section onward. Unconditional and
     // cheap: identical facts produce no message at all.
     //
-    // This runs for a verbatim custom prompt TOO. Those sessions (Ken's) never
+    // This runs for a verbatim custom prompt TOO. Those sessions (Nolan's) never
     // rebuild their prompt, so this note is the only channel that can tell them
-    // a root was added — skipping it meant Ken could write into a folder it had
+    // a root was added — skipping it meant Nolan could write into a folder it had
     // never been told about. The note states the facts outright rather than
     // referring to a section such a prompt does not have.
     const environmentDelta = buildEnvDeltaMessage(

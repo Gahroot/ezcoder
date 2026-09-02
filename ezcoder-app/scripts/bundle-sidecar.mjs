@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
-const sidecarEntry = join(repoRoot, "packages", "ggcoder", "dist", "app-sidecar.js");
+const sidecarEntry = join(repoRoot, "packages", "cli", "dist", "app-sidecar.js");
 const outDir = join(here, "..", "src-tauri", "sidecar");
 const outFile = join(outDir, "app-sidecar.mjs");
 const nodeModulesOut = join(outDir, "node_modules");
@@ -303,7 +303,7 @@ function pruneBrowserOnnxPayloads() {
 
 async function main() {
   if (!existsSync(sidecarEntry)) {
-    throw new Error(`sidecar entry missing: ${sidecarEntry} (build @kenkaiiii/ggcoder first)`);
+    throw new Error(`sidecar entry missing: ${sidecarEntry} (build @prestyj/cli first)`);
   }
   if (!existsSync(bundledSkillsSource)) {
     throw new Error(`bundled skills missing: ${bundledSkillsSource}`);

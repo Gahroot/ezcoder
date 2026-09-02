@@ -63,7 +63,7 @@ export function buildEnvDeltaMessage(
   if (lines.length === 0) return null;
 
   // Deliberately self-contained: it states the new facts instead of pointing at
-  // "the Environment section above". A verbatim custom prompt (Ken's sessions)
+  // "the Environment section above". A verbatim custom prompt (Nolan's sessions)
   // has no such section, and this is the ONLY way those sessions ever hear
   // about an added root — their prompt is never rebuilt. Wording that referred
   // to a section the model cannot see is what kept them in the dark.

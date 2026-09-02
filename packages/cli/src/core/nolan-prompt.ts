@@ -38,8 +38,8 @@ function renderUncachedDateSuffix(): string {
 }
 
 /**
- * Build Ken Kai's system prompt. No tool/work sections of the GG Coder coding
- * prompt — Ken is an advisor, not a coding agent. His read-only tools (read,
+ * Build Nolan Grout's system prompt. No tool/work sections of the EZ Coder coding
+ * prompt — Nolan is an advisor, not a coding agent. His read-only tools (read,
  * grep, find, ls, source_path, web_fetch, web_search, screenshot, steroids)
  * are listed by the session's own Tools section; this prompt teaches him how to
  * think and how to format what he hands back.
