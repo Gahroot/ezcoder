@@ -17,6 +17,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.67",
+    date: "2026-09-02",
+    items: [
+      "I fixed the `window arranger` after the new update dialog got mixed into its project count. Project windows tile correctly again while utility windows stay put.",
+    ],
+  },
+  {
     version: "0.1.66",
     date: "2026-09-02",
     items: [
