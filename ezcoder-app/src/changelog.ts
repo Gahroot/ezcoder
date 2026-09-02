@@ -17,6 +17,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.68",
+    date: "2026-09-02",
+    items: [
+      "I fixed the `window arranger` menu so every layout and display option receives clicks again, even when the menu overlaps your transcript.",
+    ],
+  },
+  {
     version: "0.1.67",
     date: "2026-09-02",
     items: [
