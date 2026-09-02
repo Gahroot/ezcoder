@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.57.2",
+    date: "2026-09-03",
+    items: [
+      "GG Coder now builds from proof, not memory. Before it plans or writes anything nontrivial, it checks `Agent Steroids`, your local library of real, current open-source code, and copies the patterns that actually ship. If your library has no match, it goes and finds the right repos, asks you once, indexes them, and then builds from what it read. I ran it `16` times back to back on `GLM-5.3` to make sure it never skips this step. And if you have not installed Steroids yet, it will tell you exactly where the button is.",
+    ],
+  },
+  {
     version: "0.57.1",
     date: "2026-09-03",
     items: [
