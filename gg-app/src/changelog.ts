@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.57.0",
+    date: "2026-09-02",
+    items: [
+      "Your agent stops writing last year's code. I plugged in `Agent Steroids`: a corpus of real, current open-source repos on your own disk that it reads before it writes, offline and with no rate limits. Hit the new `Steroids` button on Home to install it in one click, then run `/steroids` and I profile your project, hunt down the repos that match it, and index only the ones you pick.",
+      "GG Coder now knows which platform CLIs you already have. It spots `31` tools like `railway`, `vercel` and `gh` in your project and drives them for logs, deploys and env vars instead of sending you off to a dashboard.",
+      "Background windows finally sit still. Every decorative animation and canvas loop pauses the moment a window loses focus, so a stack of open projects no longer burns CPU and battery while you work in one of them.",
+    ],
+  },
+  {
     version: "0.56.0",
     date: "2026-09-02",
     items: [
