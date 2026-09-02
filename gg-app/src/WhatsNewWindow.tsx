@@ -30,7 +30,7 @@ const HIGHLIGHT_TERMS = [
   "Sakana Fugu",
   "Fugu Ultra",
   "Radio Paradise",
-  "Kencode search",
+  "Steroids",
   "Prompt Enhancer",
   "Send to GG Coder",
   "Grant Permissions",

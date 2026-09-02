@@ -266,9 +266,9 @@ export interface AgentSessionOptions {
    * MCP server names whose tools are allowed in an allow-listed session. Only
    * meaningful alongside `allowedTools`. With it set, the session connects ONLY
    * these named MCP servers (not the full configured set) and every tool they
-   * expose (`mcp__<server>__*`) passes the allow-list. The Ken mentor agent uses
-   * this to get `kencode-search` for real-code research while still being barred
-   * from every mutating tool. Empty/undefined → an allow-listed session skips
+   * expose (`mcp__<server>__*`) passes the allow-list, so a read-only agent can
+   * be handed one research server while still being barred from every mutating
+   * tool. Empty/undefined → an allow-listed session skips
    * MCP entirely (its dynamic tool names could never match a fixed allow-list).
    */
   allowedMcpServers?: string[];
@@ -857,7 +857,7 @@ export class AgentSession {
    * everything passes (default behavior). Otherwise a tool is allowed when its
    * name is in `allowedTools`, OR it's an MCP tool (`mcp__<server>__<tool>`)
    * whose `<server>` is in `allowedMcpServers`. The MCP-prefix rule lets a
-   * whitelisted research server (e.g. kencode-search) expose all its tools
+   * whitelisted research server expose all its tools
    * without hard-coding each one, while every other tool stays blocked.
    */
   private isToolAllowed(name: string): boolean {
@@ -885,8 +885,7 @@ export class AgentSession {
     if (!this.mcpManager) return;
     // Allow-listed (read-only advisory) sessions enforce a fixed tool set by
     // name. An MCP server is only connected when its name is explicitly
-    // whitelisted via `allowedMcpServers` (the Ken mentor agent does this for
-    // `kencode-search` so it can research real code). With no whitelist, skip
+    // whitelisted via `allowedMcpServers`. With no whitelist, skip
     // MCP entirely — dynamic `mcp__server__tool` names could never match a fixed
     // allow-list, and connecting would waste resources spawning stdio servers.
     const mcpWhitelist = this.opts.allowedMcpServers;
@@ -2380,7 +2379,7 @@ export class AgentSession {
       // Reconnect MCP servers ONLY when GLM is involved on either side — GLM
       // is the only provider with a different server set (Z.AI tools), so a
       // non-GLM switch keeps the identical set. Skipping the dispose/reconnect
-      // there avoids tearing down a live stdio child (e.g. kencode-search) and
+      // there avoids tearing down a live stdio child and
       // gambling on a `npx` re-spawn that could fail and drop the tools.
       const glmInvolved = this.provider === "glm" || prevProvider === "glm";
       if (this.mcpManager && glmInvolved) {
