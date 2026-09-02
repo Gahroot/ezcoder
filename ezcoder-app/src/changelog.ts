@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.2.0",
+    date: "2026-09-02",
+    items: [
+      "I gave EZ Coder a built-in research engine. The new `Steroids` tool finds proven patterns in real projects without extra setup, so your code starts from stronger examples.",
+      "I added `Claude Fable 5.1` and smarter platform detection. EZ Coder now understands more of the tools already installed on your machine and picks from the latest model lineup.",
+      "Questions are cleaner and easier to change. The new `one-row answers` keep choices compact while letting you revise them before moving on.",
+      "Background windows finally know when to chill. I pause decorative motion while they are unfocused, cutting wasted battery and graphics work without changing your active session.",
+      "I tightened `workspace protection` so linked paths cannot write beyond your project. Your files stay inside the boundaries you chose.",
+    ],
+  },
+  {
     version: "0.1.64",
     date: "2026-08-26",
     items: [
