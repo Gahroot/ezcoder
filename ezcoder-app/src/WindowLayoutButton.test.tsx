@@ -44,4 +44,13 @@ describe("WindowLayoutButton (Windows/Linux fallback)", () => {
     await waitFor(() => expect(arrangeAllWindows).toHaveBeenCalledOnce());
     expect(setupWindows).not.toHaveBeenCalled();
   });
+
+  it("renders the menu outside the app stacking context", async () => {
+    const { container } = render(<WindowLayoutButton />);
+    fireEvent.click(screen.getByRole("button", { name: /arrange into multiple project windows/i }));
+
+    const menu = screen.getByRole("menu", { name: /window layout/i });
+    await waitFor(() => expect(menu.parentElement).toBe(document.body));
+    expect(container.contains(menu)).toBe(false);
+  });
 });

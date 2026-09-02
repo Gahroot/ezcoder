@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AppWindow, Check, ChevronRight, Monitor } from "lucide-react";
 import {
   setupWindows,
@@ -22,6 +23,8 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
   const [selected, setSelected] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const menuId = useId();
 
   useEffect(() => {
@@ -36,7 +39,9 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
       setSelected(res.selected);
     });
     const closeOnOutsideClick = (event: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
@@ -49,13 +54,24 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
     );
     document.addEventListener("keydown", closeOnEscape);
     requestAnimationFrame(() =>
-      rootRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus(),
+      menuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus(),
     );
     return () => {
       window.clearTimeout(listenerId);
       document.removeEventListener("mousedown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = (): void => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) setMenuPosition({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
   }, [open]);
 
   async function chooseMonitor(name: string | null): Promise<void> {
@@ -122,84 +138,93 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
       >
         <AppWindow size={16} />
       </button>
-      {open && (
-        <>
-          <div className="menu-backdrop" onMouseDown={() => setOpen(false)} />
-          <div
-            id={menuId}
-            className="winlayout-menu"
-            role="menu"
-            aria-label="Window layout"
-            onKeyDown={moveMenuFocus}
-            style={{ background: theme.surface2, borderColor: theme.border }}
-          >
-            <button role="menuitem" className="winlayout-item" onClick={() => void run("2")}>
-              2 windows
-            </button>
-            <button role="menuitem" className="winlayout-item" onClick={() => void run("4")}>
-              4 windows
-            </button>
-            <button role="menuitem" className="winlayout-item" onClick={() => void run("6")}>
-              6 windows
-            </button>
-            <div className="winlayout-divider" role="separator" />
-            <button role="menuitem" className="winlayout-item" onClick={() => void run("auto")}>
-              Auto-arrange all
-            </button>
-            {multiMonitor && (
-              <>
-                <div className="winlayout-divider" role="separator" />
-                <button
-                  role="menuitem"
-                  className="winlayout-item"
-                  style={{ color: theme.text, justifyContent: "space-between" }}
-                  onClick={() => setShowMonitors((shown) => !shown)}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                    <Monitor size={14} />
-                    Display
-                  </span>
-                  <span
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      color: theme.textDim,
-                      fontSize: 11,
-                    }}
+      {open &&
+        createPortal(
+          <>
+            <div className="menu-backdrop" onMouseDown={() => setOpen(false)} />
+            <div
+              ref={menuRef}
+              id={menuId}
+              className="winlayout-menu"
+              role="menu"
+              aria-label="Window layout"
+              onKeyDown={moveMenuFocus}
+              style={{
+                background: theme.surface2,
+                borderColor: theme.border,
+                top: menuPosition?.top ?? 0,
+                right: menuPosition?.right ?? 0,
+                visibility: menuPosition ? "visible" : "hidden",
+              }}
+            >
+              <button role="menuitem" className="winlayout-item" onClick={() => void run("2")}>
+                2 windows
+              </button>
+              <button role="menuitem" className="winlayout-item" onClick={() => void run("4")}>
+                4 windows
+              </button>
+              <button role="menuitem" className="winlayout-item" onClick={() => void run("6")}>
+                6 windows
+              </button>
+              <div className="winlayout-divider" role="separator" />
+              <button role="menuitem" className="winlayout-item" onClick={() => void run("auto")}>
+                Auto-arrange all
+              </button>
+              {multiMonitor && (
+                <>
+                  <div className="winlayout-divider" role="separator" />
+                  <button
+                    role="menuitem"
+                    className="winlayout-item"
+                    style={{ color: theme.text, justifyContent: "space-between" }}
+                    onClick={() => setShowMonitors((shown) => !shown)}
                   >
-                    {selectedLabel}
-                    <ChevronRight
-                      size={13}
+                    <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <Monitor size={14} />
+                      Display
+                    </span>
+                    <span
                       style={{
-                        transform: showMonitors ? "rotate(90deg)" : "none",
-                        transition: "transform 120ms",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        color: theme.textDim,
+                        fontSize: 11,
                       }}
-                    />
-                  </span>
-                </button>
-                {showMonitors && (
-                  <>
-                    <MonitorRow
-                      label="Primary (auto)"
-                      active={selected === null}
-                      onClick={() => void chooseMonitor(null)}
-                    />
-                    {monitors.map((m) => (
-                      <MonitorRow
-                        key={m.name}
-                        label={`${m.label} \u00b7 ${m.width}\u00d7${m.height}`}
-                        active={selected === m.name}
-                        onClick={() => void chooseMonitor(m.name)}
+                    >
+                      {selectedLabel}
+                      <ChevronRight
+                        size={13}
+                        style={{
+                          transform: showMonitors ? "rotate(90deg)" : "none",
+                          transition: "transform 120ms",
+                        }}
                       />
-                    ))}
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        </>
-      )}
+                    </span>
+                  </button>
+                  {showMonitors && (
+                    <>
+                      <MonitorRow
+                        label="Primary (auto)"
+                        active={selected === null}
+                        onClick={() => void chooseMonitor(null)}
+                      />
+                      {monitors.map((monitor) => (
+                        <MonitorRow
+                          key={monitor.name}
+                          label={`${monitor.label} \u00b7 ${monitor.width}\u00d7${monitor.height}`}
+                          active={selected === monitor.name}
+                          onClick={() => void chooseMonitor(monitor.name)}
+                        />
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }

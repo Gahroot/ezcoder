@@ -2571,17 +2571,15 @@ select {
 .winlayout-select:disabled {
   cursor: default;
 }
-/* Windows/Linux fallback: keep the popup inside the webview because native
-   WebView2/WebKitGTK select popups can open without accepting a selection. */
+/* Windows/Linux fallback: portal the popup above the isolated app shell because
+   sibling stacking contexts otherwise cover its lower options and intercept clicks. */
 .menu-backdrop {
   position: fixed;
   inset: 0;
   z-index: 59;
 }
 .winlayout-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
   z-index: 60;
   display: flex;
   min-width: 150px;
