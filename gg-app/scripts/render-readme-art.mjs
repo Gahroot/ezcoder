@@ -71,9 +71,9 @@ const panels = {
         <div style="font-size:26px;color:${C.muted}">Every window is its own agent.</div>
         <div class="rule" style="width:620px;margin-top:10px"></div>
         <div class="mono" style="font-size:15px;color:${C.muted};display:flex;gap:26px">
-          <span><b style="color:${C.accent}">12</b> providers</span><span class="dim">|</span>
-          <span><b style="color:${C.accent}">0</b> Electron</span><span class="dim">|</span>
-          <span><b style="color:${C.accent}">∞</b> projects at once</span>
+          <span><b style="color:${C.accent}">$0</b> forever</span><span class="dim">|</span>
+          <span><b style="color:${C.accent}">∞</b> projects at once</span><span class="dim">|</span>
+          <span><b style="color:${C.accent}">0</b> setup</span>
         </div>
       </div>`),
   },

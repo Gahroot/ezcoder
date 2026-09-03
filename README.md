@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/art/hero.png" alt="GG Coder — every window is its own agent">
+  <img src="docs/art/hero.png" alt="GG Coder: every window is its own agent">
 </p>
 
 <p align="center">
@@ -38,12 +38,12 @@ Meanwhile every other tool wants $20 a month to rent you a model you're already 
 **A real desktop app.** Every window is its own agent, its own project folder, its own model, its own history. Nothing bleeds between them.
 
 <p align="center">
-  <img src="docs/art/windows.png" alt="Six GG Coder windows: aurora-store on Claude, pixel-pipeline on Codex, rusty-parser on a local qwen3-coder, landing-page on Gemini, api-gateway on Kimi, docs-site on GLM — each with its own status">
+  <img src="docs/art/windows.png" alt="Six GG Coder windows: aurora-store on Claude, pixel-pipeline on Codex, rusty-parser on a local qwen3-coder, landing-page on Gemini, api-gateway on Kimi, docs-site on GLM, each with its own status">
 </p>
 
 Tile 2, 4, 6, or hit auto-arrange and it lays out however many you've got open. Six isn't the ceiling. **That's four features shipping while you review one.**
 
-And it stays light. The shell is **Rust** — no Electron, no bundled browser engine sitting in RAM per window. It uses the renderer your OS already ships, and a window only costs you something while its agent is actually running. Six open is a normal Tuesday, not a fan event.
+And it stays light. The shell is **Rust**. No Electron, no bundled browser engine sitting in RAM per window. It uses the renderer your OS already ships, and a window only costs you something while its agent is actually running. Six open is a normal Tuesday, not a fan event.
 
 <p align="center">
   <a href="https://github.com/KenKaiii/gg-framework/releases/latest"><img src="https://img.shields.io/badge/⬇%20Download%20for%20macOS-Apple%20Silicon%20·%20.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS"></a>
@@ -76,32 +76,32 @@ That's a real loop, and nobody typed anything in between. **This is the closest 
 
 ## 💉 It builds from code that actually shipped
 
-Your agent learned to code from a snapshot of the internet, and that snapshot is old. So before GG Coder writes anything nontrivial, it reads real, current open-source repos sitting on your own disk — via [Agent Steroids](https://github.com/KenKaiii/agent-steroids), offline, no rate limits.
+Your agent learned to code from a snapshot of the internet, and that snapshot is old. So before GG Coder writes anything nontrivial, it reads real, current open-source repos sitting on your own disk, via [Agent Steroids](https://github.com/KenKaiii/agent-steroids). Offline, no rate limits.
 
 One click on the Home screen installs it. Then `/steroids` profiles your project, finds the repos that match it, and indexes the ones you pick. **Your agent stops guessing at APIs that changed last quarter.**
 
-## 🧠 Use whatever model you want
+## 🔓 Nothing to subscribe to
 
-Twelve providers: **Anthropic, OpenAI/Codex, Gemini, Moonshot (Kimi), Z.AI (GLM), MiniMax, DeepSeek, Xiaomi MiMo, xAI (Grok), OpenRouter, Hugging Face, Sakana.** OAuth straight into the subscription you already have, or an API key. Your call, and you're never locked to one — the expensive model plans, the cheap one grinds.
+**You already pay for a plan. Use it.** Log in the same way you log into anything, and GG Coder runs on the subscription you've got. Twelve providers are built in, every big name and the cheap ones too, so you're never stuck with whoever put their prices up this month.
 
-**One window per model means you can race them on the same problem and keep the winner.**
+Some accounts take a plan and a backup key at once: your subscription goes first, and the key quietly covers you the second the plan runs dry. **No dead stop halfway through a build.**
 
-Kimi and Grok take both at once — your subscription goes first, and the API key covers you automatically when plan usage runs out. Swap models mid-conversation, nobody's stopping you.
+Got something running on your own machine? It's found automatically, and works with no internet at all.
 
-Running your own? **Ollama is found automatically** on its normal port, and any other OpenAI-compatible server (LM Studio, llama.cpp, vLLM) is one "Add endpoint" away. Real context windows and capabilities come from the server itself, so a model that can't call tools gets flagged right there instead of blowing up on your first prompt.
+**Swap mid-conversation whenever you like.** Put the expensive one on the hard problem, the cheap one on the grind, and run both at the same time in different windows.
 
 ## ✨ Everything else
 
-|                                 |                                                                                                                                                                                  |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **It can see**                  | Drag in a screenshot, paste a design, throw a video at it. Video goes native to Gemini 3.x, Kimi K3, MiniMax M3 and MiMo-V2.5; for the rest, the agent reaches for ffmpeg itself |
-| **Plan mode**                   | Read-only poking around, a written plan you approve, then it goes                                                                                                                |
-| **Catches its own type errors** | Every edit is checked by a real language server. TypeScript ships in the box, zero setup. Python, Go, Rust and C/C++ kick in when their toolchain is on your PATH                |
-| **Knows your CLIs**             | Spots 35 platform tools like `gh`, `vercel` and `railway` in your project and drives them for logs, deploys and env vars instead of sending you to a dashboard                   |
-| **Picks up where you left off** | Finds the projects you've been working on in Claude Code and Codex too, not just GG Coder ones                                                                                   |
-| **MCP, subagents, memory**      | Paste any `claude mcp add …` line and it works. Spawn subagents for parallel work. Project memory, notes, chat export, your own slash commands in `.gg/commands/*.md`            |
-| **Watches your quota**          | Live usage meter in the title bar: how much of your 5-hour and weekly window you've burned, and when it resets                                                                   |
-| **A bit stupid, on purpose**    | XP, ranks and streaks for shipping. Sound. ASCII banners. Webcam gaze focus, if you want your eyeballs to switch windows for you                                                 |
+|                                 |                                                                                                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **It can see**                  | Drag in a screenshot, paste a design, throw a video at it. It watches the video and builds what you showed it                                                  |
+| **Plan mode**                   | It looks around and writes you a plan. Nothing gets touched until you say go                                                                                   |
+| **Catches its own mistakes**    | Broken code is spotted and fixed in the same breath it was written, before it ever reaches you                                                                 |
+| **Knows your CLIs**             | Spots 35 platform tools like `gh`, `vercel` and `railway` in your project and drives them for logs, deploys and env vars instead of sending you to a dashboard |
+| **Picks up where you left off** | Finds the projects you've been working on in Claude Code and Codex too, not just GG Coder ones                                                                 |
+| **Remembers your project**      | Notes, memory, chat export, and your own shortcut commands. Add any tool you find online by pasting one line                                                   |
+| **Watches your usage**          | A live meter up top shows how much of your plan you've burned and exactly when it resets. No surprise cut-offs                                                 |
+| **A bit stupid, on purpose**    | XP, ranks and streaks for shipping. Sound. ASCII banners. Webcam gaze focus, if you want your eyeballs to switch windows for you                               |
 
 ---
 
@@ -124,7 +124,7 @@ OAuth login so there are no API keys to paste, full terminal UI, tools, MCP, LSP
 
 ## 🧱 The framework underneath
 
-The desktop app forks **zero** agent logic. Windows, IPC and UI live in `gg-app/`; everything else is the exact same spine the CLI runs — and every layer ships on npm on its own.
+The desktop app forks **zero** agent logic. Windows, IPC and UI live in `gg-app/`; everything else is the exact same spine the CLI runs, and every layer ships on npm on its own.
 
 ```
 @kenkaiiii/gg-ai (standalone)
