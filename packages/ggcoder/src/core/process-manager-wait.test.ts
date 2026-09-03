@@ -75,3 +75,19 @@ describe("ProcessManager.waitForExit cancellation", () => {
     expect(await pm.waitForExit(id, 30_000, AbortSignal.abort())).toBe("timeout");
   });
 });
+
+describe("ProcessManager spawn failure", () => {
+  it("does not crash the host when the child fails to spawn, and still settles", async () => {
+    const pm = await manager();
+    const { id } = await pm.start("echo hi", process.cwd(), {
+      file: "definitely-not-a-real-binary-xyz",
+      args: [],
+      isCmdFallback: false,
+    });
+
+    // An 'error' with no listener would be rethrown as an uncaught exception;
+    // reaching this assertion at all proves it was handled.
+    expect(await pm.waitForExit(id, 30_000)).toBe("exited");
+    expect((await pm.readOutput(id)).isRunning).toBe(false);
+  });
+});
