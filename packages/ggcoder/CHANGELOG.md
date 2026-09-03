@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.53.3
+
+### Patch Changes
+
+- Fix a crash where a background command whose binary cannot be spawned emitted an unhandled `error` event and took the whole CLI down; the failure is now reported as a normal non-zero exit.
+  - @kenkaiiii/gg-ai@5.53.3
+  - @kenkaiiii/gg-agent@5.53.3
+  - @kenkaiiii/gg-core@5.53.3
+
 ## 5.53.2
 
 ### Patch Changes
