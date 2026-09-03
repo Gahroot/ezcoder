@@ -437,7 +437,7 @@ select {
    WebKit runs a CSS filter on a non-composited element in SOFTWARE, over the
    element's full bounds, on EVERY repaint that touches it — and this element
    spans the whole window, so a blinking cursor re-blurred the entire window at
-   80px. A user's profile of the shared GPU process ("GG Coder Graphics and
+   80px. A user's profile of the shared GPU process ("EZ Coder Graphics and
    Media", 7 windows, 468% CPU) was dominated by FEGaussianBlurSoftwareApplier.
    The softness now comes from the gradients' own falloff, which is one cheap
    shade pass. `will-change: opacity` (NOT filter — see .enh-diss-fade) lifts

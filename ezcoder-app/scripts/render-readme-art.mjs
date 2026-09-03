@@ -3,14 +3,14 @@
  *
  * Draws the README's illustrative panels as HTML in headless Chromium and
  * screenshots them, so the art is regenerable, diffable, and always uses the
- * REAL app palette (`gg-app/src/theme.ts`) rather than hand-picked hex codes
+ * REAL app palette (`ezcoder-app/src/theme.ts`) rather than hand-picked hex codes
  * that drift the moment the app is restyled.
  *
- * Nothing here reads `~/.gg`: every project name, model and number on these
+ * Nothing here reads `~/.ezcoder`: every project name, model and number on these
  * panels is either fictional demo data or a fact taken from the repo itself.
  * Product screenshots live in `capture-screenshots.mjs`, next to this file.
  *
- * Usage: node gg-app/scripts/render-readme-art.mjs [panel...]   (default: all)
+ * Usage: node ezcoder-app/scripts/render-readme-art.mjs [panel...]   (default: all)
  * Output: docs/art/*.png
  */
 import { chromium } from "playwright";
@@ -109,7 +109,7 @@ const panels = {
     html: shell(`
       <div class="pad" style="height:440px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px">
         <div class="eyebrow">📱 You don't have to be there</div>
-        <div style="font-size:104px;font-weight:800;letter-spacing:-.035em;line-height:1">GG CODER</div>
+        <div style="font-size:104px;font-weight:800;letter-spacing:-.035em;line-height:1">EZ CODER</div>
         <div style="font-size:26px;color:${C.muted}">Text it from the pub. It codes. It checks itself.</div>
         <div class="rule" style="width:620px;margin-top:10px"></div>
         <div class="mono" style="font-size:15px;color:${C.muted};display:flex;gap:26px">
@@ -122,7 +122,7 @@ const panels = {
 
   // NOTE: this file renders the title card ONLY, and deliberately so. Every
   // other README image must be a real capture of the real app
-  // (`capture-screenshots.mjs`). Hand-drawing a fake GG Coder window here would
+  // (`capture-screenshots.mjs`). Hand-drawing a fake EZ Coder window here would
   // show readers a product that does not exist and make the real UI look worse
   // than it is, so mocked app chrome does not belong in this file.
 };

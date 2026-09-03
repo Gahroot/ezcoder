@@ -12,7 +12,7 @@ const managers: ProcessManager[] = [];
 const tempDirs: string[] = [];
 
 async function manager(): Promise<ProcessManager> {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gg-process-wait-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ez-process-wait-"));
   tempDirs.push(directory);
   const instance = new ProcessManager({ bgDir: directory });
   managers.push(instance);
