@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.57.4",
+    date: "2026-09-04",
+    items: [
+      "No more watching GG Coder nap. When it starts a build, a test run or an install in the background, it used to guess how long that would take and just sleep, sometimes a full `30 seconds` after the job already finished. Now it waits on the real finish line and picks straight back up the moment your command is done, so long jobs feel dramatically snappier and it can no longer talk itself into an idle loop.",
+    ],
+  },
+  {
     version: "0.57.3",
     date: "2026-09-03",
     items: [
