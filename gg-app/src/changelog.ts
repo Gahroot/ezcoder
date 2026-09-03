@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.57.5",
+    date: "2026-09-04",
+    items: [
+      "Squashed a crash that could take the whole app down. If GG Coder tried to run a command in the background and the program behind it was not installed, the failure escaped and killed everything instead of being reported. Now it just tells you the command could not start and carries on like nothing happened.",
+    ],
+  },
+  {
     version: "0.57.4",
     date: "2026-09-04",
     items: [
