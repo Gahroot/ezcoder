@@ -25,13 +25,13 @@
 
 ---
 
-## 😤 The problem
+## 😤 Why this exists
 
-You've got four things on the go. A side project, a client's app, that Rust thing, a landing page.
+I built this because every other coding agent and setup pissed me off.
 
-Your coding agent handles **one** of them at a time. So you split a terminal into panes, lose track of which pane is which, and the good one gets buried under the one you stopped caring about.
+You've got a few things on the go. A side project, a client's app, that thing you keep meaning to finish. Your agent handles **one** of them at a time, so you split a terminal into panes, lose track of which pane is which, and the good one gets buried under the one you stopped caring about. Then the tool wants $20 a month to rent you a plan you already pay for.
 
-Meanwhile every other tool wants $20 a month to rent you a model you're already paying for.
+So I made the one I wanted: **more power, less faffing about, and every feature nobody else was shipping.**
 
 ## 🪟 The fix
 
