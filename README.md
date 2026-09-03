@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/art/hero.png" alt="GG Coder: every window is its own agent">
+  <img src="docs/art/hero.png" alt="GG Coder: six things shipping, none of them waiting on you">
 </p>
 
 <p align="center">
@@ -16,34 +16,40 @@
 </p>
 
 <p align="center">
-  macOS · Windows · <a href="#-get-it">free forever</a> · no subscription, no seat fee, no middleman
+  <strong>The only coding agent you can walk away from.</strong>
 </p>
 
 <p align="center">
-  <em>Bring the plan you already pay for. Or run it entirely on your own hardware, offline.</em>
+  macOS · Windows · runs on the AI plan you already pay for
 </p>
 
 ---
 
 ## 😤 Why this exists
 
-I built this because every other coding agent and setup pissed me off.
+I built this because every other coding agent pissed me off.
 
-You've got a few things on the go. A side project, a client's app, that thing you keep meaning to finish. Your agent handles **one** of them at a time, so you split a terminal into panes, lose track of which pane is which, and the good one gets buried under the one you stopped caring about. Then the tool wants $20 a month to rent you a plan you already pay for.
+They all do the same thing: you sit there and **babysit**. Approve this. Confirm that. Read the output, spot the mistake, tell it again. You're not building, you're supervising. And the second you close the laptop, everything stops.
 
-So I made the one I wanted: **more power, less faffing about, and every feature nobody else was shipping.**
+So I built the one I wanted. Two things nobody else has.
 
-## 🪟 The fix
+## 📱 One: send it work from your phone
 
-**A real desktop app.** Every window is its own agent, its own project folder, its own model, its own history. Nothing bleeds between them.
+Hook it to a Telegram chat and **your laptop becomes something you text**. Send a message, send a voice note, get told when it's done. From the pub, from bed, from a queue at the shops.
+
+Voice notes get transcribed **on your own machine**, not sent to anyone. Put a job on a timer and it checks your site every 15 minutes and fixes whatever broke while you were asleep.
+
+## 🤖 Two: it has its own code reviewer
+
+Every other agent marks its own homework. This one doesn't.
+
+Flip on **Autopilot** and **Ken**, a whole second agent, reviews every finished job. Not good enough? He hands it straight back with exactly what's wrong, and it goes again. And again. Until it's right.
 
 <p align="center">
-  <img src="docs/art/windows.png" alt="Six GG Coder windows: aurora-store on Claude, pixel-pipeline on Codex, rusty-parser on a local qwen3-coder, landing-page on Gemini, api-gateway on Kimi, docs-site on GLM, each with its own status">
+  <img src="docs/screenshots/03-autopilot.png" alt="Ken sends GG Coder back in: the rate limiter's bucket is per-process, so the real limit is 4x what was configured. GG Coder moves it to Redis, and Ken signs off." width="900">
 </p>
 
-Tile 2, 4, 6, or hit auto-arrange and it lays out however many you've got open. Six isn't the ceiling. **That's four features shipping while you review one.**
-
-And it stays light. The shell is **Rust**. No Electron, no bundled browser engine sitting in RAM per window. It uses the renderer your OS already ships, and a window only costs you something while its agent is actually running. Six open is a normal Tuesday, not a fan event.
+That's the real thing, mid-loop. Ken caught a bug that would have quietly let through **four times** the traffic limit, sent it back, and signed off on the fix. **Nobody typed a single thing in between.**
 
 <p align="center">
   <a href="https://github.com/KenKaiii/gg-framework/releases/latest"><img src="https://img.shields.io/badge/⬇%20Download%20for%20macOS-Apple%20Silicon%20·%20.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS"></a>
@@ -54,25 +60,19 @@ Signed and notarized on macOS. It updates itself, so you install it once and for
 
 ---
 
-## 👀 You can see what it's doing
+## 👀 And when you are watching, you see everything
 
-Chat stays readable. Tools stream in a pinned panel at the bottom, so you watch every file it touches and every command it runs without your conversation turning into a wall of JSON.
+Chat stays readable. Every file it touches and every command it runs streams in a panel at the bottom, so nothing happens behind your back and your conversation never turns into a wall of noise.
 
-Git branch, uncommitted count, open issues and PRs up top. Context %, thinking level and both models down bottom.
-
-<p align="center">
-  <img src="docs/screenshots/02-chat.png" alt="GG Coder mid-run, with the live tool panel streaming edits and a test run" width="900">
-</p>
-
-## 🤖 Autopilot, the one nobody knows about
-
-Flip it on and **Ken**, a mentor agent, reviews every finished run. Not good enough? He sends GG Coder straight back in with specific feedback, and it keeps going until he signs off. You go make coffee.
+Run as many as you like at once, each on its own project and its own model, all reviewed by Ken:
 
 <p align="center">
-  <img src="docs/art/autopilot.png" alt="Autopilot loop: GG Coder builds a rate limiter, Ken catches that the bucket is per-process, GG Coder moves it to Redis and adds a test, Ken signs off">
+  <img src="docs/screenshots/00-many-windows.png" alt="Six GG Coder windows tiled across one screen, each on a different project and a different model, all working at the same time" width="900">
 </p>
 
-That's a real loop, and nobody typed anything in between. **This is the closest thing to a senior dev reviewing your agent's PRs at 3am.**
+<p align="center">
+  <img src="docs/screenshots/02-chat.png" alt="GG Coder answering why a checkout endpoint double-charges, then fixing it while the tool panel streams the files it edits and the test suite it runs" width="900">
+</p>
 
 ## 💉 It builds from code that actually shipped
 
@@ -80,15 +80,13 @@ Your agent learned to code from a snapshot of the internet, and that snapshot is
 
 One click on the Home screen installs it. Then `/steroids` profiles your project, finds the repos that match it, and indexes the ones you pick. **Your agent stops guessing at APIs that changed last quarter.**
 
-## 🔓 Nothing to subscribe to
+## 🔋 It doesn't stop when your plan runs out
 
-**You already pay for a plan. Use it.** Log in the same way you log into anything, and GG Coder runs on the subscription you've got. Twelve providers are built in, every big name and the cheap ones too, so you're never stuck with whoever put their prices up this month.
+You know the wall: mid-build, and your usage limit hits. Everything stops for five hours.
 
-Some accounts take a plan and a backup key at once: your subscription goes first, and the key quietly covers you the second the plan runs dry. **No dead stop halfway through a build.**
+GG Coder can hold **a subscription and a backup key at the same time**. The plan goes first, and the key takes over the second it runs dry. It just keeps going. A live meter up top shows exactly how much you've burned and when it resets, so it's never a surprise.
 
-Got something running on your own machine? It's found automatically, and works with no internet at all.
-
-**Swap mid-conversation whenever you like.** Put the expensive one on the hard problem, the cheap one on the grind, and run both at the same time in different windows.
+And nothing is locked in: swap models **mid-conversation**, or run one on your own machine with no internet at all.
 
 ## ✨ Everything else
 
@@ -101,7 +99,7 @@ Got something running on your own machine? It's found automatically, and works w
 | **Picks up where you left off** | Finds the projects you've been working on in Claude Code and Codex too, not just GG Coder ones                                                                 |
 | **Remembers your project**      | Notes, memory, chat export, and your own shortcut commands. Add any tool you find online by pasting one line                                                   |
 | **Watches your usage**          | A live meter up top shows how much of your plan you've burned and exactly when it resets. No surprise cut-offs                                                 |
-| **A bit stupid, on purpose**    | XP, ranks and streaks for shipping. Sound. ASCII banners. Webcam gaze focus, if you want your eyeballs to switch windows for you                               |
+| **A bit stupid, on purpose**    | XP, ranks and streaks for shipping. Sound. ASCII banners. Coding should be fun                                                                                 |
 
 ---
 

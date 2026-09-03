@@ -42,13 +42,55 @@ const C = {
   ken: token("ken"),
 };
 
-const FONT = `-apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif`;
-const MONO = `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace`;
+// ── Type ─────────────────────────────────────────────────────────────────────
+// Real typefaces, fetched at render time and inlined as base64 so the panels
+// look identical on every machine (a system-font stack renders differently on
+// macOS, Windows and CI, which is how README art ends up looking generic).
+// Space Grotesk carries the display voice; JetBrains Mono the terminal one.
+const FACES = [
+  {
+    family: "Space Grotesk",
+    weight: 700,
+    url: "https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@latest/latin-700-normal.woff2",
+  },
+  {
+    family: "Space Grotesk",
+    weight: 500,
+    url: "https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@latest/latin-500-normal.woff2",
+  },
+  {
+    family: "JetBrains Mono",
+    weight: 500,
+    url: "https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@latest/latin-500-normal.woff2",
+  },
+  {
+    family: "JetBrains Mono",
+    weight: 700,
+    url: "https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@latest/latin-700-normal.woff2",
+  },
+];
+
+// A silent fallback to Helvetica is exactly the failure this is meant to
+// prevent, so a face that will not download is fatal.
+const fontCss = (
+  await Promise.all(
+    FACES.map(async ({ family, weight, url }) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${family} ${weight}: ${res.status} from ${url}`);
+      const b64 = Buffer.from(await res.arrayBuffer()).toString("base64");
+      return `@font-face{font-family:"${family}";font-weight:${weight};font-style:normal;font-display:block;src:url(data:font/woff2;base64,${b64}) format("woff2")}`;
+    }),
+  )
+).join("");
+
+const FONT = `"Space Grotesk", sans-serif`;
+const MONO = `"JetBrains Mono", monospace`;
 
 const shell = (body, extraCss = "") => `<!doctype html><html><head><meta charset="utf-8"><style>
+  ${fontCss}
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { width: 1280px; background: ${C.bg}; color: ${C.text}; font-family: ${FONT};
-         -webkit-font-smoothing: antialiased; }
+         font-weight: 500; -webkit-font-smoothing: antialiased; }
   .pad { padding: 44px 50px; }
   .eyebrow { font-family: ${MONO}; font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: ${C.accent}; }
   .muted { color: ${C.muted}; }
@@ -66,85 +108,23 @@ const panels = {
     height: 440,
     html: shell(`
       <div class="pad" style="height:440px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px">
-        <div class="eyebrow">⌘ One window per project</div>
+        <div class="eyebrow">📱 You don't have to be there</div>
         <div style="font-size:104px;font-weight:800;letter-spacing:-.035em;line-height:1">GG CODER</div>
-        <div style="font-size:26px;color:${C.muted}">Every window is its own agent.</div>
+        <div style="font-size:26px;color:${C.muted}">Text it from the pub. It codes. It checks itself.</div>
         <div class="rule" style="width:620px;margin-top:10px"></div>
         <div class="mono" style="font-size:15px;color:${C.muted};display:flex;gap:26px">
-          <span><b style="color:${C.accent}">$0</b> forever</span><span class="dim">|</span>
-          <span><b style="color:${C.accent}">∞</b> projects at once</span><span class="dim">|</span>
-          <span><b style="color:${C.accent}">0</b> setup</span>
+          <span>runs <b style="color:${C.accent}">while you sleep</b></span><span class="dim">|</span>
+          <span>takes <b style="color:${C.accent}">voice notes</b></span><span class="dim">|</span>
+          <span>has its <b style="color:${C.accent}">own reviewer</b></span>
         </div>
       </div>`),
   },
 
-  /** The core idea: N projects, N agents, N models, side by side. */
-  windows: {
-    height: 440,
-    html: shell(
-      `<div class="pad">
-        <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:6px">
-          <div style="font-size:30px;font-weight:700;letter-spacing:-.02em">Six projects. Six agents. Six models.</div>
-        </div>
-        <div class="muted" style="font-size:17px;margin-bottom:26px">Separate windows, separate folders, separate histories. Nothing bleeds between them.</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
-          ${[
-            ["aurora-store", "Claude Fable 5.1", "running tests", C.accent],
-            ["pixel-pipeline", "GPT-5.3 Codex", "editing 3 files", C.accent],
-            ["rusty-parser", "qwen3-coder · local", "idle", C.dim],
-            ["landing-page", "Gemini 3.1 Pro", "planning", C.accent],
-            ["api-gateway", "Kimi K3", "running tests", C.accent],
-            ["docs-site", "GLM-5.3", "idle", C.dim],
-          ]
-            .map(
-              ([project, model, status, dot]) => `
-            <div class="card" style="padding:14px 16px">
-              <div style="display:flex;gap:6px;margin-bottom:14px">
-                ${["#ff6b60", "#f0cf63", "#7fe89a"].map((c) => `<span style="width:9px;height:9px;border-radius:50%;background:${c};display:inline-block;opacity:.75"></span>`).join("")}
-              </div>
-              <div style="font-size:17px;font-weight:600;margin-bottom:4px">${project}</div>
-              <div class="mono" style="font-size:12px;color:${C.muted}">${model}</div>
-              <div class="rule" style="margin:13px 0"></div>
-              <div class="mono" style="font-size:12px;color:${dot === C.dim ? C.dim : C.muted};display:flex;align-items:center;gap:7px">
-                <span style="width:7px;height:7px;border-radius:50%;background:${dot};display:inline-block"></span>${status}
-              </div>
-            </div>`,
-            )
-            .join("")}
-        </div>
-      </div>`,
-    ),
-  },
-
-  /** Autopilot: what the Ken review loop actually does. */
-  autopilot: {
-    height: 360,
-    html: shell(
-      `<div class="pad">
-        <div style="font-size:30px;font-weight:700;letter-spacing:-.02em;margin-bottom:6px">Autopilot reviews the work for you</div>
-        <div class="muted" style="font-size:17px;margin-bottom:28px">Ken, a mentor agent, checks every finished run and sends it back until it is right.</div>
-        <div style="display:flex;align-items:stretch;gap:14px">
-          ${[
-            ["1", "GG Coder ships", "builds the rate limiter", C.accent, false],
-            ["2", "Ken reviews", "“the bucket is per-process”", C.ken, true],
-            ["3", "GG Coder fixes", "moves it to Redis, adds a test", C.accent, false],
-            ["4", "Ken signs off", "you were making coffee", C.ken, true],
-          ]
-            .map(
-              ([n, title, sub, color, isKen], i, all) => `
-            <div class="card" style="flex:1;padding:18px 18px 20px;border-color:${isKen ? "rgba(98,232,216,.28)" : C.border}">
-              <div class="mono" style="font-size:12px;color:${color};letter-spacing:.14em">STEP ${n}</div>
-              <div style="font-size:19px;font-weight:650;margin:10px 0 6px;color:${isKen ? color : C.text}">${title}</div>
-              <div class="muted" style="font-size:14px;line-height:1.45">${sub}</div>
-            </div>
-            ${i < all.length - 1 ? `<div style="display:flex;align-items:center;color:${C.dim};font-size:20px">→</div>` : ""}`,
-            )
-            .join("")}
-        </div>
-        <div class="mono dim" style="font-size:13px;margin-top:24px;text-align:center">nobody typed anything in between</div>
-      </div>`,
-    ),
-  },
+  // NOTE: this file renders the title card ONLY, and deliberately so. Every
+  // other README image must be a real capture of the real app
+  // (`capture-screenshots.mjs`). Hand-drawing a fake GG Coder window here would
+  // show readers a product that does not exist and make the real UI look worse
+  // than it is, so mocked app chrome does not belong in this file.
 };
 
 // ── Render ───────────────────────────────────────────────────────────────────
