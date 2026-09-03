@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.57.3",
+    date: "2026-09-03",
+    items: [
+      "Every question GG Coder asks you now fits neatly in its card. Long options used to spill off the right edge of the chat and get cut in half, so you were picking between answers you could not fully read. Now they wrap cleanly, the `Recommended` tag stays pinned where it belongs, and nothing hides past the edge no matter how narrow your window is.",
+      "I refreshed the engine room under the app and made the Windows build tell me the truth when something goes wrong. You get the same GG Coder, on fresher parts, with one more class of startup crash caught before it can ever reach you.",
+    ],
+  },
+  {
     version: "0.57.2",
     date: "2026-09-03",
     items: [
