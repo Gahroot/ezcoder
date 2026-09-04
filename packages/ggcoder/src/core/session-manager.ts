@@ -486,6 +486,12 @@ export class SessionManager {
     const lockPath = path.join(root, `${this.coordinationKey(conversationId)}.lock`);
     const token = crypto.randomUUID();
 
+    // Windows can report EPERM/EBUSY/EACCES on `mkdir` while the previous
+    // holder's `rm` has the lock dir in pending-delete. A few immediate retries
+    // cover the case where the dir vanishes between mkdir and stat; a genuine
+    // permission error on the root never produces a lock dir and gives up here.
+    let vanishedRetries = 0;
+
     while (true) {
       try {
         await fs.mkdir(lockPath);
@@ -497,15 +503,19 @@ export class SessionManager {
         await fs.writeFile(path.join(lockPath, "owner.json"), JSON.stringify(owner), "utf-8");
         break;
       } catch (error) {
-        // EEXIST is the normal "someone holds it" signal. Windows reports
-        // EPERM/EBUSY/EACCES when the lock dir is mid-delete by the releasing
-        // holder (pending-delete state); that is contention too, not a fault.
+        // EEXIST is the normal "someone holds it" signal. EPERM/EBUSY/EACCES
+        // only count as contention when the lock dir is actually there
+        // (pending-delete); otherwise it is a real permission fault and must
+        // surface rather than spin in waitForLease forever.
         const code = (error as NodeJS.ErrnoException).code;
-        if (code !== "EEXIST" && code !== "EPERM" && code !== "EBUSY" && code !== "EACCES") {
-          throw error;
+        const contentionCode = code === "EPERM" || code === "EBUSY" || code === "EACCES";
+        if (code !== "EEXIST" && !contentionCode) throw error;
+        const stat = await fs.stat(lockPath).catch(() => null);
+        if (contentionCode && stat === null) {
+          if (++vanishedRetries > 3) throw error;
+          continue;
         }
         const owner = await this.leaseOwner(lockPath);
-        const stat = await fs.stat(lockPath).catch(() => null);
         const corruptAndOld =
           !owner && stat !== null && Date.now() - stat.mtimeMs > CORRUPT_LEASE_STALE_MS;
         const deadOwner = owner !== null && !this.processIsAlive(owner.pid);

@@ -203,15 +203,25 @@ describe("SessionManager compaction coordination", () => {
     expect(order).toEqual(["first:start", "first:end", "second:start", "second:end"]);
   });
 
-  it("treats a Windows pending-delete EPERM on the lock dir as contention and retries", async () => {
+  function errno(code: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(`${code}: mkdir`), { code });
+  }
+
+  it("treats a Windows pending-delete EPERM on an existing lock dir as contention", async () => {
     const home = await makeTempDir();
     const manager = new SessionManager(home);
     const realMkdir = fs.mkdir;
-    let injected = false;
+    let lockAttempts = 0;
     const spy = vi.spyOn(fs, "mkdir").mockImplementation(async (target, options) => {
-      if (!injected && String(target).endsWith(".lock")) {
-        injected = true;
-        throw Object.assign(new Error("EPERM: operation not permitted, mkdir"), { code: "EPERM" });
+      if (String(target).endsWith(".lock")) {
+        lockAttempts += 1;
+        if (lockAttempts === 1) {
+          // Lock dir is present but mid-delete: mkdir fails EPERM while stat still resolves.
+          await realMkdir(target, { recursive: true });
+          throw errno("EPERM");
+        }
+        // The releasing holder finished its delete before we polled again.
+        await rm(String(target), { recursive: true, force: true });
       }
       return realMkdir(target, options);
     });
@@ -219,7 +229,29 @@ describe("SessionManager compaction coordination", () => {
       await expect(
         manager.withCompactionLease("conversation", undefined, async () => "acquired"),
       ).resolves.toBe("acquired");
-      expect(injected).toBe(true);
+      expect(lockAttempts).toBe(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("rethrows a genuine EACCES when no lock dir exists instead of waiting forever", async () => {
+    const home = await makeTempDir();
+    const manager = new SessionManager(home);
+    const realMkdir = fs.mkdir;
+    let attempts = 0;
+    const spy = vi.spyOn(fs, "mkdir").mockImplementation(async (target, options) => {
+      if (String(target).endsWith(".lock")) {
+        attempts += 1;
+        throw errno("EACCES");
+      }
+      return realMkdir(target, options);
+    });
+    try {
+      await expect(
+        manager.withCompactionLease("conversation", undefined, async () => "never"),
+      ).rejects.toMatchObject({ code: "EACCES" });
+      expect(attempts).toBeLessThanOrEqual(5);
     } finally {
       spy.mockRestore();
     }
