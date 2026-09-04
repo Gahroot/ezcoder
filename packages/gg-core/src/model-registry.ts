@@ -145,6 +145,28 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "high",
   },
   // ── OpenAI (Codex) ─────────────────────────────────────
+  {
+    // GPT-6 Astra — "Our most capable model for complex, demanding work."
+    // (Codex catalog priority 1, default low). Same split as the 5.6 family:
+    // 1.05M on the public Responses API, 272K on the ChatGPT OAuth route
+    // (openai/codex models.json, `gpt-6-astra`). Reasoning ladder low → medium
+    // → high → xhigh → max → ultra; `ultra` is the Codex orchestration preset
+    // (multi_agent v2) and is Codex-only — the public API tops out at `max`.
+    // Note: through a plain API key OpenAI requires the Responses API for tool
+    // calling on Astra, so the Chat Completions path is text-only; the OAuth
+    // Codex route is the supported way to use it as an agent.
+    id: "gpt-6-astra",
+    name: "GPT-6 Astra",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    codexContextWindow: 272_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "high",
+    maxThinkingLevel: "ultra",
+  },
   // GPT-5.6 family — three agentic coding tiers launched July 2026. The public
   // Responses API advertises a 1.05M context window; OpenAI's Codex product
   // catalog advertises 272K on the ChatGPT OAuth route (corrected from the

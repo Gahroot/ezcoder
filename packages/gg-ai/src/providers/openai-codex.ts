@@ -94,7 +94,7 @@ async function encodeCodexRequest(body: Record<string, unknown>): Promise<Encode
 }
 
 function usesResponsesLite(model: string): boolean {
-  return model.startsWith("gpt-5.6-");
+  return model.startsWith("gpt-5.6-") || model.startsWith("gpt-6-");
 }
 
 function outputTextKey(itemId: string | undefined, contentIndex: number | undefined): string {
@@ -242,7 +242,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     } else if (response.status === 404 && text.includes("does not exist")) {
       hint =
         "This model is not in the current OpenAI Codex catalog for this account. " +
-        "Switch to gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, or gpt-5.5 via the model selector.";
+        "Switch to gpt-6-astra, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, or gpt-5.5 via the model selector.";
     }
 
     throw new ProviderError("openai", message, {
