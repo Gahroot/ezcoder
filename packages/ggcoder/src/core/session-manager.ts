@@ -497,7 +497,13 @@ export class SessionManager {
         await fs.writeFile(path.join(lockPath, "owner.json"), JSON.stringify(owner), "utf-8");
         break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        // EEXIST is the normal "someone holds it" signal. Windows reports
+        // EPERM/EBUSY/EACCES when the lock dir is mid-delete by the releasing
+        // holder (pending-delete state); that is contention too, not a fault.
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EEXIST" && code !== "EPERM" && code !== "EBUSY" && code !== "EACCES") {
+          throw error;
+        }
         const owner = await this.leaseOwner(lockPath);
         const stat = await fs.stat(lockPath).catch(() => null);
         const corruptAndOld =

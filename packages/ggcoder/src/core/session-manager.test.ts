@@ -12,7 +12,8 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SessionManager,
   KEN_TURN_CUSTOM_KIND,
@@ -200,6 +201,28 @@ describe("SessionManager compaction coordination", () => {
     await Promise.all([first, second]);
 
     expect(order).toEqual(["first:start", "first:end", "second:start", "second:end"]);
+  });
+
+  it("treats a Windows pending-delete EPERM on the lock dir as contention and retries", async () => {
+    const home = await makeTempDir();
+    const manager = new SessionManager(home);
+    const realMkdir = fs.mkdir;
+    let injected = false;
+    const spy = vi.spyOn(fs, "mkdir").mockImplementation(async (target, options) => {
+      if (!injected && String(target).endsWith(".lock")) {
+        injected = true;
+        throw Object.assign(new Error("EPERM: operation not permitted, mkdir"), { code: "EPERM" });
+      }
+      return realMkdir(target, options);
+    });
+    try {
+      await expect(
+        manager.withCompactionLease("conversation", undefined, async () => "acquired"),
+      ).resolves.toBe("acquired");
+      expect(injected).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("recovers a dead-owner lease and ignores coordination storage during discovery", async () => {
