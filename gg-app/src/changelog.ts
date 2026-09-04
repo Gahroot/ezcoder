@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.58.0",
+    date: "2026-09-05",
+    items: [
+      "`GPT-6 Astra` is here, the day OpenAI shipped it. Pick it from the model selector with your ChatGPT login and you get OpenAI's most capable model yet, with a `1M` token memory and the full reasoning dial from low all the way up to `ultra`, where it proactively splits big jobs across helper agents and runs them in parallel. I wired it into the same caching and streaming path as the 5.6 family, so it feels instant from the first message. Astra is still rolling out on OpenAI's side, so if your account is not in yet, GG Coder tells you plainly and points you at what works today.",
+    ],
+  },
+  {
     version: "0.57.5",
     date: "2026-09-04",
     items: [
