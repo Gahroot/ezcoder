@@ -550,9 +550,9 @@ describe("buildSystemPrompt", () => {
     // reproduce-first, circuit-breaker, question-vs-fix, no-variants, test
     // guidance), proactive Steroids research, alignment guardrails, and the
     // fork's Goal workflow.
-    expect(measurements.normal.characters).toBeLessThan(11_100);
-    expect(measurements.planMode.characters).toBeLessThan(13_000);
-    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(15_600);
+    expect(measurements.normal.characters).toBeLessThan(10_100);
+    expect(measurements.planMode.characters).toBeLessThan(11_600);
+    expect(measurements.typescriptProjectContextToolsSkills.characters).toBeLessThan(14_600);
     expect(measurements.planMode.characters).toBeGreaterThan(measurements.normal.characters);
     expect(measurements.typescriptProjectContextToolsSkills.characters).toBeGreaterThan(
       measurements.normal.characters,
@@ -592,7 +592,7 @@ describe("buildSystemPrompt", () => {
     // test above for the measured return that justifies the spend.
     // Raised again with the 2026-08 guardrails, proactive Steroids research,
     // alignment guidance, and the fork Goal workflow.
-    expect(audit.size.characters).toBeLessThan(15_500);
+    expect(audit.size.characters).toBeLessThan(14_500);
     expect(audit.size.sections).toBeGreaterThanOrEqual(8);
   });
 

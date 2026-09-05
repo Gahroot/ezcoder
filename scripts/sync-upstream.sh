@@ -295,6 +295,7 @@ rebrand_ken_mentor() {
       s/\bken\?: boolean\b/nolan?: boolean/g;
       s/\bken: true\b/nolan: true/g;
       s/\.ken\b/.nolan/g;
+      s/\bken: token\("ken"\)/nolan: token("nolan")/g;
       s/\bkind: "ken"\b/kind: "nolan"/g;
       s/\bcase "ken":/case "nolan":/g;
       s/\bconst ken =/const nolanAgent =/g;

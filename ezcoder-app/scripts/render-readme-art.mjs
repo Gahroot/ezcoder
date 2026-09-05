@@ -39,7 +39,7 @@ const C = {
   muted: token("textMuted"),
   dim: token("textDim"),
   accent: token("primary"),
-  ken: token("ken"),
+  nolan: token("nolan"),
 };
 
 // ── Type ─────────────────────────────────────────────────────────────────────
@@ -51,22 +51,22 @@ const FACES = [
   {
     family: "Space Grotesk",
     weight: 700,
-    url: "https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@latest/latin-700-normal.woff2",
+    url: "https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@5.2.10/latin-700-normal.woff2",
   },
   {
     family: "Space Grotesk",
     weight: 500,
-    url: "https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@latest/latin-500-normal.woff2",
+    url: "https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk@5.2.10/latin-500-normal.woff2",
   },
   {
     family: "JetBrains Mono",
     weight: 500,
-    url: "https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@latest/latin-500-normal.woff2",
+    url: "https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@5.2.8/latin-500-normal.woff2",
   },
   {
     family: "JetBrains Mono",
     weight: 700,
-    url: "https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@latest/latin-700-normal.woff2",
+    url: "https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@5.2.8/latin-700-normal.woff2",
   },
 ];
 
