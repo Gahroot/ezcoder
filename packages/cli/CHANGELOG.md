@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.16.2
+
+### Patch Changes
+
+- Add GPT-6 Astra support, sharper context handling, and more reliable background work.
+  - @prestyj/ai@5.16.2
+  - @prestyj/agent@5.16.2
+  - @prestyj/core@5.16.2
+
 ## 5.16.1
 
 ### Patch Changes
