@@ -30,8 +30,8 @@ import {
   clearRuntimeModels,
   toModelInfo,
   DEFAULT_LOCAL_ENDPOINTS,
-} from "@kenkaiiii/gg-core";
-import type { Message, ContentPart, ToolResult } from "@kenkaiiii/gg-ai";
+} from "@prestyj/core";
+import type { Message, ContentPart, ToolResult } from "@prestyj/ai";
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -643,7 +643,7 @@ describe("compactHistoricalToolCallArgs", () => {
 
 // ── compact (integration) ──────────────────────────────────
 
-vi.mock("@kenkaiiii/gg-ai", async (importOriginal) => {
+vi.mock("@prestyj/ai", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
@@ -652,7 +652,7 @@ vi.mock("@kenkaiiii/gg-ai", async (importOriginal) => {
 });
 
 // Must import stream AFTER mock setup
-import { stream, StreamResult } from "@kenkaiiii/gg-ai";
+import { stream, StreamResult } from "@prestyj/ai";
 
 describe("compact", () => {
   const baseOptions = {
@@ -1140,7 +1140,7 @@ describe("compact", () => {
     expect(summaryMsg.content as string).toContain("Summary on third try");
   });
 
-  // anchorRemap is what lets callers move transcript markers (Ken turns,
+  // anchorRemap is what lets callers move transcript markers (Nolan turns,
   // autopilot verdicts, error rows) onto the rewritten message list. If it
   // disagrees with the actual collapse, restored markers land in the wrong
   // place — the "everything bunched at the bottom" bug.
@@ -1225,7 +1225,7 @@ describe("compact", () => {
   // repairToolPairing and the trailing-assistant pop can shorten the retained
   // tail AFTER the collapse is decided. Deriving the new length from
   // summarizedCount alone then overshoots, pushing tail anchors past the end —
-  // where markers get dropped and Ken turns clamp to the bottom, which is the
+  // where markers get dropped and Nolan turns clamp to the bottom, which is the
   // exact symptom this remap exists to prevent.
   it("never maps an anchor past the end when the trailing assistant is popped", async () => {
     const mockStream = vi.mocked(stream);

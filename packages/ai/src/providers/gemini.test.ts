@@ -68,7 +68,7 @@ describe("streamGemini", () => {
         ],
         toolChoice: "auto",
         thinking: "ultra",
-        promptCacheKey: "ggcoder:test-session",
+        promptCacheKey: "ezcoder:test-session",
       });
 
       await result.response;
@@ -126,7 +126,7 @@ describe("streamGemini", () => {
             maxOutputTokens: 65_536,
             thinkingConfig: { includeThoughts: true, thinkingLevel: "HIGH" },
           },
-          session_id: "ggcoder:test-session",
+          session_id: "ezcoder:test-session",
         },
       });
     },

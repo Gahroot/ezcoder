@@ -29,7 +29,7 @@ The findings and line references below describe the **pre-change** code. Origina
 
 ### S1. New Gemini releases are absent
 
-- Location: `packages/gg-core/src/model-registry.ts:293–357`.
+- Location: `packages/core/src/model-registry.ts:293–357`.
 - The picker still offers Gemini 3.7 Flash and 3.1 Flash-Lite but omits **Gemini 3.8 Flash** (GA September 2) and **Gemini 3.5 Flash-Lite** (GA July 21).
 - Both newer releases document **1,048,576 context / 65,536 output**, thinking, tool calls, and multimodal input.
 - Fix: verify availability through the app's actual Gemini route before adding them. Public Vertex availability does **not** prove Code Assist OAuth entitlement. Preserve working older models until that check succeeds.
@@ -37,7 +37,7 @@ The findings and line references below describe the **pre-change** code. Origina
 
 ### S2. Fugu Ultra cannot reach its new maximum reasoning level
 
-- Locations: `packages/gg-core/src/model-registry.ts:242–251`; `packages/gg-ai/src/providers/transform.ts:988–998`.
+- Locations: `packages/core/src/model-registry.ts:242–251`; `packages/ai/src/providers/transform.ts:988–998`.
 - The `fugu-ultra` alias now targets v1.1, which has a distinct **max** effort. The registry caps it at `xhigh`; the shared wire conversion also changes `max` to `xhigh`.
 - An offline SDK request capture confirmed a requested `max` becomes `reasoning_effort: "xhigh"`.
 - Fix: allow and preserve `max` specifically for current Fugu Ultra. Plain Fugu still has only high/xhigh as distinct levels.
@@ -45,7 +45,7 @@ The findings and line references below describe the **pre-change** code. Origina
 
 ### S3. Qwen3.6 Plus is incorrectly treated as text-only
 
-- Location: `packages/gg-core/src/model-registry.ts:534–541`.
+- Location: `packages/core/src/model-registry.ts:534–541`.
 - Both image/video flags are false, but the live OpenRouter endpoint catalog advertises **text + image + video** input. Its registered **1,000,000 context / 65,536 output** matches the catalog.
 - Impact: images are downgraded rather than delivered natively; video is blocked by capability checks.
 - Fix: enable only after adding request-shape coverage for the OpenRouter media path; update the associated video limits/read-tool handling as needed, not just the flags.
@@ -55,7 +55,7 @@ The findings and line references below describe the **pre-change** code. Origina
 
 ### W1. DeepSeek's Off and maximum reasoning settings do not mean what the UI suggests
 
-- Locations: `packages/gg-ai/src/providers/openai.ts:161–164, 208–210, 277–299`; `packages/gg-ai/src/providers/transform.ts:988–998`; `packages/gg-core/src/model-registry.ts:505–527`.
+- Locations: `packages/ai/src/providers/openai.ts:161–164, 208–210, 277–299`; `packages/ai/src/providers/transform.ts:988–998`; `packages/core/src/model-registry.ts:505–527`.
 - DeepSeek enables thinking by default. Disabling it requires `thinking: { type: "disabled" }`, but DeepSeek is excluded from the provider toggle branch.
 - DeepSeek supports distinct **low/high/max** efforts. It maps both medium and xhigh to high. The registry exposes xhigh as its ceiling, and the shared transformer converts even explicitly requested max to xhigh.
 - Offline SDK request capture reproduced both mismatches: Off sends no disabling toggle; max sends xhigh.
@@ -65,7 +65,7 @@ The findings and line references below describe the **pre-change** code. Origina
 
 ### W2. DeepSeek output caps use an undocumented field
 
-- Location: `packages/gg-ai/src/providers/openai.ts:198–202`; routing: `packages/gg-ai/src/stream.ts:92–98`.
+- Location: `packages/ai/src/providers/openai.ts:198–202`; routing: `packages/ai/src/stream.ts:92–98`.
 - All shared Chat Completions providers receive `max_completion_tokens`. DeepSeek's current public schema documents `max_tokens` instead.
 - Offline SDK capture confirmed `max_completion_tokens: 1234` and no `max_tokens` when requesting a 1,234-token limit.
 - **Confirmed:** request/schema mismatch. **Not verified:** whether the live service tolerates this alias, ignores it, or rejects it. Do not claim an observed outage or truncation.
@@ -74,7 +74,7 @@ The findings and line references below describe the **pre-change** code. Origina
 
 ### W3. Local context discovery can overstate the usable window
 
-- Locations: `packages/gg-core/src/local-models.ts:310–330, 353–358`.
+- Locations: `packages/core/src/local-models.ts:310–330, 353–358`.
 - Ollama discovery reads the model architecture's maximum context; LM Studio reads `max_context_length`. Neither necessarily equals the currently allocated context.
 - Ollama documents local defaults of 4K/32K/256K depending on VRAM. LM Studio's own example advertises a 262,144-token model but a loaded instance configured for only 4,096.
 - Impact: the context meter and compaction threshold can assume substantially more space than the running server has. This affects local models when allocation is below the model maximum; no local installation was probed during this audit.
@@ -118,9 +118,9 @@ Additional cautions:
 
 **476 targeted tests passed:**
 
-- gg-core registry, thinking levels, local models: **66**.
-- gg-ai provider tests: **189**.
-- ggcoder model switching, context limits, compactor, session compaction: **221**.
+- @prestyj/core registry, thinking levels, local models: **66**.
+- @prestyj/ai provider tests: **189**.
+- ezcoder model switching, context limits, compactor, session compaction: **221**.
 
 Three additional offline request captures exercised the actual built SDK transport with a stubbed fetch: DeepSeek Off, DeepSeek max, and Fugu Ultra max. No network inference occurred.
 

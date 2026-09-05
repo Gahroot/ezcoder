@@ -163,7 +163,7 @@ describe("formatErrorForDisplay", () => {
     );
   });
 
-  it("tells the user to update GG Coder when the ChatGPT backend rejects the client version", () => {
+  it("tells the user to update EZ Coder when the ChatGPT backend rejects the client version", () => {
     const out = formatErrorForDisplay(
       new ProviderError(
         "openai",
@@ -172,7 +172,7 @@ describe("formatErrorForDisplay", () => {
       ),
     );
     expect(out).toContain(
-      "→ OpenAI needs a newer GG Coder to serve this model. Update GG Coder to the latest version and retry, or switch to another OpenAI model via the model selector.",
+      "→ OpenAI needs a newer EZ Coder to serve this model. Update EZ Coder to the latest version and retry, or switch to another OpenAI model via the model selector.",
     );
     expect(out).not.toContain("status.openai.com");
   });

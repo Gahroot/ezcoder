@@ -454,11 +454,11 @@ function providerGuidance(
   if (statusCode === 401 || lower.includes("unauthorized") || lower.includes("invalid api key")) {
     return `Authentication failed with ${name}. Re-authenticate to refresh your credentials.`;
   }
-  // ChatGPT backend gates new models on the client version GG Coder advertises.
+  // ChatGPT backend gates new models on the client version EZ Coder advertises.
   // The provider's own text says "upgrade the app or CLI", which reads as a
-  // user problem; it is really GG Coder that needs updating for this model.
+  // user problem; it is really EZ Coder that needs updating for this model.
   if (lower.includes("requires a newer version")) {
-    return `${name} needs a newer GG Coder to serve this model. Update GG Coder to the latest version and retry, or switch to another ${name} model via the model selector.`;
+    return `${name} needs a newer EZ Coder to serve this model. Update EZ Coder to the latest version and retry, or switch to another ${name} model via the model selector.`;
   }
   if (lower.includes("overloaded") || lower.includes("engine_overloaded")) {
     return `${name}'s servers are overloaded right now. Retry in a moment — not a EZ Coder issue.`;
