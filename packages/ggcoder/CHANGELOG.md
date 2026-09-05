@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.55.1
+
+### Patch Changes
+
+- Fix Codex requests for GPT-5.6/GPT-6 models: default reasoning effort to `low` on the Responses-Lite route (these models reject `none`), which unbreaks prompt enhancement and Autopilot; only show the ChatGPT entitlement hint for OpenAI's actual "not supported with a ChatGPT account" error instead of any 400.
+  - @kenkaiiii/gg-ai@5.55.1
+  - @kenkaiiii/gg-agent@5.55.1
+  - @kenkaiiii/gg-core@5.55.1
+
 ## 5.55.0
 
 ### Minor Changes
