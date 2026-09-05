@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.1.69",
+    date: "2026-09-05",
+    items: [
+      "Meet `GPT-6 Astra`, with deeper thinking and a massive context window. I tuned every limit so your longest, toughest builds stay sharp.",
+      "Long-running work is steadier now. I fixed background tasks, process cleanup, and compaction edge cases that could stall or crash a session.",
+      "The `Prompt Enhancer` now handles rich instructions cleanly, so your polished prompts arrive intact and ready to run.",
+      "Big conversations stay smooth. I cut wasteful processing and tightened oversized prompts so EZ Coder keeps moving without cooking your machine.",
+    ],
+  },
+  {
     version: "0.1.68",
     date: "2026-09-02",
     items: [
