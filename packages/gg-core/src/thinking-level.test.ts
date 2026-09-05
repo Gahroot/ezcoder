@@ -8,12 +8,23 @@ import {
 import type { ThinkingLevel } from "@kenkaiiii/gg-ai";
 
 describe("thinking-level helpers", () => {
-  it("cycles OpenAI GPT models through supported reasoning efforts", () => {
-    expect(getSupportedThinkingLevels("openai", "gpt-5.5")).toEqual(["medium", "high", "xhigh"]);
-    expect(getNextThinkingLevel("openai", "gpt-5.5", undefined)).toBe("medium");
-    expect(getNextThinkingLevel("openai", "gpt-5.5", "medium")).toBe("high");
-    expect(getNextThinkingLevel("openai", "gpt-5.5", "high")).toBe("xhigh");
-    expect(getNextThinkingLevel("openai", "gpt-5.5", "xhigh")).toBeUndefined();
+  it("cycles GPT-6 Astra through the full six-rung ladder up to ultra", () => {
+    expect(getSupportedThinkingLevels("openai", "gpt-6-astra")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra",
+    ]);
+    expect(getNextThinkingLevel("openai", "gpt-6-astra", undefined)).toBe("low");
+    expect(getNextThinkingLevel("openai", "gpt-6-astra", "max")).toBe("ultra");
+    expect(getNextThinkingLevel("openai", "gpt-6-astra", "ultra")).toBeUndefined();
+  });
+
+  it("keeps the legacy medium/high ladder for unregistered custom GPT ids", () => {
+    expect(getSupportedThinkingLevels("openai", "gpt-5.2")).toEqual(["medium", "high"]);
+    expect(getNextThinkingLevel("openai", "gpt-5.2", "high")).toBeUndefined();
   });
 
   it("exposes Ultra only for GPT-5.6 models that support proactive delegation", () => {

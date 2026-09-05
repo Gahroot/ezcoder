@@ -117,7 +117,7 @@ describe("getFastModel", () => {
 
 describe("model registry context windows", () => {
   it.each([
-    ["gpt-5.5", 1_050_000],
+    ["gpt-6-astra", 1_050_000],
     ["gpt-5.6-sol", 1_050_000],
     ["gpt-5.6-terra", 1_050_000],
     ["gpt-5.6-luna", 1_050_000],
@@ -126,7 +126,7 @@ describe("model registry context windows", () => {
   });
 
   it.each([
-    ["gpt-5.5", 272_000],
+    ["gpt-6-astra", 272_000],
     ["gpt-5.6-sol", 272_000],
     ["gpt-5.6-terra", 272_000],
     ["gpt-5.6-luna", 272_000],
