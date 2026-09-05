@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.59.1",
+    date: "2026-09-05",
+    items: [
+      "The `Prompt Enhancer` is back on `GPT-6 Astra` and the whole `GPT-5.6` family. OpenAI's newest models refuse to run with thinking fully off, which was bouncing the enhancer and blanking the screen. I gave them a proper reasoning floor, and if anything ever fails again your draft stays put with a clear message instead of a white window.",
+      "`Autopilot` on the new OpenAI models works again too, same fix. And the misleading warning that your ChatGPT account could not use a model is gone: I only show it when OpenAI actually says so.",
+    ],
+  },
+  {
     version: "0.59.0",
     date: "2026-09-05",
     items: [
