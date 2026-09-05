@@ -12,10 +12,9 @@ const OPENAI_GPT_56_THINKING_LEVELS: readonly ThinkingLevel[] = [
   "max",
   "ultra",
 ];
-// Sakana Fugu accepts exactly two reasoning efforts — "high" and "xhigh" — and
-// rejects anything else. Expose both so users can pick the lighter tier instead
-// of being forced into all-or-nothing xhigh.
-const SAKANA_THINKING_LEVELS: readonly ThinkingLevel[] = ["high", "xhigh"];
+// Plain Fugu stops at xhigh; Ultra v1.1 adds max. Slice by the model ceiling.
+const SAKANA_THINKING_LEVELS: readonly ThinkingLevel[] = ["high", "xhigh", "max"];
+const DEEPSEEK_THINKING_LEVELS: readonly ThinkingLevel[] = ["low", "high", "max"];
 // Grok reasoning models take reasoning_effort low/medium/high (server default
 // high; reasoning can't be fully disabled — "off" just omits the param). Grok
 // 4.6 adds an `xhigh` top rung (docs: low/medium/high default/xhigh); 4.5
@@ -132,6 +131,7 @@ export function getSupportedThinkingLevels(
   }
 
   if (isMoonshotK3Model(provider, model)) return MOONSHOT_K3_THINKING_LEVELS;
+  if (provider === "deepseek") return DEEPSEEK_THINKING_LEVELS;
 
   if (isGlmModel(provider)) {
     const maxIndex = GLM_THINKING_LEVELS.indexOf(maxLevel);
@@ -171,6 +171,7 @@ export function getNextThinkingLevel(
     isXaiModel(provider) ||
     isMoonshotK3Model(provider, model) ||
     isGlmModel(provider) ||
+    provider === "deepseek" ||
     // Local servers take a real effort level, not just on/off: Ollama accepts
     // low/medium/high on `reasoning_effort` (verified against 0.32) and the
     // other OpenAI-compatible servers use the same three. A model that can't

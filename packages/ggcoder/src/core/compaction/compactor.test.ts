@@ -23,7 +23,14 @@ import {
 } from "./compactor.js";
 import { remapAnchorForCompaction } from "../session-history.js";
 import { estimateConversationTokens } from "./token-estimator.js";
-import { MODELS, getContextWindow } from "@kenkaiiii/gg-core";
+import {
+  MODELS,
+  getContextWindow,
+  registerRuntimeModels,
+  clearRuntimeModels,
+  toModelInfo,
+  DEFAULT_LOCAL_ENDPOINTS,
+} from "@kenkaiiii/gg-core";
 import type { Message, ContentPart, ToolResult } from "@kenkaiiii/gg-ai";
 
 // ── Helpers ────────────────────────────────────────────────
@@ -645,7 +652,7 @@ vi.mock("@kenkaiiii/gg-ai", async (importOriginal) => {
 });
 
 // Must import stream AFTER mock setup
-import { stream } from "@kenkaiiii/gg-ai";
+import { stream, StreamResult } from "@kenkaiiii/gg-ai";
 
 describe("compact", () => {
   const baseOptions = {
@@ -708,6 +715,53 @@ describe("compact", () => {
     expect(result.result.originalCount).toBe(3);
     expect(result.result.newCount).toBe(3);
     expect(result.messages).toHaveLength(3);
+  });
+
+  it("caps local summaries at the discovered model output allowance", async () => {
+    const model = toModelInfo(
+      {
+        rawId: "small-context",
+        endpointId: "ollama",
+        contextWindow: 4096,
+        contextWindowKnown: true,
+        supportsTools: true,
+        supportsImages: false,
+        supportsThinking: false,
+      },
+      DEFAULT_LOCAL_ENDPOINTS[0]!,
+    );
+    registerRuntimeModels([model]);
+    const mockStream = vi.mocked(stream);
+    mockStream.mockClear();
+    mockStream.mockImplementation(
+      () =>
+        new StreamResult(
+          (async function* () {
+            yield { type: "text_delta", text: "Conversation summary." };
+            return {
+              message: { role: "assistant", content: "Conversation summary." },
+              stopReason: "end_turn",
+              usage: { inputTokens: 100, outputTokens: 10 },
+            };
+          })(),
+        ),
+    );
+    try {
+      await compact(buildConversation(30), {
+        ...baseOptions,
+        provider: "local",
+        model: model.id,
+        contextWindow: model.contextWindow,
+      });
+      expect(mockStream).toHaveBeenCalled();
+      for (const [options] of mockStream.mock.calls) {
+        expect(options.maxTokens).toBe(model.maxOutputTokens);
+        expect(options.maxTokens).toBeLessThan(MIN_SUMMARY_OUTPUT_TOKENS);
+      }
+    } finally {
+      clearRuntimeModels();
+      mockStream.mockReset();
+    }
   });
 
   it("produces summary message with LLM response", async () => {

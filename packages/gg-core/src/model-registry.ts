@@ -223,8 +223,8 @@ export const MODELS: ModelInfo[] = [
   // ── Sakana (Fugu) ──────────────────────────────────────
   // Sakana Fugu is a multi-agent system surfaced as a standard LLM via the
   // OpenAI-compatible Sakana API (https://api.sakana.ai/v1). Both models take
-  // text + image input and only accept "high"/"xhigh" reasoning effort, so the
-  // top tier is `xhigh`. `fugu` routes across all providers; `fugu-ultra` is
+  // text + image input. Plain Fugu stops at xhigh; Ultra v1.1 also supports max.
+  // `fugu` routes across all providers; `fugu-ultra` is
   // the heavier tier (may need larger client timeouts on complex tasks).
   {
     id: "fugu",
@@ -248,7 +248,8 @@ export const MODELS: ModelInfo[] = [
     supportsImages: true,
     supportsVideo: false,
     costTier: "high",
-    maxThinkingLevel: "xhigh",
+    // The rolling alias now serves v1.1, which adds a distinct max effort.
+    maxThinkingLevel: "max",
   },
   // ── xAI (Grok) ─────────────────────────────────────────
   // Grok 4.6 (released 2026-08-12) is xAI's flagship for coding, agentic tasks,
@@ -302,6 +303,34 @@ export const MODELS: ModelInfo[] = [
     costTier: "low",
     maxThinkingLevel: "high",
   },
+  // Keep 3.1 Flash Lite first for the working OAuth default and fast-model routing.
+  // New GA models are opt-in; Code Assist access varies by account.
+  {
+    id: "gemini-3.8-flash",
+    name: "Gemini 3.8 Flash",
+    provider: "gemini",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: true,
+    maxVideoBytes: 20 * 1024 * 1024,
+    costTier: "low",
+    maxThinkingLevel: "high",
+  },
+  {
+    id: "gemini-3.5-flash-lite",
+    name: "Gemini 3.5 Flash Lite",
+    provider: "gemini",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: true,
+    maxVideoBytes: 20 * 1024 * 1024,
+    costTier: "low",
+    maxThinkingLevel: "high",
+  },
   {
     // Gemini 3.7 Flash (released 2026-08-13) — Google's most capable Flash for
     // coding, agents, and multi-step execution; GA-stable on the Gemini API as
@@ -309,7 +338,7 @@ export const MODELS: ModelInfo[] = [
     // Sent over our Code Assist (OAuth) transport ahead of gemini-cli — upstream
     // hasn't listed 3.7 yet (google-gemini/gemini-cli#28802, still open) — so
     // free/personal accounts 404 (entitlement-gated) while Code Assist
-    // Standard/Enterprise accounts get it. Listed SECOND, after flash-lite:
+    // Standard/Enterprise accounts get it. Kept after the working flash-lite:
     // getFastModel picks the first low-tier entry, and flash-lite is the one
     // that works on every account.
     id: "gemini-3.7-flash",
@@ -501,21 +530,19 @@ export const MODELS: ModelInfo[] = [
   {
     // `deepseek-v4-pro` now serves DeepSeek-V4-Pro-0813 (released 2026-08-13,
     // first STABLE V4 Pro — supersedes the April preview; calling name
-    // unchanged, same 1.6T/49B MoE). 1M context, 384K (393,216) max output,
-    // text-only, reasoning ladder low/high plus Think Max — mapped from our
-    // `xhigh`. ~$0.43/$0.87 per MTok on DeepSeek's own API, so a mid-tier
-    // price band rather than the preview's top band.
+    // unchanged, same 1.6T/49B MoE). 1M context, text-only, low/high/max effort.
+    // Docs abbreviate output as 384K; use the same conservative 384,000-token
+    // application cap across V4 models rather than mixing decimal/binary units.
     id: "deepseek-v4-pro",
     name: "DeepSeek V4 Pro",
     provider: "deepseek",
     contextWindow: 1_048_576,
-    maxOutputTokens: 393_216,
+    maxOutputTokens: 384_000,
     supportsThinking: true,
     supportsImages: false,
     supportsVideo: false,
     costTier: "medium",
-    // DeepSeek V4 maps `xhigh` → its internal `max` tier.
-    maxThinkingLevel: "xhigh",
+    maxThinkingLevel: "max",
   },
   {
     id: "deepseek-v4-flash",
@@ -527,7 +554,20 @@ export const MODELS: ModelInfo[] = [
     supportsImages: false,
     supportsVideo: false,
     costTier: "low",
-    maxThinkingLevel: "xhigh",
+    maxThinkingLevel: "max",
+  },
+  // Opt-in experimental vision sibling; never replaces the stable summary model.
+  {
+    id: "deepseek-v4-flash-vision-exp",
+    name: "DeepSeek V4 Flash Vision (Experimental)",
+    provider: "deepseek",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 384_000,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "low",
+    maxThinkingLevel: "max",
   },
   // ── OpenRouter ─────────────────────────────────────────
   {
@@ -537,8 +577,10 @@ export const MODELS: ModelInfo[] = [
     contextWindow: 1_000_000,
     maxOutputTokens: 65_536,
     supportsThinking: true,
-    supportsImages: false,
-    supportsVideo: false,
+    supportsImages: true,
+    supportsVideo: true,
+    // Practical inline-payload cap, not an asserted provider maximum.
+    maxVideoBytes: 20 * 1024 * 1024,
     costTier: "medium",
     maxThinkingLevel: "high",
   },

@@ -780,9 +780,10 @@ export function toOpenAIMessages(
                 // openai provider uploads first and caches `fileId` on the part.
                 // Match Kimi's wire shape exactly: when uploaded, include both
                 // `url` and `id`. Non-video models never reach here.
-                const videoUrl = part.fileId
-                  ? { url: `ms://${part.fileId}`, id: part.fileId }
-                  : { url: `data:${part.mediaType};base64,${part.data}` };
+                const videoUrl =
+                  options?.provider === "moonshot" && part.fileId
+                    ? { url: `ms://${part.fileId}`, id: part.fileId }
+                    : { url: `data:${part.mediaType};base64,${part.data}` };
                 return {
                   type: "video_url",
                   video_url: videoUrl,
