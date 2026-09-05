@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.59.0",
+    date: "2026-09-05",
+    items: [
+      "`GPT-6 Astra` actually runs now. OpenAI quietly gates Astra behind a newer client handshake, so the first build got bounced with a cryptic error. I upgraded the handshake, and Astra answers on your ChatGPT login with the full reasoning dial up to `ultra`. I also retired `GPT-5.5` from the picker so your OpenAI list is just the current lineup.",
+      "Error messages finally talk to you like an app, not a terminal. Every provider hint now tells you to use the model selector or update GG Coder, never to upgrade some CLI you have never seen. The `AI Providers` sign-in page lists the real models for every provider too, Astra and Fable 5.1 included.",
+      "Two chats compacting at the same moment on Windows could trip over each other. I fixed the lock so they take turns cleanly, and a real permission problem now surfaces instead of hanging forever.",
+    ],
+  },
+  {
     version: "0.58.0",
     date: "2026-09-05",
     items: [
