@@ -23,8 +23,15 @@ import {
 } from "./compactor.js";
 import { remapAnchorForCompaction } from "../session-history.js";
 import { estimateConversationTokens } from "./token-estimator.js";
-import { MODELS, getContextWindow } from "@prestyj/core";
-import type { Message, ContentPart, ToolResult } from "@prestyj/ai";
+import {
+  MODELS,
+  getContextWindow,
+  registerRuntimeModels,
+  clearRuntimeModels,
+  toModelInfo,
+  DEFAULT_LOCAL_ENDPOINTS,
+} from "@kenkaiiii/gg-core";
+import type { Message, ContentPart, ToolResult } from "@kenkaiiii/gg-ai";
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -222,10 +229,10 @@ describe("compaction thresholds across all models", () => {
   });
 
   const openAITransportCases = [
+    { id: "gpt-6-astra", publicWindow: 1_050_000, codexWindow: 272_000 },
     { id: "gpt-5.6-sol", publicWindow: 1_050_000, codexWindow: 272_000 },
     { id: "gpt-5.6-terra", publicWindow: 1_050_000, codexWindow: 272_000 },
     { id: "gpt-5.6-luna", publicWindow: 1_050_000, codexWindow: 272_000 },
-    { id: "gpt-5.5", publicWindow: 1_050_000, codexWindow: 272_000 },
   ] as const;
 
   it.each(openAITransportCases)("$id uses its public API window without accountId", (testCase) => {
@@ -636,7 +643,7 @@ describe("compactHistoricalToolCallArgs", () => {
 
 // ── compact (integration) ──────────────────────────────────
 
-vi.mock("@prestyj/ai", async (importOriginal) => {
+vi.mock("@kenkaiiii/gg-ai", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
@@ -645,7 +652,7 @@ vi.mock("@prestyj/ai", async (importOriginal) => {
 });
 
 // Must import stream AFTER mock setup
-import { stream } from "@prestyj/ai";
+import { stream, StreamResult } from "@kenkaiiii/gg-ai";
 
 describe("compact", () => {
   const baseOptions = {
@@ -708,6 +715,53 @@ describe("compact", () => {
     expect(result.result.originalCount).toBe(3);
     expect(result.result.newCount).toBe(3);
     expect(result.messages).toHaveLength(3);
+  });
+
+  it("caps local summaries at the discovered model output allowance", async () => {
+    const model = toModelInfo(
+      {
+        rawId: "small-context",
+        endpointId: "ollama",
+        contextWindow: 4096,
+        contextWindowKnown: true,
+        supportsTools: true,
+        supportsImages: false,
+        supportsThinking: false,
+      },
+      DEFAULT_LOCAL_ENDPOINTS[0]!,
+    );
+    registerRuntimeModels([model]);
+    const mockStream = vi.mocked(stream);
+    mockStream.mockClear();
+    mockStream.mockImplementation(
+      () =>
+        new StreamResult(
+          (async function* () {
+            yield { type: "text_delta", text: "Conversation summary." };
+            return {
+              message: { role: "assistant", content: "Conversation summary." },
+              stopReason: "end_turn",
+              usage: { inputTokens: 100, outputTokens: 10 },
+            };
+          })(),
+        ),
+    );
+    try {
+      await compact(buildConversation(30), {
+        ...baseOptions,
+        provider: "local",
+        model: model.id,
+        contextWindow: model.contextWindow,
+      });
+      expect(mockStream).toHaveBeenCalled();
+      for (const [options] of mockStream.mock.calls) {
+        expect(options.maxTokens).toBe(model.maxOutputTokens);
+        expect(options.maxTokens).toBeLessThan(MIN_SUMMARY_OUTPUT_TOKENS);
+      }
+    } finally {
+      clearRuntimeModels();
+      mockStream.mockReset();
+    }
   });
 
   it("produces summary message with LLM response", async () => {
@@ -1086,7 +1140,7 @@ describe("compact", () => {
     expect(summaryMsg.content as string).toContain("Summary on third try");
   });
 
-  // anchorRemap is what lets callers move transcript markers (Nolan turns,
+  // anchorRemap is what lets callers move transcript markers (Ken turns,
   // autopilot verdicts, error rows) onto the rewritten message list. If it
   // disagrees with the actual collapse, restored markers land in the wrong
   // place — the "everything bunched at the bottom" bug.
@@ -1171,7 +1225,7 @@ describe("compact", () => {
   // repairToolPairing and the trailing-assistant pop can shorten the retained
   // tail AFTER the collapse is decided. Deriving the new length from
   // summarizedCount alone then overshoots, pushing tail anchors past the end —
-  // where markers get dropped and Nolan turns clamp to the bottom, which is the
+  // where markers get dropped and Ken turns clamp to the bottom, which is the
   // exact symptom this remap exists to prevent.
   it("never maps an anchor past the end when the trailing assistant is popped", async () => {
     const mockStream = vi.mocked(stream);

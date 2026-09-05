@@ -3,7 +3,7 @@
  *
  * Two strategies for the same edit task, measured end-to-end against live models:
  *
- *   BASELINE (what ezcoder does today): the frontier model emits full
+ *   BASELINE (what ggcoder does today): the frontier model emits full
  *   search/replace edit blocks (old_text + new_text, verbatim context). Our
  *   edit tool then applies them LOCALLY and instantly (no apply model).
  *
@@ -19,11 +19,11 @@
  *   npx tsx src/core/fast-apply-benchmark.ts
  *
  * Env overrides:
- *   EZ_FA_FRONTIER_PROVIDER / EZ_FA_FRONTIER_MODEL   (default openai / gpt-5.5)
- *   EZ_FA_APPLY_PROVIDER     / EZ_FA_APPLY_MODEL      (default gemini / gemini-3.1-flash-lite)
+ *   GG_FA_FRONTIER_PROVIDER / GG_FA_FRONTIER_MODEL   (default openai / gpt-5.6-sol)
+ *   GG_FA_APPLY_PROVIDER     / GG_FA_APPLY_MODEL      (default gemini / gemini-3.1-flash-lite)
  */
 
-import { stream, type Message, type StreamEvent, type Usage } from "@prestyj/ai";
+import { stream, type Message, type StreamEvent, type Usage } from "@kenkaiiii/gg-ai";
 import { AuthStorage } from "./auth-storage.js";
 
 // ── Edit tasks: synthetic TS files of controlled sizes + a concrete edit ──
@@ -276,10 +276,10 @@ interface Row {
 }
 
 async function main(): Promise<void> {
-  const frontierProvider = process.env.EZ_FA_FRONTIER_PROVIDER ?? "openai";
-  const frontierModel = process.env.EZ_FA_FRONTIER_MODEL ?? "gpt-5.5";
-  const applyProvider = process.env.EZ_FA_APPLY_PROVIDER ?? "gemini";
-  const applyModel = process.env.EZ_FA_APPLY_MODEL ?? "gemini-3.1-flash-lite";
+  const frontierProvider = process.env.GG_FA_FRONTIER_PROVIDER ?? "openai";
+  const frontierModel = process.env.GG_FA_FRONTIER_MODEL ?? "gpt-5.6-sol";
+  const applyProvider = process.env.GG_FA_APPLY_PROVIDER ?? "gemini";
+  const applyModel = process.env.GG_FA_APPLY_MODEL ?? "gemini-3.1-flash-lite";
 
   const auth = new AuthStorage();
   await auth.load();

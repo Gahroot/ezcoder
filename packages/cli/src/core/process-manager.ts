@@ -292,6 +292,13 @@ export class ProcessManager {
     this.processes.set(id, proc);
     this.children.set(id, child);
 
+    // A child that fails to spawn emits 'error', and an 'error' with no listener
+    // is thrown as an uncaught exception that takes the whole CLI down. 'close'
+    // still fires afterwards (verified: ENOENT gives error then close -2), so
+    // exit bookkeeping below stays the single source of truth and this handler
+    // only has to keep the event from being fatal.
+    child.on("error", () => {});
+
     child.on("close", (code) => {
       proc.exitCode = code ?? 1;
       this.children.delete(id);
