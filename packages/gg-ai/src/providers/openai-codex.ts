@@ -167,8 +167,11 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     body.temperature = options.temperature;
   }
   body.reasoning = {
+    // GPT-5.6/6 require at least low; older models still support thinking off.
+    // Apply the floor here for every caller, including one-off prompt rewrites.
     // `ultra` is a client orchestration preset, not a Codex API effort.
-    effort: options.thinking === "ultra" ? "max" : (options.thinking ?? "none"),
+    effort:
+      options.thinking === "ultra" ? "max" : (options.thinking ?? (responsesLite ? "low" : "none")),
     summary: "auto",
     ...(responsesLite ? { context: "all_turns" } : {}),
   };
@@ -235,7 +238,11 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     if (usageLimit) throw usageLimit;
 
     let hint: string | undefined;
-    if (response.status === 400 && text.includes("not supported")) {
+    if (
+      response.status === 400 &&
+      message ===
+        `The '${options.model}' model is not supported when using Codex with a ChatGPT account.`
+    ) {
       hint =
         "This model is not available through your ChatGPT account. " +
         "Switch to a model listed for OpenAI via the model selector, or check your ChatGPT usage limits.";

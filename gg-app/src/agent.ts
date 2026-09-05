@@ -418,7 +418,38 @@ export interface EnhanceResult {
  */
 export async function enhancePrompt(text: string): Promise<EnhanceResult> {
   await waitForReady();
-  return invoke<EnhanceResult>("agent_enhance_prompt", { text });
+  const result = await invoke<unknown>("agent_enhance_prompt", { text });
+  // IPC types are not runtime validation: an error payload or empty rewrite must
+  // reach the caller's catch, never replace the draft or enter the animation.
+  if (
+    !result ||
+    typeof result !== "object" ||
+    "error" in result ||
+    !("enhanced" in result) ||
+    typeof result.enhanced !== "string" ||
+    !result.enhanced.trim() ||
+    !("segments" in result) ||
+    !Array.isArray(result.segments) ||
+    !result.segments.every(isPromptSegment)
+  ) {
+    throw new Error("Invalid prompt enhancement response");
+  }
+  return { enhanced: result.enhanced, segments: result.segments };
+}
+
+function isPromptSegment(value: unknown): value is PromptSegment {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "text" in value &&
+    typeof value.text === "string" &&
+    "kind" in value &&
+    (value.kind === "text" ||
+      (value.kind === "term" &&
+        "original" in value &&
+        typeof value.original === "string" &&
+        (!("note" in value) || value.note === undefined || typeof value.note === "string")))
+  );
 }
 
 export async function openUrl(url: string): Promise<void> {

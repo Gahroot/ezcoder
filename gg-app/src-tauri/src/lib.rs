@@ -1675,7 +1675,9 @@ async fn agent_enhance_prompt(
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    res.json::<serde_json::Value>()
+    res.error_for_status()
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
         .await
         .map_err(|e| e.to_string())
 }
