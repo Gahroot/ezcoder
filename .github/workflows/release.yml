@@ -126,6 +126,7 @@ jobs:
         run: |
           pnpm --filter @prestyj/ai build
           pnpm --filter @prestyj/agent build
+          pnpm --filter @prestyj/core build
           pnpm --filter @prestyj/cli build
 
       - name: Stage node runtime + bundle sidecar

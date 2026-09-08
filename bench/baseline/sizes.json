@@ -1,12 +1,16 @@
 {
   "artifacts": {
     "dist:ezcoder": {
-      "bytes": 7069714,
-      "recorded_at": "2026-08-26T16:11:20.854Z"
+      "bytes": 7312464,
+      "recorded_at": "2026-09-08T13:05:48.771Z"
     },
     "sidecar": {
       "bytes": 8280029,
       "recorded_at": "2026-08-26T16:11:20.858Z"
+    },
+    "frontend:initial": {
+      "bytes": 845843,
+      "recorded_at": "2026-09-07T14:38:04.389Z"
     }
   },
   "startup": {

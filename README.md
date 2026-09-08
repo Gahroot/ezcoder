@@ -153,7 +153,7 @@ cd ezcoder-app && pnpm tauri dev
 ```
 
 ```bash
-pnpm build      # tsc across all packages (order: @prestyj/ai → @prestyj/agent → ezcoder)
+pnpm build      # build all packages (@prestyj/ai → @prestyj/agent + @prestyj/core → ezcoder)
 pnpm check      # typecheck
 pnpm test       # vitest
 pnpm lint

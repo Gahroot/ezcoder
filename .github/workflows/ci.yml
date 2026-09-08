@@ -60,6 +60,7 @@ jobs:
         run: |
           pnpm --filter @prestyj/ai build
           pnpm --filter @prestyj/agent build
+          pnpm --filter @prestyj/core build
           pnpm --filter @prestyj/cli build
           pnpm --filter @prestyj/boss build
 
@@ -80,6 +81,7 @@ jobs:
         run: |
           pnpm --filter @prestyj/ai check
           pnpm --filter @prestyj/agent check
+          pnpm --filter @prestyj/core check
           pnpm --filter @prestyj/cli check
           pnpm --filter @prestyj/boss check
 
@@ -88,6 +90,7 @@ jobs:
         run: |
           pnpm --filter @prestyj/ai test
           pnpm --filter @prestyj/agent test
+          pnpm --filter @prestyj/core test
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             pnpm --filter @prestyj/cli exec vitest run --maxWorkers=2
           else
@@ -153,6 +156,7 @@ jobs:
         run: |
           pnpm --filter @prestyj/ai build
           pnpm --filter @prestyj/agent build
+          pnpm --filter @prestyj/core build
           pnpm --filter @prestyj/cli build
 
       - name: Stage node runtime + bundle sidecar
@@ -171,6 +175,12 @@ jobs:
       - name: Sidecar size gate
         run: node bench/size-gate.mjs --only sidecar
         shell: bash
+
+      - name: Frontend build + initial JavaScript size gate
+        shell: bash
+        run: |
+          pnpm --filter ezcoder-app build
+          node bench/size-gate.mjs --only frontend:initial
 
       - name: Frontend platform-class test
         run: pnpm --filter ezcoder-app test
