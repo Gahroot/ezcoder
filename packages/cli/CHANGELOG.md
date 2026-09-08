@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.17.0
+
+### Minor Changes
+
+- Sync upstream improvements: revision-aware verification evidence, semantic loop detection, independent completion review, and live GitHub CI status in the desktop workspace. Improve structured tool schemas and authentication handling while preserving EZ Eyes and the existing companion products.
+
+### Patch Changes
+
+- @prestyj/ai@5.17.0
+- @prestyj/agent@5.17.0
+- @prestyj/core@5.17.0
+
 ## 5.16.2
 
 ### Patch Changes
