@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.2.0",
+    date: "2026-09-08",
+    items: [
+      "Your workspace now shows `GitHub CI status`, so you can see whether your latest checks passed without leaving EZ Coder.",
+      "I tightened `completion checks`: fresh test evidence and an independent review help catch unfinished work before EZ calls it done.",
+      "EZ can now recognize when it is `going in circles`, even when each attempt looks different, and pause to rethink its approach.",
+      "Optional screens now use `on-demand loading`, keeping more code out of the app's initial load.",
+    ],
+  },
+  {
     version: "0.1.69",
     date: "2026-09-05",
     items: [
