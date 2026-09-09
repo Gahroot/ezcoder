@@ -148,6 +148,37 @@ describe("verification gate flow", () => {
     expect(await internal.getHookFollowUpMessages()).toBeNull();
   });
 
+  it("accepts the transcript's format-check chain and only requests an internal test review", async () => {
+    const { internal } = await makeSession();
+    const notices: Record<string, unknown>[] = [];
+    internal.eventBus.on("hook", (data) => notices.push(data));
+    await simulateToolCall(internal, "edit", { file_path: "src/a.ts" });
+    await simulateToolCall(internal, "edit", { file_path: "src/a.test.ts" });
+    await simulateToolCall(internal, "bash", {
+      command: "pnpm check && pnpm lint && pnpm format:check && pnpm test",
+    });
+    expect(internal.getVerificationProblem()).toBeNull();
+    const followUp = await internal.getHookFollowUpMessages();
+    expect(followUp).toHaveLength(1);
+    expect(String(followUp![0]!.content)).toContain("review them internally");
+    expect(String(followUp![0]!.content)).toContain("task outcome");
+    expect(String(followUp![0]!.content)).not.toContain("Run the project's verification");
+    expect(notices).toEqual([{ kind: "verification", verificationReason: "check_review" }]);
+    expect(await internal.getHookFollowUpMessages()).toBeNull();
+  });
+
+  it("combines test review with verification and does not interrupt the corrected final again", async () => {
+    const { internal, events } = await makeSession();
+    await simulateToolCall(internal, "edit", { file_path: "src/a.test.ts" });
+    const followUp = await internal.getHookFollowUpMessages();
+    expect(followUp).toHaveLength(2);
+    expect(String(followUp![1]!.content)).toContain("src/a.test.ts");
+    await simulateToolCall(internal, "bash", { command: "pnpm test" });
+    expect(internal.getVerificationProblem()).toBeNull();
+    expect(await internal.getHookFollowUpMessages()).toBeNull();
+    expect(events.filter((e) => e === "hook:verification")).toHaveLength(1);
+  });
+
   it("counts a check piped through a tail limiter, so a question turn is never hijacked", async () => {
     const { internal, events } = await makeSession();
 

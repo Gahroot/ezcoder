@@ -270,7 +270,7 @@ export type Item =
     }
   // Agent self-correction hook notice (ideal review / loop-break / re-grounding),
   // rendered like the TUI: a shimmering tone-colored one-liner.
-  | { kind: "hook"; id: number; hook: HookKind; verificationReason?: "recheck" }
+  | { kind: "hook"; id: number; hook: HookKind; verificationReason?: "recheck" | "check_review" }
   // Images produced by a tool (screenshot / read of an image file).
   | { kind: "images"; id: number; images: TranscriptImage[]; caption?: string }
   // Image generation in progress — a shimmering square placeholder that gets
@@ -3404,9 +3404,11 @@ const TranscriptRow = memo(function TranscriptRow({
       // tone-colored one-liner so the self-correction is obvious.
       const { text: defaultText, color } = HOOK_PRESENTATION[item.hook];
       const text =
-        item.verificationReason === "recheck"
-          ? "Hook engaged. Re-checking the changes made after verification."
-          : defaultText;
+        item.verificationReason === "check_review"
+          ? "Hook engaged. Reviewing changes to tests and checks."
+          : item.verificationReason === "recheck"
+            ? "Hook engaged. Re-checking the changes made after verification."
+            : defaultText;
       return (
         <div className="assistant-msg">
           <span className="assistant-dot" style={{ color }}>

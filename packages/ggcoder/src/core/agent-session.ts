@@ -2104,7 +2104,11 @@ export class AgentSession {
         // flash arming exists to prevent.
         this.eventBus.emit("hook", {
           kind: "verification",
-          ...(verificationReason === "recheck" ? { verificationReason } : {}),
+          ...(verificationReason === "tamper"
+            ? { verificationReason: "check_review" as const }
+            : verificationReason === "recheck"
+              ? { verificationReason }
+              : {}),
         });
         this.refreshHookArming();
         return verificationFollowUp;
