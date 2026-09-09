@@ -2072,8 +2072,8 @@ function App(): React.ReactElement {
     if (reduced) {
       try {
         applyEnhanceResult(await enhancePrompt(draft));
-      } catch {
-        toast("Couldn't enhance the prompt", "error");
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
       } finally {
         setEnhancing(false);
       }
@@ -2088,8 +2088,8 @@ function App(): React.ReactElement {
       const r = await enhancePrompt(draft);
       pendingEnhanceRef.current = r;
       setEnhanceAnim((a) => (a ? { ...a, newText: r.enhanced } : null));
-    } catch {
-      toast("Couldn't enhance the prompt", "error");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), "error");
       setEnhanceAnim(null);
       setEnhancing(false);
     }
