@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.18.0
+
+### Minor Changes
+
+- Sync upstream: GPT Image 2.5 image generation, sharper prompt enhancement that preserves intent, fixed verification hook sequencing, faster dev-server readiness waits, and a smaller CLI payload.
+
+### Patch Changes
+
+- @prestyj/ai@5.18.0
+- @prestyj/agent@5.18.0
+- @prestyj/core@5.18.0
+
 ## 5.17.0
 
 ### Minor Changes
