@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { AgentEvent, AgentTool } from "@kenkaiiii/gg-agent";
-import type { Message } from "@kenkaiiii/gg-ai";
+import type { AgentEvent, AgentTool } from "@prestyj/agent";
+import type { Message } from "@prestyj/ai";
 import type { AgentSession } from "./agent-session.js";
 import type { LspManager } from "./lsp/manager.js";
 import { useFakeHome } from "../test-support/fake-home.js";
@@ -24,11 +24,11 @@ let internal: Internals;
 let id = 0;
 
 beforeEach(async () => {
-  cwd = await fs.mkdtemp(path.join(os.tmpdir(), "gg-session-diagnostics-"));
+  cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ez-session-diagnostics-"));
   restoreHome = useFakeHome(cwd);
-  await fs.mkdir(path.join(cwd, ".gg"));
+  await fs.mkdir(path.join(cwd, ".ezcoder"));
   await fs.writeFile(
-    path.join(cwd, ".gg", "settings.json"),
+    path.join(cwd, ".ezcoder", "settings.json"),
     JSON.stringify({ idealReviewEnabled: false }),
   );
   await fs.writeFile(path.join(cwd, "package.json"), '{"private":true}');

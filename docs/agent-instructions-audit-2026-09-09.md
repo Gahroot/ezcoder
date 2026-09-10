@@ -51,7 +51,7 @@ Before blocks are exact current rendered wording, or explicitly identified curre
 | All bundled skill Markdown | 114 | 44,872 | Includes those 10 entrypoints; do not add both rows |
 | Language pack implementation | 2 | 324 | Pack content and override loader |
 | Bundled agent definitions | 1 | 278 | Specialist identities, methods, and tool lists |
-| Ken prompt builder | 1 | 396 | Separate mentor role; not ordinary coding instructions |
+| Nolan prompt builder | 1 | 396 | Separate mentor role; not ordinary coding instructions |
 | Chat-agent non-test TypeScript | 8 | 1,213 | Role-specific prompts plus implementation |
 | Ideal-review module | 1 | 287 | Review text, scoring, and coverage tracking |
 | Re-grounding module | 1 | 47 | Post-compaction reminder |
@@ -79,7 +79,7 @@ These are **test fixtures**, not the exact prompt received by this desktop sessi
 
 ### F1 — Language injection is not consistently connected
 
-**Location:** `packages/ggcoder/src/ui/App.tsx:773-823`; `packages/ggcoder/src/core/agent-session.ts:3437-3475`; `packages/ggcoder/src/system-prompt.ts:564-570`.
+**Location:** `packages/cli/src/ui/App.tsx:773-823`; `packages/cli/src/core/agent-session.ts:3437-3475`; `packages/cli/src/system-prompt.ts:564-570`.
 
 **Before:** the terminal detects repository languages, refreshes them at turn boundaries, and passes the active language set to the prompt builder. The shared desktop session passes `undefined` for that argument. Consequently the normal desktop path omits both Language Style Packs and the language-dependent verification section.
 
@@ -93,7 +93,7 @@ These are **test fixtures**, not the exact prompt received by this desktop sessi
 
 ### F2 — The skill catalog is duplicated, but removing it blindly would break children
 
-**Location:** `packages/ggcoder/src/core/skills.ts:183-190`; `packages/ggcoder/src/tools/skill.ts:49-61`; `packages/ggcoder/src/system-prompt.ts:479-505,573-575`.
+**Location:** `packages/cli/src/core/skills.ts:183-190`; `packages/cli/src/tools/skill.ts:49-61`; `packages/cli/src/system-prompt.ts:479-505,573-575`.
 
 **Before:** the normal prompt contains skill routing and the catalog; the `skill` tool schema independently embeds routing and the same catalog. Named child prompts do not call the system catalog renderer, so their schema can be their only discovery source.
 
@@ -105,7 +105,7 @@ These are **test fixtures**, not the exact prompt received by this desktop sessi
 
 ### F3 — Specialist prompts need explicit boundaries, not the entire parent personality
 
-**Location:** `packages/ggcoder/src/system-prompt.ts:455-459,479-505`; `packages/ggcoder/src/core/bundled-agents.ts:69-113`.
+**Location:** `packages/cli/src/system-prompt.ts:455-459,479-505`; `packages/cli/src/core/bundled-agents.ts:69-113`.
 
 **Before:** named children replace the parent's identity/talk/work sections, intentionally. Worker instructions unconditionally say to commit, push, and open a PR, while the main prompt restricts publishing to explicit user requests. Specialist output templates coexist with a generic return contract that tells oversized reports to use a file, even for read-only agents.
 
@@ -117,7 +117,7 @@ These are **test fixtures**, not the exact prompt received by this desktop sessi
 
 ### F4 — Attachment requests can lose their pinned post-compaction instructions
 
-**Location:** `packages/ggcoder/src/core/agent-session.ts:1350-1356,1766-1769,2258-2262`; `packages/ggcoder/src/core/regrounding.ts:22-32`.
+**Location:** `packages/cli/src/core/agent-session.ts:1350-1356,1766-1769,2258-2262`; `packages/cli/src/core/regrounding.ts:22-32`.
 
 **Before:** attachment-bearing user messages can contain an array of text/media parts. Request pinning retains the content only when it is a string; otherwise it stores an empty string. After compaction, the re-grounding reminder can therefore identify the original request as `(empty)` instead of restating the user's textual instructions.
 
@@ -131,7 +131,7 @@ These are **test fixtures**, not the exact prompt received by this desktop sessi
 
 ### P1 — Replace competing output restrictions with a concise default
 
-**Location:** `packages/ggcoder/src/system-prompt.ts:58-82`.
+**Location:** `packages/cli/src/system-prompt.ts:58-82`.
 
 **Problem:** a hard whole-reply budget, per-item word limits, limits on naming evidence, and random jokes compete with substantive reviews and technical explanations. The user can explicitly request a detailed comparison, yet the default says nothing is exempt. This is a policy-design issue, not proof that every response fails.
 
@@ -179,7 +179,7 @@ Give ONE recommended approach — default to X, switch to Y only when [condition
 
 ### P2 — Make research proportional and keep one research policy
 
-**Location:** `packages/ggcoder/src/system-prompt.ts:159-160`; repeated workflows in `:106-107` and `packages/ggcoder/src/core/ideal-review.ts:158-175`.
+**Location:** `packages/cli/src/system-prompt.ts:159-160`; repeated workflows in `:106-107` and `packages/cli/src/core/ideal-review.ts:158-175`.
 
 **Problem:** all nontrivial work takes an unconditional corpus detour even when the repository already demonstrates the exact solution. The corpus is described as the source of truth, while project conventions outrank it elsewhere. The same search/discover/approval procedure is repeated in planning and review.
 
@@ -205,7 +205,7 @@ Reuse established evidence during planning and review; repeat research only when
 
 ### P3 — Make the Ideal reminder a focused check, not a second policy manual
 
-**Location:** `packages/ggcoder/src/core/ideal-review.ts:158-175`.
+**Location:** `packages/cli/src/core/ideal-review.ts:158-175`.
 
 **Problem:** the runtime reminder repeats the research workflow and can reintroduce policy after the task appeared complete. It should reference a shared policy only where that policy is actually present; named children currently need separate treatment.
 
@@ -231,7 +231,7 @@ Give the final answer without narrating this internal review.
 
 ### P4 — Align the main verification rule with the runtime gate
 
-**Location:** `packages/ggcoder/src/system-prompt.ts:98`; `packages/ggcoder/src/core/agent-session.ts:2090-2111`; `packages/ggcoder/src/core/verification-gate.ts:407-435`.
+**Location:** `packages/cli/src/system-prompt.ts:98`; `packages/cli/src/core/agent-session.ts:2090-2111`; `packages/cli/src/core/verification-gate.ts:407-435`.
 
 **Problem:** “skip checks after simple edits” is ambiguous about code changes. The runtime can still demand verification after those edits. The agent is told to skip something the harness then requires.
 
@@ -253,7 +253,7 @@ Give the final answer without narrating this internal review.
 
 ### P5 — Remove the instruction to edit tests without running them
 
-**Location:** `packages/ggcoder/src/core/ideal-review.ts:229-231`, compared with `:171-172` and the verification gate.
+**Location:** `packages/cli/src/core/ideal-review.ts:229-231`, compared with `:171-172` and the verification gate.
 
 **Problem:** the same runtime message can require rerunning affected checks and then say “Edit the test only — do not run the suite now.” A sibling test not being edited is also only a heuristic, not proof that assertions need changing.
 
@@ -275,7 +275,7 @@ Check whether existing assertions cover the changed behavior. Update tests only 
 
 ### P6 — Remove the mandatory installation advertisement
 
-**Location:** `packages/ggcoder/src/system-prompt.ts:161` versus the budget at `:71`.
+**Location:** `packages/cli/src/system-prompt.ts:161` versus the budget at `:71`.
 
 **Problem:** the absent-corpus branch forces an exact marketing sentence and explicitly exempts it from a budget that says nothing is exempt. It also frames installed source and official docs as inferior to “proven” examples, which examples alone cannot establish.
 
@@ -298,7 +298,7 @@ Mention missing capabilities only when they materially limit the result; offer i
 
 ### P7 — Route all applicable skills without arbitrary numeric caps
 
-**Location:** `packages/ggcoder/src/core/skills.ts:183-189`.
+**Location:** `packages/cli/src/core/skills.ts:183-189`.
 
 **Problem:** “every matching skill” and “at most one unless ... two” provide different answers for work that genuinely requires three disciplines. A financial feature handling personal data can require security, durability, and compliance; unrelated skills should still stay unloaded.
 
@@ -324,7 +324,7 @@ Skill guidance specializes the shared workflow without overriding project or fil
 
 ### P8 — Make child report instructions compatible with read-only agents
 
-**Location:** `packages/ggcoder/src/system-prompt.ts:442-449`; read-only tool lists in `packages/ggcoder/src/core/bundled-agents.ts`.
+**Location:** `packages/cli/src/system-prompt.ts:442-449`; read-only tool lists in `packages/cli/src/core/bundled-agents.ts`.
 
 **Before — current return-contract bullet:**
 
@@ -344,7 +344,7 @@ Skill guidance specializes the shared workflow without overriding project or fil
 
 ### P9 — Stop forcing a TDD confirmation when the requested behavior already fixes the scope
 
-**Location:** `packages/ggcoder/assets/skills/tdd/SKILL.md:10-18`.
+**Location:** `packages/cli/assets/skills/tdd/SKILL.md:10-18`.
 
 **Problem:** the skill requires user agreement before every first test, even where the public boundary follows directly from the request. This conflicts with the shared instruction to investigate facts and reserve questions for actual decisions.
 
@@ -382,7 +382,7 @@ Infer test boundaries from the requested behavior and existing interfaces. Ask o
 
 ### P10 — Distinguish new-project defaults from existing-project tooling
 
-**Location:** `packages/ggcoder/src/core/style-packs/packs.ts:21`.
+**Location:** `packages/cli/src/core/style-packs/packs.ts:21`.
 
 **Problem:** “always” enabling compiler flags is broader than a new-project default and can prompt unnecessary config changes. The existing precedence rule already lets project conventions win, so this is ambiguity to remove—not proof that the pack necessarily overrides them.
 
@@ -442,7 +442,7 @@ No runtime source-code LOC reduction is claimed by this wording-only proposal. T
 - **Project override precedence and context budgets.** Preserve nearest-project conventions and bounded input sizes.
 - **On-demand skill bodies.** Discovery metadata is not the same as duplicating the entire skill body.
 - **Verification freshness and read coverage.** An attractive final answer is not proof that work was checked.
-- **Distinct mentor/chat roles.** Ken and chat specialists are not simply duplicate coding prompts. Share genuinely universal contracts, not coding behavior that conflicts with their jobs.
+- **Distinct mentor/chat roles.** Nolan and chat specialists are not simply duplicate coding prompts. Share genuinely universal contracts, not coding behavior that conflicts with their jobs.
 
 ## Corrections and limits
 
@@ -455,7 +455,7 @@ The bundled skill reference library was inventoried, not read line-by-line in it
 **Already run:**
 
 ```text
-pnpm --filter @kenkaiiii/ggcoder exec vitest run src/system-prompt.test.ts src/core/language-detector.test.ts src/core/ideal-review.test.ts src/core/skills-routing.test.ts
+pnpm --filter @prestyj/cli exec vitest run src/system-prompt.test.ts src/core/language-detector.test.ts src/core/ideal-review.test.ts src/core/skills-routing.test.ts
 4 files passed; 83 tests passed.
 ```
 

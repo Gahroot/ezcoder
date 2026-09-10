@@ -5,10 +5,10 @@ import {
   type StopReason,
   type StreamEvent,
   type StreamResponse,
-} from "@kenkaiiii/gg-ai";
+} from "@prestyj/ai";
 import { ENHANCER_SYSTEM_PROMPT, enhancePrompt, parseEnhanced } from "./prompt-enhancer.js";
 
-vi.mock("@kenkaiiii/gg-ai", async (importOriginal) => ({
+vi.mock("@prestyj/ai", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   stream: vi.fn(),
 }));

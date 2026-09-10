@@ -17,7 +17,7 @@ let pool: LspClientPool;
 const managers: LspManager[] = [];
 
 beforeEach(async () => {
-  cwd = await fs.mkdtemp(path.join(os.tmpdir(), "gg-async-diagnostics-"));
+  cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ez-async-diagnostics-"));
   await fs.writeFile(path.join(cwd, "fake-root.json"), "{}");
   pool = new LspClientPool();
   setEditTelemetryPathForTests(path.join(cwd, "edit-quality.jsonl"));

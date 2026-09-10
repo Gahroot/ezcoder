@@ -455,7 +455,7 @@ describe("buildSystemPrompt", () => {
             "Ground the plan in inspected code and evidence already gathered",
           );
           expect(prompt).toContain("Repository indexing needs user approval even in plan mode");
-          expect(prompt).toContain("no code edits outside `.gg/plans/`");
+          expect(prompt).toContain("no code edits outside `.ezcoder/plans/`");
           expect(prompt).toContain(
             "ALWAYS end the plan with a heading written exactly as `## Steps`",
           );

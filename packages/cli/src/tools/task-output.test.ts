@@ -11,7 +11,7 @@ const directories: string[] = [];
 const context = { signal: new AbortController().signal, toolCallId: "server-readiness" };
 
 async function start(wake?: WakeRules) {
-  const bgDir = await fs.mkdtemp(path.join(os.tmpdir(), "gg-task-output-"));
+  const bgDir = await fs.mkdtemp(path.join(os.tmpdir(), "ez-task-output-"));
   directories.push(bgDir);
   const notifications = new AgentNotificationQueue();
   const manager = new ProcessManager({ bgDir, notifications });

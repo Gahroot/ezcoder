@@ -11,11 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as GgAgentModule from "@prestyj/agent";
 import type * as McpModule from "./mcp/index.js";
 import { useFakeHome } from "../test-support/fake-home.js";
-import { stream, StreamResult, type StreamEvent, type StreamResponse } from "@kenkaiiii/gg-ai";
+import { stream, StreamResult, type StreamEvent, type StreamResponse } from "@prestyj/ai";
 import { getModel } from "./model-registry.js";
 import { AuthStorage } from "./auth-storage.js";
 
-vi.mock("@kenkaiiii/gg-ai", async (importOriginal) => ({
+vi.mock("@prestyj/ai", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   stream: vi.fn(),
 }));
