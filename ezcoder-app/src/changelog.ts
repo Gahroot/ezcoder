@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.3.0",
+    date: "2026-09-10",
+    items: [
+      "Image generation just leveled up. I moved you onto `GPT Image 2.5` so the pictures EZ makes come back sharper, cleaner, and closer to what you asked for.",
+      "The `Prompt Enhancer` now protects your intent. It keeps every detail you spelled out instead of smoothing your request into something generic.",
+      "Finishing work is more trustworthy. I fixed the order of the final checks so EZ verifies its work properly before telling you a job is done.",
+      "Dev servers start smoother. EZ waits until your server is genuinely ready instead of jumping the gun, so previews stop failing for no reason.",
+      "The engine got lighter. I trimmed dead weight out of the download so installs and updates land faster.",
+    ],
+  },
+  {
     version: "0.2.1",
     date: "2026-09-08",
     items: [
