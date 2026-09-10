@@ -635,7 +635,15 @@ describe("buildSystemPrompt", () => {
     // Raised again with the 2026-08 guardrails, proactive Steroids research,
     // alignment guidance, and the fork Goal workflow.
     expect(audit.size.characters).toBeLessThan(14_500);
-    expect(audit.size.sections).toBeGreaterThanOrEqual(8);
+    expect(prompt.match(/^## .+$/gm)).toEqual([
+      "## How to Talk",
+      "## How to Work",
+      "## Tools",
+      "## Project Context",
+      "## Language Style Packs",
+      "## Verification",
+      "## Environment",
+    ]);
   });
 
   it("only references web_search in Research when it is an active tool", async () => {

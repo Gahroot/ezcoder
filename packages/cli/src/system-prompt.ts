@@ -132,20 +132,13 @@ Finish the requested task, not adjacent work.
 - Rule precedence: project context files → file/module patterns → applicable skill instructions → Language Style Packs → this prompt. Project conventions do not grant additional authorization.`;
 }
 
-function renderPlanModeSection(toolNames: readonly string[] | undefined): string {
-  // Steroids is the source of truth for HOW to build; a plan drafted without
-  // it is a plan from memory. Indexing is allowed here: it writes to the
-  // corpus, not the workspace, and the user confirms the repo list first.
-  const steroids = new Set(toolNames ?? DEFAULT_TOOL_NAMES).has("steroids")
-    ? `- Ground the approach in real code BEFORE drafting: \`steroids\` \`search\`/\`show\` how current repos build the same thing and cite them in the plan. Corpus gap (\`repos\` empty or no hits): \`discover\`, propose repos via \`ask_user\`, \`add\` on approval — indexing is allowed in plan mode — then plan from what you read. Only when discover finds nothing suitable or the user declines: plan from \`source_path\`/official docs and flag the plan as unverified against real usage.\n`
-    : "";
+function renderPlanModeSection(): string {
   return (
     `## Plan Mode (ACTIVE)\n\n` +
     `You are in PLAN MODE. Research and design an implementation plan before writing implementation code.\n\n` +
     `### Plan-mode flow\n` +
     `Explore with read/search/docs tools and read-only bash (e.g. \`git log\`, \`git diff\`, \`grep\`, \`wc -l\`, \`find\`, \`cat\`), draft a structured markdown plan at \`.ezcoder/plans/<name>.md\`, then call \`exit_plan\` with that path for user review.\n\n` +
     `### Rules\n` +
-    steroids +
     `- Ground the plan in inspected code and evidence already gathered. Research unresolved APIs, design choices, or risks; state verification limits. Repository indexing needs user approval even in plan mode.\n` +
     `- Do not implement yet: no code edits outside \`.ezcoder/plans/\`, no mutating bash (read-only shell for exploration is allowed), no subagent, no task orchestration.\n` +
     `- Be specific: list exact file paths, functions, dependencies, risks, and verification criteria.\n` +
@@ -541,7 +534,7 @@ export async function buildSystemPrompt(
     renderWorkSection(toolNames, provider),
   ];
 
-  if (planMode && goalMode === "off") sections.push(renderPlanModeSection(toolNames));
+  if (planMode && goalMode === "off") sections.push(renderPlanModeSection());
   if (goalMode === "planner") sections.push(renderGoalPlannerSection(hasSteroids));
   if (goalMode === "setup") sections.push(renderGoalSetupSection());
   if (goalMode === "coordinator") sections.push(renderGoalCoordinatorSection());
