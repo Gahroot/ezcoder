@@ -22,6 +22,20 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.64.2",
+    date: "2026-09-14",
+    items: [
+      "A little housekeeping for your `GG Coder`. I refreshed the desktop foundations in this update, with no new buttons or workflows for you to learn.",
+    ],
+  },
+  {
+    version: "0.64.1",
+    date: "2026-09-13",
+    items: [
+      "Your `OpenAI` chats now get a second chance when the dreaded `encrypted content` error strikes. I added an automatic recovery attempt that keeps your messages and tool results intact, so you can get back to building without starting over.",
+    ],
+  },
+  {
     version: "0.64.0",
     date: "2026-09-12",
     items: [
