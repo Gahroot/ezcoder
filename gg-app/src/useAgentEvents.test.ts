@@ -99,8 +99,8 @@ function setup(
     setPlanReview: ((u: string | null | ((p: string | null) => string | null)) => {
       planReview = typeof u === "function" ? u(planReview) : u;
     }) as AgentEventsDeps["setPlanReview"],
-    setQueuedCount: noop as unknown as AgentEventsDeps["setQueuedCount"],
-    setQueuedMessages: noop as unknown as AgentEventsDeps["setQueuedMessages"],
+    setQueuedCount: vi.fn<AgentEventsDeps["setQueuedCount"]>(),
+    setQueuedMessages: vi.fn<AgentEventsDeps["setQueuedMessages"]>(),
     setAttachments: noop as unknown as AgentEventsDeps["setAttachments"],
     setCommands: noop as unknown as AgentEventsDeps["setCommands"],
     setModels,
@@ -144,6 +144,95 @@ describe("useAgentEvents", () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe("queued pill lifecycle", () => {
+    it("removes the cancelled duplicate, not the identical message still pending", () => {
+      const { hook, getItems, pushUserItem } = setup();
+      pushUserItem("same", true);
+      pushUserItem("same", true);
+      const firstId = getItems()[0]!.id;
+      act(() =>
+        hook.result.current.handleEvent(
+          ev("queued", {
+            count: 2,
+            messages: [
+              { id: "a", text: "same" },
+              { id: "b", text: "same" },
+            ],
+          }),
+        ),
+      );
+      act(() =>
+        hook.result.current.handleEvent(
+          ev("queued", {
+            count: 1,
+            messages: [{ id: "a", text: "same" }],
+            cancelledId: "b",
+          }),
+        ),
+      );
+      expect(getItems()).toEqual([
+        expect.objectContaining({ id: firstId, text: "same", queued: true }),
+      ]);
+    });
+
+    it("keeps newer enqueues and drains after cancellation, including repeated cancellation events", () => {
+      const { hook, getItems, pushUserItem, deps } = setup();
+      pushUserItem("cancel me", true);
+      act(() =>
+        hook.result.current.handleEvent(
+          ev("queued", {
+            count: 1,
+            messages: [{ id: "a", text: "cancel me" }],
+          }),
+        ),
+      );
+      act(() =>
+        hook.result.current.handleEvent(
+          ev("queued", {
+            count: 0,
+            messages: [],
+            cancelledId: "a",
+          }),
+        ),
+      );
+      expect(getItems()).toEqual([]);
+      pushUserItem("newer", true);
+      const pending = [{ id: "b", text: "newer" }];
+      act(() => hook.result.current.handleEvent(ev("queued", { count: 1, messages: pending })));
+      act(() =>
+        hook.result.current.handleEvent(
+          ev("queued", {
+            count: 1,
+            messages: pending,
+            cancelledId: "a",
+          }),
+        ),
+      );
+      expect(deps.setQueuedMessages).toHaveBeenLastCalledWith(pending);
+      expect(getItems()).toEqual([expect.objectContaining({ text: "newer", queued: true })]);
+      act(() => hook.result.current.handleEvent(ev("queued", { count: 0, messages: [] })));
+      expect(deps.setQueuedCount).toHaveBeenLastCalledWith(0);
+      expect(deps.setQueuedMessages).toHaveBeenLastCalledWith([]);
+      expect(getItems()).toEqual([expect.objectContaining({ text: "newer", queued: false })]);
+    });
+
+    it("preserves consumed input when cancellation loses the race", () => {
+      const { hook, getItems, pushUserItem } = setup();
+      pushUserItem("already running", true);
+      act(() =>
+        hook.result.current.handleEvent(
+          ev("queued", {
+            count: 1,
+            messages: [{ id: "a", text: "already running" }],
+          }),
+        ),
+      );
+      act(() => hook.result.current.handleEvent(ev("queued", { count: 0, messages: [] })));
+      // Failed cancellation broadcasts the current list without a cancelled id.
+      act(() => hook.result.current.handleEvent(ev("queued", { count: 0, messages: [] })));
+      expect(getItems()).toEqual([
+        expect.objectContaining({ text: "already running", queued: false }),
+      ]);
+    });
     it("clears a bubble's queued pill as soon as the agent consumes it, mid-run", () => {
       const { hook, getItems, pushUserItem, setRunning } = setup();
       act(() => setRunning(true));

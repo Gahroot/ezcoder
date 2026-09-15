@@ -1709,31 +1709,9 @@ function App(): React.ReactElement {
     });
   }
 
-  /**
-   * Cancel one pending queued message. The sidecar returns the remaining queue,
-   * which we adopt wholesale rather than filtering locally: the agent may have
-   * consumed messages between render and click, so its list is authoritative.
-   */
+  /** Ordered queue events own both pending rows and cancelled transcript bubbles. */
   function handleCancelQueued(id: string): void {
-    const cancelledText = queuedMessages.find((m) => m.id === id)?.text;
-    void cancelQueued(id).then((remaining) => {
-      if (remaining === null) return;
-      setQueuedMessages(remaining);
-      setQueuedCount(remaining.length);
-      // Drop the transcript bubble for a message that will now never run.
-      // Leaving it would clear its `queued` flag on the next queue broadcast and
-      // render it identically to a message the agent actually received.
-      // Only remove it if the sidecar really dropped it: a cancel that lost the
-      // race (already consumed) comes back with the text still in the queue.
-      if (cancelledText === undefined) return;
-      if (remaining.some((m) => m.id === id)) return;
-      setItems((prev) => {
-        const index = prev.findIndex(
-          (it) => it.kind === "user" && it.queued && it.text === cancelledText,
-        );
-        return index === -1 ? prev : [...prev.slice(0, index), ...prev.slice(index + 1)];
-      });
-    });
+    void cancelQueued(id);
   }
 
   function pickSlashCommand(cmd: SlashCommand): void {
