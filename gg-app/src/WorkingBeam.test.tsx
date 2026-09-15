@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkingBeam } from "./WorkingBeam";
 
@@ -18,11 +18,12 @@ afterEach(() => {
 });
 
 describe("WorkingBeam", () => {
-  it("mounts the real package only while active, at the requested strength", () => {
+  it("mounts the real package only while active, at the requested strength", async () => {
     const { container, rerender } = render(<WorkingBeam active={false} />);
     expect(container.querySelector("[data-beam]")).toBeNull();
 
     rerender(<WorkingBeam active />);
+    await waitFor(() => expect(container.querySelector("[data-beam]")).not.toBeNull());
     const beam = container.querySelector<HTMLElement>("[data-beam]");
     expect(beam?.hasAttribute("data-active")).toBe(true);
     expect(beam?.getAttribute("aria-hidden")).toBe("true");
@@ -34,7 +35,7 @@ describe("WorkingBeam", () => {
     expect(container.querySelector("style")).toBeNull();
   });
 
-  it("keeps the draft, focus, and stop control intact across work transitions", () => {
+  it("keeps the draft, focus, and stop control intact across work transitions", async () => {
     const onStop = vi.fn();
     const composer = (active: boolean) => (
       <div className="inputwrap">
@@ -50,6 +51,9 @@ describe("WorkingBeam", () => {
     const input = screen.getByRole("textbox") as HTMLTextAreaElement;
     input.focus();
     rerender(composer(true));
+    await waitFor(() =>
+      expect(container.querySelector(".working-beam-sm[data-active]")).not.toBeNull(),
+    );
     expect(screen.getByRole("textbox")).toBe(input);
     expect(document.activeElement).toBe(input);
     expect(input.value).toBe("Keep my draft");
