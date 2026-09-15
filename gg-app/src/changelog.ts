@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.64.4",
+    date: "2026-09-15",
+    items: [
+      "You can spot active work at a glance now. I gave `Agent is working…` and `Ken` animated orbs and shimmering labels, plus a moving glow around your input and `Stop` button while the action happens.",
+      "I gave `Send`, `Enhance?`, and your New and Commit actions a liquid-metal finish. Your New and Commit buttons keep their familiar colors, with a little extra shine where you reach most.",
+    ],
+  },
+  {
     version: "0.64.3",
     date: "2026-09-15",
     items: [
