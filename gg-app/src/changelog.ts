@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.64.5",
+    date: "2026-09-15",
+    items: [
+      "I fixed the desktop effects that went missing after the last update. Your input's animated glow is back, and the metal finish on `Send`, `Enhance?`, and your New and Commit buttons follows their rounded edges instead of spilling into square corners.",
+    ],
+  },
+  {
     version: "0.64.4",
     date: "2026-09-15",
     items: [
