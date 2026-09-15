@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.65.0",
+    date: "2026-09-15",
+    items: [
+      "Your buttons, your style. I added `GG UI` under `Settings > Effects` so you can switch between the metallic finish and the original look, with your choice remembered across restarts and windows. I also fixed those doubled edges when you zoom, so the shine stays neatly on your buttons.",
+    ],
+  },
+  {
     version: "0.64.5",
     date: "2026-09-15",
     items: [
