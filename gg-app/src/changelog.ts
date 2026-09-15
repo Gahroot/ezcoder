@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.64.3",
+    date: "2026-09-15",
+    items: [
+      "I refreshed `GG Coder`'s AI and voice engines and trimmed the code it ships with. Your desktop app and command-line tools get the same updated engine, with no new workflows to learn.",
+    ],
+  },
+  {
     version: "0.64.2",
     date: "2026-09-14",
     items: [
