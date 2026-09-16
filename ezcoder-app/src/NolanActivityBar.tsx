@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { ThinkingOrb } from "thinking-orbs";
 import { theme } from "./theme";
-import { SPINNER_FRAMES, SPINNER_FRAME_MS, formatTokenCount } from "./ActivityBar";
+import { formatTokenCount } from "./ActivityBar";
+import { ShimmerText } from "./ShimmerText";
 
 function formatElapsed(ms: number): string {
   const s = Math.round(ms / 1000);
@@ -25,10 +27,10 @@ interface Props {
 }
 
 /**
- * Nolan Grout's activity bar. A 1:1 mirror of the EZ Coder ActivityBar's running row
- * — same braille spinner, same `(elapsed · ↓ N tokens · thinking for Xs)` meta,
- * same statusrow layout + esc-to-cancel — just tinted to Nolan and labelled "Nolan
- * is thinking…". Stacks above the main bar while Nolan runs concurrently, so its
+ * Ken Kai's activity bar. A 1:1 mirror of the GG Coder ActivityBar's running row
+ * — same listening orb, same `(elapsed · ↓ N tokens · thinking for Xs)` meta,
+ * same statusrow layout + esc-to-cancel — just tinted to Ken and labelled "Ken
+ * is thinking…". Stacks above the main bar while Ken runs concurrently, so its
  * own top border is dropped (the main bar keeps the divider).
  */
 export function NolanActivityBar({
@@ -39,20 +41,15 @@ export function NolanActivityBar({
   thinkingAccumMs,
   onCancel,
 }: Props): React.ReactElement {
-  const [frame, setFrame] = useState(0);
+  const orbTintId = useId();
   // `now` is bumped every 250ms; the elapsed + thinking timers are derived from
   // it + the start timestamps, mirroring the ActivityBar's live-tick approach
   // without reading a ref during render.
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const spin = setInterval(
-      () => setFrame((f) => (f + 1) % SPINNER_FRAMES.length),
-      SPINNER_FRAME_MS,
-    );
     const tick = setInterval(() => setNow(Date.now()), 250);
     return () => {
-      clearInterval(spin);
       clearInterval(tick);
     };
   }, []);
@@ -75,11 +72,26 @@ export function NolanActivityBar({
   return (
     <div className="statusrow running nolan-statusrow" style={{ color: theme.textMuted }}>
       <span className="statusrow-left">
-        <span className="statusrow-icon spinner nolan-spinner" style={{ color: theme.nolan }}>
-          {SPINNER_FRAMES[frame]}
-        </span>
-        <span className="working" style={{ color: theme.nolan }}>
-          {"Nolan is thinking\u2026"}
+        {/* Tint the canvas alpha with Ken's existing color; the package has no color prop. */}
+        <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}>
+          <defs>
+            <filter id={orbTintId} colorInterpolationFilters="sRGB">
+              <feFlood floodColor={theme.ken} />
+              <feComposite in2="SourceAlpha" operator="in" />
+            </filter>
+          </defs>
+        </svg>
+        <ThinkingOrb
+          state="listening"
+          size={20}
+          theme="dark"
+          aria-hidden="true"
+          style={{ flexShrink: 0, filter: `url(#${orbTintId})` }}
+        />
+        <span style={{ color: theme.ken }}>
+          <ShimmerText base={theme.ken} bright={theme.text}>
+            {"Ken is thinking…"}
+          </ShimmerText>
         </span>
         <span style={{ color: theme.textMuted }}>
           {"("}
