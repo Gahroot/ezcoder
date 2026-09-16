@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.19.0
+
+### Minor Changes
+
+- Sync upstream: session diagnostics with the `session_stats` tool and `/diagnose`, a bundled refactoring skill, `/compact` focus option, failing-test carry-forward in compaction, safer edit matching, unified verification evidence, Codex encrypted-reasoning recovery, and a large dependency refresh.
+
+### Patch Changes
+
+- @prestyj/ai@5.19.0
+- @prestyj/agent@5.19.0
+- @prestyj/core@5.19.0
+
 ## 5.18.0
 
 ### Minor Changes
