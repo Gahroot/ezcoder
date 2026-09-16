@@ -27,7 +27,7 @@ import {
 } from "./internal-diagnostics.js";
 
 // The sessions dir is env-overridable precisely so tests never touch the
-// real ~/.gg. The flag file lives under getAppPaths().agentDir (real home),
+// real ~/.ezcoder. The flag file lives under getAppPaths().agentDir (real home),
 // so flag tests use the env switch only, plus a direct file test via
 // process.env.HOME pointing at a temp dir.
 let tmpHome: string;
@@ -35,15 +35,15 @@ let tmpDir: string;
 
 beforeEach(() => {
   tmpHome = mkdtempSync(path.join(os.tmpdir(), "ggdiag-home-"));
-  state.agentDir = path.join(tmpHome, ".gg");
+  state.agentDir = path.join(tmpHome, ".ezcoder");
   tmpDir = path.join(tmpHome, "diag-sessions");
-  process.env.GG_DIAGNOSTICS_DIR = tmpDir;
-  process.env.GG_INTERNAL = "";
+  process.env.EZ_DIAGNOSTICS_DIR = tmpDir;
+  process.env.EZ_INTERNAL = "";
 });
 
 afterEach(async () => {
-  delete process.env.GG_DIAGNOSTICS_DIR;
-  delete process.env.GG_INTERNAL;
+  delete process.env.EZ_DIAGNOSTICS_DIR;
+  delete process.env.EZ_INTERNAL;
   await rm(tmpHome, { recursive: true, force: true });
 });
 
@@ -53,20 +53,20 @@ describe("isInternalDiagnosticsEnabled", () => {
     expect(isInternalDiagnosticsEnabled()).toBe(false);
   });
 
-  it("turns on via GG_INTERNAL=1", () => {
+  it("turns on via EZ_INTERNAL=1", () => {
     resetInternalDiagnosticsCacheForTests();
-    process.env.GG_INTERNAL = "1";
+    process.env.EZ_INTERNAL = "1";
     expect(isInternalDiagnosticsEnabled()).toBe(true);
   });
 
-  it("turns on via ~/.gg/internal.json diagnostics:true, and nothing else", async () => {
+  it("turns on via ~/.ezcoder/internal.json diagnostics:true, and nothing else", async () => {
     resetInternalDiagnosticsCacheForTests();
-    await mkdir(path.join(tmpHome, ".gg"), { recursive: true });
-    await writeFile(path.join(tmpHome, ".gg", "internal.json"), `{"diagnostics":true}`);
+    await mkdir(path.join(tmpHome, ".ezcoder"), { recursive: true });
+    await writeFile(path.join(tmpHome, ".ezcoder", "internal.json"), `{"diagnostics":true}`);
     expect(isInternalDiagnosticsEnabled()).toBe(true);
 
     resetInternalDiagnosticsCacheForTests();
-    await writeFile(path.join(tmpHome, ".gg", "internal.json"), `{"diagnostics":false}`);
+    await writeFile(path.join(tmpHome, ".ezcoder", "internal.json"), `{"diagnostics":false}`);
     expect(isInternalDiagnosticsEnabled()).toBe(false);
   });
 });
@@ -247,7 +247,7 @@ describe("aggregateRecentDiagnostics + /diagnose", () => {
 });
 
 describe("diagnosticsSessionsDir", () => {
-  it("respects GG_DIAGNOSTICS_DIR", () => {
+  it("respects EZ_DIAGNOSTICS_DIR", () => {
     expect(diagnosticsSessionsDir()).toBe(tmpDir);
   });
 });

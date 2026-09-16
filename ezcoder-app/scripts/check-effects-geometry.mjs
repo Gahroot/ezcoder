@@ -1,4 +1,4 @@
-// Run: pnpm --filter gg-app exec node scripts/check-effects-geometry.mjs
+// Run: pnpm --filter ezcoder-app exec node scripts/check-effects-geometry.mjs
 // Requires Playwright's Chromium and WebKit browsers. Optional executable overrides:
 // CHROMIUM_EXECUTABLE and WEBKIT_EXECUTABLE. No desktop credentials/session needed.
 import assert from "node:assert/strict";
@@ -9,8 +9,8 @@ import { chromium, webkit } from "playwright";
 import { build, preview } from "vite";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-await mkdir(path.join(root, ".gg"), { recursive: true });
-const temporary = await mkdtemp(path.join(root, ".gg/effects-geometry-"));
+await mkdir(path.join(root, ".ezcoder"), { recursive: true });
+const temporary = await mkdtemp(path.join(root, ".ezcoder/effects-geometry-"));
 let server;
 try {
   const entry = path.join(temporary, "index.html");
@@ -100,7 +100,7 @@ try {
             await page.getByRole("button", { name: "Enhance?", exact: true }).count(),
             1,
           );
-          assert.equal(await page.evaluate(() => localStorage.getItem("gg-ui-enabled")), "0");
+          assert.equal(await page.evaluate(() => localStorage.getItem("ez-ui-enabled")), "0");
           await page.reload();
           await page.getByRole("button", { name: "GG UI off" }).waitFor();
           assert.equal(await page.locator(".action-metal").count(), 0);

@@ -17,7 +17,7 @@ import { useFakeHome } from "../test-support/fake-home.js";
 import type { AgentEvent } from "@prestyj/agent";
 import type { AgentSession } from "./agent-session.js";
 import type { ProcessManager } from "./process-manager.js";
-import { buildKenAutopilotContext } from "./ken-context.js";
+import { buildNolanAutopilotContext } from "./nolan-context.js";
 import type { VerificationEvidence } from "./verification-evidence.js";
 
 interface FlowInternals {
@@ -258,7 +258,7 @@ describe("verification gate flow", () => {
     expect(events.filter((e) => e.startsWith("hook:"))).toEqual([]);
   });
 
-  it("accepts a real background check/build chain in both the gate and Ken's digest", async () => {
+  it("accepts a real background check/build chain in both the gate and Nolan's digest", async () => {
     await prepareBuildProject(artifactBuild);
     const { internal } = await makeSession();
     await simulateToolCall(internal, "edit", { file_path: "subject.mjs" });
@@ -266,7 +266,7 @@ describe("verification gate flow", () => {
     await runRealCheck(internal, command, true);
     expect(internal.getVerificationProblem()).toBeNull();
     expect(await internal.getHookFollowUpMessages()).toBeNull();
-    const digest = buildKenAutopilotContext({
+    const digest = buildNolanAutopilotContext({
       cwd: tmpProject,
       gitBranch: null,
       messages: [],
@@ -284,7 +284,7 @@ describe("verification gate flow", () => {
     await runRealCheck(internal, "npm run check");
     await runRealCheck(internal, "npm run build");
     expect(internal.getVerificationProblem()).toContain("Unverified");
-    const digest = buildKenAutopilotContext({
+    const digest = buildNolanAutopilotContext({
       cwd: tmpProject,
       gitBranch: null,
       messages: [],
@@ -540,7 +540,7 @@ describe("verification gate flow", () => {
     expect(await internal.processManager.waitForExitOrWake(started.id, 30_000)).toBe("exited");
     await simulateToolCall(internal, "task_output", { id: started.id });
     expect(internal.getVerificationProblem()).toBeNull();
-    const digest = buildKenAutopilotContext({
+    const digest = buildNolanAutopilotContext({
       cwd: tmpProject,
       gitBranch: null,
       messages: [],

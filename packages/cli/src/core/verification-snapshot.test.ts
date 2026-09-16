@@ -7,7 +7,7 @@ import { captureVerificationSnapshot } from "./verification-snapshot.js";
 
 let root: string;
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-source-snapshot-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-source-snapshot-"));
   execFileSync("git", ["init", "--quiet"], { cwd: root });
   await fs.writeFile(path.join(root, ".gitignore"), "dist/\nignored.ts\n");
   await fs.writeFile(path.join(root, "source.ts"), "const value = 1;\n");
@@ -60,7 +60,7 @@ describe("verification workspace snapshot", () => {
   });
 
   it("declines non-Git workspaces and directory links instead of following them", async () => {
-    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "gg-snapshot-outside-"));
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "ez-snapshot-outside-"));
     try {
       expect(await captureVerificationSnapshot(outside)).toBeNull();
       await fs.writeFile(path.join(outside, "source.ts"), "outside");

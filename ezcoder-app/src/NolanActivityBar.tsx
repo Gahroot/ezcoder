@@ -27,10 +27,10 @@ interface Props {
 }
 
 /**
- * Ken Kai's activity bar. A 1:1 mirror of the GG Coder ActivityBar's running row
+ * Nolan Grout's activity bar. A 1:1 mirror of the EZ Coder ActivityBar's running row
  * — same listening orb, same `(elapsed · ↓ N tokens · thinking for Xs)` meta,
- * same statusrow layout + esc-to-cancel — just tinted to Ken and labelled "Ken
- * is thinking…". Stacks above the main bar while Ken runs concurrently, so its
+ * same statusrow layout + esc-to-cancel — just tinted to Nolan and labelled "Nolan
+ * is thinking…". Stacks above the main bar while Nolan runs concurrently, so its
  * own top border is dropped (the main bar keeps the divider).
  */
 export function NolanActivityBar({
@@ -72,11 +72,11 @@ export function NolanActivityBar({
   return (
     <div className="statusrow running nolan-statusrow" style={{ color: theme.textMuted }}>
       <span className="statusrow-left">
-        {/* Tint the canvas alpha with Ken's existing color; the package has no color prop. */}
+        {/* Tint the canvas alpha with Nolan's existing color; the package has no color prop. */}
         <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}>
           <defs>
             <filter id={orbTintId} colorInterpolationFilters="sRGB">
-              <feFlood floodColor={theme.ken} />
+              <feFlood floodColor={theme.nolan} />
               <feComposite in2="SourceAlpha" operator="in" />
             </filter>
           </defs>
@@ -88,9 +88,9 @@ export function NolanActivityBar({
           aria-hidden="true"
           style={{ flexShrink: 0, filter: `url(#${orbTintId})` }}
         />
-        <span style={{ color: theme.ken }}>
-          <ShimmerText base={theme.ken} bright={theme.text}>
-            {"Ken is thinking…"}
+        <span style={{ color: theme.nolan }}>
+          <ShimmerText base={theme.nolan} bright={theme.text}>
+            {"Nolan is thinking…"}
           </ShimmerText>
         </span>
         <span style={{ color: theme.textMuted }}>

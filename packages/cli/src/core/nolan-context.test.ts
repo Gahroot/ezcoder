@@ -92,7 +92,7 @@ describe("buildNolanDigest", () => {
         content: [{ type: "tool_result", toolCallId: "bg", content: "ID: task-1", isError: false }],
       },
     ];
-    const digest = buildKenDigest({
+    const digest = buildNolanDigest({
       ...base,
       messages,
       verificationProblem: null,
@@ -119,7 +119,7 @@ describe("buildNolanDigest", () => {
         ],
       },
     ];
-    const digest = buildKenDigest({
+    const digest = buildNolanDigest({
       ...base,
       messages,
       verificationEvidence: [],
@@ -127,7 +127,7 @@ describe("buildNolanDigest", () => {
     });
     expect(digest).toContain("Current host gate: satisfied");
     expect(digest).not.toContain("FAILED: `pnpm test`");
-    const unresolved = buildKenDigest({
+    const unresolved = buildNolanDigest({
       ...base,
       messages,
       verificationEvidence: [],

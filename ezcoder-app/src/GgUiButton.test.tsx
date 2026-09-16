@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { GgUiButton } from "./GgUiButton";
 import { ActionMetal } from "./ActionMetal";
 import { MetalButton } from "./MetalButton";
-import { setGgUiEnabled } from "./gg-ui";
+import { setGgUiEnabled } from "./ez-ui";
 
 let storage: Map<string, string>;
 beforeEach(() => {
@@ -49,22 +49,22 @@ it("toggles every shared button decoration without replacing native buttons or a
   expect(screen.getByRole("button", { name: "GG UI off" }).getAttribute("aria-pressed")).toBe(
     "false",
   );
-  expect(storage.get("gg-ui-enabled")).toBe("0");
+  expect(storage.get("ez-ui-enabled")).toBe("0");
   expect(container.querySelectorAll(".action-metal")).toHaveLength(0);
   expect(screen.getByRole("button", { name: "New" })).toBe(nativeNew);
   expect(nativeNew.classList.contains("btn-primary")).toBe(true);
   fireEvent.click(nativeNew);
   expect(onClick).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole("button", { name: "GG UI off" }));
-  expect(storage.get("gg-ui-enabled")).toBe("1");
+  expect(storage.get("ez-ui-enabled")).toBe("1");
   await waitFor(() => expect(container.querySelectorAll(".action-metal")).toHaveLength(4));
 });
 
 it("updates from another window and resets to on when saved preferences are cleared", () => {
   render(<GgUiButton />);
   act(() => {
-    storage.set("gg-ui-enabled", "0");
-    window.dispatchEvent(new StorageEvent("storage", { key: "gg-ui-enabled", newValue: "0" }));
+    storage.set("ez-ui-enabled", "0");
+    window.dispatchEvent(new StorageEvent("storage", { key: "ez-ui-enabled", newValue: "0" }));
   });
   expect(screen.getByRole("button", { name: "GG UI off" })).toBeTruthy();
   act(() => {

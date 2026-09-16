@@ -1,6 +1,6 @@
 import { Sparkles } from "lucide-react";
 import { theme } from "./theme";
-import { setGgUiEnabled, useGgUiEnabled } from "./gg-ui";
+import { setGgUiEnabled, useGgUiEnabled } from "./ez-ui";
 
 export function GgUiButton(): React.ReactElement {
   const on = useGgUiEnabled();

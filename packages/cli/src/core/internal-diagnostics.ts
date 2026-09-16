@@ -1,8 +1,8 @@
 /**
  * Internal-only session diagnostics — NOT a public feature.
  *
- * Enabled only when the internal flag is set (env `GG_INTERNAL=1` or
- * `~/.gg/internal.json` containing `{"diagnostics": true}`). When disabled,
+ * Enabled only when the internal flag is set (env `EZ_INTERNAL=1` or
+ * `~/.ezcoder/internal.json` containing `{"diagnostics": true}`). When disabled,
  * nothing is recorded, no tool is registered, and `/diagnose` does not exist,
  * so the public tool list and prompt stay byte-identical.
  *
@@ -25,11 +25,11 @@ import type { SlashCommand } from "./slash-commands.js";
 
 let enabledCache: boolean | undefined;
 
-/** Internal mode gate. Env wins; otherwise `~/.gg/internal.json` must set
+/** Internal mode gate. Env wins; otherwise `~/.ezcoder/internal.json` must set
  * `diagnostics: true`. Result is cached for the process lifetime. */
 export function isInternalDiagnosticsEnabled(): boolean {
   if (enabledCache !== undefined) return enabledCache;
-  const env = process.env.GG_INTERNAL;
+  const env = process.env.EZ_INTERNAL;
   if (env && ["1", "true", "yes"].includes(env.toLowerCase())) {
     enabledCache = true;
     return true;
@@ -51,7 +51,7 @@ export function resetInternalDiagnosticsCacheForTests(): void {
 
 export function diagnosticsSessionsDir(): string {
   return (
-    process.env.GG_DIAGNOSTICS_DIR ?? path.join(getAppPaths().agentDir, "diagnostics", "sessions")
+    process.env.EZ_DIAGNOSTICS_DIR ?? path.join(getAppPaths().agentDir, "diagnostics", "sessions")
   );
 }
 

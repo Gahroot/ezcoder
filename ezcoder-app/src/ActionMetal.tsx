@@ -1,5 +1,5 @@
 import { lazy, Suspense, useSyncExternalStore } from "react";
-import { useGgUiEnabled } from "./gg-ui";
+import { useGgUiEnabled } from "./ez-ui";
 
 // Keep the shader in its own chunk; inactive/static controls never request it.
 const MetalFx = lazy(() => import("metal-fx").then((module) => ({ default: module.MetalFx })));

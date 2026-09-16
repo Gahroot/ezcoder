@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-const STORAGE_KEY = "gg-ui-enabled";
+const STORAGE_KEY = "ez-ui-enabled";
 function loadEnabled(): boolean {
   try {
     return localStorage.getItem(STORAGE_KEY) !== "0";

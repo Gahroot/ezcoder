@@ -2,16 +2,16 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Message } from "@kenkaiiii/gg-ai";
-import type * as GgAgentModule from "@kenkaiiii/gg-agent";
+import type { Message } from "@prestyj/ai";
+import type * as GgAgentModule from "@prestyj/agent";
 import type * as McpModule from "./mcp/index.js";
 import { useFakeHome } from "../test-support/fake-home.js";
 import { resetInternalDiagnosticsCacheForTests } from "./internal-diagnostics.js";
 
 const agentLoopMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@kenkaiiii/gg-agent", async () => {
-  const actual = await vi.importActual<typeof GgAgentModule>("@kenkaiiii/gg-agent");
+vi.mock("@prestyj/agent", async () => {
+  const actual = await vi.importActual<typeof GgAgentModule>("@prestyj/agent");
   return { ...actual, agentLoop: agentLoopMock };
 });
 
@@ -39,25 +39,25 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
 }
 
 beforeEach(async () => {
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "gg-diagwire-home-"));
-  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "gg-diagwire-project-"));
+  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "ez-diagwire-home-"));
+  tmpProject = await fs.mkdtemp(path.join(os.tmpdir(), "ez-diagwire-project-"));
   tmpDiagDir = path.join(tmpHome, "diag");
   restoreHome = useFakeHome(tmpHome);
   agentLoopMock.mockReset();
-  process.env.GG_DIAGNOSTICS_DIR = tmpDiagDir;
-  await writeJson(path.join(tmpHome, ".gg", "auth.json"), {
+  process.env.EZ_DIAGNOSTICS_DIR = tmpDiagDir;
+  await writeJson(path.join(tmpHome, ".ezcoder", "auth.json"), {
     anthropic: {
       accessToken: "test-access-token",
       refreshToken: "test-refresh-token",
       expiresAt: Date.now() + 3_600_000,
     },
   });
-  await writeJson(path.join(tmpHome, ".gg", "settings.json"), { autoCompact: false });
+  await writeJson(path.join(tmpHome, ".ezcoder", "settings.json"), { autoCompact: false });
 });
 
 afterEach(async () => {
-  delete process.env.GG_DIAGNOSTICS_DIR;
-  delete process.env.GG_INTERNAL;
+  delete process.env.EZ_DIAGNOSTICS_DIR;
+  delete process.env.EZ_INTERNAL;
   restoreHome?.();
   await fs.rm(tmpHome, { recursive: true, force: true });
   await fs.rm(tmpProject, { recursive: true, force: true });
@@ -80,7 +80,7 @@ async function newSession() {
 
 describe("internal diagnostics wiring in AgentSession", () => {
   it("flag ON: registers session_stats + /diagnose and records turns", async () => {
-    process.env.GG_INTERNAL = "1";
+    process.env.EZ_INTERNAL = "1";
     resetInternalDiagnosticsCacheForTests();
     const session = await newSession();
 
@@ -119,7 +119,7 @@ describe("internal diagnostics wiring in AgentSession", () => {
   }, 15_000);
 
   it("flag OFF: no session_stats tool, no /diagnose, nothing written", async () => {
-    delete process.env.GG_INTERNAL;
+    delete process.env.EZ_INTERNAL;
     resetInternalDiagnosticsCacheForTests();
     const session = await newSession();
 

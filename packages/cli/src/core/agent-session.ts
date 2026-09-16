@@ -444,7 +444,7 @@ export class AgentSession {
   // transcript rows the live run showed.
   private appMarkers: AppMarkerPayload[] = [];
   private turnMetrics: TurnMetricPayload[] = [];
-  /** Internal-only (GG_INTERNAL): live per-session cost/reliability recorder.
+  /** Internal-only (EZ_INTERNAL): live per-session cost/reliability recorder.
    * Absent entirely in public builds — see core/internal-diagnostics.ts. */
   private diagnosticsRecorder?: SessionDiagnosticsRecorder;
   private tools: AgentTool[] = [];

@@ -2816,7 +2816,7 @@ function App(): React.ReactElement {
           scheduleInvalid ? " schedule-invalid" : ""
         }`}
       >
-        <WorkingBeam active={running || kenRunning || autopilotReviewing} />
+        <WorkingBeam active={running || nolanRunning || autopilotReviewing} />
         {scheduleDraft ? (
           <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
         ) : (
