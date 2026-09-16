@@ -30,7 +30,9 @@ describe("NolanActivityBar", () => {
 
   it("preserves token counts, thinking feedback, and cancellation", () => {
     const onCancel = vi.fn();
-    render(<NolanActivityBar {...baseProps} isThinking thinkingAccumMs={2000} onCancel={onCancel} />);
+    render(
+      <NolanActivityBar {...baseProps} isThinking thinkingAccumMs={2000} onCancel={onCancel} />,
+    );
     expect(screen.getByText("↓ 1.2k tokens")).toBeTruthy();
     expect(screen.getByText("thinking for 2s")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "esc to cancel" }));

@@ -21,7 +21,7 @@ function onStorage(event: StorageEvent): void {
   notify();
 }
 
-export function setGgUiEnabled(on: boolean): void {
+export function setEzUiEnabled(on: boolean): void {
   if (on === enabled) return;
   enabled = on;
   try {
@@ -46,6 +46,6 @@ function getSnapshot(): boolean {
 }
 
 /** Shared by Settings and every metal decoration; default on, persisted across restarts. */
-export function useGgUiEnabled(): boolean {
+export function useEzUiEnabled(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

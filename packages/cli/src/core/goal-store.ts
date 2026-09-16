@@ -5,14 +5,7 @@ import { basename, join, resolve } from "node:path";
 import type { GoalControllerDecision } from "./goal-controller.js";
 
 export type GoalRunStatus =
-  | "draft"
-  | "blocked"
-  | "ready"
-  | "running"
-  | "verifying"
-  | "passed"
-  | "failed"
-  | "paused";
+  "draft" | "blocked" | "ready" | "running" | "verifying" | "passed" | "failed" | "paused";
 
 export type GoalTaskStatus = "pending" | "running" | "verifying" | "done" | "failed" | "blocked";
 

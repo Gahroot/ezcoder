@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "../../src/App.css";
 import { ActionMetal } from "../../src/ActionMetal";
 import { MetalButton } from "../../src/MetalButton";
-import { GgUiButton } from "../../src/GgUiButton";
+import { EzUiButton } from "../../src/EzUiButton";
 
 function Fixture() {
   const [visible, setVisible] = useState(false);
@@ -13,7 +13,7 @@ function Fixture() {
   }, []);
   return (
     <div className="app window-focused" style={{ padding: 40 }}>
-      <GgUiButton />
+      <EzUiButton />
       <MetalButton className="btn btn-primary" windowFocused>
         + New
       </MetalButton>

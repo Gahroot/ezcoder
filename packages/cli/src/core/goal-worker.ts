@@ -135,7 +135,7 @@ export function subscribeGoalWorkerCompletions(
   const subscription: GoalWorkerCompletionSubscription = { listener, projectPath };
   completionSubscriptions.add(subscription);
 
-  for (let index = 0; index < pendingCompletions.length; ) {
+  for (let index = 0; index < pendingCompletions.length;) {
     const completion = pendingCompletions[index]!;
     if (!completionMatchesProject(completion, projectPath)) {
       index += 1;
@@ -156,8 +156,7 @@ export function subscribeGoalWorkerCompletions(
 
 function formatActivity(name: string, args: Record<string, unknown>): string {
   const firstString = Object.values(args).find((value) => typeof value === "string") as
-    | string
-    | undefined;
+    string | undefined;
   return firstString ? `${name}: ${firstString.slice(0, 80)}` : name;
 }
 

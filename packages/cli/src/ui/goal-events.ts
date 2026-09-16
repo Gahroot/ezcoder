@@ -95,8 +95,7 @@ export interface GoalVerifierSyntheticEventPayload extends GoalSyntheticEventPay
 }
 
 export type GoalSyntheticEventPayload =
-  | GoalWorkerSyntheticEventPayload
-  | GoalVerifierSyntheticEventPayload;
+  GoalWorkerSyntheticEventPayload | GoalVerifierSyntheticEventPayload;
 
 export interface GoalSyntheticEventInfo {
   kind: GoalSyntheticEventKind;

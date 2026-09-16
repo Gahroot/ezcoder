@@ -13,7 +13,7 @@ import {
 import { toast } from "./toast";
 import { SoundButton } from "./SoundButton";
 import { MemesButton } from "./MemesButton";
-import { GgUiButton } from "./GgUiButton";
+import { EzUiButton } from "./EzUiButton";
 
 interface Props {
   onClose: () => void;
@@ -94,7 +94,7 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
       <div className="modal-row">
         <SoundButton variant="settings" />
         <MemesButton variant="settings" />
-        <GgUiButton />
+        <EzUiButton />
       </div>
       <div className="modal-label" style={{ color: theme.textMuted }}>
         Project folder

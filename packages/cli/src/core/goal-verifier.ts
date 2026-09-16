@@ -8,10 +8,7 @@ export const DEFAULT_GOAL_VERIFIER_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_VERIFIER_OUTPUT_CHARS = 20_000;
 
 export type GoalVerifierFailureClass =
-  | "verifier_pass"
-  | "verifier_failure"
-  | "verifier_spawn_error"
-  | "verifier_timeout";
+  "verifier_pass" | "verifier_failure" | "verifier_spawn_error" | "verifier_timeout";
 
 export interface RunGoalVerifierOptions {
   cwd: string;

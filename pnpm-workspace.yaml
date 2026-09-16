@@ -21,6 +21,11 @@ overrides:
 
 patchedDependencies:
   ink@7.0.2: patches/ink@7.0.2.patch
+  # CSP: Tauri nonces the initial inline <style id="app-style-nonce">, which
+  # disables unsafe-inline. These two inject stylesheets at runtime, so the
+  # patches make them reuse that nonce or their effects get blocked in prod.
+  metal-fx@2.0.10: patches/metal-fx@2.0.10.patch
+  border-beam@1.3.0: patches/border-beam@1.3.0.patch
 
 # Native deps allowed to run install scripts. pnpm 11 ERRORS
 # (ERR_PNPM_IGNORED_BUILDS) when a dep wants to build but isn't approved — in v10

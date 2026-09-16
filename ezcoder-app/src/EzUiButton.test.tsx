@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { GgUiButton } from "./GgUiButton";
+import { EzUiButton } from "./EzUiButton";
 import { ActionMetal } from "./ActionMetal";
 import { MetalButton } from "./MetalButton";
-import { setGgUiEnabled } from "./ez-ui";
+import { setEzUiEnabled } from "./ez-ui";
 
 let storage: Map<string, string>;
 beforeEach(() => {
@@ -13,7 +13,7 @@ beforeEach(() => {
     getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value),
   });
-  setGgUiEnabled(true);
+  setEzUiEnabled(true);
   vi.stubGlobal("matchMedia", () => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  setGgUiEnabled(true);
+  setEzUiEnabled(true);
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -32,7 +32,7 @@ it("toggles every shared button decoration without replacing native buttons or a
   const onClick = vi.fn();
   const { container } = render(
     <>
-      <GgUiButton />
+      <EzUiButton />
       <ActionMetal active windowFocused />
       <ActionMetal active windowFocused variant="button" />
       <MetalButton className="btn btn-primary" windowFocused onClick={onClick}>
@@ -45,8 +45,8 @@ it("toggles every shared button decoration without replacing native buttons or a
   );
   const nativeNew = screen.getByRole("button", { name: "New" });
   await waitFor(() => expect(container.querySelectorAll(".action-metal")).toHaveLength(4));
-  fireEvent.click(screen.getByRole("button", { name: "GG UI on" }));
-  expect(screen.getByRole("button", { name: "GG UI off" }).getAttribute("aria-pressed")).toBe(
+  fireEvent.click(screen.getByRole("button", { name: "EZ UI on" }));
+  expect(screen.getByRole("button", { name: "EZ UI off" }).getAttribute("aria-pressed")).toBe(
     "false",
   );
   expect(storage.get("ez-ui-enabled")).toBe("0");
@@ -55,30 +55,30 @@ it("toggles every shared button decoration without replacing native buttons or a
   expect(nativeNew.classList.contains("btn-primary")).toBe(true);
   fireEvent.click(nativeNew);
   expect(onClick).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole("button", { name: "GG UI off" }));
+  fireEvent.click(screen.getByRole("button", { name: "EZ UI off" }));
   expect(storage.get("ez-ui-enabled")).toBe("1");
   await waitFor(() => expect(container.querySelectorAll(".action-metal")).toHaveLength(4));
 });
 
 it("updates from another window and resets to on when saved preferences are cleared", () => {
-  render(<GgUiButton />);
+  render(<EzUiButton />);
   act(() => {
     storage.set("ez-ui-enabled", "0");
     window.dispatchEvent(new StorageEvent("storage", { key: "ez-ui-enabled", newValue: "0" }));
   });
-  expect(screen.getByRole("button", { name: "GG UI off" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "EZ UI off" })).toBeTruthy();
   act(() => {
     storage.clear();
     window.dispatchEvent(new StorageEvent("storage", { key: null }));
   });
-  expect(screen.getByRole("button", { name: "GG UI on" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "EZ UI on" })).toBeTruthy();
 });
 
 it("keeps the toggle usable when persistence is unavailable", () => {
-  render(<GgUiButton />);
+  render(<EzUiButton />);
   vi.spyOn(localStorage, "setItem").mockImplementation(() => {
     throw new Error("storage blocked");
   });
-  fireEvent.click(screen.getByRole("button", { name: "GG UI on" }));
-  expect(screen.getByRole("button", { name: "GG UI off" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "EZ UI on" }));
+  expect(screen.getByRole("button", { name: "EZ UI off" })).toBeTruthy();
 });

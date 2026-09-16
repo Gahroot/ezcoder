@@ -1,5 +1,5 @@
 import { lazy, Suspense, useSyncExternalStore } from "react";
-import { useGgUiEnabled } from "./ez-ui";
+import { useEzUiEnabled } from "./ez-ui";
 
 // Keep the shader in its own chunk; inactive/static controls never request it.
 const MetalFx = lazy(() => import("metal-fx").then((module) => ({ default: module.MetalFx })));
@@ -26,13 +26,13 @@ export function ActionMetal({
   windowFocused: boolean;
   variant?: "circle" | "button";
 }): React.ReactElement | null {
-  const ggUiEnabled = useGgUiEnabled();
+  const ezUiEnabled = useEzUiEnabled();
   const staticAppearance = useSyncExternalStore(
     subscribeStaticAppearance,
     prefersStaticAppearance,
     () => true,
   );
-  if (!active || !ggUiEnabled || staticAppearance) return null;
+  if (!active || !ezUiEnabled || staticAppearance) return null;
 
   return (
     <Suspense fallback={null}>
