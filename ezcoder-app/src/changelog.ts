@@ -17,7 +17,7 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.4.0",
+    version: "0.66.1",
     date: "2026-09-16",
     items: [
       "EZ Coder feels more alive while it works. I added `thinking orbs`, animated working beams, and polished metallic controls without weighing down startup.",
