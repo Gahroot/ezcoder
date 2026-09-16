@@ -39,7 +39,7 @@
     "zod": "^4.5.4"
   },
   "optionalDependencies": {
-    "@huggingface/transformers": "^3.6.0",
+    "@huggingface/transformers": "^4.2.0",
     "ogg-opus-decoder": "^1.6.13"
   },
   "publishConfig": {
