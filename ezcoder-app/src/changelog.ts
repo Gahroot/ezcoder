@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.0",
+    date: "2026-09-16",
+    items: [
+      "EZ Coder feels more alive while it works. I added `thinking orbs`, animated working beams, and polished metallic controls without weighing down startup.",
+      "Long sessions stay focused and easier to understand. Use `/compact` to preserve the topics you care about, or `/diagnose` to see what a session is doing.",
+      "Edits and final checks are more dependable. I hardened repeated replacements, carried failing tests through summaries, and made verification evidence survive complicated runs.",
+      "A new `refactoring skill` helps EZ reshape code safely with behavior-preserving, test-guarded steps.",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-09-10",
     items: [
