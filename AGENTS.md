@@ -20,3 +20,5 @@ tests. Release automation (`release.yml`) triggers on `v*` tags; see
 `.ezcoder/commands/release.md`.
 
 Never commit with `--no-verify`.
+
+- **Headless CLI first.** Apps expose a CLI for testing without simulators. See the `headless-cli-testing` skill.
