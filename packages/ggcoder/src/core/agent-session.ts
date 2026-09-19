@@ -114,6 +114,7 @@ import { log } from "./logger.js";
 import { setEstimatorModel, calibrateEstimatorFromUsage } from "./compaction/token-estimator.js";
 import { calculateActiveContextTokens } from "./compaction/active-context.js";
 import { resolveCompactionPolicy } from "./compaction/policy.js";
+import { clampThinkingForPlanMode } from "./thinking-level.js";
 import { pruneStaleToolResults } from "./compaction/tool-result-pruner.js";
 import { discoverAgents } from "./agents.js";
 import { enhancePrompt, type EnhanceResult } from "../utils/prompt-enhancer.js";
@@ -2445,7 +2446,13 @@ export class AgentSession {
         maxTokens: this.maxTokens,
         maxTurns: this.opts.maxTurns,
         maxTurnExtensions: this.opts.maxTurnExtensions,
-        thinking: this.thinkingLevel,
+        // Plan mode caps effort at medium (Codex `plan_mode_reasoning_effort`
+        // preset): read-only exploration doesn't need xhigh/max reasoning, and
+        // deep-reasoning models left at the ceiling burn enormous thinking
+        // budgets re-deriving context they cannot act on.
+        thinking: this.planModeRef.current
+          ? clampThinkingForPlanMode(this.thinkingLevel)
+          : this.thinkingLevel,
         apiKey,
         // Per-turn credential resolution. A run can span many minutes; if any
         // process sharing auth.json refreshes this grant meanwhile, the token

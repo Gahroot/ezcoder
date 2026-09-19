@@ -15,6 +15,14 @@ export interface ModelInfo {
   codexContextWindow?: number;
   maxOutputTokens: number;
   supportsThinking: boolean;
+  /**
+   * Vendor-declared default reasoning level (Codex models.json
+   * `default_reasoning_level`). When present, fresh sessions start here rather
+   * than at the ceiling: the deep-reasoning flagships (Astra/Sol ship "low",
+   * Terra/Luna "medium") think dramatically longer per rung, so defaulting to
+   * `maxThinkingLevel` made new sessions pathologically slow.
+   */
+  defaultThinkingLevel?: ThinkingLevel;
   supportsImages: boolean;
   supportsVideo: boolean;
   /**
@@ -162,6 +170,7 @@ export const MODELS: ModelInfo[] = [
     codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
+    defaultThinkingLevel: "low",
     supportsImages: true,
     supportsVideo: false,
     costTier: "high",
@@ -185,6 +194,7 @@ export const MODELS: ModelInfo[] = [
     codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
+    defaultThinkingLevel: "low",
     supportsImages: true,
     supportsVideo: false,
     costTier: "high",
@@ -200,6 +210,7 @@ export const MODELS: ModelInfo[] = [
     codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
+    defaultThinkingLevel: "medium",
     supportsImages: true,
     supportsVideo: false,
     costTier: "medium",
@@ -215,6 +226,7 @@ export const MODELS: ModelInfo[] = [
     codexContextWindow: 272_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
+    defaultThinkingLevel: "medium",
     supportsImages: true,
     supportsVideo: false,
     costTier: "low",
@@ -794,7 +806,7 @@ export function getDefaultThinkingLevel(
 ): ThinkingLevel {
   const model = getModel(modelId);
   if (model?.id === "kimi-k3" && isKimiCodingEndpoint(options?.baseUrl)) return "high";
-  return model?.maxThinkingLevel ?? "high";
+  return model?.defaultThinkingLevel ?? model?.maxThinkingLevel ?? "high";
 }
 
 /**
