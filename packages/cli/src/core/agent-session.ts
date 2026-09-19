@@ -114,6 +114,7 @@ import { log } from "./logger.js";
 import { setEstimatorModel, calibrateEstimatorFromUsage } from "./compaction/token-estimator.js";
 import { calculateActiveContextTokens } from "./compaction/active-context.js";
 import { resolveCompactionPolicy } from "./compaction/policy.js";
+import { clampThinkingForPlanMode } from "./thinking-level.js";
 import { pruneStaleToolResults } from "./compaction/tool-result-pruner.js";
 import { discoverAgents } from "./agents.js";
 import { enhancePrompt, type EnhanceResult } from "../utils/prompt-enhancer.js";
@@ -533,6 +534,15 @@ export class AgentSession {
    *  only on a real edge. */
   private verificationArmed = false;
   private compactionOccurred = false;
+  /**
+   * Re-grounding carry-over for post-turn compaction. `resetHookState` clears
+   * `compactionOccurred` at run start — before the injection point — so a
+   * background compaction that finished after the final response parks its
+   * "re-ground next turn" signal here for pickup at the next run start.
+   */
+  private compactionArmedForNextRun = false;
+  /** In-flight post-turn (background) compaction, if any. */
+  private postTurnCompaction?: Promise<void>;
   private lastCompactionCompacted = false;
   private compactionRetryAfter = 0;
   /** A restored oversized checkpoint must be canonicalized before its first prompt is persisted. */
@@ -1267,6 +1277,7 @@ export class AgentSession {
     },
     options: { disableTools?: boolean } = {},
   ): Promise<void> {
+    await this.settlePostTurnCompaction();
     await this.adoptDeferredCheckpointBeforePrompt();
     const slash = await this.resolveSlashInput(content);
     if (slash?.kind === "template") {
@@ -1304,6 +1315,7 @@ export class AgentSession {
    * attachments are always a direct conversational turn.
    */
   async promptWithAttachments(text: string, attachments: SessionAttachment[]): Promise<void> {
+    await this.settlePostTurnCompaction();
     await this.adoptDeferredCheckpointBeforePrompt();
     const parts = this.buildAttachmentParts(text, attachments);
     if (parts.length === 0) return;
@@ -1443,6 +1455,13 @@ export class AgentSession {
       if (!processes.has(id)) this.backgroundVerification.delete(id);
     }
     this.compactionOccurred = false;
+    // Post-turn compaction may have landed between runs — adopt its armed
+    // signal so the re-grounding hook fires for this run exactly as it would
+    // after a pre-run compaction.
+    if (this.compactionArmedForNextRun) {
+      this.compactionArmedForNextRun = false;
+      this.compactionOccurred = true;
+    }
     this.originalRequest = originalRequest;
   }
 
@@ -2350,6 +2369,10 @@ export class AgentSession {
     // of the public API model window. Failed/no-op attempts cool down across
     // prompts; provider overflow recovery still bypasses this path entirely.
     if (this.settingsManager.get("autoCompact") && Date.now() >= this.compactionRetryAfter) {
+      // A post-turn compaction may still be running in the background. Let it
+      // settle first: it usually already compacted this history, so the
+      // decision below turns into a no-op instead of duplicate work.
+      if (this.postTurnCompaction) await this.postTurnCompaction;
       const contextWindow = getContextWindow(this.model, {
         provider: this.provider,
         accountId: creds.accountId,
@@ -2422,7 +2445,13 @@ export class AgentSession {
         maxTokens: this.maxTokens,
         maxTurns: this.opts.maxTurns,
         maxTurnExtensions: this.opts.maxTurnExtensions,
-        thinking: this.thinkingLevel,
+        // Plan mode caps effort at medium (Codex `plan_mode_reasoning_effort`
+        // preset): read-only exploration doesn't need xhigh/max reasoning, and
+        // deep-reasoning models left at the ceiling burn enormous thinking
+        // budgets re-deriving context they cannot act on.
+        thinking: this.planModeRef.current
+          ? clampThinkingForPlanMode(this.thinkingLevel)
+          : this.thinkingLevel,
         apiKey,
         // Per-turn credential resolution. A run can span many minutes; if any
         // process sharing auth.json refreshes this grant meanwhile, the token
@@ -2719,9 +2748,17 @@ export class AgentSession {
       await this.persistMessage(this.messages[i]);
     }
     this.lastPersistedIndex = this.messages.length;
+
+    // Final response is delivered — compact in the background while the user
+    // reads it, instead of charging the summarizer latency to their next
+    // prompt. Detached by design; the pre-run path above remains the backstop.
+    this.maybeCompactPostTurn(creds);
   }
 
   async switchModel(provider: string, model: string): Promise<void> {
+    // The model-switch note is appended to `this.messages`; settle any
+    // background compaction first so the note cannot be swapped out.
+    await this.settlePostTurnCompaction();
     const prevProvider = this.provider;
     const prevModel = this.model;
     // Diff gate: a "switch" to the model already in use is not state change.
@@ -2942,6 +2979,102 @@ export class AgentSession {
       originalCount: result.originalCount,
       newCount: result.newCount,
     });
+  }
+
+  /**
+   * Wait out any in-flight post-turn background compaction before a new
+   * entry point mutates `this.messages` (prompt, attachments, model switch).
+   * The background compact() snapshots and then REPLACES the array, so a
+   * message pushed while it runs would be silently dropped from the live
+   * history — the pre-run await in runLoop() sits after the push and cannot
+   * protect it.
+   */
+  private async settlePostTurnCompaction(): Promise<void> {
+    if (this.postTurnCompaction) await this.postTurnCompaction;
+  }
+
+  /**
+   * Post-turn compaction: once the final response has been delivered, compact
+   * in the background while the user reads the answer, instead of making the
+   * next prompt pay the summarizer latency up front (the pre-run path stays as
+   * the backstop, so a skipped or failed attempt costs nothing). Mirrors the
+   * Codex `model_post_turn_compact_threshold_percent` guards: skip when user
+   * input is already queued (it would race the next turn), when the run was
+   * aborted, or during the failure cooldown — and never let a compaction
+   * error surface in the completed turn.
+   */
+  private maybeCompactPostTurn(creds: {
+    accessToken: string;
+    accountId?: string;
+    projectId?: string;
+    baseUrl?: string;
+  }): void {
+    if (!this.settingsManager.get("autoCompact")) return;
+    if (this.opts.signal?.aborted) return;
+    if (this.userQueue.length > 0) return;
+    if (this.postTurnCompaction) return;
+    if (Date.now() < this.compactionRetryAfter) return;
+    // One compaction per turn boundary: a pre-run or overflow-recovery
+    // compaction already shrank this run's history — re-probing right after
+    // the final response would only re-derive that decision.
+    if (this.compactionOccurred) return;
+    const contextWindow = getContextWindow(this.model, {
+      provider: this.provider,
+      accountId: creds.accountId,
+    });
+    const policy = resolveCompactionPolicy({
+      provider: this.provider,
+      model: this.model,
+      contextWindow,
+      threshold: this.settingsManager.get("compactThreshold"),
+      accountId: creds.accountId,
+      approvedPlanPath: this.approvedPlanPath,
+    });
+    let activeTokens: number | undefined;
+    if (this.providerContext) {
+      const anchorIndex = this.messages.lastIndexOf(this.providerContext.anchor);
+      if (anchorIndex >= 0) {
+        activeTokens = calculateActiveContextTokens(this.messages, {
+          usage: this.providerContext.usage,
+          pendingMessages: this.messages.slice(anchorIndex + 1),
+        });
+      }
+    }
+    if (!shouldCompact(this.messages, contextWindow, policy.threshold, activeTokens)) return;
+    log("INFO", "compaction", "Post-turn compaction decision — compacting in background", {
+      provider: this.provider,
+      model: this.model,
+      transport: this.provider === "openai" && creds.accountId ? "codex_oauth" : "public_api",
+      contextWindow: String(contextWindow),
+      activeTokens: activeTokens === undefined ? "estimated" : String(activeTokens),
+      triggerLimit: String(policy.targetTokens),
+    });
+    this.postTurnCompaction = (async () => {
+      try {
+        await this.compact(creds, "automatic");
+        if (this.lastCompactionCompacted) {
+          // Arm re-grounding for the next turn. resetHookState clears
+          // compactionOccurred at run start, before the injection point, so
+          // park the signal for pickup there.
+          this.compactionArmedForNextRun = true;
+          this.compactionRetryAfter = 0;
+        } else {
+          this.compactionRetryAfter = Date.now() + 30_000;
+        }
+      } catch (error) {
+        this.compactionRetryAfter = Date.now() + 30_000;
+        if (isAbortError(error) || this.opts.signal?.aborted) return;
+        log(
+          "WARN",
+          "compaction",
+          `Post-turn compaction failed; cooling down for 30s: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      } finally {
+        this.postTurnCompaction = undefined;
+      }
+    })();
   }
 
   async compact(
@@ -4006,6 +4139,11 @@ export class AgentSession {
   }
 
   async dispose(): Promise<void> {
+    // Quiesce any in-flight post-turn compaction BEFORE tearing down state:
+    // the background compact() snapshots and replaces `this.messages`, so
+    // letting it run past this point would checkpoint a near-empty history
+    // and leak a junk session file after teardown.
+    if (this.postTurnCompaction) await this.postTurnCompaction;
     this.diagnosticsRecorder?.finalize();
     this.managerAbortSignal?.removeEventListener("abort", this.managerAbortHandler);
     this.processManager?.shutdownAll();

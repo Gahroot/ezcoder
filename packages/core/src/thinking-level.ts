@@ -186,3 +186,32 @@ export function getNextThinkingLevel(
   if (index === -1) return supportedLevels[0];
   return supportedLevels[index + 1];
 }
+
+/**
+ * Reasoning effort ceiling applied while plan mode is active. Mirrors the
+ * Codex CLI's `plan_mode_reasoning_effort` preset (currently `medium`):
+ * plan mode is read-only exploration, and deep-reasoning models left at
+ * high/xhigh/max spend enormous thinking budgets re-deriving context they
+ * could not have acted on anyway.
+ */
+export const PLAN_MODE_THINKING_CAP: ThinkingLevel = "medium";
+
+const THINKING_LADDER: readonly ThinkingLevel[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+];
+
+/** Clamp a thinking level down to the plan-mode cap. Pass-through for
+ * `undefined` (thinking off) and already-low levels. */
+export function clampThinkingForPlanMode(
+  level: ThinkingLevel | undefined,
+): ThinkingLevel | undefined {
+  if (!level) return level;
+  return THINKING_LADDER.indexOf(level) > THINKING_LADDER.indexOf(PLAN_MODE_THINKING_CAP)
+    ? PLAN_MODE_THINKING_CAP
+    : level;
+}
