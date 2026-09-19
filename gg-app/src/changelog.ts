@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.65.2",
+    date: "2026-09-19",
+    items: [
+      "Deep-thinking models just got dramatically faster out of the gate. New chats on models like `GPT-6 Astra` no longer start at maximum reasoning, and `plan mode` caps its deep thinking, so you get answers sooner and burn far less of your usage.",
+      "Your next message no longer waits for housekeeping. I moved context compaction into the background so it tidies up while you read the answer, which keeps long conversations snappy instead of pausing your next prompt.",
+    ],
+  },
+  {
     version: "0.65.1",
     date: "2026-09-16",
     items: [
