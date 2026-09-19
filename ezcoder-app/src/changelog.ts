@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.67.0",
+    date: "2026-09-19",
+    items: [
+      "Long conversations no longer make you wait. EZ Coder now tidies its own memory in the background the moment a reply lands, so the pause you used to hit mid chat is gone and your next question starts instantly.",
+      "The deep thinkers stopped overthinking. `GPT-6 Astra` and the `GPT-5.6` family now start at the effort their makers intended instead of pinned at the ceiling, and they answer in tighter prose. First replies come back dramatically faster and burn far less of your usage.",
+      "Planning is quick again. `Plan mode` is read only exploring, so I capped its reasoning at `medium`. You get your plan in a fraction of the time with none of the quality lost.",
+    ],
+  },
+  {
     version: "0.66.1",
     date: "2026-09-16",
     items: [
