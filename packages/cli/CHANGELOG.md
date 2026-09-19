@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.20.0
+
+### Minor Changes
+
+- Compact conversation history in the background after a turn finishes, and cap reasoning effort at medium in plan mode so deep-reasoning models stop burning budget on read-only exploration.
+
+### Patch Changes
+
+- @prestyj/ai@5.20.0
+- @prestyj/agent@5.20.0
+- @prestyj/core@5.20.0
+
 ## 5.19.0
 
 ### Minor Changes
