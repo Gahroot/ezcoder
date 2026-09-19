@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.60.4
+
+### Patch Changes
+
+- Fix runaway deep-reasoning burn: new sessions on Codex flagship models start at the vendor-declared default thinking level instead of the ceiling, plan mode caps reasoning effort at `medium`, and responses-lite models send low verbosity for catalog parity. Also compact in the background after the final response so the next prompt doesn't pay the summarizer latency.
+  - @kenkaiiii/gg-ai@5.60.4
+  - @kenkaiiii/gg-agent@5.60.4
+  - @kenkaiiii/gg-core@5.60.4
+
 ## 5.60.3
 
 ### Patch Changes
