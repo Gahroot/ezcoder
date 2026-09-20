@@ -27,6 +27,11 @@ export interface TaskActivity {
   interrupted: boolean;
   planRemaining: number;
   pendingAgents: string[];
+  codeChanged: boolean;
+  scopedVerification: boolean;
+  workspaceWarning: string;
+  workKind: "answer" | "research" | "tools" | "background";
+  activeTools: Record<string, { name: string; background: boolean }>;
 }
 export const INITIAL_ACTIVITY: TaskActivity = {
   phase: "idle",
@@ -53,6 +58,11 @@ export const INITIAL_ACTIVITY: TaskActivity = {
   interrupted: false,
   planRemaining: 0,
   pendingAgents: [],
+  codeChanged: false,
+  scopedVerification: false,
+  workspaceWarning: "",
+  workKind: "answer",
+  activeTools: {},
 };
 
 // Rotate on a new activity span, never on each streamed token. Each pool
@@ -130,7 +140,10 @@ function finish(s: TaskActivity, now: number): TaskActivity {
           : "Agents still running",
     };
   }
-  if (s.verification === "incomplete" || (s.changed && s.verification !== "passed"))
+  if (
+    s.verification === "incomplete" ||
+    ((s.codeChanged || (s.changed && !s.scopedVerification)) && s.verification !== "passed")
+  )
     return {
       ...s,
       phase: "unverified",
@@ -142,7 +155,18 @@ function finish(s: TaskActivity, now: number): TaskActivity {
   return {
     ...s,
     phase: "done",
-    label: s.verification === "passed" ? "Done · checks passed" : "Response ready",
+    label:
+      s.verification === "passed"
+        ? "Done · checks passed"
+        : s.changed
+          ? "Changes saved"
+          : s.workKind === "background"
+            ? "Background work started"
+            : s.workKind === "research"
+              ? "Findings ready"
+              : s.workKind === "tools"
+                ? "Tool work finished"
+                : "Response ready",
     endedAt: now,
     reviewPending: false,
     detail: `${s.verification === "passed" ? `${s.verifiedChecks} passing check${s.verifiedChecks === 1 ? "" : "s"} recorded for the current code.` : "No automated checks were recorded."} ${reviewed} ${s.reviewNote ? `${s.reviewNote} ` : ""}Review the result in chat. This status does not confirm a release.`,
@@ -325,6 +349,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
         reviewPending: false,
         decisionToolId: null,
         mutationTools: [],
+        activeTools: {},
         pendingPlan: false,
         waitingForAnswer: false,
         cancelling: false,
@@ -358,6 +383,18 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
       return {
         ...progressLabel(s, toolPhase(name, (d.args as Record<string, unknown>) ?? {})),
         phase: "working",
+        activeTools:
+          typeof d.toolCallId === "string"
+            ? {
+                ...s.activeTools,
+                [d.toolCallId]: {
+                  name,
+                  background:
+                    name === "bash" &&
+                    (d.args as Record<string, unknown> | undefined)?.run_in_background === true,
+                },
+              }
+            : s.activeTools,
         mutationTools:
           (name === "edit" || name === "write") && typeof d.toolCallId === "string"
             ? [...s.mutationTools, d.toolCallId].slice(-64)
@@ -372,7 +409,39 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
         detail: "Answer the question in chat to continue.",
         waitingForAnswer: true,
       };
-    case "tool_call_end":
+    case "tool_call_end": {
+      const id = typeof d.toolCallId === "string" ? d.toolCallId : "";
+      const tool = s.activeTools[id];
+      if (tool) {
+        const activeTools = { ...s.activeTools };
+        delete activeTools[id];
+        const research = [
+          "read",
+          "grep",
+          "find",
+          "ls",
+          "web_search",
+          "web_fetch",
+          "code_search",
+          "code_nav",
+        ].includes(tool.name);
+        s = {
+          ...s,
+          activeTools,
+          workKind:
+            d.isError === true
+              ? s.workKind
+              : tool.background
+                ? "background"
+                : s.workKind === "background"
+                  ? s.workKind
+                  : research
+                    ? "research"
+                    : s.workKind === "research"
+                      ? s.workKind
+                      : "tools",
+        };
+      }
       if (typeof d.toolCallId === "string" && s.mutationTools.includes(d.toolCallId))
         return {
           ...s,
@@ -392,6 +461,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
             waitingForAnswer: false,
           }
         : s;
+    }
     // A new main-agent response starts only after its blocking tools settle.
     // This also resumes MCP questions, which do not expose an ask_user tool id.
     case "thinking_delta":
@@ -447,28 +517,56 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
           endedAt: now,
           reviewPending: false,
         };
+      const candidate = d.turnVerification as Record<string, unknown> | undefined;
+      const turn =
+        candidate &&
+        typeof candidate === "object" &&
+        typeof candidate.changed === "boolean" &&
+        ["passed", "failed", "incomplete", "not_recorded"].includes(String(candidate.verification))
+          ? candidate
+          : undefined;
+      const codeChanged = s.codeChanged || turn?.changed === true;
+      // Continue to judge all edits in a Ken correction cycle, but never borrow
+      // earlier turns' checks to describe a fresh read-only request.
+      const statusData = turn && !codeChanged ? turn : d;
       const verification = ["passed", "failed", "incomplete", "not_recorded"].includes(
-        String(d.verification),
+        String(statusData.verification),
       )
-        ? (d.verification as TaskActivity["verification"])
+        ? (statusData.verification as TaskActivity["verification"])
         : d.unverified
           ? "incomplete"
           : "not_recorded";
       const next = {
         ...s,
+        codeChanged,
+        scopedVerification: !!turn,
+        workspaceWarning:
+          turn && !codeChanged && verification !== d.verification
+            ? d.verification === "failed"
+              ? "Earlier checks failed"
+              : d.verification === "incomplete" || d.unverified === true
+                ? "Earlier work unchecked"
+                : ""
+            : "",
         verification:
-          verification === "passed" && finiteCount(d.verifiedChecks) === 0
+          verification === "passed" && finiteCount(statusData.verifiedChecks) === 0
             ? ("not_recorded" as const)
             : verification,
-        verifiedChecks: finiteCount(d.verifiedChecks),
+        verifiedChecks: finiteCount(statusData.verifiedChecks),
         detail:
-          typeof d.verificationReason === "string"
-            ? d.verificationReason.slice(0, 2000)
-            : s.phase === "attention"
-              ? s.detail
-              : "",
+          turn && !codeChanged && typeof turn.reason === "string"
+            ? turn.reason.slice(0, 2000)
+            : typeof d.verificationReason === "string"
+              ? d.verificationReason.slice(0, 2000)
+              : s.phase === "attention"
+                ? s.detail
+                : "",
       };
       if (s.phase === "attention") return next;
+      // A blocked verification gate cannot hand off to Ken, even if an older
+      // sidecar optimistically announced a pending review on run_end.
+      if (next.verification === "failed" || next.verification === "incomplete")
+        return finish(next, now);
       if (s.pendingPlan && d.reviewPending !== true)
         return {
           ...next,

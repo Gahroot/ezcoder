@@ -11,6 +11,23 @@ const edit = (s: TaskActivity) =>
   });
 
 describe("whole-task activity", () => {
+  it.each([
+    ["failed", "failed"],
+    ["incomplete", "unverified"],
+  ] as const)("settles a blocked review when verification is %s", (verification, phase) => {
+    const ended = event(start(), "run_end", {
+      failed: false,
+      unverified: true,
+      reviewPending: true,
+      verification,
+      verifiedChecks: 0,
+      verificationReason: "The verification gate blocked review.",
+    });
+    expect(ended.phase).toBe(phase);
+    expect(ended.reviewPending).toBe(false);
+    expect(ended.endedAt).toBe(1000);
+    expect(ended.detail).toContain("The verification gate blocked review.");
+  });
   it("recovers a live run or review after reconnect without inventing an outcome", () => {
     const s = event(start(), "connection_lost");
     expect(s.label).toBe("Reconnecting…");

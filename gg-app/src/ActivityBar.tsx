@@ -3,6 +3,7 @@ import type { TaskActivity } from "./task-activity";
 import { ThinkingOrb } from "thinking-orbs";
 import { theme } from "./theme";
 import { ShimmerText } from "./ShimmerText";
+import { outcomePhrase } from "./activity-copy";
 
 // Braille rotation spinner — the native language of CLI coding tools (ora,
 // npm, cargo). Smooth, monospace, and unmistakably "ours" rather than the
@@ -232,14 +233,23 @@ export function ActivityBar({
           : doneStatus
             ? "Response ready"
             : readyPhrase;
-  const label = SHORT_LABELS[fullLabel] ?? fullLabel;
+  const label =
+    (!active && outcomePhrase(fullLabel, activity?.startedAt ?? 0)) ||
+    SHORT_LABELS[fullLabel] ||
+    fullLabel;
   const canCancel = running || active;
 
   return (
     <div className="task-activity" data-phase={activity?.phase ?? (running ? "working" : "idle")}>
       <div className={`statusrow${active ? " running" : ""}`}>
         <div className="activity-summary">
-          <span className="statusrow-left" role="status" aria-live="polite" aria-atomic="true">
+          <span
+            className="statusrow-left"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            title={activity?.detail || undefined}
+          >
             {active ? (
               <ThinkingOrb
                 state="listening"
@@ -268,6 +278,11 @@ export function ActivityBar({
                 <span style={{ color: bareIdle ? theme.textMuted : tone }}>{label}</span>
               )}
             </span>
+            {!active && activity?.workspaceWarning && (
+              <span className="activity-workspace-warning" style={{ color: theme.warning }}>
+                {activity.workspaceWarning}
+              </span>
+            )}
           </span>
           {(active || hasActivity) && !starting && (
             <span className="activity-meta">

@@ -1493,6 +1493,7 @@ export class AgentSession {
           // test`) rewrites nothing we can point to: bumping the revision for
           // it poisoned the gate on green output and re-armed the hook into
           // every later question turn.
+          this.verificationGate.recordVerificationAttempt();
           const classification = classifyVerificationCommand(event.args.command);
           if (classification.snapshotEligible && event.args.persist !== true) {
             const call = this.hookToolCalls.get(event.toolCallId)!;
@@ -3861,6 +3862,19 @@ export class AgentSession {
 
   getVerificationEvidence(): VerificationEvidence[] {
     return this.verificationGate.evidence();
+  }
+
+  /** Current request activity, separate from persistent workspace verification debt. */
+  getRunVerificationActivity(): {
+    changed: boolean;
+    checked: boolean;
+    evidence: VerificationEvidence[];
+  } {
+    return {
+      changed: this.verificationGate.changedThisRun,
+      checked: this.verificationGate.checkedThisRun,
+      evidence: this.verificationGate.evidence("run"),
+    };
   }
 
   private async finishSnapshotVerification(

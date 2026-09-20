@@ -42,6 +42,28 @@ describe("ActivityBar orb", () => {
 });
 
 describe("ActivityBar task outcomes", () => {
+  it("shows earlier workspace warnings separately without relabelling the current answer", () => {
+    const activity = {
+      ...INITIAL_ACTIVITY,
+      phase: "done" as const,
+      label: "Response ready",
+      startedAt: 6,
+      endedAt: 1000,
+      workspaceWarning: "Earlier checks failed",
+    };
+    const { container, rerender } = render(
+      <ActivityBar {...baseProps} running={false} activity={activity} />,
+    );
+    expect(screen.getByRole("status").textContent).toContain("Answer ready. GG.");
+    expect(screen.getByText("Earlier checks failed")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Cancel agent run" })).toBeNull();
+    const label = container.querySelector(".activity-label-reveal");
+    rerender(
+      <ActivityBar {...baseProps} running={false} activity={{ ...activity, tokens: 1000 }} />,
+    );
+    expect(container.querySelector(".activity-label-reveal")).toBe(label);
+    expect(screen.getByText("Earlier checks failed")).toBeTruthy();
+  });
   it("does not show the previous success while a new request is starting", () => {
     const { container } = render(
       <ActivityBar
@@ -82,12 +104,12 @@ describe("ActivityBar task outcomes", () => {
   });
 
   it.each([
-    ["done", "Done · checks passed", "Checks passed", theme.success],
-    ["failed", "Checks failed", "Checks failed", theme.error],
-    ["failed", "Task failed", "Task failed", theme.error],
-    ["unverified", "Changed · verification incomplete", "Not verified", theme.warning],
-    ["attention", "Your decision needed", "Needs you", theme.warning],
-    ["stopped", "Stopped · unfinished", "Stopped", theme.warning],
+    ["done", "Done · checks passed", "Checks passed. Nice.", theme.success],
+    ["failed", "Checks failed", "Checks hit a snag", theme.error],
+    ["failed", "Task failed", "Run hit a snag", theme.error],
+    ["unverified", "Changed · verification incomplete", "Checks still needed", theme.warning],
+    ["attention", "Your decision needed", "Your call from here", theme.warning],
+    ["stopped", "Stopped · unfinished", "Stopped. Not finished", theme.warning],
   ] as const)("pairs %s color with a readable status", (phase, label, compact, color) => {
     render(
       <ActivityBar
@@ -169,7 +191,7 @@ describe("ActivityBar task outcomes", () => {
       />,
     );
     expect(screen.queryByText(/Brewed/)).toBeNull();
-    expect(screen.getByRole("status").textContent).toContain("Not verified");
+    expect(screen.getByRole("status").textContent).toContain("Checks need another look");
     expect(screen.getByRole("status").textContent).not.toContain("tokens");
     expect(container.querySelector(".activity-meta")?.textContent).toBe("32s · 1.3k tok");
     expect(container.querySelector("canvas")).toBeNull();
@@ -191,7 +213,7 @@ describe("ActivityBar task outcomes", () => {
     );
     expect(container.querySelector("canvas")).toBeNull();
     expect(screen.getByRole("button", { name: "Cancel agent run" })).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toContain("Needs you");
+    expect(screen.getByRole("status").textContent).toContain("Your call from here");
   });
 });
 

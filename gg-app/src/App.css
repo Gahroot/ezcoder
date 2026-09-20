@@ -3662,13 +3662,18 @@ select {
     animation: none;
   }
 }
+.activity-workspace-warning {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .activity-meta {
   flex: 0 0 auto;
   color: var(--text-muted);
   white-space: nowrap;
 }
 @container (max-width: 480px) {
-  .activity-token-count {
+  .activity-token-count,
+  .activity-summary:has(.activity-workspace-warning) .activity-meta {
     display: none;
   }
 }

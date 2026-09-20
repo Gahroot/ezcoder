@@ -59,7 +59,7 @@ import {
   type WorkflowCommandSpec,
 } from "./core/autopilot-gate.js";
 import { driveAutopilotCycle, frameAutopilotInjection } from "./core/autopilot-cycle.js";
-import { describeRunVerification } from "./core/run-status.js";
+import { describeRunVerification, describeTurnVerification } from "./core/run-status.js";
 import { validateKenModelPref, effectiveKenModel, type KenModelPref } from "./core/ken-model.js";
 import type { KenTurnPayload, AppMarkerPayload, RunOutcome } from "./core/session-manager.js";
 import {
@@ -2803,8 +2803,18 @@ async function createSession(
           ...(cancelled ? { cancelled: true } : {}),
           ...(verificationProblem ? { unverified: true } : {}),
           failed: !cancelled && !runSucceeded,
-          reviewPending: !cancelled && runSucceeded && (reviewPending() || !ownsGeneration),
+          // The cycle refuses an unresolved verification gate. Do not advertise
+          // a review handoff that will exit before emitting any review events.
+          reviewPending:
+            !cancelled &&
+            runSucceeded &&
+            !verificationProblem &&
+            (reviewPending() || !ownsGeneration),
           ...describeRunVerification(session.getVerificationEvidence(), verificationProblem),
+          turnVerification: describeTurnVerification(
+            session.getRunVerificationActivity(),
+            verificationProblem,
+          ),
           ...(verificationProblem ? { verificationReason: verificationProblem } : {}),
           runState: runLifecycle.state,
         });
