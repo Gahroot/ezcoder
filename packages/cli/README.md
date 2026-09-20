@@ -177,7 +177,7 @@ Plus the [Grep MCP](https://grep.dev) for searching across 1M+ public GitHub rep
 
 Only GPT-5.6 Sol/Terra at **Ultra** delegates proactively. Lower Sol/Terra levels use async agents only when the user or project/skill instructions request delegation; other models receive no proactive policy.
 
-Children share the parent working directory, not isolated worktrees. Parallel writes must target disjoint files or subsystems. Async fan-out is one level deep, child output is bounded, idle workers reap after 10 minutes, and workers are not resumable after a CLI/app restart.
+Children share the parent working directory by default, so parallel writes must target disjoint files or subsystems. Pass `isolate: true` to `subagent` to give a child its own copy of the repo on a new branch instead — the right choice when several children edit at once, or when a child's changes should land on a branch of their own. The copy is reclaimed automatically when the child finishes without committing; a child that did commit keeps its branch, because that branch is the deliverable. `/integrate` then merges those branches one at a time, running the suite between each. Async fan-out is one level deep, child output is bounded, idle workers reap after 10 minutes, and workers are not resumable after a CLI/app restart.
 
 Parent cancellation interrupts active children. Session disposal shuts down every worker process alongside background commands, LSP servers, and MCP connections.
 

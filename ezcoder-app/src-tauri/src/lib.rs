@@ -3875,6 +3875,221 @@ async fn arrange_all(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Another window already bound to a project directory, reported by
+/// `project_open_windows` so the picker can warn before opening a duplicate.
+#[derive(serde::Serialize)]
+struct ProjectWindowConflict {
+    /// Window label already bound to this cwd.
+    label: String,
+    /// Human-friendly title: custom_title when set, else the directory name.
+    title: String,
+}
+
+/// Normalize a path for cross-window comparison. Canonicalization resolves
+/// symlinks and `..`; a missing path keeps its literal form so a not-yet-created
+/// project still compares equal to itself.
+fn normalize_for_compare(path: &Path) -> PathBuf {
+    match std::fs::canonicalize(path) {
+        Ok(real) => strip_extended_prefix(real),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
+/// Pure core of `project_open_windows`: every entry other than `self_label`
+/// whose cwd normalizes to `target`. Kept free of Tauri types so it is unit
+/// testable without a running app.
+fn conflicting_windows(
+    entries: &[(String, Option<PathBuf>, Option<String>)],
+    self_label: &str,
+    target: &Path,
+) -> Vec<ProjectWindowConflict> {
+    let target = normalize_for_compare(target);
+    entries
+        .iter()
+        .filter(|(label, _, _)| label != self_label)
+        .filter_map(|(label, cwd, custom_title)| {
+            let cwd = cwd.as_deref()?;
+            if normalize_for_compare(cwd) != target {
+                return None;
+            }
+            let title = custom_title.clone().unwrap_or_else(|| {
+                cwd.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| label.clone())
+            });
+            Some(ProjectWindowConflict {
+                label: label.clone(),
+                title,
+            })
+        })
+        .collect()
+}
+
+/// Windows OTHER than this one that already have `cwd` open. Empty when the
+/// project is free, so the picker can open it without prompting.
+#[tauri::command]
+fn project_open_windows(
+    webview: WebviewWindow,
+    app: tauri::AppHandle,
+    cwd: String,
+) -> Vec<ProjectWindowConflict> {
+    let self_label = webview.label().to_string();
+    // Live labels first: a registry row can outlive its window, and a stale row
+    // would report a conflict against a window the user cannot switch to.
+    let live: HashSet<String> = app.webview_windows().into_keys().collect();
+    // Collect and DROP the lock before anything else — window calls under this
+    // (non-reentrant) mutex deadlock, see the minimize cascade above.
+    let entries: Vec<(String, Option<PathBuf>, Option<String>)> = {
+        let windows: State<Windows> = app.state();
+        let map = windows.map.lock().unwrap();
+        map.iter()
+            .filter(|(label, _)| live.contains(*label))
+            .map(|(label, w)| (label.clone(), w.cwd.clone(), w.custom_title.clone()))
+            .collect()
+    };
+    conflicting_windows(&entries, &self_label, Path::new(&cwd))
+}
+
+/// Proxy: create an isolated git worktree for `cwd` so this window can work on
+/// a repo another window already holds. Returns the daemon's
+/// `{ path, branch, baseRef }`; the caller then `select_project`s into `path`.
+///
+/// The daemon answers 409 for the two cases the user must resolve (dirty main
+/// checkout, not a git repo). Those carry a human-readable `error` which is
+/// surfaced verbatim rather than flattened into a generic failure.
+#[tauri::command]
+async fn create_worktree(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    cwd: String,
+    branch: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .post(format!("{}/worktree", sidecar_base(port)))
+        .header("x-ez-session", &ez_sid)
+        .json(&serde_json::json!({ "cwd": cwd, "branch": branch }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(body
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("Could not create the worktree.")
+            .to_string());
+    }
+    Ok(body)
+}
+
+/// Proxy: every managed copy of `cwd`'s repo, with the state the picker needs
+/// to decide what to offer. `busy_paths` are the directories live windows hold;
+/// the daemon has no window knowledge, so the caller supplies them.
+#[tauri::command]
+async fn list_worktrees(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    cwd: String,
+    busy_paths: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
+    let mut req = client
+        .get(format!("{}/worktrees", sidecar_base(port)))
+        .header("x-ez-session", &ez_sid)
+        .query(&[("cwd", &cwd)]);
+    for path in busy_paths.unwrap_or_default() {
+        req = req.query(&[("busy", path)]);
+    }
+    let res = req.send().await.map_err(|e| e.to_string())?;
+    res.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Proxy: remove one copy. The daemon answers 409 with a human-readable reason
+/// when the copy still holds work and `force` was not given; that text is
+/// surfaced verbatim, exactly as `create_worktree` does with its own gate.
+#[tauri::command]
+async fn remove_worktree(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+    cwd: String,
+    path: String,
+    force: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
+    let res = client
+        .request(
+            reqwest::Method::DELETE,
+            format!("{}/worktree", sidecar_base(port)),
+        )
+        .header("x-ez-session", &ez_sid)
+        .json(&serde_json::json!({
+            "cwd": cwd,
+            "path": path,
+            "force": force.unwrap_or(false),
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let body = res
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(body
+            .get("reason")
+            .or_else(|| body.get("error"))
+            .and_then(|e| e.as_str())
+            .unwrap_or("That copy could not be cleaned up.")
+            .to_string());
+    }
+    Ok(body)
+}
+
+/// The cwds of every LIVE window, so a sweep never reclaims a copy someone is
+/// working in. Mirrors `project_open_windows`' lock discipline: collect under
+/// the mutex, then drop it before anything else runs.
+fn live_window_cwds(app: &tauri::AppHandle, exclude_label: Option<&str>) -> Vec<String> {
+    let live: HashSet<String> = app.webview_windows().into_keys().collect();
+    let windows: State<Windows> = app.state();
+    let map = windows.map.lock().unwrap();
+    map.iter()
+        .filter(|(label, _)| live.contains(*label))
+        .filter(|(label, _)| Some(label.as_str()) != exclude_label)
+        .filter_map(|(_, w)| w.cwd.as_ref())
+        .map(|cwd| cwd.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Fire-and-forget reclaim of every copy of `cwd`'s repo that holds no work.
+///
+/// Bounded and silent by design: this runs on window close and on daemon
+/// startup, where the user is not watching and a hung git must not wedge the
+/// close. The sweep never forces, so the worst outcome of a failure is a copy
+/// that stays on disk and appears in the picker's list instead.
+async fn sweep_worktrees_for(app: &tauri::AppHandle, port: u16, cwd: String, busy: Vec<String>) {
+    let client = app.state::<reqwest::Client>().inner().clone();
+    if let Err(err) = client
+        .post(format!("{}/worktrees/sweep", sidecar_base(port)))
+        .json(&serde_json::json!({ "cwd": cwd, "busyPaths": busy }))
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+    {
+        log::warn!("worktree sweep failed for {cwd}: {err}");
+    }
+}
+
 /// Re-point THIS window's agent at a chosen project: dispose its current daemon
 /// session and create a fresh one at `cwd`, optionally resuming the session file
 /// `session_path`. The command resolves only after the daemon session is ready,
@@ -5424,6 +5639,10 @@ pub fn run() {
         .manage(http_client)
         .invoke_handler(tauri::generate_handler![
             sidecar_port,
+            project_open_windows,
+            create_worktree,
+            list_worktrees,
+            remove_worktree,
             dropped_path_info,
             permissions_status,
             open_permissions_settings,
@@ -5546,6 +5765,24 @@ pub fn run() {
             // single default `main` window. Windows are built in code (not from
             // config) so macOS gets `hidden_title(true)` via the builder.
             restore_or_default_windows(&app.handle().clone())?;
+
+            // Reclaim copies orphaned by a crash or force-quit, where the close
+            // hook never ran. Deferred behind the daemon port and deliberately
+            // last: startup must not wait on git. Every restored window's cwd
+            // is passed as busy, so a copy a restored window reopened into is
+            // never swept out from under it.
+            {
+                let app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let Some(port) = await_daemon_port(&app).await else {
+                        return;
+                    };
+                    let cwds = live_window_cwds(&app, None);
+                    for cwd in cwds.clone() {
+                        sweep_worktrees_for(&app, port, cwd, cwds.clone()).await;
+                    }
+                });
+            }
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -5566,18 +5803,36 @@ pub fn run() {
                 // Dispose only THIS window's session in the shared daemon so
                 // other projects keep running. The daemon process itself is
                 // never killed here (that happens only on app exit).
+                //
+                // The cwd is taken alongside the session id, from the SAME
+                // removal: once the row is gone there is nothing left to ask
+                // where this window was working, and the sweep below needs it.
                 let state: State<Windows> = window.state();
-                let session_id = state
-                    .map
-                    .lock()
-                    .unwrap()
-                    .remove(window.label())
-                    .and_then(|w| w.session_id);
+                let closed = state.map.lock().unwrap().remove(window.label());
+                let session_id = closed.as_ref().and_then(|w| w.session_id.clone());
+                let closed_cwd = closed.and_then(|w| w.cwd);
                 if let Some(id) = session_id {
                     if let Some(port) = *app.state::<Daemon>().port.lock().unwrap() {
                         let app2 = app.clone();
                         tauri::async_runtime::spawn(async move {
                             daemon_delete_session(&app2, port, &id).await;
+                        });
+                    }
+                }
+
+                // Reclaim the copy this window was working in, if it held
+                // nothing. The window is already out of the registry above, so
+                // `live_window_cwds` reports only the windows that remain — a
+                // second window on the same copy keeps it alive. The sweep
+                // itself re-checks for unsaved and unmerged work and never
+                // forces, so a copy with anything in it survives regardless.
+                if let Some(cwd) = closed_cwd {
+                    if let Some(port) = *app.state::<Daemon>().port.lock().unwrap() {
+                        let app2 = app.clone();
+                        let busy = live_window_cwds(app, None);
+                        let cwd = cwd.to_string_lossy().into_owned();
+                        tauri::async_runtime::spawn(async move {
+                            sweep_worktrees_for(&app2, port, cwd, busy).await;
                         });
                     }
                 }
@@ -6693,6 +6948,76 @@ mod tests {
         assert_eq!(w.chat_agent, ChatAgent::Research);
         assert_eq!(w.cwd.as_deref(), Some(Path::new("/p/a")));
         assert_eq!(w.session_path.as_deref(), Some("/s/a.jsonl"));
+    }
+
+    // --- duplicate-project detection -------------------------------------
+    // conflicting_windows answers "who else already has this project open?".
+    // Paths below do not exist, so normalization falls back to the literal
+    // PathBuf and the comparison stays deterministic on every platform.
+
+    fn entry(
+        label: &str,
+        cwd: Option<&str>,
+        title: Option<&str>,
+    ) -> (String, Option<PathBuf>, Option<String>) {
+        (
+            label.into(),
+            cwd.map(PathBuf::from),
+            title.map(str::to_string),
+        )
+    }
+
+    #[test]
+    fn conflicting_windows_skips_the_calling_window() {
+        let entries = vec![entry("main", Some("/p/a"), None)];
+        assert!(conflicting_windows(&entries, "main", Path::new("/p/a")).is_empty());
+    }
+
+    #[test]
+    fn conflicting_windows_matches_a_peer_on_the_same_path() {
+        let entries = vec![
+            entry("main", Some("/p/b"), None),
+            entry("w2", Some("/p/a"), None),
+        ];
+        let hits = conflicting_windows(&entries, "main", Path::new("/p/a"));
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].label, "w2");
+        // No custom title: fall back to the directory basename.
+        assert_eq!(hits[0].title, "a");
+    }
+
+    #[test]
+    fn conflicting_windows_ignores_a_different_path() {
+        let entries = vec![entry("w2", Some("/p/other"), None)];
+        assert!(conflicting_windows(&entries, "main", Path::new("/p/a")).is_empty());
+    }
+
+    #[test]
+    fn conflicting_windows_ignores_a_window_without_a_cwd() {
+        // A window still on Home has no project bound — never a conflict.
+        let entries = vec![entry("w2", None, Some("Untitled"))];
+        assert!(conflicting_windows(&entries, "main", Path::new("/p/a")).is_empty());
+    }
+
+    #[test]
+    fn conflicting_windows_prefers_the_custom_title() {
+        let entries = vec![entry("w2", Some("/p/a"), Some("Renamed"))];
+        let hits = conflicting_windows(&entries, "main", Path::new("/p/a"));
+        assert_eq!(hits[0].title, "Renamed");
+    }
+
+    #[test]
+    fn conflicting_windows_reports_every_peer_sharing_a_path() {
+        let entries = vec![
+            entry("main", Some("/p/a"), None),
+            entry("w2", Some("/p/a"), None),
+            entry("w3", Some("/p/a"), Some("Third")),
+        ];
+        let mut hits = conflicting_windows(&entries, "main", Path::new("/p/a"));
+        hits.sort_by(|a, b| a.label.cmp(&b.label));
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].label, "w2");
+        assert_eq!(hits[1].title, "Third");
     }
 
     #[test]

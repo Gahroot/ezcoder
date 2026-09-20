@@ -1283,6 +1283,99 @@ export async function createProject(name: string): Promise<string> {
   return res.path;
 }
 
+/** Another window already working in a project directory. */
+export interface ProjectWindowConflict {
+  label: string;
+  title: string;
+}
+
+/**
+ * Windows other than this one already bound to `cwd`. Empty means the project
+ * is free to open directly. Two agents sharing one working tree overwrite each
+ * other's edits, so the picker uses this to offer an isolated worktree first.
+ */
+export async function projectOpenWindows(cwd: string): Promise<ProjectWindowConflict[]> {
+  try {
+    return await invoke<ProjectWindowConflict[]>("project_open_windows", { cwd });
+  } catch (e) {
+    // Never block opening a project because the check itself failed.
+    await logError(`project_open_windows failed: ${String(e)}`);
+    return [];
+  }
+}
+
+export interface CreatedWorktree {
+  path: string;
+  branch: string;
+  baseRef: string;
+}
+
+/**
+ * Create an isolated git worktree off `cwd`'s repo. Rejects with a
+ * user-readable message when the main checkout is dirty or the folder is not a
+ * git repo — both are for the user to resolve, so the text is shown as-is.
+ */
+export async function createWorktree(cwd: string, branch?: string): Promise<CreatedWorktree> {
+  return await invoke<CreatedWorktree>("create_worktree", { cwd, branch: branch ?? null });
+}
+
+/** One managed copy of a repo, with everything needed to decide its fate. */
+export interface WorktreeStatus {
+  path: string;
+  branch: string | null;
+  baseRef: string | null;
+  dirtyFiles: number;
+  commitsAhead: number;
+  merged: boolean;
+  busy: boolean;
+  reclaimable: boolean;
+  /** Plain-language reasons it cannot be cleaned up. Empty when it can. */
+  blockedBy: string[];
+}
+
+/**
+ * Every managed copy of `cwd`'s repo. `busyPaths` are directories other windows
+ * hold, so a copy in use is never offered for cleanup.
+ *
+ * Returns empty rather than throwing: this feeds a supplementary list in the
+ * picker, and a project that is not a git repo simply has no copies.
+ */
+export async function listWorktrees(
+  cwd: string,
+  busyPaths: string[] = [],
+): Promise<WorktreeStatus[]> {
+  try {
+    const res = await invoke<{ worktrees: WorktreeStatus[] }>("list_worktrees", {
+      cwd,
+      busyPaths,
+    });
+    return res.worktrees ?? [];
+  } catch (e) {
+    await logError(`list_worktrees failed: ${String(e)}`);
+    return [];
+  }
+}
+
+export interface WorktreeRelease {
+  existed: boolean;
+  freed: boolean;
+  branchDeleted: boolean;
+  reason?: string;
+}
+
+/**
+ * Remove one copy. Rejects with the daemon's own wording when the copy still
+ * holds work and `force` was not given — that text tells the user what they
+ * would lose, so it is shown as written.
+ */
+export async function removeWorktree(
+  cwd: string,
+  path: string,
+  force = false,
+): Promise<WorktreeRelease> {
+  return await invoke<WorktreeRelease>("remove_worktree", { cwd, path, force });
+}
+
 /** Discover known projects (ezcoder + Claude Code + Codex), most recent first. */
 export async function listProjects(): Promise<DiscoveredProject[]> {
   try {

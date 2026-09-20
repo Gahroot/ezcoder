@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   getSettings,
@@ -7,6 +7,10 @@ import {
   listProjects,
   listSessions,
   selectProject,
+  projectOpenWindows,
+  createWorktree,
+  listWorktrees,
+  removeWorktree,
   setProjectHidden,
   waitForReady,
   type DiscoveredProject,
@@ -22,6 +26,10 @@ vi.mock("./agent", () => ({
   listProjects: vi.fn(),
   listSessions: vi.fn(),
   selectProject: vi.fn(),
+  projectOpenWindows: vi.fn(),
+  createWorktree: vi.fn(),
+  listWorktrees: vi.fn(),
+  removeWorktree: vi.fn(),
   setProjectHidden: vi.fn(),
   waitForReady: vi.fn(),
 }));
@@ -34,6 +42,10 @@ const importTranscriptMock = vi.mocked(importTranscript);
 const listProjectsMock = vi.mocked(listProjects);
 const listSessionsMock = vi.mocked(listSessions);
 const selectProjectMock = vi.mocked(selectProject);
+const projectOpenWindowsMock = vi.mocked(projectOpenWindows);
+const createWorktreeMock = vi.mocked(createWorktree);
+const listWorktreesMock = vi.mocked(listWorktrees);
+const removeWorktreeMock = vi.mocked(removeWorktree);
 const setProjectHiddenMock = vi.mocked(setProjectHidden);
 const waitForReadyMock = vi.mocked(waitForReady);
 
@@ -68,10 +80,18 @@ async function renderSessionList(sessions: RecentSession[]): Promise<void> {
   listProjectsMock.mockResolvedValue([PROJECT]);
   listSessionsMock.mockResolvedValue(sessions);
   selectProjectMock.mockResolvedValue();
+  // No other window holds this project, so opening proceeds without a prompt.
+  projectOpenWindowsMock.mockResolvedValue([]);
 
   render(<ProjectPicker onChosen={vi.fn()} initialProjectPath={PROJECT.path} />);
   await screen.findByText(sessions[0]!.preview);
 }
+
+// Default: no separate copies. Set in beforeEach rather than in
+// renderSessionList, which runs AFTER a test's own setup and would overwrite it.
+beforeEach(() => {
+  listWorktreesMock.mockResolvedValue([]);
+});
 
 afterEach(() => {
   cleanup();
@@ -170,6 +190,150 @@ describe("ProjectPicker session list", () => {
       expect(selectProjectMock).toHaveBeenCalledWith(PROJECT.path, NATIVE_SESSION.path);
     });
     expect(importTranscriptMock).not.toHaveBeenCalled();
+  });
+
+  // Two agents in one working tree overwrite each other's edits, so a project
+  // already open elsewhere must not open silently.
+  describe("when the project is open in another window", () => {
+    const OTHER = [{ label: "project-2", title: "ui-test" }];
+
+    it("asks instead of opening straight away", async () => {
+      await renderSessionList([NATIVE_SESSION]);
+      projectOpenWindowsMock.mockResolvedValue(OTHER);
+
+      fireEvent.click(screen.getByText(NATIVE_SESSION.preview));
+
+      await screen.findByText(/already open/i);
+      expect(selectProjectMock).not.toHaveBeenCalled();
+    });
+
+    it("opens the isolated worktree, not the shared project, when isolating", async () => {
+      const worktree = "/Users/dev/.ezcoder/worktrees/ui-test/ez-abc";
+      createWorktreeMock.mockResolvedValue({
+        path: worktree,
+        branch: "ez/abc",
+        baseRef: "main",
+      });
+      await renderSessionList([NATIVE_SESSION]);
+      projectOpenWindowsMock.mockResolvedValue(OTHER);
+
+      fireEvent.click(screen.getByText(NATIVE_SESSION.preview));
+      fireEvent.click(await screen.findByText("Own copy"));
+
+      await waitFor(() => {
+        expect(createWorktreeMock).toHaveBeenCalledWith(PROJECT.path, undefined);
+        // The worktree is a fresh checkout: the old session must NOT follow it.
+        expect(selectProjectMock).toHaveBeenCalledWith(worktree, undefined);
+      });
+    });
+
+    it("opens the shared project with its session when the user declines", async () => {
+      await renderSessionList([NATIVE_SESSION]);
+      projectOpenWindowsMock.mockResolvedValue(OTHER);
+
+      fireEvent.click(screen.getByText(NATIVE_SESSION.preview));
+      fireEvent.click(await screen.findByText("Open anyway"));
+
+      await waitFor(() => {
+        expect(selectProjectMock).toHaveBeenCalledWith(PROJECT.path, NATIVE_SESSION.path);
+      });
+      expect(createWorktreeMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps the prompt open and shows why when the worktree cannot be made", async () => {
+      createWorktreeMock.mockRejectedValue(new Error("has uncommitted changes"));
+      await renderSessionList([NATIVE_SESSION]);
+      projectOpenWindowsMock.mockResolvedValue(OTHER);
+
+      fireEvent.click(screen.getByText(NATIVE_SESSION.preview));
+      fireEvent.click(await screen.findByText("Own copy"));
+
+      await screen.findByText(/uncommitted changes/i);
+      expect(selectProjectMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // Copies holding nothing are reclaimed automatically on window close, so any
+  // copy the user actually sees here is one that needs a decision.
+  describe("the list of separate copies", () => {
+    const EMPTY_COPY = {
+      path: "/Users/dev/.ezcoder/worktrees/ui-test/spare",
+      branch: "spare",
+      baseRef: "main",
+      dirtyFiles: 0,
+      commitsAhead: 0,
+      merged: true,
+      busy: false,
+      reclaimable: true,
+      blockedBy: [],
+    };
+    const COPY_WITH_WORK = {
+      ...EMPTY_COPY,
+      path: "/Users/dev/.ezcoder/worktrees/ui-test/feature",
+      branch: "feature",
+      dirtyFiles: 2,
+      commitsAhead: 3,
+      merged: false,
+      reclaimable: false,
+      blockedBy: ["it has 2 uncommitted file(s)", "it has 3 unmerged commit(s)"],
+    };
+
+    it("stays out of the way when there are no copies", async () => {
+      await renderSessionList([NATIVE_SESSION]);
+      expect(screen.queryByText(/separate copies/i)).toBeNull();
+    });
+
+    it("says what each copy is holding", async () => {
+      listWorktreesMock.mockResolvedValue([COPY_WITH_WORK]);
+      await renderSessionList([NATIVE_SESSION]);
+
+      await screen.findByText(/separate copies/i);
+      // Plain language, not git's: "unsaved" and "unmerged", never "dirty HEAD".
+      await screen.findByText(/2 unsaved files/i);
+      expect(screen.getByText(/3 unmerged changes/i)).not.toBeNull();
+    });
+
+    it("cleans up an empty copy on one click, without forcing", async () => {
+      listWorktreesMock.mockResolvedValue([EMPTY_COPY]);
+      removeWorktreeMock.mockResolvedValue({ existed: true, freed: true, branchDeleted: true });
+      await renderSessionList([NATIVE_SESSION]);
+
+      fireEvent.click(await screen.findByText("Clean up"));
+
+      await waitFor(() => {
+        expect(removeWorktreeMock).toHaveBeenCalledWith(PROJECT.path, EMPTY_COPY.path, false);
+      });
+    });
+
+    it("never deletes work on a single click", async () => {
+      listWorktreesMock.mockResolvedValue([COPY_WITH_WORK]);
+      await renderSessionList([NATIVE_SESSION]);
+
+      fireEvent.click(await screen.findByText("Clean up"));
+
+      // First click only asks; nothing has been removed.
+      await screen.findByText("Keep it");
+      expect(removeWorktreeMock).not.toHaveBeenCalled();
+
+      // The confirm names what is lost, so the second click is informed.
+      fireEvent.click(screen.getByText(/Delete 2 unsaved files/i));
+      await waitFor(() => {
+        expect(removeWorktreeMock).toHaveBeenCalledWith(PROJECT.path, COPY_WITH_WORK.path, true);
+      });
+    });
+
+    it("will not offer to remove a copy another window is working in", async () => {
+      listWorktreesMock.mockResolvedValue([
+        { ...COPY_WITH_WORK, busy: true, blockedBy: ["it is open in another window"] },
+      ]);
+      await renderSessionList([NATIVE_SESSION]);
+
+      // Forcing here would pull the folder out from under a live agent.
+      expect((await screen.findByText("Clean up")) as HTMLButtonElement).toHaveProperty(
+        "disabled",
+        true,
+      );
+    });
   });
 
   it("surfaces a failed import instead of opening a broken session", async () => {

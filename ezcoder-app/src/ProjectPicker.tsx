@@ -7,6 +7,7 @@ import {
   setProjectHidden,
   listSessions,
   selectProject,
+  projectOpenWindows,
   importTranscript,
   getSettings,
   focusWindowByOffset,
@@ -20,6 +21,8 @@ import { BackButton } from "./BackButton";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 import { RadioButton } from "./RadioButton";
 import { NewProjectModal } from "./NewProjectModal";
+import { WorktreePrompt } from "./WorktreePrompt";
+import { WorktreeList } from "./WorktreeList";
 import { MetalButton } from "./MetalButton";
 import { useWindowFocused } from "./useWindowFocused";
 
@@ -66,6 +69,13 @@ export function ProjectPicker({
   const [projectsRoot, setProjectsRoot] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [query, setQuery] = useState("");
+  // Set when the chosen project is already open elsewhere: the pending open is
+  // parked here until the user picks isolate-or-share.
+  const [conflict, setConflict] = useState<{
+    cwd: string;
+    sessionPath?: string;
+    windows: { label: string; title: string }[];
+  } | null>(null);
 
   const q = query.trim().toLowerCase();
   const filteredProjects = q
@@ -163,8 +173,12 @@ export function ProjectPicker({
     });
   }
 
-  function choose(cwd: string, sessionPath?: string): void {
-    if (busy) return;
+  /**
+   * Re-point this window at `cwd`. The terminal step of every open path —
+   * `choose` routes here directly when the project is free, or after the user
+   * has resolved a conflict.
+   */
+  function openResolved(cwd: string, sessionPath?: string): void {
     setBusy(true);
     setResumeError(null);
     // Rust now resolves this command only after the daemon session is ready.
@@ -180,6 +194,30 @@ export function ProjectPicker({
         );
         setBusy(false);
       });
+  }
+
+  /**
+   * Open a project, first checking whether another window is already working in
+   * it. Two agents in one working tree overwrite each other's edits, so a
+   * duplicate open offers an isolated worktree instead of silently colliding.
+   *
+   * The check never blocks the open: if it fails, or the project is free, this
+   * behaves exactly as it did before.
+   */
+  function choose(cwd: string, sessionPath?: string): void {
+    if (busy) return;
+    setBusy(true);
+    setResumeError(null);
+    void projectOpenWindows(cwd).then((windows) => {
+      if (windows.length === 0) {
+        openResolved(cwd, sessionPath);
+        return;
+      }
+      // Park the open until the user chooses. `busy` is released so the prompt's
+      // own buttons drive the next step.
+      setBusy(false);
+      setConflict({ cwd, sessionPath, windows });
+    });
   }
 
   /**
@@ -411,6 +449,9 @@ export function ProjectPicker({
               ))}
             </div>
           )}
+          {/* Copies holding no work are reclaimed on window close, so this is
+              usually absent. When present it says what is keeping each alive. */}
+          <WorktreeList cwd={selected.path} />
         </div>
       )}
 
@@ -421,6 +462,20 @@ export function ProjectPicker({
           onCreated={(cwd) => {
             setShowNew(false);
             onChosen(cwd);
+          }}
+        />
+      )}
+      {conflict && (
+        <WorktreePrompt
+          cwd={conflict.cwd}
+          windows={conflict.windows}
+          onClose={() => setConflict(null)}
+          onResolved={(cwd) => {
+            // An isolated worktree is a fresh checkout with no session history,
+            // so the pending session file only applies when sharing the tree.
+            const sessionPath = cwd === conflict.cwd ? conflict.sessionPath : undefined;
+            setConflict(null);
+            openResolved(cwd, sessionPath);
           }}
         />
       )}

@@ -1997,6 +1997,66 @@ select {
   cursor: default;
   opacity: 0.4;
 }
+/* Destructive confirm. Only ever the SECOND click of a two-step cleanup, so it
+   reads as a deliberate choice rather than a button sitting next to a list. */
+.modal-btn.danger {
+  background: var(--danger, #b3261e);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: none;
+}
+.modal-btn.danger:hover:not(:disabled) {
+  filter: brightness(1.12);
+  color: #fff;
+}
+
+/* ── Worktree list (separate copies of a project) ── */
+.worktree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.worktree-list-title {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.worktree-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.worktree-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.worktree-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.worktree-branch {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.worktree-detail {
+  font-family: var(--sans);
+  font-size: 11px;
+}
 
 /* ── Notes modal (free-form per-project notebook) ── */
 .notes-input {

@@ -1,10 +1,17 @@
+import type * as ChildProcess from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 
-vi.mock("node:child_process", () => ({ spawn: spawnMock }));
+// `spawn` is the one this suite drives. `execFile` now also arrives here via
+// the worktree module (isolated children) and must stay REAL — a bare mock
+// object drops it and every import of this file fails.
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof ChildProcess>()),
+  spawn: spawnMock,
+}));
 
 import type { AgentDefinition } from "../core/agents.js";
 import { createSubAgentTool, isModelUnavailableError } from "./subagent.js";

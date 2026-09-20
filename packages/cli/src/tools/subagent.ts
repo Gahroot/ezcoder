@@ -27,6 +27,7 @@ import {
   SUB_AGENT_MAX_TURNS,
   SUB_AGENT_TIMEOUT_MS,
 } from "./subagent-shared.js";
+import { createWorktree, removeWorktree } from "../core/worktree.js";
 
 /** Only retry errors that specifically mean the selected model cannot be used. */
 export function isModelUnavailableError(stderr: string): boolean {
@@ -41,6 +42,15 @@ const SubAgentParams = z.object({
     .string()
     .optional()
     .describe("Named agent definition to use (from ~/.ezcoder/agents/ or .ezcoder/agents/)"),
+  isolate: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run this child in its own copy of the repo on a new branch, so it cannot " +
+        "collide with work happening elsewhere. Use when several agents edit at " +
+        "once, or when the child's changes should land on a branch of their own. " +
+        "The copy is removed automatically if the child leaves no commits behind.",
+    ),
 });
 
 export interface SubAgentUpdate {
@@ -97,6 +107,54 @@ export function createSubAgentTool(
       }
 
       const startTime = Date.now();
+
+      // An isolated child works in its own checkout so concurrent children
+      // cannot overwrite each other's edits. Failure is NOT fatal: the child
+      // still runs in the shared tree, with the reason reported alongside its
+      // result, because a delegation that silently became non-parallel is worse
+      // than one that says so.
+      let isolated: { path: string; branch: string } | null = null;
+      let isolationNote = "";
+      if (args.isolate) {
+        try {
+          const created = await createWorktree({ repoDir: cwd });
+          isolated = { path: created.path, branch: created.branch };
+          log("INFO", "subagent", "Sub-agent isolated", {
+            branch: created.branch,
+            path: created.path,
+          });
+        } catch (err) {
+          isolationNote =
+            `\n\n[Note: a separate copy could not be made (` +
+            `${err instanceof Error ? err.message : String(err)}), so this agent ` +
+            `ran in the shared working directory. Its edits are NOT isolated.]`;
+        }
+      }
+      const childCwd = isolated?.path ?? cwd;
+
+      /**
+       * Reclaim the copy unless the child left commits in it.
+       *
+       * A child that committed produced the deliverable, and the branch IS the
+       * result — removing it would delete the work just done. Anything else
+       * (no commits, or a crash before the first one) leaves nothing worth
+       * keeping. Never forces and never throws: cleanup must not turn a
+       * finished delegation into a failed one.
+       */
+      const releaseIsolation = async (): Promise<string> => {
+        if (!isolated) return "";
+        const release = await removeWorktree({
+          repoDir: cwd,
+          worktreePath: isolated.path,
+          force: false,
+        });
+        if (release.freed) return "";
+        return (
+          `\n\n[This agent worked on branch \`${isolated.branch}\`, kept at ` +
+          `${isolated.path} because ${release.reason ?? "it still holds work"}.]`
+        );
+      };
+
       const useProvider = getParentProvider() as Provider;
       const parentModel = getParentModel();
       const selection = selectSubAgent(agents, args.agent, useProvider, parentModel);
@@ -185,7 +243,17 @@ export function createSubAgentTool(
       return new Promise((resolve) => {
         const finish = (result: { content: string; details?: SubAgentDetails }) => {
           context.signal.removeEventListener("abort", abortHandler);
-          resolve(result);
+          // Reclaim before resolving so a parent that immediately fans out
+          // again does not accumulate copies. Every exit path — success,
+          // timeout, abort, crash — routes through here.
+          void releaseIsolation()
+            .catch(() => "")
+            .then((note) => {
+              resolve({
+                ...result,
+                content: `${result.content}${note}${isolationNote}`,
+              });
+            });
         };
 
         const startAttempt = (model: string, fallbackFrom?: string) => {
@@ -195,7 +263,7 @@ export function createSubAgentTool(
             process.execPath,
             [resolveSubAgentCliEntry(), ...buildCliArgs(model)],
             {
-              cwd,
+              cwd: childCwd,
               stdio: ["ignore", "pipe", "pipe"],
               env: childSubAgentEnv(),
             },

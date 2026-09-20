@@ -37,6 +37,12 @@ import {
   type ChatAgentId,
 } from "./chat-agents/index.js";
 import { buildJiwaTools, JiwaStore } from "./chat-agents/jiwa.js";
+import {
+  createWorktree,
+  removeWorktree,
+  sweepWorktrees,
+  worktreeStatuses,
+} from "./core/worktree.js";
 import { buildMemoryTools, MemoryStore } from "./chat-agents/memory.js";
 import { buildNolanSystemPrompt, buildNolanAutopilotSystemPrompt } from "./core/nolan-prompt.js";
 import {
@@ -3575,6 +3581,123 @@ async function createSession(
         } catch (err) {
           json(res, 500, { error: err instanceof Error ? err.message : String(err) });
         }
+      });
+      return;
+    }
+
+    // Create an isolated git worktree for a project so a second window can work
+    // on the same repo without fighting the first over the working tree. The
+    // caller passes the project cwd; the module resolves the repo's MAIN root
+    // itself, so opening this from an already-linked worktree still branches
+    // off the real repo rather than nesting.
+    //
+    // The dirty gate in `createWorktree` is deliberate: branching a main
+    // checkout that has uncommitted work would strand those edits on a tree the
+    // user is about to stop looking at. It surfaces here as a 409 the picker
+    // renders verbatim.
+    if (method === "POST" && url === "/worktree") {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
+        let body: { cwd?: string; branch?: string; baseRef?: string };
+        try {
+          body = JSON.parse(raw) as { cwd?: string; branch?: string; baseRef?: string };
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        const repoDir = body.cwd?.trim();
+        if (!repoDir) {
+          json(res, 400, { error: "cwd is required" });
+          return;
+        }
+        try {
+          const created = await createWorktree({
+            repoDir,
+            branch: body.branch?.trim() || undefined,
+            baseRef: body.baseRef?.trim() || undefined,
+          });
+          json(res, 200, created);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          // Dirty tree / not-a-repo are the user's to resolve, not bugs.
+          const expected =
+            message.includes("uncommitted changes") || message.includes("Not a git repository");
+          json(res, expected ? 409 : 500, { error: message });
+        }
+      });
+      return;
+    }
+
+    // Every managed copy of a repo with the state the picker needs to decide
+    // what to offer: branch, unsaved files, unmerged commits, and why a copy
+    // cannot be reclaimed. `busy` paths come from the caller (the app knows its
+    // own windows; the daemon does not), repeated as `busy=` params.
+    if (method === "GET" && (url === "/worktrees" || url.startsWith("/worktrees?"))) {
+      const params = new URL(url, `http://${host}`).searchParams;
+      const target = params.get("cwd")?.trim() || cwd;
+      void worktreeStatuses(target, params.getAll("busy"))
+        .then((worktrees) => json(res, 200, { worktrees }))
+        .catch((err) => {
+          // Not-a-repo is the common case here, not a fault: answer "none".
+          log("INFO", "app-sidecar", "worktreeStatuses failed", {
+            message: err instanceof Error ? err.message : String(err),
+          });
+          json(res, 200, { worktrees: [] });
+        });
+      return;
+    }
+
+    // Remove one copy. `force` is the user having seen what would be lost and
+    // said yes anyway, so it is never defaulted on.
+    //
+    // `path` arrives from the client, and a request naming a path is not
+    // permission to delete it: `removeWorktree` re-derives the managed root
+    // from the repo itself and refuses anything outside it, or reached through
+    // a symlink. The check lives there so no caller can skip it.
+    if (method === "DELETE" && url === "/worktree") {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
+        let body: { cwd?: string; path?: string; force?: boolean };
+        try {
+          body = JSON.parse(raw) as { cwd?: string; path?: string; force?: boolean };
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        const worktreePath = body.path?.trim();
+        if (!worktreePath) {
+          json(res, 400, { error: "path is required" });
+          return;
+        }
+        const release = await removeWorktree({
+          repoDir: body.cwd?.trim() || cwd,
+          worktreePath,
+          force: body.force === true,
+        });
+        // removeWorktree never throws; a refusal is a 409 the UI shows as
+        // written, matching the dirty-checkout gate on POST above.
+        json(res, release.freed ? 200 : 409, release);
+      });
+      return;
+    }
+
+    // Reclaim every copy that provably holds no work. Never forces: anything
+    // with unsaved or unmerged changes comes back under `kept` with a reason
+    // and waits for a human. Called on window close and on daemon startup.
+    if (method === "POST" && url === "/worktrees/sweep") {
+      void readBody(req, res).then(async (raw) => {
+        if (raw === null) return;
+        let body: { cwd?: string; busyPaths?: string[] };
+        try {
+          body = JSON.parse(raw) as { cwd?: string; busyPaths?: string[] };
+        } catch {
+          json(res, 400, { error: "invalid JSON body" });
+          return;
+        }
+        const busy = Array.isArray(body.busyPaths)
+          ? body.busyPaths.filter((p): p is string => typeof p === "string")
+          : [];
+        json(res, 200, await sweepWorktrees(body.cwd?.trim() || cwd, busy));
       });
       return;
     }
