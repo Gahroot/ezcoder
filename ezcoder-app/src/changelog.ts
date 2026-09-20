@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.68.0",
+    date: "2026-09-20",
+    items: [
+      "Open the same project in a second window and it now gets its own private copy on its own branch, so two agents can never scribble over each other. The best part is you never clean up after it. The moment a copy has nothing left in it, it vanishes on its own. Anything still holding unsaved or unmerged work stays right where it is and tells you exactly what it is guarding.",
+      "Your agents can finally work in parallel for real. Hand a subagent `isolate` and it gets a whole copy of your repo to tear through, free to touch any file it needs. If it commits, you keep the branch. If it does not, the copy disappears like it was never there.",
+      "Every spare copy is now visible in one place. The project picker lists what each one is holding in plain words, like `2 unsaved files`, and clears out the empty ones in a single click. Nothing with real work inside it ever goes without you saying so twice.",
+    ],
+  },
+  {
     version: "0.67.0",
     date: "2026-09-19",
     items: [
