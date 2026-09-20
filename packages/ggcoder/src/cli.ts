@@ -77,6 +77,7 @@ import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
 import { setProviderDiagnostic } from "@kenkaiiii/gg-ai";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
+import { matchPromptCommand } from "./core/prompt-command-expansion.js";
 import { createTools } from "./tools/index.js";
 import { cleanupToolOutputs } from "./tools/overflow.js";
 import { CheckpointStore } from "./core/checkpoint-store.js";
@@ -1523,15 +1524,9 @@ function extractText(content: string | Array<{ type: string; text?: string }>): 
 }
 
 function restoredPromptCommandDisplayText(text: string): string | null {
-  for (const command of PROMPT_COMMANDS) {
-    if (text === command.prompt) return `/${command.name}`;
-    const prefix = `${command.prompt}\n\n## User Instructions\n\n`;
-    if (text.startsWith(prefix)) {
-      const args = text.slice(prefix.length).trim();
-      return args ? `/${command.name} ${args}` : `/${command.name}`;
-    }
-  }
-  return null;
+  const match = matchPromptCommand(text, PROMPT_COMMANDS);
+  if (!match) return null;
+  return `/${match.command.name}${match.args ? ` ${match.args}` : ""}`;
 }
 
 export function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
