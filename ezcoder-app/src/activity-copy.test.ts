@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { OUTCOME_PHRASES, outcomePhrase } from "./activity-copy";
 
-describe("GG outcome wording", () => {
+describe("EZ outcome wording", () => {
   it.each(Object.entries(OUTCOME_PHRASES))(
     "keeps %s concise, varied and stable",
     (label, phrases) => {

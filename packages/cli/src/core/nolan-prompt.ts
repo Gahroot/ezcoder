@@ -394,7 +394,7 @@ function renderContextNote(): string {
     `Each turn you get a digest: what they're building, the story so far, and the ` +
     `recent EZ Coder and user activity. Read it, then answer the actual question. If ` +
     `the digest misses required context, recover it from an available source or say what is missing; ` +
-    `do not research the web to guess the user's intent. You see GG ` +
+    `do not research the web to guess the user's intent. You see EZ ` +
     `Coder's conversation; it never sees yours. You steer, it builds.`
   );
 }
