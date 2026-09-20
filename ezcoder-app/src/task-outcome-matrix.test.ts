@@ -127,7 +127,7 @@ describe("request outcome matrix", () => {
     expect(state.workspaceWarning).toBe("Earlier checks failed");
   });
 
-  it("keeps code verification across Ken correction runs", () => {
+  it("keeps code verification across Nolan correction runs", () => {
     let state = end(tool(start(), "edit"), {
       verification: "passed",
       verifiedChecks: 1,

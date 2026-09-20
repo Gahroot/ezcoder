@@ -388,7 +388,7 @@ describe("driveAutopilotCycle — plan branch", () => {
       {
         type: "autopilot_human",
         data: {
-          reason: "Ken did not explicitly approve the plan. Review it before implementation.",
+          reason: "Nolan did not explicitly approve the plan. Review it before implementation.",
         },
       },
     ]);

@@ -74,14 +74,14 @@ describe("bundle-size reporting", () => {
     expect(result.stderr).toBe("");
   });
 
-  it.each(["dist:ggcoder", "sidecar"])("reports %s growth without failing CI", (artifact) => {
-    const target = artifact === "dist:ggcoder"
-      ? path.join(root, "packages/ggcoder/dist/index.js")
-      : path.join(root, "gg-app/src-tauri/sidecar/app-sidecar.mjs");
+  it.each(["dist:ezcoder", "sidecar"])("reports %s growth without failing CI", (artifact) => {
+    const target = artifact === "dist:ezcoder"
+      ? path.join(root, "packages/cli/dist/index.js")
+      : path.join(root, "ezcoder-app/src-tauri/sidecar/app-sidecar.mjs");
     mkdirSync(path.dirname(target), { recursive: true });
     writeFileSync(target, Buffer.alloc(200_000));
     if (artifact === "sidecar") {
-      mkdirSync(path.join(root, "gg-app/src-tauri/sidecar/skills"));
+      mkdirSync(path.join(root, "ezcoder-app/src-tauri/sidecar/skills"));
     }
     writeFileSync(
       path.join(root, "bench/baseline/sizes.json"),

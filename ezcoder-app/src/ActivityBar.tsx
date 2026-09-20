@@ -149,8 +149,8 @@ const SHORT_LABELS: Record<string, string> = {
   "Checking the changes…": "Checking…",
   "Running verification…": "Verifying…",
   "Reviewing the work…": "Reviewing…",
-  "Applying Ken’s corrections…": "Fixing review notes…",
-  "Preparing Ken’s review…": "Review starting…",
+  "Applying Nolan’s corrections…": "Fixing review notes…",
+  "Preparing Nolan’s review…": "Review starting…",
   "Keeping the task context…": "Saving context…",
   "Continuing the task…": "Continuing…",
   "Continuing with your decision…": "Continuing…",
@@ -169,7 +169,7 @@ const SHORT_LABELS: Record<string, string> = {
   "Cancellation failed · task still running": "Stop failed",
 };
 
-/** The existing animated row now represents a whole task, including Ken's review. */
+/** The existing animated row now represents a whole task, including Nolan's review. */
 export function ActivityBar({
   running,
   activity,

@@ -163,7 +163,7 @@ export async function driveAutopilotCycle(deps: AutopilotCycleDeps): Promise<voi
         deps.emit({
           type: "autopilot_human",
           data: {
-            reason: "Ken did not explicitly approve the plan. Review it before implementation.",
+            reason: "Nolan did not explicitly approve the plan. Review it before implementation.",
           },
         });
         return;

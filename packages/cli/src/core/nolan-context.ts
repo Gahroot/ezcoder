@@ -1,28 +1,28 @@
 /**
- * Ken's context digest — assembled fresh on each `@Ken` question.
+ * Nolan's context digest — assembled fresh on each `@Nolan` question.
  *
- * The build session (GG Coder) and Ken are two separate `AgentSession` objects.
- * Ken never appears in GG Coder's transcript; on each question we read GG
+ * The build session (EZ Coder) and Nolan are two separate `AgentSession` objects.
+ * Nolan never appears in EZ Coder's transcript; on each question we read GG
  * Coder's `getMessages()`, distill it into a cheap text digest, and prepend it
- * to the user's question as Ken's prompt body. Ken's read-only tools fill any
+ * to the user's question as Nolan's prompt body. Nolan's read-only tools fill any
  * gap the digest misses (he can read the actual files or screenshot the UI).
  *
  * Kept pure + dependency-light so it's unit-testable without booting the sidecar
  * (which runs `main()` at import time).
  *
  * NOTE: static project docs (CLAUDE.md/AGENTS.md) are NOT part of this digest
- * — they're folded into Ken's cached system prompt once per session
- * (`buildKenSystemPrompt`/`buildKenAutopilotSystemPrompt` in ken-prompt.ts) so
+ * — they're folded into Nolan's cached system prompt once per session
+ * (`buildNolanSystemPrompt`/`buildNolanAutopilotSystemPrompt` in nolan-prompt.ts) so
  * they hit the provider prompt cache instead of being re-sent uncached on
- * every `@Ken` question and every autopilot review round.
+ * every `@Nolan` question and every autopilot review round.
  */
-import type { Message, ContentPart, ToolResult } from "@kenkaiiii/gg-ai";
+import type { Message, ContentPart, ToolResult } from "@prestyj/ai";
 import { matchExpandedCommand, type WorkflowCommandSpec } from "./autopilot-gate.js";
 import { AUTOPILOT_INJECTION_PREAMBLE } from "./autopilot-cycle.js";
 import { collectVerificationEvidence, type VerificationEvidence } from "./verification-evidence.js";
 
 /** How many of the most recent build-session messages to inline verbatim. */
-export const KEN_RECENT_MESSAGE_LIMIT = 20;
+export const NOLAN_RECENT_MESSAGE_LIMIT = 20;
 
 /** Marker the compactor prepends to its summary user-message. */
 const COMPACTION_SUMMARY_MARKER = "[Previous conversation summary]";
@@ -36,14 +36,14 @@ const ORIGINAL_REQUEST_CAP = 4000;
 /** Extra context preserves older user decisions, not old tool/assistant chatter. */
 const EARLIER_REQUESTS_CAP = 8000;
 
-/** Label for a user-role message that was actually injected by Autopilot Ken.
- *  Without it, multi-round cycles render Ken's own fix prompts as `**User:**`
+/** Label for a user-role message that was actually injected by Autopilot Nolan.
+ *  Without it, multi-round cycles render Nolan's own fix prompts as `**User:**`
  *  and he starts reviewing against his own last prompt instead of the user's
  *  original ask. Referenced by the autopilot system prompt — keep in sync. */
-export const INJECTED_PROMPT_LABEL = "**Ken autopilot (injected):**";
+export const INJECTED_PROMPT_LABEL = "**Nolan autopilot (injected):**";
 
-export interface KenDigestInput {
-  /** The user's `@Ken …` text (already stripped of the mention). */
+export interface NolanDigestInput {
+  /** The user's `@Nolan …` text (already stripped of the mention). */
   question: string;
   cwd: string;
   gitBranch: string | null;
@@ -61,7 +61,7 @@ export interface KenDigestInput {
    *  its own section so it can never scroll out of the rolling recent-activity
    *  window during multi-round cycles. */
   originalRequest?: string;
-  /** Prompt bodies Autopilot Ken injected into the build session. Matching
+  /** Prompt bodies Autopilot Nolan injected into the build session. Matching
    *  user messages render under {@link INJECTED_PROMPT_LABEL}, not `**User:**`. */
   injectedPrompts?: readonly string[];
   /** Known workflow commands (built-in + custom). Expanded template bodies in
@@ -123,7 +123,7 @@ interface RenderMessageOptions {
 
 /** Render one user-role message body with provenance-aware labeling:
  *  autopilot-injected prompts and workflow-command expansions are labeled as
- *  what they ARE, so Ken never mistakes either for a user-authored ask. */
+ *  what they ARE, so Nolan never mistakes either for a user-authored ask. */
 function renderUserText(
   text: string,
   opts: RenderMessageOptions,
@@ -160,7 +160,7 @@ function renderMessage(msg: Message, opts: RenderMessageOptions): string | null 
 
   if (msg.role === "assistant") {
     if (typeof msg.content === "string") {
-      return msg.content.trim() ? `**GG Coder:** ${cap(msg.content)}` : null;
+      return msg.content.trim() ? `**EZ Coder:** ${cap(msg.content)}` : null;
     }
     const parts: string[] = [];
     const calls: string[] = [];
@@ -171,7 +171,7 @@ function renderMessage(msg: Message, opts: RenderMessageOptions): string | null 
     const segments: string[] = [];
     if (parts.length > 0) segments.push(cap(parts.join("\n")));
     if (calls.length > 0) segments.push(`[tools: ${calls.join(", ")}]`);
-    return segments.length > 0 ? `**GG Coder:** ${segments.join(" ")}` : null;
+    return segments.length > 0 ? `**EZ Coder:** ${segments.join(" ")}` : null;
   }
 
   if (msg.role === "tool") {
@@ -198,37 +198,37 @@ function renderMessage(msg: Message, opts: RenderMessageOptions): string | null 
 
 /**
  * Fixed instruction fed into the digest's `question` slot in autopilot mode.
- * Autopilot Ken doesn't answer a user — he reviews the just-finished GG Coder
+ * Autopilot Nolan doesn't answer a user — he reviews the just-finished EZ Coder
  * turn against the user's original ask and replies with a verdict only. The
  * verdict format itself is taught by his system prompt; this just points him at
  * the transcript and demands the machine-parseable answer.
  */
 export const AUTOPILOT_REVIEW_INSTRUCTION =
-  "GG Coder just finished a turn. Review its work against the user's original " +
-  "ask and genuine user corrections (including retained earlier decisions; the 'Original user request' section pins the current turn). Lines labeled 'Ken " +
+  "EZ Coder just finished a turn. Review its work against the user's original " +
+  "ask and genuine user corrections (including retained earlier decisions; the 'Original user request' section pins the current turn). Lines labeled 'Nolan " +
   "autopilot (injected)' are your own earlier fix prompts, NOT user asks. " +
   "Reply with your verdict ONLY — the first line must be exactly PROMPT, " +
-  "ALL_CLEAR, IGNORE, or HUMAN, with the payload after. If GG Coder ended by " +
+  "ALL_CLEAR, IGNORE, or HUMAN, with the payload after. If EZ Coder ended by " +
   "asking the user a question or presenting options, use HUMAN only when the " +
   "answer requires an actual user-level decision: intent, preference, missing " +
   "product requirement, credential/secret, external access, budget/cost, or " +
   "destructive/irreversible approval. If the question is only permission to " +
   "continue work that is mechanically implied by the user's original ask and " +
-  "safe for GG Coder to do without new information, use PROMPT with the next " +
+  "safe for EZ Coder to do without new information, use PROMPT with the next " +
   "concrete follow-up instead. No greetings, no mentorship prose.";
 
 /** Inputs the sidecar gathers for an autopilot review digest (everything
- *  `buildKenDigest` needs except the fixed review instruction, which this helper
+ *  `buildNolanDigest` needs except the fixed review instruction, which this helper
  *  supplies as the `question`). */
-export type KenAutopilotContextInput = Omit<KenDigestInput, "question">;
+export type NolanAutopilotContextInput = Omit<NolanDigestInput, "question">;
 
 /**
- * Build the autopilot-review digest: identical to a normal Ken digest but with
+ * Build the autopilot-review digest: identical to a normal Nolan digest but with
  * the fixed {@link AUTOPILOT_REVIEW_INSTRUCTION} as the trailing question, so
- * Ken reviews the transcript instead of answering a user. Pure — no I/O.
+ * Nolan reviews the transcript instead of answering a user. Pure — no I/O.
  */
-export function buildKenAutopilotContext(input: KenAutopilotContextInput): string {
-  return buildKenDigest({ ...input, question: AUTOPILOT_REVIEW_INSTRUCTION });
+export function buildNolanAutopilotContext(input: NolanAutopilotContextInput): string {
+  return buildNolanDigest({ ...input, question: AUTOPILOT_REVIEW_INSTRUCTION });
 }
 
 /** Max chars of the inlined plan markdown in a plan-review digest. Plans are
@@ -238,13 +238,13 @@ const PLAN_CONTENT_CAP = 8000;
 
 /**
  * Fixed instruction fed into the digest's `question` slot for an autopilot
- * PLAN review. In autopilot there is no user in the loop: Ken himself is the
+ * PLAN review. In autopilot there is no user in the loop: Nolan himself is the
  * plan reviewer — ALL_CLEAR approves (auto-accept + implementation starts),
  * PROMPT sends revision feedback, HUMAN is reserved for genuine user-level
  * decisions. IGNORE is not approval: the cycle stops rather than implementing.
  */
 export const AUTOPILOT_PLAN_REVIEW_INSTRUCTION =
-  "GG Coder submitted an implementation plan (the 'Plan under review' section " +
+  "EZ Coder submitted an implementation plan (the 'Plan under review' section " +
   "above). You are the reviewer — there is no user in the loop. Reply with " +
   "your verdict ONLY — the first line must be exactly ALL_CLEAR (approve — the " +
   "plan is sound and implementation starts immediately), PROMPT + feedback " +
@@ -260,14 +260,14 @@ export const AUTOPILOT_PLAN_REVIEW_INSTRUCTION =
  * spliced in before the trailing question so it sits closest to the
  * instruction that references it.
  */
-export function buildKenAutopilotPlanContext(
-  input: KenAutopilotContextInput & { planContent: string },
+export function buildNolanAutopilotPlanContext(
+  input: NolanAutopilotContextInput & { planContent: string },
 ): string {
   const { planContent, ...rest } = input;
-  const digest = buildKenDigest({ ...rest, question: AUTOPILOT_PLAN_REVIEW_INSTRUCTION });
+  const digest = buildNolanDigest({ ...rest, question: AUTOPILOT_PLAN_REVIEW_INSTRUCTION });
   const planSection = `## Plan under review\n${capContext(planContent.trim(), PLAN_CONTENT_CAP, "plan")}`;
   // Insert the plan section right before the final "They just asked you"
-  // section (always the last one buildKenDigest appends).
+  // section (always the last one buildNolanDigest appends).
   const marker = "\n\n## They just asked you\n";
   const idx = digest.lastIndexOf(marker);
   if (idx === -1) return `${digest}\n\n${planSection}`;
@@ -275,11 +275,11 @@ export function buildKenAutopilotPlanContext(
 }
 
 /**
- * Build Ken's full context digest string. Pure — no I/O. The sidecar gathers the
+ * Build Nolan's full context digest string. Pure — no I/O. The sidecar gathers the
  * inputs (project context, git, messages) and calls this.
  */
-export function buildKenDigest(input: KenDigestInput): string {
-  const recentLimit = input.recentLimit ?? KEN_RECENT_MESSAGE_LIMIT;
+export function buildNolanDigest(input: NolanDigestInput): string {
+  const recentLimit = input.recentLimit ?? NOLAN_RECENT_MESSAGE_LIMIT;
   const platform = input.platform ?? process.platform;
 
   // Find the latest compaction summary; everything newer is "recent activity".
@@ -314,7 +314,7 @@ export function buildKenDigest(input: KenDigestInput): string {
   const sections: string[] = [];
 
   sections.push(
-    `## Who you are\nYou are Ken Kai, mentoring the user inside GG Coder. Your persona is in your system prompt. Below is what GG Coder and the user are working on.`,
+    `## Who you are\nYou are Nolan Grout, mentoring the user inside EZ Coder. Your persona is in your system prompt. Below is what EZ Coder and the user are working on.`,
   );
 
   const building: string[] = [];
@@ -332,7 +332,7 @@ export function buildKenDigest(input: KenDigestInput): string {
   }
 
   // Pinned so multi-round autopilot cycles can never lose the ask under review
-  // to the rolling recent-activity window (the drift that made Ken judge his
+  // to the rolling recent-activity window (the drift that made Nolan judge his
   // own injected prompt as "the user's request").
   if (input.originalRequest?.trim()) {
     sections.push(
@@ -382,7 +382,7 @@ export function buildKenDigest(input: KenDigestInput): string {
   }
 
   sections.push(
-    `## Recent activity (GG Coder and user)\n${
+    `## Recent activity (EZ Coder and user)\n${
       renderedRecent.length > 0 ? renderedRecent.join("\n\n") : "(no conversation yet)"
     }`,
   );

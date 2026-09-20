@@ -117,7 +117,7 @@ const reason = (d: Record<string, unknown>, fallback: string): string =>
 
 function finish(s: TaskActivity, now: number): TaskActivity {
   if (["failed", "stopped", "attention"].includes(s.phase)) return { ...s, reviewPending: false };
-  const reviewed = s.reviewed ? "Ken reviewed this task." : "Ken did not review this task.";
+  const reviewed = s.reviewed ? "Nolan reviewed this task." : "Nolan did not review this task.";
   if (s.verification === "failed")
     return {
       ...s,
@@ -293,7 +293,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
           ...s,
           project,
           phase: "reviewing",
-          label: "Ken reviewing…",
+          label: "Nolan reviewing…",
           reviewPending: true,
           connectionLost: false,
           endedAt: null,
@@ -340,7 +340,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
       return {
         ...(continuation ? s : { ...INITIAL_ACTIVITY, project: s.project }),
         phase: "working",
-        label: continuation ? "Applying Ken’s corrections…" : wording.label,
+        label: continuation ? "Applying Nolan’s corrections…" : wording.label,
         phraseCounts: wording.phraseCounts,
         detail: "",
         startedAt: continuation ? s.startedAt : now,
@@ -526,7 +526,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
           ? candidate
           : undefined;
       const codeChanged = s.codeChanged || turn?.changed === true;
-      // Continue to judge all edits in a Ken correction cycle, but never borrow
+      // Continue to judge all edits in a Nolan correction cycle, but never borrow
       // earlier turns' checks to describe a fresh read-only request.
       const statusData = turn && !codeChanged ? turn : d;
       const verification = ["passed", "failed", "incomplete", "not_recorded"].includes(
@@ -563,7 +563,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
                 : "",
       };
       if (s.phase === "attention") return next;
-      // A blocked verification gate cannot hand off to Ken, even if an older
+      // A blocked verification gate cannot hand off to Nolan, even if an older
       // sidecar optimistically announced a pending review on run_end.
       if (next.verification === "failed" || next.verification === "incomplete")
         return finish(next, now);
@@ -576,14 +576,14 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
           endedAt: now,
         };
       return d.reviewPending === true
-        ? { ...next, phase: "reviewing", label: "Preparing Ken’s review…", reviewPending: true }
+        ? { ...next, phase: "reviewing", label: "Preparing Nolan’s review…", reviewPending: true }
         : finish(next, now);
     }
     case "autopilot_review_start":
       return {
         ...s,
         phase: "reviewing",
-        label: "Ken reviewing…",
+        label: "Nolan reviewing…",
         reviewPending: true,
         endedAt: null,
         startedAt: s.startedAt ?? now,
@@ -592,7 +592,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
       return {
         ...s,
         phase: "working",
-        label: "Applying Ken’s corrections…",
+        label: "Applying Nolan’s corrections…",
         reviewPending: true,
         endedAt: null,
       };
@@ -622,7 +622,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
         ...s,
         phase: "attention",
         label: "Your decision needed",
-        detail: reason(d, "Review Ken’s message in chat before continuing."),
+        detail: reason(d, "Review Nolan’s message in chat before continuing."),
         endedAt: now,
         reviewPending: false,
       };
@@ -632,7 +632,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
         phase: "stopped",
         label: "Paused · review limit reached",
         detail:
-          "Ken reached the correction limit. Review the remaining work in chat before continuing.",
+          "Nolan reached the correction limit. Review the remaining work in chat before continuing.",
         endedAt: now,
         reviewPending: false,
       };
@@ -640,7 +640,7 @@ export function reduceTaskActivity(s: TaskActivity, e: SidecarEvent, now: number
       return {
         ...s,
         phase: "failed",
-        label: "Ken’s review failed",
+        label: "Nolan’s review failed",
         detail: "The work was not approved. Review the error in chat before retrying.",
         endedAt: now,
         reviewPending: false,
