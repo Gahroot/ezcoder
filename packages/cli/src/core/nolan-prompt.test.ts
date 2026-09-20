@@ -258,6 +258,20 @@ describe("EZ Coder capabilities — both modes know what the executor can do", (
       expect(prompt).toContain("then delegate the real work");
     }
   });
+
+  it("names the executor EZ Coder everywhere, with no upstream GG branding", async () => {
+    // Fork regression: this prompt is vendored from upstream, whose executor is
+    // called "GG Coder". The sync rebrand is a line-wise substitution, so it
+    // silently misses a name split across two template-literal lines — exactly
+    // how "You see GG ` + `Coder's conversation" reached users. Assert on the
+    // built prompt (whitespace-tolerant) so any future split-line leak fails
+    // here instead of shipping.
+    const chat = await buildNolanSystemPrompt(TEST_CWD);
+    expect(chat).toMatch(/You see EZ\s+Coder's conversation/);
+    for (const prompt of [chat, await buildNolanAutopilotSystemPrompt(TEST_CWD)]) {
+      expect(prompt).not.toMatch(/\bGG\b/);
+    }
+  });
 });
 
 describe("buildNolanSystemPrompt / buildNolanAutopilotSystemPrompt — project context", () => {
