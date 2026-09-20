@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { arrangeAllWindows, setupWindows, showPage, windowPages } from "./agent";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 
@@ -72,8 +72,13 @@ describe("WindowLayoutButton (Windows/Linux fallback)", () => {
     render(<WindowLayoutButton />);
     fireEvent.click(screen.getByRole("button", { name: "Arrange into multiple project windows" }));
 
-    await waitFor(() => expect(windowPages).toHaveBeenCalled());
+    // Wait for the resolved page count to be APPLIED, not merely requested:
+    // asserting the absence of Page rows right after the click would pass
+    // vacuously, before `windowPages()` resolves, even if the gate were broken.
+    await act(async () => {});
+    expect(windowPages).toHaveBeenCalled();
     expect(screen.queryByRole("menuitem", { name: /Page 1/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Page 2/ })).toBeNull();
   });
 
   it("switches page from the page rows once a second page exists", async () => {

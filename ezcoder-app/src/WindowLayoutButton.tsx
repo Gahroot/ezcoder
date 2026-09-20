@@ -270,9 +270,10 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
 }
 
 /**
- * Shortcut prefix for the host OS. The page shortcut is Cmd+N on macOS and
- * Ctrl+N everywhere else (see App.tsx's `metaKey || ctrlKey`), so the hint must
- * follow — showing ⌘ to a Windows user names a key their keyboard lacks.
+ * Shortcut prefix for the host OS. The page shortcut is ⌘1/⌘2 on macOS and
+ * Ctrl+1/Ctrl+2 everywhere else (App.tsx binds `metaKey || ctrlKey`), so the
+ * hint must follow — showing ⌘ to a Windows user names a key their keyboard
+ * lacks.
  */
 function modifierSymbol(doc: Document = document): string {
   return doc.documentElement.classList.contains("platform-macos") ? "\u2318" : "Ctrl+";
