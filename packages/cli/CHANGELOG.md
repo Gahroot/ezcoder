@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.21.0
+
+### Minor Changes
+
+- Automatic worktree cleanup, plus `isolate: true` for subagents so a child works in its own copy of the repo on its own branch
+
+### Patch Changes
+
+- @prestyj/ai@5.21.0
+- @prestyj/agent@5.21.0
+- @prestyj/core@5.21.0
+
 ## 5.20.0
 
 ### Minor Changes
