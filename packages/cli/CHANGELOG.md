@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.22.1
+
+### Patch Changes
+
+- Fix leftover upstream "GG" branding in Nolan's context prompt and the task activity copy.
+  - @prestyj/ai@5.22.1
+  - @prestyj/agent@5.22.1
+  - @prestyj/core@5.22.1
+
 ## 5.22.0
 
 ### Minor Changes
