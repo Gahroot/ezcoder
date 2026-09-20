@@ -1,21 +1,22 @@
 import { describe, it, expect } from "vitest";
 import os from "node:os";
 import {
-  buildNolanDigest,
-  buildNolanAutopilotContext,
-  buildNolanAutopilotPlanContext,
+  buildKenDigest,
+  buildKenAutopilotContext,
+  buildKenAutopilotPlanContext,
   AUTOPILOT_REVIEW_INSTRUCTION,
   AUTOPILOT_PLAN_REVIEW_INSTRUCTION,
-  NOLAN_RECENT_MESSAGE_LIMIT,
+  KEN_RECENT_MESSAGE_LIMIT,
   INJECTED_PROMPT_LABEL,
-} from "./nolan-context.js";
+} from "./ken-context.js";
 import { USER_INSTRUCTIONS_HEADER } from "./autopilot-gate.js";
+import { frameAutopilotInjection } from "./autopilot-cycle.js";
 import { PROMPT_COMMANDS } from "./prompt-commands.js";
 import { createTools } from "../tools/index.js";
-import type { Message } from "@prestyj/ai";
+import type { Message } from "@kenkaiiii/gg-ai";
 
-// Mirror the sidecar's Nolan allow-list so the filter test tracks the real set.
-const NOLAN_ALLOWED_TOOLS = [
+// Mirror the sidecar's Ken allow-list so the filter test tracks the real set.
+const KEN_ALLOWED_TOOLS = [
   "read",
   "grep",
   "find",
@@ -27,28 +28,28 @@ const NOLAN_ALLOWED_TOOLS = [
   "steroids",
 ];
 
-// Mirror of AgentSession.isToolAllowed (which is private): Nolan whitelists no
+// Mirror of AgentSession.isToolAllowed (which is private): Ken whitelists no
 // MCP server, so a tool passes only when its name is in the allow-list.
 function isToolAllowed(name: string): boolean {
-  return NOLAN_ALLOWED_TOOLS.includes(name);
+  return KEN_ALLOWED_TOOLS.includes(name);
 }
 
-describe("Nolan allowedTools filter", () => {
-  it("excludes every mutating tool from the Nolan set", async () => {
+describe("Ken allowedTools filter", () => {
+  it("excludes every mutating tool from the Ken set", async () => {
     const { tools, processManager, lspManager } = await createTools(os.tmpdir(), {
       lspDiagnostics: false,
       steroidsBin: "/nonexistent/steroids",
     });
     try {
-      const nolanTools = tools.filter((t) => isToolAllowed(t.name)).map((t) => t.name);
+      const kenTools = tools.filter((t) => isToolAllowed(t.name)).map((t) => t.name);
 
       // The mutating / orchestration tools must NOT survive the filter.
       for (const banned of ["write", "edit", "bash", "tasks", "subagent", "generate_image"]) {
-        expect(nolanTools).not.toContain(banned);
+        expect(kenTools).not.toContain(banned);
       }
       // The read-only research/vision tools must survive.
       for (const allowed of ["read", "grep", "find", "ls", "screenshot", "steroids"]) {
-        expect(nolanTools).toContain(allowed);
+        expect(kenTools).toContain(allowed);
       }
     } finally {
       processManager.shutdownAll();
@@ -57,7 +58,7 @@ describe("Nolan allowedTools filter", () => {
   });
 
   it("allows the native steroids tool but blocks every MCP tool", () => {
-    // steroids is Nolan's research corpus: a native tool, no MCP server needed.
+    // steroids is Ken's research corpus: a native tool, no MCP server needed.
     expect(isToolAllowed("steroids")).toBe(true);
     // Any MCP server (e.g. a user-configured one) is blocked, even if it
     // exposes an innocuous-looking name.
@@ -66,7 +67,7 @@ describe("Nolan allowedTools filter", () => {
   });
 });
 
-describe("buildNolanDigest", () => {
+describe("buildKenDigest", () => {
   const base = {
     question: "what next?",
     cwd: "/tmp/proj",
@@ -92,7 +93,7 @@ describe("buildNolanDigest", () => {
         content: [{ type: "tool_result", toolCallId: "bg", content: "ID: task-1", isError: false }],
       },
     ];
-    const digest = buildNolanDigest({
+    const digest = buildKenDigest({
       ...base,
       messages,
       verificationProblem: null,
@@ -119,7 +120,7 @@ describe("buildNolanDigest", () => {
         ],
       },
     ];
-    const digest = buildNolanDigest({
+    const digest = buildKenDigest({
       ...base,
       messages,
       verificationEvidence: [],
@@ -127,7 +128,7 @@ describe("buildNolanDigest", () => {
     });
     expect(digest).toContain("Current host gate: satisfied");
     expect(digest).not.toContain("FAILED: `pnpm test`");
-    const unresolved = buildNolanDigest({
+    const unresolved = buildKenDigest({
       ...base,
       messages,
       verificationEvidence: [],
@@ -137,7 +138,7 @@ describe("buildNolanDigest", () => {
   });
 
   it("includes the env and the question", () => {
-    const digest = buildNolanDigest({ ...base, messages: [] });
+    const digest = buildKenDigest({ ...base, messages: [] });
     expect(digest).toContain("/tmp/proj");
     expect(digest).toContain("main");
     expect(digest).toContain("what next?");
@@ -146,15 +147,168 @@ describe("buildNolanDigest", () => {
 
   it("caps recent activity at the last-N messages", () => {
     const messages: Message[] = [];
-    for (let i = 0; i < NOLAN_RECENT_MESSAGE_LIMIT + 10; i++) {
+    for (let i = 0; i < KEN_RECENT_MESSAGE_LIMIT + 10; i++) {
       messages.push({ role: "user", content: `msg-${i}` });
     }
-    const digest = buildNolanDigest({ ...base, messages });
-    // The earliest messages fall outside the cap.
-    expect(digest).not.toContain("msg-0");
-    expect(digest).not.toContain("msg-5");
+    const digest = buildKenDigest({ ...base, messages });
+    // Older user requests survive separately; recent activity stays bounded.
+    const recent = digest.split("## Recent activity (GG Coder and user)")[1];
+    expect(recent).not.toContain("msg-0");
+    expect(recent).not.toContain("msg-5");
+    expect(digest).toContain("**User:** msg-0");
+    expect(digest).toContain("**User:** msg-5");
     // The newest message is kept.
-    expect(digest).toContain(`msg-${NOLAN_RECENT_MESSAGE_LIMIT + 9}`);
+    expect(digest).toContain(`msg-${KEN_RECENT_MESSAGE_LIMIT + 9}`);
+  });
+
+  it("retains early constraints and later corrections for manual and autopilot reviews", () => {
+    const messages: Message[] = [
+      { role: "user", content: "CSV only, no new dependencies." },
+      { role: "assistant", content: "SUGGESTED: rewrite in Excel." },
+      {
+        role: "user",
+        content: [{ type: "text", text: "Correction: preserve the current filters too." }],
+      },
+      ...Array.from({ length: 25 }, (): Message => ({
+        role: "assistant",
+        content: "Still working.",
+      })),
+    ];
+    for (const digest of [
+      buildKenDigest({ ...base, messages }),
+      buildKenAutopilotContext({ ...base, messages }),
+    ]) {
+      expect(digest).toContain("CSV only, no new dependencies.");
+      expect(digest).toContain("Correction: preserve the current filters too.");
+      expect(digest.indexOf("CSV only")).toBeLessThan(digest.indexOf("Correction:"));
+      expect(digest).not.toContain("SUGGESTED:");
+      expect(digest).not.toContain("Context incomplete");
+    }
+  });
+
+  it("does not retain injected prompts as user decisions after restart", () => {
+    const messages: Message[] = [
+      { role: "user", content: frameAutopilotInjection("Add analytics.") },
+      { role: "user", content: "Old unframed injection." },
+      { role: "user", content: "Keep it dependency-free." },
+      ...Array.from({ length: 25 }, (): Message => ({ role: "assistant", content: "Working." })),
+    ];
+    const digest = buildKenDigest({
+      ...base,
+      messages,
+      injectedPrompts: ["Old unframed injection."],
+    });
+    expect(digest).toContain("Keep it dependency-free.");
+    expect(digest).not.toContain("Add analytics.");
+    expect(digest).not.toContain("Old unframed injection.");
+    const recent = buildKenDigest({ ...base, messages: [messages[0]] });
+    expect(recent).toContain(INJECTED_PROMPT_LABEL);
+    expect(recent).not.toContain("**User:**");
+  });
+
+  it("bounds retained decisions and explicitly discloses omitted or truncated context", () => {
+    const messages: Message[] = [
+      ...Array.from({ length: 100 }, (_, i): Message => ({
+        role: "user",
+        content: `Decision ${i}: ${"x".repeat(500)}`,
+      })),
+      ...Array.from({ length: 25 }, (): Message => ({ role: "assistant", content: "Working." })),
+    ];
+    const digest = buildKenDigest({ ...base, messages });
+    expect(digest).toContain("Context incomplete: some earlier user messages");
+    expect(digest).toContain("Decision 99:");
+    expect(digest.length).toBeLessThan(11000);
+    expect(buildKenDigest({ ...base, messages: [], originalRequest: "x".repeat(5000) })).toContain(
+      "Context incomplete: original request was truncated",
+    );
+    expect(
+      buildKenDigest({
+        ...base,
+        messages: [{ role: "user", content: "[Previous conversation summary]" + "x".repeat(5000) }],
+      }),
+    ).toContain("Context incomplete: conversation summary was truncated");
+  });
+
+  it("retains only human decisions and labels recent automation in both modes", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: "CSV only.",
+        provenance: { source: "human", kind: "prompt", visibility: "transcript" },
+      },
+      { role: "user", content: "Legacy human constraint: no dependencies." },
+      {
+        role: "user",
+        content: "Old verification reminder.",
+        provenance: { source: "runtime", kind: "completion_gate", visibility: "hidden" },
+      },
+      {
+        role: "user",
+        content: "Old agent continuation.",
+        provenance: { source: "agent", kind: "automation", visibility: "hidden" },
+      },
+      ...Array.from({ length: 25 }, (): Message => ({ role: "assistant", content: "Progress." })),
+      {
+        role: "user",
+        content: "Latest verification reminder.",
+        provenance: { source: "runtime", kind: "completion_gate", visibility: "hidden" },
+      },
+      {
+        role: "user",
+        content: "Latest agent continuation.",
+        provenance: { source: "agent", kind: "automation", visibility: "hidden" },
+      },
+      {
+        role: "user",
+        content: "Correction: preserve filters.",
+        provenance: { source: "human", kind: "steering", visibility: "transcript" },
+      },
+    ];
+    for (const digest of [
+      buildKenDigest({ ...base, messages }),
+      buildKenAutopilotContext({ ...base, messages }),
+    ]) {
+      expect(digest).toContain("**User:** CSV only.");
+      expect(digest).toContain("**User:** Legacy human constraint: no dependencies.");
+      expect(digest).toContain("**User:** Correction: preserve filters.");
+      expect(digest).not.toContain("Old verification reminder.");
+      expect(digest).not.toContain("Old agent continuation.");
+      expect(digest).toContain("**Runtime (not a user request):** Latest verification reminder.");
+      expect(digest).toContain(
+        "**Agent automation (not a user request):** Latest agent continuation.",
+      );
+      expect(digest).not.toContain("**User:** Latest");
+    }
+  });
+
+  it("runtime reminders cannot consume the retained user-decision budget", () => {
+    const messages: Message[] = [
+      { role: "user", content: "Keep this genuine requirement." },
+      ...Array.from({ length: 40 }, (): Message => ({
+        role: "user",
+        content: "Internal reminder. ".repeat(300),
+        provenance: { source: "runtime", kind: "notification", visibility: "hidden" },
+      })),
+      ...Array.from({ length: 25 }, (): Message => ({ role: "assistant", content: "Progress." })),
+    ];
+    const digest = buildKenDigest({ ...base, messages });
+    expect(digest).toContain("Keep this genuine requirement.");
+    expect(digest).not.toContain("Internal reminder.");
+    expect(digest).not.toContain("Context incomplete");
+  });
+
+  it("preserves provenance-tagged compaction summaries", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: "[Previous conversation summary] User chose CSV and rejected Excel.",
+        provenance: { source: "runtime", kind: "compaction_summary", visibility: "summary" },
+      },
+    ];
+    const digest = buildKenDigest({ ...base, messages });
+    expect(digest).toContain("## Story so far");
+    expect(digest).toContain("User chose CSV and rejected Excel.");
+    expect(digest).not.toContain("**User:**");
   });
 
   it("strips image blocks from user messages", () => {
@@ -167,23 +321,23 @@ describe("buildNolanDigest", () => {
         ],
       },
     ];
-    const digest = buildNolanDigest({ ...base, messages });
+    const digest = buildKenDigest({ ...base, messages });
     expect(digest).toContain("look at this");
     expect(digest).not.toContain("AAAABBBBCCCC");
   });
 
-  it("buildNolanAutopilotContext injects the fixed review instruction as the question", () => {
+  it("buildKenAutopilotContext injects the fixed review instruction as the question", () => {
     const messages: Message[] = [
       { role: "user", content: "add a login form" },
       { role: "assistant", content: "Added the form." },
     ];
-    const digest = buildNolanAutopilotContext({
+    const digest = buildKenAutopilotContext({
       cwd: base.cwd,
       gitBranch: base.gitBranch,
       platform: base.platform,
       messages,
     });
-    // The transcript is still inlined (Nolan reviews it) ...
+    // The transcript is still inlined (Ken reviews it) ...
     expect(digest).toContain("add a login form");
     expect(digest).toContain("Added the form.");
     // ... and the trailing question is the fixed autopilot instruction, not a
@@ -227,7 +381,7 @@ describe("buildNolanDigest", () => {
       },
     ];
 
-    const digest = buildNolanAutopilotContext({ ...base, messages });
+    const digest = buildKenAutopilotContext({ ...base, messages });
     const evidence = digest
       .split("## Harness-classified verification evidence")[1]
       .split("## They just asked you")[0];
@@ -237,9 +391,9 @@ describe("buildNolanDigest", () => {
   });
 
   it("autopilot review instruction separates true human decisions from safe implied follow-ups", () => {
-    // EZ Coder ending with a question/options is HUMAN only when it needs a
+    // GG Coder ending with a question/options is HUMAN only when it needs a
     // real user-level decision. Permission to continue safe work implied by the
-    // original ask should become a PROMPT, not a blocker. Nolan must also be told
+    // original ask should become a PROMPT, not a blocker. Ken must also be told
     // injected lines are his own — these are leak regressions.
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("asking the user a question");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("HUMAN only when");
@@ -248,19 +402,19 @@ describe("buildNolanDigest", () => {
       "mechanically implied by the user's original ask",
     );
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain(
-      "safe for EZ Coder to do without new information",
+      "safe for GG Coder to do without new information",
     );
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("use PROMPT with the next concrete follow-up");
     expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Original user request");
-    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Nolan autopilot (injected)");
+    expect(AUTOPILOT_REVIEW_INSTRUCTION).toContain("Ken autopilot (injected)");
   });
 
-  it("buildNolanAutopilotPlanContext inlines the plan section + plan instruction", () => {
+  it("buildKenAutopilotPlanContext inlines the plan section + plan instruction", () => {
     const messages: Message[] = [
       { role: "user", content: "add OAuth login" },
       { role: "assistant", content: "Plan drafted." },
     ];
-    const digest = buildNolanAutopilotPlanContext({
+    const digest = buildKenAutopilotPlanContext({
       cwd: base.cwd,
       gitBranch: base.gitBranch,
       platform: base.platform,
@@ -280,8 +434,8 @@ describe("buildNolanDigest", () => {
     expect(digest).not.toContain(AUTOPILOT_REVIEW_INSTRUCTION);
   });
 
-  it("buildNolanAutopilotPlanContext caps a pathological plan", () => {
-    const digest = buildNolanAutopilotPlanContext({
+  it("buildKenAutopilotPlanContext caps a pathological plan", () => {
+    const digest = buildKenAutopilotPlanContext({
       cwd: base.cwd,
       gitBranch: base.gitBranch,
       platform: base.platform,
@@ -290,6 +444,7 @@ describe("buildNolanDigest", () => {
     });
     const section = digest.slice(digest.indexOf("## Plan under review"));
     expect(section).toContain("more chars]");
+    expect(section).toContain("Context incomplete: plan was truncated");
     expect(section.length).toBeLessThan(9000);
   });
 
@@ -307,7 +462,7 @@ describe("buildNolanDigest", () => {
       { role: "user", content: "[Previous conversation summary]\n\nWe scaffolded the app." },
       { role: "assistant", content: "Added the header." },
     ];
-    const digest = buildNolanDigest({ ...base, messages });
+    const digest = buildKenDigest({ ...base, messages });
     expect(digest).toContain("Story so far");
     expect(digest).toContain("We scaffolded the app.");
     // Pre-summary messages are not echoed into recent activity.
@@ -317,7 +472,7 @@ describe("buildNolanDigest", () => {
   });
 });
 
-describe("buildNolanDigest — original request pinning", () => {
+describe("buildKenDigest — original request pinning", () => {
   const base = {
     question: "review it",
     cwd: "/tmp/proj",
@@ -326,7 +481,7 @@ describe("buildNolanDigest — original request pinning", () => {
   };
 
   it("pins the original request in its own section", () => {
-    const digest = buildNolanDigest({
+    const digest = buildKenDigest({
       ...base,
       messages: [],
       originalRequest: "build a login form with validation",
@@ -339,10 +494,10 @@ describe("buildNolanDigest — original request pinning", () => {
     // The drift bug: multi-round cycles push the real ask out of the rolling
     // 20-message window. The pinned section must survive that.
     const messages: Message[] = [{ role: "user", content: "THE-REAL-ASK: add dark mode" }];
-    for (let i = 0; i < NOLAN_RECENT_MESSAGE_LIMIT + 5; i++) {
+    for (let i = 0; i < KEN_RECENT_MESSAGE_LIMIT + 5; i++) {
       messages.push({ role: "assistant", content: `working… step ${i}` });
     }
-    const digest = buildNolanDigest({
+    const digest = buildKenDigest({
       ...base,
       messages,
       originalRequest: "THE-REAL-ASK: add dark mode",
@@ -357,18 +512,18 @@ describe("buildNolanDigest — original request pinning", () => {
     // Recent-activity lines truncate at 1500 chars; the ask under review must
     // not be judged against a mid-sentence cut, so its cap is 4000.
     const longAsk = "requirement " + "x".repeat(3000);
-    const digest = buildNolanDigest({ ...base, messages: [], originalRequest: longAsk });
+    const digest = buildKenDigest({ ...base, messages: [], originalRequest: longAsk });
     const pinned = digest.split("## Original user request")[1];
     expect(pinned).toContain("x".repeat(3000));
   });
 
-  it("omits the section when there is no original request (chat Nolan)", () => {
-    const digest = buildNolanDigest({ ...base, messages: [] });
+  it("omits the section when there is no original request (chat Ken)", () => {
+    const digest = buildKenDigest({ ...base, messages: [] });
     expect(digest).not.toContain("## Original user request");
   });
 });
 
-describe("buildNolanDigest — injected-prompt labeling", () => {
+describe("buildKenDigest — injected-prompt labeling", () => {
   const base = {
     question: "review it",
     cwd: "/tmp/proj",
@@ -376,7 +531,7 @@ describe("buildNolanDigest — injected-prompt labeling", () => {
     platform: "darwin",
   };
 
-  it("labels autopilot-injected prompts as Nolan's, never **User:**", () => {
+  it("labels autopilot-injected prompts as Ken's, never **User:**", () => {
     const injected = "Fix the failing auth test and prove it by running it.";
     const messages: Message[] = [
       { role: "user", content: "add auth" },
@@ -384,7 +539,7 @@ describe("buildNolanDigest — injected-prompt labeling", () => {
       { role: "user", content: injected },
       { role: "assistant", content: "Fixed the test." },
     ];
-    const digest = buildNolanDigest({ ...base, messages, injectedPrompts: [injected] });
+    const digest = buildKenDigest({ ...base, messages, injectedPrompts: [injected] });
     expect(digest).toContain(`${INJECTED_PROMPT_LABEL} ${injected}`);
     expect(digest).not.toContain(`**User:** ${injected}`);
     // Real user asks keep the normal label.
@@ -394,12 +549,12 @@ describe("buildNolanDigest — injected-prompt labeling", () => {
   it("matches injected prompts through whitespace drift", () => {
     const injected = "Fix the failing test.";
     const messages: Message[] = [{ role: "user", content: `  ${injected}  ` }];
-    const digest = buildNolanDigest({ ...base, messages, injectedPrompts: [injected] });
+    const digest = buildKenDigest({ ...base, messages, injectedPrompts: [injected] });
     expect(digest).toContain(INJECTED_PROMPT_LABEL);
   });
 });
 
-describe("buildNolanDigest — workflow-command labeling", () => {
+describe("buildKenDigest — workflow-command labeling", () => {
   const base = {
     question: "review it",
     cwd: "/tmp/proj",
@@ -415,7 +570,7 @@ describe("buildNolanDigest — workflow-command labeling", () => {
       { role: "user", content: compare.prompt },
       { role: "assistant", content: "Compared against 12 repos, all aligned." },
     ];
-    const digest = buildNolanDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
+    const digest = buildKenDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
     expect(digest).toContain("**User:** [ran workflow command /compare]");
     // The template body itself never leaks into the digest.
     expect(digest).not.toContain("Compare the code you just created or modified");
@@ -425,14 +580,14 @@ describe("buildNolanDigest — workflow-command labeling", () => {
     const messages: Message[] = [
       { role: "user", content: `${compare.prompt}${USER_INSTRUCTIONS_HEADER}only src/auth.ts` },
     ];
-    const digest = buildNolanDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
+    const digest = buildKenDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
     expect(digest).toContain("[ran workflow command /compare]");
     expect(digest).toContain("only src/auth.ts");
   });
 
   it("leaves ordinary user text untouched when specs are provided", () => {
     const messages: Message[] = [{ role: "user", content: "please compare my two branches" }];
-    const digest = buildNolanDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
+    const digest = buildKenDigest({ ...base, messages, workflowCommands: PROMPT_COMMANDS });
     expect(digest).toContain("**User:** please compare my two branches");
   });
 });

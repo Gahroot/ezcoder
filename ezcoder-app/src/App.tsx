@@ -73,7 +73,7 @@ import { glowPlacement, glowStateFor, glowVars } from "./window-glow";
 import { ActivityBar } from "./ActivityBar";
 import { autosizeComposer } from "./composer-autosize";
 import { NolanActivityBar } from "./NolanActivityBar";
-import { AutopilotReviewBar } from "./AutopilotReviewBar";
+import { useTaskActivity } from "./useTaskActivity";
 import { useNolanMentor } from "./useNolanMentor";
 import { useAutopilot } from "./useAutopilot";
 import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEvents";
@@ -587,6 +587,7 @@ function App(): React.ReactElement {
   const [windowCustomTitle, setWindowCustomTitle] = useState<string | null>(null);
   // Bumped on each workspace/session choice to force re-hydration.
   const [hydrateNonce, setHydrateNonce] = useState(0);
+  const { activity, handleActivityEvent } = useTaskActivity(hydrateNonce);
   // New-session confirmation modal + in-flight guard.
   const [confirmNewSession, setConfirmNewSession] = useState(false);
   // Hide/show the nav button row (the bar + centered title always stay).
@@ -1352,6 +1353,7 @@ function App(): React.ReactElement {
     nextId,
     handleNolanEvent,
     handleAutopilotEvent,
+    handleActivityEvent,
     setState,
     setTasks,
     setProjectTasks,
@@ -2775,9 +2777,6 @@ function App(): React.ReactElement {
       </div>
 
       <div className="liveregion">
-        {workspaceMode === "code" && autopilotReviewing && (
-          <AutopilotReviewBar onCancel={requestCancel} />
-        )}
         {workspaceMode === "code" && nolanRunning && (
           <NolanActivityBar
             runStartTs={nolanRunStartTs}
@@ -2789,12 +2788,11 @@ function App(): React.ReactElement {
           />
         )}
         {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
-        {/* Nolan's bar (chat OR autopilot review) REPLACES the main bar while the
-            build is idle — otherwise the idle "Ready for work" line stacks under
-            Nolan's spinner. When the build is also running, both bars show. */}
-        {(workspaceMode === "chat" || running || (!nolanRunning && !autopilotReviewing)) && (
+        {/* Automatic review stays in the same task row; manual @Nolan keeps its own bar. */}
+        {(workspaceMode === "chat" || running || autopilotReviewing || !nolanRunning) && (
           <ActivityBar
             running={running}
+            activity={activity}
             cancelling={cancelling}
             tokens={tokens}
             doneStatus={doneStatus}

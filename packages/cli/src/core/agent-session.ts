@@ -26,6 +26,7 @@ import {
 } from "./slash-commands.js";
 import { PROMPT_COMMANDS, getPromptCommand } from "./prompt-commands.js";
 import { loadCustomCommands } from "./custom-commands.js";
+import { expandPromptCommand } from "./prompt-command-expansion.js";
 import { SettingsManager } from "./settings-manager.js";
 import { AuthStorage } from "./auth-storage.js";
 import { dualAuthProvider } from "@prestyj/core";
@@ -1249,9 +1250,7 @@ export class AgentSession {
     if (!promptText) return { kind: "command" };
     return {
       kind: "template",
-      fullPrompt: parsed.args
-        ? `${promptText}\n\n## User Instructions\n\n${parsed.args}`
-        : promptText,
+      fullPrompt: expandPromptCommand(promptText, parsed.args),
     };
   }
 
@@ -1493,6 +1492,7 @@ export class AgentSession {
           // test`) rewrites nothing we can point to: bumping the revision for
           // it poisoned the gate on green output and re-armed the hook into
           // every later question turn.
+          this.verificationGate.recordVerificationAttempt();
           const classification = classifyVerificationCommand(event.args.command);
           if (classification.snapshotEligible && event.args.persist !== true) {
             const call = this.hookToolCalls.get(event.toolCallId)!;
@@ -3861,6 +3861,19 @@ export class AgentSession {
 
   getVerificationEvidence(): VerificationEvidence[] {
     return this.verificationGate.evidence();
+  }
+
+  /** Current request activity, separate from persistent workspace verification debt. */
+  getRunVerificationActivity(): {
+    changed: boolean;
+    checked: boolean;
+    evidence: VerificationEvidence[];
+  } {
+    return {
+      changed: this.verificationGate.changedThisRun,
+      checked: this.verificationGate.checkedThisRun,
+      evidence: this.verificationGate.evidence("run"),
+    };
   }
 
   private async finishSnapshotVerification(
