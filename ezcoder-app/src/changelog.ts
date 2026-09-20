@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.69.0",
+    date: "2026-09-20",
+    items: [
+      "The status line stopped being vague and started telling you the truth. Instead of a cheerful sign-off on everything, you now see what actually happened: `Checks passed`, `Checks failed`, `Verification incomplete`, or `Your decision needed`. When something was written but never proven, it says so plainly instead of letting you assume it works.",
+      "My review no longer stacks a second bar under your task. It runs in the same row you are already watching, so a long review reads as one calm line instead of two spinners fighting for space, and the tokens it spends are counted in with the rest of the task.",
+      "I got harder to fool about the word done. A green build is no longer enough for me to call your request finished. I check the work against what you actually asked for, including what happens when things fail or get cancelled, and when I find gaps I hand them all over at once instead of letting you discover them by asking if it is done five times.",
+      "Slash commands now respect the words you type after them. Your own wording no longer gets thrown away in favour of the command's built-in text, so a command plus your instructions does what you actually wrote.",
+    ],
+  },
+  {
     version: "0.68.0",
     date: "2026-09-20",
     items: [
