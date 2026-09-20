@@ -218,9 +218,9 @@ describe("buildNolanDigest", () => {
     expect(digest).toContain("Context incomplete: some earlier user messages");
     expect(digest).toContain("Decision 99:");
     expect(digest.length).toBeLessThan(11000);
-    expect(buildNolanDigest({ ...base, messages: [], originalRequest: "x".repeat(5000) })).toContain(
-      "Context incomplete: original request was truncated",
-    );
+    expect(
+      buildNolanDigest({ ...base, messages: [], originalRequest: "x".repeat(5000) }),
+    ).toContain("Context incomplete: original request was truncated");
     expect(
       buildNolanDigest({
         ...base,
