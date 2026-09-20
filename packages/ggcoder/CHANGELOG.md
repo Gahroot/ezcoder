@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.60.5
+
+### Patch Changes
+
+- Fix slash-command argument precedence and preserve user intent in Ken reviews. Report verification, retry, cancellation, and review outcomes from observed lifecycle events, keeping interrupted responses and pending work distinct from passing checks.
+  - @kenkaiiii/gg-ai@5.60.5
+  - @kenkaiiii/gg-agent@5.60.5
+  - @kenkaiiii/gg-core@5.60.5
+
 ## 5.60.4
 
 ### Patch Changes
