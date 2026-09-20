@@ -35,6 +35,7 @@ const flushSubagents = async (): Promise<void> => {
 function setup(
   handleKenEvent: (e: SidecarEvent) => boolean = () => false,
   initialState: Partial<AgentState> = {},
+  handleAutopilotEvent: (e: SidecarEvent) => boolean = () => false,
 ) {
   let items: Item[] = [];
   let id = 0;
@@ -81,7 +82,8 @@ function setup(
     setItems: setItems as AgentEventsDeps["setItems"],
     nextId,
     handleKenEvent,
-    handleAutopilotEvent: () => false,
+    handleAutopilotEvent,
+    handleActivityEvent: vi.fn(),
     setState,
     setTasks: noop as unknown as AgentEventsDeps["setTasks"],
     setProjectTasks: noop as unknown as AgentEventsDeps["setProjectTasks"],
@@ -130,6 +132,17 @@ function setup(
 }
 
 describe("useAgentEvents", () => {
+  it("updates task activity before an autopilot delegate consumes its event", () => {
+    const { hook, deps } = setup(
+      () => false,
+      {},
+      () => true,
+    );
+    const review = ev("autopilot_review_start");
+    act(() => hook.result.current.handleEvent(review));
+    expect(deps.handleActivityEvent).toHaveBeenCalledWith(review);
+  });
+
   it("shows Unverified instead of completion and does not finish an approved plan", () => {
     const { hook, deps } = setup();
     act(() => hook.result.current.handleEvent(ev("run_start", {})));
