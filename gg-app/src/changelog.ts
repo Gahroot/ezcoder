@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.66.1",
+    date: "2026-09-20",
+    items: [
+      "Your `activity bar` now tells the story of the request you just made, not the last one. I separated earlier check warnings from fresh answers, gave research and background work clearer finish messages, and stopped blocked checks from leaving you waiting on a review that won't start.",
+    ],
+  },
+  {
     version: "0.66.0",
     date: "2026-09-20",
     items: [
