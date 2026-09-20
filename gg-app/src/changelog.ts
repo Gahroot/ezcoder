@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.66.0",
+    date: "2026-09-20",
+    items: [
+      "Know what's happening without reading the whole chat. I rebuilt the `activity bar` with short, color-coded statuses and smooth transitions, so `Needs you` and `Not verified` stand out even after the work stops.",
+      "I tightened `Ken` and `Autopilot` reviews around what you actually asked for. Your latest decisions stay in focus, and reviews check for unfinished work without chasing endless optional improvements.",
+      "Your `slash commands` now listen to what you ask this time. I fixed custom instructions getting lost behind template defaults, so your chosen scope and format take priority.",
+    ],
+  },
+  {
     version: "0.65.2",
     date: "2026-09-19",
     items: [
