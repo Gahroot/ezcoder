@@ -8,8 +8,24 @@ import type { AgentSession } from "./agent-session.js";
 import { LspManager } from "./lsp/manager.js";
 import { LspClientPool } from "./lsp/pool.js";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { useFakeHome } from "../test-support/fake-home.js";
 import { removeWhenReleased } from "./lsp/test-support.js";
+
+// Run the real compiler through an absolute path instead of `pnpm exec tsc`,
+// which resolves the binary from PATH/node_modules/.bin and found neither on
+// Windows ("Command \"tsc\" not found") because the typecheck runs inside a
+// temp project that has no node_modules. typescript is a direct dependency
+// here, so this resolves the same compiler on every platform.
+//
+// It must stay the `bin/tsc` entry, NOT `node lib/tsc.js`: verification
+// evidence classifies a command by its executable's basename, so `tsc` is
+// recognised as a typecheck while `node` is not — and this test asserts what
+// a RECOGNISED passing typecheck suppresses. Forward slashes because the bash
+// tool runs Git Bash on Windows, where backslashes are escapes.
+const TSC_BIN = createRequire(import.meta.url)
+  .resolve("typescript/bin/tsc")
+  .replace(/\\/g, "/");
 
 interface Internals {
   tools: AgentTool[];
@@ -83,7 +99,7 @@ describe("EZ App session asynchronous diagnostics", () => {
     internal.lspManager.drainDiagnostics();
     await execute("read", { file_path: "a.ts" });
     await execute("edit", { file_path: "a.ts", edits: [{ old_text: "= 1;", new_text: "= 2;" }] });
-    const check = await execute("bash", { command: "pnpm exec tsc --noEmit --project ." });
+    const check = await execute("bash", { command: `"${TSC_BIN}" --noEmit --project .` });
     expect(check).toContain("Exit code: 0");
     expect(await internal.getHookFollowUpMessages()).toBeNull();
     expect(internal.lspManager.getLatestOutcome("a.ts")?.kind).toBe("timeout");

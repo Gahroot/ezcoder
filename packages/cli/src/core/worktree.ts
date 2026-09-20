@@ -37,7 +37,13 @@ async function realpathOrSelf(p: string): Promise<string> {
   try {
     return await fs.realpath(p);
   } catch {
-    return p;
+    // A path that is GONE still has to compare equal across its two sources.
+    // realpath canonicalises both while the directory exists; once it is
+    // deleted, git keeps reporting POSIX separators ("C:/…/ghost") while
+    // path.resolve() yields native ones ("C:\…\ghost"), so on Windows a
+    // registered-but-missing worktree stopped matching its own registration
+    // and its branch outlived it. resolve() normalises both to one form.
+    return path.resolve(p);
   }
 }
 

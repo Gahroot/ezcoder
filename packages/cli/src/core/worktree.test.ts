@@ -66,6 +66,13 @@ async function pathIsGone(p: string): Promise<boolean> {
 async function makeRepo(): Promise<string> {
   const repo = await makeTempDir("ez-worktree-");
   git(repo, "init", "-q", "-b", "main");
+  // Windows git ships core.autocrlf=true, which rewrites LF to CRLF on the
+  // CHECKOUT that `git worktree add` performs — so the byte assertions below
+  // saw "hello\r\n" from a worktree while the directly-written original still
+  // read "hello\n". Pin it per-fixture so these tests measure worktree
+  // mechanics rather than the host's line-ending policy.
+  git(repo, "config", "core.autocrlf", "false");
+  git(repo, "config", "core.eol", "lf");
   await fs.writeFile(path.join(repo, "a.txt"), "hello\n");
   git(repo, "add", "a.txt");
   git(repo, "commit", "-q", "-m", "initial");
