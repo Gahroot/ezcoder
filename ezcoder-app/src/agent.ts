@@ -1495,8 +1495,11 @@ export async function saveWindowCustomTitle(title: string | null): Promise<strin
 
 /**
  * Open enough new project windows (each with its own agent) to reach `count`
- * total, then tile the first `count` windows into a 2- or 4-up grid filling the
- * screen work area.
+ * total, then tile the visible page into a grid filling the screen work area.
+ *
+ * At most 6 windows are on screen at once. A larger `count` (e.g. 12) puts the
+ * surplus on later pages — hidden, but with their agents running. Use
+ * {@link showPage} to switch.
  */
 export async function setupWindows(count: number): Promise<void> {
   try {
@@ -1504,6 +1507,37 @@ export async function setupWindows(count: number): Promise<void> {
   } catch (e) {
     await logError(`setup_windows failed: ${String(e)}`);
     throw e;
+  }
+}
+
+/** Which page of windows is on screen, and how many pages exist. */
+export interface WindowPages {
+  /** 1-based page currently visible. */
+  current: number;
+  /** Total pages (always >= 1). More than 1 means windows are hidden. */
+  pages: number;
+}
+
+/**
+ * Show page `page` (1-based): hide every other page's windows, show this
+ * page's, and re-tile. Out-of-range pages are a no-op, so a `Cmd+3` on a
+ * two-page workspace does nothing.
+ */
+export async function showPage(page: number): Promise<void> {
+  try {
+    await invoke("show_page", { page });
+  } catch (e) {
+    await logError(`show_page failed: ${String(e)}`);
+  }
+}
+
+/** Read the current page + page count. Falls back to a single page on error. */
+export async function windowPages(): Promise<WindowPages> {
+  try {
+    return await invoke<WindowPages>("window_pages");
+  } catch (e) {
+    await logError(`window_pages failed: ${String(e)}`);
+    return { current: 1, pages: 1 };
   }
 }
 

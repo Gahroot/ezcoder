@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { arrangeAllWindows, setupWindows } from "./agent";
+import { arrangeAllWindows, setupWindows, showPage, windowPages } from "./agent";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 
 vi.mock("./agent", () => ({
@@ -9,12 +9,17 @@ vi.mock("./agent", () => ({
   setupWindows: vi.fn().mockResolvedValue(undefined),
   listMonitors: vi.fn().mockResolvedValue({ monitors: [], selected: null }),
   setTargetMonitor: vi.fn().mockResolvedValue(undefined),
+  showPage: vi.fn().mockResolvedValue(undefined),
+  windowPages: vi.fn().mockResolvedValue({ current: 1, pages: 1 }),
 }));
 vi.mock("./sounds", () => ({ playSound: vi.fn() }));
 
 beforeEach(() => {
   document.documentElement.className = "platform-windows";
   vi.clearAllMocks();
+  // Cleared mocks lose their resolved value; the component awaits both.
+  vi.mocked(windowPages).mockResolvedValue({ current: 1, pages: 1 });
+  vi.mocked(showPage).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -52,5 +57,56 @@ describe("WindowLayoutButton (Windows/Linux fallback)", () => {
     const menu = screen.getByRole("menu", { name: /window layout/i });
     await waitFor(() => expect(menu.parentElement).toBe(document.body));
     expect(container.contains(menu)).toBe(false);
+  });
+
+  it("commits the 12-window layout, which spans two pages", async () => {
+    render(<WindowLayoutButton />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Arrange into multiple project windows" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /12 windows/ }));
+
+    await waitFor(() => expect(setupWindows).toHaveBeenCalledWith(12));
+  });
+
+  it("hides the page rows while everything fits on one page", async () => {
+    render(<WindowLayoutButton />);
+    fireEvent.click(screen.getByRole("button", { name: "Arrange into multiple project windows" }));
+
+    await waitFor(() => expect(windowPages).toHaveBeenCalled());
+    expect(screen.queryByRole("menuitem", { name: /Page 1/ })).toBeNull();
+  });
+
+  it("switches page from the page rows once a second page exists", async () => {
+    vi.mocked(windowPages).mockResolvedValue({ current: 1, pages: 2 });
+    render(<WindowLayoutButton />);
+    fireEvent.click(screen.getByRole("button", { name: "Arrange into multiple project windows" }));
+
+    const page2 = await screen.findByRole("menuitem", { name: /Page 2/ });
+    fireEvent.click(page2);
+
+    await waitFor(() => expect(showPage).toHaveBeenCalledWith(2));
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("names the page shortcut with Ctrl, not the mac Command key", async () => {
+    // This suite runs as platform-windows; ⌘ would name a key absent from the
+    // keyboard. App.tsx binds `metaKey || ctrlKey`, so Ctrl+2 is correct here.
+    vi.mocked(windowPages).mockResolvedValue({ current: 1, pages: 2 });
+    render(<WindowLayoutButton />);
+    fireEvent.click(screen.getByRole("button", { name: "Arrange into multiple project windows" }));
+
+    const page2 = await screen.findByRole("menuitem", { name: /Page 2/ });
+    expect(page2.textContent).toContain("Ctrl+2");
+    expect(page2.textContent).not.toContain("\u2318");
+  });
+
+  it("names the page shortcut with Command on macOS", async () => {
+    document.documentElement.className = "platform-macos";
+    vi.mocked(windowPages).mockResolvedValue({ current: 1, pages: 2 });
+    render(<WindowLayoutButton />);
+    fireEvent.click(screen.getByRole("button", { name: "Arrange into multiple project windows" }));
+
+    const page2 = await screen.findByRole("menuitem", { name: /Page 2/ });
+    expect(page2.textContent).toContain("\u23182");
   });
 });

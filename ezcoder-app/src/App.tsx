@@ -34,6 +34,7 @@ import {
   newWindow,
   focusWindowByOffset,
   arrangeAllWindows,
+  showPage,
   onWindowOrder,
   restoreTarget,
   onTrayIntent,
@@ -1219,6 +1220,7 @@ function App(): React.ReactElement {
   //   Cmd/Ctrl+`          → cycle forward through windows (reading order)
   //   Cmd/Ctrl+Shift+`    → cycle backward
   //   Cmd/Ctrl+Shift+A    → auto-arrange all windows into a clean grid
+  //   Cmd/Ctrl+1…9        → show that page of windows (6 per page)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const meta = e.metaKey || e.ctrlKey;
@@ -1260,6 +1262,14 @@ function App(): React.ReactElement {
       if (e.shiftKey && (e.key === "a" || e.key === "A") && !e.altKey) {
         e.preventDefault();
         void arrangeAllWindows();
+        return;
+      }
+      // Switch window page: Cmd/Ctrl + 1…9 (no Shift/Alt). Pages beyond the
+      // last one are a no-op in Rust, so a stray Cmd+9 does nothing. Cmd+0 is
+      // deliberately left to ZoomController's zoom reset.
+      if (/^[1-9]$/.test(e.key) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        void showPage(Number(e.key));
       }
     };
     window.addEventListener("keydown", onKey);

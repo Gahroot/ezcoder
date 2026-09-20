@@ -6,14 +6,20 @@ import {
   arrangeAllWindows,
   listMonitors,
   setTargetMonitor,
+  showPage,
+  windowPages,
   type MonitorInfo,
 } from "./agent";
 import { playSound } from "./sounds";
 import { theme } from "./theme";
 
 /**
- * Titlebar control that tiles the app into a 2-, 4-, or 6-window grid,
- * auto-arranges all open windows, and targets a selected display.
+ * Titlebar control that tiles the app into a 2-, 4-, 6- or 12-window layout,
+ * auto-arranges all open windows, switches between window pages, and targets a
+ * selected display.
+ *
+ * At most 6 windows are on screen at once — the 12-window layout puts the other
+ * half on page 2, which the Page rows (and Cmd/Ctrl+1/2) switch between.
  */
 export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): React.ReactElement {
   const [open, setOpen] = useState(false);
@@ -21,6 +27,8 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
   const [showMonitors, setShowMonitors] = useState(false);
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [pages, setPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -37,6 +45,11 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
     void listMonitors().then((res) => {
       setMonitors(res.monitors);
       setSelected(res.selected);
+    });
+    // Same for pages: windows may have been opened or closed since last time.
+    void windowPages().then((res) => {
+      setPages(res.pages);
+      setCurrentPage(res.current);
     });
     const closeOnOutsideClick = (event: MouseEvent): void => {
       const target = event.target as Node;
@@ -78,6 +91,13 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
     setSelected(name);
     await setTargetMonitor(name);
     playSound("hover");
+  }
+
+  async function choosePage(page: number): Promise<void> {
+    setCurrentPage(page);
+    setOpen(false);
+    playSound("hover");
+    await showPage(page);
   }
 
   // Only worth showing the monitor picker when more than one display exists.
@@ -166,6 +186,26 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
               <button role="menuitem" className="winlayout-item" onClick={() => void run("6")}>
                 6 windows
               </button>
+              <button role="menuitem" className="winlayout-item" onClick={() => void run("12")}>
+                12 windows
+                <span style={{ marginLeft: "auto", color: theme.textDim, fontSize: 11 }}>
+                  2 pages
+                </span>
+              </button>
+              {pages > 1 && (
+                <>
+                  <div className="winlayout-divider" role="separator" />
+                  {Array.from({ length: pages }, (_, index) => index + 1).map((page) => (
+                    <CheckRow
+                      key={page}
+                      label={`Page ${page}`}
+                      hint={`${modifierSymbol()}${page}`}
+                      active={page === currentPage}
+                      onClick={() => void choosePage(page)}
+                    />
+                  ))}
+                </>
+              )}
               <div className="winlayout-divider" role="separator" />
               <button role="menuitem" className="winlayout-item" onClick={() => void run("auto")}>
                 Auto-arrange all
@@ -204,13 +244,13 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
                   </button>
                   {showMonitors && (
                     <>
-                      <MonitorRow
+                      <CheckRow
                         label="Primary (auto)"
                         active={selected === null}
                         onClick={() => void chooseMonitor(null)}
                       />
                       {monitors.map((monitor) => (
-                        <MonitorRow
+                        <CheckRow
                           key={monitor.name}
                           label={`${monitor.label} \u00b7 ${monitor.width}\u00d7${monitor.height}`}
                           active={selected === monitor.name}
@@ -229,15 +269,27 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
   );
 }
 
-/** One selectable display in the monitor submenu; shows a check when active. */
-function MonitorRow({
+/**
+ * Shortcut prefix for the host OS. The page shortcut is Cmd+N on macOS and
+ * Ctrl+N everywhere else (see App.tsx's `metaKey || ctrlKey`), so the hint must
+ * follow — showing ⌘ to a Windows user names a key their keyboard lacks.
+ */
+function modifierSymbol(doc: Document = document): string {
+  return doc.documentElement.classList.contains("platform-macos") ? "\u2318" : "Ctrl+";
+}
+
+/** One checkable choice (a display, or a window page); shows a check when active.
+ *  `hint` is a dim right-aligned note such as the page's keyboard shortcut. */
+function CheckRow({
   label,
   active,
   onClick,
+  hint,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  hint?: string;
 }): React.ReactElement {
   return (
     <button
@@ -248,6 +300,9 @@ function MonitorRow({
     >
       <Check size={13} style={{ opacity: active ? 1 : 0, flexShrink: 0 }} />
       {label}
+      {hint !== undefined && (
+        <span style={{ marginLeft: "auto", color: theme.textDim, fontSize: 11 }}>{hint}</span>
+      )}
     </button>
   );
 }

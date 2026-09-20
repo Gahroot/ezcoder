@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -75,6 +75,11 @@ enum ChatAgent {
     General,
 }
 
+/// Windows shown at once. A grid never exceeds this many cells, so each tile
+/// stays above the `min_inner_size(480, 360)` floor even on a laptop display.
+/// Anything beyond it goes to the next page (see `CurrentPage`).
+const PAGE_SIZE: usize = 6;
+
 /// One window's session inside the shared daemon. The routing fields mirror
 /// session creation so workspace restore and crash recovery preserve the agent.
 #[derive(Default, Clone)]
@@ -94,6 +99,16 @@ struct WindowSession {
 struct Windows {
     map: Mutex<HashMap<String, WindowSession>>,
     next_generation: AtomicU64,
+}
+
+/// The page currently on screen (1-based). Every other page's windows are
+/// hidden. Rust owns this; the webview is told via `window_pages`.
+struct CurrentPage(Mutex<u8>);
+
+impl Default for CurrentPage {
+    fn default() -> Self {
+        Self(Mutex::new(1))
+    }
 }
 
 /// True once the app has begun quitting. Set on `ExitRequested` so the cascade
@@ -3720,9 +3735,14 @@ fn build_app_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow
 }
 
 /// Open enough new project windows to reach `count` total (each with its own
-/// agent sidecar at the default cwd), then tile the first `count` windows across
-/// the work area like macOS fill&arrange. Project selection per window happens
-/// in-app via the picker; windows open immediately.
+/// agent sidecar at the default cwd), then show page 1 tiled across the work
+/// area like macOS fill&arrange. Project selection per window happens in-app
+/// via the picker; windows open immediately.
+///
+/// `count` may exceed `PAGE_SIZE` (the 12-window layout): the surplus windows
+/// are created HIDDEN on later pages so the grid on screen never exceeds 6
+/// cells. Their sessions live in the shared daemon, so those agents run
+/// normally while off-page.
 ///
 /// MUST be `async`: on Windows, `WebviewWindowBuilder::build()` deadlocks when
 /// called from a SYNCHRONOUS command (WebView2 runs window creation on the
@@ -3734,13 +3754,16 @@ fn build_app_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow
 async fn setup_windows(app: tauri::AppHandle, count: usize) -> Result<(), String> {
     let existing = arrangeable_windows(&app).len();
     let to_create = count.saturating_sub(existing);
-    for _ in 0..to_create {
+    for k in 0..to_create {
         let label = next_window_label(&app);
+        // Windows destined for page 2+ are born hidden: building them visible
+        // and hiding them afterwards flashes a full-size window on screen.
+        let visible = page_for_index(existing + k, PAGE_SIZE) == 1;
         // macOS-only chrome: the Overlay title bar + hidden title lets the
         // webview draw under the traffic lights. Windows/Linux keep native
         // chrome (Overlay is a no-op / unsupported there) and the webview CSS
         // drops the mac traffic-light insets via the `.platform-*` class.
-        let win = build_app_window(&app, &label)?;
+        let win = build_app_window_with_visibility(&app, &label, visible)?;
         start_window_session(
             app.clone(),
             label,
@@ -3749,16 +3772,104 @@ async fn setup_windows(app: tauri::AppHandle, count: usize) -> Result<(), String
             default_cwd(),
             None,
         );
-        let _ = win.set_focus();
+        // Focusing a hidden window would show it on macOS, breaking the page.
+        if visible {
+            let _ = win.set_focus();
+        }
     }
-    arrange_windows(&app, count);
-    broadcast_window_order(&app);
+    // The user picked `count`, so honour it as the grid size even when the
+    // workspace already had more windows open than that.
+    apply_page(&app, 1, Some(count));
     Ok(())
+}
+
+/// The page each project window sits on, keyed by label.
+///
+/// Derived on demand from the stable label order (main, project-1, project-2,
+/// …), 6 per page — never stored. That means there is no page state to keep in
+/// sync: closing a window automatically re-packs the pages below it, pulling
+/// the next window up into the hole rather than leaving a gap in the grid.
+fn window_page_map(app: &tauri::AppHandle) -> HashMap<String, u8> {
+    let mut windows = arrangeable_windows(app);
+    windows.sort_by_key(|w| label_rank(w.label()));
+    windows
+        .iter()
+        .enumerate()
+        .map(|(index, win)| (win.label().to_string(), page_for_index(index, PAGE_SIZE)))
+        .collect()
+}
+
+/// Make `page` the visible one: hide every other page's windows, show this
+/// page's, re-tile what's left on screen, and broadcast the new order.
+///
+/// `CurrentPage` is written FIRST so the `Focused` handler — which fires while
+/// `show()` runs — sees the page it is switching to and doesn't recurse.
+/// Hiding precedes showing so the screen never briefly holds 12 windows.
+///
+/// `tile_count` is the GRID SIZE, not a filter: `arrange_windows` lays out a
+/// `tile_count`-cell grid, so passing PAGE_SIZE with only 2 windows open would
+/// squeeze them into two sixths of the screen. `None` means "one cell per
+/// window actually on screen", which is what every caller but `setup_windows`
+/// wants; `setup_windows` passes the count the user explicitly picked.
+fn apply_page(app: &tauri::AppHandle, page: u8, tile_count: Option<usize>) {
+    *app.state::<CurrentPage>().0.lock().unwrap() = page;
+    let pages = window_page_map(app);
+    let windows = arrangeable_windows(app);
+    for win in &windows {
+        if pages.get(win.label()).copied().unwrap_or(1) != page {
+            let _ = win.hide();
+        }
+    }
+    // Collect the page's windows as we show them and tile exactly those. Going
+    // back through an `is_visible()` filter here would race the `show()` calls
+    // above, which dispatch to the main thread.
+    let mut on_page: Vec<WebviewWindow> = Vec::new();
+    for win in &windows {
+        if pages.get(win.label()).copied().unwrap_or(1) == page {
+            let _ = win.show();
+            on_page.push(win.clone());
+        }
+    }
+    on_page.sort_by_key(|w| label_rank(w.label()));
+    let tiles = page_tile_count(tile_count, on_page.len());
+    on_page.truncate(tiles);
+    arrange_these(on_page, tiles);
+    broadcast_window_order(app);
+}
+
+/// Switch the visible page (1-based). A page that doesn't exist, or the one
+/// already on screen, is a no-op rather than an error: `Cmd+3` on a two-page
+/// workspace does nothing, and `Cmd+1` when page 1 is already up must NOT
+/// re-tile hand-placed windows.
+///
+/// `async` for the same WebView2 reason as `setup_windows`: window show/hide
+/// from a synchronous command can deadlock the event loop it is blocking.
+#[tauri::command]
+async fn show_page(app: tauri::AppHandle, page: u8) -> Result<(), String> {
+    let total = arrangeable_windows(&app).len();
+    let current = *app.state::<CurrentPage>().0.lock().unwrap();
+    if page == 0 || page > page_count(total, PAGE_SIZE) || page == current {
+        return Ok(());
+    }
+    apply_page(&app, page, None);
+    Ok(())
+}
+
+/// Current page + how many pages exist, for the window-layout menu.
+#[tauri::command]
+fn window_pages(app: tauri::AppHandle) -> serde_json::Value {
+    let total = arrangeable_windows(&app).len();
+    let current = *app.state::<CurrentPage>().0.lock().unwrap();
+    serde_json::json!({ "current": current, "pages": page_count(total, PAGE_SIZE) })
 }
 
 /// Open a single new project window with its own agent sidecar (default cwd) and
 /// focus it. Unlike `setup_windows`, this never re-tiles existing windows — it's
 /// the Cmd/Ctrl+N "new window" shortcut. Project selection happens per-window.
+///
+/// When the workspace already fills the visible page, the new window lands on a
+/// later page — so we switch to that page rather than leaving the user staring
+/// at an unchanged screen after asking for a new window.
 ///
 /// `async` for the same reason as `setup_windows`: a synchronous window-building
 /// command deadlocks WebView2 on Windows.
@@ -3768,12 +3879,17 @@ async fn new_window(app: tauri::AppHandle) -> Result<(), String> {
     let win = build_app_window(&app, &label)?;
     start_window_session(
         app.clone(),
-        label,
+        label.clone(),
         WorkspaceMode::Code,
         ChatAgent::General,
         default_cwd(),
         None,
     );
+    let target = window_page_map(&app).get(&label).copied().unwrap_or(1);
+    let current = *app.state::<CurrentPage>().0.lock().unwrap();
+    if target != current {
+        apply_page(&app, target, None);
+    }
     let _ = win.set_focus();
     broadcast_window_order(&app);
     Ok(())
@@ -4604,6 +4720,8 @@ fn is_arrangeable_window_label(label: &str) -> bool {
             .is_some_and(|suffix| suffix.parse::<u32>().is_ok())
 }
 
+/// Every project window, on any page — including hidden ones. Use this for
+/// counting and page assignment, never for tiling.
 fn arrangeable_windows(app: &tauri::AppHandle) -> Vec<WebviewWindow> {
     app.webview_windows()
         .into_values()
@@ -4611,11 +4729,58 @@ fn arrangeable_windows(app: &tauri::AppHandle) -> Vec<WebviewWindow> {
         .collect()
 }
 
-/// The first `count` project windows (main first, then project-N ascending).
+/// Project windows the user can actually see — i.e. the current page. Tiling,
+/// the `n/6` badge and `Cmd+\`` cycling all work from this, so off-page windows
+/// are never tiled into the grid nor cycled into focus.
+fn visible_arrangeable_windows(app: &tauri::AppHandle) -> Vec<WebviewWindow> {
+    arrangeable_windows(app)
+        .into_iter()
+        .filter(|window| window.is_visible().unwrap_or(true))
+        .collect()
+}
+
+/// The first `count` VISIBLE project windows (main first, then project-N
+/// ascending).
 fn sorted_windows(app: &tauri::AppHandle, count: usize) -> Vec<WebviewWindow> {
-    let mut windows = arrangeable_windows(app);
+    let mut windows = visible_arrangeable_windows(app);
     windows.sort_by_key(|w| label_rank(w.label()));
     windows.into_iter().take(count).collect()
+}
+
+/// Pure: 0-based creation index → 1-based page number.
+fn page_for_index(index: usize, page_size: usize) -> u8 {
+    let size = page_size.max(1);
+    ((index / size) + 1).min(u8::MAX as usize) as u8
+}
+
+/// Pure: how many pages `total` windows occupy (always at least 1).
+fn page_count(total: usize, page_size: usize) -> u8 {
+    let size = page_size.max(1);
+    (total.div_ceil(size).max(1)).min(u8::MAX as usize) as u8
+}
+
+/// Pure: the grid size `apply_page` should tile with. `requested` is the count
+/// the user explicitly picked (`setup_windows`); `on_page` is how many windows
+/// the target page actually holds. Capped at PAGE_SIZE, and never 0 — a
+/// 0-cell grid would divide by zero in `tile_rects`.
+///
+/// The cap matters: tiling 2 open windows into a PAGE_SIZE grid would shrink
+/// them to a sixth of the screen instead of a half each.
+fn page_tile_count(requested: Option<usize>, on_page: usize) -> usize {
+    requested.unwrap_or(on_page).clamp(1, PAGE_SIZE)
+}
+
+/// Pure: the page to fall back to when the visible page has just been emptied.
+/// Prefers the nearest lower page, else the nearest higher one, so closing the
+/// last window of page 2 lands you back on page 1 rather than nowhere.
+/// `None` means no windows are left at all — nothing to switch to.
+fn fallback_page(pages_with_windows: &[u8], current: u8) -> Option<u8> {
+    if pages_with_windows.contains(&current) {
+        return None;
+    }
+    let below = pages_with_windows.iter().filter(|p| **p < current).max();
+    let above = pages_with_windows.iter().filter(|p| **p > current).min();
+    below.or(above).copied()
 }
 
 /// Apply one tile rect (TARGET-monitor physical pixels) to a window. `scale` is the
@@ -4652,12 +4817,21 @@ fn apply_tile(win: &WebviewWindow, rect: (i32, i32, u32, u32), scale: f64) {
     }
 }
 
-/// Tile the first `count` windows into a grid filling the chosen monitor's work
-/// area (`targetMonitor`, else primary).
+/// Tile the first `count` VISIBLE windows into a grid filling the chosen
+/// monitor's work area (`targetMonitor`, else primary).
 /// Synchronous (applies all rects immediately) — used at window-creation time
 /// (`setup_windows` / restore), where the OS commits each before the next shows.
 fn arrange_windows(app: &tauri::AppHandle, count: usize) {
-    let tiles = sorted_windows(app, count);
+    arrange_these(sorted_windows(app, count), count)
+}
+
+/// Tile an EXPLICIT window list into a `count`-cell grid.
+///
+/// `apply_page` uses this rather than `arrange_windows` because it has just
+/// called `show()` on the windows it wants tiled: `set_visible` dispatches to
+/// the main thread, so an `is_visible()` filter can still report the old value
+/// and silently drop a freshly shown window from the grid.
+fn arrange_these(tiles: Vec<WebviewWindow>, count: usize) {
     if tiles.is_empty() {
         return;
     }
@@ -4725,11 +4899,14 @@ fn grid_cols(count: usize) -> i32 {
     ((count as f64).sqrt().ceil() as i32).max(1)
 }
 
-/// Every open window's label, in reading order (rows top→bottom, left→right
+/// Every VISIBLE window's label, in reading order (rows top→bottom, left→right
 /// within a row). Tolerance ≈ half the smallest window height so tiled same-row
 /// windows group reliably while free-floating windows still get a stable order.
+/// Off-page (hidden) windows are excluded, which is what keeps the titlebar
+/// badge reading `2/6` rather than `2/12` and stops `Cmd+\`` cycling into a
+/// window the user cannot see.
 fn compute_window_order(app: &tauri::AppHandle) -> Vec<String> {
-    let windows = arrangeable_windows(app);
+    let windows = visible_arrangeable_windows(app);
     let mut positions: Vec<(String, i32, i32)> = Vec::with_capacity(windows.len());
     let mut min_height: i32 = i32::MAX;
     for win in &windows {
@@ -5585,10 +5762,19 @@ fn restore_or_default_windows(app: &tauri::AppHandle) -> Result<(), String> {
             any_geometry = true;
             let _ = win.set_size(tauri::PhysicalSize::new(w, h));
         }
-        let _ = win.show();
+        // Windows past the first page stay hidden — they were built hidden, so
+        // they never flash. Their sessions are already started above, so those
+        // agents resume off-page and the user finds them via page 2. Pages are
+        // derived from this same restore order, so this matches
+        // `window_page_map` without needing the snapshot to record a page.
+        if page_for_index(i, PAGE_SIZE) == 1 {
+            let _ = win.show();
+        }
     }
     if !any_geometry {
-        arrange_windows(app, count);
+        // Only the visible page is tiled; `arrange_windows` takes visible
+        // windows, so `count` here is a ceiling, not the grid size.
+        arrange_windows(app, count.min(PAGE_SIZE));
     }
     broadcast_window_order(app);
     Ok(())
@@ -5653,6 +5839,7 @@ pub fn run() {
             ..Default::default()
         })
         .manage(Windows::default())
+        .manage(CurrentPage::default())
         .manage(RestoreTargets::default())
         .manage(AppExiting::default())
         .manage(FocusedWindow::default())
@@ -5712,6 +5899,8 @@ pub fn run() {
             agent_enhance_prompt,
             agent_commands,
             setup_windows,
+            show_page,
+            window_pages,
             new_window,
             open_whatsnew_window,
             select_project,
@@ -5859,6 +6048,22 @@ pub fn run() {
                         });
                     }
                 }
+                // Pages re-pack themselves (they're derived from the label
+                // order), so a close can pull a page-2 window up into the
+                // visible page — or empty the visible page entirely, which would
+                // leave the user staring at a screen with no windows on it. Re-
+                // apply the page so what's on screen matches.
+                //
+                // Only when pages are actually in play: with a single page this
+                // must stay a no-op, or closing one of 3 hand-placed windows
+                // would re-tile the survivors out from under the user.
+                // Skipped while quitting: the whole workspace is going away.
+                let pages: BTreeSet<u8> = window_page_map(app).into_values().collect();
+                if !exiting && pages.len() > 1 {
+                    let current = *app.state::<CurrentPage>().0.lock().unwrap();
+                    let pages: Vec<u8> = pages.into_iter().collect();
+                    apply_page(app, fallback_page(&pages, current).unwrap_or(current), None);
+                }
                 // Update peers: the closed window is gone from the reading order.
                 broadcast_window_order(app);
             }
@@ -5869,6 +6074,24 @@ pub fn run() {
                 {
                     let state: State<FocusedWindow> = app.state();
                     *state.0.lock().unwrap() = Some(window.label().to_string());
+                }
+                // Something outside the page control focused this window (the
+                // tray, or the OS window switcher). If it lives on another page,
+                // follow it rather than leaving the page state lying about what
+                // is on screen. `apply_page` writes CurrentPage before showing,
+                // so the `show()` calls it makes cannot recurse back into here.
+                //
+                // The lock is read into a local FIRST: holding the guard across
+                // `apply_page` would deadlock the non-reentrant mutex if `show()`
+                // dispatches a synchronous `Focused` back into this handler.
+                let page = window_page_map(&app)
+                    .get(window.label())
+                    .copied()
+                    .unwrap_or(1);
+                let current = *app.state::<CurrentPage>().0.lock().unwrap();
+                if page != current {
+                    apply_page(&app, page, None);
+                    return;
                 }
                 broadcast_window_order(&app);
             }
@@ -6909,6 +7132,92 @@ mod tests {
         assert_eq!(grid_cols(8), 3);
         assert_eq!(grid_cols(9), 3);
         assert_eq!(grid_cols(12), 4);
+    }
+
+    // ── Window pages ─────────────────────────────────────────────────────────
+    // Up to PAGE_SIZE windows are on screen at once; the rest are hidden on
+    // later pages. These lock in the pure arithmetic the page switcher relies on.
+
+    #[test]
+    fn page_for_index_packs_six_per_page() {
+        assert_eq!(page_for_index(0, PAGE_SIZE), 1);
+        assert_eq!(page_for_index(5, PAGE_SIZE), 1); // last slot of page 1
+        assert_eq!(page_for_index(6, PAGE_SIZE), 2); // first slot of page 2
+        assert_eq!(page_for_index(11, PAGE_SIZE), 2); // the 12th window
+        assert_eq!(page_for_index(12, PAGE_SIZE), 3);
+    }
+
+    #[test]
+    fn page_for_index_survives_a_zero_page_size() {
+        // Guard against a division-by-zero if PAGE_SIZE is ever mis-set.
+        assert_eq!(page_for_index(3, 0), 4);
+    }
+
+    #[test]
+    fn page_count_covers_partial_pages() {
+        assert_eq!(page_count(0, PAGE_SIZE), 1); // no windows is still "page 1"
+        assert_eq!(page_count(1, PAGE_SIZE), 1);
+        assert_eq!(page_count(6, PAGE_SIZE), 1); // exactly full
+        assert_eq!(page_count(7, PAGE_SIZE), 2); // one spills over
+        assert_eq!(page_count(12, PAGE_SIZE), 2);
+        assert_eq!(page_count(13, PAGE_SIZE), 3);
+    }
+
+    #[test]
+    fn page_tile_count_matches_the_windows_actually_on_screen() {
+        // The bug this guards: tiling 2 windows with a PAGE_SIZE grid would put
+        // them in two sixths of the screen instead of a half each.
+        assert_eq!(page_tile_count(None, 2), 2);
+        assert_eq!(page_tile_count(None, 6), 6);
+    }
+
+    #[test]
+    fn page_tile_count_honours_an_explicit_request() {
+        // `setup_windows(4)` on a workspace of 6 tiles a 4-cell grid.
+        assert_eq!(page_tile_count(Some(4), 6), 4);
+    }
+
+    #[test]
+    fn page_tile_count_caps_at_one_page_and_never_returns_zero() {
+        // A 12-window request still tiles a 6-cell grid — the rest are paged off.
+        assert_eq!(page_tile_count(Some(12), 6), PAGE_SIZE);
+        // 0 would divide by zero in tile_rects.
+        assert_eq!(page_tile_count(Some(0), 0), 1);
+        assert_eq!(page_tile_count(None, 0), 1);
+    }
+
+    #[test]
+    fn fallback_page_stays_put_while_the_page_has_windows() {
+        assert_eq!(fallback_page(&[1, 2], 1), None);
+    }
+
+    #[test]
+    fn fallback_page_prefers_the_nearest_lower_page() {
+        // Closing the last window of page 2 drops you back to page 1.
+        assert_eq!(fallback_page(&[1], 2), Some(1));
+        assert_eq!(fallback_page(&[1, 2], 3), Some(2));
+    }
+
+    #[test]
+    fn fallback_page_climbs_when_nothing_is_below() {
+        // Emptying page 1 while page 2 still holds windows.
+        assert_eq!(fallback_page(&[2, 3], 1), Some(2));
+    }
+
+    #[test]
+    fn fallback_page_is_none_when_no_windows_remain() {
+        assert_eq!(fallback_page(&[], 1), None);
+    }
+
+    #[test]
+    fn restore_shows_only_the_first_page_of_saved_windows() {
+        // Restore derives visibility from the entry index, exactly as
+        // `window_page_map` derives it from the label order afterwards — so a
+        // 12-window workspace comes back as 6 visible + 6 hidden.
+        let visible = (0..12)
+            .filter(|i| page_for_index(*i, PAGE_SIZE) == 1)
+            .count();
+        assert_eq!(visible, 6);
     }
 
     #[test]
