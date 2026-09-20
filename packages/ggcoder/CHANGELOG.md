@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.60.6
+
+### Patch Changes
+
+- Keep verification results scoped to the current request and prevent blocked checks from advertising a pending review handoff.
+  - @kenkaiiii/gg-ai@5.60.6
+  - @kenkaiiii/gg-agent@5.60.6
+  - @kenkaiiii/gg-core@5.60.6
+
 ## 5.60.5
 
 ### Patch Changes
