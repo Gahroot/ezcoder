@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.22.0
+
+### Minor Changes
+
+- Evidence-based task statuses and verification-aware run reporting, tighter completion reviews from Nolan, request-scoped status messages during autopilot review, and fixed slash-command argument precedence with shared prompt-command expansion.
+
+### Patch Changes
+
+- @prestyj/ai@5.22.0
+- @prestyj/agent@5.22.0
+- @prestyj/core@5.22.0
+
 ## 5.21.0
 
 ### Minor Changes
