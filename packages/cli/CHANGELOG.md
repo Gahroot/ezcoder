@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.22.2
+
+### Patch Changes
+
+- Fix Windows worktree cleanup leaving orphaned branches behind when the worktree directory was already deleted
+  - @prestyj/ai@5.22.2
+  - @prestyj/agent@5.22.2
+  - @prestyj/core@5.22.2
+
 ## 5.22.1
 
 ### Patch Changes
