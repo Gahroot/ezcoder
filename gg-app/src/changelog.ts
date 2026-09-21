@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.66.3",
+    date: "2026-09-21",
+    items: [
+      "Your agent's scratch files should keep work moving, not hold it up. I fixed temporary-file handling across `macOS`, `Linux`, and `Windows`, so your agent can read, write, and edit its scratch files without getting tripped up by the wrong folder.",
+    ],
+  },
+  {
     version: "0.66.2",
     date: "2026-09-21",
     items: [
