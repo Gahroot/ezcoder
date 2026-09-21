@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.60.8
+
+### Patch Changes
+
+- Fix temporary-file access across macOS, Linux, and Windows, including Git Bash /tmp paths, while preserving workspace write protections.
+  - @kenkaiiii/gg-ai@5.60.8
+  - @kenkaiiii/gg-agent@5.60.8
+  - @kenkaiiii/gg-core@5.60.8
+
 ## 5.60.7
 
 ### Patch Changes
