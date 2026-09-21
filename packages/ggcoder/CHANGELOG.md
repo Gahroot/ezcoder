@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.60.9
+
+### Patch Changes
+
+- Tighten UI skill guidance for shared focus indicators, dropdown interaction checks, and concise supporting copy that preserves essential instructions.
+  - @kenkaiiii/gg-ai@5.60.9
+  - @kenkaiiii/gg-agent@5.60.9
+  - @kenkaiiii/gg-core@5.60.9
+
 ## 5.60.8
 
 ### Patch Changes
