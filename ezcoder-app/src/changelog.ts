@@ -17,6 +17,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.70.0",
+    date: "2026-09-21",
+    items: [
+      "Run twelve agents at once. The new `12 windows` layout keeps six on screen where you can actually read them and parks the other six on a second page, so nothing shrinks into a useless sliver. Tap `Cmd/Ctrl+1` and `Cmd/Ctrl+2` to flip between the pages, or pick one straight from the layout menu.",
+      "Windows users, your branch list stays clean now. When a project copy got deleted out from under me, its branch used to linger forever with nothing attached to it. I match those leftovers to their owners properly, so they get cleared away like they always should have.",
+    ],
+  },
+  {
     version: "0.69.0",
     date: "2026-09-20",
     items: [
