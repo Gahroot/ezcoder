@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.66.2",
+    date: "2026-09-21",
+    items: [
+      "Your pictures no longer get left behind in connected editors. I fixed missing `screenshots` and `generated images` in `ACP` connections, so you can see them as they arrive and when you reopen a saved chat.",
+    ],
+  },
+  {
     version: "0.66.1",
     date: "2026-09-20",
     items: [
