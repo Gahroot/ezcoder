@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.66.4",
+    date: "2026-09-21",
+    items: [
+      "Less clutter, more care in the interfaces your agent builds. I tightened the `UI skill` to cut repetitive descriptions, reuse consistent controls, and check `keyboard focus` and `dropdowns` through real interactions instead of relying on screenshots alone.",
+    ],
+  },
+  {
     version: "0.66.3",
     date: "2026-09-21",
     items: [
