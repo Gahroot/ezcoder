@@ -17,6 +17,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.70.1",
+    date: "2026-09-21",
+    items: [
+      "Twelve windows now behave. Flipping to page `2` lands every window in its slot in one clean motion, with no flashing, no half a page showing up, and no snapping back to page `1` on its own. Closing a window on the second page closes exactly that window, and when a page empties out I drop you back to the one that still has your work on it.",
+      "Xiaomi got a serious upgrade. The `MiMo-V2.6` series replaces V2.5 across the board, and the flagship reads your images and video itself now, so you stop switching models just to share a screenshot. `MiMo-V2.6-Flash` quietly handles the background jobs at a lower rate, so the big runs cost you less.",
+    ],
+  },
+  {
     version: "0.70.0",
     date: "2026-09-21",
     items: [
