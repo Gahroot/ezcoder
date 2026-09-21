@@ -2592,7 +2592,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
         value: "xiaomi",
         label: "Xiaomi (MiMo)",
         description:
-            "MiMo-V2.5-Pro, MiMo-V2.5-Pro-UltraSpeed, MiMo-V2.5 · Token Plan or API Credits",
+            "MiMo-V2.6-Pro, MiMo-V2.6-Flash, MiMo-V2.6-Pro-UltraSpeed · Token Plan or API Credits",
         methods: &["apikey"],
         oauth_key: None,
         oauth_label: None,

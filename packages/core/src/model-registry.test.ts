@@ -288,16 +288,16 @@ describe("model registry context windows", () => {
     expect(getAuthStorageKey("anthropic", "claude-sonnet-5")).toBe("anthropic");
   });
 
-  it("mimo-v2.5-pro / mimo-v2.5 prefer the Token Plan key but fall back to API Credits", () => {
-    expect(getAuthStorageKeys("xiaomi", "mimo-v2.5-pro")).toEqual(["xiaomi", XIAOMI_CREDITS_KEY]);
-    expect(getAuthStorageKeys("xiaomi", "mimo-v2.5")).toEqual(["xiaomi", XIAOMI_CREDITS_KEY]);
+  it("mimo-v2.6-pro / mimo-v2.6-flash prefer the Token Plan key but fall back to API Credits", () => {
+    expect(getAuthStorageKeys("xiaomi", "mimo-v2.6-pro")).toEqual(["xiaomi", XIAOMI_CREDITS_KEY]);
+    expect(getAuthStorageKeys("xiaomi", "mimo-v2.6-flash")).toEqual(["xiaomi", XIAOMI_CREDITS_KEY]);
     // getAuthStorageKey() is the FIRST preference, not the only option.
-    expect(getAuthStorageKey("xiaomi", "mimo-v2.5-pro")).toBe("xiaomi");
+    expect(getAuthStorageKey("xiaomi", "mimo-v2.6-pro")).toBe("xiaomi");
   });
 
-  it("mimo-v2.5-pro-ultraspeed is API-Credits only, with no Token Plan fallback", () => {
-    expect(getAuthStorageKeys("xiaomi", "mimo-v2.5-pro-ultraspeed")).toEqual([XIAOMI_CREDITS_KEY]);
-    expect(getAuthStorageKey("xiaomi", "mimo-v2.5-pro-ultraspeed")).toBe(XIAOMI_CREDITS_KEY);
+  it("mimo-v2.6-pro-ultraspeed is API-Credits only, with no Token Plan fallback", () => {
+    expect(getAuthStorageKeys("xiaomi", "mimo-v2.6-pro-ultraspeed")).toEqual([XIAOMI_CREDITS_KEY]);
+    expect(getAuthStorageKey("xiaomi", "mimo-v2.6-pro-ultraspeed")).toBe(XIAOMI_CREDITS_KEY);
   });
 
   it("registers a Code Assist-supported Gemini default", () => {

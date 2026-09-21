@@ -46,19 +46,20 @@ providerRegistry.register("xiaomi", {
   stream: (options) => {
     // Two distinct Xiaomi access products live under different hosts:
     //   - Token Plan subscription:  token-plan-sgp.xiaomimimo.com/v1
-    //     (the default; serves mimo-v2.5-pro / mimo-v2.5 / flash)
+    //     (the default; serves mimo-v2.6-pro / mimo-v2.6-flash)
     //   - Standard MiMo platform:   api.xiaomimimo.com/v1
-    //     (serves the UltraSpeed beta, gated on a platform API key)
-    // The UltraSpeed beta is ONLY on the platform host. A user logged in for
-    // Token Plan carries a stored token-plan baseUrl that would misroute it
-    // (the host replies "Not supported model"), so when UltraSpeed is the
-    // target we ignore that token-plan default and use the platform host —
-    // while still honoring an explicit non-token-plan override, so a wrong
-    // host guess remains correctable via config.
+    //     (serves UltraSpeed, gated on a platform API key)
+    // UltraSpeed is ONLY on the platform host. A user logged in for Token
+    // Plan carries a stored token-plan baseUrl that would misroute it (the
+    // host replies "Not supported model"), so when UltraSpeed is the target
+    // we ignore that token-plan default and use the platform host — while
+    // still honoring an explicit non-token-plan override, so a wrong host
+    // guess remains correctable via config. Matched by suffix so each new
+    // MiMo generation's UltraSpeed SKU routes correctly without a code change.
     const TOKEN_PLAN_URL = "https://token-plan-sgp.xiaomimimo.com/v1";
     const PLATFORM_URL = "https://api.xiaomimimo.com/v1";
     let baseUrl: string;
-    if (options.model === "mimo-v2.5-pro-ultraspeed") {
+    if (options.model.endsWith("-ultraspeed")) {
       baseUrl =
         options.baseUrl && options.baseUrl !== TOKEN_PLAN_URL ? options.baseUrl : PLATFORM_URL;
     } else {

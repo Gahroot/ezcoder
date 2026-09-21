@@ -33,7 +33,17 @@ describe("AUTH_PROVIDERS descriptions match the model registry", () => {
   );
 
   it("names no model the registry has retired", () => {
-    const retired = ["Fable 5,", "Opus 4.8", "Opus 4.7", "Opus 4.6", "GPT-5.4", "Grok 4.4"];
+    const retired = [
+      "Fable 5,",
+      "Opus 4.8",
+      "Opus 4.7",
+      "Opus 4.6",
+      "GPT-5.4",
+      "Grok 4.4",
+      // Superseded by the V2.6 series. "MiMo-V2.5" also covers the retired
+      // -Pro/-Pro-UltraSpeed variants by prefix without matching V2.6 copy.
+      "MiMo-V2.5",
+    ];
     for (const { value, description } of AUTH_PROVIDERS) {
       for (const name of retired) {
         expect(description, `${value} still advertises ${name}`).not.toContain(name);

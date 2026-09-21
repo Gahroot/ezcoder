@@ -865,7 +865,7 @@ export function toOpenAIMessages(
       // mirroring the official Kimi read-media tool. The provider uploads the
       // clip and stamps `fileId` before this transform runs.
       //
-      // Every OTHER OpenAI-compatible video model (e.g. Xiaomi MiMo-V2.5)
+      // Every OTHER OpenAI-compatible video model (e.g. Xiaomi MiMo-V2.6)
       // rejects video inside a `tool` message ("`text` is not set", verified
       // against the live API) — it accepts `video_url` only in `user` content.
       // So those videos are carried out the same way images are: a follow-up

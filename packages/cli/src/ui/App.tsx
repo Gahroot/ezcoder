@@ -989,8 +989,8 @@ export function App(props: AppProps) {
 
   // Derive credentials for the current provider + model. Almost always keyed
   // by provider id, but a model can prefer one storage key and fall back to
-  // another (e.g. Xiaomi's mimo-v2.5-pro-ultraspeed is API-Credits-only,
-  // while mimo-v2.5-pro prefers the Token Plan but falls back to API Credits
+  // another (e.g. Xiaomi's mimo-v2.6-pro-ultraspeed is API-Credits-only,
+  // while mimo-v2.6-pro prefers the Token Plan but falls back to API Credits
   // when only that's configured) — see getAuthStorageKeys().
   const currentCreds = getAuthStorageKeys(currentProvider, currentModel)
     .map((key) => props.credentialsByProvider?.[key])
@@ -3120,11 +3120,11 @@ export function App(props: AppProps) {
 
       // The `read` tool's video capability (its description + native-video
       // execute path) is baked in at creation from the model's `maxVideoBytes`.
-      // Switching to/from a video-capable model (e.g. text-only MiMo-V2.5-Pro →
-      // omnimodal MiMo-V2.5) must rebuild it, or the tool keeps telling the model
-      // it can't watch video. Rebuild reuses the read tracker, so read-before-edit
-      // history survives. Provider-change rebuilds the prompt above; this covers
-      // same-provider model switches too.
+      // Switching to/from a video-capable model (e.g. text-only DeepSeek V4 Pro
+      // → omnimodal MiMo-V2.6-Pro) must rebuild it, or the tool keeps telling
+      // the model it can't watch video. Rebuild reuses the read tracker, so
+      // read-before-edit history survives. Provider-change rebuilds the prompt
+      // above; this covers same-provider model switches too.
       setCurrentModel((prevModel) => {
         if (
           props.rebuildReadTool &&

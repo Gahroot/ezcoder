@@ -503,7 +503,7 @@ async function runInkTUI(opts: {
   // fall back to whichever other provider actually resolved. Keyed by
   // auth-storage key (not always the provider id) — e.g. Xiaomi splits into
   // "xiaomi" (Token Plan) and "xiaomi-credits" (API Credits, required for
-  // mimo-v2.5-pro-ultraspeed) since a user may hold either or both.
+  // mimo-v2.6-pro-ultraspeed) since a user may hold either or both.
   const credentialsByProvider: Record<
     string,
     { accessToken: string; accountId?: string; projectId?: string; baseUrl?: string }
@@ -543,7 +543,7 @@ async function runInkTUI(opts: {
   // resolved: prefer the provider's default model, but for a provider like
   // Xiaomi that splits credentials across models, fall back to whichever
   // model's specific storage key DID resolve (e.g. a user who configured only
-  // API Credits, no Token Plan, must still land on mimo-v2.5-pro-ultraspeed,
+  // API Credits, no Token Plan, must still land on mimo-v2.6-pro-ultraspeed,
   // not get treated as logged out of Xiaomi entirely).
   const resolvedKeyFor = (p: Provider, modelId: string): string | undefined =>
     getAuthStorageKeys(p, modelId).find((key) => credentialsByProvider[key]);
@@ -562,7 +562,7 @@ async function runInkTUI(opts: {
   let model = preferredModel;
   if (!modelResolves(provider, model)) {
     // Same provider, different model first — e.g. Xiaomi Credits-only users
-    // land on mimo-v2.5-pro-ultraspeed instead of bouncing to another provider.
+    // land on mimo-v2.6-pro-ultraspeed instead of bouncing to another provider.
     const sameProviderModel = resolvableModelFor(provider);
     if (sameProviderModel) {
       model = sameProviderModel;

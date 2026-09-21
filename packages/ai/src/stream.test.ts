@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { localWireModelId, stream } from "./stream.js";
 import { EZCoderAIError } from "./errors.js";
 import { providerRegistry } from "./provider-registry.js";
+import { streamOpenAI } from "./providers/openai.js";
 import type { StreamOptions } from "./types.js";
+
+// The Xiaomi handler delegates to streamOpenAI; stub it so the host it picked
+// is observable without opening a socket.
+vi.mock("./providers/openai.js", () => ({
+  streamOpenAI: vi.fn(() => ({ events: [], final: Promise.resolve() })),
+}));
 
 describe("localWireModelId", () => {
   it("strips the endpoint routing prefix so the server sees its own id", () => {
@@ -27,6 +34,49 @@ describe("local provider", () => {
         apiKey: "local",
       }),
     ).toThrow(EZCoderAIError);
+  });
+});
+
+describe("xiaomi host routing", () => {
+  const TOKEN_PLAN = "https://token-plan-sgp.xiaomimimo.com/v1";
+  const PLATFORM = "https://api.xiaomimimo.com/v1";
+
+  const routedBaseUrl = (model: string, baseUrl?: string): string | undefined => {
+    stream({
+      provider: "xiaomi",
+      model,
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "test-key",
+      ...(baseUrl ? { baseUrl } : {}),
+    });
+    return vi.mocked(streamOpenAI).mock.calls.at(-1)?.[0]?.baseUrl;
+  };
+
+  beforeEach(() => {
+    vi.mocked(streamOpenAI).mockClear();
+  });
+
+  it("sends Token Plan models to the Token Plan host by default", () => {
+    expect(routedBaseUrl("mimo-v2.6-pro")).toBe(TOKEN_PLAN);
+    expect(routedBaseUrl("mimo-v2.6-flash")).toBe(TOKEN_PLAN);
+  });
+
+  it("sends any UltraSpeed model to the platform host, which alone serves it", () => {
+    expect(routedBaseUrl("mimo-v2.6-pro-ultraspeed")).toBe(PLATFORM);
+    // Suffix-matched, so a future generation's SKU routes without a code change.
+    expect(routedBaseUrl("mimo-v2.7-pro-ultraspeed")).toBe(PLATFORM);
+  });
+
+  it("overrides a stored Token Plan baseUrl for UltraSpeed rather than misrouting it", () => {
+    // A Token Plan login persists that host on the credential. Sending
+    // UltraSpeed there earns "Not supported model", so the default is ignored.
+    expect(routedBaseUrl("mimo-v2.6-pro-ultraspeed", TOKEN_PLAN)).toBe(PLATFORM);
+  });
+
+  it("still honors an explicit non-Token-Plan override so a bad host stays fixable", () => {
+    const custom = "https://mimo.example.test/v1";
+    expect(routedBaseUrl("mimo-v2.6-pro-ultraspeed", custom)).toBe(custom);
+    expect(routedBaseUrl("mimo-v2.6-pro", custom)).toBe(custom);
   });
 });
 

@@ -61,10 +61,10 @@ export interface ModelInfo {
    * API Credits endpoint). The first key with stored credentials wins, so a
    * model can both prefer one endpoint AND fall back to another the user has
    * configured instead:
-   *   - `mimo-v2.5-pro` / `mimo-v2.5`: `["xiaomi", XIAOMI_CREDITS_KEY]` —
+   *   - `mimo-v2.6-pro` / `mimo-v2.6-flash`: `["xiaomi", XIAOMI_CREDITS_KEY]` —
    *     prefer the Token Plan, fall back to API Credits (API Credits serves
    *     every MiMo model, so a Credits-only user still reaches these).
-   *   - `mimo-v2.5-pro-ultraspeed`: `[XIAOMI_CREDITS_KEY]` only — not served
+   *   - `mimo-v2.6-pro-ultraspeed`: `[XIAOMI_CREDITS_KEY]` only — not served
    *     over the Token Plan endpoint, so there's no fallback to it.
    * Falls back to `[provider]` — the normal single-credential case — when
    * unset. Read via `getAuthStorageKeys()` / `getAuthStorageKey()`.
@@ -489,46 +489,24 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "high",
   },
   // ── Xiaomi (MiMo) ──────────────────────────────────────
-  // Pro series: text-only coding/agentic flagship. The legacy mimo-v2-pro
-  // auto-routes to v2.5 on 2026-06-01 and is fully deprecated by 2026-06-30.
+  // V2.6 series (2026-09) supersedes V2.5 one-for-one: pro → pro, the omni
+  // `mimo-v2.5` → flash, ultraspeed → ultraspeed. The whole series is now
+  // full-modality, so unlike V2.5-Pro the flagship no longer needs a separate
+  // omni sibling for attachments. V2.5 entries are retired here — a session
+  // that still has one saved falls back to the provider default on next start.
+  //
+  // Capabilities below are measured against the Token Plan host, not taken
+  // from marketing copy: image and video both come back with `image_tokens` /
+  // `video_tokens` in usage, and an oversized `max_tokens` is rejected with
+  // "supports at most 131072 completion tokens". A deliberately oversized
+  // prompt billed 1,048,570 tokens and was accepted, so the window is the
+  // binary 1M below (2^20) and not the decimal 1e6 V2.5 was listed with — the
+  // few-token gap is the chat envelope the server adds on top of the content.
   {
-    id: "mimo-v2.5-pro",
-    name: "MiMo-V2.5-Pro",
+    id: "mimo-v2.6-pro",
+    name: "MiMo-V2.6-Pro",
     provider: "xiaomi",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 131_072,
-    supportsThinking: true,
-    supportsImages: false,
-    supportsVideo: false,
-    costTier: "medium",
-    maxThinkingLevel: "high",
-    authStorageKeys: ["xiaomi", XIAOMI_CREDITS_KEY],
-  },
-  // UltraSpeed: lower-latency sibling of the Pro coding flagship, same
-  // text-only capability surface, premium-priced for the throughput gain.
-  // API-only — not served over the Token Plan endpoint, so credentials
-  // resolve from the distinct API Credits key only (see authStorageKeys doc).
-  {
-    id: "mimo-v2.5-pro-ultraspeed",
-    name: "MiMo-V2.5-Pro-UltraSpeed",
-    provider: "xiaomi",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 131_072,
-    supportsThinking: true,
-    supportsImages: false,
-    supportsVideo: false,
-    costTier: "high",
-    maxThinkingLevel: "high",
-    authStorageKeys: [XIAOMI_CREDITS_KEY],
-  },
-  // Omni series: native full-modal understanding (image + audio + video).
-  // Video/image ride the OpenAI-compatible transport as base64 data URLs
-  // (`video_url`/`image_url`), which the shared transform already emits.
-  {
-    id: "mimo-v2.5",
-    name: "MiMo-V2.5",
-    provider: "xiaomi",
-    contextWindow: 1_000_000,
+    contextWindow: 1_048_576,
     maxOutputTokens: 131_072,
     supportsThinking: true,
     supportsImages: true,
@@ -537,6 +515,45 @@ export const MODELS: ModelInfo[] = [
     costTier: "medium",
     maxThinkingLevel: "high",
     authStorageKeys: ["xiaomi", XIAOMI_CREDITS_KEY],
+  },
+  // Flash: the cheap, high-frequency sibling at the same modality surface and
+  // window as Pro. It is the provider's `low` tier, so scout sub-agents and
+  // compaction summaries route here instead of paying Pro rates.
+  {
+    id: "mimo-v2.6-flash",
+    name: "MiMo-V2.6-Flash",
+    provider: "xiaomi",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 131_072,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: true,
+    maxVideoBytes: 36 * 1024 * 1024,
+    costTier: "low",
+    maxThinkingLevel: "high",
+    authStorageKeys: ["xiaomi", XIAOMI_CREDITS_KEY],
+  },
+  // UltraSpeed: Pro-grade quality at much lower latency, premium-priced for
+  // the throughput gain. API-only — not served over the Token Plan endpoint,
+  // so credentials resolve from the distinct API Credits key only (see the
+  // authStorageKeys doc). The Token Plan host rejects it with "Not supported
+  // model" — the known-model/wrong-host reply — where an invented id gets
+  // "Unsupported model", which is how this id was confirmed without a
+  // Credits key. Attachment support is inferred from the series announcement
+  // ("full modality across the series") rather than measured: images are
+  // enabled, video stays off until it can be verified on the platform host.
+  {
+    id: "mimo-v2.6-pro-ultraspeed",
+    name: "MiMo-V2.6-Pro-UltraSpeed",
+    provider: "xiaomi",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 131_072,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "high",
+    maxThinkingLevel: "high",
+    authStorageKeys: [XIAOMI_CREDITS_KEY],
   },
   // ── DeepSeek ───────────────────────────────────────────
   {
@@ -682,8 +699,8 @@ export function getModelsForProvider(provider: Provider): ModelInfo[] {
  * `(provider, model)`, first match wins. Almost every model just uses its
  * provider id (one credential per provider). Models with `authStorageKeys`
  * set (currently only Xiaomi) can prefer one endpoint and fall back to
- * another — e.g. `mimo-v2.5-pro` prefers the Token Plan but falls back to API
- * Credits, while the API-only `mimo-v2.5-pro-ultraspeed` has no fallback.
+ * another — e.g. `mimo-v2.6-pro` prefers the Token Plan but falls back to API
+ * Credits, while the API-only `mimo-v2.6-pro-ultraspeed` has no fallback.
  */
 export function getAuthStorageKeys(provider: Provider, modelId: string): string[] {
   const model = getAllModels().find((m) => m.id === modelId && m.provider === provider);
@@ -710,7 +727,7 @@ export function getVideoByteLimit(modelId: string): number | undefined {
 }
 
 export function getDefaultModel(provider: Provider): ModelInfo {
-  if (provider === "xiaomi") return MODELS.find((m) => m.id === "mimo-v2.5-pro")!;
+  if (provider === "xiaomi") return MODELS.find((m) => m.id === "mimo-v2.6-pro")!;
   if (provider === "openai") return MODELS.find((m) => m.id === "gpt-5.6-sol")!;
   if (provider === "gemini") return MODELS.find((m) => m.id === "gemini-3.1-flash-lite")!;
   if (provider === "glm") return MODELS.find((m) => m.id === "glm-5.3")!;
