@@ -24,8 +24,16 @@ let tmpBase: string;
 let tmpProject: string;
 let child: FakeChild;
 
+// Each awaited goal-store write takes the cross-process `goals.lock`, whose own
+// acquire budget is 10s (see withGoalStoreLock). The spawn-error path performs
+// three of those locked read-modify-write round-trips before it reports
+// completion, so a 5s poll budget was shorter than the work it waits on, and
+// the slower Windows filesystem failed the blocking gate at whichever
+// assertion it happened to reach. Outwait the store's own lock budget while
+// staying inside the 20s testTimeout; a genuinely stuck worker still fails,
+// just later.
 async function flushUntil(assertion: () => void | Promise<void>): Promise<void> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + 15_000;
   let lastError: unknown;
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 10));
