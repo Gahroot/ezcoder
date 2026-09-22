@@ -21,7 +21,7 @@ const DEEPSEEK_THINKING_LEVELS: readonly ThinkingLevel[] = ["low", "high", "max"
 // rung (docs: low/medium/high default/xhigh); each model slices this ladder
 // by its registry maxThinkingLevel.
 const XAI_THINKING_LEVELS: readonly ThinkingLevel[] = ["low", "medium", "high", "xhigh"];
-// Opus 5 / 4.7 expose the full ladder including xhigh ("extended capability for
+// Opus 5.x / 4.7 expose the full ladder including xhigh ("extended capability for
 // long-horizon work"). Other adaptive Anthropic models omit xhigh and would 400.
 const ANTHROPIC_XHIGH_THINKING_LEVELS: readonly ThinkingLevel[] = [
   "low",

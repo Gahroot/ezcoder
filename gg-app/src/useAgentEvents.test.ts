@@ -59,7 +59,7 @@ function setup(
   // model_change / ken_model_change spreads) apply against a base state.
   let agentState: AgentState | null = {
     provider: "anthropic",
-    model: "claude-opus-5",
+    model: "claude-opus-5-5",
     cwd: "/tmp/proj",
     running: false,
     ...initialState,
@@ -936,7 +936,7 @@ describe("useAgentEvents", () => {
       kenModel: "gpt-5.5",
       kenModelOverride: true,
       // GG Coder's own model is untouched by a Ken pin.
-      model: "claude-opus-5",
+      model: "claude-opus-5-5",
       provider: "anthropic",
     });
 
@@ -945,12 +945,12 @@ describe("useAgentEvents", () => {
       hook.result.current.handleEvent(
         ev("ken_model_change", {
           kenProvider: "anthropic",
-          kenModel: "claude-opus-5",
+          kenModel: "claude-opus-5-5",
           kenModelOverride: false,
         }),
       );
     });
-    expect(getState()).toMatchObject({ kenModel: "claude-opus-5", kenModelOverride: false });
+    expect(getState()).toMatchObject({ kenModel: "claude-opus-5-5", kenModelOverride: false });
   });
 
   it("plan_exit opens the human review modal when autopilot is off", () => {
@@ -1185,7 +1185,7 @@ describe("models_change", () => {
     // Connecting a provider unlocks its models; the sidecar fans models_change
     // out to every window because ~/.gg/auth.json is shared, not per-session.
     const unlocked = [
-      { id: "claude-opus-5", name: "Claude Opus 5", provider: "anthropic" },
+      { id: "claude-opus-5-5", name: "Claude Opus 5.5", provider: "anthropic" },
       { id: "gpt-6", name: "GPT-6", provider: "openai" },
     ];
     vi.mocked(listModels).mockResolvedValue(unlocked as never);
@@ -1200,7 +1200,7 @@ describe("models_change", () => {
   });
 
   it("keeps the existing list when the refresh itself fails", async () => {
-    const seeded = [{ id: "claude-opus-5", name: "Claude Opus 5", provider: "anthropic" }];
+    const seeded = [{ id: "claude-opus-5-5", name: "Claude Opus 5.5", provider: "anthropic" }];
     vi.mocked(listModels).mockResolvedValue(seeded as never);
     const { hook, getModels } = setup();
     await act(async () => {
@@ -1221,7 +1221,7 @@ describe("models_change", () => {
   });
 
   it("clears the picker when the last provider is disconnected", async () => {
-    const seeded = [{ id: "claude-opus-5", name: "Claude Opus 5", provider: "anthropic" }];
+    const seeded = [{ id: "claude-opus-5-5", name: "Claude Opus 5.5", provider: "anthropic" }];
     vi.mocked(listModels).mockResolvedValue(seeded as never);
     const { hook, getModels } = setup();
     await act(async () => {

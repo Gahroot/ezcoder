@@ -110,7 +110,7 @@ describe("getFastModel", () => {
   });
 
   it("picks Haiku for Anthropic and Luna for OpenAI", () => {
-    expect(getFastModel("anthropic", "claude-opus-5").costTier).toBe("low");
+    expect(getFastModel("anthropic", "claude-opus-5-5").costTier).toBe("low");
     expect(getFastModel("openai", "gpt-5.6-sol").id).toBe("gpt-5.6-luna");
   });
 });
@@ -197,8 +197,8 @@ describe("model registry context windows", () => {
     expect(
       getDefaultThinkingLevel("kimi-k2.7-code", { baseUrl: "https://api.kimi.com/coding/v1" }),
     ).toBe("high");
-    expect(getDefaultThinkingLevel("claude-opus-5")).toBe("max");
-    expect(getDefaultThinkingLevel("claude-opus-5")).toBe("max");
+    expect(getDefaultThinkingLevel("claude-opus-5-5")).toBe("max");
+    expect(getDefaultThinkingLevel("claude-opus-5-5")).toBe("max");
   });
 
   it("starts Codex models at their catalog default, not the ladder ceiling", () => {

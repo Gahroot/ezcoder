@@ -44,7 +44,7 @@ export interface ModelInfo {
    *   - OpenAI GPT-6 Astra: `ultra` (Codex orchestration preset above `max`)
    *   - OpenAI GPT-5.6-era (Sol/Terra/Luna): `max`
    *   - OpenAI Pro/Codex/old: clamped to what the model accepts
-   *   - Claude Fable 5.1 / Fable 5 / Mythos 5, Opus 5 and Sonnet 5: `max`
+   *   - Claude Fable 5.1 / Fable 5 / Mythos 5, Opus 5.5 and Sonnet 5: `max`
    *     (the Fable / Mythos line uses always-on adaptive thinking, low→max)
    *   - Claude Haiku 4.5: `high` (no adaptive `max` tier)
    *   - Kimi K3: `max` (always-on reasoning; currently the only API effort)
@@ -112,12 +112,17 @@ export const MODELS: ModelInfo[] = [
   //   maxThinkingLevel: "max",
   // },
   {
-    // Released 2026-07-24 — "For complex agentic coding and enterprise work".
-    // Near-Fable capability at half the price ($5/$25 vs $10/$50). Adaptive
-    // thinking with the full effort ladder (low→max, xhigh included); dateless
-    // ID is the canonical pinned snapshot (post-4.6 naming scheme).
-    id: "claude-opus-5",
-    name: "Claude Opus 5",
+    // Released 2026-09-22 — "built for long-running agentic coding and knowledge
+    // work". Fable-5.1-class output at $4/$20 MTok (40% below Opus 5), 1M
+    // context, 128K output, image input. Same always-on adaptive thinking with
+    // the full effort ladder (low→max, xhigh included; the API-side default
+    // effort is `medium`) and the same Fable 5.1 constraints gg-ai already
+    // handles (no forced tool use, thinking can't be disabled). Also eligible
+    // for the gated `speed: "fast"` research preview (waitlist-only, premium
+    // $8/$40 pricing — not wired up). Opus 5 is retired here — a session that
+    // still has it saved falls back to the provider default on next start.
+    id: "claude-opus-5-5",
+    name: "Claude Opus 5.5",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,

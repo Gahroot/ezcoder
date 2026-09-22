@@ -322,7 +322,7 @@ function main(): void {
   if (values.json) {
     const message = positionals[0] ?? "";
     const jsonProvider = (values.provider ?? "anthropic") as Provider;
-    const jsonModel = values.model ?? "claude-opus-5";
+    const jsonModel = values.model ?? "claude-opus-5-5";
     const maxTurns = values["max-turns"] ? parseInt(values["max-turns"], 10) : undefined;
     const systemPrompt = values["system-prompt"];
     // An agent definition's body: composed with the Tools/context/Environment
@@ -377,7 +377,7 @@ function main(): void {
   // RPC mode — headless JSON-over-stdio for IDE integrations
   if (values.rpc) {
     const rpcProvider = (values.provider ?? "anthropic") as Provider;
-    const rpcModel = values.model ?? "claude-opus-5";
+    const rpcModel = values.model ?? "claude-opus-5-5";
     const systemPrompt = values["system-prompt"];
     const cwd = process.cwd();
     runRpcMode({
@@ -409,7 +409,7 @@ function main(): void {
     if (p === "openrouter") return "qwen/qwen3.6-plus";
     if (p === "sakana") return "fugu";
     if (p === "xai") return "grok-4.7";
-    return "claude-opus-5";
+    return "claude-opus-5-5";
   }
 
   const model: string = saved.model ?? getHardcodedDefault(provider);
@@ -1035,7 +1035,7 @@ async function runSessions(): Promise<void> {
     if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
     if (p === "sakana") return "fugu";
     if (p === "xai") return "grok-4.7";
-    return "claude-opus-5";
+    return "claude-opus-5-5";
   }
 
   const model = saved2.model ?? getDefault(provider);
