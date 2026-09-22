@@ -30,7 +30,7 @@ import { expandPromptCommand } from "./prompt-command-expansion.js";
 import { SettingsManager } from "./settings-manager.js";
 import { AuthStorage } from "./auth-storage.js";
 import { dualAuthProvider } from "@prestyj/core";
-import { getClaudeCliUserAgent } from "./claude-code-version.js";
+import { getClaudeCliUserAgent, recordRequiredClaudeCodeVersion } from "./claude-code-version.js";
 import { kimiCodingHeaders, isKimiCodingEndpoint } from "./oauth/kimi.js";
 import { isGrokCliEndpoint } from "./oauth/xai.js";
 import {
@@ -2437,7 +2437,11 @@ export class AgentSession {
       }
     }
 
-    const userAgent = this.provider === "anthropic" ? await getClaudeCliUserAgent() : undefined;
+    // Reassigned when Anthropic rejects the turn for being below a model's
+    // minimum Claude Code version; the retry below rebuilds it from the floor
+    // that rejection taught us. The anthropic client cache is keyed on the UA,
+    // so the new value transparently yields a correctly-identified client.
+    let userAgent = this.provider === "anthropic" ? await getClaudeCliUserAgent() : undefined;
 
     const loopMessages = await this.prepareDynamicContext();
 
@@ -2729,6 +2733,19 @@ export class AgentSession {
           await clearInvalidStaticApiKey(fallbackErr);
           throw fallbackErr;
         }
+      } else if (
+        this.provider === "anthropic" &&
+        err instanceof ProviderError &&
+        recordRequiredClaudeCodeVersion(err.message)
+      ) {
+        // Anthropic gates newly released models on a minimum Claude Code
+        // version and names it in the rejection. That message is more current
+        // than the npm registry can be at launch, so the floor it just taught
+        // us is authoritative: rebuild the spoofed User-Agent from it and retry
+        // this turn instead of making the user wait out a cache TTL.
+        userAgent = await getClaudeCliUserAgent();
+        log("INFO", "auth", `Retrying turn as ${userAgent}`);
+        await runAgentLoop(creds.accessToken, creds.accountId, creds.projectId);
       } else if (err instanceof ProviderError && err.statusCode === 401) {
         // Static API-key providers (GLM, Moonshot API key, etc.) have no refresh
         // mechanism — retrying with the same key is pointless. Clear the
