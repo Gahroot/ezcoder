@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { validateNolanModelPref, effectiveNolanModel, type NolanModelPref } from "./nolan-model.js";
 
-const REGISTRY = new Set(["claude-opus-5", "gpt-5.5", "kimi-k2.7-code"]);
+const REGISTRY = new Set(["claude-opus-5-5", "gpt-5.5", "kimi-k2.7-code"]);
 const CONNECTED = new Set(["anthropic", "openai"]);
 
 const opts = {
@@ -39,12 +39,12 @@ describe("validateNolanModelPref", () => {
 });
 
 describe("effectiveNolanModel", () => {
-  const build = { provider: "anthropic" as const, model: "claude-opus-5" };
+  const build = { provider: "anthropic" as const, model: "claude-opus-5-5" };
 
   it("follows the build session when no override is set", () => {
     expect(effectiveNolanModel(null, build)).toEqual({
       nolanProvider: "anthropic",
-      nolanModel: "claude-opus-5",
+      nolanModel: "claude-opus-5-5",
       nolanModelOverride: false,
     });
   });
@@ -58,9 +58,9 @@ describe("effectiveNolanModel", () => {
   });
 
   it("pin identical to the build model still reports override=true (it survives EZ switches)", () => {
-    expect(effectiveNolanModel({ provider: "anthropic", model: "claude-opus-5" }, build)).toEqual({
+    expect(effectiveNolanModel({ provider: "anthropic", model: "claude-opus-5-5" }, build)).toEqual({
       nolanProvider: "anthropic",
-      nolanModel: "claude-opus-5",
+      nolanModel: "claude-opus-5-5",
       nolanModelOverride: true,
     });
   });

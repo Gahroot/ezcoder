@@ -411,7 +411,7 @@ function main(): void {
     if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
     if (p === "openrouter") return "qwen/qwen3.6-plus";
     if (p === "sakana") return "fugu";
-    if (p === "xai") return "grok-4.6";
+    if (p === "xai") return "grok-4.7";
     return "claude-opus-5-5";
   }
 
@@ -807,7 +807,13 @@ async function runInkTUI(opts: {
 
         if (
           savedSettings.autoCompact &&
-          shouldCompact(messages, contextWindow, policy.threshold, activeTokens)
+          shouldCompact(
+            messages,
+            contextWindow,
+            policy.threshold,
+            activeTokens,
+            policy.targetTokens,
+          )
         ) {
           await subAgentManager?.hydrate(loaded.header.id);
           log("INFO", "session", `Restored session exceeds context — auto-compacting`);
@@ -835,7 +841,16 @@ async function runInkTUI(opts: {
                   sessionPath = loaded.path;
                   sessionId = loaded.header.id;
                 }
-                if (!shouldCompact(messages, contextWindow, policy.threshold)) return;
+                if (
+                  !shouldCompact(
+                    messages,
+                    contextWindow,
+                    policy.threshold,
+                    undefined,
+                    policy.targetTokens,
+                  )
+                )
+                  return;
 
                 const fingerprint = sourceFingerprint(messages);
                 const attempt = await sessionManager.readCompactionAttemptState(conversationId);
@@ -1066,7 +1081,7 @@ async function runSessions(): Promise<void> {
     if (p === "deepseek") return "deepseek-v4-pro";
     if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
     if (p === "sakana") return "fugu";
-    if (p === "xai") return "grok-4.6";
+    if (p === "xai") return "grok-4.7";
     return "claude-opus-5-5";
   }
 

@@ -95,7 +95,7 @@ export const AUTH_PROVIDERS: AuthProviderMeta[] = [
   {
     value: "xai",
     label: "xAI (Grok)",
-    description: "Grok 4.6, Grok 4.5 · OAuth or API key",
+    description: "Grok 4.7 · OAuth or API key",
     methods: ["oauth", "apikey"],
     apiKeyLabel: "xAI",
     methodDetails: {

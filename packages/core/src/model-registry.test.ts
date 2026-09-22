@@ -133,7 +133,7 @@ describe("getFastModel", () => {
   });
 
   it("picks Haiku for Anthropic and Luna for OpenAI", () => {
-    expect(getFastModel("anthropic", "claude-opus-5").costTier).toBe("low");
+    expect(getFastModel("anthropic", "claude-opus-5-5").costTier).toBe("low");
     expect(getFastModel("openai", "gpt-5.6-sol").id).toBe("gpt-5.6-luna");
   });
 });
@@ -279,10 +279,10 @@ describe("model registry context windows", () => {
     expect(getSummaryModel("glm", "glm-5.3").id).toBe("glm-5.3-flash");
   });
 
-  it("defaults xAI to Grok 4.6 and keeps 4.5 capped at high", () => {
+  it("defaults xAI to Grok 4.7 alone, retiring the superseded 4.6/4.5 ids", () => {
     expect(getDefaultModel("xai")).toMatchObject({
-      id: "grok-4.6",
-      name: "Grok 4.6",
+      id: "grok-4.7",
+      name: "Grok 4.7",
       provider: "xai",
       contextWindow: 500_000,
       maxOutputTokens: 131_072,
@@ -291,10 +291,13 @@ describe("model registry context windows", () => {
       supportsVideo: false,
       maxThinkingLevel: "xhigh",
     });
-    expect(getDefaultThinkingLevel("grok-4.6")).toBe("xhigh");
-    expect(getModelsForProvider("xai").map((model) => model.id)).toEqual(["grok-4.6", "grok-4.5"]);
-    // 4.5 stays registered as the legacy option without the new xhigh rung.
-    expect(getModel("grok-4.5")?.maxThinkingLevel).toBe("high");
+    expect(getDefaultThinkingLevel("grok-4.7")).toBe("xhigh");
+    expect(getModelsForProvider("xai").map((model) => model.id)).toEqual(["grok-4.7"]);
+    // Only the newest Grok ships — saved sessions on 4.6/4.5 fall back to the
+    // provider default.
+    for (const retired of ["grok-4.6", "grok-4.5"]) {
+      expect(getModel(retired), `${retired} retired`).toBeUndefined();
+    }
   });
 
   it("defaults MiniMax to the multimodal M3 with a 1M context window", () => {
@@ -313,6 +316,36 @@ describe("model registry context windows", () => {
   it("every other provider defaults to a single-entry [provider] auth-storage key", () => {
     expect(getAuthStorageKeys("anthropic", "claude-sonnet-5")).toEqual(["anthropic"]);
     expect(getAuthStorageKey("anthropic", "claude-sonnet-5")).toBe("anthropic");
+  });
+
+  it("defaults Xiaomi to the full-modal MiMo-V2.6-Pro and retires the V2.5 ids", () => {
+    expect(getDefaultModel("xiaomi")).toMatchObject({
+      id: "mimo-v2.6-pro",
+      name: "MiMo-V2.6-Pro",
+      provider: "xiaomi",
+      // Measured against the Token Plan host, not marketing copy: the window
+      // is the binary 1M (2^20), not the decimal 1e6 V2.5 was listed with.
+      contextWindow: 1_048_576,
+      maxOutputTokens: 131_072,
+      supportsThinking: true,
+      // The whole V2.6 series is natively full-modal — Pro is no longer
+      // text-only the way V2.5-Pro was.
+      supportsImages: true,
+      supportsVideo: true,
+      maxVideoBytes: 36 * 1024 * 1024,
+    });
+    expect(getModelsForProvider("xiaomi").map((model) => model.id)).toEqual([
+      "mimo-v2.6-pro",
+      "mimo-v2.6-flash",
+      "mimo-v2.6-pro-ultraspeed",
+    ]);
+    // V2.5 ids deprecate on the platform 2026-10-21 — retired here, saved
+    // sessions fall back to the provider default.
+    for (const retired of ["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2.5-pro-ultraspeed"]) {
+      expect(getModel(retired), `${retired} retired`).toBeUndefined();
+    }
+    // Flash is the low-cost sibling, so scout routing drops to it.
+    expect(getFastModel("xiaomi", "mimo-v2.6-pro").id).toBe("mimo-v2.6-flash");
   });
 
   it("mimo-v2.6-pro / mimo-v2.6-flash prefer the Token Plan key but fall back to API Credits", () => {

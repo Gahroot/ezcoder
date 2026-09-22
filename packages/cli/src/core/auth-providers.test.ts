@@ -11,7 +11,7 @@ import { AUTH_PROVIDERS } from "./auth-providers.js";
  */
 describe("AUTH_PROVIDERS descriptions match the model registry", () => {
   /**
-   * Descriptions abbreviate after the first mention ("Claude Fable 5.1, Opus 5"
+   * Descriptions abbreviate after the first mention ("Claude Fable 5.1, Opus 5.5"
    * — not "Claude Opus 5"), so a model counts as listed when either its full
    * registry name or that name minus its leading brand word appears.
    */
