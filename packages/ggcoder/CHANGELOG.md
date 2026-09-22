@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.61.1
+
+### Patch Changes
+
+- Fix slow agent turns on large contexts: latency-capped compaction triggers (evidence-based per provider), prompt-scaled first-event stream timeout, and per-turn prompt-cache health observability.
+  - @kenkaiiii/gg-ai@5.61.1
+  - @kenkaiiii/gg-agent@5.61.1
+  - @kenkaiiii/gg-core@5.61.1
+
 ## 5.61.0
 
 ### Minor Changes
