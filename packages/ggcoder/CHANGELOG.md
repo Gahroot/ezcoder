@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.61.0
+
+### Minor Changes
+
+- Add real UI library integration: `ui_registry` discovers and inspects public Bklit/Kokonut components, supporting shadcn source, and Motion animation APIs; `ui_adopt` plans and adopts registry source into React projects with TypeScript import relocation, prerequisite/conflict checks, attribution, and never overwrites user files. Bundled `evidence-led-ui` skill now routes relevant React UI work to these tools.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.61.0
+- @kenkaiiii/gg-agent@5.61.0
+- @kenkaiiii/gg-core@5.61.0
+
 ## 5.60.9
 
 ### Patch Changes
