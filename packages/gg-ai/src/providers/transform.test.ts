@@ -678,7 +678,7 @@ describe("toAnthropicThinking", () => {
 describe("toOpenAIReasoningEffort", () => {
   it("clamps client-only max and ultra levels to OpenAI's xhigh effort", () => {
     expect(toOpenAIReasoningEffort("max", "gpt-5.5")).toBe("xhigh");
-    expect(toOpenAIReasoningEffort("ultra", "gpt-5.6-sol")).toBe("xhigh");
+    expect(toOpenAIReasoningEffort("ultra", "gpt-6-sol")).toBe("xhigh");
   });
 });
 

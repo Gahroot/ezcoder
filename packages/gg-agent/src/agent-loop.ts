@@ -10,8 +10,10 @@ import {
   type Usage,
   type ContentPart,
   type AssistantMessage,
+  environmentSecrets,
   isHardBillingMessage,
   redactValue,
+  type RedactionOptions,
   sliceHead,
   sliceTail,
 } from "@kenkaiiii/gg-ai";
@@ -35,6 +37,18 @@ import {
 const DEFAULT_MAX_TURNS = 300;
 /** Per-tool cancellation ceiling; a tool may raise it via `timeoutMs`. */
 const DEFAULT_TOOL_TIMEOUT_MS = 300_000;
+
+let _toolRedaction: RedactionOptions | undefined;
+/**
+ * Tool output is redacted with the process's own credential values (exact
+ * match) on top of the format-based detectors, so `cat .env` or `env` cannot
+ * leak a real key even when it does not look like one. Computed once: the
+ * environment's secrets do not change during a run.
+ */
+function toolRedactionOptions(): RedactionOptions {
+  _toolRedaction ??= { secrets: environmentSecrets(process.env) };
+  return _toolRedaction;
+}
 
 /**
  * Lightweight stream diagnostic callback. When set, the agent loop calls this
@@ -2020,8 +2034,8 @@ async function executeSingleToolCall(
       };
       const raw = await tool.execute(parsed, ctx);
       const normalized = normalizeToolResult(raw);
-      resultContent = redactValue(normalized.content);
-      details = redactValue(normalized.details);
+      resultContent = redactValue(normalized.content, toolRedactionOptions());
+      details = redactValue(normalized.details, toolRedactionOptions());
       for (const key of options.invalidToolArgumentCounts.keys()) {
         if (key.startsWith(`${toolCall.name}:`)) options.invalidToolArgumentCounts.delete(key);
       }
@@ -2069,15 +2083,18 @@ async function executeSingleToolCall(
           );
         }
       } else {
-        resultContent = redactValue(err instanceof Error ? err.message : String(err));
+        resultContent = redactValue(
+          err instanceof Error ? err.message : String(err),
+          toolRedactionOptions(),
+        );
       }
     }
   }
 
   // All tool output crosses both an event boundary and the provider-context
   // boundary below. Sanitize every branch, including unknown/validation errors.
-  resultContent = redactValue(resultContent);
-  details = redactValue(details);
+  resultContent = redactValue(resultContent, toolRedactionOptions());
+  details = redactValue(details, toolRedactionOptions());
 
   const durationMs = Date.now() - startTime;
 
