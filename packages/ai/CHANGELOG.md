@@ -1,5 +1,7 @@
 # @prestyj/ai
 
+## 5.24.0
+
 ## 5.23.0
 
 ### Minor Changes

@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.24.0
+
+### Minor Changes
+
+- Create isolated worktrees while the main checkout has uncommitted work, and set them up ready to run. New copies fork from the last commit (leaving the main tree untouched), carry local config such as `.env` across, and install the project's dependencies. Isolated sub-agents no longer fall back to the shared working directory when the repo is busy.
+
+### Patch Changes
+
+- @prestyj/ai@5.24.0
+- @prestyj/agent@5.24.0
+- @prestyj/core@5.24.0
+
 ## 5.23.0
 
 ### Minor Changes
