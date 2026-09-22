@@ -938,7 +938,7 @@ describe("useAgentEvents", () => {
       nolanModel: "gpt-5.5",
       nolanModelOverride: true,
       // EZ Coder's own model is untouched by a Nolan pin.
-      model: "claude-opus-5",
+      model: "claude-opus-5-5",
       provider: "anthropic",
     });
 
@@ -947,12 +947,12 @@ describe("useAgentEvents", () => {
       hook.result.current.handleEvent(
         ev("nolan_model_change", {
           nolanProvider: "anthropic",
-          nolanModel: "claude-opus-5",
+          nolanModel: "claude-opus-5-5",
           nolanModelOverride: false,
         }),
       );
     });
-    expect(getState()).toMatchObject({ nolanModel: "claude-opus-5", nolanModelOverride: false });
+    expect(getState()).toMatchObject({ nolanModel: "claude-opus-5-5", nolanModelOverride: false });
   });
 
   it("plan_exit opens the human review modal when autopilot is off", () => {

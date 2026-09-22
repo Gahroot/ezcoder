@@ -333,6 +333,7 @@ export async function createTools(
           opts?.onFileMutated,
           opts?.onPreFileMutation,
           getDiagnostics,
+          goalModeRef,
           opts?.getWriteGuardSettings,
         ),
         planModeRef,

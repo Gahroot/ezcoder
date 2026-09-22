@@ -58,10 +58,12 @@ describe("effectiveNolanModel", () => {
   });
 
   it("pin identical to the build model still reports override=true (it survives EZ switches)", () => {
-    expect(effectiveNolanModel({ provider: "anthropic", model: "claude-opus-5-5" }, build)).toEqual({
-      nolanProvider: "anthropic",
-      nolanModel: "claude-opus-5-5",
-      nolanModelOverride: true,
-    });
+    expect(effectiveNolanModel({ provider: "anthropic", model: "claude-opus-5-5" }, build)).toEqual(
+      {
+        nolanProvider: "anthropic",
+        nolanModel: "claude-opus-5-5",
+        nolanModelOverride: true,
+      },
+    );
   });
 });
