@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.67.0",
+    date: "2026-09-22",
+    items: [
+      "Ask for UI and get the real thing. Your agent can now browse `Bklit` and `Kokonutui` for actual components, pull their genuine source into your project, and wire up imports and dependencies for you. No more invented lookalikes. I watched it nail `6 out of 6` fresh builds in testing with the real library code, verbatim.",
+      "Animations that behave like an adult. New `Motion` guidance means the agent builds with real animation APIs, honors your `reduced motion` preference, and cleans up its own animation drivers on unmount. Smooth where it should be, still where you need it.",
+    ],
+  },
+  {
     version: "0.66.4",
     date: "2026-09-21",
     items: [
