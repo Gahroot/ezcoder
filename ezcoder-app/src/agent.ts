@@ -1304,16 +1304,33 @@ export async function projectOpenWindows(cwd: string): Promise<ProjectWindowConf
   }
 }
 
+/** What the daemon did to make a new copy usable after checking it out. */
+export interface WorktreeSetup {
+  /** Ignored config files (`.env`, `.npmrc`…) copied from the main checkout. */
+  carried: string[];
+  /** Each install command attempted, with why it failed when it did. */
+  installs: { command: string; ok: boolean; message?: string }[];
+  /** Everything attempted worked. */
+  ok: boolean;
+}
+
 export interface CreatedWorktree {
   path: string;
   branch: string;
   baseRef: string;
+  setup: WorktreeSetup;
 }
 
 /**
- * Create an isolated git worktree off `cwd`'s repo. Rejects with a
- * user-readable message when the main checkout is dirty or the folder is not a
- * git repo — both are for the user to resolve, so the text is shown as-is.
+ * Create an isolated git worktree off `cwd`'s repo, then make it usable: local
+ * config carried across and dependencies installed. Uncommitted work in the
+ * main checkout is fine — the copy forks from the last commit and the main tree
+ * is left untouched.
+ *
+ * Slow by nature, because it waits for that install. Rejects with a
+ * user-readable message when the folder is not a git repo, which is the user's
+ * to resolve, so the text is shown as-is. A failed install is NOT a rejection:
+ * it comes back under `setup`, since the copy itself is fine.
  */
 export async function createWorktree(cwd: string, branch?: string): Promise<CreatedWorktree> {
   return await invoke<CreatedWorktree>("create_worktree", { cwd, branch: branch ?? null });

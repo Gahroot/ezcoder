@@ -28,6 +28,7 @@ import {
   SUB_AGENT_TIMEOUT_MS,
 } from "./subagent-shared.js";
 import { createWorktree, removeWorktree } from "../core/worktree.js";
+import { prepareWorktree } from "../core/worktree-setup.js";
 
 /** Only retry errors that specifically mean the selected model cannot be used. */
 export function isModelUnavailableError(stderr: string): boolean {
@@ -119,9 +120,25 @@ export function createSubAgentTool(
         try {
           const created = await createWorktree({ repoDir: cwd });
           isolated = { path: created.path, branch: created.branch };
+          // A checkout holds tracked files only, so without this the child gets
+          // a copy with no `.env` and no installed packages, and reports the
+          // project as broken. Failures are noted, never fatal.
+          const setup = await prepareWorktree({
+            mainRoot: created.mainRoot,
+            worktreePath: created.path,
+          });
+          const failed = setup.installs.find((r) => !r.ok);
+          if (failed) {
+            isolationNote =
+              `\n\n[Note: this agent worked in its own copy, but \`${failed.command}\` ` +
+              `failed there (${failed.message ?? "no detail"}), so commands needing ` +
+              `dependencies may not have run.]`;
+          }
           log("INFO", "subagent", "Sub-agent isolated", {
             branch: created.branch,
             path: created.path,
+            carried: setup.carried.length,
+            installsOk: setup.ok,
           });
         } catch (err) {
           isolationNote =

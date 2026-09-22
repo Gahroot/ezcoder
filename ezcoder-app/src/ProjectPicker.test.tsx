@@ -213,6 +213,7 @@ describe("ProjectPicker session list", () => {
         path: worktree,
         branch: "ez/abc",
         baseRef: "main",
+        setup: { carried: [".env"], installs: [{ command: "pnpm install", ok: true }], ok: true },
       });
       await renderSessionList([NATIVE_SESSION]);
       projectOpenWindowsMock.mockResolvedValue(OTHER);
@@ -241,15 +242,45 @@ describe("ProjectPicker session list", () => {
     });
 
     it("keeps the prompt open and shows why when the worktree cannot be made", async () => {
-      createWorktreeMock.mockRejectedValue(new Error("has uncommitted changes"));
+      createWorktreeMock.mockRejectedValue(new Error("Not a git repository: /Users/dev/ui-test"));
       await renderSessionList([NATIVE_SESSION]);
       projectOpenWindowsMock.mockResolvedValue(OTHER);
 
       fireEvent.click(screen.getByText(NATIVE_SESSION.preview));
       fireEvent.click(await screen.findByText("Own copy"));
 
-      await screen.findByText(/uncommitted changes/i);
+      await screen.findByText(/not a git repository/i);
       expect(selectProjectMock).not.toHaveBeenCalled();
+    });
+
+    // The copy exists, so this is not a failure to report and throw away: the
+    // user chooses between a copy they must install by hand and the shared
+    // folder. Opening an agent into a tree that cannot build wastes a session.
+    it("waits for the user when the copy was made but its install failed", async () => {
+      const worktree = "/Users/dev/.ezcoder/worktrees/ui-test/ez-abc";
+      createWorktreeMock.mockResolvedValue({
+        path: worktree,
+        branch: "ez/abc",
+        baseRef: "main",
+        setup: {
+          carried: [],
+          installs: [
+            { command: "pnpm install", ok: false, message: "ERR_PNPM_NO_MATCHING_VERSION" },
+          ],
+          ok: false,
+        },
+      });
+      await renderSessionList([NATIVE_SESSION]);
+      projectOpenWindowsMock.mockResolvedValue(OTHER);
+
+      fireEvent.click(screen.getByText(NATIVE_SESSION.preview));
+      fireEvent.click(await screen.findByText("Own copy"));
+
+      await screen.findByText(/didn.t finish/i);
+      expect(selectProjectMock).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText("Open the copy"));
+      await waitFor(() => expect(selectProjectMock).toHaveBeenCalledWith(worktree, undefined));
     });
   });
 

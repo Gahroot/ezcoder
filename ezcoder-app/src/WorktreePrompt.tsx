@@ -30,11 +30,17 @@ function baseName(p: string): string {
  *
  * Sharing stays available (and is the right answer when the second window is
  * only there to read), which is why this asks rather than isolating silently.
+ *
+ * Unsaved work in the other window no longer blocks this: the copy starts from
+ * the last commit, which is what keeps two agents from inheriting each other's
+ * half-written edits.
  */
 export function WorktreePrompt({ cwd, windows, onClose, onResolved }: Props): React.ReactElement {
   const [branch, setBranch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** A copy that exists but whose dependency install failed; path + reason. */
+  const [halfReady, setHalfReady] = useState<{ path: string; reason: string } | null>(null);
 
   const name = baseName(cwd);
   const others = windows.map((w) => w.title).join(", ");
@@ -43,12 +49,26 @@ export function WorktreePrompt({ cwd, windows, onClose, onResolved }: Props): Re
     if (busy) return;
     setBusy(true);
     setError(null);
+    setHalfReady(null);
     try {
       const created = await createWorktree(cwd, branch.trim() || undefined);
+      // The copy is ready but its install failed. Opening anyway is still the
+      // user's call — an agent let loose in a copy that cannot build wastes a
+      // whole session failing at the first command — so this stops and says so
+      // rather than proceeding into a broken tree.
+      const failed = created.setup?.installs?.find((r) => !r.ok);
+      if (failed) {
+        setHalfReady({
+          path: created.path,
+          reason: `${failed.command} failed: ${failed.message ?? "no detail"}`,
+        });
+        setBusy(false);
+        return;
+      }
       onResolved(created.path);
     } catch (e) {
-      // The daemon's 409s (dirty checkout, not a repo) are the user's to fix,
-      // so the message is shown as written rather than reduced to a generic.
+      // The daemon's 409 (not a repo) is the user's to fix, so the message is
+      // shown as written rather than reduced to a generic.
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
@@ -62,7 +82,8 @@ export function WorktreePrompt({ cwd, windows, onClose, onResolved }: Props): Re
       </div>
       <div className="modal-hint" style={{ color: theme.textMuted }}>
         The copy lives outside your project folder and is cleaned up on its own when you close it,
-        unless it still holds unsaved or unmerged work.
+        unless it still holds unsaved or unmerged work. It starts from your last commit, with your
+        local config and packages set up for you.
       </div>
       <input
         className="modal-input"
@@ -76,6 +97,17 @@ export function WorktreePrompt({ cwd, windows, onClose, onResolved }: Props): Re
           if (e.key === "Enter") void isolate();
         }}
       />
+      {busy && (
+        <div className="modal-hint" style={{ color: theme.textMuted }}>
+          Making your copy, then installing its packages. On a big project this can take a minute.
+        </div>
+      )}
+      {halfReady && (
+        <div className="modal-error" style={{ color: theme.error }}>
+          Your copy is ready, but setting up its packages didn&rsquo;t finish — {halfReady.reason}.
+          Open it and run the install yourself, or work in the shared folder instead.
+        </div>
+      )}
       {error && (
         <div className="modal-error" style={{ color: theme.error }}>
           {error}
@@ -85,9 +117,15 @@ export function WorktreePrompt({ cwd, windows, onClose, onResolved }: Props): Re
         <button className="modal-btn" disabled={busy} onClick={() => onResolved(cwd)}>
           Open anyway
         </button>
-        <button className="modal-btn primary" disabled={busy} onClick={() => void isolate()}>
-          {busy ? "Creating\u2026" : "Own copy"}
-        </button>
+        {halfReady ? (
+          <button className="modal-btn primary" onClick={() => onResolved(halfReady.path)}>
+            Open the copy
+          </button>
+        ) : (
+          <button className="modal-btn primary" disabled={busy} onClick={() => void isolate()}>
+            {busy ? "Setting up\u2026" : "Own copy"}
+          </button>
+        )}
       </div>
     </Modal>
   );

@@ -8,7 +8,6 @@ import {
   findMainWorktreeRoot,
   gitLayout,
   isInsideWorktreesRoot,
-  isWorkingTreeDirty,
   listWorktrees,
   reclaimableWorktrees,
   redirectedAncestor,
@@ -156,15 +155,6 @@ d("worktree", () => {
     });
   });
 
-  describe("isWorkingTreeDirty", () => {
-    it("is false on a clean repo and true after an untracked file appears", async () => {
-      const repo = await makeRepo();
-      expect(await isWorkingTreeDirty(repo)).toBe(false);
-      await fs.writeFile(path.join(repo, "untracked.txt"), "x\n");
-      expect(await isWorkingTreeDirty(repo)).toBe(true);
-    });
-  });
-
   describe("slugifyBranch", () => {
     it("lowercases and dashes spaces and underscores", () => {
       expect(slugifyBranch("Add Login  Flow")).toBe("add-login-flow");
@@ -207,7 +197,12 @@ d("worktree", () => {
       const repo = await makeRepo();
       const created = await createWorktree({ repoDir: repo, branch: "My Feature" });
 
-      expect(created).toMatchObject({ branch: "my-feature", baseRef: "main", created: true });
+      expect(created).toMatchObject({
+        branch: "my-feature",
+        baseRef: "main",
+        mainRoot: repo,
+        created: true,
+      });
       expect(await fs.readFile(path.join(created.path, "a.txt"), "utf-8")).toBe("hello\n");
       expect(git(created.path, "rev-parse", "--abbrev-ref", "HEAD")).toBe("my-feature");
 
@@ -220,22 +215,30 @@ d("worktree", () => {
       await expect(createWorktree({ repoDir: plain })).rejects.toThrow(/not a git repository/i);
     });
 
-    it("refuses a dirty main checkout unless allowDirty is set", async () => {
+    // The whole reason the dirty gate was removed: a second window is only ever
+    // opened while the first window's agent is mid-edit, so refusing on dirt
+    // meant refusing always. This pins the guarantee that made it safe.
+    it("forks a dirty main checkout and leaves every uncommitted change untouched", async () => {
       const repo = await makeRepo();
-      await fs.writeFile(path.join(repo, "dirty.txt"), "wip\n");
+      await fs.writeFile(path.join(repo, "a.txt"), "edited in main\n"); // modified
+      await fs.writeFile(path.join(repo, "staged.txt"), "staged\n");
+      git(repo, "add", "staged.txt"); // staged
+      await fs.writeFile(path.join(repo, "untracked.txt"), "scratch\n"); // untracked
+      const statusBefore = git(repo, "status", "--porcelain");
 
-      await expect(createWorktree({ repoDir: repo, branch: "gated" })).rejects.toThrow(
-        /uncommitted changes/i,
-      );
-      expect(await listWorktrees(repo)).toHaveLength(1);
+      const created = await createWorktree({ repoDir: repo, branch: "while-dirty" });
+      expect(created.branch).toBe("while-dirty");
 
-      const created = await createWorktree({
-        repoDir: repo,
-        branch: "gated",
-        allowDirty: true,
-      });
-      expect(created.branch).toBe("gated");
-      expect(await listWorktrees(repo)).toHaveLength(2);
+      // Main keeps its work, byte for byte, in the same git state.
+      expect(git(repo, "status", "--porcelain")).toBe(statusBefore);
+      expect(await fs.readFile(path.join(repo, "a.txt"), "utf-8")).toBe("edited in main\n");
+      expect(await fs.readFile(path.join(repo, "untracked.txt"), "utf-8")).toBe("scratch\n");
+
+      // The copy starts from the last COMMIT: clean, without main's in-flight
+      // edits, which is what keeps two agents from colliding.
+      expect(git(created.path, "status", "--porcelain")).toBe("");
+      expect(await fs.readFile(path.join(created.path, "a.txt"), "utf-8")).toBe("hello\n");
+      await expect(fs.stat(path.join(created.path, "staged.txt"))).rejects.toThrow();
     });
 
     it("retries collisions with a -2 suffix", async () => {

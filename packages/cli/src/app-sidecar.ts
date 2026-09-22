@@ -43,6 +43,7 @@ import {
   sweepWorktrees,
   worktreeStatuses,
 } from "./core/worktree.js";
+import { prepareWorktree } from "./core/worktree-setup.js";
 import { buildMemoryTools, MemoryStore } from "./chat-agents/memory.js";
 import { buildNolanSystemPrompt, buildNolanAutopilotSystemPrompt } from "./core/nolan-prompt.js";
 import {
@@ -3626,16 +3627,22 @@ async function createSession(
     // itself, so opening this from an already-linked worktree still branches
     // off the real repo rather than nesting.
     //
-    // The dirty gate in `createWorktree` is deliberate: branching a main
-    // checkout that has uncommitted work would strand those edits on a tree the
-    // user is about to stop looking at. It surfaces here as a 409 the picker
-    // renders verbatim.
+    // A dirty main checkout is fine and expected here: a second window is only
+    // ever opened while the first window's agent is mid-edit. The copy forks
+    // from the last commit and `git worktree add` leaves the main tree
+    // untouched, so nothing is stranded.
+    //
+    // The response waits for `prepareWorktree`, which can run a package install
+    // and take minutes. That is deliberate — an agent handed a copy with no
+    // node_modules reports a broken project — so the callers set a long
+    // timeout. A failed install is reported IN the 200 body, not as an error:
+    // the worktree exists either way and destroying it would lose the branch.
     if (method === "POST" && url === "/worktree") {
       void readBody(req, res).then(async (raw) => {
         if (raw === null) return;
-        let body: { cwd?: string; branch?: string; baseRef?: string };
+        let body: { cwd?: string; branch?: string; baseRef?: string; skipInstall?: boolean };
         try {
-          body = JSON.parse(raw) as { cwd?: string; branch?: string; baseRef?: string };
+          body = JSON.parse(raw) as typeof body;
         } catch {
           json(res, 400, { error: "invalid JSON body" });
           return;
@@ -3651,12 +3658,16 @@ async function createSession(
             branch: body.branch?.trim() || undefined,
             baseRef: body.baseRef?.trim() || undefined,
           });
-          json(res, 200, created);
+          const setup = await prepareWorktree({
+            mainRoot: created.mainRoot,
+            worktreePath: created.path,
+            skipInstall: body.skipInstall === true,
+          });
+          json(res, 200, { ...created, setup });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          // Dirty tree / not-a-repo are the user's to resolve, not bugs.
-          const expected =
-            message.includes("uncommitted changes") || message.includes("Not a git repository");
+          // Not-a-repo is the user's to resolve, not a bug.
+          const expected = message.includes("Not a git repository");
           json(res, expected ? 409 : 500, { error: message });
         }
       });

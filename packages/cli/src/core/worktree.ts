@@ -144,11 +144,6 @@ export async function listWorktrees(repoDir: string): Promise<WorktreeEntry[]> {
   return entries;
 }
 
-/** True when `git status --porcelain` reports anything (tracked or untracked). */
-export async function isWorkingTreeDirty(dir: string): Promise<boolean> {
-  return (await getGitDirtyFileCount(dir)) > 0;
-}
-
 /**
  * Normalise arbitrary text into a branch name git will accept. Returns "" when
  * nothing usable survives, so callers can fall back to a generated name.
@@ -178,7 +173,6 @@ export interface CreateWorktreeOptions {
   repoDir: string;
   branch?: string;
   baseRef?: string;
-  allowDirty?: boolean;
 }
 
 /**
@@ -200,6 +194,12 @@ export interface CreatedWorktree {
   path: string;
   branch: string;
   baseRef: string;
+  /**
+   * The repo's MAIN checkout. Returned because callers routinely pass a linked
+   * worktree as `repoDir`, and follow-up setup (carrying ignored config) has to
+   * read from the canonical checkout rather than from whichever copy asked.
+   */
+  mainRoot: string;
   created: true;
 }
 
@@ -240,8 +240,19 @@ async function resolveMainRoot(repoDir: string): Promise<string> {
 
 /**
  * Create a linked worktree on a fresh branch under `worktreesRootFor(mainRoot)`.
- * Refuses to run against a dirty main checkout unless `allowDirty` is set — a
- * half-committed main tree is the fastest way to lose work across worktrees.
+ *
+ * A dirty main checkout is NOT a reason to refuse, and this used to refuse:
+ * `git worktree add` only reads the base ref and writes the new directory, so
+ * the main tree's staged, modified and untracked files are left byte-identical
+ * (covered by a test). Since a second window is only ever opened while the
+ * first one's agent is mid-edit, gating on dirt meant the feature was
+ * unavailable exactly when it was needed.
+ *
+ * What a dirty main DOES mean is that the new worktree starts from the last
+ * COMMIT, without those in-flight edits. That is the intended behaviour for
+ * parallel agents — inheriting another agent's half-written state is what makes
+ * concurrent work incoherent — so it is the documented contract rather than an
+ * error.
  */
 export async function createWorktree(opts: CreateWorktreeOptions): Promise<CreatedWorktree> {
   const mainRoot = await resolveMainRoot(opts.repoDir);
@@ -252,13 +263,6 @@ export async function createWorktree(opts: CreateWorktreeOptions): Promise<Creat
     if (!head) throw new Error(`Cannot determine HEAD of ${mainRoot} (no commits yet?)`);
     baseRef =
       head === "HEAD" ? ((await gitOrNull(mainRoot, ["rev-parse", "HEAD"]))?.trim() ?? head) : head;
-  }
-
-  if (!opts.allowDirty && (await isWorkingTreeDirty(mainRoot))) {
-    throw new Error(
-      `The main checkout at ${mainRoot} has uncommitted changes; no worktree was created. ` +
-        `Commit or stash them first, or pass allowDirty to create the worktree anyway.`,
-    );
   }
 
   const requested = opts.branch ? slugifyBranch(opts.branch) : "";
@@ -274,7 +278,7 @@ export async function createWorktree(opts: CreateWorktreeOptions): Promise<Creat
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await git(mainRoot, ["worktree", "add", "-b", branch, targetPath, baseRef], false);
     await writeBaseRef(targetPath, baseRef);
-    return { path: await realpathOrSelf(targetPath), branch, baseRef, created: true };
+    return { path: await realpathOrSelf(targetPath), branch, baseRef, mainRoot, created: true };
   }
 
   throw new Error(

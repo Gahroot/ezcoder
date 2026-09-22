@@ -4152,11 +4152,18 @@ fn project_open_windows(
 
 /// Proxy: create an isolated git worktree for `cwd` so this window can work on
 /// a repo another window already holds. Returns the daemon's
-/// `{ path, branch, baseRef }`; the caller then `select_project`s into `path`.
+/// `{ path, branch, baseRef, setup }`; the caller then `select_project`s into
+/// `path`.
 ///
-/// The daemon answers 409 for the two cases the user must resolve (dirty main
-/// checkout, not a git repo). Those carry a human-readable `error` which is
-/// surfaced verbatim rather than flattened into a generic failure.
+/// The daemon answers 409 for the one case the user must resolve (not a git
+/// repo), carrying a human-readable `error` which is surfaced verbatim rather
+/// than flattened into a generic failure.
+///
+/// The shared client's 30s timeout is overridden here: creating the worktree is
+/// instant, but the daemon then installs the project's dependencies into it,
+/// and a cold monorepo install runs for minutes. At 30s the window would report
+/// a failure for a copy that was in fact being built correctly, and then create
+/// a SECOND one on the retry.
 #[tauri::command]
 async fn create_worktree(
     webview: WebviewWindow,
@@ -4170,6 +4177,7 @@ async fn create_worktree(
         .post(format!("{}/worktree", sidecar_base(port)))
         .header("x-ez-session", &ez_sid)
         .json(&serde_json::json!({ "cwd": cwd, "branch": branch }))
+        .timeout(std::time::Duration::from_secs(20 * 60))
         .send()
         .await
         .map_err(|e| e.to_string())?;
