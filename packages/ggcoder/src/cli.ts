@@ -764,7 +764,13 @@ async function runInkTUI(opts: {
 
         if (
           savedSettings.autoCompact &&
-          shouldCompact(messages, contextWindow, policy.threshold, activeTokens)
+          shouldCompact(
+            messages,
+            contextWindow,
+            policy.threshold,
+            activeTokens,
+            policy.targetTokens,
+          )
         ) {
           await subAgentManager?.hydrate(loaded.header.id);
           log("INFO", "session", `Restored session exceeds context — auto-compacting`);
@@ -792,7 +798,16 @@ async function runInkTUI(opts: {
                   sessionPath = loaded.path;
                   sessionId = loaded.header.id;
                 }
-                if (!shouldCompact(messages, contextWindow, policy.threshold)) return;
+                if (
+                  !shouldCompact(
+                    messages,
+                    contextWindow,
+                    policy.threshold,
+                    undefined,
+                    policy.targetTokens,
+                  )
+                )
+                  return;
 
                 const fingerprint = sourceFingerprint(messages);
                 const attempt = await sessionManager.readCompactionAttemptState(conversationId);
