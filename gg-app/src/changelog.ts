@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.70.0",
+    date: "2026-09-23",
+    items: [
+      "OpenAI's brand new `GPT-6 Sol` and `GPT-6 Luna` just landed. Sol is your new OpenAI default, a serious coder that climbs all the way to `ultra` effort, and Luna is the lightning-fast, dirt-cheap sidekick I now hand your helper agents. Both read screenshots and remember a huge amount of your project at once.",
+      "Your secrets are safer than ever. I hide API keys and passwords from the AI, and now I also make sure it can never accidentally overwrite a real key in your files with the hidden placeholder it was shown. Your `.env` stays exactly as you left it.",
+    ],
+  },
+  {
     version: "0.69.0",
     date: "2026-09-23",
     items: [
