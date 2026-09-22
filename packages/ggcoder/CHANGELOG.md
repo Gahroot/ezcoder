@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.62.0
+
+### Minor Changes
+
+- Add the newly released Grok 4.7 and Xiaomi MiMo-V2.6 family to the model registry. xAI defaults to Grok 4.7 (500K context, image input, reasoning up to xhigh) and retires the superseded Grok 4.6/4.5. Xiaomi ships the full-modal MiMo-V2.6-Pro (new default), low-cost MiMo-V2.6-Flash (now the fast/scout model), and API-Credits-only MiMo-V2.6-Pro-UltraSpeed, retiring the V2.5 ids ahead of their 2026-10-21 platform deprecation. Login provider descriptions and the video-support guidance are updated to match.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.62.0
+- @kenkaiiii/gg-agent@5.62.0
+- @kenkaiiii/gg-core@5.62.0
+
 ## 5.61.1
 
 ### Patch Changes
