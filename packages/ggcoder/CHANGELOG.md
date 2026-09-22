@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.63.0
+
+### Minor Changes
+
+- Add Claude Opus 5.5 (`claude-opus-5-5`) and retire the Opus 5 entry. Fable-5.1-class output at $4/$20 per MTok with 1M context and the full adaptive effort ladder; provider pages, CLI defaults, and footers now name Opus 5.5. Fast mode (gated `speed: "fast"` research preview) is documented but not wired up.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.63.0
+- @kenkaiiii/gg-agent@5.63.0
+- @kenkaiiii/gg-core@5.63.0
+
 ## 5.62.0
 
 ### Minor Changes
