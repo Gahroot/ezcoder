@@ -631,19 +631,35 @@ export function toAnthropicTools(
   });
 }
 
-export function toAnthropicToolChoice(choice: ToolChoice): Anthropic.ToolChoice {
+/**
+ * Models that reject forced tool use: `tool_choice` of type `any` (our
+ * `"required"`) or `tool` returns a 400 `invalid_request_error` —
+ * `tool_choice: type "tool" and "any" are not supported for this model.` — on
+ * Opus 5.5 and the Fable/Mythos line, including the token-counting endpoint.
+ * `auto` and `none` stay supported everywhere.
+ */
+function rejectsForcedToolUse(model: string): boolean {
+  return /opus-5-5|fable-5|mythos-5/.test(model);
+}
+
+export function toAnthropicToolChoice(choice: ToolChoice, model?: string): Anthropic.ToolChoice {
   if (choice === "auto") return { type: "auto" };
   if (choice === "none") return { type: "none" };
+  // Downgrade forcing to `auto` rather than letting the request 400. Anthropic's
+  // guidance for these models is exactly this: keep `auto` and steer tool use
+  // from the prompt (with `strict` schemas where the shape must hold).
+  if (model && rejectsForcedToolUse(model)) return { type: "auto" };
   if (choice === "required") return { type: "any" };
   return { type: "tool", name: choice.name };
 }
 
 /**
  * Anthropic models with built-in adaptive thinking (Fable 5.x, Mythos 5.x,
- * Opus 5, Opus 4.8/4.7/4.6, Sonnet 5). Matches both dashed (`opus-4-8`) and
- * dotted (`opus-4.8`) forms so callers don't have to enumerate variants. These
- * models don't need the `interleaved-thinking` beta header — it's built in.
- * (`opus-5` can't false-match `claude-opus-4-5-…` — the `4-` breaks the literal.)
+ * Opus 5.5, Opus 5, Opus 4.8/4.7/4.6, Sonnet 5). Matches both dashed
+ * (`opus-4-8`) and dotted (`opus-4.8`) forms so callers don't have to enumerate
+ * variants. These models don't need the `interleaved-thinking` beta header —
+ * it's built in. (`opus-5` covers `opus-5-5` and can't false-match
+ * `claude-opus-4-5-…` — the `4-` breaks the literal.)
  */
 export function isAdaptiveThinkingModel(model: string): boolean {
   return /opus-5|opus-4[-.]8|opus-4[-.]7|opus-4[-.]6|sonnet-5|fable-5|mythos-5/.test(model);
@@ -660,9 +676,10 @@ export function toAnthropicThinking(
 } {
   if (isAdaptiveThinkingModel(model)) {
     // Adaptive thinking — model decides when/how much to think.
-    // budget_tokens is deprecated on Opus 5 / 4.8 / 4.7 / 4.6 and Sonnet 5.
+    // budget_tokens is deprecated on Opus 5 / 4.8 / 4.7 / 4.6 and Sonnet 5, and
+    // rejected outright on Opus 5.5 (thinking can't be disabled there either).
     // Anthropic's output_config.effort accepts low, medium, high, xhigh, and max.
-    // xhigh is Opus 5 / 4.8 / 4.7-only; max is supported by every adaptive model.
+    // xhigh is Opus 5.5 / 5 / 4.8 / 4.7-only; max is supported by every adaptive model.
     let effort: string = level;
     if (effort === "xhigh" && !/opus-5|opus-4-8|opus-4-7/.test(model)) {
       effort = "high";

@@ -306,7 +306,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
         })()
       : {}),
     ...(options.toolChoice && options.tools?.length
-      ? { tool_choice: toAnthropicToolChoice(options.toolChoice) }
+      ? { tool_choice: toAnthropicToolChoice(options.toolChoice, options.model) }
       : {}),
     ...(() => {
       const contextEdits = [
@@ -318,7 +318,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     stream: useStreaming,
   } as Anthropic.MessageCreateParams;
 
-  // Adaptive thinking models (Fable 5.1, Opus 5, Opus 4.8/4.7/4.6, Sonnet 5)
+  // Adaptive thinking models (Fable 5.1, Opus 5.5, Opus 5, Opus 4.8/4.7/4.6, Sonnet 5)
   // don't need the interleaved-thinking beta — they have it built in.
   const hasAdaptiveThinking = isAdaptiveThinkingModel(options.model);
 

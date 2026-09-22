@@ -525,6 +525,9 @@ describe("ACP mode over stdio", () => {
     // anything about ezcoder.
     expect(model).toMatchObject({ category: "model", type: "select" });
     expect(thinking).toMatchObject({ category: "thought_level", type: "select" });
+    // `claude-opus-5` is the scripted fixture's model (see
+    // __fixtures__/acp-stdio-agent.mjs), not the CLI's default — what matters
+    // here is that the live value round-trips into the selector.
     expect(model.currentValue).toBe("claude-opus-5");
     expect(model.options.length).toBeGreaterThan(1);
     expect(model.options.some((option) => option.value === "claude-opus-5")).toBe(true);

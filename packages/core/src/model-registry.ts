@@ -44,7 +44,7 @@ export interface ModelInfo {
    *   - OpenAI GPT-6 Astra: `ultra` (Codex orchestration preset above `max`)
    *   - OpenAI GPT-5.6-era (Sol/Terra/Luna): `max`
    *   - OpenAI Pro/Codex/old: clamped to what the model accepts
-   *   - Claude Fable 5.1 / Fable 5 / Mythos 5, Opus 5 and Sonnet 5: `max`
+   *   - Claude Fable 5.1 / Fable 5 / Mythos 5, Opus 5.5 / Opus 5 and Sonnet 5: `max`
    *     (the Fable / Mythos line uses always-on adaptive thinking, low→max)
    *   - Claude Haiku 4.5: `high` (no adaptive `max` tier)
    *   - Kimi K3: `max` (always-on reasoning; currently the only API effort)
@@ -112,10 +112,36 @@ export const MODELS: ModelInfo[] = [
   //   maxThinkingLevel: "max",
   // },
   {
+    // Released 2026-09-22 — "For long-running agentic coding and knowledge
+    // work". Fable-class capability at $4/$20 MTok (cheaper than the Opus 5 it
+    // replaces, $5/$25). Adaptive thinking with the full effort ladder
+    // (low→max, xhigh included), but thinking can no longer be disabled: a
+    // `thinking: {type: "disabled"}` or budget_tokens request 400s. @prestyj/ai
+    // omits the field entirely when thinking is off, so that path is safe.
+    // Forced tool use (`tool_choice` any/tool) also 400s — see
+    // `toAnthropicToolChoice`, which downgrades it to `auto` for this model.
+    // Anthropic declares the server-side default effort as `medium` (Opus 5
+    // ran `high`), and 5.5 thinks more per turn at a given level, so a fresh
+    // session starts at `medium` rather than the ladder ceiling.
+    id: "claude-opus-5-5",
+    name: "Claude Opus 5.5",
+    provider: "anthropic",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    defaultThinkingLevel: "medium",
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "high",
+    maxThinkingLevel: "max",
+  },
+  {
     // Released 2026-07-24 — "For complex agentic coding and enterprise work".
     // Near-Fable capability at half the price ($5/$25 vs $10/$50). Adaptive
     // thinking with the full effort ladder (low→max, xhigh included); dateless
-    // ID is the canonical pinned snapshot (post-4.6 naming scheme).
+    // ID is the canonical pinned snapshot (post-4.6 naming scheme). Kept as a
+    // legacy option now that Opus 5.5 leads the line: it's the last Opus that
+    // accepts disabled thinking and forced tool use.
     id: "claude-opus-5",
     name: "Claude Opus 5",
     provider: "anthropic",

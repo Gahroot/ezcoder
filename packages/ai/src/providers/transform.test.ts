@@ -5,6 +5,7 @@ import {
   downgradeUnsupportedVideos,
   toAnthropicMessages,
   toAnthropicThinking,
+  toAnthropicToolChoice,
   toAnthropicTools,
   toOpenAIMessages,
   toOpenAITools,
@@ -624,11 +625,39 @@ describe("OpenAI transform", () => {
   });
 });
 
+describe("toAnthropicToolChoice", () => {
+  it("maps every choice for models that accept forced tool use", () => {
+    expect(toAnthropicToolChoice("auto", "claude-opus-5")).toEqual({ type: "auto" });
+    expect(toAnthropicToolChoice("none", "claude-opus-5")).toEqual({ type: "none" });
+    expect(toAnthropicToolChoice("required", "claude-opus-5")).toEqual({ type: "any" });
+    expect(toAnthropicToolChoice({ name: "read" }, "claude-opus-5")).toEqual({
+      type: "tool",
+      name: "read",
+    });
+  });
+
+  // Opus 5.5 and the Fable/Mythos line 400 on tool_choice `any`/`tool`
+  // ("not supported for this model"), so forcing degrades to `auto` instead of
+  // failing the request.
+  it("downgrades forced tool use to auto on models that reject it", () => {
+    for (const model of ["claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5"]) {
+      expect(toAnthropicToolChoice("required", model)).toEqual({ type: "auto" });
+      expect(toAnthropicToolChoice({ name: "read" }, model)).toEqual({ type: "auto" });
+      // `auto` and `none` are still supported there.
+      expect(toAnthropicToolChoice("none", model)).toEqual({ type: "none" });
+    }
+  });
+
+  it("keeps forcing when no model is supplied", () => {
+    expect(toAnthropicToolChoice("required")).toEqual({ type: "any" });
+  });
+});
+
 describe("toAnthropicThinking", () => {
   // Opus 4.8 is no longer in ezcoder's model picker, but @prestyj/ai is a standalone
   // library and Anthropic still serves that ID — keep the wire format correct.
-  it("passes Anthropic adaptive effort levels through for Opus 5 (and legacy 4.8)", () => {
-    for (const model of ["claude-opus-5", "claude-opus-4-8"]) {
+  it("passes Anthropic adaptive effort levels through for Opus 5.5/5 (and legacy 4.8)", () => {
+    for (const model of ["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8"]) {
       for (const level of ["low", "medium", "high", "xhigh", "max"] as const) {
         const result = toAnthropicThinking(level, MAX_TOKENS, model);
         expect(result.outputConfig).toEqual({ effort: level });

@@ -92,6 +92,29 @@ describe("model registry invariants", () => {
   });
 });
 
+describe("Claude Opus 5.5", () => {
+  it("registers the flagship Anthropic coding model at its documented limits", () => {
+    expect(getModel("claude-opus-5-5")).toMatchObject({
+      id: "claude-opus-5-5",
+      name: "Claude Opus 5.5",
+      provider: "anthropic",
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      supportsThinking: true,
+      supportsImages: true,
+      supportsVideo: false,
+      costTier: "high",
+      maxThinkingLevel: "max",
+    });
+  });
+
+  it("lists ahead of the Opus 5 it supersedes in the Anthropic picker", () => {
+    const ids = getModelsForProvider("anthropic").map((m) => m.id);
+    expect(ids).toContain("claude-opus-5-5");
+    expect(ids.indexOf("claude-opus-5-5")).toBeLessThan(ids.indexOf("claude-opus-5"));
+  });
+});
+
 describe("getFastModel", () => {
   it("routes to a low-tier sibling within the same provider", () => {
     for (const provider of PROVIDERS) {
@@ -198,7 +221,11 @@ describe("model registry context windows", () => {
       getDefaultThinkingLevel("kimi-k2.7-code", { baseUrl: "https://api.kimi.com/coding/v1" }),
     ).toBe("high");
     expect(getDefaultThinkingLevel("claude-opus-5")).toBe("max");
-    expect(getDefaultThinkingLevel("claude-opus-5")).toBe("max");
+    // … except Opus 5.5, where Anthropic declares the server-side default
+    // effort as medium (Opus 5 ran high) and the model thinks more per turn at
+    // any given level. The ceiling is unchanged, so users can still opt up.
+    expect(getDefaultThinkingLevel("claude-opus-5-5")).toBe("medium");
+    expect(getModel("claude-opus-5-5")?.maxThinkingLevel).toBe("max");
   });
 
   it("starts Codex models at their catalog default, not the ladder ceiling", () => {
