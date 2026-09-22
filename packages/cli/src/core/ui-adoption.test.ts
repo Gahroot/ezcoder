@@ -14,7 +14,7 @@ import { createUiAdoptTool } from "../tools/ui-adopt.js";
 
 let root: string;
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-ui-adopt-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-ui-adopt-"));
   await fs.writeFile(
     path.join(root, "package.json"),
     JSON.stringify({ dependencies: { react: "19", vite: "7", tailwindcss: "4" } }),

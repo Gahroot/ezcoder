@@ -7,7 +7,7 @@ import { assessCacheHealth } from "./agent-loop.js";
  * uncached re-prefills the whole context every turn (the GLM incident
  * pattern), no matter what its docs claim about caching.
  *
- * Usage convention (normalized in gg-ai, Anthropic-style): inputTokens
+ * Usage convention (normalized in @prestyj/ai, Anthropic-style): inputTokens
  * EXCLUDES cache hits, so the served-from-cache share of the prompt is
  * cacheRead / (input + cacheRead + cacheWrite).
  */

@@ -41,10 +41,10 @@ Findings:
 
 | Check | Result |
 | --- | --- |
-| `pnpm --filter @kenkaiiii/ggcoder test` | 266 files passed, 2 existing skipped; 3,212 tests passed, 17 existing skipped |
+| `pnpm --filter @prestyj/cli test` | 266 files passed, 2 existing skipped; 3,212 tests passed, 17 existing skipped |
 | `pnpm check` | Passed across workspace |
 | `pnpm lint` | Passed, including desktop app |
-| `pnpm build` | Passed in workspace dependency order, including gg-ai → gg-agent → ggcoder |
+| `pnpm build` | Passed in workspace dependency order, including @prestyj/ai → @prestyj/agent → ezcoder |
 | `node --test bench/ui-library-real-flow/*.test.mjs` | 18 passed, zero skipped |
 | Historical catalog source-schema compatibility | All 115 stored dependency/entry payloads accepted; no observations rewritten |
 | Normal AgentSession discovery | Both tools advertised, promoted append-only; production Motion guidance executed offline |

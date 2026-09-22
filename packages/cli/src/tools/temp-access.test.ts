@@ -14,7 +14,7 @@ describe("file tools outside the workspace", () => {
   it("reads, writes and edits files in each actual temporary root", async () => {
     const cwd = process.cwd();
     for (const root of getTempRoots()) {
-      const dir = await fs.mkdtemp(path.join(root, "gg-temp-access-"));
+      const dir = await fs.mkdtemp(path.join(root, "ez-temp-access-"));
       try {
         const file = path.join(dir, "fixture.txt");
         // Exercise the virtual spelling on Windows too, using the real shell mount.

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import type { UiRegistry } from "../core/ui-registry.js";
 import { planAdoption, preflightAdoption } from "../core/ui-adoption.js";
 import type { createWriteTool } from "./write.js";

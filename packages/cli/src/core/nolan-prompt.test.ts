@@ -261,7 +261,7 @@ describe("EZ Coder capabilities — both modes know what the executor can do", (
 
   it("names the executor EZ Coder everywhere, with no upstream GG branding", async () => {
     // Fork regression: this prompt is vendored from upstream, whose executor is
-    // called "GG Coder". The sync rebrand is a line-wise substitution, so it
+    // called "EZ Coder". The sync rebrand is a line-wise substitution, so it
     // silently misses a name split across two template-literal lines — exactly
     // how "You see GG ` + `Coder's conversation" reached users. Assert on the
     // built prompt (whitespace-tolerant) so any future split-line leak fails

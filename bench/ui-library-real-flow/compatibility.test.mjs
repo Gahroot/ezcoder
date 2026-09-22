@@ -5,9 +5,9 @@ import { createRequire } from 'node:module';
 import { fixMouseCardCleanup } from '../ui-library-eval/mouse-card-fix.mjs';
 
 // Offline regression against immutable historical source, not a fresh-generation pass.
-const require = createRequire(new URL('../../packages/ggcoder/package.json', import.meta.url));
+const require = createRequire(new URL('../../packages/cli/package.json', import.meta.url));
 const { build } = createRequire(require.resolve('tsup'))('esbuild');
-const bundled = await build({ entryPoints: ['packages/ggcoder/src/core/ui-compatibility.ts'], bundle: true, write: false, format: 'esm', platform: 'node' });
+const bundled = await build({ entryPoints: ['packages/cli/src/core/ui-compatibility.ts'], bundle: true, write: false, format: 'esm', platform: 'node' });
 const { patchMouseCard, compatibilityPatch } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
 
 test('production recipe exactly matches independently reviewed animation-ownership fix', async () => {

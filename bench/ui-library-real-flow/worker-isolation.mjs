@@ -35,7 +35,7 @@ export function spawnIsolatedWorker({ entry, workspace, home, readRoots, brokerP
   // Deliberately do not inherit provider keys, user PATH, NODE_OPTIONS or proxy settings.
   return spawn('/usr/bin/sandbox-exec', ['-p', profile, process.execPath, entry], {
     cwd: workspace,
-    env: { HOME: home, GG_HOME: home, TMPDIR: home, PATH: '/usr/bin:/bin', GG_TEST_BROKER_PORT: String(brokerPort), GG_TEST_BROKER_TOKEN: token },
+    env: { HOME: home, EZ_HOME: home, TMPDIR: home, PATH: '/usr/bin:/bin', EZ_TEST_BROKER_PORT: String(brokerPort), EZ_TEST_BROKER_TOKEN: token },
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: timeoutMs,
   });
