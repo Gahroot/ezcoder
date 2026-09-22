@@ -17,6 +17,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.72.1",
+    date: "2026-09-22",
+    items: [
+      "Fixed the error that blocked `Claude Opus 5.5` for some of you. Anthropic asks for an up to date client before it will run a brand new model, and I was holding yesterday's version for up to a day, so you got turned away through no fault of your own. I now keep myself current, and if I ever am turned away I learn the version I need and retry straight away instead of leaving you stuck.",
+    ],
+  },
+  {
     version: "0.72.0",
     date: "2026-09-22",
     items: [
