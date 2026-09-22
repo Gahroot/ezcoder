@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.67.1",
+    date: "2026-09-22",
+    items: [
+      "Long sessions just stay fast now. I taught the engine to slim a conversation down on a smart per-model budget before it ever gets heavy, so that sluggish crawl an hour into a big task is gone. A task that took `60 minutes` now finishes in around `10`.",
+      "No more phantom stalls on big prompts. The engine used to give up after `45 seconds` and restart from scratch; now it waits as long as the work actually needs, so you see far fewer random pauses and retries mid-task.",
+    ],
+  },
+  {
     version: "0.67.0",
     date: "2026-09-22",
     items: [
