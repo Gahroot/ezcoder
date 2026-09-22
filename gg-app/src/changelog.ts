@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.68.0",
+    date: "2026-09-22",
+    items: [
+      "`Grok 4.7` is here and it's your new default on xAI. xAI built it for exactly what we do: hours of coding, agents that don't wander, and deep research. Same huge `500K` context and price as before, plus a new extra-deep `xhigh` thinking mode for the gnarliest problems.",
+      "Xiaomi's whole `MiMo-V2.6` family just landed. `MiMo-V2.6-Pro` now reads screenshots and watches video clips right alongside your code, the bargain `MiMo-V2.6-Flash` quietly handles the quick lookups so your bill stays tiny, and `UltraSpeed` returns when you want raw pace.",
+    ],
+  },
+  {
     version: "0.67.1",
     date: "2026-09-22",
     items: [
