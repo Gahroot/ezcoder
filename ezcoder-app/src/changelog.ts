@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.72.0",
+    date: "2026-09-22",
+    items: [
+      "Long conversations stopped dragging. On big chats you were quietly paying a `45 to 70 second` tax on every single message while the model re-read your whole history, and sometimes the turn got killed mid-thought and started over from cold. I now tidy up your context before it ever gets that heavy, and I give a genuinely big prompt the time it needs instead of pulling the plug on it.",
+      "`Claude Opus 5.5` is your new default, and it is the best deal in the lineup. You get a `1 million` token memory and sharper long-horizon coding for less money than the Opus it replaces. It decides how hard to think on its own, and you can still push it all the way up whenever you want more.",
+      "I added `Grok 4.7` and the full `MiMo-V2.6` family, and these ones can actually watch. Hand them a screenshot or a video of the bug and they will look at it with you. Retired models get swapped out cleanly, so nothing breaks when you reopen an old session.",
+      "Your agent now builds interfaces out of real, battle-tested component libraries instead of inventing every button from scratch. You get UI that looks right and behaves right on the first pass, with a lot less back and forth from you.",
+      "Squashed a batch of annoyances. Scratch files now behave the same on Mac, Windows, and Linux, and images your tools produce finally show up properly in the conversation instead of vanishing.",
+    ],
+  },
+  {
     version: "0.71.0",
     date: "2026-09-22",
     items: [
