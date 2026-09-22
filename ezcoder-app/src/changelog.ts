@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.71.0",
+    date: "2026-09-22",
+    items: [
+      "Opening a second window on a busy project just works now. It used to refuse the moment another agent had unsaved work, which was basically always, and left you staring at a red error. You get your `own copy` on its own branch every time, and the work in your other window is never touched.",
+      "Your copy arrives ready to run. I carry your local settings across, `.env` included, then install the project's packages for you, so your agent can build and test the second it lands instead of tripping over a missing folder. If an install ever does fail, I tell you up front instead of letting you find out the hard way.",
+      "Agents you send off to work in parallel stay properly separated. When a project was busy, a helper agent could quietly end up back in your folder, editing the same files underneath you. Now each one gets its own copy, fully set up, so they keep out of each other's way.",
+    ],
+  },
+  {
     version: "0.70.1",
     date: "2026-09-21",
     items: [
