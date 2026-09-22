@@ -4159,8 +4159,8 @@ export class AgentSession {
    * Ordered auth-storage keys the current (provider, model) pair tries, first
    * match wins. Almost always just the provider id; Xiaomi models can prefer
    * one endpoint and fall back to another the user configured instead (e.g.
-   * `mimo-v2.5-pro` prefers the Token Plan, falls back to API Credits; the
-   * API-only `mimo-v2.5-pro-ultraspeed` has no fallback).
+   * `mimo-v2.6-pro` prefers the Token Plan, falls back to API Credits; the
+   * API-only `mimo-v2.6-pro-ultraspeed` has no fallback).
    */
   private currentAuthStorageKeys(): string[] {
     return getAuthStorageKeys(this.provider, this.model);

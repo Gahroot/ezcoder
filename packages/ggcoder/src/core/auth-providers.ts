@@ -95,7 +95,7 @@ export const AUTH_PROVIDERS: AuthProviderMeta[] = [
   {
     value: "xai",
     label: "xAI (Grok)",
-    description: "Grok 4.6, Grok 4.5 · OAuth or API key",
+    description: "Grok 4.7 · OAuth or API key",
     methods: ["oauth", "apikey"],
     apiKeyLabel: "xAI",
     methodDetails: {
@@ -151,7 +151,8 @@ export const AUTH_PROVIDERS: AuthProviderMeta[] = [
   {
     value: "xiaomi",
     label: "Xiaomi (MiMo)",
-    description: "MiMo-V2.5-Pro, MiMo-V2.5-Pro-UltraSpeed, MiMo-V2.5 · Token Plan or API Credits",
+    description:
+      "MiMo-V2.6-Pro, MiMo-V2.6-Flash, MiMo-V2.6-Pro-UltraSpeed · Token Plan or API Credits",
     methods: ["apikey"],
     apiKeyLabel: "Xiaomi MiMo",
     apiKeyBaseUrl: "https://token-plan-sgp.xiaomimimo.com/v1",
