@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.74.0",
+    date: "2026-09-23",
+    items: [
+      "I gave EZ Coder a smoother rhythm. Screens now crossfade, and new messages rise into the chat while old conversations open instantly.",
+      "I made the little things easier to use: clearer text, helpful tooltips, visible keyboard focus, and layouts that fit narrow windows. `Plan Review` now keeps your focus on the plan instead of accidentally accepting it.",
+      "I made tool output safer for your keys without sacrificing your work. I hide credentials printed by tools, and I stop `[REDACTED]` placeholders from overwriting real secrets in your files.",
+      "Your custom `skills` and agents now understand longer, richer descriptions. I also keep your original request in view after long chats get condensed, even when you attach images or video.",
+      "I cleared retired `GPT-5.6` models out of the picker so the latest `GPT-6` lineup is easier to find.",
+    ],
+  },
+  {
     version: "0.73.0",
     date: "2026-09-22",
     items: [
