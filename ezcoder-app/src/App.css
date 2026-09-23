@@ -1837,10 +1837,10 @@ select {
    be unique among rendered elements; only one modal and one dropdown are ever
    open, and a clash just skips the animation (the UI still updates). */
 .modal {
-  view-transition-name: gg-modal;
+  view-transition-name: ez-modal;
 }
 .dropdown-menu {
-  view-transition-name: gg-dropdown;
+  view-transition-name: ez-dropdown;
 }
 @keyframes surface-out {
   to {
@@ -1857,21 +1857,21 @@ select {
   animation-duration: var(--dur-enter);
   animation-timing-function: var(--ease-out);
 }
-::view-transition-old(gg-modal),
-::view-transition-old(gg-dropdown) {
+::view-transition-old(ez-modal),
+::view-transition-old(ez-dropdown) {
   animation: surface-out var(--dur-exit) var(--ease-in) both;
 }
-::view-transition-old(gg-dropdown) {
+::view-transition-old(ez-dropdown) {
   --exit-y: -4px;
 }
 /* Surfaces that close have no "new" state; anything unexpected there should
    appear instantly rather than morph. */
-::view-transition-new(gg-modal),
-::view-transition-new(gg-dropdown) {
+::view-transition-new(ez-modal),
+::view-transition-new(ez-dropdown) {
   animation: none;
 }
-::view-transition-group(gg-modal),
-::view-transition-group(gg-dropdown) {
+::view-transition-group(ez-modal),
+::view-transition-group(ez-dropdown) {
   animation-duration: var(--dur-exit);
 }
 
@@ -4704,7 +4704,7 @@ select {
    Replaces native `title` tooltips. Same surface as .enh-tip so every hint in
    the app looks alike. Position is set inline by the layer; pointer-events
    stay on so the pointer can move onto it (WCAG 1.4.13 hoverable). */
-.gg-tooltip {
+.ez-tooltip {
   position: fixed;
   z-index: var(--z-system);
   max-width: 280px;
@@ -4724,11 +4724,11 @@ select {
   --enter-y: 3px;
   animation: surface-in 120ms var(--ease-out) backwards;
 }
-.gg-tooltip[data-side="bottom"] {
+.ez-tooltip[data-side="bottom"] {
   --enter-y: -3px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .gg-tooltip {
+  .ez-tooltip {
     animation-name: fade-in;
   }
 }

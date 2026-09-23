@@ -1,4 +1,4 @@
-import { REDACTION_MARKER, environmentSecrets, redactText } from "@kenkaiiii/gg-ai";
+import { REDACTION_MARKER, environmentSecrets, redactText } from "@prestyj/ai";
 
 /**
  * Tool output passes through secret redaction before the model sees it, so a

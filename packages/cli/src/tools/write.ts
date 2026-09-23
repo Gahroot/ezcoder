@@ -12,7 +12,7 @@ import {
   type GoalMode,
 } from "../core/runtime-mode.js";
 import { resolveWriteGuard, type WriteGuardSettings } from "../core/workspace-guard.js";
-import { REDACTION_MARKER } from "@kenkaiiii/gg-ai";
+import { REDACTION_MARKER } from "@prestyj/ai";
 import { redactionLossError } from "./redaction-guard.js";
 
 type MutationCallback = (filePath: string) => void | Promise<void>;

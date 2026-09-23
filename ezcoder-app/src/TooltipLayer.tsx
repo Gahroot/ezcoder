@@ -280,7 +280,7 @@ export function TooltipLayer(): React.ReactElement | null {
 
   if (!active) return null;
   return createPortal(
-    <div ref={tipRef} id={tipId} className="gg-tooltip" role="tooltip">
+    <div ref={tipRef} id={tipId} className="ez-tooltip" role="tooltip">
       {active.text}
     </div>,
     document.body,

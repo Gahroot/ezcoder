@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { REDACTION_MARKER } from "@kenkaiiii/gg-ai";
+import { REDACTION_MARKER } from "@prestyj/ai";
 import { createEditTool } from "./edit.js";
 import { createWriteTool } from "./write.js";
 import { recordRead, type ReadTracker } from "./read-tracker.js";

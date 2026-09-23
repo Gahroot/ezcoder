@@ -64,12 +64,12 @@ describe("redactText", () => {
     "This covers basic functionality and bearer authentication.",
     "PRUNE_PROTECT_TOKENS = 40_000",
     "MAX_KEY_LENGTH = 64",
-    'const STORAGE_KEY = "gg-app:whatsNewVersion";',
+    'const STORAGE_KEY = "ezcoder-app:whatsNewVersion";',
     'const TOKEN_URL = "https://oauth2.googleapis.com/token";',
     "export const AUTH_PROVIDERS: readonly AuthProvider[] = [",
     "const AUTH_PATTERNS: RegExp[] = [",
     "--- PASS: TestParseConfig (0.00s)",
-    "else process.env.GG_SESSION_TEST_SECRET = savedSecret;",
+    "else process.env.EZ_SESSION_TEST_SECRET = savedSecret;",
     "self.api_key = api_key",
   ])("leaves ordinary code untouched: %s", (input) => {
     expect(redactText(input)).toBe(input);
