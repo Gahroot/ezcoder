@@ -117,8 +117,8 @@ describe("SubAgentManager", () => {
     const initializeCall = requestSpy.mock.calls.find(([, command]) => command === "initialize");
     expect(initializeCall?.[2]).toMatchObject({
       options: {
-        model: "gpt-5.6-luna",
-        promptCacheKey: "parent-cache:subagent:gpt-5.6-luna:fake",
+        model: "gpt-6-luna",
+        promptCacheKey: "parent-cache:subagent:gpt-6-luna:fake",
       },
     });
   });
@@ -185,7 +185,7 @@ describe("SubAgentManager", () => {
   });
 
   it("enforces the per-model cap against the resolved child model", async () => {
-    // The "fake" agent declares model: fast (gpt-5.6-luna); an agent with no
+    // The "fake" agent declares model: fast (gpt-6-luna); an agent with no
     // model policy inherits the parent model (gpt-5.6-sol).
     const shellAgent: AgentDefinition = {
       name: "sheller",
@@ -197,11 +197,11 @@ describe("SubAgentManager", () => {
     const instance = manager({ agentDefs: [...agents, shellAgent], maxPerModel: 1 });
 
     const first = await instance.spawn("first-luna", "slow", "fake");
-    expect(first.model).toBe("gpt-5.6-luna");
+    expect(first.model).toBe("gpt-6-luna");
 
     // Same resolved model at the cap → rejected with the setting named.
     await expect(instance.spawn("second-luna", "slow", "fake")).rejects.toThrow(
-      "At most 1 agents may run at once on model gpt-5.6-luna (subagentMaxPerModel)",
+      "At most 1 agents may run at once on model gpt-6-luna (subagentMaxPerModel)",
     );
 
     // A different resolved model is unaffected by the luna cap.

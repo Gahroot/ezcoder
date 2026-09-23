@@ -51,6 +51,15 @@ describe("Sol/Terra async orchestration policy", () => {
   );
 
   it(
+    "applies the Ultra orchestration policy to GPT-6 Sol but not GPT-6 Luna",
+    async () => {
+      expect(await systemPrompt("gpt-6-sol", "ultra")).toContain("Proactively use spawn_agent");
+      await expect(systemPrompt("gpt-6-luna", "high")).resolves.toBe("base prompt");
+    },
+    INIT_TIMEOUT_MS,
+  );
+
+  it(
     "leaves other models unchanged",
     async () => {
       await expect(systemPrompt("gpt-5.5-codex", "ultra")).resolves.toBe("base prompt");

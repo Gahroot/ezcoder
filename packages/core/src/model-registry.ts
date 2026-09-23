@@ -202,6 +202,42 @@ export const MODELS: ModelInfo[] = [
     costTier: "high",
     maxThinkingLevel: "ultra",
   },
+  {
+    // GPT-6 Sol — "Workhorse model for coding and everyday work." (Codex
+    // catalog priority 2, default medium, requires Codex client >= 0.155.0).
+    // Launched Sep 22 2026 at $2/$10 per 1M tokens — half of GPT-5.6 Sol.
+    // Same 1.05M public / 272K Codex split and low → ultra ladder as Astra.
+    id: "gpt-6-sol",
+    name: "GPT-6 Sol",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    codexContextWindow: 272_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    defaultThinkingLevel: "medium",
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "medium",
+    maxThinkingLevel: "ultra",
+  },
+  {
+    // GPT-6 Luna — "Fast and affordable model for easier tasks." (Codex
+    // catalog priority 3, default medium, client >= 0.155.0). $0.10/$0.50 per
+    // 1M tokens. Reasoning tops out at `max` (no ultra preset). Listed ahead of
+    // GPT-5.6 Luna so getFastModel picks it as the OpenAI fast tier.
+    id: "gpt-6-luna",
+    name: "GPT-6 Luna",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    codexContextWindow: 272_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    defaultThinkingLevel: "medium",
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "low",
+    maxThinkingLevel: "max",
+  },
   // GPT-5.6 family — three agentic coding tiers launched July 2026. The public
   // Responses API advertises a 1.05M context window; OpenAI's Codex product
   // catalog advertises 272K on the ChatGPT OAuth route (corrected from the
@@ -750,7 +786,7 @@ export function getVideoByteLimit(modelId: string): number | undefined {
 
 export function getDefaultModel(provider: Provider): ModelInfo {
   if (provider === "xiaomi") return MODELS.find((m) => m.id === "mimo-v2.6-pro")!;
-  if (provider === "openai") return MODELS.find((m) => m.id === "gpt-5.6-sol")!;
+  if (provider === "openai") return MODELS.find((m) => m.id === "gpt-6-sol")!;
   if (provider === "gemini") return MODELS.find((m) => m.id === "gemini-3.1-flash-lite")!;
   if (provider === "glm") return MODELS.find((m) => m.id === "glm-5.3")!;
   if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k3")!;

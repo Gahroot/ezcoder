@@ -134,13 +134,20 @@ describe("getFastModel", () => {
 
   it("picks Haiku for Anthropic and Luna for OpenAI", () => {
     expect(getFastModel("anthropic", "claude-opus-5-5").costTier).toBe("low");
-    expect(getFastModel("openai", "gpt-5.6-sol").id).toBe("gpt-5.6-luna");
+    expect(getFastModel("openai", "gpt-6-sol").id).toBe("gpt-6-luna");
+    expect(getFastModel("openai", "gpt-5.6-sol").id).toBe("gpt-6-luna");
+  });
+
+  it("defaults OpenAI to GPT-6 Sol", () => {
+    expect(getDefaultModel("openai").id).toBe("gpt-6-sol");
   });
 });
 
 describe("model registry context windows", () => {
   it.each([
     ["gpt-6-astra", 1_050_000],
+    ["gpt-6-sol", 1_050_000],
+    ["gpt-6-luna", 1_050_000],
     ["gpt-5.6-sol", 1_050_000],
     ["gpt-5.6-terra", 1_050_000],
     ["gpt-5.6-luna", 1_050_000],
@@ -150,6 +157,8 @@ describe("model registry context windows", () => {
 
   it.each([
     ["gpt-6-astra", 272_000],
+    ["gpt-6-sol", 272_000],
+    ["gpt-6-luna", 272_000],
     ["gpt-5.6-sol", 272_000],
     ["gpt-5.6-terra", 272_000],
     ["gpt-5.6-luna", 272_000],
@@ -233,11 +242,15 @@ describe("model registry context windows", () => {
     // flagships ship "low", the balanced tiers "medium". Defaulting to
     // maxThinkingLevel made fresh Astra sessions reason at max effort.
     expect(getDefaultThinkingLevel("gpt-6-astra")).toBe("low");
+    expect(getDefaultThinkingLevel("gpt-6-sol")).toBe("medium");
+    expect(getDefaultThinkingLevel("gpt-6-luna")).toBe("medium");
     expect(getDefaultThinkingLevel("gpt-5.6-sol")).toBe("low");
     expect(getDefaultThinkingLevel("gpt-5.6-terra")).toBe("medium");
     expect(getDefaultThinkingLevel("gpt-5.6-luna")).toBe("medium");
     // Ceilings are unchanged — users can still opt up.
     expect(getModel("gpt-6-astra")?.maxThinkingLevel).toBe("ultra");
+    expect(getModel("gpt-6-sol")?.maxThinkingLevel).toBe("ultra");
+    expect(getModel("gpt-6-luna")?.maxThinkingLevel).toBe("max");
     expect(getModel("gpt-5.6-luna")?.maxThinkingLevel).toBe("max");
   });
 

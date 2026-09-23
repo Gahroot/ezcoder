@@ -37,6 +37,12 @@ describe("thinking-level helpers", () => {
     expect(getNextThinkingLevel("openai", "gpt-5.6-sol", "ultra")).toBeUndefined();
   });
 
+  it("gives GPT-6 Sol the Ultra rung and caps GPT-6 Luna at max", () => {
+    const baseLevels = ["low", "medium", "high", "xhigh", "max"];
+    expect(getSupportedThinkingLevels("openai", "gpt-6-sol")).toEqual([...baseLevels, "ultra"]);
+    expect(getSupportedThinkingLevels("openai", "gpt-6-luna")).toEqual(baseLevels);
+  });
+
   it("cycles Anthropic adaptive Opus models through max, including xhigh", () => {
     for (const model of ["claude-opus-5-5", "claude-opus-5"]) {
       expect(getSupportedThinkingLevels("anthropic", model)).toEqual([

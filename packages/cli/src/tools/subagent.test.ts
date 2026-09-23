@@ -119,10 +119,10 @@ describe("createSubAgentTool fast-model fallback", () => {
       .mockImplementationOnce(() => mockExit("", 0, "fallback succeeded"));
 
     await expect(runOwl()).resolves.toMatchObject({ content: "fallback succeeded" });
-    expect(spawnedModels()).toEqual(["gpt-5.6-luna", "gpt-5.6-sol"]);
+    expect(spawnedModels()).toEqual(["gpt-6-luna", "gpt-5.6-sol"]);
     expect(spawnedCacheKeys()).toEqual([
-      "parent-cache:subagent:gpt-5.6-luna:owl",
-      "parent-cache:subagent:gpt-5.6-luna:owl",
+      "parent-cache:subagent:gpt-6-luna:owl",
+      "parent-cache:subagent:gpt-6-luna:owl",
     ]);
   });
 
@@ -150,7 +150,7 @@ describe("createSubAgentTool fast-model fallback", () => {
     await expect(runOwl()).resolves.toMatchObject({
       content: "Sub-agent failed (exit 1): usage limit reached",
     });
-    expect(spawnedModels()).toEqual(["gpt-5.6-luna"]);
+    expect(spawnedModels()).toEqual(["gpt-6-luna"]);
   });
 
   it("does not mistake partial progress text for a successful final answer", async () => {
@@ -171,7 +171,7 @@ describe("createSubAgentTool fast-model fallback", () => {
         "Sub-agent failed (exit 1): Rate limited by Anthropic. Wait a moment and try again.\n\n" +
         "Partial output before failure:\nI'll read both files now.",
     });
-    expect(spawnedModels()).toEqual(["gpt-5.6-luna"]);
+    expect(spawnedModels()).toEqual(["gpt-6-luna"]);
   });
 
   it("names the timeout instead of reporting a signal death as 'unknown error'", async () => {
