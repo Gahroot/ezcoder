@@ -1,5 +1,7 @@
 # @prestyj/boss
 
+## 5.27.0
+
 ## 5.26.0
 
 ### Minor Changes

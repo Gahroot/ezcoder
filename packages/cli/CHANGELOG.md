@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.27.0
+
+### Minor Changes
+
+- Keep credentials hidden without corrupting source edits, recognize richer skill and agent descriptions, and retire GPT-5.6 models in favor of GPT-6.
+
+### Patch Changes
+
+- @prestyj/ai@5.27.0
+- @prestyj/agent@5.27.0
+- @prestyj/core@5.27.0
+
 ## 5.26.0
 
 ### Minor Changes
