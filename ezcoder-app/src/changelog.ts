@@ -17,6 +17,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.73.0",
+    date: "2026-09-22",
+    items: [
+      "OpenAI's newest models just landed. I made `GPT-6 Sol` your default the moment you pick OpenAI, so every chat starts on the sharpest mind in their lineup, and `GPT-6 Luna` joins the picker as the quick, cheap tier.",
+      "Your background helpers just got faster and cheaper. I route the lightweight ones to `GPT-6 Luna`, and when you push `GPT-6 Sol` up to `Ultra` it spins up parallel helpers on its own instead of grinding through one task at a time.",
+    ],
+  },
+  {
     version: "0.72.1",
     date: "2026-09-22",
     items: [
