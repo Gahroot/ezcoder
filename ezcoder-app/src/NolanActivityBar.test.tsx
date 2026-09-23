@@ -22,7 +22,8 @@ describe("NolanActivityBar", () => {
     expect(orb?.style.width).toBe("20px");
     const filter = container.querySelector("filter");
     expect(orb?.style.filter).toBe(`url("#${filter?.id}")`);
-    expect(container.querySelector("feFlood")?.getAttribute("flood-color")).toBe(theme.nolan);
+    const flood = container.querySelector<SVGElement>("feFlood");
+    expect(flood?.style.getPropertyValue("flood-color")).toBe(theme.nolan);
     const label = screen.getByText("Nolan is thinking…");
     expect(label.classList.contains("shimmer-text")).toBe(true);
     expect(label.style.getPropertyValue("--shimmer-base")).toBe(theme.nolan);

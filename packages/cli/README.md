@@ -70,7 +70,7 @@ Switch mid-conversation with `/model`. Not locked to anyone.
 | Provider          | Models                                                                       | Auth             |
 | ----------------- | ---------------------------------------------------------------------------- | ---------------- |
 | **Anthropic**     | Claude Fable 5.1, Opus 5.5, Opus 5, Sonnet 5, Haiku 4.5                      | OAuth            |
-| **OpenAI**        | GPT-6 Astra, GPT-6 Sol, GPT-6 Luna, GPT-5.6 Sol, GPT-5.6 Terra, GPT-5.6 Luna | OAuth            |
+| **OpenAI**        | GPT-6 Astra, GPT-6 Sol, GPT-6 Luna                                           | OAuth            |
 | **Moonshot**      | Kimi K3, Kimi K2.7 Code                                                      | OAuth or API key |
 | **Z.AI (GLM)**    | GLM-5.3, GLM-5.3-Flash (image)                                               | API key          |
 | **MiniMax**       | MiniMax M3 (image + video)                                                   | API key          |
@@ -175,7 +175,7 @@ Plus the [Grep MCP](https://grep.dev) for searching across 1M+ public GitHub rep
 
 `subagent` remains blocking. The async suite launches persistent NDJSON worker processes, so a parent can start up to four active child turns, keep working, steer them, and wait for any or all results. Up to eight idle workers remain available for follow-up; bounded snapshots retain the latest 20 agents.
 
-Only GPT-5.6 Sol/Terra at **Ultra** delegates proactively. Lower Sol/Terra levels use async agents only when the user or project/skill instructions request delegation; other models receive no proactive policy.
+Only GPT-6 Astra/Sol at **Ultra** delegates proactively. Lower Astra/Sol levels use async agents only when the user or project/skill instructions request delegation; other models receive no proactive policy.
 
 Children share the parent working directory by default, so parallel writes must target disjoint files or subsystems. Pass `isolate: true` to `subagent` to give a child its own copy of the repo on a new branch instead — the right choice when several children edit at once, or when a child's changes should land on a branch of their own. The copy is reclaimed automatically when the child finishes without committing; a child that did commit keeps its branch, because that branch is the deliverable. `/integrate` then merges those branches one at a time, running the suite between each. Async fan-out is one level deep, child output is bounded, idle workers reap after 10 minutes, and workers are not resumable after a CLI/app restart.
 

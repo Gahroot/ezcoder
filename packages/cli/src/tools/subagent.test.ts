@@ -94,7 +94,7 @@ function owlTool() {
     process.cwd(),
     [owl],
     () => "openai",
-    () => "gpt-5.6-sol",
+    () => "gpt-6-sol",
     () => "parent-cache",
   );
 }
@@ -119,7 +119,7 @@ describe("createSubAgentTool fast-model fallback", () => {
       .mockImplementationOnce(() => mockExit("", 0, "fallback succeeded"));
 
     await expect(runOwl()).resolves.toMatchObject({ content: "fallback succeeded" });
-    expect(spawnedModels()).toEqual(["gpt-6-luna", "gpt-5.6-sol"]);
+    expect(spawnedModels()).toEqual(["gpt-6-luna", "gpt-6-sol"]);
     expect(spawnedCacheKeys()).toEqual([
       "parent-cache:subagent:gpt-6-luna:owl",
       "parent-cache:subagent:gpt-6-luna:owl",
@@ -226,7 +226,7 @@ describe("createSubAgentTool fast-model fallback", () => {
         process.cwd(),
         [owl],
         () => "openai",
-        () => "gpt-5.6-sol",
+        () => "gpt-6-sol",
       );
       await expect(
         tool.execute(

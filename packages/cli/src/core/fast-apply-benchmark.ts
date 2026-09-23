@@ -19,7 +19,7 @@
  *   npx tsx src/core/fast-apply-benchmark.ts
  *
  * Env overrides:
- *   EZ_FA_FRONTIER_PROVIDER / EZ_FA_FRONTIER_MODEL   (default openai / gpt-5.6-sol)
+ *   EZ_FA_FRONTIER_PROVIDER / EZ_FA_FRONTIER_MODEL   (default openai / gpt-6-sol)
  *   EZ_FA_APPLY_PROVIDER     / EZ_FA_APPLY_MODEL      (default gemini / gemini-3.1-flash-lite)
  */
 
@@ -277,7 +277,7 @@ interface Row {
 
 async function main(): Promise<void> {
   const frontierProvider = process.env.EZ_FA_FRONTIER_PROVIDER ?? "openai";
-  const frontierModel = process.env.EZ_FA_FRONTIER_MODEL ?? "gpt-5.6-sol";
+  const frontierModel = process.env.EZ_FA_FRONTIER_MODEL ?? "gpt-6-sol";
   const applyProvider = process.env.EZ_FA_APPLY_PROVIDER ?? "gemini";
   const applyModel = process.env.EZ_FA_APPLY_MODEL ?? "gemini-3.1-flash-lite";
 

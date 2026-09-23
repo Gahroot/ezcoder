@@ -30,7 +30,7 @@
  *   npx tsx src/core/semantic-search-benchmark.ts
  *
  * Env overrides:
- *   EZ_SS_PROVIDER / EZ_SS_MODEL   (default openai / gpt-5.6-sol)
+ *   EZ_SS_PROVIDER / EZ_SS_MODEL   (default openai / gpt-6-sol)
  *   EZ_SS_TOPK                     (chunks/files delivered, default 3)
  */
 
@@ -171,7 +171,7 @@ interface Row {
 
 async function main(): Promise<void> {
   const provider = process.env.EZ_SS_PROVIDER ?? "openai";
-  const model = process.env.EZ_SS_MODEL ?? "gpt-5.6-sol";
+  const model = process.env.EZ_SS_MODEL ?? "gpt-6-sol";
   const topK = Math.max(1, parseInt(process.env.EZ_SS_TOPK ?? "3", 10));
 
   const auth = new AuthStorage();

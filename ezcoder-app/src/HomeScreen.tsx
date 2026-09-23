@@ -219,7 +219,9 @@ export function HomeScreen({
       <div className="home-tagline">Cause the other coding agents piss me off</div>
       <div className="home-byline">
         By Nolan Grout
-        <span className="home-byline-sep">{"\u00b7"}</span>
+        <span className="home-byline-sep" aria-hidden="true">
+          {"\u00b7"}
+        </span>
         <a
           className="home-link"
           href="https://prestyj.com"

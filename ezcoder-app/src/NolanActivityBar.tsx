@@ -76,7 +76,8 @@ export function NolanActivityBar({
         <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}>
           <defs>
             <filter id={orbTintId} colorInterpolationFilters="sRGB">
-              <feFlood floodColor={theme.nolan} />
+              {/* In `style`, not the attribute: presentation attributes don't resolve var(). */}
+              <feFlood style={{ floodColor: theme.nolan }} />
               <feComposite in2="SourceAlpha" operator="in" />
             </filter>
           </defs>
