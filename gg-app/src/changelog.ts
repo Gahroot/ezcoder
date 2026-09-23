@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.70.2",
+    date: "2026-09-23",
+    items: [
+      "GG Coder feels alive now. Your messages rise into the chat, tool steps slide in as they run, popups and menus fade away instead of vanishing, and every screen change glides with a soft `crossfade`. Hit `Show full output` on a long code block and it grows open smoothly instead of jumping.",
+      "Reviewing a plan is a proper moment now. The `YOUR PLAN` banner draws itself in line by line, your plan rises in underneath, and a stray Enter can never approve it by accident. It's fully keyboard friendly, so Tab stays right where your decision is.",
+      "Errors wait for you now. They stay on screen until you close them, and any notice holds still while you hover it, so nothing important slips past while you're looking away.",
+      "A calmer, cleaner look. The top bar keeps `/commit` as the one standout action, Ken's replies read in easy normal text with his signature teal stripe, and your project list is tidier with neat, lined-up times.",
+    ],
+  },
+  {
     version: "0.70.1",
     date: "2026-09-23",
     items: [
