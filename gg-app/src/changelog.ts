@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.71.0",
+    date: "2026-09-28",
+    items: [
+      "Four fresh brains just landed in your model picker. Sign in with Kimi and you get `Kimi K2.8 Preview` with a huge 1M memory and video support, `DeepSeek V4.1 Flash` can now look at your screenshots, Sakana's new `Fugu Max` joins the lineup, and OpenRouter now starts on the mighty `Qwen3.8 Max`. Pick the one that fits the job and keep right on going.",
+      "Your Kimi sign-in now stays fresh on its own. When your login quietly expired, the new Kimi model could fail out of nowhere. I made it renew in the background, so you just keep chatting.",
+      "GG Coder stops nagging you after simple housekeeping. Quick commands like `git status` could trick it into thinking your work still needed re-checking. I taught it the difference, so it only asks for proof when something actually changed.",
+    ],
+  },
+  {
     version: "0.70.5",
     date: "2026-09-27",
     items: [
