@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.72.0",
+    date: "2026-09-28",
+    items: [
+      "Your home screen now moves. I added a living `dithered wave` background that drifts behind your projects and pauses whenever the window is out of focus, so it never burns your battery. Not your vibe? Turn it off under Settings, Effects.",
+      "Settings got a proper home. Instead of a cramped popup, you now get a full `Settings` screen with tabs for General, AI Providers, Remote, MCP and Steroids, and a tab bar that glides smoothly between them.",
+      "The whole app got a fresh coat of paint. I swapped in a crisper icon set, restyled the sign-in screen, and polished menus, popups and notifications so everything feels cleaner and more consistent.",
+    ],
+  },
+  {
     version: "0.71.0",
     date: "2026-09-28",
     items: [
