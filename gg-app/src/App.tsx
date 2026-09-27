@@ -132,14 +132,14 @@ import { TitleUsageMeter } from "./TitleUsageMeter";
 import { useWindowFocused } from "./useWindowFocused";
 import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
 import { useProgress } from "./useProgress";
-import { LoginScreen } from "./LoginScreen";
+import { SettingsScreen, type SettingsTabId } from "./SettingsScreen";
 import { Markdown, PromptSendProvider } from "./Markdown";
 import { FooterSkeleton, TranscriptSkeleton, Skeleton } from "./Skeleton";
 import { useAppUpdate } from "./update";
 import { recoverPromptLabel } from "./prompt-labels";
 import { playSound } from "./sounds";
 import { segmentDoneMarkers, hasDoneMarker, countPlanSteps } from "./plan-steps";
-import { Paperclip, AtSign, ArrowUp, Square, Plus } from "lucide-react";
+import { PaperclipIcon, AtIcon, ArrowUpIcon, SquareIcon, PlusIcon } from "@phosphor-icons/react";
 import { AttachmentBar } from "./AttachmentBar";
 import { EnhancedSegments } from "./PromptEnhancement";
 import { EnhanceDissolve } from "./EnhanceDissolve";
@@ -147,6 +147,8 @@ import { toast } from "./toast";
 import { fileToPending, toWire, attachmentToPending, type PendingAttachment } from "./attachments";
 import { basename } from "./tool-format";
 import "./App.css";
+// Liquid glass trial layer (from veditor-app). Delete this line to revert.
+import "./glass.css";
 
 const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Ken for help";
 const INPUT_PLACEHOLDERS = [
@@ -572,6 +574,7 @@ function App(): React.ReactElement {
   const [restoreChecked, setRestoreChecked] = useState(false);
   // Every window starts from the mode-neutral home screen before choosing Code or Chat.
   const [entryView, setEntryView] = useState<EntryView>(initialEntryView(isSecondaryWindow));
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>("general");
   // Re-open the matching session picker over an already-open workspace.
   const [showPicker, setShowPicker] = useState(false);
   // Bumped on each workspace/session choice to force re-hydration.
@@ -2458,11 +2461,25 @@ function App(): React.ReactElement {
                 setEntryView("chats");
               })
             }
-            onLogin={() => withViewTransition(() => setEntryView("login"))}
+            onSettings={(tab) =>
+              withViewTransition(() => {
+                setSettingsTab(tab ?? "general");
+                setEntryView("settings");
+              })
+            }
             refreshSignal={homeRefreshSignal}
           />
-        ) : entryView === "login" ? (
-          <LoginScreen onClose={() => withViewTransition(() => setEntryView("home"))} />
+        ) : entryView === "settings" ? (
+          <SettingsScreen
+            initialTab={settingsTab}
+            onClose={() =>
+              withViewTransition(() => {
+                setEntryView("home");
+                // Settings may have changed the folder or providers.
+                setHomeRefreshSignal((n) => n + 1);
+              })
+            }
+          />
         ) : entryView === "chats" ? (
           <ChatPicker
             onChosen={onProjectChosen}
@@ -2575,7 +2592,7 @@ function App(): React.ReactElement {
               title="Start a new chat"
               onClick={() => setConfirmNewSession(true)}
             >
-              <Plus size={14} aria-hidden="true" />
+              <PlusIcon size={14} aria-hidden="true" />
               New
             </MetalButton>
             <button
@@ -2608,7 +2625,7 @@ function App(): React.ReactElement {
                 title="Start a new session for this project"
                 onClick={() => setConfirmNewSession(true)}
               >
-                <Plus size={14} aria-hidden="true" />
+                <PlusIcon size={14} aria-hidden="true" />
                 New
               </button>
               <button
@@ -2799,7 +2816,7 @@ function App(): React.ReactElement {
             title="Attach files"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Paperclip size={15} />
+            <PaperclipIcon size={15} />
           </button>
           <div className="input-stack">
             {enhanceAnim && (
@@ -2930,7 +2947,7 @@ function App(): React.ReactElement {
                 else submit();
               }}
             >
-              {running ? <Square size={12} fill="currentColor" /> : <ArrowUp size={16} />}
+              {running ? <SquareIcon size={12} weight="fill" /> : <ArrowUpIcon size={16} />}
             </button>
           </div>
         </div>
@@ -3343,7 +3360,7 @@ function TranscriptRowBody({
             <div className="user-files-row">
               {item.files.map((p) => (
                 <span key={p} className="user-file-chip" title={p}>
-                  <AtSign size={11} style={{ color: theme.accent }} />
+                  <AtIcon size={11} style={{ color: theme.accent }} />
                   <span style={{ color: theme.code }}>{p}</span>
                 </span>
               ))}

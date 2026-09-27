@@ -10,9 +10,12 @@ export function Badge({
   children,
   color,
   title,
+  className,
 }: {
   children: React.ReactNode;
   color?: string;
+  /** Extra class, for callers that style or find a particular badge. */
+  className?: string;
   /** Native tooltip, for badges whose colour carries state worth spelling out. */
   title?: string;
 }): React.ReactElement {
@@ -26,7 +29,7 @@ export function Badge({
       }
     : undefined;
   return (
-    <span className="badge" style={style} title={title}>
+    <span className={className ? `badge ${className}` : "badge"} style={style} title={title}>
       {children}
     </span>
   );
@@ -34,7 +37,7 @@ export function Badge({
 
 /** Project source → display label + accent color. One home so badges stay consistent. */
 const SOURCE_STYLES: Record<string, { label: string; color: string }> = {
-  ggcoder: { label: "gg-coder", color: theme.primary }, // blue
+  ggcoder: { label: "GG Coder", color: theme.primary }, // blue
   "claude-code": { label: "Claude Code", color: "#d97757" }, // Anthropic clay
   codex: { label: "Codex", color: "#aeb6c2" }, // neutral silver
   folder: { label: "Folder", color: theme.textDim }, // on disk, never opened
