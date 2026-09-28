@@ -13,6 +13,16 @@ onlyBuiltDependencies:
   - esbuild
   - onnxruntime-node
 
+# Install scripts we deliberately never run (supply-chain policy). Listing them
+# records the decision and silences pnpm's "Ignored build scripts" notice:
+#   opensrc    - postinstall downloads a native binary from GitHub.
+#   protobufjs - postinstall only prints a version-scheme advisory.
+#   sharp      - ships prebuilt @img/* binaries; no build needed.
+ignoredBuiltDependencies:
+  - opensrc
+  - protobufjs
+  - sharp
+
 overrides:
   global-agent: ^4.1.3
   ip-address: ^10.3.1

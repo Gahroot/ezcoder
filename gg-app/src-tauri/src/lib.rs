@@ -400,6 +400,9 @@ fn orphan_killset(snapshot: &[ProcInfo], self_pid: i32, ledger_pgids: &HashSet<i
 /// Pure parser for `ps -eo pid=,ppid=,pgid=,command=` output (one row per
 /// line). Column padding (multiple spaces) is collapsed by `split_whitespace`.
 /// Available on all platforms so the parsing can be unit-tested.
+/// On Windows its only caller is `#[cfg(unix)]`, so outside tests it is dead
+/// there; the allow is scoped to non-Unix so Unix builds still flag real rot.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn parse_ps_output(stdout: &str) -> Vec<ProcInfo> {
     stdout
         .lines()

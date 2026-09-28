@@ -1148,22 +1148,34 @@ function App(): React.ReactElement {
   // is acted on; reacting to height would feed our own resize back in as a loop.
   // Attached via a callback ref because the composer unmounts whenever a
   // picker/home view takes over the window.
-  const inputRoRef = useRef<ResizeObserver | null>(null);
+  //
+  // The resize runs on the next frame, not inside the callback: autosizing
+  // changes this same textarea's height (and width, via is-multiline), and
+  // resizing an observed element from its own callback leaves a notification
+  // undelivered, which WebKit reports as "ResizeObserver loop completed with
+  // undelivered notifications" on every send.
+  const inputRoRef = useRef<{ observer: ResizeObserver; cancel: () => void } | null>(null);
   const attachInput = useCallback(
     (el: HTMLTextAreaElement | null) => {
       inputRef.current = el;
-      inputRoRef.current?.disconnect();
+      inputRoRef.current?.observer.disconnect();
+      inputRoRef.current?.cancel();
       inputRoRef.current = null;
       if (!el || typeof ResizeObserver === "undefined") return;
       let lastWidth = el.clientWidth;
+      let frame = 0;
       const ro = new ResizeObserver(() => {
         const width = el.clientWidth;
         if (width === lastWidth) return;
         lastWidth = width;
-        autosizeInput();
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          autosizeInput();
+        });
       });
       ro.observe(el);
-      inputRoRef.current = ro;
+      inputRoRef.current = { observer: ro, cancel: () => cancelAnimationFrame(frame) };
     },
     [autosizeInput],
   );
