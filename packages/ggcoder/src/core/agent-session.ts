@@ -97,7 +97,11 @@ import { MCPClientManager, getAllMcpServers } from "./mcp/index.js";
 import type { MCPElicitHandler } from "./mcp/index.js";
 import type { MCPServerConfig } from "./mcp/types.js";
 import { clampMcpToolDescription, DeferredToolCatalog } from "./mcp/deferred-catalog.js";
-import { CONTEXT_LIMITS, resolveContextLimits, type ContextLimits } from "./context-limits.js";
+import {
+  CONTEXT_LIMITS,
+  resolveSessionContextLimits,
+  type ContextLimits,
+} from "./context-limits.js";
 import { McpCatalogCache, type CachedTool } from "./mcp/catalog-cache.js";
 import {
   describeDropped,
@@ -232,6 +236,12 @@ export interface AgentSessionOptions {
   agentPrompt?: string;
   /** Whether `agentPrompt` composition includes project instruction files. Default `"project"`. */
   agentContext?: "project" | "none";
+  /**
+   * Who `agentPrompt` speaks to. `"subagent"` (default) appends the delegated
+   * child's return contract; `"primary"` is a user-facing specialist (Motion)
+   * that keeps the Tools/Environment scaffolding but answers the user directly.
+   */
+  agentRole?: "subagent" | "primary";
   /** Synchronous volatile prompt suffix, refreshed immediately before every run. */
   getSystemPromptTail?: () => string;
   sessionId?: string;
@@ -343,6 +353,18 @@ export interface AgentSessionOptions {
   semanticLoopJudge?: (prompt: string) => Promise<string>;
   /** Load project skills/agents and create local .gg directories. Defaults to true. */
   projectCustomization?: boolean;
+  /**
+   * Use exactly this skill set instead of discovering bundled/global/project
+   * skills. A mode with a private skill bundle (Motion) passes its own list so
+   * its skills stay invisible to every other mode, and vice versa.
+   */
+  skills?: readonly Skill[];
+  /**
+   * Mode-specific defaults for prompt byte budgets. The user's `contextLimits`
+   * setting still overrides these. Motion raises its skill-catalog budget
+   * because its skill set is a fixed, bundled one (never untrusted files).
+   */
+  contextLimits?: Partial<ContextLimits>;
   /** Register global + bundled subagents without loading project customization. */
   globalSubagents?: boolean;
   /** Load GG Coder extensions. Defaults to true. */
@@ -700,7 +722,10 @@ export class AgentSession {
     // Load settings & auth
     this.settingsManager = new SettingsManager(paths.settingsFile);
     await this.settingsManager.load();
-    this.contextLimits = resolveContextLimits(this.settingsManager.get("contextLimits"));
+    this.contextLimits = resolveSessionContextLimits(
+      this.opts.contextLimits,
+      this.settingsManager.get("contextLimits"),
+    );
 
     this.authStorage = new AuthStorage(paths.authFile);
     await this.authStorage.load();
@@ -715,7 +740,10 @@ export class AgentSession {
       await fs.mkdir(path.join(localGGDir, "skills"), { recursive: true });
       await fs.mkdir(path.join(localGGDir, "commands"), { recursive: true });
       await fs.mkdir(path.join(localGGDir, "agents"), { recursive: true });
-
+    }
+    if (this.opts.skills) {
+      this.skills = [...this.opts.skills];
+    } else if (projectCustomization) {
       this.skills = await discoverSkills({
         globalSkillsDir: paths.skillsDir,
         projectDir: this.cwd,
@@ -3674,6 +3702,7 @@ export class AgentSession {
         toolNames,
         deferredToolNames,
         context: this.opts.agentContext,
+        role: this.opts.agentRole,
         environment: this.recordRenderedEnvironment(),
         contextLimits: this.contextLimits,
       });
