@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.73.1",
+    date: "2026-09-30",
+    items: [
+      "`GPT-6.1 Sol` now works when you sign in with your ChatGPT account. OpenAI only hands it out to the newest Codex apps, so I brought GG Coder right up to date. Your new default model is ready to roll.",
+    ],
+  },
+  {
     version: "0.73.0",
     date: "2026-09-30",
     items: [
