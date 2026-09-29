@@ -9,6 +9,9 @@ import { MotionReviewSession } from "./motion-review-session.js";
 import type { CompletionReviewRequest } from "../core/completion-review.js";
 
 const exec = promisify(execFile);
+// Media tests spawn real FFmpeg, ffprobe and Node processes. On the Windows CI runner a
+// cold start has stretched a ~7 s test to 27.5 s, so give real headroom.
+const MEDIA_TEST_MS = 60_000;
 let tmp = "";
 let session: MotionReviewSession;
 beforeEach(async () => {
@@ -92,7 +95,7 @@ const response = {
   provider: "test",
   thinking: undefined,
 };
-describe("Motion review session", () => {
+describe("Motion review session", { timeout: MEDIA_TEST_MS }, () => {
   it.each([false, true])(
     "uses the configured FFmpeg and sibling ffprobe without PATH (audio=%s)",
     async (audio) => {
@@ -102,14 +105,12 @@ describe("Motion review session", () => {
       expect(await session.followUp(async () => response)).toBeNull();
       expect(session.gate.status).toBe("ready");
     },
-    30_000,
   );
   it.each(["declared", "undeclared"] as const)(
     "preserves the existing explicit slideshow exception (%s)",
     async (mode) => {
       expect(JSON.parse(await prepare(undefined, mode)).technical).toBe(mode === "declared");
     },
-    30_000,
   );
   it("catches unregistered writes and shell work but leaves discussion and video reads alone", async () => {
     const reviewer = vi.fn(async () => response);
@@ -162,7 +163,7 @@ describe("Motion review session", () => {
     await fs.writeFile(path.join(tmp, "index.html"), "changed");
     expect(await session.followUp(reviewer)).toContain("changed");
     expect(session.gate.status).toBe("unverified");
-  }, 30_000);
+  });
   it("does not mistake a final shell check for changed source after explicit submission", async () => {
     await prepare();
     await session.track({
@@ -197,13 +198,13 @@ describe("Motion review session", () => {
     expect(await session.followUp(reviewer)).toContain("changed");
     expect(session.gate.status).not.toBe("ready");
     expect(reviewer).toHaveBeenCalledTimes(1);
-  }, 30_000);
+  });
   it("cannot approve unmeasured technical checks even with a ready creative verdict", async () => {
     await fs.writeFile(path.join(tmp, "check.cjs"), 'process.stdout.write("{}")');
     expect(await prepare()).toContain('"technical":false');
     expect(await session.followUp(async () => response)).toContain("unverified");
     expect(session.gate.status).toBe("unverified");
-  }, 30_000);
+  });
   it("does not approve malformed output or repeatedly review unchanged failed evidence", async () => {
     await prepare();
     const reviewer = vi.fn(async () => ({ ...response, text: "10/10 excellent" }));
@@ -211,7 +212,7 @@ describe("Motion review session", () => {
     await session.followUp(reviewer);
     expect(reviewer).toHaveBeenCalledTimes(1);
     expect(session.gate.status).toBe("unverified");
-  }, 30_000);
+  });
   it("requires real evidence for every chapter of the same artifact", async () => {
     expect(await prepare({ start: 0, end: 1 })).toContain('"technical":true');
     const reviewer = vi.fn(async () => response);
@@ -234,7 +235,7 @@ describe("Motion review session", () => {
     expect(await session.followUp(reviewer)).toBeNull();
     expect(session.gate.status).toBe("ready");
     expect(reviewer).toHaveBeenCalledTimes(2);
-  }, 30_000);
+  });
   it("rejects evidence changed after preparation", async () => {
     const result = JSON.parse(await prepare());
     const manifest = path.join(result.directory, "manifest.json");
@@ -245,7 +246,7 @@ describe("Motion review session", () => {
     expect(await session.followUp(reviewer)).toContain("manifest changed");
     expect(reviewer).not.toHaveBeenCalled();
     expect(session.gate.status).not.toBe("ready");
-  }, 30_000);
+  });
   it("passes cancellation to the fresh review and never records approval", async () => {
     await prepare();
     const controller = new AbortController();
@@ -256,7 +257,7 @@ describe("Motion review session", () => {
       return response;
     }, controller.signal);
     expect(session.gate.status).not.toBe("ready");
-  }, 30_000);
+  });
   it("restores only validated registration, never a disk-authored approval", async () => {
     await prepare();
     const saved = session.snapshot();
@@ -266,5 +267,5 @@ describe("Motion review session", () => {
     expect(await session.followUp(async () => response)).toBeNull();
     session.restore({ version: 1, registration: {}, ready: true });
     expect(session.snapshot()).toEqual({ version: 1, registration: null });
-  }, 30_000);
+  });
 });

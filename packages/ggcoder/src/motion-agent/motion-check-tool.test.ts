@@ -10,6 +10,9 @@ import { findMotionBundle, type MotionBundle } from "../core/skills.js";
 import { createMotionCheckTool } from "./motion-check-tool.js";
 
 const exec = promisify(execFile);
+// Each test spawns real FFmpeg, ffprobe and Node processes. On the Windows CI runner a
+// cold start has stretched a ~4 s test past 20 s, so give real headroom.
+const MEDIA_TEST_MS = 60_000;
 const runtimeReport = {
   ok: true,
   lint: { filesScanned: 1, errorCount: 0 },
@@ -122,7 +125,7 @@ async function check(
   );
 }
 
-describe("Motion single-pass output check", () => {
+describe("Motion single-pass output check", { timeout: MEDIA_TEST_MS }, () => {
   it("runs one runtime check including lint and returns real images to the working agent", async () => {
     await render();
     const before = await fs.readFile(path.join(root, "renders", "video.mp4"));
