@@ -21,9 +21,8 @@ const DEEPSEEK_THINKING_LEVELS: readonly ThinkingLevel[] = ["low", "high", "max"
 // rung (docs: low/medium/high default/xhigh); each model slices this ladder
 // by its registry maxThinkingLevel.
 const XAI_THINKING_LEVELS: readonly ThinkingLevel[] = ["low", "medium", "high", "xhigh"];
-// Opus 5.5 / 5 / 4.8 / 4.7 expose the full ladder including xhigh ("extended
-// capability for long-horizon work"). Other adaptive Anthropic models omit
-// xhigh and would 400. (`opus-5` also matches `opus-5-5`.)
+// Opus 5.x / 4.8 / 4.7 and Sonnet 5.5 expose the full ladder including xhigh.
+// Other adaptive Anthropic models omit xhigh and would 400.
 const ANTHROPIC_XHIGH_THINKING_LEVELS: readonly ThinkingLevel[] = [
   "low",
   "medium",
@@ -81,13 +80,13 @@ function isGlmModel(provider: Provider): boolean {
 }
 
 function isAnthropicXhighModel(provider: Provider, model: string): boolean {
-  return provider === "anthropic" && /opus-5|opus-4-8|opus-4-7/.test(model);
+  return provider === "anthropic" && /opus-5|opus-4[-.]8|opus-4[-.]7|sonnet-5[-.]5/.test(model);
 }
 
 function isAnthropicAdaptiveModel(provider: Provider, model: string): boolean {
   return (
     provider === "anthropic" &&
-    /opus-5|opus-4-8|opus-4-7|opus-4-6|sonnet-5|fable-5|mythos-5/.test(model)
+    /opus-5|opus-4[-.]8|opus-4[-.]7|opus-4[-.]6|sonnet-5|fable-5|mythos-5/.test(model)
   );
 }
 

@@ -983,7 +983,7 @@ select {
   -webkit-text-fill-color: transparent;
   animation:
     ggshimmer 4s linear infinite,
-    gg-glitch-shake 5s steps(1, end) infinite;
+    ez-glitch-shake 5s steps(1, end) infinite;
 }
 .ascii-logo-glitch::before,
 .ascii-logo-glitch::after {
@@ -1001,13 +1001,13 @@ select {
   -webkit-text-fill-color: currentColor;
 }
 .ascii-logo-glitch::before {
-  animation: gg-glitch-tear-a 5s steps(1, end) infinite;
+  animation: ez-glitch-tear-a 5s steps(1, end) infinite;
 }
 .ascii-logo-glitch::after {
-  animation: gg-glitch-tear-b 5s steps(1, end) infinite;
+  animation: ez-glitch-tear-b 5s steps(1, end) infinite;
 }
 /* Burst windows: 82–85% (≈150ms) and 93–94.6% (≈80ms) of the cycle. */
-@keyframes gg-glitch-shake {
+@keyframes ez-glitch-shake {
   0%,
   82%,
   85%,
@@ -1026,7 +1026,7 @@ select {
     transform: translateX(1px);
   }
 }
-@keyframes gg-glitch-tear-a {
+@keyframes ez-glitch-tear-a {
   0%,
   82%,
   85%,
@@ -1053,7 +1053,7 @@ select {
     clip-path: inset(68% 0 21% 0);
   }
 }
-@keyframes gg-glitch-tear-b {
+@keyframes ez-glitch-tear-b {
   0%,
   82%,
   85%,
@@ -1212,7 +1212,7 @@ select {
   text-decoration: underline;
 }
 /* ── Home actions ──
-   The two ways in (Code, Chat) as big pills under the banner, and Settings as
+   The three ways in (Code, Chat, Motion) as big pills under the banner, and Settings as
    a gear pinned to the bottom-right corner. */
 .home-actions {
   display: flex;
@@ -3225,7 +3225,7 @@ select {
   font-size: 14px;
   font-weight: 600;
 }
-/* A project's sources (gg-coder, Claude Code, Codex, Folder) as tinted pills
+/* A project's sources (ezcoder, Claude Code, Codex, Folder) as tinted pills
    in a row; a session from another tool leads its meta line with one. */
 .picker-sources {
   display: flex;
@@ -5791,6 +5791,19 @@ select {
 }
 .wake-cursor-rest {
   color: var(--secondary);
+}
+/* Motion's one-click starting points: a wrapping row just above the activity
+   bar, aligned to the same rail as the rest of the live region. */
+.motion-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px var(--rail);
+}
+.motion-starter {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .wake-cursor {

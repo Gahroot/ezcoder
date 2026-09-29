@@ -56,14 +56,18 @@ describe("thinking-level helpers", () => {
     }
   });
 
-  it("cycles Anthropic adaptive Sonnet models without xhigh", () => {
-    expect(getSupportedThinkingLevels("anthropic", "claude-sonnet-5")).toEqual([
+  it("cycles Sonnet 5.5 through max, including its new xhigh level", () => {
+    expect(getSupportedThinkingLevels("anthropic", "claude-sonnet-5-5")).toEqual([
       "low",
       "medium",
       "high",
+      "xhigh",
       "max",
     ]);
-    expect(getNextThinkingLevel("anthropic", "claude-sonnet-5", "high")).toBe("max");
+    expect(getNextThinkingLevel("anthropic", "claude-sonnet-5-5", "high")).toBe("xhigh");
+    expect(getNextThinkingLevel("anthropic", "claude-sonnet-5-5", "xhigh")).toBe("max");
+    expect(getNextThinkingLevel("anthropic", "claude-sonnet-5-5", "max")).toBeUndefined();
+    expect(isThinkingLevelSupported("anthropic", "claude-sonnet-5-5", "xhigh")).toBe(true);
     expect(isThinkingLevelSupported("anthropic", "claude-sonnet-5", "xhigh")).toBe(false);
   });
 

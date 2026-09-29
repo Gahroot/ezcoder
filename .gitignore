@@ -12,6 +12,14 @@ coverage/
 ~/.ezcoder/
 .ezcoder/
 
+# Private Motion authoring pipeline (not required by runtime builds)
+/packages/cli/scripts/after-effects/
+/packages/cli/assets/motion/references/authoring/
+*.[aA][eE][pP]
+*.[aA][eE][pP][xX]
+# Working exports, provenance, previews and parser environments belong under
+# .ezcoder/artifacts/ (already ignored), never in the shipped motion assets.
+
 # Scratch / ad-hoc test files
 test_*.mjs
 test_*.js
@@ -98,5 +106,5 @@ packages/*/.bench-*.mjs
 # Vite builds a single entry (index.html), so a production build never sees
 # them — a clean build emits dist/index.html and nothing else. Ignored so
 # `git add -A` cannot sweep 216KB of scratch into a release.
-/gg-app/mockups/
-/gg-app/dev/
+/ezcoder-app/mockups/
+/ezcoder-app/dev/

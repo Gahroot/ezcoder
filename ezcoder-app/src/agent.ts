@@ -88,8 +88,13 @@ export interface BackgroundTask {
   exitCode: number | null;
 }
 
-export type WorkspaceMode = "code" | "chat";
+export type WorkspaceMode = "code" | "chat" | "motion";
 export type ChatAgentId = "general" | "therapist" | "research";
+
+/** Product name shown when a window has no project context to title it. */
+export function workspaceProductName(mode: WorkspaceMode): string {
+  return mode === "chat" ? "EZ Chat" : mode === "motion" ? "EZ Motion" : "EZ Coder";
+}
 
 export type MemoryCategory =
   "identity" | "preference" | "project" | "relationship" | "health" | "other";
@@ -1442,10 +1447,13 @@ export async function searchFiles(query: string): Promise<FileHit[]> {
   }
 }
 
-/** List the latest sessions for a project, one chat agent, or every chat agent. */
+/**
+ * List the latest sessions for a project, one chat agent, every chat agent
+ * (`"all"`), or EZ Motion (`"motion"`).
+ */
 export async function listSessions(
   cwd: string,
-  chatAgent?: ChatAgentId | "all",
+  chatAgent?: ChatAgentId | "all" | "motion",
 ): Promise<RecentSession[]> {
   try {
     const res = await invoke<{ sessions: RecentSession[] }>("agent_sessions", {

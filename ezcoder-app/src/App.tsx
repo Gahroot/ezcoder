@@ -54,6 +54,7 @@ import {
   getWindowCustomTitle,
   saveWindowCustomTitle,
   openProjectPath,
+  workspaceProductName,
   type AgentState,
   type WorkspaceMode,
   type ModelOption,
@@ -104,6 +105,7 @@ import { NotesModal } from "./NotesModal";
 import { MemoryModal } from "./MemoryModal";
 import { ShimmerText } from "./ShimmerText";
 import { WakeScreen } from "./WakeScreen";
+import { MotionStarters } from "./MotionStarters";
 import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
@@ -135,7 +137,8 @@ import { RankBadge } from "./RankBadge";
 import { ScorecardModal } from "./ScorecardModal";
 import { TitleUsageMeter } from "./TitleUsageMeter";
 import { useWindowFocused } from "./useWindowFocused";
-import { formatWorkspaceTitle, WorkspaceHeader } from "./WorkspaceHeader";
+import { WorkspaceHeader } from "./WorkspaceHeader";
+import { formatWorkspaceTitle } from "./workspace-title";
 import { useProgress } from "./useProgress";
 import { SettingsScreen, type SettingsTabId } from "./SettingsScreen";
 import { Markdown, PromptSendProvider } from "./Markdown";
@@ -1129,7 +1132,7 @@ function App(): React.ReactElement {
 
   // Keep the native window title aligned with the visible title-bar context.
   useEffect(() => {
-    const fallbackTitle = workspaceMode === "chat" ? "EZ Chat" : "EZ Coder";
+    const fallbackTitle = workspaceProductName(workspaceMode);
     const title =
       !needsProject && !showPicker
         ? formatWorkspaceTitle(
@@ -1816,6 +1819,18 @@ function App(): React.ReactElement {
   const needsGitInit = state?.isGitRepo === false;
   // Default repo name = the project folder name.
   const defaultRepoName = (state?.cwd ?? "").split(/[\\/]/).filter(Boolean).pop() ?? "";
+
+  /** Put text in the composer with the caret at the end, ready to finish and send. */
+  function fillComposer(text: string): void {
+    setInput(text);
+    setCaret(text.length);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(text.length, text.length);
+    });
+  }
 
   /**
    * Fill the interval slot from a preset chip. Replaces an existing interval
@@ -2564,6 +2579,12 @@ function App(): React.ReactElement {
                 setEntryView("chats");
               })
             }
+            onMotion={() =>
+              withViewTransition(() => {
+                setWorkspaceMode("motion");
+                setEntryView("motion");
+              })
+            }
             onSettings={(tab) =>
               withViewTransition(() => {
                 setSettingsTab(tab ?? "general");
@@ -2585,6 +2606,12 @@ function App(): React.ReactElement {
           />
         ) : entryView === "chats" ? (
           <ChatPicker
+            onChosen={onProjectChosen}
+            onClose={() => withViewTransition(() => setEntryView("home"))}
+          />
+        ) : entryView === "motion" ? (
+          <ChatPicker
+            mode="motion"
             onChosen={onProjectChosen}
             onClose={() => withViewTransition(() => setEntryView("home"))}
           />
@@ -2621,6 +2648,8 @@ function App(): React.ReactElement {
       <div className="app" style={{ background: theme.background }}>
         {workspaceMode === "chat" ? (
           <ChatPicker initialAgent={state?.chatAgent ?? "general"} {...pickerProps} />
+        ) : workspaceMode === "motion" ? (
+          <ChatPicker mode="motion" {...pickerProps} />
         ) : (
           <ProjectPicker initialProjectPath={state?.cwd ?? null} {...pickerProps} />
         )}
@@ -2671,7 +2700,13 @@ function App(): React.ReactElement {
         }
       >
         <BackButton
-          label={workspaceMode === "chat" ? "Back to chats" : "Back to this project's sessions"}
+          label={
+            workspaceMode === "chat"
+              ? "Back to chats"
+              : workspaceMode === "motion"
+                ? "Back to motion sessions"
+                : "Back to this project's sessions"
+          }
           onClick={() => withViewTransition(() => setShowPicker(true))}
         />
         <div className="rank-badge-wrap">
@@ -2688,25 +2723,27 @@ function App(): React.ReactElement {
             ))}
           </div>
         </div>
-        {workspaceMode === "chat" ? (
+        {workspaceMode !== "code" ? (
           <span className="picker-head-actions">
             <MetalButton
               windowFocused={windowFocused}
               className="btn btn-primary btn-sm"
               disabled={running}
-              title="Start a new chat"
+              title={workspaceMode === "motion" ? "Start a new video session" : "Start a new chat"}
               onClick={() => setConfirmNewSession(true)}
             >
               <PlusIcon size={14} aria-hidden="true" />
               New
             </MetalButton>
-            <button
-              className="btn btn-sm btn-ghost"
-              title="View and curate chat memories and Jiwa"
-              onClick={() => setShowMemories(true)}
-            >
-              Brain
-            </button>
+            {workspaceMode === "chat" && (
+              <button
+                className="btn btn-sm btn-ghost"
+                title="View and curate chat memories and Jiwa"
+                onClick={() => setShowMemories(true)}
+              >
+                Brain
+              </button>
+            )}
             <RadioButton />
             <WindowLayoutButton />
           </span>
@@ -2811,7 +2848,7 @@ function App(): React.ReactElement {
             <>
               {items.length === 0 &&
                 (status === "ready" ? (
-                  <WakeScreen chat={workspaceMode === "chat"} />
+                  <WakeScreen chat={workspaceMode === "chat"} motion={workspaceMode === "motion"} />
                 ) : (
                   <div className="line transcript-reveal" style={{ color: theme.textDim }}>
                     {`\u273b ${status}`}
@@ -2842,6 +2879,11 @@ function App(): React.ReactElement {
       </div>
 
       <div className="liveregion">
+        {/* Motion's starting points sit just above the activity bar and go away
+            once the conversation has its first message. */}
+        {workspaceMode === "motion" && hydrated && items.length === 0 && !running && (
+          <MotionStarters onPick={fillComposer} />
+        )}
         {workspaceMode === "code" && nolanRunning && (
           <NolanActivityBar
             runStartTs={nolanRunStartTs}
@@ -2854,7 +2896,7 @@ function App(): React.ReactElement {
         )}
         {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
         {/* Automatic review stays in the same task row; manual @Nolan keeps its own bar. */}
-        {(workspaceMode === "chat" || running || autopilotReviewing || !nolanRunning) && (
+        {(workspaceMode !== "code" || running || autopilotReviewing || !nolanRunning) && (
           <ActivityBar
             running={running}
             activity={activity}
@@ -2864,8 +2906,8 @@ function App(): React.ReactElement {
             isThinking={isThinking}
             thinkingStartTs={thinkingStartTs}
             thinkingAccumMs={thinkingAccumMs}
-            planTotal={workspaceMode === "chat" ? 0 : planTotal}
-            planDone={workspaceMode === "chat" ? 0 : Math.min(planDone.size, planTotal)}
+            planTotal={workspaceMode !== "code" ? 0 : planTotal}
+            planDone={workspaceMode !== "code" ? 0 : Math.min(planDone.size, planTotal)}
             onCancel={requestCancel}
             toolsHidden={toolsHidden}
             hasToolFeed={liveToolFeed.length > 0}
@@ -2954,7 +2996,13 @@ function App(): React.ReactElement {
               // submit the un-enhanced draft mid-animation.
               readOnly={enhanceAnim !== null}
               value={input}
-              placeholder={workspaceMode === "chat" ? "Ask anything\u2026" : displayPlaceholder}
+              placeholder={
+                workspaceMode === "chat"
+                  ? "Ask anything\u2026"
+                  : workspaceMode === "motion"
+                    ? "Describe a video, paste a link, or drop a PDF\u2026"
+                    : displayPlaceholder
+              }
               onPaste={(e) => {
                 const files = Array.from(e.clipboardData.files);
                 if (files.length > 0) {
@@ -3083,14 +3131,18 @@ function App(): React.ReactElement {
       </div>
 
       <div
-        className={`footer${workspaceMode === "chat" ? " footer-chat" : ""}`}
+        className={`footer${workspaceMode !== "code" ? " footer-chat" : ""}`}
         style={{ color: theme.footerText }}
       >
         {!hydrated ? (
           <FooterSkeleton />
         ) : (
           <>
-            {workspaceMode === "chat" ? (
+            {workspaceMode === "motion" ? (
+              <span className="footer-left footer-reveal" style={{ color: theme.textDim }}>
+                Motion Agent
+              </span>
+            ) : workspaceMode === "chat" ? (
               <span className="footer-left footer-reveal" style={{ color: theme.textDim }}>
                 {state?.chatAgent === "therapist"
                   ? "Therapist Agent"
@@ -3173,9 +3225,7 @@ function App(): React.ReactElement {
                   currentModel={state?.model ?? ""}
                   onSelect={onSelectModel}
                   disabled={running}
-                  title={
-                    workspaceMode === "chat" ? "Switch EZ Chat's model" : "Switch EZ Coder's model"
-                  }
+                  title={`Switch ${workspaceMode === "chat" ? "EZ Chat" : workspaceProductName(workspaceMode)}'s model`}
                 />
               </span>
               {workspaceMode === "code" && (

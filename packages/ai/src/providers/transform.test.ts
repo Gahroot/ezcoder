@@ -657,7 +657,12 @@ describe("toAnthropicThinking", () => {
   // Opus 4.8 is no longer in ezcoder's model picker, but @prestyj/ai is a standalone
   // library and Anthropic still serves that ID — keep the wire format correct.
   it("passes Anthropic adaptive effort levels through for Opus 5.5 / 5 (and legacy 4.8)", () => {
-    for (const model of ["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8"]) {
+    for (const model of [
+      "claude-opus-5-5",
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-opus-4.8",
+    ]) {
       for (const level of ["low", "medium", "high", "xhigh", "max"] as const) {
         const result = toAnthropicThinking(level, MAX_TOKENS, model);
         expect(result.outputConfig).toEqual({ effort: level });
@@ -665,6 +670,19 @@ describe("toAnthropicThinking", () => {
       }
     }
   });
+
+  it.each(["claude-sonnet-5-5", "claude-sonnet-5.5"])(
+    "passes every adaptive effort through for %s",
+    (model) => {
+      for (const level of ["low", "medium", "high", "xhigh", "max"] as const) {
+        expect(toAnthropicThinking(level, MAX_TOKENS, model)).toEqual({
+          thinking: { type: "adaptive" },
+          maxTokens: MAX_TOKENS,
+          outputConfig: { effort: level },
+        });
+      }
+    },
+  );
 
   it("clamps xhigh to high on adaptive Anthropic models that do not support xhigh", () => {
     expect(toAnthropicThinking("xhigh", MAX_TOKENS, "claude-sonnet-5").outputConfig).toEqual({

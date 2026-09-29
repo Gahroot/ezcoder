@@ -115,6 +115,28 @@ describe("Claude Opus 5.5", () => {
   });
 });
 
+describe("Claude Sonnet 5.5", () => {
+  it("replaces Sonnet 5 in the catalog and Anthropic defaults", () => {
+    const model = getModel("claude-sonnet-5-5");
+    expect(model).toEqual({
+      id: "claude-sonnet-5-5",
+      name: "Claude Sonnet 5.5",
+      provider: "anthropic",
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      supportsThinking: true,
+      supportsImages: true,
+      supportsVideo: false,
+      costTier: "medium",
+      maxThinkingLevel: "max",
+    });
+    expect(getModelsForProvider("anthropic")).toContain(model);
+    expect(getModel("claude-sonnet-5")).toBeUndefined();
+    expect(getDefaultModel("anthropic")).toBe(model);
+    expect(getSummaryModel("anthropic", "claude-opus-5-5")).toBe(model);
+  });
+});
+
 describe("getFastModel", () => {
   it("routes to a low-tier sibling within the same provider", () => {
     for (const provider of PROVIDERS) {
@@ -174,7 +196,7 @@ describe("model registry context windows", () => {
   it("keeps the generic tool-output allowance outside Codex OAuth", () => {
     expect(getToolResultCharLimit("gpt-6-sol", { provider: "openai" })).toBeUndefined();
     expect(
-      getToolResultCharLimit("claude-sonnet-5", {
+      getToolResultCharLimit("claude-sonnet-5-5", {
         provider: "anthropic",
         accountId: "acct_123",
       }),
@@ -184,7 +206,7 @@ describe("model registry context windows", () => {
   it("keeps non-OpenAI providers on their model context windows", () => {
     expect(usesOpenAICodexTransport({ provider: "anthropic", accountId: "acct_123" })).toBe(false);
     expect(
-      getContextWindow("claude-sonnet-5", { provider: "anthropic", accountId: "acct_123" }),
+      getContextWindow("claude-sonnet-5-5", { provider: "anthropic", accountId: "acct_123" }),
     ).toBe(1_000_000);
   });
 
@@ -326,8 +348,8 @@ describe("model registry context windows", () => {
   });
 
   it("every other provider defaults to a single-entry [provider] auth-storage key", () => {
-    expect(getAuthStorageKeys("anthropic", "claude-sonnet-5")).toEqual(["anthropic"]);
-    expect(getAuthStorageKey("anthropic", "claude-sonnet-5")).toBe("anthropic");
+    expect(getAuthStorageKeys("anthropic", "claude-sonnet-5-5")).toEqual(["anthropic"]);
+    expect(getAuthStorageKey("anthropic", "claude-sonnet-5-5")).toBe("anthropic");
   });
 
   it("defaults Xiaomi to the full-modal MiMo-V2.6-Pro and retires the V2.5 ids", () => {

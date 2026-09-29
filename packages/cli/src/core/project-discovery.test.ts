@@ -116,6 +116,8 @@ describe("discoverProjects (ezcoder store)", () => {
     const root = path.join(tmp, "ez-projects");
     await fs.mkdir(path.join(root, "never-opened"), { recursive: true });
     await fs.mkdir(path.join(root, "node_modules"), { recursive: true });
+    await fs.mkdir(path.join(root, "EZ Motion"), { recursive: true });
+    await fs.mkdir(path.join(root, "GG Motion"), { recursive: true });
     await fs.mkdir(path.join(root, ".hidden"), { recursive: true });
 
     const projects = await discoverProjects({ projectsRoot: root });
@@ -125,6 +127,8 @@ describe("discoverProjects (ezcoder store)", () => {
     expect(found?.sources).toEqual(["folder"]);
     // Build output and dotfolders are not projects.
     expect(projects.some((p) => p.path.endsWith("node_modules"))).toBe(false);
+    expect(projects.some((p) => p.path === path.join(root, "EZ Motion"))).toBe(false);
+    expect(projects.some((p) => p.path === path.join(root, "GG Motion"))).toBe(false);
     expect(projects.some((p) => p.path.endsWith(".hidden"))).toBe(false);
   });
 

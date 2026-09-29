@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { PencilIcon } from "@phosphor-icons/react";
-import { openProjectPath, openUrl, type WorkspaceMode, type GitHubCI } from "./agent";
+import {
+  openProjectPath,
+  openUrl,
+  workspaceProductName,
+  type WorkspaceMode,
+  type GitHubCI,
+} from "./agent";
 import { CIIndicator } from "./CIIndicator";
 import { projectAccent } from "./projectAccent";
+import { formatWorkspaceTitle, pluralize } from "./workspace-title";
 
 interface WorkspaceHeaderProps {
   workspaceMode: WorkspaceMode;
@@ -26,33 +33,6 @@ interface WorkspaceHeaderProps {
   children: ReactNode;
 }
 
-function pluralize(count: number, singular: string, plural: string): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-export function formatWorkspaceTitle(
-  cwd: string | undefined,
-  gitBranch: string | null | undefined,
-  fallback: string,
-  gitDirtyFileCount = 0,
-  gitHubIssues: number | null = null,
-  gitHubPRs: number | null = null,
-  additionalRoots: string[] = [],
-  customTitle: string | null = null,
-): string {
-  const directory = cwd?.split(/[\\/]/).filter(Boolean).pop();
-  if (!directory) return fallback;
-  const segments = [customTitle?.trim() || directory];
-  if (additionalRoots.length > 0)
-    segments.push(`+${pluralize(additionalRoots.length, "root", "roots")}`);
-  if (gitBranch) segments.push(`⎇ ${gitBranch}`);
-  if (gitDirtyFileCount > 0) segments.push(`${gitDirtyFileCount} uncommitted`);
-  if (gitHubIssues !== null && gitHubIssues > 0)
-    segments.push(pluralize(gitHubIssues, "issue", "issues"));
-  if (gitHubPRs !== null && gitHubPRs > 0) segments.push(pluralize(gitHubPRs, "PR", "PRs"));
-  return segments.join(" │ ");
-}
-
 /** Shared code/chat titlebar and collapsible workspace navigation. */
 export function WorkspaceHeader({
   workspaceMode,
@@ -71,7 +51,7 @@ export function WorkspaceHeader({
   stripExtras,
   children,
 }: WorkspaceHeaderProps): React.ReactElement {
-  const fallbackTitle = workspaceMode === "chat" ? "EZ Chat" : "EZ Coder";
+  const fallbackTitle = workspaceProductName(workspaceMode);
   const directory = cwd?.split(/[\\/]/).filter(Boolean).pop();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(customTitle ?? "");

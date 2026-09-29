@@ -6,6 +6,7 @@
 #   ./scripts/sync-upstream.sh                  # merge, rename, and rebrand
 #   ./scripts/sync-upstream.sh --dry-run        # show incoming upstream commits
 #   ./scripts/sync-upstream.sh --normalize-only # normalize legacy product tokens only
+#   ./scripts/sync-upstream.sh --rebrand-only  # rebrand a manual merge without committing
 #
 # What it does:
 #   1. Fetches upstream (KenKaiii/gg-framework)
@@ -38,9 +39,11 @@ cd "$REPO_ROOT"
 
 DRY_RUN=false
 NORMALIZE_ONLY=false
+REBRAND_ONLY=false
 case "${1:-}" in
   --dry-run) DRY_RUN=true ;;
   --normalize-only) NORMALIZE_ONLY=true ;;
+  --rebrand-only) REBRAND_ONLY=true ;;
 esac
 
 readonly RED='\033[0;31m'
@@ -327,6 +330,14 @@ fix_bin() {
 }
 
 main() {
+  if $REBRAND_ONLY; then
+    replace_in_tracked_text_files
+    replace_legacy_product_tokens
+    rebrand_ken_mentor
+    ok "Manual merge rebranded without staging or committing"
+    return
+  fi
+
   if $NORMALIZE_ONLY; then
     replace_legacy_product_tokens
     ok "Legacy product tokens normalized"

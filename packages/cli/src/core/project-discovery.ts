@@ -294,6 +294,9 @@ const FOLDER_SCAN_IGNORED = new Set([
   "temp",
   "Library",
   "Applications",
+  // Motion's video workspace lives in the projects root but is not a codebase.
+  "EZ Motion",
+  "GG Motion", // Keep older workspaces out of project discovery too.
 ]);
 
 /**
