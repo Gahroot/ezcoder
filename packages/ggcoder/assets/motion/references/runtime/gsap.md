@@ -56,13 +56,13 @@ For transforms, autoAlpha, clearProps, and SVG specifics see `./gsap-transforms-
 
 ## Animated properties
 
-Prefer these efficient targets when they preserve the recipe's behaviour:
+Prefer these efficient targets when they achieve the intended motion:
 
 - **Compositor-cheap**: `opacity`, `x`, `y`, `scale`, `scaleX`, `scaleY`, `rotation`, `rotationX`, `rotationY`, `skewX`, `skewY`, `transformOrigin`
 - **Visual fills**: `color`, `backgroundColor`, `borderColor`, `borderRadius`
 - **CSS variables**: `"--hue": 180` etc.
 - **Media `volume`** (on `<audio>` / `<video>`): do not tween it for fades or ducking; use the `data-automation` volume lane (see `data-attributes.md`). A lane wins over a tween on the same element.
-- **DOM text `innerText`** (for numeric counters): tween it directly, e.g. `tl.to(el, { innerText: 100, snap: { innerText: 1 } })` — `snap` keeps it integer; the GSAP inspector recognizes it as a counter. Use a deterministic proxy value with `onUpdate` for locale formatting or suffix logic when the selected recipe needs it.
+- **DOM text `innerText`** (for numeric counters): tween it directly, e.g. `tl.to(el, { innerText: 100, snap: { innerText: 1 } })` — `snap` keeps it integer; the GSAP inspector recognizes it as a counter. Use a deterministic proxy value with `onUpdate` for locale formatting or suffix logic when the design needs it.
 
 **Avoid** (use the transform alias instead):
 
@@ -80,7 +80,7 @@ Prefer these efficient targets when they preserve the recipe's behaviour:
 - `./gsap-timeline-and-labels.md` — timeline creation, position parameter (`+=`, `<`, `>`), labels, nesting, sub-comp `fromTo` preference, playback control.
 - `./gsap-easing-and-stagger.md` — easing families, stagger objects, function-based values, `gsap.matchMedia()`, `gsap.defaults()`.
 - `./gsap-transforms-and-perf.md` — transform aliases, autoAlpha, `quickTo`, `will-change`, performance rules.
-- The selected recipe defines effects and motion mechanisms; these API examples are not additional creative instructions.
+- The video's plan defines effects and motion; these API examples are not additional creative instructions.
 
 ## Best Practices
 

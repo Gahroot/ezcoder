@@ -1,6 +1,5 @@
-# Private authoring knowledge is local-only, including when npm's files list
-# explicitly includes assets/. Keep the shipped runtime recipes available.
-/references/authoring/
+# Never publish local scratch or After Effects source files, including when
+# npm's files list explicitly includes assets/.
 **/__pycache__/
 **/*.pyc
 **/*.[aA][eE][pP]

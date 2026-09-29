@@ -150,7 +150,7 @@ export function createMotionCheckTool(
     description:
       "Check a current rendered Motion video once: source lint/runtime/layout/contrast, decoded pixels, " +
       "and audio levels when present. Returns technical findings plus actual rendered images for YOU " +
-      "to inspect against the selected template/component and inputs. Supply representative action " +
+      "to inspect against the video's plan and inputs. Supply representative action " +
       "windows (start/end seconds); for videos over 180 seconds select a range to inspect. " +
       "This does not approve creative quality or watch/listen to the full video. Do not repeat the " +
       "same checks manually or recheck an unchanged export. All paths must stay inside the workspace.",
@@ -279,8 +279,8 @@ export function createMotionCheckTool(
             const measured = levelsSchema.parse(JSON.parse(levels.stderr.slice(start, end + 2)));
             const loudness = Number(measured.input_i);
             const peak = Number(measured.input_tp);
-            // Measure, don't impose a new mix on a source-backed recipe. Clipping is a failure;
-            // distribution-specific loudness targets remain the recipe/user's contract.
+            // Measure, don't impose a new mix. Clipping is a failure; distribution-specific
+            // loudness targets remain the user's contract.
             validate(
               "Audio is finite and not clipping",
               Number.isFinite(loudness) && Number.isFinite(peak) && peak <= 0,
@@ -325,7 +325,7 @@ export function createMotionCheckTool(
                 checks,
                 coverage: evidence.manifest.range,
                 visual:
-                  "Inspect the attached rendered frames against the selected recipe and inputs. These are samples, not playback or audio listening. No creative approval has been granted.",
+                  "Inspect the attached rendered frames against the video's plan and inputs. These are samples, not playback or audio listening. No creative approval has been granted.",
               }),
             },
             ...evidence.images.map((image) => ({

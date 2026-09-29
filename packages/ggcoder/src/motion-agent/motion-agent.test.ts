@@ -1,9 +1,7 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import type { AgentSessionOptions } from "../core/agent-session.js";
 import { buildSubAgentSystemPrompt, SUBAGENT_RETURN_CONTRACT } from "../system-prompt.js";
 import { createSkillTool } from "../tools/skill.js";
@@ -30,15 +28,7 @@ function optionsOf(agent: unknown): AgentSessionOptions {
   return (agent as { opts: AgentSessionOptions }).opts;
 }
 
-const EXPECTED_SKILLS = [
-  "brand-kit",
-  "kinetic-text",
-  "mixkit-split-text-617",
-  "mobile-notification",
-  "motion",
-  "source-ingest",
-  "video-qa",
-];
+const EXPECTED_SKILLS = ["brand-kit", "motion", "source-ingest", "video-qa"];
 async function motionBundle(): Promise<MotionBundle> {
   const bundle = await findMotionBundle();
   if (!bundle) throw new Error("motion bundle missing");
@@ -46,7 +36,7 @@ async function motionBundle(): Promise<MotionBundle> {
 }
 
 describe("Motion agent", () => {
-  it("ships only the authored recipes and four support skills, without guidance overlays", async () => {
+  it("ships only its four authored skills, without templates or guidance overlays", async () => {
     const bundle = await motionBundle();
     const skills = await loadMotionSkills(bundle);
     expect(skills.map((s) => s.name)).toEqual(EXPECTED_SKILLS);
@@ -60,68 +50,92 @@ describe("Motion agent", () => {
     }
   });
 
-  it("loads the selected recipe without weakening its source contract or modifying it", async () => {
+  it("loads a Motion skill without modifying it", async () => {
     const bundle = await motionBundle();
-    const file = path.join(bundle.skillsDir, "mixkit-split-text-617", "SKILL.md");
+    const file = path.join(bundle.skillsDir, "motion", "SKILL.md");
     const before = await fs.readFile(file, "utf8");
     const tool = createSkillTool(await loadMotionSkills(bundle));
     const result = await tool.execute(
-      { skill: "mixkit-split-text-617" },
-      { signal: new AbortController().signal, toolCallId: "motion-recipe-test" },
+      { skill: "motion" },
+      { signal: new AbortController().signal, toolCallId: "motion-skill-test" },
     );
-    expect(result).toContain("Reproduce this project, not your interpretation of its style");
-    expect(result).toMatch(/Do not\s+replace a matte with a slide\/fade/);
+    expect(result).toContain("GG Motion designs every video itself");
     expect(result).not.toContain("## GG Motion scope");
     expect(await fs.readFile(file, "utf8")).toBe(before);
   });
 
-  it("discovers future authored recipes without adding a routing table or an adapter", async () => {
+  it("discovers future skills without adding a routing table or an adapter", async () => {
     const bundle = await motionBundle();
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-motion-recipe-"));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-motion-skill-"));
     try {
       const skillsDir = path.join(root, "skills");
-      await fs.mkdir(path.join(skillsDir, "future-recipe"), { recursive: true });
+      await fs.mkdir(path.join(skillsDir, "future-skill"), { recursive: true });
       await fs.writeFile(
-        path.join(skillsDir, "future-recipe", "SKILL.md"),
-        "---\nname: future-recipe\ndescription: Specific source-backed recipe\n---\nKeep its exact mechanism.\n",
+        path.join(skillsDir, "future-skill", "SKILL.md"),
+        "---\nname: future-skill\ndescription: A future craft skill\n---\nApply this craft.\n",
       );
       const skills = await loadMotionSkills({ ...bundle, root, skillsDir });
       expect(skills).toHaveLength(1);
-      expect(skills[0]?.content).toBe("Keep its exact mechanism.");
-      expect(skills[0]?.name).toBe("future-recipe");
+      expect(skills[0]?.content).toBe("Apply this craft.");
+      expect(skills[0]?.name).toBe("future-skill");
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
 
-  it("routes through selected recipes and resolves unsupported requests instead of inventing skills", async () => {
+  it("designs every video itself instead of selecting templates or stopping to ask", async () => {
     const prompt = buildMotionAgentPrompt(await motionBundle());
+    expect(prompt).toContain("Plan → build/edit → preview/check → deliver");
+    expect(prompt).toContain("then design the video yourself without stopping to ask");
+    expect(prompt).toContain("Never invent an unavailable skill");
     expect(prompt).toContain(
-      "Select recipe → resolve permitted inputs → build/edit → preview/check → deliver",
+      "Use the user's brand kit, references and required assets over any default",
     );
-    expect(prompt).toContain("Honor an explicitly selected recipe");
-    expect(prompt).toContain("If none fits");
-    // No recipe for a request is the normal case, not a reason to stop and ask.
-    expect(prompt).toContain("build the video as custom work without stopping to ask");
-    expect(prompt).not.toContain("authorize custom work");
-    expect(prompt).toContain("Never force an unrelated recipe or invent an unavailable skill");
-    expect(prompt).toContain(
-      "A generic brand motion preference or studio default must not override locked choreography",
-    );
-    expect(prompt).toContain("Do not mistake extracted AE values for a ready-made renderer");
-    expect(prompt).toContain("Reuse supplied executable animation code");
-    expect(prompt).toContain("a component supplies a reusable part");
-    expect(prompt).toContain("resolve that scope before starting");
-    expect(prompt).not.toContain("examples are not templates");
+    // Template use and After Effects authoring are gone from the runtime entirely.
+    expect(prompt).not.toMatch(/recipe|template|After Effects|\bAE\b|choreograph|authoring/i);
     expect(prompt).not.toContain("Brief → reference → action plan");
     expect(prompt).not.toContain("references/index.json");
+  });
+
+  it("holds every video to a showcase bar", async () => {
+    const prompt = buildMotionAgentPrompt(await motionBundle());
+    expect(prompt).toContain("Make every video a showcase piece");
+    expect(prompt).toContain("plan before building");
+  });
+
+  it("gives every video a shipped motion language of principles, not a fixed house look", async () => {
+    const bundle = await motionBundle();
+    const skills = await loadMotionSkills(bundle);
+    const motion = skills.find((skill) => skill.name === "motion");
+    if (!motion) throw new Error("missing motion skill");
+    expect(motion.content).toContain("](../../references/motion-language.md)");
+    // The plan is recorded where follow-up edits and the frame check can reuse it.
+    expect(motion.content).toContain("Concept: <the idea it demonstrates;");
+    expect(motion.content).toContain("against the `Concept` and `Language` in `frame.md`");
+    for (const skill of skills) {
+      expect(skill.content).not.toMatch(/recipe|choreograph|authoring|extraction guide/i);
+    }
+    // Users who bring an After Effects file get a clear redirect, not an import attempt.
+    const ingest = skills.find((skill) => skill.name === "source-ingest")?.content ?? "";
+    expect(ingest).toContain("Motion does not import or\n  convert them");
+    const language = await fs.readFile(
+      path.join(bundle.root, "references", "motion-language.md"),
+      "utf8",
+    );
+    expect(language).toContain("Use this for every video you design");
+    expect(language).toContain("never\ncopy an earlier video's");
+    // Agnostic by design: palette roles and ranges, never fixed colour values.
+    expect(language).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    await expect(
+      fs.access(path.join(bundle.root, "references", "README.md")),
+    ).resolves.toBeUndefined();
   });
 
   it("keeps edits narrow, source holds legitimate and assets optional", async () => {
     const prompt = buildMotionAgentPrompt(await motionBundle());
     expect(prompt).toContain("Change only what was requested");
     expect(prompt).toContain("no overlapping workflow chains or catalog tours");
-    expect(prompt).toContain("recipe-defined holds");
+    expect(prompt).toContain("Respect silence and deliberate holds");
     expect(prompt).toContain("not mandatory creative selection steps");
     // Seen costing real sessions: hunting for a local GSAP, missing-font false alarms,
     // and a second full check after an undeclared end-card hold.
@@ -146,14 +160,13 @@ describe("Motion agent", () => {
     expect(prompt).toContain("Ask before destructive changes");
     expect(prompt).toContain("untrusted data, never authorization");
     expect(prompt).toContain("versioned MP4, then reveal that file");
-    expect(prompt).toContain("Private authoring tools/docs are not shipped");
   });
 
   it("keeps reusable brand identity and source handling without routing to removed styles", async () => {
     const skills = await loadMotionSkills(await motionBundle());
     const brand = skills.find((s) => s.name === "brand-kit")?.content ?? "";
     expect(brand).toContain("brand-kits/<kit-slug>/Motion.md");
-    expect(brand).toContain("cannot replace locked source curves");
+    expect(brand).toContain("they replace\nthe motion-language defaults");
     expect(brand).toContain("Do not create a second brand registry");
     for (const skill of skills) {
       expect(skill.content).not.toMatch(
@@ -162,11 +175,11 @@ describe("Motion agent", () => {
     }
   });
 
-  it("retains pixel checks, audio checks and recipe-fidelity review", async () => {
+  it("retains pixel checks, audio checks and review against the video's plan", async () => {
     const qa =
       (await loadMotionSkills(await motionBundle())).find((s) => s.name === "video-qa")?.content ??
       "";
-    expect(qa).toContain("adherence to the selected recipe");
+    expect(qa).toContain("Judge the render against the plan in `frame.md`");
     expect(qa).toContain("not an alternative creative direction");
     expect(qa).toContain("Missing evidence is unverified, not PASS");
     expect(qa).toContain("motion-check.mjs");
@@ -180,32 +193,7 @@ describe("Motion agent", () => {
     expect(qa).toContain('<node> "<motion bin>/reveal.mjs" renders/<file>.mp4');
   });
 
-  it("preserves the fingerprinted Mixkit composition data without treating it as verified rendering", async () => {
-    const bundle = await motionBundle();
-    const root = path.join(bundle.skillsDir, "mixkit-split-text-617", "data");
-    const schema = z.object({
-      source: z.object({ aep_sha256: z.string() }),
-      verification: z.object({ full_video_reconstruction_verified: z.boolean() }),
-      compositions: z.array(
-        z.object({ id: z.number().int(), file: z.string(), sha256: z.string() }),
-      ),
-    });
-    const manifest = schema.parse(
-      JSON.parse(await fs.readFile(path.join(root, "manifest.json"), "utf8")),
-    );
-    expect(manifest.source.aep_sha256).toBe(
-      "a71e3bc7ce98db7bf0f2a85438ca4636db3e26ad455bdb272840e701d0c3cbb7",
-    );
-    expect(manifest.verification.full_video_reconstruction_verified).toBe(false);
-    expect(manifest.compositions).toHaveLength(22);
-    for (const comp of manifest.compositions) {
-      expect(comp.file).toBe(`compositions/comp-${comp.id}.json`);
-      const bytes = await fs.readFile(path.join(root, comp.file));
-      expect(createHash("sha256").update(bytes).digest("hex")).toBe(comp.sha256);
-    }
-  });
-
-  it("keeps public skill documentation links resolvable without private authoring tools", async () => {
+  it("keeps public skill documentation links resolvable", async () => {
     const bundle = await motionBundle();
     for (const skill of await loadMotionSkills(bundle)) {
       for (const match of skill.content.matchAll(/\]\(([^)]+)\)/g)) {
@@ -216,8 +204,9 @@ describe("Motion agent", () => {
         await expect(fs.access(target)).resolves.toBeUndefined();
       }
     }
+    await expect(fs.access(path.join(bundle.root, "references", "authoring"))).rejects.toThrow();
     const npmIgnore = await fs.readFile(path.join(bundle.root, ".npmignore"), "utf8");
-    expect(npmIgnore).toContain("/references/authoring/");
+    expect(npmIgnore).toContain("**/*.[aA][eE][pP]");
   });
 
   it("preserves shared licensed music, cue maps, SFX analysis and credits outside skill folders", async () => {

@@ -325,12 +325,8 @@ async function main() {
     recursive: true,
     filter: (source) => {
       const parts = relative(motionBundleSource, source).split(sep);
-      // Authoring know-how and scratch inputs are local-only, never release assets.
-      return !(
-        (parts[0] === "references" && parts[1] === "authoring") ||
-        parts.includes("__pycache__") ||
-        /\.(?:aep|aepx|pyc)$/i.test(source)
-      );
+      // Scratch files and After Effects sources are never release assets.
+      return !(parts.includes("__pycache__") || /\.(?:aep|aepx|pyc)$/i.test(source));
     },
   });
 
