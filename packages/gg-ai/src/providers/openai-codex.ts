@@ -33,11 +33,14 @@ import { readSseStream } from "../utils/sse.js";
 import { extractRequestIdFromMessage } from "../utils/request-id.js";
 
 const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
-// Advertised Codex client version. The ChatGPT backend gates models on the
-// catalog's `minimal_client_version` (GPT-6 Luna needs >= 0.155.0) and
-// rejects older clients with "requires a newer version of Codex". Track the
-// latest openai/codex `rust-v*` release when adding a model.
-const CODEX_CLIENT_VERSION = "0.155.1";
+// Advertised Codex client version. The ChatGPT backend gates models on it, and
+// the live gate can be stricter than the bundled catalog's
+// `minimal_client_version`: GPT-6.1 Sol is listed at 0.153.0 there, but the
+// server only serves it from 0.159.0 (GET /codex/models?client_version=...,
+// 2026-09-30). Below the gate it answers "The '<model>' model is not supported
+// when using Codex with a ChatGPT account". Track the latest openai/codex
+// `rust-v*` release when adding a model, and check that model's live listing.
+const CODEX_CLIENT_VERSION = "0.159.1";
 // OpenAI's Codex CLI enables zstd request compression by default. Keep tiny
 // synthetic/API requests readable, but compress real agent payloads before they
 // hit the backend's finite Envoy retry buffer.
