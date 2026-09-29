@@ -438,6 +438,9 @@ fn orphan_killset(snapshot: &[ProcInfo], self_pid: i32, ledger_pgids: &HashSet<i
 /// Pure parser for `ps -eo pid=,ppid=,pgid=,command=` output (one row per
 /// line). Column padding (multiple spaces) is collapsed by `split_whitespace`.
 /// Available on all platforms so the parsing can be unit-tested.
+/// On Windows its only caller is `#[cfg(unix)]`, so outside tests it is dead
+/// there; the allow is scoped to non-Unix so Unix builds still flag real rot.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn parse_ps_output(stdout: &str) -> Vec<ProcInfo> {
     stdout
         .lines()
@@ -1974,7 +1977,7 @@ fn app_settings_get() -> serde_json::Value {
         .map(|s| s.to_string())
         .unwrap_or_else(|| default_projects_root().to_string_lossy().to_string());
     // The display the window tiler should fill (by monitor label). Absent/empty
-    // means "auto" — fall back to the primary monitor.
+    // means "auto" — an external display first (see `choose_monitor`).
     let target_monitor = parsed
         .as_ref()
         .and_then(|v| v.get("targetMonitor"))
@@ -1989,7 +1992,7 @@ fn app_settings_get() -> serde_json::Value {
 }
 
 /// The display label the window tiler should fill, from ~/.ezcoder/ezcoder-app.json.
-/// `None` means "auto" (primary monitor).
+/// `None` means "auto" (external display first).
 fn target_monitor_name() -> Option<String> {
     app_settings_get()
         .get("targetMonitor")
@@ -2058,7 +2061,11 @@ fn monitor_friendly_label(
     monitor: &tauri::Monitor,
     index: usize,
     primary_pos: Option<&tauri::PhysicalPosition<i32>>,
+    builtin: bool,
 ) -> String {
+    if builtin {
+        return "Built-in".to_string();
+    }
     let pos = monitor.position();
     if primary_pos == Some(pos) {
         return "Primary".to_string();
@@ -2084,12 +2091,130 @@ fn monitor_friendly_label(
     format!("Display {}", index + 1)
 }
 
+/// A CoreGraphics rect, laid out exactly as `CGRect` (two f64 pairs).
+#[cfg(target_os = "macos")]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CgRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGGetActiveDisplayList(max: u32, displays: *mut u32, count: *mut u32) -> i32;
+    fn CGDisplayIsBuiltin(display: u32) -> u32;
+    fn CGDisplayBounds(display: u32) -> CgRect;
+}
+
+/// Logical (point) origins of the built-in laptop panels currently active.
+/// Tauri's `Monitor` carries no "built-in" flag, so we ask CoreGraphics and
+/// match by origin (tao derives `Monitor::position` from the same
+/// `CGDisplayBounds`, scaled to physical pixels).
+#[cfg(target_os = "macos")]
+fn builtin_display_origins() -> Vec<(f64, f64)> {
+    const MAX: usize = 16;
+    let mut ids = [0u32; MAX];
+    let mut count = 0u32;
+    // SAFETY: `ids` has room for MAX entries and CoreGraphics writes at most
+    // `max` of them, reporting how many in `count`.
+    let err = unsafe { CGGetActiveDisplayList(MAX as u32, ids.as_mut_ptr(), &mut count) };
+    if err != 0 {
+        return Vec::new();
+    }
+    ids.iter()
+        .take((count as usize).min(MAX))
+        // SAFETY: plain value-in/value-out CoreGraphics queries on live ids.
+        .filter(|id| unsafe { CGDisplayIsBuiltin(**id) } != 0)
+        .map(|id| {
+            let b = unsafe { CGDisplayBounds(*id) };
+            (b.x, b.y)
+        })
+        .collect()
+}
+
+/// Built-in detection needs OS display-connector APIs we don't bind outside
+/// macOS; there every monitor counts as external, so auto keeps the OS primary.
+#[cfg(not(target_os = "macos"))]
+fn builtin_display_origins() -> Vec<(f64, f64)> {
+    Vec::new()
+}
+
+/// The facts `choose_monitor` decides on, one per connected display.
+struct MonitorFacts {
+    key: String,
+    primary: bool,
+    builtin: bool,
+    /// Logical (point) area — physical area undersells a 1× external next to a
+    /// Retina laptop panel.
+    logical_area: f64,
+}
+
+fn monitor_facts(win: &WebviewWindow) -> Vec<(tauri::Monitor, MonitorFacts)> {
+    let monitors = win.available_monitors().unwrap_or_default();
+    let primary_pos = win.primary_monitor().ok().flatten().map(|m| *m.position());
+    let builtins = builtin_display_origins();
+    monitors
+        .into_iter()
+        .map(|m| {
+            let scale = if m.scale_factor() > 0.0 {
+                m.scale_factor()
+            } else {
+                1.0
+            };
+            let pos = *m.position();
+            let (lx, ly) = (pos.x as f64 / scale, pos.y as f64 / scale);
+            let builtin = builtins
+                .iter()
+                .any(|(bx, by)| (bx - lx).abs() < 1.5 && (by - ly).abs() < 1.5);
+            let size = m.size();
+            let facts = MonitorFacts {
+                key: monitor_key(&m),
+                primary: primary_pos == Some(pos),
+                builtin,
+                logical_area: (size.width as f64 / scale) * (size.height as f64 / scale),
+            };
+            (m, facts)
+        })
+        .collect()
+}
+
+/// Pure: which display the tiler fills.
+///
+/// 1. The saved choice, when that display is still connected.
+/// 2. Otherwise "auto": an external display always beats the built-in laptop
+///    panel — the OS primary if it is external, else the largest external.
+/// 3. With no external connected, the primary (else the first display).
+///
+/// A saved choice that no longer matches (positions shift when a display is
+/// replugged or rearranged) falls to auto, i.e. the external — never silently
+/// to the laptop screen.
+fn choose_monitor(monitors: &[MonitorFacts], want: Option<&str>) -> Option<usize> {
+    if let Some(i) = want.and_then(|key| monitors.iter().position(|m| m.key == key)) {
+        return Some(i);
+    }
+    let externals = monitors.iter().enumerate().filter(|(_, m)| !m.builtin);
+    let best_external = externals.fold(None::<(usize, &MonitorFacts)>, |best, (i, m)| match best {
+        None => Some((i, m)),
+        Some((_, b)) if (m.primary, m.logical_area) > (b.primary, b.logical_area) => Some((i, m)),
+        keep => keep,
+    });
+    best_external
+        .map(|(i, _)| i)
+        .or_else(|| monitors.iter().position(|m| m.primary))
+        .or(if monitors.is_empty() { None } else { Some(0) })
+}
+
 /// Native: enumerate the connected displays so the webview can offer a "tile onto
-/// this monitor" picker. `selected` echoes the saved targetMonitor (null = auto).
-/// Never needs the sidecar.
+/// this monitor" picker. `selected` echoes the saved targetMonitor, or null (auto)
+/// when that display isn't connected any more — so the picker never shows a
+/// choice the tiler has stopped honouring. Never needs the sidecar.
 #[tauri::command]
 fn list_monitors(window: WebviewWindow) -> Result<serde_json::Value, String> {
-    let monitors = window.available_monitors().map_err(|e| e.to_string())?;
+    let monitors = monitor_facts(&window);
     // Identify the primary by position (unique per display) rather than by label,
     // since the index-based fallback label only lines up when the primary is first.
     let primary_pos = window
@@ -2097,27 +2222,26 @@ fn list_monitors(window: WebviewWindow) -> Result<serde_json::Value, String> {
         .ok()
         .flatten()
         .map(|m| *m.position());
-    let selected = target_monitor_name();
+    let selected = target_monitor_name().filter(|key| monitors.iter().any(|(_, f)| &f.key == key));
     let list: Vec<serde_json::Value> = monitors
         .iter()
         .enumerate()
-        .map(|(i, m)| {
+        .map(|(i, (m, facts))| {
             // `name` is the stable matching/persistence key; `label` is what the
             // user actually reads in the picker.
-            let key = monitor_key(m);
-            let label = monitor_friendly_label(m, i, primary_pos.as_ref());
+            let label = monitor_friendly_label(m, i, primary_pos.as_ref(), facts.builtin);
             let size = m.size();
             let pos = m.position();
-            let is_primary = primary_pos == Some(*pos);
-            let is_selected = selected.as_deref() == Some(key.as_str());
+            let is_selected = selected.as_deref() == Some(facts.key.as_str());
             serde_json::json!({
-                "name": key,
+                "name": facts.key,
                 "label": label,
                 "width": size.width,
                 "height": size.height,
                 "x": pos.x,
                 "y": pos.y,
-                "primary": is_primary,
+                "primary": facts.primary,
+                "builtin": facts.builtin,
                 "selected": is_selected,
             })
         })
@@ -2126,7 +2250,7 @@ fn list_monitors(window: WebviewWindow) -> Result<serde_json::Value, String> {
 }
 
 /// Native: persist which display the window tiler should fill. `None`/empty clears
-/// the choice (back to auto = primary monitor). Merges into ezcoder-app.json so the
+/// the choice (back to auto = external first). Merges into ezcoder-app.json so the
 /// projects root is preserved. Never needs the sidecar.
 #[tauri::command]
 fn app_set_target_monitor(monitor: Option<String>) -> Result<serde_json::Value, String> {
@@ -2520,7 +2644,8 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "gemini",
         label: "Gemini",
-        description: "Gemini 3.7 Flash, 3.1 Flash Lite, 3.5 Flash, 3.1 Pro (Preview)",
+        description:
+            "Gemini 3.8 Flash, 3.5 Flash Lite, 3.7 Flash, 3.1 Flash Lite, 3.5 Flash, 3.1 Pro (Preview)",
         methods: &["oauth"],
         oauth_key: None,
         oauth_label: None,
@@ -2532,7 +2657,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "xai",
         label: "xAI (Grok)",
-        description: "Grok 4.6, Grok 4.5 · OAuth or API key",
+        description: "Grok 4.7 · OAuth or API key",
         methods: &["oauth", "apikey"],
         oauth_key: Some("xai-oauth"),
         oauth_label: Some("Grok OAuth"),
@@ -2559,7 +2684,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "moonshot",
         label: "Moonshot",
-        description: "Kimi K3, K2.7 Code · OAuth or API key",
+        description: "Kimi K3, K2.8 Preview (Kimi sign-in), K2.7 Code · OAuth or API key",
         methods: &["oauth", "apikey"],
         oauth_key: Some("moonshot-oauth"),
         oauth_label: Some("Kimi OAuth"),
@@ -2634,7 +2759,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "deepseek",
         label: "DeepSeek",
-        description: "DeepSeek V4 Pro, V4 Flash",
+        description: "DeepSeek V4 Pro, V4.1 Flash",
         methods: &["apikey"],
         oauth_key: None,
         oauth_label: None,
@@ -2646,7 +2771,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "sakana",
         label: "Sakana (Fugu)",
-        description: "Fugu, Fugu Ultra",
+        description: "Fugu, Fugu Max, Fugu Ultra",
         methods: &["apikey"],
         oauth_key: None,
         oauth_label: None,
@@ -2658,7 +2783,7 @@ const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "openrouter",
         label: "OpenRouter",
-        description: "Qwen3.6-Plus · multi-provider gateway",
+        description: "Qwen3.8 Max · multi-provider gateway",
         methods: &["apikey"],
         oauth_key: None,
         oauth_label: None,
@@ -4780,19 +4905,20 @@ fn tile_rects(count: usize, ox: i32, oy: i32, w: i32, h: i32) -> Vec<(i32, i32, 
 }
 
 /// Resolve the work area the tiler should fill: the user's chosen `targetMonitor`
-/// (matched by stable key), else the primary monitor. `win` is any open window —
+/// (matched by stable key), else auto — an external display ahead of the built-in
+/// laptop panel (see `choose_monitor`). `win` is any open window —
 /// it's only used to enumerate monitors. Returns `(ox, oy, w, h, scale)` where the
 /// rect is in PHYSICAL pixels and `scale` is the TARGET monitor's scale factor
 /// (needed by `apply_tile` to place windows correctly across mismatched-DPI
 /// displays). Returns `None` if no monitor is available (e.g. fully headless).
 fn tile_area(win: &WebviewWindow) -> Option<(i32, i32, i32, i32, f64)> {
     let want = target_monitor_name();
-    let chosen = want.as_ref().and_then(|key| {
-        win.available_monitors().ok().and_then(|monitors| {
-            monitors.into_iter().find(|m| &monitor_key(m) == key)
-        })
-    });
-    let monitor = chosen.or_else(|| win.primary_monitor().ok().flatten())?;
+    let (mut monitors, facts): (Vec<tauri::Monitor>, Vec<MonitorFacts>) =
+        monitor_facts(win).into_iter().unzip();
+    let monitor = match choose_monitor(&facts, want.as_deref()) {
+        Some(i) => monitors.swap_remove(i),
+        None => win.primary_monitor().ok().flatten()?,
+    };
     let area = monitor.work_area();
     Some((
         area.position.x,
@@ -4887,6 +5013,21 @@ fn fallback_page(pages_with_windows: &[u8], current: u8) -> Option<u8> {
     let below = pages_with_windows.iter().filter(|p| **p < current).max();
     let above = pages_with_windows.iter().filter(|p| **p > current).min();
     below.or(above).copied()
+}
+
+/// Pure: after a window closes, the page to re-apply — or `None` to leave the
+/// screen alone. `stored` is the RAW stored page, which may point past the last
+/// page that still exists.
+///
+/// A single-page workspace still on page 1 is left alone, so closing one of
+/// three hand-placed windows doesn't re-tile the survivors. Anything else
+/// re-applies: several pages (a close re-packs them), or a stored page that no
+/// longer exists (closing all of page 2 must bring page 1 back on screen).
+fn repage_target(pages_with_windows: &[u8], stored: u8) -> Option<u8> {
+    if pages_with_windows.is_empty() || (pages_with_windows.len() == 1 && stored <= 1) {
+        return None;
+    }
+    Some(fallback_page(pages_with_windows, stored).unwrap_or(stored))
 }
 
 /// Apply one tile rect (TARGET-monitor physical pixels) to a window. `scale` is the
@@ -6164,17 +6305,26 @@ pub fn run() {
                 // Only when pages are actually in play: with a single page on a
                 // single-page workspace this must stay a no-op, or closing one
                 // of 3 hand-placed windows would re-tile the survivors out from
-                // under the user. `current != 1` is the other half of that test:
-                // dropping from 7 windows to 6 collapses page 2 out of
+                // under the user. A stored page past 1 is the other half of that
+                // test: dropping from 7 windows to 6 collapses page 2 out of
                 // existence, and without this the six survivors would all stay
                 // hidden behind a page that no longer exists.
+                //
+                // This MUST read the RAW stored page, not `current_page`: that
+                // one clamps to the pages that exist, so once page 2 collapses
+                // it already reports 1 — the "single page, nothing to do" branch
+                // then left page 1's windows hidden with no way back.
                 // Skipped while quitting: the whole workspace is going away.
-                let pages: BTreeSet<u8> = window_page_map(app).into_values().collect();
-                let current = current_page(app);
-                if !exiting && (pages.len() > 1 || current != 1) {
-                    let pages: Vec<u8> = pages.into_iter().collect();
-                    let target = fallback_page(&pages, current).unwrap_or(current);
-                    queue_page(app, target, None, None);
+                let pages: Vec<u8> = window_page_map(app)
+                    .into_values()
+                    .collect::<BTreeSet<u8>>()
+                    .into_iter()
+                    .collect();
+                let stored = *app.state::<CurrentPage>().0.lock().unwrap();
+                if !exiting {
+                    if let Some(target) = repage_target(&pages, stored) {
+                        queue_page(app, target, None, None);
+                    }
                 }
                 // Update peers: the closed window is gone from the reading order.
                 broadcast_window_order(app);
@@ -7334,6 +7484,75 @@ mod tests {
     #[test]
     fn fallback_page_is_none_when_no_windows_remain() {
         assert_eq!(fallback_page(&[], 1), None);
+    }
+
+    fn facts(key: &str, primary: bool, builtin: bool, area: f64) -> MonitorFacts {
+        MonitorFacts {
+            key: key.to_string(),
+            primary,
+            builtin,
+            logical_area: area,
+        }
+    }
+
+    #[test]
+    fn auto_prefers_an_external_over_a_primary_laptop_panel() {
+        let laptop = facts("0,0", true, true, 1512.0 * 982.0);
+        let external = facts("-1920,-1080", false, false, 1920.0 * 1080.0);
+        assert_eq!(choose_monitor(&[laptop, external], None), Some(1));
+    }
+
+    #[test]
+    fn auto_uses_the_largest_external_when_none_is_primary() {
+        let monitors = [
+            facts("0,0", true, true, 1512.0 * 982.0),
+            facts("a", false, false, 1920.0 * 1080.0),
+            facts("b", false, false, 2560.0 * 1440.0),
+        ];
+        assert_eq!(choose_monitor(&monitors, None), Some(2));
+    }
+
+    #[test]
+    fn auto_keeps_a_primary_external_and_falls_to_the_laptop_alone() {
+        let monitors = [
+            facts("a", false, false, 2560.0 * 1440.0),
+            facts("b", true, false, 1920.0 * 1080.0),
+        ];
+        assert_eq!(choose_monitor(&monitors, None), Some(1));
+        assert_eq!(choose_monitor(&[facts("0,0", true, true, 1.0)], None), Some(0));
+        assert_eq!(choose_monitor(&[], None), None);
+    }
+
+    #[test]
+    fn saved_choice_wins_but_a_stale_one_falls_to_the_external() {
+        let monitors = [
+            facts("0,0", true, true, 1512.0 * 982.0),
+            facts("-1920,-1080", false, false, 1920.0 * 1080.0),
+        ];
+        assert_eq!(choose_monitor(&monitors, Some("0,0")), Some(0));
+        // The display moved (replug/rearrange): never silently the laptop.
+        assert_eq!(choose_monitor(&monitors, Some("-3840,0")), Some(1));
+    }
+
+    #[test]
+    fn closing_every_page_two_window_brings_page_one_back() {
+        // 12 windows, user on page 2, closes 7–12. Only page 1 remains but the
+        // stored page is still 2 — page 1's hidden windows must be re-shown.
+        assert_eq!(repage_target(&[1], 2), Some(1));
+    }
+
+    #[test]
+    fn repage_target_leaves_a_single_page_workspace_alone() {
+        // Closing one of three hand-placed windows must not re-tile the rest.
+        assert_eq!(repage_target(&[1], 1), None);
+        assert_eq!(repage_target(&[], 1), None);
+    }
+
+    #[test]
+    fn repage_target_reapplies_while_pages_are_in_play() {
+        assert_eq!(repage_target(&[1, 2], 2), Some(2));
+        assert_eq!(repage_target(&[1, 2], 1), Some(1));
+        assert_eq!(repage_target(&[1, 2], 3), Some(2));
     }
 
     #[test]

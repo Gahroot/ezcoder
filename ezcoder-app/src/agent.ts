@@ -990,9 +990,14 @@ export interface RadioState {
   volume: number;
 }
 
-/** Read app-wide radio state (stations, playback, and volume). */
+/**
+ * Read app-wide radio state (stations, playback, and volume). Waits for the
+ * sidecar first: the titlebar button asks on mount, which at launch lands
+ * before the daemon is up and would otherwise fail with "daemon not ready".
+ */
 export async function getRadioState(): Promise<RadioState> {
   try {
+    await waitForReady();
     const res = await invoke<RadioState>("agent_radio_state");
     return {
       stations: res.stations ?? [],
@@ -1698,13 +1703,15 @@ export interface MonitorInfo {
   x: number;
   y: number;
   primary: boolean;
+  /** The laptop's own panel (macOS only; always false elsewhere). */
+  builtin: boolean;
   selected: boolean;
 }
 
 /**
  * Enumerate the connected displays so the window-layout menu can offer a "tile
- * onto this monitor" picker. `selected` echoes the saved targetMonitor (null =
- * auto / primary). Handled natively in Rust — no sidecar.
+ * onto this monitor" picker. `selected` echoes the saved targetMonitor, or null
+ * (auto = external display first) when none is saved or it is disconnected. Handled natively in Rust — no sidecar.
  */
 export async function listMonitors(): Promise<{
   monitors: MonitorInfo[];
@@ -1720,7 +1727,7 @@ export async function listMonitors(): Promise<{
 
 /**
  * Persist which display the window tiler fills. Pass `null` to clear (auto =
- * primary). Merges into ezcoder-app.json (projects root preserved). Native Rust.
+ * external display first, laptop panel last). Merges into ezcoder-app.json (projects root preserved). Native Rust.
  */
 export async function setTargetMonitor(monitor: string | null): Promise<void> {
   await invoke("app_set_target_monitor", { monitor });

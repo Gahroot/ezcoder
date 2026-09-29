@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AppWindow, Check, ChevronRight, Monitor } from "lucide-react";
+import { AppWindowIcon, CheckIcon, CaretRightIcon, MonitorIcon } from "@phosphor-icons/react";
 import {
   setupWindows,
   arrangeAllWindows,
@@ -103,7 +103,8 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
   // Only worth showing the monitor picker when more than one display exists.
   const multiMonitor = monitors.length > 1;
   const selectedLabel =
-    (selected && monitors.find((monitor) => monitor.name === selected)?.label) ?? "Primary (auto)";
+    (selected && monitors.find((monitor) => monitor.name === selected)?.label) ??
+    "Auto (external first)";
 
   async function run(choice: string): Promise<void> {
     if (busy) return;
@@ -156,7 +157,7 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((current) => !current)}
       >
-        <AppWindow size={16} />
+        <AppWindowIcon size={16} />
       </button>
       {open &&
         createPortal(
@@ -220,7 +221,7 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
                     onClick={() => setShowMonitors((shown) => !shown)}
                   >
                     <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                      <Monitor size={14} />
+                      <MonitorIcon size={14} />
                       Display
                     </span>
                     <span
@@ -233,7 +234,7 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
                       }}
                     >
                       {selectedLabel}
-                      <ChevronRight
+                      <CaretRightIcon
                         size={13}
                         style={{
                           transform: showMonitors ? "rotate(90deg)" : "none",
@@ -245,7 +246,7 @@ export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): R
                   {showMonitors && (
                     <>
                       <CheckRow
-                        label="Primary (auto)"
+                        label="Auto (external first)"
                         active={selected === null}
                         onClick={() => void chooseMonitor(null)}
                       />
@@ -299,7 +300,7 @@ function CheckRow({
       style={{ color: active ? theme.text : theme.textDim, paddingLeft: 22, fontSize: 12 }}
       onClick={onClick}
     >
-      <Check size={13} style={{ opacity: active ? 1 : 0, flexShrink: 0 }} />
+      <CheckIcon size={13} style={{ opacity: active ? 1 : 0, flexShrink: 0 }} />
       {label}
       {hint !== undefined && (
         <span style={{ marginLeft: "auto", color: theme.textDim, fontSize: 11 }}>{hint}</span>

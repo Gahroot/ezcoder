@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { XIcon } from "@phosphor-icons/react";
 import { theme } from "./theme";
 import { Modal } from "./Modal";
 import type { ProjectTask } from "./agent";
@@ -196,7 +197,7 @@ export function TasksModal({
                       title="Delete task"
                       onClick={() => onDelete(task.id)}
                     >
-                      {"\u00d7"}
+                      <XIcon size={12} weight="bold" aria-hidden="true" />
                     </button>
                   </div>
                 );

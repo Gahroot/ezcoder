@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Pencil } from "lucide-react";
+import { PencilIcon } from "@phosphor-icons/react";
 import { openProjectPath, openUrl, type WorkspaceMode, type GitHubCI } from "./agent";
 import { CIIndicator } from "./CIIndicator";
 import { projectAccent } from "./projectAccent";
@@ -161,7 +161,7 @@ export function WorkspaceHeader({
                   aria-label="Rename this tab"
                   onClick={() => setEditingTitle(true)}
                 >
-                  <Pencil size={11} strokeWidth={2} aria-hidden="true" />
+                  <PencilIcon size={11} weight="bold" aria-hidden="true" />
                 </button>
               )}
               {gitBranch && (
