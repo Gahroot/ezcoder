@@ -36,6 +36,7 @@ describe("AUTH_PROVIDERS descriptions match the model registry", () => {
     const retired = [
       "Fable 5,",
       "Opus 5,",
+      "Sonnet 5,",
       "Opus 4.8",
       "Opus 4.7",
       "Opus 4.6",

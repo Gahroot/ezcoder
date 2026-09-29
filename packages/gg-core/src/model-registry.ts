@@ -44,7 +44,7 @@ export interface ModelInfo {
    *   - OpenAI GPT-6 Astra / Sol: `ultra` (Codex orchestration preset above `max`)
    *   - OpenAI GPT-6 Luna: `max`
    *   - OpenAI Pro/Codex/old: clamped to what the model accepts
-   *   - Claude Fable 5.1 / Fable 5 / Mythos 5, Opus 5.5 and Sonnet 5: `max`
+   *   - Claude Fable 5.1 / Fable 5 / Mythos 5, Opus 5.5 and Sonnet 5.5: `max`
    *     (the Fable / Mythos line uses always-on adaptive thinking, low→max)
    *   - Claude Haiku 4.5: `high` (no adaptive `max` tier)
    *   - Kimi K3: `max` (always-on reasoning; currently the only API effort)
@@ -133,8 +133,10 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "max",
   },
   {
-    id: "claude-sonnet-5",
-    name: "Claude Sonnet 5",
+    // Released 2026-09-28 — replaces Sonnet 5 at $2/$10 MTok, with the same
+    // 1M context / 128K output and adaptive thinking, now including xhigh.
+    id: "claude-sonnet-5-5",
+    name: "Claude Sonnet 5.5",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -744,7 +746,7 @@ export function getDefaultModel(provider: Provider): ModelInfo {
   if (provider === "local") {
     return getModelsForProvider("local")[0] ?? PLACEHOLDER_LOCAL_MODEL;
   }
-  return MODELS.find((m) => m.id === "claude-sonnet-5")!;
+  return MODELS.find((m) => m.id === "claude-sonnet-5-5")!;
 }
 
 /**
@@ -826,7 +828,7 @@ export function getDefaultThinkingLevel(
 
 /**
  * Get the model to use for compaction summarization.
- * - Anthropic: always Sonnet 5
+ * - Anthropic: always Sonnet 5.5
  * - OpenAI: cheapest (Codex Mini)
  * - Gemini: use the current model
  * - GLM: GLM-5.3-Flash (the registered low-cost sibling)
@@ -834,7 +836,7 @@ export function getDefaultThinkingLevel(
  */
 export function getSummaryModel(provider: Provider, currentModelId: string): ModelInfo {
   if (provider === "anthropic") {
-    return MODELS.find((m) => m.id === "claude-sonnet-5")!;
+    return MODELS.find((m) => m.id === "claude-sonnet-5-5")!;
   }
   if (
     provider === "openai" ||
