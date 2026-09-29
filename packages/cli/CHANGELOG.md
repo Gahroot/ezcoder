@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.28.0
+
+### Minor Changes
+
+- Add the Motion template-first single-agent workflow with recipe-led skills, verified media review, and post-run completion review.
+
+### Patch Changes
+
+- @prestyj/ai@5.28.0
+- @prestyj/agent@5.28.0
+- @prestyj/core@5.28.0
+
 ## 5.27.0
 
 ### Minor Changes
