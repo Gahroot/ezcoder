@@ -99,21 +99,10 @@ jobs:
           pnpm --filter @prestyj/cli check
           pnpm --filter @prestyj/boss check
 
-      - name: Test framework packages
-        shell: bash
-        run: |
-          pnpm --filter @prestyj/ai test
-          pnpm --filter @prestyj/agent test
-          pnpm --filter @prestyj/core test
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            pnpm --filter @prestyj/cli exec vitest run --maxWorkers=2
-          else
-            pnpm --filter @prestyj/cli test
-          fi
-          pnpm --filter @prestyj/boss test
-
-      # Motion's media regressions decode real clips on every OS. CI-only
-      # provisioning is intentional; never skip these tests when a tool is absent.
+      # Motion's media regressions decode real clips on every OS, and they live in
+      # the CLI suite below, so this MUST stay above the test step. Without it
+      # every leg dies on `spawn ffmpeg ENOENT`. CI-only provisioning is intentional;
+      # never skip these tests when a tool is absent.
       - name: Ensure FFmpeg and ffprobe for Motion media tests
         shell: bash
         run: |
@@ -130,6 +119,19 @@ jobs:
           fi
           ffmpeg -version
           ffprobe -version
+
+      - name: Test framework packages
+        shell: bash
+        run: |
+          pnpm --filter @prestyj/ai test
+          pnpm --filter @prestyj/agent test
+          pnpm --filter @prestyj/core test
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            pnpm --filter @prestyj/cli exec vitest run --maxWorkers=2
+          else
+            pnpm --filter @prestyj/cli test
+          fi
+          pnpm --filter @prestyj/boss test
 
       # Blocking on every OS, Windows included. This started as a 72-failure
       # Windows backlog hidden by PowerShell swallowing intermediate failures;
