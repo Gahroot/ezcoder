@@ -133,7 +133,7 @@
     "zod": "^4.5.4"
   },
   "optionalDependencies": {
-    "@huggingface/transformers": "4.2.0",
+    "@huggingface/transformers": "4.3.0",
     "@mozilla/readability": "^0.6.0",
     "hyperframes": "0.8.82",
     "linkedom": "^0.18.12",
