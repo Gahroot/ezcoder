@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.73.0",
+    date: "2026-09-30",
+    items: [
+      "Meet `GG Motion`, my brand new video studio. Hit the Motion button on the home screen, describe the video you want, and it plans, designs and renders a real `MP4` for you with its own fonts, music and sound effects. It's still a work in progress, so expect it to keep getting better with every update. For the best results, switch to `Thinking max`: it takes longer, but the videos come out noticeably better.",
+      "Fresh brains just landed. `GPT-6.1 Sol` is the new OpenAI default and `Claude Sonnet 5.5` takes over for Anthropic, both sharper than the models they replace. Just pick them and go.",
+      "Helpers that report back honestly. When a helper agent got stuck partway through a task, its half-finished notes could come back looking like a finished answer. Now a stuck helper clearly reports that it failed, so the main agent never builds on work that didn't happen.",
+    ],
+  },
+  {
     version: "0.72.1",
     date: "2026-09-28",
     items: [
