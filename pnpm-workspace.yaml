@@ -39,7 +39,9 @@ allowBuilds:
   electron-winstaller: true
   esbuild: true
   onnxruntime-node: true
-  opensrc: true
-  protobufjs: true
-  sharp: true
+  # Upstream explicitly skips these install scripts (binary download,
+  # version notice, and an unnecessary source build respectively).
+  opensrc: false
+  protobufjs: false
+  sharp: false
   workerd: true

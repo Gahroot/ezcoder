@@ -86,6 +86,7 @@ jobs:
             }
           done
 
+      # pnpm version comes from package.json's packageManager field.
       - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v7
