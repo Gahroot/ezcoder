@@ -867,6 +867,7 @@ select {
 }
 .home-version-row,
 .home-tagline,
+.home-action-note,
 .home-links,
 .home-version-corner {
   text-shadow:
@@ -1224,6 +1225,29 @@ select {
   height: 44px;
   padding: 0 22px;
   font-size: 15px;
+}
+/* A pill with a caption hung under it (Motion's "Still in process"). The
+   caption is out of flow, so the three pills stay level and the home column
+   keeps its centring. */
+.home-action-slot {
+  position: relative;
+  display: flex;
+}
+.home-action-note {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 8px;
+  /* Flex centring keeps an over-long caption centred instead of spilling right. */
+  display: flex;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.3;
+  /* Full-strength ink like the tagline and byline: dimmer text got lost over
+     bright stretches of the waves. Size keeps it secondary. */
+  color: var(--text);
 }
 .home-settings {
   position: absolute;

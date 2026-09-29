@@ -55,4 +55,26 @@ describe("HomeScreen", () => {
 
     expect(onMotion).toHaveBeenCalledOnce();
   });
+
+  it("says under the Motion button that Motion is still in process", async () => {
+    vi.mocked(getSettings).mockResolvedValue({ projectsRoot: "/workspaces", configured: true });
+    vi.mocked(authStatus).mockResolvedValue([]);
+
+    render(
+      <HomeScreen onProjects={vi.fn()} onChat={vi.fn()} onMotion={vi.fn()} onSettings={vi.fn()} />,
+    );
+
+    const note = await screen.findByText("Still in process");
+    expect(note.id).not.toBe("");
+    // Screen readers hear it with the Motion button, and only with that one.
+    expect(screen.getByRole("button", { name: "Motion" }).getAttribute("aria-describedby")).toBe(
+      note.id,
+    );
+    expect(screen.getByRole("button", { name: "Code" }).hasAttribute("aria-describedby")).toBe(
+      false,
+    );
+    expect(screen.getByRole("button", { name: "Chat" }).hasAttribute("aria-describedby")).toBe(
+      false,
+    );
+  });
 });
