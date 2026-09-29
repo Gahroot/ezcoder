@@ -1,9 +1,9 @@
-import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { AgentSessionOptions } from "../core/agent-session.js";
 import { buildSubAgentSystemPrompt, SUBAGENT_RETURN_CONTRACT } from "../system-prompt.js";
 import { createSkillTool } from "../tools/skill.js";
@@ -13,6 +13,7 @@ import {
   discoverSkills,
   findMotionBundle,
   loadMotionSkills,
+  type MotionBundle,
 } from "../core/skills.js";
 import {
   buildMotionAgentPrompt,
@@ -24,161 +25,244 @@ import {
   motionSfxDir,
 } from "./motion-agent.js";
 
-const execFileAsync = promisify(execFile);
-
 function optionsOf(agent: unknown): AgentSessionOptions {
   return (agent as { opts: AgentSessionOptions }).opts;
 }
 
-/** GG's own Motion skills; the rest of the bundle is the pinned HyperFrames set. */
-const GG_MOTION_SKILLS = [
-  "apple-motion",
+const EXPECTED_SKILLS = [
   "brand-kit",
-  "component-import",
-  "launch-video",
-  "long-form",
-  "motion-3d",
+  "mixkit-split-text-617",
   "motion",
-  "motion-direction",
-  "reference-style",
-  "repo-video",
-  "sound-design",
   "source-ingest",
-  "style-library",
-  "type-system",
   "video-qa",
-  "visual-toolkit",
 ];
+async function motionBundle(): Promise<MotionBundle> {
+  const bundle = await findMotionBundle();
+  if (!bundle) throw new Error("motion bundle missing");
+  return bundle;
+}
 
 describe("Motion agent", () => {
-  it("keeps library selection subordinate to the approved design across prompt and skills", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-
-    const prompt = buildMotionAgentPrompt(bundle);
-    const library = await fs.readFile(
-      path.join(bundle.skillsDir, "style-library", "SKILL.md"),
-      "utf8",
-    );
-    const qa = await fs.readFile(path.join(bundle.skillsDir, "video-qa", "SKILL.md"), "utf8");
-
-    expect(prompt).toContain("A later-loaded skill never overrides an approved decision");
-    expect(prompt).toContain(
-      "If two explicit user requirements remain incompatible, ask one focused question",
-    );
-    expect(prompt).toContain("Preserve required brand fonts");
-    expect(prompt).not.toContain("pick one look from the style library (offer 2–3");
-    expect(prompt).toContain("Workers may not revise the contract or choose another look");
-    expect(library).toContain("do not force a preset");
-    expect(library).toContain("**Reuse:**");
-    expect(library).toContain("**Adapt:**");
-    expect(library).toContain("**Derive:**");
-    expect(library).toContain("a search bar can inform a filter panel");
-    expect(library).toContain("map installed pieces to those tokens");
-    expect(qa).toContain("both the actual scene source and rendered frames");
-    expect(qa).toContain("Missing evidence is unverified, not PASS");
-  });
-
-  it("stores sessions in their own namespace beside coder and chat", () => {
-    const coderSessions = path.resolve("/tmp", "gg", "sessions");
-    expect(motionSessionsDir(coderSessions)).toBe(path.resolve("/tmp", "gg", "motion-sessions"));
-  });
-
-  it("ships a valid bundle whose skills include GG's and the HyperFrames router", async () => {
-    const bundle = await findMotionBundle();
-    expect(bundle).not.toBeNull();
-    if (!bundle) return;
-
-    const names = (await loadMotionSkills(bundle)).map((skill) => skill.name);
-    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
-    for (const name of [...GG_MOTION_SKILLS, "hyperframes", "product-launch-video"]) {
-      expect(names).toContain(name);
+  it("ships only the authored recipe and four support skills, without guidance overlays", async () => {
+    const bundle = await motionBundle();
+    const skills = await loadMotionSkills(bundle);
+    expect(skills.map((s) => s.name)).toEqual(EXPECTED_SKILLS);
+    expect((await fs.readdir(bundle.skillsDir)).sort()).toEqual(EXPECTED_SKILLS);
+    await expect(fs.access(path.join(bundle.root, "guidance"))).rejects.toThrow();
+    for (const skill of skills) {
+      expect(skill.source).toBe("motion");
+      expect(skill.root).toBe(path.join(bundle.skillsDir, skill.name));
+      expect(skill.content).not.toContain("## GG Motion scope");
+      expect(skill.description).not.toContain("Optional specialist reference.");
     }
   });
 
-  it("bundles brag with its licensed music, cue maps and credits", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
+  it("loads the selected recipe without weakening its source contract or modifying it", async () => {
+    const bundle = await motionBundle();
+    const file = path.join(bundle.skillsDir, "mixkit-split-text-617", "SKILL.md");
+    const before = await fs.readFile(file, "utf8");
+    const tool = createSkillTool(await loadMotionSkills(bundle));
+    const result = await tool.execute(
+      { skill: "mixkit-split-text-617" },
+      { signal: new AbortController().signal, toolCallId: "motion-recipe-test" },
+    );
+    expect(result).toContain("Reproduce this project, not your interpretation of its style");
+    expect(result).toMatch(/Do not\s+replace a matte with a slide\/fade/);
+    expect(result).not.toContain("## GG Motion scope");
+    expect(await fs.readFile(file, "utf8")).toBe(before);
+  });
 
-    const names = (await loadMotionSkills(bundle)).map((skill) => skill.name);
-    const music = await fs.readdir(path.join(bundle.skillsDir, "brag", "assets", "music"));
-    const cues = await fs.readdir(path.join(bundle.skillsDir, "brag", "assets", "music", "cues"));
-    const credits = await fs.readFile(path.join(bundle.root, "THIRD-PARTY.md"), "utf8");
+  it("discovers future authored recipes without adding a routing table or an adapter", async () => {
+    const bundle = await motionBundle();
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-motion-recipe-"));
+    try {
+      const skillsDir = path.join(root, "skills");
+      await fs.mkdir(path.join(skillsDir, "future-recipe"), { recursive: true });
+      await fs.writeFile(
+        path.join(skillsDir, "future-recipe", "SKILL.md"),
+        "---\nname: future-recipe\ndescription: Specific source-backed recipe\n---\nKeep its exact mechanism.\n",
+      );
+      const skills = await loadMotionSkills({ ...bundle, root, skillsDir });
+      expect(skills).toHaveLength(1);
+      expect(skills[0]?.content).toBe("Keep its exact mechanism.");
+      expect(skills[0]?.name).toBe("future-recipe");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 
-    expect(names).toEqual(expect.arrayContaining(["brag", "brag-slim"]));
+  it("routes through selected recipes and resolves unsupported requests instead of inventing skills", async () => {
+    const prompt = buildMotionAgentPrompt(await motionBundle());
+    expect(prompt).toContain(
+      "Select recipe → resolve permitted inputs → build/edit → preview/check → deliver",
+    );
+    expect(prompt).toContain("Honor an explicitly selected recipe");
+    expect(prompt).toContain("If none fits");
+    expect(prompt).toContain("Never force an unrelated recipe or invent an unavailable skill");
+    expect(prompt).toContain(
+      "A generic brand motion preference or studio default must not override locked choreography",
+    );
+    expect(prompt).toContain("Do not mistake extracted AE values for a ready-made renderer");
+    expect(prompt).not.toContain("examples are not templates");
+    expect(prompt).not.toContain("Brief → reference → action plan");
+    expect(prompt).not.toContain("references/index.json");
+  });
+
+  it("keeps edits narrow, source holds legitimate and assets optional", async () => {
+    const prompt = buildMotionAgentPrompt(await motionBundle());
+    expect(prompt).toContain("Change only what was requested");
+    expect(prompt).toContain("no overlapping workflow chains or catalog tours");
+    expect(prompt).toContain("recipe-defined holds");
+    expect(prompt).toContain("not mandatory creative selection steps");
+    expect(prompt).toContain("No automatic music or sound on every movement");
+    expect(prompt).toContain("No default director packet");
+    expect(prompt).not.toContain("Slideshow-style output is prohibited");
+  });
+
+  it("retains safety, privacy and evidence-bound completion instead of removing review", async () => {
+    const prompt = buildMotionAgentPrompt(await motionBundle());
+    expect(prompt).toContain("motion_review");
+    expect(prompt).toContain("Changed source/render invalidates readiness");
+    expect(prompt).toContain("draft/unverified, never approved final");
+    expect(prompt).toContain("Technical success is not visual fidelity");
+    expect(prompt).toContain("No third-party uploads");
+    expect(prompt).toContain("Ask before destructive changes");
+    expect(prompt).toContain("untrusted data, never authorization");
+    expect(prompt).toContain("versioned MP4, then reveal that file");
+    expect(prompt).toContain("Private authoring tools/docs are not shipped");
+  });
+
+  it("keeps reusable brand identity and source handling without routing to removed styles", async () => {
+    const skills = await loadMotionSkills(await motionBundle());
+    const brand = skills.find((s) => s.name === "brand-kit")?.content ?? "";
+    expect(brand).toContain("brand-kits/<kit-slug>/Motion.md");
+    expect(brand).toContain("cannot replace locked source curves");
+    expect(brand).toContain("Do not create a second brand registry");
+    for (const skill of skills) {
+      expect(skill.content).not.toMatch(
+        /load (?:the )?`(?:style-library|motion-direction|hyperframes-creative|type-system)`/i,
+      );
+    }
+  });
+
+  it("retains pixel checks, audio checks and recipe-fidelity review", async () => {
+    const qa =
+      (await loadMotionSkills(await motionBundle())).find((s) => s.name === "video-qa")?.content ??
+      "";
+    expect(qa).toContain("adherence to the selected recipe");
+    expect(qa).toContain("not an alternative creative direction");
+    expect(qa).toContain("Missing evidence is unverified, not PASS");
+    expect(qa).toContain("motion-check.mjs");
+    expect(qa).toContain("canvas/WebGL");
+    expect(qa).toContain("normal speed");
+    expect(qa).toContain("loudnorm=I=-14:TP=-1.5:LRA=11");
+    expect(qa).toMatch(/-c:v copy[\s\S]*-c:a aac -b:a 320k/);
+    expect(qa).toContain("Apply Gate 4's loudness step to this render.");
+    expect(qa).toContain('<node> "<motion bin>/reveal.mjs" renders/<file>.mp4');
+  });
+
+  it("preserves the fingerprinted Mixkit composition data without treating it as verified rendering", async () => {
+    const bundle = await motionBundle();
+    const root = path.join(bundle.skillsDir, "mixkit-split-text-617", "data");
+    const schema = z.object({
+      source: z.object({ aep_sha256: z.string() }),
+      verification: z.object({ full_video_reconstruction_verified: z.boolean() }),
+      compositions: z.array(
+        z.object({ id: z.number().int(), file: z.string(), sha256: z.string() }),
+      ),
+    });
+    const manifest = schema.parse(
+      JSON.parse(await fs.readFile(path.join(root, "manifest.json"), "utf8")),
+    );
+    expect(manifest.source.aep_sha256).toBe(
+      "a71e3bc7ce98db7bf0f2a85438ca4636db3e26ad455bdb272840e701d0c3cbb7",
+    );
+    expect(manifest.verification.full_video_reconstruction_verified).toBe(false);
+    expect(manifest.compositions).toHaveLength(22);
+    for (const comp of manifest.compositions) {
+      expect(comp.file).toBe(`compositions/comp-${comp.id}.json`);
+      const bytes = await fs.readFile(path.join(root, comp.file));
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(comp.sha256);
+    }
+  });
+
+  it("keeps public skill documentation links resolvable without private authoring tools", async () => {
+    const bundle = await motionBundle();
+    for (const skill of await loadMotionSkills(bundle)) {
+      for (const match of skill.content.matchAll(/\]\(([^)]+)\)/g)) {
+        const link = match[1];
+        if (!link || /^(?:https?:|#)/.test(link)) continue;
+        const target = path.resolve(skill.root ?? bundle.skillsDir, link.split("#")[0] ?? "");
+        expect(path.relative(bundle.root, target)).not.toMatch(/^\.\./);
+        await expect(fs.access(target)).resolves.toBeUndefined();
+      }
+    }
+    const npmIgnore = await fs.readFile(path.join(bundle.root, ".npmignore"), "utf8");
+    expect(npmIgnore).toContain("/references/authoring/");
+  });
+
+  it("preserves shared licensed music, cue maps, SFX analysis and credits outside skill folders", async () => {
+    const bundle = await motionBundle();
+    expect(motionMusicDir(bundle)).toBe(path.join(bundle.root, "assets", "music"));
+    expect(motionSfxDir(bundle)).toBe(path.join(bundle.root, "assets", "sfx"));
+    const music = await fs.readdir(motionMusicDir(bundle));
+    const cues = await fs.readdir(path.join(motionMusicDir(bundle), "cues"));
     const tracks = music.filter((file) => file.endsWith(".mp3"));
     expect(tracks.length).toBeGreaterThan(0);
-    for (const track of tracks) {
-      expect(cues).toContain(track.replace(/\.mp3$/, ".music-cues.json"));
-    }
+    for (const track of tracks) expect(cues).toContain(track.replace(/\.mp3$/, ".music-cues.json"));
+    expect(await fs.readdir(motionSfxDir(bundle))).toContain("sfx-analysis.md");
     await expect(fs.access(path.join(bundle.root, "BRAG-LICENSE"))).resolves.toBeUndefined();
+    const credits = await fs.readFile(path.join(bundle.root, "THIRD-PARTY.md"), "utf8");
     expect(credits).toContain("CC BY 4.0");
     expect(credits).toContain("Content ID");
+    const prompt = buildMotionAgentPrompt(bundle);
+    expect(prompt).toContain(motionMusicDir(bundle));
+    expect(prompt).toContain(motionSfxDir(bundle));
   });
 
-  it("lists every Motion skill in the skill tool without hitting the catalog budget", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const skills = await loadMotionSkills(bundle);
-
+  it("lists every skill without catalog truncation and leaves global budgets unchanged", async () => {
+    const skills = await loadMotionSkills(await motionBundle());
     const { description } = createSkillTool(
       skills,
       resolveContextLimits({ skillCatalogBytes: MOTION_SKILL_CATALOG_BYTES }),
     );
-
     for (const skill of skills) expect(description).toContain(skill.name);
     expect(description).not.toMatch(/omitted/i);
-    // Keep real headroom so the next skill doesn't silently fall off the list.
-    expect(Buffer.byteLength(description)).toBeLessThan(MOTION_SKILL_CATALOG_BYTES * 0.75);
-  });
-
-  it("raises the skill budget for Motion only, leaving the global default alone", () => {
-    expect(MOTION_SKILL_CATALOG_BYTES).toBeGreaterThan(CONTEXT_LIMITS.skillCatalogBytes);
+    expect(Buffer.byteLength(description)).toBeLessThan(6000);
     expect(CONTEXT_LIMITS.skillCatalogBytes).toBe(16 * 1024);
+    expect(MOTION_SKILL_CATALOG_BYTES).toBeGreaterThan(CONTEXT_LIMITS.skillCatalogBytes);
   });
 
-  it("keeps the Motion bundle outside every default bundled-skills location", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
+  it("keeps Motion outside normal discovery and every default bundled-skills location", async () => {
+    const bundle = await motionBundle();
     for (const dir of BUNDLED_SKILLS_DIRS) {
       const rel = path.relative(dir, bundle.skillsDir);
-      const inside = rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
-      expect(inside).toBe(false);
+      expect(rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))).toBe(false);
     }
-  });
-
-  it("keeps every Motion-bundled skill out of normal skill discovery", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const motionSkills = (await loadMotionSkills(bundle)).map((skill) => skill.name);
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "gg-motion-skills-"));
     try {
       const discovered = await discoverSkills({
         globalSkillsDir: path.join(tmp, "global"),
         projectDir: tmp,
       });
-      const names = new Set(discovered.map((skill) => skill.name));
-
-      // Every bundled Motion skill (GG's, HyperFrames', brag) stays Motion-only.
-      expect(motionSkills).toEqual(expect.arrayContaining(["brag", "brag-slim", "hyperframes"]));
-      for (const name of motionSkills) {
-        expect(names.has(name)).toBe(false);
-      }
+      const names = new Set(discovered.map((s) => s.name));
+      for (const skill of await loadMotionSkills(bundle)) expect(names.has(skill.name)).toBe(false);
     } finally {
       await fs.rm(tmp, { recursive: true, force: true });
     }
   });
 
-  it("fills the prompt with this install's launcher and never leaves placeholders", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-
+  it("fills the prompt with real launcher/helper paths without placeholders", async () => {
+    const bundle = await motionBundle();
     const prompt = buildMotionAgentPrompt(bundle, "/opt/node/bin/node");
     const hf = motionCliCommand(bundle, "/opt/node/bin/node");
-    const binDir = path.join(bundle.root, "bin");
-    expect(prompt).toContain(hf);
-    expect(prompt).toContain("/opt/node/bin/node");
-    expect(prompt).toContain(binDir);
+    expect(prompt.split(hf)).toHaveLength(2);
+    expect(prompt).toMatch(/<node> = `(['"])\/opt\/node\/bin\/node\1`/);
+    expect(prompt).toContain(`HyperFrames ${bundle.version}`);
+    expect(prompt).toContain("hf doctor");
+    expect(prompt).toContain("hf browser ensure");
+    expect(Buffer.byteLength(prompt)).toBeLessThan(7500);
+    expect(prompt).not.toMatch(/\{\{[A-Z_]+\}\}/);
     for (const helper of [
       "pdf-extract.mjs",
       "score-synth.mjs",
@@ -187,175 +271,28 @@ describe("Motion agent", () => {
       "fonts.mjs",
       "three.mjs",
       "library.mjs",
+      "motion-check.mjs",
     ]) {
       expect(prompt).toContain(helper);
-      await expect(fs.access(path.join(binDir, helper))).resolves.toBeUndefined();
+      await expect(fs.access(path.join(bundle.root, "bin", helper))).resolves.toBeUndefined();
     }
-    // The hf command is written out where it is defined, not per use.
-    expect(prompt.split(hf).length - 1).toBe(1);
-    // Helpers run on the bundled Node, defined once as <node>. The quoting is
-    // platform-specific (single on POSIX, double on Windows), so match either.
-    expect(prompt).toMatch(/\*\*<node>\*\* = `(['"])\/opt\/node\/bin\/node\1`/);
-    expect(prompt).toContain(`HyperFrames ${bundle.version}`);
-    expect(prompt).toContain("Load the `motion` skill first");
-    expect(prompt).toContain("Ask the user at these checkpoints (ask_user, every time)");
-    expect(prompt).toContain("**What to make**");
-    expect(prompt).not.toMatch(/\{\{[A-Z_]+\}\}/);
+    await expect(
+      fs.access(path.join(bundle.root, "vendor", "three", "three.json")),
+    ).resolves.toBeUndefined();
   });
 
-  it("has GG's skills run helper scripts with <node>, never a bare node", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const ggSkills = (await loadMotionSkills(bundle)).filter((skill) =>
-      GG_MOTION_SKILLS.includes(skill.name),
+  it("has support skills use bundled Node for helper scripts", async () => {
+    const calls = (await loadMotionSkills(await motionBundle())).flatMap((skill) =>
+      skill.content.split("\n").filter((line) => /<motion bin>\/[^\s`"]+\.mjs/.test(line)),
     );
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+    for (const line of calls) expect(line).toMatch(/<node> "<motion bin>\//);
+  });
 
-    const helperCalls = ggSkills.flatMap((skill) =>
-      skill.content
-        .split("\n")
-        .filter((line) => line.includes("<motion bin>/"))
-        .map((line) => ({ skill: skill.name, line })),
+  it("stores sessions in their own namespace beside coder and chat", () => {
+    expect(motionSessionsDir(path.resolve("/tmp", "gg", "sessions"))).toBe(
+      path.resolve("/tmp", "gg", "motion-sessions"),
     );
-
-    expect(helperCalls.length).toBeGreaterThanOrEqual(4);
-    for (const call of helperCalls) {
-      expect(call.line, call.skill).toMatch(/<node> "<motion bin>\//);
-    }
-  });
-
-  it("gives the prompt and the sound skill the same default music source", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const prompt = buildMotionAgentPrompt(bundle);
-    const sound = (await loadMotionSkills(bundle)).find((skill) => skill.name === "sound-design");
-
-    // The bundled licensed track is the upbeat default in both places, and the
-    // sound checkpoint offers it as a choice.
-    expect(prompt).toContain("default to a bundled licensed track");
-    expect(prompt).toMatch(/\*\*Sound\*\* — a bundled licensed track/);
-    expect(prompt).not.toContain("synthesized music is the default");
-    expect(sound?.description).toContain("bundled licensed recorded track");
-    expect(sound?.content).toMatch(
-      /\| No music given, upbeat \/ launch \/ playful \(default\) \| A brag track/,
-    );
-  });
-
-  it("routes every workflow through video-qa's loudness step before delivery", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const skills = await loadMotionSkills(bundle);
-    const motion = skills.find((skill) => skill.name === "motion");
-    const qa = skills.find((skill) => skill.name === "video-qa");
-
-    // Bundled workflows (brag, HyperFrames) have their own deliver steps that
-    // skip loudness; the router must send them through video-qa anyway.
-    expect(motion?.content).toContain("Whatever builds the video, finish with `video-qa`");
-    // Renders land near -23 LUFS; the delivered file is normalized, and 320k
-    // AAC keeps ffmpeg's encoder from overshooting the true-peak ceiling.
-    expect(qa?.content).toContain("loudnorm=I=-14:TP=-1.5:LRA=11");
-    expect(qa?.content).toMatch(/-c:v copy[\s\S]*-c:a aac -b:a 320k/);
-    expect(qa?.content).toContain("Apply Gate 4's loudness step to this render.");
-  });
-
-  it("opens the user's file manager at every delivered video, edits included", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const prompt = buildMotionAgentPrompt(bundle);
-    const qa = (await loadMotionSkills(bundle)).find((skill) => skill.name === "video-qa");
-
-    expect(prompt).toContain("then open the folder with the video selected");
-    expect(prompt).toContain("then steps 7 and 8");
-    expect(qa?.content).toContain('<node> "<motion bin>/reveal.mjs" renders/<file>.mp4');
-  });
-
-  it("gives font choice one owner and only names catalog items that exist", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const skills = await loadMotionSkills(bundle);
-    const byName = (name: string): string => skills.find((s) => s.name === name)?.content ?? "";
-    const catalog = JSON.parse(
-      (
-        await execFileAsync(process.execPath, [
-          path.join(bundle.root, "bin", "hyperframes.mjs"),
-          "catalog",
-          "--json",
-        ])
-      ).stdout,
-    ) as Array<{ name: string }>;
-    const names = new Set(catalog.map((item) => item.name));
-
-    // Brand/approved roles win; the type skill only fills unresolved choices.
-    expect(byName("motion")).toContain("approved `frame.md` roles and required brand fonts win");
-    expect(byName("motion")).toContain("`type-system` fills unresolved roles before approval");
-    expect(byName("motion")).toContain("Keep Inter when it");
-    // No GG skill falls back to a generic default headline font.
-    for (const name of GG_MOTION_SKILLS) {
-      expect(byName(name), name).not.toMatch(/if none, Inter/);
-    }
-    // Every catalog item the craft skills recommend is really installable.
-    const toolkit = byName("visual-toolkit");
-    const table = toolkit.slice(
-      toolkit.indexOf("Starting points by job"),
-      toolkit.indexOf("## 2."),
-    );
-    const skillNames = new Set(skills.map((skill) => skill.name));
-    const recommended = [...table.matchAll(/`([a-z0-9]+(?:-[a-z0-9]+)+)`/g)]
-      .map((m) => m[1] ?? "")
-      .filter((item) => !skillNames.has(item));
-    expect(recommended.length).toBeGreaterThan(40);
-    for (const item of recommended) expect(names.has(item), item).toBe(true);
-  });
-
-  it("keeps every 3D example in the skills on the bundled, offline Three.js", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const skill = (await loadMotionSkills(bundle)).find((s) => s.name === "motion-3d");
-
-    expect(skill?.content).toContain('<node> "<motion bin>/three.mjs" add .');
-    expect(skill?.content).toContain("Never import Three.js from a\nCDN");
-    expect(skill?.content).not.toMatch(/cdn\.jsdelivr|unpkg\.com|cdnjs/);
-    // Every addon the skill names ships in the bundle.
-    const manifest = JSON.parse(
-      await fs.readFile(path.join(bundle.root, "vendor", "three", "three.json"), "utf8"),
-    ) as { addons: string[] };
-    const shipped = new Set(manifest.addons.map((a) => path.basename(a, ".js")));
-    const listed = skill?.content.slice(
-      skill.content.indexOf("Bundled addons:"),
-      skill.content.indexOf("Never import Three.js"),
-    );
-    const named = [...(listed ?? "").matchAll(/`([A-Za-z]+)`/g)].map((m) => m[1] ?? "");
-    expect(named.length).toBeGreaterThan(15);
-    for (const name of named) expect(shipped.has(name), name).toBe(true);
-  });
-
-  it("points every video type at the shared music and SFX libraries on disk", async () => {
-    const bundle = await findMotionBundle();
-    if (!bundle) throw new Error("motion bundle missing");
-    const prompt = buildMotionAgentPrompt(bundle);
-    const sound = (await loadMotionSkills(bundle)).find((skill) => skill.name === "sound-design");
-
-    // Real paths the agent can open, with real files behind them.
-    const music = await fs.readdir(motionMusicDir(bundle));
-    const cues = await fs.readdir(path.join(motionMusicDir(bundle), "cues"));
-    const sfx = await fs.readdir(motionSfxDir(bundle));
-    expect(prompt).toContain(motionMusicDir(bundle));
-    expect(prompt).toContain(motionSfxDir(bundle));
-    expect(music.some((file) => file.endsWith(".mp3"))).toBe(true);
-    expect(cues.some((file) => file.endsWith(".music-cues.json"))).toBe(true);
-    expect(sfx).toContain("sfx-analysis.md");
-
-    // Framed as shared across workflows, with the hand-off into HyperFrames'
-    // audio_meta-driven workflows documented.
-    expect(prompt).toContain("## Shared audio (every video type)");
-    // Render prerequisites stay under the HyperFrames section, not the audio one.
-    const hyperframesSection = prompt.slice(
-      prompt.indexOf("## HyperFrames in GG"),
-      prompt.indexOf("## Shared audio"),
-    );
-    expect(hyperframesSection).toContain("doctor");
-    expect(hyperframesSection).toContain("browser ensure");
-    expect(sound?.content).toContain("shared by every kind of video");
-    expect(sound?.content).toContain("## 6b. Hand the music to a HyperFrames workflow");
   });
 
   it("builds a Motion session with only its own skills and no coder behavior", async () => {
@@ -366,7 +303,6 @@ describe("Motion agent", () => {
       sessionsDir: "/tmp/gg/sessions",
     });
     const options = optionsOf(agent);
-
     expect(options.agentPrompt).toContain("You are GG Motion");
     expect(options.agentRole).toBe("primary");
     expect(options.agentContext).toBe("none");
@@ -377,29 +313,25 @@ describe("Motion agent", () => {
     expect(options.loadExtensions).toBe(false);
     expect(options.contextLimits).toEqual({ skillCatalogBytes: MOTION_SKILL_CATALOG_BYTES });
     expect(options.onEnterPlan).toBeUndefined();
-    const skillNames = (options.skills ?? []).map((skill) => skill.name);
-    expect(skillNames).toEqual(expect.arrayContaining(GG_MOTION_SKILLS));
+    expect((options.skills ?? []).map((skill) => skill.name)).toEqual(EXPECTED_SKILLS);
   });
 
-  it("refuses to resume a session from outside the Motion namespace", async () => {
-    const outside = await createMotionAgentSession({
-      provider: "anthropic",
+  it("refuses to resume a session outside the Motion namespace", async () => {
+    const base = {
+      provider: "anthropic" as const,
       model: "claude-test",
       cwd: "/tmp/workspace",
       sessionsDir: "/tmp/gg/sessions",
+    };
+    const outside = await createMotionAgentSession({
+      ...base,
       sessionId: "/tmp/gg/sessions/project/coder-session.jsonl",
     });
     expect(optionsOf(outside).sessionId).toBeUndefined();
-
     const inside = path.resolve("/tmp/gg/motion-sessions/project/motion-session.jsonl");
-    const resumed = await createMotionAgentSession({
-      provider: "anthropic",
-      model: "claude-test",
-      cwd: "/tmp/workspace",
-      sessionsDir: "/tmp/gg/sessions",
-      sessionId: inside,
-    });
-    expect(optionsOf(resumed).sessionId).toBe(inside);
+    expect(
+      optionsOf(await createMotionAgentSession({ ...base, sessionId: inside })).sessionId,
+    ).toBe(inside);
   });
 });
 
@@ -413,7 +345,6 @@ describe("primary agent prompts", () => {
         ...base,
         role: "primary",
       });
-
       expect(child).toContain(SUBAGENT_RETURN_CONTRACT);
       expect(primary).toContain("You are a test agent.");
       expect(primary).not.toContain(SUBAGENT_RETURN_CONTRACT);

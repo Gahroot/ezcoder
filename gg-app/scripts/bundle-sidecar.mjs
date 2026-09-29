@@ -32,7 +32,7 @@ const outFile = join(outDir, "app-sidecar.mjs");
 const nodeModulesOut = join(outDir, "node_modules");
 const bundledSkillsSource = join(repoRoot, "packages", "ggcoder", "assets", "skills");
 const bundledSkillsOut = join(outDir, "skills");
-// Motion mode's private bundle (HyperFrames skills + launcher). Kept apart from
+// Motion mode's runtime bundle (authored skills + launcher). Kept apart from
 // `skills/` so its skills never enter coder or chat discovery.
 const motionBundleSource = join(repoRoot, "packages", "ggcoder", "assets", "motion");
 const motionBundleOut = join(outDir, "motion");
@@ -321,7 +321,18 @@ async function main() {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   cpSync(bundledSkillsSource, bundledSkillsOut, { recursive: true });
-  cpSync(motionBundleSource, motionBundleOut, { recursive: true });
+  cpSync(motionBundleSource, motionBundleOut, {
+    recursive: true,
+    filter: (source) => {
+      const parts = relative(motionBundleSource, source).split(sep);
+      // Authoring know-how and scratch inputs are local-only, never release assets.
+      return !(
+        (parts[0] === "references" && parts[1] === "authoring") ||
+        parts.includes("__pycache__") ||
+        /\.(?:aep|aepx|pyc)$/i.test(source)
+      );
+    },
+  });
 
   await build({
     entryPoints: [sidecarEntry],

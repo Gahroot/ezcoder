@@ -1,0 +1,495 @@
+{
+  "assembly_composition_id": 508,
+  "composition_time_unit": "seconds",
+  "compositions": [
+    {
+      "duration": 60.0,
+      "file": "compositions/comp-5.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 5,
+      "layer_count": 0,
+      "name": "PH_1",
+      "sha256": "ca2e1a2d1fac1f99dcc2513b18f90c4905f9aec7fd73b75c9fe47f8d1894d892",
+      "width": 1920
+    },
+    {
+      "duration": 60.0,
+      "file": "compositions/comp-76.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 76,
+      "layer_count": 3,
+      "name": "Scene_1",
+      "sha256": "55dc9a8e8546cf543de6e47c1f44e9b694f766f608130fdddbb8af5ba7b87629",
+      "width": 1920
+    },
+    {
+      "duration": 60.0,
+      "file": "compositions/comp-480.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 480,
+      "layer_count": 3,
+      "name": "Scene_2",
+      "sha256": "cab8a18861fac970ce70e298ac580abf541a56450365ee5c83f5f996b3ee2038",
+      "width": 1920
+    },
+    {
+      "duration": 60.0,
+      "file": "compositions/comp-494.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 494,
+      "layer_count": 0,
+      "name": "PH_2",
+      "sha256": "6b762d5e3a6feca43b676bfdf92f0388edfb916cc69c6a89af79181237860532",
+      "width": 1920
+    },
+    {
+      "duration": 12.033333333333333,
+      "file": "compositions/comp-508.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 508,
+      "layer_count": 16,
+      "name": "!Post_Production",
+      "sha256": "daec8a09c3a23c5c8851c49ea099bb6a33aab069569f22c5cc9182590458beeb",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6525.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6525,
+      "layer_count": 5,
+      "name": "Text_Design_1",
+      "sha256": "d2c39dc66c5a696d624341d980e09b65c8990e54e69f28370a3618cb0aa6787f",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6539.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6539,
+      "layer_count": 1,
+      "name": "Text_1",
+      "sha256": "67fd04e3a39acff6e99c26f6dec5ec90f41d5d99cdfa1c43cc38c0098c64c52b",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6647.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6647,
+      "layer_count": 5,
+      "name": "Text_Design_2",
+      "sha256": "f06cdb663346f1bda01cd75d91945e7c0a0acf845724fb46e66c84718c87fd66",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6663.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6663,
+      "layer_count": 1,
+      "name": "Text_2",
+      "sha256": "86e569daf98f622c96bdfc8a6cb512567840d2188605a9096c67682b0fdb00d6",
+      "width": 1920
+    },
+    {
+      "duration": 60.0,
+      "file": "compositions/comp-6677.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6677,
+      "layer_count": 3,
+      "name": "Scene_3",
+      "sha256": "c7f9bf28219ac61bd464684e45b8cbc3291d1f3d3ab486aa4c9d872179c9b043",
+      "width": 1920
+    },
+    {
+      "duration": 60.0,
+      "file": "compositions/comp-6691.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6691,
+      "layer_count": 0,
+      "name": "PH_3",
+      "sha256": "bad7320596beb0c9d5bde0a1c75004b82bf0970411d17bfa60094d2995e17862",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6706.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6706,
+      "layer_count": 5,
+      "name": "Text_Design_3",
+      "sha256": "3c874903c0673099ef94270a1cd0874fdc0749b855125baf32468e27084ad845",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6722.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6722,
+      "layer_count": 1,
+      "name": "Text_3",
+      "sha256": "aa523965590f883c0162a7dccda18a6551d226c03e9fe33e688c60cac9b6bfc1",
+      "width": 1920
+    },
+    {
+      "duration": 60.0,
+      "file": "compositions/comp-6736.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6736,
+      "layer_count": 3,
+      "name": "Scene_4",
+      "sha256": "9ea7b35163c2c90c9c5be3cd8b11e004a5e1086a99e5f32091a74fa18919044c",
+      "width": 1920
+    },
+    {
+      "duration": 60.0,
+      "file": "compositions/comp-6750.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6750,
+      "layer_count": 0,
+      "name": "PH_4",
+      "sha256": "c02c92704f48ed962f8ae24389a70e77b8f000e4c0d4f6a425a63be7a1ff6a3a",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6764.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6764,
+      "layer_count": 5,
+      "name": "Text_Design_4",
+      "sha256": "ab810ec0154a9865878e4b20b68636490d09640118cb2c25ab4242d29c2a4906",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6780.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6780,
+      "layer_count": 1,
+      "name": "Text_4",
+      "sha256": "1fdfeb29035b86a69e7eff2b98de060ba02ba7c477674974f7c773763e89a35e",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6794.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6794,
+      "layer_count": 5,
+      "name": "Text_Design_5",
+      "sha256": "90e00504c33cf5436aa4d372dcb13f160830677048bc1248f432dde936972e1b",
+      "width": 1920
+    },
+    {
+      "duration": 10.033333333333333,
+      "file": "compositions/comp-6810.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6810,
+      "layer_count": 1,
+      "name": "Text_5",
+      "sha256": "f2218c397ecee2d2562141cb1b803fa597b7de1027b15a0b54a0179d840d0bcf",
+      "width": 1920
+    },
+    {
+      "duration": 31.966666666666665,
+      "file": "compositions/comp-6823.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6823,
+      "layer_count": 20,
+      "name": "elements",
+      "sha256": "d514db1569d38a09bbd3d5384509d10d889fa6560f46393dc3a77cb7012315c5",
+      "width": 1920
+    },
+    {
+      "duration": 31.966666666666665,
+      "file": "compositions/comp-6872.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6872,
+      "layer_count": 20,
+      "name": "elements 2",
+      "sha256": "1573edecbaae484b35dc8ed673962f498705d5b6714a49795b66dcb34145ad2a",
+      "width": 1920
+    },
+    {
+      "duration": 12.033333333333333,
+      "file": "compositions/comp-6936.json",
+      "frame_rate": 30.0,
+      "height": 1080,
+      "id": 6936,
+      "layer_count": 1,
+      "name": "Final_1920x1080",
+      "sha256": "04b5b6fbbbfc3c592248d0e90c89d20edb5e77e535fe0936aed9e3ad4cf316a9",
+      "width": 1920
+    }
+  ],
+  "dynamic_slots": {
+    "media": [
+      {
+        "composition_id": 5,
+        "empty_in_supplied_project": true,
+        "replaceable": [
+          "image_or_video"
+        ],
+        "slot": "PH_1"
+      },
+      {
+        "composition_id": 494,
+        "empty_in_supplied_project": true,
+        "replaceable": [
+          "image_or_video"
+        ],
+        "slot": "PH_2"
+      },
+      {
+        "composition_id": 6691,
+        "empty_in_supplied_project": true,
+        "replaceable": [
+          "image_or_video"
+        ],
+        "slot": "PH_3"
+      },
+      {
+        "composition_id": 6750,
+        "empty_in_supplied_project": true,
+        "replaceable": [
+          "image_or_video"
+        ],
+        "slot": "PH_4"
+      }
+    ],
+    "titles": [
+      {
+        "composition_id": 6539,
+        "layer_id": 6541,
+        "preserve": [
+          "animators",
+          "selectors",
+          "transforms",
+          "outline_echoes",
+          "timing"
+        ],
+        "replaceable": [
+          "text",
+          "font"
+        ],
+        "slot": "Text_1"
+      },
+      {
+        "composition_id": 6663,
+        "layer_id": 6665,
+        "preserve": [
+          "animators",
+          "selectors",
+          "transforms",
+          "outline_echoes",
+          "timing"
+        ],
+        "replaceable": [
+          "text",
+          "font"
+        ],
+        "slot": "Text_2"
+      },
+      {
+        "composition_id": 6722,
+        "layer_id": 6724,
+        "preserve": [
+          "animators",
+          "selectors",
+          "transforms",
+          "outline_echoes",
+          "timing"
+        ],
+        "replaceable": [
+          "text",
+          "font"
+        ],
+        "slot": "Text_3"
+      },
+      {
+        "composition_id": 6780,
+        "layer_id": 6782,
+        "preserve": [
+          "animators",
+          "selectors",
+          "transforms",
+          "outline_echoes",
+          "timing"
+        ],
+        "replaceable": [
+          "text",
+          "font"
+        ],
+        "slot": "Text_4"
+      },
+      {
+        "composition_id": 6810,
+        "layer_id": 6812,
+        "preserve": [
+          "animators",
+          "selectors",
+          "transforms",
+          "outline_echoes",
+          "timing"
+        ],
+        "replaceable": [
+          "text",
+          "font"
+        ],
+        "slot": "Text_5"
+      }
+    ]
+  },
+  "expected_counts": {
+    "compositions": 22,
+    "layers": 99,
+    "stored_properties": 1875,
+    "synthetic_properties": 17795
+  },
+  "footage_items": [
+    {
+      "color": [
+        0.05490199849009514,
+        0.05490199849009514,
+        0.05490199849009514
+      ],
+      "duration": 0.0,
+      "frame_rate": 0.0,
+      "height": 1080,
+      "id": 100,
+      "name": "Dark Gray Solid 6",
+      "source_type": "SolidSource",
+      "width": 1920
+    }
+  ],
+  "geometry_unit": "source composition pixels; layer scale remains a percentage",
+  "layer_order": "index zero is top; preserve array and property group order",
+  "name": "mixkit-split-text-617",
+  "root_composition_id": 6936,
+  "schema_version": 1,
+  "source": {
+    "ae_version": "17.1x37",
+    "aep_sha256": "a71e3bc7ce98db7bf0f2a85438ca4636db3e26ad455bdb272840e701d0c3cbb7",
+    "archive_entry": "617/Urban_Opener.aep",
+    "parser_commit": "e12a451c35bacd3f34a080090265f9370e66162b",
+    "parser_repository": "https://github.com/forticheprod/py-aep",
+    "reference_page": "https://mixkit.co/free-after-effects-templates/split-text-intro-617/",
+    "reference_video": "https://assets.mixkit.co/video-templates/617/mixkit-617-360.mp4"
+  },
+  "verification": {
+    "field_export_errors": 0,
+    "full_video_reconstruction_verified": false,
+    "notes": [
+      "Synthetic properties are parser defaults, not proof of authored values.",
+      "Separated Position leaders/followers can duplicate key entries; do not animate both.",
+      "No source footage, font file, music or sound-effect asset is bundled.",
+      "The quantitative spot-check applies only to the first reveal, not all choreography."
+    ],
+    "opening_reveal_spot_check": {
+      "max_absolute_error_pixels": 1.728,
+      "samples": [
+        {
+          "difference_pixels": 1.728,
+          "measured_height_pixels": 3,
+          "predicted_height_pixels": 1.272,
+          "source_frame": 6,
+          "time_seconds": 0.1001
+        },
+        {
+          "difference_pixels": 0.997,
+          "measured_height_pixels": 7,
+          "predicted_height_pixels": 6.003,
+          "source_frame": 12,
+          "time_seconds": 0.2002
+        },
+        {
+          "difference_pixels": 1.137,
+          "measured_height_pixels": 18,
+          "predicted_height_pixels": 16.863,
+          "source_frame": 18,
+          "time_seconds": 0.3003
+        },
+        {
+          "difference_pixels": 1.016,
+          "measured_height_pixels": 44,
+          "predicted_height_pixels": 42.984,
+          "source_frame": 24,
+          "time_seconds": 0.4004
+        },
+        {
+          "difference_pixels": 0.348,
+          "measured_height_pixels": 196,
+          "predicted_height_pixels": 195.652,
+          "source_frame": 30,
+          "time_seconds": 0.5005
+        },
+        {
+          "difference_pixels": 0.879,
+          "measured_height_pixels": 242,
+          "predicted_height_pixels": 241.121,
+          "source_frame": 36,
+          "time_seconds": 0.6006
+        },
+        {
+          "difference_pixels": 0.285,
+          "measured_height_pixels": 258,
+          "predicted_height_pixels": 257.715,
+          "source_frame": 42,
+          "time_seconds": 0.7007
+        },
+        {
+          "difference_pixels": 0.145,
+          "measured_height_pixels": 266,
+          "predicted_height_pixels": 265.855,
+          "source_frame": 48,
+          "time_seconds": 0.8008
+        },
+        {
+          "difference_pixels": 0.37,
+          "measured_height_pixels": 270,
+          "predicted_height_pixels": 269.63,
+          "source_frame": 54,
+          "time_seconds": 0.9009
+        },
+        {
+          "difference_pixels": 1.357,
+          "measured_height_pixels": 272,
+          "predicted_height_pixels": 270.643,
+          "source_frame": 59,
+          "time_seconds": 0.9843166666666666
+        }
+      ],
+      "scope": "First Scene_1 alpha-matte height only; 640x360 preview; heuristic edge measurement, not full-render equivalence"
+    },
+    "source_reconstruction_rendered": false,
+    "unverified": [
+      "AE per-character selector weighting and randomized order in another renderer",
+      "font substitution layout equivalence",
+      "Fast Blur and text-outline rendering equivalence",
+      "full sequence compared in motion"
+    ]
+  }
+}

@@ -20,6 +20,12 @@ import {
 } from "@kenkaiiii/gg-ai";
 import { EventBus } from "./event-bus.js";
 import {
+  COMPLETION_REVIEW_STATE_KIND,
+  type CompletionReview,
+  type CompletionReviewRequest,
+  type CompletionReviewResponse,
+} from "./completion-review.js";
+import {
   SlashCommandRegistry,
   createBuiltinCommands,
   type SlashCommandContext,
@@ -373,6 +379,8 @@ export interface AgentSessionOptions {
   orchestrationPrompt?: boolean;
   /** Host-provided tools appended to this session only (for example, chat delegation). */
   additionalTools?: AgentTool[];
+  /** Mode-owned completion policy; absent in Coder/chat/worker sessions. */
+  completionReview?: CompletionReview;
 }
 
 // ── Tool-result policy ─────────────────────────────────────
@@ -1446,6 +1454,7 @@ export class AgentSession {
    * is the verbatim user ask, pinned for post-compaction re-grounding.
    */
   private resetHookState(originalRequest: string): void {
+    this.opts.completionReview?.begin(originalRequest);
     this.lspManager?.clearPendingDiagnostics();
     this.hookStats = {
       changedLines: 0,
@@ -1506,6 +1515,10 @@ export class AgentSession {
    * ideal-review decisions match across the CLI and the app.
    */
   private async trackHookEvent(event: AgentEvent): Promise<void> {
+    if (this.opts.completionReview) {
+      await this.opts.completionReview.track(event);
+      if (event.type === "checkpoint") await this.persistCompletionReviewState();
+    }
     switch (event.type) {
       case "text_delta":
         this.hookText += event.text;
@@ -1940,6 +1953,63 @@ export class AgentSession {
     })();
   }
 
+  /** Fresh image-only critique context, using the active transport and auth routing. */
+  private async callCompletionReviewer(
+    request: CompletionReviewRequest,
+    signal: AbortSignal,
+  ): Promise<CompletionReviewResponse> {
+    const model = this.model;
+    const provider = this.provider;
+    const thinking = this.thinkingLevel;
+    const configuredBaseUrl = this.baseUrl;
+    if (getModel(model)?.supportsImages !== true)
+      throw new Error("Active model has no confirmed image support");
+    signal.throwIfAborted();
+    try {
+      const creds = await this.authStorage.resolveCredentials(provider, {
+        storageKeys: this.currentAuthStorageKeys(),
+      });
+      const baseUrl = configuredBaseUrl ?? creds.baseUrl;
+      const result = stream({
+        provider,
+        model,
+        messages: [
+          { role: "system", content: request.instruction },
+          { role: "user", content: [{ type: "text", text: request.context }, ...request.images] },
+        ],
+        maxTokens: 4000,
+        thinking,
+        apiKey: creds.accessToken,
+        accountId: creds.accountId,
+        projectId: creds.projectId,
+        baseUrl,
+        signal,
+        transportSessionId: this.sessionId || this.transportSessionId,
+        defaultHeaders:
+          provider === "moonshot" && isKimiCodingEndpoint(baseUrl)
+            ? kimiCodingHeaders()
+            : undefined,
+        userAgent: provider === "anthropic" ? await getClaudeCliUserAgent() : undefined,
+        supportsImages: true,
+      });
+      const response = await result.response;
+      const content = response.message.content;
+      const text =
+        typeof content === "string"
+          ? content
+          : content
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join("\n");
+      if (text.length > 32_768) throw new Error("Review response exceeded its limit");
+      return { text, model, provider, thinking };
+    } catch {
+      // Provider errors may contain transport details; never copy them to tools/artifacts.
+      signal.throwIfAborted();
+      throw new Error("Active model review unavailable or invalid; no verdict recorded");
+    }
+  }
+
   /** One-shot judge call on the session's ACTIVE model — deliberately not a
    *  cheaper routing: judging a model's own failure patterns with a weaker
    *  model swaps false negatives for false positives. */
@@ -2098,6 +2168,7 @@ export class AgentSession {
    * the flash, so this errs toward arming.
    */
   private wouldInjectIdealReview(): boolean {
+    if (this.opts.completionReview?.armed) return true;
     if (this.opts.selfCorrectionHooks === false || this.idealReviewSuppressed) return false;
     // Mid-review a stop still injects: the coverage follow-up while files are
     // unread, or its escalation once the budget is spent. Both make the model
@@ -2245,6 +2316,25 @@ export class AgentSession {
     // verification demand above instead of manufacturing a separate hook.
     if (diagnosticMessages.length > 0) return diagnosticMessages;
 
+    if (this.opts.completionReview) {
+      const followUp = await this.opts.completionReview.followUp(
+        (request, signal) => this.callCompletionReviewer(request, signal),
+        this.opts.signal,
+      );
+      await this.persistCompletionReviewState();
+      if (followUp) {
+        this.eventBus.emit("hook", { kind: "ideal" });
+        this.refreshHookArming();
+        return [
+          {
+            role: "user",
+            content: followUp,
+            provenance: { source: "runtime", kind: "notification", visibility: "hidden" },
+          },
+        ];
+      }
+      this.refreshHookArming();
+    }
     if (this.opts.selfCorrectionHooks === false || this.idealReviewSuppressed) return null;
 
     if (this.idealReviewPhase === "reviewing") {
@@ -4016,7 +4106,20 @@ export class AgentSession {
     );
   }
 
+  private async persistCompletionReviewState(): Promise<void> {
+    if (!this.sessionPath || !this.opts.completionReview) return;
+    await this.sessionManager.appendEntry(this.sessionPath, {
+      type: "custom",
+      kind: COMPLETION_REVIEW_STATE_KIND,
+      id: crypto.randomUUID(),
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      data: this.opts.completionReview.snapshot(),
+    });
+  }
+
   private async persistVerificationState(): Promise<void> {
+    if (this.opts.completionReview) await this.persistCompletionReviewState();
     if (!this.sessionPath) return;
     const entry: CustomEntry = {
       type: "custom",
@@ -4302,6 +4405,12 @@ export class AgentSession {
     const loaded = await this.sessionManager.load(canonicalPath);
     // Use the leaf from the header to walk the correct branch
     const loadedMessages = this.sessionManager.getMessages(loaded.entries, loaded.header.leafId);
+    const savedCompletionReview = [...loaded.entries]
+      .reverse()
+      .find((entry) => entry.type === "custom" && entry.kind === COMPLETION_REVIEW_STATE_KIND);
+    this.opts.completionReview?.restore(
+      savedCompletionReview?.type === "custom" ? savedCompletionReview.data : null,
+    );
     this.backgroundVerification.clear();
     const savedVerification = [...loaded.entries]
       .reverse()

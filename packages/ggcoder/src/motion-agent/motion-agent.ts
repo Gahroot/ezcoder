@@ -2,11 +2,13 @@ import path from "node:path";
 import { AgentSession, type AgentSessionOptions } from "../core/agent-session.js";
 import { findMotionBundle, loadMotionSkills, type MotionBundle } from "../core/skills.js";
 import { MOTION_SYSTEM_PROMPT } from "./motion-prompt.js";
+import { MotionReviewSession } from "./motion-review-session.js";
+import { motionStudioPrompt, readMotionStudioContext } from "./motion-studio-context.js";
 
 /**
  * Motion's skill-catalog budget: double the default. The 16 KB default guards
  * against bloated untrusted skills; Motion only ever loads its own bundled
- * set, which already fills ~15 KB, so it gets room to grow.
+ * set. Retain headroom for future authored recipes without loading their bodies.
  */
 export const MOTION_SKILL_CATALOG_BYTES = 32 * 1024;
 
@@ -34,6 +36,7 @@ export type MotionAgentOptions = Omit<
   | "globalSubagents"
   | "loadExtensions"
   | "orchestrationPrompt"
+  | "completionReview"
 > & {
   /** Coder's sessions dir; Motion's store is derived beside it. */
   sessionsDir: string;
@@ -66,14 +69,14 @@ export function buildMotionAgentPrompt(bundle: MotionBundle, nodePath = process.
     .replaceAll("{{HF_VERSION}}", bundle.version);
 }
 
-/** The shared licensed music library (shipped inside brag, used by every video type). */
+/** Shared licensed music, independent of the creative skill catalog. */
 export function motionMusicDir(bundle: MotionBundle): string {
-  return path.join(bundle.skillsDir, "brag", "assets", "music");
+  return path.join(bundle.root, "assets", "music");
 }
 
-/** The shared CC0 sound-effects library (shipped inside brag, used by every video type). */
+/** Shared CC0 sound effects, independent of the creative skill catalog. */
 export function motionSfxDir(bundle: MotionBundle): string {
-  return path.join(bundle.skillsDir, "brag", "assets", "sfx");
+  return path.join(bundle.root, "assets", "sfx");
 }
 
 /**
@@ -95,10 +98,15 @@ export async function createMotionAgentSession(options: MotionAgentOptions): Pro
       ? requestedSession
       : undefined;
 
+  const studio = await readMotionStudioContext(options.cwd, options.signal);
+  const studioPrompt = motionStudioPrompt(studio);
+  const completionReview = new MotionReviewSession(options.cwd, bundle, studioPrompt);
   return new AgentSession({
     ...sessionOptions,
+    completionReview,
+    additionalTools: [...(sessionOptions.additionalTools ?? []), completionReview.tool()],
     sessionId: resumableSession,
-    agentPrompt: buildMotionAgentPrompt(bundle),
+    agentPrompt: buildMotionAgentPrompt(bundle) + studioPrompt,
     agentRole: "primary",
     // Motion folders hold videos, not codebases; coder conventions do not apply.
     agentContext: "none",

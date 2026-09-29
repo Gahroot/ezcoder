@@ -9,6 +9,19 @@ afterEach(() => {
 });
 
 describe("MotionStarters", () => {
+  it("offers the available recipe and narrow edits without promising missing styles", () => {
+    expect(MOTION_STARTERS.map(({ label }) => label)).toEqual([
+      "Make a split-text opener",
+      "Edit my Motion project",
+    ]);
+    expect(MOTION_STARTERS[0].prompt).toContain("mixkit-split-text-617");
+    expect(MOTION_STARTERS[0].prompt).toContain("Preserve its source choreography");
+    expect(MOTION_STARTERS[1].prompt).toContain("Change only what I request");
+    expect(MOTION_STARTERS[1].prompt).toContain("new versioned filename");
+    for (const starter of MOTION_STARTERS) {
+      expect(starter.prompt).not.toMatch(/30-second|launch kit|new art direction/i);
+    }
+  });
   it.each(MOTION_STARTERS)(
     "fills the composer with $label without submitting",
     ({ label, prompt }) => {

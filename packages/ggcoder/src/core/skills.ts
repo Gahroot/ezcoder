@@ -55,10 +55,7 @@ export async function findMotionBundle(
   return null;
 }
 
-/**
- * Motion mode's skill set: only the bundled Motion skills, sorted by name so
- * the skill tool's catalog (inside the cached prompt prefix) is byte-stable.
- */
+/** Load only Motion's authored skills; keep their contracts intact and catalog order stable. */
 export async function loadMotionSkills(bundle: MotionBundle): Promise<Skill[]> {
   const skills = await loadSkillsFromDir(bundle.skillsDir, "motion");
   return skills.sort((a, b) => a.name.localeCompare(b.name));

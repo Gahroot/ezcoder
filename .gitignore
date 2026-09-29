@@ -17,6 +17,14 @@ coverage/
 /.gg/commands/*
 !/.gg/commands/release.md
 
+# Private Motion authoring pipeline (not required by runtime builds)
+/packages/ggcoder/scripts/after-effects/
+/packages/ggcoder/assets/motion/references/authoring/
+*.[aA][eE][pP]
+*.[aA][eE][pP][xX]
+# Working exports, provenance, previews and parser environments belong under
+# .gg/artifacts/ (already ignored), never in the shipped motion assets.
+
 # Scratch / ad-hoc test files
 test_*.mjs
 test_*.js
