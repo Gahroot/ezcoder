@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.75.0",
+    date: "2026-09-29",
+    items: [
+      "I turned EZ Coder into a video maker. A new `Motion` button sits right on the home screen, and it opens a workspace that ships bundled with fonts, sound effects, music and a whole style library. Pick a starter like `Make a split-text opener` and I build it, render it, then check the result before it comes back to you.",
+      "`Claude Sonnet 5.5` is your new default. It keeps the `1 million` token memory and the exact price of the Sonnet it replaces, and it thinks harder than ever once you push it up.",
+      "The picker just got a lot deeper. Kimi K2.8 Preview, DeepSeek V4.1 Flash, Fugu Max and `Qwen3.8 Max` all joined the lineup, and every one of them happily takes an image from you.",
+      "Settings got a full glow-up. I rebuilt the screen with cleaner headers and sections, gave every modal a proper home inside it, and freshened the whole app with a new glass finish.",
+      "Squashed a batch of annoyances. Closing a window no longer strands the rest of them off screen, big edits and long silent thinking no longer get cut off mid-run, those blank yes/no prompts are fixed, and no tool fires twice anymore.",
+    ],
+  },
+  {
     version: "0.74.0",
     date: "2026-09-23",
     items: [
