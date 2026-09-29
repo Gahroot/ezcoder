@@ -99,7 +99,7 @@ Validation runs before any server boots, so an invalid value exits cleanly witho
 
 ## render
 
-> Render only after the user has reviewed in `preview` and approved. Don't auto-render when the checks pass.
+> A clear video request authorizes a new, versioned local render. Preview is available when useful, not a mandatory approval checkpoint. Ask only for unresolved inputs, material choices or permission to overwrite an existing export; check the result once through `motion_check`.
 
 ```bash
 hf render                                # standard MP4 from cwd

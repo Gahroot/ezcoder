@@ -2,7 +2,7 @@ import path from "node:path";
 import { AgentSession, type AgentSessionOptions } from "../core/agent-session.js";
 import { findMotionBundle, loadMotionSkills, type MotionBundle } from "../core/skills.js";
 import { MOTION_SYSTEM_PROMPT } from "./motion-prompt.js";
-import { MotionReviewSession } from "./motion-review-session.js";
+import { createMotionCheckTool } from "./motion-check-tool.js";
 import { motionStudioPrompt, readMotionStudioContext } from "./motion-studio-context.js";
 
 /**
@@ -14,6 +14,27 @@ export const MOTION_SKILL_CATALOG_BYTES = 32 * 1024;
 
 /** Reserved `chatAgent` query value the app uses to list Motion sessions. */
 export const MOTION_SESSIONS_QUERY = "motion";
+
+/** Direct video work and sourcing only; no delegation, developer catalogs or MCP. */
+export const MOTION_TOOL_NAMES = [
+  "read",
+  "write",
+  "edit",
+  "bash",
+  "find",
+  "grep",
+  "ls",
+  "skill",
+  "ask_user",
+  "task_output",
+  "task_send",
+  "task_stop",
+  "web_search",
+  "web_fetch",
+  "screenshot",
+  "generate_image",
+  "motion_check",
+] as const;
 
 /** Motion's private session store, beside coder's `sessions/` and chat's `chat-sessions/`. */
 export function motionSessionsDir(coderSessionsDir: string): string {
@@ -37,6 +58,8 @@ export type MotionAgentOptions = Omit<
   | "loadExtensions"
   | "orchestrationPrompt"
   | "completionReview"
+  | "allowedTools"
+  | "allowedMcpServers"
 > & {
   /** Coder's sessions dir; Motion's store is derived beside it. */
   sessionsDir: string;
@@ -80,7 +103,7 @@ export function motionSfxDir(bundle: MotionBundle): string {
 }
 
 /**
- * Create a Motion session: the full GG toolset, Motion's own prompt, and only
+ * Create a Motion session: focused tools, Motion's own prompt, and only
  * the bundled Motion skills. Project/global skills, extensions and coder
  * slash commands stay out so the mode is predictable for every user.
  */
@@ -100,11 +123,15 @@ export async function createMotionAgentSession(options: MotionAgentOptions): Pro
 
   const studio = await readMotionStudioContext(options.cwd, options.signal);
   const studioPrompt = motionStudioPrompt(studio);
-  const completionReview = new MotionReviewSession(options.cwd, bundle, studioPrompt);
   return new AgentSession({
     ...sessionOptions,
-    completionReview,
-    additionalTools: [...(sessionOptions.additionalTools ?? []), completionReview.tool()],
+    completionReview: undefined,
+    additionalTools: [
+      ...(sessionOptions.additionalTools ?? []),
+      createMotionCheckTool(options.cwd, bundle),
+    ],
+    allowedTools: [...MOTION_TOOL_NAMES],
+    allowedMcpServers: [],
     sessionId: resumableSession,
     agentPrompt: buildMotionAgentPrompt(bundle) + studioPrompt,
     agentRole: "primary",
@@ -117,7 +144,7 @@ export async function createMotionAgentSession(options: MotionAgentOptions): Pro
     coderSlashCommands: false,
     selfCorrectionHooks: false,
     projectCustomization: false,
-    globalSubagents: true,
+    globalSubagents: false,
     loadExtensions: false,
     orchestrationPrompt: false,
   });

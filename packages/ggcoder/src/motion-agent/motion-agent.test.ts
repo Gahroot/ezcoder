@@ -19,6 +19,7 @@ import {
   buildMotionAgentPrompt,
   createMotionAgentSession,
   MOTION_SKILL_CATALOG_BYTES,
+  MOTION_TOOL_NAMES,
   motionCliCommand,
   motionMusicDir,
   motionSessionsDir,
@@ -103,6 +104,9 @@ describe("Motion agent", () => {
       "A generic brand motion preference or studio default must not override locked choreography",
     );
     expect(prompt).toContain("Do not mistake extracted AE values for a ready-made renderer");
+    expect(prompt).toContain("Reuse supplied executable animation code");
+    expect(prompt).toContain("a component supplies a reusable part");
+    expect(prompt).toContain("resolve that scope before starting");
     expect(prompt).not.toContain("examples are not templates");
     expect(prompt).not.toContain("Brief → reference → action plan");
     expect(prompt).not.toContain("references/index.json");
@@ -119,10 +123,13 @@ describe("Motion agent", () => {
     expect(prompt).not.toContain("Slideshow-style output is prohibited");
   });
 
-  it("retains safety, privacy and evidence-bound completion instead of removing review", async () => {
+  it("retains safety and actual output checks without independent AI approval", async () => {
     const prompt = buildMotionAgentPrompt(await motionBundle());
-    expect(prompt).toContain("motion_review");
-    expect(prompt).toContain("Changed source/render invalidates readiness");
+    expect(prompt).toContain("motion_check");
+    expect(prompt).not.toContain("motion_review");
+    expect(prompt).toContain("If source/render changes");
+    expect(prompt).toContain("An unchanged export needs no repeated checking");
+    expect(prompt).toContain("Do not run the same checks manually");
     expect(prompt).toContain("draft/unverified, never approved final");
     expect(prompt).toContain("Technical success is not visual fidelity");
     expect(prompt).toContain("No third-party uploads");
@@ -155,9 +162,11 @@ describe("Motion agent", () => {
     expect(qa).toContain("motion-check.mjs");
     expect(qa).toContain("canvas/WebGL");
     expect(qa).toContain("normal speed");
-    expect(qa).toContain("loudnorm=I=-14:TP=-1.5:LRA=11");
-    expect(qa).toMatch(/-c:v copy[\s\S]*-c:a aac -b:a 320k/);
-    expect(qa).toContain("Apply Gate 4's loudness step to this render.");
+    expect(qa).toContain("motion_check");
+    expect(qa).toContain("rejects non-finite levels or clipping");
+    expect(qa).toContain("does not normalize the file");
+    expect(qa).toContain("No subagent, separate model critique");
+    expect(qa).not.toMatch(/## Gate \d/);
     expect(qa).toContain('<node> "<motion bin>/reveal.mjs" renders/<file>.mp4');
   });
 
@@ -285,7 +294,8 @@ describe("Motion agent", () => {
     const calls = (await loadMotionSkills(await motionBundle())).flatMap((skill) =>
       skill.content.split("\n").filter((line) => /<motion bin>\/[^\s`"]+\.mjs/.test(line)),
     );
-    expect(calls.length).toBeGreaterThanOrEqual(4);
+    for (const helper of ["fonts.mjs", "pdf-extract.mjs", "reveal.mjs"])
+      expect(calls.some((line) => line.includes(`<motion bin>/${helper}`))).toBe(true);
     for (const line of calls) expect(line).toMatch(/<node> "<motion bin>\//);
   });
 
@@ -313,6 +323,35 @@ describe("Motion agent", () => {
     expect(options.loadExtensions).toBe(false);
     expect(options.contextLimits).toEqual({ skillCatalogBytes: MOTION_SKILL_CATALOG_BYTES });
     expect(options.onEnterPlan).toBeUndefined();
+    expect(options.completionReview).toBeUndefined();
+    expect(options.selfCorrectionHooks).toBe(false);
+    expect(options.globalSubagents).toBe(false);
+    expect(options.allowedTools).toEqual([...MOTION_TOOL_NAMES]);
+    expect(options.allowedMcpServers).toEqual([]);
+    expect(options.additionalTools?.map((tool) => tool.name)).toEqual(["motion_check"]);
+    for (const name of [
+      "spawn_agent",
+      "subagent",
+      "tool_search",
+      "ui_registry",
+      "ui_adopt",
+      "code_nav",
+      "source_path",
+      "steroids",
+      "motion_review",
+    ])
+      expect(options.allowedTools).not.toContain(name);
+    for (const name of [
+      "bash",
+      "read",
+      "write",
+      "edit",
+      "web_search",
+      "web_fetch",
+      "generate_image",
+      "motion_check",
+    ])
+      expect(options.allowedTools).toContain(name);
     expect((options.skills ?? []).map((skill) => skill.name)).toEqual(EXPECTED_SKILLS);
   });
 

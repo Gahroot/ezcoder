@@ -179,6 +179,15 @@ export async function reviewFrames(videoArg, outArg, windows, signal, range) {
     ]);
     let bytes = 0;
     const pages = [];
+    // Overview, phone and action sheets share timestamps. Decode each once when
+    // it fits the per-invocation cache; keep memory bounded independently of video size.
+    const decodedFrames = new Map();
+    let cachedBytes = 0;
+    const sampleW = 390;
+    const sampleH = Math.min(
+      640,
+      Math.max(64, Math.round((sampleW * stream.height) / stream.width)),
+    );
     for (const [index, request] of requests.entries()) {
       signal?.throwIfAborted();
       const cellW = request.kind === "phone" ? 390 : 384;
@@ -188,39 +197,55 @@ export async function reviewFrames(videoArg, outArg, windows, signal, range) {
       const height = Math.ceil(request.times.length / cols) * (cellH + 28);
       const composites = [];
       for (const [i, time] of request.times.entries()) {
-        const { stdout: pixels } = await exec(
-          ffmpeg,
-          [
-            "-v",
-            "error",
-            "-xerror",
-            "-nostdin",
-            "-protocol_whitelist",
-            "file,pipe",
-            "-ss",
-            time.toFixed(6),
-            "-i",
-            video,
-            "-frames:v",
-            "1",
-            "-vf",
-            `scale=${cellW}:${cellH}:force_original_aspect_ratio=decrease,pad=${cellW}:${cellH}:(ow-iw)/2:(oh-ih)/2`,
-            "-f",
-            "image2pipe",
-            "-vcodec",
-            "png",
-            "pipe:1",
-          ],
-          {
-            signal,
-            timeout: 15_000,
-            maxBuffer: 2 * 1024 * 1024,
-            encoding: "buffer",
-            windowsHide: true,
-            killSignal: "SIGKILL",
-          },
-        );
-        if (pixels.length === 0) throw new Error("Missing decoded frame");
+        const key = time.toFixed(6);
+        let decoded = decodedFrames.get(key);
+        if (!decoded) {
+          const { stdout } = await exec(
+            ffmpeg,
+            [
+              "-v",
+              "error",
+              "-xerror",
+              "-nostdin",
+              "-protocol_whitelist",
+              "file,pipe",
+              "-ss",
+              key,
+              "-i",
+              video,
+              "-frames:v",
+              "1",
+              "-vf",
+              `scale=${sampleW}:${sampleH}:force_original_aspect_ratio=decrease,pad=${sampleW}:${sampleH}:(ow-iw)/2:(oh-ih)/2`,
+              "-f",
+              "image2pipe",
+              "-vcodec",
+              "png",
+              "pipe:1",
+            ],
+            {
+              signal,
+              timeout: 15_000,
+              maxBuffer: 2 * 1024 * 1024,
+              encoding: "buffer",
+              windowsHide: true,
+              killSignal: "SIGKILL",
+            },
+          );
+          decoded = stdout;
+          if (decoded.length === 0) throw new Error("Missing decoded frame");
+          if (cachedBytes + decoded.length <= MAX_BYTES) {
+            decodedFrames.set(key, decoded);
+            cachedBytes += decoded.length;
+          }
+        }
+        const pixels =
+          cellW === sampleW && cellH === sampleH
+            ? decoded
+            : await sharp(decoded)
+                .resize(cellW, cellH, { fit: "contain", background: "#000" })
+                .png()
+                .toBuffer();
         const x = (i % cols) * cellW;
         const y = Math.floor(i / cols) * (cellH + 28);
         composites.push({ input: pixels, left: x, top: y });

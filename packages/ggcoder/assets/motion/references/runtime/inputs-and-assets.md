@@ -45,7 +45,8 @@ Preserve credits, cue maps and SFX analysis. Copy only used
 assets into the video project. The selected recipe or user determines whether
 sound belongs in the video; do not automatically add music or hits.
 
-Review uses the current render, `motion-check.mjs`, `review-frames.mjs` and the
-`motion_review` tool as specified by `video-qa`. Request permission before
+Use `motion_check` once on the current render as specified by `video-qa`; it
+runs the media helpers and returns images for this agent to inspect. Do not
+repeat its checks as a separate checklist. Request permission before
 installing missing FFmpeg/browser software; a detector setup failure does not
 justify skipping validation. Never upload user files to resolve a local blocker.
