@@ -32,7 +32,9 @@ function optionsOf(agent: unknown): AgentSessionOptions {
 
 const EXPECTED_SKILLS = [
   "brand-kit",
+  "kinetic-text",
   "mixkit-split-text-617",
+  "mobile-notification",
   "motion",
   "source-ingest",
   "video-qa",
@@ -44,7 +46,7 @@ async function motionBundle(): Promise<MotionBundle> {
 }
 
 describe("Motion agent", () => {
-  it("ships only the authored recipe and four support skills, without guidance overlays", async () => {
+  it("ships only the authored recipes and four support skills, without guidance overlays", async () => {
     const bundle = await motionBundle();
     const skills = await loadMotionSkills(bundle);
     expect(skills.map((s) => s.name)).toEqual(EXPECTED_SKILLS);
@@ -99,6 +101,9 @@ describe("Motion agent", () => {
     );
     expect(prompt).toContain("Honor an explicitly selected recipe");
     expect(prompt).toContain("If none fits");
+    // No recipe for a request is the normal case, not a reason to stop and ask.
+    expect(prompt).toContain("build the video as custom work without stopping to ask");
+    expect(prompt).not.toContain("authorize custom work");
     expect(prompt).toContain("Never force an unrelated recipe or invent an unavailable skill");
     expect(prompt).toContain(
       "A generic brand motion preference or studio default must not override locked choreography",
@@ -118,6 +123,11 @@ describe("Motion agent", () => {
     expect(prompt).toContain("no overlapping workflow chains or catalog tours");
     expect(prompt).toContain("recipe-defined holds");
     expect(prompt).toContain("not mandatory creative selection steps");
+    // Seen costing real sessions: hunting for a local GSAP, missing-font false alarms,
+    // and a second full check after an undeclared end-card hold.
+    expect(prompt).toContain("there is no bundled copy to search for");
+    expect(prompt).toContain("Paste the `head` block `add` returns");
+    expect(prompt).toContain("Before the first `motion_check`, write a hold plan");
     expect(prompt).toContain("No automatic music or sound on every movement");
     expect(prompt).toContain("No default director packet");
     expect(prompt).not.toContain("Slideshow-style output is prohibited");

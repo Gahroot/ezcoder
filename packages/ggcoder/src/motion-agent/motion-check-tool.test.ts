@@ -44,13 +44,38 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   await fs.rm(root, { recursive: true, force: true });
 });
-async function setRuntime(report: unknown): Promise<void> {
+async function setRuntime(
+  report: unknown,
+  behaviour: { exitCode?: number; stderr?: string; hang?: boolean } = {},
+): Promise<void> {
+  const { exitCode = 0, stderr = "", hang = false } = behaviour;
+  // Like the real launcher: on SIGTERM the CLI exits 0 without printing a report.
+  const body = hang
+    ? `process.on('SIGTERM', () => process.exit(0));
+setInterval(() => {}, 1000);`
+    : `process.stderr.write(${JSON.stringify(stderr)});
+console.log(${JSON.stringify(JSON.stringify(report))});
+process.exitCode = ${exitCode};`;
   await fs.writeFile(
     bundle.launcher,
     `import fs from 'node:fs';
 fs.appendFileSync(${JSON.stringify(path.join(root, "calls.jsonl"))}, JSON.stringify(process.argv.slice(2))+'\\n');
-console.log(${JSON.stringify(JSON.stringify(report))});`,
+${body}`,
   );
+}
+function details(result: string | StructuredToolResult, name: string): string {
+  const text =
+    typeof result === "string"
+      ? result
+      : typeof result.content === "string"
+        ? result.content
+        : result.content.find((part) => part.type === "text")?.text;
+  const parsed = z
+    .object({ checks: z.array(z.object({ name: z.string(), details: z.string() })) })
+    .parse(JSON.parse(text ?? ""));
+  const found = parsed.checks.find((item) => item.name === name);
+  if (!found) throw new Error(`Missing check ${name}`);
+  return found.details;
 }
 async function render(audio?: "quiet" | "clipped", still = false): Promise<void> {
   await exec("ffmpeg", [
@@ -84,8 +109,9 @@ async function render(audio?: "quiet" | "clipped", still = false): Promise<void>
 }
 async function check(
   extra: { slideshowRequested?: boolean; output?: string } = {},
+  limits: { sourceCheckMs?: number } = {},
 ): Promise<string | StructuredToolResult> {
-  return createMotionCheckTool(root, bundle).execute(
+  return createMotionCheckTool(root, bundle, limits).execute(
     {
       project: ".",
       output: "renders/video.mp4",
@@ -151,6 +177,62 @@ describe("Motion single-pass output check", () => {
     const result = summary(await check());
     expect(result.technical).toBe(false);
     expect(result.checks).toContainEqual({ name: "Structured runtime report", ok: false });
+  });
+  it("shows the agent what a failing source check found, not just that it failed", async () => {
+    const occluded = {
+      code: "text_occluded",
+      severity: "error",
+      time: 12.48,
+      selector: "div.f-name > span",
+      text: "G",
+      message: "Text is hidden beneath an opaque element.",
+      fixHint: "Raise its stacking order above the covering element.",
+    };
+    const overlap = { code: "content_overlap", severity: "warning", message: "Overlap" };
+    await setRuntime(
+      {
+        ...runtimeReport,
+        ok: false,
+        layout: {
+          samples: [0.5, 1],
+          errorCount: 2,
+          warningCount: 2,
+          findings: [occluded, overlap, { ...occluded, time: 13 }, overlap],
+        },
+      },
+      {
+        exitCode: 1,
+        stderr:
+          "[StaticGuard] Invalid HyperFrame contract: Font family used without @font-face declaration: archivo.\n",
+      },
+    );
+    await render();
+    const result = await check();
+    expect(summary(result).technical).toBe(false);
+    const found = details(result, "Runtime/layout/contrast (includes lint)");
+    expect(found).toContain("found problems");
+    expect(found).toContain("layout: 2 errors, 2 warnings (2 samples)");
+    // The same problem on the same element is one line, with every time it was seen.
+    expect(found).toContain("Errors (1 of 1 distinct problems listed)");
+    expect(found).toContain('text_occluded div.f-name > span "G"');
+    expect(found).toContain("[at 12.48s, 13s]");
+    expect(found).toContain("Fix: Raise its stacking order");
+    expect(found).toContain("layout content_overlap ×2");
+    expect(found).toContain("without @font-face declaration: archivo");
+    expect(found).not.toContain("Command failed");
+  });
+  it("fails a source check that runs out of time instead of passing its empty output", async () => {
+    await setRuntime(runtimeReport, { hang: true });
+    await render();
+    const result = await check({}, { sourceCheckMs: 1500 });
+    expect(summary(result).technical).toBe(false);
+    expect(summary(result).checks).toContainEqual({
+      name: "Runtime/layout/contrast (includes lint)",
+      ok: false,
+    });
+    expect(details(result, "Runtime/layout/contrast (includes lint)")).toContain(
+      "Did not finish within 1.5 s",
+    );
   });
   it.each([false, true])(
     "does not excuse frozen output without explicit slideshow intent (%s)",

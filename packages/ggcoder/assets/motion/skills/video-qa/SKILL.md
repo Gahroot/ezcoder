@@ -14,7 +14,7 @@ Call `motion_check` with:
 - `project`: the current HyperFrames project folder.
 - `output`: the actual rendered MP4, inside the workspace.
 - `windows`: representative motion/transition windows, each with `label`, `start` and `end` in seconds. Use the recipe's timings; each window spans at least two frames and at most ten seconds, up to twelve windows.
-- `holds`: only when the recipe includes intentional static holds, the path to its render-bound hold plan (format below).
+- `holds`: only when the video has a deliberate static section (a recipe's reading hold, or an end card or pause you designed), the path to its render-bound hold plan (format below). Write it before this first call; an undeclared deliberate hold is flagged as frozen and costs a second full check.
 - `slideshowRequested`: true only when the user actually requested a slideshow; never use it to hide broken motion.
 - `range`: only for an export longer than 180 seconds or a targeted diagnostic, a start/end range of at most 180 seconds. Report the inspected range honestly; do not claim full-video visual coverage.
 
@@ -33,7 +33,7 @@ Check the attached images for:
 
 Still images do not prove pacing at normal speed or that audio was heard. Use actual playback/listening only when needed and available; state the limit otherwise. Technical success is not proof of source-exact visual fidelity. Missing evidence is unverified, not PASS.
 
-If the tool fails, use its findings to diagnose the concrete problem. Runtime command details live in [technical diagnostics](../../references/runtime/lint-validate-inspect.md); they are troubleshooting references, not an extra mandatory pass. Never introduce generic drift, extra effects or layout changes just to satisfy a heuristic. If a real accessibility requirement conflicts with locked source styling, resolve that conflict rather than silently replacing the design.
+If the tool fails, its check details list each problem with where and when it occurs, plus renderer notes such as undeclared fonts. Use them to diagnose the concrete problem; do not rerun the check by hand to see them. Runtime command details live in [technical diagnostics](../../references/runtime/lint-validate-inspect.md); they are troubleshooting references, not an extra mandatory pass. Never introduce generic drift, extra effects or layout changes just to satisfy a heuristic. If a real accessibility requirement conflicts with locked source styling, resolve that conflict rather than silently replacing the design.
 
 ## 3. Fix only a concrete defect
 
@@ -43,7 +43,7 @@ The tool measures audio and rejects non-finite levels or clipping; it does not n
 
 ### Intentional holds
 
-Declare only actual recipe-defined static intervals. The hold plan binds to the current video, so an old plan cannot excuse freezes in a changed export:
+Declare only deliberate static intervals: a recipe's holds, or a still section you designed on purpose. The hold plan binds to the current video, so an old plan cannot excuse freezes in a changed export:
 
 ```json
 {

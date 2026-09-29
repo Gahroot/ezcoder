@@ -37,6 +37,15 @@ Inspect helper help for less common operations; do not guess options. Fonts,
 Three.js and library assets remain available offline, but their existence does
 not require using them. Respect actual licenses and required brand typography.
 
+`fonts.mjs add` returns `head`: a `<style>` block of `@font-face` rules with
+paths from the project folder. Paste it into the composition `<head>`.
+`hf check` only recognises fonts declared in the page, so linking
+`assets/fonts/fonts.css` instead renders fine but is reported as missing fonts.
+
+GSAP loads from the pinned CDN script in
+[minimal-composition](minimal-composition.md). There is no local copy in the
+bundle; do not search for one or copy one from another project.
+
 Shared music and SFX are at `../../assets/music/` and `../../assets/sfx/` relative
 to this document. Upstream metadata can retain historical `skills/brag/` paths;
 resolve its filenames under these shared asset roots, not the removed skill.

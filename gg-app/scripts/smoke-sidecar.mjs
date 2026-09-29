@@ -92,6 +92,12 @@ function smokeMotionBundle(node) {
     join("skills", "source-ingest", "SKILL.md"),
     join("skills", "video-qa", "SKILL.md"),
     join("skills", "mixkit-split-text-617", "SKILL.md"),
+    join("skills", "mobile-notification", "SKILL.md"),
+    join("skills", "mobile-notification", "template", "index.html"),
+    join("skills", "mobile-notification", "template", "assets", "recipe.json"),
+    join("skills", "kinetic-text", "SKILL.md"),
+    join("skills", "kinetic-text", "template", "index.html"),
+    join("skills", "kinetic-text", "template", "assets", "recipe.json"),
     join("references", "runtime", "minimal-composition.md"),
     join("assets", "sfx", "sfx-analysis.md"),
   ]) {
@@ -100,7 +106,15 @@ function smokeMotionBundle(node) {
   const skillNames = readdirSync(join(motion, "skills")).sort();
   if (
     JSON.stringify(skillNames) !==
-    JSON.stringify(["brand-kit", "mixkit-split-text-617", "motion", "source-ingest", "video-qa"])
+    JSON.stringify([
+      "brand-kit",
+      "kinetic-text",
+      "mixkit-split-text-617",
+      "mobile-notification",
+      "motion",
+      "source-ingest",
+      "video-qa",
+    ])
   ) {
     fail(`unexpected Motion skill catalog: ${skillNames.join(", ")}`);
   }

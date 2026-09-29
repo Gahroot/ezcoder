@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"variant","type":"string","label":"Animation number 01–21","default":"01"},{"id":"text1","type":"string","label":"Text slot 1 (empty = sample text)","default":""},{"id":"text2","type":"string","label":"Text slot 2","default":""},{"id":"text3","type":"string","label":"Text slot 3","default":""},{"id":"text4","type":"string","label":"Text slot 4","default":""},{"id":"x","type":"number","label":"Design center X (0–1920)","default":960},{"id":"y","type":"number","label":"Design center Y (0–1080)","default":540},{"id":"scale","type":"number","label":"Uniform scale (0.25–2)","default":1},{"id":"color1","type":"string","label":"Colour 1 #RRGGBB (empty = source)","default":""},{"id":"color2","type":"string","label":"Colour 2","default":""},{"id":"color3","type":"string","label":"Colour 3","default":""},{"id":"color4","type":"string","label":"Colour 4","default":""},{"id":"color5","type":"string","label":"Colour 5","default":""},{"id":"weight","type":"number","label":"Font weight 100–900 (0 = source; variants with a weight control only)","default":0},{"id":"background","type":"string","label":"Background #RRGGBB","default":"#000000"}]'>
+<head><meta charset="utf-8"><title>Kinetic Text</title>
+<style>
+@font-face{font-family:Inter;src:url('assets/fonts/inter-latin-wght-normal.woff2') format('woff2');font-weight:100 900;font-style:normal;font-display:block}
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#000}
+#composition,#kt-svg{display:block;width:1920px;height:1080px}
+#kt-svg text{font-kerning:none;font-variant-ligatures:none}
+</style></head>
+<body><main id="composition" data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080">
+<svg id="kt-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3840 2160" role="img" aria-label="Kinetic Text" data-layout-allow-overlap>
+<defs id="kt-defs"></defs>
+<rect id="kt-bg" width="3840" height="2160" fill="#000000"/>
+<g id="kt-place"><g id="kt-stage"></g></g>
+</svg></main>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script><script>window.__timelines = window.__timelines || {};</script>
+<script type="module" src="app.js"></script>
+</body></html>

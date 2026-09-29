@@ -378,8 +378,9 @@ describe("fonts", () => {
     ok: boolean;
     error?: string;
     specimen?: string;
-    families?: Array<{ family: string }>;
+    families?: Array<{ family: string; use?: string }>;
     installed?: string[];
+    head?: string;
   };
   const parse = (stdout: string): FontsResult => JSON.parse(stdout) as FontsResult;
 
@@ -406,6 +407,10 @@ describe("fonts", () => {
     }
     const list = parse((await runHelper("fonts.mjs", ["list"])).stdout);
     expect(list.families?.map((f) => f.family)).toEqual(manifest.map((f) => f.family));
+    // Title, body and handwritten faces the product asked for, each with a usage hint.
+    for (const family of ["Unbounded", "Sora", "Short Stack", "Finger Paint"]) {
+      expect(list.families?.find((f) => f.family === family)?.use).toBeTruthy();
+    }
     await expect(fs.access(list.specimen ?? "")).resolves.toBeUndefined();
   });
 
@@ -415,6 +420,13 @@ describe("fonts", () => {
 
     expect(first.code).toBe(0);
     expect(parse(second.stdout).installed).toEqual(["Mona Sans", "Fraunces", "Martian Mono"]);
+    // The page-ready block uses paths from the project folder and covers every installed family.
+    const head = parse(second.stdout).head ?? "";
+    expect(head).toMatch(/^<style>\n[\s\S]*\n<\/style>$/);
+    expect(head).toContain('url("assets/fonts/fraunces/fraunces-italic.woff2")');
+    for (const family of ["Mona Sans", "Fraunces", "Martian Mono"]) {
+      expect(head).toContain(`font-family: "${family}";`);
+    }
     const css = await fs.readFile(path.join(tmp, "assets", "fonts", "fonts.css"), "utf8");
     expect(css).toContain('font-family: "Mona Sans";');
     expect(css).toContain("font-stretch: 75% 125%;");

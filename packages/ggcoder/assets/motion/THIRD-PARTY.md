@@ -13,6 +13,8 @@ upstream skill folders when updating the runtime.
 | Three.js (`vendor/three/`) | https://github.com/mrdoob/three.js (npm `three`) | `0.181.2`, fetched by `scripts/fetch-motion-three.mjs` | MIT (`vendor/three/LICENSE`) |
 | Style-library pieces marked MIT (`library/pieces/<id>/`) | Magic UI, https://github.com/magicuidesign/magicui | converted 2026-09-28; upstream file URL in each `meta.json` | MIT (`LICENSE` beside each piece) |
 | Fonts (`fonts/<family>/`) | Google Fonts / https://github.com/google/fonts | fetched 2026-09-28 by `scripts/fetch-motion-fonts.mjs` | SIL OFL 1.1 (`OFL.txt` beside each family) |
+| Mobile Notification template fonts (`skills/mobile-notification/template/assets/`): Manrope, Bebas Neue | Google Fonts / https://github.com/google/fonts | Latin-subset woff2 fetched 2026-09-29 | SIL OFL 1.1 (`Manrope-OFL.txt`, `Bebas-Neue-OFL.txt` beside the fonts) |
+| Kinetic Text template font (`skills/kinetic-text/template/assets/fonts/`): Inter, variable upright, Latin subset. Copyright 2016 The Inter Project Authors | https://github.com/rsms/inter, via Fontsource `@fontsource-variable/inter` | `5.3.0`, fetched 2026-09-29 | SIL OFL 1.1 (`Inter-OFL.txt` beside the font) |
 
 ## Recipe and evidence boundaries
 
@@ -20,6 +22,20 @@ The Mixkit 617 recipe records the user's supplied project provenance and limits
 in its own skill/manifest. Extraction or purchase is not a redistribution license;
 its source/derivative-data rights require review before a public release. No AEP,
 source preview video or source font binary is bundled with that recipe.
+
+The Mobile Notification template is a GG reconstruction of an After Effects
+notification pack supplied by the GG team, added to the shipped catalog on
+2026-09-29 at the product owner's direction. It ships GG-written rendering code,
+a compiled layout/timing recipe and OFL fonts. No AEP, tutorial video, source
+font binary or extraction tooling is bundled. GSAP loads at render time from its
+pinned CDN address, like the style-library pieces.
+
+The Kinetic Text template is a GG reconstruction of an After Effects kinetic
+typography pack supplied by the GG team, added to the shipped catalog on
+2026-09-29 at the product owner's direction, on the same terms: GG-written
+rendering code, a compiled layout/timing recipe and an OFL font. No AEP, help
+file, source font binary or extraction tooling is bundled, and GSAP loads from
+its pinned CDN address.
 
 Private extraction tools, source projects, working exports and authoring-method
 documents are Git-ignored and excluded from release packaging. They are not
@@ -39,9 +55,10 @@ claim full playback or aesthetic certification from model image critique.
 
 ## Fonts
 
-15 families, listed in `fonts/fonts.json`. Latin-subset variable woff2 as served
-by Google Fonts, except Mona Sans and Hubot Sans: they carry OFL Reserved Font
-Names and ship as complete upstream fonts, recompressed to woff2. `fonts.mjs add`
+19 families, listed in `fonts/fonts.json`. Latin-subset variable woff2 as served
+by Google Fonts, except Mona Sans, Hubot Sans, Short Stack and Finger Paint: they
+carry OFL Reserved Font Names and ship as complete upstream fonts, recompressed
+to woff2. Unbounded, Sora, Short Stack and Finger Paint were added 2026-09-29. `fonts.mjs add`
 copies each family's `OFL.txt` into the video project with its font files.
 
 ## Shared audio retained from brag
