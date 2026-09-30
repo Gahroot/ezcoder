@@ -1,5 +1,12 @@
 # @kenkaiiii/gg-core
 
+## 5.66.3
+
+### Patch Changes
+
+- Updated dependencies [946c459]
+  - @kenkaiiii/gg-ai@5.66.3
+
 ## 5.66.2
 
 ### Patch Changes
