@@ -71,6 +71,31 @@ async function* answersCleanly(messages: Message[]) {
   yield { type: "agent_done", totalTurns: 1, totalUsage: usage };
 }
 
+const SALVAGED = "VERDICT: CLEAN\nThe files examined before time ran out match the request.";
+
+/**
+ * A child still working when its time limit runs out: it keeps reading until
+ * the turn is aborted, and answers only in the tool-free recovery turn after.
+ */
+async function* worksUntilStopped(
+  messages: Message[],
+  options: { signal?: AbortSignal; tools?: readonly unknown[] },
+) {
+  if (options.tools?.length === 0) {
+    messages.push({ role: "assistant", content: SALVAGED });
+    yield { type: "text_delta", text: SALVAGED };
+    yield { type: "turn_end", turn: 1, stopReason: "end_turn", usage, timing };
+    yield { type: "agent_done", totalTurns: 1, totalUsage: usage };
+    return;
+  }
+  yield { type: "text_delta", text: "Reading the changed files." };
+  await new Promise<void>((resolve) => {
+    if (options.signal?.aborted) resolve();
+    else options.signal?.addEventListener("abort", () => resolve(), { once: true });
+  });
+  throw new Error("aborted");
+}
+
 async function* throwsMidRun(messages: Message[]) {
   // Same shape as a provider failure mid-stream: the throw surfaces while the
   // session is iterating the loop, not when the loop is created.
@@ -180,7 +205,9 @@ describe("promptSubAgent", () => {
 describe("spawn_agent worker", () => {
   type Frame = Record<string, unknown>;
 
-  async function runWorkerTurn(): Promise<{ done: Frame; childSessionPath: string }> {
+  async function runWorkerTurn(
+    extraOptions: Frame = {},
+  ): Promise<{ done: Frame; childSessionPath: string }> {
     const stdin = new PassThrough();
     vi.spyOn(process, "stdin", "get").mockReturnValue(stdin as unknown as typeof process.stdin);
     const stdout = captureWrites(process.stdout);
@@ -206,6 +233,7 @@ describe("spawn_agent worker", () => {
         cwd: tmpProject,
         systemPrompt: "test system prompt",
         sessionRootDir: path.join(tmpHome, ".gg", "subagent-sessions"),
+        ...extraOptions,
       },
     });
     const initialized = await vi.waitFor(
@@ -257,6 +285,31 @@ describe("spawn_agent worker", () => {
 
     expect(done).toMatchObject({ status: "completed", output: "Final report." });
     expect(done.error).toBeUndefined();
+  });
+
+  it("answers from what it gathered when its own time limit runs out", async () => {
+    // The independent reviewer is spawned with a short time limit. Reaching it
+    // must end in the tool-free recovery answer, not in an interrupt with no
+    // verdict — which is how every large review used to end.
+    agentLoopMock.mockImplementation(worksUntilStopped);
+
+    const { done } = await runWorkerTurn({ turnTimeoutMs: 50 });
+
+    expect(done).toMatchObject({ status: "completed", recovered_after_timeout: true });
+    expect(String(done.output)).toContain(`[Timeout recovery summary]\n${SALVAGED}`);
+  });
+
+  it("gives its time-limit answer at reduced thinking effort", async () => {
+    // The recovery turn has 60 seconds to answer. At max effort one ran past
+    // it still thinking, so ten minutes of work came back as nothing.
+    agentLoopMock.mockImplementation(worksUntilStopped);
+
+    await runWorkerTurn({ turnTimeoutMs: 50, thinkingLevel: "max" });
+
+    const thinkingByCall = agentLoopMock.mock.calls.map(
+      ([, options]) => (options as { thinking?: string }).thinking,
+    );
+    expect(thinkingByCall).toEqual(["max", "medium"]);
   });
 });
 

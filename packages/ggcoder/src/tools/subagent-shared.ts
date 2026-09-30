@@ -17,6 +17,11 @@ export const SUB_AGENT_MAX_OUTPUT_CHARS = 100_000;
 export const SUB_AGENT_MAX_OUTPUT_LINES = 500;
 export const SUB_AGENT_MAX_STDERR_CHARS = 10_000;
 export const SUB_AGENT_TIMEOUT_MS = 10 * 60 * 1000;
+/**
+ * The single tool-free turn a timed-out worker gets to answer from what it has
+ * gathered. Anyone waiting on a time-limited child must allow for it.
+ */
+export const SUB_AGENT_TIMEOUT_RECOVERY_MS = 60_000;
 export const SUB_AGENT_DEPTH_ENV = "GG_SUBAGENT_DEPTH";
 export const MAX_BLOCKING_SUBAGENT_DEPTH = 3;
 

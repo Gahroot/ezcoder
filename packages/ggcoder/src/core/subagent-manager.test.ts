@@ -87,10 +87,12 @@ describe("SubAgentManager", () => {
     );
 
     // The independent Ideal reviewer: read-only tools, forced ACTIVE model —
-    // agent-definition routing ("fake" would use the fast model) is bypassed.
+    // agent-definition routing ("fake" would use the fast model) is bypassed —
+    // and its own shorter time limit, which the worker enforces.
     await instance.spawn("reviewer", "review the work", undefined, {
       model: "gpt-6.1-sol",
       tools: ["read", "grep", "find", "ls"],
+      turnTimeoutMs: 120_000,
     });
 
     const initializeCall = requestSpy.mock.calls.find(([, command]) => command === "initialize");
@@ -99,6 +101,7 @@ describe("SubAgentManager", () => {
         model: "gpt-6.1-sol",
         allowedTools: ["read", "grep", "find", "ls"],
         promptCacheKey: "parent-cache:subagent:gpt-6.1-sol:default",
+        turnTimeoutMs: 120_000,
       },
     });
   });
