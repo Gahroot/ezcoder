@@ -320,18 +320,18 @@ export async function runSubagentWorkerMode(): Promise<void> {
         timeLimitMs,
       });
       setState(outcome.status === "interrupted" ? "interrupted" : "idle");
-      completeTurn({
+      await completeTurn({
         ...outcome,
         output: boundSubAgentOutput(output),
         model: initializeOptions?.model,
       });
     })()
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         clearTimeout(turnTimer);
         const interrupted = controller.signal.aborted;
         const timedOut = abortReason === "timeout";
         setState(interrupted && !timedOut ? "interrupted" : "idle");
-        completeTurn({
+        await completeTurn({
           status: timedOut ? "failed" : interrupted ? "interrupted" : "failed",
           output: boundSubAgentOutput(output),
           error: timedOut
@@ -348,9 +348,11 @@ export async function runSubagentWorkerMode(): Promise<void> {
   };
 
   /** Durably record the turn, then announce it. Record FIRST: an adopting
-   * parent must never observe a terminal frame with no record behind it. */
-  const completeTurn = (frame: Record<string, unknown>): void => {
-    void writeTurnRecord(initializeOptions?.childSessionPath, {
+   * parent must never observe a terminal frame with no record behind it.
+   * Awaited inside the turn, so anything that waits for the turn (shutdown,
+   * stdin closing) also waits for the record. */
+  const completeTurn = async (frame: Record<string, unknown>): Promise<void> => {
+    await writeTurnRecord(initializeOptions?.childSessionPath, {
       status: (frame.status as "completed" | "interrupted" | "failed") ?? "failed",
       output: typeof frame.output === "string" ? frame.output : undefined,
       error: typeof frame.error === "string" ? frame.error : undefined,

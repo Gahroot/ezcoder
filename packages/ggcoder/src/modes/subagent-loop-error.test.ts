@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -112,11 +113,20 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, JSON.stringify(value), "utf-8");
 }
 
-/** Collect everything written to a stream without letting it reach the real one. */
-function captureWrites(stream: NodeJS.WriteStream): string[] {
+/**
+ * Collect everything written to a stream without letting it reach the real one.
+ * `onWrite` runs synchronously inside each write, so it sees the world exactly
+ * as it is when the chunk is emitted.
+ */
+function captureWrites(
+  stream: NodeJS.WriteStream,
+  onWrite?: (chunk: string, chunks: readonly string[]) => void,
+): string[] {
   const chunks: string[] = [];
   vi.spyOn(stream, "write").mockImplementation((chunk: string | Uint8Array) => {
-    chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+    const text = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8");
+    chunks.push(text);
+    onWrite?.(text, chunks);
     return true;
   });
   return chunks;
@@ -205,18 +215,29 @@ describe("promptSubAgent", () => {
 describe("spawn_agent worker", () => {
   type Frame = Record<string, unknown>;
 
-  async function runWorkerTurn(
-    extraOptions: Frame = {},
-  ): Promise<{ done: Frame; childSessionPath: string }> {
+  async function runWorkerTurn(extraOptions: Frame = {}): Promise<{
+    done: Frame;
+    childSessionPath: string;
+    recordOnDiskWhenAnnounced: boolean | undefined;
+  }> {
     const stdin = new PassThrough();
     vi.spyOn(process, "stdin", "get").mockReturnValue(stdin as unknown as typeof process.stdin);
-    const stdout = captureWrites(process.stdout);
-    const frames = (): Frame[] =>
-      stdout
+    const parseFrames = (chunks: readonly string[]): Frame[] =>
+      chunks
         .join("")
         .split("\n")
         .filter((line) => line.trim())
         .map((line) => JSON.parse(line) as Frame);
+    // Whether the durable turn record (<session>.turn.json) already exists at
+    // the instant `turn_complete` is written: a restarted parent adopts the
+    // turn from that record, so it must never lag the announcement.
+    let recordOnDiskWhenAnnounced: boolean | undefined;
+    const stdout = captureWrites(process.stdout, (chunk, chunks) => {
+      if (!chunk.includes('"turn_complete"')) return;
+      const ack = parseFrames(chunks).find((f) => f.type === "ack" && f.request_id === "init");
+      recordOnDiskWhenAnnounced = existsSync(`${String(ack?.child_session_path)}.turn.json`);
+    });
+    const frames = (): Frame[] => parseFrames(stdout);
     const send = (frame: Frame): void => {
       stdin.write(`${JSON.stringify(frame)}\n`);
     };
@@ -258,7 +279,11 @@ describe("spawn_agent worker", () => {
 
     stdin.end();
     await worker;
-    return { done, childSessionPath: String(initialized.child_session_path) };
+    return {
+      done,
+      childSessionPath: String(initialized.child_session_path),
+      recordOnDiskWhenAnnounced,
+    };
   }
 
   it("fails the turn the loop stopped on and keeps the reason for the parent", async () => {
@@ -285,6 +310,26 @@ describe("spawn_agent worker", () => {
 
     expect(done).toMatchObject({ status: "completed", output: "Final report." });
     expect(done.error).toBeUndefined();
+  });
+
+  // The record used to be written in the background after the announcement,
+  // so a parent could see the turn end with no record behind it, and the write
+  // could still be running after the worker returned.
+  it("writes the durable turn record before announcing the turn", async () => {
+    agentLoopMock.mockImplementation(answersCleanly);
+
+    const { recordOnDiskWhenAnnounced } = await runWorkerTurn();
+
+    expect(recordOnDiskWhenAnnounced).toBe(true);
+  });
+
+  it("writes the record before announcing a turn that stopped on an error", async () => {
+    agentLoopMock.mockImplementation(throwsMidRun);
+
+    const { done, recordOnDiskWhenAnnounced } = await runWorkerTurn();
+
+    expect(done).toMatchObject({ status: "failed", error: "provider exploded" });
+    expect(recordOnDiskWhenAnnounced).toBe(true);
   });
 
   it("answers from what it gathered when its own time limit runs out", async () => {
