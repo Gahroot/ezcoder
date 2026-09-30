@@ -1,0 +1,6 @@
+---
+"@kenkaiiii/gg-ai": patch
+"@kenkaiiii/ggcoder": patch
+---
+
+Close six gaps found in the ecosystem scan. Secret redaction now hides the whole password in URLs with no username (`redis://:pw@host`) or an `@` inside the password, both of which previously leaked. ChatGPT-login replies cut off at the output limit now report `max_tokens` (so the agent continues them) instead of passing as finished, a stream that ends early is retried instead of running a tool call with cut-off arguments, and reasoning that only led into a dropped call is no longer replayed. `write` now refuses to overwrite a file the model has only partly read (offset/limit or the 2000-line cap) and names the unread lines, and clearing, rewinding, branching or resuming a conversation makes the model re-read files before changing them. `bash` no longer runs a command whose Stop arrived during sandbox setup, and no longer hangs until the timeout when a command leaves a process running with `&`. Invisible characters are stripped from AGENTS.md/CLAUDE.md, skills, agent files and custom commands before they reach the model. The OS sandbox library is updated to 0.0.78, which fixes a Linux race that could leave a protected file unprotected.
