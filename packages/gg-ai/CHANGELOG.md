@@ -1,5 +1,7 @@
 # @kenkaiiii/gg-ai
 
+## 5.66.4
+
 ## 5.66.3
 
 ### Patch Changes

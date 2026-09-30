@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.66.4
+
+### Patch Changes
+
+- Project discovery no longer lists folders the user never worked in. A hidden folder, or a folder inside one, is never inferred as a projects root, so tool folders like `<repo>/.gg` stop filling the picker with their `uploads`, `plans`, `skills` and PR worktrees; roots configured in settings are still always scanned. A GG Coder session store only counts once one of its sessions records a message (the rule `listRecentSessions` already used), so sessions that were started but never used no longer add projects or refresh a project's last-active time. The sub-agent worker now finishes writing its durable turn record before announcing the turn as done, so an adopting parent never sees a finished turn with no record behind it.
+  - @kenkaiiii/gg-ai@5.66.4
+  - @kenkaiiii/gg-agent@5.66.4
+  - @kenkaiiii/gg-core@5.66.4
+
 ## 5.66.3
 
 ### Patch Changes
