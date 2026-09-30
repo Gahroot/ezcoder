@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.73.2",
+    date: "2026-09-30",
+    items: [
+      "Scrolling finally listens to you. I fixed the chat yanking you back to the bottom while the AI is still typing, so scroll up to reread anything and it stays exactly where you put it. Scroll back down and `auto-scroll` picks right back up.",
+      "`GG Motion` now turns your tweaks around faster. I taught it to check just the moments it changed, skip re-checking anything that stayed the same, and see far more of what needs fixing in one go. Your finished video still gets the same careful full check.",
+      "Helpers that hit their time limit now bring back what they found. One could work for `10 minutes` and still come back empty-handed, and the reviewer that double-checks your bigger changes could get cut off before giving its verdict. I fixed both, so no effort goes to waste.",
+      "I gave the whole app a silkier feel. Tooltips now fade away gently instead of blinking out, buttons and links glide into their hover colors, and in a narrow window the `uncommitted` count shrinks to just its number so your project name stays readable.",
+    ],
+  },
+  {
     version: "0.73.1",
     date: "2026-09-30",
     items: [
