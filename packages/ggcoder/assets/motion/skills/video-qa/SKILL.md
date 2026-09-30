@@ -17,6 +17,7 @@ Call `motion_check` with:
 - `holds`: only when the video has a deliberate static section (an end card, reading hold or pause you designed), the path to its render-bound hold plan (format below). Write it before this first call; an undeclared deliberate hold is flagged as frozen and costs a second full check.
 - `slideshowRequested`: true only when the user actually requested a slideshow; never use it to hide broken motion.
 - `range`: only for an export longer than 180 seconds or a targeted diagnostic, a start/end range of at most 180 seconds. Report the inspected range honestly; do not claim full-video visual coverage.
+- `spot`: true for a quick check of a targeted fix or small edit. Put short `windows` around the moments you changed, at most 240 rendered frames in total (4 s at 60 fps). The layout check then covers every rendered frame inside them, far faster than the full check, while the pixel, hold and audio checks still cover the whole export. A spot result is never delivery verification: once it is clean, run the full check (without `spot`) once on the export you deliver.
 
 The tool runs HyperFrames `check` (which already includes lint), decoded-pixel analysis with `motion-check.mjs` including canvas/WebGL, and audio analysis only when audio exists. It returns technical results and actual rendered overview, phone-size and consecutive-frame images **to you**, the working agent.
 
@@ -38,7 +39,7 @@ If the tool fails, its check details list each problem with where and when it oc
 
 ## 3. Fix only a concrete defect
 
-A failed check or visibly wrong output warrants a targeted fix, a new versioned render and a check of that changed output. An unchanged export does not need checking again. Do not iterate toward subjective perfection or route the result to another reviewer. Report an unresolved blocker as draft/unverified rather than looping indefinitely or declaring success.
+A failed check or visibly wrong output warrants a targeted fix, a new versioned render and a spot check of the fixed moments, then one full check once they are clean. An unchanged export does not need checking again unless you corrected its hold plan; that re-check reuses the passing source audit, so it is quick. Do not iterate toward subjective perfection or route the result to another reviewer. Report an unresolved blocker as draft/unverified rather than looping indefinitely or declaring success.
 
 The tool measures audio and rejects non-finite levels or clipping; it does not normalize the file. Follow the user's delivery loudness target when they give one. Do not add audio to silent work or force every supplied animation through a generic -14 LUFS mix.
 
@@ -54,7 +55,7 @@ Declare only deliberate static intervals: an end card, a reading hold or another
 }
 ```
 
-Do not mark the whole video as a hold to suppress broken animation. Retain any existing meaningful motion assertions; do not invent a new assertion sidecar for every video.
+When a hold is stale, the check lists where the pixels actually freeze; correct the plan from those times instead of guessing. Do not mark the whole video as a hold to suppress broken animation. Retain any existing meaningful motion assertions; do not invent a new assertion sidecar for every video.
 
 ## 4. Deliver
 

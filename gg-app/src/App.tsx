@@ -70,6 +70,7 @@ import { dropSupersededAsks, mergeAskAnswers } from "./ask-user";
 import { glowPlacement, glowStateFor, glowVars } from "./window-glow";
 import { ActivityBar } from "./ActivityBar";
 import { autosizeComposer } from "./composer-autosize";
+import { pinAfterScroll, pinAfterWheel } from "./transcript-pin";
 import { KenActivityBar } from "./KenActivityBar";
 import { useTaskActivity } from "./useTaskActivity";
 import { useKenMentor } from "./useKenMentor";
@@ -824,16 +825,24 @@ function App(): React.ReactElement {
 
   // Whether the transcript is "pinned" to the bottom. Auto-scroll only runs
   // while pinned. The user scrolling up un-pins it — so they can read freely
-  // even while the agent keeps streaming — and scrolling back to the bottom
-  // re-pins. Default true so a fresh transcript follows the newest output.
+  // even while the agent keeps streaming — and scrolling back down to the
+  // bottom re-pins (rules in transcript-pin.ts). Default true so a fresh
+  // transcript follows the newest output.
   const stickToBottomRef = useRef(true);
+  // The transcript's offset as last seen by a scroll event or left by our own
+  // scrollToBottom — the baseline that tells an up-scroll from a down-scroll.
+  const lastScrollTopRef = useRef(0);
 
   // Pin to the bottom. Images (screenshots / attachments) load asynchronously
   // and grow the content after this fires, so it's also called from each image's
   // onLoad to keep the newest content visible.
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight });
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight });
+    // A reader's scroll landing in this same frame shares one scroll event with
+    // this jump; measuring it from the pre-jump offset would read up as down.
+    lastScrollTopRef.current = el.scrollTop;
   }, []);
 
   // Same as scrollToBottom, but a no-op while the user has scrolled up to read.
@@ -841,15 +850,23 @@ function App(): React.ReactElement {
     if (stickToBottomRef.current) scrollToBottom();
   }, [scrollToBottom]);
 
-  // Track the user's scroll intent. Any real scroll that lands more than a
-  // small threshold above the bottom un-pins; returning to (near) the bottom
-  // re-pins. Our own programmatic scrollToBottom lands at the bottom, so it
-  // simply keeps the pin set — no need to distinguish it from a user scroll.
+  // Track the user's scroll intent by direction, not distance: while a reply
+  // streams, every commit re-pins, so any "near the bottom" allowance snapped a
+  // small scroll up straight back down. The wheel handler runs before the
+  // scroll it causes, so a commit landing in between can't erase the move.
   const onTranscriptScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottomRef.current = distanceFromBottom <= 48;
+    stickToBottomRef.current = pinAfterScroll(
+      stickToBottomRef.current,
+      lastScrollTopRef.current,
+      el,
+    );
+    lastScrollTopRef.current = el.scrollTop;
+  }, []);
+  const onTranscriptWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (el) stickToBottomRef.current = pinAfterWheel(stickToBottomRef.current, e, el);
   }, []);
 
   // The "Drop files to attach" overlay must never outlive the drag. macOS keeps
@@ -966,6 +983,7 @@ function App(): React.ReactElement {
   const attachTranscript = useCallback(
     (el: HTMLDivElement | null) => {
       scrollRef.current = el;
+      if (el) lastScrollTopRef.current = el.scrollTop;
       transcriptRoRef.current?.disconnect();
       transcriptRoRef.current = null;
       if (!el || typeof ResizeObserver === "undefined") return;
@@ -2748,7 +2766,12 @@ function App(): React.ReactElement {
         {workspaceMode === "code" && kenPowerBanner && (
           <KenPowerBanner mode={kenPowerBanner} onDone={() => setKenPowerBanner(null)} />
         )}
-        <div className="transcript" ref={attachTranscript} onScroll={onTranscriptScroll}>
+        <div
+          className="transcript"
+          ref={attachTranscript}
+          onScroll={onTranscriptScroll}
+          onWheel={onTranscriptWheel}
+        >
           {!hydrated && items.length === 0 ? (
             <TranscriptSkeleton />
           ) : (

@@ -153,6 +153,10 @@ describe("Motion agent", () => {
     expect(prompt).not.toContain("motion_review");
     expect(prompt).toContain("If source/render changes");
     expect(prompt).toContain("An unchanged export needs no repeated checking");
+    // A mascot edit to a 30 s reel spent ~7 minutes in two full checks, then shipped
+    // after the second one failed without checking again.
+    expect(prompt).toContain("spot-check the changed moments first (`spot: true`)");
+    expect(prompt).toContain("except after correcting its hold plan");
     expect(prompt).toContain("Do not run the same checks manually");
     expect(prompt).toContain("draft/unverified, never approved final");
     expect(prompt).toContain("Technical success is not visual fidelity");
@@ -186,6 +190,7 @@ describe("Motion agent", () => {
     expect(qa).toContain("canvas/WebGL");
     expect(qa).toContain("normal speed");
     expect(qa).toContain("motion_check");
+    expect(qa).toContain("A spot result is never delivery verification");
     expect(qa).toContain("rejects non-finite levels or clipping");
     expect(qa).toContain("does not normalize the file");
     expect(qa).toContain("No subagent, separate model critique");

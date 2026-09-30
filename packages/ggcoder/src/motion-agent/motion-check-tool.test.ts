@@ -7,7 +7,7 @@ import type { StructuredToolResult } from "@kenkaiiii/gg-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { findMotionBundle, type MotionBundle } from "../core/skills.js";
-import { createMotionCheckTool } from "./motion-check-tool.js";
+import { createMotionCheckTool, spotSampleTimes } from "./motion-check-tool.js";
 
 const exec = promisify(execFile);
 // Each test spawns real FFmpeg, ffprobe and Node processes. On the Windows CI runner a
@@ -110,11 +110,18 @@ async function render(audio?: "quiet" | "clipped", still = false): Promise<void>
     path.join(root, "renders", "video.mp4"),
   ]);
 }
+type CheckInput = {
+  slideshowRequested?: boolean;
+  output?: string;
+  spot?: boolean;
+  project?: string;
+};
 async function check(
-  extra: { slideshowRequested?: boolean; output?: string } = {},
-  limits: { sourceCheckMs?: number } = {},
+  extra: CheckInput = {},
+  limits: { sourceCheckMs?: number; spotMaxFrames?: number } = {},
+  tool = createMotionCheckTool(root, bundle, limits),
 ): Promise<string | StructuredToolResult> {
-  return createMotionCheckTool(root, bundle, limits).execute(
+  return tool.execute(
     {
       project: ".",
       output: "renders/video.mp4",
@@ -124,6 +131,41 @@ async function check(
     { signal: new AbortController().signal, toolCallId: "single-pass" },
   );
 }
+async function sourceCheckCalls(): Promise<number> {
+  const log = path.join(root, "calls.jsonl");
+  if (!(await fs.stat(log).catch(() => null))) return 0;
+  return (await fs.readFile(log, "utf8")).split("\n").filter(Boolean).length;
+}
+
+describe("spot-check frame sampling", () => {
+  it.each([
+    {
+      name: "every frame in a window",
+      windows: [{ start: 0, end: 0.3 }],
+      expected: [0, 0.1, 0.2, 0.3],
+    },
+    {
+      name: "only frames the export contains",
+      windows: [{ start: 0.05, end: 0.25 }],
+      expected: [0.1, 0.2],
+    },
+    {
+      name: "overlapping windows once",
+      windows: [
+        { start: 0, end: 0.2 },
+        { start: 0.1, end: 0.3 },
+      ],
+      expected: [0, 0.1, 0.2, 0.3],
+    },
+    {
+      name: "no instant past the last frame",
+      windows: [{ start: 1.85, end: 2.5 }],
+      expected: [1.9],
+    },
+  ])("samples $name", ({ windows, expected }) => {
+    expect(spotSampleTimes(windows, 10, 2)).toEqual(expected);
+  });
+});
 
 describe("Motion single-pass output check", { timeout: MEDIA_TEST_MS }, () => {
   it("runs one runtime check including lint and returns real images to the working agent", async () => {
@@ -223,6 +265,118 @@ describe("Motion single-pass output check", { timeout: MEDIA_TEST_MS }, () => {
     expect(found).toContain("layout content_overlap ×2");
     expect(found).toContain("without @font-face declaration: archivo");
     expect(found).not.toContain("Command failed");
+  });
+  it("lists where and when every distinct error occurs, not only the first few", async () => {
+    const findings = Array.from({ length: 17 }, (_, index) => ({
+      code: "text_occluded",
+      severity: "error",
+      time: index + 1,
+      selector: `#el-${index + 1}`,
+      text: "G",
+      message: "Text is hidden beneath an opaque element.",
+      fixHint: "Raise its stacking order above the covering element.",
+    }));
+    await setRuntime(
+      { ...runtimeReport, ok: false, layout: { samples: [0.5, 1], errorCount: 17, findings } },
+      { exitCode: 1 },
+    );
+    await render();
+    const found = details(await check(), "Runtime/layout/contrast (includes lint)");
+    expect(found).toContain("Errors (17 of 17 distinct problems listed)");
+    expect(found).toContain('- layout text_occluded #el-15 "G": Text is hidden');
+    // Later problems keep their location and time; only the repeated advice is dropped.
+    expect(found).toContain('- layout text_occluded #el-16 "G" [at 16s]');
+    expect(found).toContain('- layout text_occluded #el-17 "G" [at 17s]');
+  });
+  it("stops listing whole errors before the report cap and says how many it listed", async () => {
+    const findings = Array.from({ length: 200 }, (_, index) => ({
+      code: "text_occluded",
+      severity: "error",
+      time: index + 1,
+      selector: `#scene-${index + 1} > ${"div.card-with-a-long-class-name > ".repeat(3)}span`,
+      text: "Label",
+      message: "Text is hidden beneath an opaque element.",
+    }));
+    await setRuntime(
+      { ...runtimeReport, ok: false, layout: { samples: [0.5, 1], errorCount: 200, findings } },
+      { exitCode: 1 },
+    );
+    await render();
+    const found = details(await check(), "Runtime/layout/contrast (includes lint)");
+    const listed = Number(/Errors \((\d+) of 200 distinct problems listed\)/.exec(found)?.[1]);
+    expect(listed).toBeGreaterThan(15);
+    expect(listed).toBeLessThan(200);
+    expect(found.length).toBeLessThan(12_000);
+    const lines = found.split("\n").filter((line) => line.startsWith("- layout"));
+    expect(lines).toHaveLength(listed);
+    for (const line of lines) expect(line).toMatch(/\[at \d+s\]$/);
+  });
+  it("spot-checks only the rendered frames inside the windows and never counts as delivery", async () => {
+    await render();
+    const result = await check({ spot: true });
+    const calls = (await fs.readFile(path.join(root, "calls.jsonl"), "utf8")).trim().split("\n");
+    expect(calls).toHaveLength(1);
+    // The 24 fps fixture has 13 frames from 0 s to 0.5 s.
+    expect(JSON.parse(calls[0] ?? "null")).toEqual([
+      "check",
+      await fs.realpath(root),
+      "--json",
+      "--contrast",
+      "--at",
+      "0,0.042,0.083,0.125,0.167,0.208,0.25,0.292,0.333,0.375,0.417,0.458,0.5",
+    ]);
+    const report = summary(result);
+    expect(report.technical).toBe(false);
+    expect(report.checks.filter((item) => !item.ok)).toEqual([
+      { name: "Full-video source check", ok: false },
+    ]);
+    expect(details(result, "Full-video source check")).toContain(
+      "audited the 13 rendered frames inside the windows only",
+    );
+    if (typeof result === "string" || typeof result.content === "string")
+      throw new Error("Expected image content");
+    const text = result.content.find((part) => part.type === "text");
+    expect(JSON.parse(text?.type === "text" ? text.text : "{}")).toMatchObject({ scope: "spot" });
+  });
+  it("rejects spot windows over the frame budget before running any check", async () => {
+    await render();
+    const result = await check({ spot: true }, { spotMaxFrames: 12 });
+    expect(summary(result).technical).toBe(false);
+    expect(JSON.parse(typeof result === "string" ? result : "{}")).toMatchObject({
+      error: expect.stringContaining(
+        "Spot windows cover 13 rendered frames; keep them to at most 12",
+      ),
+    });
+    expect(await sourceCheckCalls()).toBe(0);
+  });
+  it("reuses a passing source check only while the project source is unchanged", async () => {
+    // The launcher and its call log live outside this project, as in a real install.
+    await fs.mkdir(path.join(root, "project"));
+    await fs.writeFile(path.join(root, "project", "index.html"), "<div>fixture</div>");
+    await render();
+    const tool = createMotionCheckTool(root, bundle);
+    const input = { project: "project" };
+    expect(summary(await check(input, {}, tool)).technical).toBe(true);
+    // A spot check neither reuses nor stands in for the full source check.
+    expect(summary(await check({ ...input, spot: true }, {}, tool)).technical).toBe(false);
+    expect(await sourceCheckCalls()).toBe(2);
+    const again = await check(input, {}, tool);
+    expect(summary(again).technical).toBe(true);
+    expect(details(again, "Runtime/layout/contrast (includes lint)")).toMatch(/^Reused: /);
+    expect(await sourceCheckCalls()).toBe(2);
+    await fs.writeFile(path.join(root, "project", "index.html"), "<div>edited</div>");
+    expect(summary(await check(input, {}, tool)).technical).toBe(true);
+    expect(await sourceCheckCalls()).toBe(3);
+  });
+  it("does not reuse a failing source check", async () => {
+    await fs.mkdir(path.join(root, "project"));
+    await fs.writeFile(path.join(root, "project", "index.html"), "<div>fixture</div>");
+    await setRuntime({ ...runtimeReport, ok: false }, { exitCode: 1 });
+    await render();
+    const tool = createMotionCheckTool(root, bundle);
+    expect(summary(await check({ project: "project" }, {}, tool)).technical).toBe(false);
+    expect(summary(await check({ project: "project" }, {}, tool)).technical).toBe(false);
+    expect(await sourceCheckCalls()).toBe(2);
   });
   it("fails a source check that runs out of time instead of passing its empty output", async () => {
     await setRuntime(runtimeReport, { hang: true });

@@ -81,7 +81,9 @@ images yourself against the `Concept` and `Language` in `frame.md`. That one too
 runs the technical checks; do not repeat them or ask another model to review
 them.
 
-Fix concrete defects, render and check the changed output. An unchanged export
-needs no repeated checking. Deliver the MP4, reveal it and state real limits.
+Fix concrete defects and render. For a targeted fix or small edit, spot-check
+the changed moments first (`spot: true`), then run one full check on the export
+you deliver. An unchanged export needs no repeated checking unless its hold plan
+changed. Deliver the MP4, reveal it and state real limits.
 Sampled frames are not full playback or audio listening; technical success is
 not proof of visual quality.

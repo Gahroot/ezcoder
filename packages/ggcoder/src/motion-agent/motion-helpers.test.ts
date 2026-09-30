@@ -239,6 +239,22 @@ describe("motion-check rendered-pixel gate", () => {
     expect(JSON.parse(result.stdout)).toHaveProperty("error");
   });
 
+  it("names a stale hold and where pixels actually freeze so the plan is fixed once", async () => {
+    const stale = { start: 1, end: 2.5, reason: "Read the premise" };
+    const kept = { start: 6, end: 10, reason: "Final payoff" };
+    const result = await analyze("lavfi.freezedetect.freeze_start=5.5\n" + progress, false, [
+      stale,
+      kept,
+    ]);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: false,
+      error: "Stale hold declaration: no detected freeze overlaps its window",
+      staleHolds: [stale],
+      freezes: [{ start: 5.5, end: 10, duration: 4.5 }],
+    });
+  });
+
   it("rejects stale hold declarations and incomplete analysis even with holds", async () => {
     const holds = [{ start: 7, end: 10, reason: "Read the final phrase" }];
     for (const text of [progress, "frame=80\nout_time_us=10000000\nprogress=continue\n"]) {
