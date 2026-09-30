@@ -43,10 +43,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@babel/parser": "^7.29.0",
+    "@babel/parser": "^7.29.9",
     "@babel/types": "^7.29.0",
-    "magicast": "^0.5.2",
-    "recast": "^0.23.11"
+    "magicast": "^0.5.5",
+    "recast": "^0.24.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
