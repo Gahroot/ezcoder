@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.66.2
+
+### Patch Changes
+
+- Sub-agents that reach their time limit now answer from what they gathered instead of coming back empty. The independent Ideal reviewer gets its own 2-minute turn limit followed by the tool-free recovery turn, rather than being killed by the parent's wait with no verdict, and the recovery turn is capped at the plan-mode effort ceiling, since at full effort it could spend its 60 seconds thinking and return nothing. `motion_check` adds a `spot: true` mode that runs the layout audit on only the rendered frames inside the given windows (at most 240) and never counts as delivery verification, reuses a passing source audit while the project source is unchanged, lists every distinct error that fits the report instead of only the first 15, and names stale holds alongside the freezes it detected so a hold plan is fixed in one step.
+  - @kenkaiiii/gg-ai@5.66.2
+  - @kenkaiiii/gg-agent@5.66.2
+  - @kenkaiiii/gg-core@5.66.2
+
 ## 5.66.1
 
 ### Patch Changes
