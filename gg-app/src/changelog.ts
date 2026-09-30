@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.73.3",
+    date: "2026-09-30",
+    items: [
+      "No more mystery freezes. A command like `npm run dev &` could leave the AI stuck waiting for a full `2 minutes`, and now it's back in about a second. With the sandbox switched on, the Stop button now truly stops a command too.",
+      "Your big files are safe with the AI. If it has only read the first `2,000 lines` of a huge file, I now stop it from rewriting the whole thing and quietly losing the lines it never saw. It has to read the rest first, every single time.",
+      "Your passwords stay private. Some database links, like the ones `Redis` uses, could sneak a password right past my secret filter. I sealed those gaps, so your passwords never reach the AI or land in your saved chats.",
+      "Signed in with `ChatGPT`? Long answers no longer stop mid-sentence and pretend they're finished. GG Coder now picks right back up when a reply gets cut off, and a dropped connection simply retries instead of running a half-written command.",
+      "Opening someone else's project is safer than ever. Sneaky repos can hide instructions in invisible text inside files like `AGENTS.md`, and I now scrub it out before the AI reads a word. I also gave the optional `sandbox` the latest security upgrades.",
+    ],
+  },
+  {
     version: "0.73.2",
     date: "2026-09-30",
     items: [
