@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.28.1
+
+### Patch Changes
+
+- Sync upstream fixes: worktree cleanup outside the managed folder, `.ezcoder` commands carried into worktrees, Windows npm launch, URL password redaction, and Codex provider fixes
+  - @prestyj/ai@5.28.1
+  - @prestyj/agent@5.28.1
+  - @prestyj/core@5.28.1
+
 ## 5.28.0
 
 ### Minor Changes
