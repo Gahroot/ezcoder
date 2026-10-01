@@ -19,7 +19,7 @@ import { makeCritterFx, SIZE } from "./critter-fx";
 import { makeCritterIdle } from "./critter-idle";
 import { makeCritterScare } from "./critter-scare";
 import { makeCritterSocial } from "./critter-social";
-import { pickCritter, renderCritterFrame } from "./critter-sprites";
+import { CRITTERS, pickCritter, renderCritterFrame } from "./critter-sprites";
 import type { CritterDef, CritterMove } from "./critter-sprites";
 import { toolKindOf } from "./critter-tool-kind";
 import { PRIO } from "./critter-types";
@@ -46,6 +46,8 @@ export interface FloorAgent {
   readonly key: string;
   /** Named agent type (e.g. "researcher"); picks the matching critter. */
   readonly agentName: string | undefined;
+  /** Pin a specific critter (the home screen's roster); wins over agentName. */
+  readonly critterId?: string;
   /** What the tooltip calls it. */
   readonly label: string;
   readonly status: FloorAgentStatus;
@@ -60,6 +62,25 @@ export interface FloorAgent {
 export interface CritterFloorOptions {
   /** Honour prefers-reduced-motion: no wandering, beams or jumps; fades only. */
   readonly reducedMotion: boolean;
+  /**
+   * A showcase floor with no real agents behind it (the home screen): critters
+   * never stop to "think" between tools, and the hover card shows just the
+   * name instead of agent stats.
+   */
+  readonly ambient?: boolean;
+  /** Called each time the lane opens from closed (the chat rolls a new terrain). */
+  readonly onLaneOpen?: () => void;
+  /**
+   * How long after the lane starts opening the first critter lands. Floors
+   * with a terrain wait for the ground to rise first. Defaults to the lane's
+   * own open time.
+   */
+  readonly landAfterMs?: number;
+  /**
+   * How long the lane stays open ("closing") after the last critter leaves.
+   * Floors with a terrain need longer, to pack the scenery away in order.
+   */
+  readonly closeAfterMs?: number;
   /** Injected for tests; defaults to Math.random. */
   readonly random?: () => number;
 }
@@ -182,6 +203,7 @@ export function createCritterFloor(
 ): CritterFloorController {
   const random = options.random ?? Math.random;
   const reduced = options.reducedMotion;
+  const ambient = options.ambient === true;
   const rand = (a: number, b: number): number => a + random() * (b - a);
   const now = (): number => performance.now();
 
@@ -251,21 +273,28 @@ export function createCritterFloor(
   resizeObserver?.observe(lane);
 
   // ── Lane: open while anyone is out (or about to be), collapse after ──
+  // While the last critter has gone and the collapse is pending the lane is
+  // "closing" (still open), so its terrain can sink before the lane shuts.
   function openLane(): number {
     if (collapseTimer) {
       cancelLater(collapseTimer);
       collapseTimer = 0;
     }
+    lane.classList.remove("closing");
     if (!lane.classList.contains("open")) {
       lane.classList.add("open");
-      laneReadyAt = now() + (reduced ? 0 : LANE_OPEN_MS);
+      laneReadyAt = now() + (reduced ? 0 : (options.landAfterMs ?? LANE_OPEN_MS));
+      options.onLaneOpen?.();
     }
     return Math.max(0, laneReadyAt - now());
   }
   function maybeCollapseLane(): void {
     if (critters.size > 0 || pending.size > 0 || collapseTimer) return;
-    collapseTimer = later(COLLAPSE_DELAY_MS, () => {
+    if (lane.classList.contains("open")) lane.classList.add("closing");
+    const delay = reduced ? COLLAPSE_DELAY_MS : (options.closeAfterMs ?? COLLAPSE_DELAY_MS);
+    collapseTimer = later(delay, () => {
       collapseTimer = 0;
+      lane.classList.remove("closing");
       if (critters.size === 0 && pending.size === 0) lane.classList.remove("open");
     });
   }
@@ -578,6 +607,7 @@ export function createCritterFloor(
 
   /** Long quiet stretch between tools: stop and think for a bit. */
   function maybeThink(c: Critter, t: number): boolean {
+    if (ambient) return false;
     if (c.pendingJob || t - c.lastActivityAt < THINK_AFTER_MS || t - c.lastThinkAt < THINK_GAP_MS) {
       return false;
     }
@@ -699,7 +729,8 @@ export function createCritterFloor(
   // ── Summon in / teleport out / fall over ──
   function create(agent: FloorAgent): void {
     const taken = new Set([...critters.values()].map((c) => c.def.id));
-    const def = pickCritter(agent.agentName, agent.key, taken);
+    const pinned = CRITTERS.find((critter) => critter.id === agent.critterId);
+    const def = pinned ?? pickCritter(agent.agentName, agent.key, taken);
     const set = spritesFor(def);
     const root = el("div", "critter summoning");
     root.style.setProperty("--critter-color", def.palette.B ?? "#ffffff");
@@ -1041,6 +1072,10 @@ export function createCritterFloor(
     label.textContent = c.agent.label;
     head.append(swatch, label);
     const lines: HTMLElement[] = [head];
+    if (ambient) {
+      tooltip.replaceChildren(...lines);
+      return;
+    }
     const status = el("div", "critter-tooltip-dim");
     status.textContent = `${c.def.name} \u00b7 ${tooltipStatus(c.agent, now() - c.startedAt)}`;
     lines.push(status);
@@ -1157,7 +1192,7 @@ export function createCritterFloor(
     pending.clear();
     floor.remove();
     tooltip.remove();
-    lane.classList.remove("open");
+    lane.classList.remove("open", "closing");
   }
 
   return { sync, destroy };

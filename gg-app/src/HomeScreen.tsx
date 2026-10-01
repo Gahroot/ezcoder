@@ -10,6 +10,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { AsciiLogo } from "./AsciiLogo";
 import { HomeDither } from "./HomeDither";
+import { HomeCritters } from "./HomeCritters";
 import { useHomeBackgroundEnabled } from "./home-background";
 import type { SettingsTabId } from "./SettingsScreen";
 import {
@@ -189,6 +190,9 @@ export function HomeScreen({
       >
         <GearSixIcon size={20} weight="bold" aria-hidden="true" />
       </button>
+      {/* Along the bottom edge: every critter, out playing. The links and the
+        version corner sit just above their lane. */}
+      <HomeCritters />
       {/* Bottom centre: your links. */}
       <div className="home-byline home-links">
         By Ken Kai
