@@ -107,6 +107,7 @@ import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
 import { KenPowerBanner } from "./KenPowerBanner";
+import { KenFace } from "./KenFace";
 import { ExportChatButton } from "./ExportChatButton";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { McpElicitModal } from "./McpElicitModal";
@@ -415,6 +416,10 @@ function App(): React.ReactElement {
     kenThinkingAccumMs,
     handleKenEvent,
   } = useKenMentor({ setItems, nextId });
+  // Ken's face talks on the reply he is streaming right now: the last row,
+  // while his run is live. Only that row's props change, so memo holds.
+  const lastItem = items[items.length - 1];
+  const talkingKenId = kenRunning && lastItem?.kind === "ken" ? lastItem.id : null;
   // Autopilot Ken (auto-reviewer): consumes the `autopilot_*` event family into
   // compact transcript markers + a "Ken reviewing…" flag. Separate hook, same
   // shared setItems/nextId pattern as useKenMentor.
@@ -2801,6 +2806,7 @@ function App(): React.ReactElement {
                     key={it.id}
                     item={it}
                     animateIn={it.id >= liveFromId}
+                    kenTalking={it.id === talkingKenId}
                     onContentGrow={maybeScrollToBottom}
                     onAskAnswer={answerAsk}
                     onAskType={typeAskInstead}
@@ -3346,6 +3352,7 @@ function StreamingMarkdown({
 const TranscriptRow = memo(function TranscriptRow({
   item,
   animateIn = false,
+  kenTalking = false,
   onContentGrow,
   onAskAnswer,
   onAskType,
@@ -3353,6 +3360,8 @@ const TranscriptRow = memo(function TranscriptRow({
   item: Item;
   /** Arrived live (not restored from history): rise into place once. */
   animateIn?: boolean;
+  /** This is the Ken reply currently streaming in, so his face talks. */
+  kenTalking?: boolean;
   onContentGrow?: () => void;
   onAskAnswer?: (
     itemId: number,
@@ -3364,6 +3373,7 @@ const TranscriptRow = memo(function TranscriptRow({
   const row = (
     <TranscriptRowBody
       item={item}
+      kenTalking={kenTalking}
       onContentGrow={onContentGrow}
       onAskAnswer={onAskAnswer}
       onAskType={onAskType}
@@ -3382,11 +3392,14 @@ const TranscriptRow = memo(function TranscriptRow({
 
 function TranscriptRowBody({
   item,
+  kenTalking = false,
   onContentGrow,
   onAskAnswer,
   onAskType,
 }: {
   item: Item;
+  /** This is the Ken reply currently streaming in, so his face talks. */
+  kenTalking?: boolean;
   onContentGrow?: () => void;
   /** Record answers for an `ask_user` band (App settles the tool call). */
   onAskAnswer?: (
@@ -3500,14 +3513,14 @@ function TranscriptRowBody({
       );
     }
     case "ken":
-      // Ken Kai's reply: the whole bubble is tinted in Ken's color (dot + all
-      // text), which is the ONLY differentiator from a normal GG Coder reply.
-      // No badge, no byline. The Markdown component special-cases ```prompt
-      // fences into a "Send to GG Coder" button.
+      // Ken Kai's reply: led by his little pixel face (it talks while the reply
+      // streams in) instead of the dot, framed by a teal rule. No badge, no
+      // byline. The Markdown component special-cases ```prompt fences into a
+      // "Send to GG Coder" button.
       return (
         <div className="assistant-msg ken-msg">
-          <span className="assistant-dot" style={{ color: theme.ken }}>
-            {DOT}
+          <span className="assistant-dot ken-face-slot">
+            <KenFace mood="chat" talking={kenTalking} />
           </span>
           <div className="assistant-text">
             <StreamingMarkdown text={item.text} onGrow={onContentGrow} />
@@ -3515,8 +3528,8 @@ function TranscriptRowBody({
         </div>
       );
     case "autopilot": {
-      // Autopilot Ken's verdict, rendered like a normal @Ken reply (Ken-tinted
-      // dot + text) rather than its own marker style. The text is his verdict as
+      // Autopilot Ken's verdict, rendered like a normal @Ken reply (his face +
+      // teal-framed text) rather than its own marker style. The text is his verdict as
       // prose: for a PROMPT he shows what he sent GG Coder back to do; the
       // terminal verdicts read as short Ken one-liners. `done` rotates through
       // several casual Ken lines (picked deterministically off the item's
@@ -3540,8 +3553,8 @@ function TranscriptRowBody({
       };
       return (
         <div className="assistant-msg ken-msg">
-          <span className="assistant-dot" style={{ color: theme.ken }}>
-            {DOT}
+          <span className="assistant-dot ken-face-slot">
+            <KenFace mood="chat" />
           </span>
           <div className="assistant-text">
             <Markdown>{copy[item.phase]}</Markdown>

@@ -1186,7 +1186,15 @@ select {
   text-shadow: 0 0 12px rgba(77, 157, 255, 0.35);
   white-space: pre;
   text-align: center;
+  /* Ken's face (KenFace mood on/off) leads the words. */
+  display: flex;
+  align-items: center;
+  gap: 12px;
   animation: ken-power-flash 1150ms var(--ease-out) both;
+}
+.ken-power-banner .ken-face {
+  width: 28px;
+  height: 28px;
 }
 /* Scale-and-fade "power flash": pops in slightly undersized (like the zoom
    HUD), rests at full size while held, then grows a touch further as it
@@ -4074,6 +4082,188 @@ select {
 .ken-msg .assistant-text .markdown a {
   color: var(--ken);
   text-decoration-color: color-mix(in srgb, var(--ken) 50%, transparent);
+}
+
+/* ── Ken's face (ken-face.ts, KenFace.tsx) ──
+   A 14×14 pixel portrait. Each expression is its own image stacked on the
+   first; the upper layers sit hidden and keyframes flick them on, so blinking,
+   talking and the banner's wake-up / nod-off are pure CSS. */
+.ken-face {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  transform-origin: 50% 100%;
+}
+.ken-face-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  user-select: none;
+}
+.ken-face-layer + .ken-face-layer {
+  opacity: 0;
+}
+/* In the reply gutter: one cell per CSS px, centred on the first text line
+   (assistant text is 15px at line-height 1.55), where the dot used to sit. */
+.ken-face-slot {
+  display: inline-flex;
+  align-items: center;
+  height: calc(15px * 1.55);
+}
+.ken-face-chat .ken-face-blink {
+  animation: ken-face-blink 4.6s steps(1, end) infinite;
+}
+.ken-face-chat .ken-face-talk {
+  animation: ken-face-flap 0.34s steps(1, end) infinite;
+}
+.ken-face-chat.ken-face-talking {
+  animation: ken-face-chatter 0.68s var(--ease-in-out) infinite;
+}
+@keyframes ken-face-blink {
+  0% {
+    opacity: 0;
+  }
+  94% {
+    opacity: 1;
+  }
+  97% {
+    opacity: 0;
+  }
+}
+@keyframes ken-face-flap {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes ken-face-chatter {
+  0%,
+  100% {
+    transform: none;
+  }
+  50% {
+    transform: translateY(-1px);
+  }
+}
+/* "Ken is on.": eyes shut, then they pop open happy and he hops. Timed
+   against the banner's 1150ms flash (it is fully in by 16%). */
+.ken-face-on {
+  animation: ken-face-hop 1150ms var(--ease-out) both;
+}
+.ken-face-on .ken-face-happy {
+  animation: ken-face-wake 1150ms steps(1, end) both;
+}
+@keyframes ken-face-wake {
+  0% {
+    opacity: 0;
+  }
+  30%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes ken-face-hop {
+  0%,
+  30% {
+    transform: none;
+  }
+  40% {
+    transform: translateY(-5px) scale(0.94, 1.06);
+  }
+  52% {
+    transform: none;
+  }
+  58% {
+    transform: translateY(-2px);
+  }
+  64%,
+  100% {
+    transform: none;
+  }
+}
+/* "Ken is off.": a drowsy blink, eyes shut, he sinks and tilts, a "z" rises. */
+.ken-face-off {
+  animation: ken-face-sink 1150ms var(--ease-in-out) both;
+}
+.ken-face-off .ken-face-sleepy {
+  animation: ken-face-doze 1150ms steps(1, end) both;
+}
+.ken-face-z {
+  position: absolute;
+  top: -8px;
+  right: -9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ken);
+  text-shadow: none;
+  opacity: 0;
+  animation: ken-face-z 1150ms var(--ease-out) both;
+}
+@keyframes ken-face-doze {
+  0% {
+    opacity: 0;
+  }
+  22% {
+    opacity: 1;
+  }
+  30% {
+    opacity: 0;
+  }
+  40%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes ken-face-sink {
+  0%,
+  40% {
+    transform: none;
+  }
+  70%,
+  100% {
+    transform: translateY(3px) rotate(-8deg);
+  }
+}
+@keyframes ken-face-z {
+  0%,
+  45% {
+    opacity: 0;
+    transform: translate(0, 4px) scale(0.7);
+  }
+  60% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 0.9;
+    transform: translate(6px, -8px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(7px, -10px) scale(1);
+  }
+}
+/* Reduced motion: no blinking, talking or hopping; the banner just shows
+   where each beat ends (awake and happy, or asleep). */
+@media (prefers-reduced-motion: reduce) {
+  .ken-face,
+  .ken-face.ken-face-talking,
+  .ken-face .ken-face-layer,
+  .ken-face .ken-face-z {
+    animation: none;
+  }
+  .ken-face-on .ken-face-happy,
+  .ken-face-off .ken-face-sleepy {
+    opacity: 1;
+  }
 }
 /* Ken's activity bar reuses the GG Coder ActivityBar's running statusrow as-is
    (same top border, padding, spinner, layout, meta readout) so it's the same
