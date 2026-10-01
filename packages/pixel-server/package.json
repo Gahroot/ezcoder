@@ -16,7 +16,7 @@
     "hono": "^4.6.13"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241218.0",
+    "@cloudflare/workers-types": "^5.20260911.1",
     "@types/better-sqlite3": "^7.6.12",
     "better-sqlite3": "^12.10.0",
     "typescript": "^6.0.3",
