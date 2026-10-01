@@ -17,6 +17,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.75.1",
+    date: "2026-10-01",
+    items: [
+      "Worktrees got a lot more dependable. I fixed cleanup so a leftover `worktree` outside the managed folder gets removed properly, and I made sure your own `.ezcoder` commands come along into every new one.",
+      "Windows users, I fixed the launch so `npm` starts cleanly every time. No more setup scripts tripping on the first step.",
+    ],
+  },
+  {
     version: "0.75.0",
     date: "2026-09-29",
     items: [
