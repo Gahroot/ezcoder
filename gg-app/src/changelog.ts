@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.76.0",
+    date: "2026-10-02",
+    items: [
+      "Your laptop won't nap halfway through a big job anymore. A new `Keep computer awake` switch in Settings, under `Power`, keeps it working while the agent runs. Your screen can still turn off, and it's on by default.",
+      "A question you missed won't freeze the agent anymore. If you haven't answered after `10 minutes`, or `2 minutes` on `Autopilot`, it carries on with its best guess. The question stays on screen, and if you answer later, your answer still gets sent.",
+      "I added a safety net around risky commands. The agent now refuses to run git commands that would wipe your uncommitted work, scripts piped straight from the internet into your shell, and packages with lookalike names or known malware.",
+      "Replies start faster and long plans cost less. When you start typing, I get Claude's memory ready before you hit send, and on multi-step plans the agent tidies up its context after each finished step.",
+      "Set the agent's habits with your own `rules`. Drop a short markdown file into `.gg/rules` and the agent gets a reminder whenever its output breaks that rule, like adding a stray `console.log`.",
+    ],
+  },
+  {
     version: "0.75.0",
     date: "2026-10-02",
     items: [
