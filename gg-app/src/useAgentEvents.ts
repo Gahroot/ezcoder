@@ -13,7 +13,7 @@ import {
   type QueuedMessage,
   type SlashCommand,
 } from "./agent";
-import { isAskUserPrompt } from "./ask-user";
+import { closeAsks, isAskUserPrompt, markAskDeferred } from "./ask-user";
 import { formatTokenCount } from "./ActivityBar";
 import { type LiveToolEntry, LIVE_TOOL_PANEL_ROWS } from "./LiveToolPanel";
 import { type SubAgentLine } from "./SubAgentFeed";
@@ -809,6 +809,19 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           }
           break;
         }
+        case "stream_rule_triggered": {
+          // The aborted attempt is discarded by the loop (its retry is silent, so
+          // nothing else rolls it back here): drop its partial text too.
+          discardStreamingDraft();
+          const names = Array.isArray(d.rules) ? d.rules.map(String) : [];
+          const name = names.join(", ") || "stream rule";
+          pushItem({
+            kind: "info",
+            id: nextId(),
+            text: `Rule "${name}" caught the reply mid-stream — retrying`,
+          });
+          break;
+        }
         case "compaction_start": {
           const id = nextId();
           compactionIdRef.current = id;
@@ -990,6 +1003,21 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           // malformed frame is dropped rather than rendered as an empty band
           // the user could never answer.
           if (isAskUserPrompt(d)) pushItem({ kind: "ask", id: nextId(), prompt: d });
+          break;
+        case "ask_user_deferred":
+          // Soft deadline passed: the agent continued on its best guess, but the
+          // band stays answerable — a later answer is sent to it as a message.
+          if (typeof d.id === "string") {
+            const promptId = d.id;
+            setItems((prev) => markAskDeferred(prev, promptId));
+          }
+          break;
+        case "ask_user_closed":
+          // A newer question or a new session superseded deferred questions.
+          if (Array.isArray(d.ids)) {
+            const ids = d.ids.filter((id): id is string => typeof id === "string");
+            setItems((prev) => closeAsks(prev, ids));
+          }
           break;
         case "plan_progress": {
           // The sidecar reads the live approved-plan file, so this snapshot

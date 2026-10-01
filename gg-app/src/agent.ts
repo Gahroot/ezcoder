@@ -373,6 +373,24 @@ export async function getProgress(): Promise<ProgressSnapshot> {
   return invoke<ProgressSnapshot>("agent_progress");
 }
 
+/** The proxy forwards sidecar error bodies (`{ error }`) as values; surface them. */
+function keepAwakeEnabled(result: { enabled?: unknown; error?: unknown }): boolean {
+  if (typeof result.enabled === "boolean") return result.enabled;
+  throw new Error(typeof result.error === "string" ? result.error : "keep-awake request failed");
+}
+
+/** Whether the app keeps the computer from idle-sleeping while the agent works. */
+export async function getKeepAwake(): Promise<boolean> {
+  await waitForReady();
+  return keepAwakeEnabled(await invoke<{ enabled?: unknown }>("agent_keep_awake_get"));
+}
+
+/** Turn keep-awake on/off. Saved to ~/.gg/settings.json and applied live. */
+export async function setKeepAwake(enabled: boolean): Promise<boolean> {
+  await waitForReady();
+  return keepAwakeEnabled(await invoke<{ enabled?: unknown }>("agent_keep_awake_set", { enabled }));
+}
+
 export type SubscriptionUsageProvider = "anthropic" | "openai" | "moonshot";
 
 export interface SubscriptionUsageWindow {
@@ -542,6 +560,9 @@ export async function readDroppedFileAttachment(path: string): Promise<Attachmen
 export interface PromptMeta {
   kenSent?: boolean;
   enhancements?: PromptSegment[];
+  /** Fired by a `/schedule` timer, not typed — the sidecar uses the short
+   *  unattended ask_user deadline for this run. */
+  scheduled?: boolean;
 }
 
 export async function sendPrompt(
@@ -1056,6 +1077,16 @@ export async function importTranscript(
   } catch (e) {
     await logError(`agent_import_transcript failed: ${String(e)}`);
     return { ok: false, error: String(e) };
+  }
+}
+
+/** Best-effort Anthropic prompt-cache prewarm before the user's next turn.
+ *  Fire-and-forget; the sidecar gates on provider, history size and cache TTL. */
+export async function prewarmCache(): Promise<void> {
+  try {
+    await invoke("agent_prewarm");
+  } catch (e) {
+    await logError(`agent_prewarm failed: ${String(e)}`);
   }
 }
 

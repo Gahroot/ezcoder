@@ -16,6 +16,7 @@ import {
   cancel,
   newSession,
   cycleThinking,
+  prewarmCache,
   listModels,
   switchModel,
   isSwitchModelError,
@@ -302,6 +303,8 @@ export type Item =
       /** The complete set reached the blocked tool call. */
       sent?: boolean;
       cancelled?: boolean;
+      /** Soft deadline passed: the agent went on; an answer is still delivered late. */
+      deferred?: boolean;
     }
   // A task kicked off from the Tasks modal (shown at the top of its session).
   | { kind: "task"; id: number; title: string }
@@ -478,6 +481,9 @@ function App(): React.ReactElement {
   // once its slide-out animation finishes.
   const [kenPowerBanner, setKenPowerBanner] = useState<"on" | "off" | null>(null);
   const [running, setRunning] = useState(false);
+  // Last composer keystroke (0 = none since this chat opened). The first
+  // keystroke after opening or a >4 min idle pause prewarms the prompt cache.
+  const lastKeystrokeAtRef = useRef(0);
   // Whether a run has completed in this window. Drives the ambient glow's
   // "done" state, which PERSISTS until the next run starts — the window really
   // is finished until you ask for something else (see window-glow.ts).
@@ -552,7 +558,7 @@ function App(): React.ReactElement {
     onFire: useCallback((prompt: string) => {
       // keepInput: the user did not press Enter for this — leave whatever they
       // are typing untouched.
-      submitTextRef.current(prompt, undefined, { keepInput: true });
+      submitTextRef.current(prompt, undefined, { keepInput: true, scheduled: true });
     }, []),
   });
   // `@`-mention file picker state. `mention` is the active token being typed
@@ -1886,7 +1892,11 @@ function App(): React.ReactElement {
   // `keepInput` is for sends the user did not initiate right now — a scheduled
   // prompt firing on its interval. Those must NOT clear the composer, or a
   // schedule that comes due mid-sentence deletes what the user was typing.
-  function submitText(text: string, label?: string, opts?: { keepInput?: boolean }): void {
+  function submitText(
+    text: string,
+    label?: string,
+    opts?: { keepInput?: boolean; scheduled?: boolean },
+  ): void {
     const trimmed = text.trim();
     // Mid-run this QUEUES as steering, exactly like a typed message (see
     // submit()): the sidecar injects it into the running loop. Dropping it
@@ -1917,7 +1927,9 @@ function App(): React.ReactElement {
       setSlashIndex(0);
     }
     if (disposition !== "queue") endStreamingText();
-    void sendPrompt(trimmed);
+    // `scheduled` tells the sidecar nobody is watching this run, so an
+    // ask_user in it gets the short (autopilot) deadline.
+    void sendPrompt(trimmed, [], opts?.scheduled ? { scheduled: true } : undefined);
   }
 
   // Scheduled prompts fire from a ticker that is set up once, so it can't close
@@ -2961,6 +2973,11 @@ function App(): React.ReactElement {
                 }
               }}
               onChange={(e) => {
+                const now = Date.now();
+                if (!running && now - lastKeystrokeAtRef.current > 4 * 60_000) {
+                  void prewarmCache();
+                }
+                lastKeystrokeAtRef.current = now;
                 setInput(e.target.value);
                 setSlashIndex(0);
                 setCaret(e.target.selectionStart ?? e.target.value.length);
@@ -3663,6 +3680,7 @@ function TranscriptRowBody({
           answers={item.answers}
           sent={item.sent}
           cancelled={item.cancelled}
+          deferred={item.deferred}
           onAnswer={(delta) => onAskAnswer?.(item.id, item.prompt.id, delta)}
           onTypeInstead={(questionId, seed) =>
             onAskType?.(item.id, item.prompt.id, questionId, seed)

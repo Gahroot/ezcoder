@@ -9154,6 +9154,20 @@ select {
      was genuinely hard to read. */
   color: var(--text-secondary);
 }
+/* "Agent continued with its best guess": a note about the run, not part of the
+   question, so it is smaller and ruled off from it. `width: 0; min-width: 100%`
+   keeps it out of the band's fit-content sizing — it wraps to the width the
+   question and options set instead of stretching the card. */
+.ask-deferred-note {
+  width: 0;
+  min-width: 100%;
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
 .ask-subq-num {
   margin-right: 7px;
   font-family: var(--sans);

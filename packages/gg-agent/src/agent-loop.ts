@@ -33,6 +33,11 @@ import {
   parseOutputTokenCeiling,
   rememberOutputCeiling,
 } from "./output-ceiling.js";
+import {
+  StreamRuleMonitor,
+  buildStreamRuleReminder,
+  type StreamRuleMatch,
+} from "./stream-rules.js";
 
 const DEFAULT_MAX_TURNS = 300;
 /** Per-tool cancellation ceiling; a tool may raise it via `timeoutMs`. */
@@ -595,6 +600,12 @@ export async function* agentLoop(
   let runawayToolcallRetries = 0;
   let overflowCompactionAttempts = 0;
   let toolResultTruncationAttempted = false;
+  // Stream rules: per-run state (once-per-rule + global retry cap). Null when
+  // the host configured none, so the hot path costs one null check per delta.
+  const streamRuleMonitor =
+    options.streamRules && options.streamRules.rules.length > 0
+      ? new StreamRuleMonitor(options.streamRules)
+      : null;
   const invalidToolArgumentCounts = new Map<string, number>();
   // A recoverable tool-argument fatal (empty args -- a provider stream
   // glitch, see executeSingleToolCall) gets exactly one bounded auto-continue
@@ -746,16 +757,7 @@ export async function* agentLoop(
       // first-event watchdog with prompt size. The char-counting loop is O(n)
       // over the full message history and runs every turn — cheap (a
       // sub-millisecond scan of a few hundred KB) even uncondensed.
-      let msgChars = 0;
-      for (const m of messages) {
-        if (typeof m.content === "string") msgChars += m.content.length;
-        else if (Array.isArray(m.content)) {
-          for (const p of m.content) {
-            if ("text" in p && typeof p.text === "string") msgChars += p.text.length;
-            if ("content" in p && typeof p.content === "string") msgChars += p.content.length;
-          }
-        }
-      }
+      const msgChars = countMessageChars(messages);
       // Scale the first-event watchdog on the plain remote path: prefill time
       // grows linearly with prompt tokens (~3-5K tok/s observed), so a large
       // prompt legitimately needs longer than 45s to reach its first event.
@@ -850,6 +852,11 @@ export async function* agentLoop(
       // Text streamed this attempt — preserved across transport-failure retries
       // instead of being discarded and re-billed (see the retry branch below).
       let attemptText = "";
+      // Stream-rule hit for this attempt (set right before aborting the stream)
+      // plus thinking volume, which only feeds the aborted attempt's usage estimate.
+      let streamRuleHit: StreamRuleMatch | null = null;
+      let attemptThinkingChars = 0;
+      streamRuleMonitor?.beginAttempt();
       // Track consumer processing time — helps distinguish "API stopped sending"
       // from "our consumer was slow to pull the next event"
       let lastYieldEndTime = Date.now();
@@ -1101,8 +1108,16 @@ export async function* agentLoop(
           }
           if (event.type === "text_delta") {
             attemptText += event.text;
+            // A matching delta is never yielded: abort through the per-attempt
+            // controller (not the caller's signal) and retry below.
+            streamRuleHit = streamRuleMonitor?.checkText(event.text) ?? null;
+            if (streamRuleHit) {
+              streamController.abort();
+              break;
+            }
             yield { type: "text_delta" as const, text: event.text };
           } else if (event.type === "thinking_delta") {
+            attemptThinkingChars += event.text.length;
             yield { type: "thinking_delta" as const, text: event.text };
           } else if (event.type === "server_toolcall") {
             yield {
@@ -1122,6 +1137,15 @@ export async function* agentLoop(
             const chunkChars = event.argsJson?.length ?? 0;
             toolcallDeltaChars += chunkChars;
             toolcallDeltaCount++;
+            // The tool call is still partial here — it only reaches the
+            // assistant message (and execution) via result.response, which a
+            // rule hit never awaits.
+            streamRuleHit =
+              streamRuleMonitor?.checkToolArgs(event.id, event.name, event.argsJson ?? "") ?? null;
+            if (streamRuleHit) {
+              streamController.abort();
+              break;
+            }
             if (
               !runawayDetected &&
               (toolcallDeltaChars > MAX_TOOLCALL_DELTA_CHARS ||
@@ -1148,6 +1172,71 @@ export async function* agentLoop(
           // Re-arm the idle timer only now that we're done yielding -- the
           // countdown to the next event excludes the render time above.
           resetIdleTimer();
+        }
+
+        if (streamRuleHit && streamRuleMonitor) {
+          const attempt = streamRuleMonitor.recordTrigger(streamRuleHit.rules);
+          const ruleNames = streamRuleHit.rules.map((rule) => rule.name);
+          // Providers report no usage for an aborted stream, but the prompt and
+          // the streamed output were billed. The previous request's reported
+          // prompt (system + tools + history, as the provider counted it) was
+          // re-sent as a cached prefix; only messages added since are new.
+          // Without a prior request, fall back to ~4 chars/token of history.
+          const priorPrompt = latestProviderUsage
+            ? latestProviderUsage.inputTokens +
+              (latestProviderUsage.cacheRead ?? 0) +
+              (latestProviderUsage.cacheWrite ?? 0)
+            : 0;
+          const newChars =
+            priorPrompt > 0 && usageAnchorIndex !== undefined
+              ? countMessageChars(messages.slice(usageAnchorIndex + 1))
+              : msgChars;
+          const abortedUsage: Usage = {
+            inputTokens: Math.ceil(newChars / 4),
+            outputTokens: Math.ceil(
+              (attemptText.length + attemptThinkingChars + toolcallDeltaChars) / 4,
+            ),
+            ...(priorPrompt > 0 ? { cacheRead: priorPrompt } : {}),
+          };
+          totalUsage.inputTokens += abortedUsage.inputTokens;
+          totalUsage.outputTokens += abortedUsage.outputTokens;
+          if (abortedUsage.cacheRead) {
+            totalUsage.cacheRead = (totalUsage.cacheRead ?? 0) + abortedUsage.cacheRead;
+          }
+          diag("stream_rule_triggered", {
+            rules: ruleNames.join(","),
+            source: streamRuleHit.source,
+            toolName: streamRuleHit.toolName,
+            attempt,
+            maxAttempts: streamRuleMonitor.maxRetries,
+            discardedChars: attemptText.length + toolcallDeltaChars,
+            provider: options.provider,
+            model: options.model,
+          });
+          // The partial assistant message is discarded: nothing was pushed to
+          // `messages`, so only the reminder lands before the replay.
+          messages.push(buildStreamRuleReminder(streamRuleHit.rules));
+          yield {
+            type: "stream_rule_triggered" as const,
+            rules: ruleNames,
+            source: streamRuleHit.source,
+            ...(streamRuleHit.toolName !== undefined ? { toolName: streamRuleHit.toolName } : {}),
+            attempt,
+            maxAttempts: streamRuleMonitor.maxRetries,
+            usage: abortedUsage,
+          };
+          // Silent retry: hosts roll back the streamed partial exactly as for
+          // any other replayed attempt.
+          yield {
+            type: "retry" as const,
+            reason: "stream_rule" as const,
+            attempt,
+            maxAttempts: streamRuleMonitor.maxRetries,
+            delayMs: 0,
+            silent: true,
+          };
+          turn--; // The discarded attempt does not consume a turn.
+          continue;
         }
 
         diag("stream_done", {
@@ -2588,7 +2677,22 @@ function sanitizeOrphanedServerTools(messages: Message[]): void {
  *
  * Repairs in-place by inserting synthetic tool_result messages where needed.
  */
-function repairToolPairingAdjacent(messages: Message[]): void {
+/** Text characters across messages (string content, text parts, string results). */
+function countMessageChars(messages: readonly Message[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    if (typeof m.content === "string") chars += m.content.length;
+    else if (Array.isArray(m.content)) {
+      for (const p of m.content) {
+        if ("text" in p && typeof p.text === "string") chars += p.text.length;
+        if ("content" in p && typeof p.content === "string") chars += p.content.length;
+      }
+    }
+  }
+  return chars;
+}
+
+export function repairToolPairingAdjacent(messages: Message[]): void {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i]!;
     if (msg.role !== "assistant") continue;
