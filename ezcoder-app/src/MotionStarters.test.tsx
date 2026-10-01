@@ -9,17 +9,23 @@ afterEach(() => {
 });
 
 describe("MotionStarters", () => {
-  it("offers the available recipe and narrow edits without promising missing styles", () => {
+  it("offers plain, one-line from-scratch video ideas the user finishes in their own words", () => {
     expect(MOTION_STARTERS.map(({ label }) => label)).toEqual([
-      "Make a split-text opener",
-      "Edit my Motion project",
+      "Make a product launch",
+      "Make an explainer",
+      "Make a social ad",
+      "Make animated titles",
     ]);
-    expect(MOTION_STARTERS[0].prompt).toContain("mixkit-split-text-617");
-    expect(MOTION_STARTERS[0].prompt).toContain("Preserve its source choreography");
-    expect(MOTION_STARTERS[1].prompt).toContain("Change only what I request");
-    expect(MOTION_STARTERS[1].prompt).toContain("new versioned filename");
-    for (const starter of MOTION_STARTERS) {
-      expect(starter.prompt).not.toMatch(/30-second|launch kit|new art direction/i);
+    for (const { label, prompt } of MOTION_STARTERS) {
+      // Motion designs videos from scratch: every chip starts a new video, none edits one.
+      expect(label).toMatch(/^Make /);
+      expect(label).not.toMatch(/edit|logo reveal/i);
+      // The agent owns design, quality and workflow; the chip only states the job.
+      expect(prompt.length).toBeLessThan(60);
+      expect(prompt).toMatch(/: $/);
+      expect(prompt).not.toMatch(
+        /skill|recipe|template|choreograph|render|mixkit|launch kit|30-second|new art direction/i,
+      );
     }
   });
   it.each(MOTION_STARTERS)(

@@ -5,6 +5,7 @@ import type {
   ImageContent,
   Message,
   StreamEvent,
+  StopReason,
   StreamOptions,
   StreamResponse,
   Tool,
@@ -33,11 +34,14 @@ import { readSseStream } from "../utils/sse.js";
 import { extractRequestIdFromMessage } from "../utils/request-id.js";
 
 const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
-// Advertised Codex client version. The ChatGPT backend gates models on the
-// catalog's `minimal_client_version` (GPT-6 Sol/Luna need >= 0.155.0) and
-// rejects older clients with "requires a newer version of Codex". Track the
-// latest openai/codex `rust-v*` release when adding a model.
-const CODEX_CLIENT_VERSION = "0.155.1";
+// Advertised Codex client version. The ChatGPT backend gates models on it, and
+// the live gate can be stricter than the bundled catalog's
+// `minimal_client_version`: GPT-6.1 Sol is listed at 0.153.0 there, but the
+// server only serves it from 0.159.0 (GET /codex/models?client_version=...,
+// 2026-09-30). Below the gate it answers "The '<model>' model is not supported
+// when using Codex with a ChatGPT account". Track the latest openai/codex
+// `rust-v*` release when adding a model, and check that model's live listing.
+const CODEX_CLIENT_VERSION = "0.159.1";
 // OpenAI's Codex CLI enables zstd request compression by default. Keep tiny
 // synthetic/API requests readable, but compress real agent payloads before they
 // hit the backend's finite Envoy retry buffer.
@@ -98,8 +102,10 @@ async function encodeCodexRequest(body: Record<string, unknown>): Promise<Encode
   }
 }
 
+// GPT-6 point releases (gpt-6.1-sol) keep the dotted version in the id, so a
+// bare `gpt-6-` prefix would miss them.
 function usesResponsesLite(model: string): boolean {
-  return model.startsWith("gpt-5.6-") || model.startsWith("gpt-6-");
+  return model.startsWith("gpt-5.6-") || model.startsWith("gpt-6-") || model.startsWith("gpt-6.");
 }
 
 function outputTextKey(itemId: string | undefined, contentIndex: number | undefined): string {
@@ -183,12 +189,13 @@ async function* runStream(
     summary: "auto",
     ...(responsesLite ? { context: "all_turns" } : {}),
   };
-  // Catalog parity: every responses-lite model (gpt-6-astra/sol/luna and the
-  // older gpt-5.6-sol/terra/luna) declares `support_verbosity: true` with
-  // `default_verbosity: "low"` in openai/codex models.json, and the Codex CLI
-  // sends `text.verbosity` accordingly. Omitting it leaves the server default
-  // in place, which produces noticeably longer outputs — slower turns and
-  // heavier usage burn on exactly these deep-reasoning models.
+  // Catalog parity: every responses-lite model (gpt-6-astra, gpt-6.1-sol,
+  // gpt-6-luna and the older gpt-6-sol and gpt-5.6-sol/terra/luna) declares
+  // `support_verbosity: true` with `default_verbosity: "low"` in openai/codex
+  // models.json, and the Codex CLI sends `text.verbosity` accordingly. Omitting
+  // it leaves the server default in place, which produces noticeably longer
+  // outputs — slower turns and heavier usage burn on exactly these
+  // deep-reasoning models.
   if (responsesLite) {
     body.text = { verbosity: "low" };
   }
@@ -296,7 +303,7 @@ async function* runStream(
     } else if (response.status === 404 && text.includes("does not exist")) {
       hint =
         "This model is not in OpenAI's current catalog for your ChatGPT account. " +
-        "Switch to GPT-6 Astra, GPT-6 Sol, or GPT-6 Luna via the model selector.";
+        "Switch to GPT-6 Astra, GPT-6.1 Sol, or GPT-6 Luna via the model selector.";
     }
 
     throw new ProviderError("openai", message, {
@@ -313,6 +320,14 @@ async function* runStream(
   const contentParts: ContentPart[] = [];
   let textAccum = "";
   const toolCalls = new Map<string, { id: string; name: string; argsJson: string }>();
+  // Tool calls whose arguments the server marked final (function_call_arguments.done
+  // or output_item.done). Only these are safe to hand to the agent loop, which
+  // executes every tool call in the final message.
+  const finishedToolCalls = new Set<string>();
+  // How the server ended the reply. A complete stream always ends with a
+  // terminal response event; without one the body closed mid-reply.
+  let terminal:
+    { status: "completed" } | { status: "incomplete"; reason: string | undefined } | undefined;
   // Reasoning and tool-call items in true stream arrival order. Encrypted
   // reasoning items (store:false + include reasoning.encrypted_content) are
   // recorded inline so each one keeps its position relative to the function_call
@@ -523,6 +538,7 @@ async function* runStream(
       for (const [key, tc] of toolCalls) {
         if (key.endsWith(`|${itemId}`)) {
           tc.argsJson = argsStr;
+          finishedToolCalls.add(key);
           break;
         }
       }
@@ -556,6 +572,7 @@ async function* runStream(
         const id = `${callId}|${itemId}`;
         const tc = toolCalls.get(id);
         if (tc) {
+          finishedToolCalls.add(id);
           orderedItems.push({ kind: "tool", id });
           const args = parseToolArguments(tc.argsJson);
           yield {
@@ -568,9 +585,25 @@ async function* runStream(
       }
     }
 
-    // Response completed
-    if (type === "response.completed" || type === "response.done") {
+    // Response finished. `response.incomplete` (or a terminal payload whose
+    // status is "incomplete") means the server stopped the reply early — at the
+    // output-token limit or by content filtering — which must not read as a
+    // clean end of turn.
+    if (
+      type === "response.completed" ||
+      type === "response.done" ||
+      type === "response.incomplete"
+    ) {
       const resp = event.response as Record<string, unknown> | undefined;
+      if (type === "response.incomplete" || resp?.status === "incomplete") {
+        const details = resp?.incomplete_details as { reason?: unknown } | undefined;
+        terminal = {
+          status: "incomplete",
+          reason: typeof details?.reason === "string" ? details.reason : undefined,
+        };
+      } else {
+        terminal = { status: "completed" };
+      }
       const usage = resp?.usage as
         | (Record<string, number> & {
             input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
@@ -583,6 +616,34 @@ async function* runStream(
         outputTokens = usage.output_tokens ?? 0;
       }
     }
+  }
+
+  // Silent-partial guard (mirror of anthropic.ts and openai.ts): the body can
+  // close cleanly mid-reply, and without a terminal event a cut-off reply —
+  // including a tool call whose arguments were still streaming — would look
+  // finished. Throw a 504 so the agent loop retries it as a transport failure.
+  if (!terminal) {
+    throw new ProviderError("openai", "Stream ended before completion (no response.completed).", {
+      statusCode: 504,
+    });
+  }
+  // A completed reply holding a tool call whose arguments were never marked
+  // final may carry cut-off or mixed-up arguments. Refuse it rather than run a
+  // guess. (An incomplete reply drops such calls below: the server already said
+  // it stopped early.)
+  const droppedToolCalls = [...toolCalls.keys()].filter((id) => !finishedToolCalls.has(id)).length;
+  if (terminal.status === "completed") {
+    for (const [id, tc] of toolCalls) {
+      if (!finishedToolCalls.has(id)) {
+        throw new ProviderError(
+          "openai",
+          `Codex reply completed with an unfinished tool call: ${tc.name} (${id}).`,
+          { statusCode: 502 },
+        );
+      }
+    }
+  } else {
+    providerDiag("codex_incomplete", { reason: terminal.reason ?? null, droppedToolCalls });
   }
 
   // Finalize content parts. Any encrypted reasoning that arrived before the
@@ -615,10 +676,12 @@ async function* runStream(
     contentParts.push({ type: "text", text: textAccum });
   }
 
-  // Tool calls whose output_item.done never arrived (defensive — finalize from
-  // the toolCalls map in insertion order so none are dropped).
+  // Tool calls finished by function_call_arguments.done alone (no
+  // output_item.done) — finalize them in insertion order so none are lost.
+  // Unfinished calls only reach this point on an incomplete reply, where their
+  // arguments were cut off: drop them.
   for (const [id, tc] of toolCalls) {
-    if (seenTool.has(id)) continue;
+    if (seenTool.has(id) || !finishedToolCalls.has(id)) continue;
     seenTool.add(id);
     contentParts.push({
       type: "tool_call",
@@ -627,9 +690,25 @@ async function* runStream(
       args: parseToolArguments(tc.argsJson),
     });
   }
+  // The server cuts a reply off at its end, so a dropped call was its last
+  // item and any reasoning now at the end of the message led only into it.
+  // Drop that too: encrypted reasoning replays into the next request, which
+  // expects an item after each reasoning item.
+  if (droppedToolCalls > 0) {
+    let last = contentParts.at(-1);
+    while (last?.type === "raw" && isEncryptedReasoning(last.data)) {
+      contentParts.pop();
+      last = contentParts.at(-1);
+    }
+  }
 
   const hasToolCalls = contentParts.some((p) => p.type === "tool_call");
-  const stopReason = hasToolCalls ? "tool_use" : "end_turn";
+  const stopReason: StopReason =
+    terminal.status === "incomplete"
+      ? incompleteStopReason(terminal.reason)
+      : hasToolCalls
+        ? "tool_use"
+        : "end_turn";
 
   const streamResponse: StreamResponse = {
     message: {
@@ -647,6 +726,18 @@ async function* runStream(
 
   yield { type: "done", stopReason };
   return streamResponse;
+}
+
+/**
+ * Map a Responses `incomplete_details.reason` to the stop reason the agent
+ * loop acts on: an output-limit cut auto-continues, a content filter stops as a
+ * refusal, and anything unrecognised is reported as a provider error rather
+ * than passed off as a finished turn.
+ */
+function incompleteStopReason(reason: string | undefined): StopReason {
+  if (reason === "max_output_tokens") return "max_tokens";
+  if (reason === "content_filter") return "refusal";
+  return "error";
 }
 
 // ── SSE Parser ─────────────────────────────────────────────

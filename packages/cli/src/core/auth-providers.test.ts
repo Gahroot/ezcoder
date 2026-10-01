@@ -41,6 +41,7 @@ describe("AUTH_PROVIDERS descriptions match the model registry", () => {
       "Opus 4.7",
       "Opus 4.6",
       "GPT-5.4",
+      "GPT-6 Sol",
       "Grok 4.4",
       // Superseded by the V2.6 series. "MiMo-V2.5" also covers the retired
       // -Pro/-Pro-UltraSpeed variants by prefix without matching V2.6 copy.

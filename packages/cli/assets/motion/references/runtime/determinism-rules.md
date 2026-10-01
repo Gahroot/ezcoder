@@ -15,7 +15,7 @@ For GSAP:
 - **Do not** call `tl.play()` for render-critical motion.
 - **Do not** create empty tweens only to set duration; use `data-duration` on the clip instead.
 
-Use the adjacent `gsap.md`, `gsap-timeline-and-labels.md` and `gsap-easing-and-stagger.md` for GSAP mechanics. These technical references do not override the selected recipe's geometry, timing or allowed input changes.
+Use the adjacent `gsap.md`, `gsap-timeline-and-labels.md` and `gsap-easing-and-stagger.md` for GSAP mechanics. These technical references do not choose the design; the video's plan in `frame.md` does.
 
 ## Determinism Rules
 
@@ -41,9 +41,9 @@ Build the visible end-state in static HTML and CSS first, then animate from/to t
 - **The root composition's total duration (render length / frame count) is fixed at compile time**, read once from the static root `data-duration` before scripts run, like `data-width` / `data-height`. A script or `--variables` value that rewrites the root `data-duration` afterward is ignored. To vary render length per output, author the root `data-duration` directly. (A _clip's_ own `data-duration` is re-read from the live DOM, so scripts/variables can still drive clip lengths. Only when the root omits `data-duration` does the renderer probe the live DOM / timeline for total length.)
 - Scene containers should fill the scene with `width: 100%; height: 100%; box-sizing: border-box`.
 - Use padding, flex, grid, and `max-width` for layout. Avoid positioning main content with hardcoded `top`/`left` offsets when a layout container can do it.
-- Preserve the recipe's positioning model. Absolute layers are appropriate when reproducing authored source geometry; generic layout preferences must not alter it.
+- Absolute layers are appropriate for deliberately placed design elements; keep one positioning model per scene.
 - Prefer transforms and opacity for animation.
-- Keep text inside its intended container. Only use wrapping, resizing or `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })` when the recipe permits that fit policy; otherwise resolve the input conflict.
+- Keep text inside its intended container. Wrap, resize or use `window.__hyperframes.fitTextFontSize(text, { maxWidth, fontFamily, fontWeight })` deliberately; never let text clip silently.
 - For text measurement without DOM reflow, use `window.__hyperframes.pretext`. Measure off a canvas instead of writing into the page and reading it back, so nothing reflows: `pretext.prepare(text, font)` then `pretext.layout(prepared, maxWidth, lineHeight)` → `{ lineCount, height }`. `prepare` does the font measurement; everything downstream of a prepared string is arithmetic and cheap enough to run per frame. `fitTextFontSize` is built on it.
   - `layout` gives you height, not width. To size a container to its text (shrinkwrap), use `pretext.prepareWithSegments(text, font)` and then `pretext.measureNaturalWidth(prepared)` for the single-line width, or `pretext.measureLineStats(prepared, maxWidth)` for `{ lineCount, maxLineWidth }`.
   - `font` is a CSS font shorthand string, e.g. `"700 90px Inter"`.

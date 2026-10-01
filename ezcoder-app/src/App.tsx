@@ -75,6 +75,7 @@ import { dropSupersededAsks, mergeAskAnswers } from "./ask-user";
 import { glowPlacement, glowStateFor, glowVars } from "./window-glow";
 import { ActivityBar } from "./ActivityBar";
 import { autosizeComposer } from "./composer-autosize";
+import { pinAfterScroll, pinAfterWheel } from "./transcript-pin";
 import { NolanActivityBar } from "./NolanActivityBar";
 import { useTaskActivity } from "./useTaskActivity";
 import { useNolanMentor } from "./useNolanMentor";
@@ -83,6 +84,7 @@ import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEven
 import { useSmoothText } from "./useSmoothText";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
+import { CritterFloor, type CritterGroup } from "./CritterFloor";
 import { CompactionNotice } from "./CompactionNotice";
 import { ModelSelect, loadModelsInto } from "./ModelSelect";
 import { SlashMenu } from "./SlashMenu";
@@ -110,6 +112,7 @@ import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
 import { NolanPowerBanner } from "./NolanPowerBanner";
+import { NolanFace } from "./NolanFace";
 import { ExportChatButton } from "./ExportChatButton";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { McpElicitModal } from "./McpElicitModal";
@@ -417,6 +420,10 @@ function App(): React.ReactElement {
     nolanThinkingAccumMs,
     handleNolanEvent,
   } = useNolanMentor({ setItems, nextId });
+  // Nolan's face talks on the reply he is streaming right now: the last row,
+  // while his run is live. Only that row's props change, so memo holds.
+  const lastItem = items[items.length - 1];
+  const talkingNolanId = nolanRunning && lastItem?.kind === "nolan" ? lastItem.id : null;
   // Autopilot Nolan (auto-reviewer): consumes the `autopilot_*` event family into
   // compact transcript markers + a "Nolan reviewing…" flag. Separate hook, same
   // shared setItems/nextId pattern as useNolanMentor.
@@ -837,16 +844,24 @@ function App(): React.ReactElement {
 
   // Whether the transcript is "pinned" to the bottom. Auto-scroll only runs
   // while pinned. The user scrolling up un-pins it — so they can read freely
-  // even while the agent keeps streaming — and scrolling back to the bottom
-  // re-pins. Default true so a fresh transcript follows the newest output.
+  // even while the agent keeps streaming — and scrolling back down to the
+  // bottom re-pins (rules in transcript-pin.ts). Default true so a fresh
+  // transcript follows the newest output.
   const stickToBottomRef = useRef(true);
+  // The transcript's offset as last seen by a scroll event or left by our own
+  // scrollToBottom — the baseline that tells an up-scroll from a down-scroll.
+  const lastScrollTopRef = useRef(0);
 
   // Pin to the bottom. Images (screenshots / attachments) load asynchronously
   // and grow the content after this fires, so it's also called from each image's
   // onLoad to keep the newest content visible.
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight });
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight });
+    // A reader's scroll landing in this same frame shares one scroll event with
+    // this jump; measuring it from the pre-jump offset would read up as down.
+    lastScrollTopRef.current = el.scrollTop;
   }, []);
 
   // Same as scrollToBottom, but a no-op while the user has scrolled up to read.
@@ -854,15 +869,23 @@ function App(): React.ReactElement {
     if (stickToBottomRef.current) scrollToBottom();
   }, [scrollToBottom]);
 
-  // Track the user's scroll intent. Any real scroll that lands more than a
-  // small threshold above the bottom un-pins; returning to (near) the bottom
-  // re-pins. Our own programmatic scrollToBottom lands at the bottom, so it
-  // simply keeps the pin set — no need to distinguish it from a user scroll.
+  // Track the user's scroll intent by direction, not distance: while a reply
+  // streams, every commit re-pins, so any "near the bottom" allowance snapped a
+  // small scroll up straight back down. The wheel handler runs before the
+  // scroll it causes, so a commit landing in between can't erase the move.
   const onTranscriptScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottomRef.current = distanceFromBottom <= 48;
+    stickToBottomRef.current = pinAfterScroll(
+      stickToBottomRef.current,
+      lastScrollTopRef.current,
+      el,
+    );
+    lastScrollTopRef.current = el.scrollTop;
+  }, []);
+  const onTranscriptWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (el) stickToBottomRef.current = pinAfterWheel(stickToBottomRef.current, e, el);
   }, []);
 
   // The "Drop files to attach" overlay must never outlive the drag. macOS keeps
@@ -979,6 +1002,7 @@ function App(): React.ReactElement {
   const attachTranscript = useCallback(
     (el: HTMLDivElement | null) => {
       scrollRef.current = el;
+      if (el) lastScrollTopRef.current = el.scrollTop;
       transcriptRoRef.current?.disconnect();
       transcriptRoRef.current = null;
       if (!el || typeof ResizeObserver === "undefined") return;
@@ -2055,6 +2079,16 @@ function App(): React.ReactElement {
     () => withoutSupersedingMessage(queuedMessages, supersedingText),
     [queuedMessages, supersedingText],
   );
+  // Sub-agent groups for the critter floor. Recomputed with `items`, but the
+  // floor compares group identities and ignores token-only re-renders.
+  const critterGroups = useMemo(
+    () =>
+      items.filter(
+        (item): item is Extract<Item, { kind: "subagent_group" }> & CritterGroup =>
+          item.kind === "subagent_group",
+      ),
+    [items],
+  );
 
   // Click handler for the "Send to EZ Coder" button on Nolan's recommended prompts.
   // Pushes a shimmering "Sent to EZ Coder" user bubble (the full prompt body went
@@ -2841,7 +2875,12 @@ function App(): React.ReactElement {
         {workspaceMode === "code" && nolanPowerBanner && (
           <NolanPowerBanner mode={nolanPowerBanner} onDone={() => setNolanPowerBanner(null)} />
         )}
-        <div className="transcript" ref={attachTranscript} onScroll={onTranscriptScroll}>
+        <div
+          className="transcript"
+          ref={attachTranscript}
+          onScroll={onTranscriptScroll}
+          onWheel={onTranscriptWheel}
+        >
           {!hydrated && items.length === 0 ? (
             <TranscriptSkeleton />
           ) : (
@@ -2860,6 +2899,7 @@ function App(): React.ReactElement {
                     key={it.id}
                     item={it}
                     animateIn={it.id >= liveFromId}
+                    nolanTalking={it.id === talkingNolanId}
                     onContentGrow={maybeScrollToBottom}
                     onAskAnswer={answerAsk}
                     onAskType={typeAskInstead}
@@ -2878,6 +2918,9 @@ function App(): React.ReactElement {
         )}
       </div>
 
+      {/* Sub-agents walk on top of the pinned region as critters; the lane
+          opens (pushing the chat up) only while one is out. */}
+      <CritterFloor groups={critterGroups} />
       <div className="liveregion">
         {/* Motion's starting points sit just above the activity bar and go away
             once the conversation has its first message. */}
@@ -3406,6 +3449,7 @@ function StreamingMarkdown({
 const TranscriptRow = memo(function TranscriptRow({
   item,
   animateIn = false,
+  nolanTalking = false,
   onContentGrow,
   onAskAnswer,
   onAskType,
@@ -3413,6 +3457,8 @@ const TranscriptRow = memo(function TranscriptRow({
   item: Item;
   /** Arrived live (not restored from history): rise into place once. */
   animateIn?: boolean;
+  /** This is the Nolan reply currently streaming in, so his face talks. */
+  nolanTalking?: boolean;
   onContentGrow?: () => void;
   onAskAnswer?: (
     itemId: number,
@@ -3424,6 +3470,7 @@ const TranscriptRow = memo(function TranscriptRow({
   const row = (
     <TranscriptRowBody
       item={item}
+      nolanTalking={nolanTalking}
       onContentGrow={onContentGrow}
       onAskAnswer={onAskAnswer}
       onAskType={onAskType}
@@ -3442,11 +3489,14 @@ const TranscriptRow = memo(function TranscriptRow({
 
 function TranscriptRowBody({
   item,
+  nolanTalking = false,
   onContentGrow,
   onAskAnswer,
   onAskType,
 }: {
   item: Item;
+  /** This is the Nolan reply currently streaming in, so his face talks. */
+  nolanTalking?: boolean;
   onContentGrow?: () => void;
   /** Record answers for an `ask_user` band (App settles the tool call). */
   onAskAnswer?: (
@@ -3560,14 +3610,14 @@ function TranscriptRowBody({
       );
     }
     case "nolan":
-      // Nolan Grout's reply: the whole bubble is tinted in Nolan's color (dot + all
-      // text), which is the ONLY differentiator from a normal EZ Coder reply.
-      // No badge, no byline. The Markdown component special-cases ```prompt
-      // fences into a "Send to EZ Coder" button.
+      // Nolan Grout's reply: led by his little pixel face (it talks while the reply
+      // streams in) instead of the dot, framed by a teal rule. No badge, no
+      // byline. The Markdown component special-cases ```prompt fences into a
+      // "Send to EZ Coder" button.
       return (
         <div className="assistant-msg nolan-msg">
-          <span className="assistant-dot" style={{ color: theme.nolan }}>
-            {DOT}
+          <span className="assistant-dot nolan-face-slot">
+            <NolanFace mood="chat" talking={nolanTalking} />
           </span>
           <div className="assistant-text">
             <StreamingMarkdown text={item.text} onGrow={onContentGrow} />
@@ -3575,8 +3625,8 @@ function TranscriptRowBody({
         </div>
       );
     case "autopilot": {
-      // Autopilot Nolan's verdict, rendered like a normal @Nolan reply (Nolan-tinted
-      // dot + text) rather than its own marker style. The text is his verdict as
+      // Autopilot Nolan's verdict, rendered like a normal @Nolan reply (his face +
+      // teal-framed text) rather than its own marker style. The text is his verdict as
       // prose: for a PROMPT he shows what he sent EZ Coder back to do; the
       // terminal verdicts read as short Nolan one-liners. `done` rotates through
       // several casual Nolan lines (picked deterministically off the item's
@@ -3600,8 +3650,8 @@ function TranscriptRowBody({
       };
       return (
         <div className="assistant-msg nolan-msg">
-          <span className="assistant-dot" style={{ color: theme.nolan }}>
-            {DOT}
+          <span className="assistant-dot nolan-face-slot">
+            <NolanFace mood="chat" />
           </span>
           <div className="assistant-text">
             <Markdown>{copy[item.phase]}</Markdown>

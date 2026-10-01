@@ -2,8 +2,9 @@ import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { getMaxThinkingLevel, getModel } from "./model-registry.js";
 
 const OPENAI_GPT_THINKING_LEVELS: readonly ThinkingLevel[] = ["medium", "high", "xhigh"];
-// GPT-5.6 and GPT-6 share the six-rung Codex ladder (low → ultra); older GPT
-// models only expose medium/high/xhigh.
+// GPT-5.6 and GPT-6.x (gpt-6-*, plus point releases like gpt-6.1-sol) share the
+// six-rung Codex ladder (low → ultra); older GPT models only expose
+// medium/high/xhigh.
 const OPENAI_GPT_56_THINKING_LEVELS: readonly ThinkingLevel[] = [
   "low",
   "medium",
@@ -143,7 +144,7 @@ export function getSupportedThinkingLevels(
   if (!isOpenAIGptModel(provider, model)) return [maxLevel];
 
   const levels =
-    model.startsWith("gpt-5.6-") || model.startsWith("gpt-6-")
+    model.startsWith("gpt-5.6-") || model.startsWith("gpt-6-") || model.startsWith("gpt-6.")
       ? OPENAI_GPT_56_THINKING_LEVELS
       : OPENAI_GPT_THINKING_LEVELS;
   const maxIndex = levels.indexOf(maxLevel);

@@ -91,8 +91,8 @@ function smokeMotionBundle(node) {
     join("skills", "brand-kit", "SKILL.md"),
     join("skills", "source-ingest", "SKILL.md"),
     join("skills", "video-qa", "SKILL.md"),
-    join("skills", "mixkit-split-text-617", "SKILL.md"),
     join("references", "runtime", "minimal-composition.md"),
+    join("references", "motion-language.md"),
     join("assets", "sfx", "sfx-analysis.md"),
   ]) {
     if (!existsSync(join(motion, rel))) fail(`bundled Motion file missing: ${rel}`);
@@ -100,12 +100,12 @@ function smokeMotionBundle(node) {
   const skillNames = readdirSync(join(motion, "skills")).sort();
   if (
     JSON.stringify(skillNames) !==
-    JSON.stringify(["brand-kit", "mixkit-split-text-617", "motion", "source-ingest", "video-qa"])
+    JSON.stringify(["brand-kit", "motion", "source-ingest", "video-qa"])
   ) {
     fail(`unexpected Motion skill catalog: ${skillNames.join(", ")}`);
   }
   if (existsSync(join(motion, "guidance")) || existsSync(join(motion, "references", "authoring"))) {
-    fail("obsolete guidance or private authoring knowledge leaked into the runtime bundle");
+    fail("obsolete guidance or After Effects authoring material leaked into the runtime bundle");
   }
   const music = join(motion, "assets", "music");
   const tracks = readdirSync(music).filter((name) => name.endsWith(".mp3"));

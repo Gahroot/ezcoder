@@ -1,10 +1,10 @@
 # Third-party content in EZ Motion
 
-Motion exposes GG-authored support skills and explicitly selected, source-backed
-recipes. The old upstream creative/workflow skills and guidance adapters have
-been removed. Retained technical references are adapted for GG's pinned launcher,
-local-only safety boundaries and recipe-led workflow; do not restore entire
-upstream skill folders when updating the runtime.
+Motion exposes GG-authored skills and craft references. The old upstream
+creative/workflow skills and guidance adapters have been removed. Retained
+technical references are adapted for GG's pinned launcher and local-only safety
+boundaries; do not restore entire upstream skill folders when updating the
+runtime.
 
 | Component | Source | Pinned at | License |
 |---|---|---|---|
@@ -14,17 +14,11 @@ upstream skill folders when updating the runtime.
 | Style-library pieces marked MIT (`library/pieces/<id>/`) | Magic UI, https://github.com/magicuidesign/magicui | converted 2026-09-28; upstream file URL in each `meta.json` | MIT (`LICENSE` beside each piece) |
 | Fonts (`fonts/<family>/`) | Google Fonts / https://github.com/google/fonts | fetched 2026-09-28 by `scripts/fetch-motion-fonts.mjs` | SIL OFL 1.1 (`OFL.txt` beside each family) |
 
-## Recipe and evidence boundaries
+## Content boundaries
 
-The Mixkit 617 recipe records the user's supplied project provenance and limits
-in its own skill/manifest. Extraction or purchase is not a redistribution license;
-its source/derivative-data rights require review before a public release. No AEP,
-source preview video or source font binary is bundled with that recipe.
-
-Private extraction tools, source projects, working exports and authoring-method
-documents are Git-ignored and excluded from release packaging. They are not
-runtime dependencies or additional callable skills. The normal video agent uses
-installed recipes; it does not run a parser or install authoring dependencies.
+Motion ships no templates derived from third-party After Effects or other
+motion projects. The earlier Mixkit, Mobile Notification and Kinetic Text
+reconstructions were removed on 2026-09-29 and are not part of any release.
 
 Existing `references/index.json`, signal sources and compact temporal JPEGs are
 GG studies, not private user videos or a universal style. They remain optional
@@ -34,14 +28,15 @@ licenses remain with their sources.
 
 The Motion-only preference reader and review tool do not load Coder instructions.
 Review remains bounded and tied to current source/render evidence. It checks the
-selected recipe and approved inputs, not a competing art direction, and does not
+video's plan and approved inputs, not a competing art direction, and does not
 claim full playback or aesthetic certification from model image critique.
 
 ## Fonts
 
-15 families, listed in `fonts/fonts.json`. Latin-subset variable woff2 as served
-by Google Fonts, except Mona Sans and Hubot Sans: they carry OFL Reserved Font
-Names and ship as complete upstream fonts, recompressed to woff2. `fonts.mjs add`
+19 families, listed in `fonts/fonts.json`. Latin-subset variable woff2 as served
+by Google Fonts, except Mona Sans, Hubot Sans, Short Stack and Finger Paint: they
+carry OFL Reserved Font Names and ship as complete upstream fonts, recompressed
+to woff2. Unbounded, Sora, Short Stack and Finger Paint were added 2026-09-29. `fonts.mjs add`
 copies each family's `OFL.txt` into the video project with its font files.
 
 ## Shared audio retained from brag

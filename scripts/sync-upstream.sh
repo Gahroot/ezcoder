@@ -285,13 +285,13 @@ rebrand_ken_mentor() {
     [[ -f "$file" ]] || continue
     perl -0777 -pi -e '
       # ALL-CAPS mentor consts (anchored; TOKEN_ has no boundary before KEN)
-      s/\bKEN_(PROMPT_FENCE|ALLOWED_MCP_SERVERS|ALLOWED_TOOLS|RECENT_MESSAGE_LIMIT|TURN_CUSTOM_KIND)\b/NOLAN_$1/g;
+      s/\bKEN_(PROMPT_FENCE|ALLOWED_MCP_SERVERS|ALLOWED_TOOLS|RECENT_MESSAGE_LIMIT|TURN_CUSTOM_KIND|FACE_PALETTE)\b/NOLAN_$1/g;
       # snake_case SSE events, Tauri commands, and route names (explicit list excludes ken_burns)
       s/\bken_(run_start|run_end|text_delta|thinking_delta|tool_call_start|tool_call_update|tool_call_end|server_tool_call|turn_end|turn|error|cancel|prompt|model|model_change)\b/nolan_$1/g;
       s/_ken_(cancel|prompt|model)\b/_nolan_$1/g;
       s{/ken/(prompt|cancel|model)}{/nolan/$1}g;
       # kebab-case CSS classes + file stems (explicit list excludes ken-burns)
-      s/\bken-(autopilot-on|autopilot-off|context|input|model|msg|power|prompt|sent|spinner|statusrow)\b/nolan-$1/g;
+      s/\bken-(autopilot-on|autopilot-off|context|input|model|msg|power|prompt|sent|spinner|statusrow|face)\b/nolan-$1/g;
       # camelCase mentor vars: word-start ken + UpperCase (tokenUsage fails \b)
       s/\bken([A-Z]\w*)/nolan$1/g;
       # Exact lowercase mentor symbols in known type/property/string contexts.
@@ -300,6 +300,7 @@ rebrand_ken_mentor() {
       s/\.ken\b/.nolan/g;
       s/\bken: token\("ken"\)/nolan: token("nolan")/g;
       s/\bkind: "ken"\b/kind: "nolan"/g;
+      s/\?\.kind === "ken"/?.kind === "nolan"/g;
       s/\bcase "ken":/case "nolan":/g;
       s/\bconst ken =/const nolanAgent =/g;
       s/\bken\./nolanAgent./g;

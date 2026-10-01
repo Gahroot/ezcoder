@@ -8,7 +8,7 @@ import { motionStudioPrompt, readMotionStudioContext } from "./motion-studio-con
 /**
  * Motion's skill-catalog budget: double the default. The 16 KB default guards
  * against bloated untrusted skills; Motion only ever loads its own bundled
- * set. Retain headroom for future authored recipes without loading their bodies.
+ * set. Retain headroom for future skills without loading their bodies.
  */
 export const MOTION_SKILL_CATALOG_BYTES = 32 * 1024;
 

@@ -137,6 +137,29 @@ describe("Claude Sonnet 5.5", () => {
   });
 });
 
+describe("GPT-6.1 Sol", () => {
+  it("replaces GPT-6 Sol in the catalog and OpenAI defaults", () => {
+    const model = getModel("gpt-6.1-sol");
+    expect(model).toEqual({
+      id: "gpt-6.1-sol",
+      name: "GPT-6.1 Sol",
+      provider: "openai",
+      contextWindow: 1_050_000,
+      codexContextWindow: 272_000,
+      maxOutputTokens: 128_000,
+      supportsThinking: true,
+      defaultThinkingLevel: "low",
+      supportsImages: true,
+      supportsVideo: false,
+      costTier: "medium",
+      maxThinkingLevel: "ultra",
+    });
+    expect(getModelsForProvider("openai")).toContain(model);
+    expect(getModel("gpt-6-sol")).toBeUndefined();
+    expect(getDefaultModel("openai")).toBe(model);
+  });
+});
+
 describe("getFastModel", () => {
   it("routes to a low-tier sibling within the same provider", () => {
     for (const provider of PROVIDERS) {
@@ -156,18 +179,14 @@ describe("getFastModel", () => {
 
   it("picks Haiku for Anthropic and Luna for OpenAI", () => {
     expect(getFastModel("anthropic", "claude-opus-5-5").costTier).toBe("low");
-    expect(getFastModel("openai", "gpt-6-sol").id).toBe("gpt-6-luna");
-  });
-
-  it("defaults OpenAI to GPT-6 Sol", () => {
-    expect(getDefaultModel("openai").id).toBe("gpt-6-sol");
+    expect(getFastModel("openai", "gpt-6.1-sol").id).toBe("gpt-6-luna");
   });
 });
 
 describe("model registry context windows", () => {
   it.each([
     ["gpt-6-astra", 1_050_000],
-    ["gpt-6-sol", 1_050_000],
+    ["gpt-6.1-sol", 1_050_000],
     ["gpt-6-luna", 1_050_000],
   ] as const)("uses the %s public API context window without an OAuth account", (model, limit) => {
     expect(getContextWindow(model, { provider: "openai" })).toBe(limit);
@@ -175,7 +194,7 @@ describe("model registry context windows", () => {
 
   it.each([
     ["gpt-6-astra", 272_000],
-    ["gpt-6-sol", 272_000],
+    ["gpt-6.1-sol", 272_000],
     ["gpt-6-luna", 272_000],
   ] as const)("uses the %s Codex product window for OpenAI OAuth", (model, limit) => {
     const options = { provider: "openai" as const, accountId: "acct_123" };
@@ -194,7 +213,7 @@ describe("model registry context windows", () => {
   });
 
   it("keeps the generic tool-output allowance outside Codex OAuth", () => {
-    expect(getToolResultCharLimit("gpt-6-sol", { provider: "openai" })).toBeUndefined();
+    expect(getToolResultCharLimit("gpt-6.1-sol", { provider: "openai" })).toBeUndefined();
     expect(
       getToolResultCharLimit("claude-sonnet-5-5", {
         provider: "anthropic",
@@ -264,14 +283,13 @@ describe("model registry context windows", () => {
 
   it("starts Codex models at their catalog default, not the ladder ceiling", () => {
     // openai/codex models.json `default_reasoning_level`: the deep-reasoning
-    // flagship (Astra) ships "low", GPT-6 Sol/Luna "medium". Defaulting to
+    // models (Astra, GPT-6.1 Sol) ship "low", GPT-6 Luna "medium". Defaulting to
     // maxThinkingLevel made fresh Astra sessions reason at max effort.
     expect(getDefaultThinkingLevel("gpt-6-astra")).toBe("low");
-    expect(getDefaultThinkingLevel("gpt-6-sol")).toBe("medium");
+    expect(getDefaultThinkingLevel("gpt-6.1-sol")).toBe("low");
     expect(getDefaultThinkingLevel("gpt-6-luna")).toBe("medium");
     // Ceilings are unchanged — users can still opt up.
     expect(getModel("gpt-6-astra")?.maxThinkingLevel).toBe("ultra");
-    expect(getModel("gpt-6-sol")?.maxThinkingLevel).toBe("ultra");
     expect(getModel("gpt-6-luna")?.maxThinkingLevel).toBe("max");
   });
 

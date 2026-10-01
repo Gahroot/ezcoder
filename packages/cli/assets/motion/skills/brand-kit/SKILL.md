@@ -1,9 +1,9 @@
 ---
 name: brand-kit
-description: Resolve and reuse the user's brand identity for inputs permitted by the selected Motion recipe. Use when fonts, colours, logos or brand copy need mapping or a kit is explicitly requested. Do not reload for routine edits with settled inputs or invent a separate motion direction.
+description: Resolve and reuse the user's brand identity for a Motion video. Use when fonts, colours, logos or brand copy need mapping or a kit is explicitly requested. Do not reload for routine edits with settled inputs.
 ---
 
-# Brand identity → recipe inputs
+# Brand identity → video
 
 Use the existing selected kit first. Kits live at
 `brand-kits/<kit-slug>/Motion.md` in the Motion workspace, with logo files,
@@ -14,14 +14,15 @@ Do not overwrite a reusable kit while editing a video.
 
 1. Read `Motion.md` and its referenced logo/font assets. If no kit was selected,
    inspect existing kits and the user's supplied sources before asking a question.
-2. Map identity to the selected recipe's supported text/font/colour/logo/media
-   slots. Preserve required product names, taglines and assets.
+2. Map identity to the video's palette roles, type roles, logo and media.
+   Preserve required product names, taglines and assets.
 3. Record the selected kit and bindings in the video's `frame.md`.
 
-The recipe owns choreography, timing and adaptation limits. A kit's general
-motion personality or easing preferences cannot replace locked source curves.
-If required identity and the recipe conflict, resolve that actual choice with
-the user instead of silently changing the font, geometry or choreography.
+The kit's colours, fonts and motion personality feed the plan: they replace
+the motion-language defaults and set its palette, type and register. Required
+identity outranks taste; if it conflicts with a requested treatment, resolve
+that actual choice with the user instead of silently changing the font, logo or
+colours.
 
 If the source was already captured and the kit approved, reuse it. Do not
 repeat a brand interview, capture, audit or approval for a new headline.
@@ -40,23 +41,23 @@ workflow. Preserve the established `Motion.md` YAML frontmatter contract:
 - `typography`: evidenced `display`, `body`, `mono` entries with family, weight,
   optional width/tracking and licence. Leave unknown roles unset.
 - `logo`: relative `primary`/`on-light` paths and actual size/clear-space rules.
-- `motion`: optional personality, easing and pace; these are preferences, not
-  permission to override a selected recipe's locked animation.
+- `motion`: optional personality, easing and pace; they tune the plan's
+  easing and pacing.
 - `voice`: evidenced descriptors, followed by source quotes and Do/Don't prose.
 
 Record real values rather than example defaults. Keep paths local and preserve
 existing kits; ask before replacement. Do not create a second brand registry
 or a new JSON schema alongside the established kit format.
 
-This is an identity binding step, not a new creative direction. No automatic
-look-preset selection, generic font shortlist or separate design approval.
-Ask a focused question only when a required identity asset, permission or
-incompatible requirement blocks the selected recipe.
+This is an identity binding step, not a separate creative direction. No
+automatic look-preset selection, generic font shortlist or separate design
+approval. Ask a focused question only when a required identity asset,
+permission or incompatible requirement blocks the video.
 
 ## Fonts and assets
 
 Preserve supplied/required fonts. If no font is specified, select a suitable
-available licensed family within the recipe's constraints; inspect the bundled
+available licensed family for the plan's type roles; inspect the bundled
 catalog before naming a family. Use `<node> "<motion bin>/fonts.mjs" list` and
 its `add` command to copy chosen files into the project. Check the actual font
 loads before claiming a match. Do not download paid fonts or install software

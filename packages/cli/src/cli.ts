@@ -402,7 +402,7 @@ function main(): void {
   const provider: Provider = saved.provider ?? "anthropic";
 
   function getHardcodedDefault(p: string): string {
-    if (p === "openai") return "gpt-6-sol";
+    if (p === "openai") return "gpt-6.1-sol";
     if (p === "gemini") return "gemini-3.1-flash-lite";
     if (p === "glm") return "glm-5.3";
     if (p === "moonshot") return "kimi-k3";
@@ -646,9 +646,8 @@ async function runInkTUI(opts: {
   let activeModel = model;
   let activeThinking = opts.thinkingLevel;
 
-  const { tools, processManager, rebuildReadTool, lspManager, subAgentManager } = await createTools(
-    cwd,
-    {
+  const { tools, processManager, rebuildReadTool, clearReadTracker, lspManager, subAgentManager } =
+    await createTools(cwd, {
       agents,
       skills,
       provider,
@@ -670,8 +669,7 @@ async function runInkTUI(opts: {
       getModel: () => activeModel,
       getThinkingLevel: () => activeThinking,
       getMaxPerModel: () => opts.subagentMaxPerModel,
-    },
-  );
+    });
 
   // The active LSP pool follows the active tool set — rebuilds (pixel chdir)
   // shut the old pool down and swap in the new one.
@@ -1037,6 +1035,7 @@ async function runInkTUI(opts: {
     autoApprovePlans: opts.autoApprovePlans,
     rebuildToolsForCwd,
     rebuildReadTool,
+    clearReadTracker,
     connectInitialMcpTools,
     planCallbacks: planToolCallbacks,
     onRuntimeStateChange: (updates) => {
@@ -1073,7 +1072,7 @@ async function runSessions(): Promise<void> {
   const provider: Provider = saved2.provider ?? "anthropic";
 
   function getDefault(p: string): string {
-    if (p === "openai") return "gpt-6-sol";
+    if (p === "openai") return "gpt-6.1-sol";
     if (p === "gemini") return "gemini-3.1-flash-lite";
     if (p === "glm") return "glm-5.3";
     if (p === "moonshot") return "kimi-k3";
