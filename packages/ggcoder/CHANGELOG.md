@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.68.0
+
+### Minor Changes
+
+- Add keep-awake while the agent works, user/project stream rules, soft ask_user deadlines with late answers, shell/package/destructive-git threat guards, and plan-step compaction policy
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.68.0
+- @kenkaiiii/gg-agent@5.68.0
+- @kenkaiiii/gg-core@5.68.0
+
 ## 5.67.1
 
 ### Patch Changes
