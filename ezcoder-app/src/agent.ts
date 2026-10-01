@@ -1355,6 +1355,12 @@ export interface WorktreeStatus {
   commitsAhead: number;
   merged: boolean;
   busy: boolean;
+  /** Made by ezcoder in its own copies folder (vs. by hand or another tool). */
+  managed: boolean;
+  /** Git still lists it but the folder is already gone. */
+  missing: boolean;
+  /** Removing it could lose unsaved files or unmerged commits. */
+  holdsWork: boolean;
   reclaimable: boolean;
   /** Plain-language reasons it cannot be cleaned up. Empty when it can. */
   blockedBy: string[];

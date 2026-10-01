@@ -354,6 +354,40 @@ d("worktree", () => {
       expect(created.baseRef).toBe("main");
     });
 
+    it("lists a copy made outside ezcoder but never marks it for automatic cleanup", async () => {
+      const repo = await makeRepo();
+      const outside = path.join(await makeTempDir("ez-worktree-elsewhere-"), "by-hand");
+      git(repo, "worktree", "add", "-q", "-b", "by-hand", outside);
+
+      const [status] = await worktreeStatuses(repo);
+      expect(status).toMatchObject({
+        branch: "by-hand",
+        managed: false,
+        holdsWork: false,
+        reclaimable: false,
+      });
+      expect(status.blockedBy.join(" ")).toMatch(/outside ezcoder/i);
+    });
+
+    it("judges a detached copy by its commit instead of calling its base unknown", async () => {
+      const repo = await makeRepo();
+      const created = await createWorktree({ repoDir: repo, branch: "detach-me" });
+      git(created.path, "checkout", "-q", "--detach");
+
+      const [status] = await worktreeStatuses(repo);
+      expect(status.branch).toBeNull();
+      expect(status).toMatchObject({ commitsAhead: 0, holdsWork: false, reclaimable: true });
+    });
+
+    it("reports a copy whose folder was deleted by hand as missing, not unreadable", async () => {
+      const repo = await makeRepo();
+      const created = await createWorktree({ repoDir: repo, branch: "vanished" });
+      await fs.rm(created.path, { recursive: true, force: true });
+
+      const [status] = await worktreeStatuses(repo);
+      expect(status).toMatchObject({ missing: true, dirtyFiles: 0, reclaimable: true });
+    });
+
     it("blocks a copy another window is working in", async () => {
       const repo = await makeRepo();
       const created = await createWorktree({ repoDir: repo, branch: "busy" });
@@ -383,6 +417,49 @@ d("worktree", () => {
       expect(release.reason).toMatch(/outside/i);
       // The repo itself is untouched.
       expect(await fs.readFile(path.join(repo, "a.txt"), "utf-8")).toBe("hello\n");
+    });
+
+    it("removes a copy git made outside the managed folder, keeping its branch", async () => {
+      const repo = await makeRepo();
+      const outside = path.join(await makeTempDir("ez-worktree-elsewhere-"), "by-hand");
+      git(repo, "worktree", "add", "-q", "-b", "hand-made", outside);
+
+      const release = await removeWorktree({ repoDir: repo, worktreePath: outside });
+      expect(release).toMatchObject({ existed: true, freed: true, branchDeleted: false });
+      expect(await pathIsGone(outside)).toBe(true);
+      expect(await listWorktrees(repo)).toHaveLength(1);
+      // Someone else named that branch; removing the folder must not take it.
+      expect(git(repo, "rev-parse", "--verify", "refs/heads/hand-made")).toBeTruthy();
+    });
+
+    it("needs force to remove an outside copy holding unsaved files", async () => {
+      const repo = await makeRepo();
+      const outside = path.join(await makeTempDir("ez-worktree-elsewhere-"), "by-hand");
+      git(repo, "worktree", "add", "-q", "-b", "hand-wip", outside);
+      await fs.writeFile(path.join(outside, "wip.txt"), "unsaved\n");
+
+      const refused = await removeWorktree({ repoDir: repo, worktreePath: outside });
+      expect(refused.freed).toBe(false);
+      expect(await fs.readFile(path.join(outside, "wip.txt"), "utf-8")).toBe("unsaved\n");
+
+      const forced = await removeWorktree({ repoDir: repo, worktreePath: outside, force: true });
+      expect(forced.freed).toBe(true);
+      expect(await pathIsGone(outside)).toBe(true);
+    });
+
+    it("refuses an outside folder git does not know as a copy of this project", async () => {
+      const repo = await makeRepo();
+      const stranger = await makeTempDir("ez-worktree-stranger-");
+      await fs.writeFile(path.join(stranger, "keep.txt"), "mine\n");
+
+      const release = await removeWorktree({
+        repoDir: repo,
+        worktreePath: stranger,
+        force: true,
+      });
+      expect(release.freed).toBe(false);
+      expect(release.reason).toMatch(/outside/i);
+      expect(await fs.readFile(path.join(stranger, "keep.txt"), "utf-8")).toBe("mine\n");
     });
 
     it("refuses to remove through a symlinked ancestor", async () => {
@@ -467,6 +544,16 @@ d("worktree", () => {
       expect(await pathIsGone(dirty.path)).toBe(false);
       expect(await pathIsGone(ahead.path)).toBe(false);
       expect(await pathIsGone(open.path)).toBe(false);
+    });
+
+    it("leaves copies made outside ezcoder for the user to decide", async () => {
+      const repo = await makeRepo();
+      const outside = path.join(await makeTempDir("ez-worktree-elsewhere-"), "by-hand");
+      git(repo, "worktree", "add", "-q", "-b", "hand-swept", outside);
+
+      const result = await sweepWorktrees(repo);
+      expect(result.removed).toEqual([]);
+      expect(await pathIsGone(outside)).toBe(false);
     });
 
     it("is a no-op for a repo with no copies", async () => {

@@ -20,14 +20,32 @@ function baseName(p: string): string {
  * named before unmerged commits because it is the one that cannot be recovered
  * from anywhere else.
  */
-function describe(w: WorktreeStatus): string {
+function describeWork(w: WorktreeStatus): string | null {
   const parts: string[] = [];
   if (w.dirtyFiles > 0) parts.push(`${w.dirtyFiles} unsaved file${w.dirtyFiles === 1 ? "" : "s"}`);
-  if (w.commitsAhead > 0) {
+  // A copy made outside ezcoder keeps its branch when removed, so its
+  // commits are not lost and are not worth warning about.
+  if (w.commitsAhead > 0 && w.managed) {
     parts.push(`${w.commitsAhead} unmerged change${w.commitsAhead === 1 ? "" : "s"}`);
   }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function describe(w: WorktreeStatus): string {
+  const parts: string[] = [];
+  const work = describeWork(w);
+  if (work) parts.push(work);
+  if (w.missing) parts.push("folder already deleted");
   if (w.busy) parts.push("open in another window");
+  if (!w.managed) parts.push("made outside ezcoder");
   return parts.length > 0 ? parts.join(" · ") : "nothing to lose";
+}
+
+/** What the confirm button says will happen. */
+function confirmLabel(w: WorktreeStatus): string {
+  const work = describeWork(w);
+  if (work) return `Delete ${work}`;
+  return w.managed ? "Delete it" : "Delete this folder";
 }
 
 /**
@@ -92,6 +110,17 @@ export function WorktreeList({ cwd, busyPaths = [] }: Props): React.ReactElement
               <span className="worktree-detail" style={{ color: theme.textSecondary }}>
                 {describe(w)}
               </span>
+              {!w.managed && (
+                // Copies made elsewhere can live anywhere; say where, so the
+                // user knows which folder the button is about to remove.
+                <span
+                  className="worktree-path"
+                  style={{ color: theme.textSecondary }}
+                  title={w.path}
+                >
+                  <bdi>{w.path}</bdi>
+                </span>
+              )}
             </div>
             {isConfirming ? (
               <div className="worktree-row-actions">
@@ -107,7 +136,7 @@ export function WorktreeList({ cwd, busyPaths = [] }: Props): React.ReactElement
                   disabled={working}
                   onClick={() => void clean(w, true)}
                 >
-                  {working ? "Deleting\u2026" : `Delete ${describe(w)}`}
+                  {working ? "Deleting\u2026" : confirmLabel(w)}
                 </button>
               </div>
             ) : (

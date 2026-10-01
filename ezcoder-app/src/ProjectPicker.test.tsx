@@ -295,8 +295,11 @@ describe("ProjectPicker session list", () => {
       commitsAhead: 0,
       merged: true,
       busy: false,
+      managed: true,
+      missing: false,
+      holdsWork: false,
       reclaimable: true,
-      blockedBy: [],
+      blockedBy: [] as string[],
     };
     const COPY_WITH_WORK = {
       ...EMPTY_COPY,
@@ -305,6 +308,7 @@ describe("ProjectPicker session list", () => {
       dirtyFiles: 2,
       commitsAhead: 3,
       merged: false,
+      holdsWork: true,
       reclaimable: false,
       blockedBy: ["it has 2 uncommitted file(s)", "it has 3 unmerged commit(s)"],
     };
@@ -350,6 +354,30 @@ describe("ProjectPicker session list", () => {
       fireEvent.click(screen.getByText(/Delete 2 unsaved files/i));
       await waitFor(() => {
         expect(removeWorktreeMock).toHaveBeenCalledWith(PROJECT.path, COPY_WITH_WORK.path, true);
+      });
+    });
+
+    it("offers to remove a copy made outside ezcoder, naming its folder", async () => {
+      const elsewhere = {
+        ...EMPTY_COPY,
+        path: "/Users/dev/ui-test/.worktrees/by-hand",
+        branch: "by-hand",
+        managed: false,
+        reclaimable: false,
+        blockedBy: ["it was made outside ezcoder, so it is only removed when you ask"],
+      };
+      listWorktreesMock.mockResolvedValue([elsewhere]);
+      removeWorktreeMock.mockResolvedValue({ existed: true, freed: true, branchDeleted: false });
+      await renderSessionList([NATIVE_SESSION]);
+
+      await screen.findByText(/made outside ezcoder/i);
+      expect(screen.getByText(elsewhere.path)).not.toBeNull();
+
+      fireEvent.click(screen.getByText("Clean up"));
+      expect(removeWorktreeMock).not.toHaveBeenCalled();
+      fireEvent.click(await screen.findByText("Delete this folder"));
+      await waitFor(() => {
+        expect(removeWorktreeMock).toHaveBeenCalledWith(PROJECT.path, elsewhere.path, true);
       });
     });
 

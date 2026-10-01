@@ -2614,6 +2614,16 @@ select {
   font-family: var(--sans);
   font-size: 11px;
 }
+.worktree-path {
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Keep the folder name (the end) visible when the path is cut. */
+  direction: rtl;
+  text-align: left;
+}
 
 /* ── Notes modal (free-form per-project notebook) ── */
 .notes-input {

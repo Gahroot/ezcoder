@@ -373,7 +373,21 @@ export interface WorktreeStatus {
   merged: boolean;
   /** Another window is working here, so it must not be touched. */
   busy: boolean;
-  /** Safe to remove with nothing lost. */
+  /**
+   * Lives in ezcoder's own copies folder. Copies made elsewhere (by hand, by
+   * another tool, by an agent's own `git worktree add`) are still listed and
+   * removable on request, but never swept automatically: their ignored files
+   * (local databases, `.env`) were not put there by ezcoder.
+   */
+  managed: boolean;
+  /** Git still registers it, but its folder is already gone. */
+  missing: boolean;
+  /**
+   * Removing it could lose something: unsaved files, unmerged commits, or a
+   * state that could not be read. Removal then needs an explicit force.
+   */
+  holdsWork: boolean;
+  /** Safe to remove automatically with nothing lost. */
   reclaimable: boolean;
   /** Why not, in the user's words. Empty exactly when `reclaimable`. */
   blockedBy: string[];
@@ -407,25 +421,36 @@ export async function worktreeStatus(
   const busy = busySet.has(await realpathOrSelf(entry.path));
   if (busy) blockedBy.push("it is open in another window");
 
+  // A folder deleted by hand holds no files to lose; only its commits matter,
+  // and those live in the shared repo, so they are still countable below.
+  const missing = !(await pathExists(entry.path));
+
   // -1 marks "could not read", which blocks just as a dirty tree does: an
   // unreadable status is never evidence that a copy is empty.
-  const dirtyFiles = await getGitDirtyFileCount(entry.path).catch(() => -1);
+  const dirtyFiles = missing ? 0 : await getGitDirtyFileCount(entry.path).catch(() => -1);
+  let holdsWork = false;
   if (dirtyFiles > 0) blockedBy.push(`it has ${dirtyFiles} uncommitted file(s)`);
   else if (dirtyFiles < 0) blockedBy.push("its status could not be read");
+  if (dirtyFiles !== 0) holdsWork = true;
 
+  // A detached copy (no branch) is judged by its HEAD commit: if the base
+  // already contains it, nothing is lost by removing the copy.
+  const tip = entry.branch ?? entry.head;
   const baseRef = (await readBaseRef(entry.path)) ?? (await defaultBaseRef(mainRoot));
   let ahead: number | null = null;
-  if (baseRef && entry.branch) {
-    ahead = await commitsAhead(entry.path, baseRef, entry.branch);
+  if (baseRef && tip) {
+    // From the main checkout: refs are shared, and the copy's own folder may
+    // be gone.
+    ahead = await commitsAhead(mainRoot, baseRef, tip);
     if (ahead === null) blockedBy.push("its commits could not be compared to the base branch");
     else if (ahead > 0) blockedBy.push(`it has ${ahead} unmerged commit(s)`);
   } else {
     blockedBy.push("its base branch is unknown");
   }
+  if (ahead !== 0) holdsWork = true;
 
-  if (!isInsideWorktreesRoot(worktreesRootFor(mainRoot), entry.path)) {
-    blockedBy.push("it lives outside the managed copies folder");
-  }
+  const managed = isInsideWorktreesRoot(worktreesRootFor(mainRoot), entry.path);
+  if (!managed) blockedBy.push("it was made outside ezcoder, so it is only removed when you ask");
   if (entry.isMain) blockedBy.push("it is the main checkout");
 
   return {
@@ -436,6 +461,9 @@ export async function worktreeStatus(
     commitsAhead: ahead ?? 0,
     merged: ahead === 0,
     busy,
+    managed,
+    missing,
+    holdsWork,
     reclaimable: blockedBy.length === 0,
     blockedBy,
   };
@@ -502,7 +530,11 @@ export async function removeWorktree(opts: {
   worktreePath: string;
   /** Remove even with uncommitted or unmerged work. Caller must have confirmed. */
   force?: boolean;
-  /** Delete the branch too. Default true. */
+  /**
+   * Delete the branch too. Default: true for ezcoder's own copies, false for
+   * a copy made elsewhere — its branch was named by someone else and may be
+   * the only place their commits live.
+   */
   deleteBranch?: boolean;
 }): Promise<WorktreeRelease> {
   let mainRoot: string;
@@ -514,41 +546,58 @@ export async function removeWorktree(opts: {
 
   const target = path.resolve(opts.worktreePath);
   const root = worktreesRootFor(mainRoot);
+  const refuse = (reason: string): WorktreeRelease => ({
+    existed: true,
+    freed: false,
+    branchDeleted: false,
+    reason,
+  });
 
   // Containment BEFORE anything destructive. The path arrives over HTTP from
   // the app; a request naming a path is not authorization to delete it.
-  if (!isInsideWorktreesRoot(root, target)) {
-    return {
-      existed: true,
-      freed: false,
-      branchDeleted: false,
-      reason: `refusing to remove ${target}: it is outside ${root}`,
-    };
-  }
-
-  // A symlink ANYWHERE above the target redirects both the git remove and the
-  // rm fallback into whatever it points at, while the containment check above
-  // still reads as contained. `dirname`, because a link AT the target is
-  // unlinked below rather than followed.
-  try {
-    const redirected = await redirectedAncestor(path.dirname(target));
-    if (redirected !== null) {
-      return {
-        existed: true,
-        freed: false,
-        branchDeleted: false,
-        reason: `refusing to remove through a symlink: ${redirected} is a link, so the removal would land wherever it points`,
-      };
+  //
+  // Outside ezcoder's folder, the only paths accepted are ones git itself has
+  // on record as a linked copy of THIS repo — copies made by hand or by
+  // another tool, which the user otherwise has no way to clear from the app.
+  // Those are removed by git alone (no direct-delete fallback below), so the
+  // worst a forged path can do is name a real copy of this project.
+  const managed = isInsideWorktreesRoot(root, target);
+  if (!managed) {
+    if (!(await isRegisteredLinkedWorktree(mainRoot, target))) {
+      return refuse(
+        `refusing to remove ${target}: it is outside ${root} and git has no copy of this project there`,
+      );
     }
-  } catch (err) {
-    return { existed: true, freed: false, branchDeleted: false, reason: messageOf(err) };
+    // A copy whose folder now CONTAINS the main checkout (moved after the
+    // fact) would take the project with it.
+    if (
+      isInsideWorktreesRoot(target, mainRoot) ||
+      (await realpathOrSelf(target)) === (await realpathOrSelf(mainRoot))
+    ) {
+      return refuse(`refusing to remove ${target}: the main project lives inside it`);
+    }
+  } else {
+    // A symlink ANYWHERE above the target redirects both the git remove and
+    // the rm fallback into whatever it points at, while the containment check
+    // above still reads as contained. `dirname`, because a link AT the target
+    // is unlinked below rather than followed.
+    try {
+      const redirected = await redirectedAncestor(path.dirname(target));
+      if (redirected !== null) {
+        return refuse(
+          `refusing to remove through a symlink: ${redirected} is a link, so the removal would land wherever it points`,
+        );
+      }
+    } catch (err) {
+      return refuse(messageOf(err));
+    }
   }
 
   const existed = await pathExists(target);
   // Read the branch BEFORE the removal: afterwards the registration is gone and
   // there is nothing left to ask.
   const registeredBranch = await branchAtPath(mainRoot, target);
-  const branch = opts.deleteBranch === false ? null : registeredBranch;
+  const branch = (opts.deleteBranch ?? managed) ? registeredBranch : null;
   const isRegistered = registeredBranch !== null;
 
   let removeError: unknown;
@@ -568,7 +617,9 @@ export async function removeWorktree(opts: {
       // all (a leftover directory git has already forgotten). A non-forced
       // refusal over a REGISTERED tree is git protecting real work, and
       // deleting it here would turn that protection into data loss.
-      if (opts.force || !isRegistered) {
+      // Never for a copy outside ezcoder's folder: there, git is the only
+      // thing trusted to decide what the folder is.
+      if (managed && (opts.force || !isRegistered)) {
         try {
           await fs.rm(target, { recursive: true, force: true });
           removeError = undefined;
@@ -618,6 +669,17 @@ export async function removeWorktree(opts: {
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** `target` is a linked (non-main) worktree git has registered for this repo. */
+async function isRegisteredLinkedWorktree(mainRoot: string, target: string): Promise<boolean> {
+  const entries = await listWorktrees(mainRoot).catch(() => [] as WorktreeEntry[]);
+  const real = await realpathOrSelf(target);
+  for (const entry of entries) {
+    if (entry.isMain || entry.isBare) continue;
+    if ((await realpathOrSelf(entry.path)) === real) return true;
+  }
+  return false;
 }
 
 /** The branch checked out at `target`, read from the worktree itself. */

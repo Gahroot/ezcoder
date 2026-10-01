@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { log } from "./logger.js";
+import { resolveWindowsExecutable, resolveWindowsLauncher } from "./mcp/resolve-stdio.js";
 
 const exec = promisify(execFile);
 
@@ -16,7 +18,8 @@ const exec = promisify(execFile);
  * project rather than a missing setup step.
  *
  * Two steps close that gap: carry a small allowlist of ignored CONFIG files
- * across, then run the project's own install command.
+ * across (including the project's own ezcoder commands, skills and agents),
+ * then run the project's own install command.
  */
 
 /** Cap on a carried file. Config is tiny; anything larger is data, not config. */
@@ -62,9 +65,43 @@ function isInside(root: string, candidate: string): boolean {
  * and are dropped: package trees get installed below, not copied.
  */
 async function listIgnoredFiles(mainRoot: string): Promise<string[]> {
+  return await gitIgnoredFiles(mainRoot, ["--directory"]);
+}
+
+/**
+ * Project-level ezcoder config that lives in `.ezcoder/`: custom slash
+ * commands (the commit button reads `commands/commit.md`), skills, agents and
+ * MCP servers. Projects commonly git-ignore `.ezcoder/` whole, so a fresh copy
+ * would otherwise start without any of it — which is why `/setup-commit` kept
+ * reappearing in new copies of a project that already had it set up.
+ *
+ * Only IGNORED files are carried. A tracked file is already in the checkout,
+ * and an untracked-but-not-ignored one would show up as an uncommitted change
+ * in the copy, which blocks it from ever being cleaned up automatically.
+ */
+const PROJECT_CONFIG_PATHS: readonly string[] = [
+  ".ezcoder/commands",
+  ".ezcoder/skills",
+  ".ezcoder/agents",
+  ".ezcoder/mcp.json",
+];
+
+/** Per-file cap for project config. Skills can ship small scripts and assets. */
+const PROJECT_CONFIG_MAX_BYTES = 1024 * 1024;
+
+/** Cap on how many project-config files one copy carries. */
+const PROJECT_CONFIG_MAX_FILES = 2000;
+
+/** Ignored files under `PROJECT_CONFIG_PATHS`, listed file by file. */
+async function listIgnoredProjectConfig(mainRoot: string): Promise<string[]> {
+  const files = await gitIgnoredFiles(mainRoot, ["--", ...PROJECT_CONFIG_PATHS]);
+  return files.slice(0, PROJECT_CONFIG_MAX_FILES);
+}
+
+async function gitIgnoredFiles(mainRoot: string, extraArgs: readonly string[]): Promise<string[]> {
   const { stdout } = await exec(
     "git",
-    ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
+    ["ls-files", "--others", "--ignored", "--exclude-standard", "-z", ...extraArgs],
     {
       cwd: mainRoot,
       timeout: 15_000,
@@ -95,9 +132,27 @@ export async function carryIgnoredConfig(
     return [];
   }
 
+  let projectConfig: string[] = [];
+  try {
+    projectConfig = await listIgnoredProjectConfig(mainRoot);
+  } catch (err) {
+    log("INFO", "worktree-setup", "could not list project config", { message: messageOf(err) });
+  }
+
   const carried: string[] = [];
-  for (const rel of entries) {
-    if (!isCarryable(path.basename(rel))) continue;
+  const candidates = [
+    ...entries
+      .filter((rel) => isCarryable(path.basename(rel)))
+      .map((rel) => ({
+        rel,
+        maxBytes: CARRY_MAX_BYTES,
+      })),
+    ...projectConfig.map((rel) => ({ rel, maxBytes: PROJECT_CONFIG_MAX_BYTES })),
+  ];
+  const seen = new Set<string>();
+  for (const { rel, maxBytes } of candidates) {
+    if (seen.has(rel)) continue;
+    seen.add(rel);
 
     // git reports paths relative to the repo root, but a path arriving from a
     // subprocess is still input: a `..` segment or an absolute entry must not
@@ -111,7 +166,7 @@ export async function carryIgnoredConfig(
       // at /etc/passwd or a 2GB file would be copied as its target. Only real,
       // small, regular files qualify.
       const stat = await fs.lstat(from);
-      if (!stat.isFile() || stat.size > CARRY_MAX_BYTES) continue;
+      if (!stat.isFile() || stat.size > maxBytes) continue;
 
       await fs.mkdir(path.dirname(to), { recursive: true });
       // COPYFILE_EXCL: never clobber a file the checkout already produced.
@@ -191,10 +246,86 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** How to actually start an install command on this machine. */
+export interface InstallLaunch {
+  command: string;
+  args: string[];
+  /** Run through the system shell (Windows `.cmd`/`.bat` shims only). */
+  shell: boolean;
+}
+
 /**
- * Run one install in `dir`. Argument array, never a shell string: the command
- * is chosen from a fixed table above, and keeping it unparsed means a repo path
- * containing shell metacharacters stays a path.
+ * Turn an install command into something the OS can start, or null when the
+ * tool is not installed.
+ *
+ * Off Windows this is the command as-is. On Windows, a shell-less spawn of a
+ * bare `npm` fails with ENOENT (no PATHEXT lookup), and since CVE-2024-27980
+ * Node refuses to spawn `npm.cmd` without a shell at all. So:
+ *   - npm runs as `node <npm-cli.js>`, the same "never the shim, always the
+ *     real script" route the MCP launcher uses (no shell involved);
+ *   - a tool that resolves to a real `.exe` (bun, uv) runs directly;
+ *   - a tool that only exists as a `.cmd`/`.bat` shim (pnpm, yarn via npm or
+ *     corepack) runs through `cmd.exe`. That is safe HERE because the whole
+ *     command line comes from the fixed table in `detectInstallCommands` — the
+ *     repo path travels as `cwd`, never as text the shell parses.
+ */
+export function resolveInstallLaunch(
+  cmd: InstallCommand,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  exists: (p: string) => boolean = existsSync,
+): InstallLaunch | null {
+  if (platform !== "win32") return { command: cmd.command, args: [...cmd.args], shell: false };
+
+  if (cmd.command === "npm") {
+    const launcher = resolveWindowsLauncher("npm", env, platform, exists);
+    if (launcher) {
+      return {
+        command: launcher.command,
+        args: [...launcher.prefixArgs, ...cmd.args],
+        shell: false,
+      };
+    }
+    // npm not on PATH (common for an app started before Node was installed):
+    // try the standard Node install locations before giving up.
+    for (const dir of windowsNodeDirs(env)) {
+      const cli = path.win32.join(dir, "node_modules", "npm", "bin", "npm-cli.js");
+      if (exists(cli)) return { command: process.execPath, args: [cli, ...cmd.args], shell: false };
+    }
+    return null;
+  }
+
+  const resolved = resolveWindowsExecutable(cmd.command, env, platform, exists);
+  if (resolved === cmd.command) return null; // not found on PATH
+  const ext = path.win32.extname(resolved).toLowerCase();
+  if (ext === ".cmd" || ext === ".bat") {
+    // One pre-joined string (not command + args) so Node does not warn about
+    // unescaped shell arguments; every token here is a fixed literal.
+    return { command: formatCommand(cmd), args: [], shell: true };
+  }
+  return { command: resolved, args: [...cmd.args], shell: false };
+}
+
+/** Where the official Windows Node installer and a global npm upgrade put npm. */
+function windowsNodeDirs(env: NodeJS.ProcessEnv): string[] {
+  const dirs: string[] = [];
+  if (env.ProgramFiles) dirs.push(path.win32.join(env.ProgramFiles, "nodejs"));
+  if (env.APPDATA) dirs.push(path.win32.join(env.APPDATA, "npm"));
+  return dirs;
+}
+
+function notInstalledMessage(cmd: InstallCommand): string {
+  return (
+    `${cmd.command} isn't installed on this computer, or isn't on its PATH. ` +
+    `Install it, then run "${formatCommand(cmd)}" in the copy.`
+  );
+}
+
+/**
+ * Run one install in `dir`. Argument array, never a shell string, except for a
+ * Windows `.cmd` shim (see `resolveInstallLaunch`): the command is chosen from
+ * a fixed table above, and keeping it unparsed means a repo path containing
+ * shell metacharacters stays a path.
  */
 async function runInstall(
   dir: string,
@@ -202,17 +333,24 @@ async function runInstall(
   timeoutMs: number,
 ): Promise<InstallResult> {
   const label = formatCommand(cmd);
+  const launch = resolveInstallLaunch(cmd);
+  if (!launch) return { command: label, ok: false, message: notInstalledMessage(cmd) };
   try {
-    await exec(cmd.command, cmd.args, {
+    await exec(launch.command, launch.args, {
       cwd: dir,
       timeout: timeoutMs,
       maxBuffer: 16 * 1024 * 1024,
       // Inherit the enriched PATH the sidecar builds at startup, otherwise a
       // GUI-launched app cannot find pnpm/uv at all.
       env: process.env,
+      shell: launch.shell,
+      windowsHide: true,
     });
     return { command: label, ok: true };
   } catch (err) {
+    if ((err as { code?: unknown }).code === "ENOENT") {
+      return { command: label, ok: false, message: notInstalledMessage(cmd) };
+    }
     const stderr = (err as { stderr?: string }).stderr ?? "";
     const stdout = (err as { stdout?: string }).stdout ?? "";
     const killed = (err as { killed?: boolean }).killed === true;

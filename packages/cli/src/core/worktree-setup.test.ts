@@ -3,7 +3,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { carryIgnoredConfig, detectInstallCommands, prepareWorktree } from "./worktree-setup.js";
+import {
+  carryIgnoredConfig,
+  detectInstallCommands,
+  prepareWorktree,
+  resolveInstallLaunch,
+} from "./worktree-setup.js";
 
 function hasGit(): boolean {
   try {
@@ -119,6 +124,48 @@ d("carryIgnoredConfig", () => {
     expect(await exists(path.join(dest, "big.env"))).toBe(false);
   });
 
+  it("carries the project's ignored ezcoder commands, skills and agents", async () => {
+    const repo = await makeRepo();
+    await fs.appendFile(path.join(repo, ".gitignore"), ".ezcoder/\n");
+    git(repo, "add", ".gitignore");
+    git(repo, "commit", "-q", "-m", "ignore ezcoder");
+    const dest = await makeTempDir("ez-wt-dest-");
+    const ez = path.join(repo, ".ezcoder");
+    await fs.mkdir(path.join(ez, "commands"), { recursive: true });
+    await fs.mkdir(path.join(ez, "skills", "deploy"), { recursive: true });
+    await fs.mkdir(path.join(ez, "plans"), { recursive: true });
+    await fs.writeFile(path.join(ez, "commands", "commit.md"), "# commit\n");
+    await fs.writeFile(path.join(ez, "skills", "deploy", "SKILL.md"), "# deploy\n");
+    await fs.writeFile(path.join(ez, "mcp.json"), "{}\n");
+    // Session state is not project config and must stay behind.
+    await fs.writeFile(path.join(ez, "plans", "draft.md"), "# draft\n");
+
+    const carried = await carryIgnoredConfig(repo, dest);
+
+    expect(carried.sort()).toEqual([
+      ".ezcoder/commands/commit.md",
+      ".ezcoder/mcp.json",
+      ".ezcoder/skills/deploy/SKILL.md",
+    ]);
+    expect(await fs.readFile(path.join(dest, ".ezcoder", "commands", "commit.md"), "utf-8")).toBe(
+      "# commit\n",
+    );
+    expect(await exists(path.join(dest, ".ezcoder", "plans"))).toBe(false);
+  });
+
+  it("does not duplicate ezcoder config that is already tracked", async () => {
+    const repo = await makeRepo();
+    const dest = await makeTempDir("ez-wt-dest-");
+    await fs.mkdir(path.join(repo, ".ezcoder", "commands"), { recursive: true });
+    await fs.writeFile(path.join(repo, ".ezcoder", "commands", "commit.md"), "# commit\n");
+    git(repo, "add", ".ezcoder");
+    git(repo, "commit", "-q", "-m", "track commands");
+
+    // Tracked means the checkout already has it; carrying would be a no-op at
+    // best and a phantom uncommitted change at worst.
+    expect(await carryIgnoredConfig(repo, dest)).toEqual([]);
+  });
+
   it("returns nothing instead of throwing when the source is not a repo", async () => {
     const plain = await makeTempDir("ez-wt-plain-");
     const dest = await makeTempDir("ez-wt-dest-");
@@ -159,6 +206,73 @@ describe("detectInstallCommands", () => {
     const dir = await makeTempDir("ez-wt-lock-");
     await fs.writeFile(path.join(dir, "main.go"), "package main\n");
     expect(await detectInstallCommands(dir)).toEqual([]);
+  });
+});
+
+describe("resolveInstallLaunch", () => {
+  const nodeDir = "C:\\Program Files\\nodejs";
+  const npmCli = `${nodeDir}\\node_modules\\npm\\bin\\npm-cli.js`;
+  const winEnv = { PATH: `${nodeDir};C:\\tools`, PATHEXT: ".COM;.EXE;.BAT;.CMD" };
+  const on =
+    (...files: string[]) =>
+    (p: string): boolean =>
+      files.includes(p);
+
+  it("runs the command as-is off Windows", () => {
+    expect(resolveInstallLaunch({ command: "npm", args: ["install"] }, {}, "darwin")).toEqual({
+      command: "npm",
+      args: ["install"],
+      shell: false,
+    });
+  });
+
+  it("runs npm on Windows through node and npm's own script, not the .cmd shim", () => {
+    const launch = resolveInstallLaunch(
+      { command: "npm", args: ["install"] },
+      winEnv,
+      "win32",
+      // PATHEXT is upper-case, and so is the name the lookup probes.
+      on(`${nodeDir}\\npm.CMD`, npmCli),
+    );
+    expect(launch).toEqual({ command: process.execPath, args: [npmCli, "install"], shell: false });
+  });
+
+  it("finds npm in the standard Node folder when it is not on PATH", () => {
+    const launch = resolveInstallLaunch(
+      { command: "npm", args: ["install"] },
+      { PATH: "C:\\Windows", PATHEXT: ".EXE;.CMD", ProgramFiles: "C:\\Program Files" },
+      "win32",
+      on(npmCli),
+    );
+    expect(launch?.args).toEqual([npmCli, "install"]);
+  });
+
+  it("runs a .cmd-only tool through the shell and a real .exe directly", () => {
+    expect(
+      resolveInstallLaunch(
+        { command: "pnpm", args: ["install"] },
+        winEnv,
+        "win32",
+        on("C:\\tools\\pnpm.CMD"),
+      ),
+    ).toEqual({ command: "pnpm install", args: [], shell: true });
+    expect(
+      resolveInstallLaunch(
+        { command: "uv", args: ["sync"] },
+        winEnv,
+        "win32",
+        on("C:\\tools\\uv.EXE"),
+      ),
+    ).toEqual({ command: "C:\\tools\\uv.EXE", args: ["sync"], shell: false });
+  });
+
+  it("reports a tool that is not installed instead of guessing", () => {
+    expect(
+      resolveInstallLaunch({ command: "pnpm", args: ["install"] }, winEnv, "win32", on()),
+    ).toBeNull();
+    expect(
+      resolveInstallLaunch({ command: "npm", args: ["install"] }, { PATH: "" }, "win32", on()),
+    ).toBeNull();
   });
 });
 
