@@ -138,6 +138,59 @@ describe("CritterFloor", () => {
     expect(lane(container).classList.contains("open")).toBe(false);
   });
 
+  it("acts out real tool activity with a prop, and clears it when the agent finishes", async () => {
+    const run = (activities: string[], toolUseCount: number): CritterGroup =>
+      group(1, [line("a", "running", { activities, toolUseCount })]);
+    const { container, rerender, unmount } = render(<CritterFloor groups={[run([], 0)]} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(critters(container)).toBe(1);
+
+    rerender(<CritterFloor groups={[run(["Reading src/auth/session.ts"], 1)]} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    // Every read variant puts a book, scroll or page in its paws/on the floor.
+    expect(container.querySelector(".critter-prop")).not.toBeNull();
+    // No tool text in a speech bubble any more; the hover card has it instead.
+    expect(container.querySelector(".critter-bubble")?.textContent ?? "").not.toContain(
+      "session.ts",
+    );
+
+    // A different tool kind (read → search) queues behind the current action.
+    rerender(
+      <CritterFloor groups={[run(["Reading src/auth/session.ts", "grep: refreshToken"], 2)]} />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(critters(container)).toBe(1);
+
+    rerender(<CritterFloor groups={[group(1, [line("a", "done", { toolUseCount: 2 })])]} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(critters(container)).toBe(0);
+    expect(container.querySelector(".critter-prop")).toBeNull();
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps living through a long quiet run (thinks, fidgets) without leaking timers", async () => {
+    const { container, unmount } = render(
+      <CritterFloor
+        groups={[group(1, [line("a", "running"), line("b", "running"), line("c", "running")])]}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+    expect(critters(container)).toBe(3);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("removes critters whose agents disappear (session switch) and cleans up on unmount", async () => {
     const { container, rerender, unmount } = render(
       <CritterFloor groups={[group(1, [line("a", "running")])]} />,

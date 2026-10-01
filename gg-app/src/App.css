@@ -4556,6 +4556,10 @@ select {
 .critter-badge-err {
   color: var(--error);
 }
+.critter-badge-zz {
+  color: var(--text-muted);
+  font-size: 10px;
+}
 .critter-badge-yikes {
   color: var(--warning);
   font-size: 13px;
@@ -4565,6 +4569,343 @@ select {
     transform: translateX(-50%) scale(0.4);
     opacity: 0;
   }
+}
+
+/* ── Alive critters: reaction wrapper, props, particles, overlays ── */
+/* Jolts, props and overlays live on .critter-react; .critter-body inside it is
+   what the behaviour scripts squash and tilt. */
+.critter-react {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 100%;
+  transition:
+    opacity 240ms ease,
+    filter 240ms ease;
+}
+.critter {
+  z-index: 2;
+}
+/* Passing behind a busy critter instead of through it reads as depth. */
+.critter.behind {
+  z-index: 1;
+}
+.critter.behind .critter-react {
+  opacity: 0.72;
+  filter: brightness(0.75);
+}
+.critter.phasing .critter-react {
+  opacity: 0.3;
+}
+.critter.sooty .critter-flip img {
+  filter: brightness(0.35) saturate(0.3);
+}
+.critter.sitting .critter-body {
+  transform: translateY(var(--critter-px)) scale(1.08, 0.86);
+}
+
+.critter-prop {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+.critter-prop img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* Particles are positioned by their centre; scripts animate `transform`. */
+.critter-pt {
+  position: absolute;
+  z-index: 3;
+  translate: -50% 50%;
+  pointer-events: none;
+}
+.critter-pt-dot {
+  width: var(--critter-px);
+  height: var(--critter-px);
+  background: var(--critter-pc, #fff);
+  box-shadow: 0 0 3px var(--critter-pc, #fff);
+}
+.critter-pt-txt {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: calc(var(--critter-px) * 5);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--critter-pc, #fff);
+  text-shadow: 0 0 4px color-mix(in srgb, var(--critter-pc, #fff) 55%, transparent);
+}
+.critter-pt-small {
+  font-size: calc(var(--critter-px) * 4);
+}
+.critter-pt-puff {
+  width: calc(var(--critter-px) * 2);
+  height: calc(var(--critter-px) * 2);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+.critter-pt-steam {
+  background: rgba(225, 232, 245, 0.5);
+  filter: blur(0.5px);
+}
+.critter-pt-drop {
+  width: 3px;
+  height: 4px;
+  border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%;
+  background: #7fd8ff;
+}
+.critter-pt-blub {
+  width: calc(var(--critter-px) * 2);
+  height: calc(var(--critter-px) * 2);
+  border-radius: 50%;
+  border: 1px solid #a8e9ff;
+  background: rgba(168, 233, 255, 0.15);
+}
+
+/* Thought cloud: "…" dots bobbing in a bubble, with two trail puffs. */
+.critter-thought {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 62%;
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  pointer-events: none;
+  animation: critter-pop-plain 200ms cubic-bezier(0.3, 1.6, 0.6, 1) both;
+}
+.critter-thought::before,
+.critter-thought::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+}
+.critter-thought::before {
+  width: 5px;
+  height: 5px;
+  left: 2px;
+  bottom: -6px;
+}
+.critter-thought::after {
+  width: 3px;
+  height: 3px;
+  left: -2px;
+  bottom: -10px;
+}
+.critter-thought span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: critter-think-dot 1.1s ease-in-out infinite;
+}
+.critter-thought span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.critter-thought span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes critter-think-dot {
+  0%,
+  60%,
+  100% {
+    transform: none;
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+}
+@keyframes critter-pop-plain {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* Dizzy stars circling the head. */
+.critter-dizzy {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - var(--critter-px) * 3);
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.critter-dizzy i {
+  position: absolute;
+  font-style: normal;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: calc(var(--critter-px) * 4.5);
+  line-height: 1;
+  translate: -50% 50%;
+  color: #ffe14d;
+  text-shadow: 0 0 4px rgba(255, 225, 77, 0.6);
+  animation: critter-circle-head 0.9s linear infinite;
+}
+.critter-dizzy i:nth-child(2) {
+  animation-delay: -0.3s;
+}
+.critter-dizzy i:nth-child(3) {
+  animation-delay: -0.6s;
+}
+@keyframes critter-circle-head {
+  0% {
+    transform: translate(calc(var(--critter-px) * -7), 0) scale(0.8);
+    opacity: 0.7;
+  }
+  25% {
+    transform: translate(0, calc(var(--critter-px) * 1.5)) scale(1.1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(var(--critter-px) * 7), 0) scale(0.8);
+    opacity: 0.7;
+  }
+  75% {
+    transform: translate(0, calc(var(--critter-px) * -1.5)) scale(0.6);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(calc(var(--critter-px) * -7), 0) scale(0.8);
+    opacity: 0.7;
+  }
+}
+
+/* Signal arcs radiating from the head (web tools). */
+.critter-arcs,
+.critter-arcs::before,
+.critter-arcs::after {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - var(--critter-px) * 2);
+  width: calc(var(--critter-px) * 8);
+  height: calc(var(--critter-px) * 8);
+  margin-left: calc(var(--critter-px) * -4);
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: #8fdcff;
+  pointer-events: none;
+  animation: critter-arc-out 1.2s ease-out infinite;
+}
+.critter-arcs::before,
+.critter-arcs::after {
+  content: "";
+  bottom: auto;
+  top: -2px;
+  margin-left: calc(var(--critter-px) * -4 - 2px);
+}
+.critter-arcs::before {
+  animation-delay: 0.4s;
+}
+.critter-arcs::after {
+  animation-delay: 0.8s;
+}
+@keyframes critter-arc-out {
+  from {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* Hamster wheel behind the critter (run tools). */
+.critter-wheel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--critter-px) * -1);
+  width: calc(var(--critter-px) * 20);
+  height: calc(var(--critter-px) * 20);
+  margin-left: calc(var(--critter-px) * -10);
+  border-radius: 50%;
+  border: var(--critter-px) solid #8c93ab;
+  background: repeating-conic-gradient(rgba(140, 147, 171, 0.35) 0 5deg, transparent 5deg 45deg);
+  pointer-events: none;
+  animation: critter-wheel-spin 0.7s linear infinite;
+}
+@keyframes critter-wheel-spin {
+  to {
+    rotate: -360deg;
+  }
+}
+
+/* Robot scan beam: a red fan from the eye down to the floor, sweeping. */
+.critter-scan {
+  position: absolute;
+  left: calc(var(--critter-px) * 10);
+  bottom: 0;
+  width: calc(var(--critter-px) * 9);
+  height: calc(var(--critter-px) * 9);
+  background: linear-gradient(to right, rgba(255, 90, 80, 0.55), rgba(255, 90, 80, 0.1));
+  clip-path: polygon(0 0, 100% 75%, 100% 100%, 0 12%);
+  transform-origin: 0 0;
+  pointer-events: none;
+  animation: critter-scan-sweep 0.7s ease-in-out infinite alternate;
+}
+.critter-scan.left {
+  left: auto;
+  right: calc(var(--critter-px) * 10);
+  transform-origin: 100% 0;
+  scale: -1 1;
+}
+@keyframes critter-scan-sweep {
+  from {
+    transform: rotate(-6deg);
+  }
+  to {
+    transform: rotate(10deg);
+  }
+}
+
+/* Frog tongue: scripts stretch it with scaleX from the mouth. */
+.critter-tongue {
+  position: absolute;
+  left: calc(var(--critter-px) * 12);
+  bottom: calc(var(--critter-px) * 6.5);
+  width: calc(var(--critter-px) * 9);
+  height: var(--critter-px);
+  border-radius: 0 var(--critter-px) var(--critter-px) 0;
+  background: #ff7aa8;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  pointer-events: none;
+}
+.critter-tongue.left {
+  left: auto;
+  right: calc(var(--critter-px) * 12);
+  transform-origin: 100% 50%;
+  border-radius: var(--critter-px) 0 0 var(--critter-px);
+}
+
+/* Knight sword swoosh. */
+.critter-slash {
+  position: absolute;
+  left: calc(var(--critter-px) * 6);
+  bottom: var(--critter-px);
+  width: calc(var(--critter-px) * 14);
+  height: calc(var(--critter-px) * 14);
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-right-color: rgba(255, 255, 255, 0.5);
+  opacity: 0;
+  pointer-events: none;
+}
+.critter-slash.left {
+  left: auto;
+  right: calc(var(--critter-px) * 6);
+  scale: -1 1;
 }
 
 /* Hover card with the stats the old in-chat feed showed. */
@@ -4626,6 +4967,19 @@ select {
   .critter.fallen .critter-body {
     transform: none;
     transition: none;
+  }
+  .critter-react {
+    transition: none;
+  }
+  .critter-thought,
+  .critter-thought span,
+  .critter-dizzy i,
+  .critter-arcs,
+  .critter-arcs::before,
+  .critter-arcs::after,
+  .critter-wheel,
+  .critter-scan {
+    animation: none;
   }
 }
 
@@ -5608,7 +5962,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 4px 2px 0;
+  /* padding: see "Composer chip bars" below. */
 }
 .mention-chip {
   /* Pinned: inheriting the app's 1.55 body line-height made the label's line
@@ -5646,6 +6000,124 @@ select {
 }
 .mention-chip-remove:hover {
   color: var(--text, #f4f6f8);
+}
+
+/* ── Composer chip bars: enter / exit ──
+   Same motion as the queued strip (.queued-bar): a bar grows open from under
+   the composer and folds shut on the way out; chips pop in and collapse
+   sideways so their neighbours glide over. AttachmentBar / ReferencedFiles keep
+   leaving chips mounted for EXIT_MS (220ms) via usePresenceList, and pinSize
+   writes each element's real size to --pin-w / --pin-h so the max-width /
+   max-height collapse starts from it instead of a guessed cap.
+
+   The bars clip (overflow: hidden) so a growing bar never shows chips spilling
+   over the input row. 3px of padding, cancelled by an equal negative margin,
+   keeps the chips' soft drop shadow and pop-in scale inside the clip. */
+.attach-bar,
+.mention-bar {
+  box-sizing: border-box;
+  overflow: hidden;
+  margin: -3px;
+  animation: ggchipbarin 260ms var(--ease-out);
+}
+.attach-bar {
+  padding: 3px;
+}
+.mention-bar {
+  /* Resting 4px 2px 0, plus the 3px shadow room on every side. */
+  padding: 7px 5px 3px;
+}
+.attach-bar.leaving,
+.mention-bar.leaving {
+  animation: ggchipbarout 220ms var(--ease-in) forwards;
+  pointer-events: none;
+}
+/* Collapsed state: no height, no padding, and a bottom margin that also soaks
+   up the composer's 8px flex gap (-3 top + -5 bottom + 8 gap = 0), so the
+   composer moves smoothly rather than snapping by the gap. --pin-h is measured
+   with the padding already at 0, hence the slack on the enter target. */
+@keyframes ggchipbarin {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: -5px;
+  }
+  to {
+    max-height: calc(var(--pin-h, 160px) + 12px);
+  }
+}
+@keyframes ggchipbarout {
+  from {
+    max-height: var(--pin-h, 160px);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: -5px;
+  }
+}
+.attach-chip,
+.mention-chip {
+  animation: ggchipin 200ms var(--ease-out);
+}
+.attach-chip {
+  --chip-gap: 8px; /* .attach-bar gap */
+}
+.mention-chip {
+  --chip-gap: 6px; /* .mention-bar gap */
+}
+.attach-chip.leaving,
+.mention-chip.leaving {
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  animation: ggchipout 220ms var(--ease-in) forwards;
+}
+@keyframes ggchipin {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+}
+/* Shrink to nothing, including the flex gap after the chip (negative right
+   margin), so the chips after it slide left instead of jumping. */
+@keyframes ggchipout {
+  from {
+    /* No fallback on purpose: until pinSize sets it, this resolves to `none`,
+       so the measurement sees the chip's natural width. */
+    max-width: var(--pin-w);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.88);
+    max-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+    margin-right: calc(-1 * var(--chip-gap));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .attach-bar,
+  .mention-bar,
+  .attach-chip,
+  .mention-chip {
+    animation: none;
+  }
+  /* No exit animation to watch, so don't leave a dead chip up for EXIT_MS. */
+  .attach-bar.leaving,
+  .mention-bar.leaving,
+  .attach-chip.leaving,
+  .mention-chip.leaving {
+    display: none;
+  }
 }
 
 .inputwrap .prompt {
