@@ -8,6 +8,7 @@ import { streamGemini } from "./providers/gemini.js";
 import { providerRegistry } from "./provider-registry.js";
 import { clampProviderContextImages } from "./providers/transform.js";
 import { sanitizeMessagesForWire } from "./utils/well-formed.js";
+import { observePreparedContext } from "./utils/context-observation.js";
 
 /** Z.AI coding API endpoint — the primary endpoint for all GLM models. */
 const GLM_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
@@ -249,6 +250,15 @@ export function stream(options: StreamOptions): StreamResult {
     options.provider,
     options.supportsImages,
   );
+  if (options.onContextPrepared) {
+    try {
+      options.onContextPrepared(
+        observePreparedContext(wireMessages, messages, options.tools ?? []),
+      );
+    } catch {
+      // Diagnostics must not change request behaviour or expose an exception containing prompts.
+    }
+  }
   return entry.stream(messages === options.messages ? options : { ...options, messages });
 }
 

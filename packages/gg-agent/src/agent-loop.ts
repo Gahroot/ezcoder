@@ -1000,6 +1000,7 @@ export async function* agentLoop(
           transportSessionId: options.transportSessionId,
           projectId: liveProjectId,
           cacheRetention: options.cacheRetention,
+          onContextPrepared: options.onContextPrepared,
           promptCacheKey: options.promptCacheKey,
           serviceTier: options.serviceTier,
           supportsImages: options.supportsImages,

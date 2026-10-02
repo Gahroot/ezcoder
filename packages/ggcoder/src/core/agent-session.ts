@@ -123,6 +123,7 @@ import {
   SessionDiagnosticsRecorder,
 } from "./internal-diagnostics.js";
 import { log } from "./logger.js";
+import { CacheDiagnostics } from "./cache-diagnostics.js";
 import {
   setEstimatorModel,
   calibrateEstimatorFromUsage,
@@ -494,6 +495,7 @@ export class AgentSession {
   // transcript rows the live run showed.
   private appMarkers: AppMarkerPayload[] = [];
   private turnMetrics: TurnMetricPayload[] = [];
+  private readonly cacheDiagnostics = new CacheDiagnostics();
   /** Internal-only (GG_INTERNAL): live per-session cost/reliability recorder.
    * Absent entirely in public builds — see core/internal-diagnostics.ts. */
   private diagnosticsRecorder?: SessionDiagnosticsRecorder;
@@ -2712,6 +2714,34 @@ export class AgentSession {
         // + pre-warm before the first turn. "baseline": current 5-min default.
         cacheRetention: this.isSpeedOptimized() ? "long" : "short",
         promptCacheKey: this.getPromptCacheKey(),
+        onContextPrepared: (context) => {
+          const report = this.cacheDiagnostics.prepare(context, {
+            provider: this.provider,
+            model: this.model,
+            at: Date.now(),
+            cacheRetention: this.isSpeedOptimized() ? "long" : "short",
+            route: { baseUrl: effectiveBaseUrl, accountId: this.lastAccountId ?? accountId },
+            settings: {
+              thinking:
+                this.planModeRef.current || options.capThinking
+                  ? clampThinkingForPlanMode(this.thinkingLevel)
+                  : this.thinkingLevel,
+              webSearch: !options.disableTools,
+              supportsImages: modelInfo?.supportsImages,
+              promptCacheKey: this.getPromptCacheKey(),
+            },
+          });
+          log("INFO", "cache", "Prepared context", {
+            sessionId: this.sessionId || this.transportSessionId,
+            data: JSON.stringify(report),
+          });
+          if (report.thinkingPrefixRiskBlocks > 0) {
+            log("WARN", "cache", "Possible signed-thinking prefix mismatch; not server verified", {
+              sessionId: this.sessionId || this.transportSessionId,
+              blocks: String(report.thinkingPrefixRiskBlocks),
+            });
+          }
+        },
         supportsImages: modelInfo?.supportsImages,
         supportsVideo: modelInfo?.supportsVideo,
         userAgent,
@@ -2753,6 +2783,7 @@ export class AgentSession {
             // retained usage afterwards since it counted the pruned content.
             const pruneResult = pruneStaleToolResults(messages);
             if (pruneResult.pruned) {
+              this.cacheDiagnostics.noteEdit("tool_prune", pruneResult.freedTokens);
               this.providerContext = null;
               log("INFO", "compaction", "Pruned stale tool outputs", {
                 prunedResults: String(pruneResult.prunedResults),
@@ -3583,7 +3614,10 @@ export class AgentSession {
       });
     }
 
-    if (this.lastCompactionCompacted) this.recordPlanStepCompaction(contextTokensBefore);
+    if (this.lastCompactionCompacted) {
+      this.cacheDiagnostics.noteEdit("compaction");
+      this.recordPlanStepCompaction(contextTokensBefore);
+    }
     this.eventBus.emit("compaction_end", {
       compacted: this.lastCompactionCompacted,
       originalCount,
@@ -3604,6 +3638,7 @@ export class AgentSession {
   }
 
   async newSession(preserveConversation = false): Promise<void> {
+    this.cacheDiagnostics.reset();
     // Approved-plan execution is a clean checkpoint of the same conversation;
     // explicit new sessions reset the conversation identity.
     if (!preserveConversation) {
@@ -3651,6 +3686,7 @@ export class AgentSession {
 
   async loadSession(sessionPath: string): Promise<void> {
     await this.loadExistingSession(sessionPath);
+    this.cacheDiagnostics.reset();
     if (this.sessionId) await this.subAgentManager?.hydrate(this.sessionId);
     this.eventBus.emit("session_start", { sessionId: this.sessionId });
   }
@@ -3685,6 +3721,7 @@ export class AgentSession {
     const branchMessages = this.sessionManager.getMessages(loaded.entries, this.currentLeafId);
     const systemMsg = this.messages[0];
     this.messages = [systemMsg, ...branchMessages];
+    this.cacheDiagnostics.reset();
     this.lastPersistedIndex = this.messages.length;
     // Reads made in the dropped messages are no longer in the model's context.
     this.clearReadTracker?.();
@@ -4123,6 +4160,16 @@ export class AgentSession {
   }
 
   private async persistTurnMetric(event: AgentTurnEndEvent): Promise<void> {
+    if (event.stopReason === "error") this.cacheDiagnostics.discardAttempt();
+    const cache = this.cacheDiagnostics.complete(event.usage, event.timing);
+    if (cache) {
+      log("INFO", "cache", "Context cache outcome", {
+        sessionId: this.sessionId || this.transportSessionId,
+        provider: this.provider,
+        model: this.model,
+        data: JSON.stringify(cache),
+      });
+    }
     const payload: TurnMetricPayload = {
       version: 1,
       turn: event.turn,
@@ -4680,6 +4727,7 @@ export class AgentSession {
     // letting it run past this point would checkpoint a near-empty history
     // and leak a junk session file after teardown.
     if (this.postTurnCompaction) await this.postTurnCompaction;
+    this.cacheDiagnostics.reset();
     this.diagnosticsRecorder?.finalize();
     this.managerAbortSignal?.removeEventListener("abort", this.managerAbortHandler);
     this.processManager?.shutdownAll();
