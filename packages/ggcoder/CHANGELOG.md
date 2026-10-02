@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.68.1
+
+### Patch Changes
+
+- Improve prompt-cache reuse in image-heavy conversations by pruning older images in batches, add content-free cache diagnostics, and speed up Motion source checks with bounded parallel browser pages.
+  - @kenkaiiii/gg-ai@5.68.1
+  - @kenkaiiii/gg-agent@5.68.1
+  - @kenkaiiii/gg-core@5.68.1
+
 ## 5.68.0
 
 ### Minor Changes
