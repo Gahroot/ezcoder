@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.69.0
+
+### Minor Changes
+
+- Add cold prompt-cache detection, engine-generated receipts for helper agent reports, prompt-injection warnings on untrusted tool output, idle shutdown and progress-aware timeouts for MCP servers, instant interrupt of running tools on steering, smarter truncation notes, a hardened persistent shell, and a catastrophic-command guard that also catches Windows backslash paths.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.69.0
+- @kenkaiiii/gg-agent@5.69.0
+- @kenkaiiii/gg-core@5.69.0
+
 ## 5.68.1
 
 ### Patch Changes
