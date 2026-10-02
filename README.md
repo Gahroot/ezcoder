@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="docs/art/hero.png" alt="GG Coder: six things shipping, none of them waiting on you">
+  <a href="docs/art/ggcoder.mp4?raw=true"><img src="docs/art/ggcoder.png" alt="Watch the GG Coder video: Code, Chat, and Motion" width="900"></a>
+  <br>
+  <a href="docs/art/ggcoder.mp4?raw=true">▶ Watch GG Coder in action</a>
 </p>
 
 <p align="center">
