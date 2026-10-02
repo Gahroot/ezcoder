@@ -3,6 +3,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
 import { WorkingBeam } from "./WorkingBeam";
+import { CacheExpiryNotice } from "./CacheExpiryNotice";
 import { MetalButton } from "./MetalButton";
 import { ActionMetal } from "./ActionMetal";
 import { withViewTransition } from "./view-transition";
@@ -76,7 +77,8 @@ import { KenActivityBar } from "./KenActivityBar";
 import { useTaskActivity } from "./useTaskActivity";
 import { useKenMentor } from "./useKenMentor";
 import { useAutopilot } from "./useAutopilot";
-import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEvents";
+import { useAgentEvents } from "./useAgentEvents";
+import { HookNotice, type HookKind, type VerificationReason } from "./HookNotice";
 import { useSmoothText } from "./useSmoothText";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
@@ -109,6 +111,7 @@ import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
 import { KenPowerBanner } from "./KenPowerBanner";
 import { KenFace } from "./KenFace";
+import { GgFace } from "./GgFace";
 import { ExportChatButton } from "./ExportChatButton";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { McpElicitModal } from "./McpElicitModal";
@@ -282,8 +285,8 @@ export type Item =
       guidance?: string;
     }
   // Agent self-correction hook notice (ideal review / loop-break / re-grounding),
-  // rendered like the TUI: a shimmering tone-colored one-liner.
-  | { kind: "hook"; id: number; hook: HookKind; verificationReason?: "recheck" | "check_review" }
+  // rendered as a working critter row with critter-themed wording.
+  | { kind: "hook"; id: number; hook: HookKind; verificationReason?: VerificationReason }
   // Images produced by a tool (screenshot / read of an image file).
   | { kind: "images"; id: number; images: TranscriptImage[]; caption?: string }
   // Image generation in progress — a shimmering square placeholder that gets
@@ -310,8 +313,8 @@ export type Item =
   | { kind: "task"; id: number; title: string }
   // Sub-agents delegated in a turn — a live, in-chat feed of each one's tools.
   | { kind: "subagent_group"; id: number; agents: SubAgentLine[]; aborted?: boolean }
-  // Context compaction — shimmering "compacting…" while running, then a quiet
-  // "compacted · N → M messages" summary when done.
+  // Context compaction — a critter row: shimmering "A critter is munching…"
+  // while running, then "A critter ate N messages and spat out M" when done.
   | {
       kind: "compaction";
       id: number;
@@ -2688,6 +2691,13 @@ function App(): React.ReactElement {
               <PlusIcon size={14} aria-hidden="true" />
               New
             </MetalButton>
+            <button
+              className="btn btn-sm btn-ghost"
+              title="Open your notes"
+              onClick={() => setShowNotes(true)}
+            >
+              Notes
+            </button>
             {workspaceMode === "chat" && (
               <button
                 className="btn btn-sm btn-ghost"
@@ -2907,6 +2917,11 @@ function App(): React.ReactElement {
         )}
         <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
         <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
+        <CacheExpiryNotice
+          expiry={state?.cacheExpiry}
+          running={running}
+          onCompact={() => void sendPrompt("/compact").catch(() => {})}
+        />
         <QueuedBar messages={visibleQueuedMessages} onCancel={handleCancelQueued} />
         <div className="inputrow">
           <input
@@ -3185,6 +3200,7 @@ function App(): React.ReactElement {
                 })()}
               <span className="model-anchor">
                 <span className="model-label" style={{ color: theme.text }}>
+                  <GgFace mood="ready" />
                   GG
                 </span>
                 <ModelSelect
@@ -3200,6 +3216,7 @@ function App(): React.ReactElement {
                   <FooterSep />
                   <span className="model-anchor">
                     <span className="model-label" style={{ color: theme.ken }}>
+                      <KenFace mood="chat" />
                       Ken
                     </span>
                     <ModelSelect
@@ -3305,7 +3322,7 @@ function App(): React.ReactElement {
         <MemoryModal onClose={() => setShowMemories(false)} />
       )}
 
-      {workspaceMode === "code" && showNotes && (
+      {showNotes && (
         <NotesModal
           value={notes}
           onChange={handleNotesChange}
@@ -3600,29 +3617,14 @@ function TranscriptRowBody({
         </div>
       );
     }
-    case "hook": {
-      // Mirrors the TUI IdealHookMessage: assistant-style dot + a shimmering
-      // tone-colored one-liner so the self-correction is obvious.
-      const { text: defaultText, color } = HOOK_PRESENTATION[item.hook];
-      const text =
-        item.verificationReason === "check_review"
-          ? "Hook engaged. Reviewing changes to tests and checks."
-          : item.verificationReason === "recheck"
-            ? "Hook engaged. Re-checking the changes made after verification."
-            : defaultText;
+    case "hook":
       return (
-        <div className="assistant-msg">
-          <span className="assistant-dot" style={{ color }}>
-            {DOT}
-          </span>
-          <div className="assistant-text">
-            <ShimmerText base={color} bright="#ffffff">
-              {text}
-            </ShimmerText>
-          </div>
-        </div>
+        <HookNotice
+          hook={item.hook}
+          variantKey={`hook-${item.id}`}
+          verificationReason={item.verificationReason}
+        />
       );
-    }
     case "images":
       return (
         <div className="img-grid">
@@ -3703,6 +3705,7 @@ function TranscriptRowBody({
       return (
         <CompactionNotice
           status={item.status}
+          variantKey={`compaction-${item.id}`}
           originalCount={item.originalCount}
           newCount={item.newCount}
         />

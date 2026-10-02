@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import { theme } from "./theme";
+import { isHookKind, type HookKind } from "./HookNotice";
 import {
   listCommands,
   listModels,
@@ -45,28 +45,8 @@ export interface ImagePreview {
   path?: string;
 }
 
-// Hook kind → notice copy + tone color, mirroring the TUI's app-items.ts.
-export type HookKind = "ideal" | "verification" | "loop_break" | "regrounding";
 /** Hooks that fire in place of a final answer, so their draft must be held. */
 export type PreFinalHookKind = Extract<HookKind, "ideal" | "verification">;
-export const HOOK_PRESENTATION: Record<HookKind, { text: string; color: string }> = {
-  ideal: {
-    text: "Hook engaged. Running an ideal review before finalizing.",
-    color: theme.secondary,
-  },
-  verification: {
-    text: "Hook engaged. Running the project's verification before finalizing.",
-    color: theme.secondary,
-  },
-  loop_break: {
-    text: "Hook engaged. Breaking a stuck loop and rethinking the approach.",
-    color: theme.warning,
-  },
-  regrounding: {
-    text: "Hook engaged. Re-grounding on the original request after compaction.",
-    color: theme.primary,
-  },
-};
 
 function formatElapsed(ms: number): string {
   const s = Math.round(ms / 1000);
@@ -1205,8 +1185,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           break;
         }
         case "hook": {
-          const kind = String(d.kind ?? "ideal") as HookKind;
-          if (kind in HOOK_PRESENTATION) {
+          const kind = String(d.kind ?? "ideal");
+          if (isHookKind(kind)) {
             if (kind === "ideal" || kind === "verification") {
               // Draft dies here — held (never painted) in the normal armed path,
               // or removed from the transcript when arming came too late. Both

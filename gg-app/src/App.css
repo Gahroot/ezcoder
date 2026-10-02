@@ -61,6 +61,12 @@
      CSS-styled chat bubbles. Marks every Ken element. */
   --ken: #62e8d8;
 
+  /* Critters — pink, single source of truth with theme.critter in theme.ts.
+     Marks a busy critter row (sub-agents at work, compaction in progress) so
+     it reads apart from periwinkle hooks and the green "done" state.
+     ~9.5:1 on --bg. */
+  --critter: #ff8fd0;
+
   /* Agent Steroids — red sibling of the brand tint. Marks the Steroids
      button, the "Roided!" stamp and the modal status dot. */
   --steroids: #ff4d5e;
@@ -716,6 +722,10 @@ select {
 .app:not(.window-focused) .command-shimmer,
 .app:not(.window-focused) .blink,
 .app:not(.window-focused) .wake-cursor,
+.app:not(.window-focused) .wake-critter-body,
+.app:not(.window-focused) .wake-weather i,
+.app:not(.window-focused) .wake-lane .terrain-prop-art,
+.app:not(.window-focused) .wake-lane .terrain-traveler,
 .app:not(.window-focused) .skeleton,
 .app:not(.window-focused) .enh-diss-skeleton .skeleton::after,
 .app:not(.window-focused) .enhance-pill.enhancing,
@@ -1174,10 +1184,8 @@ select {
 .ken-power-overlay ~ .transcript {
   opacity: 0;
 }
-/* Styled as the wake screen's line (`.wake-text`), so the two things the app
-   says to you in the empty chat body look like one voice — same mono face,
-   size, tracking, ink and blue halo. Only the entrance differs: the wake line
-   types itself, this one flashes in and dissolves. */
+/* Terminal-style line in the empty chat body — mono face, blue halo. It
+   flashes in and dissolves. */
 .ken-power-banner {
   font-family: var(--mono);
   font-size: 18px;
@@ -2677,6 +2685,94 @@ select {
   /* Match the in-app modal's scrollbar treatment (those rules are scoped to
      `.modal`, which this window doesn't use). */
 }
+
+/* A random critter pacing beside the title (WhatsNewCritter.tsx). */
+.whatsnew-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.whatsnew-critter-lane {
+  --lane: 96px;
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(var(--lane) + 21px);
+  height: 21px;
+}
+.whatsnew-critter {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 21px;
+  height: 21px;
+  animation: whatsnew-pace 9s linear infinite;
+}
+.whatsnew-critter-body {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.whatsnew-critter-body.bob {
+  animation: whatsnew-bob 0.72s ease-in-out infinite;
+}
+.whatsnew-critter-body img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  user-select: none;
+}
+/* The second walk frame blinks over the first, so the legs step. */
+.whatsnew-critter-step {
+  opacity: 0;
+  animation: whatsnew-step 0.36s steps(1, end) infinite;
+}
+/* Walk right, turn round, walk back, turn round. The scale flip runs over a
+   short beat, so the turn reads as the critter spinning on the spot. */
+@keyframes whatsnew-pace {
+  0% {
+    transform: translateX(0) scaleX(1);
+  }
+  44% {
+    transform: translateX(var(--lane)) scaleX(1);
+  }
+  50% {
+    transform: translateX(var(--lane)) scaleX(-1);
+  }
+  94% {
+    transform: translateX(0) scaleX(-1);
+  }
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+}
+@keyframes whatsnew-step {
+  0% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes whatsnew-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .whatsnew-critter,
+  .whatsnew-critter-body.bob,
+  .whatsnew-critter-step {
+    animation: none;
+  }
+}
 /* One-shot confetti overlay — covers the whole modal, never intercepts clicks,
    sits above the content while the burst plays then clears itself. */
 .confetti-canvas {
@@ -4108,6 +4204,27 @@ select {
 .ken-face-layer + .ken-face-layer {
   opacity: 0;
 }
+
+/* GG Coder's robot face (GgFace.tsx): same stacking as Ken's, with a blink
+   layer only on the Ready mood. */
+.gg-face {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.gg-face-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  user-select: none;
+}
+.gg-face-blink {
+  opacity: 0;
+  animation: ken-face-blink 5.2s steps(1, end) infinite;
+}
 /* In the reply gutter: one cell per CSS px, centred on the first text line
    (assistant text is 15px at line-height 1.55), where the dot used to sit. */
 .ken-face-slot {
@@ -4257,7 +4374,8 @@ select {
   .ken-face,
   .ken-face.ken-face-talking,
   .ken-face .ken-face-layer,
-  .ken-face .ken-face-z {
+  .ken-face .ken-face-z,
+  .gg-face-blink {
     animation: none;
   }
   .ken-face-on .ken-face-happy,
@@ -4445,11 +4563,11 @@ select {
 .subagents-critter-working {
   animation: subagents-critter-hop 0.9s var(--ease-in-out) infinite;
 }
-/* Failed / called back: tipped over and drained, like on the floor. */
+/* Failed / called back: tipped over, like on the floor. Kept at full colour:
+   the red text already says it failed, and a drained sprite read as disabled. */
 .subagents-critter-failed {
   transform-origin: 50% 50%;
   transform: rotate(-90deg);
-  filter: saturate(0.35) brightness(0.85);
 }
 @keyframes subagents-critter-hop {
   0%,
@@ -4461,11 +4579,16 @@ select {
     transform: translateY(-3px) scale(0.94, 1.06);
   }
 }
+/* Same size and weight as a hook line (`.assistant-text` + `.shimmer-text`),
+   in every state, so a critter row never reads smaller or dimmer than one. */
 .subagents-compact-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.55;
 }
 .subagents-head {
   display: flex;
@@ -7195,9 +7318,10 @@ select {
   -webkit-mask-image: linear-gradient(to bottom, #000 60%, rgba(0, 0, 0, 0.25) 100%);
 }
 
-/* ── Wake screen: Matrix-style empty state (the app addressing the user) ──
-   Fills the transcript area: faint brand-tinted digital rain behind a single
-   line of terminal text that types itself out and rests on the invitation. */
+/* ── Wake screen: the empty state, a critter saying hello ──
+   Fills the transcript area: the terrain's weather drifts faintly across it,
+   and in the middle a critter stands on a little patch of terrain (a real
+   terrain lane, drawn at 2x) typing a greeting into its speech bubble. */
 .wake-screen {
   position: relative;
   display: flex;
@@ -7208,35 +7332,248 @@ select {
   overflow: hidden;
   user-select: none;
 }
-.wake-rain {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  /* Sit behind the text and never bleed past readable contrast. */
-  opacity: 0.32;
-  pointer-events: none;
-  mask-image: radial-gradient(ellipse 70% 80% at 50% 50%, #000 35%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 70% 80% at 50% 50%, #000 35%, transparent 100%);
-}
-.wake-text {
+.wake-scene {
   position: relative;
   z-index: 1;
-  font-family: var(--mono);
-  font-size: 18px;
-  letter-spacing: 0.02em;
-  color: var(--text);
-  text-shadow: 0 0 12px rgba(77, 157, 255, 0.35);
-  white-space: pre;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Sit a little above centre, clear of the composer below. */
+  margin-bottom: 40px;
+}
+
+/* The pixel art: terrain and critter at their native size (2px a cell),
+   scaled up 2x. Its layout box is collapsed to the drawn size via margins. */
+.wake-art {
+  position: relative;
+  height: 92px;
+  transform: scale(2);
+  transform-origin: 50% 100%;
+  /* Reserve the scaled-up space: half again the width each side, and the
+     extra height above (the art grows up and out from its bottom centre). */
+  margin: 92px 0 0;
+}
+.wake-patch {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* Fade the patch's ends so it reads as a little island, not a cut strip. */
+  mask-image: linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+}
+.critter-lane.wake-lane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  height: auto;
+  transition: none;
+}
+/* The screen-wide weather stands in for the lane's own. */
+.wake-lane .terrain-weather {
+  display: none;
+}
+
+/* The critter stands on the ground (8 cells), in the middle of the patch. */
+.wake-critter {
+  all: unset;
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--terrain-px, 2px) * 8);
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  cursor: pointer;
+  border-radius: 4px;
+  /* Pops in once the ground has risen (TERRAIN_LAND_MS). */
+  animation: wake-critter-in 420ms cubic-bezier(0.3, 1.5, 0.6, 1) 360ms backwards;
+}
+.wake-critter:focus-visible {
+  outline: 1px solid var(--critter);
+  outline-offset: 2px;
+}
+.wake-critter-body {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 100%;
+  animation: wake-breathe 2.8s ease-in-out infinite;
+}
+.wake-critter-body.wake-hop {
+  animation:
+    wake-hop 520ms cubic-bezier(0.3, 1.5, 0.6, 1),
+    wake-breathe 2.8s ease-in-out 520ms infinite;
+}
+.wake-critter-body img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+@keyframes wake-critter-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.6);
+  }
+}
+@keyframes wake-breathe {
+  0%,
+  100% {
+    transform: none;
+  }
+  50% {
+    transform: scale(1.04, 0.96);
+  }
+}
+@keyframes wake-hop {
+  0% {
+    transform: scale(1.1, 0.88);
+  }
+  40% {
+    transform: translateY(-9px) scale(0.94, 1.08);
+  }
+  75% {
+    transform: none;
+  }
+  88% {
+    transform: scale(1.06, 0.94);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* The critter's speech bubble: the floor's white bubble, at reading size.
+   Sits just above the critter's head (the art's 2x critter top is 88px up). */
+.wake-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(88px + 12px);
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  width: max-content;
+  max-width: min(440px, 86vw);
+  min-width: 44px;
+  min-height: 1.4em;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #0a0a0c;
+  font-family: var(--sans);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+.wake-bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -7px;
+  border: 7px solid transparent;
+  border-top-color: #ffffff;
+}
+.wake-bubble-text {
+  white-space: pre-wrap;
 }
 .wake-cursor {
   display: inline-block;
-  margin-left: 2px;
-  color: var(--primary);
+  width: 8px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.17em;
+  border-radius: 2px;
+  background: #0a0a0c;
   animation: ggblink 1s step-end infinite;
 }
-.wake-cursor-rest {
-  color: var(--secondary);
+
+/* The terrain's weather across the whole screen: few particles, slow, faint,
+   fading out towards the edges. */
+.wake-weather {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse 80% 85% at 50% 50%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 85% at 50% 50%, #000 40%, transparent 100%);
+}
+.wake-weather i {
+  position: absolute;
+  opacity: 0;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+.wake-wx-snow i {
+  top: -2% !important;
+  animation-name: wake-wx-fall;
+}
+.wake-wx-pollen i {
+  animation-name: wake-wx-float;
+  animation-timing-function: ease-in-out;
+}
+.wake-wx-dust i {
+  animation-name: wake-wx-blow;
+}
+.wake-wx-sparkle i {
+  animation-name: wake-wx-twinkle;
+  animation-timing-function: ease-in-out;
+}
+@keyframes wake-wx-fall {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+  }
+  10%,
+  90% {
+    opacity: 0.55;
+  }
+  50% {
+    translate: calc(var(--drift) * 0.8) 50vh;
+  }
+  100% {
+    opacity: 0;
+    translate: var(--drift) 100vh;
+  }
+}
+@keyframes wake-wx-float {
+  0%,
+  100% {
+    opacity: 0;
+    translate: 0 0;
+  }
+  30%,
+  70% {
+    opacity: 0.85;
+  }
+  50% {
+    translate: var(--drift) -18px;
+  }
+}
+@keyframes wake-wx-blow {
+  0% {
+    opacity: 0;
+    translate: -60px 0;
+  }
+  20%,
+  80% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0;
+    translate: calc(var(--drift) * 2) 6px;
+  }
+}
+@keyframes wake-wx-twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    scale: 0.6;
+  }
+  50% {
+    opacity: 0.8;
+    scale: 1;
+  }
 }
 /* Motion's one-click starting points: a wrapping row just above the activity
    bar, aligned to the same rail as the rest of the live region. */
@@ -7252,7 +7589,10 @@ select {
   background: color-mix(in srgb, var(--bg) 70%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
-  .wake-cursor {
+  .wake-cursor,
+  .wake-critter,
+  .wake-critter-body,
+  .wake-critter-body.wake-hop {
     animation: none;
   }
 }
@@ -7419,10 +7759,11 @@ select {
 }
 
 /* ── Footer: background tasks indicator + popover ── */
+/* No outer margin: the first pill's edge sits on the footer rail, lined up
+   with the composer and transcript above; `.footer-left`'s gap spaces the rest. */
 .bgtasks {
   position: relative;
   display: inline-flex;
-  margin-left: 10px;
 }
 .bgtasks-button {
   display: inline-flex;
@@ -7515,6 +7856,9 @@ select {
    line-height differs from the inherited body line-height and the label
    visibly floats above the model name. */
 .model-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1;

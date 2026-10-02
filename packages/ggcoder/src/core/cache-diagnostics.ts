@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { CacheRetention, Message, PreparedContext, Usage } from "@kenkaiiii/gg-ai";
+import { resolveCacheTtl, type CacheTouch } from "./cache-expiry.js";
 
 /** Digests never leave this instance. Canonical object keys avoid spurious edits on resume. */
 function digest(value: unknown): string {
@@ -20,6 +21,15 @@ interface RequestSnapshot {
   at: number;
   imagesDropped: number;
   usage?: Usage;
+  /** TTL identity of this request, for cold-cache detection. Null = no known TTL. */
+  touch: Omit<CacheTouch, "at"> | null;
+}
+
+/** Route fields the session passes as `route`; read structurally, never digested. */
+function routeField(route: unknown, key: "baseUrl" | "accountId"): string | undefined {
+  if (!route || typeof route !== "object") return undefined;
+  const value = (route as Record<string, unknown>)[key];
+  return typeof value === "string" && value ? value : undefined;
 }
 
 export interface CacheRequestObservation {
@@ -92,8 +102,20 @@ export class CacheDiagnostics {
   private freedTokens = 0;
   private requests = 0;
   private reportedCache = false;
+  private lastTouch: CacheTouch | null = null;
+
+  /** Last successful cache-using request (real turn or prewarm), or null. */
+  lastCacheTouch(): CacheTouch | null {
+    return this.lastTouch;
+  }
+
+  /** Record a successful cache-using request that bypassed prepare/complete (prewarm). */
+  noteCacheTouch(touch: CacheTouch): void {
+    this.lastTouch = { ...touch };
+  }
 
   reset(): void {
+    this.lastTouch = null;
     this.completed = undefined;
     this.pending = undefined;
     this.edits.clear();
@@ -126,6 +148,16 @@ export class CacheDiagnostics {
       route: digest({ provider: input.provider, model: input.model, route: input.route }),
       imagesDropped: context.imagesBefore - context.imagesAfter,
       at: input.at,
+      touch: (() => {
+        const policy = resolveCacheTtl({
+          provider: input.provider,
+          model: input.model,
+          cacheRetention: input.cacheRetention,
+          baseUrl: routeField(input.route, "baseUrl"),
+          accountId: routeField(input.route, "accountId"),
+        });
+        return policy ? { provider: input.provider, model: input.model, policy } : null;
+      })(),
     };
     let unchanged = 0;
     if (previous) {
@@ -213,6 +245,9 @@ export class CacheDiagnostics {
         ? Math.max(0, Math.min(promptTokens(previous.usage), promptTokens(usage)) - cacheRead)
         : null;
     this.completed = { ...snapshot, usage: { ...usage } };
+    // The provider refreshes the cached prefix when the request is processed, so
+    // the TTL clock restarts at the request's start time.
+    this.lastTouch = snapshot.touch ? { ...snapshot.touch, at: snapshot.at } : null;
     this.pending = undefined;
     this.edits.clear();
     this.freedTokens = 0;

@@ -607,16 +607,18 @@ describe("verification gate flow", () => {
     const { VERIFICATION_HOOK_NOTICE_TEXT } = await import("../ui/app-items.js");
     expect(VERIFICATION_HOOK_NOTICE_TEXT).toContain("verification");
 
-    const appEvents = await fs.readFile(
-      path.join(__dirname, "..", "..", "..", "..", "gg-app", "src", "useAgentEvents.ts"),
+    const hookNotice = await fs.readFile(
+      path.join(__dirname, "..", "..", "..", "..", "gg-app", "src", "HookNotice.tsx"),
       "utf-8",
     );
-    const presentation = appEvents.slice(
-      appEvents.indexOf("HOOK_PRESENTATION"),
-      appEvents.indexOf("function formatElapsed"),
+    const start = hookNotice.indexOf("export const HOOK_LINES");
+    expect(start).toBeGreaterThan(-1);
+    const presentation = hookNotice.slice(
+      start,
+      hookNotice.indexOf("export function describeHook"),
     );
     for (const kind of ["ideal", "verification", "loop_break", "regrounding"]) {
-      expect(presentation).toContain(`${kind}: {`);
+      expect(presentation).toContain(`${kind}: [`);
     }
   });
 

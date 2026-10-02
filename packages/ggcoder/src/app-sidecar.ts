@@ -94,6 +94,7 @@ import {
   type PullPhase,
 } from "./hf-pull.js";
 import { cleanupToolOutputs } from "./tools/overflow.js";
+import { spawnedTasks } from "./tools/subagent-shared.js";
 import { readCappedBody } from "./utils/http-body.js";
 import {
   fetchSubscriptionUsage,
@@ -2508,6 +2509,12 @@ async function createSession(
   session.eventBus.on("subagent_state", (d) => broadcast("subagent_state", d));
   session.eventBus.on("compaction_start", (d) => broadcast("compaction_start", d));
   session.eventBus.on("compaction_end", (d) => broadcast("compaction_end", d));
+  // Cold-prompt-cache notice: push the fresh TTL anchor + context size whenever
+  // a run or compaction settles. Expiry itself is time-based, so the webview
+  // also re-reads `cacheExpiry` from /state when the user returns or types.
+  for (const ev of ["agent_done", "compaction_end", "model_change"] as const) {
+    session.eventBus.on(ev, () => broadcast("cache_expiry", session.getCacheExpiryStatus()));
+  }
 
   // Keep the computer awake while this window's agent works: owned runs and
   // autopilot cycles (RunLifecycle state), Ken replies, and background
@@ -3496,6 +3503,7 @@ async function createSession(
         supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
         supportsVideo: getModel(st.model)?.supportsVideo ?? false,
         autopilot,
+        cacheExpiry: session.getCacheExpiryStatus(),
         ...kenStatePayload(),
         ...footerExtras(),
       });
@@ -4161,19 +4169,25 @@ async function createSession(
                 } => c.type === "tool_call" && (c.name === "subagent" || c.name === "spawn_agent"),
               );
               if (subagentCalls.length > 0) {
-                const agents = subagentCalls.map((c) => {
+                const agents = subagentCalls.flatMap((c) => {
                   const result = toolResultMap.get(c.id);
-                  return {
-                    agentName:
-                      c.name === "spawn_agent" && typeof c.args?.task_name === "string"
-                        ? c.args.task_name
-                        : typeof c.args?.agent === "string"
-                          ? c.args.agent
-                          : undefined,
-                    // Async workers are intentionally non-resumable; restored rows are historical.
-                    status: result?.isError ? ("error" as const) : ("done" as const),
-                    toolUseCount: 0,
-                  };
+                  // Async workers are intentionally non-resumable; restored rows are historical.
+                  const status = result?.isError ? ("error" as const) : ("done" as const);
+                  if (c.name === "spawn_agent") {
+                    // One row per child: a batch call starts several.
+                    return spawnedTasks(c.args).map((spawn) => ({
+                      agentName: spawn.task_name ?? spawn.agent,
+                      status,
+                      toolUseCount: 0,
+                    }));
+                  }
+                  return [
+                    {
+                      agentName: typeof c.args?.agent === "string" ? c.args.agent : undefined,
+                      status,
+                      toolUseCount: 0,
+                    },
+                  ];
                 });
                 history.push({
                   role: "assistant",
