@@ -4,6 +4,8 @@ https://github.com/user-attachments/assets/8f264af5-c757-4dcc-b622-b9e0edf36f89
 
 **Cause the other coding agents piss me off.**
 
+[Download](https://github.com/KenKaiii/gg-framework/releases/latest) · [Star on GitHub](https://github.com/KenKaiii/gg-framework/stargazers) · [CLI on npm](https://www.npmjs.com/package/@kenkaiiii/ggcoder) · [MIT License](LICENSE) · [YouTube](https://youtube.com/@kenkaidoesai) · [Skool Community](https://skool.com/kenkai)
+
 I got tired of babysitting AI. Checking everything it wrote. Explaining the same stuff again. Being stuck in one workspace with whatever model someone else picked for me.
 
 So I built the app I actually wanted to use.
