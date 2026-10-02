@@ -1,8 +1,4 @@
-<p align="center">
-  <a href="docs/art/ggcoder.mp4?raw=true"><img src="docs/art/ggcoder.png" alt="Watch the GG Coder video: Code, Chat, and Motion" width="900"></a>
-  <br>
-  <a href="docs/art/ggcoder.mp4?raw=true">▶ Watch GG Coder in action</a>
-</p>
+https://github.com/user-attachments/assets/8f264af5-c757-4dcc-b622-b9e0edf36f89
 
 <p align="center">
   <strong>Cause the other coding agents piss me off.</strong>
