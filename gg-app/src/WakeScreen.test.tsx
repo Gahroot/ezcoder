@@ -24,9 +24,16 @@ const MODES = ["code", "chat", "motion"] as const satisfies readonly WakeMode[];
 /** A random source that always returns `value` (0 ≤ value < 1). */
 const fixed = (value: number) => (): number => value;
 
-/** Run every pending timer until the typing comes to rest. */
-function typeToRest(): void {
-  for (let i = 0; i < 400; i++) act(() => vi.advanceTimersToNextTimer());
+/**
+ * Advance time until the typing comes to rest (bounded at 60s of fake time).
+ * Steps in 1s chunks and stops once the cursor rests: stepping timer by timer
+ * re-renders on every keystroke and blink, which is too slow on CI runners.
+ */
+function typeToRest(container: HTMLElement): void {
+  for (let i = 0; i < 60; i++) {
+    if (container.querySelector(".wake-cursor-rest")) return;
+    act(() => vi.advanceTimersByTime(1000));
+  }
 }
 
 const bubbleText = (container: HTMLElement): string =>
@@ -101,7 +108,7 @@ describe("WakeScreen", () => {
       <WakeScreen chat={mode === "chat"} motion={mode === "motion"} random={fixed(0.5)} />,
     );
     const invitations: string[] = WAKE_LINES[mode].map((set) => set[set.length - 1] ?? "");
-    typeToRest();
+    typeToRest(container);
     expect(invitations).toContain(bubbleText(container));
     expect(container.querySelector(".wake-cursor-rest")).not.toBeNull();
   });
@@ -110,7 +117,7 @@ describe("WakeScreen", () => {
     const seen = new Set<string>();
     for (const value of [0, 0.25, 0.45, 0.65, 0.85]) {
       const { container, unmount } = render(<WakeScreen random={fixed(value)} />);
-      typeToRest();
+      typeToRest(container);
       seen.add(bubbleText(container));
       unmount();
     }
@@ -126,7 +133,7 @@ describe("WakeScreen", () => {
 
   it("hops and replies when the critter is poked, then goes back to its line", () => {
     const { container } = render(<WakeScreen random={fixed(0.1)} />);
-    typeToRest();
+    typeToRest(container);
     const invitation = bubbleText(container);
     const critter = container.querySelector<HTMLButtonElement>(".wake-critter");
     if (!critter) throw new Error("critter missing");
