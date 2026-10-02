@@ -12,6 +12,7 @@ import { resolveShell } from "../core/shell.js";
 import { localOperations } from "./operations.js";
 import { existsSync } from "node:fs";
 import { useFakeHome } from "../test-support/fake-home.js";
+import { keepAliveWhileOwnerLives } from "../test-support/keep-alive.js";
 
 let restoreHome: (() => void) | undefined;
 let tmpHome: string;
@@ -512,7 +513,7 @@ describe.skipIf(process.platform !== "win32")("createBashTool on real Windows", 
     // a backslash path inside a JS string inside a bash command means bash eats
     // the escapes (`\U`, `\b` → backspace) and the write lands somewhere else.
     const pidFile = path.join(tmpHome, "grandchild.pid").replaceAll("\\", "/");
-    const script = `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+    const script = `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); ${keepAliveWhileOwnerLives()}`;
     const tool = createBashTool(tmpHome, new ProcessManager());
 
     const out = String(

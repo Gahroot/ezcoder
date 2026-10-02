@@ -1333,6 +1333,10 @@ async function main(): Promise<void> {
   const shutdown = installTerminationHandlers({
     scope: "app-sidecar",
     teardown: async () => {
+      // Before any await: background commands live outside the daemon's process
+      // group, and the app force-kills that group after 3 s. If a slow session
+      // teardown is still pending then, these would never be stopped.
+      for (const c of sessions.values()) c.stopBackgroundProcesses();
       clearInterval(parentWatch);
       // Radio playback is app-wide (one stream across all windows), so it stops
       // at the daemon level, not per session.
@@ -1584,6 +1588,8 @@ interface SessionContext {
     method: string,
   ) => void;
   dispose: () => Promise<void>;
+  /** Synchronously stop this context's background commands (all its sessions). */
+  stopBackgroundProcesses: () => void;
 }
 
 /**
@@ -5872,6 +5878,12 @@ async function createSession(
     await session.dispose().catch(() => {});
   }
 
+  function stopBackgroundProcesses(): void {
+    session.stopBackgroundProcesses();
+    kenSession?.stopBackgroundProcesses();
+    kenAutoSession?.stopBackgroundProcesses();
+  }
+
   return {
     id: opts.id,
     mode,
@@ -5885,6 +5897,7 @@ async function createSession(
     broadcast,
     handle,
     dispose,
+    stopBackgroundProcesses,
   };
 }
 
