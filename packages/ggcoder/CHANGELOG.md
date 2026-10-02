@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.70.0
+
+### Minor Changes
+
+- Add a Node `debug` tool (breakpoints, stepping, evaluate), parent-set acceptance checks for helper agents, test-impact hints after edits, and repair hints for malformed tool calls. Long foreground commands now move to the background instead of being killed, sub-agents and compaction fall back to the active model when the chosen one is unavailable, and background commands are stopped before any slow teardown when the app quits.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.70.0
+- @kenkaiiii/gg-agent@5.70.0
+- @kenkaiiii/gg-core@5.70.0
+
 ## 5.69.0
 
 ### Minor Changes
