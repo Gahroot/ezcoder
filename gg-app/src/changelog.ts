@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.77.0",
+    date: "2026-10-02",
+    items: [
+      "GG Coder just got a whole lot more personality. A fresh `app icon`, a little robot face that reacts to how each task went, and tiny critters that greet you on an empty chat, munch your old messages when the chat gets compacted, and narrate every safety check. Click one and it hops and says hi.",
+      "Never pay full price by surprise again. If you step away long enough for the AI's memory of your chat to go cold, a heads-up appears before you send, with a one-click `Compact first` so the next message stays cheap.",
+      "Your helper agents now come with proof. Every report carries a receipt of the files they really read and changed and the commands they really ran, so the main agent can spot claims that don't add up.",
+      "Interrupt the agent mid-command and it listens instantly. Send a new message while a tool runs and it stops right there and picks up your note, while file edits always finish cleanly so nothing is left half-written.",
+      "I tightened the safety net. Web pages and tool results that try to sneak orders to the agent now get flagged, plugin tools that report progress are no longer cut off early, and the guard against wiping your home folder now catches Windows paths like `C:\\Users` too.",
+    ],
+  },
+  {
     version: "0.76.1",
     date: "2026-10-02",
     items: [
