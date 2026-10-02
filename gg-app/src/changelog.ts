@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.78.0",
+    date: "2026-10-03",
+    items: [
+      "Your agent can now debug like a pro. The new `debug` tool pauses your Node program on a breakpoint, steps through it line by line, and peeks at live variables, so bugs get found by watching the code run instead of guessing.",
+      "Slow builds and test runs no longer get cut off. Anything still going after `2 minutes` slides into the background and keeps running while the agent carries on, and when you quit the app every background command shuts down with it, so nothing is left running behind your back.",
+      "Helper agents now have to meet the bar. The main agent can set checks up front, like a file must exist or a command must pass, and I verify each one from what the helper really did: `PASS`, `FAIL` or `UNVERIFIED`. And if a model isn't available on your plan, helpers and chat summaries quietly fall back to the one you're using instead of failing.",
+      "Fewer wasted turns. After an edit the agent now learns exactly which tests reach the file it touched, and when it fumbles a tool call it gets told the right name and fields so the very next try lands.",
+      "The cache heads-up above your chat box now glides open and folds away smoothly instead of popping in and out.",
+    ],
+  },
+  {
     version: "0.77.0",
     date: "2026-10-02",
     items: [
