@@ -9258,19 +9258,26 @@ select {
   animation: ggqueuedout 220ms var(--ease-in) forwards;
   pointer-events: none;
 }
+/* Collapsed state: no height, padding or border, and a bottom margin that also
+   soaks up the composer's 8px flex gap, so the composer moves smoothly instead
+   of snapping by the gap at the start of the enter / end of the exit. A strip
+   that pins its real size (pinSize → --pin-h; CacheExpiryNotice does) grows to
+   and folds from it; otherwise the 220px cap is the fallback. --pin-h on mount
+   is measured with padding and border already at 0, hence the +14px slack. */
 @keyframes ggqueuedin {
   from {
     opacity: 0;
     transform: translateY(6px);
     max-height: 0;
-    margin-bottom: 0;
+    margin-bottom: -8px;
     padding-top: 0;
     padding-bottom: 0;
+    border-width: 0;
   }
   to {
     opacity: 1;
     transform: translateY(0);
-    max-height: 220px;
+    max-height: calc(var(--pin-h, 206px) + 14px);
     margin-bottom: 6px;
     padding-top: 6px;
     padding-bottom: 6px;
@@ -9280,13 +9287,13 @@ select {
   from {
     opacity: 1;
     transform: translateY(0);
-    max-height: 220px;
+    max-height: var(--pin-h, 220px);
   }
   to {
     opacity: 0;
     transform: translateY(4px);
     max-height: 0;
-    margin-bottom: 0;
+    margin-bottom: -8px;
     padding-top: 0;
     padding-bottom: 0;
     border-width: 0;
@@ -9411,6 +9418,10 @@ select {
      otherwise a promoted bubble keeps its "queued" label forever. */
   .user-msg.promoted .queued-pill {
     animation: none;
+    display: none;
+  }
+  /* No exit animation to watch, so don't leave a dead strip up for EXIT_MS. */
+  .queued-bar.leaving {
     display: none;
   }
 }

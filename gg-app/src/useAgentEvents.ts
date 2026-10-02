@@ -8,6 +8,7 @@ import {
   type SubAgentStatePayload,
   type AgentState,
   type BackgroundTask,
+  type CacheExpiryStatus,
   type ModelOption,
   type ProjectTask,
   type QueuedMessage,
@@ -1234,6 +1235,9 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           setTokens(0);
           setDoneStatus(null);
           setContextTokens(0);
+          // A fresh session has no history, so nothing to re-read: drop the
+          // previous chat's cold-cache notice instead of carrying it over.
+          setState((s) => (s ? { ...s, cacheExpiry: null } : s));
           setPlanReview(null);
           planReviewContentRef.current = null;
           {
@@ -1256,6 +1260,13 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           endStreamingText();
           subagentGroupIdRef.current = null;
           subagentGroupByAgentRef.current.clear();
+          break;
+        case "cache_expiry":
+          // Live cold-cache status pushed after a run, compaction or model
+          // switch settles. Null (empty chat / no known TTL) hides the notice.
+          setState((s) =>
+            s ? { ...s, cacheExpiry: (e.data as CacheExpiryStatus | null) ?? null } : s,
+          );
           break;
         case "models_change":
           // The set of usable models changed: local-model discovery landed

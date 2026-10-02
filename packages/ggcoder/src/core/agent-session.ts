@@ -93,6 +93,9 @@ import {
 } from "../tools/index.js";
 import { partitionToolsByTier } from "../tools/tool-tiers.js";
 import type { BackgroundProcess } from "./process-manager.js";
+import { formatImpactForVerification, type TestImpactIndex } from "./test-impact.js";
+import type { DebugManager } from "../tools/debug.js";
+import { autoBackgroundedId } from "../tools/bash.js";
 import { buildProcessCompletionFollowUp } from "./process-gate.js";
 import {
   buildSubAgentCompletionFollowUp,
@@ -639,6 +642,8 @@ export class AgentSession {
   private steeringListeners = new Set<() => void>();
   private processManager?: ProcessManager;
   private lspManager?: LspManager;
+  private testImpact?: TestImpactIndex;
+  private debugManager?: DebugManager;
   private subAgentManager?: SubAgentManager;
   /**
    * Out-of-band push notifications (finished children, background-process
@@ -827,6 +832,8 @@ export class AgentSession {
       rebuildReadTool,
       clearReadTracker,
       lspManager,
+      testImpact,
+      debugManager,
       subAgentManager,
     } = await createTools(this.cwd, {
       agents,
@@ -869,7 +876,6 @@ export class AgentSession {
       // sub-agent spawns read the current parent state at execution time.
       getProvider: () => this.provider,
       getModel: () => this.model,
-      getThinkingLevel: () => this.thinkingLevel,
       getBaseUrl: () => this.baseUrl,
       getCacheKey: () => this.getPromptCacheKey(),
       getMaxPerModel: () => this.settingsManager.get("subagentMaxPerModel"),
@@ -922,6 +928,8 @@ export class AgentSession {
     this.clearReadTracker = clearReadTracker;
     this.processManager = processManager;
     this.lspManager = lspManager;
+    this.testImpact = testImpact;
+    this.debugManager = debugManager;
     this.subAgentManager = subAgentManager;
     this.bindManagerCancellation(this.opts.signal);
 
@@ -1724,8 +1732,15 @@ export class AgentSession {
           const command = typeof args.command === "string" ? args.command : "";
           const classification = classifyVerificationCommand(command);
           if (classification.accepted || classification.snapshotEligible) {
-            if (args.run_in_background === true && !event.isError && args.persist !== true) {
-              const id = /^ID:\s*(\S+)/m.exec(event.result)?.[1];
+            // A foreground check that outlived the default budget was moved to
+            // the background, not failed: track it to its real exit the same way.
+            const autoBackgroundId = event.isError ? undefined : autoBackgroundedId(event.result);
+            if (
+              (autoBackgroundId !== undefined || args.run_in_background === true) &&
+              !event.isError &&
+              args.persist !== true
+            ) {
+              const id = autoBackgroundId ?? /^ID:\s*(\S+)/m.exec(event.result)?.[1];
               // No parseable ID means the check cannot be tracked to a real exit
               // code — no evidence either way. Recording a FAILURE here made
               // every later green run of a different spelling look owed.
@@ -2390,8 +2405,25 @@ export class AgentSession {
       (!this.opts.allowedTools || this.opts.allowedTools.includes("bash"))
     ) {
       const verificationReason = this.verificationGate.pendingReason();
+      const pendingFiles = this.verificationGate.pendingFiles();
       const verificationFollowUp = this.verificationGate.followUp();
       if (verificationFollowUp) {
+        // Name the tests that actually reach the unverified files, with the
+        // command that runs exactly those, so the check is targeted rather
+        // than guessed. Best-effort: no index or no runner leaves it unchanged.
+        if (
+          this.testImpact &&
+          (verificationReason === "initial" || verificationReason === "recheck")
+        ) {
+          const impactLine = await this.testImpact
+            .impactFor(pendingFiles)
+            .then(formatImpactForVerification)
+            .catch(() => "");
+          const first = verificationFollowUp[0];
+          if (impactLine && first?.role === "user" && typeof first.content === "string") {
+            verificationFollowUp[0] = { ...first, content: first.content + impactLine };
+          }
+        }
         log("INFO", "verification-gate", "Injecting verification follow-up", {});
         // Announce, THEN disarm: clients release held text on disarm, so the
         // reverse order paints the draft and immediately deletes it — the exact
@@ -4809,6 +4841,7 @@ export class AgentSession {
     this.managerAbortSignal?.removeEventListener("abort", this.managerAbortHandler);
     this.processManager?.shutdownAll();
     this.lspManager?.shutdownAll();
+    this.debugManager?.shutdown();
     await Promise.all([this.subAgentManager?.shutdownAll(), this.mcpManager?.dispose()]);
     await this.extensionLoader.deactivateAll();
     this.setSessionPath("");

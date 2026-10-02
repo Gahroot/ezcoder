@@ -638,31 +638,36 @@ async function runInkTUI(opts: {
     checkpointRef.current?.recordPreMutation(filePath) ?? Promise.resolve();
   let activeProvider = provider;
   let activeModel = model;
-  let activeThinking = opts.thinkingLevel;
 
-  const { tools, processManager, rebuildReadTool, clearReadTracker, lspManager, subAgentManager } =
-    await createTools(cwd, {
-      agents,
-      skills,
-      provider,
-      model,
-      planModeRef,
-      onPreFileMutation,
-      onFileRead: (filePath) => reviewCoverageTracker.recordRead(filePath),
-      onFileMutated: (filePath) => reviewCoverageTracker.recordChanged(filePath),
-      lspDiagnostics: opts.lspDiagnostics,
-      getWriteGuardSettings: () => ({
-        allowOutsideWorkspaceWrites: opts.allowOutsideWorkspaceWrites ?? false,
-      }),
-      authStorage,
-      onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
-      onExitPlan: (planPath) =>
-        planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
-      getProvider: () => activeProvider,
-      getModel: () => activeModel,
-      getThinkingLevel: () => activeThinking,
-      getMaxPerModel: () => opts.subagentMaxPerModel,
-    });
+  const {
+    tools,
+    processManager,
+    rebuildReadTool,
+    clearReadTracker,
+    lspManager,
+    debugManager,
+    subAgentManager,
+  } = await createTools(cwd, {
+    agents,
+    skills,
+    provider,
+    model,
+    planModeRef,
+    onPreFileMutation,
+    onFileRead: (filePath) => reviewCoverageTracker.recordRead(filePath),
+    onFileMutated: (filePath) => reviewCoverageTracker.recordChanged(filePath),
+    lspDiagnostics: opts.lspDiagnostics,
+    getWriteGuardSettings: () => ({
+      allowOutsideWorkspaceWrites: opts.allowOutsideWorkspaceWrites ?? false,
+    }),
+    authStorage,
+    onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
+    onExitPlan: (planPath) =>
+      planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
+    getProvider: () => activeProvider,
+    getModel: () => activeModel,
+    getMaxPerModel: () => opts.subagentMaxPerModel,
+  });
 
   // MCP startup can involve `npx` installing/booting servers. Do it after the
   // TUI paints so a slow network or npm cache never looks like "nothing happens".
@@ -706,6 +711,7 @@ async function runInkTUI(opts: {
     subAgentManager?.shutdownAllNow();
     processManager.shutdownAll();
     lspManager?.shutdownAll();
+    debugManager?.shutdown();
     mcpManager.dispose().catch(() => {});
   });
 
@@ -995,7 +1001,6 @@ async function runInkTUI(opts: {
     onRuntimeStateChange: (updates) => {
       if (updates.provider) activeProvider = updates.provider;
       if (updates.model) activeModel = updates.model;
-      if ("thinking" in updates) activeThinking = updates.thinking;
     },
   });
 
