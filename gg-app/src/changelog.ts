@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.76.1",
+    date: "2026-10-02",
+    items: [
+      "Less waiting on your videos. I sped up `GG Motion` checks by letting up to `4` parts run at once, with the workload matched to your computer. You get back to creating sooner.",
+      "Long chats full of `screenshots` now make better use of what the AI already remembers. I changed how old images are tidied up, so each new picture doesn't keep forcing the AI to reread the same history. Less repeated work as you keep building.",
+    ],
+  },
+  {
     version: "0.76.0",
     date: "2026-10-02",
     items: [
