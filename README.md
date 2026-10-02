@@ -1,20 +1,20 @@
-```text
+<pre align="center">
    ▄██████▄     ▄██████▄        ▄████████  ▄██████▄  ████████▄     ▄████████    ▄████████
   ███    ███   ███    ███      ███    ███ ███    ███ ███   ▀███   ███    ███   ███    ███
   ███    █▀    ███    █▀       ███    █▀  ███    ███ ███    ███   ███    █▀    ███    ███
  ▄███         ▄███             ███        ███    ███ ███    ███  ▄███▄▄▄      ▄███▄▄▄▄██▀
-▀▀███ ████▄  ▀▀███ ████▄       ███        ███    ███ ███    ███ ▀▀███▀▀▀     ▀▀███▀▀▀▀▀
+▀▀███ ████▄  ▀▀███ ████▄       ███        ███    ███ ███    ███ ▀▀███▀▀▀     ▀▀███▀▀▀▀▀&nbsp;&nbsp;
   ███    ███   ███    ███      ███    █▄  ███    ███ ███    ███   ███    █▄  ▀███████████
   ███    ███   ███    ███      ███    ███ ███    ███ ███   ▄███   ███    ███   ███    ███
   ████████▀    ████████▀       ████████▀   ▀██████▀  ████████▀    ██████████   ███    ███
                                                                                ███    ███
-```
+</pre>
 
 https://github.com/user-attachments/assets/8f264af5-c757-4dcc-b622-b9e0edf36f89
 
-# GG Coder
-
-**Cause the other coding agents piss me off.**
+<p align="center">
+  <strong>Cause the other agents piss me off.</strong>
+</p>
 
 <p align="center">
   <a href="https://github.com/KenKaiii/gg-framework/releases/latest"><img src="https://img.shields.io/github/v/release/KenKaiii/gg-framework?style=for-the-badge&label=Download&color=b0b6ff" alt="GG Coder desktop release"></a>
