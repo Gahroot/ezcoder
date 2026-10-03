@@ -80,6 +80,7 @@ import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
 import { matchPromptCommand } from "./core/prompt-command-expansion.js";
 import { createTools } from "./tools/index.js";
 import { cleanupToolOutputs } from "./tools/overflow.js";
+import { spawnedTasks, type SpawnedTaskArgs } from "./tools/subagent-shared.js";
 import { CheckpointStore } from "./core/checkpoint-store.js";
 import type { GoalMode } from "./core/runtime-mode.js";
 import { ReviewCoverageTracker } from "./core/ideal-review.js";
@@ -644,32 +645,37 @@ async function runInkTUI(opts: {
     checkpointRef.current?.recordPreMutation(filePath) ?? Promise.resolve();
   let activeProvider = provider;
   let activeModel = model;
-  let activeThinking = opts.thinkingLevel;
 
-  const { tools, processManager, rebuildReadTool, clearReadTracker, lspManager, subAgentManager } =
-    await createTools(cwd, {
-      agents,
-      skills,
-      provider,
-      model,
-      planModeRef,
-      goalModeRef,
-      onPreFileMutation,
-      onFileRead: (filePath) => reviewCoverageTracker.recordRead(filePath),
-      onFileMutated: (filePath) => reviewCoverageTracker.recordChanged(filePath),
-      lspDiagnostics: opts.lspDiagnostics,
-      getWriteGuardSettings: () => ({
-        allowOutsideWorkspaceWrites: opts.allowOutsideWorkspaceWrites ?? false,
-      }),
-      authStorage,
-      onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
-      onExitPlan: (planPath) =>
-        planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
-      getProvider: () => activeProvider,
-      getModel: () => activeModel,
-      getThinkingLevel: () => activeThinking,
-      getMaxPerModel: () => opts.subagentMaxPerModel,
-    });
+  const {
+    tools,
+    processManager,
+    rebuildReadTool,
+    clearReadTracker,
+    lspManager,
+    debugManager,
+    subAgentManager,
+  } = await createTools(cwd, {
+    agents,
+    skills,
+    provider,
+    model,
+    planModeRef,
+    goalModeRef,
+    onPreFileMutation,
+    onFileRead: (filePath) => reviewCoverageTracker.recordRead(filePath),
+    onFileMutated: (filePath) => reviewCoverageTracker.recordChanged(filePath),
+    lspDiagnostics: opts.lspDiagnostics,
+    getWriteGuardSettings: () => ({
+      allowOutsideWorkspaceWrites: opts.allowOutsideWorkspaceWrites ?? false,
+    }),
+    authStorage,
+    onEnterPlan: (reason) => planToolCallbacks.onEnterPlan?.(reason),
+    onExitPlan: (planPath) =>
+      planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
+    getProvider: () => activeProvider,
+    getModel: () => activeModel,
+    getMaxPerModel: () => opts.subagentMaxPerModel,
+  });
 
   // The active LSP pool follows the active tool set — rebuilds (pixel chdir)
   // shut the old pool down and swap in the new one.
@@ -695,7 +701,6 @@ async function runInkTUI(opts: {
         planToolCallbacks.onExitPlan?.(planPath) ?? Promise.resolve("Plan review is unavailable."),
       getProvider: () => activeProvider,
       getModel: () => activeModel,
-      getThinkingLevel: () => activeThinking,
     });
     activeLspManager = rebuiltLspManager;
     return rebuilt;
@@ -748,6 +753,7 @@ async function runInkTUI(opts: {
     subAgentManager?.shutdownAllNow();
     processManager.shutdownAll();
     activeLspManager?.shutdownAll();
+    debugManager?.shutdown();
     mcpManager.dispose().catch(() => {});
   });
 
@@ -1041,7 +1047,6 @@ async function runInkTUI(opts: {
     onRuntimeStateChange: (updates) => {
       if (updates.provider) activeProvider = updates.provider;
       if (updates.model) activeModel = updates.model;
-      if ("thinking" in updates) activeThinking = updates.thinking;
     },
   });
 
@@ -1692,24 +1697,27 @@ export function messagesToHistoryItems(msgs: Message[]): CompletedItem[] {
             flushText();
             const result = toolResults.get(block.id);
             if (block.name === "subagent" || block.name === "spawn_agent") {
+              // One row per child: a batch spawn_agent call starts several.
+              const spawned: SpawnedTaskArgs[] =
+                block.name === "spawn_agent" ? spawnedTasks(block.args) : [{}];
               items.push({
                 kind: "subagent_group",
-                agents: [
-                  {
-                    toolCallId: block.id,
-                    task: String(
-                      block.name === "spawn_agent"
-                        ? (block.args.task_name ?? block.args.task ?? "Async agent")
-                        : (block.args.task ?? "Sub-agent"),
-                    ),
-                    agentName: String(block.args.agent ?? "default"),
-                    status: result?.isError ? "error" : "done",
-                    toolUseCount: 0,
-                    tokenUsage: { input: 0, output: 0 },
-                    result: result?.content ?? "",
-                    durationMs: 0,
-                  },
-                ],
+                agents: spawned.map((spawn, index) => ({
+                  toolCallId: spawned.length > 1 ? `${block.id}:${index}` : block.id,
+                  task: String(
+                    block.name === "spawn_agent"
+                      ? (spawn.task_name ?? spawn.task ?? "Async agent")
+                      : (block.args.task ?? "Sub-agent"),
+                  ),
+                  agentName: String(
+                    (block.name === "spawn_agent" ? spawn.agent : block.args.agent) ?? "default",
+                  ),
+                  status: result?.isError ? "error" : "done",
+                  toolUseCount: 0,
+                  tokenUsage: { input: 0, output: 0 },
+                  result: result?.content ?? "",
+                  durationMs: 0,
+                })),
                 id: `restore-${id++}`,
               });
             } else {

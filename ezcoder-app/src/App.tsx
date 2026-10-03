@@ -3,6 +3,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
 import { WorkingBeam } from "./WorkingBeam";
+import { CacheExpiryNotice } from "./CacheExpiryNotice";
 import { MetalButton } from "./MetalButton";
 import { ActionMetal } from "./ActionMetal";
 import { withViewTransition } from "./view-transition";
@@ -16,6 +17,7 @@ import {
   cancel,
   newSession,
   cycleThinking,
+  prewarmCache,
   listModels,
   switchModel,
   isSwitchModelError,
@@ -80,7 +82,8 @@ import { NolanActivityBar } from "./NolanActivityBar";
 import { useTaskActivity } from "./useTaskActivity";
 import { useNolanMentor } from "./useNolanMentor";
 import { useAutopilot } from "./useAutopilot";
-import { useAgentEvents, HOOK_PRESENTATION, type HookKind } from "./useAgentEvents";
+import { useAgentEvents } from "./useAgentEvents";
+import { HookNotice, type HookKind, type VerificationReason } from "./HookNotice";
 import { useSmoothText } from "./useSmoothText";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { SubAgentFeed, type SubAgentLine } from "./SubAgentFeed";
@@ -113,6 +116,7 @@ import { InitGitModal } from "./InitGitModal";
 import { PlanModeLogo } from "./PlanModeLogo";
 import { NolanPowerBanner } from "./NolanPowerBanner";
 import { NolanFace } from "./NolanFace";
+import { EzFace } from "./EzFace";
 import { ExportChatButton } from "./ExportChatButton";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { McpElicitModal } from "./McpElicitModal";
@@ -286,8 +290,8 @@ export type Item =
       guidance?: string;
     }
   // Agent self-correction hook notice (ideal review / loop-break / re-grounding),
-  // rendered like the TUI: a shimmering tone-colored one-liner.
-  | { kind: "hook"; id: number; hook: HookKind; verificationReason?: "recheck" | "check_review" }
+  // rendered as a working critter row with critter-themed wording.
+  | { kind: "hook"; id: number; hook: HookKind; verificationReason?: VerificationReason }
   // Images produced by a tool (screenshot / read of an image file).
   | { kind: "images"; id: number; images: TranscriptImage[]; caption?: string }
   // Image generation in progress — a shimmering square placeholder that gets
@@ -307,13 +311,15 @@ export type Item =
       /** The complete set reached the blocked tool call. */
       sent?: boolean;
       cancelled?: boolean;
+      /** Soft deadline passed: the agent went on; an answer is still delivered late. */
+      deferred?: boolean;
     }
   // A task kicked off from the Tasks modal (shown at the top of its session).
   | { kind: "task"; id: number; title: string }
   // Sub-agents delegated in a turn — a live, in-chat feed of each one's tools.
   | { kind: "subagent_group"; id: number; agents: SubAgentLine[]; aborted?: boolean }
-  // Context compaction — shimmering "compacting…" while running, then a quiet
-  // "compacted · N → M messages" summary when done.
+  // Context compaction — a critter row: shimmering "A critter is munching…"
+  // while running, then "A critter ate N messages and spat out M" when done.
   | {
       kind: "compaction";
       id: number;
@@ -482,6 +488,9 @@ function App(): React.ReactElement {
   // once its slide-out animation finishes.
   const [nolanPowerBanner, setNolanPowerBanner] = useState<"on" | "off" | null>(null);
   const [running, setRunning] = useState(false);
+  // Last composer keystroke (0 = none since this chat opened). The first
+  // keystroke after opening or a >4 min idle pause prewarms the prompt cache.
+  const lastKeystrokeAtRef = useRef(0);
   // Whether a run has completed in this window. Drives the ambient glow's
   // "done" state, which PERSISTS until the next run starts — the window really
   // is finished until you ask for something else (see window-glow.ts).
@@ -557,7 +566,7 @@ function App(): React.ReactElement {
     onFire: useCallback((prompt: string) => {
       // keepInput: the user did not press Enter for this — leave whatever they
       // are typing untouched.
-      submitTextRef.current(prompt, undefined, { keepInput: true });
+      submitTextRef.current(prompt, undefined, { keepInput: true, scheduled: true });
     }, []),
   });
   // `@`-mention file picker state. `mention` is the active token being typed
@@ -1985,7 +1994,11 @@ function App(): React.ReactElement {
   // `keepInput` is for sends the user did not initiate right now — a scheduled
   // prompt firing on its interval. Those must NOT clear the composer, or a
   // schedule that comes due mid-sentence deletes what the user was typing.
-  function submitText(text: string, label?: string, opts?: { keepInput?: boolean }): void {
+  function submitText(
+    text: string,
+    label?: string,
+    opts?: { keepInput?: boolean; scheduled?: boolean },
+  ): void {
     const trimmed = text.trim();
     // Mid-run this QUEUES as steering, exactly like a typed message (see
     // submit()): the sidecar injects it into the running loop. Dropping it
@@ -2016,7 +2029,9 @@ function App(): React.ReactElement {
       setSlashIndex(0);
     }
     if (disposition !== "queue") endStreamingText();
-    void sendPrompt(trimmed);
+    // `scheduled` tells the sidecar nobody is watching this run, so an
+    // ask_user in it gets the short (autopilot) deadline.
+    void sendPrompt(trimmed, [], opts?.scheduled ? { scheduled: true } : undefined);
   }
 
   // Scheduled prompts fire from a ticker set up once; keep it pointed at the
@@ -2769,6 +2784,13 @@ function App(): React.ReactElement {
               <PlusIcon size={14} aria-hidden="true" />
               New
             </MetalButton>
+            <button
+              className="btn btn-sm btn-ghost"
+              title="Open your notes"
+              onClick={() => setShowNotes(true)}
+            >
+              Notes
+            </button>
             {workspaceMode === "chat" && (
               <button
                 className="btn btn-sm btn-ghost"
@@ -2988,6 +3010,11 @@ function App(): React.ReactElement {
         )}
         <AttachmentBar attachments={attachments} onRemove={removeAttachment} />
         <ReferencedFiles paths={mentionedPaths} onRemove={removeMentionChip} />
+        <CacheExpiryNotice
+          expiry={state?.cacheExpiry}
+          running={running}
+          onCompact={() => void sendPrompt("/compact").catch(() => {})}
+        />
         <QueuedBar messages={visibleQueuedMessages} onCancel={handleCancelQueued} />
         <div className="inputrow">
           <input
@@ -3054,6 +3081,11 @@ function App(): React.ReactElement {
                 }
               }}
               onChange={(e) => {
+                const now = Date.now();
+                if (!running && now - lastKeystrokeAtRef.current > 4 * 60_000) {
+                  void prewarmCache();
+                }
+                lastKeystrokeAtRef.current = now;
                 setInput(e.target.value);
                 setSlashIndex(0);
                 setCaret(e.target.selectionStart ?? e.target.value.length);
@@ -3261,6 +3293,7 @@ function App(): React.ReactElement {
                 })()}
               <span className="model-anchor">
                 <span className="model-label" style={{ color: theme.text }}>
+                  <EzFace mood="ready" />
                   EZ
                 </span>
                 <ModelSelect
@@ -3276,6 +3309,7 @@ function App(): React.ReactElement {
                   <FooterSep />
                   <span className="model-anchor">
                     <span className="model-label" style={{ color: theme.nolan }}>
+                      <NolanFace mood="chat" />
                       Nolan
                     </span>
                     <ModelSelect
@@ -3380,7 +3414,7 @@ function App(): React.ReactElement {
         <MemoryModal onClose={() => setShowMemories(false)} />
       )}
 
-      {workspaceMode === "code" && showNotes && (
+      {showNotes && (
         <NotesModal
           value={notes}
           onChange={handleNotesChange}
@@ -3680,29 +3714,14 @@ function TranscriptRowBody({
         </div>
       );
     }
-    case "hook": {
-      // Mirrors the TUI IdealHookMessage: assistant-style dot + a shimmering
-      // tone-colored one-liner so the self-correction is obvious.
-      const { text: defaultText, color } = HOOK_PRESENTATION[item.hook];
-      const text =
-        item.verificationReason === "check_review"
-          ? "Hook engaged. Reviewing changes to tests and checks."
-          : item.verificationReason === "recheck"
-            ? "Hook engaged. Re-checking the changes made after verification."
-            : defaultText;
+    case "hook":
       return (
-        <div className="assistant-msg">
-          <span className="assistant-dot" style={{ color }}>
-            {DOT}
-          </span>
-          <div className="assistant-text">
-            <ShimmerText base={color} bright="#ffffff">
-              {text}
-            </ShimmerText>
-          </div>
-        </div>
+        <HookNotice
+          hook={item.hook}
+          variantKey={`hook-${item.id}`}
+          verificationReason={item.verificationReason}
+        />
       );
-    }
     case "images":
       return (
         <div className="img-grid">
@@ -3760,6 +3779,7 @@ function TranscriptRowBody({
           answers={item.answers}
           sent={item.sent}
           cancelled={item.cancelled}
+          deferred={item.deferred}
           onAnswer={(delta) => onAskAnswer?.(item.id, item.prompt.id, delta)}
           onTypeInstead={(questionId, seed) =>
             onAskType?.(item.id, item.prompt.id, questionId, seed)
@@ -3782,6 +3802,7 @@ function TranscriptRowBody({
       return (
         <CompactionNotice
           status={item.status}
+          variantKey={`compaction-${item.id}`}
           originalCount={item.originalCount}
           newCount={item.newCount}
         />

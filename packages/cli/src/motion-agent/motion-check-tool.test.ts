@@ -7,7 +7,8 @@ import type { StructuredToolResult } from "@prestyj/agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { findMotionBundle, type MotionBundle } from "../core/skills.js";
-import { createMotionCheckTool, spotSampleTimes } from "./motion-check-tool.js";
+import { auditPages, createMotionCheckTool, spotSampleTimes } from "./motion-check-tool.js";
+import { keepAliveWhileOwnerLives } from "../test-support/keep-alive.js";
 
 const exec = promisify(execFile);
 // Each test spawns real FFmpeg, ffprobe and Node processes. On the Windows CI runner a
@@ -56,7 +57,7 @@ async function setRuntime(
   // Like the real launcher: on SIGTERM the CLI exits 0 without printing a report.
   const body = hang
     ? `process.on('SIGTERM', () => process.exit(0));
-setInterval(() => {}, 1000);`
+${keepAliveWhileOwnerLives()}`
     : `process.stderr.write(${JSON.stringify(stderr)});
 console.log(${JSON.stringify(JSON.stringify(report))});
 process.exitCode = ${exitCode};`;
@@ -124,6 +125,7 @@ type CheckInput = {
   output?: string;
   spot?: boolean;
   project?: string;
+  holds?: string;
 };
 async function check(
   extra: CheckInput = {},
@@ -176,6 +178,20 @@ describe("spot-check frame sampling", () => {
   });
 });
 
+describe("source-audit browser pages", () => {
+  const GB = 1024 ** 3;
+  it.each([
+    { name: "four on a roomy machine", cpus: 14, memory: 24 * GB, expected: 4 },
+    { name: "no more than four on a large machine", cpus: 64, memory: 256 * GB, expected: 4 },
+    { name: "half the cores on a small machine", cpus: 4, memory: 16 * GB, expected: 2 },
+    { name: "one page per 4 GB of memory", cpus: 14, memory: 8 * GB, expected: 2 },
+    { name: "one on a two-core machine", cpus: 2, memory: 8 * GB, expected: 1 },
+    { name: "one when memory is tight", cpus: 8, memory: 3 * GB, expected: 1 },
+  ])("uses $name", ({ cpus, memory, expected }) => {
+    expect(auditPages(cpus, memory)).toBe(expected);
+  });
+});
+
 describe("Motion single-pass output check", { timeout: MEDIA_TEST_MS }, () => {
   it("runs one runtime check including lint and returns real images to the working agent", async () => {
     await render();
@@ -197,6 +213,9 @@ describe("Motion single-pass output check", { timeout: MEDIA_TEST_MS }, () => {
       "--json",
       "--contrast",
       "--at-transitions",
+      // The 24 fps export: transition samples are moved onto frames it actually contains.
+      "--frame-rate=24",
+      `--workers=${auditPages(os.availableParallelism(), os.totalmem())}`,
     ]);
     expect(await fs.readFile(path.join(root, "renders", "video.mp4"))).toEqual(before);
     expect(summary(result).checks.some((item) => item.name === "Audio levels")).toBe(false);
@@ -353,6 +372,7 @@ describe("Motion single-pass output check", { timeout: MEDIA_TEST_MS }, () => {
       "--contrast",
       "--at",
       "0,0.042,0.083,0.125,0.167,0.208,0.25,0.292,0.333,0.375,0.417,0.458,0.5",
+      `--workers=${auditPages(os.availableParallelism(), os.totalmem())}`,
     ]);
     const report = summary(result);
     expect(report.technical).toBe(false);
@@ -396,6 +416,23 @@ describe("Motion single-pass output check", { timeout: MEDIA_TEST_MS }, () => {
     await fs.writeFile(path.join(root, "project", "index.html"), "<div>edited</div>");
     expect(summary(await check(input, {}, tool)).technical).toBe(true);
     expect(await sourceCheckCalls()).toBe(3);
+  });
+  it("reuses a passing source check after only the hold plan changed", async () => {
+    await fs.mkdir(path.join(root, "project"));
+    await fs.writeFile(path.join(root, "project", "index.html"), "<div>fixture</div>");
+    await fs.writeFile(path.join(root, "project", "holds.json"), "[]");
+    await render();
+    const tool = createMotionCheckTool(root, bundle);
+    const input = { project: "project", holds: "project/holds.json" };
+    await check(input, {}, tool);
+    expect(await sourceCheckCalls()).toBe(1);
+    await fs.writeFile(
+      path.join(root, "project", "holds.json"),
+      JSON.stringify([{ start: 1.5, end: 2 }]),
+    );
+    const again = await check(input, {}, tool);
+    expect(details(again, "Runtime/layout/contrast (includes lint)")).toMatch(/^Reused: /);
+    expect(await sourceCheckCalls()).toBe(1);
   });
   it("does not reuse a failing source check", async () => {
     await fs.mkdir(path.join(root, "project"));

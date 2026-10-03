@@ -20,6 +20,7 @@ overrides:
 
 patchedDependencies:
   border-beam@1.3.0: 98cd55a0bb33d17ea8d32dbd988fa0348c6e512ebaca179245e0d65d0caa90e6
+  hyperframes@0.8.82: d2c5b28629bdb29cd33150a57aaa46ee2bea0716b016bd2172be0a40b56b5799
   ink@7.0.2: c093b542a6016d76c2dd97256fc9c48e09eb7aaf9b0b0f637ec683d2d5fe70b5
   metal-fx@2.0.10: 28ef0aab9fd2c7161ca43f801746fc27522a95e8fa7780087dc24d3ffd8808cd
 
@@ -393,7 +394,7 @@ importers:
         version: 0.6.0
       hyperframes:
         specifier: 0.8.82
-        version: 0.8.82(@types/node@25.9.1)
+        version: 0.8.82(patch_hash=d2c5b28629bdb29cd33150a57aaa46ee2bea0716b016bd2172be0a40b56b5799)(@types/node@25.9.1)
       linkedom:
         specifier: ^0.18.12
         version: 0.18.12
@@ -7894,7 +7895,7 @@ snapshots:
 
   human-id@4.2.0: {}
 
-  hyperframes@0.8.82(@types/node@25.9.1):
+  hyperframes@0.8.82(patch_hash=d2c5b28629bdb29cd33150a57aaa46ee2bea0716b016bd2172be0a40b56b5799)(@types/node@25.9.1):
     dependencies:
       '@hono/node-server': 1.19.17(hono@4.13.5)
       '@puppeteer/browsers': 3.2.3

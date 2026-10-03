@@ -460,6 +460,24 @@ describe("useAgentEvents", () => {
     expect(getItems()).toEqual([]);
   });
 
+  it("drops the aborted draft and shows a notice when a stream rule fires", () => {
+    const { hook, getItems } = setup();
+
+    act(() => {
+      hook.result.current.handleEvent(ev("text_delta", { text: "TODO: later" }));
+      hook.result.current.handleEvent(
+        ev("stream_rule_triggered", { rules: ["no-todo"], source: "text" }),
+      );
+    });
+
+    expect(getItems()).toEqual([
+      expect.objectContaining({
+        kind: "info",
+        text: 'Rule "no-todo" caught the reply mid-stream — retrying',
+      }),
+    ]);
+  });
+
   it("completes the notice when messages were compacted", () => {
     const { hook, getItems } = setup();
 
@@ -508,6 +526,46 @@ describe("useAgentEvents", () => {
     act(() => hook.result.current.handleEvent(ev("run_end", { cancelled: true })));
     expect(getState()).toMatchObject({ running: false, runState: "idle" });
     expect(setRunning).toHaveBeenLastCalledWith(false);
+  });
+
+  describe("cold-cache notice status", () => {
+    const expired = {
+      sessionId: "old",
+      provider: "anthropic",
+      ttlMs: 300_000,
+      confidence: "documented",
+      ttlSource: "test",
+      lastRequestAt: 1,
+      expiresAt: 300_001,
+      expired: true,
+      reason: "idle",
+      prefixTokens: 358_000,
+      minTokens: 40_000,
+      notable: true,
+      estimatedExtraCostUsd: null,
+    } as unknown as NonNullable<AgentState["cacheExpiry"]>;
+
+    it("clears the previous chat's status when a fresh session starts", () => {
+      const { hook, getState } = setup(() => false, { cacheExpiry: expired });
+
+      act(() => hook.result.current.handleEvent(ev("session_reset")));
+
+      expect(getState()?.cacheExpiry).toBeNull();
+    });
+
+    it("applies live cache_expiry pushes, including null", () => {
+      const { hook, getState } = setup();
+
+      act(() =>
+        hook.result.current.handleEvent({ type: "cache_expiry", data: expired } as SidecarEvent),
+      );
+      expect(getState()?.cacheExpiry).toEqual(expired);
+
+      act(() =>
+        hook.result.current.handleEvent({ type: "cache_expiry", data: null } as SidecarEvent),
+      );
+      expect(getState()?.cacheExpiry).toBeNull();
+    });
   });
 
   it("refreshes branch and uncommitted-file count from workspace extras", () => {

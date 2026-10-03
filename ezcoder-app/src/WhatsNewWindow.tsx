@@ -6,6 +6,7 @@ import { recentChangelog } from "./changelog";
 import { Confetti } from "./Confetti";
 import { ShimmerText } from "./ShimmerText";
 import { Badge } from "./Badge";
+import { WhatsNewCritter } from "./WhatsNewCritter";
 
 /**
  * Body of the dedicated, screen-centered "What's new" window (the borderless
@@ -101,10 +102,11 @@ export function WhatsNewWindow(): React.ReactElement {
     <div className="whatsnew-window" style={{ background: theme.surface2 }}>
       <Confetti />
       <div className="modal-head">
-        <div className="modal-title">
+        <div className="modal-title whatsnew-title">
           <ShimmerText base={theme.success} bright="#a7f3d0">
             What&apos;s new with EZ Coder (last 50 updates)
           </ShimmerText>
+          <WhatsNewCritter />
         </div>
         <button
           className="modal-close"

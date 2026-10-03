@@ -169,6 +169,7 @@ replace_in_tracked_text_files() {
       -e 's|\.gg/sessions|.ezcoder/sessions|g' \
       -e 's|\.gg/boss|.ezcoder/boss|g' \
       -e 's|\.gg/auth|.ezcoder/auth|g' \
+      -e 's|\\\.gg\\/auth|\\.ezcoder\\/auth|g' \
       -e 's|\.gg/debug|.ezcoder/debug|g' \
       -e 's|\.gg/settings|.ezcoder/settings|g' \
       -e 's|\.gg/update-state|.ezcoder/update-state|g' \
@@ -448,6 +449,9 @@ main() {
   rename_file_if_exists "ezcoder-app/src/useKenMentor.test.ts" "ezcoder-app/src/useNolanMentor.test.ts"
   rename_file_if_exists "ezcoder-app/src/assets/ken-autopilot-on.mp3" "ezcoder-app/src/assets/nolan-autopilot-on.mp3"
   rename_file_if_exists "ezcoder-app/src/assets/ken-autopilot-off.mp3" "ezcoder-app/src/assets/nolan-autopilot-off.mp3"
+  rename_file_if_exists "ezcoder-app/src/GgFace.tsx" "ezcoder-app/src/EzFace.tsx"
+  rename_file_if_exists "ezcoder-app/src/gg-face.ts" "ezcoder-app/src/ez-face.ts"
+  rename_file_if_exists "ezcoder-app/src/gg-face.test.ts" "ezcoder-app/src/ez-face.test.ts"
 
   git add -A
   if git diff --cached --quiet; then

@@ -27,6 +27,7 @@ patchedDependencies:
   # patches make them reuse that nonce or their effects get blocked in prod.
   metal-fx@2.0.10: patches/metal-fx@2.0.10.patch
   border-beam@1.3.0: patches/border-beam@1.3.0.patch
+  hyperframes@0.8.82: patches/hyperframes@0.8.82.patch
 
 # Native deps allowed to run install scripts. pnpm 11 ERRORS
 # (ERR_PNPM_IGNORED_BUILDS) when a dep wants to build but isn't approved — in v10

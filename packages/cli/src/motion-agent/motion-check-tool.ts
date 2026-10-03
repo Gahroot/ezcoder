@@ -147,18 +147,81 @@ function summarizeFlashes(output: CommandOutput): string {
   );
 }
 
-/** Source fingerprint for reusing a passing audit; a project it cannot fingerprint is re-audited. */
+/**
+ * Source fingerprint for reusing a passing audit; a project it cannot fingerprint is re-audited.
+ * The hold plan is excluded: the composition never reads it, and the pixel check re-reads it.
+ */
 async function sourceFingerprint(
   project: string,
   output: string,
+  holds: string | undefined,
   signal: AbortSignal,
 ): Promise<string | undefined> {
   try {
-    return await motionSourceHash(project, output, signal);
+    return await motionSourceHash(project, output, signal, holds ? [holds] : []);
   } catch {
     signal.throwIfAborted();
     return undefined;
   }
+}
+
+/**
+ * Browser pages `hf check` audits sample times on at once. Each seek mostly waits on a fixed
+ * settle, so pages overlap almost perfectly: on a 25 s reel, 4 pages took the audit from 90 s
+ * to 29 s for ~1.1 GB more memory (each page holds its own copy of the composition), with the
+ * same report. Capped at 4 so a render running alongside keeps its cores.
+ */
+export function auditPages(cpus: number, memoryBytes: number): number {
+  const byCpu = Math.floor(cpus / 2);
+  const byMemory = Math.floor(memoryBytes / 4 / 1024 ** 3);
+  return Math.max(1, Math.min(4, byCpu, byMemory));
+}
+
+/** Frame rate and duration of the export, or undefined when they are missing or out of range. */
+async function probeVideo(
+  ffprobe: string,
+  output: string,
+  signal: AbortSignal,
+): Promise<{ fps: number; duration: number } | undefined> {
+  let stdout: string;
+  try {
+    ({ stdout } = await exec(
+      ffprobe,
+      [
+        "-v",
+        "error",
+        "-protocol_whitelist",
+        "file,pipe",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=avg_frame_rate:format=duration",
+        "-of",
+        "json",
+        output,
+      ],
+      {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(STEP_MS)]),
+        maxBuffer: 64 * 1024,
+        windowsHide: true,
+      },
+    ));
+  } catch {
+    signal.throwIfAborted();
+    return undefined;
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  const video = videoSchema.safeParse(json);
+  if (!video.success) return undefined;
+  const [num, den] = video.data.streams[0].avg_frame_rate.split("/").map(Number);
+  const fps = Number(num) / Number(den);
+  const duration = Number(video.data.format.duration);
+  return fps >= 1 && fps <= 120 && duration > 0 && duration <= 3600 ? { fps, duration } : undefined;
 }
 
 /**
@@ -341,36 +404,16 @@ export function createMotionCheckTool(
           },
         );
         const { ffmpeg, ffprobe } = binariesSchema.parse(JSON.parse(binaries.stdout));
-        let sampling = ["--at-transitions"];
+        const video = await probeVideo(ffprobe, output, signal);
+        // Tween boundaries and midpoints land between frames: on a cut-heavy video most are
+        // instants no viewer sees. Moving each onto its nearest rendered frame (and merging
+        // duplicates) audits only what the export shows: ~460 → ~300 seeks on a 10 s reel.
+        // Unreadable metadata keeps the unsnapped audit rather than skipping the check.
+        let sampling = ["--at-transitions", ...(video ? [`--frame-rate=${video.fps}`] : [])];
         let spotFrames: number | undefined;
         if (input.spot) {
-          const probe = await exec(
-            ffprobe,
-            [
-              "-v",
-              "error",
-              "-protocol_whitelist",
-              "file,pipe",
-              "-select_streams",
-              "v:0",
-              "-show_entries",
-              "stream=avg_frame_rate:format=duration",
-              "-of",
-              "json",
-              output,
-            ],
-            {
-              signal: AbortSignal.any([signal, AbortSignal.timeout(STEP_MS)]),
-              maxBuffer: 64 * 1024,
-              windowsHide: true,
-            },
-          );
-          const video = videoSchema.parse(JSON.parse(probe.stdout));
-          const [num, den] = video.streams[0].avg_frame_rate.split("/").map(Number);
-          const fps = Number(num) / Number(den);
-          const duration = Number(video.format.duration);
-          if (!(fps >= 1 && fps <= 120 && duration > 0 && duration <= 3600))
-            throw new Error("Unsupported video metadata for a spot check");
+          if (!video) throw new Error("Unsupported video metadata for a spot check");
+          const { fps, duration } = video;
           const times = spotSampleTimes(input.windows, fps, duration);
           if (!times.length) throw new Error("Spot windows contain no rendered frames");
           if (times.length > spotMaxFrames)
@@ -382,9 +425,11 @@ export function createMotionCheckTool(
           spotFrames = times.length;
           sampling = ["--at", times.join(",")];
         }
-        const fingerprint = input.spot
+        // The frame rate decides which instants are audited, so a pass holds only for it.
+        const source = input.spot
           ? undefined
-          : await sourceFingerprint(project, output, signal);
+          : await sourceFingerprint(project, output, holds, signal);
+        const fingerprint = source === undefined ? undefined : `${source}@${video?.fps ?? 0}`;
         const passed = passedSources.get(project);
         let runtime: CommandOutput | null;
         if (fingerprint !== undefined && passed?.fingerprint === fingerprint) {
@@ -403,7 +448,15 @@ export function createMotionCheckTool(
           runtime = await run(
             SOURCE_CHECK,
             process.execPath,
-            [bundle.launcher, "check", project, "--json", "--contrast", ...sampling],
+            [
+              bundle.launcher,
+              "check",
+              project,
+              "--json",
+              "--contrast",
+              ...sampling,
+              `--workers=${auditPages(os.availableParallelism(), os.totalmem())}`,
+            ],
             { timeoutMs: sourceCheckMs, describe: summarizeSourceCheck },
           );
           // Keep a pass only if the source did not change while it was being audited.
@@ -411,7 +464,7 @@ export function createMotionCheckTool(
             fingerprint !== undefined &&
             runtime !== null &&
             isMotionTechnicalReport(runtime.stdout) &&
-            (await sourceFingerprint(project, output, signal)) === fingerprint
+            (await sourceFingerprint(project, output, holds, signal)) === source
           )
             passedSources.set(project, { fingerprint, result: runtime });
         }

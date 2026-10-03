@@ -6,6 +6,8 @@ let timer;
 // Task text of a "hold" turn: it stays running until a queued message releases it.
 let heldTask;
 let contextTurns = 0;
+// Acceptance checks the parent sent with the current turn.
+let turnChecks = [];
 
 const emit = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`);
 const ack = (frame, extra = {}) =>
@@ -19,6 +21,10 @@ const complete = (status = "completed", output = `turn-${contextTurns}`) => {
     type: "turn_complete",
     status,
     output,
+    // Stand-in for the engine-built receipt the real worker attaches.
+    receipt: "Receipt (1 call): read a.ts",
+    // Stand-in for the real worker's verdict: echo how many checks arrived.
+    ...(turnChecks.length > 0 ? { acceptance: `0/${turnChecks.length} passed` } : {}),
     ...(status === "interrupted" ? { error: "Interrupted" } : {}),
   });
 };
@@ -47,12 +53,18 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (frame.command === "start" || frame.command === "followup") {
     running = true;
     contextTurns++;
+    turnChecks = Array.isArray(frame.checks) ? frame.checks : [];
     ack(frame, { status: "running" });
     emit({ type: "state", state: "running" });
     emit({
       type: "event",
       event: "tool_call_start",
-      payload: { name: "read", args: { file_path: "a.ts" } },
+      payload: { toolCallId: "fake-read", name: "read", args: { file_path: "a.ts" } },
+    });
+    emit({
+      type: "event",
+      event: "tool_call_end",
+      payload: { toolCallId: "fake-read", result: "x", isError: false, durationMs: 1 },
     });
     emit({
       type: "event",
