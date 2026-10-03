@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.79.0",
+    date: "2026-10-04",
+    items: [
+      "Your home screen is now a cozy campfire clearing in the pines, and it lives on your clock. Stars and an owl at `night`, mist and waking birds at dawn, sunbeams through the trees by day, then fireflies and bats at dusk. Every visit feels a little different.",
+      "Replies look finished from the very first letter. Bold, code and links render as they stream instead of flashing raw symbols, long chats stay light and snappy, and a floating pill appears to whisk you back down to `You have new chats` or straight to `You have a new question` the moment you scroll away.",
+      "Plan review got a glow up. Plans now open full window, laid out just like your chat, with a little critter crew cheering you on while you decide to accept, reject or send feedback.",
+      "Motion mode just learned sound and style. Your animations can now mark their own sound effects that stay locked to the action even when you retime it, plus real motion blur, music that cuts to your video on the beat, and `10` fresh animation pieces to build from.",
+      "Your agent got faster and cheaper. I cut the extra review passes that padded every turn, so answers land sooner and spend fewer tokens, and sign-ins and the Telegram bot no longer freeze on a flaky connection.",
+    ],
+  },
+  {
     version: "0.78.0",
     date: "2026-10-03",
     items: [
