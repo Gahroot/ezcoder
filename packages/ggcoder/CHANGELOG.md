@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.71.0
+
+### Minor Changes
+
+- Motion mode gains a shared animation kit (`library/kit/moves.js`) and new tools. The cue export (`bin/cues.mjs`) loads a composition in HyperFrames' Chrome and writes the sounds it marked with `kit.cue(tl, at, sfx)` to `cues.json` in root-timeline time, with the camera's speed curve, so retiming the animation moves every sound with its event. `bin/motion-blur.mjs` renders real motion blur, `bin/music-fit.mjs` cuts a music track to the picture's length on whole bars, and `bin/reference-study.mjs` measures a reference video's pace and cuts. The library adds 10 pieces (camera rig, chain knock, gather to logo, morph carry, one-shape journey, open from subject, request to result, scale dive, screen replica steps, zoom into card), and the Motion references and skills are expanded. The automatic Ideal review, the verification gate and the Motion check tool are removed, which makes turns shorter and cheaper; the `idealReviewEnabled` setting keeps its name and now switches only the loop-break and re-grounding nudges. A full-file `cat` in `bash` now counts as reading the file, so `edit`/`write` no longer ask for a redundant `read`. Images returned by MCP tools now show as previews, and restored sessions keep tool images clickable. OAuth token requests time out after 30 seconds instead of holding the auth lock forever, and the Telegram bot no longer hangs on a dead connection or spins on API errors. The bundled skills are refreshed.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.71.0
+- @kenkaiiii/gg-agent@5.71.0
+- @kenkaiiii/gg-core@5.71.0
+
 ## 5.70.0
 
 ### Minor Changes
