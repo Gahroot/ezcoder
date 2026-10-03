@@ -82,7 +82,6 @@ import { createTools } from "./tools/index.js";
 import { cleanupToolOutputs } from "./tools/overflow.js";
 import { spawnedTasks, type SpawnedTaskArgs } from "./tools/subagent-shared.js";
 import { CheckpointStore } from "./core/checkpoint-store.js";
-import { ReviewCoverageTracker } from "./core/ideal-review.js";
 import { shouldCompact, compact } from "./core/compaction/compactor.js";
 import {
   createCompactedSessionCheckpoint,
@@ -633,7 +632,6 @@ async function runInkTUI(opts: {
   // Holder so the (cwd-bound) tools can snapshot pre-mutation file state for
   // /rewind. The store is created once the session id is known (below).
   const checkpointRef: { current: CheckpointStore | null } = { current: null };
-  const reviewCoverageTracker = new ReviewCoverageTracker(cwd);
   const onPreFileMutation = (filePath: string): Promise<void> =>
     checkpointRef.current?.recordPreMutation(filePath) ?? Promise.resolve();
   let activeProvider = provider;
@@ -654,8 +652,6 @@ async function runInkTUI(opts: {
     model,
     planModeRef,
     onPreFileMutation,
-    onFileRead: (filePath) => reviewCoverageTracker.recordRead(filePath),
-    onFileMutated: (filePath) => reviewCoverageTracker.recordChanged(filePath),
     lspDiagnostics: opts.lspDiagnostics,
     getWriteGuardSettings: () => ({
       allowOutsideWorkspaceWrites: opts.allowOutsideWorkspaceWrites ?? false,
@@ -985,8 +981,6 @@ async function runInkTUI(opts: {
     sessionId,
     processManager,
     subAgentManager,
-    lspManager,
-    reviewCoverageTracker,
     settingsFile: paths.settingsFile,
     mcpManager,
     authStorage,
