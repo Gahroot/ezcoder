@@ -193,6 +193,7 @@ import fs from "node:fs/promises";
 import type { Stats } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { editTargetPaths } from "../tools/edit-targets.js";
 
 /**
  * A run whose tool calls fail more often than this is thrashing, not
@@ -1637,13 +1638,14 @@ export class AgentSession {
         let verificationChanged = false;
         if (!event.isError && args) {
           if (name === "edit" || name === "write") {
-            const filePath = String((args as { file_path?: unknown }).file_path ?? "");
             // Check-owning files (tsconfig.json, pytest.ini, vitest.config.ts …)
             // are tracked even when they are not source code: editing one
-            // invalidates earlier check results.
-            if (filePath && (isCodeFilePath(filePath) || isCheckOwnFile(filePath))) {
-              this.verificationGate.recordMutation(filePath);
-              verificationChanged = true;
+            // invalidates earlier check results. A multi-file edit records every file.
+            for (const filePath of editTargetPaths(args as Record<string, unknown>)) {
+              if (isCodeFilePath(filePath) || isCheckOwnFile(filePath)) {
+                this.verificationGate.recordMutation(filePath);
+                verificationChanged = true;
+              }
             }
           }
         }
