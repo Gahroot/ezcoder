@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.80.0",
+    date: "2026-10-04",
+    items: [
+      "OpenAI models just got a serious speed boost. Your `ChatGPT` and API key chats can now fire off several tool calls in one go instead of one at a time, and they stop wasting tokens filling in blanks, so work lands faster and costs less. Prefer the old style? Two new settings bring it right back.",
+      "`Gemini` is back in full swing. I fixed a hidden snag that made it refuse requests whenever tools like `web_fetch` were loaded, so it now just works with your whole toolbox.",
+      "Helper agents are rock solid in the desktop app again. I squashed a crash that stopped the `subagent` tool before it even started, so you can hand off work and get answers back without a hitch.",
+      "Every turn is a little leaner. I tightened the agent's instructions and moved rarely used tools out of the way until they're needed, so each request is lighter, quicker and cheaper.",
+    ],
+  },
+  {
     version: "0.79.0",
     date: "2026-10-04",
     items: [
