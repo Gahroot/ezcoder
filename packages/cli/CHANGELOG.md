@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.29.0
+
+### Minor Changes
+
+- Sync with upstream through v0.79: debug tool, parent acceptance checks, test-impact hints, tool-call repair hints, cache diagnostics, stronger shell/git/workspace guards, expanded Motion toolkit, and faster agent turns. Pre-stop verification gate (`verificationGateEnabled`) retained.
+
+### Patch Changes
+
+- @prestyj/ai@5.29.0
+- @prestyj/agent@5.29.0
+- @prestyj/core@5.29.0
+
 ## 5.28.1
 
 ### Patch Changes
