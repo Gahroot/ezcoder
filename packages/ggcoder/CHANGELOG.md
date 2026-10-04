@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.73.0
+
+### Minor Changes
+
+- Add a multi-file `files` form to the `edit` tool and tighten agent prompts (edit batching, bug fixes with a small regression test, preloaded instruction files, leaner skill loading) to cut model round trips; GG now edges out Codex on gpt-6-astra.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.73.0
+- @kenkaiiii/gg-agent@5.73.0
+- @kenkaiiii/gg-core@5.73.0
+
 ## 5.72.0
 
 ### Minor Changes
