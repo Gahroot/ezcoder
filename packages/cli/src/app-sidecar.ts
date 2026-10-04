@@ -79,6 +79,7 @@ import {
   restoreAssistantTexts,
   resolveRestoredCommand,
   autopilotMarkerCopySeed,
+  extractToolImagePaths,
 } from "./core/session-history.js";
 import {
   sessionToMarkdown,
@@ -190,7 +191,13 @@ import {
   stopRadio,
 } from "./core/radio.js";
 import { enrichProcessPath } from "./core/shell-path.js";
-import { downscaleForPreview, shrinkToFit, validateVisionImage } from "./utils/image.js";
+import {
+  downscaleForPreview,
+  IMAGE_MEDIA_TYPES,
+  shrinkToFit,
+  validateVisionImage,
+} from "./utils/image.js";
+import { readFileBounded } from "./tools/operations.js";
 import { startServeMode, type ServeController } from "./modes/serve-mode.js";
 import { installSteroids, probeSteroids } from "./core/steroids.js";
 import { loadTelegramConfig, saveTelegramConfig, verifyBotToken } from "./core/telegram-config.js";
@@ -2528,7 +2535,7 @@ async function createSession(
   session.eventBus.on("hook", (d) => broadcast("hook", d));
   session.eventBus.on("diagnostics", (d) => broadcast("diagnostics", d));
   // Fires BEFORE the candidate final answer streams. The webview holds assistant
-  // text back while armed, so an Ideal review supersedes a draft that was never
+  // text back while armed, so an injected follow-up supersedes a draft that was never
   // painted instead of deleting one the user already started reading.
   session.eventBus.on("hook_armed", (d) => broadcast("hook_armed", d));
   session.eventBus.on("subagent_state", (d) => broadcast("subagent_state", d));
@@ -2601,10 +2608,8 @@ async function createSession(
   // Autopilot (auto-review) toggle for THIS window's project. Loaded from
   // ezcoder-app.json on boot; flipped via POST /autopilot. When on, POST /prompt runs
   // runAutopilotCycle after the user's turn settles — Nolan auto-reviews the work
-  // and drives the review→prompt→review loop. Nolan is the sole verification
-  // owner in this mode, so suppress the build session's redundant Ideal hook.
+  // and drives the review→prompt→review loop.
   let autopilot = mode === "code" && (await loadAutopilot(cwd));
-  session.setIdealReviewSuppressed(autopilot);
   // True while an autopilot review is in flight (used to defer nolanAuto model
   // switches, like nolanRunning does for chat Nolan, and to drive the spinner).
   let autopilotReviewing = false;
@@ -2812,9 +2817,6 @@ async function createSession(
       // (often >5 min) regardless of the user's global speedProfile pick.
       forceLongCacheRetention: true,
     });
-    // Nolan is already the independent autopilot reviewer; recursively running
-    // his own Ideal self-review adds latency and can corrupt the verdict shape.
-    nolanAgent.setIdealReviewSuppressed(true);
     await nolanAgent.initialize();
     // Keep review text/tools silent; report usage only for whole-task accounting.
     nolanAgent.eventBus.on("turn_end", (d) => {
@@ -3094,7 +3096,6 @@ async function createSession(
     const generation = runLifecycle.begin(abortOwnedWork).generation;
     pendingCancelDrain = null;
     autopilotActive = true;
-    session.setIdealReviewSuppressed(true);
     // Generation captured by the last plan review; acceptPlan re-checks it so
     // a user Accept/Reject landing mid-review always wins.
     let planGenAtReview = -1;
@@ -3213,7 +3214,6 @@ async function createSession(
       });
     } finally {
       autopilotActive = false;
-      session.setIdealReviewSuppressed(autopilot);
       finishOwnedGeneration(
         generation,
         true,
@@ -4036,7 +4036,15 @@ async function createSession(
         // Pre-index tool results by toolCallId so we can pair tool calls with
         // their results (for sub-agent status + image extraction).
         const toolResultMap = new Map<string, { content: ToolResultContent; isError: boolean }>();
+        // Tool name per call, so restore only trusts generate_image's own text
+        // when it reads extra images from disk (an MCP server could fake it).
+        const toolNameById = new Map<string, string>();
         for (const msg of messages) {
+          if (msg.role === "assistant" && typeof msg.content !== "string") {
+            for (const c of msg.content) {
+              if (c.type === "tool_call") toolNameById.set(c.id, c.name);
+            }
+          }
           if (msg.role !== "tool") continue;
           for (const tr of msg.content) {
             toolResultMap.set(tr.toolCallId, {
@@ -4208,32 +4216,44 @@ async function createSession(
                 if (typeof tr.content === "string") continue;
                 const imageBlocks = tr.content.filter((c) => c.type === "image");
                 if (imageBlocks.length === 0) continue;
-                // Extract the path from the text block (e.g. "Generated image → /path").
+                // Extract the path from the text block so the restored image
+                // stays clickable (read / screenshot / generate_image formats).
                 const textBlock = tr.content.find(
                   (c) => c.type === "text" && "text" in c && typeof c.text === "string",
                 );
                 const textContent = textBlock && textBlock.type === "text" ? textBlock.text : "";
-                const pathMatch = textContent.match(/→\s*(\S+)/);
-                const imgPath = pathMatch?.[1];
+                const imgPaths = extractToolImagePaths(textContent);
 
-                // Downscale each image for the webview preview.
+                // Downscale each image for the webview preview. Paths pair with
+                // image blocks in order (a tool saves one file per image).
                 const toolImages: Array<{ src: string; path?: string }> = [];
+                let blockIndex = 0;
                 for (const block of imageBlocks) {
                   if (block.type !== "image") continue;
-                  try {
-                    const rawBuf = Buffer.from(block.data, "base64");
-                    const previewBuf = await downscaleForPreview(rawBuf);
-                    toolImages.push({
-                      src: `data:${block.mediaType};base64,${previewBuf.toString("base64")}`,
-                      path: imgPath,
-                    });
-                  } catch {
-                    // Downscale failed — use the raw data.
-                    toolImages.push({
-                      src: `data:${block.mediaType};base64,${block.data}`,
-                      path: imgPath,
-                    });
-                  }
+                  const imgPath = imgPaths[blockIndex++];
+                  const previewBuf = await downscaleForPreview(Buffer.from(block.data, "base64"));
+                  toolImages.push({
+                    src: `data:${block.mediaType};base64,${previewBuf.toString("base64")}`,
+                    path: imgPath,
+                  });
+                }
+                // generate_image persists only its first image's pixels; the
+                // rest exist only on disk, so preview them from their files.
+                // Skip silently if a file was moved or deleted since.
+                const extraPaths =
+                  toolNameById.get(tr.toolCallId) === "generate_image"
+                    ? imgPaths.slice(blockIndex)
+                    : [];
+                for (const extraPath of extraPaths) {
+                  const mediaType = IMAGE_MEDIA_TYPES[path.extname(extraPath).toLowerCase()];
+                  if (!mediaType) continue;
+                  const raw = await readFileBounded(extraPath).catch(() => null);
+                  if (!raw) continue;
+                  const previewBuf = await downscaleForPreview(raw);
+                  toolImages.push({
+                    src: `data:${mediaType};base64,${previewBuf.toString("base64")}`,
+                    path: extraPath,
+                  });
                 }
                 if (toolImages.length > 0) {
                   history.push({
@@ -4712,9 +4732,6 @@ async function createSession(
           return;
         }
         autopilot = enabled;
-        // A toggle-off during an active cycle takes effect after Nolan finishes;
-        // until then, injected build runs must not re-enable Ideal self-review.
-        session.setIdealReviewSuppressed(enabled || autopilotActive);
         await saveAutopilot(cwd, enabled);
         log("INFO", "app-sidecar", "autopilot toggled", { enabled: String(enabled) });
         broadcast("autopilot", { autopilot: enabled });

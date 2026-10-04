@@ -2,6 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useNolanMentor } from "./useNolanMentor";
+import { createLiveTextStore } from "./live-text";
 import type { Item } from "./App";
 import type { SidecarEvent } from "./agent";
 
@@ -18,30 +19,41 @@ function setup() {
     items = typeof u === "function" ? u(items) : u;
   };
   const nextId = (): number => ++id;
-  const hook = renderHook(() => useNolanMentor({ setItems, nextId }));
-  return { hook, getItems: () => items };
+  const liveText = createLiveTextStore();
+  const hook = renderHook(() => useNolanMentor({ setItems, nextId, liveText }));
+  return { hook, getItems: () => items, liveText };
 }
 
 const ev = (type: string, data: Record<string, unknown> = {}): SidecarEvent =>
   ({ type, data }) as SidecarEvent;
 
 describe("useNolanMentor", () => {
-  it("nolan_text_delta appends a single kind:'nolan' item via setItems", () => {
-    const { hook, getItems } = setup();
+  it("nolan_text_delta streams into a single kind:'nolan' item", () => {
+    const { hook, getItems, liveText } = setup();
     act(() => {
       hook.result.current.handleNolanEvent(ev("nolan_text_delta", { text: "hello" }));
     });
     const items = getItems();
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ kind: "nolan", text: "hello" });
+    const id = items[0]?.id ?? -1;
 
-    // A second delta appends to the SAME bubble, not a new item.
+    // A second delta grows the SAME bubble through the live-text store (only
+    // that row re-renders), not a new item and not a whole-transcript update.
     act(() => {
       hook.result.current.handleNolanEvent(ev("nolan_text_delta", { text: " world" }));
+    });
+    expect(getItems()).toHaveLength(1);
+    expect(liveText.get(id)).toBe("hello world");
+
+    // When Nolan's run ends, the final text lands in the transcript once.
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_run_end"));
     });
     const after = getItems();
     expect(after).toHaveLength(1);
     expect(after[0]).toMatchObject({ kind: "nolan", text: "hello world" });
+    expect(liveText.get(id)).toBeUndefined();
   });
 
   it("nolan_run_start flips nolanRunning true and resets tokens", () => {

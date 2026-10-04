@@ -26,7 +26,10 @@ export function AutopilotReviewBar({ onCancel }: Props): React.ReactElement {
   }, []);
 
   return (
-    <div className="statusrow running nolan-statusrow" style={{ color: theme.textMuted }}>
+    <div
+      className="statusrow running nolan-statusrow dissolve-in"
+      style={{ color: theme.textMuted }}
+    >
       <span className="statusrow-left">
         <span className="statusrow-icon spinner nolan-spinner" style={{ color: theme.nolan }}>
           {SPINNER_FRAMES[frame]}

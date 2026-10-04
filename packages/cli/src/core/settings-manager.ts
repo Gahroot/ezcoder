@@ -40,12 +40,10 @@ const SettingsSchema = z.object({
     ])
     .default("auto"),
   showTokenUsage: z.boolean().default(true),
+  /** Legacy name: switches loop-break and re-grounding nudges (Ideal review
+   *  itself was removed). Kept so existing settings files keep their meaning. */
   idealReviewEnabled: z.boolean().default(true),
   autoApprovePlans: z.boolean().default(true),
-  /** Pre-stop gate: when code was edited but no test/typecheck/lint/build
-   *  command completed since the last edit, the turn is continued once with a
-   *  demand to verify (then one escalation demanding an honest statement). */
-  verificationGateEnabled: z.boolean().default(true),
   /** Append LSP diagnostics to edit/write tool results. */
   lspDiagnostics: z.boolean().default(true),
   /** Allow write/edit outside the workspace (cwd, tmpdir, ~/.ezcoder). Off by
@@ -159,7 +157,6 @@ export const DEFAULT_SETTINGS: Settings = {
   showTokenUsage: true,
   idealReviewEnabled: true,
   autoApprovePlans: true,
-  verificationGateEnabled: true,
   lspDiagnostics: true,
   allowOutsideWorkspaceWrites: false,
   networkMode: "off",

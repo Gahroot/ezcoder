@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { SidecarEvent } from "./agent";
 import type { Item } from "./App";
+import type { LiveTextStore } from "./live-text";
 
 /**
  * Nolan Grout (mentor agent) client state + event handling, extracted from App.tsx.
@@ -41,8 +42,10 @@ export interface NolanMentor {
 export function useNolanMentor(opts: {
   setItems: Dispatch<SetStateAction<Item[]>>;
   nextId: () => number;
+  /** Where Nolan's streaming reply grows until it ends (live-text.ts). */
+  liveText: LiveTextStore;
 }): NolanMentor {
-  const { setItems, nextId } = opts;
+  const { setItems, nextId, liveText } = opts;
 
   const [nolanRunning, setNolanRunning] = useState(false);
   // Nolan's own activity metrics, mirroring the build session's so Nolan's activity
@@ -58,32 +61,39 @@ export function useNolanMentor(opts: {
   // Id of the active Nolan streaming bubble (null when Nolan isn't streaming).
   const nolanStreamingIdRef = useRef<number | null>(null);
 
-  // Nolan's streaming bubble. Nolan's replies are short, so a direct setItems per
-  // delta (no rAF buffering) is fine and keeps his path independent of EZ
-  // Coder's. First delta creates the magenta bubble; later deltas append to it.
+  // Nolan's streaming bubble, kept independent of EZ Coder's path. The first
+  // delta adds the bubble to `items`; later deltas grow it in the live-text
+  // store, which re-renders only his row instead of the whole App per token.
   const appendNolan = useCallback(
     (text: string) => {
       const current = nolanStreamingIdRef.current;
       if (current === null) {
         const id = nextId();
         nolanStreamingIdRef.current = id;
+        liveText.begin(id, text);
         setItems((prev) => [...prev, { kind: "nolan", id, text }]);
       } else {
-        setItems((prev) =>
-          prev.map((it) =>
-            it.kind === "nolan" && it.id === current ? { ...it, text: it.text + text } : it,
-          ),
-        );
+        liveText.append(current, text);
       }
     },
-    [setItems, nextId],
+    [liveText, setItems, nextId],
   );
 
   // Ends the CURRENT Nolan streaming bubble (also called mid-turn on tool calls to
-  // break the bubble so post-tool text starts a fresh paragraph).
+  // break the bubble so post-tool text starts a fresh paragraph), writing its
+  // final text into `items` once.
   const endNolanStreaming = useCallback(() => {
+    const current = nolanStreamingIdRef.current;
     nolanStreamingIdRef.current = null;
-  }, []);
+    if (current === null) return;
+    const final = liveText.get(current);
+    if (final !== undefined) {
+      setItems((prev) =>
+        prev.map((it) => (it.kind === "nolan" && it.id === current ? { ...it, text: final } : it)),
+      );
+    }
+    liveText.release(current);
+  }, [liveText, setItems]);
 
   // Close Nolan's open thinking span (if any), folding its duration into the
   // accumulator. Mirrors the build's finalizeThinking. Called when text or a
