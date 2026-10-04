@@ -95,6 +95,7 @@ import {
 } from "../tools/index.js";
 import { partitionToolsByTier } from "../tools/tool-tiers.js";
 import type { BackgroundProcess } from "./process-manager.js";
+import { formatImpactForVerification, type TestImpactIndex } from "./test-impact.js";
 import type { DebugManager } from "../tools/debug.js";
 import { autoBackgroundedId } from "../tools/bash.js";
 import { buildProcessCompletionFollowUp } from "./process-gate.js";
@@ -172,6 +173,7 @@ import { AgentNotificationQueue } from "./agent-notifications.js";
 import {
   VerificationGate,
   isCheckOwnFile,
+  extractAddedLines,
   isCodeFilePath,
   VERIFICATION_STATE_KIND,
   isVerificationCommand,
@@ -535,8 +537,9 @@ export class AgentSession {
   private runStartedAt = 0;
   /** Gate injections spent this run, capped by MAX_PROCESS_GATE_INJECTIONS. */
   private processGateInjected = 0;
-  /** Verification evidence: code edited this run, and what has proved it since.
-   *  Passive tracking only — it feeds run status and autopilot, never a turn. */
+  /** Verification gate: code edited this run, nothing proved it since. Always
+   *  tracks evidence for run status; the `verificationGateEnabled` setting
+   *  decides whether an unverified stop is also continued once. */
   private readonly verificationGate = new VerificationGate();
   /** Mirror of the last `hook_armed` value, so the event fires only on an edge. */
   private preFinalArmed = false;
@@ -590,6 +593,7 @@ export class AgentSession {
   private steeringListeners = new Set<() => void>();
   private processManager?: ProcessManager;
   private lspManager?: LspManager;
+  private testImpact?: TestImpactIndex;
   private debugManager?: DebugManager;
   private subAgentManager?: SubAgentManager;
   /**
@@ -779,6 +783,7 @@ export class AgentSession {
       clearReadTracker,
       recordBashReads,
       lspManager,
+      testImpact,
       debugManager,
       subAgentManager,
     } = await createTools(this.cwd, {
@@ -873,6 +878,7 @@ export class AgentSession {
     this.recordBashReads = recordBashReads;
     this.processManager = processManager;
     this.lspManager = lspManager;
+    this.testImpact = testImpact;
     this.debugManager = debugManager;
     this.subAgentManager = subAgentManager;
     this.bindManagerCancellation(this.opts.signal);
@@ -1567,7 +1573,8 @@ export class AgentSession {
             call.sourceSnapshot = await captureVerificationSnapshot(this.opts.cwd, [
               ...this.hookFileEditCounts.keys(),
             ]);
-            if (call.sourceSnapshot === null) this.verificationGate.requireFreshVerification(true);
+            if (call.sourceSnapshot === null)
+              this.verificationGate.requireFreshVerification(true, event.args.command);
           } else if (
             (classification.accepted && event.args.persist !== true) ||
             (!classification.accepted && classification.mayMutate)
@@ -1580,6 +1587,7 @@ export class AgentSession {
             // autopilot silently refused every later turn.
             this.verificationGate.requireFreshVerification(
               !classification.accepted && classification.mayMutate,
+              event.args.command,
             );
           }
           await this.persistVerificationState();
@@ -1625,10 +1633,16 @@ export class AgentSession {
           if (name === "edit" || name === "write") {
             const filePath = String((args as { file_path?: unknown }).file_path ?? "");
             // Check-owning files (tsconfig.json, pytest.ini, vitest.config.ts …)
-            // are tracked even when they are not source code: editing one
-            // invalidates earlier check results.
+            // are tracked even when they are not source code: editing one is how
+            // a red suite is turned green without fixing anything.
             if (filePath && (isCodeFilePath(filePath) || isCheckOwnFile(filePath))) {
-              this.verificationGate.recordMutation(filePath);
+              const addedText =
+                name === "write"
+                  ? String((args as { content?: unknown }).content ?? "")
+                  : extractAddedLines(
+                      (event.details as { diff?: string } | undefined)?.diff ?? event.result,
+                    );
+              this.verificationGate.recordMutation(filePath, addedText);
               verificationChanged = true;
             }
           }
@@ -1658,7 +1672,7 @@ export class AgentSession {
                     : {}),
                 });
               else if (classification.snapshotEligible)
-                this.verificationGate.requireFreshVerification(true);
+                this.verificationGate.requireFreshVerification(true, command);
             } else if (args.persist === true) {
               // Persistent-shell checks are not bounded evidence (steering can
               // interleave): neither a pass nor a failure. A recorded failure
@@ -2120,18 +2134,32 @@ export class AgentSession {
     return granted;
   }
 
-  /** Would a stop right now inject a pre-final follow-up? Only queued LSP
-   *  diagnostics (real errors injected below) or a mode-owned completion
-   *  review can, so clients hold the candidate answer only then. */
+  /** Is the pre-stop verification gate active for this session? Off by the
+   *  `verificationGateEnabled` setting, by `selfCorrectionHooks: false`, and for
+   *  allow-listed sessions that cannot run commands at all. */
+  private verificationGateActive(): boolean {
+    if (this.opts.selfCorrectionHooks === false) return false;
+    if (!this.settingsManager.get("verificationGateEnabled")) return false;
+    return !this.opts.allowedTools || this.opts.allowedTools.includes("bash");
+  }
+
+  /** Would a stop right now inject a pre-final follow-up? Queued LSP
+   *  diagnostics (real errors injected below), a mode-owned completion review,
+   *  or the verification gate can, so clients hold the candidate answer only
+   *  then. Same conditions as the pre-stop branch, so arming and injection
+   *  cannot disagree. */
   private wouldInjectBeforeFinal(): boolean {
     if (this.opts.completionReview?.armed) return true;
-    return this.lspManager?.hasQueuedDiagnostics() ?? false;
+    if (this.lspManager?.hasQueuedDiagnostics()) return true;
+    return this.verificationGateActive() && this.verificationGate.willInject();
   }
 
   /** Broadcast pre-final hook arming on change. Both edges matter: armed=false
    *  after the hook fires is what lets a client stream the final answer live
    *  again. Callable before `initialize()`, when no manager exists yet. */
   private refreshHookArming(): void {
+    // Before `initialize()` settings are not loaded, so nothing can be armed.
+    if (!this.settingsManager) return;
     const armed = this.wouldInjectBeforeFinal();
     if (armed === this.preFinalArmed) return;
     this.preFinalArmed = armed;
@@ -2140,8 +2168,8 @@ export class AgentSession {
 
   /**
    * Pre-stop follow-ups: LSP errors, unread child agents and background
-   * processes, and a mode-owned completion review. Verification evidence is
-   * tracked passively for run status; it never forces another turn.
+   * processes, the verification gate (when `verificationGateEnabled`), and a
+   * mode-owned completion review.
    */
   private async getHookFollowUpMessages(): Promise<Message[] | null> {
     // Exit notifications and task_output refer to the same host process record.
@@ -2153,12 +2181,13 @@ export class AgentSession {
     }
     if (backgroundChanged) await this.persistVerificationState();
     // Edits return immediately; only the completion boundary waits for remaining
-    // checks. Only real errors cost another turn: a timed-out or unavailable
-    // server proves nothing either way, and run status already reports
-    // unverified changes without making the model answer twice.
+    // checks. Queued timeouts stay explicitly unverified, never a false
+    // all-clear; they join the verification demand below when the gate is on.
     await this.lspManager?.flushDiagnostics(this.opts.signal);
     if (this.opts.signal?.aborted) return null;
-    const diagnosticText = this.lspManager?.drainDiagnostics(false);
+    const diagnosticText = this.lspManager?.drainDiagnostics(
+      this.verificationGateActive() && this.getVerificationProblem() !== null,
+    );
     if (diagnosticText) this.eventBus.emit("diagnostics", { text: diagnosticText });
     this.refreshHookArming();
     const diagnosticMessages: Message[] = diagnosticText
@@ -2189,6 +2218,47 @@ export class AgentSession {
       return [...diagnosticMessages, ...processFollowUp];
     }
 
+    // Verification gate: code was edited but nothing verified since the last
+    // edit. Off via the `verificationGateEnabled` setting.
+    if (this.verificationGateActive()) {
+      const verificationReason = this.verificationGate.pendingReason();
+      const pendingFiles = this.verificationGate.pendingFiles();
+      const verificationFollowUp = this.verificationGate.followUp();
+      if (verificationFollowUp) {
+        // Name the tests that actually reach the unverified files, with the
+        // command that runs exactly those, so the check is targeted rather
+        // than guessed. Best-effort: no index or no runner leaves it unchanged.
+        if (
+          this.testImpact &&
+          (verificationReason === "initial" || verificationReason === "recheck")
+        ) {
+          const impactLine = await this.testImpact
+            .impactFor(pendingFiles)
+            .then(formatImpactForVerification)
+            .catch(() => "");
+          const first = verificationFollowUp[0];
+          if (impactLine && first?.role === "user" && typeof first.content === "string") {
+            verificationFollowUp[0] = { ...first, content: first.content + impactLine };
+          }
+        }
+        log("INFO", "verification-gate", "Injecting verification follow-up", {});
+        // Announce, THEN disarm: clients release held text on disarm, so the
+        // reverse order paints the draft and immediately deletes it.
+        this.eventBus.emit("hook", {
+          kind: "verification",
+          ...(verificationReason === "tamper"
+            ? { verificationReason: "check_review" as const }
+            : verificationReason === "recheck"
+              ? { verificationReason }
+              : {}),
+        });
+        this.refreshHookArming();
+        return [...diagnosticMessages, ...verificationFollowUp];
+      }
+    }
+
+    // Address real errors before review; unavailable checks share the
+    // verification demand above instead of manufacturing a separate hook.
     if (diagnosticMessages.length > 0) return diagnosticMessages;
 
     if (this.opts.completionReview) {
@@ -4054,7 +4124,7 @@ export class AgentSession {
       ? await captureVerificationSnapshot(this.opts.cwd, [...this.hookFileEditCounts.keys()])
       : null;
     if (after === null || after !== check.sourceSnapshot) {
-      this.verificationGate.requireFreshVerification(true);
+      this.verificationGate.requireFreshVerification(true, check.command);
       this.verificationGate.recordRejectedCheck(
         check.command,
         after === null
