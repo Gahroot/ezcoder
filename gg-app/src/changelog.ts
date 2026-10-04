@@ -22,6 +22,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.81.0",
+    date: "2026-10-05",
+    items: [
+      "I put GG head to head with OpenAI's own `Codex` on the same model and tasks, then tuned until it won. GG now finishes the whole run about `5%` faster than Codex and roughly `20%` faster than before, with every task still passing.",
+      "Big changes land in one sweep. The agent can now edit `10` files in a single step instead of crawling through them one at a time, so renames and refactors across your project finish way sooner.",
+      "Bug fixes are quicker and they stick. When the cause is clear, I have the agent ship the fix together with a small regression test and run it once, so the same bug can't sneak back.",
+      "Less busywork before the real work. The agent stops hunting for instruction files it already knows about, skips loading extra skills for everyday fixes, and reads the files it needs in one go.",
+    ],
+  },
+  {
     version: "0.80.0",
     date: "2026-10-04",
     items: [
