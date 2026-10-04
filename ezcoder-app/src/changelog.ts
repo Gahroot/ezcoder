@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.75.2",
+    date: "2026-10-04",
+    items: [
+      "`Motion` got a big upgrade. I added sound cues, motion blur, music that fits your cut, reference study and a deeper kit of moves, so your videos come out sharper and more polished.",
+      "Replies now stream in as clean, live `markdown`, and new floating controls let you jump to the newest message or back to a chat in one tap. The home screen also got a fresh scenic look with a critter roster.",
+      "I can debug for real now. A new `debug` tool lets me set breakpoints and inspect running code, and I point to the exact tests that cover what I changed so I verify faster.",
+      "Turns got faster. I dropped the extra review passes between steps, so I get to your answer sooner while still checking my work before I stop.",
+      "I locked things down tighter. Stronger guards around shell, git and workspace writes, safer handling of passwords in URLs, and fixes for Windows paths keep your machine and your projects safe.",
+    ],
+  },
+  {
     version: "0.75.1",
     date: "2026-10-01",
     items: [
