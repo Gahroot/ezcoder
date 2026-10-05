@@ -1232,6 +1232,9 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           if (streamingIdRef.current !== null) liveText.release(streamingIdRef.current);
           stickToBottomRef.current = true;
           setItems([]);
+          // The empty transcript must show the welcome screen, not the previous
+          // run's status (for example "cancelled").
+          setStatus("ready");
           setLiveToolFeed([]);
           setTokens(0);
           setDoneStatus(null);

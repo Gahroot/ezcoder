@@ -1,6 +1,6 @@
 .chat-error-notice {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: start;
   column-gap: 8px;
   margin: 6px 0 10px;
@@ -49,6 +49,12 @@
 }
 .chat-error-copy {
   min-width: 0;
+}
+.chat-error-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
 }
 .chat-error-headline {
   padding-block: calc((28px - 1.3em) / 2);
@@ -102,9 +108,11 @@
   transition: color 150ms ease;
 }
 .chat-error-details-toggle {
-  width: 28px;
-  padding: 4px;
-  font-size: 16px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  padding: 4px 8px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .chat-error-motion {
   padding: 4px 0;
@@ -135,6 +143,9 @@
 .chat-error-details[hidden] {
   display: none;
 }
+.chat-error-details.leaving {
+  animation: dissolve-in var(--dur-dissolve) var(--ease-in) reverse both;
+}
 .chat-error-details p {
   margin: 0 0 8px;
 }
@@ -146,6 +157,10 @@
   .chat-error-details-toggle,
   .chat-error-motion {
     transition: none;
+  }
+  /* Match the shared reduced-motion dissolve: fade only, no blur. */
+  .chat-error-details.leaving {
+    animation-name: fade-in;
   }
 }
 @media (forced-colors: active) {

@@ -78,7 +78,6 @@ import {
   enhancePrompt,
   getDroppedPathInfo,
   readDroppedFileAttachment,
-  type Attachment,
   type PromptSegment,
   type AskUserPrompt,
   answerAskUser,
@@ -471,6 +470,46 @@ function App(): React.ReactElement {
   const historyDraftRef = useRef("");
   // Staged attachments (paste / attach button / whole-window drag-drop) shown above the input.
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const attachmentReadsRef = useRef(0);
+  const attachmentGenerationRef = useRef(0);
+  const clearAttachments = useCallback((): void => {
+    // A read started in an old session must not attach to a new one.
+    attachmentGenerationRef.current++;
+    attachmentReadsRef.current = 0;
+    setAttachmentsLoading(false);
+    setAttachments([]);
+  }, []);
+  useEffect(
+    () => () => {
+      attachmentGenerationRef.current++;
+    },
+    [],
+  );
+  const stageAttachments = useCallback(
+    async (read: () => Promise<(PendingAttachment | null)[]>): Promise<void> => {
+      const generation = attachmentGenerationRef.current;
+      attachmentReadsRef.current++;
+      setAttachmentsLoading(true);
+      try {
+        const loaded = await read();
+        if (generation !== attachmentGenerationRef.current) return;
+        const ok = loaded.filter((item): item is PendingAttachment => item !== null);
+        if (ok.length > 0) setAttachments((previous) => [...previous, ...ok]);
+        if (ok.length !== loaded.length)
+          toast("Some attachments could not be loaded. Try again.", "error");
+      } catch {
+        if (generation === attachmentGenerationRef.current)
+          toast("Attachments could not be loaded. Try again.", "error");
+      } finally {
+        if (generation === attachmentGenerationRef.current) {
+          attachmentReadsRef.current--;
+          setAttachmentsLoading(attachmentReadsRef.current > 0);
+        }
+      }
+    },
+    [],
+  );
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The most recent prompt-enhancement result. `plain` is the text now in the
@@ -1258,7 +1297,9 @@ function App(): React.ReactElement {
   }, [state]);
 
   const windowFocused = useWindowFocused();
-  const sendDisabled = !input.trim() && attachments.length === 0 && mentionedPaths.length === 0;
+  const sendDisabled =
+    attachmentsLoading ||
+    (!input.trim() && attachments.length === 0 && mentionedPaths.length === 0);
   // Cosmetic work only belongs to a focused, visible, empty code composer.
   const animatePlaceholder =
     windowFocused &&
@@ -1335,11 +1376,18 @@ function App(): React.ReactElement {
         }
         setDragOverActive(false);
         if (!canHandleWindowFileDrop() || payload.paths.length === 0) return;
-        void getDroppedPathInfo(payload.paths).then((infos) => {
-          if (disposed) return;
+        const generation = attachmentGenerationRef.current;
+        void stageAttachments(async () => {
+          const infos = await getDroppedPathInfo(payload.paths);
+          if (disposed || generation !== attachmentGenerationRef.current) return [];
           insertDroppedFolderPaths(infos.filter((info) => info.isDir).map((info) => info.path));
           const filePaths = infos.filter((info) => !info.isDir).map((info) => info.path);
-          if (filePaths.length > 0) void addNativeDroppedFiles(filePaths);
+          return Promise.all(
+            filePaths.map(async (path): Promise<PendingAttachment | null> => {
+              const attachment = await readDroppedFileAttachment(path);
+              return attachment ? attachmentToPending(attachment) : null;
+            }),
+          );
         });
       })
       .then((off) => {
@@ -1350,7 +1398,7 @@ function App(): React.ReactElement {
       disposed = true;
       unlisten?.();
     };
-  }, [insertDroppedFolderPaths, setDragOverActive]);
+  }, [insertDroppedFolderPaths, setDragOverActive, stageAttachments]);
 
   // Keep the native window title aligned with the visible title-bar context.
   useEffect(() => {
@@ -1601,7 +1649,7 @@ function App(): React.ReactElement {
     setPlanReview,
     setQueuedCount,
     setQueuedMessages,
-    setAttachments,
+    setAttachments: clearAttachments,
     setCommands,
     setModels,
     stateRef,
@@ -2545,6 +2593,10 @@ function App(): React.ReactElement {
   // Submit the current input together with any staged attachments. Images are
   // echoed inline in the user's bubble; all media is sent to the agent.
   function submit(): void {
+    if (attachmentReadsRef.current > 0) {
+      toast("Attachments are still loading. Please wait.");
+      return;
+    }
     const trimmed = input.trim();
     // "Type instead" on an open question band parks the answer here: the agent's
     // tool call is blocked on it, so this text is the ANSWER, not a new prompt.
@@ -2592,6 +2644,10 @@ function App(): React.ReactElement {
     // build run; his reply streams into a magenta bubble via ken_* events.
     const kenMatch = workspaceMode === "code" ? /^@ken\b:?\s*/i.exec(trimmed) : null;
     if (kenMatch) {
+      if (attachments.length > 0) {
+        toast("Ken cannot receive attachments. Remove @Ken to send them to GG.", "warning");
+        return;
+      }
       const question = trimmed.slice(kenMatch[0].length).trim();
       if (!question) return;
       recordHistory(trimmed);
@@ -2642,7 +2698,7 @@ function App(): React.ReactElement {
         queued: showsQueuedBubble("queue", supersedesQuestion) ? true : undefined,
       });
       setInput("");
-      setAttachments([]);
+      clearAttachments();
       setSlashIndex(0);
       setMention(null);
       setMentionedPaths([]);
@@ -2676,7 +2732,7 @@ function App(): React.ReactElement {
       });
     }
     setInput("");
-    setAttachments([]);
+    clearAttachments();
     setSlashIndex(0);
     setMention(null);
     setMentionedPaths([]);
@@ -2692,22 +2748,9 @@ function App(): React.ReactElement {
   // ── Attachment intake (paste / attach button / whole-window drag-drop) ──
   async function addFiles(files: FileList | File[]): Promise<void> {
     const list = Array.from(files);
-    const pendings = await Promise.all(list.map((f) => fileToPending(f).catch(() => null)));
-    const ok = pendings.filter((p): p is PendingAttachment => p !== null);
-    if (ok.length > 0) setAttachments((prev) => [...prev, ...ok]);
-  }
-
-  // Native Tauri drop events hand us absolute paths, not browser File objects
-  // (macOS/Linux keep the native drag-drop handler enabled so folder drops can
-  // report a path at all — see build_app_window). Non-directory paths are read
-  // here and staged exactly like a picked/pasted file.
-  async function addNativeDroppedFiles(paths: string[]): Promise<void> {
-    if (paths.length === 0) return;
-    const results = await Promise.all(paths.map((p) => readDroppedFileAttachment(p)));
-    const ok = results
-      .filter((a): a is Attachment => a !== null)
-      .map((a) => attachmentToPending(a));
-    if (ok.length > 0) setAttachments((prev) => [...prev, ...ok]);
+    await stageAttachments(() =>
+      Promise.all(list.map((file) => fileToPending(file).catch(() => null))),
+    );
   }
 
   function handleWindowDragEnter(e: React.DragEvent<HTMLDivElement>): void {
@@ -2836,6 +2879,9 @@ function App(): React.ReactElement {
     planDoneRef.current = new Set();
     setPlanTotal(0);
     setPlanDone(new Set());
+    attachmentGenerationRef.current++;
+    attachmentReadsRef.current = 0;
+    setAttachmentsLoading(false);
     setAttachments([]);
     setQueuedCount(0);
     setQueuedMessages([]);
@@ -3517,7 +3563,9 @@ function App(): React.ReactElement {
               />
               <button
                 className="icon-circle icon-circle-primary"
-                title={running ? "Stop the run" : "Send"}
+                title={
+                  running ? "Stop the run" : attachmentsLoading ? "Loading attachments…" : "Send"
+                }
                 disabled={cancelling || (!running && sendDisabled)}
                 onClick={() => {
                   if (running) requestCancel();
@@ -3733,11 +3781,7 @@ function App(): React.ReactElement {
           // Nothing is cleared: `newSession()` writes a NEW session file and
           // leaves the old one on disk, still listed and re-openable. Saying
           // "will be cleared" made a safe action read as destructive.
-          message={
-            workspaceMode === "chat"
-              ? "Start a fresh chat with an empty context. This conversation stays saved \u2014 reopen it any time from the session list."
-              : "Start a fresh session with an empty context. This conversation stays saved \u2014 reopen it any time from the session list."
-          }
+          message="Start fresh? This conversation stays saved."
           confirmLabel={workspaceMode === "chat" ? "New Chat" : "New Session"}
           busy={newSessionBusy}
           onConfirm={() => void startNewSession()}

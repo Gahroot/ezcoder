@@ -1,7 +1,13 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { ErrorCritter } from "./ErrorCritter";
+import { usePresenceList } from "./usePresenceList";
 import { chatErrorCopy, chatErrorTone, type ChatErrorData } from "./chat-error";
 import "./ChatErrorNotice.css";
+
+// Matches --dur-dissolve; retain the details until their exit has finished.
+const DETAILS_EXIT_MS = 340;
+const OPEN_DETAILS = ["details"] as const;
+const CLOSED_DETAILS = [] as const;
 
 export function ChatErrorNotice({
   error,
@@ -15,6 +21,12 @@ export function ChatErrorNotice({
   onContentGrow?: (() => void) | undefined;
 }): React.ReactElement {
   const [expanded, setExpanded] = useState(false);
+  const details = usePresenceList(
+    expanded ? OPEN_DETAILS : CLOSED_DETAILS,
+    (key) => key,
+    DETAILS_EXIT_MS,
+  );
+  const detailsLeaving = details[0]?.leaving ?? false;
   const [motion, setMotion] = useState(true);
   const [now, setNow] = useState(Date.now);
   const detailsId = useId();
@@ -50,23 +62,31 @@ export function ChatErrorNotice({
         role={active ? "status" : undefined}
         aria-atomic={active ? true : undefined}
       >
-        <div className="chat-error-headline">{copy.headline}</div>
+        <div className="chat-error-heading">
+          <div className="chat-error-headline">{copy.headline}</div>
+          <button
+            type="button"
+            className="chat-error-details-toggle"
+            aria-label={expanded ? "Hide error details" : "Show error details"}
+            aria-expanded={expanded}
+            aria-controls={detailsId}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            Details
+          </button>
+        </div>
         <div className="chat-error-recovery">
           <span>{copy.guidance}</span>
           {canChooseModel && modelPicker}
         </div>
       </div>
-      <button
-        type="button"
-        className="chat-error-details-toggle"
-        aria-label={expanded ? "Hide error details" : "Show error details"}
-        aria-expanded={expanded}
-        aria-controls={detailsId}
-        onClick={() => setExpanded((value) => !value)}
+      <div
+        id={detailsId}
+        className={`chat-error-details${detailsLeaving ? " leaving" : " dissolve-in"}`}
+        hidden={details.length === 0}
+        aria-hidden={!expanded}
+        inert={!expanded}
       >
-        <span aria-hidden="true">···</span>
-      </button>
-      <div id={detailsId} className="chat-error-details" hidden={!expanded}>
         {!error.reason && error.headline && <p>{error.headline}</p>}
         {error.message || error.text ? (
           <p>{error.message ?? error.text}</p>

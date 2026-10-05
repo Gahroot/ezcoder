@@ -30,10 +30,57 @@ describe("compact chat errors", () => {
     expect(screen.getByText(limit.headline ?? "")).toBeTruthy();
     expect(container.querySelector(".chat-error-warning")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Switch provider" })).toBeTruthy();
+    const toggle = screen.getByRole("button", { name: "Show error details" });
+    expect(toggle.textContent).toBe("Details");
+    expect(
+      toggle.closest(".chat-error-heading")?.querySelector(".chat-error-headline")?.textContent,
+    ).toBe(limit.headline);
     expect(container.querySelector<HTMLElement>(".chat-error-details")?.hidden).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Show error details" }));
+    fireEvent.click(toggle);
     expect(container.querySelector<HTMLElement>(".chat-error-details")?.hidden).toBe(false);
     expect(screen.getByText("Provider diagnostic")).toBeTruthy();
+  });
+
+  it("dissolves details out before hiding them and keeps closing content inert", () => {
+    vi.useFakeTimers();
+    const onContentGrow = vi.fn();
+    const { container, unmount } = render(
+      <ChatErrorNotice error={limit} active onContentGrow={onContentGrow} />,
+    );
+    const toggle = screen.getByRole("button", { name: "Show error details" });
+    const details = container.querySelector<HTMLElement>(".chat-error-details");
+    fireEvent.click(toggle);
+    expect(details?.classList.contains("dissolve-in")).toBe(true);
+    expect(details?.getAttribute("aria-hidden")).toBe("false");
+    expect(onContentGrow).toHaveBeenCalledOnce();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(details?.hidden).toBe(false);
+    expect(details?.classList.contains("leaving")).toBe(true);
+    expect(details?.hasAttribute("inert")).toBe(true);
+    expect(details?.getAttribute("aria-hidden")).toBe("true");
+    act(() => vi.advanceTimersByTime(339));
+    expect(details?.hidden).toBe(false);
+    act(() => vi.advanceTimersByTime(1));
+    expect(details?.hidden).toBe(true);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("can reopen details during their exit without a stale timer hiding them", () => {
+    vi.useFakeTimers();
+    const { container } = render(<ChatErrorNotice error={limit} active />);
+    const toggle = screen.getByRole("button", { name: "Show error details" });
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    act(() => vi.advanceTimersByTime(100));
+    fireEvent.click(toggle);
+    act(() => vi.advanceTimersByTime(340));
+    const details = container.querySelector<HTMLElement>(".chat-error-details");
+    expect(details?.hidden).toBe(false);
+    expect(details?.hasAttribute("inert")).toBe(false);
+    expect(details?.classList.contains("leaving")).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("renders failures red and never executes diagnostic markup", () => {
