@@ -1,5 +1,7 @@
 # Shared language
 
+**Ultra (OpenAI)** — A local delegation preset, not an API reasoning level. Following `openai/codex` commit `4c9f42f4`, Astra/Sol send `xhigh` and proactively delegate; explicit Max still sends `max` through Codex. OpenAI children inherit the current parent's reasoning selection in both blocking and persistent paths, capped to a pinned model's supported levels and restored on fallback. Other providers retain their lowest-rung child policy. Thinking/model changes refresh the live delegation instructions as well as the request setting.
+
 **Build-render-once** — GG Motion's working loop: ask the few things only the user knows, build the page in one go, look at a few stills, render once, deliver. No planning file, draft renders or checking pass; re-render only for something visibly broken. See ADR 0003.
 
 **Motion study** — A short example demonstrating transferable motion decisions. It informs a build; it is not choreography to copy.
