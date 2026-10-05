@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.29.1
+
+### Patch Changes
+
+- Sync with upstream through v0.81.0: multi-file edit calls and tighter agent prompts to cut model round trips.
+  - @prestyj/ai@5.29.1
+  - @prestyj/agent@5.29.1
+  - @prestyj/core@5.29.1
+
 ## 5.29.0
 
 ### Minor Changes
