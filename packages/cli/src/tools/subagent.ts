@@ -37,6 +37,7 @@ import {
 } from "./subagent-shared.js";
 import { createWorktree, removeWorktree } from "../core/worktree.js";
 import { prepareWorktree } from "../core/worktree-setup.js";
+import { editTargetLabel } from "./edit-targets.js";
 
 const SubAgentParams = z.object({
   task: z.string().describe("The task to delegate to the sub-agent"),
@@ -68,6 +69,24 @@ export interface SubAgentDetails {
   durationMs: number;
 }
 
+const SUBAGENT_DESCRIPTION =
+  "Spawn an isolated sub-agent to handle a focused task. The child has its own context, tools, and system prompt and sees none of this conversation, so its task must stand alone. Use this for isolation or parallelism; multiple calls in one tool batch run concurrently.";
+
+/**
+ * The `subagent` tool description. When `spawn_agent` is also active it
+ * already carries the full roster, so repeating it here only adds ~1k chars
+ * to every request; point at it instead.
+ */
+export function subAgentDescription(
+  agents: readonly AgentDefinition[],
+  rosterOnSpawnAgent: boolean,
+): string {
+  if (rosterOnSpawnAgent && agents.length > 0) {
+    return `${SUBAGENT_DESCRIPTION}\n\nNamed agents: the same roster listed on \`spawn_agent\`; pass one as \`agent\`.`;
+  }
+  return SUBAGENT_DESCRIPTION + renderAgentRoster(agents);
+}
+
 export function createSubAgentTool(
   cwd: string,
   agents: AgentDefinition[],
@@ -79,9 +98,7 @@ export function createSubAgentTool(
 ): AgentTool<typeof SubAgentParams> {
   return {
     name: "subagent",
-    description:
-      `Spawn an isolated sub-agent to handle a focused task. The child has its own context, tools, and system prompt and sees none of this conversation, so its task must stand alone. Use this for isolation or parallelism; multiple calls in one tool batch run concurrently.` +
-      renderAgentRoster(agents),
+    description: subAgentDescription(agents, false),
     parameters: SubAgentParams,
     // Sub-agents are isolated child processes (own cwd, context, and PID), so
     // they're safe to run concurrently — unlike bash/edit/write, which mutate
@@ -505,7 +522,7 @@ function formatToolActivity(name: string, args: Record<string, unknown>): string
     case "write":
       return `Writing ${shortenPath(String(args.file_path ?? ""))}`;
     case "edit":
-      return `Editing ${shortenPath(String(args.file_path ?? ""))}`;
+      return `Editing ${editTargetLabel(args, shortenPath)}`;
     case "grep": {
       const pat = String(args.pattern ?? "");
       return `Searching for "${truncateStr(pat, 30)}"`;

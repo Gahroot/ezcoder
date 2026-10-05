@@ -101,6 +101,12 @@ import { autoBackgroundedId } from "../tools/bash.js";
 import { buildProcessCompletionFollowUp } from "./process-gate.js";
 import { buildSubAgentCompletionFollowUp, type SubAgentManager } from "./subagent-manager.js";
 import { applyAsyncSubagentPolicy } from "./subagent-policy.js";
+import {
+  resolveResponsesLite,
+  resolveStrictTools,
+  type CodexShapeSetting,
+} from "./codex-request-shape.js";
+import { subAgentDescription } from "../tools/subagent.js";
 import { z } from "zod";
 import { MCPClientManager, getAllMcpServers } from "./mcp/index.js";
 import type { MCPElicitHandler } from "./mcp/index.js";
@@ -189,6 +195,7 @@ import fs from "node:fs/promises";
 import type { Stats } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { editTargetPaths } from "../tools/edit-targets.js";
 
 /**
  * A run whose tool calls fail more often than this is thrashing, not
@@ -855,6 +862,13 @@ export class AgentSession {
     // a hallucinated call can't mutate the repo — and buildSystemPrompt below is
     // fed the same filtered names so the Tools section matches exactly.
     this.tools = this.opts.allowedTools ? tools.filter((t) => this.isToolAllowed(t.name)) : tools;
+    // Both delegation tools carry the agent roster; when both survive the
+    // allow-list, `subagent` points at `spawn_agent`'s copy instead.
+    if (this.tools.some((t) => t.name === "spawn_agent")) {
+      this.tools = this.tools.map((t) =>
+        t.name === "subagent" ? { ...t, description: subAgentDescription(agents, true) } : t,
+      );
+    }
     // Tier the built-ins: rarely reached schemas move into the tool_search
     // catalog and cost one hint line each instead of a full parameter schema on
     // every request. Allow-listed sessions keep the eager path — their fixed
@@ -1631,19 +1645,21 @@ export class AgentSession {
         let verificationChanged = false;
         if (!event.isError && args) {
           if (name === "edit" || name === "write") {
-            const filePath = String((args as { file_path?: unknown }).file_path ?? "");
             // Check-owning files (tsconfig.json, pytest.ini, vitest.config.ts …)
             // are tracked even when they are not source code: editing one is how
-            // a red suite is turned green without fixing anything.
-            if (filePath && (isCodeFilePath(filePath) || isCheckOwnFile(filePath))) {
-              const addedText =
-                name === "write"
-                  ? String((args as { content?: unknown }).content ?? "")
-                  : extractAddedLines(
-                      (event.details as { diff?: string } | undefined)?.diff ?? event.result,
-                    );
-              this.verificationGate.recordMutation(filePath, addedText);
-              verificationChanged = true;
+            // a red suite is turned green without fixing anything. A multi-file
+            // edit records every file; its combined diff is scanned for each.
+            const addedText =
+              name === "write"
+                ? String((args as { content?: unknown }).content ?? "")
+                : extractAddedLines(
+                    (event.details as { diff?: string } | undefined)?.diff ?? event.result,
+                  );
+            for (const filePath of editTargetPaths(args as Record<string, unknown>)) {
+              if (isCodeFilePath(filePath) || isCheckOwnFile(filePath)) {
+                this.verificationGate.recordMutation(filePath, addedText);
+                verificationChanged = true;
+              }
             }
           }
         }
@@ -2469,6 +2485,12 @@ export class AgentSession {
         // + pre-warm before the first turn. "baseline": current 5-min default.
         cacheRetention: this.isSpeedOptimized() ? "long" : "short",
         promptCacheKey: this.getPromptCacheKey(),
+        responsesLite: resolveResponsesLite(
+          this.codexShapeSetting("codexResponsesLite"),
+          this.provider,
+          this.model,
+        ),
+        strictTools: resolveStrictTools(this.codexShapeSetting("codexStrictTools"), this.provider),
         onContextPrepared: (context) => {
           const report = this.cacheDiagnostics.prepare(context, {
             provider: this.provider,
@@ -4499,6 +4521,10 @@ export class AgentSession {
       signal?.removeEventListener("abort", onAbort);
       if (this.prewarmController === controller) this.prewarmController = null;
     }
+  }
+
+  private codexShapeSetting(key: "codexResponsesLite" | "codexStrictTools"): CodexShapeSetting {
+    return this.settingsManager?.get(key) ?? "auto";
   }
 
   /** True when speedProfile is "optimized" (1-h cache TTL + pre-warm), or the

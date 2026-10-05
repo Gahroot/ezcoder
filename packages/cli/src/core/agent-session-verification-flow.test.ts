@@ -364,6 +364,21 @@ describe("verification gate flow", () => {
     expect(events.filter((e) => e === "hook:verification")).toHaveLength(1);
   });
 
+  it("tracks every file of a multi-file edit as needing verification", async () => {
+    const { internal } = await makeSession();
+
+    // The `files` form carries no top-level file_path; missing it would let a
+    // multi-file change skip verification entirely.
+    await simulateToolCall(internal, "edit", {
+      files: [
+        { file_path: "src/a.ts", edits: [] },
+        { file_path: "src/b.ts", edits: [] },
+      ],
+    });
+
+    expect(internal.getVerificationProblem()).toContain("Unverified");
+  });
+
   it("stays silent end to end when the run verified its own edit", async () => {
     const { internal, events } = await makeSession();
 

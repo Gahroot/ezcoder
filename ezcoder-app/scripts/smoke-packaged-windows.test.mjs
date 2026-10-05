@@ -7,7 +7,7 @@
 // EZ Coder, or an unrelated process that inherited a recycled PID.
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -15,8 +15,10 @@ import {
   collectOwnedProcessIds,
   discoverChangedMsi,
   discoverPackagedLayout,
+  findDiagnosticLogs,
   removeTemporaryDirectory,
   snapshotMsiArtifacts,
+  tailLines,
   waitFor,
 } from "./smoke-packaged-windows.mjs";
 
@@ -202,5 +204,28 @@ describe("packaged Windows smoke cleanup", () => {
         timeoutMs: 0,
       }),
     ).rejects.toThrow("packaged smoke processes survived cleanup: 10");
+  });
+});
+
+describe("packaged Windows smoke failure diagnostics", () => {
+  it("keeps the last lines of a log, ignoring CRLF and trailing blank lines", () => {
+    expect(tailLines("one\r\ntwo\r\nthree\r\n\n", 2)).toBe("two\nthree");
+    expect(tailLines("only", 5)).toBe("only");
+  });
+
+  it("finds every app and sidecar log inside the throwaway profile", () => {
+    const home = temporaryDirectory();
+    const tauriLogs = join(home, "AppData", "Local", "com.prestyj.ezcoder", "logs");
+    const ezDir = join(home, ".ezcoder");
+    mkdirSync(tauriLogs, { recursive: true });
+    mkdirSync(ezDir, { recursive: true });
+    writeFileSync(join(tauriLogs, "EZ Coder.log"), "panic");
+    writeFileSync(join(ezDir, "ezcoder-app-sidecar.log"), "boot");
+    writeFileSync(join(ezDir, "settings.json"), "{}");
+
+    expect(findDiagnosticLogs(home).map((path) => relative(home, path))).toEqual([
+      join(".ezcoder", "ezcoder-app-sidecar.log"),
+      join("AppData", "Local", "com.prestyj.ezcoder", "logs", "EZ Coder.log"),
+    ]);
   });
 });

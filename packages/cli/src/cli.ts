@@ -120,16 +120,7 @@ import chalk from "chalk";
 import { checkAndAutoUpdate } from "./core/auto-update.js";
 
 import { routeCliCommandInput, type CliSubcommandName } from "./cli/command-routing.js";
-
-const THINKING_LEVELS = new Set<ThinkingLevel>(["low", "medium", "high", "xhigh", "max", "ultra"]);
-
-export function parseThinkingLevel(value: string | undefined): ThinkingLevel | undefined {
-  if (value === undefined) return undefined;
-  if (THINKING_LEVELS.has(value as ThinkingLevel)) return value as ThinkingLevel;
-  throw new Error(
-    `Invalid --thinking value "${value}". Expected low, medium, high, xhigh, max, or ultra.`,
-  );
-}
+import { parseThinkingLevel } from "./cli/thinking-arg.js";
 
 function printHelp(): void {
   // Clear the visible viewport for a clean look without erasing scrollback.

@@ -39,6 +39,7 @@ import type { PasteInfo } from "./components/InputArea.js";
 import type { SubAgentInfo } from "./components/SubAgentPanel.js";
 import type { SubAgentUpdate, SubAgentDetails } from "../tools/subagent.js";
 import { createWebSearchTool } from "../tools/web-search.js";
+import { editTargetPaths } from "../tools/edit-targets.js";
 import { ChatScreen } from "./components/ChatScreen.js";
 import type { LiveToolEntry } from "./components/LiveToolPanel.js";
 import { LIVE_TOOL_PANEL_ROWS } from "./components/LiveToolPanel.js";
@@ -1620,9 +1621,11 @@ export function App(props: AppProps) {
           // Verification-gate bookkeeping, mirroring AgentSession.trackHookEvent:
           // successful code mutations vs completed foreground verification runs.
           if (!isError && args) {
-            const filePath = String(args.file_path ?? "");
-            if ((name === "edit" || name === "write") && isCodeFilePath(filePath)) {
-              verificationGateRef.current.recordMutation(filePath);
+            if (name === "edit" || name === "write") {
+              // A multi-file edit has no top-level file_path: record every target.
+              for (const filePath of editTargetPaths(args)) {
+                if (isCodeFilePath(filePath)) verificationGateRef.current.recordMutation(filePath);
+              }
             }
             if (
               name === "bash" &&
