@@ -17,6 +17,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.81.1",
+    date: "2026-10-05",
+    items: [
+      "Edits got way faster. I taught the agent to change many spots in a file in one go, so you wait through fewer back and forth steps and spend less per task.",
+      "Subagents no longer crash on startup, and OpenAI and `Gemini` models behave better with cleaner requests and leaner prompts.",
+    ],
+  },
+  {
     version: "0.75.2",
     date: "2026-10-04",
     items: [
