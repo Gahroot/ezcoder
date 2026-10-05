@@ -15,6 +15,7 @@ import { theme } from "./theme";
 import { WorkingBeam } from "./WorkingBeam";
 import { CacheExpiryNotice } from "./CacheExpiryNotice";
 import { ChatErrorNotice } from "./ChatErrorNotice";
+import { assignErrorCritters } from "./ErrorCritter";
 import { activeChatErrorId, readChatError, type ChatErrorItem } from "./chat-error";
 import { MetalButton } from "./MetalButton";
 import { ActionMetal } from "./ActionMetal";
@@ -445,6 +446,7 @@ function App(): React.ReactElement {
   // Ken's face talks on the reply he is streaming right now: the last row,
   // while his run is live. Only that row's props change, so memo holds.
   const currentErrorId = useMemo(() => activeChatErrorId(items), [items]);
+  const errorCritters = useMemo(() => assignErrorCritters(items), [items]);
   const lastItem = items[items.length - 1];
   const talkingKenId = kenRunning && lastItem?.kind === "ken" ? lastItem.id : null;
   // Autopilot Ken (auto-reviewer): consumes the `autopilot_*` event family into
@@ -3258,6 +3260,7 @@ function App(): React.ReactElement {
                           animateIn={it.id >= liveFromId}
                           kenTalking={it.id === talkingKenId}
                           errorActive={it.id === currentErrorId}
+                          errorCritterId={errorCritters.get(it.id)}
                           errorModelPicker={
                             it.kind === "error" && it.id === currentErrorId ? (
                               <ModelSelect
@@ -3932,6 +3935,7 @@ const TranscriptRow = memo(function TranscriptRow({
   animateIn = false,
   kenTalking = false,
   errorActive = false,
+  errorCritterId,
   errorModelPicker,
   onContentGrow,
   onAskAnswer,
@@ -3943,6 +3947,7 @@ const TranscriptRow = memo(function TranscriptRow({
   /** This is the Ken reply currently streaming in, so his face talks. */
   kenTalking?: boolean;
   errorActive?: boolean;
+  errorCritterId?: string | undefined;
   errorModelPicker?: React.ReactNode;
   onContentGrow?: () => void;
   onAskAnswer?: (
@@ -3957,6 +3962,7 @@ const TranscriptRow = memo(function TranscriptRow({
       item={item}
       kenTalking={kenTalking}
       errorActive={errorActive}
+      errorCritterId={errorCritterId}
       errorModelPicker={errorModelPicker}
       onContentGrow={onContentGrow}
       onAskAnswer={onAskAnswer}
@@ -3978,6 +3984,7 @@ function TranscriptRowBody({
   item,
   kenTalking = false,
   errorActive = false,
+  errorCritterId,
   errorModelPicker,
   onContentGrow,
   onAskAnswer,
@@ -3987,6 +3994,7 @@ function TranscriptRowBody({
   /** This is the Ken reply currently streaming in, so his face talks. */
   kenTalking?: boolean;
   errorActive?: boolean;
+  errorCritterId?: string | undefined;
   errorModelPicker?: React.ReactNode;
   onContentGrow?: () => void;
   /** Record answers for an `ask_user` band (App settles the tool call). */
@@ -4122,6 +4130,7 @@ function TranscriptRowBody({
       return (
         <ChatErrorNotice
           error={item}
+          critterId={errorCritterId ?? "cat"}
           active={errorActive}
           modelPicker={errorModelPicker}
           onContentGrow={onContentGrow}

@@ -11,11 +11,14 @@ const CLOSED_DETAILS = [] as const;
 
 export function ChatErrorNotice({
   error,
+  critterId,
   active,
   modelPicker,
   onContentGrow,
 }: {
   error: ChatErrorData;
+  /** Chosen per row by assignErrorCritters. */
+  critterId: string;
   active: boolean;
   modelPicker?: ReactNode;
   onContentGrow?: (() => void) | undefined;
@@ -56,7 +59,7 @@ export function ChatErrorNotice({
 
   return (
     <div className={`chat-error-notice chat-error-${tone}`}>
-      <ErrorCritter reason={error.reason} animate={tone !== "history" && motion} />
+      <ErrorCritter critterId={critterId} animate={tone !== "history" && motion} />
       <div
         className="chat-error-copy"
         role={active ? "status" : undefined}
