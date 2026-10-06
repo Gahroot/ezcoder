@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.81.2",
+    date: "2026-10-06",
+    items: [
+      "I added a project `Checklist` that tracks what is done and what is next, and I recover from errors and hand off plans much more smoothly so big tasks finish cleaner.",
+      "Chat errors look friendlier now. The `15` critters vary and stay put when you reopen a chat, and failed loads show a clear message instead of an empty list.",
+      "OpenAI `Ultra` reasoning is tuned up, and I fixed stale cancelled statuses and attachment send hiccups so everything feels steadier.",
+    ],
+  },
+  {
     version: "0.81.1",
     date: "2026-10-05",
     items: [
