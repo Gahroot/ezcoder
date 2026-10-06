@@ -354,11 +354,11 @@ describe("composer attachments", () => {
     paste(input);
     await screen.findByRole("button", { name: "Remove screenshot.png" });
     fireEvent.click(screen.getByTitle("Send"));
-    expect(ken).not.toHaveBeenCalled();
+    expect(nolanAgent).not.toHaveBeenCalled();
     expect(input.value).toBe("@Nolan check this screenshot");
     expect(screen.getByRole("button", { name: "Remove screenshot.png" })).toBeTruthy();
     expect(notifications.toast).toHaveBeenCalledWith(
-      "Nolan cannot receive attachments. Remove @Nolan to send them to GG.",
+      "Nolan cannot receive attachments. Remove @Nolan to send them to EZ.",
       "warning",
     );
     fireEvent.change(input, { target: { value: "check this screenshot" } });

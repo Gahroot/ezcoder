@@ -113,6 +113,7 @@ function owlTool() {
     () => "gpt-6.1-sol",
     () => "parent-cache",
     undefined,
+    undefined,
     () => "ultra",
   );
 }
@@ -172,6 +173,7 @@ describe("createSubAgentTool model and thinking routing", () => {
       [],
       () => "openai",
       () => "gpt-6.1-sol",
+      undefined,
       undefined,
       undefined,
       () => thinking,

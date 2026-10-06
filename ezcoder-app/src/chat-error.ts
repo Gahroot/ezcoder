@@ -55,7 +55,8 @@ export function readChatError(
   historical = false,
 ): ChatErrorData {
   const headline = text(value.headline, 1_000);
-  const prefix = scope === "nolan_error" ? "Nolan: " : scope === "autopilot_error" ? "Autopilot: " : "";
+  const prefix =
+    scope === "nolan_error" ? "Nolan: " : scope === "autopilot_error" ? "Autopilot: " : "";
   return {
     scope,
     historical,
@@ -125,7 +126,11 @@ export function chatErrorCopy(
   resetLabel?: string;
 } {
   const scope =
-    error.scope === "nolan_error" ? "Nolan: " : error.scope === "autopilot_error" ? "Autopilot: " : "";
+    error.scope === "nolan_error"
+      ? "Nolan: "
+      : error.scope === "autopilot_error"
+        ? "Autopilot: "
+        : "";
   const originalHeadline = error.headline ?? "Something went wrong";
   const headline =
     scope && originalHeadline.startsWith(scope)

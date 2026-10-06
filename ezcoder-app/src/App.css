@@ -2063,15 +2063,15 @@ select {
   margin: 0 0 0 3px;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text-dim);
   opacity: 0.45;
   cursor: pointer;
   transition:
-    color 120ms ease,
-    opacity 120ms ease,
-    background 120ms ease;
+    color var(--t-in),
+    opacity var(--t-in),
+    background var(--t-in);
 }
 .chat-head-title:hover .chat-head-rename,
 .chat-head-rename:focus-visible {
@@ -2086,7 +2086,7 @@ select {
   width: min(220px, 40vw);
   min-width: 72px;
   height: 24px;
-  padding: 2px 6px;
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--primary);
   border-radius: 5px;
   outline: none;
@@ -2874,13 +2874,13 @@ select {
 .worktree-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px;
+  gap: var(--space-3);
+  padding: var(--space-6);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 .worktree-list-title {
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2889,25 +2889,25 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-button);
   background: rgba(255, 255, 255, 0.03);
 }
 .worktree-row-main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
   min-width: 0;
 }
 .worktree-row-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-3);
   flex-shrink: 0;
 }
 .worktree-branch {
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2915,11 +2915,11 @@ select {
 }
 .worktree-detail {
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 .worktree-path {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3259,7 +3259,7 @@ select {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-4);
 }
 .tasks-edit-one {
   flex: 0 0 auto;
@@ -3268,13 +3268,13 @@ select {
 .tasks-edit {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-radius: var(--radius-button);
   background: var(--surface-1);
 }
 .tasks-add {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-7);
 }
 .tasks-input,
 .tasks-textarea {
@@ -3284,9 +3284,9 @@ select {
   border: 1px solid var(--border);
   border-radius: var(--radius-button);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-family: inherit;
-  padding: 6px 8px;
+  padding: var(--space-3) var(--space-4);
   outline: none;
 }
 .tasks-textarea {
