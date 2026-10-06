@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.30.0
+
+### Minor Changes
+
+- Sync with upstream through v0.82.1: checklist tracking, LSP improvements, provider fixes, and stability updates.
+
+### Patch Changes
+
+- @prestyj/ai@5.30.0
+- @prestyj/agent@5.30.0
+- @prestyj/core@5.30.0
+
 ## 5.29.1
 
 ### Patch Changes
