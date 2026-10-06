@@ -68,6 +68,7 @@ export const DEFERRED_TOOL_NAMES: readonly string[] = [
   "debug",
   "generate_image",
   "tasks",
+  "checklist",
   "send_message",
   "followup_task",
   "wait_agent",

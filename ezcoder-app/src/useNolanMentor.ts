@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { SidecarEvent } from "./agent";
 import type { Item } from "./App";
+import { readChatError } from "./chat-error";
 import type { LiveTextStore } from "./live-text";
 
 /**
@@ -173,22 +174,9 @@ export function useNolanMentor(opts: {
           endNolanStreaming();
           setNolanIsThinking(false);
           setNolanRunStartTs(null);
-          // Structured payload from the sidecar's broadcastError (headline always
-          // present; message/guidance may be omitted). Prefix the headline with
-          // "Nolan:" so the mentor's errors read distinctly from the build's.
-          // Fall back to a flat text row for any older-shaped frame.
-          const headline = typeof d.headline === "string" ? d.headline : undefined;
           setItems((prev) => [
             ...prev,
-            headline
-              ? {
-                  kind: "error",
-                  id: nextId(),
-                  headline: `Nolan: ${headline}`,
-                  message: typeof d.message === "string" ? d.message : undefined,
-                  guidance: typeof d.guidance === "string" ? d.guidance : undefined,
-                }
-              : { kind: "error", id: nextId(), text: `Nolan: ${String(d.message ?? "unknown")}` },
+            { kind: "error", id: nextId(), ...readChatError(d, "nolan_error") },
           ]);
           return true;
         }

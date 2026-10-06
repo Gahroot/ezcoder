@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { z } from "zod";
 import type { AgentTool } from "@prestyj/agent";
-import type { Provider } from "@prestyj/ai";
+import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { mcpServersForAgent, type AgentDefinition } from "../core/agents.js";
 import { log } from "../core/logger.js";
 import { isModelUnavailableError } from "../core/model-unavailable.js";
@@ -95,6 +95,7 @@ export function createSubAgentTool(
   getParentCacheKey?: () => string | undefined,
   planModeRef?: { current: boolean },
   goalModeRef?: { current: GoalMode },
+  getParentThinkingLevel?: () => ThinkingLevel | undefined,
 ): AgentTool<typeof SubAgentParams> {
   return {
     name: "subagent",
@@ -193,7 +194,14 @@ export function createSubAgentTool(
 
       const useProvider = getParentProvider() as Provider;
       const parentModel = getParentModel();
-      const selection = selectSubAgent(agents, args.agent, useProvider, parentModel);
+      const parentThinkingLevel = getParentThinkingLevel?.();
+      const selection = selectSubAgent(
+        agents,
+        args.agent,
+        useProvider,
+        parentModel,
+        parentThinkingLevel,
+      );
       const agentDef = selection.agentDef;
       if (args.agent && !agentDef) {
         return {
@@ -219,10 +227,9 @@ export function createSubAgentTool(
         if (childCacheKey) {
           cliArgs.push("--prompt-cache-key", childCacheKey);
         }
-        // Without --thinking the child runs with reasoning OFF. Every child
-        // runs at the lowest rung of the model THIS attempt uses (the parent
-        // model on a retry), same as spawn_agent children.
-        const thinkingLevel = subAgentThinkingLevel(useProvider, model);
+        // Re-resolve from the original parent selection on a model retry,
+        // rather than carrying the pinned model's ceiling into the fallback.
+        const thinkingLevel = subAgentThinkingLevel(useProvider, model, parentThinkingLevel);
         if (thinkingLevel) {
           cliArgs.push("--thinking", thinkingLevel);
         }

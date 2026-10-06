@@ -12,12 +12,17 @@ interface Props {
   disabled?: boolean;
   /** Tooltip + accessible name (e.g. "Switch EZ Coder's model"). */
   title: string;
+  /** Optional compact action copy; the menu still selects the current model. */
+  label?: string;
   /** Accent color for the closed control (EZ Coder = text, Nolan = nolan). */
   color?: string;
   /** When set, adds a "Follow EZ Coder" choice (Nolan's picker) — selecting it
    *  clears the pin. `followActive` makes it the selected value. */
   onSelectFollow?: () => void;
   followActive?: boolean;
+  /** The model list failed to load. With no models, the locked picker says
+   *  so instead of claiming it is still connecting. */
+  loadFailed?: boolean;
 }
 
 const FOLLOW_VALUE = "__follow__";
@@ -63,16 +68,21 @@ export async function loadModelsWithRetry(
  * land after the new one's and leave the picker showing models that belong to a
  * project the user already left. `apply` is skipped entirely on failure, so the
  * picker keeps whatever it already had.
+ *
+ * Resolves `false` only when every attempt failed, so the caller can show a
+ * failed-load state; `true` when the list was applied or the load went stale.
  */
 export async function loadModelsInto(
   fetchModels: () => Promise<ModelOption[] | null>,
   apply: (models: ModelOption[]) => void,
   isStale: () => boolean,
   sleep?: (ms: number) => Promise<void>,
-): Promise<void> {
+): Promise<boolean> {
   const models = await loadModelsWithRetry(fetchModels, sleep);
-  if (!models || isStale()) return;
+  if (!models) return false;
+  if (isStale()) return true;
   apply(models);
+  return true;
 }
 
 /**
@@ -86,9 +96,11 @@ export function ModelSelect({
   onSelect,
   disabled,
   title,
+  label,
   color,
   onSelectFollow,
   followActive,
+  loadFailed,
 }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
@@ -107,7 +119,9 @@ export function ModelSelect({
   const unavailableReason = disabled
     ? "Can't switch models while the agent is running — cancel the run or wait for it to finish"
     : models.length === 0
-      ? "No models available yet — still connecting to the agent"
+      ? loadFailed
+        ? "Couldn't load models from the agent. Reopen the project to try again."
+        : "No models available yet — still connecting to the agent"
       : null;
   // One group per provider company, in registry order, with Local pinned last
   // (it's the user's own machine, not an account, and its length depends on what
@@ -217,7 +231,7 @@ export function ModelSelect({
     return (
       <span className="model-picker model-picker-native" style={{ color: controlColor }}>
         <span className="model-select-text" aria-hidden="true">
-          {modelDisplayName(models, currentModel)}
+          {label ?? modelDisplayName(models, currentModel)}
         </span>
         <select
           className="model-select"
@@ -275,7 +289,7 @@ export function ModelSelect({
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((current) => !current)}
       >
-        {modelDisplayName(models, currentModel)}
+        {label ?? modelDisplayName(models, currentModel)}
       </button>
       {open && (
         <div
