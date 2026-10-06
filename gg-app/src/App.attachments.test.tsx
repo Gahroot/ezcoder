@@ -44,9 +44,20 @@ afterEach(() => {
   else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
 });
 
-async function setup(running = false): Promise<{
+interface SetupOptions {
+  /** `agent_prompt` rejects, as when the sidecar drops the request. */
+  promptFails?: boolean;
+  /** How many `agent_state` calls reject before it starts answering. */
+  stateFailures?: number;
+}
+
+async function setup(
+  running = false,
+  { promptFails = false, stateFailures = 0 }: SetupOptions = {},
+): Promise<{
   input: HTMLTextAreaElement;
   sends: ReturnType<typeof vi.fn>;
+  stateCalls: () => number;
   emit: (event: SidecarEvent) => void;
 }> {
   const listeners = new Set<(event: SidecarEvent) => void>();
@@ -64,6 +75,7 @@ async function setup(running = false): Promise<{
     model: "claude-sonnet-4-6",
     running,
   };
+  let stateCalls = 0;
   mockWindows("main");
   mockIPC((command, payload) => {
     switch (command) {
@@ -72,6 +84,8 @@ async function setup(running = false): Promise<{
       case "sidecar_port":
         return 12345;
       case "agent_state":
+        stateCalls++;
+        if (stateCalls <= stateFailures) return Promise.reject(new Error("session not found"));
         return state;
       case "agent_models":
         return { models: [{ id: state.model, provider: state.provider }] };
@@ -83,6 +97,7 @@ async function setup(running = false): Promise<{
         return { history: [] };
       case "agent_prompt":
         sends(payload);
+        if (promptFails) return Promise.reject(new Error("connection refused"));
         return null;
       case "plugin:log|log":
         return null;
@@ -92,10 +107,13 @@ async function setup(running = false): Promise<{
   });
   render(<App />);
   const input = await screen.findByRole<HTMLTextAreaElement>("textbox");
-  await waitFor(() => expect(document.querySelector(".footer-skeleton")).toBeNull());
+  if (stateFailures === 0) {
+    await waitFor(() => expect(document.querySelector(".footer-skeleton")).toBeNull());
+  }
   return {
     input,
     sends,
+    stateCalls: () => stateCalls,
     emit: (event) => {
       for (const listener of listeners) listener(event);
     },
@@ -300,6 +318,33 @@ describe("composer attachments", () => {
     await screen.findByRole("button", { name: "Remove screenshot.png" });
     fireEvent.click(screen.getByTitle("Send"));
     await waitFor(() => expect(sends).toHaveBeenCalledOnce());
+  });
+
+  it("puts a failed message back in the composer and says it wasn't sent", async () => {
+    const { input, sends } = await setup(false, { promptFails: true });
+    fireEvent.change(input, { target: { value: "Refactor the parser" } });
+    fireEvent.click(screen.getByTitle("Send"));
+
+    expect(await screen.findByText("Your message wasn't sent")).toBeTruthy();
+    expect(sends).toHaveBeenCalledOnce();
+    // The draft is back, ready to resend...
+    await waitFor(() => expect(input.value).toBe("Refactor the parser"));
+    // ...and the transcript no longer shows a message the agent never got.
+    expect(document.querySelector(".transcript")?.textContent).not.toContain("Refactor the parser");
+  });
+
+  it("offers a retry when the agent can't be reached at startup", async () => {
+    const { stateCalls } = await setup(false, { stateFailures: 1 });
+
+    // A failed connect must say so, not sit on "connecting to agent…" forever.
+    const alert = await screen.findByText("Couldn't connect to the agent.");
+    expect(alert.closest("[role='alert']")).toBeTruthy();
+    expect(stateCalls()).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(stateCalls()).toBe(2));
+    await waitFor(() => expect(screen.queryByText("Couldn't connect to the agent.")).toBeNull());
   });
 
   it("preserves the draft and explains how to send attachments when addressing Ken", async () => {

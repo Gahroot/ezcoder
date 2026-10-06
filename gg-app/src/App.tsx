@@ -391,6 +391,8 @@ const SCHEDULE_COMMAND: SlashCommand = {
 // warmer/more saturated as the tier rises; xhigh/max are "max power" hot pink.
 const MAX_POWER_COLOR = "#db2777";
 const MAX_POWER_SHIMMER = "#f472b6";
+// Plan-mode footer shimmer highlight; mirrors ggcoder Footer.tsx PLAN_SHIMMER_COLOR.
+const PLAN_SHIMMER_COLOR = "#ddd6fe";
 function thinkingColor(level: string | null | undefined): string {
   if (!level) return theme.textDim;
   if (level === "low") return theme.textMuted;
@@ -611,6 +613,12 @@ function App(): React.ReactElement {
   const [thinkingStartTs, setThinkingStartTs] = useState<number | null>(null);
   const [thinkingAccumMs, setThinkingAccumMs] = useState(0);
   const [models, setModels] = useState<ModelOption[]>([]);
+  // The background model load gave up (every retry failed). The footer
+  // pickers say so instead of claiming they are still connecting.
+  const [modelsFailed, setModelsFailed] = useState(false);
+  // Hydration couldn't reach the agent. Shown in place of the endless
+  // "connecting to agent…" line, with a way to try again.
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [commands, setCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
   // Caret offset in the composer, tracked so the `/schedule` hint can highlight
@@ -1672,6 +1680,8 @@ function App(): React.ReactElement {
     setHydrated(false);
     setLiveFromId(Number.POSITIVE_INFINITY);
     setStatus("connecting to agent\u2026");
+    setConnectError(null);
+    setModelsFailed(false);
     try {
       await waitForReady();
       readyRef.current = true;
@@ -1680,6 +1690,8 @@ function App(): React.ReactElement {
         setState(st);
         setRunning(st.running);
         setStatus(st.runState === "cancelling" ? "cancelling..." : "ready");
+      } else {
+        setConnectError("Couldn't read this session from the agent.");
       }
       // Retries: this is the only unprompted model load, and an empty list
       // disables the picker for the whole session (see loadModelsWithRetry).
@@ -1689,7 +1701,13 @@ function App(): React.ReactElement {
       // fills itself in when an answer arrives, unless this hydrate has since
       // been superseded (project switch) — then the old sidecar's answer is
       // dropped rather than overwriting the new project's picker.
-      void loadModelsInto(listModels, setModels, () => hydrateGenerationRef.current !== generation);
+      void loadModelsInto(
+        listModels,
+        setModels,
+        () => hydrateGenerationRef.current !== generation,
+      ).then((ok) => {
+        if (!ok && hydrateGenerationRef.current === generation) setModelsFailed(true);
+      });
       const cmds = await listCommands();
       if (cmds.length > 0) setCommands(cmds);
       // Project task list for the Tasks modal + nav button.
@@ -1808,7 +1826,9 @@ function App(): React.ReactElement {
         );
       }
     } catch (err) {
-      setStatus(`agent failed to start: ${err instanceof Error ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setStatus(`agent failed to start: ${message}`);
+      setConnectError(message);
     } finally {
       // Reveal the footer + chrome now that everything we know about the
       // session is in hand — one fade-in, no staggered reflow.
@@ -1967,18 +1987,21 @@ function App(): React.ReactElement {
     if (state && modelId !== null && state.kenModelOverride && modelId === state.kenModel) return;
     if (state && modelId === null && !state.kenModelOverride) return;
     void switchKenModel(modelId).then((res) => {
-      if (res) {
-        setState((s) =>
-          s
-            ? {
-                ...s,
-                kenProvider: res.kenProvider,
-                kenModel: res.kenModel,
-                kenModelOverride: res.kenModelOverride,
-              }
-            : s,
-        );
+      if (!res) {
+        // Without this the picker just snaps back and the click looks ignored.
+        toast("Couldn't switch Ken's model.", "error");
+        return;
       }
+      setState((s) =>
+        s
+          ? {
+              ...s,
+              kenProvider: res.kenProvider,
+              kenModel: res.kenModel,
+              kenModelOverride: res.kenModelOverride,
+            }
+          : s,
+      );
     });
   }
 
@@ -2592,6 +2615,40 @@ function App(): React.ReactElement {
     setEnhanceHintVisible(true);
   }, [input, enhancing, hydrated, slashOpen, mentionOpen, scheduleDraft, enhancement]);
 
+  // A send that never reached the agent must not look delivered: drop its
+  // bubble, say what happened, and hand the draft back. Anything the user has
+  // typed or staged since is never overwritten.
+  function restoreFailedSend(
+    failed: {
+      bubbleId: number;
+      draft: string;
+      attachments: PendingAttachment[];
+      mentionedPaths: string[];
+      scope: "error" | "ken_error";
+    },
+    error: unknown,
+  ): void {
+    setItems((prev) => prev.filter((it) => it.id !== failed.bubbleId));
+    pushItem({
+      kind: "error",
+      id: nextId(),
+      ...readChatError(
+        {
+          headline: "Your message wasn't sent",
+          message: error instanceof Error ? error.message : String(error),
+          guidance: "Your draft is back in the message box. Send it again when the agent is ready.",
+          reason: "network",
+        },
+        failed.scope,
+      ),
+    });
+    setInput((cur) => (cur === "" ? failed.draft : cur));
+    if (failed.attachments.length > 0)
+      setAttachments((cur) => (cur.length === 0 ? failed.attachments : cur));
+    if (failed.mentionedPaths.length > 0)
+      setMentionedPaths((cur) => (cur.length === 0 ? failed.mentionedPaths : cur));
+  }
+
   // Submit the current input together with any staged attachments. Images are
   // echoed inline in the user's bubble; all media is sent to the agent.
   function submit(): void {
@@ -2654,13 +2711,21 @@ function App(): React.ReactElement {
       if (!question) return;
       recordHistory(trimmed);
       stickToBottomRef.current = true;
-      pushItem({ kind: "user", id: nextId(), text: trimmed, ken: true });
+      const kenBubbleId = nextId();
+      const kenFailed = {
+        bubbleId: kenBubbleId,
+        draft: input,
+        attachments: [],
+        mentionedPaths,
+        scope: "ken_error" as const,
+      };
+      pushItem({ kind: "user", id: kenBubbleId, text: trimmed, ken: true });
       setInput("");
       setSlashIndex(0);
       setMention(null);
       setMentionedPaths([]);
       setEnhancement(null);
-      void sendKenPrompt(question);
+      void sendKenPrompt(question).catch((e: unknown) => restoreFailedSend(kenFailed, e));
       return;
     }
 
@@ -2677,6 +2742,14 @@ function App(): React.ReactElement {
     // knows which paths to read; they aren't shown in the user's bubble text.
     const prompt =
       mentionedPaths.length > 0 ? appendReferencedFiles(trimmed, mentionedPaths) : trimmed;
+    const bubbleId = nextId();
+    const failed = {
+      bubbleId,
+      draft: input,
+      attachments,
+      mentionedPaths,
+      scope: "error" as const,
+    };
     // Carry the enhancer's highlighted segments into the sent bubble ONLY when
     // the message is the unedited enhanced text (the bubble shows `trimmed`).
     const sentEnhancements =
@@ -2691,7 +2764,7 @@ function App(): React.ReactElement {
       const queuedImgs = attachments.filter((a) => a.previewUrl).map((a) => a.previewUrl!);
       pushItem({
         kind: "user",
-        id: nextId(),
+        id: bubbleId,
         text: trimmed,
         command: isWorkflowCommand(trimmed),
         images: queuedImgs.length > 0 ? queuedImgs : undefined,
@@ -2709,14 +2782,14 @@ function App(): React.ReactElement {
         prompt,
         queuedWire,
         sentEnhancements ? { enhancements: sentEnhancements } : undefined,
-      );
+      ).catch((e: unknown) => restoreFailedSend(failed, e));
       return;
     }
     const wire = attachments.map(toWire);
     const imgPreviews = attachments.filter((a) => a.previewUrl).map((a) => a.previewUrl!);
     pushItem({
       kind: "user",
-      id: nextId(),
+      id: bubbleId,
       text: trimmed,
       command: isWorkflowCommand(trimmed),
       images: imgPreviews.length > 0 ? imgPreviews : undefined,
@@ -2744,7 +2817,7 @@ function App(): React.ReactElement {
       prompt,
       wire,
       sentEnhancements ? { enhancements: sentEnhancements } : undefined,
-    );
+    ).catch((e: unknown) => restoreFailedSend(failed, e));
   }
 
   // ── Attachment intake (paste / attach button / whole-window drag-drop) ──
@@ -3240,7 +3313,19 @@ function App(): React.ReactElement {
             ) : (
               <>
                 {items.length === 0 &&
-                  (status === "ready" ? (
+                  (connectError !== null ? (
+                    <div className="picker-empty transcript-reveal" role="alert">
+                      <span>Couldn't connect to the agent.</span>
+                      <span style={{ color: theme.textDim }}>{connectError}</span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => setHydrateNonce((n) => n + 1)}
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : status === "ready" ? (
                     <WakeScreen
                       chat={workspaceMode === "chat"}
                       motion={workspaceMode === "motion"}
@@ -3446,9 +3531,7 @@ function App(): React.ReactElement {
               {kenActive && kenInputParts && (
                 <div className="ken-input-highlight" aria-hidden="true">
                   {kenInputParts.lead}
-                  <ShimmerText base={theme.ken} bright="#ffffff">
-                    {kenInputParts.token}
-                  </ShimmerText>
+                  <ShimmerText base={theme.ken}>{kenInputParts.token}</ShimmerText>
                   {kenInputParts.rest}
                 </div>
               )}
@@ -3638,7 +3721,7 @@ function App(): React.ReactElement {
                     <>
                       {(runningTaskCount > 0 || schedules.length > 0) && <FooterSep />}
                       <span className="footer-plan">
-                        <ShimmerText base={theme.secondary} bright="#ddd6fe">
+                        <ShimmerText base={theme.secondary} bright={PLAN_SHIMMER_COLOR}>
                           {"\u25C6 plan mode"}
                         </ShimmerText>
                       </span>
@@ -3701,6 +3784,7 @@ function App(): React.ReactElement {
                     currentModel={state?.model ?? ""}
                     onSelect={onSelectModel}
                     disabled={running}
+                    loadFailed={modelsFailed}
                     title={`Switch ${workspaceMode === "chat" ? "GG" : workspaceProductName(workspaceMode)}'s model`}
                   />
                 </span>
@@ -3722,6 +3806,7 @@ function App(): React.ReactElement {
                         // either is mid-turn — same rule the GG picker follows,
                         // and the sidecar now answers 409 to match.
                         disabled={running || kenRunning || autopilotReviewing}
+                        loadFailed={modelsFailed}
                         title={
                           state?.kenModelOverride
                             ? "Ken is pinned to his own model — click to change"

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { GearSixIcon } from "@phosphor-icons/react";
 import { theme } from "./theme";
 import { killTask, type BackgroundTask } from "./agent";
+import { toast } from "./toast";
 
 /**
  * Footer indicator for background tasks (bash run_in_background) — mirrors the
@@ -112,7 +113,11 @@ export function BackgroundTasksButton({ tasks }: { tasks: BackgroundTask[] }): R
                       className="bgtasks-kill"
                       style={{ color: theme.error }}
                       title="Stop task"
-                      onClick={() => void killTask(t.id)}
+                      onClick={() =>
+                        void killTask(t.id).then((res) => {
+                          if (!res.ok) toast(`Couldn't stop the task: ${res.error}`, "error");
+                        })
+                      }
                     >
                       kill
                     </button>

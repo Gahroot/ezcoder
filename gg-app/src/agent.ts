@@ -1186,14 +1186,17 @@ export async function cancelQueued(id: string): Promise<boolean | null> {
   }
 }
 
-/** Stop a background task by id. Returns the sidecar's status message, if any. */
-export async function killTask(id: string): Promise<string | null> {
+/** Outcome of {@link killTask}: the sidecar's status message, or why it failed. */
+export type KillTaskResult = { ok: true; message: string | null } | { ok: false; error: string };
+
+/** Stop a background task by id. */
+export async function killTask(id: string): Promise<KillTaskResult> {
   try {
     const res = await invoke<{ message?: string }>("agent_kill_task", { id });
-    return res.message ?? null;
+    return { ok: true, message: res.message ?? null };
   } catch (e) {
     await logError(`agent_kill_task failed: ${String(e)}`);
-    return null;
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -1434,14 +1437,17 @@ export async function createProject(name: string): Promise<string> {
   return res.path;
 }
 
-/** Discover known projects (ggcoder + Claude Code + Codex), most recent first. */
+/**
+ * Discover known projects (ggcoder + Claude Code + Codex), most recent first.
+ * Throws on failure, so a failed load is never mistaken for "no projects".
+ */
 export async function listProjects(): Promise<DiscoveredProject[]> {
   try {
     const res = await invoke<{ projects: DiscoveredProject[] }>("agent_projects");
     return res.projects ?? [];
   } catch (e) {
     await logError(`agent_projects failed: ${String(e)}`);
-    return [];
+    throw e;
   }
 }
 
@@ -1480,7 +1486,8 @@ export async function searchFiles(query: string): Promise<FileHit[]> {
 
 /**
  * List the latest sessions for a project, one chat agent, every chat agent
- * (`"all"`), or GG Motion (`"motion"`).
+ * (`"all"`), or GG Motion (`"motion"`). Throws on failure, so a failed load
+ * is never mistaken for "no sessions".
  */
 export async function listSessions(
   cwd: string,
@@ -1494,7 +1501,7 @@ export async function listSessions(
     return res.sessions ?? [];
   } catch (e) {
     await logError(`agent_sessions failed: ${String(e)}`);
-    return [];
+    throw e;
   }
 }
 
@@ -1747,7 +1754,7 @@ function unwrapLocalState(res: LocalModelsState & { error?: string }): LocalMode
   return { endpoints: res.endpoints ?? [] };
 }
 
-/** Last scan's endpoints + models. Cheap — does not probe. */
+/** Last scan's endpoints + models. Cheap — does not probe. Throws on failure. */
 export async function getLocalModels(): Promise<LocalModelsState> {
   try {
     await waitForReady();
@@ -1755,7 +1762,7 @@ export async function getLocalModels(): Promise<LocalModelsState> {
     return unwrapLocalState(res);
   } catch (e) {
     await logError(`agent_local failed: ${String(e)}`);
-    return { endpoints: [] };
+    throw e;
   }
 }
 
@@ -1982,7 +1989,7 @@ export interface AddMcpResult {
 
 /** List configured MCP servers with live connection status + tool counts.
  *  `cwd` scopes the project servers to a specific project path (global servers
- *  always show); omit for the window's current project. */
+ *  always show); omit for the window's current project. Throws on failure. */
 export async function listMcpServers(cwd?: string): Promise<McpServerRow[]> {
   try {
     await waitForReady();
@@ -1992,7 +1999,7 @@ export async function listMcpServers(cwd?: string): Promise<McpServerRow[]> {
     return res.servers ?? [];
   } catch (e) {
     await logError(`agent_mcp_list failed: ${String(e)}`);
-    return [];
+    throw e;
   }
 }
 
