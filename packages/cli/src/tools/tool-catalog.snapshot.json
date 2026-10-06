@@ -58,7 +58,7 @@
     },
     {
       "name": "checklist",
-      "description": "Read or record the project health checklist (stored in .gg-checklist.json). `status` lists every item with its status and last check; items older than 30 days are due. `record` saves the result of checking one item: the date and Git commit are filled in automatically. `issues` needs at least one finding; `pass` takes none; `evidence` lists what you actually ran or read, including scope and exclusions. Record completed checklist reviews or checks requested in normal chat; never start extra audits unasked.",
+      "description": "Read or record the project health checklist (stored in .ez-checklist.json). `status` lists every item with its status and last check; items older than 30 days are due. `record` saves the result of checking one item: the date and Git commit are filled in automatically. `issues` needs at least one finding; `pass` takes none; `evidence` lists what you actually ran or read, including scope and exclusions. Record completed checklist reviews or checks requested in normal chat; never start extra audits unasked.",
       "schema": {
         "type": "object",
         "properties": {

@@ -5,8 +5,8 @@
 /** Days after which a recorded check comes back as due. */
 export const CHECKLIST_STALE_DAYS = 30;
 
-/** The record lives at the project root (not under `.gg/`, which many projects ignore). */
-export const CHECKLIST_FILE = ".gg-checklist.json";
+/** The record lives at the project root (not under `.ezcoder/`, which many projects ignore). */
+export const CHECKLIST_FILE = ".ez-checklist.json";
 
 export const CHECKLIST_GROUPS = [
   "Foundations",

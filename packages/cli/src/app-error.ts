@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { redactValue, type FormattedChatError } from "@kenkaiiii/gg-ai";
+import { redactValue, type FormattedChatError } from "@prestyj/ai";
 
 const timestamp = z.number().int().nonnegative().max(8_640_000_000_000).optional().catch(undefined);
 const optionalText = z.string().max(8_000).optional().catch(undefined);

@@ -10,7 +10,7 @@ const NOW = new Date("2026-10-05T09:12:44.000Z");
 
 let root: string;
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-checklist-tool-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-checklist-tool-"));
 });
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });

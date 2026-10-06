@@ -296,7 +296,7 @@ export async function deleteTask(id: string): Promise<ProjectTask[]> {
   }
 }
 
-/** Mirrors ggcoder `core/checklist-store.ts` ChecklistStatus. */
+/** Mirrors ezcoder `core/checklist-store.ts` ChecklistStatus. */
 export type ChecklistStatus = "not-run" | "not-applicable" | "due" | "passed" | "needs-work";
 
 /** One project health-checklist item joined with its recorded result (ChecklistRow). */

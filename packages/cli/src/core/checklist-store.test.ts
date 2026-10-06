@@ -30,7 +30,7 @@ function entry(overrides: Partial<ChecklistEntry> = {}): ChecklistEntry {
 
 let root: string;
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-checklist-store-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-checklist-store-"));
 });
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });

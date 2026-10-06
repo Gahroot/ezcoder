@@ -6,7 +6,7 @@ import { collectReferenceProjectFiles } from "./reference-project.js";
 
 let root: string;
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-reference-files-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-reference-files-"));
 });
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });

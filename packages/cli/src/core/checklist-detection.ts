@@ -151,7 +151,7 @@ export async function detectChecklist(
       add("ci", "CI configuration found");
   }
   for (const relative of [
-    ".gg/commands/commit.md",
+    ".ezcoder/commands/commit.md",
     ".claude/commands/commit.md",
     ".husky/pre-commit",
   ]) {

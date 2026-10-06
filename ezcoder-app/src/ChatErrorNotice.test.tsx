@@ -211,7 +211,7 @@ describe("compact chat errors", () => {
   });
 
   it("retains metadata across each scope and rejects malformed values", () => {
-    for (const scope of ["error", "ken_error", "autopilot_error"]) {
+    for (const scope of ["error", "nolan_error", "autopilot_error"]) {
       const parsed = readChatError(
         { ...limit, resetsAt: 1_800_000_000, occurredAt: 1_799_000_000_000, statusCode: 429 },
         scope,

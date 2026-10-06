@@ -8094,7 +8094,7 @@ select {
   vertical-align: -0.17em;
   border-radius: 2px;
   background: var(--on-speech);
-  animation: ggblink 1s step-end infinite;
+  animation: ezblink 1s step-end infinite;
 }
 
 /* The terrain's weather across the whole screen: few particles, slow, faint,

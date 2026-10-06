@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatChatError } from "./chat-error.js";
-import { GGAIError, ProviderError, VideoUnsupportedError } from "./errors.js";
+import { EZCoderAIError, ProviderError, VideoUnsupportedError } from "./errors.js";
 
 describe("formatChatError", () => {
   it.each([
@@ -88,7 +88,7 @@ describe("formatChatError", () => {
     "OpenAI Codex cannot require a tool call when no tools are configured.",
     "OpenAI Codex does not support selecting the named tool `read`; use auto, none, or required.",
   ])("does not present tool-configuration failures as video errors: %s", (message) => {
-    expect(formatChatError(new GGAIError(message, { source: "capability" }))).toMatchObject({
+    expect(formatChatError(new EZCoderAIError(message, { source: "capability" }))).toMatchObject({
       reason: "unknown",
       headline: "This request isn’t supported",
       guidance: "Open details to check the request requirements.",
@@ -98,8 +98,8 @@ describe("formatChatError", () => {
 
   it("removes blame and static entitlement promises", () => {
     expect(
-      formatChatError(new GGAIError("fetch failed", { source: "network" })).guidance,
-    ).not.toContain("not a GG Coder issue");
+      formatChatError(new EZCoderAIError("fetch failed", { source: "network" })).guidance,
+    ).not.toContain("not a EZ Coder issue");
     const video = formatChatError(new VideoUnsupportedError());
     expect(video.reason).toBe("capability");
     expect(video.guidance).toBe("Choose a model that supports video.");

@@ -358,7 +358,7 @@ describe("spawn_agent worker", () => {
   });
 
   it("restores inherited OpenAI Ultra when a pinned model falls back to the parent", async () => {
-    await writeJson(path.join(tmpHome, ".gg", "auth.json"), {
+    await writeJson(path.join(tmpHome, ".ezcoder", "auth.json"), {
       openai: {
         accessToken: "test-access",
         refreshToken: "test-refresh",

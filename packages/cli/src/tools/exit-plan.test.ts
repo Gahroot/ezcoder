@@ -2,15 +2,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { agentLoop, type AgentEvent, type ToolExecuteResult } from "@kenkaiiii/gg-agent";
-import { stream, StreamResult, type Message, type StreamResponse } from "@kenkaiiii/gg-ai";
+import { agentLoop, type AgentEvent, type ToolExecuteResult } from "@prestyj/agent";
+import { stream, StreamResult, type Message, type StreamResponse } from "@prestyj/ai";
 import { createExitPlanTool } from "./exit-plan.js";
 import { shouldStartAutopilotCycle } from "../core/autopilot-gate.js";
 import { driveAutopilotCycle } from "../core/autopilot-cycle.js";
 
-vi.mock("@kenkaiiii/gg-ai", async (importOriginal) => {
+vi.mock("@prestyj/ai", async (importOriginal) => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-  const actual = await importOriginal<typeof import("@kenkaiiii/gg-ai")>();
+  const actual = await importOriginal<typeof import("@prestyj/ai")>();
   return { ...actual, stream: vi.fn() };
 });
 
@@ -84,7 +84,7 @@ describe("createExitPlanTool", () => {
                   type: "tool_call",
                   id: "submit",
                   name: "exit_plan",
-                  args: { plan_path: ".gg/plans/plan.md" },
+                  args: { plan_path: ".ezcoder/plans/plan.md" },
                 },
               ],
             },
@@ -221,7 +221,7 @@ describe("createExitPlanTool", () => {
                 type: "tool_call",
                 id: "submit",
                 name: "exit_plan",
-                args: { plan_path: ".gg/plans/plan.md" },
+                args: { plan_path: ".ezcoder/plans/plan.md" },
               },
             ],
           },

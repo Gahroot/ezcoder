@@ -539,7 +539,7 @@ export class LspClient {
   ): Promise<string | undefined> {
     const started = Date.now();
     const remaining = (): number => Math.max(1, timeoutMs - (Date.now() - started));
-    const projectFileName = path.join(this.rootPath, ".gg-lsp-reference-project");
+    const projectFileName = path.join(this.rootPath, ".ez-lsp-reference-project");
     try {
       const reply = await this.conn.request(
         "workspace/executeCommand",

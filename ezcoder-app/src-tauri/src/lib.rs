@@ -1551,7 +1551,7 @@ async fn agent_tasks(
         .map_err(|e| e.to_string())
 }
 
-/// Proxy: the project health checklist (`.gg-checklist.json` joined with the
+/// Proxy: the project health checklist (`.ez-checklist.json` joined with the
 /// built-in items and their current status). A corrupt record surfaces as Err.
 #[tauri::command]
 async fn agent_checklist(
@@ -1559,10 +1559,10 @@ async fn agent_checklist(
     client: State<'_, reqwest::Client>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
-    let gg_sid = session_for(&webview).ok_or("session not ready")?;
+    let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .get(format!("{}/checklist", sidecar_base(port)))
-        .header("x-gg-session", &gg_sid)
+        .header("x-ez-session", &ez_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;

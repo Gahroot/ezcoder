@@ -18,7 +18,7 @@
 /* Use the existing snapshot transition helper: navigation commits immediately,
    and only its image dissolves. No timer or invisible interactive exit layer. */
 .checklist-screen {
-  view-transition-name: gg-checklist;
+  view-transition-name: ez-checklist;
 }
 @keyframes checklist-dissolve-out {
   to {
@@ -26,25 +26,25 @@
     filter: blur(6px);
   }
 }
-::view-transition-group(gg-checklist) {
+::view-transition-group(ez-checklist) {
   animation-duration: var(--dur-dissolve);
 }
-::view-transition-new(gg-checklist) {
+::view-transition-new(ez-checklist) {
   animation: dissolve-in var(--dur-dissolve) var(--ease-out) both;
 }
-::view-transition-old(gg-checklist) {
+::view-transition-old(ez-checklist) {
   animation: checklist-dissolve-out var(--dur-dissolve) var(--ease-in) both;
 }
-@supports not (view-transition-name: gg-checklist) {
+@supports not (view-transition-name: ez-checklist) {
   .checklist-screen {
     animation: dissolve-in var(--dur-dissolve) var(--ease-out) backwards;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .checklist-screen,
-  ::view-transition-group(gg-checklist),
-  ::view-transition-new(gg-checklist),
-  ::view-transition-old(gg-checklist) {
+  ::view-transition-group(ez-checklist),
+  ::view-transition-new(ez-checklist),
+  ::view-transition-old(ez-checklist) {
     animation: none;
   }
 }

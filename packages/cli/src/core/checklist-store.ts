@@ -1,4 +1,4 @@
-// Read/write the project health checklist record (`<project>/.gg-checklist.json`).
+// Read/write the project health checklist record (`<project>/.ez-checklist.json`).
 // The file is shared through Git, so it is treated as untrusted on the way in:
 // every entry is validated, unknown ids and bad dates are dropped, long text is
 // clipped. Writes are atomic (temp file + rename) and canonical (sorted ids,

@@ -15,7 +15,7 @@ describe("app error snapshots", () => {
         resetsAt: 1_800_000_000,
         requestId: "req-1",
       },
-      "ken_error",
+      "nolan_error",
       1_799_999_000_000,
       [],
     );
@@ -27,7 +27,7 @@ describe("app error snapshots", () => {
   it("redacts before the shared payload can be broadcast, logged or persisted", () => {
     const payload = createAppErrorPayload(
       {
-        source: "ggcoder",
+        source: "ezcoder",
         reason: "unknown",
         headline: "Something went wrong",
         message: "request failed with private-account-value",

@@ -3,7 +3,7 @@
 // the Git commit and whether there were uncommitted changes, so none of those
 // can be made up.
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
+import type { AgentTool } from "@prestyj/agent";
 import { log } from "../core/logger.js";
 import {
   CHECKLIST_FILE,

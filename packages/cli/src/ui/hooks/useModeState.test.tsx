@@ -2,8 +2,8 @@ import React, { useRef } from "react";
 import { render } from "ink";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { AgentTool } from "@kenkaiiii/gg-agent";
-import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
+import type { AgentTool } from "@prestyj/agent";
+import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import type { LanguageId } from "../../core/language-detector.js";
 import { useModeState } from "./useModeState.js";
 

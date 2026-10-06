@@ -68,7 +68,7 @@ export function formatChatError(error: unknown): FormattedChatError {
   if (/requires a newer version of codex/.test(text)) {
     return present(
       "update",
-      "GG Coder needs an update",
+      "EZ Coder needs an update",
       "Update the app, or choose another model.",
     );
   }

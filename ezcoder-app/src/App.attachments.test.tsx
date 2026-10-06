@@ -347,18 +347,18 @@ describe("composer attachments", () => {
     await waitFor(() => expect(screen.queryByText("Couldn't connect to the agent.")).toBeNull());
   });
 
-  it("preserves the draft and explains how to send attachments when addressing Ken", async () => {
-    const ken = vi.spyOn(agent, "sendKenPrompt").mockResolvedValue(undefined);
+  it("preserves the draft and explains how to send attachments when addressing Nolan", async () => {
+    const nolanAgent = vi.spyOn(agent, "sendNolanPrompt").mockResolvedValue(undefined);
     const { input, sends } = await setup();
-    fireEvent.change(input, { target: { value: "@Ken check this screenshot" } });
+    fireEvent.change(input, { target: { value: "@Nolan check this screenshot" } });
     paste(input);
     await screen.findByRole("button", { name: "Remove screenshot.png" });
     fireEvent.click(screen.getByTitle("Send"));
     expect(ken).not.toHaveBeenCalled();
-    expect(input.value).toBe("@Ken check this screenshot");
+    expect(input.value).toBe("@Nolan check this screenshot");
     expect(screen.getByRole("button", { name: "Remove screenshot.png" })).toBeTruthy();
     expect(notifications.toast).toHaveBeenCalledWith(
-      "Ken cannot receive attachments. Remove @Ken to send them to GG.",
+      "Nolan cannot receive attachments. Remove @Nolan to send them to GG.",
       "warning",
     );
     fireEvent.change(input, { target: { value: "check this screenshot" } });

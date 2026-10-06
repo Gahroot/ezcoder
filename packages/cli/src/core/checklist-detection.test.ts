@@ -8,7 +8,7 @@ import { readChecklistSnapshot } from "./checklist-snapshot.js";
 
 let root: string;
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-checklist-detect-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-checklist-detect-"));
 });
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
@@ -46,7 +46,7 @@ describe("checklist setup detection", () => {
     await put("CONTEXT.md");
     await put("pnpm-lock.yaml");
     await put(".github/workflows/ci.yml", "unparsed workflow");
-    await put(".gg/commands/commit.md");
+    await put(".ezcoder/commands/commit.md");
     await put("eslint.config.js", "throw new Error('must not be imported');");
     await put(
       "packages/web/package.json",
@@ -69,7 +69,7 @@ describe("checklist setup detection", () => {
   });
 
   it("ignores symlinked package directories outside the project", async () => {
-    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "gg-checklist-outside-"));
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "ez-checklist-outside-"));
     try {
       await fs.mkdir(path.join(outside, "private-package"));
       await fs.writeFile(
@@ -109,7 +109,7 @@ describe("checklist setup detection", () => {
     await put("package.json", JSON.stringify({ scripts: { test: "vitest" } }));
     const now = new Date();
     await put(
-      ".gg-checklist.json",
+      ".ez-checklist.json",
       JSON.stringify({
         version: 1,
         items: {

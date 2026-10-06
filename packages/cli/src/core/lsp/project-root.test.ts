@@ -14,7 +14,7 @@ describe("solution-aware TypeScript root", () => {
   let project: string;
   let file: string;
   beforeEach(async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-lsp-solution-"));
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-lsp-solution-"));
     project = path.join(root, "core");
     file = path.join(project, "db.ts");
     await fs.mkdir(project);

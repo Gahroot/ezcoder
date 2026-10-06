@@ -27,7 +27,7 @@ Also note **Texas and Nebraska have no revenue or volume threshold** — they ap
 
 Thresholds range from 25,000 consumers (Montana) to 175,000 (Tennessee); 10,000 consumers where a share of revenue comes from selling data (RI, DE, NH, MD); Maryland pairs a 35,000-consumer threshold with the strictest data-minimisation and sensitive-data rules, and bans the sale of sensitive data outright **[V]**.
 
-**Universal opt-out / Global Privacy Control — the cheapest high-value engineering task.** As of 1 Jan 2026, twelve states require honouring it (CA, CO, CT, DE, MD, MN, MT, NE, NH, NJ, OR, TX); Virginia-template states, including the 2026 newcomers Indiana, Kentucky and Rhode Island, do not **[V]**. California's regulations effective 1 Jan 2026 also require the business to display whether the signal was honoured (11 CCR §7025(c)(6)) **[S]**. California, Colorado and Connecticut have run a coordinated GPC enforcement sweep **[S]**.
+**Universal opt-out / Global Privacy Control — the cheapest high-value engineering task.** As of 1 Jan 2026, twelve states require honouring it (CA, CO, CT, DE, MD, MN, MT, NE, NH, NJ, OR, TX); Virginia-template states, including the 2026 newcomers Indiana, Nolantucky and Rhode Island, do not **[V]**. California's regulations effective 1 Jan 2026 also require the business to display whether the signal was honoured (11 CCR §7025(c)(6)) **[S]**. California, Colorado and Connecticut have run a coordinated GPC enforcement sweep **[S]**.
 
 ```
 Read the Sec-GPC: 1 request header and navigator.globalPrivacyControl.
