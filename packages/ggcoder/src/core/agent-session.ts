@@ -99,6 +99,7 @@ import type { BackgroundProcess } from "./process-manager.js";
 import type { DebugManager } from "../tools/debug.js";
 import { autoBackgroundedId, REVIEW_REJECTED_BEFORE_START } from "../tools/bash.js";
 import { buildProcessCompletionFollowUp } from "./process-gate.js";
+import { PLAN_SUBMISSION_NUDGE, shouldNudgePlanSubmission } from "./plan-submission-gate.js";
 import { buildSubAgentCompletionFollowUp, type SubAgentManager } from "./subagent-manager.js";
 import { applyAsyncSubagentPolicy } from "./subagent-policy.js";
 import {
@@ -382,6 +383,10 @@ export interface AgentSessionOptions {
   additionalTools?: AgentTool[];
   /** Mode-owned completion policy; absent in Coder/chat/worker sessions. */
   completionReview?: CompletionReview;
+  /** Remind the agent to submit its plan (exit_plan) when a run is about to
+   *  stop still in plan mode. Desktop only: an unsubmitted plan there leaves
+   *  nothing to review. See plan-submission-gate.ts. */
+  planSubmissionGate?: boolean;
 }
 
 // ── Tool-result policy ─────────────────────────────────────
@@ -538,6 +543,8 @@ export class AgentSession {
   private runStartedAt = 0;
   /** Gate injections spent this run, capped by MAX_PROCESS_GATE_INJECTIONS. */
   private processGateInjected = 0;
+  /** Plan-submission reminders spent this run (plan-submission-gate.ts). */
+  private planSubmissionNudges = 0;
   /** Verification evidence: code edited this run, and what has proved it since.
    *  Passive tracking only — it feeds run status and autopilot, never a turn. */
   private readonly verificationGate = new VerificationGate();
@@ -1521,6 +1528,7 @@ export class AgentSession {
     };
     this.runStartedAt = Date.now();
     this.processGateInjected = 0;
+    this.planSubmissionNudges = 0;
     this.verificationGate.beginRun();
     const processes = new Set(this.processManager?.list().map((p) => p.id) ?? []);
     for (const id of this.backgroundVerification.keys()) {
@@ -1638,7 +1646,10 @@ export class AgentSession {
         // Only host-observed successful mutations and trustworthy check results
         // affect approval. The model's text is never evidence.
         let verificationChanged = false;
-        if (!event.isError && args) {
+        // In plan mode write/edit can only touch `.gg/plans/*.md`; a code-file
+        // write there was refused (refusals return text, not isError). Counting
+        // it as a change left "unverified" work that blocked plan approval.
+        if (!event.isError && args && !this.planModeRef.current) {
           if (name === "edit" || name === "write") {
             // Check-owning files (tsconfig.json, pytest.ini, vitest.config.ts …)
             // are tracked even when they are not source code: editing one
@@ -2215,6 +2226,25 @@ export class AgentSession {
     }
 
     if (diagnosticMessages.length > 0) return diagnosticMessages;
+
+    if (
+      shouldNudgePlanSubmission({
+        enabled: this.opts.planSubmissionGate === true,
+        planMode: this.planModeRef.current,
+        aborted: this.opts.signal?.aborted === true,
+        nudgesThisRun: this.planSubmissionNudges,
+      })
+    ) {
+      this.planSubmissionNudges += 1;
+      log("INFO", "plan-gate", "Run stopping in plan mode without a submitted plan; reminding");
+      return [
+        {
+          role: "user",
+          content: buildNotificationSteeringText([PLAN_SUBMISSION_NUDGE]),
+          provenance: { source: "runtime", kind: "notification", visibility: "hidden" },
+        },
+      ];
+    }
 
     if (this.opts.completionReview) {
       const followUp = await this.opts.completionReview.followUp(
@@ -3356,6 +3386,11 @@ export class AgentSession {
   }
 
   async newSession(preserveConversation = false): Promise<void> {
+    // A background post-turn compaction replaces `this.messages` when it
+    // lands. Letting it finish after the reset would swap the old history back
+    // into the fresh session (e.g. an accepted plan's build would inherit the
+    // whole planning conversation and lose the approved-plan prompt).
+    await this.settlePostTurnCompaction();
     this.cacheDiagnostics.reset();
     // Approved-plan execution is a clean checkpoint of the same conversation;
     // explicit new sessions reset the conversation identity.

@@ -38,6 +38,7 @@ import { setStreamDiagnostic } from "@kenkaiiii/gg-agent";
 import { AgentSession } from "./core/agent-session.js";
 import { RunLifecycle } from "./core/run-lifecycle.js";
 import { RunClaim } from "./core/run-claim.js";
+import { shouldOfferPendingPlan } from "./core/plan-handoff.js";
 import {
   CHAT_AGENT_IDS,
   chatAgentSessionsDir,
@@ -1889,6 +1890,8 @@ async function createSession(
     session = new AgentSession({
       ...baseSessionOptions,
       additionalTools: [askUserTool],
+      // A run must not end mid-plan with nothing submitted: nobody could review it.
+      planSubmissionGate: true,
       // Plan mode belongs only to the coding agent.
       onEnterPlan: async (reason) => {
         deactivateApprovedPlan();
@@ -2635,6 +2638,51 @@ async function createSession(
     planGeneration++;
   }
 
+  // Plan feedback (Ken's or the user's) is revised back in read-only plan
+  // mode. exit_plan leaves plan mode, so without this a "revise the plan" run
+  // had full write access and could start implementing before any approval.
+  async function reenterPlanModeForRevision(): Promise<void> {
+    if (session.getPlanMode()) return;
+    deactivateApprovedPlan();
+    await session.setPlanMode(true);
+    broadcast("plan_mode", { active: true });
+    log("INFO", "app-sidecar", "plan mode re-entered for revision");
+  }
+
+  // Plan generation last handed to the human review box (-1: none yet).
+  let offeredPlanGeneration = -1;
+
+  // The plan the human review box should show right now, or null. Only once
+  // everything has settled — see shouldOfferPendingPlan.
+  function pendingPlanForHuman(
+    offeredGeneration: number,
+  ): { planPath: string; content: string } | null {
+    const offer = shouldOfferPendingPlan({
+      planPath: pendingPlanPath,
+      generation: planGeneration,
+      offeredGeneration,
+      running,
+      starting: runClaim.active,
+      autopilotActive,
+      queued: session.getQueuedCount(),
+    });
+    return offer && pendingPlanPath !== null
+      ? { planPath: pendingPlanPath, content: pendingPlanContent }
+      : null;
+  }
+
+  // Open the Accept / Feedback / Reject box once nothing else will act on the
+  // submitted plan. Called at every settle point (turn end, queue drain, task
+  // run end). Without it, a plan Ken didn't approve — handed back, review
+  // failed, capped, cancelled, or skipped — sat pending with no way to act.
+  function offerPendingPlan(): void {
+    const plan = pendingPlanForHuman(offeredPlanGeneration);
+    if (!plan) return;
+    offeredPlanGeneration = planGeneration;
+    log("INFO", "app-sidecar", "plan handed to user for review", { planPath: plan.planPath });
+    broadcast("plan_review", plan);
+  }
+
   // Workflow (prompt-template) commands: built-in + the project's custom
   // `.gg/commands/*.md`. Used to gate autopilot off command turns and to label
   // expanded templates in Ken's digests. Loaded fresh so a newly added custom
@@ -3072,7 +3120,11 @@ async function createSession(
   // control flow lives in driveAutopilotCycle (core/autopilot-cycle.ts) so
   // every exit path is unit-tested; this only wires the real dependencies.
   async function runAutopilotCycle(originalRequest: string): Promise<void> {
-    if (!autopilot || autopilotCancelled || session.getVerificationProblem()) return;
+    if (!autopilot || autopilotCancelled) return;
+    // Unverified work skips a work review silently. A pending plan still enters
+    // the cycle so driveAutopilotCycle says WHY Ken stepped aside
+    // (autopilot_human) before the plan is handed to the user.
+    if (pendingPlanPath === null && session.getVerificationProblem()) return;
     const generation = runLifecycle.begin(abortOwnedWork).generation;
     pendingCancelDrain = null;
     autopilotActive = true;
@@ -3159,10 +3211,11 @@ async function createSession(
         },
         // Autopilot-injected run: GG Coder receives the framed prompt (no human
         // is watching this turn) while run_start keeps the clean label.
-        runPrompt: (body) =>
-          runAgent(body, () =>
-            session.prompt(frameAutopilotInjection(body), AUTOMATION_PROVENANCE),
-          ),
+        runPrompt: (body, opts) =>
+          runAgent(body, async () => {
+            if (opts?.planRevision) await reenterPlanModeForRevision();
+            await session.prompt(frameAutopilotInjection(body), AUTOMATION_PROVENANCE);
+          }),
         emit: (event) => {
           // Persist the terminal verdict marker so a resumed session renders the
           // same Ken bubble the live run showed instead of dropping it or
@@ -3227,8 +3280,10 @@ async function createSession(
         });
         if (!next.text.trim() && next.attachments.length === 0) continue;
         // A queued message draining as a fresh turn supersedes any pending
-        // plan, exactly like a direct POST /prompt turn.
+        // plan and clears a stale Stop, exactly like a direct POST /prompt
+        // turn — otherwise an earlier Stop silently disables Ken for this turn.
         clearPendingPlan();
+        autopilotCancelled = false;
         const workflowCommand =
           next.attachments.length === 0 &&
           isWorkflowCommandText(next.text, await loadWorkflowCommandSpecs());
@@ -3276,6 +3331,7 @@ async function createSession(
       }
     } finally {
       drainingStrandedQueue = false;
+      offerPendingPlan();
     }
   }
 
@@ -3325,6 +3381,9 @@ async function createSession(
     }
     taskRunAll = false;
     broadcast("tasks_run_done", {});
+    // Task runs never start an autopilot cycle; a plan a task submitted goes
+    // straight to the user.
+    offerPendingPlan();
   }
 
   // ── Provider auth (login) bridge ───────────────────────────
@@ -3591,6 +3650,9 @@ async function createSession(
             chatAgent,
             running,
             reviewPending: autopilotActive,
+            // A reconnecting window (reload/reopen) re-opens the review box for
+            // a plan still waiting on the user, regardless of earlier offers.
+            pendingPlan: pendingPlanForHuman(-1),
             runState: runLifecycle.state,
             thinkingLevel: session.getThinkingLevel() ?? null,
             supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
@@ -4298,12 +4360,23 @@ async function createSession(
           let text: string;
           let attachments: AppAttachment[];
           let meta:
-            { kenSent?: boolean; enhancements?: unknown[]; scheduled?: boolean } | undefined;
+            | {
+                kenSent?: boolean;
+                enhancements?: unknown[];
+                scheduled?: boolean;
+                planRevision?: boolean;
+              }
+            | undefined;
           try {
             const body = JSON.parse(raw) as {
               text?: string;
               attachments?: AppAttachment[];
-              meta?: { kenSent?: boolean; enhancements?: unknown[]; scheduled?: boolean };
+              meta?: {
+                kenSent?: boolean;
+                enhancements?: unknown[];
+                scheduled?: boolean;
+                planRevision?: boolean;
+              };
             };
             text = body.text ?? "";
             attachments = Array.isArray(body.attachments) ? body.attachments : [];
@@ -4411,6 +4484,8 @@ async function createSession(
           await runAgent(
             text,
             async () => {
+              // The review box's Feedback: revise read-only, like Ken's feedback.
+              if (meta?.planRevision === true) await reenterPlanModeForRevision();
               if (attachments.length > 0) {
                 // Persist each attachment under .gg/uploads so files are inspectable
                 // by the agent's tools, then prompt with the media as native blocks.
@@ -4468,6 +4543,8 @@ async function createSession(
           if (claimedStart) {
             scheduledRunActive = false;
             runClaim.release();
+            // The claim held the plan back until the turn fully settled.
+            offerPendingPlan();
           }
         });
       return;
@@ -5115,7 +5192,7 @@ async function createSession(
           json(res, 400, { error: "invalid JSON body" });
           return;
         }
-        if (running) {
+        if (running || runClaim.active) {
           json(res, 409, { error: "cannot accept a plan while the agent is running" });
           return;
         }

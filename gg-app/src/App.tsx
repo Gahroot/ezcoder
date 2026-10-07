@@ -38,6 +38,7 @@ import {
   switchKenModel,
   listCommands,
   cancelQueued,
+  type PromptMeta,
   type QueuedMessage,
   listHistory,
   exportTranscriptName,
@@ -627,6 +628,9 @@ function App(): React.ReactElement {
   const [doneStatus, setDoneStatus] = useState<string | null>(null);
   // Pending plan awaiting review (the markdown). Non-null opens the review modal.
   const [planReview, setPlanReview] = useState<string | null>(null);
+  // Bumped to remount the plan-review box (fresh, undecided) after a refused
+  // Accept so the user can decide again.
+  const [planReviewAttempt, setPlanReviewAttempt] = useState(0);
   // Path of the plan awaiting review, captured from `plan_exit`. Needed on accept
   // to bake the plan's `## Steps` into the agent's system prompt so it emits
   // `[DONE:n]` progress markers (drives the activity bar's Plan Steps widget).
@@ -2934,19 +2938,38 @@ function App(): React.ReactElement {
   // ── Plan review actions (mirror the ggcoder CLI plan overlay) ──
   // Each closes the modal, drops a critter decision row, and drives the agent with
   // the corresponding instruction via the existing prompt path.
-  function runPlanPrompt(prompt: string, decision: PlanDecision): void {
+  //
+  // The decision is always sent: the box only opens once the sidecar says the
+  // plan is the user's, and a prompt landing during a run queues server-side.
+  // (This used to bail silently on a stale `running` value, closing the box
+  // and leaving the plan in limbo.)
+  function runPlanPrompt(prompt: string, decision: PlanDecision, meta?: PromptMeta): void {
     setPlanReview(null);
-    if (!readyRef.current || running) return;
     pushItem({ kind: "plan_decision", id: nextId(), decision });
     endStreamingText();
-    void sendPrompt(prompt);
+    void sendPrompt(prompt, [], meta).catch((error: unknown) => {
+      reportPlanDecisionFailure("Your plan decision wasn't sent", error);
+    });
+  }
+
+  function reportPlanDecisionFailure(headline: string, error: unknown): void {
+    pushItem({
+      kind: "error",
+      id: nextId(),
+      ...readChatError({
+        headline,
+        message: error instanceof Error ? error.message : String(error),
+        guidance: "The plan is still waiting. Decide again once the agent is ready.",
+      }),
+    });
   }
 
   async function acceptPlan(): Promise<void> {
     // Capture the approved plan's step count BEFORE the IPC — accepting starts a
     // fresh session on the sidecar, whose session_reset broadcast nulls
     // planReview (and clears the transcript + counters) here.
-    const nextPlanTotal = planReview ? countPlanSteps(planReview) : 0;
+    const reviewed = planReview;
+    const nextPlanTotal = reviewed ? countPlanSteps(reviewed) : 0;
     // Stash a fallback for older sidecars. The current sidecar puts its canonical
     // live-file count directly on session_reset, which wins over this snapshot.
     pendingPlanTotalRef.current = nextPlanTotal;
@@ -2955,7 +2978,18 @@ function App(): React.ReactElement {
     // approved plan into the new system prompt, and broadcasts authoritative
     // progress before this request resolves. Do not re-seed from stale modal
     // content after the await: the plan file may already have changed.
-    await acceptPlanIPC(planReviewPathRef.current);
+    try {
+      await acceptPlanIPC(planReviewPathRef.current);
+    } catch (error) {
+      // Refused (a run still finishing) or failed: sending "implement it now"
+      // would run in the planning session without the approved plan. Say so
+      // and re-open the box so Accept can be retried.
+      pendingPlanTotalRef.current = null;
+      reportPlanDecisionFailure("The plan couldn't be accepted", error);
+      setPlanReview(reviewed);
+      setPlanReviewAttempt((attempt) => attempt + 1);
+      return;
+    }
     runPlanPrompt(
       "The plan has been approved. Implement it now, following each step in order.",
       "accepted",
@@ -2967,6 +3001,7 @@ function App(): React.ReactElement {
       `The plan was not approved. Feedback from the user:\n\n${feedback}\n\n` +
         "Revise the plan based on this feedback, then call exit_plan again for review.",
       "feedback",
+      { planRevision: true },
     );
   }
 
@@ -3955,6 +3990,7 @@ function App(): React.ReactElement {
 
       {workspaceMode === "code" && planReview !== null && (
         <PlanReviewModal
+          key={planReviewAttempt}
           content={planReview}
           // Autopilot Ken reviews submitted plans himself; the indicator tells
           // the user, but manual Accept/Reject stays live and always wins.
