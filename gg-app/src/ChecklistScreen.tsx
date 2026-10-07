@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { ClockClockwiseIcon, ListChecksIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import {
+  CheckCircleIcon,
+  CircleIcon,
+  ClockClockwiseIcon,
+  HourglassIcon,
+  ListChecksIcon,
+  MinusCircleIcon,
+  WarningCircleIcon,
+} from "@phosphor-icons/react";
 import type { ChecklistEntry, ChecklistSnapshot } from "./agent";
 import { SettingsTabBar, type SettingsTab } from "./SettingsTabBar";
 import "./ChecklistScreen.css";
@@ -28,6 +36,15 @@ const TABS: readonly SettingsTab<Filter>[] = [
   { id: "review", label: "Needs review", icon: ClockClockwiseIcon },
   { id: "findings", label: "Findings", icon: WarningCircleIcon },
 ];
+const STATUS_ICONS = {
+  "not-run": CircleIcon,
+  "not-applicable": MinusCircleIcon,
+  due: ClockClockwiseIcon,
+  passed: CheckCircleIcon,
+  "needs-work": WarningCircleIcon,
+  checking: HourglassIcon,
+};
+
 function checkedDate(value: string): string {
   return new Date(value).toLocaleDateString("en-GB", {
     day: "numeric",
@@ -140,8 +157,10 @@ export function ChecklistScreen({
                     {items.map((item) => {
                       const checking = activeId === item.id;
                       const message = notice?.id === item.id ? notice.message : null;
+                      const state = checking ? "checking" : message ? "needs-work" : item.status;
+                      const StatusIcon = STATUS_ICONS[state];
                       return (
-                        <div className="checklist-entry" key={item.id}>
+                        <div className="checklist-entry" data-state={state} key={item.id}>
                           <div className="checklist-entry-row">
                             <div
                               className="checklist-entry-info"
@@ -151,12 +170,17 @@ export function ChecklistScreen({
                               title={item.description}
                               onPointerDown={(event) => event.currentTarget.blur()}
                             >
-                              <span className="checklist-entry-title">{item.title}</span>{" "}
-                              <span
-                                className={`checklist-entry-status${item.result === "issues" || item.status === "due" ? " checklist-entry-attention" : ""}`}
-                                aria-live="polite"
-                              >
-                                {checking ? "Checking…" : (message ?? statusText(item))}
+                              <StatusIcon
+                                className="checklist-entry-icon"
+                                size={24}
+                                weight={state === "passed" ? "fill" : "regular"}
+                                aria-hidden="true"
+                              />
+                              <span className="checklist-entry-copy">
+                                <span className="checklist-entry-title">{item.title}</span>{" "}
+                                <span className="checklist-entry-status" aria-live="polite">
+                                  {checking ? "Checking…" : (message ?? statusText(item))}
+                                </span>
                               </span>
                             </div>
                             <button
