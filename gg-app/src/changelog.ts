@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.82.3",
+    date: "2026-10-07",
+    items: [
+      "Your workspace just got a smoother rhythm. I cleaned up the jumps when you hit `Send`, open details or close menus and dialogs, and coming back from `Checklist` no longer replays the chat you've already read. Less motion in your way, more flow.",
+      "See your project's health at a glance. I gave `Checklist` clearer colors and distinct icons, so you can spot what's passed, what's due and what needs attention without reading every line.",
+    ],
+  },
+  {
     version: "0.82.2",
     date: "2026-10-07",
     items: [
