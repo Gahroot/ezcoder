@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.82.4",
+    date: "2026-10-07",
+    items: [
+      "Plans never get stuck in limbo again. Whether `Autopilot` approves, hands a plan back to you or hits a snag, the `Accept` box now shows up the moment the plan is truly yours, and it even comes back after a reload. If an accept can't go through, I tell you why and let you try again instead of silently doing nothing.",
+      "Planning got sharper and safer. If your agent drafts a plan but forgets to submit it, I nudge it to finish the job, and when you or Ken send feedback it revises in `read-only` mode, so no code gets touched until you approve.",
+    ],
+  },
+  {
     version: "0.82.3",
     date: "2026-10-07",
     items: [
