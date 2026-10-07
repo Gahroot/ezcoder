@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.74.3
+
+### Patch Changes
+
+- Fix plans getting stuck awaiting approval: the desktop review box now opens once a submitted plan is genuinely waiting on the user (including after autopilot hands it back, errors, or is skipped, and on reconnect), a run that stops mid-plan is reminded to submit, plan revisions run in read-only plan mode, and accepting a plan waits for background compaction.
+  - @kenkaiiii/gg-ai@5.74.3
+  - @kenkaiiii/gg-agent@5.74.3
+  - @kenkaiiii/gg-core@5.74.3
+
 ## 5.74.2
 
 ### Patch Changes
