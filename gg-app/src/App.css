@@ -2368,15 +2368,27 @@ select {
 }
 
 /* ── Exits (View Transitions) ──
-   Each exiting surface carries its own transition name so its snapshot can
-   shrink away on its own while the rest of the window crossfades. Names must
-   be unique among rendered elements; only one modal and one dropdown are ever
-   open, and a clash just skips the animation (the UI still updates). */
+   Menus use unique local snapshots, never a conversation/root crossfade.
+   Dialogs retain their existing named dismissal snapshot. */
 .modal {
   view-transition-name: gg-modal;
 }
-.dropdown-menu {
-  view-transition-name: gg-dropdown;
+/* Only an exiting menu participates. The retained DOM is inert until the
+   browser captures it; the rest of its lifetime is a noninteractive snapshot. */
+.floating-surface {
+  display: contents;
+}
+.floating-surface[data-exiting] > * {
+  view-transition-name: var(--floating-name);
+  view-transition-class: gg-floating;
+  pointer-events: none;
+}
+:root[data-local-transitions],
+:root[data-local-transitions] .modal {
+  view-transition-name: none;
+}
+::view-transition {
+  pointer-events: none;
 }
 @keyframes surface-out {
   to {
@@ -2384,9 +2396,8 @@ select {
     transform: translateY(var(--exit-y, 4px)) scale(0.97);
   }
 }
-/* The root crossfade is what screen changes (home, picker, workspace) use.
-   When only a modal or dropdown closes, old and new root are identical, so
-   it runs but is invisible. */
+/* Screen changes (home, picker, workspace) use the root crossfade.
+   Local menu exits explicitly exclude the root above. */
 ::view-transition-group(root),
 ::view-transition-old(root),
 ::view-transition-new(root) {
@@ -2394,20 +2405,20 @@ select {
   animation-timing-function: var(--ease-out);
 }
 ::view-transition-old(gg-modal),
-::view-transition-old(gg-dropdown) {
+::view-transition-old(*.gg-floating) {
   animation: surface-out var(--dur-exit) var(--ease-in) both;
 }
-::view-transition-old(gg-dropdown) {
+::view-transition-old(*.gg-floating) {
   --exit-y: -4px;
 }
 /* Surfaces that close have no "new" state; anything unexpected there should
    appear instantly rather than morph. */
 ::view-transition-new(gg-modal),
-::view-transition-new(gg-dropdown) {
+::view-transition-new(*.gg-floating) {
   animation: none;
 }
 ::view-transition-group(gg-modal),
-::view-transition-group(gg-dropdown) {
+::view-transition-group(*.gg-floating) {
   animation-duration: var(--dur-exit);
 }
 
@@ -3842,33 +3853,8 @@ select {
    position. Plain rows render fine even in long sessions, so it's not worth the
    jank — leave it off. */
 
-/* ── Live transcript rows: one entrance ──
-   Only rows that arrive after the session hydrated get `.row-enter` (see
-   TranscriptRow), so restored history never replays. Every row dissolves in,
-   the same blur-to-sharp language as the streamed words and the plan pane: a
-   plain rise + fade was already 69% opaque on its first painted frame and read
-   as a pop next to them. Your own message rises from the composer below it;
-   replies, notices and cards settle in with less travel so a burst of rows
-   reads as calm, not bouncy. `backwards` so no filter or transform lingers
-   (either would re-parent fixed-position children). */
-@keyframes row-rise {
-  from {
-    opacity: 0;
-    filter: blur(8px);
-    transform: translateY(var(--row-y, 6px));
-  }
-}
-.row-enter {
-  animation: row-rise var(--dur-dissolve) var(--ease-out) backwards;
-}
-.row-enter[data-kind="user"] {
-  --row-y: 14px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .row-enter {
-    animation-name: fade-in;
-  }
-}
+/* Live entrances are consumed and owned by transcript-motion.ts.
+   Opacity only: Activity reactivation never replays a permanent CSS class. */
 
 .transcript::-webkit-scrollbar {
   width: var(--scrollbar);
@@ -4374,18 +4360,23 @@ select {
   white-space: normal;
 }
 
-/* Streaming word reveal: each newly-arrived word mounts with a short
-   blur-to-sharp fade, which hides the moment a batch of tokens landed. The
-   spans exist ONLY while a row is streaming (see Markdown.tsx `animate`), so
-   finished prose keeps its plain DOM.
-   Plain inline (WebKit blurs inline boxes): the spans must not change where
+/* Streaming word reveal: opacity softens token batches without blurring
+   reading text. The spans exist ONLY while a row is streaming (see Markdown.tsx
+   `animate`), so finished prose keeps its plain DOM.
+   Plain inline: the spans must not change where
    lines break, because they come off when a block finishes. As inline-blocks
    they did: no break inside "newest-first", a break allowed between "ms" and
    ";", so every paragraph re-wrapped the instant it finished. That jump was
    the flicker. */
 .markdown .md-word {
-  animation: md-word-in var(--dur-row) var(--ease-out) both;
+  animation: md-word-fade var(--dur-row) var(--ease-out) both;
 }
+@keyframes md-word-fade {
+  from {
+    opacity: 0;
+  }
+}
+/* The unrelated local activity-label dissolve retains its existing treatment. */
 @keyframes md-word-in {
   from {
     opacity: 0;
@@ -6343,7 +6334,7 @@ select {
   gap: var(--space-4);
   white-space: nowrap;
 }
-/* Reuse streaming text's dissolve without replaying on timer updates. */
+/* Local activity-label dissolve without replaying on timer updates. */
 .activity-label-reveal {
   display: inline-block;
   min-width: 0;
@@ -9705,7 +9696,6 @@ select {
    Note the wording: these land at the next TURN boundary, not after the run. */
 .queued-bar {
   border: 1px solid;
-  /* Pill-round, matching the composer shell it sits inside. */
   border-radius: var(--radius-pill);
   padding: var(--space-3) var(--space-6);
   margin-bottom: var(--space-3);
@@ -9715,6 +9705,16 @@ select {
      alongside opacity means the composer is pushed smoothly rather than
      jumping the moment a message queues. */
   animation: ggqueuedin var(--dur-strip-in) var(--ease-out);
+}
+/* Chat queue insertion joins App's layout transaction. Its final space lands
+   once; an independent max-height entrance would fight transcript following.
+   Other strips sharing the generic queued styles keep their existing motion. */
+/* A fixed composer corner keeps expanded-list controls inside the pointer clip. */
+.chat-queue {
+  border-radius: var(--radius-input);
+}
+.chat-queue:not(.leaving) {
+  animation: fade-in var(--dur-row) var(--ease-out);
 }
 /* Exit: reverse, and collapse the box so the composer glides back down instead
    of snapping. Held on screen for EXIT_MS by QueuedBar before it unmounts. */
@@ -9816,6 +9816,10 @@ select {
 .queued-cancel:hover {
   color: var(--error);
 }
+.queued-list-shell {
+  display: flow-root;
+  overflow: hidden;
+}
 .queued-list {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
@@ -9823,56 +9827,32 @@ select {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  animation: ggqueuedlist 200ms var(--ease-out);
+  animation: fade-in var(--dur-row) var(--ease-out) both;
 }
-@keyframes ggqueuedlist {
+.queued-list.leaving {
+  animation: queued-list-out var(--dur-row) var(--ease-in) both;
+}
+@keyframes queued-list-out {
   from {
-    opacity: 0;
-    max-height: 0;
-    margin-top: 0;
-    padding-top: 0;
+    opacity: 1;
   }
   to {
-    opacity: 1;
-    max-height: 180px;
-    margin-top: var(--space-3);
-    padding-top: var(--space-3);
+    opacity: 0;
   }
 }
-/* Rows fade in with a short stagger so the list reads as unfolding rather than
-   appearing all at once. Capped at 4 — beyond that the wait to see the last row
-   would be more annoying than the effect is pleasant. */
+/* The measured shell owns disclosure motion; rows do not compete with it. */
 .queued-list-item {
   display: flex;
   align-items: center;
   gap: var(--space-4);
   min-width: 0;
-  animation: ggqueuedrow 220ms var(--ease-out) backwards;
-}
-.queued-list-item:nth-child(2) {
-  animation-delay: 40ms;
-}
-.queued-list-item:nth-child(3) {
-  animation-delay: 80ms;
-}
-.queued-list-item:nth-child(n + 4) {
-  animation-delay: 120ms;
-}
-@keyframes ggqueuedrow {
-  from {
-    opacity: 0;
-    transform: translateX(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 /* Respect reduced-motion: keep the state changes, drop the movement. */
 @media (prefers-reduced-motion: reduce) {
   .queued-bar,
   .queued-bar.leaving,
   .queued-list,
+  .queued-list.leaving,
   .queued-list-item,
   .user-msg.promoted,
   .queued-pill {

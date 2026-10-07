@@ -9,6 +9,7 @@ import {
   memo,
 } from "react";
 import { flushSync } from "react-dom";
+import { createChatLayoutMotion } from "./chat-layout-motion";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
@@ -89,7 +90,12 @@ import { ActivityBar } from "./ActivityBar";
 import { autosizeComposer } from "./composer-autosize";
 import { pinAfterScroll, pinAfterWheel } from "./transcript-pin";
 import { earlierStartId, windowStartIndex } from "./transcript-window";
-import { dissolveInAbove, teleport } from "./transcript-motion";
+import {
+  createEntranceLifetime,
+  enterTranscriptRow,
+  dissolveInAbove,
+  teleport,
+} from "./transcript-motion";
 import { TranscriptJumpControls } from "./TranscriptJumpControls";
 import { createLiveTextStore, LiveTextContext, useLiveText } from "./live-text";
 import { StreamingMarkdown } from "./StreamingMarkdown";
@@ -105,6 +111,7 @@ import { CritterFloor, type CritterGroup } from "./CritterFloor";
 import { CompactionNotice } from "./CompactionNotice";
 import { ModelSelect, loadModelsInto } from "./ModelSelect";
 import { SlashMenu } from "./SlashMenu";
+import { FloatingSurface } from "./FloatingSurface";
 import { QueuedBar } from "./QueuedBar";
 import { ScheduleHint } from "./ScheduleHint";
 import { RunningSchedulesButton } from "./RunningSchedulesButton";
@@ -542,7 +549,7 @@ function App(): React.ReactElement {
   const [queuedCount, setQueuedCount] = useState(0);
   // Pending queued messages, so each can be cancelled individually. Kept
   // alongside the count because the sidecar is the source of truth for both.
-  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
+  const [queuedMessages, updateQueuedMessages] = useState<QueuedMessage[]>([]);
   const [state, setState] = useState<AgentState | null>(null);
   // Transient "KEN IS ON"/"KEN IS OFF" takeover banner shown when Autopilot
   // is toggled. Null = not showing; the banner clears itself via `onDone`
@@ -590,7 +597,32 @@ function App(): React.ReactElement {
     });
   }, [cancelling]);
   const [status, setStatus] = useState("connecting to agent\u2026");
-  const [liveToolFeed, setLiveToolFeed] = useState<LiveToolEntry[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const liveRegionRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const chatLayout = useMemo(
+    () =>
+      createChatLayoutMotion(() => ({
+        transcript: scrollRef.current,
+        surfaces: [liveRegionRef.current, composerRef.current],
+      })),
+    [],
+  );
+  const [liveToolFeed, updateLiveToolFeed] = useState<LiveToolEntry[]>([]);
+  const setLiveToolFeed = useCallback(
+    (update: Parameters<typeof updateLiveToolFeed>[0]) => {
+      chatLayout.capture();
+      updateLiveToolFeed(update);
+    },
+    [chatLayout],
+  );
+  const setQueuedMessages = useCallback(
+    (update: Parameters<typeof updateQueuedMessages>[0]) => {
+      chatLayout.capture();
+      updateQueuedMessages(update);
+    },
+    [chatLayout],
+  );
   const [tokens, setTokens] = useState(0);
   const [doneStatus, setDoneStatus] = useState<string | null>(null);
   // Pending plan awaiting review (the markdown). Non-null opens the review modal.
@@ -654,6 +686,9 @@ function App(): React.ReactElement {
   const [showTasks, setShowTasks] = useState(false);
   // Checklist is a workspace view; the mounted chat keeps its draft and history.
   const [showChecklist, setShowChecklist] = useState(false);
+  // Activity can reconnect memoized effects before external-store subscriptions.
+  // A fresh view identity forces rows to read the latest hidden stream first.
+  const chatView = useMemo(() => ({ visible: !showChecklist }), [showChecklist]);
   const [checklistLoad, setChecklistLoad] = useState<ChecklistLoad>({ kind: "loading" });
   const [checklistRunId, setChecklistRunId] = useState<string | null>(null);
   const [checklistNotice, setChecklistNotice] = useState<ChecklistNotice | null>(null);
@@ -715,14 +750,18 @@ function App(): React.ReactElement {
       return false;
     }
   });
-  const setToolsHiddenPersisted = useCallback((hidden: boolean) => {
-    try {
-      localStorage.setItem("gg-tools-hidden", hidden ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-    setToolsHidden(hidden);
-  }, []);
+  const setToolsHiddenPersisted = useCallback(
+    (hidden: boolean) => {
+      try {
+        localStorage.setItem("gg-tools-hidden", hidden ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      chatLayout.capture();
+      setToolsHidden(hidden);
+    },
+    [chatLayout],
+  );
   const toggleTools = useCallback(
     () => setToolsHiddenPersisted(!toolsHidden),
     [toolsHidden, setToolsHiddenPersisted],
@@ -904,6 +943,13 @@ function App(): React.ReactElement {
   // lands instantly and only rows that arrive live afterwards rise into place.
   // Infinity while hydrating: nothing animates until the history is settled.
   const [liveFromId, setLiveFromId] = useState(Number.POSITIVE_INFINITY);
+  const entrances = useMemo(() => createEntranceLifetime(liveFromId), [liveFromId]);
+  // Children consume before playback. This parent effect also settles messages
+  // received while Activity is hidden, when their own effects cannot run.
+  useLayoutEffect(() => {
+    const last = items[items.length - 1];
+    if (last) entrances.settle(last.id);
+  }, [entrances, items, showChecklist]);
 
   const readyRef = useRef(false);
   // Bumped by every hydrate. Lets work that outlives a hydrate (a project
@@ -913,7 +959,6 @@ function App(): React.ReactElement {
   // re-capture state). Lets turn_end pick the right context-token formula by
   // provider without re-subscribing the SSE listener on every state change.
   const stateRef = useRef<AgentState | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // NOTE: the build-session event machine's private refs (streaming bubble id,
   // rAF buffer, per-run accumulators, sub-agent / compaction group ids) now live
@@ -935,13 +980,14 @@ function App(): React.ReactElement {
   // and grow the content after this fires, so it's also called from each image's
   // onLoad to keep the newest content visible.
   const scrollToBottom = useCallback(() => {
+    chatLayout.settle();
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight });
     // A reader's scroll landing in this same frame shares one scroll event with
     // this jump; measuring it from the pre-jump offset would read up as down.
     lastScrollTopRef.current = el.scrollTop;
-  }, []);
+  }, [chatLayout]);
 
   // Same as scrollToBottom, but a no-op while the user has scrolled up to read.
   const maybeScrollToBottom = useCallback(() => {
@@ -1022,6 +1068,7 @@ function App(): React.ReactElement {
   const onTranscriptScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    if (el.scrollTop !== lastScrollTopRef.current) chatLayout.cancel();
     stickToBottomRef.current = pinAfterScroll(
       stickToBottomRef.current,
       lastScrollTopRef.current,
@@ -1029,11 +1076,12 @@ function App(): React.ReactElement {
     );
     lastScrollTopRef.current = el.scrollTop;
     syncReaderPosition(el);
-  }, [syncReaderPosition]);
+  }, [syncReaderPosition, chatLayout]);
   const onTranscriptWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
       const el = scrollRef.current;
       if (!el) return;
+      chatLayout.cancel();
       stickToBottomRef.current = pinAfterWheel(stickToBottomRef.current, e, el);
       // A chat whose newest page fits on screen can't scroll, so no scroll event
       // will ever ask for older turns: a wheel up is the request.
@@ -1042,7 +1090,7 @@ function App(): React.ReactElement {
         syncReaderPosition(el);
       }
     },
-    [syncReaderPosition],
+    [syncReaderPosition, chatLayout],
   );
 
   // Older turns just mounted above: put the reader's row back where it was
@@ -1270,11 +1318,13 @@ function App(): React.ReactElement {
       transcriptRoRef.current?.disconnect();
       transcriptRoRef.current = null;
       if (!el || typeof ResizeObserver === "undefined") return;
-      const ro = new ResizeObserver(() => maybeScrollToBottom());
+      const ro = new ResizeObserver(() => {
+        if (chatLayout.resized()) maybeScrollToBottom();
+      });
       ro.observe(el);
       transcriptRoRef.current = ro;
     },
-    [maybeScrollToBottom],
+    [maybeScrollToBottom, chatLayout],
   );
 
   // Settle the scroll position after a session hydrates. The single layout-effect
@@ -1440,8 +1490,9 @@ function App(): React.ReactElement {
   // intact across the measurement (see composer-autosize.ts for why both
   // halves matter).
   const autosizeInput = useCallback(() => {
+    chatLayout.settle();
     autosizeComposer(inputRef.current, scrollRef.current, stickToBottomRef.current);
-  }, []);
+  }, [chatLayout]);
 
   // useLayoutEffect (not useEffect) so the height is recomputed BEFORE the
   // browser paints. This matters most when the enhance animation tears down and
@@ -1455,6 +1506,19 @@ function App(): React.ReactElement {
   useLayoutEffect(() => {
     autosizeInput();
   }, [input, enhanceAnim, autosizeInput]);
+
+  // History anchoring and autosizing have landed. Commit the final scroll
+  // position before paint; only the displayed positions move, never scrollTop.
+  useLayoutEffect(() => {
+    if (showChecklist || needsProject) {
+      chatLayout.cancel();
+      return;
+    }
+    if (chatLayout.commit(stickToBottomRef.current, scrollToBottom) && scrollRef.current) {
+      lastScrollTopRef.current = scrollRef.current.scrollTop;
+    }
+  });
+  useLayoutEffect(() => () => chatLayout.cancel(), [chatLayout, hydrateNonce]);
 
   // The height is only recomputed when `input` changes, so anything else that
   // re-wraps the draft leaves it stale until the next keystroke — the input
@@ -2266,6 +2330,7 @@ function App(): React.ReactElement {
     // hint that the directory you just chose went nowhere.
     const disposition = submitDisposition(trimmed, readyRef.current, running);
     if (disposition === "ignore") return false;
+    chatLayout.capture();
     // A send that supersedes an open question is consumed the moment it lands
     // (the sidecar releases the parked call), so it must not wear the queued
     // look for the one frame before that, nor open the queued strip below the
@@ -2665,6 +2730,7 @@ function App(): React.ReactElement {
     // submitText() must not consume the answer.
     const typed = typingAskRef.current;
     if (typed && trimmed) {
+      chatLayout.capture();
       typingAskRef.current = null;
       setInput("");
       setSlashIndex(0);
@@ -2680,6 +2746,7 @@ function App(): React.ReactElement {
     if (isScheduleDraft(input)) {
       const result = parseScheduleCommand(input);
       if (!result.ok) return;
+      chatLayout.capture();
       addSchedule(result.value);
       // Confirm in the transcript, otherwise pressing Enter looks like it did
       // nothing: the first run is a whole interval away, so there is no other
@@ -2709,6 +2776,7 @@ function App(): React.ReactElement {
       }
       const question = trimmed.slice(kenMatch[0].length).trim();
       if (!question) return;
+      chatLayout.capture();
       recordHistory(trimmed);
       stickToBottomRef.current = true;
       const kenBubbleId = nextId();
@@ -2729,6 +2797,7 @@ function App(): React.ReactElement {
       return;
     }
 
+    chatLayout.capture();
     recordHistory(trimmed);
     // Read BEFORE the dismissal clears the band: a prompt that supersedes a
     // question is consumed as soon as it lands, so it must neither flash the
@@ -2940,7 +3009,8 @@ function App(): React.ReactElement {
     setChecklistLoad({ kind: "loading" });
     stickToBottomRef.current = true;
     setItems([]);
-    setLiveToolFeed([]);
+    // A new project has no previous layout to carry into a transaction.
+    updateLiveToolFeed([]);
     setState(null);
     setTasks([]);
     setContextTokens(0);
@@ -2959,7 +3029,7 @@ function App(): React.ReactElement {
     setAttachmentsLoading(false);
     setAttachments([]);
     setQueuedCount(0);
-    setQueuedMessages([]);
+    updateQueuedMessages([]);
     setHydrated(false);
     setNeedsProject(false);
     setHydrateNonce((n) => n + 1);
@@ -3342,7 +3412,9 @@ function App(): React.ReactElement {
                         <TranscriptRow
                           key={it.id}
                           item={it}
+                          view={chatView}
                           animateIn={it.id >= liveFromId}
+                          consumeEntrance={entrances.consume}
                           kenTalking={it.id === talkingKenId}
                           errorActive={it.id === currentErrorId}
                           errorCritterId={errorCritters.get(it.id)}
@@ -3419,7 +3491,7 @@ function App(): React.ReactElement {
         {/* Sub-agents walk on top of the pinned region as critters; the lane
           opens (pushing the chat up) only while one is out. */}
         <CritterFloor groups={critterGroups} />
-        <div className="liveregion">
+        <div ref={liveRegionRef} className="liveregion">
           {/* Motion's starting points sit just above the activity bar and go away
             once the conversation has its first message. */}
           {workspaceMode === "motion" && hydrated && items.length === 0 && !running && (
@@ -3458,32 +3530,36 @@ function App(): React.ReactElement {
         </div>
 
         <div
+          ref={composerRef}
           className={`inputwrap${isFileDragOver ? " dragover" : ""}${
             scheduleInvalid ? " schedule-invalid" : ""
           }`}
         >
           <WorkingBeam active={running || kenRunning || autopilotReviewing} />
-          {scheduleDraft ? (
+          {scheduleDraft && (
             <ScheduleHint input={input} caret={caret} onPickInterval={fillScheduleInterval} />
-          ) : (
-            slashOpen && (
+          )}
+          <FloatingSurface>
+            {!scheduleDraft && slashOpen && (
               <SlashMenu
                 commands={slashMatches}
                 activeIndex={clampedSlashIndex}
                 onSelect={pickSlashCommand}
                 onHover={setSlashIndex}
               />
-            )
-          )}
-          {mentionOpen && (
-            <FileMentionMenu
-              files={fileMatches}
-              activeIndex={clampedFileIndex}
-              isRecent={mention?.query === ""}
-              onSelect={pickMentionFile}
-              onHover={setFileIndex}
-            />
-          )}
+            )}
+          </FloatingSurface>
+          <FloatingSurface>
+            {mentionOpen && (
+              <FileMentionMenu
+                files={fileMatches}
+                activeIndex={clampedFileIndex}
+                isRecent={mention?.query === ""}
+                onSelect={pickMentionFile}
+                onHover={setFileIndex}
+              />
+            )}
+          </FloatingSurface>
           <AttachmentBar
             attachments={attachments}
             onRemove={removeAttachment}
@@ -3710,13 +3786,9 @@ function App(): React.ReactElement {
                 </span>
               ) : (
                 <span className="footer-left footer-reveal">
-                  {runningTaskCount > 0 && <BackgroundTasksButton tasks={tasks} />}
-                  {schedules.length > 0 && (
-                    <>
-                      {runningTaskCount > 0 && <FooterSep />}
-                      <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
-                    </>
-                  )}
+                  <BackgroundTasksButton tasks={tasks} />
+                  {schedules.length > 0 && runningTaskCount > 0 && <FooterSep />}
+                  <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
                   {state?.planMode && (
                     <>
                       {(runningTaskCount > 0 || schedules.length > 0) && <FooterSep />}
@@ -4017,7 +4089,9 @@ function KenReply({
 // `item` actually changed and the rest bail out.
 const TranscriptRow = memo(function TranscriptRow({
   item,
+  view,
   animateIn = false,
+  consumeEntrance,
   kenTalking = false,
   errorActive = false,
   errorCritterId,
@@ -4027,8 +4101,10 @@ const TranscriptRow = memo(function TranscriptRow({
   onAskType,
 }: {
   item: Item;
-  /** Arrived live (not restored from history): rise into place once. */
+  view: { readonly visible: boolean };
+  /** Live rows keep their wrapper, but consume entrance eligibility once. */
   animateIn?: boolean;
+  consumeEntrance: (id: number) => boolean;
   /** This is the Ken reply currently streaming in, so his face talks. */
   kenTalking?: boolean;
   errorActive?: boolean;
@@ -4042,6 +4118,20 @@ const TranscriptRow = memo(function TranscriptRow({
   ) => void;
   onAskType?: (itemId: number, promptId: string, questionId: string, seed?: string) => void;
 }): React.ReactElement | null {
+  const entranceRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!view.visible || !animateIn) return;
+    const el = entranceRef.current;
+    if (!consumeEntrance(item.id)) {
+      // Also covers rows first mounted while Activity was hidden: their word
+      // effects have no earlier cleanup from which to recognize a reactivation.
+      for (const word of el?.querySelectorAll(".md-word") ?? []) {
+        for (const animation of word.getAnimations?.() ?? []) animation.cancel();
+      }
+      return;
+    }
+    if (el) return enterTranscriptRow(el);
+  }, [animateIn, consumeEntrance, item.id, view]);
   const row = (
     <TranscriptRowBody
       item={item}
@@ -4055,11 +4145,9 @@ const TranscriptRow = memo(function TranscriptRow({
     />
   );
   if (!animateIn) return row;
-  // One wrapper per live row carries the entrance so none of the ~20 row
-  // shapes below needs to know about it. `data-kind` picks the direction:
-  // your own message rises from the composer, everything else settles in.
+  // Keep a stable direct child for transcript anchoring after playback ends.
   return (
-    <div className="row-enter" data-kind={item.kind}>
+    <div ref={entranceRef} data-kind={item.kind}>
       {row}
     </div>
   );
