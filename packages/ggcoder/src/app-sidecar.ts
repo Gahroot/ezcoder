@@ -73,8 +73,9 @@ import {
 } from "./core/model-registry.js";
 import { resolveStartOrFallback } from "./core/resolve-start.js";
 import { getGitBranch, getGitDirtyFileCount, isGitRepo } from "./utils/git.js";
-import { getGitHubOpenCounts, getGitHubRepoSlug } from "./utils/github.js";
-import { startGitHubCIPoll, type GitHubCI } from "./utils/github-ci.js";
+import { getGitHubRepoSlug } from "./utils/github.js";
+import type { GitHubCI } from "./utils/github-ci.js";
+import { type RepoPolls, createRepoPolls } from "./app-sidecar/repo-polls.js";
 import { extractPlanSteps } from "./utils/plan-steps.js";
 import { getSupportedThinkingLevels, isThinkingLevelSupported } from "./core/thinking-level.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
@@ -259,6 +260,10 @@ async function main(): Promise<void> {
 
   const { subscriptionUsage } = createUsageService(auth);
 
+  // git status / GitHub counts / CI pollers, one per repo however many windows
+  // have it open (each window used to run its own).
+  const repoPolls = createRepoPolls();
+
   /** Resolve the target session id: the `x-gg-session` header, else a
    *  `?session=` query param (used by the SSE /events connection). */
   function sessionIdFromReq(req: http.IncomingMessage, url: string): string | null {
@@ -329,6 +334,7 @@ async function main(): Promise<void> {
               jiwaStore,
               broadcastAll,
               oauthInFlightProviders,
+              repoPolls,
             },
             { id, mode, chatAgent, cwd: sessionCwd, sessionPath },
           );
@@ -510,6 +516,8 @@ async function createSession(
      * because a login writes the shared auth file — see `/auth/oauth/start`.
      */
     oauthInFlightProviders: Set<string>;
+    /** Daemon-wide repo pollers shared by windows on the same repo. */
+    repoPolls: RepoPolls;
   },
   opts: {
     id: string;
@@ -519,7 +527,15 @@ async function createSession(
     sessionPath?: string;
   },
 ): Promise<SessionContext> {
-  const { auth, progress, memoryStore, jiwaStore, broadcastAll, oauthInFlightProviders } = deps;
+  const {
+    auth,
+    progress,
+    memoryStore,
+    jiwaStore,
+    broadcastAll,
+    oauthInFlightProviders,
+    repoPolls,
+  } = deps;
   const paths = deps.paths;
   const mode = opts.mode;
   let chatAgent = opts.chatAgent;
@@ -999,19 +1015,6 @@ async function createSession(
         error: err instanceof Error ? err.message : String(err),
       });
     });
-
-  // Refresh the GitHub counts and broadcast only on change. Transient failures
-  // keep the last-known numbers so the chips don't flicker off on a timeout.
-  async function refreshGitHubCounts(): Promise<void> {
-    if (!gitHubSlug) return;
-    const counts = await getGitHubOpenCounts(gitHubSlug);
-    if (!counts) return;
-    if (counts.issues !== gitHubIssues || counts.prs !== gitHubPRs) {
-      gitHubIssues = counts.issues;
-      gitHubPRs = counts.prs;
-      broadcast("extras", footerExtras());
-    }
-  }
 
   // tool_call_end carries no tool name (only the id), so remember each call's
   // name from tool_call_start to log a useful line on completion. Mirrors the
@@ -1622,8 +1625,8 @@ async function createSession(
       ]);
       // A run may have opened/closed issues or PRs — refresh fire-and-forget so
       // teardown isn't delayed by the network. Broadcasts itself on change.
-      void refreshGitHubCounts();
-      void ciPoll.refresh();
+      gitHubCountsPoll?.refresh();
+      ciPoll.refresh();
       // Serialize behind any marker/tool-triggered refresh so the terminal
       // progress snapshot uses the live plan file. Once every canonical step
       // is complete, remove the approved plan from future system prompts and
@@ -1977,43 +1980,28 @@ async function createSession(
   };
   scheduleTasksPoll(1500);
 
-  // Files can change outside the agent (editor saves, terminal commits), so keep
-  // the dirty count current while idle. Branch/repo state already refreshes after
-  // agent runs; polling only the count avoids spawning three git processes per tick.
-  let gitPoll: NodeJS.Timeout | undefined;
-  let gitPollStopped = false;
-  const scheduleGitPoll = (delay: number): void => {
-    if (gitPollStopped) return;
-    gitPoll = setTimeout(() => {
-      void getGitDirtyFileCount(cwd)
-        .catch(() => gitDirtyFileCount)
-        .then((nextDirtyFileCount) => {
-          if (gitPollStopped) return;
-          if (nextDirtyFileCount !== gitDirtyFileCount) {
-            gitDirtyFileCount = nextDirtyFileCount;
-            broadcast("extras", footerExtras());
-          }
-          scheduleGitPoll(5000);
-        });
-    }, delay);
-    gitPoll.unref?.();
-  };
-  scheduleGitPoll(5000);
-
-  // GitHub issue/PR counts change outside the app (web UI, teammates), so poll
-  // on a slow cadence. Network-bound, so keep it well under the search API's
-  // rate budget (2 calls per tick). No-op when the origin isn't a GitHub repo.
-  let gitHubPoll: NodeJS.Timeout | undefined;
-  let gitHubPollStopped = false;
-  const scheduleGitHubPoll = (delay: number): void => {
-    if (gitHubPollStopped) return;
-    gitHubPoll = setTimeout(() => {
-      void refreshGitHubCounts().finally(() => scheduleGitHubPoll(60_000));
-    }, delay);
-    gitHubPoll.unref?.();
-  };
-  scheduleGitHubPoll(2000);
-  const ciPoll = startGitHubCIPoll(cwd, (next) => {
+  // Keep the dirty count, GitHub issue/PR counts and CI current while idle
+  // (they change outside the agent: editor saves, commits, teammates). Branch/
+  // repo state already refreshes after agent runs. The pollers are shared with
+  // every other window on the same repo; each window broadcasts only changes.
+  const repoKey = path.resolve(cwd);
+  const dirtyFilesPoll = repoPolls.dirtyFiles.subscribe(repoKey, (next) => {
+    if (next === gitDirtyFileCount) return;
+    gitDirtyFileCount = next;
+    broadcast("extras", footerExtras());
+  });
+  // Failed checks publish nothing, so the chips keep their last-known numbers
+  // instead of flickering off on a timeout. None when origin isn't GitHub.
+  const gitHubCountsPoll = gitHubSlug
+    ? repoPolls.gitHubCounts.subscribe(gitHubSlug, (counts) => {
+        if (counts.issues === gitHubIssues && counts.prs === gitHubPRs) return;
+        gitHubIssues = counts.issues;
+        gitHubPRs = counts.prs;
+        broadcast("extras", footerExtras());
+      })
+    : null;
+  const ciPoll = repoPolls.gitHubCI.subscribe(repoKey, (next) => {
+    if (JSON.stringify(next) === JSON.stringify(gitHubCI)) return;
     gitHubCI = next;
     broadcast("extras", footerExtras());
   });
@@ -2250,11 +2238,9 @@ async function createSession(
     asks.cancelAll();
     tasksPollStopped = true;
     if (tasksPoll) clearTimeout(tasksPoll);
-    gitPollStopped = true;
-    if (gitPoll) clearTimeout(gitPoll);
-    gitHubPollStopped = true;
-    if (gitHubPoll) clearTimeout(gitHubPoll);
-    ciPoll.stop();
+    dirtyFilesPoll.unsubscribe();
+    gitHubCountsPoll?.unsubscribe();
+    ciPoll.unsubscribe();
     // Stop the Telegram serve loop + dispose its per-chat sessions.
     if (serveController) await serveController.stop().catch(() => {});
     for (const c of clients) c.res.end();

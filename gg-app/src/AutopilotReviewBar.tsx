@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { theme } from "./theme";
 import { SPINNER_FRAMES, SPINNER_FRAME_MS } from "./ActivityBar";
+import { useMotionLevel } from "./window-motion";
 
 interface Props {
   /** Stop the in-flight autopilot review (reuses the shared /cancel path). */
@@ -16,14 +17,18 @@ interface Props {
  */
 export function AutopilotReviewBar({ onCancel }: Props): React.ReactElement {
   const [frame, setFrame] = useState(0);
+  const spinning = useMotionLevel() === "full";
 
+  // Decoration: a background window rests on the current glyph instead of
+  // re-rendering 12 times a second.
   useEffect(() => {
+    if (!spinning) return;
     const spin = setInterval(
       () => setFrame((f) => (f + 1) % SPINNER_FRAMES.length),
       SPINNER_FRAME_MS,
     );
     return () => clearInterval(spin);
-  }, []);
+  }, [spinning]);
 
   return (
     <div className="statusrow running ken-statusrow dissolve-in" style={{ color: theme.textMuted }}>

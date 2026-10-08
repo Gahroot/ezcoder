@@ -12,6 +12,7 @@ import { WhatsNewModal } from "./WhatsNewModal";
 // import { GazeController } from "./GazeController";
 import { tagPlatform } from "./platform";
 import { parseMode } from "./whatsnew-content";
+import { installMotionAttribute } from "./window-motion";
 
 // Release history belongs to the notes window, not every workspace's startup.
 const WhatsNewWindow = lazy(() =>
@@ -30,6 +31,10 @@ window.addEventListener("unhandledrejection", (e) => {
 // Tag <html> with the host OS class (platform-macos|windows|linux) before the
 // first render so CSS can gate the macOS-only traffic-light insets.
 tagPlatform();
+
+// <html data-motion> drives every CSS loop's play state (App.css), so set it
+// before the first paint: a window restored in the background starts still.
+installMotionAttribute();
 
 // React render/effect failures land in the shared log file like window errors do.
 function captureReactError(culprit: string, error: unknown, componentStack?: string): void {

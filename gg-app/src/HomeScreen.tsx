@@ -7,7 +7,6 @@ import {
   GearSixIcon,
 } from "@phosphor-icons/react";
 import { getVersion } from "@tauri-apps/api/app";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { AsciiLogo } from "./AsciiLogo";
 import { HomeScenery, withScenery } from "./HomeScenery";
 import { HomeCritters } from "./HomeCritters";
@@ -17,6 +16,7 @@ import { useLocalHour } from "./use-local-hour";
 import { useRandomBiome } from "./use-random-biome";
 import type { SettingsTabId } from "./SettingsScreen";
 import {
+  openUrl,
   waitForReady,
   getSettings,
   authStatus,

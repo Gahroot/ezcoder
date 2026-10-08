@@ -1350,6 +1350,7 @@ dependencies = [
  "futures-util",
  "libc",
  "log",
+ "open",
  "reqwest",
  "rustls",
  "serde",
