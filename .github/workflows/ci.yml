@@ -19,10 +19,9 @@ concurrency:
 # typecheck + test + bin-smoke on macOS, Linux, and Windows so we catch
 # platform-specific regressions before they hit npm.
 #
-# We deliberately keep the ez-editor + ez-pixel packages out of the matrix
-# for now — they have heavier native deps (sharp, transformers) that slow CI
-# without buying us much for the framework's release-critical packages
-# (@prestyj/ai, @prestyj/agent, ezcoder, ezboss).
+# Keep the editor package out of the framework matrix. Pixel must be built:
+# the CLI imports its workspace declarations, which do not exist on a clean
+# checkout until the Pixel build finishes.
 
 jobs:
   test:
@@ -76,6 +75,7 @@ jobs:
           pnpm --filter @prestyj/ai build
           pnpm --filter @prestyj/agent build
           pnpm --filter @prestyj/core build
+          pnpm --filter @prestyj/pixel build
           pnpm --filter @prestyj/cli build
           pnpm --filter @prestyj/boss build
 
@@ -203,6 +203,7 @@ jobs:
           pnpm --filter @prestyj/ai build
           pnpm --filter @prestyj/agent build
           pnpm --filter @prestyj/core build
+          pnpm --filter @prestyj/pixel build
           pnpm --filter @prestyj/cli build
 
       - name: Stage node runtime + bundle sidecar
