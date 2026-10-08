@@ -9,8 +9,13 @@ coverage/
 # Auth & secrets
 .env
 .env.*
-~/.ezcoder/
+.npmrc
+
+# Local agent config and maintainer-only notes
 .ezcoder/
+/.claude/
+.claude/*.lock
+CLAUDE.md
 
 # Private Motion authoring pipeline (not required by runtime builds)
 /packages/cli/scripts/after-effects/
@@ -32,8 +37,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local tool locks
-.claude/*.lock
 
 # Local deployment metadata
 .vercel/
@@ -77,13 +80,26 @@ packages/cli/ideal-sim/
 /docs/
 /experiments/
 /bench/
+# Local benchmarks, experiments and one-off tooling. Only the pieces CI or
+# contributors rely on are un-ignored below; everything else stays local.
+/bench/*
+!/bench/baseline/
+/bench/baseline/*
+!/bench/baseline/sizes.json
+!/bench/size-gate.mjs
+!/bench/startup-gate.mjs
+!/bench/ui-library-real-flow/
+/bench/ui-library-real-flow/runs/
+/bench/ui-library-real-flow/live-approval.json
 /benchmarks/
+/experiments/*
+!/experiments/prompt-bench/
+experiments/prompt-bench/.bench-sandbox-*
 /scripts/
-CLAUDE.md
 packages/*/.bench-*.mjs
 
 # Temporary A/B sidecar builder; private harness and outputs live under /bench/.
-/gg-app/scripts/.review-control-bundle.mjs
+/ezcoder-app/scripts/.review-control-bundle.mjs
 
 # Local research/strategy notes
 /*-vs-*.md

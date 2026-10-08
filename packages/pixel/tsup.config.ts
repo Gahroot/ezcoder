@@ -4,7 +4,8 @@ export default defineConfig([
   {
     entry: ["src/index.ts"],
     format: ["esm", "cjs"],
-    dts: true,
+    // tsup injects baseUrl; scope TypeScript 6's deprecation allowance to declarations.
+    dts: { compilerOptions: { ignoreDeprecations: "6.0" } },
     clean: true,
     sourcemap: true,
     // Inject `import.meta.url` shim into CJS output — local-sqlite.ts and
@@ -22,7 +23,8 @@ export default defineConfig([
   {
     entry: ["src/browser.ts"],
     format: ["esm"],
-    dts: true,
+    // tsup injects baseUrl; scope TypeScript 6's deprecation allowance to declarations.
+    dts: { compilerOptions: { ignoreDeprecations: "6.0" } },
     sourcemap: true,
     clean: false,
     platform: "browser",
@@ -41,7 +43,8 @@ export default defineConfig([
   {
     entry: ["src/deno.ts"],
     format: ["esm"],
-    dts: true,
+    // tsup injects baseUrl; scope TypeScript 6's deprecation allowance to declarations.
+    dts: { compilerOptions: { ignoreDeprecations: "6.0" } },
     sourcemap: true,
     clean: false,
     platform: "neutral",
@@ -50,7 +53,8 @@ export default defineConfig([
   {
     entry: ["src/workers.ts"],
     format: ["esm"],
-    dts: true,
+    // tsup injects baseUrl; scope TypeScript 6's deprecation allowance to declarations.
+    dts: { compilerOptions: { ignoreDeprecations: "6.0" } },
     sourcemap: true,
     clean: false,
     platform: "neutral",

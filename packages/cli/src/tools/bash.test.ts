@@ -176,12 +176,30 @@ describe("renderBashOutput", () => {
     expect(output).toContain("chain only checks with &&");
   });
 
-  it("does not demand another failed baseline solely to record evidence", async () => {
+  it("does not demand reshaping a baseline command solely to record evidence", async () => {
     const output = await renderBashOutput("tests failed", "cat src/example.js; npm test");
     expect(output).toContain("Verification evidence rejected");
-    expect(output).toContain("A failed baseline need not be rerun just to record evidence");
-    expect(output).toContain("fix the bug, then verify with a supported command");
+    expect(output).toContain("do not reshape this command to satisfy this note");
+    expect(output).toContain("after your last edit");
     expect(output).toContain("do not claim verification from this shell exit status");
+  });
+
+  it("keeps teaching the check shape on every rejected check", async () => {
+    expect(await renderBashOutput("ok", "npm test; git diff --stat")).toContain(
+      "Verification evidence rejected",
+    );
+    expect(await renderBashOutput("ok", "npm test | grep passed")).toContain(
+      "Verification evidence rejected",
+    );
+  });
+
+  it.each([
+    "ls -d .venv 2>/dev/null && ls .venv/bin/ | grep -i ruff; .venv/bin/ruff --version",
+    'grep -n -A 30 "\\[tool.ruff" pyproject.toml || echo "no ruff config"',
+    "ls src && echo --- && ls .venv/bin/ | grep -i ruff",
+    'grep -rn "import time" src/*.py; echo "--- ruff config ---"',
+  ])("adds no feedback to exploration that only mentions a verifier: %s", async (command) => {
+    expect(await renderBashOutput("output", command)).toBe("output");
   });
 
   it("explains that mixed checks cannot establish fresh evidence without discarding prior verification", async () => {
@@ -195,7 +213,14 @@ describe("renderBashOutput", () => {
     expect(output).toContain("run the check standalone");
   });
 
-  it.each(["npm test", "npm test && npm run check", "git diff --stat", "npm run build"])(
+  it.each([
+    "npm test",
+    "npm test && npm run check",
+    "git diff --stat",
+    "npm run build",
+    "npm test 2>&1",
+    ".venv/bin/python -m ruff check src/pipelines/",
+  ])(
     "does not add rejection feedback to accepted or snapshot-eligible commands: %s",
     async (command) => {
       expect(await renderBashOutput("output", command)).toBe("output");
@@ -260,31 +285,28 @@ describe("createBashTool shell snapshot", () => {
 
     expect(tool.description).toContain("Windows cmd.exe");
     expect(tool.description).toContain("dir, findstr, type");
-    expect(tool.description).toContain("will fail");
-    expect(tool.description).not.toContain("Execute a bash command");
+    expect(tool.description).toContain("POSIX commands and $(...) fail");
+    expect(tool.description).not.toContain("non-interactive bash command");
     // 2026-08 guardrail additions (audit P1/P2) must survive in both shells.
-    expect(tool.description).toContain(
-      "Commit, push, amend, or rewrite git history only when the user explicitly asked",
-    );
-    expect(tool.description).toContain("Kill processes by exact PID");
+    // The git-history guardrail moved to the system prompt's Work section
+    // ("Never install packages, delete data, commit/push … unless asked").
+    expect(tool.description).not.toContain("git push");
+    expect(tool.description).toContain("Kill by exact PID");
   });
 
-  it("keeps the bash description byte-for-byte when a POSIX shell resolves", () => {
+  it("keeps the bash description when a POSIX shell resolves", () => {
     const tool = createBashTool(tmpHome, new ProcessManager(), undefined, undefined, {
       platform: "darwin",
       env: {},
       exists: () => true,
     });
 
-    expect(tool.description.startsWith("Execute a bash command.")).toBe(true);
-    expect(tool.description).toContain("non-interactive bash shell with TERM=dumb");
+    expect(tool.description.startsWith("Run a non-interactive bash command")).toBe(true);
+    expect(tool.description).toContain("(TERM=dumb, pipefail)");
     expect(tool.description).not.toContain("cmd.exe");
-    // 2026-08 guardrail additions (audit P1/P2); bash-only line below.
-    expect(tool.description).toContain(
-      "Commit, push, amend, or rewrite git history only when the user explicitly asked",
-    );
-    expect(tool.description).toContain("Never background a command with a trailing & or nohup");
-    expect(tool.description).toContain("Kill processes by exact PID");
+    // 2026-08 guardrail additions (audit P1/P2); git rule now lives in the system prompt.
+    expect(tool.description).toContain("never `&`, nohup or sleep");
+    expect(tool.description).toContain("Kill by exact PID");
   });
 });
 

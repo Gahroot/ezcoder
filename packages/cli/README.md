@@ -67,18 +67,17 @@ You can still add your own MCPs if you need them. But start with less. You'll ge
 
 Switch mid-conversation with `/model`. Not locked to anyone.
 
-
-| Provider          | Models                                                                       | Auth             |
-| ----------------- | ---------------------------------------------------------------------------- | ---------------- |
-| **Anthropic**     | Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5                             | OAuth            |
-| **OpenAI**        | GPT-6 Astra, GPT-6.1 Sol, GPT-6 Luna                                         | OAuth            |
-| **Moonshot**      | Kimi K3, Kimi K2.8 Preview, Kimi K2.7 Code                                    | OAuth or API key |
-| **Z.AI (GLM)**    | GLM-5.3, GLM-5.3-Flash (image)                                               | API key          |
-| **MiniMax**       | MiniMax M3 (image + video)                                                   | API key          |
-| **Xiaomi (MiMo)** | MiMo-V2.6-Pro + V2.6-Flash (image + video), V2.6-Pro-UltraSpeed              | API key          |
-| **DeepSeek**      | DeepSeek V4 Pro, V4.1 Flash (image)                                          | API key          |
-| **Sakana (Fugu)** | Fugu, Fugu Max, Fugu Ultra (image)                                           | API key          |
-| **OpenRouter**    | Qwen3.8 Max (image + video) + multi-provider gateway                        | API key          |
+| Provider          | Models                                                             | Auth             |
+| ----------------- | ------------------------------------------------------------------ | ---------------- |
+| **Anthropic**     | Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5                    | OAuth            |
+| **OpenAI**        | GPT-6 Astra, GPT-6.1 Sol, GPT-6 Luna                               | OAuth            |
+| **Moonshot**      | Kimi K3, K2.8 Preview (Kimi sign-in), K2.7 Code                    | OAuth or API key |
+| **Z.AI (GLM)**    | GLM-5.3, GLM-5.3-Flash (image)                                     | API key          |
+| **MiniMax**       | MiniMax M3 (image + video)                                         | API key          |
+| **Xiaomi (MiMo)** | MiMo-V2.6-Pro, MiMo-V2.6-Flash, MiMo-V2.6-Pro-UltraSpeed           | API key          |
+| **DeepSeek**      | DeepSeek V4 Pro, V4.1 Flash (image)                                | API key          |
+| **Sakana (Fugu)** | Fugu, Fugu Max, Fugu Ultra (image)                                 | API key          |
+| **OpenRouter**    | Qwen3.8 Max (image + video) + multi-provider gateway               | API key          |
 
 The same conversation, the same tools, the same project context — only the model changes. Use a strong reasoning model when you need it, swap to a fast cheap one for grunt work, never restart your session.
 

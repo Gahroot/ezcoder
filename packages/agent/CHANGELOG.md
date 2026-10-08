@@ -1,5 +1,351 @@
 # @prestyj/agent
 
+## 5.75.0
+
+### Patch Changes
+
+- 4f763ed: Packages now declare Node.js 22 or newer as their supported runtime, matching what CI tests. `ezcoder` no longer ships its internal benchmark scripts in the npm tarball, and `@prestyj/core` now has a README covering the model registry, auth storage and local-model discovery.
+- Updated dependencies [4f763ed]
+  - @prestyj/ai@5.75.0
+
+## 5.74.3
+
+### Patch Changes
+
+- @prestyj/ai@5.74.3
+
+## 5.74.2
+
+### Patch Changes
+
+- @prestyj/ai@5.74.2
+
+## 5.74.1
+
+### Patch Changes
+
+- @prestyj/ai@5.74.1
+
+## 5.74.0
+
+### Patch Changes
+
+- @prestyj/ai@5.74.0
+
+## 5.73.0
+
+### Patch Changes
+
+- @prestyj/ai@5.73.0
+
+## 5.72.0
+
+### Patch Changes
+
+- @prestyj/ai@5.72.0
+
+## 5.71.0
+
+### Patch Changes
+
+- @prestyj/ai@5.71.0
+
+## 5.70.0
+
+### Patch Changes
+
+- @prestyj/ai@5.70.0
+
+## 5.69.0
+
+### Patch Changes
+
+- @prestyj/ai@5.69.0
+
+## 5.68.1
+
+### Patch Changes
+
+- @prestyj/ai@5.68.1
+
+## 5.68.0
+
+### Patch Changes
+
+- @prestyj/ai@5.68.0
+
+## 5.67.1
+
+### Patch Changes
+
+- @prestyj/ai@5.67.1
+
+## 5.67.0
+
+### Patch Changes
+
+- @prestyj/ai@5.67.0
+
+## 5.66.4
+
+### Patch Changes
+
+- @prestyj/ai@5.66.4
+
+## 5.66.3
+
+### Patch Changes
+
+- Updated dependencies [946c459]
+  - @prestyj/ai@5.66.3
+
+## 5.66.2
+
+### Patch Changes
+
+- @prestyj/ai@5.66.2
+
+## 5.66.1
+
+### Patch Changes
+
+- Updated dependencies [7dd643f]
+  - @prestyj/ai@5.66.1
+
+## 5.66.0
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies [331e868]
+  - @prestyj/ai@5.66.0
+
+## 5.65.1
+
+### Patch Changes
+
+- @prestyj/ai@5.65.1
+
+## 5.65.0
+
+### Patch Changes
+
+- @prestyj/ai@5.65.0
+
+## 5.64.3
+
+### Patch Changes
+
+- @prestyj/ai@5.64.3
+
+## 5.64.2
+
+### Patch Changes
+
+- @prestyj/ai@5.64.2
+
+## 5.64.1
+
+### Patch Changes
+
+- @prestyj/ai@5.64.1
+
+## 5.64.0
+
+### Patch Changes
+
+- Updated dependencies [4800b0f]
+  - @prestyj/ai@5.64.0
+
+## 5.63.0
+
+### Patch Changes
+
+- @prestyj/ai@5.63.0
+
+## 5.62.0
+
+### Patch Changes
+
+- @prestyj/ai@5.62.0
+
+## 5.61.1
+
+### Patch Changes
+
+- @prestyj/ai@5.61.1
+
+## 5.61.0
+
+### Patch Changes
+
+- @prestyj/ai@5.61.0
+
+## 5.60.9
+
+### Patch Changes
+
+- @prestyj/ai@5.60.9
+
+## 5.60.8
+
+### Patch Changes
+
+- @prestyj/ai@5.60.8
+
+## 5.60.7
+
+### Patch Changes
+
+- @prestyj/ai@5.60.7
+
+## 5.60.6
+
+### Patch Changes
+
+- @prestyj/ai@5.60.6
+
+## 5.60.5
+
+### Patch Changes
+
+- @prestyj/ai@5.60.5
+
+## 5.60.4
+
+### Patch Changes
+
+- @prestyj/ai@5.60.4
+
+## 5.60.3
+
+### Patch Changes
+
+- @prestyj/ai@5.60.3
+
+## 5.60.2
+
+### Patch Changes
+
+- @prestyj/ai@5.60.2
+
+## 5.60.1
+
+### Patch Changes
+
+- @prestyj/ai@5.60.1
+
+## 5.60.0
+
+### Patch Changes
+
+- @prestyj/ai@5.60.0
+
+## 5.59.4
+
+### Patch Changes
+
+- @prestyj/ai@5.59.4
+
+## 5.59.3
+
+### Patch Changes
+
+- @prestyj/ai@5.59.3
+
+## 5.59.2
+
+### Patch Changes
+
+- @prestyj/ai@5.59.2
+
+## 5.59.1
+
+### Patch Changes
+
+- @prestyj/ai@5.59.1
+
+## 5.59.0
+
+### Patch Changes
+
+- @prestyj/ai@5.59.0
+
+## 5.58.1
+
+### Patch Changes
+
+- @prestyj/ai@5.58.1
+
+## 5.58.0
+
+### Patch Changes
+
+- @prestyj/ai@5.58.0
+
+## 5.57.2
+
+### Patch Changes
+
+- @prestyj/ai@5.57.2
+
+## 5.57.1
+
+### Patch Changes
+
+- @prestyj/ai@5.57.1
+
+## 5.57.0
+
+### Patch Changes
+
+- @prestyj/ai@5.57.0
+
+## 5.56.1
+
+### Patch Changes
+
+- @prestyj/ai@5.56.1
+
+## 5.56.0
+
+### Patch Changes
+
+- @prestyj/ai@5.56.0
+
+## 5.55.1
+
+### Patch Changes
+
+- @prestyj/ai@5.55.1
+
+## 5.55.0
+
+### Patch Changes
+
+- Updated dependencies [7ade77f]
+  - @prestyj/ai@5.55.0
+
+## 5.54.1
+
+### Patch Changes
+
+- @prestyj/ai@5.54.1
+
+## 5.54.0
+
+### Patch Changes
+
+- Updated dependencies [7ad7339]
+  - @prestyj/ai@5.54.0
+
+## 5.53.3
+
+### Patch Changes
+
+- @prestyj/ai@5.53.3
+
+## 5.53.2
 ## 5.30.0
 
 ### Patch Changes
@@ -492,11 +838,11 @@
 ### Patch Changes
 
 - Reliability fixes from the baseline harness (bench/baseline):
-  - **Truncated-stream guard (gg-ai):** a clean stream close with no terminal event (no `message_stop` / `finish_reason`) now throws a retryable `ProviderError(504)` instead of silently returning partial text as a phantom-complete `end_turn`. Applies to both the Anthropic and OpenAI-compatible providers.
+  - **Truncated-stream guard (@prestyj/ai):** a clean stream close with no terminal event (no `message_stop` / `finish_reason`) now throws a retryable `ProviderError(504)` instead of silently returning partial text as a phantom-complete `end_turn`. Applies to both the Anthropic and OpenAI-compatible providers.
   - **Sidecar bounds (ezcoder):** inbound HTTP bodies capped at 10 MB (413) via `readCappedBody`; the `~/.ezcoder` progress `fs.watch` handle is now closed on shutdown; the project-file glob search streams and bails after 50k entries. Closes three unbounded-memory/leak paths.
-  - **Cap-divergence marker (gg-agent):** `capToolResults`/`capTurnToolResults` now stamp `ToolResult.capped = { originalChars, keptChars, scope }` when they trim, so the event-transcript vs model-input divergence is programmatically visible. Internal metadata only — never serialized to the provider.
-  - **Empty-part serializer fix (gg-ai):** `toAnthropicMessages` no longer emits empty text parts (user `""`, user `{text:""}`, settled assistant `""`), eliminating live Anthropic 400 "text content blocks must be non-empty" failures.
-  - **Tool-id remap fix (gg-ai):** `remapToolCallId` now strips the full `toolu_` prefix (`slice(6)`), mapping `toolu_01ABC` → clean `call_01ABC` instead of the lossy double-underscore `call__01ABC`.
+  - **Cap-divergence marker (@prestyj/agent):** `capToolResults`/`capTurnToolResults` now stamp `ToolResult.capped = { originalChars, keptChars, scope }` when they trim, so the event-transcript vs model-input divergence is programmatically visible. Internal metadata only — never serialized to the provider.
+  - **Empty-part serializer fix (@prestyj/ai):** `toAnthropicMessages` no longer emits empty text parts (user `""`, user `{text:""}`, settled assistant `""`), eliminating live Anthropic 400 "text content blocks must be non-empty" failures.
+  - **Tool-id remap fix (@prestyj/ai):** `remapToolCallId` now strips the full `toolu_` prefix (`slice(6)`), mapping `toolu_01ABC` → clean `call_01ABC` instead of the lossy double-underscore `call__01ABC`.
 
 - Updated dependencies
   - @prestyj/ai@5.22.1

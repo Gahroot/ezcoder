@@ -94,15 +94,48 @@ async function execute(name: string, args: Record<string, unknown>): Promise<str
 
 describe("EZ App session asynchronous diagnostics", () => {
   it("does not add another model turn for silent diagnostics after a real passing typecheck", async () => {
-    await execute("write", { file_path: "a.ts", content: "export const value: number = 1;\n" });
-    await internal.lspManager.flushDiagnostics();
-    internal.lspManager.drainDiagnostics();
-    await execute("read", { file_path: "a.ts" });
-    await execute("edit", { file_path: "a.ts", edits: [{ old_text: "= 1;", new_text: "= 2;" }] });
-    const check = await execute("bash", { command: `"${TSC_BIN}" --noEmit --project .` });
-    expect(check).toContain("Exit code: 0");
-    expect(await internal.getHookFollowUpMessages()).toBeNull();
-    expect(internal.lspManager.getLatestOutcome("a.ts")?.kind).toBe("timeout");
+    const originalManager = internal.lspManager;
+    const pool = new LspClientPool();
+    // A healthy server can answer cleanly; use the real silent RPC fixture to
+    // prove a passing compiler check suppresses unavailable diagnostics.
+    internal.lspManager = new LspManager(cwd, {
+      pool,
+      firstBudgetMs: 100,
+      warmBudgetMs: 100,
+      catalog: [
+        {
+          id: "silent-passing-check-test",
+          extensions: [".ts"],
+          rootMarkers: ["package.json"],
+          languageIdFor: () => "typescript",
+          resolveCommand: () => ({
+            command: process.execPath,
+            args: [
+              fileURLToPath(new URL("../tools/__fixtures__/fake-lsp-server.mjs", import.meta.url)),
+              "--silent",
+            ],
+          }),
+        },
+      ],
+    });
+    try {
+      const content = "export const value: number = 1;\n";
+      await execute("write", { file_path: "a.ts", content });
+      internal.lspManager.queueDiagnosticsAfterWrite("a.ts", content);
+      await internal.lspManager.flushDiagnostics();
+      internal.lspManager.drainDiagnostics();
+      await execute("read", { file_path: "a.ts" });
+      await execute("edit", { file_path: "a.ts", edits: [{ old_text: "= 1;", new_text: "= 2;" }] });
+      internal.lspManager.queueDiagnosticsAfterWrite("a.ts", content.replace("= 1;", "= 2;"));
+      const check = await execute("bash", { command: `"${TSC_BIN}" --noEmit --project .` });
+      expect(check).toContain("Exit code: 0");
+      expect(await internal.getHookFollowUpMessages()).toBeNull();
+      expect(internal.lspManager.getLatestOutcome("a.ts")?.kind).toBe("timeout");
+    } finally {
+      internal.lspManager.shutdownAll();
+      pool.shutdownAll();
+      internal.lspManager = originalManager;
+    }
   }, 30_000);
 
   it("summarizes multiple file timeouts once alongside final verification, never between steps", async () => {

@@ -9,7 +9,8 @@ export default defineConfig({
     "src/bridges/ezboss.ts",
   ],
   format: ["esm", "cjs"],
-  dts: true,
+  // tsup injects baseUrl; scope TypeScript 6's deprecation allowance to declarations.
+  dts: { compilerOptions: { ignoreDeprecations: "6.0" } },
   clean: true,
   sourcemap: true,
 });

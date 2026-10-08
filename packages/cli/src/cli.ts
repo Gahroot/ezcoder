@@ -399,7 +399,7 @@ function main(): void {
     if (p === "moonshot") return "kimi-k3";
     if (p === "minimax") return "MiniMax-M3";
     if (p === "deepseek") return "deepseek-v4-pro";
-    if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
+    if (p === "huggingface") return "moonshotai/Kimi-K2.7-Code";
     if (p === "openrouter") return "qwen/qwen3.8-max";
     if (p === "sakana") return "fugu";
     if (p === "xai") return "grok-4.7";
@@ -1071,7 +1071,7 @@ async function runSessions(): Promise<void> {
     if (p === "moonshot") return "kimi-k3";
     if (p === "minimax") return "MiniMax-M3";
     if (p === "deepseek") return "deepseek-v4-pro";
-    if (p === "huggingface") return "Qwen/Qwen3-Coder-480B-A35B-Instruct";
+    if (p === "huggingface") return "moonshotai/Kimi-K2.7-Code";
     if (p === "sakana") return "fugu";
     if (p === "xai") return "grok-4.7";
     return "claude-opus-5-5";

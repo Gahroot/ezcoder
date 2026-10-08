@@ -82,7 +82,7 @@ export function subAgentDescription(
   rosterOnSpawnAgent: boolean,
 ): string {
   if (rosterOnSpawnAgent && agents.length > 0) {
-    return `${SUBAGENT_DESCRIPTION}\n\nNamed agents: the same roster listed on \`spawn_agent\`; pass one as \`agent\`.`;
+    return `${SUBAGENT_DESCRIPTION} Named agents: see \`spawn_agent\`.`;
   }
   return SUBAGENT_DESCRIPTION + renderAgentRoster(agents);
 }

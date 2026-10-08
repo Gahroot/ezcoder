@@ -16,6 +16,36 @@ const EASE_IN = "cubic-bezier(0.4, 0, 1, 1)";
 const HIDDEN: Keyframe = { opacity: 0, filter: "blur(8px)" };
 const SHOWN: Keyframe = { opacity: 1, filter: "blur(0px)" };
 
+/** Session-local high-water mark: cancellation, paging and Activity cannot replay rows. */
+export function createEntranceLifetime(firstId: number): {
+  consume: (id: number) => boolean;
+  settle: (id: number) => void;
+} {
+  let next = firstId;
+  return {
+    consume(id) {
+      if (id < next) return false;
+      next = id + 1;
+      return true;
+    },
+    settle(id) {
+      next = Math.max(next, id + 1);
+    },
+  };
+}
+
+/** Opacity only. Geometry belongs to the layout transaction, not each new row. */
+export function enterTranscriptRow(el: HTMLElement): () => void {
+  if (prefersReducedMotion() || typeof el.animate !== "function") return () => {};
+  const token = getComputedStyle(el).getPropertyValue("--dur-dissolve").trim();
+  const duration = parseFloat(token) * (token.endsWith("ms") ? 1 : 1000);
+  const animation = el.animate([{ opacity: 0 }, { opacity: 1 }], {
+    duration: Number.isFinite(duration) ? duration : 0,
+    easing: EASE_OUT,
+  });
+  return () => animation.cancel();
+}
+
 export function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-reduced-motion: reduce)").matches

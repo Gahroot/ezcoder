@@ -320,6 +320,8 @@ export interface ChecklistEntry {
   detection?: { summary: string; facts: string[] } | null;
   /** The instructions Check sends to the agent (built by the sidecar from the item). */
   runPrompt: string | null;
+  /** The project's commit or working tree changed after this result was recorded. */
+  changedSinceCheck?: boolean;
 }
 
 export interface ChecklistSnapshot {
@@ -361,6 +363,7 @@ function checklistEntry(value: unknown): value is ChecklistEntry {
     (value.commit === null ||
       (text("commit", 64) && /^[0-9a-f]{4,64}$/i.test(String(value.commit)))) &&
     typeof value.uncommittedChanges === "boolean" &&
+    (value.changedSinceCheck === undefined || typeof value.changedSinceCheck === "boolean") &&
     nullable("summary", 300) &&
     checklistStrings(value.findings, 300) &&
     checklistStrings(value.evidence, 200) &&
@@ -750,6 +753,9 @@ export interface PromptMeta {
   /** Fired by a `/schedule` timer, not typed — the sidecar uses the short
    *  unattended ask_user deadline for this run. */
   scheduled?: boolean;
+  /** Plan feedback from the review box: the sidecar revises the plan back in
+   *  read-only plan mode instead of with full write access. */
+  planRevision?: boolean;
 }
 
 export async function sendPrompt(
@@ -886,11 +892,15 @@ export async function setAutopilot(enabled: boolean): Promise<boolean> {
  * activity bar's "Plan Steps n/total" widget reads). Call this BEFORE sending
  * the "implement it now" prompt. `planPath` comes from the `plan_exit` event.
  */
+/** Accept the pending plan. Rejects when the sidecar refused it (a run still
+ *  finishing, or the plan couldn't be activated) — the caller must NOT send
+ *  the "implement it now" prompt then. */
 export async function acceptPlan(planPath: string | null): Promise<void> {
   try {
     await invoke("agent_accept_plan", { planPath });
   } catch (e) {
     await logError(`agent_accept_plan failed: ${String(e)}`);
+    throw e;
   }
 }
 
@@ -1765,11 +1775,11 @@ export async function windowPages(): Promise<WindowPages> {
 }
 
 /** Open the dedicated, screen-centered "What's new" window (or refocus it if it's
- *  already open). Only the main window calls this, exactly once per update — see
- *  WhatsNewTrigger. */
-export async function openWhatsNewWindow(): Promise<void> {
+ *  already open). `hype` is the one-time post-update show (the main window's
+ *  WhatsNewModal trigger); `calm` is the home screen's "What's new" button. */
+export async function openWhatsNewWindow(mode: "hype" | "calm"): Promise<void> {
   try {
-    await invoke("open_whatsnew_window");
+    await invoke("open_whatsnew_window", { mode });
   } catch (e) {
     await logError(`open_whatsnew_window failed: ${String(e)}`);
     throw e;

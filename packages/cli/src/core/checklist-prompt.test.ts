@@ -26,6 +26,17 @@ describe("checklistRunPrompt", () => {
     expect(prompt).toContain("Do not run fix/write flags");
   });
 
+  it("offers fixes through ask_user and re-records the item after fixing", () => {
+    const prompt = checklistRunPrompt(item("docs"));
+
+    expect(prompt).toContain("This holds until the user picks a fix in step 8");
+    expect(prompt).toContain("asking what to fix with `ask_user`");
+    expect(prompt).toContain('"Fix all N findings"');
+    expect(prompt).toContain("Skip the question for `pass` or `not-applicable`");
+    expect(prompt).toContain("call `checklist` `record` for `docs` again");
+    expect(prompt).toContain("`pass` only when every finding is fixed and verified");
+  });
+
   it("names the item's check, skill and setup command when it has them", () => {
     const ci = item("ci");
     const security = item("security");
@@ -33,6 +44,17 @@ describe("checklistRunPrompt", () => {
     expect(checklistRunPrompt(ci)).toContain(ci.check);
     expect(checklistRunPrompt(ci)).toContain("`/setup-ci` would fix most gaps");
     expect(checklistRunPrompt(security)).toContain("Load the `bulletproof` skill");
-    expect(checklistRunPrompt(item("docs"))).toContain("No skill applies");
+    expect(checklistRunPrompt(item("docs"))).toContain("No skill applies; use your own judgment.");
+  });
+
+  it("renders the review guide for items that carry one", () => {
+    const review = item("senior-review");
+    const prompt = checklistRunPrompt(review);
+
+    expect(prompt).toContain("## Review guide");
+    for (const line of review.guide ?? []) expect(prompt).toContain(`- ${line}`);
+    expect(prompt).toContain("No skill applies; follow the review guide above.");
+    expect(prompt.indexOf("## Review guide")).toBeLessThan(prompt.indexOf("## Steps"));
+    expect(checklistRunPrompt(item("docs"))).not.toContain("## Review guide");
   });
 });

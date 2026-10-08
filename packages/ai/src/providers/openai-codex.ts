@@ -42,7 +42,8 @@ const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
 // 2026-09-30). Below the gate it answers "The '<model>' model is not supported
 // when using Codex with a ChatGPT account". Track the latest openai/codex
 // `rust-v*` release when adding a model, and check that model's live listing.
-const CODEX_CLIENT_VERSION = "0.159.1";
+// 0.161.0 = latest `rust-v0.161.0` release (2026-10-07).
+const CODEX_CLIENT_VERSION = "0.161.0";
 // OpenAI's Codex CLI enables zstd request compression by default. Keep tiny
 // synthetic/API requests readable, but compress real agent payloads before they
 // hit the backend's finite Envoy retry buffer.
@@ -351,6 +352,9 @@ async function* runStream(
   let outputTokens = 0;
   let cacheRead = 0;
   let cacheWrite = 0;
+  // Whether any visible reasoning text has streamed yet — a section break is
+  // only needed between sections, never before the first one.
+  let thinkingTextEmitted = false;
 
   // ── Diagnostic: log the first occurrence of each raw SSE event type with
   // timing, so we can see what Codex sends during the pre-reasoning window
@@ -466,6 +470,16 @@ async function* runStream(
       }
     }
 
+    // Each reasoning summary section (Codex sends a short bold headline per
+    // section) arrives as its own part with no separator in the text. Without a
+    // break they render glued together — "**A****B**" — which also breaks the
+    // markdown bold. Mirror the Codex CLI: a blank line between sections.
+    if (type === "response.reasoning_summary_part.added") {
+      if (options.thinking && thinkingTextEmitted) {
+        yield { type: "thinking_delta", text: "\n\n" };
+      }
+    }
+
     // Thinking delta
     if (
       type === "response.reasoning_summary_text.delta" ||
@@ -474,7 +488,10 @@ async function* runStream(
       type === "response.reasoning.delta"
     ) {
       const delta = event.delta as string;
-      if (options.thinking) yield { type: "thinking_delta", text: delta };
+      if (options.thinking && delta) {
+        thinkingTextEmitted = true;
+        yield { type: "thinking_delta", text: delta };
+      }
     }
 
     // Reasoning item started — the model has begun reasoning on the server.

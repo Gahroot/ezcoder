@@ -10,8 +10,7 @@
     "lint:fix": "eslint 'packages/*/src/**/*.{ts,tsx}' --fix && pnpm --filter ezcoder-app lint:fix",
     "format": "prettier --write 'packages/*/src/**/*.{ts,tsx}' && pnpm --filter ezcoder-app format",
     "format:check": "prettier --check 'packages/*/src/**/*.{ts,tsx}' && pnpm --filter ezcoder-app format:check",
-    "test": "pnpm -r test",
-    "prepare": "pnpm build"
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
