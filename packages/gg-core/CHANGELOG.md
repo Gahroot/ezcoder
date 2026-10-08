@@ -1,5 +1,13 @@
 # @kenkaiiii/gg-core
 
+## 5.75.0
+
+### Patch Changes
+
+- 4f763ed: Packages now declare Node.js 22 or newer as their supported runtime, matching what CI tests. `ggcoder` no longer ships its internal benchmark scripts in the npm tarball, and `gg-core` now has a README covering the model registry, auth storage and local-model discovery.
+- Updated dependencies [4f763ed]
+  - @kenkaiiii/gg-ai@5.75.0
+
 ## 5.74.3
 
 ### Patch Changes
