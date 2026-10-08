@@ -875,9 +875,6 @@ select {
 .app:not(.window-focused) .ken-face-blink,
 .app:not(.window-focused) .ken-face-talk,
 .app:not(.window-focused) .ken-face-talking,
-.app:not(.window-focused) .whatsnew-critter,
-.app:not(.window-focused) .whatsnew-critter-body.bob,
-.app:not(.window-focused) .whatsnew-critter-step,
 .app:not(.window-focused) .motion-starter,
 .app:not(.window-focused) .skeleton,
 .app:not(.window-focused) .enh-diss-skeleton .skeleton::after,
@@ -2868,7 +2865,6 @@ select {
   position: relative;
   width: 100vw;
   height: 100vh;
-  padding: var(--space-11) var(--space-12);
   border-radius: var(--radius-card);
   /* Clip the confetti canvas to the rounded corners. */
   overflow: hidden;
@@ -2880,93 +2876,6 @@ select {
      `.modal`, which this window doesn't use). */
 }
 
-/* A random critter pacing beside the title (WhatsNewCritter.tsx). */
-.whatsnew-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-7);
-  min-width: 0;
-}
-.whatsnew-critter-lane {
-  --lane: 96px;
-  position: relative;
-  flex: 0 0 auto;
-  width: calc(var(--lane) + 21px);
-  height: 21px;
-}
-.whatsnew-critter {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 21px;
-  height: 21px;
-  animation: whatsnew-pace 9s linear infinite;
-}
-.whatsnew-critter-body {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.whatsnew-critter-body.bob {
-  animation: whatsnew-bob 0.72s ease-in-out infinite;
-}
-.whatsnew-critter-body img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-  user-select: none;
-}
-/* The second walk frame blinks over the first, so the legs step. */
-.whatsnew-critter-step {
-  opacity: 0;
-  animation: whatsnew-step 0.36s steps(1, end) infinite;
-}
-/* Walk right, turn round, walk back, turn round. The scale flip runs over a
-   short beat, so the turn reads as the critter spinning on the spot. */
-@keyframes whatsnew-pace {
-  0% {
-    transform: translateX(0) scaleX(1);
-  }
-  44% {
-    transform: translateX(var(--lane)) scaleX(1);
-  }
-  50% {
-    transform: translateX(var(--lane)) scaleX(-1);
-  }
-  94% {
-    transform: translateX(0) scaleX(-1);
-  }
-  100% {
-    transform: translateX(0) scaleX(1);
-  }
-}
-@keyframes whatsnew-step {
-  0% {
-    opacity: 0;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-@keyframes whatsnew-bob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-2px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .whatsnew-critter,
-  .whatsnew-critter-body.bob,
-  .whatsnew-critter-step {
-    animation: none;
-  }
-}
 /* One-shot confetti overlay — covers the whole modal, never intercepts clicks,
    sits above the content while the burst plays then clears itself. */
 .confetti-canvas {
@@ -2985,93 +2894,6 @@ select {
   background: var(--border);
   border-radius: var(--radius-sm);
 }
-/* Scroll container takes the remaining height and engages once the notes outgrow
-   it — short release lists sit at their natural height, long ones scroll. */
-.whatsnew-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  /* Pad the right edge so the scrollbar never overlaps the text. */
-  padding-right: var(--space-4);
-  margin-right: -4px;
-}
-.whatsnew-section {
-  margin-bottom: var(--space-11);
-}
-.whatsnew-section:last-child {
-  margin-bottom: 0;
-}
-.whatsnew-section.latest {
-  margin-bottom: var(--space-10);
-  padding: var(--space-8) var(--space-8) var(--space-9);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-card);
-  background: var(--surface-1);
-}
-.whatsnew-version {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  font-family: var(--sans);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-bottom: var(--space-6);
-}
-.whatsnew-section.latest .whatsnew-version {
-  color: var(--text-secondary);
-}
-.whatsnew-history-divider {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  margin: var(--space-1) 0 var(--space-9);
-  color: var(--text-muted);
-  font-family: var(--sans);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.whatsnew-history-divider::before,
-.whatsnew-history-divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: color-mix(in srgb, var(--border) 78%, transparent);
-}
-.whatsnew-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-.whatsnew-item {
-  position: relative;
-  padding-left: var(--space-9);
-  font-family: var(--sans);
-  font-size: var(--fs-md);
-  line-height: 1.55;
-  color: var(--text);
-}
-.whatsnew-item::before {
-  content: "\203a";
-  position: absolute;
-  left: 4px;
-  top: -0.5px;
-  color: var(--primary);
-  font-weight: 700;
-}
-.whatsnew-highlight {
-  color: color-mix(in srgb, var(--secondary) 72%, var(--text));
-  font: inherit;
-  font-weight: 700;
-}
-
 /* ── Tasks modal (project task list → run one / run all) ── */
 .tasks-empty {
   font-size: var(--fs-base);

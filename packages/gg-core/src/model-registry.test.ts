@@ -187,7 +187,6 @@ describe("getSummaryModel when the catalog changes", () => {
     ["openai", "gpt-6-luna", "gpt-6.1-sol"],
     ["glm", "glm-5.3-flash", "glm-5.3"],
     ["deepseek", "deepseek-flash", "deepseek-v4-pro"],
-    ["huggingface", "openai/gpt-oss-120b", "Qwen/Qwen3-Coder-480B-A35B-Instruct"],
   ] as const)(
     "falls back to the current %s model when its cheap %s is removed",
     (provider, cheapId, currentId) => {
@@ -197,6 +196,17 @@ describe("getSummaryModel when the catalog changes", () => {
       });
     },
   );
+
+  it("falls back through Hugging Face's cheap models before the current one", () => {
+    const current = "moonshotai/Kimi-K2.7-Code";
+    expect(getSummaryModel("huggingface", current).id).toBe("deepseek-ai/DeepSeek-V4.1-Flash");
+    withoutModel("deepseek-ai/DeepSeek-V4.1-Flash", () => {
+      expect(getSummaryModel("huggingface", current).id).toBe("openai/gpt-oss-120b");
+      withoutModel("openai/gpt-oss-120b", () => {
+        expect(getSummaryModel("huggingface", current).id).toBe(current);
+      });
+    });
+  });
 
   it("keeps a provider without a summary tier on the current model", () => {
     expect(getSummaryModel("moonshot", "kimi-k3").id).toBe("kimi-k3");
@@ -298,7 +308,13 @@ describe("model registry context windows", () => {
       "kimi-k3",
       "kimi-for-coding",
       "kimi-k2.7-code",
+      "kimi-k2.7-code-highspeed",
     ]);
+    // HighSpeed is the same K2.7 model, so it keeps K2.7's window and ladder.
+    expect(getModel("kimi-k2.7-code-highspeed")).toMatchObject({
+      contextWindow: 262_144,
+      maxThinkingLevel: "high",
+    });
     // K2.8 Preview only exists on the Kimi sign-in endpoint, and is never
     // mislabelled with the K2.7 name it replaced behind the rolling alias.
     expect(getModel("kimi-for-coding")).toMatchObject({
@@ -545,19 +561,22 @@ describe("model registry context windows", () => {
 
   it("registers Hugging Face router models with Hub repo ids and a cheap summary sibling", () => {
     expect(getDefaultModel("huggingface")).toMatchObject({
-      id: "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      id: "moonshotai/Kimi-K2.7-Code",
       provider: "huggingface",
       contextWindow: 262_144,
       maxOutputTokens: 131_072,
-      // The Coder line is non-thinking, so the registry reports it that way
-      // even though the provider transport supports reasoning_effort models.
+      // No documented effort control over the router, so we never send one.
       supportsThinking: false,
+      supportsImages: true,
       costTier: "medium",
     });
-    // gpt-oss-120b is the low-tier sibling for compaction summaries.
-    expect(getSummaryModel("huggingface", "Qwen/Qwen3-Coder-480B-A35B-Instruct").id).toBe(
-      "openai/gpt-oss-120b",
-    );
+    // DeepSeek V4.1 Flash is the low-tier summary sibling — its 1M window
+    // holds a full session that gpt-oss's 131K could not.
+    expect(getSummaryModel("huggingface", "moonshotai/Kimi-K2.7-Code")).toMatchObject({
+      id: "deepseek-ai/DeepSeek-V4.1-Flash",
+      contextWindow: 1_048_576,
+      costTier: "low",
+    });
     expect(getModel("openai/gpt-oss-120b")).toMatchObject({
       supportsThinking: true,
       maxThinkingLevel: "high",

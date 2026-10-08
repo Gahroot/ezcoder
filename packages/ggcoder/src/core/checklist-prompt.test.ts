@@ -44,6 +44,17 @@ describe("checklistRunPrompt", () => {
     expect(checklistRunPrompt(ci)).toContain(ci.check);
     expect(checklistRunPrompt(ci)).toContain("`/setup-ci` would fix most gaps");
     expect(checklistRunPrompt(security)).toContain("Load the `bulletproof` skill");
-    expect(checklistRunPrompt(item("docs"))).toContain("No skill applies");
+    expect(checklistRunPrompt(item("docs"))).toContain("No skill applies; use your own judgment.");
+  });
+
+  it("renders the review guide for items that carry one", () => {
+    const review = item("senior-review");
+    const prompt = checklistRunPrompt(review);
+
+    expect(prompt).toContain("## Review guide");
+    for (const line of review.guide ?? []) expect(prompt).toContain(`- ${line}`);
+    expect(prompt).toContain("No skill applies; follow the review guide above.");
+    expect(prompt.indexOf("## Review guide")).toBeLessThan(prompt.indexOf("## Steps"));
+    expect(checklistRunPrompt(item("docs"))).not.toContain("## Review guide");
   });
 });

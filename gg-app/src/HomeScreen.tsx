@@ -151,7 +151,7 @@ export function HomeScreen({
           className="home-whatsnew"
           type="button"
           title="See the latest updates"
-          onClick={() => void openWhatsNewWindow().catch(() => {})}
+          onClick={() => void openWhatsNewWindow("calm").catch(() => {})}
         >
           What&apos;s new
         </button>

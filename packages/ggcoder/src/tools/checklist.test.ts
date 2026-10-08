@@ -209,7 +209,7 @@ describe("checklist tool", () => {
 
     const out = await call({ action: "status" });
 
-    expect(out.split("\n")[0]).toBe("23 project checks. Setup detection is not a passing review.");
+    expect(out.split("\n")[0]).toBe("24 project checks. Setup detection is not a passing review.");
     expect(out).toContain(
       "- quality-tools — Lint, format & type checks: reviewed, checked 2026-10-05 at abc1234",
     );

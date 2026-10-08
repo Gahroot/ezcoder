@@ -28,8 +28,6 @@ export default tseslint.config(
       "**/node_modules/",
       "**/*.js",
       "**/*.mjs",
-      // Python package — not TypeScript.
-      "packages/gg-pixel-py/",
     ],
   },
 );

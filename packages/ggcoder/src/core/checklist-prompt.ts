@@ -11,7 +11,12 @@ import { CHECKLIST_FILE, CHECKLIST_STALE_DAYS, type ChecklistItem } from "./chec
 export function checklistRunPrompt(item: ChecklistItem): string {
   const skillStep = item.skill
     ? `Load the \`${item.skill}\` skill with the \`skill\` tool and follow its method in report-only mode.`
-    : "No skill applies; use your own judgment.";
+    : item.guide
+      ? "No skill applies; follow the review guide above."
+      : "No skill applies; use your own judgment.";
+  const guide = item.guide
+    ? `\n\n## Review guide\n\n${item.guide.map((line) => `- ${line}`).join("\n")}`
+    : "";
   const setupNote = item.setupCommand
     ? ` Say that \`/${item.setupCommand}\` would fix most gaps.`
     : "";
@@ -25,7 +30,7 @@ Check this project for one item of its health checklist and report in plain word
 
 - id: \`${item.id}\`
 - group: ${item.group}
-- what to check: ${item.check}
+- what to check: ${item.check}${guide}
 
 ## Steps
 

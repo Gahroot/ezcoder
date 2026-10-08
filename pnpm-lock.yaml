@@ -28,13 +28,6 @@ patchedDependencies:
 importers:
 
   .:
-    dependencies:
-      marked:
-        specifier: ^15.0.12
-        version: 15.0.12
-      playwright:
-        specifier: ^1.63.0
-        version: 1.63.0
     devDependencies:
       '@changesets/cli':
         specifier: ^2.31.0
@@ -48,6 +41,12 @@ importers:
       eslint-config-prettier:
         specifier: ^10.1.8
         version: 10.1.8(eslint@10.10.0(jiti@2.7.0))
+      marked:
+        specifier: ^15.0.12
+        version: 15.0.12
+      playwright:
+        specifier: ^1.63.0
+        version: 1.63.0
       prettier:
         specifier: ^3.9.6
         version: 3.9.6

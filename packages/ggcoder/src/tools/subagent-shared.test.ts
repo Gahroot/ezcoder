@@ -123,8 +123,7 @@ describe("selectSubAgent", () => {
 
   it("gives a sub-agent on a model that cannot reason no thinking level", () => {
     expect(
-      selectSubAgent([], undefined, "huggingface", "Qwen/Qwen3-Coder-480B-A35B-Instruct")
-        .thinkingLevel,
+      selectSubAgent([], undefined, "huggingface", "moonshotai/Kimi-K2.7-Code").thinkingLevel,
     ).toBeUndefined();
   });
 

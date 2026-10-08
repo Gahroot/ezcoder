@@ -26,9 +26,7 @@ describe("getLowestThinkingLevel", () => {
   });
 
   it("is undefined only for a model that cannot reason at all", () => {
-    expect(
-      getLowestThinkingLevel("huggingface", "Qwen/Qwen3-Coder-480B-A35B-Instruct"),
-    ).toBeUndefined();
+    expect(getLowestThinkingLevel("huggingface", "moonshotai/Kimi-K2.7-Code")).toBeUndefined();
   });
 });
 

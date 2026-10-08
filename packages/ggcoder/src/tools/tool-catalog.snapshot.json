@@ -87,7 +87,8 @@
               "compliance",
               "performance",
               "build-release",
-              "monitoring"
+              "monitoring",
+              "senior-review"
             ],
             "description": "record: the checklist item id"
           },
@@ -133,7 +134,7 @@
           "action"
         ]
       },
-      "hash": "fdd372f3bc77217fe4271f4f04448759ba7559eedc0b86bdc21e9b49cc5a711a"
+      "hash": "bc26dddbe5893839d9647201d1aa1a05241b8164f9f8a56917aaee4e176ac361"
     },
     {
       "name": "code_nav",

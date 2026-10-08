@@ -1576,11 +1576,11 @@ export async function setupWindows(count: number): Promise<void> {
 }
 
 /** Open the dedicated, screen-centered "What's new" window (or refocus it if it's
- *  already open). Only the main window calls this, exactly once per update — see
- *  WhatsNewTrigger. */
-export async function openWhatsNewWindow(): Promise<void> {
+ *  already open). `hype` is the one-time post-update show (the main window's
+ *  WhatsNewModal trigger); `calm` is the home screen's "What's new" button. */
+export async function openWhatsNewWindow(mode: "hype" | "calm"): Promise<void> {
   try {
-    await invoke("open_whatsnew_window");
+    await invoke("open_whatsnew_window", { mode });
   } catch (e) {
     await logError(`open_whatsnew_window failed: ${String(e)}`);
     throw e;

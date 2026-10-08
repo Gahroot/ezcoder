@@ -11,6 +11,7 @@ import { WhatsNewModal } from "./WhatsNewModal";
 // <GazeButton /> in App.tsx). The full implementation lives in src/gaze/.
 // import { GazeController } from "./GazeController";
 import { tagPlatform } from "./platform";
+import { parseMode } from "./whatsnew-content";
 
 // Release history belongs to the notes window, not every workspace's startup.
 const WhatsNewWindow = lazy(() =>
@@ -45,14 +46,15 @@ const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement,
 // The dedicated, screen-centered "What's new" window reuses this same entry with
 // a `?whatsnew=1` flag (see Rust `open_whatsnew_window`). Render ONLY the notes
 // for that window — no agent, no sidecar, no app shell.
-if (new URLSearchParams(window.location.search).get("whatsnew") === "1") {
+const params = new URLSearchParams(window.location.search);
+if (params.get("whatsnew") === "1") {
   // Mark the root so the stylesheet can make html/body transparent — the native
   // window is transparent (see Rust `open_whatsnew_window`) so the rounded card's
   // corners show through instead of sitting on a hard rectangular window edge.
   document.documentElement.classList.add("whatsnew-root");
   root.render(
     <Suspense fallback={null}>
-      <WhatsNewWindow />
+      <WhatsNewWindow mode={parseMode(params.get("mode"))} />
     </Suspense>,
   );
 } else {

@@ -116,7 +116,8 @@ export const AUTH_PROVIDERS: AuthProviderMeta[] = [
   {
     value: "moonshot",
     label: "Moonshot",
-    description: "Kimi K3, K2.8 Preview (Kimi sign-in), K2.7 Code · OAuth or API key",
+    description:
+      "Kimi K3, K2.8 Preview (Kimi sign-in), K2.7 Code, K2.7 Code HighSpeed · OAuth or API key",
     methods: ["oauth", "apikey"],
     apiKeyLabel: "Moonshot",
     methodDetails: {
@@ -193,7 +194,7 @@ export const AUTH_PROVIDERS: AuthProviderMeta[] = [
   {
     value: "huggingface",
     label: "Hugging Face",
-    description: "Qwen3 Coder 480B, GPT-OSS 120B",
+    description: "Kimi K2.7 Code, DeepSeek V4.1 Flash, GPT-OSS 120B",
     methods: ["apikey"],
     apiKeyLabel: "Hugging Face",
   },

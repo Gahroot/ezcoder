@@ -76,9 +76,10 @@ export interface ModelInfo {
 // /model selector and login selector sort models identically.
 export const MODELS: ModelInfo[] = [
   // ── Anthropic ──────────────────────────────────────────
-  // NOTE: Claude Mythos 5 (`claude-mythos-5`) is kept commented out — it's a
-  // Project Glasswing (limited, invitation-only) model unavailable to most
-  // users. Re-enable once it's generally available.
+  // NOTE: Claude Mythos 5.1 (`claude-mythos-5-1`, 2026-09-01) is kept commented
+  // out — it's a Project Glasswing model, still "Active (invite only)" in
+  // Anthropic's docs and unavailable to most users. Re-enable once it's
+  // generally available.
   {
     // Released 2026-09-01 — replaces Fable 5 at the same $10/$50 MTok (cache
     // reads drop to $0.25). Always-on adaptive thinking steered by effort;
@@ -100,8 +101,8 @@ export const MODELS: ModelInfo[] = [
   //   // Mythos-class model offered through Project Glasswing (limited
   //   // availability, invitation-only). Same underlying model as Fable 5.1 with
   //   // some safeguards lifted; kept here so approved accounts can select it.
-  //   id: "claude-mythos-5",
-  //   name: "Claude Mythos 5",
+  //   id: "claude-mythos-5-1",
+  //   name: "Claude Mythos 5.1",
   //   provider: "anthropic",
   //   contextWindow: 1_000_000,
   //   maxOutputTokens: 128_000,
@@ -454,6 +455,25 @@ export const MODELS: ModelInfo[] = [
     costTier: "medium",
     maxThinkingLevel: "high",
   },
+  // K2.7 Code HighSpeed — the same model as K2.7 Code served at ~180 tok/s
+  // (up to ~260 on short contexts), 256K context (platform.kimi.ai model list,
+  // 2026-10-08). The `kimi-k2.7-code` prefix gives it K2.7's always-thinking
+  // wire handling in gg-ai. The Kimi For Coding endpoint lists this model as
+  // `kimi-for-coding-highspeed`; like `kimi-k2.7-code` and `kimi-k3`, we send
+  // the public id there too.
+  {
+    id: "kimi-k2.7-code-highspeed",
+    name: "Kimi K2.7 Code HighSpeed",
+    provider: "moonshot",
+    contextWindow: 262_144,
+    maxOutputTokens: 262_144,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: true,
+    maxVideoBytes: 100 * 1024 * 1024,
+    costTier: "medium",
+    maxThinkingLevel: "high",
+  },
   // ── Z.AI (GLM) ─────────────────────────────────────────
   // Two GLM entries, both live on the coding endpoint (verified against its
   // /models list). The pre-5.3 ids stay retired: they routed to strictly worse
@@ -629,21 +649,45 @@ export const MODELS: ModelInfo[] = [
   // billing follows each backend's rates on the HF account (small free tier).
   // Model ids are Hub repo paths, so they intentionally contain a slash — the
   // same shape local/ vLLM ids already use (`local/vllm/Qwen/Qwen3-32B`).
+  // Live GET /v1/models (2026-10-08) is the source for hosts, context and
+  // modalities. Qwen3 Coder 480B is retired here: only one tool-calling host
+  // (Novita) still served it. We keep bare repo ids (no :auto suffix) so the
+  // picker matches what GET /v1/models reports.
   {
-    // Qwen's open flagship for agentic coding — tool-calling native, non-thinking
-    // (the Coder line dropped the <think> block). 262K native context (1M needs
-    // YaRN, which the router doesn't apply), 131K max output. :auto suffix lets
-    // HF pick the backend with capacity; we keep the bare repo id so the picker
-    // matches what GET /v1/models reports.
-    id: "Qwen/Qwen3-Coder-480B-A35B-Instruct",
-    name: "Qwen3 Coder 480B",
+    // Moonshot's open coding model. Served with tool calling by Novita and
+    // DeepInfra at 262K context, with image input (video is a Moonshot-API-only
+    // upload path). It always thinks, but the router has no documented effort
+    // control for it, so we register it as non-thinking: we never send a
+    // reasoning_effort that a host might reject. Output is capped at half the
+    // window so the input keeps room.
+    id: "moonshotai/Kimi-K2.7-Code",
+    name: "Kimi K2.7 Code",
     provider: "huggingface",
     contextWindow: 262_144,
     maxOutputTokens: 131_072,
     supportsThinking: false,
-    supportsImages: false,
+    supportsImages: true,
     supportsVideo: false,
     costTier: "medium",
+    maxThinkingLevel: "low",
+  },
+  {
+    // DeepSeek V4.1 Flash open weights: 1M context and image input on four
+    // tool-calling hosts (Novita, Fireworks, Baseten, DeepInfra; $0.20–0.30 in /
+    // $0.60–1.20 out per MTok). It is listed before gpt-oss so it becomes the
+    // low-tier summary model, because its 1M window can take a full long
+    // session. Thinking control over the router is unverified, so it is
+    // registered as non-thinking. Output is a conservative 131K: hosts don't
+    // publish the 384K first-party cap.
+    id: "deepseek-ai/DeepSeek-V4.1-Flash",
+    name: "DeepSeek V4.1 Flash",
+    provider: "huggingface",
+    contextWindow: 1_048_576,
+    maxOutputTokens: 131_072,
+    supportsThinking: false,
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "low",
     maxThinkingLevel: "low",
   },
   {
@@ -744,8 +788,7 @@ export function getDefaultModel(provider: Provider): ModelInfo {
   if (provider === "moonshot") return MODELS.find((m) => m.id === "kimi-k3")!;
   if (provider === "minimax") return MODELS.find((m) => m.id === "MiniMax-M3")!;
   if (provider === "deepseek") return MODELS.find((m) => m.id === "deepseek-v4-pro")!;
-  if (provider === "huggingface")
-    return MODELS.find((m) => m.id === "Qwen/Qwen3-Coder-480B-A35B-Instruct")!;
+  if (provider === "huggingface") return MODELS.find((m) => m.id === "moonshotai/Kimi-K2.7-Code")!;
   if (provider === "openrouter") return MODELS.find((m) => m.id === "qwen/qwen3.8-max")!;
   if (provider === "sakana") return MODELS.find((m) => m.id === "fugu")!;
   if (provider === "xai") return MODELS.find((m) => m.id === "grok-4.7")!;
@@ -843,8 +886,7 @@ export function getDefaultThinkingLevel(
  * Providers not listed summarize on the active model.
  * - Anthropic: "medium" (the Sonnet line) — Haiku's shallower summaries
  *   cost more in lost memory than they save.
- * - OpenAI, GLM, DeepSeek, Hugging Face: "low" (Luna, the Flash models,
- *   gpt-oss).
+ * - OpenAI, GLM, DeepSeek, Hugging Face: "low" (Luna and the Flash models).
  */
 const SUMMARY_COST_TIER: Readonly<Partial<Record<Provider, ModelInfo["costTier"]>>> = {
   anthropic: "medium",
