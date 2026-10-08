@@ -93,6 +93,30 @@ describe("ChecklistScreen", () => {
     expect(within(info).getByText(label)).toBeTruthy();
     expect(info.querySelector(".checklist-entry-icon")?.getAttribute("aria-hidden")).toBe("true");
   });
+  it("marks findings recorded before the code changed instead of showing them as current", () => {
+    const findings: Partial<ChecklistEntry> = {
+      status: "needs-work",
+      checkedAt: "2026-10-05T09:00:00Z",
+      result: "issues",
+      findings: ["a.ts:1", "b.ts:2"],
+    };
+    render(
+      <ChecklistScreen
+        {...props(
+          ready([
+            item("tests", { ...findings, changedSinceCheck: true }),
+            item("docs", { ...findings, changedSinceCheck: false }),
+          ]),
+        )}
+      />,
+    );
+    const tests = screen.getByRole("group", { name: "tests" });
+    const docs = screen.getByRole("group", { name: "docs" });
+    expect(
+      within(tests).getByText("2 findings reported · Code changed since, check again"),
+    ).toBeTruthy();
+    expect(within(docs).getByText("2 findings reported")).toBeTruthy();
+  });
   it("overrides a previous pass while checking or displaying an unrecorded-run notice", () => {
     const p = props(
       ready([
@@ -117,7 +141,9 @@ describe("ChecklistScreen", () => {
     expect(screen.getByRole("button", { name: "Check agent-setup" }).title).toBe(
       "Run /init to create or update project instructions",
     );
-    expect(screen.getByRole("button", { name: "Check tests" }).title).toBe("Check and report only");
+    expect(screen.getByRole("button", { name: "Check tests" }).title).toBe(
+      "Check and report, then choose what to fix",
+    );
   });
   it("keeps rows non-expanding and preserves the Check action and busy state", () => {
     const entry = item("tests");
