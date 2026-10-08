@@ -58,11 +58,13 @@ pub(crate) struct TrayIntents(pub(crate) Mutex<HashMap<String, String>>);
 /// True for the real app windows (`main`, `project-N`) — excludes transient
 /// chrome like the borderless `whatsnew` dialog, which must never be treated as
 /// a place to route a tray action.
+#[cfg(any(target_os = "macos", windows))]
 pub(crate) fn is_app_window(label: &str) -> bool {
     label == "main" || label.starts_with("project-")
 }
 
 /// App-window labels in reading order (left-to-right, top-to-bottom).
+#[cfg(any(target_os = "macos", windows))]
 pub(crate) fn app_window_labels(app: &tauri::AppHandle) -> Vec<String> {
     compute_window_order(app)
         .into_iter()
@@ -72,6 +74,7 @@ pub(crate) fn app_window_labels(app: &tauri::AppHandle) -> Vec<String> {
 
 /// The window a tray action should target: the focused app window when there is
 /// one, else the first in reading order. `None` when no app window is open.
+#[cfg(any(target_os = "macos", windows))]
 pub(crate) fn tray_target_window(app: &tauri::AppHandle) -> Option<String> {
     let labels = app_window_labels(app);
     let focused = app.state::<FocusedWindow>().0.lock_or_recover().clone();
@@ -191,6 +194,7 @@ pub(crate) fn init_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 /// NEW window is opened for the session instead of hijacking someone's work.
 /// `remote` / `settings` always act on the existing target window (they're
 /// app-wide, not per-session) and only open a window when none exists.
+#[cfg(any(target_os = "macos", windows))]
 pub(crate) fn dispatch_tray_action(app: tauri::AppHandle, action: &'static str) {
     let labels = app_window_labels(&app);
     let wants_new_window = match action {
