@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.30.1
+
+### Patch Changes
+
+- Bring in the latest upstream reliability and efficiency improvements while preserving EZ Coder's custom features and branding: leaner tool prompts, more dependable plan handoffs, shared repository polling, recovery for split edit arguments, and improved Claude reasoning handling.
+  - @prestyj/ai@5.30.1
+  - @prestyj/agent@5.30.1
+  - @prestyj/core@5.30.1
+
 ## 5.30.0
 
 ### Minor Changes
