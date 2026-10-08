@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.81.3",
+    date: "2026-10-08",
+    items: [
+      "I trimmed the agent's upfront tool instructions. Your chats can get to work with fewer setup tokens.",
+      "I made `Claude` edits more dependable when instructions arrive tangled. I keep the same file-matching safeguards instead of guessing what to change.",
+      "I made background windows take a breather. Critters and scenery pause when you aren't looking, and windows on the same project now share their `Git` checks.",
+      "I cleaned up after opened links and project files, so clicking them no longer leaves invisible extra processes behind.",
+      "I rebuilt `What's new` around a campfire full of critters. Fresh improvements stay up front, with earlier updates tucked below.",
+    ],
+  },
+  {
     version: "0.81.2",
     date: "2026-10-06",
     items: [
