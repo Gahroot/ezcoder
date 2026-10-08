@@ -42,14 +42,14 @@
     "@prestyj/cli": "workspace:*",
     "chalk": "^5.6.2",
     "ink": "^7.0.2",
-    "react": "^19.2.5",
-    "ws": "^8.18.0",
+    "react": "^19.3.0",
+    "ws": "^8.22.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "@types/react": "^19.2.14",
-    "@types/ws": "^8.5.13",
+    "@types/react": "^19.3.0",
+    "@types/ws": "^8.18.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"
   },
