@@ -1037,11 +1037,14 @@ export function toAnthropicThinking(
       effort = "high";
     }
     return {
-      // `display` defaults to "omitted" on Fable/Mythos 5.x, Opus 5.x/4.8/4.7,
-      // Sonnet 5.x and Haiku 5.5: the model still thinks (and bills for it) but
-      // streams empty thinking blocks, so the app shows no reasoning at all.
-      // "summarized" opts back in; on Opus/Sonnet 4.6 it is already the default.
-      thinking: { type: "adaptive", display: "summarized" },
+      // "omitted" (what Claude Code sends): the model still thinks, but
+      // thinking blocks stream empty (signature only). The app never renders
+      // reasoning text, and "summarized" costs speed on Haiku 5.5: bench/h2h
+      // measured output tok/s over each whole request at 151 (summarized) vs
+      // 191 (omitted); Claude Code 195. Sonnet/Opus 5.5 measured even either way.
+      // The UI's "Thinking…" timer keys off the empty thinking_delta emitted
+      // when a thinking block opens, so it is unaffected.
+      thinking: { type: "adaptive", display: "omitted" },
       maxTokens,
       outputConfig: { effort },
     };

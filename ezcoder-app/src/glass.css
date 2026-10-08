@@ -734,11 +734,13 @@
   opacity: 1;
   transform: translateX(-110%);
   animation: glass-progress-sheen 1.6s linear infinite;
+  animation-play-state: var(--loop-play-state, running);
   pointer-events: none;
 }
 /* The meter is always on screen, so its sheen passes slowly and rests between. */
 .title-usage-fill::before {
   animation: glass-progress-sheen-idle 6s ease-in-out infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 @keyframes glass-progress-sheen {
   to {

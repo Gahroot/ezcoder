@@ -711,13 +711,13 @@ describe("toAnthropicThinking", () => {
       for (const level of ["low", "medium", "high", "xhigh", "max"] as const) {
         const result = toAnthropicThinking(level, MAX_TOKENS, model);
         expect(result.outputConfig).toEqual({ effort: level });
-        expect(result.thinking).toEqual({ type: "adaptive", display: "summarized" });
+        expect(result.thinking).toEqual({ type: "adaptive", display: "omitted" });
       }
     }
   });
 
-  // These models default `display` to "omitted": without opting in, thinking
-  // blocks stream empty and the user never sees any reasoning.
+  // Reasoning text is never rendered, and "summarized" slows output on
+  // Haiku 5.5 (bench/h2h: 151 → 191 tok/s per request with "omitted").
   it.each([
     "claude-haiku-5-5",
     "claude-sonnet-5-5",
@@ -725,10 +725,10 @@ describe("toAnthropicThinking", () => {
     "claude-opus-5-5",
     "claude-fable-5-1",
     "claude-mythos-5",
-  ])("requests summarized thinking text from %s", (model) => {
+  ])("asks %s to omit thinking text", (model) => {
     expect(toAnthropicThinking("low", MAX_TOKENS, model).thinking).toEqual({
       type: "adaptive",
-      display: "summarized",
+      display: "omitted",
     });
   });
 
@@ -737,7 +737,7 @@ describe("toAnthropicThinking", () => {
     (model) => {
       for (const level of ["low", "medium", "high", "xhigh", "max"] as const) {
         expect(toAnthropicThinking(level, MAX_TOKENS, model)).toEqual({
-          thinking: { type: "adaptive", display: "summarized" },
+          thinking: { type: "adaptive", display: "omitted" },
           maxTokens: MAX_TOKENS,
           outputConfig: { effort: level },
         });
