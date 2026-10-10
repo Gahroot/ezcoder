@@ -17,7 +17,7 @@ import {
 
 let root: string;
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-health-scan-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-health-scan-"));
 });
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });

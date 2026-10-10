@@ -819,14 +819,14 @@ ${CLAUDE_MD_RESTART_NOTICE}`,
   {
     // The verification point for every project: replies leave checks to the
     // commit, which is the one real end of a piece of work. A project's own
-    // `.gg/commands/commit.md` (from /setup-commit) is shadowed by this name,
+    // `.ezcoder/commands/commit.md` (from /setup-commit) is shadowed by this name,
     // so step 1 defers to it.
     name: "commit",
     aliases: [],
     description: "Run checks, review, commit with AI message, and push",
     prompt: `# Commit: check, review, commit and push
 
-1. If \`.gg/commands/commit.md\` exists, read it and follow it instead of these steps: it is this project's own commit procedure. If it runs no tests while the project has some, run them too.
+1. If \`.ezcoder/commands/commit.md\` exists, read it and follow it instead of these steps: it is this project's own commit procedure. If it runs no tests while the project has some, run them too.
 2. Run the project's checks: everything under Verification in your instructions, plus the tests. If none are listed, use the project's own scripts (package.json \`check\`/\`typecheck\`, \`lint\`, \`format:check\`, \`test\`; pyproject, go.mod or Cargo.toml equivalents). Run each standalone, unpiped. Fix every failure (auto-fix formatting/lint where the project has a fix script), then re-run what failed.
 3. Review changes: run \`git status\`, \`git diff --staged\` and \`git diff\`.
 4. Fast review gate: spawn ONE subagent with the full diff. Instructions: review ONLY the diff for real bugs, regressions, leftover debug code and unintended changes. Score each issue 0-100 confidence (pre-existing issues and stylistic nitpicks are false positives, score low). Report ONLY issues with confidence >= 80, with file:line and a one-line fix. If none, reply "CLEAR". This is a last check, not a deep audit - be fast.

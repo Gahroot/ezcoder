@@ -1,4 +1,4 @@
-/** Mirrors ggcoder `core/project-health-score.ts` ProjectHealthCategory. */
+/** Mirrors ezcoder `core/project-health-score.ts` ProjectHealthCategory. */
 export interface ProjectHealthCategory {
   id: "files" | "hygiene" | "safety" | "debt";
   label: string;
@@ -10,7 +10,7 @@ export interface ProjectHealthCategory {
   fixPrompt: string | null;
 }
 
-/** Mirrors ggcoder `core/project-health-score.ts` ProjectHealth. */
+/** Mirrors ezcoder `core/project-health-score.ts` ProjectHealth. */
 export interface ProjectHealth {
   score: number;
   /** Hands every category with findings to the agent; null when clean. */

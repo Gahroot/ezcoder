@@ -212,7 +212,7 @@ function PromptBlock({ body }: { body: string }): React.ReactElement {
       : sendPrompt(text).then(
           () => true,
           () => {
-            toast("Couldn't send the prompt to GG Coder. Try again.", "error");
+            toast("Couldn't send the prompt to EZ Coder. Try again.", "error");
             return false;
           },
         );

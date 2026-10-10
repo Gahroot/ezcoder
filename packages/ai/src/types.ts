@@ -383,7 +383,7 @@ export interface StreamOptions {
   defaultHeaders?: Record<string, string>;
   /** Provider-specific request-body fields, merged into the JSON body of every
    *  model request (e.g. OpenRouter's routing object:
-   *  `{ provider: { zdr: true, data_collection: "deny" } }`). Fields gg-ai
+   *  `{ provider: { zdr: true, data_collection: "deny" } }`). Fields @prestyj/ai
    *  sets itself — `model`, `messages`, `tools`, `stream`, sampling and
    *  reasoning parameters, and so on — always win; see `ProviderOptions`. */
   providerOptions?: ProviderOptions;
@@ -395,10 +395,10 @@ export interface StreamOptions {
  * Provider-specific JSON body fields passed through to the provider unchanged
  * by `stream()`, `embed()` and `rerank()`.
  *
- * Merge rules: a field is added only when gg-ai hasn't set it on the request.
+ * Merge rules: a field is added only when @prestyj/ai hasn't set it on the request.
  * Core fields (`model`, `messages`, `input`, `query`, `documents`, `stream`,
  * `tools`, `system`, `contents`, `requests`, `dimensions`, `encoding_format`,
- * `top_n`) are never taken from here, even when gg-ai left them unset — use the
+ * `top_n`) are never taken from here, even when @prestyj/ai left them unset — use the
  * dedicated option instead. Keys are applied in sorted order, so the merged body
  * is deterministic.
  *

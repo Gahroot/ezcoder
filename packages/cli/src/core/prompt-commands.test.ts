@@ -28,7 +28,7 @@ describe("prompt commands", () => {
   it("lets a project's own commit.md, which the built-in name shadows, take over", () => {
     const cmd = PROMPT_COMMANDS.find((command) => command.name === "commit");
     expect(cmd?.prompt).toContain(
-      "If `.gg/commands/commit.md` exists, read it and follow it instead of these steps",
+      "If `.ezcoder/commands/commit.md` exists, read it and follow it instead of these steps",
     );
     expect(cmd?.prompt).toContain("If it runs no tests while the project has some, run them too");
   });

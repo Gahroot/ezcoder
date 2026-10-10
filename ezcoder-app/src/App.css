@@ -3032,27 +3032,27 @@ select {
    The snapshot can't read the panel's custom properties, so the direction
    comes from a class: below-trigger panels rise away, above-trigger ones sink. */
 .floating-surface[data-exiting] > :is(.pop-panel, .dropdown-menu, .winlayout-menu) {
-  view-transition-class: gg-floating gg-pop-down;
+  view-transition-class: ez-floating ez-pop-down;
 }
 .floating-surface[data-exiting] > :is(.pop-panel[data-side="above"], .slash-menu, .model-menu) {
-  view-transition-class: gg-floating gg-pop-up;
+  view-transition-class: ez-floating ez-pop-up;
 }
-::view-transition-old(*.gg-pop-down) {
+::view-transition-old(*.ez-pop-down) {
   transform-origin: center top;
   animation: pop-out var(--dur-pop-out) var(--ease-in) both;
 }
-::view-transition-old(*.gg-pop-up) {
+::view-transition-old(*.ez-pop-up) {
   --pop-exit-y: 4px;
   transform-origin: center bottom;
   animation: pop-out var(--dur-pop-out) var(--ease-in) both;
 }
-::view-transition-group(*.gg-pop-down),
-::view-transition-group(*.gg-pop-up) {
+::view-transition-group(*.ez-pop-down),
+::view-transition-group(*.ez-pop-up) {
   animation-duration: var(--dur-pop-out);
 }
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(*.gg-pop-down),
-  ::view-transition-old(*.gg-pop-up) {
+  ::view-transition-old(*.ez-pop-down),
+  ::view-transition-old(*.ez-pop-up) {
     animation-name: fade-out;
   }
 }

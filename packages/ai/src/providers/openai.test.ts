@@ -139,7 +139,7 @@ describe("streamOpenAI request shaping", () => {
     }
   });
 
-  it("merges providerOptions into the chat body without overriding gg-ai fields", async () => {
+  it("merges providerOptions into the chat body without overriding @prestyj/ai fields", async () => {
     createMock.mockResolvedValueOnce(createStreamingResult(""));
     const result = streamOpenAI({
       provider: "openrouter",

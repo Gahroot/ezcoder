@@ -528,7 +528,7 @@ function buildRequestPlan(options: StreamOptions, method: string): GeminiRequest
 
   const projectId = getGoogleProject(options);
   // Provider-specific fields go on the generateContent request (inside the
-  // Code Assist envelope) and only fill fields gg-ai left unset.
+  // Code Assist envelope) and only fill fields @prestyj/ai left unset.
   const request = mergeProviderOptions(buildGenerateRequest(options), options.providerOptions);
 
   return {

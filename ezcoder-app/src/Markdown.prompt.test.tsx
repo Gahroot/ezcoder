@@ -15,7 +15,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("Ken prompt block", () => {
+describe("Nolan prompt block", () => {
   it("offers the prompt again when the direct send fails", async () => {
     sendPrompt.mockRejectedValueOnce(new Error("daemon not ready"));
     render(<Markdown>{PROMPT}</Markdown>);

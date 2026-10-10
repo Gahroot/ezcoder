@@ -50,7 +50,7 @@ export async function embedOpenAICompatible(
     {
       model: config.wireModel ?? request.model,
       input: request.input,
-      // gg-ai parses float arrays only; never let a server default to base64.
+      // @prestyj/ai parses float arrays only; never let a server default to base64.
       encoding_format: "float",
       ...(request.dimensions !== undefined ? { dimensions: request.dimensions } : {}),
       ...(request.inputType && config.inputTypeFields

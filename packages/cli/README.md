@@ -59,7 +59,7 @@ This doesn't help. It confuses the agent. More tool descriptions = more noise = 
 
 EZ Coder ships with no MCPs by default. Checking work against real-world code is a native tool instead: `steroids` finds production repos similar to yours so the agent can confirm API usage, library idioms, and patterns. It loads only when the agent asks for it, so it costs nothing until it's used. (On GLM, the Z.AI MCP servers that come with your key are connected automatically.)
 
-You can still add your own MCPs in `~/.gg/mcp.json` or `.gg/mcp.json`. But start with less. You'll get better results.
+You can still add your own MCPs in `~/.ezcoder/mcp.json` or `.ezcoder/mcp.json`. But start with less. You'll get better results.
 
 ---
 
@@ -186,7 +186,7 @@ EZ Coder comes with a focused set of tools. Only six core tools — `read`, `wri
 
 The `screenshot` tool needs the optional `playwright` dependency plus a one-time `npx playwright install chromium`. Without it the tool returns an install hint instead of failing the turn. Captured images render inline in graphics-capable terminals (kitty, Ghostty, WezTerm, iTerm2); other terminals show a text line.
 
-Add your own MCPs in `~/.gg/mcp.json` or `.gg/mcp.json` if you need more — but start lean.
+Add your own MCPs in `~/.ezcoder/mcp.json` or `.ezcoder/mcp.json` if you need more — but start lean.
 
 ### Async subagent lifecycle
 

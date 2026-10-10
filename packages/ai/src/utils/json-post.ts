@@ -1,5 +1,5 @@
 import {
-  GGAIError,
+  EZCoderAIError,
   ProviderError,
   emptyProviderErrorMessage,
   isHardBillingMessage,
@@ -39,10 +39,10 @@ export function throwIfAborted(signal: AbortSignal | undefined): void {
 
 /**
  * POST a JSON body and parse the JSON reply, mapping every failure onto
- * gg-ai's error model:
+ * @prestyj/ai's error model:
  *
  * - abort → `DOMException("Aborted", "AbortError")`, as `stream()` does
- * - fetch rejection → `GGAIError` with source `"network"`
+ * - fetch rejection → `EZCoderAIError` with source `"network"`
  * - HTTP 401/403 → `ProviderError` with source `"auth"`
  * - HTTP 402 / insufficient quota / hard billing text → `ProviderError` stamped
  *   "usage limit reached" (so `isUsageLimitError` sees it as a hard stop)
@@ -70,7 +70,7 @@ export async function postJson(request: JsonPostRequest): Promise<JsonPostRespon
   } catch (err) {
     if (signal?.aborted || isAbortError(err)) throw abortError();
     const detail = err instanceof Error ? err.message : String(err);
-    throw new GGAIError(`Couldn't reach ${provider}: ${clean(detail)}`, {
+    throw new EZCoderAIError(`Couldn't reach ${provider}: ${clean(detail)}`, {
       source: "network",
       cause: err,
     });
@@ -88,7 +88,7 @@ export async function postJson(request: JsonPostRequest): Promise<JsonPostRespon
     text = await response.text();
   } catch (err) {
     if (signal?.aborted || isAbortError(err)) throw abortError();
-    throw new GGAIError(`Lost the connection to ${provider} while reading its response.`, {
+    throw new EZCoderAIError(`Lost the connection to ${provider} while reading its response.`, {
       source: "network",
       cause: err,
     });

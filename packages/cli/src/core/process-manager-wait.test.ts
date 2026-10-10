@@ -92,7 +92,7 @@ describe("ProcessManager spawn failure", () => {
   });
 
   it("never signals a pid for a child that failed to spawn", async () => {
-    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gg-process-wait-"));
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ez-process-wait-"));
     tempDirs.push(directory);
     const signalled: unknown[] = [];
     const pm = new ProcessManager({

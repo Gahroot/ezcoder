@@ -186,7 +186,7 @@ export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRun
   async function runAutopilotCycle(originalRequest: string): Promise<void> {
     if (!ctx.autopilot || ctx.autopilotCancelled) return;
     // Unchecked work enters the cycle too: driveAutopilotCycle asks for the
-    // checks once before Ken reviews, and hands back only if still unchecked.
+    // checks once before Nolan reviews, and hands back only if still unchecked.
     const generation = ctx.runLifecycle.begin(ctx.abortOwnedWork).generation;
     ctx.pendingCancelDrain = null;
     ctx.autopilotActive = true;

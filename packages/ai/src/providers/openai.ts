@@ -335,7 +335,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   }
 
   // Caller-supplied provider-specific body fields (e.g. OpenRouter's `provider`
-  // routing object). Merged last so they can only fill fields gg-ai left unset.
+  // routing object). Merged last so they can only fill fields @prestyj/ai left unset.
   const requestParams = mergeProviderOptions(params, options.providerOptions);
 
   // Dump request body for stall diagnosis when GGAI_DUMP_REQUEST is set

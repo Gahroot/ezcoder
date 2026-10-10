@@ -5,10 +5,10 @@
  * https://ai.google.dev/gemini-api/docs/embeddings.
  *
  * This is the Gemini API (AI Studio key), not the Code Assist endpoint that
- * gg-ai's Gemini chat transport uses with Google OAuth — Code Assist has no
+ * @prestyj/ai's Gemini chat transport uses with Google OAuth — Code Assist has no
  * embeddings API, so an OAuth access token won't work here.
  */
-import { GGAIError, ProviderError } from "../errors.js";
+import { EZCoderAIError, ProviderError } from "../errors.js";
 import type {
   EmbedInputType,
   ProviderEmbedRequest,
@@ -30,7 +30,7 @@ const TASK_TYPES: Record<EmbedInputType, string> = {
 
 /**
  * `gemini-embedding-2` doesn't accept a task type: Google's docs say to put the
- * task in the text instead (`task: search result | query: …`). gg-ai doesn't
+ * task in the text instead (`task: search result | query: …`). @prestyj/ai doesn't
  * rewrite caller text, so `inputType` is ignored for it.
  */
 function supportsTaskType(model: string): boolean {
@@ -39,7 +39,7 @@ function supportsTaskType(model: string): boolean {
 
 export async function embedGemini(request: ProviderEmbedRequest): Promise<ProviderEmbedResponse> {
   if (!request.apiKey) {
-    throw new GGAIError("Gemini embeddings need a Gemini API key (apiKey).", {
+    throw new EZCoderAIError("Gemini embeddings need a Gemini API key (apiKey).", {
       source: "auth",
       hint: "Create a key in Google AI Studio. Gemini Code Assist sign-in can't be used for embeddings.",
     });

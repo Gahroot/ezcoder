@@ -285,7 +285,7 @@ providerRegistry.register("local", {
 
 function requireLocalBaseUrl(baseUrl: string | undefined): string {
   if (!baseUrl) {
-    throw new GGAIError(
+    throw new EZCoderAIError(
       "Local provider requires a baseUrl (e.g. http://127.0.0.1:11434/v1). " +
         "No local endpoint was resolved for this model — re-scan for local models.",
     );

@@ -148,7 +148,7 @@ export async function driveAutopilotCycle(deps: AutopilotCycleDeps): Promise<voi
   // only work still unchecked after that goes back to the human.
   const ensureVerified = async (round: number): Promise<boolean> => {
     if (!deps.verificationProblem()) return true;
-    // A pending plan is reviewed by Ken in plan mode, where checks cannot run;
+    // A pending plan is reviewed by Nolan in plan mode, where checks cannot run;
     // its outcome (or the user) decides what happens to the unchecked work.
     if (deps.planPending()) {
       stopIfUnverified();

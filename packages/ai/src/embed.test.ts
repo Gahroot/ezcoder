@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { embed, rerank } from "./embed.js";
-import { GGAIError, ProviderError, formatError, isUsageLimitError } from "./errors.js";
+import { EZCoderAIError, ProviderError, formatError, isUsageLimitError } from "./errors.js";
 import { providerRegistry } from "./provider-registry.js";
 import { registerPalsuProvider, palsuEmbedding, palsuRerankScore } from "./providers/palsu.js";
 import type { Provider } from "./types.js";
@@ -169,7 +169,7 @@ describe("embed()", () => {
     expect(body.input).toEqual(["a"]);
     expect(body.encoding_format).toBe("float");
     expect(body).not.toHaveProperty("dimensions");
-    // Non-core fields gg-ai didn't set pass through.
+    // Non-core fields @prestyj/ai didn't set pass through.
     expect(body.input_type).toBe("search_query");
     expect(body.user).toBe("u-1");
   });
@@ -400,7 +400,7 @@ describe("embed()", () => {
     const error = await embed({ provider: "anthropic", model: "m", input: ["a"] }).catch(
       (err: unknown) => err,
     );
-    expect(error).toBeInstanceOf(GGAIError);
+    expect(error).toBeInstanceOf(EZCoderAIError);
     expect(error).not.toBeInstanceOf(ProviderError);
     expect(error).toMatchObject({ source: "capability" });
     expect((error as Error).message).toBe(`Provider "anthropic" doesn't support embeddings.`);
@@ -525,7 +525,7 @@ describe("embed() and rerank() errors", () => {
       apiKey: SECRET,
       fetch,
     }).catch((err: unknown) => err);
-    expect(error).toBeInstanceOf(GGAIError);
+    expect(error).toBeInstanceOf(EZCoderAIError);
     expect(error).toMatchObject({ source: "network" });
     expect((error as Error).message).not.toContain(SECRET);
   });

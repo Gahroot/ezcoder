@@ -18,12 +18,12 @@ interface RetrievalRequestOptions {
   /** Custom fetch implementation (tests, React Native, proxies). */
   fetch?: typeof globalThis.fetch;
   /** Provider-specific body fields (e.g. OpenRouter's `provider` routing object).
-   *  Never overrides fields gg-ai sets; see `ProviderOptions`. */
+   *  Never overrides fields @prestyj/ai sets; see `ProviderOptions`. */
   providerOptions?: ProviderOptions;
 }
 
 export interface EmbedOptions extends RetrievalRequestOptions {
-  /** Texts to embed. Any length — gg-ai splits it into provider-sized batches. */
+  /** Texts to embed. Any length — @prestyj/ai splits it into provider-sized batches. */
   input: string[];
   /** Requested vector size, for models that support shortened embeddings.
    *  Every returned vector is checked against it; a mismatch throws. */
@@ -94,13 +94,13 @@ export interface ProviderEmbedResponse {
   usage?: EmbedUsage;
 }
 
-/** Embed one batch. gg-ai handles batching, validation and normalization. */
+/** Embed one batch. @prestyj/ai handles batching, validation and normalization. */
 export type ProviderEmbedFn = (request: ProviderEmbedRequest) => Promise<ProviderEmbedResponse>;
 
 /** A rerank request as a provider sees it. `documents` is never empty. */
 export type ProviderRerankRequest = RerankOptions;
 
-/** A provider's rerank answer. Any order; gg-ai validates, sorts and applies `topN`. */
+/** A provider's rerank answer. Any order; @prestyj/ai validates, sorts and applies `topN`. */
 export interface ProviderRerankResponse {
   results: RerankResult[];
   model?: string;

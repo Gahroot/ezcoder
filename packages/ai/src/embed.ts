@@ -1,4 +1,4 @@
-import { GGAIError, ProviderError } from "./errors.js";
+import { EZCoderAIError, ProviderError } from "./errors.js";
 import { providerRegistry } from "./provider-registry.js";
 import type { ProviderCapability, ProviderEntry } from "./provider-registry.js";
 import type {
@@ -22,7 +22,7 @@ function resolveCapability<C extends "embed" | "rerank">(
 ): NonNullable<ProviderEntry[C]> {
   const entry = providerRegistry.get(provider);
   if (!entry) {
-    throw new GGAIError(
+    throw new EZCoderAIError(
       `Unknown provider: "${provider}". Registered: ${providerRegistry.list().join(", ")}`,
     );
   }
@@ -33,7 +33,7 @@ function resolveCapability<C extends "embed" | "rerank">(
       .list()
       .filter((name) => providerRegistry.supports(name, capability))
       .sort();
-    throw new GGAIError(`Provider "${provider}" doesn't support ${label}.`, {
+    throw new EZCoderAIError(`Provider "${provider}" doesn't support ${label}.`, {
       source: "capability",
       hint:
         offering.length > 0
@@ -46,7 +46,7 @@ function resolveCapability<C extends "embed" | "rerank">(
 
 function assertPositiveInteger(name: string, value: number | undefined): void {
   if (value !== undefined && !(Number.isInteger(value) && value > 0)) {
-    throw new GGAIError(`${name} must be a positive integer (got ${String(value)}).`);
+    throw new EZCoderAIError(`${name} must be a positive integer (got ${String(value)}).`);
   }
 }
 
@@ -77,7 +77,7 @@ function assertPositiveInteger(name: string, value: number | undefined): void {
 export async function embed(options: EmbedOptions): Promise<EmbedResult> {
   const embedFn = resolveCapability(options.provider, "embed");
   if (!Array.isArray(options.input)) {
-    throw new GGAIError("embed() input must be an array of strings.");
+    throw new EZCoderAIError("embed() input must be an array of strings.");
   }
   assertPositiveInteger("dimensions", options.dimensions);
   assertPositiveInteger("batchSize", options.batchSize);
@@ -154,7 +154,7 @@ export async function embed(options: EmbedOptions): Promise<EmbedResult> {
 export async function rerank(options: RerankOptions): Promise<RerankResponse> {
   const rerankFn = resolveCapability(options.provider, "rerank");
   if (!Array.isArray(options.documents)) {
-    throw new GGAIError("rerank() documents must be an array of strings.");
+    throw new EZCoderAIError("rerank() documents must be an array of strings.");
   }
   assertPositiveInteger("topN", options.topN);
   if (options.documents.length === 0) return { results: [], model: options.model };

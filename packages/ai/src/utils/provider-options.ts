@@ -1,8 +1,8 @@
 import type { ProviderOptions } from "../types.js";
 
 /**
- * Body fields `providerOptions` may never supply, even when gg-ai left them
- * unset: they define what the request *is* (or how gg-ai parses the reply), so
+ * Body fields `providerOptions` may never supply, even when @prestyj/ai left them
+ * unset: they define what the request *is* (or how @prestyj/ai parses the reply), so
  * each has a dedicated, validated option instead.
  */
 const RESERVED_BODY_FIELDS: ReadonlySet<string> = new Set([
@@ -27,7 +27,7 @@ const RESERVED_BODY_FIELDS: ReadonlySet<string> = new Set([
 
 /**
  * Merge caller-supplied provider-specific fields into a request body without
- * letting them override anything gg-ai set: a field already present on `body`
+ * letting them override anything @prestyj/ai set: a field already present on `body`
  * (with a defined value) wins, and reserved core fields are always skipped.
  * Returns a new object; neither input is mutated. Keys are applied in sorted
  * order so the resulting body is deterministic.

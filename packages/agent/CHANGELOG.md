@@ -10,7 +10,7 @@
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.78.0
+- @prestyj/ai@5.78.0
 
 ## 5.77.0
 
@@ -21,19 +21,19 @@
 ### Patch Changes
 
 - Updated dependencies [60a2495]
-  - @kenkaiiii/gg-ai@5.77.0
+  - @prestyj/ai@5.77.0
 
 ## 5.76.0
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.76.0
+- @prestyj/ai@5.76.0
 
 ## 5.75.1
 
 ### Patch Changes
 
-- @kenkaiiii/gg-ai@5.75.1
+- @prestyj/ai@5.75.1
 
 ## 5.75.0
 

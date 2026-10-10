@@ -54,7 +54,7 @@ Tool parameters are Zod schemas. Converted to JSON Schema at the provider bounda
 | `huggingface` | Kimi K2.7 Code, DeepSeek V4.1 Flash, GPT-OSS 120B | Inference Providers router, OpenAI-compatible |
 | `local` | Any model your server exposes | Ollama, LM Studio, llama.cpp, vLLM; `baseUrl` is required |
 
-The model lists are the ones GG Coder ships in its registry (`@kenkaiiii/gg-core`). `stream()` passes `model` straight through, so any id the provider accepts works. Every provider's default endpoint can be overridden with `baseUrl`, and `providerRegistry.register()` adds your own.
+The model lists are the ones EZ Coder ships in its registry (`@prestyj/core`). `stream()` passes `model` straight through, so any id the provider accepts works. Every provider's default endpoint can be overridden with `baseUrl`, and `providerRegistry.register()` adds your own.
 
 ---
 
@@ -102,10 +102,10 @@ The model lists are the ones GG Coder ships in its registry (`@kenkaiiii/gg-core
 
 ### Provider-specific body fields
 
-`providerOptions` is merged into the JSON body of `stream()`, `embed()` and `rerank()` requests. It only adds fields gg-ai hasn't set. Core fields (`model`, `messages`, `input`, `query`, `documents`, `stream`, `tools`, `system`, `contents`, `requests`, `dimensions`, `encoding_format`, `top_n`) can't be set this way, even when gg-ai left them out. The main use is OpenRouter's [provider routing](https://openrouter.ai/docs/features/provider-routing):
+`providerOptions` is merged into the JSON body of `stream()`, `embed()` and `rerank()` requests. It only adds fields @prestyj/ai hasn't set. Core fields (`model`, `messages`, `input`, `query`, `documents`, `stream`, `tools`, `system`, `contents`, `requests`, `dimensions`, `encoding_format`, `top_n`) can't be set this way, even when @prestyj/ai left them out. The main use is OpenRouter's [provider routing](https://openrouter.ai/docs/features/provider-routing):
 
 ```ts
-import { stream, type OpenRouterProviderPreferences } from "@kenkaiiii/gg-ai";
+import { stream, type OpenRouterProviderPreferences } from "@prestyj/ai";
 
 const result = stream({
   provider: "openrouter",
@@ -118,7 +118,7 @@ const result = stream({
 });
 ```
 
-`@kenkaiiii/gg-agent` passes `providerOptions` and `fetch` through to every `stream()` call it makes.
+`@prestyj/agent` passes `providerOptions` and `fetch` through to every `stream()` call it makes.
 
 ---
 
@@ -127,7 +127,7 @@ const result = stream({
 `embed()` and `rerank()` use the same provider registry as `stream()`.
 
 ```ts
-import { embed, rerank } from "@kenkaiiii/gg-ai";
+import { embed, rerank } from "@prestyj/ai";
 
 const { embeddings, usage } = await embed({
   provider: "openrouter",
@@ -152,7 +152,7 @@ const { results } = await rerank({
 ```
 
 **What `embed()` guarantees**
-- Vectors come back in input order, even when the provider returns them out of order (gg-ai sorts by `index`).
+- Vectors come back in input order, even when the provider returns them out of order (@prestyj/ai sorts by `index`).
 - Long inputs are split at the provider's per-request limit (table below; override with `batchSize`). Batches run one at a time, in order.
 - The response is checked: exactly one vector per input, all numbers, all the same length, and `dimensions` long when you asked for that. If any check fails it throws `ProviderError`. Nothing is padded or truncated.
 - `normalize: true` L2-normalizes every vector. It's off by default. OpenAI embeddings come back unit-length already, and so does Gemini at full 3072 dimensions. `gemini-embedding-2` also normalizes shortened vectors, but `gemini-embedding-001` doesn't: at reduced `dimensions` its vectors are not unit-length, so pass `normalize: true`. Through OpenRouter or a local server, it depends on the upstream model. If you compare with cosine similarity or a dot product and aren't sure, normalize.
@@ -166,18 +166,18 @@ const { results } = await rerank({
 | Provider | `embed` | Max inputs per request | `inputType` | `rerank` |
 |---|---|---|---|---|
 | `openai` | ✓ `/v1/embeddings` | 2048 | ignored | — |
-| `openrouter` | ✓ `/api/v1/embeddings` | 64 (gg-ai default; OpenRouter documents no limit) | `input_type` | ✓ `/api/v1/rerank` |
+| `openrouter` | ✓ `/api/v1/embeddings` | 64 (@prestyj/ai default; OpenRouter documents no limit) | `input_type` | ✓ `/api/v1/rerank` |
 | `gemini` | ✓ native `batchEmbedContents` | 100 | `taskType` | — |
-| `local` | ✓ `{baseUrl}/embeddings` (Ollama, LM Studio, llama.cpp, vLLM) | 64 (gg-ai default) | ignored | ✓ `{baseUrl}/rerank` (llama.cpp `--rerank`, vLLM; Ollama and LM Studio have none and return 404) |
+| `local` | ✓ `{baseUrl}/embeddings` (Ollama, LM Studio, llama.cpp, vLLM) | 64 (@prestyj/ai default) | ignored | ✓ `{baseUrl}/rerank` (llama.cpp `--rerank`, vLLM; Ollama and LM Studio have none and return 404) |
 | `palsu` | ✓ deterministic fake | all | ignored | ✓ deterministic fake |
 | `anthropic`, `xiaomi`, `glm`, `moonshot`, `minimax`, `deepseek`, `sakana`, `xai`, `huggingface` | — | | | — |
 
-Calling `embed()` or `rerank()` on a provider without that capability throws `GGAIError` with `source: "capability"`. Check first with `providerRegistry.supports(name, "embed")`.
+Calling `embed()` or `rerank()` on a provider without that capability throws `EZCoderAIError` with `source: "capability"`. Check first with `providerRegistry.supports(name, "embed")`.
 
 Notes:
 - **Gemini** embeddings use the Gemini API with an AI Studio key, sent as `x-goog-api-key`. The Code Assist sign-in that `stream()` uses for Gemini chat has no embeddings endpoint.
 - **OpenAI** embeddings need a platform API key. ChatGPT-subscription (Codex) tokens can't call `/embeddings`.
-- Anthropic has no embeddings API (it points to Voyage AI). The other providers in the last row don't document an embeddings or rerank endpoint on the API gg-ai talks to, so none is registered for them.
+- Anthropic has no embeddings API (it points to Voyage AI). The other providers in the last row don't document an embeddings or rerank endpoint on the API @prestyj/ai talks to, so none is registered for them.
 - Document parsing and OCR are out of scope for now. That would be a separate API (file in, pages out), and providers disagree on it much more than on embeddings.
 
 ### Errors, retries and cancellation
@@ -190,19 +190,19 @@ Failures use the same error model as `stream()`:
 | HTTP 402, or billing text such as `insufficient_quota` | `ProviderError` with "usage limit reached" (`isUsageLimitError()` is true) |
 | HTTP 429 | `ProviderError`, `statusCode: 429`, `resetsAt` from `Retry-After` when sent |
 | Other HTTP errors | `ProviderError` with `statusCode` and `requestId` |
-| Connection failure | `GGAIError`, `source: "network"` |
+| Connection failure | `EZCoderAIError`, `source: "network"` |
 | `signal` aborted | `AbortError` (`DOMException`); remaining batches are skipped |
 
 Provider error bodies are trimmed to their message, then redacted and truncated, so API keys never end up in an error message.
 
-gg-ai doesn't retry. `stream()` doesn't either: retry policy lives in the caller, which for chat is `@kenkaiiii/gg-agent`. Retry 429s and 5xx with backoff if you need to. Never retry auth errors or anything where `isUsageLimitError(err)` is true.
+@prestyj/ai doesn't retry. `stream()` doesn't either: retry policy lives in the caller, which for chat is `@prestyj/agent`. Retry 429s and 5xx with backoff if you need to. Never retry auth errors or anything where `isUsageLimitError(err)` is true.
 
 ### Custom providers
 
-A provider registered at runtime can offer embeddings and reranking too. `stream` is still required, and the other two are optional. gg-ai splits input into batches of `embedBatchSize`, validates and orders the results, normalizes, and sorts. Your functions only handle one request.
+A provider registered at runtime can offer embeddings and reranking too. `stream` is still required, and the other two are optional. @prestyj/ai splits input into batches of `embedBatchSize`, validates and orders the results, normalizes, and sorts. Your functions only handle one request.
 
 ```ts
-import { providerRegistry, embed, type Provider, type ProviderEntry } from "@kenkaiiii/gg-ai";
+import { providerRegistry, embed, type Provider, type ProviderEntry } from "@prestyj/ai";
 
 providerRegistry.register("my-search", {
   stream: () => { throw new Error("chat not supported"); },

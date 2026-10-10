@@ -365,7 +365,7 @@ export interface AgentOptions {
    *  client-identity headers). Merged into the underlying SDK default headers. */
   defaultHeaders?: StreamOptions["defaultHeaders"];
   /** Provider-specific request-body fields forwarded to every model request
-   *  (e.g. OpenRouter `provider: { zdr: true }`). See gg-ai `ProviderOptions`. */
+   *  (e.g. OpenRouter `provider: { zdr: true }`). See @prestyj/ai `ProviderOptions`. */
   providerOptions?: StreamOptions["providerOptions"];
   /** Custom fetch implementation forwarded to the provider transport. */
   fetch?: StreamOptions["fetch"];
