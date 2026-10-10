@@ -5,6 +5,7 @@ import {
   DownloadSimpleIcon,
   FilmSlateIcon,
   GearSixIcon,
+  TargetIcon,
 } from "@phosphor-icons/react";
 import { getVersion } from "@tauri-apps/api/app";
 import { error as logError } from "@tauri-apps/plugin-log";
@@ -40,6 +41,7 @@ function logSetupCheckFailure(e: unknown): Promise<void> {
 
 interface Props {
   onProjects: () => void;
+  onGoals: () => void;
   onChat: () => void;
   onMotion: () => void;
   /** Opens full-screen Settings, optionally on a given tab. */
@@ -59,6 +61,7 @@ interface Props {
  */
 export function HomeScreen({
   onProjects,
+  onGoals,
   onChat,
   onMotion,
   onSettings,
@@ -174,6 +177,15 @@ export function HomeScreen({
         >
           <CodeIcon size={18} weight="bold" aria-hidden="true" />
           Code
+        </button>
+        <button
+          type="button"
+          className={`btn btn-primary home-action${ready ? "" : " is-dimmed"}`}
+          aria-disabled={ready ? undefined : true}
+          onClick={() => handleWorkspace(onGoals)}
+        >
+          <TargetIcon size={18} weight="bold" aria-hidden="true" />
+          Goals
         </button>
         <button
           type="button"

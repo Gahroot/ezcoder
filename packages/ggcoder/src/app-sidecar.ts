@@ -109,6 +109,16 @@ import {
 import { KEN_ALLOWED_TOOLS } from "./app-sidecar/ken-context.js";
 import { type ProgressManager, createProgressManager } from "./app-sidecar/progress-manager.js";
 import { handleSessionRoutes } from "./app-sidecar/session-routes.js";
+import { handleGoalRoutes } from "./app-sidecar/goal-routes.js";
+import {
+  goalPhase,
+  goalsRoot,
+  isGoalDir,
+  isGoalStartAnswer,
+  markGoalStarted,
+  readGoal,
+} from "./core/goals-store.js";
+import { createGoalsAgentSession, goalCritterPick } from "./goals-agent/goals-agent.js";
 import { handleWorkspaceRoutes } from "./app-sidecar/workspace-routes.js";
 import { handleHistoryRoutes } from "./app-sidecar/history-routes.js";
 import { handlePromptRoutes } from "./app-sidecar/prompt-routes.js";
@@ -233,6 +243,14 @@ async function main(): Promise<void> {
     for (const ctx of sessions.values()) ctx.broadcast(type, data);
   };
 
+  const sessionIdsAt = (cwd: string): string[] => {
+    const target = path.resolve(cwd);
+    return [...sessions.values()]
+      .filter((ctx) => path.resolve(ctx.cwd) === target)
+      .map((ctx) => ctx.id)
+      .sort();
+  };
+
   // Providers currently mid-OAuth in some window. Daemon-level so two windows
   // cannot race two browser flows for the same provider into one auth file.
   const oauthInFlightProviders = new Set<string>();
@@ -337,6 +355,7 @@ async function main(): Promise<void> {
               broadcastAll,
               oauthInFlightProviders,
               repoPolls,
+              sessionIdsAt,
             },
             { id, mode, chatAgent, cwd: sessionCwd, sessionPath },
           );
@@ -520,6 +539,8 @@ async function createSession(
     oauthInFlightProviders: Set<string>;
     /** Daemon-wide repo pollers shared by windows on the same repo. */
     repoPolls: RepoPolls;
+    /** Ids of every live window session whose cwd is `cwd` (resolved). */
+    sessionIdsAt: (cwd: string) => string[];
   },
   opts: {
     id: string;
@@ -537,6 +558,7 @@ async function createSession(
     broadcastAll,
     oauthInFlightProviders,
     repoPolls,
+    sessionIdsAt,
   } = deps;
   const paths = deps.paths;
   const mode = opts.mode;
@@ -545,6 +567,11 @@ async function createSession(
   // Motion's workspace is a dedicated folder the app names inside the projects
   // root; create it on first use so a fresh install can start a video at once.
   if (mode === "motion") await fs.mkdir(cwd, { recursive: true });
+  // A coding session whose cwd is a Goal folder is that goal's coordinator.
+  let goal =
+    mode === "code" && isGoalDir(goalsRoot(paths.agentDir), cwd)
+      ? await readGoal(cwd).then((record) => (record ? { dir: cwd, record } : null))
+      : null;
   // Base host for parsing request-URL query params (value is irrelevant to
   // parsing); the daemon owns the real listen host.
   const host = "127.0.0.1";
@@ -733,7 +760,26 @@ async function createSession(
       });
     },
   });
-  const askUserTool = createAskUserTool(asks.park);
+  // A goal starts when the user picks "Start the goal now" from GG Goals'
+  // question. Recorded once here, where every answer (app or remote) lands,
+  // and announced so the window can switch to the goal's world view.
+  const askUserTool = createAskUserTool(async (request) => {
+    const result = await asks.park(request);
+    const current = goal;
+    if (current && !current.record.startedAt && isGoalStartAnswer(result)) {
+      const started = await markGoalStarted(current.dir, new Date()).catch((err: unknown) => {
+        log("WARN", "app-sidecar", "couldn't record goal start", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      });
+      if (started) {
+        goal = { dir: current.dir, record: started };
+        broadcast("goal_state", { id: started.id, phase: goalPhase(started) });
+      }
+    }
+    return result;
+  });
 
   // The session file path to resume (passed by the daemon's POST /session);
   // empty/unset starts a fresh session.
@@ -784,6 +830,16 @@ async function createSession(
       sessionsDir: paths.sessionsDir,
       additionalTools: [askUserTool],
     });
+  } else if (goal) {
+    // A Goal window talks to GG Goals, the orchestrator, not the coding agent.
+    session = createGoalsAgentSession({
+      ...baseSessionOptions,
+      goal,
+      // Read live: the goal turns active mid-session when the user starts it.
+      isActive: () => Boolean(goal?.record.startedAt),
+      getChildModel: () => goalCritterPick(goal?.record),
+      additionalTools: [askUserTool],
+    });
   } else {
     session = new AgentSession({
       ...baseSessionOptions,
@@ -813,6 +869,17 @@ async function createSession(
     });
   }
   await session.initialize();
+  // A goal's attached folders join its workspace so the coordinator can read
+  // them. A resumed session may already carry them; `addDirectory` skips those.
+  if (goal) {
+    for (const item of goal.record.context) {
+      if (item.kind !== "folder") continue;
+      const added = await session.addDirectory(item.path);
+      if (!added.ok && !added.error.startsWith("Already in the workspace")) {
+        log("WARN", "app-sidecar", "goal context folder unavailable", { error: added.error });
+      }
+    }
+  }
   if (mode === "chat") {
     const restoredAgent = [...session.getAppMarkers()]
       .reverse()
@@ -2096,6 +2163,14 @@ async function createSession(
     cwd,
     asks,
     runClaim,
+    sessionId: opts.id,
+    sessionIdsAt,
+    get goal() {
+      return goal;
+    },
+    set goal(v) {
+      goal = v;
+    },
     broadcast,
     get scheduledRunActive() {
       return scheduledRunActive;
@@ -2257,6 +2332,7 @@ async function createSession(
   ): void {
     if (handleSessionRoutes(routeCtx, req, res, url, method)) return;
     if (handleWorkspaceRoutes(routeCtx, req, res, url, method)) return;
+    if (handleGoalRoutes(routeCtx, req, res, url, method)) return;
     if (handleHistoryRoutes(routeCtx, req, res, url, method)) return;
     if (handlePromptRoutes(routeCtx, req, res, url, method)) return;
     if (handleTaskRoutes(routeCtx, req, res, url, method)) return;

@@ -8,6 +8,7 @@ import {
   removePlugin,
 } from "../core/extensions/plugin-bundles.js";
 import { discoverProjects } from "../core/project-discovery.js";
+import { goalsRoot } from "../core/goals-store.js";
 import { listSidecarSessions } from "../app-sidecar-sessions.js";
 import { log } from "../core/logger.js";
 import { readBody, json } from "./http.js";
@@ -193,6 +194,8 @@ export function handleWorkspaceRoutes(
           projectsRoot,
           extraRoots: projectRoots,
           hiddenPaths: hiddenProjects,
+          // Goal workspaces have their own list; they are not coding projects.
+          excludeRoots: [goalsRoot(ctx.paths.agentDir)],
         }),
       )
       .then((projects) => json(res, 200, { projects }))

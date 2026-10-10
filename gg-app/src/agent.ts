@@ -92,8 +92,12 @@ export interface BackgroundTask {
 export type WorkspaceMode = "code" | "chat" | "motion";
 export type ChatAgentId = "general" | "therapist" | "research";
 
-/** Product name shown when a window has no project context to title it. */
-export function workspaceProductName(mode: WorkspaceMode): string {
+/**
+ * Product name shown when a window has no project context to title it. A Goal
+ * window is a code-mode session whose agent is GG Goals.
+ */
+export function workspaceProductName(mode: WorkspaceMode, isGoal = false): string {
+  if (isGoal) return "GG Goals";
   return mode === "chat" ? "GG Chat" : mode === "motion" ? "GG Motion" : "GG Coder";
 }
 
@@ -196,6 +200,8 @@ export interface AgentState {
   kenModelOverride?: boolean;
   /** Live background tasks (footer indicator). */
   tasks?: BackgroundTask[];
+  /** Set when this window is a Goal's coordinator; null/absent otherwise. */
+  goal?: GoalStateInfo | null;
   /** Cold-prompt-cache status (sidecar /state + `cache_expiry` event). Null when
    *  the route has no known cache TTL or the chat is empty; absent on older sidecars. */
   cacheExpiry?: CacheExpiryStatus | null;
@@ -1465,6 +1471,85 @@ export async function listProjects(): Promise<DiscoveredProject[]> {
     await logError(`agent_projects failed: ${String(e)}`);
     throw e;
   }
+}
+
+/** The goal a window is coordinating, as reported by the sidecar's /state. */
+export interface GoalStateInfo {
+  id: string;
+  name: string;
+  /** True until the coordinator's automatic first reply has started. */
+  needsKickoff: boolean;
+  /** Briefing until the user starts the goal; active once the work begins. */
+  phase: "briefing" | "active";
+  /** The workers' ("critters'") pinned model; null: they follow GG Goals' model. */
+  critterModel?: string | null;
+}
+
+/** One attached context item; kind comes from the filesystem. */
+export interface GoalContextItem {
+  path: string;
+  kind: "folder" | "file";
+}
+
+/** Mirrors ggcoder `app-sidecar/goal-routes.ts` GoalSummary. */
+export interface GoalSummary {
+  id: string;
+  name: string;
+  goal: string;
+  context: GoalContextItem[];
+  /** The goal's folder: the coordinator session's cwd. */
+  path: string;
+  createdAt: string;
+  lastActiveMs: number;
+  lastActiveDisplay: string;
+  /** Newest session to resume; null starts the coordinator fresh. */
+  latestSessionPath: string | null;
+}
+
+/** Every Goal, most recently active first. */
+export async function listGoals(): Promise<GoalSummary[]> {
+  try {
+    const res = await invoke<{ goals: GoalSummary[] }>("agent_goals");
+    return res.goals ?? [];
+  } catch (e) {
+    await logError(`agent_goals failed: ${String(e)}`);
+    throw e;
+  }
+}
+
+/** Create a Goal. Context entries are absolute folder or file paths. */
+export async function createGoal(input: {
+  name: string;
+  goal: string;
+  context: string[];
+}): Promise<GoalSummary> {
+  const res = await invoke<{ goal: GoalSummary }>("agent_create_goal", input);
+  return res.goal;
+}
+
+/**
+ * Pin the model this goal's workers run on, or clear it (null) so they follow
+ * GG Goals. Applies to the next worker started. Returns the effective pick.
+ */
+export async function setCritterModel(
+  model: string | null,
+): Promise<{ critterModel: string | null }> {
+  return invoke<{ critterModel: string | null }>("agent_set_critter_model", { model });
+}
+
+/** Delete a Goal: its folder and coordinator sessions. Attached context is untouched. */
+export async function deleteGoal(id: string): Promise<void> {
+  await invoke("agent_delete_goal", { id });
+}
+
+/**
+ * Start the coordinator's automatic first reply for this window's goal. Safe to
+ * call repeatedly: the sidecar starts it at most once per goal.
+ */
+export async function kickoffGoal(): Promise<boolean> {
+  await waitForReady();
+  const res = await invoke<{ started?: boolean }>("agent_goal_kickoff");
+  return res.started === true;
 }
 
 /**

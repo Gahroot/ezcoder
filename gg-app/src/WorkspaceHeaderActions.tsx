@@ -8,8 +8,20 @@ import { WindowLayoutButton } from "./WindowLayoutButton";
 import type { ProgressState } from "./useProgress";
 
 /** The workspace header's right side: rank badge + XP chips and the per-mode action buttons. */
+/** A started goal shows either its conversation or its workers at work. */
+export type GoalView = "chat" | "workers";
+
+const GOAL_VIEWS: ReadonlyArray<{ view: GoalView; label: string }> = [
+  { view: "chat", label: "Chat" },
+  { view: "workers", label: "Workers" },
+];
+
 export function WorkspaceHeaderActions({
   workspaceMode,
+  isGoal = false,
+  goalView = null,
+  onGoalViewChange,
+  goalNeedsAnswer = false,
   progress,
   rankCelebrateNonce,
   xpChips,
@@ -34,6 +46,17 @@ export function WorkspaceHeaderActions({
   onCommit,
 }: {
   workspaceMode: WorkspaceMode;
+  /**
+   * A Goal's coordinator window. It is one ongoing conversation, so it drops the
+   * per-project tools (Autopilot, New, Notes, Tasks, Checklist, Initialize Git)
+   * and keeps only commit.
+   */
+  isGoal?: boolean;
+  /** A started goal's current view; null before the goal starts. */
+  goalView?: GoalView | null;
+  onGoalViewChange?: (view: GoalView) => void;
+  /** GG Goals is waiting on an answer that only the Chat view shows. */
+  goalNeedsAnswer?: boolean;
   progress: ProgressState["snapshot"];
   rankCelebrateNonce: string | null;
   xpChips: Array<{ id: string; label: string }>;
@@ -73,7 +96,43 @@ export function WorkspaceHeaderActions({
           ))}
         </div>
       </div>
-      {workspaceMode !== "code" ? (
+      {isGoal ? (
+        <span className="picker-head-actions">
+          {goalView && onGoalViewChange && (
+            <div className="goal-view-switch" role="group" aria-label="Goal view">
+              {GOAL_VIEWS.map(({ view, label }) => {
+                const attention = view === "chat" && goalView !== "chat" && goalNeedsAnswer;
+                return (
+                  <button
+                    key={view}
+                    type="button"
+                    className="goal-view-option"
+                    aria-pressed={goalView === view}
+                    data-attention={attention ? "true" : undefined}
+                    aria-label={attention ? `${label}, a question is waiting for you` : undefined}
+                    onClick={() => onGoalViewChange(view)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <RadioButton />
+          <WindowLayoutButton onArrange={onArrange} />
+          {commitCommand && (
+            <MetalButton
+              windowFocused={windowFocused}
+              className={`btn btn-sm ${hasCommit ? "btn-success" : "btn-ghost"}`}
+              disabled={running}
+              title={hasCommit ? "Run /commit" : "Generate a /commit command"}
+              onClick={onCommit}
+            >
+              {`/${commitCommand}`}
+            </MetalButton>
+          )}
+        </span>
+      ) : workspaceMode !== "code" ? (
         <span className="picker-head-actions">
           <MetalButton
             windowFocused={windowFocused}

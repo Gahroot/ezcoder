@@ -1,5 +1,7 @@
 import type http from "node:http";
 import { getModel } from "../core/model-registry.js";
+import { goalNeedsKickoff, goalPhase } from "../core/goals-store.js";
+import { goalCritterPick } from "../goals-agent/goals-agent.js";
 import { getSupportedThinkingLevels } from "../core/thinking-level.js";
 import { json } from "./http.js";
 import type { SseClient } from "./session-types.js";
@@ -18,6 +20,18 @@ export function handleSessionRoutes(
       ...st,
       mode: ctx.mode,
       chatAgent: ctx.chatAgent,
+      // The app needs to know a code window is a goal (title, back navigation,
+      // automatic first reply). Null for every ordinary session.
+      goal: ctx.goal
+        ? {
+            id: ctx.goal.record.id,
+            name: ctx.goal.record.name,
+            needsKickoff: goalNeedsKickoff(ctx.goal.record, ctx.session.getMessages()),
+            phase: goalPhase(ctx.goal.record),
+            // The workers' pinned model; null: they follow GG Goals' model.
+            critterModel: goalCritterPick(ctx.goal.record)?.model ?? null,
+          }
+        : null,
       running: ctx.running,
       runState: ctx.runLifecycle.state,
       ready: true,

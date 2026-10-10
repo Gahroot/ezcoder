@@ -86,7 +86,11 @@ import type { BackgroundProcess } from "./process-manager.js";
 import type { DebugManager } from "../tools/debug.js";
 import { buildProcessCompletionFollowUp } from "./process-gate.js";
 import { PLAN_SUBMISSION_NUDGE, shouldNudgePlanSubmission } from "./plan-submission-gate.js";
-import { buildSubAgentCompletionFollowUp, type SubAgentManager } from "./subagent-manager.js";
+import {
+  buildSubAgentCompletionFollowUp,
+  type ChildModelPick,
+  type SubAgentManager,
+} from "./subagent-manager.js";
 import { applyAsyncSubagentPolicy } from "./subagent-policy.js";
 import {
   resolveResponsesLite,
@@ -284,6 +288,23 @@ export interface AgentSessionOptions {
    * UI. Omitted by callers that don't want plan mode (CLI wires its own).
    */
   onEnterPlan?: (reason?: string) => void | Promise<void>;
+  /**
+   * Built-in tools to keep in the core set instead of the deferred
+   * tool_search catalog: for a specialist whose job is a deferred tool (GG
+   * Goals orchestrates with spawn_agent and friends). Fixed for the session.
+   */
+  coreTools?: readonly string[];
+  /**
+   * Default provider/model for the workers this session spawns, when their
+   * agent names no model of its own. Read at spawn time.
+   */
+  getChildModel?: () => ChildModelPick | undefined;
+  /**
+   * Wrap each built-in tool once, at registration. Must keep the tool's name,
+   * description and parameters (only `execute` may change), so the tool block
+   * stays prompt-cache stable. Used by GG Goals to gate its own editing.
+   */
+  wrapTool?: (tool: AgentTool) => AgentTool;
   onExitPlan?: (planPath: string) => Promise<ToolExecuteResult>;
   /**
    * If provided, the session's tool set is filtered to ONLY these tool names
@@ -723,6 +744,7 @@ export class AgentSession {
       getBaseUrl: () => this.baseUrl,
       getCacheKey: () => this.getPromptCacheKey(),
       getMaxPerModel: () => this.settingsManager.get("subagentMaxPerModel"),
+      getChildModel: this.opts.getChildModel,
       // A persistent child is already the single allowed fan-out level. Blocking
       // `subagent` here created a timeout sandwich: the nested call could consume
       // the child's entire 10-minute turn budget, discarding all nested results.
@@ -750,6 +772,13 @@ export class AgentSession {
     // a hallucinated call can't mutate the repo — and buildSystemPrompt below is
     // fed the same filtered names so the Tools section matches exactly.
     this.tools = this.opts.allowedTools ? tools.filter((t) => this.isToolAllowed(t.name)) : tools;
+    // A host may wrap built-ins (GG Goals holds back its own editing once a
+    // goal is underway). Same names and schemas, so the cached tool block and
+    // the system prompt's Tools section are unchanged.
+    if (this.opts.wrapTool) {
+      const wrap = this.opts.wrapTool;
+      this.tools = this.tools.map((t) => wrap(t));
+    }
     // Both delegation tools carry the agent roster; when both survive the
     // allow-list, `subagent` points at `spawn_agent`'s copy instead.
     if (this.tools.some((t) => t.name === "spawn_agent")) {
@@ -766,7 +795,14 @@ export class AgentSession {
       // catalog must hold the wrapped tool so a promoted spawn still loads
       // wait_agent.
       this.promoteFollowUpTools();
-      const { core, deferred } = partitionToolsByTier(this.tools);
+      const partition = partitionToolsByTier(this.tools);
+      // A session can keep chosen built-ins in its core set (GG Goals
+      // orchestrates, so its agent tools are always at hand). Fixed for the
+      // session, so the cached tool block stays byte-stable.
+      const keep = new Set(this.opts.coreTools ?? []);
+      const deferred = partition.deferred.filter((t) => !keep.has(t.name));
+      // Everything not deferred, in the original relative order.
+      const core = keep.size > 0 ? this.tools.filter((t) => !deferred.includes(t)) : partition.core;
       if (deferred.length > 0) {
         // Append-only: `core` preserves the original relative order and
         // tool_search is pushed after it, so the serialized tool block that

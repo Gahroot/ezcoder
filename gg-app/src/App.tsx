@@ -1,5 +1,7 @@
 import {
   Activity,
+  Suspense,
+  lazy,
   useState,
   useRef,
   useEffect,
@@ -16,6 +18,8 @@ import { withViewTransition } from "./view-transition";
 import {
   waitForReady,
   getState,
+  kickoffGoal,
+  setCritterModel,
   sendPrompt,
   sendKenPrompt,
   cancelKen,
@@ -70,7 +74,12 @@ import { useKenMentor } from "./useKenMentor";
 import { useAutopilot } from "./useAutopilot";
 import { useAgentEvents } from "./useAgentEvents";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
-import { CritterFloor, type CritterGroup } from "./CritterFloor";
+import { CritterFloor, collectFloorAgents, type CritterGroup } from "./CritterFloor";
+// The farm (its art, map and simulation) loads on demand, so it adds nothing
+// to the app's start-up bundle; it is only needed once a goal has started.
+const GoalWorld = lazy(() =>
+  import("./GoalWorld").then((module) => ({ default: module.GoalWorld })),
+);
 import { ModelSelect, loadModelsInto } from "./ModelSelect";
 import {
   describeSchedule,
@@ -96,6 +105,11 @@ import { PlanReviewModal } from "./PlanReviewModal";
 import { McpElicitModal } from "./McpElicitModal";
 import { ProjectPicker } from "./ProjectPicker";
 import { ChatPicker } from "./ChatPicker";
+// The goal list and its New goal modal load on demand: they are only needed
+// once someone opens Goals.
+const GoalPicker = lazy(() =>
+  import("./GoalPicker").then((module) => ({ default: module.GoalPicker })),
+);
 import { BackButton } from "./BackButton";
 import { Badge } from "./Badge";
 import { HomeScreen } from "./HomeScreen";
@@ -704,18 +718,20 @@ function App(): React.ReactElement {
 
   // Keep the native window title aligned with the visible title-bar context.
   useEffect(() => {
-    const fallbackTitle = workspaceProductName(workspaceMode);
+    const fallbackTitle = workspaceProductName(workspaceMode, Boolean(state?.goal));
     const title =
-      !needsProject && !showPicker
-        ? formatWorkspaceTitle(
-            state?.cwd,
-            state?.gitBranch,
-            fallbackTitle,
-            state?.gitDirtyFileCount,
-            state?.gitHubIssues ?? null,
-            state?.gitHubPRs ?? null,
-          )
-        : fallbackTitle;
+      !needsProject && !showPicker && state?.goal
+        ? `${state.goal.name} \u2502 ${fallbackTitle}`
+        : !needsProject && !showPicker
+          ? formatWorkspaceTitle(
+              state?.cwd,
+              state?.gitBranch,
+              fallbackTitle,
+              state?.gitDirtyFileCount,
+              state?.gitHubIssues ?? null,
+              state?.gitHubPRs ?? null,
+            )
+          : fallbackTitle;
     setWindowTitle(title);
   }, [
     needsProject,
@@ -725,6 +741,7 @@ function App(): React.ReactElement {
     state?.gitDirtyFileCount,
     state?.gitHubIssues,
     state?.gitHubPRs,
+    state?.goal,
     workspaceMode,
   ]);
 
@@ -1057,6 +1074,16 @@ function App(): React.ReactElement {
           }),
         );
       }
+      // A goal's coordinator speaks first: the sidecar starts its reply once,
+      // the first time the new goal is opened, and streams it like any turn.
+      if (st?.goal?.needsKickoff && hydrateGenerationRef.current === generation) {
+        void kickoffGoal().catch((e: unknown) =>
+          toast(
+            `Couldn't start the goal's first reply: ${e instanceof Error ? e.message : String(e)}`,
+            "error",
+          ),
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setStatus(`agent failed to start: ${message}`);
@@ -1162,6 +1189,22 @@ function App(): React.ReactElement {
           : s,
       );
     });
+  }
+
+  // A Goal window's footer: the model GG Goals' workers ("critters") run on.
+  function onSelectCritterModel(modelId: string | null): void {
+    const current = state?.goal?.critterModel ?? null;
+    if (modelId === current) return;
+    void setCritterModel(modelId)
+      .then((res) => {
+        setState((s) =>
+          s?.goal ? { ...s, goal: { ...s.goal, critterModel: res.critterModel } } : s,
+        );
+      })
+      .catch((e: unknown) =>
+        // Otherwise the picker just snaps back and the click looks ignored.
+        toast(e instanceof Error ? e.message : String(e), "error"),
+      );
   }
 
   function onSelectModel(modelId: string): void {
@@ -1654,6 +1697,28 @@ function App(): React.ReactElement {
     [],
   );
 
+  // ── Goal world ──
+  // A started goal opens on its Workers view: the critters at work, edge to
+  // edge, in place of the chat, input and footer. The header's Chat | Workers
+  // switch flips between that and the full conversation (with its input).
+  const [goalChatFor, setGoalChatFor] = useState<string | null>(null);
+  // The Workers view runs under the (see-through) header; it keeps the
+  // workshop clear of whatever height the header has.
+  const workspaceHeaderRef = useRef<HTMLDivElement>(null);
+  const activeGoalId = state?.goal?.phase === "active" ? state.goal.id : null;
+  const goalWorldOpen = activeGoalId !== null && goalChatFor !== activeGoalId;
+  const goalWorkers = useMemo(
+    () => (activeGoalId ? collectFloorAgents(critterGroups) : []),
+    [activeGoalId, critterGroups],
+  );
+  // GG Goals heads for the mailbox while a question waits on the user.
+  const goalWaitingOnUser = useMemo(
+    () =>
+      activeGoalId !== null &&
+      items.some((item) => item.kind === "ask" && !item.sent && !item.cancelled),
+    [activeGoalId, items],
+  );
+
   const { recordHistory, navigateHistory } = usePromptHistory({
     promptHistoryRef,
     historyDraftRef,
@@ -2052,6 +2117,12 @@ function App(): React.ReactElement {
                 setEntryView("projects");
               })
             }
+            onGoals={() =>
+              withViewTransition(() => {
+                setWorkspaceMode("code");
+                setEntryView("goals");
+              })
+            }
             onChat={() =>
               withViewTransition(() => {
                 setWorkspaceMode("chat");
@@ -2083,6 +2154,13 @@ function App(): React.ReactElement {
               })
             }
           />
+        ) : entryView === "goals" ? (
+          <Suspense fallback={null}>
+            <GoalPicker
+              onChosen={onProjectChosen}
+              onClose={() => withViewTransition(() => setEntryView("home"))}
+            />
+          </Suspense>
         ) : entryView === "chats" ? (
           <ChatPicker
             onChosen={onProjectChosen}
@@ -2132,6 +2210,10 @@ function App(): React.ReactElement {
           <ChatPicker initialAgent={state?.chatAgent ?? "general"} {...pickerProps} />
         ) : workspaceMode === "motion" ? (
           <ChatPicker mode="motion" {...pickerProps} />
+        ) : state?.goal ? (
+          <Suspense fallback={null}>
+            <GoalPicker {...pickerProps} />
+          </Suspense>
         ) : (
           <ProjectPicker initialProjectPath={state?.cwd ?? null} {...pickerProps} />
         )}
@@ -2144,7 +2226,7 @@ function App(): React.ReactElement {
 
   return (
     <div
-      className={`app${isFileDragOver ? " app-file-dragover" : ""}${windowFocused ? " window-focused" : ""}${workspaceMode === "code" && showChecklist ? " checklist-open" : ""}`}
+      className={`app${isFileDragOver ? " app-file-dragover" : ""}${windowFocused ? " window-focused" : ""}${workspaceMode === "code" && showChecklist ? " checklist-open" : ""}${goalWorldOpen && !showChecklist ? " goal-world-open" : ""}`}
       data-glow={glowState}
       style={{ background: theme.background, ...glowStyle }}
       onDragEnter={handleWindowDragEnter}
@@ -2155,8 +2237,10 @@ function App(): React.ReactElement {
       {confettiNonce && <Confetti key={confettiNonce} />}
 
       <WorkspaceHeader
+        ref={workspaceHeaderRef}
         workspaceMode={workspaceMode}
         cwd={state?.cwd}
+        goalName={state?.goal?.name ?? null}
         gitBranch={state?.gitBranch}
         gitDirtyFileCount={state?.gitDirtyFileCount}
         gitHubIssues={state?.gitHubIssues}
@@ -2201,6 +2285,10 @@ function App(): React.ReactElement {
         />
         <WorkspaceHeaderActions
           workspaceMode={workspaceMode}
+          isGoal={Boolean(state?.goal)}
+          goalView={activeGoalId ? (goalWorldOpen ? "workers" : "chat") : null}
+          onGoalViewChange={(view) => setGoalChatFor(view === "chat" ? activeGoalId : null)}
+          goalNeedsAnswer={goalWaitingOnUser}
           progress={progress}
           rankCelebrateNonce={rankCelebrateNonce}
           xpChips={xpChips}
@@ -2252,9 +2340,26 @@ function App(): React.ReactElement {
         />
       )}
 
+      {/* Kept alive while hidden (Chat view), so switching back doesn't rebuild the farm. */}
+      {activeGoalId && (
+        <Activity mode={goalWorldOpen && !showChecklist ? "visible" : "hidden"}>
+          <Suspense fallback={null}>
+            <GoalWorld
+              key={activeGoalId}
+              headerRef={workspaceHeaderRef}
+              goalId={activeGoalId}
+              running={running}
+              liveTools={liveToolFeed}
+              waitingOnUser={goalWaitingOnUser}
+              workers={goalWorkers}
+            />
+          </Suspense>
+        </Activity>
+      )}
+
       {/* React owns chat visibility rather than a stylesheet override. Activity
           keeps the draft and transcript state, and suspends hidden child effects. */}
-      <Activity mode={showChecklist ? "hidden" : "visible"}>
+      <Activity mode={showChecklist || goalWorldOpen ? "hidden" : "visible"}>
         {/* Non-scrolling frame the same size as the chat viewport. The banner
           lives HERE, not inside `.transcript` — `.transcript` scrolls, and an
           absolutely positioned child of a scrolling container is pinned to the
@@ -2297,6 +2402,7 @@ function App(): React.ReactElement {
                     <WakeScreen
                       chat={workspaceMode === "chat"}
                       motion={workspaceMode === "motion"}
+                      goals={Boolean(state?.goal)}
                     />
                   ) : (
                     <div className="line transcript-reveal" style={{ color: theme.textDim }}>
@@ -2502,6 +2608,7 @@ function App(): React.ReactElement {
           modelsFailed={modelsFailed}
           onSelectModel={onSelectModel}
           onSelectKenModel={onSelectKenModel}
+          onSelectCritterModel={state?.goal ? onSelectCritterModel : undefined}
         />
 
         {appUpdate.phase === "available" && (
