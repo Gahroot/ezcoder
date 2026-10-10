@@ -147,7 +147,6 @@ export function WorkspaceHeaderActions({
               Checklist
             </button>
             <RadioButton />
-            {/* <GazeButton /> */}
             <WindowLayoutButton onArrange={onArrange} />
             {needsGitInit ? (
               <button

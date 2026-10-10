@@ -118,6 +118,17 @@
               "maxLength": 300
             }
           },
+          "accepted": {
+            "default": [],
+            "description": "record: findings the user explicitly chose to leave as is, each with the reason (e.g. 'deferred by owner'); they don't block pass",
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            }
+          },
           "evidence": {
             "minItems": 1,
             "maxItems": 10,

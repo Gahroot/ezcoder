@@ -8,6 +8,8 @@ import {
   type GitHubCI,
 } from "./agent";
 import { CIIndicator } from "./CIIndicator";
+import { ProjectHealthBadge } from "./ProjectHealthBadge";
+import type { ProjectHealth } from "./project-health";
 import { projectAccent } from "./projectAccent";
 import { formatWorkspaceTitle, pluralize } from "./workspace-title";
 
@@ -22,6 +24,10 @@ interface WorkspaceHeaderProps {
   /** Origin repo's web URL — makes the issue/PR chips clickable. */
   gitHubRepoUrl?: string | null;
   gitHubCI?: GitHubCI | null;
+  /** Project Health score; null hides the badge (non-code mode, no repo, first scan pending). */
+  projectHealth?: ProjectHealth | null;
+  /** Sends a Project Health review prompt; false when it couldn't be sent. */
+  onReviewHealth?: (prompt: string, label: string) => boolean;
   /** Extra workspace roots added with /add-dir. */
   additionalRoots?: string[];
   /** User-defined window label. Null keeps the project folder as the default. */
@@ -43,6 +49,8 @@ export function WorkspaceHeader({
   gitHubPRs = null,
   gitHubRepoUrl = null,
   gitHubCI = null,
+  projectHealth = null,
+  onReviewHealth,
   additionalRoots = [],
   customTitle = null,
   onCustomTitleChange,
@@ -143,6 +151,14 @@ export function WorkspaceHeader({
                 >
                   <PencilIcon size={11} weight="bold" aria-hidden="true" />
                 </button>
+              )}
+              {projectHealth && (
+                <>
+                  <span className="chat-head-sep" aria-hidden="true" data-tauri-drag-region>
+                    {"│"}
+                  </span>
+                  <ProjectHealthBadge health={projectHealth} onReview={onReviewHealth} />
+                </>
               )}
               {gitBranch && (
                 <>

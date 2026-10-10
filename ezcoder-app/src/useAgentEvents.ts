@@ -1342,6 +1342,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
                       : s.gitHubRepoUrl,
                   gitHubCI:
                     d.gitHubCI !== undefined ? (d.gitHubCI as AgentState["gitHubCI"]) : s.gitHubCI,
+                  projectHealth: d.projectHealth !== undefined ? d.projectHealth : s.projectHealth,
                   additionalRoots: (d.additionalRoots as string[] | undefined) ?? s.additionalRoots,
                 }
               : s,
