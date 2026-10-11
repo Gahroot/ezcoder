@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.79.0
+
+### Minor Changes
+
+- Add GG Goals (beta): a goal orchestrator that briefs with you, then drives the work itself or with a team of builder, scout, researcher and checker workers, with goal storage, sidecar goal routes, and questions that survive reload. The write tool now overwrites instead of refusing, listing and backing up unseen lines it removes, and sed/head line views count as reads.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.79.0
+- @kenkaiiii/gg-agent@5.79.0
+- @kenkaiiii/gg-core@5.79.0
+
 ## 5.78.0
 
 ### Minor Changes
