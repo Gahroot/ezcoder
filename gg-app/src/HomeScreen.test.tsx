@@ -124,7 +124,7 @@ describe("HomeScreen", () => {
     expect(onGoals).toHaveBeenCalledOnce();
   });
 
-  it("says under the Motion button that Motion is still in process", async () => {
+  it("says under the Goals button that Goals is in beta", async () => {
     vi.mocked(getSettings).mockResolvedValue({ projectsRoot: "/workspaces", configured: true });
     vi.mocked(authStatus).mockResolvedValue([]);
 
@@ -138,11 +138,15 @@ describe("HomeScreen", () => {
       />,
     );
 
-    const note = await screen.findByText("Still in process");
+    const note = await screen.findByText("In beta");
     expect(note.id).not.toBe("");
-    // Screen readers hear it with the Motion button, and only with that one.
-    expect(screen.getByRole("button", { name: "Motion" }).getAttribute("aria-describedby")).toBe(
+    // Screen readers hear it with the Goals button, and only with that one.
+    expect(screen.getByRole("button", { name: "Goals" }).getAttribute("aria-describedby")).toBe(
       note.id,
+    );
+    expect(screen.queryByText("Still in process")).toBeNull();
+    expect(screen.getByRole("button", { name: "Motion" }).hasAttribute("aria-describedby")).toBe(
+      false,
     );
     expect(screen.getByRole("button", { name: "Code" }).hasAttribute("aria-describedby")).toBe(
       false,

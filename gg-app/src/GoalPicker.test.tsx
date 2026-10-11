@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   createGoal,
@@ -61,6 +61,36 @@ afterEach(() => {
 });
 
 describe("GoalPicker", () => {
+  it("shows which goals are running now or paused, and keeps that current", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderPicker([
+        { ...GOAL, id: "a", name: "Working", path: "/g/a", status: "running" },
+        { ...GOAL, id: "b", name: "Held", path: "/g/b", status: "paused" },
+        { ...GOAL, id: "c", name: "Fresh", path: "/g/c", status: "briefing" },
+        { ...GOAL, id: "d", name: "Cut off", path: "/g/d", status: "interrupted" },
+      ]);
+      const running = await screen.findByText("Running now");
+      expect(running.className).toContain("goal-status-running");
+      expect(screen.getByText("Paused")).toBeDefined();
+      // Cut off mid-work (the app closed, or it was stopped): marked as such.
+      expect(screen.getByText("Interrupted")).toBeDefined();
+      // A goal not yet started, or finished, carries no pill.
+      expect(screen.getAllByText(/Running now|Paused|Interrupted/)).toHaveLength(3);
+
+      // It finishes while the list is open: the pill goes on the next refresh.
+      listGoalsMock.mockResolvedValue([
+        { ...GOAL, id: "a", name: "Working", path: "/g/a", status: "idle" },
+      ]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4100);
+      });
+      await waitFor(() => expect(screen.queryByText("Running now")).toBeNull());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("lists goals with their total, objective and context, and resumes the latest session", async () => {
     const { onChosen } = renderPicker([GOAL]);
 
@@ -136,7 +166,7 @@ describe("GoalPicker", () => {
     const create = screen.getByRole("button", { name: "Create goal" });
     expect((create as HTMLButtonElement).disabled).toBe(true);
     expect(
-      screen.getByPlaceholderText("Bring p95 latency under 200 ms across the whole API"),
+      screen.getByPlaceholderText("Get checkout loading under one second on mobile"),
     ).toBeDefined();
 
     const name = screen.getByLabelText("Name") as HTMLInputElement;
@@ -148,6 +178,23 @@ describe("GoalPicker", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Add folders" }));
     expect(await screen.findByText("api")).toBeDefined();
     expect(openDialogMock).toHaveBeenCalledWith(expect.objectContaining({ directory: true }));
+    // Every attached item can be removed, and the list sits in one fixed box
+    // (the modal doesn't grow as items are added).
+    openDialogMock.mockResolvedValue(["/specs/a.pdf", "/specs/b.pdf"]);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add files" }));
+    expect(await screen.findByText("b.pdf")).toBeDefined();
+    expect(screen.getByText("(3 of 20)")).toBeDefined();
+    const box = document.querySelector(".goal-context-box");
+    expect(box?.querySelectorAll(".goal-context-chip")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Remove a.pdf" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove b.pdf" }));
+    expect(screen.queryByText("a.pdf")).toBeNull();
+    expect(screen.getByText("(1 of 20)")).toBeDefined();
+    // Standing instructions, optional: rules for the whole goal.
+    fireEvent.change(screen.getByLabelText(/Instructions/), {
+      target: { value: "  Don't touch CI.  " },
+    });
 
     fireEvent.click(create);
 
@@ -156,6 +203,7 @@ describe("GoalPicker", () => {
       name: "API latency",
       goal: GOAL.goal,
       context: ["/repos/api"],
+      instructions: "Don't touch CI.",
     });
     expect(selectProjectMock).toHaveBeenCalledWith(created.path);
   });

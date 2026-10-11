@@ -90,6 +90,7 @@ import {
   buildSubAgentCompletionFollowUp,
   type ChildModelPick,
   type SubAgentManager,
+  type SubAgentSnapshot,
 } from "./subagent-manager.js";
 import { applyAsyncSubagentPolicy } from "./subagent-policy.js";
 import {
@@ -137,7 +138,7 @@ import { extractPlanSteps, findCompletedMarkers } from "../utils/plan-steps.js";
 import { readFileSync } from "node:fs";
 import { clampThinkingForPlanMode } from "./thinking-level.js";
 import { pruneStaleToolResults } from "./compaction/tool-result-pruner.js";
-import { discoverAgents } from "./agents.js";
+import { discoverAgents, type AgentDefinition } from "./agents.js";
 import { enhancePrompt, type EnhanceResult } from "../utils/prompt-enhancer.js";
 import { detectLanguages, detectProjectStack, type LanguageId } from "./language-detector.js";
 import { buildLoopBreakMessage } from "./loop-breaker.js";
@@ -305,6 +306,28 @@ export interface AgentSessionOptions {
    * stays prompt-cache stable. Used by GG Goals to gate its own editing.
    */
   wrapTool?: (tool: AgentTool) => AgentTool;
+  /**
+   * Built-in tools this session never has, removed at registration (before
+   * tiering) and left out of the system prompt's Tools section. Unlike
+   * `allowedTools`, the rest of the tool set and its tiering are untouched.
+   * Fixed for the session, so the cached tool block never changes. Used by
+   * GG Goals, which never edits or runs anything itself.
+   */
+  withoutTools?: readonly string[];
+  /**
+   * A fixed team of sub-agents, replacing agent discovery (project, global
+   * and bundled): the only agents spawn_agent and subagent can start. Used by
+   * GG Goals, whose workers follow their own rules (goals-agent/goal-team.ts).
+   */
+  subAgents?: readonly AgentDefinition[];
+  /**
+   * Start every spawned child with this session's extra workspace roots too
+   * (less the folder it works in), so it can read and change all of them.
+   * GG Goals' workers work across all of a goal's attached folders.
+   */
+  shareRootsWithSubAgents?: boolean;
+  /** The sub-agent a spawned child is when the spawn names none (one of `subAgents`). */
+  defaultSubAgent?: string;
   onExitPlan?: (planPath: string) => Promise<ToolExecuteResult>;
   /**
    * If provided, the session's tool set is filtered to ONLY these tool names
@@ -664,7 +687,10 @@ export class AgentSession {
     this.sessionManager = new SessionManager(this.opts.sessionRootDir ?? paths.sessionsDir);
 
     const projectCustomization = this.opts.projectCustomization !== false;
-    if (projectCustomization) {
+    // A sub-agent worker never creates them: the session that owns the
+    // project does. GG Goals' workers work in the user's attached folders,
+    // which mustn't gain empty .gg folders as a side effect.
+    if (projectCustomization && !this.opts.subagentWorker) {
       // Ensure project-local .gg directories exist.
       const localGGDir = path.join(this.cwd, ".gg");
       await fs.mkdir(path.join(localGGDir, "skills"), { recursive: true });
@@ -684,14 +710,16 @@ export class AgentSession {
 
     // Discover agents and create tools (with sub-agent support). Chat sessions
     // can retain bundled workers without loading project/global customization.
-    const agents = projectCustomization
-      ? await discoverAgents({
-          globalAgentsDir: paths.agentsDir,
-          projectDir: this.cwd,
-        })
-      : this.opts.globalSubagents
-        ? await discoverAgents({ globalAgentsDir: paths.agentsDir })
-        : [];
+    const agents = this.opts.subAgents
+      ? [...this.opts.subAgents]
+      : projectCustomization
+        ? await discoverAgents({
+            globalAgentsDir: paths.agentsDir,
+            projectDir: this.cwd,
+          })
+        : this.opts.globalSubagents
+          ? await discoverAgents({ globalAgentsDir: paths.agentsDir })
+          : [];
     const {
       tools: builtInTools,
       processManager,
@@ -703,6 +731,8 @@ export class AgentSession {
       subAgentManager,
     } = await createTools(this.cwd, {
       agents,
+      shareWorkspaceRoots: this.opts.shareRootsWithSubAgents,
+      defaultSubAgent: this.opts.defaultSubAgent,
       skills: this.skills,
       contextLimits: this.contextLimits,
       provider: this.provider,
@@ -772,6 +802,8 @@ export class AgentSession {
     // a hallucinated call can't mutate the repo — and buildSystemPrompt below is
     // fed the same filtered names so the Tools section matches exactly.
     this.tools = this.opts.allowedTools ? tools.filter((t) => this.isToolAllowed(t.name)) : tools;
+    const without = new Set(this.opts.withoutTools ?? []);
+    if (without.size > 0) this.tools = this.tools.filter((t) => !without.has(t.name));
     // A host may wrap built-ins (GG Goals holds back its own editing once a
     // goal is underway). Same names and schemas, so the cached tool block and
     // the system prompt's Tools section are unchanged.
@@ -3215,6 +3247,21 @@ export class AgentSession {
       .splice(0)
       .map((m) => m.text)
       .join("\n\n");
+  }
+
+  /**
+   * Tell the agent a new fact at its next turn, as a short hidden message
+   * appended after the cached prompt (the same channel as a finished worker),
+   * so a mid-session change reaches it without re-rendering the prompt. A
+   * later note with the same id replaces one not yet delivered.
+   */
+  notify(id: string, text: string): void {
+    this.notifications.enqueue("goal", id, text, { terminal: true });
+  }
+
+  /** This session's sub-agents (workers), newest-state, including ones restored after a restart. */
+  listSubAgents(): SubAgentSnapshot[] {
+    return this.subAgentManager?.list() ?? [];
   }
 
   /** Snapshot of background processes (bash run_in_background), newest-state. */

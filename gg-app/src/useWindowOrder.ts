@@ -25,16 +25,22 @@ export function useWindowOrder(inputRef: RefObject<HTMLTextAreaElement | null>) 
       // chat input means the user can't type in the modal's fields. Bail when one
       // is present (every modal renders inside `.modal-backdrop`).
       if (document.querySelector(".modal-backdrop, .checklist-screen")) return;
+      // Nor into a composer that isn't on screen (a goal's Workers view hides
+      // the chat): keys would go into a box nobody can see, and macOS draws its
+      // caret marker over the farm where the box was. Hidden (display: none
+      // anywhere above it) means it has no boxes.
+      const input = inputRef.current;
+      if (!input || input.getClientRects().length === 0) return;
       // Don't yank focus out of another editable field (a different input,
       // textarea, or contenteditable) the user is intentionally typing in.
       if (
         active instanceof HTMLElement &&
-        active !== inputRef.current &&
+        active !== input &&
         (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)
       ) {
         return;
       }
-      inputRef.current?.focus();
+      input.focus();
     };
     window.addEventListener("focus", focusInput);
     window.addEventListener("mouseup", focusInput);

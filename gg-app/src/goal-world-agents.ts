@@ -66,9 +66,31 @@ function clip(value: string, max = 48): string {
   return single.length > max ? `${single.slice(0, max - 1)}\u2026` : single;
 }
 
+/**
+ * Tools the shared tool-kind table doesn't know, that look like using a
+ * browser or taking screenshots (most often MCP tools, named like
+ * "mcp__playwright__browser_navigate" or "take_screenshot"). On the farm
+ * they're web work, so the critter goes to the laptop desk.
+ */
+const BROWSER_TOOL = /browser|screenshot|playwright|puppeteer|chrome|navigate|web_?page|snapshot/i;
+
+/** The tool name an activity line starts with ("mcp__x__browser_click: …" → "mcp__x__browser_click"). */
+const LEADING_NAME = /^([A-Za-z_][\w.-]*)(?::|\s|$)/;
+
+/**
+ * The kind of work an activity line or tool name is, on the farm: the shared
+ * table's answer, else web for browser and screenshot tools, else null.
+ */
+export function farmKindOf(activity: string | undefined): WorkKind | null {
+  const known = toolKindOf(activity);
+  if (known) return known;
+  const name = LEADING_NAME.exec(activity?.trim() ?? "")?.[1];
+  return name && BROWSER_TOOL.test(name) ? "web" : null;
+}
+
 /** What a coordinator tool call is, as a kind of work. */
 export function coordinatorKind(toolName: string): WorkKind {
-  return COORDINATOR_TOOLS.get(toolName) ?? toolKindOf(toolName) ?? "think";
+  return COORDINATOR_TOOLS.get(toolName) ?? farmKindOf(toolName) ?? "think";
 }
 
 /** One line saying what a coordinator tool call is doing. */
@@ -106,14 +128,29 @@ function workerStatus(agent: FloorAgent): WorldAgentStatus {
   switch (agent.status) {
     case "running":
       return "working";
+    // A worker reports "idle" when its task is finished (it's kept a while in
+    // case GG Goals hands it a follow-up). Finished means it leaves the farm,
+    // like the chat's critters do; a follow-up brings it back as a new arrival.
     case "idle":
-      return "idle";
     case "done":
       return "done";
     case "error":
     case "interrupted":
       return "error";
   }
+}
+
+/**
+ * Which view a goal window shows. A goal still being briefed has no Workers
+ * view (null: just the chat). Once started it opens on Workers by itself,
+ * unless the user switched this goal back to the chat (`chatFor` is its id).
+ */
+export function goalViewFor(
+  goal: { readonly id: string; readonly phase: "briefing" | "active" } | null | undefined,
+  chatFor: string | null,
+): { readonly activeGoalId: string | null; readonly view: "workers" | "chat" | null } {
+  if (goal?.phase !== "active") return { activeGoalId: null, view: null };
+  return { activeGoalId: goal.id, view: chatFor === goal.id ? "chat" : "workers" };
 }
 
 export interface WorldInput {
@@ -155,7 +192,7 @@ export function collectWorldAgents(input: WorldInput): WorldAgent[] {
   const workers = input.workers.map((agent): WorldAgent => {
     const status = workerStatus(agent);
     const activity = agent.activity?.trim();
-    const kind = status === "working" ? (toolKindOf(activity) ?? "think") : null;
+    const kind = status === "working" ? (farmKindOf(activity) ?? "think") : null;
     return {
       key: agent.key,
       agentName: agent.agentName,
@@ -176,4 +213,42 @@ export function collectWorldAgents(input: WorldInput): WorldAgent[] {
     };
   });
   return [coordinator(input), ...workers];
+}
+
+/** How many sample workers the sample crowd brings in. */
+export const PREVIEW_CROWD_SIZE = 18;
+/** How long each sample worker stays on one job before moving to the next. */
+const PREVIEW_JOB_MS = 16000;
+
+/**
+ * A crowd of sample workers, for the farm's simulation tests: GG Goals
+ * plus PREVIEW_CROWD_SIZE workers, each moving on to a different kind of
+ * work every few seconds (staggered, so someone is always travelling), now
+ * and then idling at the lounge. Pure: the same `now` gives the same crowd.
+ */
+export function previewCrowd(now: number): WorldAgent[] {
+  const coordinator: WorldAgent = {
+    key: COORDINATOR_KEY,
+    agentName: undefined,
+    name: "GG Goals",
+    coordinator: true,
+    status: "working",
+    kind: "delegate",
+    detail: "Bringing in workers",
+  };
+  const workers = Array.from({ length: PREVIEW_CROWD_SIZE }, (_, i): WorldAgent => {
+    const turn = Math.floor((now + i * 3700) / PREVIEW_JOB_MS);
+    const pick = (turn * 7 + i * 3) % (WORK_KINDS.length + 1);
+    const kind = pick === WORK_KINDS.length ? null : (WORK_KINDS[pick] ?? null);
+    return {
+      key: `preview-${i}`,
+      agentName: undefined,
+      name: `Preview ${i + 1}`,
+      coordinator: false,
+      status: kind ? "working" : "idle",
+      kind,
+      detail: kind ? `Sample ${kind} work` : "Waiting",
+    };
+  });
+  return [coordinator, ...workers];
 }

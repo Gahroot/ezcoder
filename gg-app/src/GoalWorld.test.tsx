@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { GoalWorld, describeWorld, farmScale, fitFarm } from "./GoalWorld";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { GoalWorld, describeWorld, farmMotion, farmScale, fitFarm } from "./GoalWorld";
 import { FARM_CORE } from "./goal-farm-map";
 import { TILE } from "./goal-map-ground";
 import { COORDINATOR_KEY } from "./goal-world-agents";
@@ -40,6 +40,15 @@ describe("GoalWorld", () => {
       previous = f.scale;
     }
     expect(farmScale(coreW * 2, coreH * 2)).toBe(2);
+  });
+
+  it("keeps the farm moving at full speed when the window isn't focused", () => {
+    // Regression: an unfocused window dropped to ~12fps with the fire, water
+    // and animals at rest, so hens walked on the spot.
+    expect(farmMotion("still", false)).toEqual(farmMotion("full", false));
+    expect(farmMotion("still", false)).toEqual({ runs: true, ambientStill: false });
+    expect(farmMotion("off", false).runs).toBe(false);
+    expect(farmMotion("full", true).ambientStill).toBe(true);
   });
 
   it("builds a map that covers the stage edge to edge, keeping the farmstead below the header", () => {
@@ -85,7 +94,43 @@ describe("GoalWorld", () => {
     expect(view.querySelector("canvas")).not.toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("complementary")).toBeNull();
-    expect(view.textContent).toBe("GG Goals: Reading a.ts. researcher: Searching web for seo.");
+    expect(view.querySelector(".goal-world-summary")?.textContent).toBe(
+      "GG Goals: Reading a.ts. researcher: Searching web for seo.",
+    );
+  });
+
+  it("hangs GG Goals' question over the farm until the user goes to answer it", () => {
+    const onAnswer = vi.fn();
+    const { rerender } = render(
+      <GoalWorld
+        goalId="g"
+        running={false}
+        liveTools={[]}
+        waitingOnUser
+        workers={[]}
+        ask={{ question: "Which database should we use?" }}
+        onShowChat={onAnswer}
+      />,
+    );
+    const notice = screen.getByRole("alert");
+    expect(notice.textContent).toContain("Ken needs you");
+    expect(notice.textContent).toContain("Which database should we use?");
+    fireEvent.click(screen.getByRole("button", { name: "Answer in Chat" }));
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    // The caller takes it down once the user has been to the chat.
+    rerender(
+      <GoalWorld goalId="g" running={false} liveTools={[]} waitingOnUser workers={[]} ask={null} />,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("lists the farm's things as buttons, so they can be poked from the keyboard", () => {
+    render(
+      <GoalWorld goalId="g" running={false} liveTools={[]} waitingOnUser={false} workers={[]} />,
+    );
+    const group = screen.getByRole("group", { name: "Things on the farm" });
+    // The farm builds once it has a size; in jsdom it may not, so the group can be empty.
+    expect(group).toBeTruthy();
   });
 
   it("describes finished and stopped workers plainly", () => {

@@ -1,4 +1,4 @@
-import { PlusIcon } from "@phosphor-icons/react";
+import { GearSixIcon, PauseIcon, PlayIcon, PlusIcon } from "@phosphor-icons/react";
 import type { ProjectTask, WorkspaceMode } from "./agent";
 import { AutopilotToggle } from "./AutopilotToggle";
 import { MetalButton } from "./MetalButton";
@@ -6,6 +6,7 @@ import { RadioButton } from "./RadioButton";
 import { RankBadge } from "./RankBadge";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 import type { ProgressState } from "./useProgress";
+import { describeTally, type GoalTally } from "./goal-progress";
 
 /** The workspace header's right side: rank badge + XP chips and the per-mode action buttons. */
 /** A started goal shows either its conversation or its workers at work. */
@@ -16,12 +17,23 @@ const GOAL_VIEWS: ReadonlyArray<{ view: GoalView; label: string }> = [
   { view: "workers", label: "Workers" },
 ];
 
+/** What the goal's play/pause control says, by what the goal is doing. */
+const GOAL_STATE_LABEL: Readonly<Record<"running" | "paused" | "stopped", string>> = {
+  running: "Pause the goal",
+  paused: "Resume the goal",
+  stopped: "Not running. Carry the goal on",
+};
+
 export function WorkspaceHeaderActions({
   workspaceMode,
   isGoal = false,
   goalView = null,
   onGoalViewChange,
   goalNeedsAnswer = false,
+  goalTally = null,
+  goalState = "stopped",
+  onGoalPauseChange,
+  onOpenGoalSettings,
   progress,
   rankCelebrateNonce,
   xpChips,
@@ -57,6 +69,18 @@ export function WorkspaceHeaderActions({
   onGoalViewChange?: (view: GoalView) => void;
   /** GG Goals is waiting on an answer that only the Chat view shows. */
   goalNeedsAnswer?: boolean;
+  /** A started goal's workers: how many are working, and the tasks done and failed so far. */
+  goalTally?: GoalTally | null;
+  /**
+   * A started goal: what it's doing now, and the pause/resume toggle. "running"
+   * shows Pause; "paused" (by the user) shows Resume; "stopped" (finished,
+   * stopped, or cut off) shows a quiet Resume too, never a Pause for a goal
+   * that isn't doing anything.
+   */
+  goalState?: "running" | "paused" | "stopped";
+  onGoalPauseChange?: (paused: boolean) => void;
+  /** Open the goal's settings (instructions, folders and files). */
+  onOpenGoalSettings?: () => void;
   progress: ProgressState["snapshot"];
   rankCelebrateNonce: string | null;
   xpChips: Array<{ id: string; label: string }>;
@@ -96,6 +120,22 @@ export function WorkspaceHeaderActions({
           ))}
         </div>
       </div>
+      {/* A started goal's workers, just right of the level, on the left. */}
+      {isGoal && goalView && goalTally && (
+        <p className="goal-tally" role="status" aria-label={describeTally(goalTally)}>
+          <span className="goal-tally-part" data-live={goalTally.working > 0 || undefined}>
+            <span className="goal-tally-n">{goalTally.working}</span> working
+          </span>
+          <span className="goal-tally-part">
+            <span className="goal-tally-n">{goalTally.done}</span> done
+          </span>
+          {goalTally.failed > 0 && (
+            <span className="goal-tally-part" data-tone="failed">
+              <span className="goal-tally-n">{goalTally.failed}</span> failed
+            </span>
+          )}
+        </p>
+      )}
       {isGoal ? (
         <span className="picker-head-actions">
           {goalView && onGoalViewChange && (
@@ -117,6 +157,33 @@ export function WorkspaceHeaderActions({
                 );
               })}
             </div>
+          )}
+          {goalView && onGoalPauseChange && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm btn-nav-icon"
+              aria-pressed={goalState === "paused"}
+              title={GOAL_STATE_LABEL[goalState]}
+              aria-label={GOAL_STATE_LABEL[goalState]}
+              onClick={() => onGoalPauseChange(goalState === "running")}
+            >
+              {goalState === "running" ? (
+                <PauseIcon size={16} weight="fill" aria-hidden="true" />
+              ) : (
+                <PlayIcon size={16} weight="fill" aria-hidden="true" />
+              )}
+            </button>
+          )}
+          {onOpenGoalSettings && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm btn-nav-icon"
+              title="Goal settings"
+              aria-label="Goal settings"
+              onClick={onOpenGoalSettings}
+            >
+              <GearSixIcon size={16} aria-hidden="true" />
+            </button>
           )}
           <RadioButton />
           <WindowLayoutButton onArrange={onArrange} />

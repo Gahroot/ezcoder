@@ -42,6 +42,41 @@ export function contextSummary(goal: GoalSummary): string | null {
  * one ongoing conversation, so choosing a row reopens its latest session
  * directly instead of listing sessions.
  */
+/** How often the open goal list refreshes each goal's status. */
+const GOAL_STATUS_REFRESH_MS = 4000;
+
+/**
+ * A goal's state on its row, only when it's worth a glance: "Running now"
+ * (breathing, in the success colour) while it works, "Paused" when the user
+ * paused it, "Interrupted" (warning colour) when it was cut off mid-work.
+ * Briefing and finished goals carry no pill, so the pill always means
+ * something.
+ */
+function GoalStatusPill({ status }: { status: GoalSummary["status"] }): React.ReactElement | null {
+  if (status === "running") {
+    return (
+      <Badge
+        className="goal-status-running"
+        color="var(--success)"
+        title="GG Goals is working on this now"
+      >
+        Running now
+      </Badge>
+    );
+  }
+  if (status === "paused") {
+    return <Badge title="Paused. Open it and press play to carry on">Paused</Badge>;
+  }
+  if (status === "interrupted") {
+    return (
+      <Badge color="var(--warning)" title="Stopped mid-work. Opening it carries it on">
+        Interrupted
+      </Badge>
+    );
+  }
+  return null;
+}
+
 export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
   const windowFocused = useWindowFocused();
   const [goals, setGoals] = useState<GoalSummary[]>([]);
@@ -96,6 +131,23 @@ export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
       cancelled = true;
     };
   }, [reloadNonce]);
+
+  // Goals keep working while the list is open: refresh their status quietly
+  // (no loading state), so "Running now" and "Paused" stay true.
+  useEffect(() => {
+    let cancelled = false;
+    const id = window.setInterval(() => {
+      void listGoals()
+        .then((g) => {
+          if (!cancelled) setGoals(g);
+        })
+        .catch(() => undefined);
+    }, GOAL_STATUS_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   function choose(goal: GoalSummary): void {
     if (busy) return;
@@ -208,6 +260,7 @@ export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
                           {g.name}
                         </span>
                         {context && <Badge>{context}</Badge>}
+                        <GoalStatusPill status={g.status} />
                       </span>
                       <Badge>{g.lastActiveDisplay}</Badge>
                     </span>

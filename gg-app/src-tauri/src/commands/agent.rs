@@ -336,12 +336,25 @@ pub(crate) async fn agent_new_session(
 ) -> Result<(), String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
     let gg_sid = session_for(&webview).ok_or("session not ready")?;
-    client
+    let res = client
         .post(format!("{}/new-session", sidecar_base(port)))
         .header("x-gg-session", &gg_sid)
         .send()
         .await
         .map_err(|e| e.to_string())?;
+    // Remember the new conversation, so a daemon respawn reopens it rather
+    // than the one this window started with.
+    if let Ok(body) = res.json::<serde_json::Value>().await {
+        if let Some(path) = json_session_path(&body) {
+            let windows: State<Windows> = webview.state();
+            let mut map = windows.map.lock_or_recover();
+            if let Some(entry) = map.get_mut(webview.label()) {
+                if entry.session_id.as_deref() == Some(gg_sid.as_str()) {
+                    entry.session_path = Some(path);
+                }
+            }
+        }
+    }
     Ok(())
 }
 

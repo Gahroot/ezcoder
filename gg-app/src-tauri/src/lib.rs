@@ -139,6 +139,7 @@ pub fn run() {
         .manage(http_client)
         .invoke_handler(tauri::generate_handler![
             daemon::sidecar_port,
+            daemon::retry_window_session,
             commands::files::dropped_path_info,
             paths::permissions_status,
             paths::open_permissions_settings,
@@ -196,6 +197,9 @@ pub fn run() {
             commands::agent_admin::agent_goals,
             commands::agent_admin::agent_create_goal,
             commands::agent_admin::agent_goal_kickoff,
+            commands::agent_admin::agent_update_goal,
+            commands::agent_admin::agent_goal_pause,
+            commands::agent_admin::agent_goal_resume,
             commands::agent_admin::agent_delete_goal,
             commands::agent_admin::agent_set_critter_model,
             commands::agent_admin::agent_sessions,

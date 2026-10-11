@@ -60,6 +60,10 @@ export { BUILTIN_TOOL_NAMES } from "./prompt-hints.js";
 
 export interface CreateToolsOptions {
   agents?: AgentDefinition[];
+  /** Start spawned children with the parent's extra workspace roots too (see SubAgentManager). */
+  shareWorkspaceRoots?: boolean;
+  /** The agent a spawned child is when the spawn names none (see SubAgentManager). */
+  defaultSubAgent?: string;
   /** Default provider/model for spawned children (see SubAgentManagerOptions). */
   getChildModel?: () => ChildModelPick | undefined;
   skills?: Skill[];
@@ -334,6 +338,8 @@ export async function createTools(
       // A child may also be started in one of the parent's extra roots (GG
       // Goals sends each worker to the attached project it works on).
       getWorkspaceRoots: () => opts.getWriteGuardSettings?.()?.additionalRoots ?? [],
+      shareWorkspaceRoots: opts.shareWorkspaceRoots,
+      defaultAgent: opts.defaultSubAgent,
       getChildModel: opts.getChildModel,
       agents: opts.agents,
       getProvider: () => opts.getProvider?.() ?? baseProvider,

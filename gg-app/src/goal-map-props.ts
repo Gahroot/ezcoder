@@ -6,12 +6,22 @@
 
 import { E, PixelBuffer, darken, hash, mix, noise, stream, type Rgb } from "./goal-map-pixels";
 
+/**
+ * The shadow a standing thing casts: its own silhouette laid on the ground,
+ * pushed down and to the right (the light is from the upper left) further
+ * the higher each part of it stands, so a canopy's shadow has the canopy's
+ * shape and a roof's has the roof's.
+ */
 export interface Shadow {
-  readonly rx: number;
-  readonly ry: number;
-  readonly dx?: number;
-  readonly dy?: number;
+  /** How dark, 0 to 1 (about 0.3 for most things). */
   readonly a?: number;
+  /** Cap on how high any part counts as standing, for low, deep things like a pond. */
+  readonly height?: number;
+  /**
+   * A tree: its shadow is one flat, lumpy patch in the canopy's shape,
+   * flattened onto the ground round the trunk, not a rim under the leaves.
+   */
+  readonly canopy?: boolean;
 }
 
 export interface Sprite {
@@ -20,6 +30,100 @@ export interface Sprite {
   readonly ax: number;
   readonly ay: number;
   readonly shadow?: Shadow;
+}
+
+/** The farm's outline ink and strength, matching the sprites `lean` is used on. */
+const LEAN_INK: Rgb = 0x3a1406;
+const OUTLINE = 0.86;
+
+/**
+ * The camera looks down on the world from high up, so a building is widest
+ * at its eave (the part nearest the camera) and narrows away from it: its
+ * walls, posts and legs lean in toward the ground, and its roof narrows
+ * toward the ridge at the back. Draw a prop upright, then lean it: rows below
+ * its widest row are drawn in toward the middle, down to `ground` (a fraction
+ * of its half-width) at its foot; rows above, up to `top` at its top edge.
+ * The outline at each row's ends is kept, so the edges stay clean.
+ */
+export function lean(sprite: Sprite, top = 0.14, ground = 0.12, ink: Rgb = LEAN_INK): Sprite {
+  const src = sprite.buf;
+  const { width: w, height: h } = src;
+  const ends = (y: number): [number, number] => {
+    let l = -1;
+    let r = -1;
+    for (let x = 0; x < w; x++) {
+      if ((src.data[(y * w + x) * 4 + 3] ?? 0) === 0) continue;
+      if (l < 0) l = x;
+      r = x;
+    }
+    return [l, r];
+  };
+  let eave = -1;
+  let widest = 0;
+  let first = -1;
+  let cx = w / 2;
+  for (let y = 0; y < h; y++) {
+    const [l, r] = ends(y);
+    if (l < 0) continue;
+    if (first < 0) first = y;
+    // The lowest of the widest rows: the eave, or the front edge of a top.
+    if (r - l + 1 >= widest) {
+      widest = r - l + 1;
+      eave = y;
+      cx = (l + r + 1) / 2;
+    }
+  }
+  if (eave < 0) return sprite;
+  const foot = Math.max(eave + 1, sprite.ay);
+  // A shape that runs to the canvas edge had no room for its outline there:
+  // give the leaned copy a pixel of margin each side so it can have one.
+  let touches = false;
+  for (let y = 0; y < h && !touches; y++) {
+    const [l, r] = ends(y);
+    touches = l === 0 || r === w - 1;
+  }
+  const pad = touches ? 1 : 0;
+  const ow = w + pad * 2;
+  const out = new PixelBuffer(ow, h);
+  for (let y = 0; y < h; y++) {
+    const [l, r] = ends(y);
+    if (l < 0) continue;
+    const t =
+      y > eave
+        ? Math.min(1, (y - eave) / (foot - eave)) * ground
+        : y < eave && eave > first
+          ? ((eave - y) / (eave - first)) * top
+          : 0;
+    const s = Math.max(0.3, 1 - t);
+    let dl = w;
+    let dr = -1;
+    for (let x = 0; x < w; x++) {
+      const sx = Math.round(cx + (x + 0.5 - cx) / s - 0.5);
+      if (sx < l || sx > r) continue;
+      const i = (y * w + sx) * 4;
+      if ((src.data[i + 3] ?? 0) === 0) continue;
+      const o = (y * ow + x + pad) * 4;
+      for (let k = 0; k < 4; k++) out.data[o + k] = src.data[i + k] ?? 0;
+      dl = Math.min(dl, x);
+      dr = Math.max(dr, x);
+    }
+    // Keep the row's outline at both ends.
+    if (dr >= 0) {
+      for (const [d, sx] of [
+        [dl, l],
+        [dr, r],
+      ] as const) {
+        const i = (y * w + sx) * 4;
+        const o = (y * ow + d + pad) * 4;
+        for (let k = 0; k < 4; k++) out.data[o + k] = src.data[i + k] ?? 0;
+      }
+      // Rows that ran to the canvas edge get the outline they had no room
+      // for, drawn the way the sprite's own outline is.
+      if (l === 0) out.set(dl + pad - 1, y, mix(src.rgb(l, y), ink, OUTLINE));
+      if (r === w - 1) out.set(dr + pad + 1, y, mix(src.rgb(r, y), ink, OUTLINE));
+    }
+  }
+  return { ...sprite, buf: out, ax: sprite.ax + pad };
 }
 
 function make(
@@ -147,7 +251,7 @@ export function oakTree(seed: number, large = true, tones: Tones = LEAVES): Spri
         clump(b, cx + ox + (rnd() - 0.5) * 2, cy + oy + (rnd() - 0.5) * 2, r, tones, seed + 17);
       }
     },
-    { rx: R * 0.95, ry: R * 0.36, dx: 2, dy: -1, a: 0.32 },
+    { a: 0.32, canopy: true },
   );
 }
 
@@ -196,7 +300,7 @@ export function pineTree(seed: number): Sprite {
         }
       }
     },
-    { rx: 12, ry: 4, dx: 2, dy: -1, a: 0.32 },
+    { a: 0.32, canopy: true },
   );
 }
 
@@ -247,7 +351,7 @@ export function palmTree(lean = 1): Sprite {
       b.ellipse(topX + 2, topY + 3, 2, 2, E.bark2);
       b.set(Math.round(topX) - 2, topY + 1, E.bark3);
     },
-    { rx: 9, ry: 3, dx: 3, dy: -1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -272,7 +376,7 @@ export function bush(seed: number, berries: Rgb | null = null): Sprite {
         }
       }
     },
-    { rx: 9, ry: 3, a: 0.28 },
+    { a: 0.28 },
   );
 }
 
@@ -303,7 +407,7 @@ export function rock(seed: number, size: 1 | 2 | 3 = 2, mossy = false): Sprite {
         }
       }
     },
-    { rx: rx + 1, ry: 1.6, dx: 1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -334,7 +438,7 @@ export function logSeat(): Sprite {
       b.ellipse(3, 5, 2, 3, E.sand);
       b.set(3, 5, E.bark3);
     },
-    { rx: 9, ry: 2, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -498,7 +602,7 @@ export function house(o: HouseOptions): Sprite {
         b.stamp(o.sign.rows, o.sign.palette, sx + 3, sy + 2);
       }
     },
-    { rx: o.width / 2 + 6, ry: 5, dx: 5, dy: -1, a: 0.34 },
+    { a: 0.34 },
   );
 }
 
@@ -566,7 +670,7 @@ export function shed(width: number, roof: RoofStyle = "shingle"): Sprite {
         }
       }
     },
-    { rx: width / 2 + 4, ry: 4, dx: 3, dy: -1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -611,7 +715,7 @@ export function lighthouse(): Sprite {
       b.set(15, 2, E.slate1);
       b.set(15, 1, E.slate1);
     },
-    { rx: 9, ry: 3, dx: 3, dy: -1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -658,7 +762,7 @@ export function observatory(): Sprite {
       b.rect(37, 4, 3, 4, E.gold);
       b.rect(4, 21, 36, 2, E.slate1);
     },
-    { rx: 18, ry: 4, dx: 3, dy: -1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -689,7 +793,7 @@ export function fountain(): Sprite {
       }
       b.rect(19, 0, 2, 5, E.ice);
     },
-    { rx: 18, ry: 3, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -721,7 +825,7 @@ export function well(): Sprite {
       for (let x = 3; x < 23; x += 5) b.rect(x, 22, 1, 6, E.slate1);
       b.rect(3, 25, 20, 1, E.slate1);
     },
-    { rx: 11, ry: 3, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -746,7 +850,7 @@ export function boat(): Sprite {
       b.rect(15, 2, 1, 10, E.bark1);
       b.rect(13, 1, 5, 2, E.mist);
     },
-    { rx: 15, ry: 3, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -783,7 +887,7 @@ export function bookshelf(seed: number, tall = false): Sprite {
       b.rect(0, 0, 20, 2, E.bark2);
       b.rect(0, 0, 20, 1, E.bark3);
     },
-    { rx: 9, ry: 2, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -812,7 +916,7 @@ export function workbench(): Sprite {
       b.set(12, 8, E.sand);
       b.set(15, 9, E.sand);
     },
-    { rx: 14, ry: 2.5, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -841,7 +945,7 @@ export function forge(): Sprite {
       b.ellipse(13, 22.5, 2, 1, E.yellow);
       b.rect(2, 26, 22, 2, E.slate1);
     },
-    { rx: 12, ry: 3, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -862,7 +966,7 @@ export function anvil(): Sprite {
       b.set(5, 2, E.steel1);
       b.set(9, 2, E.steel1);
     },
-    { rx: 6, ry: 2, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -892,7 +996,7 @@ export function mapTable(): Sprite {
       b.rect(22, 4, 3, 5, E.sand);
       b.rect(22, 4, 3, 1, E.tan);
     },
-    { rx: 13, ry: 2.5, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -942,7 +1046,7 @@ export function computer(): Sprite {
       b.ellipse(25.5, 6.5, 2.5, 1.8, E.steel1);
       b.set(25, 2, E.red);
     },
-    { rx: 13, ry: 2.5, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -971,7 +1075,7 @@ export function noticeBoard(seed: number): Sprite {
         b.set(x + 2, y, E.red);
       }
     },
-    { rx: 12, ry: 2.5, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -991,7 +1095,7 @@ export function mailbox(): Sprite {
       b.rect(11, 1, 1, 6, E.slate1);
       b.rect(12, 1, 2, 2, E.gold);
     },
-    { rx: 4, ry: 1.5, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1026,7 +1130,7 @@ export function campfire(): Sprite {
       b.set(12, 4, E.orange);
       b.set(10, 2, E.gold);
     },
-    { rx: 8, ry: 2, a: 0.2 },
+    { a: 0.2 },
     true,
   );
 }
@@ -1051,7 +1155,7 @@ export function fence(posts: number): Sprite {
         b.rect(x, 1, 4, 2, E.sand);
       }
     },
-    { rx: w / 2, ry: 1.5, a: 0.22 },
+    { a: 0.22 },
   );
 }
 
@@ -1071,7 +1175,7 @@ export function lampPost(): Sprite {
       b.rect(2, 2, 8, 2, E.slate0);
       b.set(6, 1, E.slate0);
     },
-    { rx: 3, ry: 1.2, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1105,7 +1209,7 @@ export function hayBale(): Sprite {
       b.rect(5, 2, 1, 10, E.bark3);
       b.rect(12, 2, 1, 10, E.bark3);
     },
-    { rx: 8, ry: 2, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1124,7 +1228,7 @@ export function crate(): Sprite {
       b.rect(1, 6, 12, 1, E.bark3);
       for (let i = 0; i < 10; i++) b.set(2 + i, 1 + Math.floor(i * 1.0), E.bark3);
     },
-    { rx: 6, ry: 1.8, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1143,7 +1247,7 @@ export function barrel(): Sprite {
       b.ellipse(7, 2, 5, 1.6, E.bark3);
       b.ellipse(7, 2, 3, 0.8, E.bark1);
     },
-    { rx: 5, ry: 1.8, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1181,7 +1285,7 @@ export function crops(kind: "cabbage" | "carrot" | "wheat" | "berry", seed: numb
         }
       }
     },
-    { rx: 5, ry: 1.5, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1247,7 +1351,7 @@ export function gate(): Sprite {
       b.set(24, 10, E.bark2);
       b.set(26, 11, E.bark2);
     },
-    { rx: 21, ry: 2, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1274,7 +1378,7 @@ export function desk(): Sprite {
       b.rect(21, 10, 3, 3, E.white);
       b.rect(22, 9, 1, 1, E.bark3);
     },
-    { rx: 13, ry: 2, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1296,7 +1400,7 @@ export function serverRack(seed: number): Sprite {
         b.rect(9, y + 1, 3, 1, E.slate1);
       }
     },
-    { rx: 7, ry: 1.8, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1323,7 +1427,7 @@ export function whiteboard(): Sprite {
       b.rect(6, 17, 3, 1, E.red);
       b.rect(10, 17, 3, 1, E.blue1);
     },
-    { rx: 13, ry: 2, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1346,7 +1450,7 @@ export function sofa(): Sprite {
       b.rect(3, 16, 2, 2, E.bark1);
       b.rect(33, 16, 2, 2, E.bark1);
     },
-    { rx: 18, ry: 2, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1364,7 +1468,7 @@ export function plantPot(seed: number): Sprite {
       b.rect(3, 13, 10, 2, E.orange);
       b.rect(10, 15, 2, 5, E.brick);
     },
-    { rx: 5, ry: 1.5, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -1386,7 +1490,7 @@ export function coffeeBar(): Sprite {
       b.rect(19, 7, 3, 3, E.rose);
       b.rect(14, 12, 9, 6, E.bark1);
     },
-    { rx: 12, ry: 2, a: 0.3 },
+    { a: 0.3 },
   );
 }
 

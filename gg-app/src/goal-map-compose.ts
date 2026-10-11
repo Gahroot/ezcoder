@@ -7,7 +7,7 @@
 import { CRITTERS, frameRows } from "./critter-sprites";
 import { GLYPHS as GLYPHS_3X5 } from "./goal-world-font";
 import { paintGround, scatterDetails, type MapGrid } from "./goal-map-ground";
-import { E, PixelBuffer, darken, type Rgb } from "./goal-map-pixels";
+import { E, PixelBuffer, darken, hash, type Rgb } from "./goal-map-pixels";
 import type { Sprite } from "./goal-map-props";
 
 export interface PlacedProp {
@@ -18,6 +18,10 @@ export interface PlacedProp {
   readonly flip?: boolean;
   /** Painted flat on the ground, under everything that stands (rugs, pads). */
   readonly flat?: boolean;
+  /** A building: everything down to its eave is roof, open to the sky (for weather). */
+  readonly roof?: boolean;
+  /** Holds its place (nothing walks through it) but isn't painted: drawn live instead. */
+  readonly hidden?: boolean;
 }
 
 export interface PlacedCritter {
@@ -83,12 +87,119 @@ function shadow(
   }
 }
 
-function drawProp(buf: PixelBuffer, p: PlacedProp, ink: Rgb): void {
+/** The furthest a shadow sits below the thing casting it, in pixels. */
+const SHADOW_DROP = 5;
+/** The furthest up behind its base a tall thing's pooled shadow reaches. */
+const POOL = 9;
+
+/**
+ * Mark where a standing prop's shadow falls: its own silhouette, nudged a
+ * few pixels down (and one left), laid on the ground before the prop is
+ * drawn over it. Only the rim peeking out under the prop shows, so the
+ * shadow hugs its lower edge in its own shape: a dark crescent under a
+ * canopy round the trunk, a band along a building's foot. Taller things drop
+ * theirs a little further. Each ground pixel keeps the darkest shadow over
+ * it, so overlaps don't stack.
+ */
+function castShadow(mask: Float32Array, width: number, height: number, p: PlacedProp): void {
   const { sprite } = p;
-  if (sprite.shadow) {
-    const s = sprite.shadow;
-    shadow(buf, p.x + (s.dx ?? 0), p.y + (s.dy ?? 0), s.rx, s.ry, s.a ?? 0.3, ink);
+  const s = sprite.shadow;
+  if (!s) return;
+  const src = sprite.buf;
+  let firstRow = src.height;
+  for (let sy = 0; sy < src.height && firstRow === src.height; sy++) {
+    for (let sx = 0; sx < src.width; sx++) {
+      if ((src.data[(sy * src.width + sx) * 4 + 3] ?? 0) >= 128) {
+        firstRow = sy;
+        break;
+      }
+    }
   }
+  const tallest = Math.max(1, sprite.ay - firstRow);
+  const drop = Math.min(
+    s.height ?? SHADOW_DROP,
+    SHADOW_DROP,
+    Math.max(2, Math.round(tallest / 10)),
+  );
+  const strength = s.a ?? 0.3;
+  const ax = p.flip ? src.width - 1 - sprite.ax : sprite.ax;
+  const left = Math.floor(p.x) - ax - 1;
+  const top = Math.floor(p.y) - sprite.ay + drop;
+  const base = Math.floor(p.y);
+  // How far up from its base the pooled shadow under a tall thing reaches.
+  const pool = Math.min(s.height ?? POOL, POOL, Math.round(tallest / 5));
+  const mark = (x: number, y: number): void => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const i = y * width + x;
+    if ((mask[i] ?? 0) < strength) mask[i] = strength;
+  };
+  if (s.canopy) {
+    // The sun is overhead, so a tree's shadow is one flat pool straight under
+    // its canopy: about as wide as the canopy, a squat oval round the trunk's
+    // foot with a softly lumpy rim (a few overlapping rounds, not a copy of
+    // the leaves). The canopy hides its far half; the trunk stands in it.
+    let minX = src.width;
+    let maxX = -1;
+    for (let sy = firstRow; sy <= sprite.ay && sy < src.height; sy++) {
+      for (let sx = 0; sx < src.width; sx++) {
+        if ((src.data[(sy * src.width + sx) * 4 + 3] ?? 0) < 128) continue;
+        minX = Math.min(minX, sx);
+        maxX = Math.max(maxX, sx);
+      }
+    }
+    if (maxX < 0) return;
+    const mid = (minX + maxX + 1) / 2;
+    const cx = left + 1 + (p.flip ? src.width - mid : mid);
+    const rx = ((maxX - minX + 1) / 2) * 0.82;
+    const ry = Math.max(3, rx * 0.42);
+    const cy = base - ry * 0.35;
+    // The lumps: rounds spaced along the oval, each its own size.
+    const lumps = 6;
+    const rounds = Array.from({ length: lumps }, (_, k) => {
+      const a = (k / lumps) * Math.PI * 2 + hash(k, 1, Math.floor(p.x)) * 0.6;
+      return {
+        x: cx + Math.cos(a) * rx * 0.55,
+        y: cy + Math.sin(a) * ry * 0.55,
+        r: 0.5 + hash(k, 2, Math.floor(p.y)) * 0.12,
+      };
+    });
+    for (let y = Math.floor(cy - ry - 2); y <= cy + ry + 2; y++) {
+      for (let x = Math.floor(cx - rx - 2); x <= cx + rx + 2; x++) {
+        const inCore = ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 0.72;
+        const inLump = rounds.some(
+          (q) => ((x + 0.5 - q.x) / (rx * q.r)) ** 2 + ((y + 0.5 - q.y) / (ry * q.r)) ** 2 <= 1,
+        );
+        if (inCore || inLump) mark(x, y);
+      }
+    }
+    return;
+  }
+  for (let sy = 0; sy < src.height; sy++) {
+    // The pooled shadow: the whole silhouette squashed flat onto the ground
+    // round its base, its top landing furthest back (hidden behind it).
+    const t = Math.max(0, Math.min(1, (sprite.ay - sy) / tallest));
+    const py = base + 1 - Math.round(t * pool);
+    for (let sx = 0; sx < src.width; sx++) {
+      if ((src.data[(sy * src.width + sx) * 4 + 3] ?? 0) < 128) continue;
+      const x = left + (p.flip ? src.width - 1 - sx : sx);
+      mark(x, top + sy);
+      if (pool > 1) mark(x, py);
+    }
+  }
+}
+
+/** Darken the ground under every cast shadow, in one flat tone per strength. */
+function applyShadows(buf: PixelBuffer, mask: Float32Array, ink: Rgb): void {
+  for (let y = 0; y < buf.height; y++) {
+    for (let x = 0; x < buf.width; x++) {
+      const a = mask[y * buf.width + x] ?? 0;
+      if (a > 0) buf.set(x, y, darken(buf.rgb(x, y), Math.min(0.6, a * 1.1), ink));
+    }
+  }
+}
+
+function drawProp(buf: PixelBuffer, p: PlacedProp): void {
+  const { sprite } = p;
   const ax = p.flip ? sprite.buf.width - 1 - sprite.ax : sprite.ax;
   buf.draw(sprite.buf, p.x - ax, p.y - sprite.ay, p.flip ?? false);
 }
@@ -193,19 +304,34 @@ function recolor(buf: PixelBuffer, map: ReadonlyMap<Rgb, Rgb>): void {
   }
 }
 
-/** Paint a whole map scene. */
-export function composeMap(scene: MapScene): PixelBuffer {
+/**
+ * Paint a whole map scene. Props in `leaveOut` aren't drawn, though their
+ * shadows are (the goal farm paints a copy without its trees and bushes, to
+ * redraw one swaying in place without its still self showing behind it).
+ */
+export function composeMap(
+  scene: MapScene,
+  leaveOut: ReadonlySet<PlacedProp> = new Set(),
+): PixelBuffer {
   const ground = paintGround(scene.grid, scene.seed);
   scatterDetails(ground, scene.seed);
   const buf = ground.buf;
   if (scene.groundColors) recolor(buf, scene.groundColors);
 
   const ink = scene.ink ?? E.ink;
-  for (const p of scene.props) if (p.flat) drawProp(buf, p, ink);
+  for (const p of scene.props) if (p.flat) drawProp(buf, p);
+  // Shadows go down on the ground (and anything flat on it) before anything stands on it.
+  const mask = new Float32Array(buf.width * buf.height);
+  for (const p of scene.props) {
+    if (!p.flat && !p.hidden) castShadow(mask, buf.width, buf.height, p);
+  }
+  applyShadows(buf, mask, ink);
   type Item = { y: number; x: number; draw: () => void };
   const items: Item[] = [];
   for (const p of scene.props) {
-    if (!p.flat) items.push({ y: p.y, x: p.x, draw: () => drawProp(buf, p, ink) });
+    if (!p.flat && !p.hidden && !leaveOut.has(p)) {
+      items.push({ y: p.y, x: p.x, draw: () => drawProp(buf, p) });
+    }
   }
   for (const c of scene.critters) {
     items.push({ y: c.y + 0.5, x: c.x, draw: () => drawCritter(buf, c, ink) });

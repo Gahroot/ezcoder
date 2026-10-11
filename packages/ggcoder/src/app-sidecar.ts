@@ -89,7 +89,13 @@ import { stopRadio } from "./core/radio.js";
 import { enrichProcessPath } from "./core/shell-path.js";
 import type { ServeController } from "./modes/serve-mode.js";
 import { createElicitationBridge } from "./core/mcp/index.js";
-import { askSoftDeadlineMs, createAskUserBridge, deliverLateAnswer } from "./core/ask-user.js";
+import {
+  askSoftDeadlineMs,
+  createAskUserBridge,
+  deliverLateAnswer,
+  type AskQuestion,
+  type AskUserResult,
+} from "./core/ask-user.js";
 import { createAskUserTool } from "./tools/ask-user.js";
 import { createUsageService } from "./app-sidecar/usage.js";
 import { daemonReadBody, daemonJson, json } from "./app-sidecar/http.js";
@@ -114,11 +120,14 @@ import {
   goalPhase,
   goalsRoot,
   isGoalDir,
-  isGoalStartAnswer,
-  markGoalStarted,
+  startGoalOnAnswer,
   readGoal,
 } from "./core/goals-store.js";
-import { createGoalsAgentSession, goalCritterPick } from "./goals-agent/goals-agent.js";
+import {
+  createGoalsAgentSession,
+  goalCritterPick,
+  loadGoalBriefExtras,
+} from "./goals-agent/goals-agent.js";
 import { handleWorkspaceRoutes } from "./app-sidecar/workspace-routes.js";
 import { handleHistoryRoutes } from "./app-sidecar/history-routes.js";
 import { handlePromptRoutes } from "./app-sidecar/prompt-routes.js";
@@ -250,6 +259,11 @@ async function main(): Promise<void> {
       .map((ctx) => ctx.id)
       .sort();
   };
+  /** Whether any live window session in `cwd` is working right now. */
+  const busyAt = (cwd: string): boolean => {
+    const target = path.resolve(cwd);
+    return [...sessions.values()].some((ctx) => path.resolve(ctx.cwd) === target && ctx.isBusy());
+  };
 
   // Providers currently mid-OAuth in some window. Daemon-level so two windows
   // cannot race two browser flows for the same provider into one auth file.
@@ -356,6 +370,7 @@ async function main(): Promise<void> {
               oauthInFlightProviders,
               repoPolls,
               sessionIdsAt,
+              busyAt,
             },
             { id, mode, chatAgent, cwd: sessionCwd, sessionPath },
           );
@@ -366,7 +381,13 @@ async function main(): Promise<void> {
             chatAgent,
             cwd: sessionCwd,
           });
-          daemonJson(res, 200, { sessionId: id });
+          // The conversation file too, so the app can reopen this exact
+          // session if the daemon restarts (a new session has no path yet
+          // on the app's side).
+          daemonJson(res, 200, {
+            sessionId: id,
+            sessionPath: ctx.session.getState().sessionPath ?? null,
+          });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           log("ERROR", "app-sidecar", "session create failed", { message });
@@ -541,6 +562,8 @@ async function createSession(
     repoPolls: RepoPolls;
     /** Ids of every live window session whose cwd is `cwd` (resolved). */
     sessionIdsAt: (cwd: string) => string[];
+    /** Whether any live window session in `cwd` is working right now. */
+    busyAt: (cwd: string) => boolean;
   },
   opts: {
     id: string;
@@ -559,6 +582,7 @@ async function createSession(
     oauthInFlightProviders,
     repoPolls,
     sessionIdsAt,
+    busyAt,
   } = deps;
   const paths = deps.paths;
   const mode = opts.mode;
@@ -748,42 +772,71 @@ async function createSession(
     onClosed: (ids) => broadcast("ask_user_closed", { ids }),
     onLateAnswer: (late) => {
       log("INFO", "app-sidecar", "ask_user late answer queued", { id: late.prompt.id });
-      deliverLateAnswer(late, {
-        queueMessage: (text) => session.queueMessage(text),
-        isBusy: () => running || runClaim.active || autopilotActive,
-        onQueued: () =>
-          broadcast("queued", {
-            count: session.getQueuedCount(),
-            messages: session.listQueuedMessages(),
+      // A late "Start the goal now" starts the goal before GG Goals hears it,
+      // so the run it wakes into may already hand out work.
+      void startGoalFrom({ action: "answer", answers: late.answers }, late.prompt.questions).then(
+        () =>
+          deliverLateAnswer(late, {
+            queueMessage: (text) => session.queueMessage(text),
+            isBusy: () => running || runClaim.active || autopilotActive,
+            onQueued: () =>
+              broadcast("queued", {
+                count: session.getQueuedCount(),
+                messages: session.listQueuedMessages(),
+              }),
+            startIdleRun: () => void runStrandedQueue(),
           }),
-        startIdleRun: () => void runStrandedQueue(),
-      });
+      );
     },
   });
   // A goal starts when the user picks "Start the goal now" from GG Goals'
-  // question. Recorded once here, where every answer (app or remote) lands,
-  // and announced so the window can switch to the goal's world view.
+  // question: answered while it waits, or late, after its deadline (see
+  // onLateAnswer). Recorded once, and announced so the window can switch to
+  // the goal's world view. Never throws: a failed write leaves it briefing.
+  const startGoalFrom = async (
+    result: AskUserResult,
+    questions: ReadonlyArray<AskQuestion>,
+  ): Promise<void> => {
+    const current = goal;
+    if (!current) return;
+    const started = await startGoalOnAnswer(
+      current.dir,
+      current.record,
+      result,
+      new Date(),
+      questions,
+    ).catch((err: unknown) => {
+      log("WARN", "app-sidecar", "couldn't record goal start", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
+    if (started) {
+      goal = { dir: current.dir, record: started };
+      broadcast("goal_state", { id: started.id, phase: goalPhase(started) });
+    }
+  };
   const askUserTool = createAskUserTool(async (request) => {
     const result = await asks.park(request);
-    const current = goal;
-    if (current && !current.record.startedAt && isGoalStartAnswer(result)) {
-      const started = await markGoalStarted(current.dir, new Date()).catch((err: unknown) => {
-        log("WARN", "app-sidecar", "couldn't record goal start", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return null;
-      });
-      if (started) {
-        goal = { dir: current.dir, record: started };
-        broadcast("goal_state", { id: started.id, phase: goalPhase(started) });
-      }
-    }
+    await startGoalFrom(result, request.questions);
     return result;
   });
 
   // The session file path to resume (passed by the daemon's POST /session);
-  // empty/unset starts a fresh session.
-  const resumeSessionPath = opts.sessionPath;
+  // empty/unset starts a fresh session. A file that's gone (retention cleaned
+  // it up, or its goal was deleted) starts fresh too: failing instead left
+  // the window with no session at all, so not even its goal list loaded.
+  const resumeSessionPath =
+    opts.sessionPath &&
+    (await fs.access(opts.sessionPath).then(
+      () => true,
+      () => false,
+    ))
+      ? opts.sessionPath
+      : undefined;
+  if (opts.sessionPath && !resumeSessionPath) {
+    log("WARN", "app-sidecar", "session file gone, starting fresh", { cwd });
+  }
 
   let abort = new AbortController();
   const baseSessionOptions = {
@@ -835,6 +888,8 @@ async function createSession(
     session = createGoalsAgentSession({
       ...baseSessionOptions,
       goal,
+      // Memory and the attached projects' rules, read once for this session.
+      extras: await loadGoalBriefExtras(goal),
       // Read live: the goal turns active mid-session when the user starts it.
       isActive: () => Boolean(goal?.record.startedAt),
       getChildModel: () => goalCritterPick(goal?.record),
@@ -2165,6 +2220,7 @@ async function createSession(
     runClaim,
     sessionId: opts.id,
     sessionIdsAt,
+    busyAt,
     get goal() {
       return goal;
     },
@@ -2387,6 +2443,11 @@ async function createSession(
     handle,
     dispose,
     stopBackgroundProcesses,
+    isBusy: () =>
+      running ||
+      runClaim.active ||
+      autopilotActive ||
+      session.listSubAgents().some((w) => w.state === "running" || w.state === "starting"),
   };
 }
 

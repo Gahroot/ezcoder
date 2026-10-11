@@ -1,5 +1,4 @@
-// Pixel art the Goal farm's critters wear and ride: the skateboard, motorbike
-// and jetpack (with its flame) for long trips, and GG Goals' crown. Same grid
+// Pixel art the Goal farm's critters wear: GG Goals' crown. Same grid
 // format as critter-sprites.ts: `.` is transparent, any other character keys
 // into the palette. Colours are art, not theme roles, so they stay literal.
 
@@ -36,23 +35,5 @@ export interface Grid {
 
 const grid = (...rows: string[]): Grid => ({ rows });
 
-/** Vehicles and gear, drawn facing right. */
-export const SKATEBOARD = grid("OOOOOOOOOOOO", "ORRRRRRRRRRO", ".OMO....OMO.");
-export const MOTORBIKE = grid(
-  "............OO....",
-  "...........OMMO...",
-  "...OOOOOOOOOOMO...",
-  "..ORRRRRRRRRRO....",
-  ".ORRRRRRRRRRRRO...",
-  ".OOOOOOOOOOOOOOO..",
-  ".OOO.........OOO..",
-  "OdddO.......OdddO.",
-  ".OOO.........OOO..",
-);
-export const JETPACK = grid(".OOO.", "OMMMO", "OMrMO", "OMMMO", "OMMMO", "OMMMO", ".OOO.", ".OmO.");
-export const FLAME_FRAMES: readonly Grid[] = [
-  grid(".o.", "ofo", "ofo", ".o."),
-  grid("o.o", "ofo", ".f.", ".o."),
-];
-/** GG Goals wears this. */
+/** GG Goals' crown. */
 export const CROWN = grid("Y..Y..Y", "YY.Y.YY", "YYYYYYY", "yyyyyyy");

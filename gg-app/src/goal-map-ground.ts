@@ -116,22 +116,39 @@ interface Ground {
 export const GRASS_SUN: Rgb = mix(E.green2, E.green3, 0.32);
 
 function grass(x: number, y: number): Rgb {
-  // Flat, like hand-made grass tiles: one green, with wide sunny patches of a
-  // lighter green, small "v" tufts of a darker green scattered about, and the
-  // odd lighter blade beside them.
+  // Like hand-made grass: one green, wide sunny patches of a lighter green,
+  // darker clumps where it grows thick, and tufts of every size scattered
+  // about: big five-blade tufts, small "v"s, and lone blades with a lit tip.
   const sunny = noise(x * 0.7, y, 22, 16) > 0.66;
+  const thick = noise(x, y * 1.3, 9, 17) < 0.2;
+  const base = sunny ? GRASS_SUN : thick ? mix(E.green2, E.green1, 0.4) : E.green2;
   const cell = 7;
   const gx = Math.floor(x / cell);
   const gy = Math.floor(y / cell);
-  if (hash(gx, gy, 12) < 0.34) {
+  const roll = hash(gx, gy, 12);
+  if (roll < 0.42) {
     const ox = gx * cell + 1 + Math.floor(hash(gx, gy, 13) * 4);
     const oy = gy * cell + 2 + Math.floor(hash(gx, gy, 14) * 3);
     const dx = x - ox;
     const dy = y - oy;
-    if ((dy === 0 && (dx === 0 || dx === 2)) || (dy === 1 && dx === 1)) return E.green1;
-    if (dy === -1 && dx === 2 && hash(gx, gy, 15) < 0.5) return mix(E.green2, E.green3, 0.6);
+    if (roll < 0.08) {
+      // A big tuft: five blades fanning up from one root.
+      if (dy === 1 && dx >= 0 && dx <= 4) return E.green1;
+      if (dy === 0 && (dx === 0 || dx === 2 || dx === 4)) return E.green1;
+      if (dy === -1 && (dx === 1 || dx === 3)) return E.green1;
+      if (dy === -1 && dx === 2) return mix(E.green2, E.green3, 0.6);
+      if (dy === -2 && dx === 2) return E.green3;
+    } else if (roll < 0.3) {
+      // A small "v", sometimes with a lit blade beside it.
+      if ((dy === 0 && (dx === 0 || dx === 2)) || (dy === 1 && dx === 1)) return E.green1;
+      if (dy === -1 && dx === 2 && hash(gx, gy, 15) < 0.5) return mix(E.green2, E.green3, 0.6);
+    } else {
+      // A lone blade: dark at the root, lit at the tip.
+      if (dx === 0 && dy === 1) return E.green1;
+      if (dx === 0 && dy === 0) return mix(E.green2, E.green3, 0.6);
+    }
   }
-  return sunny ? GRASS_SUN : E.green2;
+  return base;
 }
 
 function dirt(x: number, y: number): Rgb {

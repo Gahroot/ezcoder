@@ -61,6 +61,30 @@ const GAP = 1;
 
 const glyphOf = (ch: string): readonly string[] => GLYPHS[ch.toUpperCase()] ?? GLYPHS["?"] ?? [];
 
+/**
+ * `text` broken into lines no wider than `maxWidth` cells, at spaces (a word
+ * longer than a line stays whole on its own line). At most `maxLines` lines;
+ * anything past that is dropped with "..." on the last.
+ */
+export function wrapText(text: string, maxWidth: number, maxLines = 2): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(" ").filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && textWidth(next) > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  if (lines.length <= maxLines) return lines;
+  const kept = lines.slice(0, maxLines);
+  kept[maxLines - 1] = `${kept[maxLines - 1] ?? ""}...`;
+  return kept;
+}
+
 /** Width of `text` in cells. */
 export function textWidth(text: string): number {
   return text.length === 0 ? 0 : text.length * (GLYPH_W + GAP) - GAP;

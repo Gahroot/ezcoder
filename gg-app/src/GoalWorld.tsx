@@ -1,9 +1,52 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import type { FloorAgent } from "./critter-floor";
 import { hashKey } from "./critter-sprites";
+import { GoalAskNotice } from "./GoalAskNotice";
+import type { KenSaid } from "./goal-ken-talk";
+import { KenDialogue } from "./KenDialogue";
 import { collectWorldAgents, type WorldAgent } from "./goal-world-agents";
 import { FARM_CORE, buildFarm } from "./goal-farm-map";
-import { drawFarm, paintFarm } from "./goal-farm-render";
+import {
+  addDebris,
+  createPlay,
+  groundAt,
+  LIGHTS,
+  playing,
+  poke,
+  settlePlay,
+  type FarmPlay,
+  type ThingKind,
+} from "./goal-farm-interact";
+import { SURFACE } from "./goal-farm-map";
+import { playUses, stationThings, stationsInUse, usesNeedPace } from "./goal-farm-use";
+import type { Spot } from "./goal-farm-travel";
+import {
+  canvasOf,
+  drawFarm,
+  farmTargets,
+  nearestWater,
+  spawnDebris,
+  targetAt,
+  paintAtmosphere,
+  paintOccluders,
+  paintSwayBase,
+  swaySurface,
+  type Atmosphere,
+  type OccluderCanvas,
+} from "./goal-farm-render";
+import { blendLook, farmSkyAt, hourOf, weatherFor, weatherLook } from "./goal-farm-sky";
+import { coverAt, coverStep, weatherBackground, weatherSprite } from "./goal-farm-weather";
+import { composeMap } from "./goal-map-compose";
+import type { PixelBuffer } from "./goal-map-pixels";
 import {
   createFarmWorld,
   farmIsMoving,
@@ -14,7 +57,21 @@ import {
 } from "./goal-farm-sim";
 import { TILE } from "./goal-map-ground";
 import type { LiveToolEntry } from "./LiveToolPanel";
-import { useMotionLevel } from "./window-motion";
+import { useMotionLevel, type MotionLevel } from "./window-motion";
+
+/**
+ * How the farm moves for the window's motion level. Only a hidden window
+ * stops it; reduced motion holds the fire, water and animals still. A window
+ * that's visible but not focused moves exactly as a focused one: the farm is
+ * meant to be glanced at beside other work, so nothing slows down, rests, or
+ * walks on the spot.
+ */
+export function farmMotion(
+  level: MotionLevel,
+  reduced: boolean,
+): { readonly runs: boolean; readonly ambientStill: boolean } {
+  return { runs: level !== "off", ambientStill: reduced };
+}
 
 /**
  * How many screen pixels each map pixel takes: exactly enough for the whole
@@ -72,6 +129,8 @@ const reducedMotionQuery = (): boolean =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Rebuilding the farm costs ~0.15s, so a drag-resize waits until it settles. */
+/** How long after the farm appears its tree-less copy is painted (see paintSwayBase). */
+const SWAY_BASE_DELAY_MS = 400;
 const REFIT_DELAY_MS = 140;
 
 interface Props {
@@ -82,12 +141,26 @@ interface Props {
   liveTools: readonly LiveToolEntry[];
   waitingOnUser: boolean;
   workers: readonly FloorAgent[];
+  /**
+   * GG Goals is blocked on a question the user hasn't seen yet: shown over
+   * the farm as a sign until they go to the chat (see GoalAskNotice).
+   */
+  ask?: { readonly question: string; readonly more?: number } | null;
+  /** Switch the window to the chat (the notice's "Answer in Chat"). */
+  onShowChat?: () => void;
+  /** Ken's newest spoken line, said now and then in the dialogue box. */
+  kenSaid?: KenSaid | null;
 }
+
+/** How long a change of light, weather or ground cover takes to fade in. */
+const LOOK_FADE_MS = 3200;
+/** How long a new spell of weather takes to ease in, live. */
+const WEATHER_EASE_MIN = 15;
 
 /**
  * A started Goal, seen from above as a little farm filling the window: GG
  * Goals and every worker it brings in are critters about the yard, travelling
- * (on foot, skateboard, motorbike, jetpack or teleport) to the place for
+ * on foot along the yard's paths to the place for
  * whatever they're doing: the bookcase to read, the laptop for the web, the
  * notes board to plan, the carpenter's bench to edit, the stove to run things,
  * the post box to ask you something, and the tea bench by the fire to wait.
@@ -100,13 +173,51 @@ export function GoalWorld({
   liveTools,
   waitingOnUser,
   workers,
+  ask = null,
+  onShowChat,
+  kenSaid = null,
 }: Props): React.ReactElement {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<FarmWorld | null>(null);
   const backgroundRef = useRef<HTMLCanvasElement | null>(null);
+  const occludersRef = useRef<readonly OccluderCanvas[]>([]);
+  const atmosphereRef = useRef<Atmosphere | null>(null);
+  // The look fading out after a change (light, weather, ground cover), and when it started.
+  const fadeRef = useRef<{
+    background: CanvasImageSource;
+    occluders: readonly OccluderCanvas[];
+    atmosphere: Atmosphere | null;
+    start: number;
+  } | null>(null);
+  const scratchRef = useRef<HTMLCanvasElement | null>(null);
+  // Poking things (see goal-farm-interact): which lights are off, what's
+  // reacting, what's under the pointer. Kept for the session, not saved.
+  const playRef = useRef<FarmPlay>(createPlay());
+  // Bumped when a light is switched, so the light is rebuilt without it.
+  const [lightsVersion, setLightsVersion] = useState(0);
+  // Which lights are off, for the buttons' labels (the play state holds the truth).
+  const [lightsOff, setLightsOff] = useState<ReadonlySet<string>>(new Set());
+  // What can be poked, for the keyboard buttons: set when the farm or crew changes.
+  const [pokeables, setPokeables] = useState<
+    ReadonlyArray<{ id: string; name: string; kind: string }>
+  >([]);
+  // What the last poke did, in words, for the live region.
+  const [pokeSaid, setPokeSaid] = useState("");
+  const [hoverName, setHoverName] = useState<string | null>(null);
+  // The map as drawn, before the hour's grade and the weather: rebuilt from this.
+  const basePixelsRef = useRef<PixelBuffer | null>(null);
+  // The map without its trees and bushes, ungraded (see paintSwayBase): graded
+  // with the rest whenever the hour or weather changes a step.
+  const swayPixelsRef = useRef<{ farm: object; pixels: PixelBuffer; surface: Uint8Array } | null>(
+    null,
+  );
+  // Grades the tree-less copy for the current look; set by the look's effect.
+  const gradeSwayRef = useRef<(() => void) | null>(null);
+  // Bumped whenever the map is rebuilt, so the light is rebuilt to match.
+  const [farmVersion, setFarmVersion] = useState(0);
   const fitKeyRef = useRef("");
-  const motion = useMotionLevel();
+  const motionLevel = useMotionLevel();
   const [reduced, setReduced] = useState(reducedMotionQuery);
   // Each goal keeps its own countryside, so returning to it feels like coming home.
   const seed = useMemo(() => hashKey(`goal-farm:${goalId}`) % 9973, [goalId]);
@@ -116,6 +227,194 @@ export function GoalWorld({
     [running, liveTools, waitingOnUser, workers],
   );
   const summary = useMemo(() => describeWorld(agents), [agents]);
+  const shownAsk = ask && {
+    question: ask.question,
+    more: ask.more ?? 0,
+    onAnswer: () => onShowChat?.(),
+  };
+  // The header's height, so the notice hangs just below it.
+  const [headHeight, setHeadHeight] = useState(0);
+
+  // The time of day follows the local clock (checked each minute); the
+  // weather changes every few hours.
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setClock(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const hour = hourOf(clock);
+  const weather = weatherFor(clock);
+  // The light changes slowly: rebuild it every six minutes of the day, not every one.
+  const lightStep = Math.round(hour * 10) / 10;
+
+  // What the weather has left on the ground, from the clock.
+  const cover = coverStep(coverAt(clock));
+
+  // A new spell of weather eases in over its first quarter hour (the rain
+  // thinning out, the fog rolling in) instead of switching at once.
+  const minutesIn = (clock.getHours() % 4) * 60 + clock.getMinutes();
+  const easing = Math.min(1, Math.round((minutesIn / WEATHER_EASE_MIN) * 5) / 5);
+  const lastSpell = weatherFor(new Date(clock.getTime() - (minutesIn + 1) * 60_000));
+  const lookKey = `${lastSpell}>${weather}@${easing}`;
+  const look = blendLook(weatherLook(lastSpell), weatherLook(weather), easing);
+  const coverKey = cover ? `${cover.kind}:${cover.level}` : "none";
+  const snowLying = cover?.kind === "snow";
+
+  // Rebuild the map's look (graded for the hour, with the weather's snow or
+  // wet) and the light over it when either changes a step. A few dozen ms,
+  // about every six minutes when live.
+  useEffect(() => {
+    const farm = worldRef.current?.farm;
+    const base = basePixelsRef.current;
+    if (!farm || !base) return;
+    const sky = farmSkyAt(lightStep);
+    const lying = coverKey === "none" ? null : cover;
+    const { pixels, puddles } = weatherBackground(base, farm.surface, sky, lying, seed);
+    // Keep the look on screen now, to fade out as this one fades in.
+    if (backgroundRef.current) {
+      fadeRef.current = {
+        background: backgroundRef.current,
+        occluders: occludersRef.current,
+        atmosphere: atmosphereRef.current,
+        start: performance.now(),
+      };
+    }
+    backgroundRef.current = canvasOf(pixels);
+    // The tree-less copy, graded the same way so a swaying tree's patch
+    // matches the ground round it.
+    gradeSwayRef.current = () => {
+      const raw = swayPixelsRef.current;
+      if (!raw || raw.farm !== farm) return;
+      const graded = weatherBackground(raw.pixels, raw.surface, sky, lying, seed).pixels;
+      playRef.current.swayBase = { farm, image: canvasOf(graded) };
+    };
+    playRef.current.swayBase = null;
+    gradeSwayRef.current();
+    occludersRef.current = paintOccluders(farm, (o) =>
+      weatherSprite(o.buf, o.topRow, o.x, o.y, o.flip, sky, lying, seed),
+    );
+    atmosphereRef.current = paintAtmosphere(
+      farm,
+      sky,
+      look,
+      lying?.kind === "rain" ? puddles : null,
+      playRef.current.lightsOff,
+    );
+    // `cover` and `look` are described by coverKey and lookKey; rebuilding on
+    // their identity would rebuild every tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightStep, lookKey, coverKey, farmVersion, seed, lightsVersion]);
+
+  // Poking: find what's under a map point (front-most first) and set it off.
+  const pokeAt = useCallback(
+    (x: number, y: number, keyboard?: string): void => {
+      const world = worldRef.current;
+      if (!world) return;
+      const now = performance.now();
+      const targets = farmTargets(world, playRef.current, now, now);
+      const hit = keyboard
+        ? (targets.find((t) => t.id === keyboard) ?? null)
+        : targetAt(targets, x, y);
+      const play = playRef.current;
+      const farm = world.farm;
+      let said: string;
+      if (hit) {
+        // Animals and critters react where they stand; the pond where the
+        // water is (a click on its stones flicks a pebble in from there);
+        // anything else where it was clicked.
+        const clicked = keyboard ? hit.anchor : { x, y };
+        const standing = ["hen", "cat", "shiba", "critter", "coordinator"].includes(hit.kind);
+        const water = hit.kind === "pond" ? nearestWater(farm, clicked.x, clicked.y) : null;
+        const at = standing ? hit.anchor : (water ?? clicked);
+        const flicked =
+          water && (Math.abs(water.x - clicked.x) > 2 || Math.abs(water.y - clicked.y) > 2);
+        said = poke(
+          play,
+          {
+            target: hit.id,
+            kind: hit.kind,
+            name: hit.name,
+            x: at.x,
+            y: at.y,
+            from: flicked ? clicked : undefined,
+          },
+          now,
+          Math.floor(Math.random() * 1e6),
+        );
+        if (LIGHTS.has(hit.kind)) setLightsVersion((v) => v + 1);
+      } else {
+        const i = Math.floor(y) * farm.width + Math.floor(x);
+        const atmo = atmosphereRef.current;
+        const base = basePixelsRef.current;
+        const ground = groundAt(
+          farm.surface[i] ?? 0,
+          base?.rgb(Math.floor(x), Math.floor(y)) ?? 0,
+          atmo?.puddles?.[i] === 1,
+          (atmo?.look.falling === "snow" || snowLying) && (farm.surface[i] ?? 0) !== SURFACE.water,
+        );
+        said = poke(
+          play,
+          {
+            target: `ground-${Math.floor(x)}-${Math.floor(y)}`,
+            kind: "ground",
+            name: "ground",
+            x,
+            y,
+            ground,
+          },
+          now,
+          Math.floor(Math.random() * 1e6),
+        );
+      }
+      // Whatever the poke knocks loose falls onto the farm and lies there a while.
+      const latest = play.reactions[play.reactions.length - 1];
+      if (latest) addDebris(play, spawnDebris(farm, latest));
+      setPokeSaid(said);
+      setLightsOff(new Set(play.lightsOff));
+    },
+    [snowLying],
+  );
+  // The pointer, in map pixels: the canvas is scaled and centred by CSS.
+  const toMap = (event: { clientX: number; clientY: number }): Spot | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+  const onPointerMove = (event: PointerEvent<HTMLCanvasElement>): void => {
+    if (event.pointerType !== "mouse") return;
+    playRef.current.hover = toMap(event);
+  };
+  const onPointerLeave = (): void => {
+    playRef.current.hover = null;
+    setHoverName(null);
+  };
+  const onClick = (event: MouseEvent<HTMLCanvasElement>): void => {
+    const at = toMap(event);
+    if (at) pokeAt(at.x, at.y);
+  };
+  // The things a keyboard user can poke, listed as buttons for screen readers
+  // and Tab (refreshed when the farm or the crew changes).
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    const seen = new Set<string>();
+    setPokeables(
+      farmTargets(world, null, 0, 0)
+        .filter((t) => {
+          // One button per named thing that isn't a bush or a stone (there are dozens).
+          if (t.kind === "bush" || t.kind === "stone") return false;
+          if (seen.has(t.id)) return false;
+          seen.add(t.id);
+          return true;
+        })
+        .map((t) => ({ id: t.id, name: t.name, kind: t.kind })),
+    );
+  }, [farmVersion, agents]);
   // The latest agents, for a farm built after they arrive (a stage that was
   // hidden at first gets its farm on its first resize).
   const agentsRef = useRef(agents);
@@ -140,22 +439,43 @@ export function GoalWorld({
     const canvas = canvasRef.current;
     if (!stage || !canvas) return;
     let timer = 0;
+    let swayTimer = 0;
     const fit = (): void => {
       const { clientWidth, clientHeight } = stage;
       if (clientWidth === 0 || clientHeight === 0) return;
-      const f = fitFarm(clientWidth, clientHeight, headerRef?.current?.offsetHeight ?? 0);
+      const head = headerRef?.current?.offsetHeight ?? 0;
+      setHeadHeight(head);
+      const f = fitFarm(clientWidth, clientHeight, head);
       const key = `${seed}:${f.cols}x${f.rows}:${f.top}`;
       if (key !== fitKeyRef.current || !worldRef.current || !backgroundRef.current) {
         fitKeyRef.current = key;
         const farm = buildFarm({ cols: f.cols, rows: f.rows, top: f.top, seed });
         canvas.width = farm.width;
         canvas.height = farm.height;
-        backgroundRef.current = paintFarm(farm);
+        const pixels = composeMap(farm.scene);
+        basePixelsRef.current = pixels;
+        backgroundRef.current = canvasOf(pixels);
+        occludersRef.current = paintOccluders(farm);
         if (worldRef.current) resizeFarm(worldRef.current, farm);
         else {
           worldRef.current = createFarmWorld(farm, Math.random);
           syncFarm(worldRef.current, agentsRef.current, performance.now());
         }
+        // The map without its trees and bushes, for one swaying in place:
+        // painted just after the farm appears, off its first frame.
+        playRef.current.swayBase = null;
+        swayPixelsRef.current = null;
+        window.clearTimeout(swayTimer);
+        swayTimer = window.setTimeout(() => {
+          if (fitKeyRef.current !== key) return;
+          swayPixelsRef.current = {
+            farm,
+            pixels: paintSwayBase(farm),
+            surface: swaySurface(farm),
+          };
+          gradeSwayRef.current?.();
+        }, SWAY_BASE_DELAY_MS);
+        setFarmVersion((v) => v + 1);
       }
       // Scale the canvas up, and centre it so any overhang (under a tile) is
       // split between the edges.
@@ -177,6 +497,7 @@ export function GoalWorld({
     if (header) observer.observe(header);
     return () => {
       window.clearTimeout(timer);
+      window.clearTimeout(swayTimer);
       observer.disconnect();
     };
   }, [seed, headerRef]);
@@ -188,33 +509,73 @@ export function GoalWorld({
   }, [agents]);
 
   // One frame loop, and only while the window is in view. A hidden window
-  // draws nothing; an unfocused or reduced-motion one is a still picture
-  // (everyone where they are working, the fire and water at rest).
+  // draws nothing. Reduced motion is a still picture (everyone where they are
+  // working, the fire and water at rest). A window that's visible but not
+  // focused runs the farm exactly as a focused one does: it's something to
+  // glance at beside other work, so nothing slows, rests or walks on the spot.
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    if (motion === "off") return;
-    const still = reduced || motion !== "full";
+    const { runs, ambientStill } = farmMotion(motionLevel, reduced);
+    if (!runs) return;
     const paint = (now: number): void => {
       const world = worldRef.current;
       const background = backgroundRef.current;
       if (!world || !background) return;
-      stepFarm(world, now, still);
-      drawFarm(ctx, background, world, now, still ? 0 : now);
+      stepFarm(world, now, reduced);
+      // A change of light or weather fades over a few seconds (at once with reduced motion).
+      const was = fadeRef.current;
+      const t = was && !reduced ? (now - was.start) / LOOK_FADE_MS : 1;
+      if (t >= 1) fadeRef.current = null;
+      scratchRef.current ??= document.createElement("canvas");
+      const play = playRef.current;
+      settlePlay(play, now);
+      // Things in use come alive (a still picture, with reduced motion).
+      if (!ambientStill) {
+        playUses(play, stationThings(world.farm), stationsInUse(world), now);
+      }
+      drawFarm(
+        ctx,
+        background,
+        world,
+        now,
+        ambientStill ? 0 : now,
+        occludersRef.current,
+        atmosphereRef.current,
+        was && t < 1 ? { ...was, t: Math.max(0, t) } : null,
+        scratchRef.current,
+        play,
+      );
+      // The cursor and the name of whatever the pointer's over.
+      canvas.style.cursor = play.hovered ? "pointer" : "";
+      const name = play.hovered
+        ? (farmTargets(world, play, now, ambientStill ? 0 : now).find((x) => x.id === play.hovered)
+            ?.name ?? null)
+        : null;
+      setHoverName((was) => (was === name ? was : name));
     };
-    if (still) {
+    if (reduced) {
       paint(performance.now());
       const id = window.setInterval(() => paint(performance.now()), 600);
       return () => window.clearInterval(id);
     }
-    // ~30fps while someone travels; ~10fps while the farm just idles (the
-    // fire, the koi, the petals), which is all that pixel art needs.
+    // ~30fps while someone walks (focused or not); ~20fps while rain or
+    // snow falls; ~10fps while the farm just idles (the fire, the koi, the
+    // petals), which is all that pixel art needs.
     let frame = 0;
     let last = 0;
     const tick = (now: number): void => {
       const world = worldRef.current;
-      const interval = world && farmIsMoving(world) ? 32 : 100;
+      const moving = world !== null && farmIsMoving(world);
+      const falling = !ambientStill && atmosphereRef.current?.look.falling;
+      const fading = fadeRef.current !== null;
+      const play = playRef.current;
+      const busy = playing(play, now) || play.hover !== null;
+      // Something in use animates at the weather's rate: smooth enough for a
+      // hammer or a scrolling screen, without the full rate's cost.
+      const using = usesNeedPace(play, now);
+      const interval = moving || fading || busy ? 32 : falling || using ? 50 : 100;
       if (now - last >= interval) {
         last = now;
         paint(now);
@@ -223,15 +584,65 @@ export function GoalWorld({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [motion, reduced, seed]);
+  }, [motionLevel, reduced, seed]);
 
   return (
-    <section className="goal-world" aria-label="Workers">
-      <div ref={stageRef} className="goal-world-stage" aria-hidden="true">
-        <canvas ref={canvasRef} className="goal-world-canvas" />
+    <section
+      className="goal-world"
+      aria-label="Workers"
+      style={{ "--goal-head": `${headHeight}px` } as React.CSSProperties}
+    >
+      <div ref={stageRef} className="goal-world-stage">
+        {/* Pointer play only: keyboard and screen-reader users poke things with the buttons below. */}
+        <canvas
+          ref={canvasRef}
+          className="goal-world-canvas"
+          data-ready={farmVersion > 0 ? "" : undefined}
+          aria-hidden="true"
+          title={hoverName ?? undefined}
+          onPointerMove={onPointerMove}
+          onPointerLeave={onPointerLeave}
+          onClick={onClick}
+        />
       </div>
-      <p className="sr-only" aria-live="polite">
+      <div className="goal-world-pokes" role="group" aria-label="Things on the farm">
+        {pokeables.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className="goal-world-poke"
+            onFocus={() => {
+              playRef.current.focus = t.id;
+            }}
+            onBlur={() => {
+              playRef.current.focus = null;
+            }}
+            onClick={() => pokeAt(0, 0, t.id)}
+          >
+            {LIGHTS.has(t.kind as ThingKind)
+              ? `${t.name}: ${lightsOff.has(t.id) ? "turn on" : "turn off"}`
+              : t.name}
+          </button>
+        ))}
+      </div>
+      {shownAsk && (
+        <GoalAskNotice
+          question={shownAsk.question}
+          more={shownAsk.more}
+          onAnswer={shownAsk.onAnswer}
+        />
+      )}
+      <KenDialogue
+        said={kenSaid}
+        workers={workers}
+        paused={Boolean(shownAsk)}
+        reducedMotion={reduced}
+      />
+      <p className="sr-only goal-world-summary" aria-live="polite">
         {summary}
+      </p>
+      <p className="sr-only" aria-live="polite">
+        {pokeSaid}
       </p>
     </section>
   );

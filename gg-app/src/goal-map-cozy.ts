@@ -196,7 +196,7 @@ export function sakuraTree(seed: number, large = true): Sprite {
         clump(b, cx + ox + (rnd() - 0.5) * 2, cy + oy + (rnd() - 0.5) * 2, r, SAKURA, seed + 5);
       }
     },
-    { rx: R * 0.9, ry: R * 0.34, dx: 2, dy: -1, a: 0.28 },
+    { a: 0.28, canopy: true },
   );
 }
 
@@ -231,7 +231,7 @@ export function camelliaTree(seed: number): Sprite {
         b.set(x, y - 1, mix(K.camellia, K.sakuraLight, 0.4));
       }
     },
-    { rx: R * 0.9, ry: R * 0.32, dx: 2, dy: -1, a: 0.28 },
+    { a: 0.28, canopy: true },
   );
 }
 
@@ -261,7 +261,7 @@ export function yuzuTree(seed: number): Sprite {
         b.set(x, y, 0xfbe68a);
       }
     },
-    { rx: R * 0.85, ry: R * 0.32, dx: 2, dy: -1, a: 0.28 },
+    { a: 0.28, canopy: true },
   );
 }
 
@@ -293,7 +293,7 @@ export function niwakiTree(seed: number): Sprite {
       clump(b, 34, 15, 7.5, LEAF, seed + 1);
       clump(b, 22, 9, 8, LEAF, seed + 2);
     },
-    { rx: 18, ry: 5, dx: 2, dy: -1, a: 0.28 },
+    { a: 0.28, canopy: true },
   );
 }
 
@@ -321,7 +321,7 @@ export function roundShrub(
       clump(b, cx + r * 0.45, base + r * 0.1, r * 0.66, tones, seed + 2);
       clump(b, cx, base + r * 0.32, r * 0.62, tones, seed + 3);
     },
-    { rx: r + 2, ry: 3, dx: 1, dy: -1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -361,7 +361,7 @@ export function hedge(width: number, seed: number): Sprite {
         b.set(x, y, 0, 0);
       }
     },
-    { rx: width / 2 + 1, ry: 2.5, dx: 1, dy: -1, a: 0.26 },
+    { a: 0.26 },
   );
 }
 
@@ -592,7 +592,7 @@ export function minka(
     buf: b,
     ax: Math.round(w / 2),
     ay: deckY + deckH + 1,
-    shadow: { rx: w / 2 - 4, ry: 8, dx: 8, dy: -2, a: 0.34 },
+    shadow: { a: 0.34 },
   };
 }
 
@@ -629,7 +629,7 @@ export function teahouse(seed: number): Sprite {
       }
       b.rect(16, 0, 8, 2, K.thatchDark);
     },
-    { rx: 18, ry: 4, dx: 3, dy: -1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -666,7 +666,7 @@ export function torii(): Sprite {
         b.rect(x - 1, 34, 6, 4, 0x2a1a14);
       }
     },
-    { rx: 20, ry: 3, dx: 2, dy: -1, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -696,7 +696,7 @@ export function stoneLantern(): Sprite {
       b.rect(2, 21, 10, 3, K.stoneDark);
       b.rect(2, 21, 10, 1, K.stone);
     },
-    { rx: 6, ry: 2, dx: 1, dy: 0, a: 0.28 },
+    { a: 0.28 },
   );
 }
 
@@ -824,7 +824,7 @@ export function bambooSpout(): Sprite {
       b.set(14, 9, K.waterLight);
       b.set(14, 10, K.water);
     },
-    { rx: 8, ry: 2, dx: 1, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -899,7 +899,7 @@ export function steppingStone(seed: number): Sprite {
     buf,
     ax: Math.round(cx),
     ay: h - 1,
-    shadow: { rx: rx * 0.85, ry: 1.6, dx: 1, dy: 1, a: 0.18 },
+    shadow: { a: 0.18 },
   };
 }
 
@@ -961,7 +961,7 @@ export function cropBed(
         }
       }
     },
-    { rx: w / 2, ry: 3, dx: 1, dy: 0, a: 0.2 },
+    { a: 0.2 },
   );
 }
 
@@ -1006,7 +1006,7 @@ export function cozyCampfire(): Sprite {
       b.ellipse(12.5, 9, 3.4, 2.6, 0x3a3a3a);
       b.set(11, 8, 0x6a6a6a);
     },
-    { rx: 11, ry: 3, dx: 0, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1025,7 +1025,7 @@ export function bench(): Sprite {
       b.rect(5, 1, 16, 1, 0x8a6aaa);
       for (const x of [3, 21]) b.rect(x, 6, 2, 5, K.woodDark);
     },
-    { rx: 11, ry: 2, dx: 1, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1074,7 +1074,7 @@ export function bucket(): Sprite {
       b.rect(3, 4, 6, 1, K.water);
       b.rect(8, 0, 1, 5, K.woodLight);
     },
-    { rx: 5, ry: 1.6, dx: 1, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1094,7 +1094,7 @@ export function sleepingCat(): Sprite {
       b.set(3, 5, 0x3a2a1a);
       b.rect(9, 6, 4, 1, 0xc0782a);
     },
-    { rx: 6, ry: 1.6, dx: 0, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1117,7 +1117,7 @@ export function scarecrow(): Sprite {
       b.set(7, 8, 0x2a1a14);
       b.set(10, 8, 0x2a1a14);
     },
-    { rx: 6, ry: 2, dx: 1, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1139,7 +1139,7 @@ export function hut(): Sprite {
         b.rect(14, y, half, 1, y % 3 === 0 ? K.woodDeep : K.wood);
       }
     },
-    { rx: 12, ry: 2.5, dx: 2, dy: 0, a: 0.28 },
+    { a: 0.28 },
   );
 }
 
@@ -1159,7 +1159,7 @@ export function shrine(): Sprite {
         b.rect(8 - (y + 2), y + 1, (y + 2) * 2, 1, y < 2 ? K.woodDark : K.woodDeep);
       b.rect(5, 12, 6, 1, 0xd8394a);
     },
-    { rx: 5, ry: 1.6, dx: 1, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1180,7 +1180,7 @@ export function woodpile(): Sprite {
         }
       }
     },
-    { rx: 9, ry: 2, dx: 1, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1198,17 +1198,31 @@ export function tallGrass(seed: number, tone: "green" | "gold" = "green"): Sprit
     12,
     (b) => {
       const rnd = stream(seed);
-      b.ellipse(8, 11, 5.5, 2, dark);
-      const blades = 6 + Math.floor(rnd() * 3);
+      // Each clump its own size and habit: a little sprig, a fan, a tall
+      // stand, or a leaning tussock; some carry seed heads.
+      const habit = Math.floor(hash(seed, 3, 7) * 4);
+      const widthOf = [5, 9, 11, 12][habit] ?? 9;
+      const tallest = [4, 6, 10, 8][habit] ?? 6;
+      const lean = habit === 3 ? (hash(seed, 4, 7) < 0.5 ? -1 : 1) * 0.6 : 0;
+      const heads = hash(seed, 5, 7) < 0.3;
+      const x0 = 8 - widthOf / 2;
+      b.ellipse(8, 11, widthOf / 2 + 0.5, 1.6, dark);
+      const blades = Math.max(3, Math.round(widthOf * 0.75) + Math.floor(rnd() * 3));
       for (let i = 0; i < blades; i++) {
-        const bx = 3 + (i / (blades - 1)) * 10 + (rnd() - 0.5) * 1.5;
-        const height = 5 + Math.floor(rnd() * 6);
-        const lean = (bx - 8) * 0.25 + (rnd() - 0.5);
+        const bx = x0 + (i / Math.max(1, blades - 1)) * widthOf + (rnd() - 0.5) * 1.5;
+        const height = Math.max(2, Math.round(tallest * (0.45 + rnd() * 0.55)));
+        const splay = (bx - 8) * 0.22 + lean + (rnd() - 0.5) * 0.6;
+        let tipX = 0;
         for (let k = 0; k < height; k++) {
           const t = k / height;
-          const x = Math.round(bx + lean * t * 2);
+          const x = Math.round(bx + splay * t * 2);
           const y = 11 - k;
           b.set(x, y, t > 0.7 ? light : t > 0.3 ? base : dark);
+          tipX = x;
+        }
+        if (heads && i % 2 === 0 && height > 4) {
+          b.set(tipX, 11 - height, 0xe8d8a0);
+          b.set(tipX, 10 - height, 0xd8c070);
         }
       }
     },
@@ -1276,7 +1290,7 @@ export function waterTub(): Sprite {
       b.ellipse(11, 4, 5.6, 1.6, 0x2a4a4a);
       b.rect(8, 4, 4, 1, 0x5fa8a8);
     },
-    { rx: 9, ry: 2.4, dx: 1, dy: 0, a: 0.28 },
+    { a: 0.28 },
   );
 }
 
@@ -1307,7 +1321,7 @@ export function shibaDog(): Sprite {
       b.set(15, 5, fur);
       b.rect(6, 10, 6, 1, cream);
     },
-    { rx: 7, ry: 1.8, dx: 0, dy: 0, a: 0.26 },
+    { a: 0.26 },
   );
 }
 
@@ -1334,7 +1348,7 @@ export function chicken(seed: number): Sprite {
       for (const x of [5, 8]) b.rect(x, 10, 1, 2, 0xf2b630);
       if (hash(seed, 0, 3) < 0.5) b.set(9, 6, shade);
     },
-    { rx: 4.4, ry: 1.4, dx: 0, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1385,7 +1399,7 @@ export function kura(seed: number): Sprite {
       b.rect(27, 20, 6, 4, K.woodDeep);
       b.rect(28, 21, 4, 2, K.lantern);
     },
-    { rx: 26, ry: 5, dx: 4, dy: -1, a: 0.32 },
+    { a: 0.32 },
   );
 }
 
@@ -1478,7 +1492,7 @@ export function soilBed(
         b.rect(w - 3, fy, 2, 9, K.woodDark);
       }
     },
-    { rx: w / 2, ry: 2.5, dx: 1, dy: 0, a: 0.2 },
+    { a: 0.2 },
   );
 }
 
@@ -1511,7 +1525,7 @@ export function cropRolls(width: number, rolls: number): Sprite {
         }
       }
     },
-    { rx: width / 2 + 2, ry: 2.5, dx: 1, dy: 0, a: 0.2 },
+    { a: 0.2 },
   );
 }
 
@@ -1528,7 +1542,7 @@ export function stake(): Sprite {
       b.rect(1, 5, 12, 2, K.wood);
       b.rect(1, 6, 12, 1, K.woodDark);
     },
-    { rx: 3, ry: 1.2, dx: 1, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 
@@ -1611,7 +1625,7 @@ export function walkingCat(): Sprite {
       b.rect(10, 9, 1, 2, fur);
       b.rect(12, 9, 1, 2, stripe);
     },
-    { rx: 5, ry: 1.4, dx: 0, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }
 

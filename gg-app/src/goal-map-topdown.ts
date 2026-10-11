@@ -6,7 +6,8 @@
 
 import { PixelBuffer, hash, mix, noise, stream, type Rgb } from "./goal-map-pixels";
 import type { Sprite } from "./goal-map-props";
-import { THATCH, W, blob, paintBay, thatchBlotch, type Bay } from "./goal-map-farm";
+import type { Spot } from "./goal-farm-travel";
+import { PAPER, THATCH, W, blob, thatchBlotch, type Bay } from "./goal-map-farm";
 
 const LINE: Rgb = 0x3a1406;
 
@@ -38,112 +39,368 @@ function thatchAt(x: number, y: number, seed: number, light: number): Rgb {
   if (hollow && lift <= 0) c = THATCH.lo;
   if (light < -0.35 && lift < 0.4) c = THATCH.lo;
   if (light < -0.7) c = mix(THATCH.lo, THATCH.deep, 0.45);
+  // A face turned up toward the sun is paler all over.
+  if (light > 0.3) c = mix(c, THATCH.hi, (light - 0.2) * 0.6);
   return c;
 }
 
+/** How far each end of the house front is drawn in at the ground, in pixels. */
+const TAPER_INSET = 9;
+
+/** Bays with a veranda deck in front; the rest form the entrance, at ground level. */
+const VERANDA: ReadonlySet<Bay> = new Set<Bay>(["shoji", "shojiOpen", "blind"]);
+
+/** One shoji panel: a dark outline, a lit wooden frame, a lattice of paper panes, a panelled kickboard. */
+function shojiFront(b: PixelBuffer, x: number, y: number, pw: number, ph: number): void {
+  b.rect(x, y, pw, ph, W.line);
+  b.rect(x + 1, y + 1, pw - 2, ph - 2, W.warm);
+  b.rect(x + 1, y + 1, pw - 2, 1, W.hi);
+  b.rect(x + 1, y + 1, 1, ph - 2, W.light);
+  // The lattice: three rows of three panes, wooden bars between them.
+  const paperBottom = y + Math.round(ph * 0.52);
+  for (let py = y + 2; py < paperBottom; py++) {
+    for (let px = x + 2; px < x + pw - 2; px++) {
+      const bar = (px - x - 2) % 3 === 2 || (py - y - 2) % 3 === 2;
+      if (bar) continue;
+      const corner = (px - x - 2) % 3 === 0 && (py - y - 2) % 3 === 0;
+      b.set(px, py, corner ? 0xfffaf0 : PAPER.lit);
+    }
+  }
+  // The rail under the paper, then the kickboard's raised panel.
+  b.rect(x + 1, paperBottom, pw - 2, 1, W.base);
+  b.rect(x + 1, paperBottom + 1, pw - 2, 1, W.hi);
+  const kx = x + 3;
+  const ky = paperBottom + 3;
+  const kw = pw - 6;
+  const kh = y + ph - 3 - ky;
+  if (kw > 1 && kh > 1) {
+    b.rect(kx - 1, ky - 1, kw + 2, kh + 2, W.face);
+    b.rect(kx, ky, kw, kh, W.light);
+    b.rect(kx, ky, kw, 1, W.hi);
+  }
+}
+
+/** What fills one bay of the house front, `h` tall. */
+function paintFrontBay(
+  b: PixelBuffer,
+  kind: Bay,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  seed: number,
+  noren: Rgb,
+): void {
+  const half = Math.floor(w / 2);
+  if (kind === "shoji" || kind === "blind") {
+    shojiFront(b, x, y, half + 1, h);
+    shojiFront(b, x + half, y, w - half, h);
+    if (kind === "blind") {
+      // A reed blind let half down over the panes, its cords and red tassels.
+      const drop = Math.round(h * 0.42);
+      for (let k = 0; k < drop; k++) {
+        for (let px = x + 1; px < x + w - 1; px++) {
+          let c: Rgb = k % 2 === 0 ? 0xdcc38a : 0xc3a466;
+          if ((px - x) % 6 === 3) c = 0x8a6a3a;
+          if (k === drop - 1) c = W.base;
+          b.set(px, y + 1 + k, c);
+        }
+      }
+      for (const tx of [x + 4, x + w - 5]) b.rect(tx, y + drop + 1, 1, 2, 0xc8442c);
+    }
+    return;
+  }
+  if (kind === "shojiOpen") {
+    // One panel slid across the other: the room shows, dim, its tatami lit low down.
+    shojiFront(b, x, y, half + 1, h);
+    b.rect(x + half, y, w - half, h, W.line);
+    for (let py = y + 1; py < y + h - 1; py++) {
+      for (let px = x + half + 1; px < x + w - 1; px++) {
+        const t = (py - y) / h;
+        let c: Rgb = t < 0.55 ? 0x4a2a14 : (py - y) % 3 === 0 ? 0xa88f52 : 0xc8b070;
+        if (t < 0.55 && px === x + half + 1) c = W.light; // the slid panel's edge
+        b.set(px, py, c);
+      }
+    }
+    // A hanging scroll on the far wall.
+    b.rect(x + half + 5, y + 3, 5, 7, 0xe8dcc0);
+    b.rect(x + half + 6, y + 5, 3, 3, 0x7a5a3a);
+    b.rect(x + half + 4, y + 2, 7, 1, W.face);
+    return;
+  }
+  if (kind === "glass") {
+    // A sliding glass door: one big frosted pane over a panelled kickboard.
+    b.rect(x + 1, y, w - 2, h, W.line);
+    b.rect(x + 2, y + 1, w - 4, h - 2, W.warm);
+    b.rect(x + 2, y + 1, 1, h - 2, W.hi);
+    const gy1 = y + Math.round(h * 0.62);
+    for (let py = y + 3; py < gy1; py++) {
+      for (let px = x + 4; px < x + w - 4; px++) {
+        const streak = (px + py * 2) % 11 < 2 || (px + py * 2) % 11 === 5;
+        let c: Rgb = streak ? 0xdfe9df : 0xc4d6c8;
+        if (px < x + 7 && py < y + 6) c = 0xa9bfae;
+        if (hash(px, py, seed) < 0.05) c = 0xb4c8b8;
+        b.set(px, py, c);
+      }
+    }
+    b.rect(x + 3, y + 2, w - 6, 1, W.line);
+    b.rect(x + 3, gy1, w - 6, 1, W.line);
+    b.rect(x + 5, gy1 + 2, w - 10, h - (gy1 - y) - 4, W.face);
+    b.rect(x + 6, gy1 + 3, w - 12, h - (gy1 - y) - 6, W.light);
+    b.rect(x + 6, gy1 + 3, w - 12, 1, W.hi);
+    return;
+  }
+  if (kind === "room") {
+    // An open doorway into a pale room, a noren hanging across its top,
+    // and a short stretch of board wall beside it.
+    const ow = w - 9;
+    b.rect(x, y, ow, h, W.line);
+    for (let py = y + 1; py < y + h; py++) {
+      for (let px = x + 1; px < x + ow - 1; px++) {
+        const ux = (px - x) / ow;
+        const uy = (py - y) / h;
+        let c: Rgb = 0xeceae4;
+        if (ux > 0.62 - uy * 0.25) c = 0xd6d3cb; // a soft shade across the back wall
+        if (py >= y + h - 3) c = py === y + h - 3 ? 0xa89878 : 0xc0ae8c; // the floor
+        b.set(px, py, c);
+      }
+    }
+    // The noren: two cloth panels, lit along the top, a pale crest on each.
+    for (let py = y + 1; py < y + 9; py++) {
+      for (let px = x + 1; px < x + ow - 1; px++) {
+        if (px === x + Math.floor(ow / 2) && py > y + 2) continue;
+        b.set(
+          px,
+          py,
+          py === y + 1 ? mix(noren, 0xffffff, 0.3) : py === y + 8 ? mix(noren, LINE, 0.3) : noren,
+        );
+      }
+    }
+    for (const cx of [x + Math.floor(ow / 4), x + Math.floor((ow * 3) / 4)])
+      b.rect(cx, y + 4, 2, 2, 0xf0ece0);
+    // The board wall beside it, a little wooden box hung on it.
+    for (let py = y; py < y + h; py++) {
+      for (let px = x + ow; px < x + w; px++) {
+        const seam = (px - x - ow) % 3 === 2;
+        b.set(px, py, seam ? W.base : (px - x - ow) % 3 === 0 ? W.light : W.warm);
+      }
+    }
+    b.rect(x + ow + 2, y + 6, 6, 6, W.line);
+    b.rect(x + ow + 3, y + 7, 4, 4, W.base);
+    b.rect(x + ow + 3, y + 7, 4, 1, W.hi);
+    return;
+  }
+  // storeDoor: a heavy plank sliding door with an iron bar.
+  for (let py = y; py < y + h; py++) {
+    for (let px = x + 1; px < x + w - 1; px++) {
+      const seam = (px - x) % 4 === 0;
+      b.set(px, py, seam ? W.base : (px - x) % 4 === 1 ? W.light : W.warm);
+    }
+  }
+  b.rect(x + 1, y + Math.round(h * 0.45), w - 2, 2, 0x4a4440);
+  b.rect(x + 1, y + Math.round(h * 0.45), w - 2, 1, 0x7a746e);
+}
+
 /**
- * The farmhouse from above. The hipped thatch is most of the picture: a
- * ridge high up, a long front slope rolling down to a thick, ragged eave, and
- * the two hip ends falling away on either side (lit on the left, in shade on
- * the right). Under the eave, a short band of the front: posts, varied bays,
- * a deep veranda deck seen from above, the step stones in front.
+ * The farmhouse from high above, read from a hand-drawn minka. The hipped
+ * thatch is most of the picture, its eave a band of dark, spiky tufts. Under
+ * it the front stands in the eave's shade: a lit fascia, a row of rafter
+ * ends, a lintel beam, then the walls (tall shoji panels with paper lattices
+ * and panelled kickboards, a room slid open, a reed blind). Along the left
+ * part runs a deep veranda deck, its big pillars standing at the deck's
+ * front edge and rising to the beam; the entrance on the right (a frosted
+ * glass door, an open doorway under a noren) sits at ground level on a
+ * threshold and step stones.
  */
 export function farmhouseTop(seed: number, bays: readonly Bay[], noren: Rgb): Sprite {
   const bay = 30;
   const front = bays.length * bay + 6;
   const over = 12; // the eave overhangs each end
   const w = front + over * 2;
-  const roofDepth = Math.round(front * 0.36) + 30; // how far back the roof runs
-  const fringe = 7;
+  const roofDepth = Math.round(front * 0.36) + 20; // how far back the roof runs
   const eaveY = roofDepth;
-  const lintel = eaveY + 1;
-  const wallH = 20; // the walls are short: we see them from above
-  const deckY = lintel + wallH;
-  const deckH = 12; // the deck is deep: we see its top
-  const h = deckY + deckH + 5;
+  const wallY = eaveY + 8; // under the fascia, the rafter ends and the beam
+  const wallH = 20;
+  const deckTop = wallY + wallH;
+  const deckH = 13;
+  const deckBottom = deckTop + deckH;
+  const h = deckBottom + 4;
   const left = over;
   const ridgeL = Math.round(w * 0.2);
   const ridgeR = Math.round(w * 0.8);
   const ridgeY = 6;
+  const veranda = bays.map((kind) => VERANDA.has(kind));
+  const bayX = (i: number): number => left + 3 + i * bay;
   return sprite(
     w,
     h,
     Math.round(w / 2),
-    deckY + deckH + 2,
+    deckBottom + 2,
     (b) => {
-      // ── The front: bays under a lintel, posts, the eave's deep shadow ──
-      b.rect(left, lintel, front, wallH, W.deep);
+      // ── The walls, bay by bay: the entrance's run down to its threshold ──
       bays.forEach((kind, i) => {
-        const bx = left + 3 + i * bay;
-        paintBay(
-          b,
-          kind,
-          bx + 3,
-          lintel + 2,
-          bay - 6,
-          wallH - 2,
-          seed + i * 13,
-          i === bays.indexOf("room") ? noren : undefined,
-        );
+        const bh = veranda[i] ? wallH : wallH + 4;
+        b.rect(bayX(i), wallY, bay, bh, W.deep);
+        paintFrontBay(b, kind, bayX(i) + 3, wallY, bay - 4, bh, seed + i * 13, noren);
       });
+      // Posts between the bays, set into the wall.
       for (let i = 0; i <= bays.length; i++) {
-        const px = left + i * bay;
-        b.rect(px, lintel, 5, wallH, W.warm);
-        b.rect(px + 1, lintel, 1, wallH, W.hi);
-        b.rect(px + 3, lintel, 1, wallH, W.base);
+        const px = bayX(i) - 1;
+        const tall = !veranda[i] || !veranda[i - 1];
+        const ph = tall && i > 0 && (!veranda[i - 1] || !veranda[i]) ? wallH + 4 : wallH;
+        b.rect(px, wallY, 5, ph, W.line);
+        b.rect(px + 1, wallY, 1, ph, W.hi);
+        b.rect(px + 2, wallY, 1, ph, W.warm);
+        b.rect(px + 3, wallY, 1, ph, W.base);
       }
-      for (let x = left; x < left + front; x++) {
-        for (let k = 0; k < 7; k++) b.set(x, lintel + k, LINE, 0.62 - k * 0.085);
-      }
-      // ── The veranda deck, seen from above: long boards running along ──
-      for (let y = 0; y < deckH; y++) {
-        for (let x = left - 8; x < left + front + 8; x++) {
-          let c: Rgb;
-          if (y >= deckH - 2)
-            c = y === deckH - 1 ? W.line : W.shadow; // its front edge
-          else if (y === 0)
-            c = W.shadow; // the shadow line under the wall
-          else {
-            const board = y % 3 === 0;
-            const joint = (x + Math.floor(y / 3) * 31) % 47 === 0;
-            const tone = hash(
-              Math.floor((x + Math.floor(y / 3) * 31) / 47),
-              Math.floor(y / 3),
-              seed + 5,
-            );
-            c =
-              board || joint
-                ? W.base
-                : y % 3 === 1
-                  ? W.light
-                  : tone < 0.4
-                    ? W.warm
-                    : mix(W.warm, W.light, 0.4);
+      // The entrance's threshold board and its step stones, sandals left out.
+      bays.forEach((kind, i) => {
+        if (veranda[i]) return;
+        const x0 = bayX(i) - 1;
+        b.rect(x0, deckTop + 4, bay + 1, 1, W.hi);
+        b.rect(x0, deckTop + 5, bay + 1, 1, W.base);
+        b.rect(x0, deckTop + 6, bay + 1, 1, W.line);
+        const sx = bayX(i) + 5;
+        const sw = bay - 12;
+        b.rect(sx - 1, deckTop + 7, sw + 2, 4, LINE);
+        b.rect(sx, deckTop + 7, sw, 1, STONE.hi);
+        b.rect(sx, deckTop + 8, sw, 1, STONE.light);
+        b.rect(sx, deckTop + 9, sw, 1, STONE.base);
+        if (kind === "room") {
+          for (const dx of [3, 8]) {
+            b.rect(sx + dx, deckTop + 8, 3, 2, 0x5a3418);
+            b.rect(sx + dx, deckTop + 8, 3, 1, 0x8a5a30);
           }
-          b.set(x, deckY + y, c);
+        }
+      });
+      // ── The veranda deck: long boards seen from above, a lit nose, its front face ──
+      const runs: Array<[number, number]> = [];
+      veranda.forEach((v, i) => {
+        if (!v) return;
+        const last = runs[runs.length - 1];
+        if (last && last[1] === i - 1) last[1] = i;
+        else runs.push([i, i]);
+      });
+      for (const [a, z] of runs) {
+        const x0 = bayX(a) - 3;
+        const x1 = bayX(z + 1) + 2;
+        for (let y = deckTop; y < deckBottom; y++) {
+          const r = y - deckTop;
+          for (let x = x0; x < x1; x++) {
+            let c: Rgb;
+            if (r === 0)
+              c = W.shadow; // the shade at the foot of the wall
+            else if (r <= deckH - 4) {
+              const board = Math.floor((r - 1) / 3);
+              const at = (r - 1) % 3;
+              const joint = (x + board * 23) % 41 === 0;
+              const tone = hash(Math.floor((x + board * 23) / 41), board, seed + 5);
+              c = at === 2 || joint ? W.base : at === 0 ? W.hi : tone < 0.5 ? W.light : W.warm;
+            } else if (r === deckH - 3)
+              c = W.hi; // the deck's lit nose
+            else if (r < deckH - 1) c = W.face;
+            else c = W.line;
+            b.set(x, y, c);
+          }
+        }
+        // Short legs under the deck's front.
+        for (let i = a; i <= z + 1; i++) b.rect(bayX(i) - 1, deckBottom, 4, 2, W.deep);
+      }
+      // Things left out on the deck: a cushion and a tea tray.
+      const rnd = stream(seed + 30);
+      const cushion = veranda.indexOf(true);
+      if (cushion >= 0) {
+        const cx = bayX(cushion) + 9 + Math.round(rnd() * 4);
+        b.rect(cx - 1, deckTop + 2, 11, 7, LINE);
+        b.rect(cx, deckTop + 3, 9, 5, 0xc0503a);
+        b.rect(cx, deckTop + 3, 9, 1, 0xe07a5a);
+        b.rect(cx, deckTop + 7, 9, 1, 0x8a3020);
+        b.set(cx + 4, deckTop + 5, 0xe8c070);
+      }
+      const tray = veranda.lastIndexOf(true);
+      if (tray > cushion) {
+        const tx = bayX(tray) + 8;
+        b.rect(tx - 1, deckTop + 3, 12, 6, LINE);
+        b.rect(tx, deckTop + 4, 10, 4, W.face);
+        b.rect(tx, deckTop + 4, 10, 1, W.hi);
+        for (const dx of [2, 6]) {
+          b.rect(tx + dx, deckTop + 4, 3, 3, 0xf0ece0);
+          b.set(tx + dx + 1, deckTop + 5, 0x6a8a4a);
         }
       }
-      // The posts' feet on the deck, and things left out on it.
-      for (let i = 0; i <= bays.length; i++) b.rect(left + i * bay, deckY, 5, 2, W.face);
-      const rnd = stream(seed + 30);
-      const cushionX = left + bay * 2 + 8;
-      b.rect(cushionX, deckY + 3, 9, 5, 0xc0503a);
-      b.rect(cushionX, deckY + 3, 9, 1, 0xe07a5a);
-      const teaX = left + bay * 4 + 10;
-      b.rect(teaX, deckY + 4, 8, 4, W.face);
-      b.rect(teaX + 2, deckY + 2, 3, 3, 0xe8e2d4);
-      b.rect(teaX + 5, deckY + 3, 2, 2, 0xe8e2d4);
-      // Sandals at the step in front of the open room.
-      const sx = left + bay * (bays.indexOf("room") >= 0 ? bays.indexOf("room") : 2) + 10;
-      b.rect(sx, deckY + deckH - 4, 3, 2, 0x5a3418);
-      b.rect(sx + 5, deckY + deckH - 4, 3, 2, 0x5a3418);
+      // ── The veranda's pillars: standing at the deck's front, up to the beam ──
+      for (let i = 0; i <= bays.length; i += 2) {
+        if (!veranda[i] && !veranda[i - 1]) continue;
+        const px = bayX(i) - 2;
+        const y0 = wallY;
+        const y1 = deckBottom - 1;
+        b.rect(px, y0, 7, y1 - y0 + 1, W.line);
+        b.rect(px + 1, y0, 1, y1 - y0, W.hi);
+        b.rect(px + 2, y0, 2, y1 - y0, W.light);
+        b.rect(px + 4, y0, 1, y1 - y0, W.warm);
+        b.rect(px + 5, y0, 1, y1 - y0, W.base);
+        // Grain running down the pillar.
+        for (let y = y0 + 2; y < y1; y += 5) b.set(px + 3, y + (i % 3), W.warm);
+      }
+      // ── Under the eave: the lit fascia, the rafter ends, the lintel beam ──
+      const bx0 = left - 4;
+      const bx1 = left + front + 4;
+      for (let x = bx0; x < bx1; x++) {
+        b.set(x, eaveY, W.light);
+        const dash = (x - bx0) % 6 < 4;
+        b.set(x, eaveY + 1, W.line);
+        b.set(x, eaveY + 2, dash ? W.hi : W.line);
+        b.set(x, eaveY + 3, dash ? W.warm : W.line);
+        b.set(x, eaveY + 4, W.line);
+        b.set(x, eaveY + 5, W.hi);
+        b.set(x, eaveY + 6, W.warm);
+        b.set(x, eaveY + 7, W.line);
+      }
+      // The eave's shade over the top of the walls and pillars.
+      for (let k = 0; k < 3; k++) {
+        for (let x = bx0; x < bx1; x++) {
+          if (b.opaque(x, wallY + k)) b.set(x, wallY + k, LINE, 0.42 - k * 0.13);
+        }
+      }
 
-      // ── The roof: front slope, hips, ridge, fringe ──
+      // ── Seen from above, the front narrows toward the ground ──
+      // Everything under the eave is drawn upright, then each row is drawn in
+      // toward the middle, more the lower it is, so the corner pillars lean
+      // inward like the reference's and the posts fan out from the base. Each
+      // bay moves as one piece (its panes stay square); only posts and the
+      // ends get squeezed.
+      const mid = w / 2;
+      const taperRows = h - eaveY;
+      const taper = TAPER_INSET / (front / 2 + 4);
+      const anchorOf = (x: number): number => {
+        for (let i = 0; i < bays.length; i++) {
+          if (x >= bayX(i) + 3 && x < bayX(i + 1) - 1) return bayX(i) + bay / 2;
+        }
+        return x;
+      };
+      for (let y = eaveY; y < h; y++) {
+        const t = (y - eaveY) / taperRows;
+        const row = b.data.slice(y * w * 4, (y + 1) * w * 4);
+        b.data.fill(0, y * w * 4, (y + 1) * w * 4);
+        for (let x = 0; x < w; x++) {
+          const i = x * 4;
+          if ((row[i + 3] ?? 0) === 0) continue;
+          const dx = x + Math.round((mid - anchorOf(x)) * taper * t);
+          if (dx < 0 || dx >= w) continue;
+          const o = (y * w + dx) * 4;
+          b.data[o] = row[i] ?? 0;
+          b.data[o + 1] = row[i + 1] ?? 0;
+          b.data[o + 2] = row[i + 2] ?? 0;
+          b.data[o + 3] = row[i + 3] ?? 0;
+        }
+      }
+
+      // ── The roof: front slope, hips, ridge ──
       for (let y = 0; y < roofDepth; y++) {
         // Where the roof's outline is at this row: narrow at the ridge, the
         // full eave width at the bottom, curving out like a heavy thatch.
         const t = y / roofDepth;
-        const half = Math.round(
+        const halfW = Math.round(
           (ridgeR - ridgeL) / 2 +
             4 +
             Math.sin((Math.min(1, t * 1.25) * Math.PI) / 2) * ((w - (ridgeR - ridgeL)) / 2 - 4),
@@ -152,15 +409,14 @@ export function farmhouseTop(seed: number, bays: readonly Bay[], noren: Rgb): Sp
         // The hip seams: lines from the ridge's ends down to the eave's corners.
         const seamL = ridgeL + (0 - ridgeL) * Math.min(1, (y - ridgeY) / (roofDepth - ridgeY));
         const seamR = ridgeR + (w - ridgeR) * Math.min(1, (y - ridgeY) / (roofDepth - ridgeY));
-        for (let x = Math.round(cx - half); x < Math.round(cx + half); x++) {
-          // Which face: the left hip, the right hip, or the front slope.
+        for (let x = Math.round(cx - halfW); x < Math.round(cx + halfW); x++) {
           const onLeftHip = x < seamL;
           const onRightHip = x > seamR;
-          const light = onLeftHip ? 0.5 : onRightHip ? -0.75 : 0.15 - t * 0.2;
+          // Both hip ends face up and out, so both catch more light than the
+          // front slope (the left a little more, the sun being up and left).
+          const light = onLeftHip ? 0.6 : onRightHip ? 0.4 : 0.15 - t * 0.2;
           let c = thatchAt(x, y, seed, light);
-          // The seams themselves: a darker crease.
           if (Math.abs(x - seamL) < 1 || Math.abs(x - seamR) < 1) c = THATCH.lo;
-          if (Math.abs(x - seamR) < 2 && onRightHip) c = mix(THATCH.lo, THATCH.deep, 0.5);
           b.set(x, y, c);
         }
       }
@@ -169,7 +425,6 @@ export function farmhouseTop(seed: number, bays: readonly Bay[], noren: Rgb): Sp
       b.rect(ridgeL, ridgeY - 4, ridgeR - ridgeL, 2, THATCH.hi);
       b.rect(ridgeL + 2, ridgeY, ridgeR - ridgeL - 4, 2, THATCH.deep);
       for (let x = ridgeL + 8; x < ridgeR - 8; x += 13) b.rect(x, ridgeY - 4, 3, 7, W.deep);
-      // A smoke vent in the middle of the ridge.
       const vx = Math.round(w / 2) - 7;
       b.rect(vx, ridgeY - 5, 14, 7, W.face);
       for (let k = 0; k < 4; k++) b.rect(vx + 2 + k * 3, ridgeY - 4, 1, 5, W.line);
@@ -182,22 +437,27 @@ export function farmhouseTop(seed: number, bays: readonly Bay[], noren: Rgb): Sp
           if (rnd() < 0.5) b.set(mx + 1, my, THATCH.moss);
         }
       }
-      // The fringe: a thick, ragged lip of straw along the eave.
+      // The eave: a band of dark straw with spiky tufts rising from it into
+      // the thatch, each its own height, the very edge darkest.
       for (let x = 0; x < w; x++) {
-        const tooth = Math.floor(hash(Math.floor(x / 2), 3, seed) * 4);
-        for (let k = 0; k < fringe; k++) {
-          const y = eaveY - fringe + k;
+        let spike = 2;
+        for (let k = Math.floor(x / 7) - 1; k <= Math.floor(x / 7) + 1; k++) {
+          const c = k * 7 + hash(k, 1, seed + 8) * 5;
+          const tall = 3 + hash(k, 2, seed + 8) * 8;
+          spike = Math.max(spike, Math.round(tall - Math.abs(x + 0.5 - c) * 1.6));
+        }
+        for (let k = 0; k < spike; k++) {
+          const y = eaveY - 1 - k;
           if (!b.opaque(x, y)) continue;
           b.set(
             x,
             y,
-            k >= fringe - 2 - (tooth % 2) ? THATCH.deep : k > 1 ? THATCH.lo : THATCH.base,
+            k < 2 ? THATCH.deep : k === spike - 1 ? mix(THATCH.lo, THATCH.base, 0.5) : THATCH.lo,
           );
         }
-        if (b.opaque(x, eaveY - 1) && tooth > 1) b.set(x, eaveY, THATCH.deep);
       }
     },
-    { rx: w / 2 - 4, ry: 8, dx: 8, dy: -3, a: 0.34 },
+    { a: 0.34 },
   );
 }
 
@@ -489,88 +749,251 @@ export function kuraTop(seed: number): Sprite {
         }
       }
     },
-    { rx: 31, ry: 5, dx: 6, dy: -1, a: 0.32 },
+    { a: 0.32 },
   );
 }
 
-/** A doghouse from above: a big pitched roof of boards, a dark arch under it. */
+/** Pale, sun-bleached kennel boards, sampled from a hand-drawn doghouse. */
+const KN = {
+  hi: 0xdeac72,
+  light: 0xd49d62,
+  base: 0xc79157,
+  mid: 0xb07a4a,
+  grain: 0x925f39,
+  dark: 0x7c5234,
+  deep: 0x64371f,
+  hole: 0x4a0f0a,
+  inside: 0x633f27,
+  floor: 0x775033,
+  floorLit: 0x946642,
+} as const;
+
+/**
+ * A doghouse from above, read from a hand-drawn one: a big gabled roof of
+ * pale boards whose ridge runs straight back from the viewer, the two
+ * slopes falling away left and right, each with its own long grain strokes
+ * and a thick eave along its lower edge. Under the inverted V of the eaves
+ * the gable front shows: a lighter arched frame round a dark doorway, a
+ * plank floor inside, a threshold board, and a corner post each side.
+ */
 export function kennelTop(): Sprite {
-  const w = 30;
-  const h = 34;
+  const cx = 18;
+  const span = 17; // each slope's width
+  const w = cx * 2 + 1;
+  const h = 46;
+  // Each slope is a skewed band: its top (the back edge) and its eave both
+  // fall away from the ridge.
+  const slopeTop = (t: number): number => 1 + t * 8;
+  const eave = (t: number): number => 22 + t * 13;
   return sprite(
     w,
     h,
-    15,
-    32,
+    cx,
+    h - 2,
     (b) => {
-      // The front: a board face with an arched door.
-      b.rect(5, 20, 20, 11, W.warm);
-      for (let x = 5; x < 25; x += 4) b.rect(x, 20, 1, 11, W.face);
-      b.ellipse(15, 26, 6, 6, W.deep);
-      b.rect(9, 26, 13, 5, W.deep);
-      b.rect(10, 29, 11, 2, W.face);
-      // The roof: two board slopes seen from above, the ridge running back.
-      for (let y = 0; y < 22; y++) {
-        const half = Math.round(4 + (y / 22) * 11);
-        for (let x = 15 - half; x <= 15 + half; x++) {
-          const right = x > 15;
-          const board = (y + (right ? 0 : 2)) % 4 === 0;
-          let c: Rgb = right ? (board ? W.face : W.base) : board ? W.base : W.light;
-          if (Math.abs(x - 15) < 1) c = W.hi;
-          b.set(x, y, c);
+      // The front wall and the gable, behind the roof.
+      for (let y = 20; y <= 42; y++) {
+        for (let x = 5; x <= w - 6; x++) {
+          const edge = x <= 6 || x >= w - 7;
+          b.set(x, y, edge ? (x === 5 || x === w - 6 ? KN.mid : KN.base) : KN.light);
         }
       }
-      b.rect(2, 20, 26, 2, W.face);
+      // Corner posts, running down to the ground.
+      for (const px of [5, w - 7]) {
+        b.rect(px, 30, 2, 14, KN.base);
+        b.rect(px + 1, 30, 1, 14, KN.dark);
+      }
+      // The arched frame, then the doorway inside it.
+      const door = { x: cx + 0.5, y: 34, rx: 5.2, ry: 5.6 };
+      const inArch = (x: number, y: number, grow: number): boolean =>
+        x + 0.5 >= door.x - door.rx - grow &&
+        x + 0.5 <= door.x + door.rx + grow &&
+        (y >= door.y ||
+          ((x + 0.5 - door.x) / (door.rx + grow)) ** 2 +
+            ((y + 0.5 - door.y) / (door.ry + grow)) ** 2 <=
+            1);
+      for (let y = 22; y <= 40; y++) {
+        for (let x = 6; x < w - 6; x++) {
+          if (inArch(x, y, 0)) {
+            const depth = y - (door.y - door.ry);
+            let c: Rgb = depth < 2 ? KN.hole : y >= 37 ? KN.floor : KN.inside;
+            if (y >= 37 && (x + y) % 5 === 0) c = KN.floorLit; // the floor planks
+            if (y === 36) c = KN.dark;
+            b.set(x, y, c);
+          } else if (inArch(x, y, 1)) b.set(x, y, KN.hole);
+          else if (inArch(x, y, 3)) b.set(x, y, y < door.y - 2 ? KN.hi : KN.light);
+          else if (inArch(x, y, 4)) b.set(x, y, KN.mid);
+        }
+      }
+      // The threshold board across the doorway.
+      b.rect(9, 40, w - 18, 2, KN.light);
+      b.rect(9, 40, w - 18, 1, KN.hi);
+      b.rect(9, 42, w - 18, 1, KN.dark);
+      // The roof: two slopes, the left lit, the right a shade darker.
+      for (let x = 1; x < w - 1; x++) {
+        if (x === cx) continue;
+        const right = x > cx;
+        const t = Math.abs(x - cx) / span;
+        const y0 = Math.round(slopeTop(t));
+        const y1 = Math.round(eave(t));
+        for (let y = y0; y <= y1; y++) {
+          let c: Rgb = right ? KN.base : KN.light;
+          if (y > y1 - 2)
+            c = y === y1 ? KN.dark : KN.grain; // the eave's thickness
+          else if (Math.abs(x - cx) === 1)
+            c = right ? KN.light : KN.hi; // beside the ridge
+          else if (Math.abs(x - cx) === span) c = right ? KN.grain : KN.mid; // the outer edge
+          b.set(x, y, c);
+        }
+        // Grain: long broken strokes running parallel to the eave.
+        for (let k = 0; k < 4; k++) {
+          const s = (k + 0.7) / 4.6;
+          const gy = Math.round(y0 + s * (y1 - 2 - y0) + (hash(k, right ? 1 : 0, 41) - 0.5) * 2);
+          const run = Math.floor((Math.abs(x - cx) + k * 3 + (right ? 2 : 0)) / 5);
+          if (hash(run, k, right ? 43 : 42) < 0.3 || Math.abs(x - cx) < 2) continue;
+          b.set(x, gy, KN.grain);
+          if (hash(x, k, 44) < 0.35) b.set(x, gy - 1, right ? KN.light : KN.hi);
+        }
+      }
+      // The ridge: a dark seam where the slopes meet.
+      for (let y = 0; y <= Math.round(eave(0)); y++) b.set(cx, y, KN.deep);
     },
-    { rx: 13, ry: 3, dx: 2, dy: -1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
 /**
- * A wooden water tub from above: its rim and the dark water inside are the
- * biggest part; the green-banded staves show as a short band below, and it
- * stands on a ring of pale stones.
+ * A well bucket from high above, read from a hand-drawn one. We look down
+ * into its wide mouth: a thin gold rim round the olive inside, the far wall
+ * in shade and the near wall showing as a paler band across the bottom of
+ * the opening. Below the mouth the green staves taper toward the ground,
+ * their hoops curving like the rim does (seen from above), a shine down the
+ * left; tall pale stones stand up its sides and crowd round its foot.
  */
+/** The water down a well: darker than the pond, being in shade down the shaft. */
+const WELL_WATER = {
+  shadow: 0x2a2010,
+  edge: 0x1f3a34,
+  deep: 0x2f5a4e,
+  base: 0x3f7262,
+  light: 0x6a9c88,
+  glint: 0xbfe2d4,
+} as const;
+
+/** Where the water sits in a well's mouth, from its top-left (see tubTop): for the live bucket. */
+export const WELL_WATER_AT = { x: 18, y: 15 } as const;
+
 export function tubTop(): Sprite {
-  const green = 0x4f9a3a;
-  const greenHi = 0x7cc456;
-  const greenDark = 0x2f6a24;
+  const C = {
+    rim: 0xd8b860,
+    rimLit: 0xf0d888,
+    rimDark: 0xa88a3a,
+    inner: 0x7f6a25,
+    innerDark: 0x64441a,
+    nearWall: 0x9a8030,
+    green: 0x4f7c3e,
+    greenHi: 0x93c67d,
+    greenLight: 0x6fa055,
+    greenDark: 0x3a5d2a,
+    hoop: 0x2c4422,
+  } as const;
+  const w = 36;
+  const h = 46;
+  const cx = 18;
+  const mouthY = 12;
+  const mrx = 13;
+  const mry = 9.5;
   return sprite(
-    30,
-    34,
-    15,
-    31,
+    w,
+    h,
+    cx,
+    h - 3,
     (b) => {
-      // Stones round its foot.
-      for (const [x, y, r] of [
-        [5, 27, 4.4],
-        [15, 30, 4.8],
-        [25, 27, 4.4],
-        [9, 31, 3.6],
-        [21, 31, 3.6],
-      ] as const) {
-        b.ellipse(x, y, r * 1.15, r * 0.75, 0xc9c2b9);
-        b.ellipse(x - 0.8, y - 0.8, r * 0.7, r * 0.42, 0xe8e2da);
-      }
-      // The staves: a short green band.
-      for (let y = 15; y < 28; y++) {
-        for (let x = 4; x < 26; x++) {
-          const nx = (x - 15) / 11;
-          let c: Rgb = nx < -0.45 ? greenHi : nx > 0.5 ? greenDark : green;
-          if ((x - 4) % 4 === 0) c = mix(c, greenDark, 0.45);
+      // The staves: from the rim's widest row down, tapering to the ground.
+      const top = mouthY;
+      const bottom = 36;
+      for (let y = top; y <= bottom; y++) {
+        const t = (y - top) / (bottom - top);
+        const half = mrx - t * 3.2;
+        for (let x = Math.ceil(cx - half); x <= Math.floor(cx + half); x++) {
+          const nx = (x + 0.5 - cx) / half;
+          let c: Rgb = nx < -0.7 ? C.greenLight : nx > 0.6 ? C.greenDark : C.green;
+          if (nx > -0.5 && nx < -0.2) c = C.greenHi; // the shine
+          if (Math.round((x - cx) * 1.0 + 40) % 5 === 0 && Math.abs(nx) < 0.92)
+            c = mix(c, C.hoop, 0.35); // stave joins
+          // Hoops, curving like the rim: lower in the middle, rising to the sides.
+          const curve = Math.round((1 - nx * nx) * 3.6);
+          for (const hy of [top + 13, bottom - 5]) {
+            if (y === hy + curve) c = C.hoop;
+            if (y === hy + curve - 1) c = mix(c, C.greenHi, 0.4);
+          }
           b.set(x, y, c);
         }
       }
-      b.rect(3, 19, 24, 1, 0x3a3a26);
-      b.rect(3, 25, 24, 1, 0x3a3a26);
-      // The top: a thick rim and dark water, an ellipse seen from above.
-      b.ellipse(15, 12, 12, 9, 0xb08a3a);
-      b.ellipse(15, 11.5, 10, 7, 0x8a6a28);
-      b.ellipse(15, 12.5, 9, 6, 0x2c4a40);
-      b.ellipse(13, 10.5, 4, 2, 0x4a7a6a);
-      b.rect(10, 9, 3, 1, 0x9ad0c0);
+      // The mouth: rim, the shaded inside, the near wall's paler band.
+      for (let y = 0; y < mouthY + mry + 2; y++) {
+        for (let x = 0; x < w; x++) {
+          const dx = (x + 0.5 - cx) / mrx;
+          const dy = (y + 0.5 - mouthY) / mry;
+          const d = dx * dx + dy * dy;
+          if (d > 1) continue;
+          const ix = (x + 0.5 - cx) / (mrx - 1.6);
+          const iy = (y + 0.5 - mouthY) / (mry - 1.4);
+          const inside = ix * ix + iy * iy <= 1;
+          let c: Rgb;
+          if (!inside) c = dy < -0.4 && dx < 0.3 ? C.rimLit : dy > 0.5 ? C.rimDark : C.rim;
+          else {
+            // Looking down into it: the far wall drops away in shadow, and
+            // water sits low in the shaft, dark green-blue, a pale glint on
+            // it and a dark ring where it meets the wall.
+            const wx = (x + 0.5 - cx) / (mrx - 3.2);
+            const wy = (y + 0.5 - (mouthY + 2.6)) / (mry - 3.6);
+            const water = wx * wx + wy * wy;
+            if (water <= 1) {
+              c = water > 0.72 ? WELL_WATER.edge : wy < -0.15 ? WELL_WATER.deep : WELL_WATER.base;
+              // The sky's glint on the surface, up-left of the middle.
+              if (wx > -0.55 && wx < -0.05 && wy > -0.62 && wy < -0.25) c = WELL_WATER.glint;
+              if (wx > 0.15 && wx < 0.4 && Math.abs(wy - 0.2) < 0.18) c = WELL_WATER.light;
+            } else {
+              // The shaft's wall: darkest at the back, lit on the near side.
+              c = iy < -0.2 ? WELL_WATER.shadow : iy < 0.45 ? C.innerDark : C.inner;
+            }
+          }
+          b.set(x, y, c);
+        }
+      }
+      // Tall stones standing up its sides, and low ones round its foot.
+      const stone = (x: number, y: number, rx: number, ry: number, seed: number): void => {
+        for (let yy = Math.floor(y - ry); yy <= y + ry; yy++) {
+          for (let xx = Math.floor(x - rx); xx <= x + rx; xx++) {
+            const nx = (xx + 0.5 - x) / rx;
+            const ny = (yy + 0.5 - y) / ry;
+            if (Math.abs(nx) ** 2.4 + Math.abs(ny) ** 2.4 > 1) continue;
+            const lit = -nx * 0.5 - ny * 0.8;
+            const tone: Rgb =
+              lit > 0.35 ? STONE.hi : lit > -0.2 ? STONE.light : ny > 0.6 ? STONE.mid : STONE.base;
+            b.set(xx, yy, stoneAt(xx, yy, seed, tone));
+          }
+        }
+      };
+      stone(4.5, 30, 4.2, 7, 81);
+      stone(31.5, 30, 4.2, 7, 82);
+      stone(9, 38.5, 5.4, 4, 83);
+      stone(27, 38.5, 5.4, 4, 84);
+      stone(18, 40, 5.8, 3.6, 85);
+      // Grass poking up between them.
+      for (const [x, y] of [
+        [13, 42],
+        [23, 42],
+        [1, 37],
+        [34, 37],
+      ] as const) {
+        b.set(x, y, 0x6f884b);
+        b.set(x + 1, y - 1, 0x9cbd8a);
+        b.set(x - 1, y - 1, 0x6f884b);
+      }
     },
-    { rx: 12, ry: 3, dx: 1, dy: 0, a: 0.28 },
+    { a: 0.28 },
   );
 }
 
@@ -604,6 +1027,13 @@ function pad(
               : lit > -0.65
                 ? T.dark
                 : T.deep;
+      // Leaves: thin, wandering darker lines between clusters, and lit
+      // scallops along the top of each cluster, so the canopy reads as many
+      // small leafy clumps rather than one smooth dome.
+      const vein = noise(x * 1.3, y * 1.6, 2.6, seed + 5);
+      if (Math.abs(vein - 0.5) < 0.045 && rimDist > 0.12) c = lit > 0.2 ? T.base : T.dark;
+      else if (Math.abs(vein - 0.5) < 0.1 && vein > 0.5 && lit > -0.1)
+        c = lit > 0.4 ? T.hi : T.light;
       if (rimDist < 0.12 && dy > -0.2) c = T.deep; // the dark lower rim
       // Leaf clusters: small lighter flecks on the lit half.
       if (lit > 0 && hash(x, y, seed + 3) < 0.06) c = T.hi;
@@ -651,14 +1081,17 @@ export function canopyTree(seed: number, tones: "green" | "olive" = "green", siz
           b.set(Math.round(cx + dx * (k / len)), h - 4 + Math.min(1, k), W.face);
       }
       // Pads: arranged in tiers, the top of the crown first, the lowest last.
+      // Each tree its own crown: four to seven pads, placed by the seed.
       const pads: Array<[number, number, number]> = [
-        [cx + (rnd() - 0.5) * R * 0.6, R * 1.05, R * 0.82],
-        [cx - R * 0.95 + rnd() * 3, R * 1.75, R * 0.74],
-        [cx + R * 0.95 - rnd() * 3, R * 1.65, R * 0.76],
-        [cx + (rnd() - 0.5) * R * 0.4, R * 2.35, R * 0.78],
-        [cx - R * 1.15, R * 2.95, R * 0.66],
-        [cx + R * 1.1, R * 2.85, R * 0.68],
+        [cx + (rnd() - 0.5) * R * 0.6, R * (0.95 + rnd() * 0.2), R * (0.72 + rnd() * 0.18)],
       ];
+      const tiers = 3 + Math.floor(rnd() * 4);
+      for (let k = 1; k < tiers + 1; k++) {
+        const side = k % 2 === 0 ? 1 : -1;
+        const y = R * (1.45 + k * 0.38 + (rnd() - 0.5) * 0.25);
+        if (y > R * 3.1) break;
+        pads.push([cx + side * R * (0.5 + rnd() * 0.4), y, R * (0.7 + rnd() * 0.16)]);
+      }
       // Branches into each pad, drawn before the pads so they peek through.
       for (const [px, py] of pads) {
         const steps = Math.max(4, Math.round(Math.hypot(px - cx, trunkTop - py) / 1.5));
@@ -672,7 +1105,7 @@ export function canopyTree(seed: number, tones: "green" | "olive" = "green", siz
       }
       for (const [px, py, r] of pads) pad(b, px, py, r, T, seed + Math.round(px * 3 + py));
     },
-    { rx: R * 1.9, ry: R * 0.6, dx: 3, dy: -2, a: 0.32 },
+    { a: 0.32, canopy: true },
   );
 }
 
@@ -699,21 +1132,57 @@ export function moundShrub(
     (b) => {
       const cx = w / 2;
       const cy = h - r * 0.95;
-      const lumps = 2 + Math.floor(rnd() * 2);
-      pad(b, cx + (rnd() - 0.5) * 2, cy - r * 0.32, r * 0.7, T, seed);
-      for (let k = 0; k < lumps; k++) {
-        const side = k % 2 === 0 ? -1 : 1;
-        pad(
-          b,
-          cx + side * r * (0.42 + rnd() * 0.15),
-          cy + rnd() * r * 0.15,
-          r * (0.58 + rnd() * 0.12),
-          T,
-          seed + k + 1,
-        );
+      // Each bush its own shape: a single dome, a low spreading mound, a
+      // tall stack, or a loose clump of small lumps.
+      const shape = Math.floor(hash(seed, 7, 3) * 4);
+      if (shape === 0) {
+        pad(b, cx, cy - r * 0.15, r * 0.95, T, seed);
+      } else if (shape === 1) {
+        for (let k = 0; k < 4; k++) {
+          const t = k / 3 - 0.5;
+          pad(
+            b,
+            cx + t * r * 1.5,
+            cy + Math.abs(t) * r * 0.3 - rnd() * r * 0.1,
+            r * (0.5 + rnd() * 0.15),
+            T,
+            seed + k,
+          );
+        }
+      } else if (shape === 2) {
+        pad(b, cx + (rnd() - 0.5) * 2, cy - r * 0.5, r * 0.55, T, seed);
+        pad(b, cx - r * 0.35, cy, r * 0.62, T, seed + 1);
+        pad(b, cx + r * 0.38, cy + r * 0.05, r * 0.6, T, seed + 2);
+      } else {
+        const lumps = 3 + Math.floor(rnd() * 3);
+        for (let k = 0; k < lumps; k++) {
+          pad(
+            b,
+            cx + (rnd() - 0.5) * r * 1.4,
+            cy + (rnd() - 0.6) * r * 0.5,
+            r * (0.38 + rnd() * 0.22),
+            T,
+            seed + k,
+          );
+        }
+      }
+      // Some flower or fruit; most don't.
+      const deco = hash(seed, 8, 3);
+      if (deco < 0.38) {
+        const petal =
+          deco < 0.14 ? 0xfdf6ea : deco < 0.26 ? 0xf2b6c6 : deco < 0.32 ? 0xf6d24a : 0xd8394a;
+        const count = Math.round(r * 0.6);
+        for (let k = 0; k < count; k++) {
+          const fx = Math.round(cx + (rnd() - 0.5) * r * 1.8);
+          const fy = Math.round(cy - r * 0.3 + (rnd() - 0.5) * r * 0.9);
+          if (!b.opaque(fx, fy) || !b.opaque(fx, fy + 1)) continue;
+          b.set(fx, fy, petal);
+          if (deco >= 0.32) b.set(fx + 1, fy + 1, mix(petal, 0x3a1406, 0.35));
+          else b.set(fx, fy + 1, mix(petal, 0x3a1406, 0.2));
+        }
       }
     },
-    { rx: r + 2, ry: 2.8, dx: 1, dy: -1, a: 0.3 },
+    { a: 0.3 },
   );
 }
 
@@ -728,476 +1197,1307 @@ const STONE = {
   deep: 0x5e564e,
 } as const;
 
-/**
- * A side building from above: a low gabled roof of boards weighted down with
- * stones (its two slopes, the ridge running across), a short front of plaster
- * and timber under the eave, and firewood stacked under a lean-to.
- */
-export function annexTop(seed: number): Sprite {
-  const w = 76;
-  const roofH = 40;
-  const wallH = 14;
-  const h = roofH + wallH + 6;
-  return sprite(
-    w,
-    h,
-    40,
-    h - 2,
-    (b) => {
-      const wallTop = roofH - 4;
-      // The front: plaster panels between dark posts, a slatted window, a door.
-      for (let y = wallTop; y < wallTop + wallH; y++) {
-        for (let x = 14; x < w - 4; x++) {
-          const post = (x - 14) % 18 < 3;
-          b.set(x, y, post ? W.face : y > wallTop + wallH - 4 ? W.base : 0xeedfc4);
-        }
-      }
-      b.rect(22, wallTop + 3, 9, 7, W.deep);
-      for (let x = 23; x < 31; x += 2) b.rect(x, wallTop + 3, 1, 7, W.base);
-      b.rect(48, wallTop + 2, 12, wallH - 2, 0xd8d0c0);
-      b.rect(48, wallTop + 2, 1, wallH - 2, W.face);
-      // The lean-to on the left: logs stacked end-on under a small roof.
-      for (let row = 0; row < 3; row++) {
-        for (let k = 0; k < 3; k++) {
-          const lx = 3 + k * 4 + (row % 2) * 2;
-          const ly = wallTop + 3 + row * 4;
-          b.ellipse(lx + 1.5, ly + 1.5, 2, 2, W.light);
-          b.set(lx + 1, ly + 1, W.face);
-        }
-      }
-      // The roof: two board slopes meeting at a ridge across the middle. The
-      // back slope is lit (we see more of it), the front slope runs to the eave.
-      const ridge = 14;
-      for (let y = 0; y < roofH; y++) {
-        for (let x = 0; x < w; x++) {
-          const front = y > ridge;
-          const plank = (x + (front ? 3 : 0)) % 7 === 0;
-          const course = (y - (front ? ridge : 0)) % 6 === 0;
-          let c: Rgb = front ? (plank ? W.face : W.base) : plank ? W.base : W.light;
-          if (course && y > 0) c = W.face;
-          if (y === ridge || y === ridge + 1) c = y === ridge ? W.hi : W.deep;
-          if (y >= roofH - 3) c = y === roofH - 1 ? W.line : W.face;
-          b.set(x, y, c);
-        }
-      }
-      // Stones weighting the boards, each its own shape.
-      const rnd = stream(seed);
-      for (let i = 0; i < 9; i++) {
-        const sx = 6 + i * 8 + Math.round((rnd() - 0.5) * 3);
-        const sy = i % 2 === 0 ? 7 + Math.round(rnd() * 3) : 24 + Math.round(rnd() * 5);
-        b.ellipse(sx, sy, 3 + rnd(), 2.2, STONE.base);
-        b.ellipse(sx - 0.7, sy - 0.8, 1.8, 1, STONE.hi);
-        b.set(sx + 1, sy + 1, STONE.side);
-      }
-    },
-    { rx: 34, ry: 5, dx: 4, dy: -2, a: 0.32 },
-  );
+/** Weathered stone: the base tone, mottled lighter and darker, with the odd fleck of moss. */
+function stoneAt(x: number, y: number, seed: number, tone: Rgb): Rgb {
+  const n = noise(x, y, 2.2, seed);
+  let c = n > 0.7 ? mix(tone, STONE.hi, 0.45) : n < 0.25 ? mix(tone, STONE.side, 0.4) : tone;
+  if (hash(x, y, seed + 1) < 0.025) c = mix(tone, 0x7c8a30, 0.6);
+  return c;
 }
 
-/**
- * A koi pond from above: an irregular basin of jade water ringed with big
- * pale stones (their tops lit, a little of their sides showing below), koi,
- * a lily pad, a bamboo spout pouring in from the edge.
- */
-export function pondTop(width: number, height: number, seed: number, koi = true): Sprite {
-  const pad = 13;
-  const w = width + pad * 2;
-  const h = height + pad * 2;
-  const cx = w / 2;
-  const cy = h / 2;
+/** Where a pond's parts sit inside its sprite, shared by the sprite and the live view. */
+function pondLayout(width: number, height: number) {
+  const left = 30; // room for the bamboo frame
+  const padX = 17;
+  const padTop = 17;
+  const padBottom = 19;
   const rx = width / 2;
   const ry = height / 2;
-  const shape = blob(seed, 0.12, 4);
+  const w = left + width + padX * 2;
+  const h = height + padTop + padBottom;
+  const cx = left + padX + rx;
+  const cy = padTop + ry;
+  // The spout reaches out over open water, clear of the stones, and pours there.
+  const pour = { x: Math.round(cx - rx * 0.42), y: Math.round(cy - ry * 0.16) };
+  const mouth = { x: pour.x - 1, y: pour.y - 9 };
+  const anchor = { x: Math.round(cx), y: Math.round(cy + 28) };
+  return { w, h, rx, ry, cx, cy, pour, mouth, anchor };
+}
+
+/**
+ * Where the pond's bamboo spout pours, relative to the pond sprite's anchor:
+ * `mouth` is the end of the pipe, `pour` where its water hits the surface.
+ * The live view animates the falling water and the ripples from these.
+ */
+export function pondSpout(width: number, height: number): { mouth: Spot; pour: Spot } {
+  const { mouth, pour, anchor } = pondLayout(width, height);
+  return {
+    mouth: { x: mouth.x - anchor.x, y: mouth.y - anchor.y },
+    pour: { x: pour.x - anchor.x, y: pour.y - anchor.y },
+  };
+}
+
+/**
+ * A koi pond from above, read from a hand-made one: a ring of big, chunky
+ * stones (each its own shape, ringed in dark line, a soft facet or two on its
+ * pale top, its lower face a shade darker), packed tight around jade water
+ * that is mottled with pale foam and crossed by a broken net of dark lines,
+ * a lily pad or two, koi, and a bamboo spout on its frame at the upper left
+ * reaching out over the water. The spout is part of the sprite so it always
+ * sits over the stones it leans on. `still` bakes in the koi, the falling
+ * water and a ripple; the live view animates those itself.
+ */
+export function pondTop(width: number, height: number, seed: number, still = true): Sprite {
+  const { w, h, rx, ry, cx, cy, pour, mouth, anchor } = pondLayout(width, height);
   return sprite(
     w,
     h,
-    Math.round(cx),
-    h - 4,
+    anchor.x,
+    anchor.y,
     (b) => {
-      // The water: pale jade, deeper in the middle, crossed by light ripple lines.
-      const cells: Array<[number, number]> = [];
-      const rnd = stream(seed + 40);
-      for (let i = 0; i < 10; i++)
-        cells.push([cx + (rnd() - 0.5) * rx * 1.7, cy + (rnd() - 0.5) * ry * 1.7]);
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const nx = (x + 0.5 - cx) / rx;
-          const ny = (y + 0.5 - cy) / ry;
-          if (!shape(nx, ny)) continue;
-          let near = Infinity;
-          let next = Infinity;
-          for (const [px, py] of cells) {
-            const d = Math.hypot(x + 0.5 - px, (y + 0.5 - py) * 1.25);
-            if (d < near) {
-              next = near;
-              near = d;
-            } else if (d < next) next = d;
-          }
-          const depth = nx * nx + ny * ny;
-          let c: Rgb = depth < 0.4 ? 0x7cc8c4 : 0x9ee0d8;
-          if (next - near < 1.1) c = 0xd6f5ef;
-          if (ny < -0.62) c = 0x5fa8a8; // the stones' shade on the far water
-          b.set(x, y, c);
+      paintPondWater(b, cx, cy, rx + 1, ry + 1, seed, pour);
+      if (still) b.stamp(KOI, KOI_COLORS, Math.round(cx + 2), Math.round(cy + 1));
+      lilyPad(b, cx + rx * 0.42, cy + ry * 0.3, 3.6, seed + 7);
+      lilyPad(b, cx + rx * 0.58, cy - ry * 0.05, 2.4, seed + 8);
+      if (still) {
+        // One ripple spreading from where the water lands.
+        for (let k = 0; k < 28; k++) {
+          const a = (k / 28) * Math.PI * 2;
+          b.set(
+            Math.round(pour.x + 1 + Math.cos(a) * 7),
+            Math.round(pour.y + Math.sin(a) * 3),
+            POND.pale,
+          );
         }
       }
-      // Koi (left out when the live view swims them itself).
-      if (koi) {
-        const fx = Math.round(cx - 6);
-        const fy = Math.round(cy + 3);
-        b.rect(fx, fy, 7, 2, 0xe8742a);
-        b.set(fx - 1, fy - 1, 0xe8742a);
-        b.set(fx - 1, fy + 2, 0xe8742a);
-        b.set(fx + 3, fy, 0xffffff);
-        b.rect(Math.round(cx + 6), Math.round(cy - 4), 2, 6, 0xe8742a);
-        b.set(Math.round(cx + 6), Math.round(cy - 2), 0xffffff);
-      }
-      b.ellipse(cx + 10, cy + 5, 2.8, 2, 0x6a9a2a);
-      b.set(Math.round(cx + 10), Math.round(cy + 5), 0x9ccc4a);
-      // The stone ring: back stones first so front ones overlap them.
-      const count = Math.round((rx + ry) * 0.36);
-      const ring: Array<[number, number, number]> = [];
-      for (let i = 0; i < count; i++) {
-        const a = (i / count) * Math.PI * 2 + hash(i, 1, seed) * 0.2;
-        const r = 6.4 + hash(i, 0, seed) * 2.6;
-        ring.push([cx + Math.cos(a) * (rx + 3), cy + Math.sin(a) * (ry + 3), r]);
-      }
-      ring.sort((p, q) => p[1] - q[1]);
-      for (const [sx, sy, r] of ring) {
-        const sh = blob(Math.round(sx * 13 + sy * 7), 0.18, 4);
-        for (let y = Math.floor(sy - r); y <= sy + r + 3; y++) {
-          for (let x = Math.floor(sx - r * 1.2); x <= sx + r * 1.2; x++) {
-            const nx = (x + 0.5 - sx) / (r * 1.2);
-            const top = sh(nx, (y + 0.5 - sy) / (r * 0.78));
-            const side = !top && sh(nx, (y + 0.5 - sy - 2.5) / (r * 0.78));
-            if (!top && !side) continue;
-            if (side) {
-              b.set(x, y, STONE.side);
-              continue;
-            }
-            const ny = (y + 0.5 - sy) / (r * 0.78);
-            const lit = -nx * 0.45 - ny * 0.85;
-            b.set(
-              x,
-              y,
-              lit > 0.55 ? STONE.hi : lit > 0.1 ? STONE.light : lit > -0.4 ? STONE.base : STONE.mid,
-            );
-          }
-        }
-      }
+      const water = b.data.slice();
+      for (const stone of pondRing(cx, cy, rx, ry, seed)) paintPondStone(b, stone);
+      shadeUnderStones(b, water);
+      paintKakehi(b, mouth, cx - rx - 24, cy);
+      if (still) paintFallingWater(b, mouth, pour, 0);
     },
-    undefined,
+    // Low stones: a thin shadow down their lower right, the shape of the ring.
+    { a: 0.34, height: 4 },
+    0,
   );
 }
 
 /**
- * A torii from above: the two black-capped crossbeams seen mostly from their
- * tops (wide, lit bars), the red pillars short beneath, standing on stones.
+ * The water falling from the spout's mouth to the surface: a three-pixel
+ * column (lit left edge, bright broken core, shaded right edge) and a burst
+ * of foam where it lands. `phase` slides the core's breaks down the column,
+ * so redrawing with a rising phase makes it flow.
+ */
+export function paintFallingWater(
+  b: PixelBuffer,
+  mouth: { x: number; y: number },
+  pour: { x: number; y: number },
+  phase: number,
+): void {
+  for (let y = mouth.y + 1; y < pour.y; y++) {
+    const k = (((y - phase) % 3) + 3) % 3;
+    b.set(mouth.x, y, POND.light);
+    b.set(mouth.x + 1, y, k === 0 ? POND.pale : POND.foam);
+    b.set(mouth.x + 2, y, k === 2 ? POND.light : POND.mid);
+  }
+  b.rect(mouth.x - 1, pour.y - 1, 5, 2, POND.foam);
+  b.set(mouth.x - 2, pour.y, POND.pale);
+  b.set(mouth.x + 4, pour.y, POND.pale);
+}
+
+/** A koi from above, head to the left: orange and white, its fins and shadow dark. */
+export const KOI: readonly string[] = [
+  "........kk..........",
+  ".......kgk..........",
+  "...kkkkggkkkkkk.....",
+  "..kOoogkoOogkoOkk..k",
+  ".kOOoogkoOogkooggkkk",
+  "..kooogkoooggkogk..k",
+  "...kkkkggkkkkkk.....",
+  ".......kgk..........",
+  "........kk..........",
+];
+
+/** Koi colours: a dark green line and body, orange patches lit along their top. */
+export const KOI_COLORS = { k: 0x2c4a32, g: 0x3f6e4c, o: 0xe0784a, O: 0xf2a070 } as const;
+
+// ── Farm animals ────────────────────────────────────────────
+// Read from hand-drawn ones and seen at the same high angle as everything
+// else: side-on bodies with the top of the back showing, short foreshortened
+// legs, a dark outline baked in ("k"). Shared by the still map and the live
+// view, so the animals look the same in both.
+
+/** A tabby, mid-stride, facing right (two steps). */
+export const CAT_STEP_A: readonly string[] = [
+  "...k............k...k....",
+  "..kwk..........kok.kok...",
+  ".kwowk........kopokopok..",
+  ".kosk.........koooooookk.",
+  ".kosk..kkkkkkkkohoooooook",
+  "..koskklhlhlhlhooooeowwwk",
+  "..kosklslsslsslooowwwwwnk",
+  "...koolslsslsslowwwwwwwk.",
+  "...kooooooooooooowwwwwk..",
+  "....koccccccccccowwwkk...",
+  "....kowkddkkkowkwwkdk....",
+  "....kwwkddk.kwwkwwkddk...",
+  ".....kk.kk...kk.kk.kk....",
+];
+
+export const CAT_STEP_B: readonly string[] = [
+  "...k............k...k....",
+  "..kwk..........kok.kok...",
+  ".kwowk........kopokopok..",
+  ".kosk.........koooooookk.",
+  ".kosk..kkkkkkkkohoooooook",
+  "..koskklhlhlhlhooooeowwwk",
+  "..kosklslsslsslooowwwwwnk",
+  "...koolslsslsslowwwwwwwk.",
+  "...kooooooooooooowwwwwk..",
+  "....koccccccccccowwwkk...",
+  "....kddkowkkkddkwwkwk....",
+  "...kddkkwwk.kddkkwwk.....",
+  "....kk..kk...kk..kk......",
+];
+
+export const CAT_COLORS = {
+  k: 0x3a1406,
+  o: 0xc7833a,
+  l: 0xdb9c52,
+  h: 0xeab46a,
+  s: 0x9a5a2b,
+  d: 0x8a5228,
+  w: 0xf7eccd,
+  c: 0xdcc39e,
+  p: 0xe8909a,
+  e: 0x2a1208,
+  n: 0xd86a6a,
+} as const;
+
+/** A white hen facing left, standing and pecking. */
+export const HEN_STAND: readonly string[] = [
+  "...kk.........",
+  "..krrk........",
+  ".krRrrk...kk..",
+  ".kwwwwwk.kwwk.",
+  "kewhwwwkkwwswk",
+  "kywwwwwkwwwsdk",
+  ".krwwwwwwwssdk",
+  "..kwwhhwwwwsdk",
+  "..kwwwwsssssdk",
+  "...kwwssssddk.",
+  "....kddddddk..",
+  ".....kykkyk...",
+  "....kyykyyk...",
+  ".....kk.kk....",
+];
+
+/** The hen mid-stride: one leg forward, one back. */
+export const HEN_WALK: readonly string[] = [
+  "...kk.........",
+  "..krrk........",
+  ".krRrrk...kk..",
+  ".kwwwwwk.kwwk.",
+  "kewhwwwkkwwswk",
+  "kywwwwwkwwwsdk",
+  ".krwwwwwwwssdk",
+  "..kwwhhwwwwsdk",
+  "..kwwwwsssssdk",
+  "...kwwssssddk.",
+  "....kddddddk..",
+  "...kyk.kkyk...",
+  "..kyyk..kyyk..",
+  "...kk....kk...",
+];
+
+export const HEN_PECK: readonly string[] = [
+  "..............",
+  "...........k..",
+  "........kkkwk.",
+  ".....kkkwwwswk",
+  "...kkwwwwwwsdk",
+  "..kwwwwwwwssdk",
+  ".kwwhhwwwwssdk",
+  "krwwwwwsssssdk",
+  "krRwwwssssddk.",
+  "kewwwddddddk..",
+  "kywwrkykkyk...",
+  ".kkkkyykyyk...",
+  ".....kk.kk....",
+  "..............",
+];
+
+export const HEN_COLORS = {
+  k: 0x3a1406,
+  w: 0xf6f2ea,
+  h: 0xffffff,
+  s: 0xd8cfc0,
+  d: 0xb8ab98,
+  r: 0xd8394a,
+  R: 0xa82434,
+  y: 0xf2b630,
+  Y: 0xc88a1a,
+  e: 0x2a1208,
+} as const;
+
+/** A shiba curled up asleep, head on its paws facing left, tail over its back. */
+export const SHIBA_ASLEEP: readonly string[] = [
+  "...k.k..............",
+  "..kokokk....kkkk....",
+  ".koloolok..kwwwwk...",
+  ".koohhoookkwwsswwk..",
+  "kooohhoooolllwwswk..",
+  "kooeeooollhhhlwwok..",
+  "knwwwwoolhhhhhloook.",
+  "kwwwwwoolhllhhllook.",
+  ".kwwwwwoollllllloosk",
+  "..kwwwwwwooooooossk.",
+  "...kwwwwwcccsssssk..",
+  "....kwwwwckkkkkkk...",
+  ".....kkkkk..........",
+];
+
+export const SHIBA_COLORS = {
+  k: 0x3a1406,
+  o: 0xd8803a,
+  l: 0xe8a058,
+  h: 0xf4c07a,
+  s: 0xa85a28,
+  w: 0xf8ecd0,
+  c: 0xe0cfae,
+  e: 0x2a1208,
+  n: 0x1a0a04,
+} as const;
+
+/** A still sprite from an animal grid, anchored at its feet; casts a tight contact shadow. */
+export function animalSprite(
+  rows: readonly string[],
+  colors: Readonly<Record<string, number>>,
+): Sprite {
+  const w = rows[0]?.length ?? 0;
+  const h = rows.length;
+  return sprite(w, h, Math.floor(w / 2), h - 2, (b) => b.stamp(rows, colors, 0, 0), { a: 0.26 }, 0);
+}
+
+const POND = {
+  foam: 0xf0f9ed,
+  pale: 0xdaefe2,
+  light: 0xa4d4c2,
+  base: 0x8ac0ab,
+  mid: 0x7dae96,
+  deep: 0x628670,
+  crack: 0x46705a,
+} as const;
+
+/** The pond's water colours, for the live view's ripples and falling water. */
+export const POND_WATER = POND;
+
+/** The water: soft pale patches over jade, a broken net of dark lines, foam where the spout pours. */
+function paintPondWater(
+  b: PixelBuffer,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  seed: number,
+  pour: { x: number; y: number },
+): void {
+  const shape = blob(seed, 0.1, 4);
+  const rnd = stream(seed + 40);
+  const cells: Array<[number, number]> = [];
+  for (let i = 0; i < 15; i++)
+    cells.push([cx + (rnd() - 0.5) * rx * 2, cy + (rnd() - 0.5) * ry * 2]);
+  const tones: ReadonlyArray<readonly [number, Rgb]> = [
+    [0.8, POND.foam],
+    [0.68, POND.pale],
+    [0.53, POND.light],
+    [0.37, POND.base],
+    [0.24, POND.mid],
+    [-Infinity, POND.deep],
+  ];
+  for (let y = Math.floor(cy - ry - 1); y <= cy + ry + 1; y++) {
+    for (let x = Math.floor(cx - rx - 1); x <= cx + rx + 1; x++) {
+      const nx = (x + 0.5 - cx) / rx;
+      const ny = (y + 0.5 - cy) / ry;
+      if (!shape(nx, ny)) continue;
+      // Churned white only right where the spout's water lands; round it the
+      // water stays jade, so the falling water and its ripples show against it.
+      const splash = Math.max(0, 1 - Math.hypot(x - pour.x, (y - pour.y) * 1.6) / 4);
+      // Calmer, deeper water where the ripples spread, so they read.
+      const calm = Math.max(0, 1 - Math.hypot(x - pour.x, (y - pour.y) * 2.2) / 14);
+      let v =
+        -calm * 0.32 +
+        noise(x, y * 1.5, 7, seed + 11) * 0.72 +
+        noise(x, y, 2.4, seed + 12) * 0.28 -
+        ny * 0.14 +
+        splash * 0.7;
+      // A checker dither along each tone's edge, so the patches shade into one another.
+      for (const [at] of tones) if (Math.abs(v - at) < 0.025) v += (x + y) % 2 === 0 ? 0.03 : -0.03;
+      let c: Rgb = POND.deep;
+      for (const [at, tone] of tones) {
+        if (v > at) {
+          c = tone;
+          break;
+        }
+      }
+      // The net of dark lines: cell edges, broken here and there, gone in the foam.
+      let near = Infinity;
+      let next = Infinity;
+      // Warped, so the lines wander instead of running ruler-straight.
+      const wx = x + (noise(x, y, 6, seed + 14) - 0.5) * 7;
+      const wy = y + (noise(x, y, 6, seed + 15) - 0.5) * 5;
+      for (const [px, py] of cells) {
+        const d = Math.hypot(wx + 0.5 - px, (wy + 0.5 - py) * 1.4);
+        if (d < near) {
+          next = near;
+          near = d;
+        } else if (d < next) next = d;
+      }
+      if (next - near < 1 && v < 0.78 && noise(x, y, 4, seed + 13) > 0.2) c = POND.crack;
+      b.set(x, y, c);
+    }
+  }
+  // Foam ringing the spot the spout hits.
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    b.set(
+      Math.round(pour.x + Math.cos(a) * 3.2),
+      Math.round(pour.y + Math.sin(a) * 1.8),
+      POND.foam,
+    );
+  }
+}
+
+/**
+ * Depth: the stones overhang the water, so a band of shadow runs along the
+ * water's far edge (under the stones nearest the top) and a thin one down
+ * its sides. `water` is the buffer as it was before the stones went down.
+ */
+function shadeUnderStones(b: PixelBuffer, water: Uint8ClampedArray): void {
+  const covered = (x: number, y: number): boolean => {
+    if (!b.inside(x, y)) return true;
+    const i = (y * b.width + x) * 4;
+    return (water[i + 3] ?? 0) === 0 || b.data[i] !== water[i] || b.data[i + 1] !== water[i + 1];
+  };
+  const marks: Array<[number, number, Rgb]> = [];
+  for (let y = 0; y < b.height; y++) {
+    for (let x = 0; x < b.width; x++) {
+      if (covered(x, y)) continue;
+      if (covered(x, y - 1)) marks.push([x, y, POND.deep]);
+      else if (covered(x, y - 2) || covered(x - 1, y) || covered(x + 1, y))
+        marks.push([x, y, mix(b.rgb(x, y), POND.deep, 0.6)]);
+      else if (covered(x, y - 3)) marks.push([x, y, mix(b.rgb(x, y), POND.deep, 0.3)]);
+    }
+  }
+  for (const [x, y, c] of marks) b.set(x, y, c);
+}
+
+function lilyPad(b: PixelBuffer, x: number, y: number, r: number, seed: number): void {
+  b.ellipse(x, y, r + 1, r * 0.7 + 1, KOI_COLORS.k);
+  b.ellipse(x, y, r, r * 0.7, 0x6f9a3a);
+  b.ellipse(x - r * 0.25, y - r * 0.2, r * 0.6, r * 0.38, 0x94b84c);
+  // The notch: a wedge cut to the middle.
+  const dir = hash(1, 1, seed) < 0.5 ? 1 : -1;
+  for (let k = 0; k <= r; k++) b.set(Math.round(x + dir * k), Math.round(y + k * 0.3), POND.light);
+}
+
+interface PondStone {
+  readonly x: number;
+  readonly y: number;
+  readonly hw: number;
+  readonly hh: number;
+  readonly seed: number;
+}
+
+/** The ring: big stones spaced evenly round the rim, small ones tucked into the gaps outside. */
+function pondRing(cx: number, cy: number, rx: number, ry: number, seed: number): PondStone[] {
+  const Rx = rx + 5;
+  const Ry = ry + 5;
+  const stones: PondStone[] = [];
+  const count = Math.round((2 * Math.PI * Math.sqrt((Rx * Rx + Ry * Ry) / 2)) / 13.5);
+  for (let i = 0; i < count; i++) {
+    const a = ((i + 0.5) / count) * Math.PI * 2 + (hash(i, 3, seed) - 0.5) * 0.12;
+    const back = Math.sin(a) < -0.3; // the far side: bigger stones
+    const out = 1 + (hash(i, 4, seed) - 0.5) * 0.06;
+    stones.push({
+      x: cx + Math.cos(a) * Rx * out,
+      y: cy + Math.sin(a) * Ry * out,
+      hw: 7.2 + hash(i, 5, seed) * 2.4 + (back ? 1 : 0),
+      hh: 5.6 + hash(i, 6, seed) * 1.6 + (back ? 0.8 : 0),
+      seed: seed * 31 + i,
+    });
+  }
+  for (let i = 0; i < count; i++) {
+    // Only on the near side and the right: the spout's frame stands on the left.
+    const a = ((i + 1) / count) * Math.PI * 2;
+    if (Math.cos(a) < -0.5 || hash(i, 7, seed) < 0.45) continue;
+    if (Math.sin(a) < 0.1 && Math.cos(a) < 0.6) continue;
+    stones.push({
+      x: cx + Math.cos(a) * (Rx + 7),
+      y: cy + Math.sin(a) * (Ry + 5),
+      hw: 3.6 + hash(i, 8, seed) * 1.4,
+      hh: 3 + hash(i, 9, seed) * 0.8,
+      seed: seed * 37 + i,
+    });
+  }
+  // Back to front, so nearer stones overlap the ones behind.
+  return stones.sort((p, q) => p.y + p.hh - (q.y + q.hh) || p.x - q.x);
+}
+
+const ROCK = {
+  hi: 0xdedcd3,
+  top: 0xcfc9c1,
+  facet: 0xbab3aa,
+  crack: 0xa8a097,
+  side: 0xb3aca4,
+  sideDark: 0x9c948b,
+} as const;
+
+/**
+ * One stone: a chunky, slightly squared shape ringed in dark line. Its pale
+ * top is lit from the upper left with a soft facet or two; the band of its
+ * near face along the bottom is a shade darker.
+ */
+function paintPondStone(b: PixelBuffer, s: PondStone): void {
+  const amps = [0, 1, 2].map((k) => (hash(k, 1, s.seed) - 0.5) * 0.16);
+  const phases = [0, 1, 2].map((k) => hash(k, 2, s.seed) * Math.PI * 2);
+  const inside = (x: number, y: number, grow: number): boolean => {
+    const nx = (x + 0.5 - s.x) / (s.hw + grow);
+    const ny = (y + 0.5 - s.y) / (s.hh + grow);
+    const a = Math.atan2(ny, nx);
+    let r = 1;
+    for (let k = 0; k < 3; k++) r += (amps[k] ?? 0) * Math.sin((k + 2) * a + (phases[k] ?? 0));
+    return Math.abs(nx) ** 2.5 + Math.abs(ny) ** 2.5 <= r ** 2.5;
+  };
+  const x0 = Math.floor(s.x - s.hw - 3);
+  const x1 = Math.ceil(s.x + s.hw + 3);
+  const y0 = Math.floor(s.y - s.hh - 3);
+  const y1 = Math.ceil(s.y + s.hh + 3);
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) if (inside(x, y, 1)) b.set(x, y, LINE);
+  const tilt = (hash(5, 5, s.seed) - 0.5) * 0.5;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (!inside(x, y, 0)) continue;
+      const nx = (x + 0.5 - s.x) / s.hw;
+      const ny = (y + 0.5 - s.y) / s.hh;
+      const face = 0.42 + tilt * nx + Math.sin(nx * 3 + s.seed) * 0.08;
+      let c: Rgb;
+      if (ny > face) c = ny > 0.82 || (ny > face + 0.3 && nx > 0.3) ? ROCK.sideDark : ROCK.side;
+      else {
+        const lit = -nx * 0.55 - ny * 0.75;
+        c = lit > 0.62 ? ROCK.hi : ROCK.top;
+        if (lit < 0.3 && noise(x, y, 3.2, s.seed) > 0.6) c = ROCK.facet;
+        if (nx > 0.78 && lit < 0) c = ROCK.facet;
+      }
+      b.set(x, y, c);
+    }
+  }
+  // A crack or a facet edge across the top, on the bigger stones.
+  if (s.hw > 6) {
+    const len = 3 + Math.floor(hash(6, 6, s.seed) * 3);
+    const sx = s.x + (hash(7, 7, s.seed) - 0.3) * s.hw * 0.6;
+    const sy = s.y - s.hh * 0.35;
+    const lean = hash(8, 8, s.seed) < 0.5 ? 1 : -1;
+    for (let k = 0; k < len; k++) {
+      const px = Math.round(sx + lean * k * 0.8);
+      const py = Math.round(sy + k * 0.6);
+      if (inside(px, py, -0.35)) b.set(px, py, ROCK.crack);
+    }
+  }
+}
+
+const BAMBOO = {
+  hi: 0xe2e1a8,
+  light: 0xc6c78b,
+  base: 0x9fac4e,
+  dark: 0x7c7e3f,
+  deep: 0x5d6028,
+  cut: 0xf0d860,
+  cutDark: 0xb8963a,
+  tie: 0x7a4a1c,
+} as const;
+
+/** An upright culm with its nodes, its cut top showing. */
+function bambooPost(b: PixelBuffer, x: number, y0: number, y1: number): void {
+  b.rect(x - 1, y0 - 1, 6, y1 - y0 + 2, LINE);
+  for (let y = y0; y < y1; y++) {
+    // A node every few pixels: a dark ring with a lit lip above it.
+    const node = (y - y0) % 8 === 6;
+    const lip = (y - y0) % 8 === 5;
+    b.set(x, y, node ? BAMBOO.base : BAMBOO.hi);
+    b.set(x + 1, y, node ? BAMBOO.dark : lip ? BAMBOO.hi : BAMBOO.light);
+    b.set(x + 2, y, node ? BAMBOO.dark : lip ? BAMBOO.light : BAMBOO.base);
+    b.set(x + 3, y, node ? BAMBOO.deep : BAMBOO.dark);
+  }
+  b.rect(x, y0, 4, 2, BAMBOO.cut);
+  b.rect(x + 1, y0, 2, 1, BAMBOO.cutDark);
+}
+
+/** A culm lying from (x0, y0) to (x1, y1), lit along its top, its cut end open toward x1. */
+function bambooPipe(b: PixelBuffer, x0: number, y0: number, x1: number, y1: number): void {
+  const len = Math.max(1, x1 - x0);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i <= len; i++) {
+      const x = x0 + i;
+      const y = Math.round(y0 + ((y1 - y0) * i) / len);
+      if (pass === 0) {
+        for (let k = -2; k <= 3; k++) b.set(x, y + k, LINE);
+        if (i === 0) for (let k = -2; k <= 3; k++) b.set(x - 1, y + k, LINE);
+        if (i === len) for (let k = -2; k <= 3; k++) b.set(x + 1, y + k, LINE);
+        continue;
+      }
+      const node = i % 9 === 7;
+      b.set(x, y - 1, node ? BAMBOO.base : BAMBOO.hi);
+      b.set(x, y, node ? BAMBOO.dark : BAMBOO.light);
+      b.set(x, y + 1, node ? BAMBOO.dark : BAMBOO.base);
+      b.set(x, y + 2, node ? BAMBOO.deep : BAMBOO.dark);
+      if (i >= len - 1) {
+        // The open, slant-cut mouth: bright inside, a dark hollow.
+        b.set(x, y - 1, BAMBOO.cut);
+        b.set(x, y, i === len ? BAMBOO.cutDark : BAMBOO.cut);
+        b.set(x, y + 1, i === len ? BAMBOO.cutDark : BAMBOO.cut);
+        b.set(x, y + 2, BAMBOO.cut);
+      }
+    }
+  }
+}
+
+/**
+ * The kakehi: two bamboo posts, a rail lashed across them, and a pipe angled
+ * down from the taller post out over the stones, a thread of water falling
+ * from its mouth to `pour`.
+ */
+function paintKakehi(b: PixelBuffer, mouth: { x: number; y: number }, x: number, cy: number): void {
+  const postA = Math.round(x + 4);
+  const postB = Math.round(x + 15);
+  const railY = Math.round(cy + 4);
+  bambooPost(b, postB, mouth.y - 11, railY + 9);
+  bambooPipe(b, Math.round(x), railY, Math.round(x + 34), railY - 1);
+  bambooPost(b, postA, railY - 9, railY + 13);
+  bambooPipe(b, postB + 1, mouth.y - 7, mouth.x, mouth.y);
+  // Lashings where the rail crosses the posts.
+  for (const px of [postA, postB]) {
+    b.rect(px, railY - 1, 3, 1, BAMBOO.tie);
+    b.set(px + 1, railY + 1, BAMBOO.tie);
+  }
+}
+
+/**
+ * A torii from high above. The top beam (kasagi) is the biggest part: its
+ * charcoal top surface seen deep, sweeping up at both ends, over a lit band of
+ * red. Under it the plaque, gold with dark lettering, then the tie beam
+ * (nuki) running past the pillars with wedges at each; the red pillars below
+ * are short, lit down their left with a grain line, on black stone footings.
  */
 export function toriiTop(): Sprite {
-  const w = 50;
-  const h = 36;
-  const red = 0xc8442c;
-  const redLit = 0xe0664a;
-  const redDark = 0x8a2a1c;
+  const w = 52;
+  const h = 40;
+  const RED = { hi: 0xf07a5a, lit: 0xe0664a, base: 0xc8442c, dark: 0x9a301e, deep: 0x6e1e14 };
+  const CAP = { top: 0x5a524c, hi: 0x7a706a, face: 0x2e2824, under: 0x1e1a18 };
   return sprite(
     w,
     h,
-    25,
-    34,
-    (b) => {
-      // Pillars: short, round, lit on the left, on stone footings.
-      for (const px of [10, 36]) {
-        for (let y = 12; y < 32; y++) {
-          for (let x = 0; x < 5; x++) b.set(px + x, y, x === 0 ? redLit : x > 3 ? redDark : red);
-        }
-        b.rect(px - 1, 31, 7, 3, STONE.base);
-        b.rect(px - 1, 31, 7, 1, STONE.hi);
-      }
-      // The lower beam (nuki): a red bar seen from slightly above.
-      b.rect(6, 14, w - 12, 4, red);
-      b.rect(6, 14, w - 12, 1, redLit);
-      b.rect(6, 17, w - 12, 1, redDark);
-      // The plaque between the beams.
-      b.rect(22, 9, 7, 7, 0x2a1a10);
-      b.rect(23, 10, 5, 5, 0xe8c44a);
-      // The top beam (kasagi): a wide black cap with upswept ends, its top lit.
-      for (let x = 0; x < w; x++) {
-        const rise = x < 4 ? 4 - x : x >= w - 4 ? x - (w - 5) : 0;
-        b.rect(x, 2 - Math.round(rise * 0.6), 1, 3, 0x2a2420);
-        b.set(x, 2 - Math.round(rise * 0.6), 0x55504a);
-        b.rect(x, 5 - Math.round(rise * 0.6), 1, 3, red);
-        b.set(x, 7 - Math.round(rise * 0.6), redDark);
-      }
-    },
-    { rx: 18, ry: 3, dx: 2, dy: -1, a: 0.28 },
-  );
-}
-
-/** A stone lantern from above: a broad roof cap (mostly its top), the lit box, a post. */
-export function lanternTop(): Sprite {
-  return sprite(
-    20,
-    28,
-    10,
     26,
+    37,
     (b) => {
-      // Base and post.
-      b.ellipse(10, 24, 7, 3, STONE.mid);
-      b.ellipse(10, 23.4, 6, 2.2, STONE.base);
-      b.rect(8, 15, 5, 8, STONE.base);
-      b.rect(8, 15, 1, 8, STONE.hi);
-      b.rect(11, 15, 2, 8, STONE.mid);
-      // The firebox: a lit window glowing warm.
-      b.rect(6, 10, 9, 6, STONE.light);
-      b.rect(8, 11, 5, 4, 0xffcf6a);
-      b.rect(8, 11, 5, 1, 0xfff0b0);
-      b.rect(6, 15, 9, 1, STONE.side);
-      // The roof: a wide cap seen from above, with a knob.
-      b.ellipse(10, 7, 9, 4, STONE.mid);
-      b.ellipse(10, 6, 8.4, 3.4, STONE.base);
-      b.ellipse(9, 5, 5.5, 2, STONE.light);
-      b.ellipse(10, 2.5, 2, 1.6, STONE.base);
-      b.set(9, 1, STONE.hi);
-    },
-    { rx: 7, ry: 2, dx: 1, dy: 0, a: 0.28 },
-  );
-}
-
-/** A bamboo spout from above: the long culm reaching over the water, on its post. */
-export function spoutTop(): Sprite {
-  const bam = 0xb8c45a;
-  const bamLit = 0xd8e07a;
-  const bamDark = 0x7f8f2c;
-  return sprite(
-    30,
-    20,
-    6,
-    18,
-    (b) => {
-      // The post it rests on, seen from above as a short round cap.
-      b.ellipse(6, 15, 3, 2, bamDark);
-      b.rect(4, 8, 4, 8, bam);
-      b.rect(4, 8, 1, 8, bamLit);
-      b.ellipse(6, 8, 2.4, 1.4, bamLit);
-      // The culm, angled out over the water, with its nodes.
-      for (let i = 0; i < 24; i++) {
-        const x = 6 + i;
-        const y = Math.round(9 + i * 0.12);
-        b.set(x, y - 1, bamLit);
-        b.set(x, y, i % 6 === 5 ? bamDark : bam);
-        b.set(x, y + 1, bamDark);
+      // Pillars, short (we look down on them), on footings.
+      for (const px of [10, 37]) {
+        for (let y = 16; y < 34; y++) {
+          for (let x = 0; x < 6; x++) {
+            let c: Rgb =
+              x === 0
+                ? RED.hi
+                : x === 1
+                  ? RED.lit
+                  : x >= 5
+                    ? RED.deep
+                    : x === 4
+                      ? RED.dark
+                      : RED.base;
+            if (x === 2 && hash(px, y, 3) < 0.35) c = RED.dark; // grain
+            b.set(px + x, y, c);
+          }
+        }
+        // Black stone footings, lit on top.
+        b.rect(px - 1, 32, 8, 4, 0x2e2824);
+        b.rect(px - 1, 32, 8, 1, 0x6a625c);
+        b.rect(px, 33, 6, 1, 0x4a423c);
       }
-      // A thread of water falling from its mouth.
-      for (let y = 12; y < 18; y++) b.set(29, y, 0xd6f5ef, 0.8);
+      // The tie beam: past the pillars, a lit top, wedges at each pillar.
+      b.rect(5, 17, w - 10, 4, RED.base);
+      b.rect(5, 17, w - 10, 1, RED.hi);
+      b.rect(5, 20, w - 10, 1, RED.deep);
+      for (const px of [10, 37]) {
+        b.rect(px + 1, 21, 4, 2, 0x8a6a40);
+        b.rect(px + 1, 21, 4, 1, 0xb08a54);
+      }
+      // The plaque: a dark frame round gold, two characters on it.
+      b.rect(22, 9, 8, 9, 0x2e2824);
+      b.rect(23, 10, 6, 7, 0xe8c44a);
+      b.rect(23, 10, 6, 1, 0xf8e08a);
+      b.rect(25, 11, 2, 2, 0x5a3a14);
+      b.rect(25, 14, 2, 2, 0x5a3a14);
+      // The top beam: its top surface seen deep, upswept ends, a red band under it.
+      for (let x = 0; x < w; x++) {
+        const fromEnd = Math.min(x, w - 1 - x);
+        const rise = fromEnd < 7 ? Math.round(((7 - fromEnd) / 7) ** 1.6 * 4) : 0;
+        const y0 = 4 - rise;
+        b.set(x, y0, CAP.hi);
+        b.set(x, y0 + 1, CAP.top);
+        b.set(x, y0 + 2, hash(x, 1, 5) < 0.2 ? CAP.hi : CAP.top);
+        b.set(x, y0 + 3, CAP.face);
+        if (x >= 2 && x < w - 2) {
+          b.set(x, y0 + 4, RED.lit);
+          b.set(x, y0 + 5, RED.base);
+          b.set(x, y0 + 6, RED.base);
+          b.set(x, y0 + 7, RED.deep);
+        }
+      }
     },
-    undefined,
+    { a: 0.28 },
   );
 }
 
 /**
- * A tea bench under a parasol, from above: the red parasol is the biggest
- * thing (a round canopy, lit on its left half), the bench's red cloth and a
- * tea tray peeking out below it.
+ * A stone lantern (toro) from high above, in weathered, mottled granite: a
+ * broad roof is most of it, its top seen deep with ridges running to curled
+ * corners and a jewel knob; under it the firebox glows through its window;
+ * then a short post with a ring, on a wide stepped base.
+ */
+export function lanternTop(): Sprite {
+  const w = 24;
+  const h = 32;
+  const cx = 12;
+  return sprite(
+    w,
+    h,
+    cx,
+    30,
+    (b) => {
+      // The stepped base.
+      b.ellipse(cx, 27, 9, 3.4, STONE.side);
+      b.ellipse(cx, 26.4, 8.4, 2.8, STONE.mid);
+      b.ellipse(cx, 25.2, 6.2, 2, STONE.base);
+      // The post, with a ring halfway.
+      for (let y = 18; y < 25; y++) {
+        for (let x = cx - 2; x <= cx + 2; x++) {
+          b.set(
+            x,
+            y,
+            stoneAt(x, y, 61, x === cx - 2 ? STONE.light : x === cx + 2 ? STONE.mid : STONE.base),
+          );
+        }
+      }
+      b.rect(cx - 3, 21, 7, 1, STONE.mid);
+      b.rect(cx - 3, 20, 7, 1, STONE.light);
+      // The firebox: a stone frame round a warm window.
+      for (let y = 11; y < 18; y++) {
+        for (let x = cx - 5; x <= cx + 5; x++) {
+          b.set(
+            x,
+            y,
+            stoneAt(x, y, 62, x < cx - 3 ? STONE.light : x > cx + 3 ? STONE.mid : STONE.base),
+          );
+        }
+      }
+      b.rect(cx - 3, 12, 6, 4, 0x6a4a1a);
+      b.rect(cx - 2, 12, 4, 4, 0xffcf6a);
+      b.rect(cx - 2, 12, 4, 1, 0xfff0b0);
+      b.set(cx - 1, 14, 0xfff7d8);
+      b.rect(cx - 5, 17, 11, 1, STONE.side);
+      // The roof: a wide cap seen from above, ridges to curled-up corners.
+      for (let y = 0; y < 12; y++) {
+        for (let x = 0; x < w; x++) {
+          const dx = (x + 0.5 - cx) / 11.5;
+          const dy = (y + 0.5 - 6.5) / 5.5;
+          if (dx * dx + dy * dy > 1) continue;
+          const lit = -dx * 0.6 - dy * 0.7;
+          let tone: Rgb = lit > 0.3 ? STONE.light : lit > -0.25 ? STONE.base : STONE.mid;
+          // Ridges radiating from the knob.
+          const a = Math.atan2(dy, dx);
+          if (Math.abs(Math.sin(a * 2)) < 0.12 && dx * dx + dy * dy > 0.15) tone = STONE.side;
+          if (dy > 0.72) tone = STONE.side; // the cap's thick front edge
+          b.set(x, y, stoneAt(x, y, 63, tone));
+        }
+      }
+      // Curled corners.
+      b.set(0, 4, STONE.light);
+      b.set(w - 1, 4, STONE.base);
+      // The jewel knob.
+      b.ellipse(cx, 3, 2.2, 1.8, STONE.base);
+      b.set(cx - 1, 2, STONE.hi);
+      b.set(cx, 1, STONE.light);
+    },
+    { a: 0.28 },
+  );
+}
+
+/**
+ * A tea bench under a paper parasol (wagasa), from high above. The parasol
+ * is the biggest thing: a round canopy of red panels between thin ribs
+ * radiating from its cap, lit on its upper left, its rim scalloped. Below it
+ * the bench: a red felt cloth over the seat (its top seen deep, a fold at
+ * the front), short wooden legs, and a tray with a teapot and two cups.
  */
 export function teaBenchTop(): Sprite {
-  const w = 44;
-  const h = 40;
+  const w = 46;
+  const h = 44;
+  const RED = { hi: 0xf08468, lit: 0xe0604a, base: 0xc8442c, dark: 0x9a301e, deep: 0x6e1e14 };
   return sprite(
     w,
     h,
-    22,
-    38,
+    23,
+    41,
     (b) => {
-      // The bench: a red-clothed seat seen from above, its legs short below.
-      b.rect(5, 28, 34, 7, 0xc8442c);
-      b.rect(5, 28, 34, 1, 0xe8705a);
-      b.rect(5, 34, 34, 1, 0x8a2a1c);
-      for (const x of [7, 35]) b.rect(x, 35, 2, 3, W.face);
-      // The tray: cups and a pot on it.
-      b.rect(27, 26, 10, 4, W.light);
-      b.ellipse(30, 26, 1.6, 1.2, 0xe8e2d4);
-      b.ellipse(34, 26, 1.6, 1.2, 0xe8e2d4);
-      // The parasol: a big round canopy of panels, seen from above.
-      const cx = 18;
-      const cy = 13;
-      for (let y = 0; y < 28; y++) {
-        for (let x = 0; x < w; x++) {
-          const dx = (x + 0.5 - cx) / 17;
-          const dy = (y + 0.5 - cy) / 11;
-          const d = dx * dx + dy * dy;
-          if (d > 1) continue;
-          const panel = Math.floor(((Math.atan2(dy, dx) + Math.PI) / (Math.PI * 2)) * 10) % 2 === 0;
-          const lit = -dx * 0.5 - dy * 0.6;
-          let c: Rgb = lit > 0.25 ? 0xe8604a : lit > -0.25 ? 0xc8442c : 0x9a301e;
-          if (panel && c !== 0x9a301e) c = mix(c, 0x9a301e, 0.2);
-          if (d > 0.86) c = 0x8a2a1c;
+      // The bench: legs, then the felt-covered seat.
+      for (const x of [7, 37]) {
+        b.rect(x, 37, 3, 4, W.base);
+        b.rect(x, 37, 1, 4, W.hi);
+      }
+      for (let y = 28; y < 38; y++) {
+        for (let x = 4; x < 42; x++) {
+          let c: Rgb = y < 30 ? RED.lit : y > 35 ? RED.dark : RED.base;
+          if (y === 28) c = RED.hi;
+          if (y === 37) c = RED.deep;
+          if (y > 30 && y < 35 && noise(x, y, 3, 71) > 0.7) c = RED.lit; // felt nap
+          if (y === 35 && x % 6 === 0) c = RED.deep; // the cloth's fold
           b.set(x, y, c);
         }
       }
-      b.ellipse(cx, cy, 2, 1.4, 0x5a1a10);
-      b.set(cx - 1, cy - 1, 0xe8705a);
+      // The tray: wood, a teapot and two cups.
+      b.rect(26, 27, 13, 6, W.line);
+      b.rect(27, 28, 11, 4, W.warm);
+      b.rect(27, 28, 11, 1, W.hi);
+      b.ellipse(30, 29.5, 2.4, 2, 0x4a4a54);
+      b.set(29, 28, 0x8a8a96);
+      b.rect(32, 29, 1, 1, 0x4a4a54);
+      for (const cx of [35, 37]) {
+        b.set(cx, 29, 0xf2ece0);
+        b.set(cx, 30, 0xb8b0a0);
+      }
+      // The pole down to the bench.
+      b.rect(19, 22, 1, 8, W.face);
+      // The parasol.
+      const cx = 19;
+      const cy = 12;
+      const rx = 18;
+      const ry = 12;
+      for (let y = 0; y < 26; y++) {
+        for (let x = 0; x < w; x++) {
+          const dx = (x + 0.5 - cx) / rx;
+          const dy = (y + 0.5 - cy) / ry;
+          const d = Math.hypot(dx, dy);
+          const a = Math.atan2(dy, dx);
+          // A scalloped rim: each panel's edge bows out between the ribs.
+          const ribs = 12;
+          const scallop = 0.94 + 0.06 * Math.abs(Math.sin((a * ribs) / 2));
+          if (d > scallop) continue;
+          const lit = -dx * 0.55 - dy * 0.75;
+          const panel = Math.floor(((a + Math.PI) / (Math.PI * 2)) * ribs) % 2;
+          let c: Rgb = lit > 0.3 ? RED.hi : lit > 0 ? RED.lit : lit > -0.35 ? RED.base : RED.dark;
+          if (panel === 1) c = mix(c, RED.deep, 0.14);
+          // The ribs: thin dark lines from the cap.
+          if (Math.abs(Math.sin((a * ribs) / 2)) < 0.07 && d > 0.15) c = RED.deep;
+          if (d > scallop - 0.08) c = RED.deep; // the rim
+          b.set(x, y, c);
+        }
+      }
+      // The cap.
+      b.ellipse(cx, cy, 2.2, 1.6, 0x5a1a10);
+      b.set(cx - 1, cy - 1, RED.hi);
     },
-    { rx: 16, ry: 3, dx: 2, dy: -1, a: 0.28 },
+    { a: 0.28 },
   );
 }
 
 /**
- * A carpenter's bench from above: its wide top (planks, a plane, shavings, a
- * saw) is most of it; its front and legs show as a short band below.
+ * Boards laid side by side, the way this world's woodwork is drawn: each
+ * board its own shade, a dark seam between boards with a lit bevel beside
+ * it, broken grain strokes running along the board, and the odd knot.
+ * `along` is the direction the boards run.
+ */
+function paintBoards(
+  b: PixelBuffer,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  along: "x" | "y",
+  size: number,
+  seed: number,
+): void {
+  const tones = [KN.light, KN.base, KN.light, KN.hi] as const;
+  for (let y = y0; y < y0 + h; y++) {
+    for (let x = x0; x < x0 + w; x++) {
+      const across = along === "x" ? y - y0 : x - x0;
+      const run = along === "x" ? x - x0 : y - y0;
+      const board = Math.floor(across / size);
+      const at = across % size;
+      let c: Rgb = tones[Math.floor(hash(board, 0, seed) * tones.length)] ?? KN.base;
+      if (at === size - 1)
+        c = KN.dark; // the seam
+      else if (at === 0 && board > 0)
+        c = mix(c, KN.hi, 0.5); // the lit bevel
+      else if (noise(run, board * 7 + at, 5, seed + 1) > 0.72 && at > 0) c = KN.mid; // grain
+      // Butt joints: boards end at different places.
+      const joint = Math.floor(hash(board, 1, seed) * 40) + 9;
+      if (run % joint === joint - 1 && at < size - 1) c = KN.grain;
+      if (hash(x, y, seed + 2) < 0.006 && at > 0 && at < size - 1) c = KN.grain; // a knot
+      b.set(x, y, c);
+    }
+  }
+}
+
+/** Darken a band under an overhang, `rows` deep, fading out. */
+function eaveShadow(b: PixelBuffer, x0: number, y0: number, w: number, rows: number): void {
+  for (let k = 0; k < rows; k++) {
+    const a = 0.5 * (1 - k / rows);
+    for (let x = x0; x < x0 + w; x++) {
+      if (b.opaque(x, y0 + k)) b.set(x, y0 + k, mix(b.rgb(x, y0 + k), LINE, a));
+    }
+  }
+}
+
+/**
+ * A plank shed beside the house, seen from high above like everything else,
+ * read from a hand-drawn one: almost all of it is its lean-to roof, a broad
+ * sheet of boards sloping down toward the viewer, laid in overlapping
+ * courses that step down a pixel along their length (so they run on a
+ * slant), every board its own shade, a thick fascia at the eave. Under the
+ * eave only a thin strip of the front shows, deep in shade: corner posts,
+ * the end-grain of stacked firewood, a paper door's lower panes.
+ */
+export function annexTop(seed: number): Sprite {
+  const w = 72;
+  const roofH = 46;
+  const frontH = 9;
+  const h = roofH + frontH + 4;
+  const course = 6;
+  const boardLen = 34;
+  return sprite(
+    w,
+    h,
+    38,
+    h - 2,
+    (b) => {
+      const y0 = roofH;
+      // The strip of front under the eave, in shade.
+      for (let y = y0 - 1; y < y0 + frontH; y++) {
+        for (let x = 4; x < w - 4; x++)
+          b.set(x, y, x < 28 ? KN.inside : y > y0 + frontH - 3 ? KN.mid : 0xc8bca4);
+      }
+      // Firewood end-on in the open bay: just the lower rows show.
+      const rnd = stream(seed);
+      for (let k = 0; k < 5; k++) {
+        const lx = 8 + k * 4 + (rnd() - 0.5);
+        const ly = y0 + 4 + (k % 2);
+        b.ellipse(lx, ly, 2.2, 1.9, KN.deep);
+        b.ellipse(lx, ly, 1.6, 1.4, 0xd8a870);
+        b.set(Math.round(lx), Math.round(ly), KN.grain);
+      }
+      // The paper door's lower panes.
+      b.rect(36, y0, 18, frontH - 1, KN.dark);
+      for (let y = y0 + 1; y < y0 + frontH - 1; y++) {
+        for (let x = 37; x < 53; x++) b.set(x, y, (x - 37) % 4 === 3 ? KN.base : 0xe6dcc6);
+      }
+      b.rect(37, y0 + frontH - 3, 16, 2, KN.base);
+      // Posts, lit on their left.
+      for (const px of [4, 28, w - 7]) {
+        b.rect(px, y0 - 1, 3, frontH + 1, KN.base);
+        b.rect(px, y0 - 1, 1, frontH + 1, KN.hi);
+        b.rect(px + 2, y0 - 1, 1, frontH + 1, KN.dark);
+      }
+      // A stone footing along the ground.
+      for (let x = 3; x < w - 3; x++) {
+        b.set(x, y0 + frontH, hash(x >> 2, 1, seed) < 0.5 ? STONE.hi : STONE.light);
+        b.set(x, y0 + frontH + 1, (x >> 2) % 2 === 0 ? STONE.mid : STONE.side);
+      }
+      eaveShadow(b, 4, y0 - 1, w - 8, 4);
+      // The roof: its back edge a little narrower (further off), its courses on a slant.
+      for (let y = 0; y < roofH; y++) {
+        const inset = Math.round((1 - y / roofH) * 4);
+        for (let x = inset; x < w - inset; x++) {
+          // Courses climb a pixel every few columns, so the boards run on a slant.
+          const slant = y + Math.floor(x / 4);
+          const k = Math.floor(slant / course);
+          const shifted = x + k * 13;
+          const j = Math.floor(shifted / boardLen);
+          const local = slant % course;
+          let c: Rgb = hash(j, k, seed + 3) < 0.5 ? KN.light : KN.hi;
+          if (local === 0)
+            c = KN.grain; // the seam under the course above
+          else if (local === course - 1)
+            c = KN.base; // the course's shaded underside
+          else if (noise(x, y * 2, 6, seed + 5) > 0.78) c = KN.base; // grain
+          if (shifted % boardLen === 0 && local > 0 && local < course - 1) c = KN.mid; // board ends
+          if (x === inset) c = KN.hi;
+          if (x >= w - inset - 2) c = x === w - inset - 1 ? KN.dark : KN.mid;
+          b.set(x, y, c);
+        }
+      }
+      // The fascia along the eave: thick, lit on top.
+      b.rect(0, roofH - 4, w, 1, KN.hi);
+      b.rect(0, roofH - 3, w, 2, KN.base);
+      b.rect(0, roofH - 1, w, 1, KN.dark);
+    },
+    { a: 0.32 },
+  );
+}
+
+/**
+ * A carpenter's table from above: a thick top of long boards (lit along its
+ * back edge, grained, knotted) carrying a plank half-planed, the plane,
+ * curled shavings, a saw and a mallet; below it the front apron and four
+ * legs, with deep shade under the top between them.
  */
 export function benchTop(): Sprite {
+  const w = 38;
+  const h = 26;
+  return sprite(
+    w,
+    h,
+    19,
+    24,
+    (b) => {
+      // Shade under the top, then the legs standing in it.
+      b.rect(3, 16, w - 6, 7, mix(KN.deep, LINE, 0.3));
+      for (const x of [2, 9, w - 12, w - 5]) {
+        const front = x === 2 || x === w - 5;
+        b.rect(x, 16, 3, front ? 8 : 5, front ? KN.base : KN.dark);
+        if (front) {
+          b.rect(x, 16, 1, 8, KN.hi);
+          b.rect(x + 2, 16, 1, 8, KN.dark);
+        }
+      }
+      // A stretcher between the front legs.
+      b.rect(5, 20, w - 10, 2, KN.mid);
+      b.rect(5, 20, w - 10, 1, KN.light);
+      // The top, then its thick front edge.
+      paintBoards(b, 1, 3, w - 2, 11, "x", 4, 61);
+      b.rect(1, 3, w - 2, 1, KN.hi);
+      b.rect(1, 14, w - 2, 1, KN.light);
+      b.rect(1, 15, w - 2, 2, KN.mid);
+      b.rect(1, 17, w - 2, 1, KN.dark);
+      // A plank being planed, its fresh face pale, curls of shaving off its end.
+      b.rect(5, 6, 19, 4, 0xf0d0a0);
+      b.rect(5, 6, 19, 1, 0xfbe6c4);
+      b.rect(5, 9, 19, 1, 0xc89a62);
+      // The plane: a block with its steel iron and a knob.
+      b.rect(14, 5, 7, 4, 0x8a5a34);
+      b.rect(14, 5, 7, 1, 0xb07a4a);
+      b.rect(17, 6, 1, 2, 0xd8d4cc);
+      b.set(15, 6, 0x5a3a20);
+      for (const [x, y] of [
+        [25, 8],
+        [27, 6],
+        [26, 11],
+        [8, 12],
+        [30, 10],
+      ] as const) {
+        b.set(x, y, 0xfbe6c4);
+        b.set(x + 1, y, 0xe8c48a);
+        b.set(x + 1, y - 1, 0xfbe6c4);
+      }
+      // The saw: a toothed blade and a wooden grip.
+      for (let x = 27; x < 35; x++) {
+        b.set(x, 4, 0xe2ded6);
+        b.set(x, 5, x % 2 === 0 ? 0x8f8880 : 0xc9c2b9);
+      }
+      b.rect(34, 3, 2, 4, 0x8a4e22);
+      // A mallet lying at the front.
+      b.rect(29, 11, 4, 3, 0xb07a4a);
+      b.rect(29, 11, 4, 1, 0xd49d62);
+      b.rect(24, 12, 5, 1, 0x8a5a34);
+    },
+    { a: 0.28 },
+  );
+}
+
+const CLAY = {
+  hi: 0xeec08a,
+  light: 0xdcaa74,
+  base: 0xc8905c,
+  mid: 0xb07446,
+  dark: 0x8e5634,
+  deep: 0x6a3a22,
+} as const;
+
+/**
+ * A kamado (clay stove) seen from high above: its broad top slab is most of
+ * it (mottled clay, lit along the back and the front lip) with two iron pots
+ * sunk in it, one lidded in wood, one of rice; under the lip only a short,
+ * shaded strip of the front shows, two squat fire mouths glowing in it, on a
+ * stone plinth.
+ */
+export function stoveTop(): Sprite {
   const w = 36;
-  const h = 24;
+  const h = 30;
+  const lip = 19; // where the top slab ends and the front begins
   return sprite(
     w,
     h,
     18,
-    22,
-    (b) => {
-      // Legs and front, a short band.
-      b.rect(2, 15, 32, 3, W.face);
-      for (const x of [3, 30]) b.rect(x, 18, 3, 4, W.deep);
-      // The top: planks running along.
-      for (let y = 4; y < 15; y++) {
-        for (let x = 1; x < 35; x++) {
-          b.set(x, y, y % 4 === 0 ? W.base : y === 5 ? W.hi : x < 6 ? W.light : W.warm);
-        }
-      }
-      // A plank being planed, the plane, curled shavings, a saw.
-      b.rect(6, 6, 18, 4, 0xe8c48a);
-      b.rect(6, 6, 18, 1, 0xf6dcae);
-      b.rect(15, 5, 6, 3, W.face);
-      b.rect(16, 4, 2, 1, 0xa9a29a);
-      for (const [x, y] of [
-        [26, 7],
-        [28, 10],
-        [25, 11],
-        [9, 12],
-      ] as const) {
-        b.set(x, y, 0xf6dcae);
-        b.set(x + 1, y, 0xe8c48a);
-      }
-      b.rect(27, 4, 7, 2, 0xc9c2b9);
-      b.rect(32, 4, 2, 3, W.face);
-    },
-    { rx: 16, ry: 2.5, dx: 1, dy: 0, a: 0.28 },
-  );
-}
-
-/**
- * A kamado (clay stove) from above: its top shows two round pots in their
- * holes, the clay body below with the fire's mouth glowing.
- */
-export function stoveTop(): Sprite {
-  const clay = 0xb87a4a;
-  const clayLit = 0xd89a62;
-  const clayDark = 0x8a5230;
-  return sprite(
-    34,
-    30,
-    17,
     28,
     (b) => {
-      // The body's front: clay, with the fire's mouth.
-      b.rect(2, 14, 30, 12, clay);
-      b.rect(2, 14, 2, 12, clayLit);
-      b.rect(28, 14, 4, 12, clayDark);
-      b.ellipse(11, 22, 4, 3.4, 0x3a1a0a);
-      b.ellipse(11, 23, 2.6, 2, 0xff8a2a);
-      b.set(10, 22, 0xffe08a);
-      b.ellipse(24, 22, 4, 3.4, 0x3a1a0a);
-      b.ellipse(24, 23, 2, 1.6, 0xc84a1a);
-      // The top: the clay slab with two pots sitting in it.
-      b.rect(1, 4, 32, 11, clayLit);
-      b.rect(1, 4, 32, 1, 0xf0b47a);
-      for (const [px, lid] of [
-        [10, true],
-        [24, false],
-      ] as const) {
-        b.ellipse(px, 9, 6, 4, 0x2a2420);
-        b.ellipse(px, 8.5, 5, 3.2, lid ? 0x5a4a3a : 0x3a3430);
-        if (lid) {
-          b.ellipse(px - 1, 7.5, 2.4, 1.2, 0x8a7a64);
-          b.set(px, 7, 0xc8b89a);
-        } else b.ellipse(px, 8.5, 3.6, 2.2, 0xe8e2d4); // rice steaming
-      }
-    },
-    { rx: 15, ry: 2.6, dx: 1, dy: 0, a: 0.28 },
-  );
-}
-
-/**
- * A notes board under a small roof, from above: the roof (two board slopes)
- * is most of it, the board with its pinned notes shows below the eave.
- */
-export function notesBoardTop(seed: number): Sprite {
-  const w = 32;
-  const h = 34;
-  return sprite(
-    w,
-    h,
-    16,
-    32,
-    (b) => {
-      for (const x of [5, 25]) b.rect(x, 12, 2, 20, W.face);
-      // The board: cork, with notes pinned up.
-      b.rect(4, 14, 24, 13, 0xb08a52);
-      b.rect(4, 14, 24, 1, 0xd2ac70);
-      const rnd = stream(seed);
-      const colours = [0xfff1d8, 0xf6d24a, 0xf2b6c6, 0xbfe0f0, 0xfff1d8];
-      for (let i = 0; i < 5; i++) {
-        const nx = 6 + (i % 3) * 7 + Math.round(rnd() * 2);
-        const ny = 16 + Math.floor(i / 3) * 5 + Math.round(rnd() * 2);
-        b.rect(nx, ny, 5, 4, colours[i] ?? 0xfff1d8);
-        b.set(nx + 2, ny, 0xc8442c);
-        b.rect(nx + 1, ny + 2, 3, 1, 0x8a7a64);
-      }
-      // The little roof: two board slopes, the ridge across.
-      for (let y = 0; y < 13; y++) {
-        for (let x = 0; x < w; x++) {
-          const front = y > 4;
-          let c: Rgb = front
-            ? (x + 1) % 4 === 0
-              ? W.face
-              : W.base
-            : x % 4 === 0
-              ? W.base
-              : W.light;
-          if (y === 4) c = W.hi;
-          if (y >= 11) c = y === 12 ? W.line : W.face;
+      // The front strip: shaded clay with fine cracks.
+      for (let y = lip; y < 26; y++) {
+        for (let x = 2; x < w - 2; x++) {
+          let c: Rgb = y === lip ? CLAY.dark : CLAY.mid;
+          if (y > lip && noise(x, y, 3, 71) > 0.72) c = CLAY.base;
+          if (hash(x, y, 72) < 0.03) c = CLAY.dark;
+          if (x >= w - 4) c = CLAY.dark;
           b.set(x, y, c);
         }
       }
+      // Two squat fire mouths, framed dark, embers glowing low.
+      for (const [mx, hot] of [
+        [11, true],
+        [25, false],
+      ] as const) {
+        b.rect(mx - 4, lip + 1, 9, 6, CLAY.deep);
+        b.rect(mx - 3, lip + 2, 7, 4, 0x2a1208);
+        for (let x = mx - 3; x <= mx + 3; x++) {
+          b.set(
+            x,
+            lip + 5,
+            hot ? (x % 2 === 0 ? 0xffb03a : 0xff7a1a) : x % 3 === 0 ? 0xc84a1a : 0x5a1e0a,
+          );
+          if (hot && x % 2 === 1) b.set(x, lip + 4, 0xd8501a);
+        }
+        if (hot) b.set(mx, lip + 5, 0xffe08a);
+      }
+      // The stone plinth.
+      for (let x = 1; x < w - 1; x++) {
+        b.set(x, 26, x % 5 === 0 ? STONE.mid : STONE.hi);
+        b.set(x, 27, STONE.base);
+        b.set(x, 28, STONE.side);
+      }
+      // The top slab.
+      for (let y = 1; y < lip; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          let c: Rgb = noise(x, y, 4, 73) > 0.55 ? CLAY.hi : CLAY.light;
+          if (hash(x, y, 74) < 0.03) c = CLAY.base;
+          if (y === 1 || y === lip - 2) c = CLAY.hi;
+          if (y === lip - 1) c = CLAY.base;
+          if (x === w - 2) c = CLAY.base;
+          b.set(x, y, c);
+        }
+      }
+      for (const [px, lid] of [
+        [11, true],
+        [25, false],
+      ] as const) {
+        const py = 9.5;
+        // The iron pot's rim, lit along its back, sunk in a dark ring of clay.
+        b.ellipse(px, py, 6.8, 5.6, CLAY.mid);
+        b.ellipse(px, py, 6, 4.9, 0x2a2420);
+        b.ellipse(px, py, 5, 4, 0x4a423c);
+        for (let x = px - 3; x <= px + 3; x++) b.set(x, Math.round(py - 4.6), 0x8a827a);
+        if (lid) {
+          // A wooden lid of three boards, a handle across it.
+          b.ellipse(px, py, 4.2, 3.3, KN.light);
+          for (let x = px - 4; x <= px + 4; x++) {
+            if (b.rgb(x, Math.round(py - 1)) === KN.light) b.set(x, Math.round(py - 1), KN.mid);
+            if (b.rgb(x, Math.round(py + 1)) === KN.light) b.set(x, Math.round(py + 1), KN.mid);
+          }
+          b.ellipse(px - 0.5, py - 2, 3, 0.8, KN.hi);
+          b.rect(px - 3, Math.round(py), 7, 1, KN.grain);
+          b.rect(px - 3, Math.round(py) - 1, 7, 1, KN.base);
+        } else {
+          // Rice, heaped and white, shaded at the pot's back wall.
+          b.ellipse(px, py + 0.4, 4.2, 3.3, 0xf4efe2);
+          b.rect(px - 3, Math.round(py - 3), 7, 1, 0xd8d0be);
+          b.set(px - 1, Math.round(py), 0xffffff);
+          b.set(px + 2, Math.round(py + 1), 0xffffff);
+          b.set(px + 1, Math.round(py - 1), 0xffffff);
+        }
+      }
     },
-    { rx: 14, ry: 2.4, dx: 2, dy: -1, a: 0.28 },
+    { a: 0.28 },
   );
 }
 
-/** A red post box from above: its domed top is most of it, the slot below. */
-export function postBoxTop(): Sprite {
+/**
+ * A notice board seen from high above: its little gabled roof (a ridge
+ * running across, a short lit back slope, a long front slope of boards, a
+ * thick eave) is most of it; under the eave the board's face shows short and
+ * foreshortened, in shade, notes pinned to it, on two posts.
+ */
+export function notesBoardTop(seed: number): Sprite {
+  const w = 34;
+  const h = 32;
+  const eave = 17;
   return sprite(
-    16,
-    24,
-    8,
-    22,
+    w,
+    h,
+    17,
+    30,
     (b) => {
-      b.rect(3, 9, 10, 12, 0xc8442c);
-      b.rect(3, 9, 2, 12, 0xe0664a);
-      b.rect(11, 9, 2, 12, 0x8a2a1c);
-      b.rect(5, 12, 6, 2, 0x2a1a10);
-      b.rect(5, 16, 6, 3, 0xfff1d8);
-      b.ellipse(8, 7, 6, 4, 0xc8442c);
-      b.ellipse(7, 6, 4, 2.4, 0xe8705a);
-      b.set(6, 5, 0xfbb0a0);
-      b.rect(6, 21, 4, 2, 0x5a5048);
+      // Posts, lit on their left, down to the ground.
+      for (const x of [5, w - 8]) {
+        b.rect(x, eave, 3, 13, KN.base);
+        b.rect(x, eave, 1, 13, KN.hi);
+        b.rect(x + 2, eave, 1, 13, KN.dark);
+      }
+      // The board: a frame round cork, short because we look down on it.
+      b.rect(3, eave, w - 6, 10, KN.dark);
+      for (let y = eave + 1; y < eave + 9; y++) {
+        for (let x = 4; x < w - 4; x++) {
+          b.set(
+            x,
+            y,
+            hash(x, y, seed) < 0.12 ? 0x9a7240 : noise(x, y, 3, seed) > 0.6 ? 0xc49a5e : 0xb08a52,
+          );
+        }
+      }
+      b.rect(3, eave + 9, w - 6, 1, KN.mid);
+      // Notes: squat (foreshortened), each with a shadow and a red pin.
+      const rnd = stream(seed);
+      const colours = [0xfff1d8, 0xf6d24a, 0xf2b6c6, 0xbfe0f0, 0xe8f0c8];
+      for (let i = 0; i < 5; i++) {
+        const nw = 5 + Math.round(rnd());
+        const nx = 5 + i * 5 + Math.round(rnd());
+        const ny = eave + 3 + (i % 2) * 2;
+        b.rect(nx + 1, ny + 1, nw, 3, 0x6a4a28);
+        b.rect(nx, ny, nw, 3, colours[i] ?? 0xfff1d8);
+        b.rect(nx + 1, ny + 1, nw - 2, 1, 0x9a8a74);
+        b.set(nx + Math.floor(nw / 2), ny, 0xc8442c);
+      }
+      eaveShadow(b, 3, eave, w - 6, 2);
+      // The roof: a short back slope, the ridge cap, a long front slope.
+      // Boards laid in courses across the slopes, so they stay clean when the
+      // board is leaned for the high camera.
+      paintBoards(b, 2, 0, w - 4, 4, "x", 4, seed + 9);
+      paintBoards(b, 0, 5, w, eave - 7, "x", 3, seed + 10);
+      for (let y = 0; y < 4; y++)
+        for (let x = 2; x < w - 2; x++) b.set(x, y, mix(b.rgb(x, y), KN.dark, 0.15));
+      b.rect(1, 4, w - 2, 1, KN.hi);
+      b.rect(1, 3, w - 2, 1, KN.light);
+      b.rect(0, eave - 2, w, 1, KN.light);
+      b.rect(0, eave - 1, w, 1, KN.dark);
     },
-    { rx: 5, ry: 1.8, dx: 1, dy: 0, a: 0.28 },
+    { a: 0.28 },
   );
+}
+
+/**
+ * A round red post box from high above: its domed top is the biggest part,
+ * lit on its upper left with a shine, over a short cylinder shaded round its
+ * curve (a lit stripe on the left, deep red on the right) with the slot under
+ * a lip, a white plate, and a dark base band.
+ */
+export function postBoxTop(): Sprite {
+  const w = 18;
+  const h = 28;
+  const RED = {
+    shine: 0xfbb0a0,
+    hi: 0xf08468,
+    lit: 0xe0604a,
+    base: 0xc8442c,
+    dark: 0x9a301e,
+    deep: 0x6e1e14,
+  };
+  return sprite(
+    w,
+    h,
+    9,
+    26,
+    (b) => {
+      // The body: a cylinder, shaded round its curve.
+      for (let y = 10; y < 24; y++) {
+        for (let x = 2; x < 16; x++) {
+          const nx = (x + 0.5 - 9) / 7;
+          const c: Rgb =
+            nx < -0.7
+              ? RED.lit
+              : nx < -0.35
+                ? RED.hi
+                : nx < 0.35
+                  ? RED.base
+                  : nx < 0.75
+                    ? RED.dark
+                    : RED.deep;
+          b.set(x, y, c);
+        }
+      }
+      // The slot under its lip, the white plate, the dark base band.
+      b.rect(4, 12, 10, 1, RED.hi);
+      b.rect(5, 13, 8, 2, 0x2a1a10);
+      b.rect(5, 17, 8, 4, 0xfff1d8);
+      b.rect(5, 17, 8, 1, 0xffffff);
+      b.rect(6, 19, 6, 1, 0xc8442c);
+      b.rect(2, 23, 14, 2, 0x3a3230);
+      b.rect(2, 23, 14, 1, 0x5a524c);
+      // The domed top, seen deep from above.
+      for (let y = 0; y < 13; y++) {
+        for (let x = 0; x < w; x++) {
+          const dx = (x + 0.5 - 9) / 8.4;
+          const dy = (y + 0.5 - 7) / 6;
+          const d = dx * dx + dy * dy;
+          if (d > 1) continue;
+          const lit = -dx * 0.6 - dy * 0.7;
+          let c: Rgb = lit > 0.4 ? RED.hi : lit > 0 ? RED.lit : lit > -0.4 ? RED.base : RED.dark;
+          if (dy > 0.75) c = RED.dark; // the dome's lower rim
+          b.set(x, y, c);
+        }
+      }
+      b.rect(5, 3, 3, 1, RED.shine);
+      b.set(4, 4, RED.shine);
+    },
+    { a: 0.28 },
+  );
+}
+
+/** The campfire's pot, from the high camera: its lid on top, its belly below. */
+const FIRE_POT = [
+  "..ooooo..",
+  ".oLLHLLo.",
+  "oLLHHLLLo",
+  "oDLLLLLDo",
+  "oDDDDDDDo",
+  "oDSDDDDDo",
+  ".oDDDDDo.",
+  "..ooooo..",
+];
+const FIRE_POT_COLORS: Readonly<Record<string, Rgb>> = {
+  o: 0x14100c,
+  L: 0x5a5048,
+  H: 0x7a7068,
+  D: 0x2a2420,
+  S: 0x4a4038,
+};
+/** Where the pot sits, from the pit's flame base (see Ambient.fire): 4 left, 8 up. */
+export const FIRE_POT_OFFSET = { x: -4, y: -8 } as const;
+/** How far above the flame base the tripod's top (the chain's hook) is. */
+const FIRE_APEX_RISE = 17;
+
+/**
+ * The campfire's pot and the chain it hangs from, drawn through `set` so the
+ * sprite and the live fire (which draws it again over its flames) share it.
+ * (x, y) is the flame base: the middle of the pit, where the flames start.
+ */
+export function drawFirePot(
+  set: (x: number, y: number, color: Rgb) => void,
+  x: number,
+  y: number,
+): void {
+  // The chain, from the tripod's top down to the lid's knob.
+  for (let cy = y - FIRE_APEX_RISE; cy < y + FIRE_POT_OFFSET.y; cy++) {
+    set(x, cy, cy % 2 ? 0x5a5048 : 0x2a2420);
+  }
+  FIRE_POT.forEach((row, r) => {
+    for (let c = 0; c < row.length; c++) {
+      const color = FIRE_POT_COLORS[row[c] ?? "."];
+      if (color !== undefined) set(x + FIRE_POT_OFFSET.x + c, y + FIRE_POT_OFFSET.y + r, color);
+    }
+  });
 }
 
 /**
  * A campfire from above: a ring of stones round the pit, logs crossed in the
- * middle, flames rising from them, a kettle on its tripod.
+ * middle, flames rising from them, and a pot hanging low over the fire from a
+ * tripod whose feet stand inside the ring.
  */
 export function fireTop(flames = true): Sprite {
   const w = 34;
@@ -1211,26 +2511,64 @@ export function fireTop(flames = true): Sprite {
       // The ring: stones around an oval pit, seen from above.
       const cx = 17;
       const cy = 26;
-      b.ellipse(cx, cy, 11, 6, 0x3a2a20);
-      for (let i = 0; i < 10; i++) {
-        const a = (i / 10) * Math.PI * 2;
-        const sx = cx + Math.cos(a) * 11;
-        const sy = cy + Math.sin(a) * 6;
-        b.ellipse(sx, sy, 3.4, 2.4, STONE.base);
-        b.ellipse(sx - 0.8, sy - 0.8, 2, 1.2, STONE.hi);
-        b.set(Math.round(sx + 1), Math.round(sy + 1.5), STONE.side);
+      // Ash in the pit, darker toward the middle.
+      b.ellipse(cx, cy, 11, 6, 0x4a3a30);
+      b.ellipse(cx, cy, 8.5, 4.4, 0x3a2a20);
+      for (let k = 0; k < 14; k++) b.set(cx - 7 + ((k * 5) % 15), cy - 3 + ((k * 3) % 6), 0x6a5a50);
+      // The ring: stones each their own size and shape, textured, lit up-left.
+      for (let i = 0; i < 11; i++) {
+        const a = (i / 11) * Math.PI * 2 + hash(i, 1, 9) * 0.2;
+        const sx = cx + Math.cos(a) * 11.2;
+        const sy = cy + Math.sin(a) * 6.2;
+        const rx = 2.8 + hash(i, 2, 9) * 1.4;
+        const ry = 2 + hash(i, 3, 9) * 0.9;
+        for (let y = Math.floor(sy - ry - 1); y <= sy + ry + 1; y++) {
+          for (let x = Math.floor(sx - rx - 1); x <= sx + rx + 1; x++) {
+            const nx = (x + 0.5 - sx) / rx;
+            const ny = (y + 0.5 - sy) / ry;
+            if (Math.abs(nx) ** 2.2 + Math.abs(ny) ** 2.2 > 1) continue;
+            const lit = -nx * 0.5 - ny * 0.8;
+            const tone: Rgb =
+              lit > 0.35 ? STONE.hi : lit > -0.25 ? STONE.light : ny > 0.5 ? STONE.mid : STONE.base;
+            b.set(x, y, stoneAt(x, y, 90 + i, tone));
+          }
+        }
+        // Soot on the stones facing the fire.
+        b.set(
+          Math.round(sx - Math.cos(a) * rx * 0.6),
+          Math.round(sy - Math.sin(a) * ry * 0.6),
+          STONE.side,
+        );
       }
-      // Logs crossed in the pit, glowing at their ends.
-      for (let k = 0; k < 9; k++) {
-        b.set(cx - 6 + k, cy - 1 + Math.round(k * 0.3), W.face);
-        b.set(cx + 6 - k, cy - 1 + Math.round(k * 0.3), W.base);
+      // Logs crossed in the pit: bark, a pale split face, charred, glowing ends.
+      for (const [dir, tone] of [
+        [1, W.face],
+        [-1, W.base],
+      ] as const) {
+        for (let k = 0; k < 11; k++) {
+          const x = cx - dir * 5 + dir * k;
+          const y = cy - 1 + Math.round(k * 0.3);
+          b.set(x, y, tone);
+          b.set(x, y + 1, W.deep);
+          if (k > 3 && k < 7) b.set(x, y, 0x2a1a14); // charred where it burns
+        }
+        b.set(cx - dir * 5, cy - 1, 0xe0b078);
+        b.set(cx + dir * 5, cy + 2, 0xff8a2a);
       }
+      // Embers glowing in the ash.
       b.ellipse(cx, cy, 4, 2, 0xff8a2a);
       b.ellipse(cx, cy - 0.5, 2.4, 1.2, 0xffd060);
-      // Flames: a tall core and two licks (the live view flickers its own).
-      for (let y = 0; y < (flames ? 12 : 0); y++) {
-        const t = y / 12;
-        const half = Math.round((1 - t) * 4);
+      for (const [x, y] of [
+        [cx - 5, cy + 2],
+        [cx + 4, cy + 3],
+        [cx - 2, cy + 3],
+        [cx + 6, cy],
+      ] as const)
+        b.set(x, y, 0xff6a1a);
+      // Flames, low and wide round the pot (the live view flickers its own).
+      for (let y = 0; y < (flames ? 8 : 0); y++) {
+        const t = y / 8;
+        const half = Math.round((1 - t) * 6);
         for (let x = cx - half; x <= cx + half; x++) {
           b.set(
             x,
@@ -1239,15 +2577,28 @@ export function fireTop(flames = true): Sprite {
           );
         }
       }
-      // The tripod and kettle, standing over the fire.
-      for (let k = 0; k < 14; k++) {
-        b.set(cx - 9 + Math.round(k * 0.6), cy - k, W.deep);
-        b.set(cx + 9 - Math.round(k * 0.6), cy - k, W.deep);
+      // The tripod: three poles from inside the ring up to a lashed top, the
+      // back one mostly behind the pot. Lit on their upper side.
+      const base = cy - 2;
+      const apex = { x: cx, y: base - FIRE_APEX_RISE };
+      for (const foot of [
+        { x: cx + 3, y: cy - 6 },
+        { x: cx - 10, y: cy + 1 },
+        { x: cx + 10, y: cy + 1 },
+      ]) {
+        const steps = Math.max(Math.abs(foot.x - apex.x), Math.abs(foot.y - apex.y));
+        for (let k = 0; k <= steps; k++) {
+          const px = Math.round(foot.x + ((apex.x - foot.x) * k) / steps);
+          const py = Math.round(foot.y + ((apex.y - foot.y) * k) / steps);
+          b.set(px, py, k % 3 === 1 ? W.base : W.deep);
+        }
       }
-      b.ellipse(cx, 9, 5, 3.6, 0x2a2420);
-      b.ellipse(cx - 1, 8, 3, 1.6, 0x5a5048);
-      b.rect(cx - 1, 2, 2, 5, W.deep);
+      // The lashing at the top.
+      b.set(apex.x - 1, apex.y + 1, W.face);
+      b.set(apex.x + 1, apex.y + 1, W.face);
+      // The pot hangs low over the logs, in the fire, inside the ring.
+      drawFirePot((x, y, color) => b.set(x, y, color), cx, base);
     },
-    { rx: 12, ry: 3, dx: 1, dy: 0, a: 0.25 },
+    { a: 0.25 },
   );
 }

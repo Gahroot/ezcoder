@@ -1,11 +1,15 @@
-// How a critter gets around the farm. Walking follows the yard's paths, a
+// How a critter gets around the farm: on foot, along the yard's paths (a
 // small waypoint graph laid out to keep clear of the house, the pond and the
-// beds. Agents switch work in a blink, so long trips don't just play faster:
-// a critter rides a skateboard or a motorbike along the paths, flies straight
-// over on a jetpack, or teleports. Pure: a trip is planned once, and its pose
-// can be read at any moment.
+// beds), and round anything in its way: given the ground every standing
+// thing covers (a desk, a tree's trunk, the well), any stretch of a route
+// that would cross it is re-planned round it on a fine grid, so nobody ever
+// walks through the furniture. It walks at an easy pace and jogs a long way,
+// easing into each trip and slowing as it arrives, so it never jumps or zips
+// about. Pure: a trip is planned once, and its pose can be read at any moment.
 
-export const TRAVEL_MODES = ["walk", "run", "skate", "bike", "jetpack", "teleport"] as const;
+import { SolidMask } from "./goal-farm-roam";
+
+export const TRAVEL_MODES = ["walk", "run"] as const;
 export type TravelMode = (typeof TRAVEL_MODES)[number];
 
 /** A point on the map, in map pixels (for a critter: where its feet are). */
@@ -13,6 +17,20 @@ export interface Spot {
   readonly x: number;
   readonly y: number;
 }
+
+/** The ground a critter's feet can't cross (see Farm.walk): 1 = blocked. */
+export interface WalkGrid {
+  readonly width: number;
+  readonly height: number;
+  readonly blocked: Uint8Array;
+}
+
+/** A critter's feet on the ground: how wide, and how deep (feet at the bottom). */
+const FEET = { w: 8, h: 2 } as const;
+/** The grid a blocked stretch is re-planned on, in map pixels. */
+const DETOUR_CELL = 3;
+/** How far a walkway point inside something is moved to clear ground. */
+const NODE_NUDGE = 18;
 
 /** The yard's walkways: points, and which pairs are joined by a clear path. */
 export interface PathGraph {
@@ -24,7 +42,7 @@ export interface Trip {
   readonly mode: TravelMode;
   readonly from: Spot;
   readonly to: Spot;
-  /** The route it follows (ground modes), or just its two ends (flying, teleporting). */
+  /** The route it follows, along the paths. */
   readonly path: readonly Spot[];
   readonly start: number;
   readonly duration: number;
@@ -34,25 +52,18 @@ export interface Pose {
   readonly x: number;
   /** Where its feet (and its shadow) are on the ground. */
   readonly y: number;
-  /** How far above the ground it is drawn (a jetpack's arc). */
-  readonly lift: number;
   readonly facing: 1 | -1;
-  readonly alpha: number;
   readonly done: boolean;
 }
 
-/** No trip takes longer than this; slower ways of travelling get upgraded. */
-export const MAX_TRIP_MS = 1500;
-const TELEPORT_MS = 520;
+/** Map pixels per second: an easy walk, and a jog for a long way. */
+const SPEED: Readonly<Record<TravelMode, number>> = { walk: 30, run: 52 };
+/** Past this far, a critter jogs. */
+const JOG_FROM = 150;
+/** How long it takes to get up to pace, and to slow to a stop. */
+const RAMP_S = 0.3;
 /** Two spots this close are joined directly, without the paths. */
 const DIRECT = 26;
-/** Map pixels per second, for the ways that follow the paths. */
-const SPEED: Readonly<Record<"walk" | "run" | "skate" | "bike", number>> = {
-  walk: 42,
-  run: 88,
-  skate: 150,
-  bike: 205,
-};
 
 const dist = (a: Spot, b: Spot): number => Math.hypot(b.x - a.x, b.y - a.y);
 
@@ -71,8 +82,196 @@ export interface Router {
   route(from: Spot, to: Spot): Spot[];
 }
 
-/** Precompute every shortest route through the graph (it is small). */
-export function createRouter(graph: PathGraph): Router {
+/**
+ * Feet and the ground: whether a critter could stand at a spot, walk a
+ * straight stretch, or find its way round what's in the way.
+ */
+interface Ground {
+  clear(p: Spot): boolean;
+  stretchClear(a: Spot, b: Spot): boolean;
+  /** The nearest spot within `reach` whose ground is clear, or null. */
+  nearestClear(p: Spot, reach: number): Spot | null;
+  /** A clear way from a to b round whatever's between (both ends included), or null. */
+  detour(a: Spot, b: Spot): Spot[] | null;
+}
+
+function groundOf(walk: WalkGrid): Ground {
+  const mask = new SolidMask(
+    walk.width,
+    walk.height,
+    (x, y) => walk.blocked[y * walk.width + x] === 1,
+  );
+  const clear = (p: Spot): boolean =>
+    !mask.any(p.x - FEET.w / 2, p.y - FEET.h + 1, p.x + FEET.w / 2, p.y + 1);
+  const stretchClear = (a: Spot, b: Spot): boolean => {
+    const steps = Math.max(1, Math.ceil(dist(a, b)));
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      if (!clear({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })) return false;
+    }
+    return true;
+  };
+  const nearestClear = (p: Spot, reach: number): Spot | null => {
+    if (clear(p)) return p;
+    for (let r = 1; r <= reach; r++) {
+      let best: Spot | null = null;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const q = { x: p.x + dx, y: p.y + dy };
+          if (clear(q) && (!best || dist(p, q) < dist(p, best))) best = q;
+        }
+      }
+      if (best) return best;
+    }
+    return null;
+  };
+  const cols = Math.ceil(walk.width / DETOUR_CELL);
+  const rows = Math.ceil(walk.height / DETOUR_CELL);
+  const cellSpot = (c: number): Spot => ({
+    x: (c % cols) * DETOUR_CELL + DETOUR_CELL / 2,
+    y: Math.floor(c / cols) * DETOUR_CELL + DETOUR_CELL / 2,
+  });
+  const open = new Uint8Array(cols * rows);
+  for (let c = 0; c < open.length; c++) open[c] = clear(cellSpot(c)) ? 1 : 0;
+  const cellOf = (p: Spot): number => {
+    const cx = Math.min(cols - 1, Math.max(0, Math.floor(p.x / DETOUR_CELL)));
+    const cy = Math.min(rows - 1, Math.max(0, Math.floor(p.y / DETOUR_CELL)));
+    return cy * cols + cx;
+  };
+  /** The nearest open cell to a spot (it may stand just inside something). */
+  const openCellNear = (p: Spot): number => {
+    const home = cellOf(p);
+    if (open[home]) return home;
+    const hx = home % cols;
+    const hy = Math.floor(home / cols);
+    for (let r = 1; r <= 8; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const x = hx + dx;
+          const y = hy + dy;
+          if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+          if (open[y * cols + x]) return y * cols + x;
+        }
+      }
+    }
+    return -1;
+  };
+  const detour = (a: Spot, b: Spot): Spot[] | null => {
+    const start = openCellNear(a);
+    const goal = openCellNear(b);
+    if (start < 0 || goal < 0) return null;
+    // A* over the grid, eight ways, never cutting a blocked corner.
+    const gScore = new Float32Array(cols * rows).fill(Infinity);
+    const came = new Int32Array(cols * rows).fill(-1);
+    const shut = new Uint8Array(cols * rows);
+    const goalSpot = cellSpot(goal);
+    const heap: Array<[number, number]> = [];
+    const push = (f: number, c: number): void => {
+      heap.push([f, c]);
+      let i = heap.length - 1;
+      while (i > 0) {
+        const up = (i - 1) >> 1;
+        if ((heap[up]?.[0] ?? 0) <= f) break;
+        [heap[i], heap[up]] = [heap[up] as [number, number], heap[i] as [number, number]];
+        i = up;
+      }
+    };
+    const pop = (): number => {
+      const top = heap[0]?.[1] ?? -1;
+      const last = heap.pop();
+      if (heap.length > 0 && last) {
+        heap[0] = last;
+        let i = 0;
+        for (;;) {
+          const l = i * 2 + 1;
+          const r = l + 1;
+          let m = i;
+          if ((heap[l]?.[0] ?? Infinity) < (heap[m]?.[0] ?? Infinity)) m = l;
+          if ((heap[r]?.[0] ?? Infinity) < (heap[m]?.[0] ?? Infinity)) m = r;
+          if (m === i) break;
+          [heap[i], heap[m]] = [heap[m] as [number, number], heap[i] as [number, number]];
+          i = m;
+        }
+      }
+      return top;
+    };
+    gScore[start] = 0;
+    push(dist(cellSpot(start), goalSpot), start);
+    let found = false;
+    while (heap.length > 0) {
+      const c = pop();
+      if (c < 0 || shut[c]) continue;
+      if (c === goal) {
+        found = true;
+        break;
+      }
+      shut[c] = 1;
+      const cx = c % cols;
+      const cy = Math.floor(c / cols);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const nc = ny * cols + nx;
+          if (!open[nc] || shut[nc]) continue;
+          if (dx && dy && (!open[cy * cols + nx] || !open[ny * cols + cx])) continue;
+          const g = (gScore[c] ?? Infinity) + (dx && dy ? Math.SQRT2 : 1);
+          if (g >= (gScore[nc] ?? Infinity)) continue;
+          gScore[nc] = g;
+          came[nc] = c;
+          push(g + dist(cellSpot(nc), goalSpot) / DETOUR_CELL, nc);
+        }
+      }
+    }
+    if (!found) return null;
+    const cells: Spot[] = [];
+    for (let c = goal; c >= 0; c = came[c] ?? -1) {
+      cells.push(cellSpot(c));
+      if (c === start) break;
+    }
+    cells.reverse();
+    // Pull the zigzag of cells taut: from each point, straight to the
+    // furthest one it can reach in the clear.
+    const points = [a, ...cells, b];
+    const taut: Spot[] = [a];
+    let at = 0;
+    while (at < points.length - 1) {
+      let next = at + 1;
+      for (let k = points.length - 1; k > at + 1; k--) {
+        const from = points[at];
+        const to = points[k];
+        if (from && to && stretchClear(from, to)) {
+          next = k;
+          break;
+        }
+      }
+      const point = points[next];
+      if (point) taut.push(point);
+      at = next;
+    }
+    return taut;
+  };
+  return { clear, stretchClear, nearestClear, detour };
+}
+
+/**
+ * Precompute every shortest route through the graph (it is small). Given the
+ * ground (see WalkGrid), walkway points that sit inside something move to
+ * clear ground, and any stretch of a route that would cross something is
+ * re-planned round it.
+ */
+export function createRouter(graph: PathGraph, walk?: WalkGrid): Router {
+  const ground = walk ? groundOf(walk) : null;
+  graph = ground
+    ? {
+        ...graph,
+        nodes: graph.nodes.map((node) => ground.nearestClear(node, NODE_NUDGE) ?? node),
+      }
+    : graph;
   const n = graph.nodes.length;
   const d: number[][] = Array.from({ length: n }, (_, i) =>
     Array.from({ length: n }, (_, j) => (i === j ? 0 : Infinity)),
@@ -129,82 +328,87 @@ export function createRouter(graph: PathGraph): Router {
     });
     return best;
   };
+  /** The route along the walkways, before anything in the way is walked round. */
+  const along = (from: Spot, to: Spot): Spot[] => {
+    if (dist(from, to) <= DIRECT || n === 0) return [from, to];
+    const a = nearest(from);
+    const b = nearest(to);
+    const hops: Spot[] = [];
+    let at = a;
+    for (let guard = 0; guard <= n; guard++) {
+      const node = graph.nodes[at];
+      if (node) hops.push(node);
+      if (at === b) break;
+      const step = next[at]?.[b] ?? -1;
+      if (step < 0) break;
+      at = step;
+    }
+    const path = [from, ...hops, to];
+    // Drop repeated points (a spot standing right on a node).
+    return path.filter((p, i) => {
+      const prev = path[i - 1];
+      return i === 0 || !prev || dist(prev, p) > 0.5;
+    });
+  };
   return {
     route(from, to) {
-      if (dist(from, to) <= DIRECT || n === 0) return [from, to];
-      const a = nearest(from);
-      const b = nearest(to);
-      const hops: Spot[] = [];
-      let at = a;
-      for (let guard = 0; guard <= n; guard++) {
-        const node = graph.nodes[at];
-        if (node) hops.push(node);
-        if (at === b) break;
-        const step = next[at]?.[b] ?? -1;
-        if (step < 0) break;
-        at = step;
+      const path = along(from, to);
+      if (!ground) return path;
+      // Walk round anything a stretch would cross.
+      const out: Spot[] = [path[0] ?? from];
+      for (let i = 1; i < path.length; i++) {
+        const a = out[out.length - 1] ?? from;
+        const b = path[i];
+        if (!b) continue;
+        if (ground.stretchClear(a, b)) {
+          out.push(b);
+          continue;
+        }
+        const way = ground.detour(a, b);
+        if (way) out.push(...way.slice(1));
+        else out.push(b);
       }
-      const path = [from, ...hops, to];
-      // Drop repeated points (a spot standing right on a node).
-      return path.filter((p, i) => {
-        const prev = path[i - 1];
+      return out.filter((p, i) => {
+        const prev = out[i - 1];
         return i === 0 || !prev || dist(prev, p) > 0.5;
       });
     },
   };
 }
 
-function groundMs(mode: keyof typeof SPEED, length: number): number {
-  return Math.round((length / SPEED[mode]) * 1000);
+/** Walk a short way, jog a long one. */
+export function chooseMode(length: number): TravelMode {
+  return length > JOG_FROM ? "run" : "walk";
 }
 
-function flightMs(from: Spot, to: Spot): number {
-  return Math.round(Math.min(1100, Math.max(520, 400 + dist(from, to) * 2.2)));
+/** How long a trip of `length` takes: the time at pace, plus a ramp at each end. */
+function tripMs(mode: TravelMode, length: number): number {
+  const cruise = length / SPEED[mode];
+  return Math.round((cruise + Math.min(RAMP_S, cruise)) * 1000);
 }
 
-/**
- * Choose how to travel a route. `roll` is a 0–1 draw (seeded by the caller,
- * so a critter's choices replay the same way). Hurried critters (ones whose
- * work keeps changing) favour the fast ways.
- */
-export function chooseMode(length: number, hurry: boolean, roll: number): TravelMode {
-  let mode: TravelMode;
-  if (length <= 30) mode = "walk";
-  else if (length <= 90) mode = hurry && roll < 0.5 ? "skate" : "run";
-  else if (length > 240 && hurry) mode = roll < 0.5 ? "jetpack" : "teleport";
-  else if (roll < 0.34) mode = "skate";
-  else if (roll < 0.64) mode = "bike";
-  else if (roll < 0.86) mode = "jetpack";
-  else mode = "teleport";
-  // Never let a trip drag: upgrade anything too slow for the distance.
-  if ((mode === "walk" || mode === "run") && groundMs(mode, length) > MAX_TRIP_MS) mode = "bike";
-  if ((mode === "skate" || mode === "bike") && groundMs(mode, length) > MAX_TRIP_MS) {
-    mode = "jetpack";
-  }
-  return mode;
-}
-
-/** Plan a trip along a route, choosing how to travel it. */
-export function planTrip(
-  route: readonly Spot[],
-  options: { readonly hurry: boolean; readonly roll: number; readonly now: number },
-): Trip {
+/** Plan a trip along a route. */
+export function planTrip(route: readonly Spot[], options: { readonly now: number }): Trip {
   const from = route[0] ?? { x: 0, y: 0 };
   const to = route[route.length - 1] ?? from;
   const length = pathLength(route);
-  const mode = chooseMode(length, options.hurry, options.roll);
-  const flying = mode === "jetpack" || mode === "teleport";
-  const path = flying ? [from, to] : route;
-  const duration =
-    mode === "teleport"
-      ? TELEPORT_MS
-      : mode === "jetpack"
-        ? flightMs(from, to)
-        : Math.max(160, groundMs(mode, length));
-  return { mode, from, to, path, start: options.now, duration };
+  const mode = chooseMode(length);
+  return { mode, from, to, path: route, start: options.now, duration: tripMs(mode, length) };
 }
 
-const easeInOut = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+/**
+ * How far along a trip is (0–1) at time fraction t: speeding up over the
+ * first ramp, at an even pace in the middle, slowing over the last ramp.
+ */
+function paced(t: number, duration: number): number {
+  if (duration <= 0) return 1;
+  const f = Math.min(1 / 3, (RAMP_S * 1000) / duration);
+  if (f <= 0) return t;
+  const v = 1 / (1 - f);
+  if (t < f) return (0.5 * v * t * t) / f;
+  if (t > 1 - f) return 1 - (0.5 * v * (1 - t) * (1 - t)) / f;
+  return 0.5 * v * f + v * (t - f);
+}
 
 function along(path: readonly Spot[], distance: number): { at: Spot; dx: number } {
   let left = distance;
@@ -226,31 +430,7 @@ function along(path: readonly Spot[], distance: number): { at: Spot; dx: number 
 export function tripPose(trip: Trip, now: number, lastFacing: 1 | -1 = 1): Pose {
   const t = trip.duration <= 0 ? 1 : Math.min(1, Math.max(0, (now - trip.start) / trip.duration));
   const done = t >= 1;
-  const { from, to } = trip;
-  const heading = (dx: number): 1 | -1 => (dx > 0.5 ? 1 : dx < -0.5 ? -1 : lastFacing);
-
-  if (trip.mode === "teleport") {
-    // Fade out where it stood, a beat of nothing, fade in where it's going.
-    if (t < 0.42) return { ...from, lift: 0, facing: lastFacing, alpha: 1 - t / 0.42, done };
-    const facing = heading(to.x - from.x);
-    if (t < 0.58) return { ...to, lift: 0, facing, alpha: 0, done };
-    return { ...to, lift: 0, facing, alpha: Math.min(1, (t - 0.58) / 0.42), done };
-  }
-  if (trip.mode === "jetpack") {
-    // Straight over everything; the shadow runs along the ground below.
-    const p = easeInOut(t);
-    const height = 18 + dist(from, to) * 0.07;
-    return {
-      x: from.x + (to.x - from.x) * p,
-      y: from.y + (to.y - from.y) * p,
-      lift: done ? 0 : Math.sin(Math.PI * t) * height,
-      facing: heading(to.x - from.x),
-      alpha: 1,
-      done,
-    };
-  }
-  // Feet keep a steady pace; wheels speed up and slow down.
-  const progress = trip.mode === "skate" || trip.mode === "bike" ? easeInOut(t) : t;
-  const { at, dx } = along(trip.path, pathLength(trip.path) * progress);
-  return { ...at, lift: 0, facing: heading(dx), alpha: 1, done };
+  const { at, dx } = along(trip.path, pathLength(trip.path) * paced(t, trip.duration));
+  const facing: 1 | -1 = dx > 0.5 ? 1 : dx < -0.5 ? -1 : lastFacing;
+  return { ...(done ? trip.to : at), facing, done };
 }

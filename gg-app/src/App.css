@@ -184,6 +184,9 @@
   /* The plan review dissolving out. PlanReviewModal's EXIT_FALLBACK_MS must
      stay longer than this so `animationend` normally wins. */
   --dur-plan-out: 300ms;
+  /* One breath of something live and working (a goal's working count, its
+     "Running now" pill), with the shared `live-breathe` keyframes. */
+  --dur-breathe: 1.8s;
 
   /* Keyboard focus: one ring for every control, drawn with box-shadow so it
      follows the control's radius. :focus-visible means pointer clicks never
@@ -1487,8 +1490,8 @@ select {
   padding: 0 var(--space-11);
   font-size: var(--fs-lg);
 }
-/* A pill with a caption hung under it (Motion's "Still in process"). The
-   caption is out of flow, so the three pills stay level and the home column
+/* A pill with a caption hung under it (Goals' "In beta"). The
+   caption is out of flow, so the pills stay level and the home column
    keeps its centring. */
 .home-action-slot {
   position: relative;
@@ -3121,6 +3124,38 @@ select {
 /* ── New goal modal ── */
 .goal-modal {
   width: min(520px, 90vw);
+  /* Fits any window: the fields scroll inside .goal-modal-body, while the
+     title and the buttons stay in view on the modal's own glass (no fill of
+     their own, so nothing shows as a separate slab). */
+  max-height: calc(100dvh - 2 * var(--space-8));
+  display: flex;
+  flex-direction: column;
+}
+.goal-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for focus rings at the edges, taken back from the layout. */
+  margin: 0 calc(-1 * var(--space-3));
+  padding: 0 var(--space-3) var(--space-1);
+}
+.goal-modal .modal-head,
+.goal-modal .modal-actions,
+.goal-modal .modal-error {
+  flex: 0 0 auto;
+}
+/* Short windows: smaller boxes, so less of the form needs scrolling. */
+@media (max-height: 760px) {
+  .goal-modal .goal-textarea {
+    min-height: 56px;
+  }
+  .goal-modal .goal-context-box {
+    height: 92px;
+  }
+  .goal-modal .modal-actions {
+    margin-top: var(--space-8);
+  }
 }
 .goal-textarea {
   display: block;
@@ -3152,27 +3187,43 @@ select {
   gap: var(--space-3);
   line-height: 1.3;
 }
+/* The goal's attached folders and files: one fixed-height box whether it's
+   empty or holds twenty, so the modal never grows as things are added. Chips
+   wrap and the box scrolls. */
+.goal-context-box {
+  box-sizing: border-box;
+  /* Three rows of chips and a peek of a fourth, so a longer list reads as scrollable. */
+  height: 128px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
 .goal-context-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-}
-.goal-context-item {
-  position: relative;
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.goal-context-chip {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-5);
-  /* Room on the inline end for the always-visible remove button. */
-  padding: var(--space-5) 40px var(--space-5) var(--space-6);
-  font-size: var(--fs-md);
+  gap: var(--space-3);
+  max-width: 100%;
+  min-width: 0;
+  /* The remove button carries its own 24px target, so the chip's end is tight. */
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-button);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
   line-height: 1.3;
 }
-.goal-context-item + .goal-context-item {
-  border-top: 1px solid var(--border);
+.goal-context-icon {
+  flex: 0 0 auto;
 }
 .goal-context-name {
   min-width: 0;
@@ -3180,10 +3231,41 @@ select {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Unlike a picker row's hover-only hide, removal must be findable without
-   hover (touch, keyboard). */
+/* Always visible (touch and keyboard can't hover), 24px for an easy target. */
 .goal-context-remove {
-  opacity: 1;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    color var(--t-fast),
+    background-color var(--t-fast);
+}
+.goal-context-remove:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.goal-context-remove:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.goal-context-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-8);
+  text-align: center;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
 }
 .goal-preview {
   color: var(--text-muted);
@@ -3194,8 +3276,11 @@ select {
   justify-content: space-between;
   gap: var(--space-6);
 }
-/* Same tight first-label spacing as `.modal-head + .modal-label`. */
-.modal-head + .goal-name-head > .modal-label {
+/* Same tight first-label spacing as `.modal-head + .modal-label`, for the
+   first field inside a goal modal's scrolling body. */
+.modal-head + .goal-name-head > .modal-label,
+.goal-modal-body > .modal-label:first-child,
+.goal-modal-body > .goal-name-head:first-child > .modal-label {
   margin-top: var(--space-2);
 }
 .goal-name-count {
@@ -4084,6 +4169,17 @@ select {
   background: var(--gloss-neutral);
   box-shadow: var(--gloss-shadow-neutral);
 }
+/* A goal working right now: its "Running now" pill (the shared Badge in the
+   success tint) breathes with the header's working count. */
+.goal-status-running {
+  animation: live-breathe var(--dur-breathe) var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal-status-running {
+    animation: none;
+  }
+}
 .picker-preview {
   flex: 1;
   min-width: 0;
@@ -4232,6 +4328,39 @@ select {
   min-height: 0;
   overflow: hidden;
 }
+/* The farm's pokeable things as buttons, for keyboard and screen-reader users:
+   hidden until focused, then a small chip bottom-right naming what's poked. */
+.goal-world-pokes {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 1;
+}
+.goal-world-poke {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.goal-world-poke:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-button);
+  line-height: 1.25;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 .goal-world-canvas {
   /* Sized and centred by GoalWorld so the whole farmstead fits the window. */
   position: absolute;
@@ -4239,6 +4368,18 @@ select {
   top: 0;
   display: block;
   image-rendering: pixelated;
+  /* Blank until the farm's first frame is drawn, then it fades up instead of
+     popping in (see GoalWorld's `data-ready`). */
+  opacity: 0;
+  transition: opacity var(--dur-dissolve) var(--ease-out);
+}
+.goal-world-canvas[data-ready] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal-world-canvas {
+    transition: none;
+  }
 }
 
 /* The Workers view runs under the window chrome: the title bar and nav turn
@@ -4248,6 +4389,22 @@ select {
   position: absolute;
   inset: 0;
   z-index: 0;
+}
+/* Opening the Workers view: the farm and the header's frost fade in as one
+   (the animation restarts each time the view is shown). Not a view
+   transition: WebKit leaves backdrop blur out of its snapshots, so the frost
+   used to pop in late after a crossfade. */
+.app.goal-world-open .goal-world,
+.app.goal-world-open .chat-head::before,
+.app.goal-world-open .chat-head::after {
+  animation: fade-in var(--dur-dissolve) var(--ease-out) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app.goal-world-open .goal-world,
+  .app.goal-world-open .chat-head::before,
+  .app.goal-world-open .chat-head::after {
+    animation: none;
+  }
 }
 .app.goal-world-open .chat-head {
   position: relative;
@@ -4272,7 +4429,7 @@ select {
 }
 .app.goal-world-open .chat-head::before {
   /* The tint that keeps the title and controls readable, fading with the blur. */
-  background: linear-gradient(to bottom, rgb(6 8 14 / 0.42), rgb(6 8 14 / 0.14) 55%, transparent);
+  background: linear-gradient(to bottom, rgb(6 8 14 / 0.55), rgb(6 8 14 / 0.22) 55%, transparent);
   -webkit-backdrop-filter: blur(1.5px) saturate(140%);
   backdrop-filter: blur(1.5px) saturate(140%);
   -webkit-mask-image: linear-gradient(to bottom, rgb(0 0 0) 40%, transparent);
@@ -4283,6 +4440,41 @@ select {
   backdrop-filter: blur(3px);
   -webkit-mask-image: linear-gradient(to bottom, rgb(0 0 0) 10%, transparent 60%);
   mask-image: linear-gradient(to bottom, rgb(0 0 0) 10%, transparent 60%);
+}
+/* Legible over a bright farm: the header's dimmer text (the title, the
+   level, the usage meter, the counts, the toggle chevron) goes to full ink,
+   with a soft dark halo that holds it off the grass and sky behind. */
+.app.goal-world-open .chat-head {
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.7),
+    0 0 8px rgb(0 0 0 / 0.45);
+}
+.app.goal-world-open .chat-head-title,
+.app.goal-world-open .chat-head-cwd,
+.app.goal-world-open .chat-head-branch,
+.app.goal-world-open .chat-head-sep,
+.app.goal-world-open .title-usage-window,
+.app.goal-world-open .title-usage-reset,
+.app.goal-world-open .goal-tally,
+.app.goal-world-open .rank-level,
+.app.goal-world-open .nav-toggle {
+  color: var(--text);
+}
+/* The level pill gets a darker glass so its coloured rank name (gradient
+   text, which a text shadow smears) reads on its own. */
+.app.goal-world-open .rank-badge,
+.app.goal-world-open .chat-head-nav .btn-ghost {
+  background: rgb(10 12 18 / 0.62);
+  color: var(--text);
+}
+.app.goal-world-open .rank-name {
+  text-shadow: none;
+}
+.app.goal-world-open .rank-badge,
+.app.goal-world-open .nav-toggle,
+.app.goal-world-open .title-usage-track {
+  /* Icons and pills: a drop shadow follows their shape, unlike a box shadow. */
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.55));
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .app.goal-world-open .chat-head {
@@ -4343,6 +4535,436 @@ select {
   height: 6px;
   border-radius: 50%;
   background: var(--warning);
+}
+
+/* A started goal's workers, just right of the level badge: how many are
+   working now, and the tasks done (and failed) so far. Plain words, counts in
+   the text colour, so it reads at a glance without being one more badge. */
+.goal-tally {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: 0;
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.goal-tally-part + .goal-tally-part::before {
+  content: "\00b7";
+  margin-right: var(--space-4);
+  color: var(--text-dim);
+}
+.goal-tally-n {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+.goal-tally-part[data-tone="failed"] .goal-tally-n {
+  color: var(--error);
+}
+/* While anyone's working, the count breathes with them. */
+.goal-tally-part[data-live] .goal-tally-n {
+  animation: live-breathe var(--dur-breathe) var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
+}
+/* Something live and working, breathing gently (see --dur-breathe). */
+@keyframes live-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal-tally-part[data-live] .goal-tally-n {
+    animation: none;
+  }
+}
+
+/* ── Ken needs you (GoalAskNotice.tsx) ───────────────────────────────────
+   Ken (GG Goals) is blocked on a question: a card just under the header, in
+   the storybook style of his dialogue box (art shared through --ken-frame,
+   --ken-plate, --ken-swirl below), with his thinking face beside the
+   question. It drops in and settles when it appears, then stays still until
+   the user goes to the chat. */
+.goal-ask {
+  position: absolute;
+  top: var(--goal-head, 0px);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-6);
+  pointer-events: none;
+}
+.goal-ask-sign {
+  position: relative;
+  max-width: min(560px, 100%);
+  padding-top: 46px; /* room for the name plate, clear of the header */
+  animation: goal-ask-drop 520ms var(--ease-out) both;
+  pointer-events: auto;
+}
+/* The board: Ken's parchment box (cut corners, double frame, swirls), with
+   his name plate on its top edge, as in KenDialogue. */
+.goal-ask-board {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-3) var(--space-1);
+  border: 16px solid transparent;
+  border-image: var(--ken-frame) 20 fill / 16px stretch;
+  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 0.35));
+  color: var(--ken-ink);
+}
+.goal-ask-board::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  z-index: -1;
+  background: var(--ken-swirl) right -10px bottom -40px / 220px auto no-repeat;
+  opacity: 0.75;
+  clip-path: polygon(
+    10px 0,
+    calc(100% - 10px) 0,
+    100% 10px,
+    100% calc(100% - 10px),
+    calc(100% - 10px) 100%,
+    10px 100%,
+    0 calc(100% - 10px),
+    0 10px
+  );
+}
+.goal-ask-title {
+  position: absolute;
+  left: -4px;
+  top: -34px;
+  margin: 0;
+  min-width: 170px;
+  height: 28px;
+  border-style: solid;
+  border-width: 0 26px;
+  border-image: var(--ken-plate) 0 34 fill / 0 26px stretch;
+  color: #fff8ec;
+  font:
+    14px/28px "Young Serif",
+    Georgia,
+    serif;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 #000;
+}
+/* Ken's thinking face, head and shoulders, at a whole 2x so the pixels
+   stay even (the crop trims his empty left edge and his chest). */
+.goal-ask-ken {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 58px;
+  overflow: hidden;
+}
+.goal-ask-ken canvas {
+  display: block;
+  width: 72px;
+  height: 88px;
+  margin-left: -4px;
+  image-rendering: pixelated;
+}
+.goal-ask-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding-top: var(--space-2);
+}
+.goal-ask-question {
+  margin: 0;
+  font:
+    15px/1.4 "Young Serif",
+    Georgia,
+    serif;
+  color: var(--ken-ink);
+  /* Two lines at most; the whole question is in the chat. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.goal-ask-more {
+  margin: var(--space-1) 0 0;
+  font:
+    13px/1.3 "Young Serif",
+    Georgia,
+    serif;
+  color: #7a5a38;
+}
+/* The button: dark and gold, like the name plate. */
+.goal-ask-answer {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 var(--space-6);
+  border: 1.5px solid #b8933f;
+  border-radius: 6px;
+  background: linear-gradient(#4a3419, #1c130a);
+  color: #fff8ec;
+  font:
+    13px/1.3 "Young Serif",
+    Georgia,
+    serif;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgb(0 0 0 / 0.3);
+  transition:
+    filter var(--dur-press) var(--ease-hover),
+    border-color var(--dur-press) var(--ease-hover);
+}
+.goal-ask-answer:hover {
+  filter: brightness(1.25);
+  border-color: #e0c06a;
+}
+.goal-ask-answer:active {
+  filter: brightness(0.9);
+  box-shadow: none;
+}
+.goal-ask-answer:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+/* Drops in from under the header and settles with a little give. */
+@keyframes goal-ask-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+  50% {
+    opacity: 1;
+  }
+  75% {
+    transform: translateY(3px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal-ask-sign {
+    animation: goal-ask-fade var(--dur-enter) linear both;
+  }
+}
+
+/* ── Ken's dialogue box (KenDialogue) ──
+   Little Ken, bottom left of the Workers view, now and then saying a line
+   like a game's dialogue box: his portrait stands behind a parchment box
+   (cut corners, a fine double frame, faint swirls), his name plate (dark,
+   angled ends, gold caps) on its top edge, a purple ▼ once the line is out.
+   Art, not theme: the parchment and gold are literal like the farm's own
+   sign above. Frames are 9-slice SVGs, so corners stay crisp at any size.
+   Hidden most of the time; data-phase drives the entrance ("entering",
+   "talking" are up; "hidden", "leaving" down). Transitions, not keyframes,
+   so an interrupted line reverses from where it is. In: the box lifts and
+   opens, the name plate slides in, Ken rises from behind the box and
+   settles. Out, quicker: Ken sinks, then the box drops away. ENTER_MS /
+   EXIT_MS in KenDialogue.tsx match these timings. */
+/* Ken's storybook art, shared by his dialogue box and his question sign. */
+:is(.ken-dialogue, .goal-ask) {
+  --ken-ink: #4a3520;
+  --ken-frame: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cpolygon points='12,0 36,0 48,12 48,36 36,48 12,48 0,36 0,12' fill='%238a643c'/%3E%3Cpolygon points='12.62,1.5 35.38,1.5 46.5,12.62 46.5,35.38 35.38,46.5 12.62,46.5 1.5,35.38 1.5,12.62' fill='%23fff7e6'/%3E%3Cpolygon points='13.45,3.5 34.55,3.5 44.5,13.45 44.5,34.55 34.55,44.5 13.45,44.5 3.5,34.55 3.5,13.45' fill='%23c9a477'/%3E%3Cpolygon points='13.86,4.5 34.14,4.5 43.5,13.86 43.5,34.14 34.14,43.5 13.86,43.5 4.5,34.14 4.5,13.86' fill='%23f6e5c8'/%3E%3C/svg%3E");
+  --ken-plate: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='36' viewBox='0 0 120 36'%3E%3Cdefs%3E%3ClinearGradient id='p' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%234a3419'/%3E%3Cstop offset='1' stop-color='%231c130a'/%3E%3C/linearGradient%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f8e594'/%3E%3Cstop offset='.55' stop-color='%23c99f3e'/%3E%3Cstop offset='1' stop-color='%238a6420'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='22,4 98,4 108,18 98,32 22,32 12,18' fill='url(%23p)' stroke='%23b8933f' stroke-width='1.5'/%3E%3Cpolygon points='2,18 15,6 28,18 15,30' fill='url(%23g)' stroke='%234a3108' stroke-width='1.2'/%3E%3Ccircle cx='15' cy='18' r='4.4' fill='%239a7426' stroke='%234a3108' stroke-width='1'/%3E%3Ccircle cx='13.8' cy='16.8' r='1.6' fill='%23fff6c8'/%3E%3Cpolygon points='92,18 105,6 118,18 105,30' fill='url(%23g)' stroke='%234a3108' stroke-width='1.2'/%3E%3Ccircle cx='105' cy='18' r='4.4' fill='%239a7426' stroke='%234a3108' stroke-width='1'/%3E%3Ccircle cx='103.8' cy='16.8' r='1.6' fill='%23fff6c8'/%3E%3C/svg%3E");
+  --ken-swirl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='140' viewBox='0 0 220 140' fill='none' stroke='%23e4cca4' stroke-width='1.6'%3E%3Ccircle cx='150' cy='96' r='40'/%3E%3Ccircle cx='150' cy='96' r='27'/%3E%3Cpath d='M150 69a13 13 0 1 1-13 13'/%3E%3Cpath d='M110 96c0-40 30-66 70-66'/%3E%3Cpath d='M190 96c0 30-20 44-40 44'/%3E%3Ccircle cx='60' cy='40' r='22'/%3E%3Cpath d='M60 18a11 11 0 1 0 11 11'/%3E%3Cpath d='M38 40c-14 0-26 12-26 30'/%3E%3C/svg%3E");
+}
+@font-face {
+  font-family: "Young Serif";
+  src: url("./assets/fonts/young-serif/young-serif-normal.woff2") format("woff2");
+  font-display: swap;
+}
+.ken-dialogue {
+  position: absolute;
+  left: var(--space-8);
+  bottom: var(--space-8);
+  z-index: 2;
+  width: min(400px, calc(100% - 2 * var(--space-8)));
+  padding-top: 118px;
+}
+.ken-dialogue-portrait {
+  position: absolute;
+  left: 26px;
+  top: 0;
+  overflow: hidden; /* Ken rises from behind the box's top edge */
+}
+.ken-dialogue-portrait canvas {
+  display: block;
+  width: 108px;
+  height: 132px;
+  image-rendering: pixelated;
+}
+.ken-dialogue-box {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: var(--space-5) 28px var(--space-1) var(--space-3);
+  border: 16px solid transparent;
+  border-image: var(--ken-frame) 20 fill / 16px stretch;
+  background: none;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+  color: var(--ken-ink);
+  font:
+    14px/1.42 "Young Serif",
+    Georgia,
+    serif;
+  text-align: start;
+  cursor: pointer;
+  transform-origin: 50% 100%;
+}
+.ken-dialogue-box::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  z-index: -1;
+  background: var(--ken-swirl) right -10px bottom -18px / 260px auto no-repeat;
+  opacity: 0.75;
+  clip-path: polygon(
+    10px 0,
+    calc(100% - 10px) 0,
+    100% 10px,
+    100% calc(100% - 10px),
+    calc(100% - 10px) 100%,
+    10px 100%,
+    0 calc(100% - 10px),
+    0 10px
+  );
+}
+.ken-dialogue-box:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.ken-dialogue-name {
+  position: absolute;
+  left: -4px;
+  top: -34px;
+  z-index: 2;
+  min-width: 150px;
+  height: 28px;
+  border-style: solid;
+  border-width: 0 26px;
+  border-image: var(--ken-plate) 0 34 fill / 0 26px stretch;
+  color: #fff8ec;
+  font:
+    14px/28px "Young Serif",
+    Georgia,
+    serif;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-shadow: 0 1px 0 #000;
+}
+.ken-dialogue-text {
+  display: block;
+  /* Room for three lines, so the box never grows as a line types out. */
+  min-height: calc(3 * 1.42em);
+}
+.ken-dialogue-more {
+  position: absolute;
+  right: -2px;
+  bottom: 0;
+  border: 6px solid transparent;
+  border-top: 8px solid #6b3fa0;
+  border-bottom: 0;
+  filter: drop-shadow(0 1px 0 #2c1846);
+  opacity: 0;
+}
+.ken-dialogue-more[data-on] {
+  opacity: 1;
+  animation: ken-more-bob 900ms steps(2, jump-none) infinite;
+}
+@keyframes ken-more-bob {
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+/* Down: nothing shows or takes a click; each part waits where it comes from. */
+.ken-dialogue:is([data-phase="hidden"], [data-phase="leaving"]) {
+  pointer-events: none;
+}
+.ken-dialogue[data-phase="hidden"] :is(.ken-dialogue-portrait, .ken-dialogue-box) {
+  visibility: hidden;
+}
+.ken-dialogue:is([data-phase="hidden"], [data-phase="leaving"]) .ken-dialogue-box {
+  opacity: 0;
+  transform: translateY(12px) scaleY(0.9);
+  transition:
+    opacity 180ms var(--ease-in) 100ms,
+    transform 200ms var(--ease-in) 100ms;
+}
+.ken-dialogue:is([data-phase="entering"], [data-phase="talking"]) .ken-dialogue-box {
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 300ms var(--ease-out);
+}
+.ken-dialogue:is([data-phase="hidden"], [data-phase="leaving"]) .ken-dialogue-name {
+  opacity: 0;
+  transform: translateX(-14px);
+  transition:
+    opacity 120ms var(--ease-in),
+    transform 140ms var(--ease-in);
+}
+.ken-dialogue:is([data-phase="entering"], [data-phase="talking"]) .ken-dialogue-name {
+  transition:
+    opacity 200ms var(--ease-out) 90ms,
+    transform 260ms var(--ease-out) 90ms;
+}
+.ken-dialogue:is([data-phase="hidden"], [data-phase="leaving"]) .ken-dialogue-portrait canvas {
+  transform: translateY(100%);
+  transition: transform 160ms var(--ease-in);
+}
+.ken-dialogue:is([data-phase="entering"], [data-phase="talking"]) .ken-dialogue-portrait canvas {
+  transition: transform var(--duration-spring) var(--ease-spring) 130ms;
+}
+/* Less motion: a short fade, nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  .ken-dialogue :is(.ken-dialogue-box, .ken-dialogue-name, .ken-dialogue-portrait canvas) {
+    transform: none !important;
+    transition: opacity 120ms linear !important;
+  }
+  .ken-dialogue:is([data-phase="hidden"], [data-phase="leaving"]) .ken-dialogue-portrait canvas {
+    opacity: 0;
+  }
+  .ken-dialogue-more[data-on] {
+    animation: none;
+  }
+}
+@keyframes goal-ask-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* High contrast drops the frame art: a plain system outline instead. */
+@media (forced-colors: active) {
+  .goal-ask-board,
+  .ken-dialogue-box {
+    border-image: none;
+    border: 2px solid CanvasText;
+    background: Canvas;
+  }
+  .goal-ask-title,
+  .ken-dialogue-name {
+    border-image: none;
+  }
+  .goal-ask-answer {
+    border: 2px solid ButtonText;
+  }
 }
 
 /* ── Floating chat controls ─────────────────────────────────────────────
@@ -5805,6 +6427,12 @@ select {
 }
 .critter-lane.open {
   height: calc(var(--critter-size) + 48px);
+}
+/* Critters coming back into view (the chat shown again after a goal's
+   Workers view): the lane and its scenery are simply there, nothing replays. */
+.critter-lane.instant,
+.critter-lane.instant * {
+  transition: none !important;
 }
 .critter-floor {
   position: absolute;
@@ -10798,6 +11426,28 @@ select {
 .ask-foot {
   display: flex;
   margin-top: var(--space-6);
+}
+/* A question asking for information (a URL, a name): its own field and an
+   Answer button, right under the question, so the answer is typed where it's
+   asked. The field reuses .modal-input; it sits on the band's raised surface
+   like the option rows do, so it reads as a control. */
+.ask-text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: min(360px, 100%);
+}
+.ask-text-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text);
+  font-size: var(--fs-base);
+  padding: var(--space-4) var(--space-5);
+}
+.ask-text .btn {
+  flex: 0 0 auto;
 }
 @media (prefers-reduced-motion: reduce) {
   .ask-answered-bubble.is-live .shimmer-text {
