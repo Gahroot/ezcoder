@@ -8797,9 +8797,10 @@ select {
 }
 
 /* App-update banner — its own row below the footer so it reads as a distinct,
-   noticeable announcement. Same green gradient as the home-screen update pill
-   (--fx-update-from → --fx-update-to) with dark text; a light sweep draws the eye. The whole
-   row is the click target that downloads, installs, and restarts. */
+   noticeable announcement. Themed on the critter meadow: dark glass, a strip of
+   the home screen's pixel grass along the bottom edge, and three critters
+   hopping by the words (UpdateBanner.tsx). The whole row is the click target
+   that downloads, installs, and restarts. */
 .update-banner {
   position: relative;
   flex: 0 0 auto;
@@ -8808,10 +8809,13 @@ select {
   justify-content: center;
   gap: 9px;
   width: 100%;
-  padding: var(--space-4) var(--rail);
+  /* The grass takes the bottom 4px, so the line box sits 2px higher; the total
+     height is unchanged. */
+  padding: calc(var(--space-4) - 2px) var(--rail) calc(var(--space-4) + 2px);
   border: none;
-  background: linear-gradient(135deg, var(--fx-update-from) 0%, var(--fx-update-to) 100%);
-  color: var(--on-fx-update);
+  background: linear-gradient(180deg, #141a1d 0%, #0f1513 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  color: #eef3ea;
   font-family: var(--sans);
   font-size: var(--fs-base);
   font-weight: 600;
@@ -8819,7 +8823,35 @@ select {
   overflow: hidden;
   transition: filter var(--t-fast);
 }
-/* Light sweep across the banner to draw the eye to a pending update. */
+.update-banner .badge {
+  background: var(--critter);
+  border-color: rgb(42 10 30 / 0.35);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4);
+  color: #2a0a1e;
+}
+/* The slot the banner arrives in. It opens to the banner's height while the
+   banner dissolves in (the shared blur-to-sharp entrance), so the composer
+   above eases up instead of jumping. Both run once, on the slot, so the swap
+   to the progress bar inside it never replays them; `backwards` leaves no
+   filter on the banner at rest. */
+.update-banner-slot {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  animation: update-banner-in var(--dur-dissolve) var(--ease-out) backwards;
+}
+.update-banner-slot > .update-banner {
+  min-height: 0;
+}
+@keyframes update-banner-in {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+/* A faint green sweep across the banner to draw the eye to a pending update. */
 .update-banner::after {
   content: "";
   position: absolute;
@@ -8827,7 +8859,7 @@ select {
   background: linear-gradient(
     100deg,
     transparent 30%,
-    rgba(255, 255, 255, 0.28) 50%,
+    rgb(127 232 154 / 0.07) 50%,
     transparent 70%
   );
   transform: translateX(-100%);
@@ -8848,63 +8880,118 @@ select {
   }
 }
 .update-banner:hover:not(.update-banner-busy) {
-  filter: brightness(1.08);
+  filter: brightness(1.15);
 }
 .update-banner-busy {
   cursor: default;
-  filter: saturate(0.7) brightness(0.92);
+}
+/* The meadow strip: one 12×4 tile of grass over soil, repeated. */
+.update-banner-grass {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--space-2);
+  background-size: 12px 4px;
+  background-repeat: repeat-x;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+/* The crew stands on the grass, so it drops below the centred text. */
+.update-banner-crew {
+  display: inline-flex;
+  gap: 3px;
+  align-self: flex-end;
+  transform: translateY(6px);
+}
+.update-banner-critter {
+  position: relative;
+  display: block;
+  flex: none;
+  width: var(--space-8);
+  height: var(--space-8);
+  transform-origin: 50% 100%;
+}
+.update-banner-critter img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  user-select: none;
+}
+/* Waiting: each critter hops in turn (the delays are set inline). */
+.update-banner-critter.hopping {
+  animation: update-banner-hop 2.4s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
+}
+@keyframes update-banner-hop {
+  0%,
+  20%,
+  100% {
+    transform: none;
+  }
+  8% {
+    transform: translateY(-4px) scale(0.94, 1.06);
+  }
+}
+/* Installing: the legs step by blinking frame B over frame A. */
+.update-banner-critter .step {
+  opacity: 0;
+  animation: update-banner-step 0.36s steps(1, end) infinite;
+  animation-play-state: var(--loop-play-state, running);
+}
+@keyframes update-banner-step {
+  50% {
+    opacity: 1;
+  }
 }
 /* Installing state: the banner box itself becomes the progress track — same
    padding/font as the available state, so the swap causes zero layout shift.
-   The fill is absolutely positioned (out of flow); only the centered
-   percentage occupies the same line box the label text did. */
-.update-banner-progress {
-  /* The busy filter desaturates to grey — right for a static "busy" row, but
-     it muddied the greens here. Progress keeps the vibrant gradient as the
-     track and sweeps a lighter mint from the same family across it. */
-  filter: none;
-}
+   The fill, grass and crew are absolutely positioned (out of flow); only the
+   centred percentage occupies the line box the label text did. */
 .update-banner-fill {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  background: linear-gradient(135deg, var(--fx-update-fill-from) 0%, var(--fx-update-fill-to) 100%);
-  /* Hairline dark leading edge so the fill boundary reads crisply. */
-  box-shadow: 1px 0 0 rgba(4, 19, 13, 0.15);
+  background: linear-gradient(90deg, rgb(108 191 82 / 0.16), rgb(127 232 154 / 0.3));
+  /* Hairline mint leading edge so the fill boundary reads crisply. */
+  box-shadow: 1px 0 0 rgb(127 232 154 / 0.7);
   transition: width 180ms linear;
+  pointer-events: none;
+}
+/* The crew marches along the grass at the front of the fill. */
+.update-banner-march {
+  position: absolute;
+  bottom: 3px;
+  display: inline-flex;
+  gap: var(--space-1);
+  translate: -100% 0;
+  transition: left 180ms linear;
   pointer-events: none;
 }
 .update-banner-pct {
   position: relative; /* above the fill */
+  display: inline-flex;
+  align-items: center;
+  /* The Install badge's box (an --fs-xs line at 1.5, 2px padding, 2px border)
+     sets the ready banner's height; the percentage reserves the same, so
+     clicking Install doesn't shrink the bar. */
+  min-height: calc(var(--fs-xs) * 1.5 + var(--space-2));
   font-variant-numeric: tabular-nums; /* steady width as the digits climb */
 }
-.update-banner-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--on-fx-update);
-  box-shadow: 0 0 0 0 rgba(4, 19, 13, 0.55);
-  animation: update-pulse 1.8s ease-out infinite;
-  animation-play-state: var(--loop-play-state, running);
-}
-@keyframes update-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(4, 19, 13, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 7px transparent;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-/* Both loops run for as long as an update waits, so reduced motion stops them
-   outright. The banner's colour and dot still mark it. */
+/* The sweep, the hops and the steps run for as long as an update waits, so
+   reduced motion stops them outright; the crew stands still. */
 @media (prefers-reduced-motion: reduce) {
   .update-banner::after,
-  .update-banner-dot {
+  .update-banner-critter.hopping,
+  .update-banner-critter .step {
     animation: none;
+  }
+  /* No growing or blur: the banner just fades in at its full height. */
+  .update-banner-slot {
+    animation-name: fade-in;
   }
 }
 /* Home-screen update pill — small green-gradient chip floating above the ASCII

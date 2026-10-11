@@ -193,6 +193,11 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   // flip the same row from shimmer → summary instead of pushing a new line.
   const compactionIdRef = useRef<number | null>(null);
   const runStartRef = useRef<number>(0);
+  // Whether a run is open, and whether it hit an error frame. A run that
+  // errored ends with the error sound instead of the done sound; an error
+  // outside any run (no run_end will follow) sounds as it lands.
+  const runOpenRef = useRef(false);
+  const runErroredRef = useRef(false);
 
   const tokensRef = useRef<number>(0);
   // Accumulated assistant text this run, for detecting [DONE:n] plan-step
@@ -584,6 +589,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           subagentGroupIdRef.current = null;
           compactionIdRef.current = null;
           runStartRef.current = Date.now();
+          runOpenRef.current = true;
+          runErroredRef.current = false;
 
           tokensRef.current = 0;
           assistantTextRef.current = "";
@@ -903,6 +910,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           break;
         case "error": {
           pushItem({ kind: "error", id: nextId(), ...readChatError(d) });
+          if (runOpenRef.current) runErroredRef.current = true;
+          else playSound("error");
           break;
         }
         case "run_end": {
@@ -929,6 +938,9 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           // question the user can still answer and strand the agent until it
           // timed out ten minutes later.
           const runCancelled = d.cancelled === true;
+          const runErrored = runErroredRef.current || d.failed === true;
+          runOpenRef.current = false;
+          runErroredRef.current = false;
           setItems((prev) =>
             prev.map((it) => {
               if (it.kind === "user" && it.queued) return { ...it, queued: false };
@@ -990,7 +1002,10 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
               setPlanTotal(0);
               setPlanDone(new Set());
             }
-            if (d.unverified !== true) playSound("done");
+            // The agent couldn't continue: the error cue, not "done". A cancel
+            // takes the branch above and stays silent.
+            if (runErrored) playSound("error");
+            else if (d.unverified !== true) playSound("done");
             // A run may have created/removed `.gg/commands/*.md` (e.g.
             // /setup-commit writing commit.md). Refresh so the top-right
             // commit button flips /setup-commit → /commit without a restart.

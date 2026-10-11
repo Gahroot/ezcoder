@@ -133,7 +133,6 @@ const GoalPicker = lazy(() =>
   import("./GoalPicker").then((module) => ({ default: module.GoalPicker })),
 );
 import { BackButton } from "./BackButton";
-import { Badge } from "./Badge";
 import { HomeScreen } from "./HomeScreen";
 import { SettingsModal } from "./SettingsModal";
 import { initialEntryView, type EntryView } from "./app-entry-view";
@@ -173,6 +172,7 @@ import { useTranscriptExport } from "./useTranscriptExport";
 import { useWindowOrder } from "./useWindowOrder";
 import { dropHiddenFocus } from "./hidden-focus";
 import { Composer } from "./Composer";
+import { UpdateBanner } from "./UpdateBanner";
 import { usePromptHistory } from "./usePromptHistory";
 import { usePromptEnhance } from "./usePromptEnhance";
 import "./App.css";
@@ -296,6 +296,9 @@ function App(): React.ReactElement {
     segments: PromptSegment[];
   } | null>(null);
   const [enhancing, setEnhancing] = useState(false);
+  // Composer sends so far: a change tells the composer strips (attachments,
+  // @-files, cold-cache notice) to drop what the send cleared in that commit.
+  const [sendCount, setSendCount] = useState(0);
   // The floating "Enhance" pill is shown only after the user pauses typing for
   // ~1s (and hidden again on the next keystroke / send / empty input).
   const [enhanceHintVisible, setEnhanceHintVisible] = useState(false);
@@ -2057,6 +2060,7 @@ function App(): React.ReactElement {
       const question = trimmed.slice(kenMatch[0].length).trim();
       if (!question) return;
       chatLayout.capture();
+      setSendCount((n) => n + 1);
       recordHistory(trimmed);
       stickToBottomRef.current = true;
       const kenBubbleId = nextId();
@@ -2078,6 +2082,9 @@ function App(): React.ReactElement {
     }
 
     chatLayout.capture();
+    // The strips this send clears (chips, the cold-cache notice) must leave in
+    // the bubble's commit, or their fold resizes the transcript mid-move.
+    setSendCount((n) => n + 1);
     recordHistory(trimmed);
     // Read BEFORE the dismissal clears the band: a prompt that supersedes a
     // question is consumed as soon as it lands, so it must neither flash the
@@ -2823,6 +2830,7 @@ function App(): React.ReactElement {
           mentionedPaths={mentionedPaths}
           removeMentionChip={removeMentionChip}
           visibleQueuedMessages={visibleQueuedMessages}
+          sendCount={sendCount}
           handleCancelQueued={handleCancelQueued}
           enhanceAnim={enhanceAnim}
           onEnhanceAnimDone={onEnhanceAnimDone}
@@ -2862,33 +2870,7 @@ function App(): React.ReactElement {
           onSelectCritterModel={state?.goal ? onSelectCritterModel : undefined}
         />
 
-        {appUpdate.phase === "available" && (
-          <button
-            className="update-banner"
-            title={`Update to ${appUpdate.version} — installs and restarts the app`}
-            onClick={() => void appUpdate.install()}
-          >
-            <span className="update-banner-dot" />
-            {"Ken just updated GG Coder!"}
-            <Badge>Install</Badge>
-          </button>
-        )}
-        {appUpdate.phase === "installing" && (
-          // Same .update-banner box (padding/font) as the available state, so
-          // banner → progress bar swaps content with zero layout shift. The fill
-          // is absolutely positioned; only the centered percentage is in flow.
-          <div
-            className="update-banner update-banner-busy update-banner-progress"
-            role="progressbar"
-            aria-valuenow={appUpdate.progress ?? 0}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Downloading update"
-          >
-            <span className="update-banner-fill" style={{ width: `${appUpdate.progress ?? 0}%` }} />
-            <span className="update-banner-pct">{`${appUpdate.progress ?? 0}%`}</span>
-          </div>
-        )}
+        <UpdateBanner appUpdate={appUpdate} />
       </Activity>
 
       {workspaceMode === "code" && showInitGit && (

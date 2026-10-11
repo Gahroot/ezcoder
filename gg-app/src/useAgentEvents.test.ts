@@ -16,6 +16,7 @@ vi.mock("./agent", () => ({
 }));
 
 import { listModels } from "./agent";
+import { playSound } from "./sounds";
 import { useAgentEvents, type AgentEventsDeps } from "./useAgentEvents";
 import { createLiveTextStore } from "./live-text";
 import type { Item } from "./App";
@@ -162,6 +163,51 @@ describe("useAgentEvents", () => {
   });
 
   beforeEach(() => vi.clearAllMocks());
+
+  describe("run-end sounds", () => {
+    const sounds = (): unknown[] => vi.mocked(playSound).mock.calls.map(([s]) => s);
+
+    it("plays done for a clean run", () => {
+      const { hook } = setup();
+      act(() => hook.result.current.handleEvent(ev("run_start", {})));
+      act(() => hook.result.current.handleEvent(ev("run_end", { failed: false })));
+      expect(sounds()).toEqual(["done"]);
+    });
+
+    it("plays error, not done, when the agent errored but the run settled", () => {
+      // The loop yields an error frame and returns, so run_end says failed:false.
+      const { hook } = setup();
+      act(() => hook.result.current.handleEvent(ev("run_start", {})));
+      act(() => hook.result.current.handleEvent(ev("error", { headline: "Provider error" })));
+      act(() => hook.result.current.handleEvent(ev("run_end", { failed: false })));
+      expect(sounds()).toEqual(["error"]);
+      // The next clean run is "done" again.
+      act(() => hook.result.current.handleEvent(ev("run_start", {})));
+      act(() => hook.result.current.handleEvent(ev("run_end", { failed: false })));
+      expect(sounds()).toEqual(["error", "done"]);
+    });
+
+    it("plays error for a failed run", () => {
+      const { hook } = setup();
+      act(() => hook.result.current.handleEvent(ev("run_start", {})));
+      act(() => hook.result.current.handleEvent(ev("run_end", { failed: true })));
+      expect(sounds()).toEqual(["error"]);
+    });
+
+    it("stays silent on a cancel, even after an error frame", () => {
+      const { hook } = setup();
+      act(() => hook.result.current.handleEvent(ev("run_start", {})));
+      act(() => hook.result.current.handleEvent(ev("error", { headline: "Aborted" })));
+      act(() => hook.result.current.handleEvent(ev("run_end", { cancelled: true })));
+      expect(sounds()).toEqual([]);
+    });
+
+    it("sounds an error that lands outside any run at once", () => {
+      const { hook } = setup();
+      act(() => hook.result.current.handleEvent(ev("error", { headline: "Compaction failed" })));
+      expect(sounds()).toEqual(["error"]);
+    });
+  });
 
   describe("queued pill lifecycle", () => {
     it("removes the cancelled duplicate, not the identical message still pending", () => {
