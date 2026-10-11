@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.87.1",
+    date: "2026-10-12",
+    items: [
+      "`Goals` now end every stretch of work with a proper end-of-level card right on the farm. You get Ken's face, his parting line and the score: time, workers, turns and tokens written, plus one tap to `Read summary in Chat`. Goal windows also show the branch, CI and Project Health of the project you attached, so you always know where the work landed.",
+      "Updates now arrive with a little parade. A frog, a bee and an axolotl hop on a strip of meadow beside `Ken just updated GG Coder!`, then march along the grass as the download fills. The ready chime plays once per update instead of once per window, and a run that fails now plays the error cue instead of the happy done sound, so you can tell what happened without looking.",
+      "Changing your projects folder in Settings no longer wipes everything else. Your saved models, `Autopilot` picks, hidden projects and local endpoints all stay exactly where you left them.",
+      "Switch languages mid-chat and the agent keeps up. The moment a new language shows up in your project, it picks up the right coding style, and its helper agents get the same guidance, all without throwing away the conversation's cache.",
+      "Sending a message feels calmer. File chips and the cache notice now clear in the same beat as your send, so the chat stops jumping up and back down.",
+    ],
+  },
+  {
     version: "0.87.0",
     date: "2026-10-12",
     items: [
