@@ -178,7 +178,17 @@ function coordinator(input: WorldInput): WorldAgent {
     return { ...base, status: "idle", kind: null, detail: "Ready when you are" };
   }
   const current = [...input.liveTools].reverse().find((entry) => entry.status === "running");
-  if (!current) return { ...base, status: "working", kind: "think", detail: "Planning" };
+  if (!current) {
+    // Between tool calls GG Goals is thinking over what it just did, so Ken
+    // stays where that work was. Sending him to the notes board each time
+    // made him pace between the board and the same station over and over
+    // (a read takes a moment; the thinking after it takes far longer). Only
+    // before his first tool, or once a question is answered, is he planning.
+    const last = input.liveTools[input.liveTools.length - 1];
+    const lastKind = last ? coordinatorKind(last.name) : null;
+    const kind = lastKind && lastKind !== "ask" ? lastKind : "think";
+    return { ...base, status: "working", kind, detail: "Planning" };
+  }
   return {
     ...base,
     status: "working",

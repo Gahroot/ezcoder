@@ -675,6 +675,7 @@
 .scorecard-bar span,
 .hf-progress-fill {
   position: relative;
+  height: 100%;
   overflow: hidden;
   border-radius: inherit;
   background: var(--flux-fill);

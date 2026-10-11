@@ -11,6 +11,8 @@ import {
 import type { FloorAgent } from "./critter-floor";
 import { hashKey } from "./critter-sprites";
 import { GoalAskNotice } from "./GoalAskNotice";
+import { GoalFinishCard } from "./GoalFinishCard";
+import type { GoalFinish } from "./goal-finish";
 import type { KenSaid } from "./goal-ken-talk";
 import { KenDialogue } from "./KenDialogue";
 import { collectWorldAgents, type WorldAgent } from "./goal-world-agents";
@@ -150,6 +152,10 @@ interface Props {
   onShowChat?: () => void;
   /** Ken's newest spoken line, said now and then in the dialogue box. */
   kenSaid?: KenSaid | null;
+  /** A stretch of work just finished: its end-of-level card (see GoalFinishCard). */
+  finish?: GoalFinish | null;
+  /** Take the finish card down. */
+  onCloseFinish?: () => void;
 }
 
 /** How long a change of light, weather or ground cover takes to fade in. */
@@ -176,6 +182,8 @@ export function GoalWorld({
   ask = null,
   onShowChat,
   kenSaid = null,
+  finish = null,
+  onCloseFinish,
 }: Props): React.ReactElement {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -632,10 +640,17 @@ export function GoalWorld({
           onAnswer={shownAsk.onAnswer}
         />
       )}
+      {finish && !shownAsk && (
+        <GoalFinishCard
+          finish={finish}
+          onShowChat={() => onShowChat?.()}
+          onClose={() => onCloseFinish?.()}
+        />
+      )}
       <KenDialogue
         said={kenSaid}
         workers={workers}
-        paused={Boolean(shownAsk)}
+        paused={Boolean(shownAsk || finish)}
         reducedMotion={reduced}
       />
       <p className="sr-only goal-world-summary" aria-live="polite">

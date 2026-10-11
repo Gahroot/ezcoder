@@ -32,6 +32,7 @@ import type { PendingAttachment } from "./attachments";
 import type { Item } from "./App";
 import { readChatError } from "./chat-error";
 import type { LiveTextStore } from "./live-text";
+import { lastIssuedId } from "./transcript-item";
 
 /**
  * Build-session SSE event handling + assistant-streaming helpers, extracted from
@@ -65,6 +66,18 @@ function formatElapsed(ms: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return r > 0 ? `${m}m ${r}s` : `${m}m`;
+}
+
+/** How one run ended, for whoever keeps score across runs (the goal finish card). */
+export interface RunEnd {
+  readonly startedAt: number;
+  readonly endedAt: number;
+  /** The newest transcript item id when the run began: later items are its. */
+  readonly fromItemId: number;
+  /** Model turns the run took. */
+  readonly turns: number;
+  readonly outputTokens: number;
+  readonly outcome: "done" | "unverified" | "failed" | "cancelled";
 }
 
 /**
@@ -115,6 +128,8 @@ export interface AgentEventsDeps {
   liveText: LiveTextStore;
   /** A (re)connect found this goal cut off mid-work or mid-question. */
   onGoalNeedsResume?: () => void;
+  /** A run ended (any outcome). */
+  onRunEnd?: (run: RunEnd) => void;
 }
 
 export interface AgentEvents {
@@ -161,6 +176,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
     stickToBottomRef,
     liveText,
     onGoalNeedsResume,
+    onRunEnd,
   } = deps;
 
   // ── Event-machine private refs (used nowhere outside this hook) ──
@@ -200,6 +216,8 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
   const runErroredRef = useRef(false);
 
   const tokensRef = useRef<number>(0);
+  const turnsRef = useRef<number>(0);
+  const runFromItemRef = useRef<number>(0);
   // Accumulated assistant text this run, for detecting [DONE:n] plan-step
   // markers that may split across deltas.
   const assistantTextRef = useRef<string>("");
@@ -591,8 +609,10 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           runStartRef.current = Date.now();
           runOpenRef.current = true;
           runErroredRef.current = false;
+          runFromItemRef.current = lastIssuedId();
 
           tokensRef.current = 0;
+          turnsRef.current = 0;
           assistantTextRef.current = "";
           // Arming is per-run state on the sidecar; start every run streaming
           // live and let hook_armed hold text back once a gate is crossed.
@@ -828,6 +848,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
                 cacheWrite?: number;
               }
             | undefined;
+          turnsRef.current += 1;
           if (usage && typeof usage.outputTokens === "number") {
             tokensRef.current += usage.outputTokens;
             setTokens(tokensRef.current);
@@ -974,6 +995,20 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
               ),
             );
           }
+          onRunEnd?.({
+            startedAt: runStartRef.current || Date.now(),
+            endedAt: Date.now(),
+            fromItemId: runFromItemRef.current,
+            turns: turnsRef.current,
+            outputTokens: tokensRef.current,
+            outcome: d.cancelled
+              ? "cancelled"
+              : runErrored
+                ? "failed"
+                : d.unverified === true
+                  ? "unverified"
+                  : "done",
+          });
           if (d.cancelled) {
             setDoneStatus(null);
             setStatus("cancelled");
@@ -1443,6 +1478,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
       liveText,
       openPlanReview,
       onGoalNeedsResume,
+      onRunEnd,
     ],
   );
 

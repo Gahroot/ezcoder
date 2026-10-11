@@ -199,7 +199,7 @@ export function GoalContextPicker({
             ))}
           </ul>
         ) : (
-          <div className="goal-context-empty" style={{ color: theme.textDim }}>
+          <div className="goal-context-empty" style={{ color: theme.textMuted }}>
             Folders and files the goal is about, like repos, specs or mock-ups.
           </div>
         )}

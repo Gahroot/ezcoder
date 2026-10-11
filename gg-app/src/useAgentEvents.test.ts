@@ -162,6 +162,25 @@ describe("useAgentEvents", () => {
     expect(deps.planDoneRef.current).toEqual(new Set([1, 2]));
   });
 
+  it("reports how each run ended, with its turns and tokens, for the goal finish card", () => {
+    const { hook, deps } = setup();
+    const onRunEnd = vi.fn<NonNullable<AgentEventsDeps["onRunEnd"]>>();
+    deps.onRunEnd = onRunEnd;
+    hook.rerender();
+    act(() => hook.result.current.handleEvent(ev("run_start", {})));
+    act(() => hook.result.current.handleEvent(ev("turn_end", { usage: { outputTokens: 300 } })));
+    act(() => hook.result.current.handleEvent(ev("turn_end", { usage: { outputTokens: 200 } })));
+    act(() => hook.result.current.handleEvent(ev("run_end", {})));
+    expect(onRunEnd).toHaveBeenLastCalledWith(
+      expect.objectContaining({ turns: 2, outputTokens: 500, outcome: "done" }),
+    );
+    act(() => hook.result.current.handleEvent(ev("run_start", {})));
+    act(() => hook.result.current.handleEvent(ev("run_end", { cancelled: true })));
+    expect(onRunEnd).toHaveBeenLastCalledWith(
+      expect.objectContaining({ turns: 0, outcome: "cancelled" }),
+    );
+  });
+
   beforeEach(() => vi.clearAllMocks());
 
   describe("run-end sounds", () => {

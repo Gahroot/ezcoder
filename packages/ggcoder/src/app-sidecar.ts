@@ -73,7 +73,6 @@ import {
 } from "./core/model-registry.js";
 import { resolveStartOrFallback } from "./core/resolve-start.js";
 import { getGitBranch, getGitDirtyFileCount, isGitRepo } from "./utils/git.js";
-import { getGitHubRepoSlug } from "./utils/github.js";
 import type { GitHubCI } from "./utils/github-ci.js";
 import type { ProjectHealthScan } from "./core/project-health-scan.js";
 import { scoreProjectHealth, type ProjectHealth } from "./core/project-health-score.js";
@@ -116,6 +115,7 @@ import { KEN_ALLOWED_TOOLS } from "./app-sidecar/ken-context.js";
 import { type ProgressManager, createProgressManager } from "./app-sidecar/progress-manager.js";
 import { handleSessionRoutes } from "./app-sidecar/session-routes.js";
 import { handleGoalRoutes } from "./app-sidecar/goal-routes.js";
+import { readGitState, resolveGitCwd } from "./app-sidecar/git-target.js";
 import {
   goalPhase,
   goalsRoot,
@@ -1075,21 +1075,18 @@ async function createSession(
   }
 
   // Workspace extras (context window, git status, background tasks). Git state
-  // is resolved once at startup and refreshed after every run; the context
-  // window follows the active model.
-  const [initialGitBranch, initialGitIsRepo, initialDirtyFileCount, initialGitHubSlug] =
-    await Promise.all([
-      getGitBranch(cwd).catch(() => null),
-      isGitRepo(cwd).catch(() => false),
-      getGitDirtyFileCount(cwd).catch(() => 0),
-      getGitHubRepoSlug(cwd).catch(() => null),
-    ]);
-  let gitBranch: string | null = initialGitBranch;
-  let gitIsRepo: boolean = initialGitIsRepo;
-  let gitDirtyFileCount = initialDirtyFileCount;
+  // is resolved at startup and refreshed after every run; the context window
+  // follows the active model. A Goal window reads git from its attached
+  // project folder, not the goal folder (see resolveGitCwd), and re-targets
+  // when the goal's folders change (`retargetGit`).
+  let gitCwd = await resolveGitCwd(cwd, goal?.record ?? null);
+  const initialGit = await readGitState(gitCwd);
+  let gitBranch: string | null = initialGit.branch;
+  let gitIsRepo: boolean = initialGit.isRepo;
+  let gitDirtyFileCount = initialGit.dirtyFileCount;
   // Open issue/PR counts for the origin repo's GitHub slug, via the `gh` CLI's
   // auth. null = unknown (gh missing/unauthed, non-GitHub origin) → chips hidden.
-  const gitHubSlug: string | null = initialGitHubSlug;
+  let gitHubSlug: string | null = initialGit.gitHubSlug;
   let gitHubIssues: number | null = null;
   let gitHubPRs: number | null = null;
   let gitHubCI: GitHubCI | null = null;
@@ -1770,15 +1767,15 @@ async function createSession(
       // A run may have switched branches, changed files, or spawned/finished
       // background tasks. Refresh the workspace extras once it settles.
       [gitBranch, gitIsRepo, gitDirtyFileCount] = await Promise.all([
-        getGitBranch(cwd).catch(() => gitBranch),
-        isGitRepo(cwd).catch(() => gitIsRepo),
-        getGitDirtyFileCount(cwd).catch(() => gitDirtyFileCount),
+        getGitBranch(gitCwd).catch(() => gitBranch),
+        isGitRepo(gitCwd).catch(() => gitIsRepo),
+        getGitDirtyFileCount(gitCwd).catch(() => gitDirtyFileCount),
       ]);
       // A run may have opened/closed issues or PRs — refresh fire-and-forget so
       // teardown isn't delayed by the network. Broadcasts itself on change.
-      gitHubCountsPoll?.refresh();
-      ciPoll.refresh();
-      healthPoll?.refresh();
+      repoWatch.gitHubCounts?.refresh();
+      repoWatch.ci.refresh();
+      repoWatch.health?.refresh();
       // Serialize behind any marker/tool-triggered refresh so the terminal
       // progress snapshot uses the live plan file. Once every canonical step
       // is complete, remove the approved plan from future system prompts and
@@ -2136,36 +2133,77 @@ async function createSession(
   // (they change outside the agent: editor saves, commits, teammates). Branch/
   // repo state already refreshes after agent runs. The pollers are shared with
   // every other window on the same repo; each window broadcasts only changes.
-  const repoKey = path.resolve(cwd);
-  const dirtyFilesPoll = repoPolls.dirtyFiles.subscribe(repoKey, (next) => {
-    if (next === gitDirtyFileCount) return;
-    gitDirtyFileCount = next;
-    broadcast("extras", footerExtras());
-  });
-  // Failed checks publish nothing, so the chips keep their last-known numbers
-  // instead of flickering off on a timeout. None when origin isn't GitHub.
-  const gitHubCountsPoll = gitHubSlug
-    ? repoPolls.gitHubCounts.subscribe(gitHubSlug, (counts) => {
-        if (counts.issues === gitHubIssues && counts.prs === gitHubPRs) return;
-        gitHubIssues = counts.issues;
-        gitHubPRs = counts.prs;
-        broadcast("extras", footerExtras());
-      })
-    : null;
-  const ciPoll = repoPolls.gitHubCI.subscribe(repoKey, (next) => {
-    if (JSON.stringify(next) === JSON.stringify(gitHubCI)) return;
-    gitHubCI = next;
-    broadcast("extras", footerExtras());
-  });
-  // Project Health is a code-workspace signal; chat and motion windows skip the scan.
-  const healthPoll =
-    mode === "code"
-      ? repoPolls.projectHealth.subscribe(repoKey, (next) => {
-          if (JSON.stringify(next) === JSON.stringify(projectHealthScan)) return;
-          projectHealthScan = next;
+  function watchRepo(dir: string) {
+    const repoKey = path.resolve(dir);
+    const dirtyFiles = repoPolls.dirtyFiles.subscribe(repoKey, (next) => {
+      if (next === gitDirtyFileCount) return;
+      gitDirtyFileCount = next;
+      broadcast("extras", footerExtras());
+    });
+    // Failed checks publish nothing, so the chips keep their last-known numbers
+    // instead of flickering off on a timeout. None when origin isn't GitHub.
+    const gitHubCounts = gitHubSlug
+      ? repoPolls.gitHubCounts.subscribe(gitHubSlug, (counts) => {
+          if (counts.issues === gitHubIssues && counts.prs === gitHubPRs) return;
+          gitHubIssues = counts.issues;
+          gitHubPRs = counts.prs;
           broadcast("extras", footerExtras());
         })
       : null;
+    const ci = repoPolls.gitHubCI.subscribe(repoKey, (next) => {
+      if (JSON.stringify(next) === JSON.stringify(gitHubCI)) return;
+      gitHubCI = next;
+      broadcast("extras", footerExtras());
+    });
+    // Project Health is a code-workspace signal; chat and motion windows skip the scan.
+    const health =
+      mode === "code"
+        ? repoPolls.projectHealth.subscribe(repoKey, (next) => {
+            if (JSON.stringify(next) === JSON.stringify(projectHealthScan)) return;
+            projectHealthScan = next;
+            broadcast("extras", footerExtras());
+          })
+        : null;
+    return {
+      gitHubCounts,
+      ci,
+      health,
+      unsubscribe(): void {
+        dirtyFiles.unsubscribe();
+        gitHubCounts?.unsubscribe();
+        ci.unsubscribe();
+        health?.unsubscribe();
+      },
+    };
+  }
+  let repoWatch = watchRepo(gitCwd);
+  let repoWatchStopped = false;
+  let gitTargetGeneration = 0;
+  /**
+   * A goal's attached folders changed: point the titlebar's git state at the
+   * new project folder. No-op when the target is unchanged; a newer call or
+   * teardown supersedes one still reading git.
+   */
+  async function retargetGit(): Promise<void> {
+    const generation = ++gitTargetGeneration;
+    const next = await resolveGitCwd(cwd, goal?.record ?? null);
+    if (generation !== gitTargetGeneration || repoWatchStopped || next === gitCwd) return;
+    const state = await readGitState(next);
+    if (generation !== gitTargetGeneration || repoWatchStopped) return;
+    repoWatch.unsubscribe();
+    gitCwd = next;
+    gitBranch = state.branch;
+    gitIsRepo = state.isRepo;
+    gitDirtyFileCount = state.dirtyFileCount;
+    gitHubSlug = state.gitHubSlug;
+    // The old repo's numbers don't apply; the new watchers fill these in.
+    gitHubIssues = null;
+    gitHubPRs = null;
+    gitHubCI = null;
+    projectHealthScan = null;
+    repoWatch = watchRepo(gitCwd);
+    broadcast("extras", footerExtras());
+  }
 
   const routeCtx: SessionRouteContext = {
     get session() {
@@ -2225,7 +2263,15 @@ async function createSession(
       return goal;
     },
     set goal(v) {
+      const foldersBefore = JSON.stringify(goal?.record.context ?? []);
       goal = v;
+      if (JSON.stringify(goal?.record.context ?? []) !== foldersBefore) {
+        retargetGit().catch((err: unknown) => {
+          log("WARN", "app-sidecar", "goal git retarget failed", {
+            message: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
     },
     broadcast,
     get scheduledRunActive() {
@@ -2401,6 +2447,12 @@ async function createSession(
   }
 
   async function dispose(): Promise<void> {
+    // A window closed (or switched project) mid-run: stop the run itself, any
+    // run-all sweep or autopilot turn, and a model download this window
+    // started. Otherwise they keep streaming tokens and running tools on a
+    // session that is being torn down.
+    abortOwnedWork();
+    cancelHfPull();
     releaseRunAwake?.();
     releaseRunAwake = null;
     releaseSubagentAwake?.();
@@ -2409,10 +2461,8 @@ async function createSession(
     asks.cancelAll();
     tasksPollStopped = true;
     if (tasksPoll) clearTimeout(tasksPoll);
-    dirtyFilesPoll.unsubscribe();
-    gitHubCountsPoll?.unsubscribe();
-    ciPoll.unsubscribe();
-    healthPoll?.unsubscribe();
+    repoWatchStopped = true;
+    repoWatch.unsubscribe();
     // Stop the Telegram serve loop + dispose its per-chat sessions.
     if (serveController) await serveController.stop().catch(() => {});
     for (const c of clients) c.res.end();

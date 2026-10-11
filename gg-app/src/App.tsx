@@ -81,7 +81,7 @@ import { KenActivityBar } from "./KenActivityBar";
 import { useTaskActivity } from "./useTaskActivity";
 import { useKenMentor } from "./useKenMentor";
 import { useAutopilot } from "./useAutopilot";
-import { useAgentEvents } from "./useAgentEvents";
+import { useAgentEvents, type RunEnd } from "./useAgentEvents";
 import { LiveToolPanel, type LiveToolEntry } from "./LiveToolPanel";
 import { CritterFloor, collectFloorAgents, type CritterGroup } from "./CritterFloor";
 import { COORDINATOR_KEY, goalViewFor } from "./goal-world-agents";
@@ -94,6 +94,15 @@ import {
   type GoalTally,
 } from "./goal-progress";
 import { latestKenLine } from "./goal-ken-talk";
+import {
+  FINISH_SETTLE_MS,
+  goalFinishOf,
+  goalIsQuiet,
+  openStretch,
+  recordRun,
+  type GoalFinish,
+  type GoalRun,
+} from "./goal-finish";
 // The farm (its art, map and simulation) loads on demand, so it adds nothing
 // to the app's start-up bundle; it is only needed once a goal has started.
 const GoalWorld = lazy(() =>
@@ -925,6 +934,15 @@ function App(): React.ReactElement {
     );
   }, []);
 
+  // Every run of a started goal, for its finish card (see goal-finish). The
+  // event hook reports each run as it ends; only a started goal's are kept.
+  const [goalRuns, setGoalRuns] = useState<readonly GoalRun[]>([]);
+  const goalRunTargetRef = useRef<string | null>(null);
+  const recordGoalRun = useCallback((run: RunEnd) => {
+    const goalId = goalRunTargetRef.current;
+    if (goalId) setGoalRuns((runs) => recordRun(runs, { ...run, goalId }));
+  }, []);
+
   // Build-session SSE handling + assistant-streaming helpers live in the
   // useAgentEvents hook (mirrors useKenMentor). It owns the event machine's
   // private refs + the streaming helpers; App keeps owning the build-session
@@ -965,6 +983,7 @@ function App(): React.ReactElement {
     stickToBottomRef,
     liveText,
     onGoalNeedsResume: resumeCutOffGoal,
+    onRunEnd: recordGoalRun,
   });
 
   // Run the connect/ready flow against the current sidecar and hydrate state,
@@ -1895,6 +1914,45 @@ function App(): React.ReactElement {
     () => (activeGoalId ? latestKenLine(items, (id) => liveText.get(id) !== undefined) : null),
     [activeGoalId, items, liveText],
   );
+  // A stretch of goal work finished (nothing left going, and it stayed that
+  // way a moment): the Workers view's end-of-level card, with its score. It
+  // comes down when closed, when the user goes to the chat, or when work
+  // starts again. Only runs seen live count, so a reopened window shows none.
+  useEffect(() => {
+    goalRunTargetRef.current = activeGoalId;
+  }, [activeGoalId]);
+  const [goalClosedAt, setGoalClosedAt] = useState(0);
+  const [goalFinish, setGoalFinish] = useState<GoalFinish | null>(null);
+  const goalStretch = useMemo(
+    () => (activeGoalId ? openStretch(goalRuns, activeGoalId, goalClosedAt) : []),
+    [activeGoalId, goalRuns, goalClosedAt],
+  );
+  const goalQuiet =
+    goalStretch.length > 0 &&
+    goalIsQuiet({
+      paused: state?.goal?.paused === true,
+      running,
+      waitingOnUser: goalWaitingOnUser,
+      workers: goalWorkers,
+    });
+  const finishInputsRef = useRef({ groups: critterGroups, said: kenSaid });
+  useEffect(() => {
+    finishInputsRef.current = { groups: critterGroups, said: kenSaid };
+  }, [critterGroups, kenSaid]);
+  useEffect(() => {
+    if (!goalQuiet) return;
+    const timer = window.setTimeout(() => {
+      const { groups, said } = finishInputsRef.current;
+      const last = goalStretch[goalStretch.length - 1];
+      if (last) setGoalClosedAt(last.endedAt);
+      setGoalFinish(goalFinishOf(goalStretch, groups, said));
+    }, FINISH_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [goalQuiet, goalStretch]);
+  useEffect(() => {
+    if (goalFinish && (running || goalView === "chat")) setGoalFinish(null);
+  }, [goalFinish, running, goalView]);
+  const shownGoalFinish = goalFinish?.goalId === activeGoalId ? goalFinish : null;
   // The header's counts: workers working now, tasks done and failed so far
   // (see goal-progress). Counting starts afresh for each goal.
   // Restarted when the transcript is reloaded (after a daemon restart, say):
@@ -2598,6 +2656,8 @@ function App(): React.ReactElement {
               ask={goalAskNotice}
               kenSaid={kenSaid}
               onShowChat={() => setGoalChatFor(activeGoalId)}
+              finish={shownGoalFinish}
+              onCloseFinish={() => setGoalFinish(null)}
             />
           </Suspense>
         </Activity>

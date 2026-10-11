@@ -124,6 +124,48 @@ describe("GoalWorld", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("shows the finish card with its score until the user closes it or goes to the chat", () => {
+    const onShowChat = vi.fn();
+    const onClose = vi.fn();
+    const finish = {
+      id: 1,
+      goalId: "g",
+      outcome: "done",
+      elapsedMs: 754_000,
+      turns: 12,
+      workers: 3,
+      failedWorkers: 1,
+      outputTokens: 48_200,
+      face: "excited",
+      line: "Images done. Mobile load is down to 1.4 seconds.",
+    } as const;
+    const props = {
+      goalId: "g",
+      running: false,
+      liveTools: [],
+      waitingOnUser: false,
+      workers: [],
+      onShowChat,
+      onCloseFinish: onClose,
+      finish,
+    };
+    const { rerender } = render(<GoalWorld {...props} />);
+    const card = screen.getByRole("status");
+    expect(card.textContent).toContain("Job done");
+    expect(card.textContent).toContain("Mobile load is down to 1.4 seconds.");
+    expect(card.textContent).toContain("12m 34s");
+    expect(card.textContent).toContain("1 failed");
+    expect(card.textContent).toContain("48.2k");
+    fireEvent.click(screen.getByRole("button", { name: "Read summary in Chat" }));
+    expect(onShowChat).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // A question outranks it: the ask sign shows instead.
+    rerender(<GoalWorld {...props} waitingOnUser ask={{ question: "Which one?" }} />);
+    expect(screen.queryByText("Job done")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Which one?");
+  });
+
   it("lists the farm's things as buttons, so they can be poked from the keyboard", () => {
     render(
       <GoalWorld goalId="g" running={false} liveTools={[]} waitingOnUser={false} workers={[]} />,
