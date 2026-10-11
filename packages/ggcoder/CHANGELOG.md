@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.79.1
+
+### Patch Changes
+
+- Give the agent style packs for languages detected mid-session through an appended update message (keeping the cached prompt intact), give code-writing sub-agents the same language guidance, make local endpoint saves lock-guarded and atomic so other gg-app.json settings are never lost, point Goal windows' git state at their attached project folder, and move auth provider metadata into `@kenkaiiii/gg-core` (re-exported from ggcoder).
+  - @kenkaiiii/gg-ai@5.79.1
+  - @kenkaiiii/gg-agent@5.79.1
+  - @kenkaiiii/gg-core@5.79.1
+
 ## 5.79.0
 
 ### Minor Changes
