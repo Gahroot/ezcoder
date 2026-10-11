@@ -6,7 +6,7 @@ import { E, PixelBuffer } from "./goal-map-pixels";
 import { lean } from "./goal-map-props";
 
 describe("top-down goal map mockups", () => {
-  it("paints every world at its map size", () => {
+  it("has every world, the first at the standard map size", () => {
     expect(MOCKUPS.map((m) => m.id)).toEqual([
       "1-homestead",
       "2-village",
@@ -16,14 +16,17 @@ describe("top-down goal map mockups", () => {
       "4-harbour",
       "5-workshop",
     ]);
-    for (const m of MOCKUPS) {
-      const scene = m.build();
-      const buf = composeMap(scene);
-      expect([buf.width, buf.height]).toEqual([scene.grid.cols * TILE, scene.grid.rows * TILE]);
-    }
     // The original five share the standard map size.
     const homestead = MOCKUPS[0]?.build();
     expect(homestead && [homestead.grid.cols, homestead.grid.rows]).toEqual([MAP_COLS, MAP_ROWS]);
+  });
+
+  // One world per test: painting all of them in one ran past the time limit
+  // on the slower Windows CI runner.
+  it.each(MOCKUPS.map((m) => [m.id, m] as const))("paints %s at its map size", (_id, m) => {
+    const scene = m.build();
+    const buf = composeMap(scene);
+    expect([buf.width, buf.height]).toEqual([scene.grid.cols * TILE, scene.grid.rows * TILE]);
   });
 
   it("paints the same world the same way every time", () => {
