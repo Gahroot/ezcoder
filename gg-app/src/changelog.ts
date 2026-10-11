@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.87.0",
+    date: "2026-10-12",
+    items: [
+      "Say hello to `Goals`, my brand new mode, now in `Beta`. Tap `New goal` on the home screen, name it, describe the outcome you want, and attach any folders it should know about. GG Goals agrees the plan with you up front, then owns the whole thing end to end, doing the work itself or sending out a little team of critter workers to build, scout, research and check while you walk away. You can watch them get busy on a cozy farm, and any question it asks you waits safely even if you reload. It is fresh out of the oven, so I would love to hear how it goes for you.",
+      "Rewriting files is smoother now. When the agent needs to replace a file it just does it instead of stalling, and it backs up any lines it had not looked at yet so nothing you care about quietly disappears.",
+    ],
+  },
+  {
     version: "0.86.0",
     date: "2026-10-10",
     items: [
