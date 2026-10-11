@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.30.2
+
+### Patch Changes
+
+- Sync latest upstream improvements: embed/rerank APIs, Cloudflare retry handling, flatter edit tool schema for Claude, built-in /commit, and prompt caching tweaks.
+  - @prestyj/ai@5.30.2
+  - @prestyj/agent@5.30.2
+  - @prestyj/core@5.30.2
+
 ## 5.30.1
 
 ### Patch Changes
