@@ -12,6 +12,12 @@
 
 - @prestyj/ai@5.30.1
 
+## 5.79.3
+
+### Patch Changes
+
+- @prestyj/ai@5.79.3
+
 ## 5.79.2
 
 ### Patch Changes

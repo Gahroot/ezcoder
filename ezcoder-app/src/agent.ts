@@ -2304,6 +2304,8 @@ export interface SteroidsStatus {
   version?: string;
   repos?: number;
   documents?: number;
+  /** Corpus size on disk as the CLI prints it, e.g. "2.0GB". */
+  diskSize?: string;
   path?: string;
   error?: string;
 }

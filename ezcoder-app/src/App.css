@@ -4082,6 +4082,18 @@ select {
   font-size: var(--fs-sm);
   line-height: 1.4;
 }
+/* Steroids' status line uses the list row's anatomy, but it is one fact, not
+   a pickable entry: it lines up with the card's title and text and has no
+   hover. */
+.mcp-item.steroids-status {
+  padding-inline: 0;
+}
+.mcp-item.steroids-status:hover {
+  background: none;
+}
+.steroids-status .mcp-meta {
+  font-variant-numeric: tabular-nums;
+}
 .mcp-delete {
   flex: 0 0 auto;
   background: transparent;
