@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.87.3",
+    date: "2026-10-13",
+    items: [
+      "`Goals` workers now build from real code instead of memory. Your builders and checkers can pull up how the best open-source projects actually use a library before they write a line, so the work lands right the first time.",
+      "The `Steroids` page now shows exactly how much disk your code library takes, like `2.0 GB on disk`, right next to your repos and files. I also tidied the row so it lines up cleanly with everything around it.",
+      "Settings just got lighter. Pick a new projects folder and it saves on the spot, no `Save` button to hunt for, and the power switch now simply reads `Keep awake`.",
+    ],
+  },
+  {
     version: "0.87.2",
     date: "2026-10-12",
     items: [
