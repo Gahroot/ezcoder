@@ -94,7 +94,7 @@ try {
               `${name} zoom=${zoom}: ${JSON.stringify(measurement)}`,
             );
           }
-          await page.getByRole("button", { name: "GG UI on" }).click();
+          await page.getByRole("button", { name: "EZ UI on" }).click();
           assert.equal(await page.locator(".action-metal").count(), 0);
           assert.equal(
             await page.getByRole("button", { name: "Enhance?", exact: true }).count(),
@@ -102,9 +102,9 @@ try {
           );
           assert.equal(await page.evaluate(() => localStorage.getItem("ez-ui-enabled")), "0");
           await page.reload();
-          await page.getByRole("button", { name: "GG UI off" }).waitFor();
+          await page.getByRole("button", { name: "EZ UI off" }).waitFor();
           assert.equal(await page.locator(".action-metal").count(), 0);
-          await page.getByRole("button", { name: "GG UI off" }).click();
+          await page.getByRole("button", { name: "EZ UI off" }).click();
           await page.waitForFunction(
             () => document.querySelectorAll(".metal-fx-rim-canvas").length === 3,
           );

@@ -130,7 +130,7 @@ describe("discoverProjects (ezcoder store)", () => {
     await fs.mkdir(path.join(root, "never-opened"), { recursive: true });
     await fs.mkdir(path.join(root, "node_modules"), { recursive: true });
     await fs.mkdir(path.join(root, "EZ Motion"), { recursive: true });
-    await fs.mkdir(path.join(root, "GG Motion"), { recursive: true });
+    await fs.mkdir(path.join(root, "EZ Motion"), { recursive: true });
     await fs.mkdir(path.join(root, ".hidden"), { recursive: true });
 
     const projects = await discoverProjects({ projectsRoot: root });
@@ -141,7 +141,7 @@ describe("discoverProjects (ezcoder store)", () => {
     // Build output and dotfolders are not projects.
     expect(projects.some((p) => p.path.endsWith("node_modules"))).toBe(false);
     expect(projects.some((p) => p.path === path.join(root, "EZ Motion"))).toBe(false);
-    expect(projects.some((p) => p.path === path.join(root, "GG Motion"))).toBe(false);
+    expect(projects.some((p) => p.path === path.join(root, "EZ Motion"))).toBe(false);
     expect(projects.some((p) => p.path.endsWith(".hidden"))).toBe(false);
   });
 
@@ -175,6 +175,22 @@ describe("discoverProjects (ezcoder store)", () => {
     });
 
     expect(projects.some((p) => p.path === hidden)).toBe(false);
+    expect(projects.some((p) => p.path === kept)).toBe(true);
+  });
+
+  it("never lists Goal workspaces as projects", async () => {
+    const root = path.join(tmp, "ez-projects");
+    const goals = path.join(tmp, ".ezcoder", "goals");
+    const goal = path.join(goals, "api-latency");
+    const kept = path.join(root, "kept");
+    await fs.mkdir(goal, { recursive: true });
+    await fs.mkdir(kept, { recursive: true });
+    // A goal's coordinator writes ordinary sessions keyed by its folder.
+    await writeSession(path.join(state.sessionsDir, encodeCwd(goal)), goal);
+
+    const projects = await discoverProjects({ projectsRoot: root, excludeRoots: [goals] });
+
+    expect(projects.some((p) => p.path === goal)).toBe(false);
     expect(projects.some((p) => p.path === kept)).toBe(true);
   });
 

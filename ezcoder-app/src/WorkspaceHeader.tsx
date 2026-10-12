@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { PencilIcon } from "@phosphor-icons/react";
 import {
   openProjectPath,
@@ -14,8 +14,12 @@ import { projectAccent } from "./projectAccent";
 import { formatWorkspaceTitle, pluralize } from "./workspace-title";
 
 interface WorkspaceHeaderProps {
+  /** The header element: a Goal's world sits behind it and keeps clear of it. */
+  ref?: Ref<HTMLDivElement>;
   workspaceMode: WorkspaceMode;
   cwd?: string;
+  /** A Goal window: titled with the goal's name instead of its folder slug. */
+  goalName?: string | null;
   gitBranch?: string | null;
   gitDirtyFileCount?: number;
   /** Open issue/PR counts for the project's GitHub origin (null = unknown/hidden). */
@@ -41,8 +45,10 @@ interface WorkspaceHeaderProps {
 
 /** Shared code/chat titlebar and collapsible workspace navigation. */
 export function WorkspaceHeader({
+  ref,
   workspaceMode,
   cwd,
+  goalName = null,
   gitBranch,
   gitDirtyFileCount = 0,
   gitHubIssues = null,
@@ -59,8 +65,8 @@ export function WorkspaceHeader({
   stripExtras,
   children,
 }: WorkspaceHeaderProps): React.ReactElement {
-  const fallbackTitle = workspaceProductName(workspaceMode);
-  const directory = cwd?.split(/[\\/]/).filter(Boolean).pop();
+  const fallbackTitle = workspaceProductName(workspaceMode, goalName !== null);
+  const directory = goalName ?? cwd?.split(/[\\/]/).filter(Boolean).pop();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(customTitle ?? "");
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +94,7 @@ export function WorkspaceHeader({
 
   return (
     <div
+      ref={ref}
       className="chat-head"
       style={accent ? ({ "--project-accent": accent } as CSSProperties) : undefined}
     >

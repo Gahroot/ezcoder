@@ -18,6 +18,11 @@ export interface DiscoverProjectsOptions {
   extraRoots?: readonly string[];
   /** Project paths the user dismissed from the picker. */
   hiddenPaths?: readonly string[];
+  /**
+   * Folders whose contents are never projects (Goal workspaces under
+   * `~/.ezcoder/goals`). Anything at or below one of these is dropped.
+   */
+  excludeRoots?: readonly string[];
 }
 
 export interface DiscoveredProject {
@@ -73,8 +78,14 @@ export async function discoverProjects(
   // Hiding is by resolved path so a row dismissed once stays gone regardless of
   // which store re-surfaces it later.
   const hidden = new Set((options.hiddenPaths ?? []).map((p) => path.resolve(p)));
+  const excluded = (options.excludeRoots ?? []).map((root) => path.resolve(root));
+  const isExcluded = (target: string): boolean =>
+    excluded.some((root) => {
+      const relative = path.relative(root, path.resolve(target));
+      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    });
   const merged = Array.from(byPath.values())
-    .filter((p) => !hidden.has(p.path))
+    .filter((p) => !hidden.has(p.path) && !isExcluded(p.path))
     .map((p) => ({
       ...p,
       lastActiveDisplay: formatRelativeTime(p.lastActiveMs),
@@ -296,7 +307,7 @@ const FOLDER_SCAN_IGNORED = new Set([
   "Applications",
   // Motion's video workspace lives in the projects root but is not a codebase.
   "EZ Motion",
-  "GG Motion", // Keep older workspaces out of project discovery too.
+  "EZ Motion", // Keep older workspaces out of project discovery too.
 ]);
 
 /**
@@ -692,7 +703,8 @@ function fallbackDashDecode(entry: string): string | null {
   return "/" + body.replace(/-/g, "/");
 }
 
-function formatRelativeTime(ms: number): string {
+/** Short "5m ago" style label for a millisecond timestamp; "—" for 0. */
+export function formatRelativeTime(ms: number): string {
   if (ms === 0) return "—";
   const diff = Date.now() - ms;
   if (diff < 60_000) return "just now";

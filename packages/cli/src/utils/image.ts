@@ -11,10 +11,10 @@ const execFileAsync = promisify(execFile);
 /**
  * Lazy `sharp` resolver — sharp is a hefty native module (libvips). Loading
  * it at module init pulls it into every consumer's bundle, which forces
- * downstream packages that don't actually need image manipulation (ezboss)
+ * downstream packages that don't actually need image manipulation
  * to either ship it or break their bundlers. By gating the require behind
  * a function called only by the image-handling helpers, we let unused code
- * paths skip the import entirely — which lets ezboss tsup-bundle cleanly
+ * paths skip the import entirely — which lets them bundle cleanly
  * without `sharp` in its dependency tree.
  *
  * Cached after first call so repeated image operations don't re-hit the

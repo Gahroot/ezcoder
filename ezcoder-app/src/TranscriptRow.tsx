@@ -16,6 +16,7 @@ import { AskBand } from "./AskBand";
 import { Markdown } from "./Markdown";
 import { Skeleton } from "./Skeleton";
 import { segmentDoneMarkers, hasDoneMarker } from "./plan-steps";
+import { hidePartialNolanLine, stripNolanLine } from "./goal-nolan-talk";
 import { EnhancedSegments } from "./PromptEnhancement";
 import { basename } from "./tool-format";
 import type { Item } from "./transcript-item";
@@ -67,7 +68,10 @@ function AssistantReply({
   text: string;
   onGrow?: () => void;
 }): React.ReactElement {
-  const { text, streaming } = useLiveText(id, stored);
+  const { text: raw, streaming } = useLiveText(id, stored);
+  // EZ Goals' spoken line for the farm (`[nolan:face] …`) never shows in the
+  // chat, not even half-streamed (see goal-nolan-talk).
+  const text = streaming ? hidePartialNolanLine(raw) : stripNolanLine(raw);
   // Split out [DONE:n] plan-step markers so each renders as a "✓ Step n"
   // completion row instead of leaking the raw marker into the prose.
   const segments = hasDoneMarker(text)

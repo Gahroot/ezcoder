@@ -7,9 +7,8 @@ import type { Writable } from "node:stream";
 import { log } from "./logger.js";
 
 /**
- * Internet radio — stream a free station while you work. Ported from ezboss's
- * radio so the ezcoder-app windows offer the same curated, royalty-free, no-API-key
- * streams (SomaFM started in 2000, Radio Paradise in 2006).
+ * Internet radio — stream a free station while you work. The ezcoder-app windows
+ * offer curated, royalty-free, no-API-key streams (SomaFM started in 2000, Radio Paradise in 2006).
  *
  * Playback uses module-level singletons (`currentChild` / `currentStationId`),
  * so in the shared ezcoder-app daemon — where every window's session lives in ONE

@@ -12,6 +12,25 @@
 
 - @prestyj/ai@5.30.1
 
+## 5.79.2
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/ai@5.79.2
+
+## 5.79.1
+
+### Patch Changes
+
+- @prestyj/ai@5.79.1
+
+## 5.79.0
+
+### Patch Changes
+
+- @prestyj/ai@5.79.0
+
 ## 5.78.0
 
 ### Patch Changes

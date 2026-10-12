@@ -14,6 +14,7 @@ import { ShimmerText } from "./ShimmerText";
 import { ContextMeter } from "./ContextMeter";
 import { EzFace } from "./EzFace";
 import { NolanFace } from "./NolanFace";
+import { CritterIcon } from "./CritterIcon";
 import { ModelSelect } from "./ModelSelect";
 import type { Schedules } from "./useSchedules";
 
@@ -58,6 +59,7 @@ export function AppFooter({
   modelsFailed,
   onSelectModel,
   onSelectNolanModel,
+  onSelectCritterModel,
 }: {
   hydrated: boolean;
   workspaceMode: WorkspaceMode;
@@ -74,7 +76,10 @@ export function AppFooter({
   modelsFailed: boolean;
   onSelectModel: (modelId: string) => void;
   onSelectNolanModel: (modelId: string | null) => void;
+  /** A Goal window: pin the workers' model, or null to follow EZ Goals. */
+  onSelectCritterModel?: (modelId: string | null) => void;
 }): React.ReactElement {
+  const goal = state?.goal ?? null;
   return (
     <div
       className={`footer${workspaceMode !== "code" ? " footer-chat" : ""}`}
@@ -169,38 +174,67 @@ export function AppFooter({
                 onSelect={onSelectModel}
                 disabled={running}
                 loadFailed={modelsFailed}
-                title={`Switch ${workspaceMode === "chat" ? "EZ Chat" : workspaceProductName(workspaceMode)}'s model`}
+                title={`Switch ${workspaceMode === "chat" ? "EZ Chat" : workspaceProductName(workspaceMode, Boolean(state?.goal))}'s model`}
               />
             </span>
-            {workspaceMode === "code" && (
+            {goal && onSelectCritterModel ? (
               <>
                 <FooterSep />
                 <span className="model-anchor">
-                  <span className="model-label" style={{ color: theme.nolan }}>
-                    <NolanFace mood="chat" />
-                    Nolan
+                  <span className="model-label" style={{ color: theme.critter }}>
+                    <CritterIcon />
+                    Critters
                   </span>
                   <ModelSelect
                     models={models}
-                    currentModel={state?.nolanModel ?? state?.model ?? ""}
-                    onSelect={(id) => onSelectNolanModel(id)}
-                    color={theme.nolan}
-                    // Nolan's pin retargets BOTH his sessions (chat + the
-                    // autopilot reviewer), so it has to stay locked while
-                    // either is mid-turn — same rule the EZ picker follows,
-                    // and the sidecar now answers 409 to match.
-                    disabled={running || nolanRunning || autopilotReviewing}
+                    currentModel={goal.critterModel ?? state?.model ?? ""}
+                    onSelect={(id) => onSelectCritterModel(id)}
+                    color={theme.critter}
+                    // Applies to the next worker EZ Goals starts; running
+                    // workers keep theirs, so it never needs locking.
                     loadFailed={modelsFailed}
                     title={
-                      state?.nolanModelOverride
-                        ? "Nolan is pinned to his own model — click to change"
-                        : "Nolan follows EZ Coder's model — click to pin one"
+                      goal.critterModel
+                        ? "Critters are pinned to their own model. Click to change"
+                        : "Critters follow EZ Goals' model. Click to pin one"
                     }
-                    onSelectFollow={() => onSelectNolanModel(null)}
-                    followActive={!state?.nolanModelOverride}
+                    onSelectFollow={() => onSelectCritterModel(null)}
+                    followActive={!goal.critterModel}
+                    followLabel="EZ Goals"
                   />
                 </span>
               </>
+            ) : (
+              workspaceMode === "code" && (
+                <>
+                  <FooterSep />
+                  <span className="model-anchor">
+                    <span className="model-label" style={{ color: theme.nolan }}>
+                      <NolanFace mood="chat" />
+                      Nolan
+                    </span>
+                    <ModelSelect
+                      models={models}
+                      currentModel={state?.nolanModel ?? state?.model ?? ""}
+                      onSelect={(id) => onSelectNolanModel(id)}
+                      color={theme.nolan}
+                      // Nolan's pin retargets BOTH his sessions (chat + the
+                      // autopilot reviewer), so it has to stay locked while
+                      // either is mid-turn — same rule the EZ picker follows,
+                      // and the sidecar now answers 409 to match.
+                      disabled={running || nolanRunning || autopilotReviewing}
+                      loadFailed={modelsFailed}
+                      title={
+                        state?.nolanModelOverride
+                          ? "Nolan is pinned to his own model — click to change"
+                          : "Nolan follows EZ Coder's model — click to pin one"
+                      }
+                      onSelectFollow={() => onSelectNolanModel(null)}
+                      followActive={!state?.nolanModelOverride}
+                    />
+                  </span>
+                </>
+              )
             )}
           </span>
         </>

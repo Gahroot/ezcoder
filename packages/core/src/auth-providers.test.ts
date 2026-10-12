@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Provider } from "@prestyj/ai";
-import { getModelsForProvider } from "@prestyj/core";
+import { getModelsForProvider } from "./model-registry.js";
 import { AUTH_PROVIDERS } from "./auth-providers.js";
 
 /**
