@@ -89,7 +89,7 @@ const GOODBYE_MS = 800;
 export const MIN_WORK_MS = 4000;
 const BUBBLE_MS = 1600;
 /** EZ Goals is always a little Nolan, never a worker's critter (the notice shows him too). */
-export const COORDINATOR_CRITTER = "ken";
+export const COORDINATOR_CRITTER = "nolan";
 
 const CHAT_LINES = [
   ["Tea?", "Always."],
@@ -168,7 +168,7 @@ function say(actor: Actor, text: string, now: number, ms = BUBBLE_MS): void {
 
 /** How often a critter says what it's off to do when it gets a new job (EZ Goals more often). */
 const WORK_LINE_CHANCE = 0.45;
-const KEN_LINE_CHANCE = 0.65;
+const NOLAN_LINE_CHANCE = 0.65;
 /** A critter says nothing new about its work within this long of its last line. */
 const WORK_LINE_GAP_MS = 9000;
 /** Nobody on the farm speaks up about their work within this long of anyone else. */
@@ -186,7 +186,7 @@ function sayWhatsNext(world: FarmWorld, actor: Actor, kind: WorkKind, now: numbe
   if (actor.bubble || actor.leaving || actor.state === "arriving") return;
   if (now - actor.lastLineAt < WORK_LINE_GAP_MS) return;
   if (now - world.lastWorkLineAt < FARM_LINE_GAP_MS) return;
-  if (world.random() >= (actor.coordinator ? KEN_LINE_CHANCE : WORK_LINE_CHANCE)) return;
+  if (world.random() >= (actor.coordinator ? NOLAN_LINE_CHANCE : WORK_LINE_CHANCE)) return;
   const line = pickWorkLine(actor.coordinator, kind, world.random(), actor.lastLine);
   actor.lastLine = line;
   actor.lastLineAt = now;

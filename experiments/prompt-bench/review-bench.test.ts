@@ -47,7 +47,7 @@ test("assessment does not misclassify Markdown failure reports or empty final re
   assert.equal(isApproval("ideal", "Blocker: required check unavailable."), false);
   assert.equal(isApproval("ideal", ""), false);
   assert.equal(isApproval("ideal", "The updated implementation passes the required checks."), true);
-  assert.equal(isApproval("ken", "HUMAN\nThe required check failed."), false);
+  assert.equal(isApproval("nolan", "HUMAN\nThe required check failed."), false);
 });
 
 test("a warning in raw Nolan output is not proof it survives the production parser", () => {
@@ -92,8 +92,8 @@ for (const fixture of FIXTURES) {
 
 test("runtime benchmark blocks a real failed check before making any model call", async () => {
   const fixture = FIXTURES.find((f) => f.checkFails)!;
-  const sample = await trial(fixture, "current", "ken", 1,
-    { system: "test", ideal: "test", ken: "test" },
+  const sample = await trial(fixture, "current", "nolan", 1,
+    { system: "test", ideal: "test", nolan: "test" },
     { apiKey: "fixture-only", baseUrl: "http://127.0.0.1:1" },
     AbortSignal.timeout(5000), true);
   assert.equal(sample.status, "complete");

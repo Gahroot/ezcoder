@@ -164,7 +164,7 @@ const LOOK_FADE_MS = 3200;
 const WEATHER_EASE_MIN = 15;
 
 /**
- * A started Goal, seen from above as a little farm filling the window: GG
+ * A started Goal, seen from above as a little farm filling the window: EZ
  * Goals and every worker it brings in are critters about the yard, travelling
  * on foot along the yard's paths to the place for
  * whatever they're doing: the bookcase to read, the laptop for the web, the

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_QUEUE,
-  KEN_LINE_MAX,
+  NOLAN_LINE_MAX,
   PRIORITY,
   SPEAK_GAP_MS,
   STALE_MS,
@@ -48,7 +48,7 @@ describe("splitNolanLine", () => {
 
   it("clips a long line at a word", () => {
     const said = splitNolanLine(`[nolan:happy] ${"word ".repeat(60)}`).line;
-    expect(said?.text.length).toBeLessThanOrEqual(KEN_LINE_MAX);
+    expect(said?.text.length).toBeLessThanOrEqual(NOLAN_LINE_MAX);
     expect(said?.text.endsWith("…")).toBe(true);
   });
 

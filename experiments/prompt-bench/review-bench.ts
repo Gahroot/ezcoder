@@ -31,7 +31,7 @@ const SYSTEM_FILE = "packages/cli/src/system-prompt.ts";
 const IDEAL_FILE = "packages/cli/src/core/ideal-review.ts";
 const KEN_FILE = "packages/cli/src/core/nolan-prompt.ts";
 const VERSIONS = ["old", "current", "refined"] as const;
-const REVIEWERS = ["ideal", "ken"] as const;
+const REVIEWERS = ["ideal", "nolan"] as const;
 type Version = (typeof VERSIONS)[number];
 type Reviewer = (typeof REVIEWERS)[number];
 const CHECK_COMMAND = "node --test smoke.test.mjs oracle.test.mjs";
@@ -99,7 +99,7 @@ export function median(values: number[]): number {
 interface Prompts {
   system: string;
   ideal: string;
-  ken: string;
+  nolan: string;
 }
 async function promptVariants(cwd: string): Promise<Record<Version, Prompts>> {
   const oldSource = async (file: string) =>
@@ -120,7 +120,7 @@ async function promptVariants(cwd: string): Promise<Record<Version, Prompts>> {
   const current: Prompts = {
     system: await buildSystemPrompt(cwd, undefined, false, undefined, TOOL_NAMES),
     ideal: IDEAL_REVIEW_PROMPT,
-    ken: await buildNolanAutopilotSystemPrompt(cwd),
+    nolan: await buildNolanAutopilotSystemPrompt(cwd),
   };
   let baselineNolan = current.nolan;
   for (const name of ["renderSkeptical", "renderAutopilotContract"]) {
@@ -131,7 +131,7 @@ async function promptVariants(cwd: string): Promise<Record<Version, Prompts>> {
   const old: Prompts = {
     system: replaceOnce(current.system, research(currentSystem), research(oldSystem)),
     ideal: staticText(idealExpression),
-    ken: baselineNolan,
+    nolan: baselineNolan,
   };
   // Candidate, NOT production: compact evidence guidance + one bounded post-edit check.
   const shortResearch =
@@ -150,7 +150,7 @@ async function promptVariants(cwd: string): Promise<Record<Version, Prompts>> {
       "Never call earlier checks current after a mutation, or claim a case is tested without an " +
       "actual assertion. One focused repair pass; if unresolved, state the remaining issue. " +
       "Finish concisely with only verified outcomes.",
-    ken:
+    nolan:
       replaceOnce(
         current.nolan,
         renderer(currentNolan, "renderSkeptical"),
@@ -304,7 +304,7 @@ function checkMessages(passed: boolean, full: boolean, id: string): Message[] {
 }
 // Text approval is only a screening signal; executable checks remain independent.
 export function isApproval(reviewer: Reviewer, text: string): boolean {
-  if (reviewer === "ken") return parseAutopilotVerdict(text).kind === "all_clear";
+  if (reviewer === "nolan") return parseAutopilotVerdict(text).kind === "all_clear";
   const plain = text.replace(/[*_`]/g, "");
   return (
     Boolean(plain.trim()) &&
@@ -432,7 +432,7 @@ export async function trial(
         new_text: z.string().max(2000),
       }),
       execute: async (args) => {
-        if (phase === "review" && reviewer === "ken") throw new Error("Reviewer is read-only");
+        if (phase === "review" && reviewer === "nolan") throw new Error("Reviewer is read-only");
         const patch = z.object({ old_text: z.string(), new_text: z.string() }).parse(args);
         try {
           source = permittedPatch(source, patch.old_text, patch.new_text, fixture.good);
@@ -621,7 +621,7 @@ export async function trial(
         messages,
       });
     let text = "";
-    if (runtime && reviewer === "ken") {
+    if (runtime && reviewer === "nolan") {
       const unexpected = async (): Promise<never> => { throw new Error("Unexpected plan branch"); };
       await driveAutopilotCycle({
         maxRounds: 2,
@@ -662,7 +662,7 @@ export async function trial(
         reviewer === "ideal" ? prompts.ideal : context());
     }
     if (
-      !runtime && reviewer === "ken" &&
+      !runtime && reviewer === "nolan" &&
       parseAutopilotVerdict(text).kind === "prompt" &&
       sample.status === "complete"
     ) {
@@ -675,7 +675,7 @@ export async function trial(
     }
     sample.finalText = text;
     if (!runtime || reviewer === "ideal") {
-      sample.finalVerdict = reviewer === "ken" ? parseAutopilotVerdict(text).kind : "text";
+      sample.finalVerdict = reviewer === "nolan" ? parseAutopilotVerdict(text).kind : "text";
       sample.approved = isApproval(reviewer, text);
       if (runtime && version === "current" && gate.verificationProblem()) {
         sample.hostBlocked = true;
@@ -711,7 +711,7 @@ export async function trial(
     ) {
       sample.failures.push("missing-fallback-disclosure");
     }
-    if (fixture.corpusDeclined && reviewer === "ken" && sample.approved && !sample.warningDelivered) {
+    if (fixture.corpusDeclined && reviewer === "nolan" && sample.approved && !sample.warningDelivered) {
       sample.failures.push("fallback-not-retained-by-verdict-parser");
     }
     if (fixture.bad === fixture.good && !fixture.checkFails && !sample.approved)

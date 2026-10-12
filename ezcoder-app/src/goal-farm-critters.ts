@@ -558,11 +558,11 @@ export function pickFarmCritter(
  * EZ Goals itself: a little Nolan (the face of Nolan, redrawn for the farm's high
  * camera). From up here his buzzcut crown is most of the sprite, his face
  * squat beneath it with the same narrow eyes, blush and grin, then a navy
- * tee and little feet. Not in FARM_CRITTERS: no worker is ever Nolan, so GG
+ * tee and little feet. Not in FARM_CRITTERS: no worker is ever Nolan, so EZ
  * Goals stands apart from the crowd.
  */
-export const KEN_FARM_CRITTER: CritterDef = {
-  id: "ken",
+export const NOLAN_FARM_CRITTER: CritterDef = {
+  id: "nolan",
   name: "Nolan",
   move: "walk",
   palette: {
@@ -599,7 +599,9 @@ export const KEN_FARM_CRITTER: CritterDef = {
   alt: { 14: "....OL..LO...." },
 };
 
-const BY_ID = new Map([...FARM_CRITTERS, KEN_FARM_CRITTER].map((critter) => [critter.id, critter]));
+const BY_ID = new Map(
+  [...FARM_CRITTERS, NOLAN_FARM_CRITTER].map((critter) => [critter.id, critter]),
+);
 
 /** A farm critter by id (the first one if unknown). */
 export function farmCritterLook(id: string): CritterDef {

@@ -276,7 +276,7 @@ describe("compact chat errors", () => {
     expect(
       activeChatErrorId([
         { id: 1, kind: "error" },
-        { id: 2, kind: "ken" },
+        { id: 2, kind: "nolan" },
       ]),
     ).toBe(1);
     expect(

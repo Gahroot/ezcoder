@@ -543,7 +543,7 @@ function actorItems(
       }
       if (actor.coordinator) {
         drawNolanCrown(ctx, px, top, now);
-        drawNameplate(ctx, "KEN", px, py + 3);
+        drawNameplate(ctx, "NOLAN", px, py + 3);
       }
       if (working && actor.doing) {
         drawFarmWork(ctx, actor.doing, px, py, facing, now, world.farm.lookAt[actor.station]);
@@ -1236,7 +1236,7 @@ function easeInOut(t: number): number {
 }
 
 /** EZ Goals' crown, gold and outlined, a red jewel at its front; it glints now and then. */
-const KEN_CROWN = [
+const NOLAN_CROWN = [
   "o.o..o..o.o",
   "oYo.oYo.oYo",
   "oYYoYYYoYYo",
@@ -1254,7 +1254,7 @@ function drawNolanCrown(ctx: Ctx, px: number, top: number, now: number): void {
   };
   const x0 = Math.round(px) - 5;
   const y0 = Math.round(top) - 5;
-  KEN_CROWN.forEach((row, r) => {
+  NOLAN_CROWN.forEach((row, r) => {
     for (let c = 0; c < row.length; c++) {
       const color = colors[row[c] ?? "."];
       if (!color) continue;

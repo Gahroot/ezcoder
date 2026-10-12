@@ -1,5 +1,5 @@
 // Little Nolan's dialogue portrait for the Workers view (see NolanDialogue): the
-// farm's Nolan (KEN_FARM_CRITTER) drawn bigger and front-on, still a chibi. A
+// farm's Nolan (NOLAN_FARM_CRITTER) drawn bigger and front-on, still a chibi. A
 // round mochi head with a flat jaw, a short dark buzzcut, a black tee, and a
 // touch of bad boy: a slit in his right brow, a plaster on his cheek, a smirk
 // for his resting face. 36×44 cells: head, shoulders and chest (the dialogue
@@ -12,8 +12,8 @@
 import type { NolanFace } from "./goal-nolan-talk";
 
 /** Portrait size, in cells (one canvas pixel each; scale it in CSS). */
-export const KEN_PORTRAIT_W = 36;
-export const KEN_PORTRAIT_H = 44;
+export const NOLAN_PORTRAIT_W = 36;
+export const NOLAN_PORTRAIT_H = 44;
 
 const PALETTE: Readonly<Record<string, string>> = {
   O: "#17100d", // outline
@@ -313,16 +313,16 @@ export function nolanPortraitCells(
     for (const extra of art.extras) put(layer, extra);
     // Each mark gets its own outline, never drawn over Nolan himself.
     const marks = layer.map((row) => [...row]);
-    for (let y = 0; y < KEN_PORTRAIT_H; y++) {
-      for (let x = 0; x < KEN_PORTRAIT_W; x++) {
+    for (let y = 0; y < NOLAN_PORTRAIT_H; y++) {
+      for (let x = 0; x < NOLAN_PORTRAIT_W; x++) {
         if (marks[y]?.[x] || BUST[y]?.[x] !== ".") continue;
         const near =
           marks[y - 1]?.[x] || marks[y + 1]?.[x] || marks[y]?.[x - 1] || marks[y]?.[x + 1];
         if (near && layer[y]) layer[y][x] = "O";
       }
     }
-    for (let y = 0; y < KEN_PORTRAIT_H; y++) {
-      for (let x = 0; x < KEN_PORTRAIT_W; x++) {
+    for (let y = 0; y < NOLAN_PORTRAIT_H; y++) {
+      for (let x = 0; x < NOLAN_PORTRAIT_W; x++) {
         const key = layer[y]?.[x];
         const row = grid[y];
         if (!key || !row || (key === "O" && row[x])) continue;
@@ -339,11 +339,11 @@ export function drawNolanPortrait(
   face: NolanFace,
   options: NolanPortraitOptions = {},
 ): void {
-  if (canvas.width !== KEN_PORTRAIT_W) canvas.width = KEN_PORTRAIT_W;
-  if (canvas.height !== KEN_PORTRAIT_H) canvas.height = KEN_PORTRAIT_H;
+  if (canvas.width !== NOLAN_PORTRAIT_W) canvas.width = NOLAN_PORTRAIT_W;
+  if (canvas.height !== NOLAN_PORTRAIT_H) canvas.height = NOLAN_PORTRAIT_H;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.clearRect(0, 0, KEN_PORTRAIT_W, KEN_PORTRAIT_H);
+  ctx.clearRect(0, 0, NOLAN_PORTRAIT_W, NOLAN_PORTRAIT_H);
   nolanPortraitCells(face, options).forEach((row, y) => {
     row.forEach((key, x) => {
       const colour = key ? PALETTE[key] : undefined;

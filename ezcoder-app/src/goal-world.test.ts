@@ -14,7 +14,7 @@ import {
   FARM_CRITTERS,
   FARM_CRITTER_H,
   FARM_CRITTER_W,
-  KEN_FARM_CRITTER,
+  NOLAN_FARM_CRITTER,
   farmCritterLook,
   pickFarmCritter,
 } from "./goal-farm-critters";
@@ -198,16 +198,16 @@ describe("goal world agents", () => {
 
 describe("goal farm critters", () => {
   it("draws EZ Goals as a little Nolan, the farm's size, and never hands Nolan to a worker", () => {
-    expect(KEN_FARM_CRITTER.rows).toHaveLength(FARM_CRITTER_H);
-    for (const row of KEN_FARM_CRITTER.rows) expect(row).toHaveLength(FARM_CRITTER_W);
-    for (const ch of new Set(KEN_FARM_CRITTER.rows.join(""))) {
-      if (ch !== ".") expect(KEN_FARM_CRITTER.palette[ch], ch).toBeDefined();
+    expect(NOLAN_FARM_CRITTER.rows).toHaveLength(FARM_CRITTER_H);
+    for (const row of NOLAN_FARM_CRITTER.rows) expect(row).toHaveLength(FARM_CRITTER_W);
+    for (const ch of new Set(NOLAN_FARM_CRITTER.rows.join(""))) {
+      if (ch !== ".") expect(NOLAN_FARM_CRITTER.palette[ch], ch).toBeDefined();
     }
-    expect(farmCritterLook("ken")).toBe(KEN_FARM_CRITTER);
-    expect(FARM_CRITTERS.some((c) => c.id === "ken")).toBe(false);
+    expect(farmCritterLook("nolan")).toBe(NOLAN_FARM_CRITTER);
+    expect(FARM_CRITTERS.some((c) => c.id === "nolan")).toBe(false);
     const none = new Set<string>();
     for (let i = 0; i < 60; i++)
-      expect(pickFarmCritter(undefined, `w${i}`, none).id).not.toBe("ken");
+      expect(pickFarmCritter(undefined, `w${i}`, none).id).not.toBe("nolan");
   });
 
   it("gives each member of EZ Goals' team a critter of its own", () => {
@@ -580,8 +580,8 @@ describe("goal farm life", () => {
     expect(placed?.station).toBe("bookcase");
     expect(placed?.spot).toEqual(farm.stations.bookcase[0]);
     // EZ Goals is a little Nolan, never one of the workers' critters.
-    expect(world.actors.get(COORDINATOR_KEY)?.critterId).toBe("ken");
-    expect(placed?.critterId).not.toBe("ken");
+    expect(world.actors.get(COORDINATOR_KEY)?.critterId).toBe("nolan");
+    expect(placed?.critterId).not.toBe("nolan");
   });
 
   it("walks a new worker in through the gate, to its station, and out again when done", () => {
@@ -1050,7 +1050,7 @@ describe("goal farm play", () => {
     expect(water && farm.surface[water.y * farm.width + water.x]).toBe(SURFACE.water);
   });
 
-  it("marks EZ Goals with its gold crown and a KEN nameplate, and no worker", () => {
+  it("marks EZ Goals with its gold crown and a NOLAN nameplate, and no worker", () => {
     const w = createFarmWorld(farm, () => 0.4);
     const agents = collectWorldAgents({
       running: true,

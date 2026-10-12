@@ -121,7 +121,7 @@ export const WORKER_LINES: Readonly<Record<WorkKind, readonly string[]>> = {
 };
 
 /** Little Nolan (EZ Goals): the same jobs, said like the one running the goal. */
-export const KEN_LINES: Readonly<Record<WorkKind, readonly string[]>> = {
+export const NOLAN_LINES: Readonly<Record<WorkKind, readonly string[]>> = {
   read: [
     "I need to read this first.",
     "Let me check what we've got.",
@@ -242,7 +242,7 @@ export function pickWorkLine(
   roll: number,
   last: string | null,
 ): string {
-  const lines = (coordinator ? KEN_LINES : WORKER_LINES)[kind];
+  const lines = (coordinator ? NOLAN_LINES : WORKER_LINES)[kind];
   const pool = lines.length > 1 && last ? lines.filter((line) => line !== last) : lines;
   return pool[Math.min(pool.length - 1, Math.floor(roll * pool.length))] ?? lines[0] ?? "";
 }

@@ -26,7 +26,7 @@
 import type { Item } from "./transcript-item";
 
 /** Nolan's ten faces, each for a kind of moment. */
-export const KEN_FACES = [
+export const NOLAN_FACES = [
   "neutral",
   "happy",
   "excited",
@@ -38,7 +38,7 @@ export const KEN_FACES = [
   "proud",
   "wink",
 ] as const;
-export type NolanFace = (typeof KEN_FACES)[number];
+export type NolanFace = (typeof NOLAN_FACES)[number];
 
 /** A line Nolan says, with the face he says it with. */
 export interface NolanLine {
@@ -53,7 +53,7 @@ export interface NolanLine {
 export const PRIORITY = { failed: 4, own: 3, finished: 2, note: 1 } as const;
 
 /** The most characters a line may have on the box (three short lines). */
-export const KEN_LINE_MAX = 140;
+export const NOLAN_LINE_MAX = 140;
 /** The quietest the box keeps between two lines. */
 export const SPEAK_GAP_MS = 20_000;
 /** How long a finished line stays up, plus a little per word read. */
@@ -62,33 +62,33 @@ export const HOLD_PER_CHAR_MS = 40;
 /** A line that waited longer than this is stale and dropped unsaid. */
 export const STALE_MS = 90_000;
 
-const FACE_SET: ReadonlySet<string> = new Set(KEN_FACES);
+const FACE_SET: ReadonlySet<string> = new Set(NOLAN_FACES);
 
 // `[nolan:face] line` on its own line, at the end of a message (the prompt asks
 // for the last line). Tolerant of backticks and stray spacing, and of a face
 // EZ Goals made up (it falls back to neutral).
-const KEN_LINE = /(?:^|\n)[ \t]*`?\[nolan:([a-z]+)\]`?[ \t]*([^\n]*)[ \t]*$/i;
+const NOLAN_LINE = /(?:^|\n)[ \t]*`?\[nolan:([a-z]+)\]`?[ \t]*([^\n]*)[ \t]*$/i;
 // A stray marker anywhere else (live runs: one opened a message with it):
 // never shown in the chat, its words kept.
 const STRAY_MARKER = /(^|\n)[ \t]*`?\[nolan:[a-z]+\]`?[ \t]*/gi;
 // The fallback when no line ends the message: one that opens it (live run:
 // EZ Goals led its final summary with the line, so Nolan said nothing).
-const OPENING_KEN_LINE = /^[ \t]*`?\[nolan:([a-z]+)\]`?[ \t]*([^\n]*)/i;
+const OPENING_NOLAN_LINE = /^[ \t]*`?\[nolan:([a-z]+)\]`?[ \t]*([^\n]*)/i;
 
 /**
  * Nolan's spoken line at the end of a EZ Goals message, if it has one, and the
  * message without it. The line is cleaned for the box: Markdown marks
- * dropped, whitespace collapsed, and clipped at a word to KEN_LINE_MAX.
+ * dropped, whitespace collapsed, and clipped at a word to NOLAN_LINE_MAX.
  */
 export function splitNolanLine(text: string): {
   readonly body: string;
   readonly line: { readonly face: NolanFace; readonly text: string } | null;
 } {
-  const match = KEN_LINE.exec(text.trimEnd());
+  const match = NOLAN_LINE.exec(text.trimEnd());
   if (!match) {
     // An opening line is spoken too, but it reads as the message's first
     // sentence, so the chat keeps its words (only the marker goes).
-    const opening = OPENING_KEN_LINE.exec(text.trimStart());
+    const opening = OPENING_NOLAN_LINE.exec(text.trimStart());
     return {
       body: text.replace(STRAY_MARKER, "$1"),
       line: opening ? spokenLine(opening[1], opening[2]) : null,
@@ -133,7 +133,7 @@ function plainText(raw: string): string {
 }
 
 function cleanLine(raw: string): string {
-  return clipAtWord(plainText(raw), KEN_LINE_MAX);
+  return clipAtWord(plainText(raw), NOLAN_LINE_MAX);
 }
 
 function clipAtWord(text: string, max: number): string {
@@ -233,7 +233,7 @@ export function workerLine(change: WorkerChange): NolanLine {
   return {
     id: `worker:${change.key}:${change.to}`,
     face: change.to === "done" ? "happy" : "worried",
-    text: clipAtWord(pick.replace("{name}", change.name), KEN_LINE_MAX),
+    text: clipAtWord(pick.replace("{name}", change.name), NOLAN_LINE_MAX),
     priority: change.to === "done" ? PRIORITY.finished : PRIORITY.failed,
   };
 }
@@ -259,7 +259,7 @@ export function ownLine(said: NolanSaid): NolanLine {
 
 /**
  * A short progress note said as it is: one plain paragraph that fits the box
- * whole (KEN_LINE_MAX, never clipped), with no code, table, list or heading.
+ * whole (NOLAN_LINE_MAX, never clipped), with no code, table, list or heading.
  * Anything else stays in the chat.
  */
 export function noteLine(text: string): string | null {
@@ -267,7 +267,7 @@ export function noteLine(text: string): string | null {
   if (!trimmed || /\n\s*\n/.test(trimmed)) return null;
   if (/```|^\s*([-*+]|\d+\.|#{1,6}|\|)\s/m.test(trimmed)) return null;
   const said = plainText(trimmed);
-  return said.length > 0 && said.length <= KEN_LINE_MAX ? said : null;
+  return said.length > 0 && said.length <= NOLAN_LINE_MAX ? said : null;
 }
 
 /**

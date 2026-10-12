@@ -1,23 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { KEN_LINES, WORKER_LINES, pickWorkLine } from "./goal-farm-lines";
+import { NOLAN_LINES, WORKER_LINES, pickWorkLine } from "./goal-farm-lines";
 import { GLYPHS, textWidth, wrapText } from "./goal-world-font";
 import { WORK_KINDS } from "./goal-world-agents";
 import { createFarmWorld, stepFarm, syncFarm } from "./goal-farm-sim";
 import { buildFarm } from "./goal-farm-map";
 import type { WorldAgent } from "./goal-world-agents";
 
-const all = [...Object.values(WORKER_LINES), ...Object.values(KEN_LINES)].flat();
+const all = [...Object.values(WORKER_LINES), ...Object.values(NOLAN_LINES)].flat();
 
 describe("what the farm's critters say", () => {
   it("has about ten different lines for every kind of work, for workers and for Nolan", () => {
     for (const kind of WORK_KINDS) {
-      for (const lines of [WORKER_LINES[kind], KEN_LINES[kind]]) {
+      for (const lines of [WORKER_LINES[kind], NOLAN_LINES[kind]]) {
         expect(lines.length, kind).toBeGreaterThanOrEqual(10);
         expect(new Set(lines).size, kind).toBe(lines.length);
       }
     }
     // Nolan's lines are his own, not the workers' with his name on.
-    const shared = KEN_LINES.read.filter((l) => WORKER_LINES.read.includes(l));
+    const shared = NOLAN_LINES.read.filter((l) => WORKER_LINES.read.includes(l));
     expect(shared.length).toBeLessThan(3);
   });
 

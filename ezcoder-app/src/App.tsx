@@ -331,7 +331,7 @@ function App(): React.ReactElement {
   // alongside the count because the sidecar is the source of truth for both.
   const [queuedMessages, updateQueuedMessages] = useState<QueuedMessage[]>([]);
   const [state, setState] = useState<AgentState | null>(null);
-  // Transient "KEN IS ON"/"KEN IS OFF" takeover banner shown when Autopilot
+  // Transient "NOLAN IS ON"/"NOLAN IS OFF" takeover banner shown when Autopilot
   // is toggled. Null = not showing; the banner clears itself via `onDone`
   // once its slide-out animation finishes.
   const [nolanPowerBanner, setNolanPowerBanner] = useState<"on" | "off" | null>(null);
