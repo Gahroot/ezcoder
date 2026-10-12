@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.30.3
+
+### Patch Changes
+
+- Goals workers can use steroids to read real-repo code, and fixes to goal workers' added folders, prompt-cache stability and tool-output pruning.
+  - @prestyj/ai@5.30.3
+  - @prestyj/agent@5.30.3
+  - @prestyj/core@5.30.3
+
 ## 5.30.2
 
 ### Patch Changes
