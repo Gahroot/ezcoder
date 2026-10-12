@@ -17,7 +17,7 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.81.5",
+    version: "0.81.6",
     date: "2026-10-12",
     items: [
       "Meet `Goals`. Hand me a big objective and a crew of critter workers heads out across a little farm to get it done, while you watch the props come alive. When it wraps up, a finish card shows you what landed.",

@@ -286,7 +286,7 @@ pub fn run() {
             {
                 let app = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    let Some(port) = await_daemon_port(&app).await else {
+                    let Ok(port) = await_daemon_port(&app).await else {
                         return;
                     };
                     let cwds = live_window_cwds(&app, None);
