@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.81.7",
+    date: "2026-10-12",
+    items: [
+      "Your `Goals` crew got sharper. Builders, researchers and checkers can now study real open-source code with `Steroids` before they write a line, so the work lands right the first time.",
+      "Settings got tidier. `Steroids` shows its disk size cleanly, your project folder saves itself, and the `Keep awake` label is shorter.",
+      "Window auto-arrange now fits every cell perfectly on Windows, no more overflow past the edges.",
+    ],
+  },
+  {
     version: "0.81.6",
     date: "2026-10-12",
     items: [
