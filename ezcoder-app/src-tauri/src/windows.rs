@@ -1028,7 +1028,20 @@ fn apply_tile(win: &WebviewWindow, rect: (i32, i32, u32, u32), scale: f64) {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = scale;
-        let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+        // `set_size` sets the INNER (client) size, but the tile cell bounds the
+        // OUTER frame. Native title bars/borders differ per window (DPI, state),
+        // so subtract each window's own frame so it never overflows its cell.
+        let (frame_w, frame_h) = match (win.outer_size(), win.inner_size()) {
+            (Ok(o), Ok(i)) => (
+                o.width.saturating_sub(i.width),
+                o.height.saturating_sub(i.height),
+            ),
+            _ => (0, 0),
+        };
+        let _ = win.set_size(tauri::PhysicalSize::new(
+            w.saturating_sub(frame_w).max(1),
+            h.saturating_sub(frame_h).max(1),
+        ));
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
     }
 }
