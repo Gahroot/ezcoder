@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.81.5",
+    date: "2026-10-12",
+    items: [
+      "Meet `Goals`. Hand me a big objective and a crew of critter workers heads out across a little farm to get it done, while you watch the props come alive. When it wraps up, a finish card shows you what landed.",
+      "Updates now arrive with a cozy `critter meadow` banner and little ready and error sounds, so you always know when a new build is waiting.",
+      "Writing files got friendlier. Overwrites just work, and I back up anything unseen they would have removed so nothing vanishes on you.",
+      "Long sessions stay smooth. Adding folders mid-chat no longer scrambles your cache or trims tool output too early.",
+    ],
+  },
+  {
     version: "0.81.4",
     date: "2026-10-11",
     items: [
