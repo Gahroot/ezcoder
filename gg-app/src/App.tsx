@@ -94,6 +94,7 @@ import {
   type GoalTally,
 } from "./goal-progress";
 import { latestKenLine } from "./goal-ken-talk";
+import { kenStatusOf, lastRunOf } from "./goal-ken-status";
 import {
   FINISH_SETTLE_MS,
   goalFinishOf,
@@ -1953,6 +1954,27 @@ function App(): React.ReactElement {
     if (goalFinish && (running || goalView === "chat")) setGoalFinish(null);
   }, [goalFinish, running, goalView]);
   const shownGoalFinish = goalFinish?.goalId === activeGoalId ? goalFinish : null;
+  // What Ken is doing right now, for the Workers view's status pill and the
+  // thought mark over his head (see goal-ken-status).
+  const goalPaused = state?.goal?.paused === true;
+  const goalLastRun = useMemo(
+    () => (activeGoalId ? lastRunOf(goalRuns, activeGoalId, items) : null),
+    [activeGoalId, goalRuns, items],
+  );
+  const kenStatus = useMemo(
+    () =>
+      activeGoalId
+        ? kenStatusOf({
+            running,
+            paused: goalPaused,
+            waitingOnUser: goalWaitingOnUser,
+            liveTools: liveToolFeed,
+            workers: goalWorkers,
+            lastRun: goalLastRun,
+          })
+        : null,
+    [activeGoalId, running, goalPaused, goalWaitingOnUser, liveToolFeed, goalWorkers, goalLastRun],
+  );
   // The header's counts: workers working now, tasks done and failed so far
   // (see goal-progress). Counting starts afresh for each goal.
   // Restarted when the transcript is reloaded (after a daemon restart, say):
@@ -2658,6 +2680,7 @@ function App(): React.ReactElement {
               onShowChat={() => setGoalChatFor(activeGoalId)}
               finish={shownGoalFinish}
               onCloseFinish={() => setGoalFinish(null)}
+              kenStatus={kenStatus}
             />
           </Suspense>
         </Activity>
