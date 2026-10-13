@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.82.0",
+    date: "2026-10-13",
+    items: [
+      "You'll never wonder if `Goals` is still working again. A little storybook pill in the corner of the farm tells you exactly what I'm doing, like `Reading search.ts`, with a live timer, and I pop a thought bubble over my head while I think or need you.",
+      "The `Goals` farm finally has a voice. Every critter, tree, well and hen you poke makes its own cozy sound, about `80` hand-tuned ones in all, and your sound toggle mutes them along with everything else.",
+      "Searching your code is blazing fast, even in giant projects. I spread every search across your CPU cores and skip folders like `node_modules` without looking inside.",
+      "Attach a repo to a goal and its own slash commands come along. They show up in the `/` menu and run just like your project's own.",
+      "Claude `Opus 5.5`, `Sonnet 5.5` and `Haiku 5.5` now start fresh chats at `medium` effort, so answers come faster and cost less. Any level you already picked stays put.",
+    ],
+  },
+  {
     version: "0.81.7",
     date: "2026-10-12",
     items: [
