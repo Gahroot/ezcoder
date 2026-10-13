@@ -17,7 +17,7 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "0.82.0",
+    version: "0.90.0",
     date: "2026-10-13",
     items: [
       "You'll never wonder if `Goals` is still working again. A little storybook pill in the corner of the farm tells you exactly what I'm doing, like `Reading search.ts`, with a live timer, and I pop a thought bubble over my head while I think or need you.",
