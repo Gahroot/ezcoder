@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.31.0
+
+### Minor Changes
+
+- Sync upstream: faster multi-core grep that skips ignored folders, slash commands loaded from every workspace root (including attached goal repos), and Claude 5.5 models defaulting to medium effort.
+
+### Patch Changes
+
+- @prestyj/ai@5.31.0
+- @prestyj/agent@5.31.0
+- @prestyj/core@5.31.0
+
 ## 5.30.3
 
 ### Patch Changes
