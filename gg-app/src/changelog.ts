@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.88.1",
+    date: "2026-10-13",
+    items: [
+      "Searching your code is now blazing fast, even in giant projects. I spread every search across your CPU cores and skip ignored folders like `node_modules` without even looking inside. I also raised the limit to `100k` files, so nothing hides past the first `10k` anymore and huge repos and `Goals` folders get searched end to end.",
+    ],
+  },
+  {
     version: "0.88.0",
     date: "2026-10-13",
     items: [
