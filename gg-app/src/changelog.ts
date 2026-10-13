@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.89.0",
+    date: "2026-10-13",
+    items: [
+      "The `Goals` farm finally has a voice. Every single thing you poke now makes its own cozy sound, timed right to its animation: the bamboo spout clacks, the well echoes your hello back, the hen bawks and lays an egg, and each tree hides a different songbird. That's `80` hand-tuned little sounds, soft enough to play all day, and the critters at work tap and saw now and then too. Your sound toggle mutes them along with everything else.",
+      "Attach a repo to a goal and its own slash commands come right along. Every `.gg/commands` file in the repos you add shows up in the `/` menu and runs exactly like your project's own, and the same goes for folders you add with `/add-dir`.",
+    ],
+  },
+  {
     version: "0.88.1",
     date: "2026-10-13",
     items: [
