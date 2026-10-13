@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.80.1
+
+### Patch Changes
+
+- Load custom slash commands from every workspace root, so a goal's attached repos and folders added with `/add-dir` bring their own `.gg/commands`.
+  - @kenkaiiii/gg-ai@5.80.1
+  - @kenkaiiii/gg-agent@5.80.1
+  - @kenkaiiii/gg-core@5.80.1
+
 ## 5.80.0
 
 ### Minor Changes
