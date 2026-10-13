@@ -88,7 +88,6 @@ import { type RepoPolls, createRepoPolls } from "./app-sidecar/repo-polls.js";
 import { extractPlanSteps } from "./utils/plan-steps.js";
 import { getSupportedThinkingLevels, isThinkingLevelSupported } from "./core/thinking-level.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
-import { loadCustomCommands } from "./core/custom-commands.js";
 import { loadTasksSync, pruneDoneTasksSync } from "./core/task-store.js";
 import { initLogger, log } from "./core/logger.js";
 import { installTerminationHandlers } from "./core/shutdown.js";

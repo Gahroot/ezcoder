@@ -17,7 +17,11 @@ import {
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { drawNolanPortrait } from "./goal-nolan-portrait";
-import { LONG_THINK_MS, type NolanStatus as Status, type NolanStatusIcon } from "./goal-nolan-status";
+import {
+  LONG_THINK_MS,
+  type NolanStatus as Status,
+  type NolanStatusIcon,
+} from "./goal-nolan-status";
 import { useMotionLevel } from "./window-motion";
 
 interface Props {

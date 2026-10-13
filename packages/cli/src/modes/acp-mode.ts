@@ -102,7 +102,10 @@ import { readChecklistSnapshot } from "../core/checklist-snapshot.js";
 import { CHECKLIST_FILE } from "../core/checklist-items.js";
 import { loadAutopilot, saveAutopilot } from "../app-sidecar/app-settings.js";
 import { formatErrorForDisplay } from "@prestyj/ai";
-import { buildNolanAutopilotContext, buildNolanAutopilotPlanContext } from "../core/nolan-context.js";
+import {
+  buildNolanAutopilotContext,
+  buildNolanAutopilotPlanContext,
+} from "../core/nolan-context.js";
 import { parseAutopilotVerdict, type AutopilotVerdict } from "../core/autopilot-verdict.js";
 import {
   countAssistantMessages,

@@ -256,7 +256,9 @@ export function GoalWorld({
     // Nolan's own words for what he's doing, and his thought mark: EZ Goals
     // stands on the farm even between runs (paused, or done), so it's always there.
     return all.map((agent) =>
-      agent.coordinator ? { ...agent, detail: nolanDetail ?? agent.detail, mark: nolanMark } : agent,
+      agent.coordinator
+        ? { ...agent, detail: nolanDetail ?? agent.detail, mark: nolanMark }
+        : agent,
     );
   }, [running, liveTools, waitingOnUser, workers, nolanMark, nolanDetail]);
   const summary = useMemo(() => describeWorld(agents), [agents]);

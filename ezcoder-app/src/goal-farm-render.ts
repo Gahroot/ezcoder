@@ -402,7 +402,10 @@ function drawBubble(ctx: Ctx, text: string, cx: number, top: number, mapWidth: n
 
 /** Nolan's thought marks: 5×7 glyphs drawn in his little thought bubble. */
 const MARK_GLYPHS: Readonly<
-  Record<Exclude<NolanMark, "thinking">, ReadonlyArray<readonly [number, number, readonly string[]]>>
+  Record<
+    Exclude<NolanMark, "thinking">,
+    ReadonlyArray<readonly [number, number, readonly string[]]>
+  >
 > = {
   question: [[7, 3, [".###.", "#...#", "....#", "...#.", "..#..", ".....", "..#.."]]],
   problem: [[8, 3, ["##", "##", "##", "##", "..", "##"]]],
