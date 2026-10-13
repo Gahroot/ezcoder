@@ -1187,6 +1187,24 @@ function App(): React.ReactElement {
     return () => unsub();
   }, [handleEvent]);
 
+  // Re-read the slash commands: each workspace root brings its own
+  // `.gg/commands` (a goal's attached repos, `/add-dir`). An answer from a
+  // superseded hydrate (project switch) is dropped.
+  const refreshCommands = useCallback((): void => {
+    const generation = hydrateGenerationRef.current;
+    void listCommands().then((cmds) => {
+      if (hydrateGenerationRef.current === generation && cmds.length > 0) setCommands(cmds);
+    });
+  }, []);
+  // Roots added or removed mid-session (they arrive with the footer extras).
+  const rootsKey = (state?.additionalRoots ?? []).join("\n");
+  const rootsSeenRef = useRef(rootsKey);
+  useEffect(() => {
+    if (!hydrated || rootsSeenRef.current === rootsKey) return;
+    rootsSeenRef.current = rootsKey;
+    refreshCommands();
+  }, [hydrated, rootsKey, refreshCommands]);
+
   // Boot-time/reload workspace recovery: Rust keeps THIS window's active target
   // for its lifetime. A restored app launch and a WebKit content-process reload
   // therefore both hydrate straight back into the existing daemon session.
@@ -3016,9 +3034,11 @@ function App(): React.ReactElement {
           instructions={state.goal.instructions ?? ""}
           busy={running}
           onClose={() => setShowGoalSettings(false)}
-          onSaved={(next) =>
-            setState((s) => (s?.goal ? { ...s, goal: { ...s.goal, ...next } } : s))
-          }
+          onSaved={(next) => {
+            setState((s) => (s?.goal ? { ...s, goal: { ...s.goal, ...next } } : s));
+            // Newly attached repos bring their own slash commands.
+            refreshCommands();
+          }}
         />
       )}
       {showScorecard && progress && (
