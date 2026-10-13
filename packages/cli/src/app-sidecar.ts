@@ -25,7 +25,11 @@ import { setStreamDiagnostic } from "@prestyj/agent";
 import { AgentSession } from "./core/agent-session.js";
 import { RunLifecycle } from "./core/run-lifecycle.js";
 import { RunClaim } from "./core/run-claim.js";
-import { shouldOfferPendingPlan } from "./core/plan-handoff.js";
+import {
+  IMPLEMENT_PLAN_PROMPT as SHARED_IMPLEMENT_PLAN_PROMPT,
+  PLAN_SUBMITTED_FOR_REVIEW,
+  shouldOfferPendingPlan,
+} from "./core/plan-handoff.js";
 import {
   createChatAgent,
   parseChatAgentId,
@@ -929,7 +933,7 @@ async function createSession(
         }
         setPendingPlan(planPath, content);
         broadcast("plan_exit", { planPath, content });
-        return "Plan submitted for user review. Wait for the user to approve, reject, or dismiss it before implementing.";
+        return PLAN_SUBMITTED_FOR_REVIEW;
       },
     });
   }
@@ -1510,12 +1514,12 @@ async function createSession(
     broadcast("plan_review", plan);
   }
 
-  // Workflow (prompt-template) commands: built-in + the project's custom
-  // `.ezcoder/commands/*.md`. Used to gate autopilot off command turns and to label
+  // Workflow (prompt-template) commands: built-in + the custom
+  // `.ezcoder/commands/*.md` of every workspace root (a goal's attached repos too). Used to gate autopilot off command turns and to label
   // expanded templates in Nolan's digests. Loaded fresh so a newly added custom
   // command is picked up without a restart (mirrors GET /commands).
   async function loadWorkflowCommandSpecs(): Promise<WorkflowCommandSpec[]> {
-    const custom = await loadCustomCommands(cwd).catch(() => []);
+    const custom = await session.loadCustomCommands().catch(() => []);
     return [
       ...PROMPT_COMMANDS.map((c) => ({ name: c.name, aliases: c.aliases, prompt: c.prompt })),
       ...custom.map((c) => ({ name: c.name, aliases: [] as string[], prompt: c.prompt })),
@@ -1863,8 +1867,7 @@ async function createSession(
   // string the webview sends on a manual Accept (see PlanReviewModal's accept
   // handler in ezcoder-app/src/App.tsx). Keep the two in lockstep so auto- and
   // manual approval produce identical implementation turns.
-  const IMPLEMENT_PLAN_PROMPT =
-    "The plan has been approved. Implement it now, following each step in order.";
+  const IMPLEMENT_PLAN_PROMPT = SHARED_IMPLEMENT_PLAN_PROMPT;
 
   // ── Stranded-queue drain ───────────────────────────────
   // A prompt POSTed while an autopilot cycle is between injected runs (build

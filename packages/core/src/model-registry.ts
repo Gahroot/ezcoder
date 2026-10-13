@@ -152,6 +152,10 @@ export const MODELS: ModelInfo[] = [
     supportsImages: true,
     supportsVideo: false,
     costTier: "high",
+    // Anthropic's API and Claude Code both start the 5.5 family at medium; at a
+    // given level 5.5 thinks more than 5, so the ladder ceiling (max) made fresh
+    // sessions slow and expensive. Users can still opt up.
+    defaultThinkingLevel: "medium",
     maxThinkingLevel: "max",
   },
   {
@@ -166,6 +170,10 @@ export const MODELS: ModelInfo[] = [
     supportsImages: true,
     supportsVideo: false,
     costTier: "medium",
+    // Anthropic's API and Claude Code both start the 5.5 family at medium; at a
+    // given level 5.5 thinks more than 5, so the ladder ceiling (max) made fresh
+    // sessions slow and expensive. Users can still opt up.
+    defaultThinkingLevel: "medium",
     maxThinkingLevel: "max",
   },
   {
@@ -186,6 +194,10 @@ export const MODELS: ModelInfo[] = [
     supportsImages: true,
     supportsVideo: false,
     costTier: "low",
+    // Anthropic's API and Claude Code both start the 5.5 family at medium; at a
+    // given level 5.5 thinks more than 5, so the ladder ceiling (max) made fresh
+    // sessions slow and expensive. Users can still opt up.
+    defaultThinkingLevel: "medium",
     maxThinkingLevel: "max",
   },
   // ── OpenAI (Codex) ─────────────────────────────────────

@@ -18,6 +18,24 @@
 
 - @prestyj/ai@5.30.1
 
+## 5.80.1
+
+### Patch Changes
+
+- @prestyj/ai@5.80.1
+
+## 5.80.0
+
+### Patch Changes
+
+- @prestyj/ai@5.80.0
+
+## 5.79.4
+
+### Patch Changes
+
+- @prestyj/ai@5.79.4
+
 ## 5.79.3
 
 ### Patch Changes

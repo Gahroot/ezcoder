@@ -36,7 +36,7 @@ import {
   type SlashCommandContext,
 } from "./slash-commands.js";
 import { PROMPT_COMMANDS, getPromptCommand } from "./prompt-commands.js";
-import { loadCustomCommands } from "./custom-commands.js";
+import { loadWorkspaceCustomCommands, type CustomCommand } from "./custom-commands.js";
 import { expandPromptCommand } from "./prompt-command-expansion.js";
 import { SettingsManager } from "./settings-manager.js";
 import { AuthStorage } from "./auth-storage.js";
@@ -958,7 +958,6 @@ export class AgentSession {
       const helpCmd = this.slashCommands.get("help");
       if (helpCmd) {
         const registry = this.slashCommands;
-        const cwd = this.cwd;
         helpCmd.execute = async () => {
           const all = registry.getAll();
           const lines = all.map(
@@ -975,7 +974,7 @@ export class AgentSession {
             }
           }
 
-          const customCmds = await loadCustomCommands(cwd);
+          const customCmds = await this.loadCustomCommands();
           if (customCmds.length > 0) {
             lines.push("", "Custom commands:");
             for (const cmd of customCmds) lines.push(`  /${cmd.name} — ${cmd.description}`);
@@ -1195,7 +1194,7 @@ export class AgentSession {
     if (!parsed) return null;
     // EZ Coder alone can resolve its prompt-template and project commands.
     const builtinPromptCmd = coderCommands ? getPromptCommand(parsed.name) : undefined;
-    const customCmds = coderCommands ? await loadCustomCommands(this.cwd) : [];
+    const customCmds = coderCommands ? await this.loadCustomCommands() : [];
     const customPromptCmd = !builtinPromptCmd
       ? customCmds.find((c) => c.name === parsed.name)
       : undefined;
@@ -3428,6 +3427,15 @@ export class AgentSession {
   /** Extra workspace roots added with `/add-dir`, in the order added. */
   getAdditionalRoots(): string[] {
     return [...this.additionalRoots];
+  }
+
+  /**
+   * The custom `.ezcoder/commands` slash commands this session can run: the
+   * project's, then those of every added root (a goal's attached repos too).
+   * Read fresh, so a new command file is picked up without a restart.
+   */
+  loadCustomCommands(): Promise<CustomCommand[]> {
+    return loadWorkspaceCustomCommands([this.cwd, ...this.additionalRoots]);
   }
 
   /**

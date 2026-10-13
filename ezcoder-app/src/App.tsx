@@ -99,6 +99,7 @@ import {
   type GoalTally,
 } from "./goal-progress";
 import { latestNolanLine } from "./goal-nolan-talk";
+import { nolanStatusOf, lastRunOf } from "./goal-nolan-status";
 import {
   FINISH_SETTLE_MS,
   goalFinishOf,
@@ -1273,6 +1274,24 @@ function App(): React.ReactElement {
     return () => unsub();
   }, [handleEvent]);
 
+  // Re-read the slash commands: each workspace root brings its own
+  // `.ezcoder/commands` (a goal's attached repos, `/add-dir`). An answer from a
+  // superseded hydrate (project switch) is dropped.
+  const refreshCommands = useCallback((): void => {
+    const generation = hydrateGenerationRef.current;
+    void listCommands().then((cmds) => {
+      if (hydrateGenerationRef.current === generation && cmds.length > 0) setCommands(cmds);
+    });
+  }, []);
+  // Roots added or removed mid-session (they arrive with the footer extras).
+  const rootsKey = (state?.additionalRoots ?? []).join("\n");
+  const rootsSeenRef = useRef(rootsKey);
+  useEffect(() => {
+    if (!hydrated || rootsSeenRef.current === rootsKey) return;
+    rootsSeenRef.current = rootsKey;
+    refreshCommands();
+  }, [hydrated, rootsKey, refreshCommands]);
+
   // Boot-time/reload workspace recovery: Rust keeps THIS window's active target
   // for its lifetime. A restored app launch and a WebKit content-process reload
   // therefore both hydrate straight back into the existing daemon session.
@@ -2051,6 +2070,27 @@ function App(): React.ReactElement {
     if (goalFinish && (running || goalView === "chat")) setGoalFinish(null);
   }, [goalFinish, running, goalView]);
   const shownGoalFinish = goalFinish?.goalId === activeGoalId ? goalFinish : null;
+  // What Nolan is doing right now, for the Workers view's status pill and the
+  // thought mark over his head (see goal-nolan-status).
+  const goalPaused = state?.goal?.paused === true;
+  const goalLastRun = useMemo(
+    () => (activeGoalId ? lastRunOf(goalRuns, activeGoalId, items) : null),
+    [activeGoalId, goalRuns, items],
+  );
+  const nolanStatus = useMemo(
+    () =>
+      activeGoalId
+        ? nolanStatusOf({
+            running,
+            paused: goalPaused,
+            waitingOnUser: goalWaitingOnUser,
+            liveTools: liveToolFeed,
+            workers: goalWorkers,
+            lastRun: goalLastRun,
+          })
+        : null,
+    [activeGoalId, running, goalPaused, goalWaitingOnUser, liveToolFeed, goalWorkers, goalLastRun],
+  );
   // The header's counts: workers working now, tasks done and failed so far
   // (see goal-progress). Counting starts afresh for each goal.
   // Restarted when the transcript is reloaded (after a daemon restart, say):
@@ -2752,6 +2792,7 @@ function App(): React.ReactElement {
               onShowChat={() => setGoalChatFor(activeGoalId)}
               finish={shownGoalFinish}
               onCloseFinish={() => setGoalFinish(null)}
+              nolanStatus={nolanStatus}
             />
           </Suspense>
         </Activity>
@@ -3087,9 +3128,11 @@ function App(): React.ReactElement {
           instructions={state.goal.instructions ?? ""}
           busy={running}
           onClose={() => setShowGoalSettings(false)}
-          onSaved={(next) =>
-            setState((s) => (s?.goal ? { ...s, goal: { ...s.goal, ...next } } : s))
-          }
+          onSaved={(next) => {
+            setState((s) => (s?.goal ? { ...s, goal: { ...s.goal, ...next } } : s));
+            // Newly attached repos bring their own slash commands.
+            refreshCommands();
+          }}
         />
       )}
       {showScorecard && progress && (
