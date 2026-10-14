@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.81.0
+
+### Minor Changes
+
+- Add a `/git/overview` sidecar route (changed files with line counts plus open GitHub issues and PRs), let `POST /thinking` set a specific level or turn thinking off, and mark live goal runs across processes so the app and `ggcoder acp` never resume a goal the other is running.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.81.0
+- @kenkaiiii/gg-agent@5.81.0
+- @kenkaiiii/gg-core@5.81.0
+
 ## 5.80.1
 
 ### Patch Changes
