@@ -9,7 +9,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { openUrl, openWhatsNewWindow } from "./agent";
 import { Badge } from "./Badge";
 import { CHANGELOG } from "./changelog";
-import { drawNolanPortrait } from "./goal-ken-portrait";
+import { drawNolanPortrait } from "./goal-nolan-portrait";
 import { useSettingsPageReady } from "./settings-ready";
 import { releaseText } from "./WhatsNewParts";
 import {
@@ -24,7 +24,13 @@ import {
   type ShipLevel,
   type ShipLog,
 } from "./about-ship-log";
-import { aboutLines, EZ_CODER_STARTED, SKOOL_URL, YOUTUBE_URL, type NolanSay } from "./about-content";
+import {
+  aboutLines,
+  EZ_CODER_STARTED,
+  SKOOL_URL,
+  YOUTUBE_URL,
+  type NolanSay,
+} from "./about-content";
 import "./AboutPage.css";
 
 /**
@@ -68,8 +74,8 @@ export function AboutPage(): React.ReactElement {
             Nolan Grout
           </h2>
           <p className="about-bio">
-            Nolan builds EZ Coder, a coding agent for your desktop. On Skool, he helps people learn to
-            build with AI.
+            Nolan builds EZ Coder, a coding agent for your desktop. On Skool, he helps people learn
+            to build with AI.
           </p>
           <p className="about-origin">
             {`CLI since ${formatLongDate(EZ_CODER_STARTED)}. App since ${formatLongDate(log.firstDate)}.`}
@@ -216,13 +222,13 @@ export function AboutNolan({
 
   const action = typing ? "Show all" : last ? "Start over" : "Next";
   return (
-    <div className="ken-dialogue about-ken" data-phase={phase}>
-      <div className="ken-dialogue-portrait" aria-hidden="true">
+    <div className="nolan-dialogue about-nolan" data-phase={phase}>
+      <div className="nolan-dialogue-portrait" aria-hidden="true">
         <canvas ref={canvasRef} />
       </div>
       <button
         type="button"
-        className="ken-dialogue-box"
+        className="nolan-dialogue-box"
         aria-label={
           line
             ? `Nolan, ${index + 1} of ${lines.length}: ${line.text} ${phase === "talking" ? action : ""}`
@@ -230,15 +236,19 @@ export function AboutNolan({
         }
         onClick={onClick}
       >
-        <span className="ken-dialogue-name">Nolan</span>
-        <span className="ken-dialogue-text" aria-hidden="true">
+        <span className="nolan-dialogue-name">Nolan</span>
+        <span className="nolan-dialogue-text" aria-hidden="true">
           {line?.text.slice(0, shown)}
         </span>
-        <span className="ken-dialogue-more" data-on={lineOut ? "" : undefined} />
+        <span className="nolan-dialogue-more" data-on={lineOut ? "" : undefined} />
       </button>
-      <div className="about-ken-dots" aria-hidden="true">
+      <div className="about-nolan-dots" aria-hidden="true">
         {lines.map((said, i) => (
-          <span key={said.text} className="about-ken-dot" data-on={i === index ? "" : undefined} />
+          <span
+            key={said.text}
+            className="about-nolan-dot"
+            data-on={i === index ? "" : undefined}
+          />
         ))}
       </div>
       {/* Read out once, whole, when he starts a line (not letter by letter). */}

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: vi.fn(async () => "0.2.0") }));
-vi.mock("./goal-ken-portrait", () => ({ drawNolanPortrait: vi.fn() }));
+vi.mock("./goal-nolan-portrait", () => ({ drawNolanPortrait: vi.fn() }));
 vi.mock("./agent", () => ({ openUrl: vi.fn(), openWhatsNewWindow: vi.fn(async () => {}) }));
 vi.mock("./changelog", () => ({
   CHANGELOG: [
@@ -99,7 +99,7 @@ describe("AboutNolan", () => {
   it("rises, types his line, then moves through his lines on click", () => {
     vi.useFakeTimers();
     render(<AboutNolan lines={LINES} start />);
-    const dialogue = document.querySelector(".about-ken");
+    const dialogue = document.querySelector(".about-nolan");
 
     // Up on the next frame, then talking once the entrance has played.
     act(() => {
@@ -135,6 +135,6 @@ describe("AboutNolan", () => {
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(document.querySelector(".about-ken")?.getAttribute("data-phase")).toBe("hidden");
+    expect(document.querySelector(".about-nolan")?.getAttribute("data-phase")).toBe("hidden");
   });
 });

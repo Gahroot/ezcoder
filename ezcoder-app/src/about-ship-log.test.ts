@@ -129,12 +129,12 @@ describe("ship log readouts", () => {
 describe("Nolan's About lines", () => {
   it("say where EZ Coder started, and each fits his box", async () => {
     const { aboutLines } = await import("./about-content");
-    const { KEN_LINE_MAX } = await import("./goal-ken-talk");
+    const { NOLAN_LINE_MAX } = await import("./goal-nolan-talk");
     const lines = aboutLines(buildShipLog(CHANGELOG, "2026-10-14"));
 
     expect(lines[1]?.text).toBe(
-      "It started as a command-line tool in March 2026. This desktop app came along in June 2026.",
+      "It started as a command-line tool in March 2026. This desktop app came along in August 2026.",
     );
-    for (const line of lines) expect(line.text.length).toBeLessThanOrEqual(KEN_LINE_MAX);
+    for (const line of lines) expect(line.text.length).toBeLessThanOrEqual(NOLAN_LINE_MAX);
   });
 });

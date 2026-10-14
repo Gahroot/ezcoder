@@ -28,7 +28,7 @@
 }
 /* The Workers view pins its box to a corner; here it sits in the card's
    flow. Everything else (art, entrance, typing, ▼) is the shared box. */
-.about-nolanAgent.nolan-dialogue {
+.about-nolan.nolan-dialogue {
   position: relative;
   left: auto;
   bottom: auto;
@@ -36,13 +36,13 @@
   width: 100%;
 }
 /* Which of his lines he's on: the current one is a short bar. */
-.about-ken-dots {
+.about-nolan-dots {
   display: flex;
   justify-content: center;
   gap: var(--space-3);
   margin-top: var(--space-6);
 }
-.about-ken-dot {
+.about-nolan-dot {
   width: 6px;
   height: 6px;
   border-radius: var(--radius-pill);
@@ -51,11 +51,11 @@
     width var(--duration-spring) var(--ease-spring),
     background-color var(--t-fast);
 }
-.about-ken-dot[data-on] {
+.about-nolan-dot[data-on] {
   width: 18px;
   background: var(--text-secondary);
 }
-.about-nolanAgent.nolan-dialogue[data-phase="hidden"] .about-ken-dots {
+.about-nolan.nolan-dialogue[data-phase="hidden"] .about-nolan-dots {
   visibility: hidden;
 }
 
@@ -309,7 +309,7 @@
   .about-cal .about-day {
     animation: none;
   }
-  .about-ken-dot {
+  .about-nolan-dot {
     transition: background-color var(--t-fast);
   }
 }

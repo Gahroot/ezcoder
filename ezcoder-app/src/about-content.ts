@@ -1,4 +1,4 @@
-import type { NolanFace } from "./goal-ken-talk";
+import type { NolanFace } from "./goal-nolan-talk";
 import { formatMonthYear, type ShipLog } from "./about-ship-log";
 
 export const SKOOL_URL = "https://prestyj.com";

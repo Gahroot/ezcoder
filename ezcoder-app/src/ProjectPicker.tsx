@@ -26,8 +26,6 @@ import { RadioButton } from "./RadioButton";
 import { NewProjectModal } from "./NewProjectModal";
 import { WorktreePrompt } from "./WorktreePrompt";
 import { WorktreeList } from "./WorktreeList";
-import { MetalButton } from "./MetalButton";
-import { useWindowFocused } from "./useWindowFocused";
 import { toast } from "./toast";
 
 /**

@@ -59,7 +59,6 @@ function renderMenu(workspaceMode: WorkspaceMode, isGoal = false): void {
       onOpenMemories={vi.fn()}
       projectTasks={[{ id: "t", title: "Open one", prompt: "", status: "pending", createdAt: "" }]}
       onOpenTasks={vi.fn()}
-      showTasks={false}
       showChecklist={false}
       onOpenChecklist={vi.fn()}
       onOpenRadio={vi.fn()}

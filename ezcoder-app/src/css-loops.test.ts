@@ -171,7 +171,7 @@ describe("About page layout", () => {
     [".settings-card.about-maker", ".about-maker"],
     [".btn.about-cta", ".about-cta"],
     [".settings-section-title.about-log-title", ".about-log-title"],
-    [".about-nolanAgent.nolan-dialogue", ".about-ken"],
+    [".about-nolan.nolan-dialogue", ".about-nolan"],
   ])("styles %s with both classes", (both, alone) => {
     expect(css).toContain(`${both} {`);
     expect(css).not.toMatch(new RegExp(`(?:^|\\n)\\s*${alone.replace(/\./g, "\\.")} \\{`));
