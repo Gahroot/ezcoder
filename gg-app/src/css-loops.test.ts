@@ -158,3 +158,22 @@ describe("What's new window", () => {
     expect(css).toMatch(/:root\[data-theme="light"\] \.whatsnew-window \{[^}]*--wn-ember:/);
   });
 });
+
+// Guard: the production bundle loads AboutPage.css before App.css, so a
+// single-class About rule lost to the shared class it sits beside (the maker
+// card stacked into one column in the release, though dev looked right). Every
+// About rule that restyles a shared class's element names both classes, so it
+// wins in any load order.
+describe("About page layout", () => {
+  const css = SHEETS["./AboutPage.css"] ?? "";
+
+  it.each([
+    [".settings-card.about-maker", ".about-maker"],
+    [".btn.about-cta", ".about-cta"],
+    [".settings-section-title.about-log-title", ".about-log-title"],
+    [".about-ken.ken-dialogue", ".about-ken"],
+  ])("styles %s with both classes", (both, alone) => {
+    expect(css).toContain(`${both} {`);
+    expect(css).not.toMatch(new RegExp(`(?:^|\\n)\\s*${alone.replace(/\./g, "\\.")} \\{`));
+  });
+});
