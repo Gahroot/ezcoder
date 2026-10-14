@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.91.0",
+    date: "2026-10-14",
+    items: [
+      "Updates now arrive like a level up in an arcade. A pixel `Update` key pops up on your home screen and along the bottom of your window, turns into an XP bar with the little builder running across it while it downloads, and bursts into pixels at `100%`. I also fixed the old button going see-through when you pressed it.",
+      "Say hi in the new `About` tab at the end of Settings. Little Ken introduces himself, and a calendar shows every desktop release so far, one square per day. Point at any day to see what changed, and find me on `Skool` and YouTube right there.",
+      "Settings feels a whole lot smoother. The tabs glide over in one easy motion instead of hopping around, and every page opens fully loaded, so you never catch it flickering half-ready first.",
+      "The `What's new` window now matches your theme. Its stories sit on the same cards as the rest of the app, so everything reads clearly in both `Light` and `Dark`.",
+      "Home got a tidy up. `Goals` wears a little Beta tag, and your version number now sits right beside What's new.",
+    ],
+  },
+  {
     version: "0.90.1",
     date: "2026-10-14",
     items: [
