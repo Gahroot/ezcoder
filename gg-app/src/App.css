@@ -6285,11 +6285,13 @@ select {
    line height, a clear gap between paragraphs, and numbered steps as rows.
    Every paragraph is plain body text in full ink at a regular weight: one
    reply is often several short messages between tool calls, so "make the
-   first paragraph bigger" made every line look bold. */
+   first paragraph bigger" made every line look bold.
+   The reply itself spans the whole conversation column so a table can use all
+   of it (like the ask_user band); the reading measure is applied per block
+   below instead. */
 .assistant-text {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: 36em;
   color: var(--text);
   font-weight: 400;
   word-break: break-word;
@@ -6809,7 +6811,11 @@ select {
   overflow-x: auto;
   overscroll-behavior-x: contain;
 }
+/* Full width of whatever holds it (the whole conversation column in a reply).
+   A table's width is a floor, not a cap, so one wider than this still grows
+   and the frame above scrolls it. */
 .markdown table {
+  width: 100%;
   border-collapse: collapse;
 }
 .markdown th,
@@ -6867,6 +6873,12 @@ select {
 /* The first message in a conversation needs no turn gap above it. */
 .transcript > .user-msg:first-child {
   margin-top: var(--space-4);
+}
+/* Prose and lists keep the ~72-character reading measure. Tables, code blocks
+   and Ken's prompt blocks are data, not lines of reading, so they take the
+   full conversation column (long code lines wrap far less). */
+.assistant-text .markdown > :not(.md-table-scroll, .code-block, .ken-prompt-block) {
+  max-width: 36em;
 }
 /* A clear gap between paragraphs, lists and code: one blank line's worth. */
 .assistant-text .markdown > * + * {
