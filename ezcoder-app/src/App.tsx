@@ -8,13 +8,13 @@ import {
   useLayoutEffect,
   useCallback,
   useMemo,
+  type SetStateAction,
 } from "react";
 import { createChatLayoutMotion } from "./chat-layout-motion";
 import { open } from "@tauri-apps/plugin-dialog";
 import { theme } from "./theme";
-import { assignErrorCritters } from "./ErrorCritter";
 import { activeChatErrorId, readChatError } from "./chat-error";
-import { withViewTransition } from "./view-transition";
+import { showScreen } from "./view-transition";
 import {
   waitForReady,
   retryWindowSession,
@@ -137,7 +137,6 @@ import { ConfirmModal } from "./ConfirmModal";
 import { InitGitModal } from "./InitGitModal";
 import type { PlanDecision } from "./PlanDecisionNotice";
 import { NolanPowerBanner } from "./NolanPowerBanner";
-import { ExportChatButton } from "./ExportChatButton";
 import { PlanReviewModal } from "./PlanReviewModal";
 import { McpElicitModal } from "./McpElicitModal";
 import { ProjectPicker } from "./ProjectPicker";
@@ -158,8 +157,7 @@ import {
 } from "./submit-disposition";
 import { Toaster } from "./Toaster";
 import { Confetti } from "./Confetti";
-import { ScorecardModal } from "./ScorecardModal";
-import { TitleUsageMeter } from "./TitleUsageMeter";
+import { ScorecardPanel } from "./Scorecard";
 import { useWindowFocused } from "./useWindowFocused";
 import { WorkspaceHeader } from "./WorkspaceHeader";
 import { formatWorkspaceTitle } from "./workspace-title";
@@ -174,12 +172,15 @@ import { toast } from "./toast";
 import { toWire, type PendingAttachment } from "./attachments";
 import { TranscriptRow } from "./TranscriptRow";
 import { nextId, lastIssuedId, type Item } from "./transcript-item";
-import { AppFooter } from "./AppFooter";
 import { useTranscriptScroll } from "./useTranscriptScroll";
 import { useTrayIntents } from "./useTrayIntents";
 import { useAttachments } from "./useAttachments";
 import { useDragOverlay, useWindowFileDrop } from "./useFileDrop";
-import { WorkspaceHeaderActions } from "./WorkspaceHeaderActions";
+import { DeckMenu, TitleBarActions } from "./WorkspaceHeaderActions";
+import { nextDockHeight } from "./dock-height";
+import { finishEntrances } from "./finish-entrances";
+import { Deck, type DeckPanelId } from "./Deck";
+import { ProjectHealthPanel } from "./ProjectHealthBadge";
 import { useChecklist } from "./useChecklist";
 import { useProjectNotes } from "./useProjectNotes";
 import { useChromeToggles } from "./useChromeToggles";
@@ -191,8 +192,7 @@ import { UpdateBanner } from "./UpdateBanner";
 import { usePromptHistory } from "./usePromptHistory";
 import { usePromptEnhance } from "./usePromptEnhance";
 import "./App.css";
-// Liquid glass trial layer (from veditor-app). Delete this line to revert.
-import "./glass.css";
+import "./Deck.css";
 
 const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Nolan for help";
 const INPUT_PLACEHOLDERS = [
@@ -262,7 +262,6 @@ function App(): React.ReactElement {
   // Nolan's face talks on the reply he is streaming right now: the last row,
   // while his run is live. Only that row's props change, so memo holds.
   const currentErrorId = useMemo(() => activeChatErrorId(items), [items]);
-  const errorCritters = useMemo(() => assignErrorCritters(items), [items]);
   const lastItem = items[items.length - 1];
   const talkingNolanId = nolanRunning && lastItem?.kind === "nolan" ? lastItem.id : null;
   // Autopilot Nolan (auto-reviewer): consumes the `autopilot_*` event family into
@@ -270,8 +269,7 @@ function App(): React.ReactElement {
   // shared setItems/nextId pattern as useNolanMentor.
   const { autopilotReviewing, handleAutopilotEvent } = useAutopilot({ setItems, nextId });
   const { snapshot: progress, levelUp, levelUpNonce, levelUpOrigin } = useProgress();
-  const [showScorecard, setShowScorecard] = useState(false);
-  const [rankCelebrateNonce, setRankCelebrateNonce] = useState<string | null>(null);
+  const [, setRankCelebrateNonce] = useState<string | null>(null);
   const [xpChips, setXpChips] = useState<Array<{ id: string; label: string }>>([]);
   const lastProgressXpRef = useRef<number | null>(null);
   const [confettiNonce, setConfettiNonce] = useState<string | null>(null);
@@ -465,23 +463,29 @@ function App(): React.ReactElement {
   // running context-window usage (input-side tokens of the latest turn).
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [contextTokens, setContextTokens] = useState(0);
-  // Project task list (the agent's `tasks` tool store) + the Tasks modal.
+  // Project task list (the agent's `tasks` tool store), shown in the deck.
   // Updated live via the `tasks_list` SSE event while a run-all sweep advances,
-  // and reconciled with a fresh fetch on run-end / modal-open so a dropped SSE
-  // frame (the event bridge reconnects often) never leaves the modal stale.
+  // and reconciled with a fresh fetch on run-end / panel-open so a dropped SSE
+  // frame (the event bridge reconnects often) never leaves the list stale.
   const [projectTasks, setProjectTasks] = useState<ProjectTask[]>([]);
-  const [showTasks, setShowTasks] = useState(false);
   // Distinguish "still loading / failed to load" from a genuinely empty list, so
   // a transient fetch miss never reads as a permanent "No tasks yet."
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState(false);
-  // Checklist is a workspace view; the mounted chat keeps its draft and history.
-  const [showChecklist, setShowChecklist] = useState(false);
-  // Activity can reconnect memoized effects before external-store subscriptions.
-  // A fresh view identity forces rows to read the latest hidden stream first.
-  const chatView = useMemo(() => ({ visible: !showChecklist }), [showChecklist]);
-  const [showNotes, setShowNotes] = useState(false);
-  const [showMemories, setShowMemories] = useState(false);
+  // What has taken the message box's place in the deck, if anything.
+  const [deckPanel, setDeckPanel] = useState<DeckPanelId | null>(null);
+  // The checklist is a deck tool like Notes: open while the deck shows it.
+  const showChecklist = deckPanel === "checklist";
+  const setShowChecklist = useCallback((next: SetStateAction<boolean>) => {
+    setDeckPanel((open) => {
+      const isOpen = open === "checklist";
+      const want = typeof next === "function" ? next(isOpen) : next;
+      if (want) return "checklist";
+      return isOpen ? null : open;
+    });
+  }, []);
+  // The chat never leaves the screen for the checklist any more.
+  const chatView = useMemo(() => ({ visible: true }), []);
   // Every window chooses a code or chat workspace before connecting. Mode stays
   // separate from picker visibility so restore and reopened pickers are explicit.
   const [needsProject, setNeedsProject] = useState(true);
@@ -505,16 +509,9 @@ function App(): React.ReactElement {
   const { activity, handleActivityEvent } = useTaskActivity(hydrateNonce);
   // New-session confirmation modal + in-flight guard.
   const [confirmNewSession, setConfirmNewSession] = useState(false);
-  const {
-    navHidden,
-    setNavHiddenPersisted,
-    toggleNav,
-    toolsHidden,
-    setToolsHiddenPersisted,
-    toggleTools,
-  } = useChromeToggles(chatLayout);
+  const { toolsHidden, setToolsHiddenPersisted, toggleTools } = useChromeToggles(chatLayout);
   const [newSessionBusy, setNewSessionBusy] = useState(false);
-  const { exporting, chatHovered, setChatHovered, exportTranscript } = useTranscriptExport();
+  const { exporting, exportTranscript } = useTranscriptExport();
   const {
     appUpdate,
     showTraySettings,
@@ -540,7 +537,7 @@ function App(): React.ReactElement {
   useLayoutEffect(() => {
     const last = items[items.length - 1];
     if (last) entrances.settle(last.id);
-  }, [entrances, items, showChecklist]);
+  }, [entrances, items]);
 
   const readyRef = useRef(false);
   // Bumped by every hydrate. Lets work that outlives a hydrate (a project
@@ -681,6 +678,43 @@ function App(): React.ReactElement {
     [maybeScrollToBottom, chatLayout, lastScrollTopRef],
   );
 
+  // The dock floats over the conversation's bottom edge, so the transcript
+  // doesn't shrink when it grows (a wrapping draft, a panel opening). Its
+  // height goes to the frame as --dock-h, which the transcript reserves as
+  // bottom padding; a pinned chat then follows the bottom in the same frame,
+  // so the newest message is never left behind the dock.
+  //
+  // A callback ref, like the transcript's: the dock unmounts whenever a picker
+  // takes over the window, and must be observed afresh when it comes back.
+  const transcriptFrameRef = useRef<HTMLDivElement>(null);
+  const dockElRef = useRef<HTMLDivElement | null>(null);
+  const dockRoRef = useRef<ResizeObserver | null>(null);
+  const dockRef = useCallback(
+    (dock: HTMLDivElement | null) => {
+      dockRoRef.current?.disconnect();
+      dockRoRef.current = null;
+      dockElRef.current = dock;
+      if (!dock) return;
+      const apply = (): void => {
+        const frame = transcriptFrameRef.current;
+        if (!frame) return;
+        const height = nextDockHeight(
+          dock.getBoundingClientRect().height,
+          frame.style.getPropertyValue("--dock-h"),
+        );
+        if (height === null) return;
+        frame.style.setProperty("--dock-h", height);
+        maybeScrollToBottom();
+      };
+      apply();
+      if (typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(apply);
+      observer.observe(dock);
+      dockRoRef.current = observer;
+    },
+    [maybeScrollToBottom],
+  );
+
   // Settle the scroll position after a session hydrates. The single layout-effect
   // scroll above runs the instant `items` is set, but the transcript keeps
   // growing afterward — web fonts swap in (FOUT reflows text taller), code blocks
@@ -721,7 +755,7 @@ function App(): React.ReactElement {
     windowFocused &&
     !needsProject &&
     !showPicker &&
-    !showChecklist &&
+    deckPanel === null &&
     workspaceMode === "code" &&
     input.length === 0;
   const inputPlaceholder = running
@@ -794,7 +828,7 @@ function App(): React.ReactElement {
     const fallbackTitle = workspaceProductName(workspaceMode, Boolean(state?.goal));
     const title =
       !needsProject && !showPicker && state?.goal
-        ? `${state.goal.name} \u2502 ${fallbackTitle}`
+        ? `${state.goal.name} · ${fallbackTitle}`
         : !needsProject && !showPicker
           ? formatWorkspaceTitle(
               state?.cwd,
@@ -848,11 +882,7 @@ function App(): React.ReactElement {
   useLayoutEffect(() => {
     // Nothing to commit while the transcript is hidden behind another view
     // (a goal's Workers): it has no size, so any offset taken now is wrong.
-    if (
-      showChecklist ||
-      needsProject ||
-      (scrollRef.current !== null && isHiddenScroller(scrollRef.current))
-    ) {
+    if (needsProject || (scrollRef.current !== null && isHiddenScroller(scrollRef.current))) {
       chatLayout.cancel();
       return;
     }
@@ -931,7 +961,7 @@ function App(): React.ReactElement {
   // Keyboard shortcuts (global, nav-independent so they stay reachable even when
   // the nav row is collapsed):
   //   Cmd/Ctrl+N         → new project window
-  //   Cmd/Ctrl+T         → toggle the Tasks modal (mirrors the CLI's Ctrl+T pane)
+  //   Cmd/Ctrl+T         → toggle the Tasks panel (mirrors the CLI's Ctrl+T pane)
   //   Cmd/Ctrl+`          → cycle forward through windows (reading order)
   //   Cmd/Ctrl+Shift+`    → cycle backward
   //   Cmd/Ctrl+Shift+A    → auto-arrange all windows into a clean grid
@@ -946,15 +976,15 @@ function App(): React.ReactElement {
         void newWindow();
         return;
       }
-      // Toggle Tasks modal: Cmd/Ctrl + T (no Shift/Alt).
+      // Toggle Tasks panel: Cmd/Ctrl + T (no Shift/Alt).
       if (e.key.toLowerCase() === "t" && !e.altKey && !e.shiftKey) {
         e.preventDefault();
-        setShowTasks((open) => {
+        setDeckPanel((open) => {
           // Refresh from the sidecar when opening so the list reflects any
           // tasks the agent just added. Inlined (not refreshTasks) to keep this
           // mount-only effect's deps stable — only setState setters + the
           // listTasks module import, no component callbacks.
-          if (!open) {
+          if (open !== "todo") {
             setTasksLoading(true);
             setTasksError(false);
             void listTasks()
@@ -962,7 +992,7 @@ function App(): React.ReactElement {
               .catch(() => setTasksError(true))
               .finally(() => setTasksLoading(false));
           }
-          return !open;
+          return open === "todo" ? null : "todo";
         });
         return;
       }
@@ -991,7 +1021,7 @@ function App(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const { windowIndex, windowTotal, isThisFocused } = useWindowOrder(inputRef);
+  const { windowIndex, windowTotal } = useWindowOrder(inputRef);
 
   // A goal cut off by a daemon restart (found on reconnect) carries on, or
   // asks its briefing question again. The sidecar ignores it when nothing was
@@ -1317,12 +1347,16 @@ function App(): React.ReactElement {
     if (!needsProject) void hydrate();
   }, [needsProject, hydrate, hydrateNonce]);
 
-  // Open the Tasks modal, refreshing the list from the sidecar first so it
+  // Open Tasks in the deck, refreshing the list from the sidecar first so it
   // reflects any tasks the agent just added.
   const openTasks = useCallback(() => {
-    setShowTasks(true);
+    setDeckPanel("todo");
     void refreshTasks();
   }, [refreshTasks]);
+  const closeDeckPanel = useCallback(
+    (id: DeckPanelId) => setDeckPanel((open) => (open === id ? null : open)),
+    [],
+  );
 
   const {
     checklistLoad,
@@ -1338,18 +1372,21 @@ function App(): React.ReactElement {
   } = useChecklist({ showChecklist, setShowChecklist, inputRef });
 
   // Run a single task: the sidecar opens a fresh session and streams progress
-  // back (session_reset → task_start → run_start/…/run_end). Close the modal so
+  // back (session_reset → task_start → run_start/…/run_end). Close the list so
   // the transcript is visible while it runs.
-  const handleRunTask = useCallback((id: string) => {
-    setShowTasks(false);
-    void runTask(id);
-  }, []);
+  const handleRunTask = useCallback(
+    (id: string) => {
+      closeDeckPanel("todo");
+      void runTask(id);
+    },
+    [closeDeckPanel],
+  );
 
   // Run every pending task sequentially (a fresh session each), in order.
   const handleRunAllTasks = useCallback(() => {
-    setShowTasks(false);
+    closeDeckPanel("todo");
     void runAllTasks();
-  }, []);
+  }, [closeDeckPanel]);
 
   const handleDeleteTask = useCallback((id: string) => {
     void deleteTask(id).then(setProjectTasks);
@@ -1493,7 +1530,6 @@ function App(): React.ReactElement {
   const clampedFileIndex = fileMatches.length > 0 ? fileIndex % fileMatches.length : 0;
   // Footer background-tasks indicator only shows while something is actually
   // running (exited tasks shouldn't keep the bar item around).
-  const runningTaskCount = tasks.filter((t) => t.exitCode === null).length;
 
   // True when `text` is a known workflow command invocation (first token).
   function isWorkflowCommand(text: string): boolean {
@@ -1736,7 +1772,7 @@ function App(): React.ReactElement {
         onError: failed,
       })
     ) {
-      withViewTransition(() => setShowChecklist(false));
+      setShowChecklist(false);
     } else {
       failed();
     }
@@ -1747,7 +1783,7 @@ function App(): React.ReactElement {
   // run it leaves the composer draft alone and returns to the chat.
   function reviewProjectHealth(prompt: string, label: string): boolean {
     if (!submitText(prompt, label, { keepInput: true })) return false;
-    if (showChecklist) withViewTransition(() => setShowChecklist(false));
+    setDeckPanel(null);
     return true;
   }
 
@@ -1904,7 +1940,6 @@ function App(): React.ReactElement {
   // edge, in place of the chat, input and footer. The header's Chat | Workers
   // switch flips between that and the full conversation (with its input).
   const [goalChatFor, setGoalChatFor] = useState<string | null>(null);
-  const [showGoalSettings, setShowGoalSettings] = useState(false);
   // Pause stops the current run and its workers (the same cancel as Stop) and
   // keeps the goal put, even across restarts; resume carries it on.
   const setGoalPaused = useCallback(
@@ -1980,6 +2015,9 @@ function App(): React.ReactElement {
     }
     const saved = chatScrollOnHideRef.current;
     chatScrollOnHideRef.current = null;
+    // Shown again, not opened: every entrance inside lands at its end at once
+    // (see finish-entrances.ts), so the deck and its notices don't replay.
+    if (saved) finishEntrances([transcriptFrameRef.current, dockElRef.current]);
     const el = scrollRef.current;
     if (!saved || !el) return;
     stickToBottomRef.current = saved.pinned;
@@ -2462,8 +2500,8 @@ function App(): React.ReactElement {
   // the hydrate effect even when needsProject is already false (switching
   // sessions from the reopened picker), which flipping the boolean alone won't.
   function onProjectChosen(): void {
-    // Picker → workspace crossfades like every other screen change.
-    withViewTransition(resetForChosenProject);
+    // Picker → workspace switches like every other screen change (showScreen).
+    showScreen(resetForChosenProject);
   }
   function resetForChosenProject(): void {
     checklistFetchRef.current++;
@@ -2523,31 +2561,31 @@ function App(): React.ReactElement {
         {entryView === "home" ? (
           <HomeScreen
             onProjects={() =>
-              withViewTransition(() => {
+              showScreen(() => {
                 setWorkspaceMode("code");
                 setEntryView("projects");
               })
             }
             onGoals={() =>
-              withViewTransition(() => {
+              showScreen(() => {
                 setWorkspaceMode("code");
                 setEntryView("goals");
               })
             }
             onChat={() =>
-              withViewTransition(() => {
+              showScreen(() => {
                 setWorkspaceMode("chat");
                 setEntryView("chats");
               })
             }
             onMotion={() =>
-              withViewTransition(() => {
+              showScreen(() => {
                 setWorkspaceMode("motion");
                 setEntryView("motion");
               })
             }
             onSettings={(tab) =>
-              withViewTransition(() => {
+              showScreen(() => {
                 setSettingsTab(tab ?? "general");
                 setEntryView("settings");
               })
@@ -2558,7 +2596,7 @@ function App(): React.ReactElement {
           <SettingsScreen
             initialTab={settingsTab}
             onClose={() =>
-              withViewTransition(() => {
+              showScreen(() => {
                 setEntryView("home");
                 // Settings may have changed the folder or providers.
                 setHomeRefreshSignal((n) => n + 1);
@@ -2569,25 +2607,25 @@ function App(): React.ReactElement {
           <Suspense fallback={null}>
             <GoalPicker
               onChosen={onProjectChosen}
-              onClose={() => withViewTransition(() => setEntryView("home"))}
+              onClose={() => showScreen(() => setEntryView("home"))}
             />
           </Suspense>
         ) : entryView === "chats" ? (
           <ChatPicker
             onChosen={onProjectChosen}
-            onClose={() => withViewTransition(() => setEntryView("home"))}
+            onClose={() => showScreen(() => setEntryView("home"))}
           />
         ) : entryView === "motion" ? (
           <ChatPicker
             mode="motion"
             onChosen={onProjectChosen}
-            onClose={() => withViewTransition(() => setEntryView("home"))}
+            onClose={() => showScreen(() => setEntryView("home"))}
           />
         ) : (
           <ProjectPicker
             onChosen={onProjectChosen}
             // Every window can return to the mode-neutral home screen.
-            onClose={() => withViewTransition(() => setEntryView("home"))}
+            onClose={() => showScreen(() => setEntryView("home"))}
           />
         )}
         {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
@@ -2601,12 +2639,12 @@ function App(): React.ReactElement {
   if (showPicker) {
     const pickerProps = {
       onChosen: () =>
-        withViewTransition(() => {
+        showScreen(() => {
           setShowPicker(false);
           resetForChosenProject();
         }),
       onClose: () =>
-        withViewTransition(() => {
+        showScreen(() => {
           setShowPicker(false);
           setNeedsProject(true);
           setEntryView("home" as const);
@@ -2635,9 +2673,26 @@ function App(): React.ReactElement {
     );
   }
 
+  const backLabel =
+    workspaceMode === "chat"
+      ? "Back to chats"
+      : workspaceMode === "motion"
+        ? "Back to motion sessions"
+        : "Back to this project's sessions";
+  const goBack = (): void => {
+    const back = (): void => setShowPicker(true);
+    showScreen(back);
+  };
+  const closeDeckThen =
+    (run: () => void): (() => void) =>
+    () => {
+      setDeckPanel(null);
+      run();
+    };
+
   return (
     <div
-      className={`app${isFileDragOver ? " app-file-dragover" : ""}${windowFocused ? " window-focused" : ""}${workspaceMode === "code" && showChecklist ? " checklist-open" : ""}${goalWorldOpen && !showChecklist ? " goal-world-open" : ""}`}
+      className={`app${isFileDragOver ? " app-file-dragover" : ""}${windowFocused ? " window-focused" : ""}${goalWorldOpen ? " goal-world-open" : ""}`}
       data-glow={glowState}
       style={{ background: theme.background, ...glowStyle }}
       onDragEnter={handleWindowDragEnter}
@@ -2656,128 +2711,57 @@ function App(): React.ReactElement {
         gitDirtyFileCount={state?.gitDirtyFileCount}
         gitHubIssues={state?.gitHubIssues}
         gitHubPRs={state?.gitHubPRs}
-        gitHubRepoUrl={state?.gitHubRepoUrl}
-        gitHubCI={state?.gitHubCI}
-        projectHealth={projectHealth}
-        onReviewHealth={reviewProjectHealth}
         additionalRoots={state?.additionalRoots}
         customTitle={windowCustomTitle}
         onCustomTitleChange={updateWindowCustomTitle}
-        navHidden={navHidden}
-        onToggleNav={() => withViewTransition(toggleNav)}
-        stripExtras={
-          <>
-            <TitleUsageMeter currentProvider={state?.provider ?? ""} />
-            {windowTotal > 1 && windowIndex !== null && (
-              <span
-                className={`window-index${isThisFocused ? "" : " dim"}`}
-                data-tauri-drag-region
-                title={`Window ${windowIndex} of ${windowTotal} · ⌘\` to cycle`}
-              >
-                {windowIndex}/{windowTotal}
-              </span>
-            )}
-          </>
+        subtitle={
+          workspaceMode === "chat"
+            ? state?.chatAgent === "therapist"
+              ? "Therapist"
+              : state?.chatAgent === "research"
+                ? "Research"
+                : "General"
+            : null
         }
-      >
-        <BackButton
-          label={
-            showChecklist
-              ? "Back to chat"
-              : workspaceMode === "chat"
-                ? "Back to chats"
-                : workspaceMode === "motion"
-                  ? "Back to motion sessions"
-                  : "Back to this project's sessions"
-          }
-          onClick={() => {
-            const goBack = (): void =>
-              showChecklist ? setShowChecklist(false) : setShowPicker(true);
-            // Leaving a goal (Chat or Workers) for the goal list skips the
-            // screen crossfade: WebKit's snapshot of a goal workspace flashed a
-            // magenta line along the header's bottom edge for a few frames
-            // (caught on screen recordings of the real window, every time from
-            // Workers and some of the time from Chat; never without the
-            // crossfade). The list still resolves in through its own dissolve-in.
-            if (state?.goal && !showChecklist) goBack();
-            else withViewTransition(goBack);
-          }}
-        />
-        <WorkspaceHeaderActions
-          workspaceMode={workspaceMode}
-          isGoal={Boolean(state?.goal)}
-          goalView={goalView}
-          // No view transition: WebKit leaves the header's frost (backdrop
-          // blur) out of its snapshots, so it popped in after the crossfade.
-          // The farm and its frost fade in together instead (App.css), and the
-          // chat dissolves back in on its own when shown again.
-          onGoalViewChange={(view) => setGoalChatFor(view === "chat" ? activeGoalId : null)}
-          goalNeedsAnswer={goalWaitingOnUser}
-          goalTally={goalTally}
-          goalState={
-            state?.goal?.paused
-              ? "paused"
-              : running || (goalTally?.working ?? 0) > 0
-                ? "running"
-                : "stopped"
-          }
-          onGoalPauseChange={state?.goal?.phase === "active" ? setGoalPaused : undefined}
-          onOpenGoalSettings={state?.goal ? () => setShowGoalSettings(true) : undefined}
-          progress={progress}
-          rankCelebrateNonce={rankCelebrateNonce}
-          xpChips={xpChips}
-          onOpenScorecard={() => setShowScorecard(true)}
-          windowFocused={windowFocused}
-          running={running}
-          autopilot={state?.autopilot ?? false}
-          autopilotReviewing={autopilotReviewing}
-          onAutopilotChange={(next) => {
-            setState((s) => (s ? { ...s, autopilot: next } : s));
-            void setAutopilot(next);
-            setNolanPowerBanner(next ? "on" : "off");
-          }}
-          onNewSession={() => setConfirmNewSession(true)}
-          onOpenNotes={() => setShowNotes(true)}
-          onOpenMemories={() => setShowMemories(true)}
-          projectTasks={projectTasks}
-          onOpenTasks={openTasks}
-          showTasks={showTasks}
-          showChecklist={showChecklist}
-          onOpenChecklist={openChecklist}
-          onArrange={() => {
-            setNavHiddenPersisted(true);
-            setToolsHiddenPersisted(true);
-          }}
-          needsGitInit={needsGitInit}
-          onInitGit={() => setShowInitGit(true)}
-          commitCommand={commitCommand}
-          hasCommit={hasCommit}
-          onCommit={() =>
-            submitText(
-              `/${commitCommand}`,
-              hasCommit ? "Committing\u2026" : "Setting up commits\u2026",
-            )
-          }
-        />
-      </WorkspaceHeader>
-
-      {workspaceMode === "code" && showChecklist && (
-        <ChecklistScreen
-          load={checklistLoad}
-          running={running || checklistRunId !== null}
-          activeId={checklistRunId}
-          notice={checklistNotice}
-          onRun={handleRunChecklistItem}
-          onRetry={() => {
-            setChecklistLoad({ kind: "loading" });
-            void refreshChecklist();
-          }}
-        />
-      )}
+        leading={<BackButton label={backLabel} onClick={goBack} />}
+        trailing={
+          <TitleBarActions
+            workspaceMode={workspaceMode}
+            isGoal={Boolean(state?.goal)}
+            goalView={goalView}
+            // No view transition: WebKit leaves the header's frost (backdrop
+            // blur) out of its snapshots, so it popped in after the crossfade.
+            onGoalViewChange={(view) => setGoalChatFor(view === "chat" ? activeGoalId : null)}
+            goalNeedsAnswer={goalWaitingOnUser}
+            goalTally={goalTally}
+            goalState={
+              state?.goal?.paused
+                ? "paused"
+                : running || (goalTally?.working ?? 0) > 0
+                  ? "running"
+                  : "stopped"
+            }
+            onGoalPauseChange={state?.goal?.phase === "active" ? setGoalPaused : undefined}
+            xpChips={xpChips}
+            running={running}
+            dirtyCount={state?.gitDirtyFileCount ?? 0}
+            needsGitInit={needsGitInit}
+            onInitGit={() => setShowInitGit(true)}
+            commitCommand={commitCommand}
+            hasCommit={hasCommit}
+            onCommit={() =>
+              submitText(
+                `/${commitCommand}`,
+                hasCommit ? "Committing\u2026" : "Setting up commits\u2026",
+              )
+            }
+          />
+        }
+      />
 
       {/* Kept alive while hidden (Chat view), so switching back doesn't rebuild the farm. */}
       {activeGoalId && (
-        <Activity mode={goalWorldOpen && !showChecklist ? "visible" : "hidden"}>
+        <Activity mode={goalWorldOpen ? "visible" : "hidden"}>
           <Suspense fallback={null}>
             <GoalWorld
               key={activeGoalId}
@@ -2800,7 +2784,7 @@ function App(): React.ReactElement {
 
       {/* React owns chat visibility rather than a stylesheet override. Activity
           keeps the draft and transcript state, and suspends hidden child effects. */}
-      <Activity mode={showChecklist || goalWorldOpen ? "hidden" : "visible"}>
+      <Activity mode={goalWorldOpen ? "hidden" : "visible"}>
         {/* Non-scrolling frame the same size as the chat viewport. The banner
           lives HERE, not inside `.transcript` — `.transcript` scrolls, and an
           absolutely positioned child of a scrolling container is pinned to the
@@ -2808,11 +2792,7 @@ function App(): React.ReactElement {
           existing session scrolled down it rendered far above what's on
           screen. Anchoring to this non-scrolling sibling keeps it pinned to
           what the user is actually looking at, at any scroll position. */}
-        <div
-          className="transcript-frame"
-          onMouseEnter={() => setChatHovered(true)}
-          onMouseLeave={() => setChatHovered(false)}
-        >
+        <div ref={transcriptFrameRef} className="transcript-frame">
           {workspaceMode === "code" && nolanPowerBanner && (
             <NolanPowerBanner mode={nolanPowerBanner} onDone={() => setNolanPowerBanner(null)} />
           )}
@@ -2873,7 +2853,6 @@ function App(): React.ReactElement {
                           consumeEntrance={entrances.consume}
                           nolanTalking={it.id === talkingNolanId}
                           errorActive={it.id === currentErrorId}
-                          errorCritterId={errorCritters.get(it.id)}
                           errorModelPicker={
                             it.kind === "error" && it.id === currentErrorId ? (
                               <ModelSelect
@@ -2926,13 +2905,6 @@ function App(): React.ReactElement {
             )}
           </div>
           {items.length > 0 && (
-            <ExportChatButton
-              visible={chatHovered || exporting}
-              busy={exporting}
-              onExport={() => void exportTranscript()}
-            />
-          )}
-          {items.length > 0 && (
             <TranscriptJumpControls
               away={!following}
               hasNew={firstNewId !== null}
@@ -2944,128 +2916,300 @@ function App(): React.ReactElement {
           )}
         </div>
 
-        {/* Sub-agents walk on top of the pinned region as critters; the lane
+        {/* The dock: everything below the conversation, floating over its
+          bottom edge so messages scroll on behind it through a frost (the
+          title bar's, mirrored). The transcript reserves the dock's height as
+          padding (--dock-h, kept current by a ResizeObserver). */}
+        <div ref={dockRef} className="dock">
+          {/* Sub-agents walk on top of the pinned region as critters; the lane
           opens (pushing the chat up) only while one is out. */}
-        <CritterFloor groups={critterGroups} />
-        <div ref={liveRegionRef} className="liveregion">
-          {/* Motion's starting points sit just above the activity bar and go away
-            once the conversation has its first message. */}
-          {workspaceMode === "motion" && hydrated && items.length === 0 && !running && (
-            <MotionStarters onPick={fillComposer} />
-          )}
-          {workspaceMode === "code" && nolanRunning && (
-            <NolanActivityBar
-              runStartTs={nolanRunStartTs}
-              tokens={nolanTokens}
-              isThinking={nolanIsThinking}
-              thinkingStartTs={nolanThinkingStartTs}
-              thinkingAccumMs={nolanThinkingAccumMs}
-              onCancel={() => void cancelNolan()}
-            />
-          )}
-          {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
-          {/* Automatic review stays in the same task row; manual @Nolan keeps its own bar. */}
-          {(workspaceMode !== "code" || running || autopilotReviewing || !nolanRunning) && (
-            <ActivityBar
-              running={running}
-              runStartedAt={runStartedAt}
-              activity={barActivity}
-              cancelling={cancelling}
-              tokens={tokens}
-              doneStatus={doneStatus}
-              isThinking={isThinking}
-              thinkingStartTs={thinkingStartTs}
-              thinkingAccumMs={thinkingAccumMs}
-              planTotal={workspaceMode !== "code" ? 0 : planTotal}
-              planDone={workspaceMode !== "code" ? 0 : Math.min(planDone.size, planTotal)}
-              onCancel={requestCancel}
-              toolsHidden={toolsHidden}
-              hasToolFeed={liveToolFeed.length > 0}
-              onToggleTools={toggleTools}
-            />
-          )}
+          <CritterFloor groups={critterGroups} />
+          <div ref={liveRegionRef} className="liveregion">
+            {/* Motion's starting points sit just above the deck and go away once
+            the conversation has its first message. */}
+            {workspaceMode === "motion" && hydrated && items.length === 0 && !running && (
+              <MotionStarters onPick={fillComposer} />
+            )}
+            {!toolsHidden && <LiveToolPanel entries={liveToolFeed} />}
+          </div>
+
+          <Deck
+            state={state}
+            hydrated={hydrated}
+            // A Goal works in a git repo too: its branch key opens the Git panel.
+            showGit={workspaceMode === "code"}
+            panel={deckPanel}
+            onPanelChange={setDeckPanel}
+            running={running}
+            contextPct={contextPct}
+            models={models}
+            modelsFailed={modelsFailed}
+            onSelectModel={onSelectModel}
+            second={
+              state?.goal
+                ? {
+                    name: "Critters",
+                    followLabel: "GG Goals",
+                    model: state.goal.critterModel ?? state.model,
+                    following: !state.goal.critterModel,
+                    disabled: false,
+                    onSelect: onSelectCritterModel,
+                  }
+                : workspaceMode === "code" && state
+                  ? {
+                      name: "Nolan",
+                      followLabel: "GG",
+                      model: state.nolanModel ?? state.model,
+                      following: !state.nolanModelOverride,
+                      disabled: running || nolanRunning || autopilotReviewing,
+                      onSelect: onSelectNolanModel,
+                    }
+                  : null
+            }
+            tasks={tasks}
+            schedules={schedules}
+            onStopSchedule={stopSchedule}
+            projectHealth={projectHealth}
+            onReviewHealth={reviewProjectHealth}
+            tools={{
+              notes: {
+                title: "Notes",
+                meta: "Saved on this Mac",
+                body: (
+                  <NotesModal
+                    value={notes}
+                    onChange={handleNotesChange}
+                    onClose={() => closeDeckPanel("notes")}
+                  />
+                ),
+              },
+              todo:
+                workspaceMode === "code"
+                  ? {
+                      title: "Tasks",
+                      meta: `${projectTasks.filter((t) => t.status !== "done").length} pending`,
+                      body: (
+                        <TasksModal
+                          tasks={projectTasks}
+                          running={running}
+                          loading={tasksLoading}
+                          error={tasksError}
+                          onRetry={() => void refreshTasks()}
+                          onAdd={handleAddTask}
+                          onUpdate={handleUpdateTask}
+                          onRun={handleRunTask}
+                          onRunAll={handleRunAllTasks}
+                          onDelete={handleDeleteTask}
+                          onClose={() => closeDeckPanel("todo")}
+                        />
+                      ),
+                    }
+                  : undefined,
+              checklist:
+                workspaceMode === "code" && !state?.goal
+                  ? {
+                      title: "Checklist",
+                      meta:
+                        checklistLoad.kind === "ready"
+                          ? `${checklistLoad.snapshot.items.filter((i) => i.status === "passed").length} of ${checklistLoad.snapshot.items.length} passing`
+                          : undefined,
+                      body: (
+                        <ChecklistScreen
+                          load={checklistLoad}
+                          running={running || checklistRunId !== null}
+                          activeId={checklistRunId}
+                          notice={checklistNotice}
+                          onRun={handleRunChecklistItem}
+                          onRetry={() => {
+                            setChecklistLoad({ kind: "loading" });
+                            void refreshChecklist();
+                          }}
+                        />
+                      ),
+                    }
+                  : undefined,
+              health:
+                workspaceMode === "code" && !state?.goal
+                  ? {
+                      title: "Project Health",
+                      body: (
+                        <ProjectHealthPanel
+                          health={projectHealth}
+                          onReview={reviewProjectHealth}
+                          onDone={() => closeDeckPanel("health")}
+                        />
+                      ),
+                    }
+                  : undefined,
+              goal: state?.goal
+                ? {
+                    title: "Goal settings",
+                    body: (
+                      <GoalSettingsModal
+                        context={state.goal.context ?? []}
+                        instructions={state.goal.instructions ?? ""}
+                        busy={running}
+                        onClose={() => closeDeckPanel("goal")}
+                        onSaved={(next) => {
+                          setState((s) => (s?.goal ? { ...s, goal: { ...s.goal, ...next } } : s));
+                          // Newly attached repos bring their own slash commands.
+                          refreshCommands();
+                        }}
+                      />
+                    ),
+                  }
+                : undefined,
+              scorecard: progress
+                ? { title: "Scorecard", body: <ScorecardPanel snapshot={progress} /> }
+                : undefined,
+              brain:
+                workspaceMode === "chat"
+                  ? {
+                      title: "Brain",
+                      body: <MemoryModal onClose={() => closeDeckPanel("brain")} />,
+                    }
+                  : undefined,
+            }}
+            progress={progress}
+            usageExtras={
+              windowTotal > 1 &&
+              windowIndex !== null && (
+                <span
+                  className="deck-pm"
+                  title={`Window ${windowIndex} of ${windowTotal} · ⌘\` to cycle`}
+                >
+                  Window {windowIndex} of {windowTotal}
+                </span>
+              )
+            }
+            menu={
+              <DeckMenu
+                workspaceMode={workspaceMode}
+                isGoal={Boolean(state?.goal)}
+                running={running}
+                autopilot={state?.autopilot ?? false}
+                autopilotReviewing={autopilotReviewing}
+                onAutopilotChange={(next) => {
+                  setState((s) => (s ? { ...s, autopilot: next } : s));
+                  void setAutopilot(next);
+                  setNolanPowerBanner(next ? "on" : "off");
+                }}
+                onNewSession={closeDeckThen(() => setConfirmNewSession(true))}
+                onOpenNotes={() => setDeckPanel("notes")}
+                onOpenMemories={() => setDeckPanel("brain")}
+                projectTasks={projectTasks}
+                onOpenTasks={openTasks}
+                showChecklist={showChecklist}
+                onOpenChecklist={openChecklist}
+                hasHealth={projectHealth !== null}
+                onOpenHealth={() => setDeckPanel("health")}
+                onOpenRadio={() => setDeckPanel("radio")}
+                onOpenGoalSettings={state?.goal ? () => setDeckPanel("goal") : undefined}
+                canExport={items.length > 0}
+                exporting={exporting}
+                onExport={closeDeckThen(() => void exportTranscript())}
+                onArrange={() => setToolsHiddenPersisted(true)}
+                onBack={closeDeckThen(goBack)}
+                backLabel={backLabel}
+              />
+            }
+            status={
+              /* The deck's status line is whoever is working: a manual @Nolan
+                 reply shows Nolan's bar there in place of GG's (an automatic
+                 review stays in GG's task row). */
+              workspaceMode === "code" && nolanRunning && !running && !autopilotReviewing ? (
+                <NolanActivityBar
+                  runStartTs={nolanRunStartTs}
+                  tokens={nolanTokens}
+                  isThinking={nolanIsThinking}
+                  thinkingStartTs={nolanThinkingStartTs}
+                  thinkingAccumMs={nolanThinkingAccumMs}
+                  onCancel={() => void cancelNolan()}
+                />
+              ) : (
+                <ActivityBar
+                  running={running}
+                  runStartedAt={runStartedAt}
+                  activity={barActivity}
+                  cancelling={cancelling}
+                  tokens={tokens}
+                  doneStatus={doneStatus}
+                  isThinking={isThinking}
+                  thinkingStartTs={thinkingStartTs}
+                  thinkingAccumMs={thinkingAccumMs}
+                  planTotal={workspaceMode !== "code" ? 0 : planTotal}
+                  planDone={workspaceMode !== "code" ? 0 : Math.min(planDone.size, planTotal)}
+                  onCancel={requestCancel}
+                  toolsHidden={toolsHidden}
+                  hasToolFeed={liveToolFeed.length > 0}
+                  onToggleTools={toggleTools}
+                />
+              )
+            }
+            composer={
+              <Composer
+                workspaceMode={workspaceMode}
+                state={state}
+                composerRef={composerRef}
+                isFileDragOver={isFileDragOver}
+                scheduleInvalid={scheduleInvalid}
+                scheduleDraft={scheduleDraft}
+                running={running}
+                nolanRunning={nolanRunning}
+                autopilotReviewing={autopilotReviewing}
+                cancelling={cancelling}
+                sendDisabled={sendDisabled}
+                input={input}
+                setInput={setInput}
+                caret={caret}
+                setCaret={setCaret}
+                fillScheduleInterval={fillScheduleInterval}
+                slashOpen={slashOpen}
+                slashMatches={slashMatches}
+                clampedSlashIndex={clampedSlashIndex}
+                pickSlashCommand={pickSlashCommand}
+                setSlashIndex={setSlashIndex}
+                mentionOpen={mentionOpen}
+                fileMatches={fileMatches}
+                clampedFileIndex={clampedFileIndex}
+                mention={mention}
+                setMention={setMention}
+                pickMentionFile={pickMentionFile}
+                setFileIndex={setFileIndex}
+                updateMention={updateMention}
+                attachments={attachments}
+                attachmentsLoading={attachmentsLoading}
+                removeAttachment={removeAttachment}
+                addFiles={addFiles}
+                fileInputRef={fileInputRef}
+                mentionedPaths={mentionedPaths}
+                removeMentionChip={removeMentionChip}
+                visibleQueuedMessages={visibleQueuedMessages}
+                sendCount={sendCount}
+                handleCancelQueued={handleCancelQueued}
+                enhanceAnim={enhanceAnim}
+                onEnhanceAnimDone={onEnhanceAnimDone}
+                enhancement={enhancement}
+                setEnhancement={setEnhancement}
+                enhancing={enhancing}
+                enhanceHintVisible={enhanceHintVisible}
+                runEnhance={runEnhance}
+                nolanActive={nolanActive}
+                nolanInputParts={nolanInputParts}
+                attachInput={attachInput}
+                displayPlaceholder={displayPlaceholder}
+                lastKeystrokeAtRef={lastKeystrokeAtRef}
+                historyIndex={historyIndex}
+                setHistoryIndex={setHistoryIndex}
+                navigateHistory={navigateHistory}
+                submit={submit}
+                requestCancel={requestCancel}
+              />
+            }
+          />
+
+          <UpdateBanner appUpdate={appUpdate} />
         </div>
-
-        <Composer
-          workspaceMode={workspaceMode}
-          state={state}
-          composerRef={composerRef}
-          isFileDragOver={isFileDragOver}
-          scheduleInvalid={scheduleInvalid}
-          scheduleDraft={scheduleDraft}
-          running={running}
-          nolanRunning={nolanRunning}
-          autopilotReviewing={autopilotReviewing}
-          cancelling={cancelling}
-          sendDisabled={sendDisabled}
-          windowFocused={windowFocused}
-          input={input}
-          setInput={setInput}
-          caret={caret}
-          setCaret={setCaret}
-          fillScheduleInterval={fillScheduleInterval}
-          slashOpen={slashOpen}
-          slashMatches={slashMatches}
-          clampedSlashIndex={clampedSlashIndex}
-          pickSlashCommand={pickSlashCommand}
-          setSlashIndex={setSlashIndex}
-          mentionOpen={mentionOpen}
-          fileMatches={fileMatches}
-          clampedFileIndex={clampedFileIndex}
-          mention={mention}
-          setMention={setMention}
-          pickMentionFile={pickMentionFile}
-          setFileIndex={setFileIndex}
-          updateMention={updateMention}
-          attachments={attachments}
-          attachmentsLoading={attachmentsLoading}
-          removeAttachment={removeAttachment}
-          addFiles={addFiles}
-          fileInputRef={fileInputRef}
-          mentionedPaths={mentionedPaths}
-          removeMentionChip={removeMentionChip}
-          visibleQueuedMessages={visibleQueuedMessages}
-          sendCount={sendCount}
-          handleCancelQueued={handleCancelQueued}
-          enhanceAnim={enhanceAnim}
-          onEnhanceAnimDone={onEnhanceAnimDone}
-          enhancement={enhancement}
-          setEnhancement={setEnhancement}
-          enhancing={enhancing}
-          enhanceHintVisible={enhanceHintVisible}
-          runEnhance={runEnhance}
-          nolanActive={nolanActive}
-          nolanInputParts={nolanInputParts}
-          attachInput={attachInput}
-          displayPlaceholder={displayPlaceholder}
-          lastKeystrokeAtRef={lastKeystrokeAtRef}
-          historyIndex={historyIndex}
-          setHistoryIndex={setHistoryIndex}
-          navigateHistory={navigateHistory}
-          submit={submit}
-          requestCancel={requestCancel}
-        />
-
-        <AppFooter
-          hydrated={hydrated}
-          workspaceMode={workspaceMode}
-          state={state}
-          tasks={tasks}
-          schedules={schedules}
-          stopSchedule={stopSchedule}
-          runningTaskCount={runningTaskCount}
-          contextPct={contextPct}
-          running={running}
-          nolanRunning={nolanRunning}
-          autopilotReviewing={autopilotReviewing}
-          models={models}
-          modelsFailed={modelsFailed}
-          onSelectModel={onSelectModel}
-          onSelectNolanModel={onSelectNolanModel}
-          onSelectCritterModel={state?.goal ? onSelectCritterModel : undefined}
-        />
-
-        <UpdateBanner appUpdate={appUpdate} />
       </Activity>
 
       {workspaceMode === "code" && showInitGit && (
@@ -3110,55 +3254,11 @@ function App(): React.ReactElement {
         />
       )}
 
-      {workspaceMode === "chat" && showMemories && (
-        <MemoryModal onClose={() => setShowMemories(false)} />
-      )}
-
-      {showNotes && (
-        <NotesModal
-          value={notes}
-          onChange={handleNotesChange}
-          onClose={() => setShowNotes(false)}
-        />
-      )}
-
-      {showGoalSettings && state?.goal && (
-        <GoalSettingsModal
-          context={state.goal.context ?? []}
-          instructions={state.goal.instructions ?? ""}
-          busy={running}
-          onClose={() => setShowGoalSettings(false)}
-          onSaved={(next) => {
-            setState((s) => (s?.goal ? { ...s, goal: { ...s.goal, ...next } } : s));
-            // Newly attached repos bring their own slash commands.
-            refreshCommands();
-          }}
-        />
-      )}
-      {showScorecard && progress && (
-        <ScorecardModal snapshot={progress} onClose={() => setShowScorecard(false)} />
-      )}
-
       {/* Settings reached from the menu-bar tray. Rendered in every view branch
           (Home, picker, workspace) because the tray targets a WINDOW and can't
           know which of the three it is showing. */}
       {showTraySettings && <SettingsModal onClose={closeTraySettings} />}
 
-      {workspaceMode === "code" && showTasks && (
-        <TasksModal
-          tasks={projectTasks}
-          running={running}
-          loading={tasksLoading}
-          error={tasksError}
-          onRetry={() => void refreshTasks()}
-          onAdd={handleAddTask}
-          onUpdate={handleUpdateTask}
-          onRun={handleRunTask}
-          onRunAll={handleRunAllTasks}
-          onDelete={handleDeleteTask}
-          onClose={() => setShowTasks(false)}
-        />
-      )}
       {/* Workspace toasts (saved transcript, Remote on/off, rank-up) need their
           own host: the one in the Home/Settings branch isn't mounted here. */}
       <Toaster />

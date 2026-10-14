@@ -93,7 +93,7 @@ export function NolanActivityBar({
         <ThinkingOrb
           state="listening"
           size={20}
-          theme="dark"
+          theme="auto"
           paused={motion !== "full"}
           aria-hidden="true"
           style={{ flexShrink: 0, filter: `url(#${orbTintId})` }}
