@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.90.1",
+    date: "2026-10-14",
+    items: [
+      "Tables and code finally get room to breathe. `Tables`, `code blocks` and Ken's prompt blocks now stretch across the whole chat, so columns stop squishing and long lines stop wrapping into a mess, while your reading text stays at a comfy width.",
+    ],
+  },
+  {
     version: "0.90.0",
     date: "2026-10-14",
     items: [
