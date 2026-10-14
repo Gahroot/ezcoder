@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.90.0",
+    date: "2026-10-14",
+    items: [
+      "Meet the `Deck`, a brand new home for everything at the bottom of your window. Your model, usage, background tasks, radio, notes and checklist now open right where you type instead of floating over your chat, so even a tiny window keeps the whole conversation in view. And whatever you were typing stays safe while you look around.",
+      "Your project's Git story now lives one tap away. The new `Git` panel shows every changed file with its line counts, plus your open pull requests and issues on GitHub, and opens the repo in a single click.",
+      "Picking a model is now instant and fun. Type something like `opus55` or `kimi code` and the right one pops up from the whole list, and you can jump straight to any thinking level with a simple row of dots instead of clicking through them one by one.",
+      "GG Coder now comes in `Light` and `Dark`, or `Auto` to follow your Mac or PC. Flip it once and every open window switches with you, all wearing a crisp new font.",
+      "Everything just feels smoother. Your project, chat and goal lists show up instantly on every return visit, numbered steps keep counting right past code blocks, typed arrows turn into real ones, and a goal running on your phone never gets started twice on your desktop.",
+    ],
+  },
+  {
     version: "0.89.0",
     date: "2026-10-13",
     items: [
