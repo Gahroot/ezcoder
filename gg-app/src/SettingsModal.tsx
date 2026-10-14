@@ -13,6 +13,7 @@ import {
 } from "./agent";
 import { toast } from "./toast";
 import { SoundButton } from "./SoundButton";
+import { AppearancePicker } from "./AppearancePicker";
 import { HomeBackgroundButton } from "./HomeBackgroundButton";
 import { KeepAwakeButton } from "./KeepAwakeButton";
 import { SettingsSection } from "./settings-section";
@@ -105,9 +106,10 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
 
   return (
     <Modal title={embedded ? "General" : "Settings"} onClose={onClose}>
-      {/* Columns only on the Settings screen; in the dialog they are
-          transparent (see .settings-cols in App.css). */}
-      <div className="settings-cols">
+      {/* On the Settings screen: a grid of equal cards, two side by side
+          where there's room (see .settings-grid in Deck.css). In the dialog
+          the wrapper is transparent and the cards stack. */}
+      <div className="settings-cols settings-grid">
         <div className="settings-col">
           {permissions?.applicable && (
             <SettingsSection title="Permissions" description="Full Disk Access for GG Coder.">
@@ -125,6 +127,14 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
               </div>
             </SettingsSection>
           )}
+          <SettingsSection
+            title="Appearance"
+            description="Light or dark. Auto follows your computer's setting. Applies to every window."
+          >
+            <div className="modal-row">
+              <AppearancePicker />
+            </div>
+          </SettingsSection>
           <SettingsSection
             title="Effects"
             description="Sounds, and the home screen's moving background."

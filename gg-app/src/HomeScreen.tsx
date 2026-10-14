@@ -23,13 +23,9 @@ import {
   getSettings,
   authStatus,
   openWhatsNewWindow,
-  getProgress,
   setRemoteActive,
   getServeStatus,
-  type ProgressSnapshot,
 } from "./agent";
-import { RankBadge } from "./RankBadge";
-import { ScorecardModal } from "./ScorecardModal";
 import { useAppUpdate } from "./update";
 import { toast } from "./toast";
 
@@ -70,18 +66,12 @@ export function HomeScreen({
   const [folderSet, setFolderSet] = useState(false);
   const [providerCount, setProviderCount] = useState(0);
   const [version, setVersion] = useState<string | null>(null);
-  const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
-  const [showScorecard, setShowScorecard] = useState(false);
   const appUpdate = useAppUpdate();
   const goalsNoteId = useId();
 
   useEffect(() => {
     void getVersion()
       .then(setVersion)
-      .catch(() => {});
-    void waitForReady()
-      .then(() => getProgress())
-      .then(setProgress)
       .catch(() => {});
   }, []);
 
@@ -150,13 +140,8 @@ export function HomeScreen({
   return (
     <div className="home" data-tauri-drag-region style={sceneStyle}>
       {backgroundOn && <HomeScenery hour={hour} />}
-      {/* Above the banner: your rank and What's new. */}
+      {/* Above the banner: What's new. */}
       <div className="home-version-row">
-        <RankBadge
-          snapshot={progress}
-          onClick={() => setShowScorecard(true)}
-          className="home-rank-badge"
-        />
         <button
           className="home-whatsnew"
           type="button"
@@ -286,10 +271,6 @@ export function HomeScreen({
           version && <span className="home-version">{`v${version}`}</span>
         )}
       </div>
-
-      {showScorecard && progress && (
-        <ScorecardModal snapshot={progress} onClose={() => setShowScorecard(false)} />
-      )}
     </div>
   );
 }

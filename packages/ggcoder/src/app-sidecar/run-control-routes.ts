@@ -1,5 +1,5 @@
 import type http from "node:http";
-import type { Provider } from "@kenkaiiii/gg-ai";
+import type { Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
 import { findProbedModel, parseLocalModelId } from "@kenkaiiii/gg-core";
 import { getModel, getAllModels } from "../core/model-registry.js";
 import {
@@ -17,6 +17,38 @@ import {
   persistThinkingLevel,
 } from "./app-settings.js";
 import type { SessionRouteContext } from "./route-context.js";
+
+/**
+ * What a POST /thinking asks for. An empty body cycles to the next level (the
+ * footer's original click-to-cycle); `{"level": "<level>"}` sets that level and
+ * `{"level": null}` turns thinking off, so a picker can jump straight to one.
+ * A level the current model doesn't support is refused, not clamped.
+ */
+export function resolveThinkingRequest(
+  provider: Provider,
+  model: string,
+  current: ThinkingLevel | undefined,
+  raw: string,
+): { ok: true; level: ThinkingLevel | undefined } | { ok: false; error: string } {
+  if (raw.trim() === "") {
+    return { ok: true, level: getNextThinkingLevel(provider, model, current) };
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: "invalid JSON body" };
+  }
+  if (typeof body !== "object" || body === null || !("level" in body)) {
+    return { ok: true, level: getNextThinkingLevel(provider, model, current) };
+  }
+  const level = (body as { level: unknown }).level;
+  if (level === null) return { ok: true, level: undefined };
+  if (typeof level !== "string") return { ok: false, error: "level must be a string or null" };
+  const match = getSupportedThinkingLevels(provider, model).find((l) => l === level);
+  if (!match) return { ok: false, error: `${model} doesn't support thinking level "${level}"` };
+  return { ok: true, level: match };
+}
 
 export function handleRunControlRoutes(
   ctx: SessionRouteContext,
@@ -275,30 +307,43 @@ export function handleRunControlRoutes(
 
   if (method === "POST" && url === "/thinking") {
     // The in-flight request already carries its reasoning config, so a
-    // mid-run cycle cannot affect the turn the user is watching — it just
+    // mid-run change cannot affect the turn the user is watching — it just
     // persists a level the footer then reports for a run that never used it.
     // Locked like POST /model; the footer button is disabled to match.
-    if (ctx.running) {
-      json(res, 409, { error: "cannot change reasoning level while running" });
-      return true;
-    }
-    const st = ctx.session.getState();
-    const next = getNextThinkingLevel(st.provider, st.model, ctx.session.getThinkingLevel());
-    ctx.session.setThinkingLevel(next);
-    // Persist per-project so THIS window restores its thinking state on
-    // restart; keep the global write as a fallback (mirrors the CLI).
-    void saveProjectModelPrefs(ctx.cwd, {
-      provider: st.provider,
-      model: st.model,
-      thinkingEnabled: !!next,
-      thinkingLevel: next ?? undefined,
-    }).then(() => persistThinkingLevel(ctx.paths.settingsFile, next));
-    const payload = {
-      thinkingLevel: next ?? null,
-      supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
-    };
-    ctx.broadcast("thinking_change", payload);
-    json(res, 200, payload);
+    void readBody(req, res).then((raw) => {
+      if (raw === null) return;
+      if (ctx.running) {
+        json(res, 409, { error: "cannot change reasoning level while running" });
+        return;
+      }
+      const st = ctx.session.getState();
+      const resolved = resolveThinkingRequest(
+        st.provider,
+        st.model,
+        ctx.session.getThinkingLevel(),
+        raw,
+      );
+      if (!resolved.ok) {
+        json(res, 400, { error: resolved.error });
+        return;
+      }
+      const next = resolved.level;
+      ctx.session.setThinkingLevel(next);
+      // Persist per-project so THIS window restores its thinking state on
+      // restart; keep the global write as a fallback (mirrors the CLI).
+      void saveProjectModelPrefs(ctx.cwd, {
+        provider: st.provider,
+        model: st.model,
+        thinkingEnabled: !!next,
+        thinkingLevel: next ?? undefined,
+      }).then(() => persistThinkingLevel(ctx.paths.settingsFile, next));
+      const payload = {
+        thinkingLevel: next ?? null,
+        supportedThinkingLevels: getSupportedThinkingLevels(st.provider, st.model),
+      };
+      ctx.broadcast("thinking_change", payload);
+      json(res, 200, payload);
+    });
     return true;
   }
 
