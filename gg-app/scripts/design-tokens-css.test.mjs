@@ -5,7 +5,17 @@ import { describe, expect, it } from "vitest";
 // token step must use the token, so the scale stays the single source. Odd
 // one-off values (5px, 13.5px, 30px…) are allowed on purpose: the migration
 // to tokens was pixel-identical, not a redesign.
-const FILES = ["App.css", "Deck.css", "ChecklistScreen.css", "ChatErrorNotice.css"];
+const FILES = [
+  "App.css",
+  "Deck.css",
+  "ChecklistScreen.css",
+  "ChatErrorNotice.css",
+  "AboutPage.css",
+  "HomeUpdateButton.css",
+  "UpdateBanner.css",
+  "UpdateKeyParts.css",
+  "WhatsNew.css",
+];
 const sheets = FILES.map((name) => ({
   name,
   css: readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8")

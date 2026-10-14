@@ -403,9 +403,6 @@
   --fx-meter-edge: #313131;
   --fx-meter-from: #1b2735;
   --fx-meter-to: #090a0f;
-  /* Update download progress fill. */
-  --fx-update-fill-from: #8ff5c6;
-  --fx-update-fill-to: #a7f3e9;
 }
 
 :root {
@@ -1200,7 +1197,6 @@ select {
 .home > .home-tagline,
 .home > .home-actions,
 .home > .home-settings,
-.home > .home-links,
 .home > .home-version-corner {
   animation: reveal-up 460ms var(--ease-out) both;
 }
@@ -1217,7 +1213,6 @@ select {
   animation-delay: 340ms;
 }
 .home > .home-settings,
-.home > .home-links,
 .home > .home-version-corner {
   animation-delay: 460ms;
 }
@@ -1226,7 +1221,6 @@ select {
   .home > .home-tagline,
   .home > .home-actions,
   .home > .home-settings,
-  .home > .home-links,
   .home > .home-version-corner {
     animation: none;
   }
@@ -1234,14 +1228,13 @@ select {
     animation: none;
   }
 }
-/* Edges: the version or update button top-centre, Settings top-right, the
-   critters and their terrain along the bottom, and your links (centre) just
-   above their lane. The critter lane sits on the window's bottom edge with its terrain
-   inside (.critter-lane.with-terrain), so the ground rises out of the edge
-   just like it does in chat. --home-critter-floor is the ground's depth, the
+/* Edges: the version or update button top-centre, Settings top-right, and the
+   critters and their terrain along the bottom. The critter lane sits on the
+   window's bottom edge with its terrain inside (.critter-lane.with-terrain),
+   so the ground rises out of the edge just like it does in chat. --home-critter-floor is the ground's depth, the
    height the critters' feet stand at; --home-above-critters clears the
    lane's full open height (sprite + headroom for bubbles, see
-   .critter-lane.open), so nothing they show runs into the links. */
+   .critter-lane.open). */
 .home {
   --home-terrain-px: 2px;
   --home-critter-floor: calc(var(--home-terrain-px) * 8);
@@ -1266,26 +1259,10 @@ select {
 .home-critters .critter-tooltip {
   min-width: 0;
 }
-/* Spans the width and centres its content, rather than translate(-50%):
-   the entry animation (reveal-up) owns transform. Only the links themselves
-   take clicks, so the strip around them stays a window drag area. */
-.home > .home-links {
-  position: absolute;
-  z-index: 1;
-  left: 0;
-  right: 0;
-  bottom: var(--home-above-critters);
-  margin: 0;
-  justify-content: center;
-  white-space: nowrap;
-  pointer-events: none;
-}
-.home > .home-links > * {
-  pointer-events: auto;
-}
-/* Top centre, level with the Settings button (top 16px, 44px tall). Spans the
-   width and centres its content like the links, rather than translate(-50%),
-   since reveal-up owns transform; only the version or button takes clicks,
+/* Top centre, level with the Settings button (top 16px, 44px tall): the
+   update button, only while an update is out. Spans the width and centres its
+   content, rather than translate(-50%), since reveal-up owns transform; only
+   the button takes clicks,
    so the strip around it stays a window drag area. */
 .home > .home-version-corner {
   position: absolute;
@@ -1557,17 +1534,6 @@ select {
   font-size: var(--fs-lg);
   color: var(--text);
 }
-.home-byline {
-  margin-top: -18px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  font-size: var(--fs-md);
-  color: var(--text);
-}
-.home-byline-sep {
-  color: var(--text-secondary);
-}
 .home-link {
   /* Links read as links: the accent, never plain white (which vanished on
      the light theme's cards). On Home's night scene the scene's own palette
@@ -1599,28 +1565,29 @@ select {
   padding: 0 var(--space-11);
   font-size: var(--fs-lg);
 }
-/* A pill with a caption hung under it (Goals' "In beta"). The
-   caption is out of flow, so the pills stay level and the home column
-   keeps its centring. */
+/* A pill with a tag pinned to the middle of its top border (Goals' "Beta").
+   The tag is out of flow, so the pills stay level and the home column keeps
+   its centring; clicks fall through it to the button. */
 .home-action-slot {
   position: relative;
   display: flex;
 }
-.home-action-note {
+.home-action-beta {
   position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: var(--space-4);
-  /* Flex centring keeps an over-long caption centred instead of spilling right. */
-  display: flex;
-  justify-content: center;
+  top: 0;
+  left: 50%;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  /* Deep red in both themes; white ink was asked for and clears 5:1 on it. */
+  background: var(--steroids-deep);
+  color: #ffffff;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.2;
   white-space: nowrap;
-  font-size: var(--fs-base);
-  line-height: 1.3;
-  /* Full-strength ink like the tagline and byline: dimmer text got lost over
-     bright stretches of the waves. Size keeps it secondary. */
-  color: var(--text);
+  pointer-events: none;
 }
 .home-settings {
   position: absolute;
@@ -1711,6 +1678,15 @@ select {
 }
 .settings-page.is-switching {
   animation: settings-page-dissolve var(--dur-dissolve) var(--ease-out) both;
+}
+/* A page still on its first load (settings-ready.tsx) stays hidden, along with
+   the header items it puts up, and its entrance waits: lifting the hold
+   restarts the animation, so the page arrives once, already loaded. */
+.settings-screen.is-waiting :is(.settings-page, .settings-head-status, .settings-head-actions) {
+  visibility: hidden;
+}
+.settings-screen.is-waiting .settings-page {
+  animation: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .settings-page.is-entering,
@@ -1814,7 +1790,6 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
   height: 42px;
   padding: 0 11px;
   border: 0;
@@ -1844,16 +1819,25 @@ select {
   display: flex;
   flex-shrink: 0;
 }
-/* Only the selected tab shows its label. `display: none` keeps the others
-   out of layout; every tab carries an aria-label, so each is still announced
-   by name. */
+/* Only the selected tab shows its label. The others fold to zero width (the
+   7px gap from the icon lives inside the text, so it folds too), which lets
+   SettingsTabBar spring a label's width open and shut; every tab carries an
+   aria-label, so each is still announced by name. */
 .settings-tab-label {
-  display: none;
-  line-height: 1.2;
-  white-space: nowrap;
+  display: block;
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
 }
 .settings-tab.is-active .settings-tab-label {
-  display: inline;
+  width: auto;
+  opacity: 1;
+}
+.settings-tab-label-text {
+  display: block;
+  padding-left: 7px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 /* Steroids not connected yet. */
 .settings-tab-alert {
@@ -5152,6 +5136,7 @@ select {
 .ken-dialogue-more[data-on] {
   opacity: 1;
   animation: ken-more-bob 900ms steps(2, jump-none) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 @keyframes ken-more-bob {
   50% {
@@ -5374,6 +5359,7 @@ select {
 }
 .ken-status[data-icon="think"] .ken-status-badge::after {
   animation: ken-status-breathe var(--dur-breathe) var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 @keyframes ken-status-breathe {
   50% {
@@ -5383,6 +5369,7 @@ select {
 .ken-status[data-icon="edit"] .ken-status-badge svg {
   transform-origin: 20% 80%;
   animation: ken-status-scribble 0.9s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 @keyframes ken-status-scribble {
   30% {
@@ -5394,6 +5381,7 @@ select {
 }
 .ken-status[data-icon="search"] .ken-status-badge svg {
   animation: ken-status-scan 1.6s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 @keyframes ken-status-scan {
   25% {
@@ -5408,6 +5396,7 @@ select {
 }
 .ken-status[data-icon="wait"] .ken-status-badge svg {
   animation: ken-status-turn 2.6s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 @keyframes ken-status-turn {
   0%,
@@ -5475,6 +5464,7 @@ select {
   background: currentColor;
   opacity: 0.3;
   animation: ken-status-dot 1.2s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 .ken-status-dots i:nth-child(2) {
   animation-delay: 0.2s;
@@ -5562,6 +5552,7 @@ select {
   width: 40%;
   background: linear-gradient(90deg, transparent, var(--status-ink), transparent);
   animation: ken-status-sweep 1.3s var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
 }
 .ken-status[data-bar="run"] .ken-status-bar {
   opacity: 1;
@@ -9439,291 +9430,30 @@ select {
   cursor: wait;
 }
 
-/* App-update banner — its own row below the footer so it reads as a distinct,
-   noticeable announcement. Themed on the critter meadow: dark glass, a strip of
-   the home screen's pixel grass along the bottom edge, and three critters
-   hopping by the words (UpdateBanner.tsx). The whole row is the click target
-   that downloads, installs, and restarts. */
-.update-banner {
-  position: relative;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  width: 100%;
-  /* The grass takes the bottom 4px, so the line box sits 2px higher; the total
-     height is unchanged. */
-  padding: calc(var(--space-4) - 2px) var(--rail) calc(var(--space-4) + 2px);
-  border: none;
-  background: linear-gradient(180deg, #141a1d 0%, #0f1513 100%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
-  color: #eef3ea;
-  font-family: var(--sans);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  cursor: pointer;
-  overflow: hidden;
-  transition: filter var(--t-fast);
-}
-.update-banner .badge {
-  background: var(--critter);
-  border-color: rgb(42 10 30 / 0.35);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4);
-  color: #2a0a1e;
-}
-/* The slot the banner arrives in. It opens to the banner's height while the
-   banner dissolves in (the shared blur-to-sharp entrance), so the composer
-   above eases up instead of jumping. Both run once, on the slot, so the swap
-   to the progress bar inside it never replays them; `backwards` leaves no
-   filter on the banner at rest. */
-.update-banner-slot {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-rows: 1fr;
-  overflow: hidden;
-  animation: update-banner-in var(--dur-dissolve) var(--ease-out) backwards;
-}
-.update-banner-slot > .update-banner {
-  min-height: 0;
-}
-@keyframes update-banner-in {
-  from {
-    grid-template-rows: 0fr;
-    opacity: 0;
-    filter: blur(6px);
-  }
-}
-/* A faint green sweep across the banner to draw the eye to a pending update. */
-.update-banner::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    transparent 30%,
-    rgb(127 232 154 / 0.07) 50%,
-    transparent 70%
-  );
-  transform: translateX(-100%);
-  animation: update-shimmer 2.6s ease-in-out infinite;
-  animation-play-state: var(--loop-play-state, running);
-  pointer-events: none;
-}
-.update-banner-busy::after {
-  animation: none;
-}
-@keyframes update-shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  60%,
-  100% {
-    transform: translateX(100%);
-  }
-}
-.update-banner:hover:not(.update-banner-busy) {
-  filter: brightness(1.15);
-}
-.update-banner-busy {
-  cursor: default;
-}
-/* The meadow strip: one 12×4 tile of grass over soil, repeated. */
-.update-banner-grass {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: var(--space-2);
-  background-size: 12px 4px;
-  background-repeat: repeat-x;
-  image-rendering: pixelated;
-  pointer-events: none;
-}
-/* The crew stands on the grass, so it drops below the centred text. */
-.update-banner-crew {
-  display: inline-flex;
-  gap: 3px;
-  align-self: flex-end;
-  transform: translateY(6px);
-}
-.update-banner-critter {
-  position: relative;
-  display: block;
-  flex: none;
-  width: var(--space-8);
-  height: var(--space-8);
-  transform-origin: 50% 100%;
-}
-.update-banner-critter img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-  user-select: none;
-}
-/* Waiting: each critter hops in turn (the delays are set inline). */
-.update-banner-critter.hopping {
-  animation: update-banner-hop 2.4s var(--ease-in-out) infinite;
-  animation-play-state: var(--loop-play-state, running);
-}
-@keyframes update-banner-hop {
-  0%,
-  20%,
-  100% {
-    transform: none;
-  }
-  8% {
-    transform: translateY(-4px) scale(0.94, 1.06);
-  }
-}
-/* Installing: the legs step by blinking frame B over frame A. */
-.update-banner-critter .step {
-  opacity: 0;
-  animation: update-banner-step 0.36s steps(1, end) infinite;
-  animation-play-state: var(--loop-play-state, running);
-}
-@keyframes update-banner-step {
-  50% {
-    opacity: 1;
-  }
-}
-/* Installing state: the banner box itself becomes the progress track — same
-   padding/font as the available state, so the swap causes zero layout shift.
-   The fill, grass and crew are absolutely positioned (out of flow); only the
-   centred percentage occupies the line box the label text did. */
-.update-banner-fill {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  background: linear-gradient(90deg, rgb(108 191 82 / 0.16), rgb(127 232 154 / 0.3));
-  /* Hairline mint leading edge so the fill boundary reads crisply. */
-  box-shadow: 1px 0 0 rgb(127 232 154 / 0.7);
-  transition: width 180ms linear;
-  pointer-events: none;
-}
-/* The crew marches along the grass at the front of the fill. */
-.update-banner-march {
-  position: absolute;
-  bottom: 3px;
-  display: inline-flex;
-  gap: var(--space-1);
-  translate: -100% 0;
-  transition: left 180ms linear;
-  pointer-events: none;
-}
-.update-banner-pct {
-  position: relative; /* above the fill */
-  display: inline-flex;
-  align-items: center;
-  /* The Install badge's box (an --fs-xs line at 1.5, 2px padding, 2px border)
-     sets the ready banner's height; the percentage reserves the same, so
-     clicking Install doesn't shrink the bar. */
-  min-height: calc(var(--fs-xs) * 1.5 + var(--space-2));
-  font-variant-numeric: tabular-nums; /* steady width as the digits climb */
-}
-/* The sweep, the hops and the steps run for as long as an update waits, so
-   reduced motion stops them outright; the crew stands still. */
-@media (prefers-reduced-motion: reduce) {
-  .update-banner::after,
-  .update-banner-critter.hopping,
-  .update-banner-critter .step {
-    animation: none;
-  }
-  /* No growing or blur: the banner just fades in at its full height. */
-  .update-banner-slot {
-    animation-name: fade-in;
-  }
-}
-/* Home-screen update pill — small green-gradient chip floating above the ASCII
-   logo, shown only when an update is pending. Deliberately smaller than the
-   primary action buttons so it reads as a notification, not a main CTA. */
-.home-update {
-  position: relative; /* anchor + clip the progress fill below */
-  overflow: hidden;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  align-self: center;
-  background: linear-gradient(135deg, var(--fx-update-from) 0%, var(--fx-update-to) 100%);
-  color: var(--on-fx-update);
-  border: none;
-  border-radius: var(--radius-pill);
-  font-family: var(--sans);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  padding: 5px var(--space-6);
-  cursor: pointer;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--success) 35%, transparent);
-  /* Colour-on-hover like every other control: no lift. */
-  transition: filter var(--t-fast);
-}
-.home-update:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-.home-update:disabled {
-  opacity: 0.7;
-  cursor: default;
-}
-/* Installing state: the pill keeps its vibrant gradient as the track (no
-   :disabled dimming). Progress is a slim strip along the pill's bottom edge —
-   a full-height fill swept over the "Installing…" label and looked muddy at
-   this size. The percentage reserves a steady 3ch so the label doesn't jitter
-   as it climbs. */
-.home-update-progress {
-  opacity: 1;
-  cursor: default;
-}
-.home-update-fill {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--fx-update-fill-from) 0%, var(--fx-update-fill-to) 100%);
-  transition: width 180ms linear;
-  pointer-events: none;
-}
-/* Label swap without resizing: both labels occupy the same grid cell (the
-   inactive one is visibility:hidden), so the pill is always sized to the
-   wider of "Update to x.y.z" and "Installing… 100%". */
-.home-update-swap {
-  display: grid;
-}
-.home-update-swap > * {
-  grid-area: 1 / 1;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  white-space: nowrap;
-}
-.home-update-hidden {
-  visibility: hidden;
-}
-.home-update-pct {
-  display: inline-block;
-  /* 4ch, not 3ch: "100%" is three digits PLUS the % glyph — 3ch fit "99%" but
-     the span outgrew it at 100%, stretching the pill right at the finish. */
-  min-width: 4ch;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-/* Shown in the update pill's place when already up to date — the current
-   version plus a "What's new" button, so the spot never collapses/jumps. */
+/* Above the banner: the running version, then a "What's new" button for
+   what changed in it. Hidden until the version is read, so the row never
+   shifts sideways when the number arrives. */
 .home-version-row {
   align-self: center;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
+.home-version-row.is-pending {
+  visibility: hidden;
+}
+/* The version is a label, not a control: same size as What's new, lighter
+   weight and ink. */
 .home-version {
   font-family: var(--sans);
   font-size: var(--fs-md);
   font-weight: 500;
-  color: var(--text);
-  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.home-version-sep {
+  color: var(--text-secondary);
 }
 /* Small text button to the right of the version that re-opens the What's-new
    window. Borderless + muted so it reads as a quiet secondary link, not a CTA. */

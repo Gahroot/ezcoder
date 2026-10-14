@@ -17,6 +17,7 @@ import { AppearancePicker } from "./AppearancePicker";
 import { HomeBackgroundButton } from "./HomeBackgroundButton";
 import { KeepAwakeButton } from "./KeepAwakeButton";
 import { SettingsSection } from "./settings-section";
+import { useSettingsPageReady } from "./settings-ready";
 
 interface Props {
   onClose: () => void;
@@ -32,6 +33,10 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
   const [savedRoot, setSavedRoot] = useState("");
   const [busy, setBusy] = useState(false);
   const [permissions, setPermissions] = useState<PermissionsStatus | null>(null);
+  const [settingsRead, setSettingsRead] = useState(false);
+  // On the Settings page, wait for the folder and the Permissions card so the
+  // page doesn't paint without them and then shift.
+  useSettingsPageReady(settingsRead && permissions !== null);
 
   useEffect(() => {
     // Native (Rust) read — no sidecar wait needed.
@@ -41,7 +46,8 @@ export function SettingsModal({ onClose, onSaved }: Props): React.ReactElement {
         setProjectsRoot(s.projectsRoot);
         setSavedRoot(s.projectsRoot);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setSettingsRead(true));
   }, []);
 
   // The permission is granted OUTSIDE the app (System Settings), so re-check

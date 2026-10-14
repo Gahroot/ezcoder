@@ -9,6 +9,7 @@ import { HfPullModal } from "./HfPullModal";
 import { providerLogo, providerLogoIsMono } from "./provider-logos";
 import { SettingsHeaderStatus } from "./settings-header";
 import { SettingsCard } from "./settings-section";
+import { useSettingsPageReady } from "./settings-ready";
 
 interface Props {
   /**
@@ -26,6 +27,8 @@ interface Props {
 export function LoginScreen({ onClose }: Props): React.ReactElement {
   const [providers, setProviders] = useState<AuthProvider[]>([]);
   const [loading, setLoading] = useState(true);
+  // In Settings, skip the "checking providers…" frame: the read is native and fast.
+  useSettingsPageReady(!loading);
   const [active, setActive] = useState<AuthProvider | null>(null);
   const [localOpen, setLocalOpen] = useState(false);
   // Swapped in place (never stacked) so Escape closes exactly one modal.
