@@ -70,6 +70,7 @@ import { ensureAppDirs, loadSavedSettings } from "./config.js";
 import { SettingsManager } from "./core/settings-manager.js";
 import {
   getModel,
+  withoutPaidTier,
   getDefaultThinkingLevel,
   getContextWindow,
   clearRuntimeModels,
@@ -1543,21 +1544,26 @@ async function createSession(
     kenModelOverride = null;
   }
 
-  /** The model Ken uses next turn: the pin when set, else GG Coder's. */
+  /** The model Ken uses next turn: the pin when set, else GG Coder's. Ken never
+   *  follows GG onto a paid tier: he runs in the background, unwatched. */
   function kenCurrentModel(): { provider: Provider; model: string } {
     if (kenModelOverride) return kenModelOverride;
     const st = session.getState();
-    return { provider: st.provider, model: st.model };
+    return { provider: st.provider, model: withoutPaidTier(st.model) };
   }
 
   /** Footer payload: Ken's effective model + whether it's a pin. Merged into
    *  /state, the SSE ready frame, and every ken_model_change broadcast. */
   function kenStatePayload(): ReturnType<typeof effectiveKenModel> {
     const st = session.getState();
-    return effectiveKenModel(kenModelOverride, { provider: st.provider, model: st.model });
+    return effectiveKenModel(kenModelOverride, {
+      provider: st.provider,
+      model: withoutPaidTier(st.model),
+    });
   }
 
-  async function syncKenModel(provider: Provider, model: string): Promise<void> {
+  async function syncKenModel(provider: Provider, requested: string): Promise<void> {
+    const model = withoutPaidTier(requested);
     if (kenRunning) {
       pendingKenModel = { provider, model };
       return;
@@ -1632,7 +1638,9 @@ async function createSession(
   let kenAutoAbort = new AbortController();
   let pendingKenAutoModel: { provider: Provider; model: string } | null = null;
 
-  async function syncKenAutoModel(provider: Provider, model: string): Promise<void> {
+  async function syncKenAutoModel(provider: Provider, requested: string): Promise<void> {
+    // The autopilot reviewer runs every turn, unwatched: never on a paid tier.
+    const model = withoutPaidTier(requested);
     if (autopilotReviewing) {
       pendingKenAutoModel = { provider, model };
       return;

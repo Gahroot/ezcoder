@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import { statSync } from "node:fs";
 import path from "node:path";
 import type { Message, Provider, ThinkingLevel } from "@kenkaiiii/gg-ai";
-import { getAppPaths } from "@kenkaiiii/gg-core";
+import { getAppPaths, withoutPaidTier } from "@kenkaiiii/gg-core";
 import { mcpServersForAgent, type AgentDefinition } from "./agents.js";
 import { SubAgentStore, type PersistedSubAgentRecord } from "./subagent-store.js";
 import { SessionManager } from "./session-manager.js";
@@ -446,7 +446,8 @@ export class SubAgentManager {
       pick?.model ?? parentModel,
       parentThinkingLevel,
     );
-    const model = overrides?.model ?? base.model;
+    // Same rule as selectSubAgent: a harness override can't put a worker on a paid tier.
+    const model = withoutPaidTier(overrides?.model ?? base.model);
     const selection = {
       agentDef: base.agentDef,
       provider: base.provider,

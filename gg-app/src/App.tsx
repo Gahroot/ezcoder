@@ -1352,9 +1352,9 @@ function App(): React.ReactElement {
       );
   }
 
-  function onSelectModel(modelId: string): void {
+  function onSelectModel(modelId: string, options?: { confirmPaid?: boolean }): void {
     if (state && modelId === state.model) return;
-    void switchModel(modelId).then((res) => {
+    void switchModel(modelId, options).then((res) => {
       if (isSwitchModelError(res)) {
         // The sidecar refuses with a reason worth reading ("Ollama isn't
         // running at …", "has no tool calling"). Show it — otherwise the
