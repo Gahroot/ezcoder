@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { setThinkingLevel, type AgentState, type ModelOption } from "./agent";
+import { PanelHead } from "./DeckPanelHead";
 import { Icon } from "./icons";
 import { modelDisplayName } from "./model-name";
 import { searchModels } from "./model-search";
@@ -174,6 +175,7 @@ export function ModelPanel({
 
   return (
     <div className="deck-panel model-panel">
+      <PanelHead title="Model" onClose={onClose} />
       <div className="deck-prow model-head">
         {second && (
           <div className="key-group" role="radiogroup" aria-label="Choose a model for">

@@ -1,3 +1,4 @@
+import { resolveFastModeModel } from "@prestyj/ai";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { isKimiCodingEndpoint } from "./oauth/kimi.js";
 import { MOONSHOT_OAUTH_KEY, XIAOMI_CREDITS_KEY } from "./auth-storage.js";
@@ -159,6 +160,25 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "max",
   },
   {
+    // Opus 5.5 in fast mode (research preview): the same model at up to 2.5x
+    // output tokens/sec, $8/$40 MTok. @prestyj/ai's `stream()` sends it as
+    // `claude-opus-5-5` + `speed: "fast"` + the fast-mode beta. On a Claude
+    // subscription it bills usage credits only — never included plan usage —
+    // and Anthropic 429s "Usage credits are required for fast mode" until they
+    // are turned on. Its prompt cache is separate from standard-speed Opus.
+    id: "claude-opus-5-5-fast",
+    name: "Claude Opus 5.5 Fast",
+    provider: "anthropic",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "high",
+    defaultThinkingLevel: "medium",
+    maxThinkingLevel: "max",
+  },
+  {
     // Released 2026-09-28 — replaces Sonnet 5 at $2/$10 MTok, with the same
     // 1M context / 128K output and adaptive thinking, now including xhigh.
     id: "claude-sonnet-5-5",
@@ -225,6 +245,24 @@ export const MODELS: ModelInfo[] = [
     costTier: "high",
     maxThinkingLevel: "ultra",
   },
+  {
+    // Codex Fast mode for Astra (catalog `service_tiers: priority`, "2x speed,
+    // increased usage"). @prestyj/ai's `stream()` sends it as `gpt-6-astra` +
+    // `service_tier: "priority"`, exactly what the Codex CLI sends. On a
+    // ChatGPT plan it draws included limits at 2.5x the standard rate.
+    id: "gpt-6-astra-fast",
+    name: "GPT-6 Astra Fast",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    codexContextWindow: 272_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    defaultThinkingLevel: "low",
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "high",
+    maxThinkingLevel: "ultra",
+  },
   // GPT-6 Sol + Luna — released 2026-09-22 below Astra, replacing the whole
   // GPT-5.6 family (Sol/Terra/Luna; there is no GPT-6 Terra — OpenAI's Codex
   // catalog upgrades 5.6 Terra to 6 Sol). GPT-6.1 Sol (2026-09-29) then replaced
@@ -254,11 +292,44 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "ultra",
   },
   {
+    // Codex Fast mode for 6.1 Sol ("2x speed, increased usage") — see
+    // `gpt-6-astra-fast` for the wire mapping and billing.
+    id: "gpt-6.1-sol-fast",
+    name: "GPT-6.1 Sol Fast",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    codexContextWindow: 272_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    defaultThinkingLevel: "low",
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "medium",
+    maxThinkingLevel: "ultra",
+  },
+  {
     // Luna — "Fast and affordable model for easier tasks." (Codex priority 4,
     // default medium, needs a Codex client >= 0.155.0). $0.10/$0.50 MTok.
     // Reasoning tops out at `max`.
     id: "gpt-6-luna",
     name: "GPT-6 Luna",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    codexContextWindow: 272_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    defaultThinkingLevel: "medium",
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "low",
+    maxThinkingLevel: "max",
+  },
+  {
+    // Codex Fast mode for Luna ("1.5x speed") — see `gpt-6-astra-fast` for the
+    // wire mapping and billing. Listed after Luna so compaction summaries
+    // (first `low` OpenAI model) stay on standard-speed Luna.
+    id: "gpt-6-luna-fast",
+    name: "GPT-6 Luna Fast",
     provider: "openai",
     contextWindow: 1_050_000,
     codexContextWindow: 272_000,
@@ -972,6 +1043,11 @@ const SUMMARY_COST_TIER: Readonly<Partial<Record<Provider, ModelInfo["costTier"]
  */
 export function getSummaryModel(provider: Provider, currentModelId: string): ModelInfo {
   const tier = SUMMARY_COST_TIER[provider];
-  const tagged = tier ? getModelsForProvider(provider).find((m) => m.costTier === tier) : undefined;
+  // Fast-mode entries bill a premium speed tier — never pick one for summaries.
+  const tagged = tier
+    ? getModelsForProvider(provider).find(
+        (m) => m.costTier === tier && !resolveFastModeModel(provider, m.id).fast,
+      )
+    : undefined;
   return tagged ?? getModel(currentModelId) ?? getDefaultModel(provider);
 }
