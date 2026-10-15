@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.92.1",
+    date: "2026-10-15",
+    items: [
+      "Fast mode is here for `Claude Opus 5.5` and `Codex GPT-6`. Sign in with your subscription and I will give you the quicker versions, so answers land sooner.",
+      "Projects now reopen every time. If the model you last used has no login, I no longer get stuck and your project just opens.",
+      "The Deck panels behave. `Esc` closes them cleanly, Usage and Model show their `esc` hints, and Goal settings have room to breathe.",
+    ],
+  },
+  {
     version: "0.91.1",
     date: "2026-10-14",
     items: [
