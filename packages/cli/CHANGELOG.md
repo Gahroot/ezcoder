@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.32.0
+
+### Minor Changes
+
+- Add fast-mode models for Claude Opus 5.5 and Codex GPT-6 via subscription logins, plus deck and project-reopen fixes.
+
+### Patch Changes
+
+- @prestyj/ai@5.32.0
+- @prestyj/agent@5.32.0
+- @prestyj/core@5.32.0
+
 ## 5.31.0
 
 ### Minor Changes

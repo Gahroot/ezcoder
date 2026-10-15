@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.29
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/cli@5.32.0
+  - @prestyj/ai@5.32.0
+  - @prestyj/agent@5.32.0
+
 ## 0.8.28
 
 ### Patch Changes
