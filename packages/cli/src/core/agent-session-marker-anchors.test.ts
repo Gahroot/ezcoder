@@ -105,6 +105,44 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
+describe("AgentSession resume without the session model's credential", () => {
+  it("still opens the conversation when the model's login is missing", async () => {
+    // Regression: picking Xiaomi Ultra Speed (API Credits only) with just the
+    // Token Plan connected made the old session unopenable — resume threw
+    // "Not logged in to xiaomi" before the user could switch models.
+    const { AgentSession } = await import("./agent-session.js");
+    const session = new AgentSession({
+      provider: "anthropic",
+      model: "claude-test",
+      cwd: tmpProject,
+      systemPrompt: "test system prompt",
+    });
+    await session.initialize();
+    agentLoopMock.mockImplementation(async function* (messages: Message[]) {
+      messages.push({ role: "assistant", content: "reply" });
+      yield { type: "agent_done" };
+    });
+    await session.prompt("task");
+    await session.dispose();
+
+    // Over the compaction threshold too, so the no-credential path must defer
+    // compaction instead of calling the summarizer without a login.
+    shouldCompactMock.mockReturnValue(true);
+    const resumed = new AgentSession({
+      provider: "xiaomi",
+      model: "mimo-v2.6-pro-ultraspeed",
+      cwd: tmpProject,
+      systemPrompt: "test system prompt",
+      sessionId: await findSessionFile(),
+    });
+    await resumed.initialize();
+
+    expect(resumed.getMessages().filter((m) => m.role !== "system")).toHaveLength(2);
+    expect(compactMock).not.toHaveBeenCalled();
+    await resumed.dispose();
+  });
+});
+
 describe("AgentSession transcript marker anchors", () => {
   it("anchors markers to the persisted prefix so a failed run's unpersisted messages cannot shift them to the bottom on resume", async () => {
     const { AgentSession } = await import("./agent-session.js");

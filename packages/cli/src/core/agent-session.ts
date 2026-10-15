@@ -39,7 +39,7 @@ import { PROMPT_COMMANDS, getPromptCommand } from "./prompt-commands.js";
 import { loadWorkspaceCustomCommands, type CustomCommand } from "./custom-commands.js";
 import { expandPromptCommand } from "./prompt-command-expansion.js";
 import { SettingsManager } from "./settings-manager.js";
-import { AuthStorage } from "./auth-storage.js";
+import { AuthStorage, NotLoggedInError } from "./auth-storage.js";
 import { dualAuthProvider } from "@prestyj/core";
 import { getClaudeCliUserAgent, recordRequiredClaudeCodeVersion } from "./claude-code-version.js";
 import { kimiCodingHeaders, isKimiCodingEndpoint } from "./oauth/kimi.js";
@@ -4292,16 +4292,27 @@ export class AgentSession {
     }
     // Auto-compact on load if the restored session exceeds the context window.
     // Without this, huge sessions (1M+ tokens) get loaded into memory and OOM.
-    const creds = await this.authStorage.resolveCredentials(this.provider, {
-      storageKeys: this.currentAuthStorageKeys(),
-    });
+    // Credentials only refine the context window here (OpenAI OAuth's Codex
+    // window). A missing login must not make the old conversation unopenable —
+    // the user can switch to a model they're signed in to once it's loaded;
+    // the first prompt still fails cleanly through the run's auth handling.
+    const creds = await this.authStorage
+      .resolveCredentials(this.provider, { storageKeys: this.currentAuthStorageKeys() })
+      .catch((err: unknown) => {
+        if (!(err instanceof NotLoggedInError)) throw err;
+        log("WARN", "session", "Resuming without credentials for the session model", {
+          provider: this.provider,
+          model: this.model,
+        });
+        return undefined;
+      });
     // Cache for sync callers (see field doc) so the app-sidecar's footer shows
     // the right context window immediately on resume, before any prompt runs
     // runLoop() and would otherwise be the first to set this.
-    this.lastAccountId = creds.accountId;
+    this.lastAccountId = creds?.accountId;
     const contextWindow = getContextWindow(this.model, {
       provider: this.provider,
-      accountId: creds.accountId,
+      accountId: creds?.accountId,
     });
     this.sessionId = loaded.header.id;
     this.setSessionPath(loaded.path);
@@ -4312,13 +4323,13 @@ export class AgentSession {
       model: this.model,
       contextWindow,
       threshold: this.settingsManager.get("compactThreshold"),
-      accountId: creds.accountId,
+      accountId: creds?.accountId,
       approvedPlanPath: this.approvedPlanPath,
     });
     log("INFO", "compaction", "Restore compaction decision", {
       provider: this.provider,
       model: this.model,
-      transport: this.provider === "openai" && creds.accountId ? "codex_oauth" : "public_api",
+      transport: this.provider === "openai" && creds?.accountId ? "codex_oauth" : "public_api",
       contextWindow: String(contextWindow),
       activeTokens: "estimated",
       triggerLimit: String(loadPolicy.targetTokens),
@@ -4332,7 +4343,9 @@ export class AgentSession {
         undefined,
         loadPolicy.targetTokens,
       );
-    if (needsLoadCompaction && this.opts.deferLoadCompaction) {
+    // Without credentials the summary call can't run now; defer it to the first
+    // prompt, by which point the user has picked a model they're signed in to.
+    if (needsLoadCompaction && (this.opts.deferLoadCompaction || !creds)) {
       // Canonicalize again immediately before the first prompt is persisted:
       // another process may create the shared checkpoint after this load.
       this.deferredCompactionPending = true;

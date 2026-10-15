@@ -1,5 +1,5 @@
 import type { Provider } from "@prestyj/ai";
-import { getDefaultModel, getModel } from "./model-registry.js";
+import { getDefaultModel, getModel, type ModelInfo } from "./model-registry.js";
 
 /** A resolved startup provider + model for an AgentSession. */
 export interface ResolvedStart {
@@ -17,6 +17,28 @@ export interface ResolvedStartResult extends ResolvedStart {
 /** Minimal auth surface needed to decide the startup provider (testable). */
 export interface ProviderAuthLookup {
   hasProviderAuth(provider: string): Promise<boolean>;
+  /** First of `keys` with a stored credential (see AuthStorage.pickStorageKey). */
+  pickStorageKey(keys: string[]): Promise<string | undefined>;
+}
+
+/**
+ * True when `model` can actually authenticate. Provider-level auth isn't enough
+ * for models pinned to specific credentials (`authStorageKeys`): Xiaomi's
+ * `mimo-v2.6-pro-ultraspeed` needs API Credits even when the Token Plan is
+ * connected, and OAuth-only Kimi models need the Kimi sign-in, not the API key.
+ */
+async function modelHasAuth(auth: ProviderAuthLookup, model: ModelInfo): Promise<boolean> {
+  if (!model.authStorageKeys) return true;
+  return (await auth.pickStorageKey(model.authStorageKeys)) !== undefined;
+}
+
+/** The provider's default model, when this login can actually use it. */
+async function usableDefault(
+  auth: ProviderAuthLookup,
+  provider: Provider,
+): Promise<string | undefined> {
+  const model = getDefaultModel(provider);
+  return (await modelHasAuth(auth, model)) ? model.id : undefined;
 }
 
 /**
@@ -48,14 +70,25 @@ export async function resolveStartOrFallback(
   }
 
   if (loggedIn.includes(preferred)) {
+    // A saved model this login can't authenticate (e.g. picked, then backed out
+    // of, a model needing a credential the user never configured) must not lock
+    // the project: fall back to the provider default, then to another provider.
     const saved = savedModel ? getModel(savedModel) : undefined;
-    return {
-      provider: preferred,
-      model: saved?.provider === preferred ? saved.id : getDefaultModel(preferred).id,
-      loggedIn: true,
-    };
+    if (saved?.provider === preferred && (await modelHasAuth(auth, saved))) {
+      return { provider: preferred, model: saved.id, loggedIn: true };
+    }
+    const model = await usableDefault(auth, preferred);
+    if (model) return { provider: preferred, model, loggedIn: true };
   }
 
+  for (const provider of loggedIn) {
+    if (provider === preferred) continue;
+    const model = await usableDefault(auth, provider);
+    if (model) return { provider, model, loggedIn: true };
+  }
+
+  // Every logged-in provider's default needs a credential that's missing —
+  // keep the old behaviour rather than claiming the user is logged out.
   const provider = loggedIn[0]!;
   return { provider, model: getDefaultModel(provider).id, loggedIn: true };
 }

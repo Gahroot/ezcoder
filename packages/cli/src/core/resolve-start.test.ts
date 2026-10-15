@@ -19,8 +19,17 @@ const ALL: Provider[] = [
 
 /** Fake auth lookup: only the providers in `set` are "logged in". */
 function auth(...connected: Provider[]): ProviderAuthLookup {
-  const set = new Set<string>(connected);
-  return { hasProviderAuth: async (p) => set.has(p) };
+  return authKeys(connected);
+}
+
+/** Fake auth lookup with explicit storage keys (e.g. Xiaomi Token Plan only). */
+function authKeys(connected: Provider[], storageKeys: string[] = connected): ProviderAuthLookup {
+  const providers = new Set<string>(connected);
+  const keys = new Set(storageKeys);
+  return {
+    hasProviderAuth: async (p) => providers.has(p),
+    pickStorageKey: async (wanted) => wanted.find((k) => keys.has(k)),
+  };
 }
 
 describe("resolveStartOrFallback", () => {
@@ -78,5 +87,29 @@ describe("resolveStartOrFallback", () => {
     // Both gemini and glm connected; ALL lists gemini before glm.
     const res = await resolveStartOrFallback(auth("glm", "gemini"), ALL, "anthropic", undefined);
     expect(res.provider).toBe("gemini");
+  });
+
+  it("drops a saved model whose credential is missing (Xiaomi Token Plan + Ultra Speed)", async () => {
+    // Ultra Speed needs API Credits; only the Token Plan is connected. Booting
+    // with it locked the project with "Not logged in to xiaomi".
+    const res = await resolveStartOrFallback(
+      authKeys(["xiaomi", "openai"], ["xiaomi", "openai"]),
+      ALL,
+      "xiaomi",
+      "mimo-v2.6-pro-ultraspeed",
+    );
+    expect(res.loggedIn).toBe(true);
+    expect(res.provider).toBe("xiaomi");
+    expect(res.model).toBe(getDefaultModel("xiaomi").id);
+  });
+
+  it("keeps Ultra Speed when API Credits are connected", async () => {
+    const res = await resolveStartOrFallback(
+      authKeys(["xiaomi"], ["xiaomi-credits"]),
+      ALL,
+      "xiaomi",
+      "mimo-v2.6-pro-ultraspeed",
+    );
+    expect(res.model).toBe("mimo-v2.6-pro-ultraspeed");
   });
 });
