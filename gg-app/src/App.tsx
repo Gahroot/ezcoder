@@ -546,6 +546,7 @@ function App(): React.ReactElement {
   const {
     stickToBottomRef,
     lastScrollTopRef,
+    noteTranscriptViewport,
     scrollToBottom,
     maybeScrollToBottom,
     following,
@@ -652,17 +653,23 @@ function App(): React.ReactElement {
   const attachTranscript = useCallback(
     (el: HTMLDivElement | null) => {
       scrollRef.current = el;
-      if (el) lastScrollTopRef.current = el.scrollTop;
+      if (el) {
+        lastScrollTopRef.current = el.scrollTop;
+        noteTranscriptViewport(el);
+      }
       transcriptRoRef.current?.disconnect();
       transcriptRoRef.current = null;
       if (!el || typeof ResizeObserver === "undefined") return;
       const ro = new ResizeObserver(() => {
+        // Record the new size here too: a resize with no scroll event would
+        // otherwise make the reader's next scroll read as layout.
+        noteTranscriptViewport(el);
         if (chatLayout.resized()) maybeScrollToBottom();
       });
       ro.observe(el);
       transcriptRoRef.current = ro;
     },
-    [maybeScrollToBottom, chatLayout, lastScrollTopRef],
+    [maybeScrollToBottom, chatLayout, lastScrollTopRef, noteTranscriptViewport],
   );
 
   // The dock floats over the conversation's bottom edge, so the transcript
@@ -685,10 +692,7 @@ function App(): React.ReactElement {
       const apply = (): void => {
         const frame = transcriptFrameRef.current;
         if (!frame) return;
-        const height = nextDockHeight(
-          dock.getBoundingClientRect().height,
-          frame.style.getPropertyValue("--dock-h"),
-        );
+        const height = nextDockHeight(dock, frame.style.getPropertyValue("--dock-h"));
         if (height === null) return;
         frame.style.setProperty("--dock-h", height);
         maybeScrollToBottom();
