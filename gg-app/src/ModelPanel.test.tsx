@@ -21,6 +21,7 @@ const MODELS: ModelOption[] = [
       label: "bills usage credits",
       detail: "Fast mode bills your Claude usage credits from the first token.",
       paid: true,
+      standardModel: "claude-opus-5-5",
     },
   },
 ];
@@ -60,6 +61,8 @@ describe("ModelPanel — a model that spends real money", () => {
 
     expect(onSelectModel).not.toHaveBeenCalled();
     expect(screen.getByText("Claude Opus 5.5 Fast spends real money.")).toBeTruthy();
+    // Names what sessions fall back to, not a Claude-only "standard speed".
+    expect(screen.getByText(/go back to Claude Opus 5\.5, and Ken/)).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
 
     // Enter on the focused default answer backs out instead of paying.
@@ -80,7 +83,7 @@ describe("ModelPanel — a model that spends real money", () => {
   it("switches only after the explicit yes, and says so on the request", () => {
     const { onSelectModel, onClose } = renderPanel();
     fireEvent.click(option(/Claude Opus 5\.5 Fast/));
-    fireEvent.click(screen.getByRole("button", { name: "Use it and pay from credits" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use it and pay" }));
     expect(onSelectModel).toHaveBeenCalledWith("claude-opus-5-5-fast", { confirmPaid: true });
     expect(onClose).toHaveBeenCalled();
   });

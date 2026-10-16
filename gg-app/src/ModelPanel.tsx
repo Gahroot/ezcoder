@@ -36,6 +36,8 @@ interface Option {
   paid?: boolean;
   /** What it bills, shown in the confirmation before it's switched to. */
   billingDetail?: string;
+  /** The model sessions go back to when this paid one is not carried over. */
+  standardName?: string;
   contextWindow?: number;
 }
 
@@ -140,6 +142,9 @@ export function ModelPanel({
                   : model.billing?.label,
             paid: model.billing?.paid,
             billingDetail: model.billing?.detail,
+            standardName: model.billing?.standardModel
+              ? modelDisplayName(models, model.billing.standardModel)
+              : undefined,
             contextWindow: model.contextWindow,
           };
         }),
@@ -410,8 +415,8 @@ function PaidConfirm({
         <strong id={titleId}>{option.name} spends real money.</strong> {option.billingDetail}
       </p>
       <p className="deck-note">
-        It stays on for this session only. New sessions, restarts and new windows go back to
-        standard speed, and Ken and helper agents never use it.
+        It stays on for this session only. New sessions, restarts and new windows go back to{" "}
+        {option.standardName || "a standard model"}, and Ken and helper agents never use it.
       </p>
       <div className="deck-prow">
         <span className="deck-spacer" />
@@ -421,7 +426,7 @@ function PaidConfirm({
             Cancel
           </button>
           <button type="button" className="key key-sm paid-confirm-yes" onClick={onConfirm}>
-            Use it and pay from credits
+            Use it and pay
           </button>
         </div>
       </div>
