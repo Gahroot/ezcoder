@@ -254,6 +254,11 @@ If `npm i` gets ETARGET after publishing, clear cache: `npm cache clean --force`
 
 `./scripts/sync-upstream.sh` (`--dry-run` to preview) fetches + merges `upstream/main`, then rewrites fork-specific identity: dirs `@prestyj/ai→ai`, `@prestyj/agent→agent`, `ezcoder→cli`; scope `@kenkaiiii→@prestyj`; branding `GG→EZ`, `~/.ezcoder/`, `EZCoderAIError`. On merge conflicts: resolve, `git merge --continue`, re-run the script. The EZ block-art logo in `Banner.tsx`/`cli.ts` can't be auto-detected — verify visually with `ezcoder --help` after syncing.
 
+**The desktop UI is fork-owned — upstream never changes it.** The ezcoder-app frontend (`ezcoder-app/src`, `index.html`, `public/`, `vitest.config.ts`, and the CSS/motion guard tests in `ezcoder-app/scripts/`) is ours; we deliberately rejected upstream's Deck redesign (v0.92.2). The exact list is `FORK_OWNED_UI_PATHS` in `scripts/sync-upstream.sh`, which enforces it: conflicts in those paths auto-resolve to our side, and after every merge they are reset to our pre-merge version. Everything else — engine packages, CLI, app sidecar, Tauri backend (`src-tauri/`), build/release scripts — still merges from upstream normally.
+- Never resolve a sync by taking upstream's UI, and never restore upstream app frontend files by hand. If you merge upstream manually instead of with the script, run `./scripts/sync-upstream.sh --rebrand-only` afterwards — it also resets the fork-owned UI.
+- The script prints the upstream UI commits it skipped. A wanted fix or feature from that list is **ported by hand** into our UI as its own commit, never cherry-picked wholesale.
+- Upstream may change sidecar/Tauri APIs our frontend calls. After a sync, `pnpm --filter ezcoder-app check && pnpm --filter ezcoder-app test` must pass; if a backend contract changed, adapt our frontend rather than pulling upstream's.
+
 ## Key Patterns
 
 - **StreamResult/AgentStream**: dual-nature objects — async iterable (`for await`) + thenable (`await`)

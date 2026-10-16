@@ -16,7 +16,16 @@
 #   5. Fixes branding: GG→EZ, ggcoder/ggboss/ggeditor→ez*, ~/.gg/→~/.ezcoder/
 #   6. Renames CLI bin entries, bridge paths, screenshots, and Pixel SDK symbols
 #   7. Rewrites env vars, error classes, repo URLs, and ingest URLs
-#   8. Commits the rename + branding fixup
+#   8. Resets the fork-owned desktop UI (FORK_OWNED_UI_PATHS) to our version
+#   9. Commits the rename + branding fixup
+#
+# Fork-owned desktop UI — upstream NEVER changes it:
+#   The ezcoder-app frontend (layout, components, styles and their CSS guard
+#   tests) is ours. Upstream redesigns are not merged in: conflicts there are
+#   resolved to our side automatically, and after the merge every path in
+#   FORK_OWNED_UI_PATHS is restored to our pre-merge version. Upstream engine,
+#   CLI, sidecar and Tauri backend changes still merge normally. The skipped
+#   upstream UI commits are listed so wanted fixes can be ported by hand.
 #
 # Third-party deps that STAY external (NOT touched by scope replacement):
 #   - @kenkaiiii/agent-home-sdk
@@ -62,6 +71,77 @@ if [[ "$(uname)" == "Darwin" ]]; then
 else
   SED_INPLACE=(-i)
 fi
+
+# Desktop UI paths the fork owns outright (see header). Paths are post-rename
+# (ezcoder-app/…); the upstream equivalents live under gg-app/…. Keep backend
+# and build plumbing (src-tauri/, package.json, bundling/release scripts) OUT
+# of this list so upstream fixes there keep flowing in.
+readonly FORK_OWNED_UI_PATHS=(
+  ezcoder-app/src
+  ezcoder-app/index.html
+  ezcoder-app/public
+  ezcoder-app/vitest.config.ts
+  ezcoder-app/scripts/chat-error-css.test.mjs
+  ezcoder-app/scripts/checklist-css.test.mjs
+  ezcoder-app/scripts/design-tokens-css.test.mjs
+  ezcoder-app/scripts/motion-tokens.test.mjs
+  ezcoder-app/scripts/streaming-word-css.test.mjs
+  ezcoder-app/scripts/frontend-size.test.mjs
+  ezcoder-app/scripts/check-effects-geometry.mjs
+  ezcoder-app/scripts/check-motion-continuity.mjs
+)
+
+# The commit holding our pre-merge UI: HEAD mid-merge, HEAD^1 once an
+# upstream merge is committed (clean merge, or re-run after resolving
+# conflicts), else HEAD. A merge of one of our own branches is not an upstream
+# merge — its UI work is ours, so HEAD is kept.
+fork_ui_ref() {
+  if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+    echo HEAD
+  elif git rev-parse -q --verify HEAD^2 >/dev/null &&
+    git merge-base --is-ancestor HEAD^2 upstream/main 2>/dev/null; then
+    echo HEAD^1
+  else
+    echo HEAD
+  fi
+}
+
+# Restore every fork-owned UI path to $1 in index + worktree. Files upstream
+# added there are removed; files only we have come back.
+restore_fork_owned_ui() {
+  local ref="$1"
+  local owned
+  for owned in "${FORK_OWNED_UI_PATHS[@]}"; do
+    # -f: upstream's staged copies here are discarded on purpose, even when
+    # they differ from both HEAD and the worktree (rename-merge leftovers).
+    git rm -r -q -f --cached --ignore-unmatch -- "$owned"
+    rm -rf -- "$owned" "${owned/#ezcoder-app\//gg-app/}"
+    git rm -r -q -f --cached --ignore-unmatch -- "${owned/#ezcoder-app\//gg-app/}"
+    if git cat-file -e "$ref:$owned" 2>/dev/null; then
+      git checkout "$ref" -- "$owned"
+    fi
+  done
+  ok "Fork-owned desktop UI kept at $(git rev-parse --short "$ref") (upstream UI changes skipped)"
+}
+
+# Mid-merge: settle conflicts inside fork-owned UI paths to our side (the
+# restore drops their unmerged index entries) so only real engine/backend
+# conflicts are left for a human. Returns 0 when no conflicts remain.
+resolve_fork_owned_ui_conflicts() {
+  restore_fork_owned_ui HEAD
+  [[ -z "$(git diff --name-only --diff-filter=U)" ]]
+}
+
+# Show upstream commits whose desktop-UI changes this sync will not take.
+list_skipped_upstream_ui() {
+  local base="$1" upstream_commit="$2"
+  local skipped
+  skipped=$(git log --oneline "$base".."$upstream_commit" -- gg-app/src gg-app/index.html gg-app/public)
+  if [[ -n "$skipped" ]]; then
+    warn "Upstream desktop-UI commits NOT taken (fork owns ezcoder-app UI; port by hand if wanted):"
+    printf '%s\n' "$skipped"
+  fi
+}
 
 ensure_upstream() {
   if ! git remote get-url upstream &>/dev/null; then
@@ -336,7 +416,8 @@ main() {
     replace_in_tracked_text_files
     replace_legacy_product_tokens
     rebrand_ken_mentor
-    ok "Manual merge rebranded without staging or committing"
+    restore_fork_owned_ui "$(fork_ui_ref)"
+    ok "Manual merge rebranded without committing"
     return
   fi
 
@@ -362,6 +443,7 @@ main() {
     info "[dry-run] Would rename upstream packages and rebrand GG→EZ"
     if [[ "$commit_count" != "0" ]]; then
       git log --oneline "$base".."$upstream_commit"
+      list_skipped_upstream_ui "$base" "$upstream_commit"
     fi
     exit 0
   fi
@@ -372,13 +454,22 @@ main() {
       exit 1
     fi
 
+    list_skipped_upstream_ui "$base" "$upstream_commit"
+
     info "Merging upstream/main..."
     if ! git merge upstream/main --no-edit -m "Merge upstream/main (gg-framework)"; then
-      warn ""
-      warn "Merge conflicts detected!"
-      warn "Resolve them, then run: git merge --continue"
-      warn "After that, re-run this script to apply directory renames + branding."
-      exit 1
+      info "Settling conflicts in fork-owned desktop UI to our side..."
+      if resolve_fork_owned_ui_conflicts; then
+        git commit --no-edit
+        ok "Only fork-owned UI conflicted; merge committed with our UI."
+      else
+        warn ""
+        warn "Merge conflicts detected outside the fork-owned UI:"
+        git diff --name-only --diff-filter=U
+        warn "Resolve them, then run: git merge --continue"
+        warn "After that, re-run this script to apply directory renames + branding."
+        exit 1
+      fi
     fi
   else
     ok "Already up to date with upstream. Running rebrand pass anyway."
@@ -452,6 +543,9 @@ main() {
   rename_file_if_exists "ezcoder-app/src/GgFace.tsx" "ezcoder-app/src/EzFace.tsx"
   rename_file_if_exists "ezcoder-app/src/gg-face.ts" "ezcoder-app/src/ez-face.ts"
   rename_file_if_exists "ezcoder-app/src/gg-face.test.ts" "ezcoder-app/src/ez-face.test.ts"
+
+  info "Keeping the fork-owned desktop UI..."
+  restore_fork_owned_ui "$(fork_ui_ref)"
 
   git add -A
   if git diff --cached --quiet; then
