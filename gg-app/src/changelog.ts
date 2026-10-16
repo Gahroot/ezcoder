@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.93.2",
+    date: "2026-10-17",
+    items: [
+      "Image generation is back. I rebuilt it on the same image service Codex itself uses, so creating and editing pictures with your ChatGPT login works again. It also does `transparent backgrounds` now, can blend up to `5` reference images in one edit, and tells you straight up when your plan or daily limit is the problem instead of showing a cryptic error.",
+    ],
+  },
+  {
     version: "0.93.1",
     date: "2026-10-17",
     items: [
