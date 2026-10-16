@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.93.3",
+    date: "2026-10-17",
+    items: [
+      "Image generation now tells you the size you actually got. If you ask for `2048x2048` and OpenAI sends back something smaller, you hear about it right away, and your file stays exactly as it arrived with no sneaky resizing and no extra charge. A brief hiccup on OpenAI's side is also retried automatically, so fewer images fail on you.",
+    ],
+  },
+  {
     version: "0.93.2",
     date: "2026-10-17",
     items: [
