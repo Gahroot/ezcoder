@@ -152,7 +152,12 @@ import {
   withJudgeTimeout,
 } from "./semantic-loop-check.js";
 import { buildEnvDeltaMessage, buildLanguageUpdateMessage } from "./env-delta.js";
-import { wrapSteeringText, buildNotificationSteeringText, STEERING_PREFIX } from "./steering.js";
+import {
+  wrapSteeringText,
+  buildNotificationSteeringText,
+  buildIdleWakeNotificationText,
+  STEERING_PREFIX,
+} from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
 import { VerificationGate, VERIFICATION_STATE_KIND } from "./verification-gate.js";
 import type { VerificationEvidence } from "./verification-evidence.js";
@@ -564,6 +569,8 @@ export class AgentSession {
   // different message (or past the end) by the time the cancel arrives.
   private userQueue: Array<{ id: string; text: string; attachments: SessionAttachment[] }> = [];
   private queueSeq = 0;
+  /** Monotonic count of human-originated prompts; idle-wake budgets reset on it. */
+  private humanPromptSeq = 0;
   /** Instant interrupt: the running loop's preempt listeners, fired on queueMessage. */
   private steeringListeners = new Set<() => void>();
   private processManager?: ProcessManager;
@@ -1264,6 +1271,7 @@ export class AgentSession {
     options: PromptRunOptions = {},
   ): Promise<void> {
     this.prewarmController?.abort();
+    if (provenance.source === "human") this.humanPromptSeq += 1;
     await this.settlePostTurnCompaction();
     await this.adoptDeferredCheckpointBeforePrompt();
     const slash = await this.resolveSlashInput(content);
@@ -1305,6 +1313,7 @@ export class AgentSession {
    */
   async promptWithAttachments(text: string, attachments: SessionAttachment[]): Promise<void> {
     this.prewarmController?.abort();
+    this.humanPromptSeq += 1;
     await this.settlePostTurnCompaction();
     await this.adoptDeferredCheckpointBeforePrompt();
     const parts = this.buildAttachmentParts(text, attachments);
@@ -1982,7 +1991,10 @@ export class AgentSession {
 
     // Reset self-correction hook state for this run; pin the latest user message
     // as the verbatim original request for post-compaction re-grounding.
-    const lastUser = [...this.messages].reverse().find((m) => m.role === "user");
+    // A status update that started an idle-wake run is not the user's request.
+    const lastUser = [...this.messages]
+      .reverse()
+      .find((m) => m.role === "user" && m.provenance?.kind !== "notification");
     this.resetHookState(requestTextForRegrounding(lastUser));
 
     // Resolve OAuth credentials and run agent loop.
@@ -3351,6 +3363,16 @@ export class AgentSession {
   }
 
   /**
+   * Observe urgent background alerts — a background task failed or exited
+   * non-zero, or a child agent finished — as they are queued. Hosts use this to
+   * wake an idle session (see {@link continueFromNotifications}); a live run
+   * already receives them at its next steering boundary. Returns unsubscribe.
+   */
+  onBackgroundAlert(listener: () => void): () => void {
+    return this.notifications.onUrgent(() => listener());
+  }
+
+  /**
    * Characters of the tool definitions sent with every request (name,
    * description, JSON schema), for estimator calibration. Cached by tool count:
    * the tool array is append-only.
@@ -3368,6 +3390,45 @@ export class AgentSession {
     }
     this.toolCharsCache = { count: this.tools.length, chars };
     return chars;
+  }
+
+  /** True while an urgent background alert is waiting to be delivered. */
+  hasPendingBackgroundAlert(): boolean {
+    return this.notifications.hasUrgent();
+  }
+
+  /** Monotonic count of human-originated prompts this session has run. */
+  getHumanPromptSeq(): number {
+    return this.humanPromptSeq;
+  }
+
+  /**
+   * Start a run from pending background notifications, for a session that had
+   * already finished its turn. The notifications become one hidden runtime
+   * message (never shown as something the user typed), and the agent decides
+   * whether they need action. Returns false, starting nothing, when no urgent
+   * alert is pending — a live run may have delivered it in the meantime.
+   */
+  async continueFromNotifications(): Promise<boolean> {
+    if (!this.notifications.hasUrgent()) return false;
+    this.prewarmController?.abort();
+    await this.settlePostTurnCompaction();
+    await this.adoptDeferredCheckpointBeforePrompt();
+    const notified = this.notifications.drain();
+    if (notified.length === 0) return false;
+    const message: Message = {
+      role: "user",
+      content: buildIdleWakeNotificationText(notified.map((entry) => entry.text)),
+      provenance: { source: "runtime", kind: "notification", visibility: "hidden" },
+    };
+    log("INFO", "notifications", "Starting a run from background alerts", {
+      count: String(notified.length),
+    });
+    this.messages.push(message);
+    await this.persistMessage(message);
+    this.lastPersistedIndex = this.messages.length;
+    await this.runLoop();
+    return true;
   }
 
   /** This session's sub-agents (workers), newest-state, including ones restored after a restart. */
