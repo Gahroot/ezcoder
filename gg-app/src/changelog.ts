@@ -22,6 +22,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.93.0",
+    date: "2026-10-16",
+    items: [
+      "Your million-token models finally get their whole memory back. I tuned when each model tidies up its conversation from real evidence, so `MiMo`, `DeepSeek`, `Kimi` and `Qwen` now keep up to `850K` tokens in view instead of forgetting at a third of the way. Grok, GPT-6 and Gemini 3.1 Pro tidy up just before their pricier long-context rates kick in, so you never pay double without knowing.",
+      "Gemini works again for personal Google accounts. Google stopped serving them through sign-in, so I added a `Gemini API key` option right next to it. Paste a key from Google AI Studio and every Gemini model is back, and if your sign-in can't reach Gemini I now tell you exactly why instead of sending you to a model that fails the same way.",
+      "Your agent reacts the moment a build, test run or CI check fails. It used to sit there until the whole job finished or a timer ran out. Now it jumps on the failure line in about `2 seconds`, and if something breaks after it already finished, it comes back to deal with it on its own.",
+      "No surprise bills. `MiMo UltraSpeed` now asks before you switch to it, just like Claude fast mode, and paid models never sneak into helpers, restarts or your saved default.",
+      "Grok remembers your conversation on xAI's side now, so long chats run cheaper and snappier, and `Claude Fable 5.1` finally gets its full `xhigh` thinking when you ask for it.",
+    ],
+  },
+  {
     version: "0.92.0",
     date: "2026-10-15",
     items: [
