@@ -658,7 +658,8 @@ describe("model registry context windows", () => {
     // holds a full session that gpt-oss's 131K could not.
     expect(getSummaryModel("huggingface", "moonshotai/Kimi-K2.7-Code")).toMatchObject({
       id: "deepseek-ai/DeepSeek-V4.1-Flash",
-      contextWindow: 1_048_576,
+      // The V4 family is 1,000,000 (DeepSeek pricing docs, cited by Hermes).
+      contextWindow: 1_000_000,
       costTier: "low",
     });
     expect(getModel("openai/gpt-oss-120b")).toMatchObject({

@@ -815,7 +815,7 @@ export const MODELS: ModelInfo[] = [
     id: "deepseek-ai/DeepSeek-V4.1-Flash",
     name: "DeepSeek V4.1 Flash",
     provider: "huggingface",
-    contextWindow: 1_048_576,
+    contextWindow: 1_000_000,
     maxOutputTokens: 131_072,
     supportsThinking: false,
     supportsImages: true,
