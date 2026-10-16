@@ -43,7 +43,8 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-readonly REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+readonly REPO_ROOT
 cd "$REPO_ROOT"
 
 DRY_RUN=false
