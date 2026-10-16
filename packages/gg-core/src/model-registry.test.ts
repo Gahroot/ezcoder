@@ -566,7 +566,6 @@ describe("model registry context windows", () => {
       "gemini-3.1-flash-lite",
       "gemini-3.8-flash",
       "gemini-3.5-flash-lite",
-      "gemini-3.7-flash",
       "gemini-3-flash",
       "gemini-3.1-pro-preview",
     ]);
@@ -581,7 +580,8 @@ describe("model registry context windows", () => {
       // Summaries intentionally stay on the selected Gemini model.
       expect(getSummaryModel("gemini", id).id).toBe(id);
     }
-    expect(getContextWindow("gemini-3.7-flash", { provider: "gemini" })).toBe(1_048_576);
+    // Retired: Google routes gemini-3.7-flash to 3.8 Flash since 2026-10-08.
+    expect(getModel("gemini-3.7-flash")).toBeUndefined();
     expect(getContextWindow("gemini-3.1-flash-lite", { provider: "gemini" })).toBe(1_048_576);
     expect(getContextWindow("gemini-3-flash", { provider: "gemini" })).toBe(1_048_576);
   });
@@ -589,7 +589,8 @@ describe("model registry context windows", () => {
   it("retargets deepseek-v4-pro to the 0813 stable build under the same id", () => {
     expect(getDefaultModel("deepseek")).toMatchObject({
       id: "deepseek-v4-pro",
-      contextWindow: 1_048_576,
+      // Decimal 1M, as DeepSeek's own harness sizes it (DEFAULT_CONTEXT_WINDOW).
+      contextWindow: 1_000_000,
       maxOutputTokens: 384_000,
       supportsImages: false,
       costTier: "medium",
@@ -606,7 +607,7 @@ describe("model registry context windows", () => {
       name: "DeepSeek V4.1 Flash",
       supportsImages: true,
       supportsVideo: false,
-      contextWindow: 1_048_576,
+      contextWindow: 1_000_000,
       maxOutputTokens: 384_000,
       maxThinkingLevel: "max",
     });
