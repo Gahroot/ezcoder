@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.83.2
+
+### Patch Changes
+
+- `generate_image` now reports the size it actually delivered. The ChatGPT image backend can return a smaller image than requested (2048x2048 came back as 1254x1254), so the result states the real dimensions and warns plainly on a mismatch instead of reading as a clean success. The file is still saved exactly as OpenAI sent it, with no resizing and no repeat request. Image requests also follow the Codex CLI's retry policy: up to 4 retries with backoff (or the server's `Retry-After`) on server errors and dropped connections, and never on a usage limit or other client error, so no extra quota is spent.
+  - @kenkaiiii/gg-ai@5.83.2
+  - @kenkaiiii/gg-agent@5.83.2
+  - @kenkaiiii/gg-core@5.83.2
+
 ## 5.83.1
 
 ### Patch Changes
