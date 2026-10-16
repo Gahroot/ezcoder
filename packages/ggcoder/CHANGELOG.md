@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.83.1
+
+### Patch Changes
+
+- Fix `generate_image`, which failed for every ChatGPT login because it drove image generation through the retired `gpt-5.5` chat model. It now calls Codex's own image endpoints (`codex/images/generations` and `codex/images/edits`) with the same request shape and client headers as the Codex CLI, supports transparent backgrounds and up to five edit references, and explains a refused account (free ChatGPT plans get a 403) or a used-up image quota instead of passing through a bare HTTP error.
+  - @kenkaiiii/gg-ai@5.83.1
+  - @kenkaiiii/gg-agent@5.83.1
+  - @kenkaiiii/gg-core@5.83.1
+
 ## 5.83.0
 
 ### Minor Changes
