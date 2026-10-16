@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.93.1",
+    date: "2026-10-17",
+    items: [
+      "Answering your agent's questions feels buttery now. When you pick an answer it fills in and holds for a beat, then the card melts away and your answer lands at the bottom of the chat. Pressing a number key like `1` gives the same satisfying press as a click.",
+      "Questions with several answers to tick are no longer a scavenger hunt. I put a single `Send answers` button at the very bottom of the card, and it counts down how many questions are left, so it's always clear what happens next.",
+    ],
+  },
+  {
     version: "0.93.0",
     date: "2026-10-16",
     items: [
