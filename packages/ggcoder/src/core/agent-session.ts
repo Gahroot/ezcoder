@@ -10,6 +10,7 @@ import {
 } from "@kenkaiiii/gg-agent";
 import {
   ProviderError,
+  resolveToolSchema,
   stream,
   type Message,
   type MessageProvenance,
@@ -550,6 +551,8 @@ export class AgentSession {
   private deferredCompactionPending = false;
   /** Latest provider count, anchored to the assistant response it measured. */
   private providerContext: { usage: Usage; anchor: Message } | null = null;
+  /** See {@link toolDefinitionChars}. */
+  private toolCharsCache: { count: number; chars: number } | null = null;
   private originalRequest = "";
   // Messages queued by the user while a run is in flight. Drained at the
   // mid-loop steering boundary (user steering wins over the hooks), mirroring
@@ -2202,8 +2205,16 @@ export class AgentSession {
             if (anchor?.role === "assistant") {
               this.providerContext = { usage: { ...transformOpts.usage }, anchor };
               // Feed the authoritative usage back into the token estimator so
-              // char-based estimates track this session's real tokenizer.
-              calibrateEstimatorFromUsage(messages.slice(0, anchorIndex), transformOpts.usage);
+              // char-based estimates track this session's real tokenizer. The
+              // provider's count includes the tool definitions sent with the
+              // request, so their characters must be counted too — without
+              // them a short history reads as ~2 chars/token and drags the
+              // shared ratio down for every session in the process.
+              calibrateEstimatorFromUsage(
+                messages.slice(0, anchorIndex),
+                transformOpts.usage,
+                options.disableTools ? 0 : this.toolDefinitionChars(),
+              );
             }
           }
 
@@ -2255,12 +2266,13 @@ export class AgentSession {
                   compactedToolCalls: String(pruneResult.compactedToolCalls),
                   freedTokens: String(pruneResult.freedTokens),
                 });
-                // The turn's own usage also counted the pruned content — estimate
-                // the (now smaller) history so the freed tokens actually defer
-                // the LLM compaction.
-                activeTokens = calculateActiveContextTokens(messages, {
-                  pendingMessages: transformOpts.pendingMessages,
-                });
+                // The measured size counted the pruned content, so take the
+                // freed tokens off it. Never swap the provider's count for a
+                // whole-history estimate here: that estimate rides a shared
+                // chars-per-token ratio, and it once read a 234K-token MiMo
+                // context (23% of 1M) as ~400K and compacted it against a 340K
+                // trigger.
+                activeTokens = Math.max(0, activeTokens - pruneResult.freedTokens);
               }
             }
 
@@ -3336,6 +3348,26 @@ export class AgentSession {
    */
   notify(id: string, text: string): void {
     this.notifications.enqueue("goal", id, text, { terminal: true });
+  }
+
+  /**
+   * Characters of the tool definitions sent with every request (name,
+   * description, JSON schema), for estimator calibration. Cached by tool count:
+   * the tool array is append-only.
+   */
+  private toolDefinitionChars(): number {
+    if (this.toolCharsCache?.count === this.tools.length) return this.toolCharsCache.chars;
+    let chars = 0;
+    for (const tool of this.tools) {
+      chars += tool.name.length + tool.description.length;
+      try {
+        chars += JSON.stringify(resolveToolSchema(tool)).length;
+      } catch {
+        // A schema that cannot be serialized is not sent either.
+      }
+    }
+    this.toolCharsCache = { count: this.tools.length, chars };
+    return chars;
   }
 
   /** This session's sub-agents (workers), newest-state, including ones restored after a restart. */
