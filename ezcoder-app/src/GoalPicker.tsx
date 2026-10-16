@@ -12,12 +12,13 @@ import {
 } from "./agent";
 import { Badge } from "./Badge";
 import { ListSkeleton } from "./Skeleton";
-import { useCachedList } from "./useCachedList";
 import { BackButton } from "./BackButton";
 import { WindowLayoutButton } from "./WindowLayoutButton";
 import { RadioButton } from "./RadioButton";
 import { NewGoalModal } from "./NewGoalModal";
+import { MetalButton } from "./MetalButton";
 import { ConfirmModal } from "./ConfirmModal";
+import { useWindowFocused } from "./useWindowFocused";
 
 interface Props {
   /** Called after this window has been pointed at the goal's coordinator. */
@@ -77,15 +78,11 @@ function GoalStatusPill({ status }: { status: GoalSummary["status"] }): React.Re
 }
 
 export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
-  // Shown at once on a return visit, refreshed quietly (see useCachedList).
-  const goalList = useCachedList<GoalSummary>("goals", async () => {
-    await waitForReady();
-    return listGoals();
-  });
-  const { items: goals, loading, setItems: setGoalsWith } = goalList;
-  const loadError = goalList.error !== null;
-  const setGoals = (next: GoalSummary[] | ((prev: GoalSummary[]) => GoalSummary[])): void =>
-    setGoalsWith((prev) => (typeof next === "function" ? next(prev) : next));
+  const windowFocused = useWindowFocused();
+  const [goals, setGoals] = useState<GoalSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [busy, setBusy] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -114,6 +111,27 @@ export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(false);
+    void waitForReady()
+      .then(() => listGoals())
+      .then((g) => {
+        if (cancelled) return;
+        setGoals(g);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadError(true);
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadNonce]);
+
   // Goals keep working while the list is open: refresh their status quietly
   // (no loading state), so "Running now" and "Paused" stay true.
   useEffect(() => {
@@ -121,7 +139,7 @@ export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
     const id = window.setInterval(() => {
       void listGoals()
         .then((g) => {
-          if (!cancelled) setGoalsWith(() => g);
+          if (!cancelled) setGoals(g);
         })
         .catch(() => undefined);
     }, GOAL_STATUS_REFRESH_MS);
@@ -129,7 +147,7 @@ export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [setGoalsWith]);
+  }, []);
 
   function choose(goal: GoalSummary): void {
     if (busy) return;
@@ -160,9 +178,14 @@ export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
   }
 
   const newGoalButton = (
-    <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setShowNew(true)}>
+    <MetalButton
+      windowFocused={windowFocused}
+      className="btn btn-primary btn-sm"
+      disabled={busy}
+      onClick={() => setShowNew(true)}
+    >
       {"+ New goal"}
-    </button>
+    </MetalButton>
   );
 
   return (
@@ -198,7 +221,11 @@ export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
         {!loading && loadError && (
           <div className="picker-empty" role="alert">
             <span style={{ color: theme.textMuted }}>Couldn't load your goals.</span>
-            <button type="button" className="btn btn-sm btn-ghost" onClick={goalList.reload}>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => setReloadNonce((n) => n + 1)}
+            >
               Try again
             </button>
           </div>

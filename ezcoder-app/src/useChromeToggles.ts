@@ -1,11 +1,32 @@
 import { useCallback, useState } from "react";
 import type { createChatLayoutMotion } from "./chat-layout-motion";
 
-/** Persisted live-tool-panel visibility toggle. Extracted from App.tsx. */
+/** Persisted nav-row / live-tool-panel visibility toggles. Extracted from App.tsx. */
 export function useChromeToggles(chatLayout: ReturnType<typeof createChatLayoutMotion>) {
+  // Hide/show the nav button row (the bar + centered title always stay).
+  // Persisted across reloads.
+  const [navHidden, setNavHidden] = useState(() => {
+    try {
+      return localStorage.getItem("ez-nav-hidden") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setNavHiddenPersisted = useCallback((hidden: boolean) => {
+    try {
+      localStorage.setItem("ez-nav-hidden", hidden ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    setNavHidden(hidden);
+  }, []);
+  const toggleNav = useCallback(
+    () => setNavHiddenPersisted(!navHidden),
+    [navHidden, setNavHiddenPersisted],
+  );
   // Hide/show the live tool panel (the rolling feed above the activity bar).
-  // Persisted across reloads, and auto-enabled when windows are tiled (tight
-  // space) so freshly opened windows boot with it collapsed.
+  // Mirrors navHidden: persisted across reloads, and auto-enabled when windows
+  // are tiled (tight space) so freshly opened windows boot with it collapsed.
   const [toolsHidden, setToolsHidden] = useState(() => {
     try {
       return localStorage.getItem("ez-tools-hidden") === "1";
@@ -30,6 +51,9 @@ export function useChromeToggles(chatLayout: ReturnType<typeof createChatLayoutM
     [toolsHidden, setToolsHiddenPersisted],
   );
   return {
+    navHidden,
+    setNavHiddenPersisted,
+    toggleNav,
     toolsHidden,
     setToolsHiddenPersisted,
     toggleTools,

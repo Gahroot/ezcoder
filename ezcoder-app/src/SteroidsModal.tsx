@@ -4,7 +4,6 @@ import { theme } from "./theme";
 import { Modal } from "./Modal";
 import { ModalDismissButton, useModalEmbedState } from "./modal-embed";
 import { SettingsSection } from "./settings-section";
-import { useSettingsPageReady } from "./settings-ready";
 import { ListSkeleton } from "./Skeleton";
 import {
   getSteroidsStatus,
@@ -48,8 +47,6 @@ function corpusSummary(status: SteroidsStatus): string {
 export function SteroidsModal({ status, onStatus, onClose }: Props): React.ReactElement {
   const embedded = useModalEmbedState() === "embed";
   const [installing, setInstalling] = useState(false);
-  // In Settings, wait for the status rather than painting a frame of skeleton.
-  useSettingsPageReady(status !== null);
 
   // Re-probe on open so a `cargo install` done in a terminal shows up without
   // an app restart; follow installs finished by any other window.

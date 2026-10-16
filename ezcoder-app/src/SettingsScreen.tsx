@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   GearSixIcon,
-  InfoIcon,
   KeyIcon,
   PuzzlePieceIcon,
   PaperPlaneTiltIcon,
@@ -16,8 +15,6 @@ import { TelegramSettingsModal } from "./TelegramSettingsModal";
 import { McpModal } from "./McpModal";
 import { SteroidsModal } from "./SteroidsModal";
 import { SettingsTabBar, type SettingsTab } from "./SettingsTabBar";
-import { AboutPage } from "./AboutPage";
-import { SettingsReadyProvider, useSettingsPageReady, useSettingsPageGate } from "./settings-ready";
 import {
   SettingsHeaderAction,
   SettingsHeaderProvider,
@@ -37,7 +34,7 @@ import {
 import { theme } from "./theme";
 import { toast } from "./toast";
 
-export type SettingsTabId = "general" | "providers" | "remote" | "mcp" | "steroids" | "about";
+export type SettingsTabId = "general" | "providers" | "remote" | "mcp" | "steroids";
 
 interface Props {
   onClose: () => void;
@@ -63,8 +60,6 @@ export function SettingsScreen({ onClose, initialTab = "general" }: Props): Reac
   // The first page rises in like the other screens' rows; later tab switches
   // crossfade, as in yaatuber's settings.
   const [switched, setSwitched] = useState(false);
-  // Each page stays hidden until its first load lands (settings-ready.tsx).
-  const gate = useSettingsPageGate(tab);
 
   useEffect(() => {
     void waitForReady()
@@ -85,7 +80,6 @@ export function SettingsScreen({ onClose, initialTab = "general" }: Props): Reac
       icon: SyringeIcon,
       alert: steroids !== null && !steroids.connected,
     },
-    { id: "about", label: "About", icon: InfoIcon },
   ];
 
   const current = tabs.find((t) => t.id === tab);
@@ -99,7 +93,7 @@ export function SettingsScreen({ onClose, initialTab = "general" }: Props): Reac
   }
 
   return (
-    <div className={`picker settings-screen${gate.waiting ? " is-waiting" : ""}`}>
+    <div className="picker settings-screen">
       <div className="picker-head" data-tauri-drag-region>
         <BackButton label="Back" onClick={onClose} />
         {/* Names the open page; each page's own heading is hidden to match. */}
@@ -117,33 +111,30 @@ export function SettingsScreen({ onClose, initialTab = "general" }: Props): Reac
         // Remount per tab so each page loads fresh and scroll starts at the top.
         key={tab}
       >
-        <SettingsReadyProvider hold={gate.hold}>
-          <SettingsHeaderProvider slots={{ status: statusSlot, actions: actionsSlot }}>
-            <div className={`settings-page ${switched ? "is-switching" : "is-entering"}`}>
-              {tab === "general" && (
-                <EmbeddedModal>
-                  <SettingsModal
-                    onClose={stay}
-                    onSaved={() => toast("Project folder saved.", "success")}
-                  />
-                </EmbeddedModal>
-              )}
-              {tab === "providers" && <LoginScreen />}
-              {tab === "remote" && <RemotePage />}
-              {tab === "mcp" && (
-                <EmbeddedModal>
-                  <McpModal onClose={stay} />
-                </EmbeddedModal>
-              )}
-              {tab === "steroids" && (
-                <EmbeddedModal>
-                  <SteroidsModal status={steroids} onStatus={setSteroids} onClose={stay} />
-                </EmbeddedModal>
-              )}
-              {tab === "about" && <AboutPage />}
-            </div>
-          </SettingsHeaderProvider>
-        </SettingsReadyProvider>
+        <SettingsHeaderProvider slots={{ status: statusSlot, actions: actionsSlot }}>
+          <div className={`settings-page ${switched ? "is-switching" : "is-entering"}`}>
+            {tab === "general" && (
+              <EmbeddedModal>
+                <SettingsModal
+                  onClose={stay}
+                  onSaved={() => toast("Project folder saved.", "success")}
+                />
+              </EmbeddedModal>
+            )}
+            {tab === "providers" && <LoginScreen />}
+            {tab === "remote" && <RemotePage />}
+            {tab === "mcp" && (
+              <EmbeddedModal>
+                <McpModal onClose={stay} />
+              </EmbeddedModal>
+            )}
+            {tab === "steroids" && (
+              <EmbeddedModal>
+                <SteroidsModal status={steroids} onStatus={setSteroids} onClose={stay} />
+              </EmbeddedModal>
+            )}
+          </div>
+        </SettingsHeaderProvider>
       </div>
 
       <SettingsTabBar tabs={tabs} selected={tab} onSelect={selectTab} panelId={PANEL_ID} />
@@ -160,9 +151,6 @@ function RemotePage(): React.ReactElement {
   const [serving, setServing] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [busy, setBusy] = useState(false);
-  // Live/Off and the start button would flip once the status lands.
-  const [loaded, setLoaded] = useState(false);
-  useSettingsPageReady(loaded);
 
   async function refresh(): Promise<void> {
     await waitForReady();
@@ -172,9 +160,7 @@ function RemotePage(): React.ReactElement {
   }
 
   useEffect(() => {
-    void refresh()
-      .catch(() => {})
-      .finally(() => setLoaded(true));
+    void refresh().catch(() => {});
   }, []);
 
   async function toggle(): Promise<void> {

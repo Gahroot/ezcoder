@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { PencilIcon } from "@phosphor-icons/react";
-import { openProjectPath, workspaceProductName, type WorkspaceMode } from "./agent";
+import {
+  openProjectPath,
+  openUrl,
+  workspaceProductName,
+  type WorkspaceMode,
+  type GitHubCI,
+} from "./agent";
+import { CIIndicator } from "./CIIndicator";
+import { ProjectHealthBadge } from "./ProjectHealthBadge";
+import type { ProjectHealth } from "./project-health";
 import { projectAccent } from "./projectAccent";
-import { formatWorkspaceTitle } from "./workspace-title";
+import { formatWorkspaceTitle, pluralize } from "./workspace-title";
 
 interface WorkspaceHeaderProps {
   /** The header element: a Goal's world sits behind it and keeps clear of it. */
@@ -11,29 +20,30 @@ interface WorkspaceHeaderProps {
   cwd?: string;
   /** A Goal window: titled with the goal's name instead of its folder slug. */
   goalName?: string | null;
-  /** Feed the title's tooltip: the full project context on hover. */
   gitBranch?: string | null;
   gitDirtyFileCount?: number;
+  /** Open issue/PR counts for the project's GitHub origin (null = unknown/hidden). */
   gitHubIssues?: number | null;
   gitHubPRs?: number | null;
+  /** Origin repo's web URL — makes the issue/PR chips clickable. */
+  gitHubRepoUrl?: string | null;
+  gitHubCI?: GitHubCI | null;
+  /** Project Health score; null hides the badge (non-code mode, no repo, first scan pending). */
+  projectHealth?: ProjectHealth | null;
+  /** Sends a Project Health review prompt; false when it couldn't be sent. */
+  onReviewHealth?: (prompt: string, label: string) => boolean;
+  /** Extra workspace roots added with /add-dir. */
   additionalRoots?: string[];
   /** User-defined window label. Null keeps the project folder as the default. */
   customTitle?: string | null;
   onCustomTitleChange?: (title: string | null) => void;
-  /** A short label after the name, e.g. the chat agent ("General"). */
-  subtitle?: string | null;
-  /** Left of the title, after the traffic lights: the back key. */
-  leading?: ReactNode;
-  /** Right end: Commit, a Goal's view switch. Always visible. */
-  trailing?: ReactNode;
+  navHidden: boolean;
+  onToggleNav: () => void;
+  stripExtras?: ReactNode;
+  children: ReactNode;
 }
 
-/**
- * The workspace's one-row title bar: back, the project's name (its colour mark
- * included) centred, and the actions that must stay visible at any window size
- * on the right. Everything that used to crowd a second row and the strip now
- * reads out from the deck at the bottom of the window.
- */
+/** Shared code/chat titlebar and collapsible workspace navigation. */
 export function WorkspaceHeader({
   ref,
   workspaceMode,
@@ -43,13 +53,20 @@ export function WorkspaceHeader({
   gitDirtyFileCount = 0,
   gitHubIssues = null,
   gitHubPRs = null,
+  gitHubRepoUrl = null,
+  gitHubCI = null,
+  projectHealth = null,
+  onReviewHealth,
   additionalRoots = [],
   customTitle = null,
   onCustomTitleChange,
-  subtitle = null,
-  leading,
-  trailing,
+  navHidden,
+  onToggleNav,
+  stripExtras,
+  children,
 }: WorkspaceHeaderProps): React.ReactElement {
+  const fallbackTitle = workspaceProductName(workspaceMode, goalName !== null);
+  const directory = goalName ?? cwd?.split(/[\\/]/).filter(Boolean).pop();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(customTitle ?? "");
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -71,10 +88,8 @@ export function WorkspaceHeader({
     if (nextTitle !== customTitle) onCustomTitleChange?.(nextTitle);
   }
 
-  const fallbackTitle = workspaceProductName(workspaceMode, goalName !== null);
-  const directory = goalName ?? cwd?.split(/[\\/]/).filter(Boolean).pop();
-  // Stable per-project colour, so a wall of identical windows stays tellable
-  // apart at a glance.
+  // Stable per-project colour, so a wall of identical dark windows becomes
+  // identifiable at a glance. Published as a CSS variable for descendants.
   const accent = projectAccent(cwd);
 
   return (
@@ -84,12 +99,6 @@ export function WorkspaceHeader({
       style={accent ? ({ "--project-accent": accent } as CSSProperties) : undefined}
     >
       <div className="chat-head-strip" data-tauri-drag-region>
-        <div className="chat-head-lead" data-tauri-drag-region>
-          {leading}
-        </div>
-        {/* One tooltip for the whole title: the project's context. The folder
-            button inside says what clicking does in its accessible name only,
-            so hovering never stacks two tooltips. */}
         <span
           className="chat-head-title"
           data-tauri-drag-region
@@ -104,64 +113,184 @@ export function WorkspaceHeader({
             customTitle,
           )}
         >
-          {accent && <span className="chat-head-accent-dot" aria-hidden="true" />}
-          {directory && editingTitle ? (
-            <input
-              ref={titleInputRef}
-              className="chat-head-title-input"
-              value={titleDraft}
-              maxLength={80}
-              aria-label="Tab name"
-              placeholder={directory}
-              onChange={(event) => setTitleDraft(event.target.value)}
-              onBlur={commitTitle}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  commitTitle();
-                } else if (event.key === "Escape") {
-                  event.preventDefault();
-                  setTitleDraft(customTitle ?? "");
-                  setEditingTitle(false);
-                }
-              }}
-            />
-          ) : directory ? (
-            <button
-              type="button"
-              className="chat-head-cwd chat-head-link"
-              disabled={!cwd}
-              aria-label={cwd ? `${customTitle || directory}. Open the folder` : undefined}
-              onClick={() => cwd && void openProjectPath(cwd)}
-            >
-              {customTitle || directory}
-            </button>
+          {directory ? (
+            <>
+              {accent && <span className="chat-head-accent-dot" aria-hidden="true" />}
+              {editingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  className="chat-head-title-input"
+                  value={titleDraft}
+                  maxLength={80}
+                  aria-label="Tab name"
+                  placeholder={directory}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onBlur={commitTitle}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitTitle();
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      setTitleDraft(customTitle ?? "");
+                      setEditingTitle(false);
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="chat-head-cwd chat-head-link"
+                  disabled={!cwd}
+                  title={cwd ? `${cwd} — open folder` : undefined}
+                  onClick={() => cwd && void openProjectPath(cwd)}
+                >
+                  {customTitle || directory}
+                </button>
+              )}
+              {onCustomTitleChange && !editingTitle && (
+                <button
+                  type="button"
+                  className="chat-head-rename"
+                  title="Rename this tab"
+                  aria-label="Rename this tab"
+                  onClick={() => setEditingTitle(true)}
+                >
+                  <PencilIcon size={11} weight="bold" aria-hidden="true" />
+                </button>
+              )}
+              {projectHealth && (
+                <>
+                  <span className="chat-head-sep" aria-hidden="true" data-tauri-drag-region>
+                    {"│"}
+                  </span>
+                  <ProjectHealthBadge health={projectHealth} onReview={onReviewHealth} />
+                </>
+              )}
+              {gitBranch && (
+                <>
+                  <span className="chat-head-sep" aria-hidden="true" data-tauri-drag-region>
+                    {"│"}
+                  </span>
+                  {gitHubRepoUrl ? (
+                    <button
+                      type="button"
+                      className="chat-head-branch chat-head-link"
+                      title={`${gitBranch} — open ${gitHubRepoUrl} on GitHub`}
+                      onClick={() => void openUrl(gitHubRepoUrl)}
+                    >
+                      {`⎇ ${gitBranch}`}
+                    </button>
+                  ) : (
+                    <span className="chat-head-branch" data-tauri-drag-region>
+                      {`⎇ ${gitBranch}`}
+                    </span>
+                  )}
+                </>
+              )}
+              {additionalRoots.length > 0 && (
+                <>
+                  <span className="chat-head-sep" aria-hidden="true" data-tauri-drag-region>
+                    {"│"}
+                  </span>
+                  <span
+                    className="chat-head-dirty"
+                    data-tauri-drag-region
+                    title={`Additional workspace roots:\n${additionalRoots.join("\n")}`}
+                  >
+                    {`+${pluralize(additionalRoots.length, "root", "roots")}`}
+                  </span>
+                </>
+              )}
+              {gitDirtyFileCount > 0 && (
+                <>
+                  <span className="chat-head-sep" aria-hidden="true" data-tauri-drag-region>
+                    {"│"}
+                  </span>
+                  <span
+                    className="chat-head-dirty chat-head-uncommitted"
+                    data-tauri-drag-region
+                    title={`${gitDirtyFileCount} file${gitDirtyFileCount === 1 ? "" : "s"} not committed`}
+                  >
+                    {gitDirtyFileCount}
+                    {/* Its own element so narrow windows can drop the word and
+                        keep the count (App.css). It carries the drag attribute
+                        too: Tauri drags only from the element that has it. */}
+                    <span className="chat-head-uncommitted-label" data-tauri-drag-region>
+                      {" uncommitted"}
+                    </span>
+                  </span>
+                </>
+              )}
+              {gitHubIssues !== null && gitHubIssues > 0 && (
+                <>
+                  <span className="chat-head-sep" aria-hidden="true" data-tauri-drag-region>
+                    {"│"}
+                  </span>
+                  <button
+                    type="button"
+                    className="chat-head-github"
+                    disabled={!gitHubRepoUrl}
+                    title={`${pluralize(gitHubIssues, "open issue", "open issues")} on GitHub${gitHubRepoUrl ? " — click to view" : ""}`}
+                    onClick={() => gitHubRepoUrl && void openUrl(`${gitHubRepoUrl}/issues`)}
+                  >
+                    {pluralize(gitHubIssues, "issue", "issues")}
+                  </button>
+                </>
+              )}
+              {gitHubPRs !== null && gitHubPRs > 0 && (
+                <>
+                  <span className="chat-head-sep" aria-hidden="true" data-tauri-drag-region>
+                    {"│"}
+                  </span>
+                  <button
+                    type="button"
+                    className="chat-head-github"
+                    disabled={!gitHubRepoUrl}
+                    title={`${pluralize(gitHubPRs, "open PR", "open PRs")} on GitHub${gitHubRepoUrl ? " — click to view" : ""}`}
+                    onClick={() => gitHubRepoUrl && void openUrl(`${gitHubRepoUrl}/pulls`)}
+                  >
+                    {pluralize(gitHubPRs, "PR", "PRs")}
+                  </button>
+                </>
+              )}
+              <CIIndicator ci={gitHubCI} />
+            </>
           ) : (
-            <span className="chat-head-cwd" data-tauri-drag-region>
-              {fallbackTitle}
-            </span>
-          )}
-          {directory && onCustomTitleChange && !editingTitle && (
-            <button
-              type="button"
-              className="chat-head-rename"
-              title="Rename this tab"
-              aria-label="Rename this tab"
-              onClick={() => setEditingTitle(true)}
-            >
-              <PencilIcon size={11} weight="bold" aria-hidden="true" />
-            </button>
-          )}
-          {subtitle && (
-            <span className="chat-head-sub" data-tauri-drag-region>
-              {subtitle}
-            </span>
+            fallbackTitle
           )}
         </span>
-        <div className="chat-head-trail" data-tauri-drag-region>
-          {trailing}
-        </div>
+        {stripExtras}
+        <button
+          className="nav-toggle"
+          title={navHidden ? "Show nav buttons" : "Hide nav buttons"}
+          aria-label={navHidden ? "Show nav buttons" : "Hide nav buttons"}
+          aria-expanded={!navHidden}
+          aria-controls="workspace-nav"
+          onClick={onToggleNav}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ display: "block" }}
+            aria-hidden="true"
+          >
+            <polyline points={navHidden ? "6 9 12 15 18 9" : "6 15 12 9 18 15"} />
+          </svg>
+        </button>
       </div>
+
+      {!navHidden && (
+        <div id="workspace-nav" className="chat-head-nav" data-tauri-drag-region>
+          {children}
+        </div>
+      )}
     </div>
   );
 }

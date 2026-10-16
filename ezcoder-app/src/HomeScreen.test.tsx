@@ -124,29 +124,7 @@ describe("HomeScreen", () => {
     expect(onGoals).toHaveBeenCalledOnce();
   });
 
-  it("shows the running version beside What's new, not in the update corner", async () => {
-    vi.mocked(getSettings).mockResolvedValue({ projectsRoot: "/workspaces", configured: true });
-    vi.mocked(authStatus).mockResolvedValue([]);
-
-    const { container } = render(
-      <HomeScreen
-        onProjects={vi.fn()}
-        onGoals={vi.fn()}
-        onChat={vi.fn()}
-        onMotion={vi.fn()}
-        onSettings={vi.fn()}
-      />,
-    );
-
-    const version = await screen.findByText("v1.0.0");
-    const row = version.closest(".home-version-row");
-    expect(row?.classList.contains("is-pending")).toBe(false);
-    expect(row?.querySelector("button")?.textContent).toBe("What's new");
-    // With no update out, the top corner stays empty.
-    expect(container.querySelector(".home-version-corner")?.childElementCount).toBe(0);
-  });
-
-  it("tags the Goals button as Beta and leaves the byline to Settings", async () => {
+  it("says under the Goals button that Goals is in beta", async () => {
     vi.mocked(getSettings).mockResolvedValue({ projectsRoot: "/workspaces", configured: true });
     vi.mocked(authStatus).mockResolvedValue([]);
 
@@ -160,15 +138,13 @@ describe("HomeScreen", () => {
       />,
     );
 
-    const note = await screen.findByText("Beta");
+    const note = await screen.findByText("In beta");
     expect(note.id).not.toBe("");
     // Screen readers hear it with the Goals button, and only with that one.
     expect(screen.getByRole("button", { name: "Goals" }).getAttribute("aria-describedby")).toBe(
       note.id,
     );
-    expect(screen.queryByText("In beta")).toBeNull();
-    expect(screen.queryByText(/By Nolan Grout/)).toBeNull();
-    expect(screen.queryByRole("link", { name: "Skool" })).toBeNull();
+    expect(screen.queryByText("Still in process")).toBeNull();
     expect(screen.getByRole("button", { name: "Motion" }).hasAttribute("aria-describedby")).toBe(
       false,
     );

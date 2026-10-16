@@ -5,7 +5,6 @@ import { Modal } from "./Modal";
 import { ModalDismissButton, useModalEmbedState } from "./modal-embed";
 import { ListSkeleton } from "./Skeleton";
 import { SettingsCard, SettingsSection } from "./settings-section";
-import { useSettingsPageReady } from "./settings-ready";
 import { SettingsHeaderAction } from "./settings-header";
 import {
   openUrl,
@@ -39,8 +38,6 @@ export function McpModal({ onClose }: Props): React.ReactElement {
   const embedded = useModalEmbedState() === "embed";
   const [servers, setServers] = useState<McpServerRow[]>([]);
   const [loading, setLoading] = useState(true);
-  // In Settings, show the list rather than a frame of skeleton when it's quick.
-  useSettingsPageReady(!loading);
   // The last list request failed; shown instead of "No MCP's configured".
   const [loadError, setLoadError] = useState(false);
   const [line, setLine] = useState("");

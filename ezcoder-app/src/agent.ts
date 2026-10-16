@@ -1321,41 +1321,6 @@ export async function cycleThinking(): Promise<ThinkingState | null> {
   }
 }
 
-/**
- * Set the reasoning level directly (null turns thinking off). Throws with the
- * sidecar's message when the run is busy or the model doesn't support it.
- */
-export async function setThinkingLevel(level: string | null): Promise<ThinkingState> {
-  return invoke<ThinkingState>("agent_set_thinking", { level });
-}
-
-export interface GitHubItem {
-  number: number;
-  title: string;
-  url: string;
-  author: string;
-  updatedAt: string;
-  draft?: boolean;
-}
-export interface ChangedFile {
-  path: string;
-  added: number | null;
-  removed: number | null;
-  status: "M" | "A" | "D" | "R";
-}
-export interface GitOverview {
-  /** null when GitHub couldn't be asked (no gh, not signed in, not GitHub). */
-  issues: GitHubItem[] | null;
-  pulls: GitHubItem[] | null;
-  changes: ChangedFile[];
-}
-
-/** The Git panel's issues, pull requests and changed files for this project. */
-export async function getGitOverview(): Promise<GitOverview> {
-  await waitForReady();
-  return invoke<GitOverview>("agent_git_overview");
-}
-
 /** List workflow (prompt-template) slash commands the agent can run. */
 export async function listCommands(): Promise<SlashCommand[]> {
   try {

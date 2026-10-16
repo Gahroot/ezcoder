@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { error as logError } from "@tauri-apps/plugin-log";
 import { XIcon } from "@phosphor-icons/react";
+import { theme } from "./theme";
 import { recentChangelog } from "./changelog";
 import type { WhatsNewMode } from "./whatsnew-content";
 import { WhatsNewCampfire } from "./WhatsNewCampfire";
@@ -92,7 +93,12 @@ export function WhatsNewWindow({
   if (!latest) return null;
 
   return (
-    <div className="whatsnew-window" data-mode={mode} data-phase={phase}>
+    <div
+      className="whatsnew-window"
+      data-mode={mode}
+      data-phase={phase}
+      style={{ background: theme.surface2 }}
+    >
       <WhatsNewCampfire
         latest={latest}
         earlier={earlier}

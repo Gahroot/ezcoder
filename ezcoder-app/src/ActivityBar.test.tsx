@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { theme } from "./theme";
 import { INITIAL_ACTIVITY, type TaskActivity, type TaskPhase } from "./task-activity";
 import { describe, expect, it, vi } from "vitest";
-import { ActivityBar } from "./ActivityBar";
+import { ActivityBar, ezMoodFor } from "./ActivityBar";
 
 const baseProps = {
   running: true,
@@ -253,18 +253,43 @@ describe("ActivityBar robot face", () => {
   });
 
   it.each([
-    ["done", settled("done", "Done · checks passed"), theme.success],
-    ["stopped", settled("stopped", "Stopped · unfinished"), theme.warning],
-    ["needs you", settled("attention", "Your decision needed"), theme.warning],
-    ["checks failed", settled("failed", "Checks failed"), theme.error],
-  ] as const)("%s says so in its colour, with no lead marker", (_name, activity, colour) => {
+    ["done", settled("done", "Done · checks passed"), "happy"],
+    ["stopped", settled("stopped", "Stopped · unfinished"), "sad"],
+    ["review capped", settled("stopped", "Paused · review limit reached"), "sad"],
+    ["needs you", settled("attention", "Your decision needed"), "curious"],
+    ["not verified", settled("unverified", "Verification incomplete"), "worried"],
+    ["cut short", settled("unverified", "Response incomplete"), "worried"],
+    ["checks failed", settled("failed", "Checks failed"), "shocked"],
+    ["task failed", settled("failed", "Task failed"), "shocked"],
+  ] as const)("%s shows the %s robot instead of a dot", (_name, activity, mood) => {
     const { container } = render(
       <ActivityBar {...baseProps} running={false} activity={activity} />,
     );
-    const left = container.querySelector(".statusrow-left");
-    expect(left?.firstElementChild?.classList.contains("activity-label-reveal")).toBe(true);
-    const words = left?.querySelector<HTMLElement>(".activity-label-reveal > span");
-    expect(words?.style.color).toBe(colour);
+    const face = container.querySelector(".ez-face");
+    expect(face?.classList.contains(`ez-face-${mood}`)).toBe(true);
+    expect(face?.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelector(".statusrow-icon")).toBeNull();
+  });
+
+  it("is the ready robot when idle and gives way to the orb while working", () => {
+    const { container, rerender } = render(<ActivityBar {...baseProps} running={false} />);
+    expect(container.querySelector(".ez-face-ready")).not.toBeNull();
+    rerender(<ActivityBar {...baseProps} />);
+    expect(container.querySelector(".ez-face")).toBeNull();
+  });
+});
+
+describe("ezMoodFor", () => {
+  it.each([
+    [theme.success, "done", "happy"],
+    [theme.error, "failed", "shocked"],
+    [theme.warning, "stopped", "sad"],
+    [theme.warning, "attention", "curious"],
+    [theme.warning, "unverified", "worried"],
+    [theme.warning, "working", "worried"],
+    [theme.textMuted, "idle", "ready"],
+  ] as const)("tone %s, phase %s → %s", (tone, phase, mood) => {
+    expect(ezMoodFor({ ...INITIAL_ACTIVITY, phase }, tone)).toBe(mood);
   });
 });
 

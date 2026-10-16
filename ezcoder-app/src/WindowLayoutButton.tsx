@@ -21,14 +21,7 @@ import { theme } from "./theme";
  * At most 6 windows are on screen at once — the 12-window layout puts the other
  * half on page 2, which the Page rows (and Cmd/Ctrl+1/2) switch between.
  */
-export function WindowLayoutButton({
-  onArrange,
-  label,
-}: {
-  onArrange?: () => void;
-  /** Show a text label beside the icon (the deck's ⋯ keypad). */
-  label?: string;
-}): React.ReactElement {
+export function WindowLayoutButton({ onArrange }: { onArrange?: () => void }): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showMonitors, setShowMonitors] = useState(false);
@@ -165,7 +158,6 @@ export function WindowLayoutButton({
         onClick={() => setOpen((current) => !current)}
       >
         <AppWindowIcon size={16} />
-        {label && <span className="winlayout-label">{label}</span>}
       </button>
       {open &&
         createPortal(

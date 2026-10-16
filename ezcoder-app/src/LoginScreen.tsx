@@ -6,10 +6,9 @@ import { BackButton } from "./BackButton";
 import { ProviderLoginModal } from "./ProviderLoginModal";
 import { LocalModelsModal } from "./LocalModelsModal";
 import { HfPullModal } from "./HfPullModal";
-import { providerLogo, providerLogoIsMono } from "./provider-logos";
+import { providerLogo } from "./provider-logos";
 import { SettingsHeaderStatus } from "./settings-header";
 import { SettingsCard } from "./settings-section";
-import { useSettingsPageReady } from "./settings-ready";
 
 interface Props {
   /**
@@ -27,8 +26,6 @@ interface Props {
 export function LoginScreen({ onClose }: Props): React.ReactElement {
   const [providers, setProviders] = useState<AuthProvider[]>([]);
   const [loading, setLoading] = useState(true);
-  // In Settings, skip the "checking providers…" frame: the read is native and fast.
-  useSettingsPageReady(!loading);
   const [active, setActive] = useState<AuthProvider | null>(null);
   const [localOpen, setLocalOpen] = useState(false);
   // Swapped in place (never stacked) so Escape closes exactly one modal.
@@ -115,12 +112,7 @@ export function LoginScreen({ onClose }: Props): React.ReactElement {
             )}
             <span className="login-tile-logo">
               {logo ? (
-                <img
-                  className="login-logo"
-                  src={logo}
-                  alt=""
-                  data-mono={providerLogoIsMono(p.value) || undefined}
-                />
+                <img className="login-logo" src={logo} alt="" />
               ) : (
                 <span className="login-logo-fallback">{p.label.charAt(0)}</span>
               )}
@@ -161,7 +153,7 @@ export function LoginScreen({ onClose }: Props): React.ReactElement {
         <button
           className="login-tile"
           onClick={() => setLocalOpen(true)}
-          title="Ollama: models running on this machine"
+          title="Ollama — models running on this machine"
         >
           <span className="login-tile-logo">
             <img className="login-logo" src={providerLogo("ollama")} alt="" />
@@ -178,7 +170,7 @@ export function LoginScreen({ onClose }: Props): React.ReactElement {
         <button
           className="login-tile"
           onClick={() => setHfOpen(true)}
-          title="Hugging Face: download models to Ollama"
+          title="Hugging Face — download models to Ollama"
         >
           <span className="login-tile-logo">
             <img className="login-logo" src={providerLogo("huggingface")} alt="" />

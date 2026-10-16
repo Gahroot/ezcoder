@@ -31,15 +31,6 @@ export function useTranscriptScroll({
   // The transcript's offset as last seen by a scroll event or left by our own
   // scrollToBottom — the baseline that tells an up-scroll from a down-scroll.
   const lastScrollTopRef = useRef(0);
-  // The transcript's viewport size as last seen, so a scroll caused by a
-  // resize or a zoom step isn't mistaken for the reader's (transcript-pin.ts).
-  const lastViewportRef = useRef({ width: 0, height: 0 });
-  const noteTranscriptViewport = useCallback((el: HTMLElement): boolean => {
-    const last = lastViewportRef.current;
-    if (last.width === el.clientWidth && last.height === el.clientHeight) return false;
-    lastViewportRef.current = { width: el.clientWidth, height: el.clientHeight };
-    return true;
-  }, []);
 
   // Pin to the bottom. Images (screenshots / attachments) load asynchronously
   // and grow the content after this fires, so it's also called from each image's
@@ -139,11 +130,10 @@ export function useTranscriptScroll({
       stickToBottomRef.current,
       lastScrollTopRef.current,
       el,
-      noteTranscriptViewport(el),
     );
     lastScrollTopRef.current = el.scrollTop;
     syncReaderPosition(el);
-  }, [syncReaderPosition, chatLayout, scrollRef, noteTranscriptViewport]);
+  }, [syncReaderPosition, chatLayout, scrollRef]);
   const onTranscriptWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
       const el = scrollRef.current;
@@ -272,7 +262,6 @@ export function useTranscriptScroll({
   return {
     stickToBottomRef,
     lastScrollTopRef,
-    noteTranscriptViewport,
     scrollToBottom,
     maybeScrollToBottom,
     windowStartId,

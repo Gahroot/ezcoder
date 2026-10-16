@@ -7,7 +7,6 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 vi.mock("./SettingsModal", () => ({ SettingsModal: () => <p>general page</p> }));
 vi.mock("./McpModal", () => ({ McpModal: () => <p>mcp page</p> }));
 vi.mock("./SteroidsModal", () => ({ SteroidsModal: () => <p>steroids page</p> }));
-vi.mock("./AboutPage", () => ({ AboutPage: () => <p>about page</p> }));
 vi.mock("./TelegramSettingsModal", () => ({ TelegramSettingsModal: () => <p>telegram setup</p> }));
 vi.mock("./LoginScreen", async () => {
   const { SettingsHeaderStatus } = await import("./settings-header");
@@ -25,7 +24,7 @@ vi.mock("./LoginScreen", async () => {
 vi.mock("./agent", () => ({
   waitForReady: () => Promise.resolve(),
   authStatus: () => Promise.resolve([]),
-  getServeStatus: vi.fn(() => Promise.resolve({ running: false, configured: false })),
+  getServeStatus: () => Promise.resolve({ running: false, configured: false }),
   startServe: vi.fn(),
   stopServe: vi.fn(),
   setRemoteActive: vi.fn(),
@@ -33,18 +32,11 @@ vi.mock("./agent", () => ({
   onSteroidsChange: () => () => {},
 }));
 
-import { getServeStatus } from "./agent";
-import { SETTINGS_PAGE_WAIT_MS } from "./settings-ready";
 import { SettingsScreen } from "./SettingsScreen";
 
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
 });
-
-function waiting(): boolean {
-  return document.querySelector(".settings-screen")?.classList.contains("is-waiting") ?? false;
-}
 
 async function renderScreen(props: Partial<Parameters<typeof SettingsScreen>[0]> = {}) {
   const onClose = vi.fn();
@@ -94,46 +86,6 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("3 connected")).toBeNull();
   });
 
-  it("holds a page back until its first load lands, so it never paints half-loaded", async () => {
-    let land: (serve: { running: boolean; configured: boolean }) => void = () => {};
-    vi.mocked(getServeStatus).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          land = resolve;
-        }),
-    );
-    await renderScreen({ initialTab: "remote" });
-    // Still loading: the page (and the Off it would flip from) stays hidden.
-    expect(waiting()).toBe(true);
-
-    await act(async () => {
-      land({ running: true, configured: true });
-      await Promise.resolve();
-    });
-
-    expect(waiting()).toBe(false);
-    expect(document.querySelector(".picker-head")?.textContent).toContain("Live");
-  });
-
-  it("stops waiting on a slow page and lets its own loading state show", async () => {
-    vi.useFakeTimers();
-    vi.mocked(getServeStatus).mockImplementationOnce(() => new Promise(() => {}));
-    await renderScreen({ initialTab: "remote" });
-    expect(waiting()).toBe(true);
-
-    act(() => {
-      vi.advanceTimersByTime(SETTINGS_PAGE_WAIT_MS);
-    });
-
-    expect(waiting()).toBe(false);
-  });
-
-  it("never holds a page that has nothing to load", async () => {
-    await renderScreen({ initialTab: "remote" });
-    fireEvent.click(screen.getByRole("tab", { name: "About" }));
-    expect(waiting()).toBe(false);
-  });
-
   it("puts Remote's state and its start button in the header bar", async () => {
     await renderScreen({ initialTab: "remote" });
 
@@ -156,17 +108,6 @@ describe("SettingsScreen", () => {
     fireEvent.click(screen.getByRole("tab", { name: "MCP" }));
 
     expect(screen.queryByRole("button", { name: "Start serving" })).toBeNull();
-  });
-
-  it("ends with the About tab", async () => {
-    await renderScreen();
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs[tabs.length - 1]?.getAttribute("aria-label")).toBe("About");
-
-    fireEvent.click(screen.getByRole("tab", { name: "About" }));
-
-    expect(heading()).toBe("About");
-    expect(screen.getByText("about page")).not.toBeNull();
   });
 
   it("goes back with the Back button", async () => {

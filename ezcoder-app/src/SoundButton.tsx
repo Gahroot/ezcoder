@@ -28,7 +28,7 @@ export function SoundButton({
       className={
         settingsVariant ? "modal-btn" : "btn btn-ghost btn-icon btn-nav-icon home-settings"
       }
-      title={on ? "Sound effects on. Click to mute" : "Sound effects muted. Click to turn on"}
+      title={on ? "Sound effects on — click to mute" : "Sound effects muted — click to enable"}
       style={on ? undefined : { color: theme.textMuted }}
       onClick={toggle}
     >
