@@ -15,6 +15,7 @@ import { downgradeUnsupportedImages, downgradeUnsupportedVideos } from "./transf
 import { resolveToolSchema } from "../utils/zod-to-json-schema.js";
 import { isJsonObject } from "../utils/json.js";
 import { readSseStream } from "../utils/sse.js";
+import { providerFetch } from "../utils/provider-fetch.js";
 import { getEnvironment } from "../utils/env.js";
 import { mergeProviderOptions } from "../utils/provider-options.js";
 
@@ -721,7 +722,7 @@ async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 async function fetchCodeAssist(plan: GeminiRequestPlan, options: StreamOptions): Promise<Response> {
   try {
-    const response = await fetch(plan.url, {
+    const response = await providerFetch(plan.url, {
       method: "POST",
       headers: plan.headers,
       body: JSON.stringify(plan.body),

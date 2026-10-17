@@ -82,6 +82,7 @@ export { StreamResult, EventStream } from "./utils/event-stream.js";
 export {
   GGAIError,
   ProviderError,
+  ResponseStalledError,
   formatError,
   formatErrorForDisplay,
   isUsageLimitError,
