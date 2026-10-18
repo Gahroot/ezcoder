@@ -1950,6 +1950,8 @@ export class AgentSession {
 
     if (diagnosticMessages.length > 0) return diagnosticMessages;
 
+    await this.rerunRefusedCheck();
+
     if (
       shouldNudgePlanSubmission({
         enabled: this.opts.planSubmissionGate === true,
@@ -1989,6 +1991,45 @@ export class AgentSession {
       this.refreshHookArming();
     }
     return null;
+  }
+
+  /**
+   * The model often runs its tests inside a longer command (`npm test 2>&1 |
+   * tail; node -e '…'`) whose exit status belongs to a later part, so the
+   * tests can pass without counting. When the turn would end unverified that
+   * way, run that check once more on its own, through the same bash tool, and
+   * record its real exit status. No model turn and nothing in the transcript:
+   * only the run's verification status changes.
+   */
+  private async rerunRefusedCheck(): Promise<void> {
+    if (this.planModeRef.current || this.opts.signal?.aborted) return;
+    const check = this.verificationTracker.takeRefusedCheck();
+    if (!check) return;
+    const bash = this.tools.find((tool) => tool.name === "bash");
+    // An explicit timeout stops a stuck run instead of moving it to the
+    // background, which would leave a process for the next turn to collect.
+    const params = bash?.parameters.safeParse({ command: check.command, timeout: 120_000 });
+    if (!bash || !params?.success) return;
+    const startedAt = Date.now();
+    let passed = false;
+    try {
+      const result = await bash.execute(params.data, {
+        signal: this.opts.signal ?? new AbortController().signal,
+        toolCallId: `gg-recheck-${startedAt}`,
+      });
+      const text = typeof result === "string" ? result : result.content;
+      passed = typeof text === "string" && /^Exit code:\s*0(?:\s|$)/.test(text.trim());
+    } catch (error) {
+      if (isAbortError(error) || this.opts.signal?.aborted) return;
+      log("WARN", "verification", `Re-running a refused check failed: ${String(error)}`);
+    }
+    if (this.opts.signal?.aborted) return;
+    this.verificationTracker.recordRefusedCheckRerun(check, passed);
+    log("INFO", "verification", "Re-ran a check whose original exit status could not count", {
+      passed: String(passed),
+      durationMs: String(Date.now() - startedAt),
+    });
+    await this.persistVerificationState();
   }
 
   /** Wraps the real run: cancels an in-flight cache prewarm and tracks run
