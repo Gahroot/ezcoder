@@ -54,36 +54,6 @@ importers:
         specifier: ^8.70.0
         version: 8.70.0(eslint@10.10.0(jiti@2.7.0))(typescript@6.0.3)
 
-  experiments/lean-code-bench:
-    dependencies:
-      '@kenkaiiii/gg-agent':
-        specifier: workspace:*
-        version: link:../../packages/gg-agent
-      '@kenkaiiii/gg-ai':
-        specifier: workspace:*
-        version: link:../../packages/gg-ai
-      '@kenkaiiii/ggcoder':
-        specifier: workspace:*
-        version: link:../../packages/ggcoder
-      zod:
-        specifier: ^4.0.0
-        version: 4.5.4
-
-  experiments/prompt-bench:
-    dependencies:
-      '@kenkaiiii/gg-agent':
-        specifier: workspace:*
-        version: link:../../packages/gg-agent
-      '@kenkaiiii/gg-ai':
-        specifier: workspace:*
-        version: link:../../packages/gg-ai
-      '@kenkaiiii/ggcoder':
-        specifier: workspace:*
-        version: link:../../packages/ggcoder
-      zod:
-        specifier: ^4.5.4
-        version: 4.5.4
-
   gg-app:
     dependencies:
       '@phosphor-icons/react':

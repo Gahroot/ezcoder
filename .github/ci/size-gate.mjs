@@ -9,9 +9,9 @@
 //                  cannot hold across the CI matrix's three OSes. Dependency-
 //                  tree churn is still caught by the dist:ggcoder artifact.
 // Usage:
-//   node bench/size-gate.mjs                 # check all artifacts against baseline
-//   node bench/size-gate.mjs --only sidecar  # check one artifact
-//   node bench/size-gate.mjs --update        # re-baseline after an intentional change
+//   node .github/ci/size-gate.mjs                 # check all artifacts against baseline
+//   node .github/ci/size-gate.mjs --only sidecar  # check one artifact
+//   node .github/ci/size-gate.mjs --update        # re-baseline after an intentional change
 // Highlight growth above baseline + max(2%, 100KB; 10KB for initial frontend JS).
 // Size growth never fails CI; missing or unreadable build artifacts still do.
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -19,8 +19,8 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BASELINE_PATH = path.join(REPO_ROOT, "bench/baseline/sizes.json");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const BASELINE_PATH = path.join(REPO_ROOT, ".github/ci/baseline/sizes.json");
 const TOLERANCE = { relative: 0.02, absoluteBytes: 100 * 1024 };
 
 /** Recursive byte total of a directory (or single file). */
