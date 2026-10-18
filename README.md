@@ -29,24 +29,24 @@ GG Coder is a desktop AI app for coding, chatting, running whole goals and makin
 
 ## Why GG Coder
 
-**The leanest coding agent I've tested.** I raced GG Coder against 9 other coding agents on the same model. Every agent finished every task. GG tied the two fastest and was the cheapest of all 10.
+**The leanest coding agent I've tested.** I raced GG Coder against 9 other coding agents on the same model. GG had the fastest time, level with Goose and Copilot, and was the cheapest of all 10.
 
 | Agent              | Time for the full suite | Usage per suite | GG Coder compared          |
 | ------------------ | ----------------------- | --------------- | -------------------------- |
-| **GG Coder**       | **116 s**               | **$0.095**      |                            |
-| Goose              | 114 s                   | $0.105          | same speed, 9% less usage  |
-| GitHub Copilot CLI | 119 s                   | $0.127          | same speed, 25% less usage |
-| Claude Code        | 135 s                   | $0.179          | 14% faster, 47% less usage |
-| Crush              | 150 s                   | $0.191          | 23% faster, 50% less usage |
-| Oh My Pi           | 150 s                   | $0.144          | 23% faster, 34% less usage |
-| Factory Droid      | 158 s                   | $0.131          | 27% faster, 28% less usage |
-| Deep Agents        | 181 s                   | $0.207          | 36% faster, 54% less usage |
-| Qwen Code          | 196 s                   | $0.300          | 41% faster, 68% less usage |
-| Hermes Agent       | 245 s                   | $0.140          | 53% faster, 32% less usage |
+| **GG Coder**       | **125 s**               | **$0.095**      |                            |
+| Goose              | 126 s                   | $0.106          | same speed, 11% less usage |
+| GitHub Copilot CLI | 129 s                   | $0.126          | same speed, 25% less usage |
+| Claude Code        | 154 s                   | $0.212          | 19% faster, 55% less usage |
+| Oh My Pi           | 161 s                   | $0.150          | 23% faster, 37% less usage |
+| Crush              | 164 s                   | $0.196          | 24% faster, 52% less usage |
+| Factory Droid      | 172 s                   | $0.130          | 28% faster, 27% less usage |
+| Deep Agents        | 197 s                   | $0.206          | 37% faster, 54% less usage |
+| Qwen Code          | 229 s                   | $0.319          | 46% faster, 70% less usage |
+| Hermes Agent       | 285 s                   | $0.146          | 56% faster, 35% less usage |
 
-On a subscription, less usage means more work out of your plan. The same allowance covers about **1.9x** the coding it would in Claude Code, and about **1.5x** what it would in Oh My Pi.
+On a subscription, less usage means more work out of your plan. The same allowance covers about **2.2x** the coding it would in Claude Code, and about **1.6x** what it would in Oh My Pi.
 
-<sub>Every agent on Claude Haiku 5.5, across more than 3,000 test runs.</sub>
+<sub>Every agent on Claude Haiku 5.5, 10 runs of each of 7 tasks per agent. Every agent passed every run except Deep Agents, which missed 2 of 70.</sub>
 
 ## What you get
 
