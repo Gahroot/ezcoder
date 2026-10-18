@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.83.4
+
+### Patch Changes
+
+- 420b1ad: The bash tool no longer appends a "Verification evidence rejected" note to checks whose exit status can't prove success (e.g. `npm test | grep x; git diff`). The model almost always re-ran the suite after it, and the output it already had was correct. Such checks still don't count as verification: run status reports the turn as incomplete, as before. On Claude Haiku 5.5 this cut model requests about 7% and input tokens about 9%, with no change in pass rate.
+- 420b1ad: Shorter replies and a cleaner system prompt. After changing code, the agent's summary now aims for under ~100 words: a bold headline, then a few flat bullets with what changed, the check result, and any caveat or change made beyond the request. Answers and reviews keep the length they need. Progress messages between steps are one sentence. On Claude Haiku 5.5 this cut task time about 15% and cost about 15%, with no change in pass rate or test reporting. The prompt also drops a few contradictions. Language style packs no longer override a project's own conventions or push it to install a schema library. The agent runs one check after its edits instead of deferring checks to /commit. Detailed hardening rules now live only in the bulletproof skill.
+- 420b1ad: Turns no longer show as unverified when the agent's tests actually passed. Agents often run tests inside a longer command (`npm test 2>&1 | tail; node -e '…'`), and that command's exit status comes from its last part, so the tests never counted. When a turn would end unverified that way, GG now runs that test command once more on its own and records its real result. It never runs checks the agent skipped. If nothing was edited since, a pass counts as verification. A failed re-run leaves the turn unverified without marking it failed.
+- Updated dependencies [420b1ad]
+  - @kenkaiiii/gg-ai@5.83.4
+  - @kenkaiiii/gg-agent@5.83.4
+  - @kenkaiiii/gg-core@5.83.4
+
 ## 5.83.3
 
 ### Patch Changes

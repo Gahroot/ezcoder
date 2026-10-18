@@ -1,5 +1,12 @@
 # @kenkaiiii/gg-core
 
+## 5.83.4
+
+### Patch Changes
+
+- Updated dependencies [420b1ad]
+  - @kenkaiiii/gg-ai@5.83.4
+
 ## 5.83.3
 
 ### Patch Changes
