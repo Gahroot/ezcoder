@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Message } from "@kenkaiiii/gg-ai";
 import { useFakeHome } from "../test-support/fake-home.js";
+import { removeWhenReleased } from "./lsp/test-support.js";
 import type { AgentEvent } from "@kenkaiiii/gg-agent";
 import type { AgentSession } from "./agent-session.js";
 import type { ProcessManager } from "./process-manager.js";
@@ -61,8 +62,9 @@ afterEach(async () => {
   await session?.dispose();
   session = undefined;
   restoreHome?.();
-  await fs.rm(tmpHome, { recursive: true, force: true });
-  await fs.rm(tmpProject, { recursive: true, force: true });
+  // Windows refuses to delete a folder a still-exiting npm/node child holds.
+  await removeWhenReleased(tmpHome);
+  await removeWhenReleased(tmpProject);
 });
 
 /** Records the client-visible event stream in emission order. */
@@ -172,7 +174,11 @@ async function runRealCheck(
 const artifactBuild =
   "import fs from 'node:fs'; fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/app.js', 'generated');\n";
 
-describe("verification gate flow", () => {
+// These tests start real npm, node and git processes. On a busy Windows runner
+// one npm start took over 16 s (CI run 39096131693; usually ~1 s), so the
+// suite gets more than the 20 s default. A genuine hang still fails: the bash
+// tool stops a foreground command at 120 s.
+describe("verification gate flow", { timeout: 60_000 }, () => {
   it.each([
     { review: true, result: `Exit code: 1\n${REVIEW_REJECTED_BEFORE_START}` },
     { review: false, result: REVIEW_REJECTED_BEFORE_START },
