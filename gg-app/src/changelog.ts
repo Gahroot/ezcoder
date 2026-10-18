@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.93.6",
+    date: "2026-10-18",
+    items: [
+      "GG Coder just got leaner again. I only load web search when you actually need the web, slimmed down what searches hand back to your agent, and moved a startup check out of your way. On `Claude Haiku 5.5` that's `24%` fewer tokens per task with more tasks passing, and in a fresh race against `9` other agents GG came out cheapest of all and level with the fastest. Your plan now stretches to about `2.2x` the coding you'd get from Claude Code.",
+      "A search that hits minified files can no longer flood your chat. One unlucky search could dump `135k` tokens into a single reply and burn through your usage, so I now hold oversized output to its `50 KB` cap no matter how it's shaped.",
+      "The titlebar stops calling your project `not a git repo` just because git was slow to answer on a busy machine. GG now waits it out in the background and shows the real state.",
+    ],
+  },
+  {
     version: "0.93.5",
     date: "2026-10-18",
     items: [
