@@ -1,5 +1,15 @@
 # @kenkaiiii/ggcoder
 
+## 5.83.5
+
+### Patch Changes
+
+- a69cc27: The titlebar no longer shows a project as "not a git repo, 0 changed files" when git is just slow to answer. On a busy machine, git could miss GG's 2-second limit when a window opened, and that timeout was reported as "not a repo" with nothing to correct it until the next run. GG now treats a timeout as unknown, and re-reads the git state in the background with more time.
+- Leaner, faster requests. On Anthropic, the built-in web search tool (about 2,500 tokens on every request) is now attached only when a session needs the web, either when the prompt asks for it or when the model looks it up. `tool_search` now loads only the best match instead of up to five loosely related tools. Grep output lists each file path once instead of on every matching line. Oversized bash output is held to its 50 KB cap even when it is made of a few huge lines, such as minified bundles. The Claude Code version lookup no longer blocks the first message. On Claude Haiku 5.5 across 270 benchmark runs, input tokens fell 24% with more tasks passing.
+  - @kenkaiiii/gg-ai@5.83.5
+  - @kenkaiiii/gg-agent@5.83.5
+  - @kenkaiiii/gg-core@5.83.5
+
 ## 5.83.4
 
 ### Patch Changes
