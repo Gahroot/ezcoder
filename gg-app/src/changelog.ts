@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.93.5",
+    date: "2026-10-18",
+    items: [
+      "GG Coder is now the leanest coding agent I've tested. I raced it against `9` other agents on the same model, `Claude Haiku 5.5`, and GG finished every task, tied the two fastest and came out cheapest of the lot. Against Claude Code it was 14% faster and burned 47% less usage, and against Oh My Pi it was 23% faster and burned 34% less. On a subscription, that stretches your plan to roughly `1.9x` the coding you'd get from Claude Code. The trick: after it changes code, GG now gives you a tight summary instead of an essay, while answers and reviews keep their full length.",
+      "Work whose tests passed now shows as verified. Your agent often runs tests inside a bigger command, and GG couldn't count that as proof, so finished work could still look `incomplete`. Now GG quietly re-checks those tests itself in under a second, so the badge tells you the truth.",
+    ],
+  },
+  {
     version: "0.93.4",
     date: "2026-10-17",
     items: [
