@@ -25,7 +25,39 @@ https://github.com/user-attachments/assets/8f264af5-c757-4dcc-b622-b9e0edf36f89
   <a href="https://skool.com/kenkai"><img src="https://img.shields.io/badge/Skool-Community-b0b6ff?style=for-the-badge" alt="Skool"></a>
 </p>
 
-GG Coder is a desktop AI app that helps you write code, chat, and make videos. Ken Autopilot checks the coding work, chat remembers context, and GG Motion creates videos from your ideas. Pick your AI provider, open as many windows as you need, and tell it what you want to do. Less babysitting, more getting things done.
+GG Coder is a desktop AI app for coding, chatting, running whole goals and making videos. Pick your AI provider, open as many windows as you need, and tell it what you want done. Less babysitting, more getting things done.
+
+## Why GG Coder
+
+**The leanest coding agent I've tested.** I raced GG Coder against 9 other coding agents, all running the same model with the same settings. Every agent finished every task. GG tied the two fastest and was the cheapest of all 10.
+
+| Agent              | Time for the full suite | Usage per suite* | GG Coder compared          |
+| ------------------ | ----------------------- | ---------------- | -------------------------- |
+| **GG Coder**       | **116 s**               | **$0.095**       |                            |
+| Goose              | 114 s                   | $0.105           | same speed, 9% less usage  |
+| GitHub Copilot CLI | 119 s                   | $0.127           | same speed, 25% less usage |
+| Claude Code        | 135 s                   | $0.179           | 14% faster, 47% less usage |
+| Crush              | 150 s                   | $0.191           | 23% faster, 50% less usage |
+| Oh My Pi           | 150 s                   | $0.144           | 23% faster, 34% less usage |
+| Factory Droid      | 158 s                   | $0.131           | 27% faster, 28% less usage |
+| Deep Agents        | 181 s                   | $0.207           | 36% faster, 54% less usage |
+| Qwen Code          | 196 s                   | $0.300           | 41% faster, 68% less usage |
+| Hermes Agent       | 245 s                   | $0.140           | 53% faster, 32% less usage |
+
+On a subscription, less usage means more work out of your plan. The same allowance covers about **1.9x** the coding it would in Claude Code, and about **1.5x** what it would in Oh My Pi.
+
+<sub>*Usage priced at Claude Haiku 5.5 API rates; on a subscription it comes out of your plan's limit instead. Tested 18 October 2026: 7 coding tasks (bug fix, debugging, feature, refactors, a code question) × 5 runs per agent, Claude Haiku 5.5 on every agent, thinking set the same for all, each agent on its latest release from the previous 72 hours. Only differences that held up across all runs are claimed. Pi, OpenCode and Kilo CLI couldn't run because Anthropic rejected them on a subscription. Results on other models and bigger projects may differ.</sub>
+
+## What you get
+
+- **Code:** a coding agent that plans, edits, runs your tests and tells you straight what it verified. Plan mode lets you review the plan before anything changes.
+- **Ken Autopilot:** reviews the coding work and keeps it going until it's actually done and checked, so you don't have to babysit it.
+- **GG Goals:** hand over a whole goal and walk away. It agrees the approach with you, then does the work, splitting big independent parts across a team of workers that run side by side, and keeps you posted until the goal is met. It works on any folder, not just code: research, documents, plans.
+- **Agent Steroids:** a local library of real, current open-source code. Your agent looks up how real projects solve a problem instead of guessing, offline and with no limits.
+- **Chat:** conversations that remember context.
+- **GG Motion:** turns your ideas into videos.
+- **Your models, your way:** sign in with Claude, ChatGPT, Gemini, Grok or Kimi subscriptions, use API keys for OpenAI, Anthropic, DeepSeek, GLM, MiniMax, OpenRouter and more, or run local models. A usage meter shows how much of your plan you've used.
+- **Plugs into your workflow:** connect MCP servers, and drive GG from Telegram, voice notes included.
 
 ## Get started
 
