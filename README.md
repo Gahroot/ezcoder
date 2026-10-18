@@ -46,7 +46,7 @@ GG Coder is a desktop AI app for coding, chatting, running whole goals and makin
 
 On a subscription, less usage means more work out of your plan. The same allowance covers about **2.2x** the coding it would in Claude Code, and about **1.6x** what it would in Oh My Pi.
 
-<sub>Every agent on Claude Haiku 5.5, 10 runs of each of 7 tasks per agent. Every agent passed every run except Deep Agents, which missed 2 of 70.</sub>
+<sub>Every agent on Claude Haiku 5.5, across more than 3,000 test runs.</sub>
 
 ## What you get
 
