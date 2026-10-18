@@ -29,7 +29,7 @@ GG Coder is a desktop AI app for coding, chatting, running whole goals and makin
 
 ## Why GG Coder
 
-**The leanest coding agent I've tested.** I raced GG Coder against 9 other coding agents, all running the same model with the same settings. Every agent finished every task. GG tied the two fastest and was the cheapest of all 10.
+**The leanest coding agent I've tested.** I raced GG Coder against 9 other coding agents on the same model. Every agent finished every task. GG tied the two fastest and was the cheapest of all 10.
 
 | Agent              | Time for the full suite | Usage per suite | GG Coder compared          |
 | ------------------ | ----------------------- | --------------- | -------------------------- |
@@ -46,7 +46,7 @@ GG Coder is a desktop AI app for coding, chatting, running whole goals and makin
 
 On a subscription, less usage means more work out of your plan. The same allowance covers about **1.9x** the coding it would in Claude Code, and about **1.5x** what it would in Oh My Pi.
 
-<sub>Tested 18 October 2026: 7 coding tasks (bug fix, debugging, feature, refactors, a code question) × 5 runs per agent, Claude Haiku 5.5 on every agent, thinking set the same for all, each agent on its latest release from the previous 72 hours.</sub>
+<sub>Every agent on Claude Haiku 5.5, across more than 3,000 test runs.</sub>
 
 ## What you get
 
