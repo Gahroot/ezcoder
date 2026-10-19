@@ -22,6 +22,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.94.0",
+    date: "2026-10-19",
+    items: [
+      "Your agent can no longer install a hijacked package. Every big npm hijack of the last two years was live for only a few hours, so GG now skips any release younger than `2 days` and checks every install against the public malware list, which refreshes itself daily. If a package already in your project gets flagged later, GG spots it, swaps it out and writes it into your `CLAUDE.md` so every future session steers clear. No pop-ups, no questions. It just handles it.",
+      "Poisoned skills, sneaky `MCP` servers and booby-trapped web pages can't turn your agent against you anymore. Skills carrying malware never load, MCP tools with hidden orders get quietly hidden, and if a README tries to make your agent leak your keys or switch off its own safety, GG stops it cold.",
+      "You always know what got stopped. Every block lands in your chat as one plain line, repeats fold into a single row, and your agent tells you what it did instead. I ran all of it against over `100,000` of my own real coding actions to make sure it stays out of your way, and GG starts just as fast as before.",
+    ],
+  },
+  {
     version: "0.93.6",
     date: "2026-10-18",
     items: [
