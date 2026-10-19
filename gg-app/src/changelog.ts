@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.94.1",
+    date: "2026-10-19",
+    items: [
+      "Your agent stops installing old versions with serious security holes. AI models love pinning ancient releases like `axios@0.21.1`, so when a version has a known high or critical flaw and a fixed release exists in the same line, GG quietly moves it there instead, straight to `axios@0.34.0`. Nothing breaks, nothing asks you anything, and everyday installs stay exactly as fast as before.",
+    ],
+  },
+  {
     version: "0.94.0",
     date: "2026-10-19",
     items: [
