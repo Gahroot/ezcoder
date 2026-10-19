@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.94.2",
+    date: "2026-10-19",
+    items: [
+      "Web research can't jam a long session anymore. When your agent ran a `web_search` and fetched a page in the same breath right before your chat got tidied up, every message after that could bounce back with a scary `400` error. I fixed it at the root, so research-heavy sessions just keep flowing, and if one of yours is stuck right now, this update brings it back to life on the next message.",
+    ],
+  },
+  {
     version: "0.94.1",
     date: "2026-10-19",
     items: [
