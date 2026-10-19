@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.84.1
+
+### Patch Changes
+
+- Installs of a package version with HIGH or CRITICAL known security flaws are now moved to the newest fixed release in the same major version (for example `axios@0.21.1` → `0.34.0`), with no prompt. Versions with no fix yet, or only fixed in a new major, are left alone, and clean installs make no extra requests.
+  - @kenkaiiii/gg-ai@5.84.1
+  - @kenkaiiii/gg-agent@5.84.1
+  - @kenkaiiii/gg-core@5.84.1
+
 ## 5.84.0
 
 ### Minor Changes
