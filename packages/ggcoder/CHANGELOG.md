@@ -1,5 +1,14 @@
 # @kenkaiiii/ggcoder
 
+## 5.84.2
+
+### Patch Changes
+
+- Fix Anthropic 400 "web_search tool use … without a corresponding web_search_tool_result" that bricked sessions after a deferred web search, and keep a run's post-compaction messages when the run fails.
+  - @kenkaiiii/gg-ai@5.84.2
+  - @kenkaiiii/gg-agent@5.84.2
+  - @kenkaiiii/gg-core@5.84.2
+
 ## 5.84.1
 
 ### Patch Changes
