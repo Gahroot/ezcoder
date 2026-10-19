@@ -1,5 +1,17 @@
 # @kenkaiiii/ggcoder
 
+## 5.84.0
+
+### Minor Changes
+
+- Add a security layer that blocks infected packages, malicious skills, poisoned MCP tools and prompt-injection actions without ever asking the user. Installs skip versions under 2 days old (the window every recent hijack lived in) and are checked against the public OSV malware list live and through a daily background feed; projects are re-checked for packages flagged after install. Skills with malware patterns are not loaded, poisoned or quietly changed MCP tools are hidden, and harmful actions (sending secrets out, DNS leaks, switching on auto-run in other tools, launching AI CLIs with safety off) are blocked. Each block leaves a chat row, and blocked packages are recorded in the project's CLAUDE.md or AGENTS.md so later sessions avoid them.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.84.0
+- @kenkaiiii/gg-agent@5.84.0
+- @kenkaiiii/gg-core@5.84.0
+
 ## 5.83.5
 
 ### Patch Changes
