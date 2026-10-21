@@ -22,6 +22,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.94.3",
+    date: "2026-10-21",
+    items: [
+      "No more surprise sign-outs. When several windows refreshed your login at the same moment, one could wipe out the fresh login another had just saved, and every chat suddenly said `Not logged in`. Now GG notices the newer login and keeps using it, so your sessions stay connected through the night.",
+      "GG keeps its flight recorder running no matter how long the app stays open. It used to go quiet after just `15 minutes` when the log file was nearly full, so when something went wrong a day later there was nothing to look at. Now it rolls over to a fresh file and keeps recording, so I can track down real problems fast.",
+    ],
+  },
+  {
     version: "0.94.2",
     date: "2026-10-19",
     items: [
