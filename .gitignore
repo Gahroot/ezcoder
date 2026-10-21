@@ -79,22 +79,11 @@ packages/cli/ideal-sim/
 /.claude/
 /docs/
 /experiments/
+# Private benchmarks and experiments: never in the repo. CI's size and
+# startup gates live in .github/ci/.
 /bench/
-# Local benchmarks, experiments and one-off tooling. Only the pieces CI or
-# contributors rely on are un-ignored below; everything else stays local.
-/bench/*
-!/bench/baseline/
-/bench/baseline/*
-!/bench/baseline/sizes.json
-!/bench/size-gate.mjs
-!/bench/startup-gate.mjs
-!/bench/ui-library-real-flow/
-/bench/ui-library-real-flow/runs/
-/bench/ui-library-real-flow/live-approval.json
 /benchmarks/
-/experiments/*
-!/experiments/prompt-bench/
-experiments/prompt-bench/.bench-sandbox-*
+/experiments/
 /scripts/
 packages/*/.bench-*.mjs
 
@@ -104,8 +93,6 @@ packages/*/.bench-*.mjs
 # Local research/strategy notes
 # Dated agent audit / study reports are maintainer notes, not public docs.
 /docs/*-audit-*.md
-/bench/ui-library-real-flow/REPORT.md
-/experiments/prompt-bench/review-bench.md
 /*-vs-*.md
 /*-report.md
 /fixes.md

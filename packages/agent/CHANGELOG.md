@@ -1,5 +1,73 @@
 # @prestyj/agent
 
+## 5.85.0
+
+### Patch Changes
+
+- @prestyj/ai@5.85.0
+
+## 5.84.3
+
+### Patch Changes
+
+- @prestyj/ai@5.84.3
+
+## 5.84.2
+
+### Patch Changes
+
+- @prestyj/ai@5.84.2
+
+## 5.84.1
+
+### Patch Changes
+
+- @prestyj/ai@5.84.1
+
+## 5.84.0
+
+### Patch Changes
+
+- @prestyj/ai@5.84.0
+
+## 5.83.5
+
+### Patch Changes
+
+- @prestyj/ai@5.83.5
+
+## 5.83.4
+
+### Patch Changes
+
+- Updated dependencies [420b1ad]
+  - @prestyj/ai@5.83.4
+
+## 5.83.3
+
+### Patch Changes
+
+- @prestyj/ai@5.83.3
+
+## 5.83.2
+
+### Patch Changes
+
+- @prestyj/ai@5.83.2
+
+## 5.83.1
+
+### Patch Changes
+
+- @prestyj/ai@5.83.1
+
+## 5.83.0
+
+### Patch Changes
+
+- @prestyj/ai@5.83.0
+
+## 5.82.0
 ## 5.32.0
 
 ### Patch Changes

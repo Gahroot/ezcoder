@@ -11,11 +11,12 @@
  * The agent spine (@prestyj/ai → @prestyj/agent → @prestyj/core) and every tool are reused
  * unchanged via AgentSession — this file is only a network seam.
  */
+import { startThreatFeedSync } from "./core/threat-feed.js";
 import http from "node:http";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { environmentSecrets, formatChatError, redactValue } from "@prestyj/ai";
 import type { AddressInfo } from "node:net";
 import { createAppErrorPayload } from "./app-error.js";
@@ -25,6 +26,7 @@ import { setStreamDiagnostic } from "@prestyj/agent";
 import { AgentSession } from "./core/agent-session.js";
 import { RunLifecycle } from "./core/run-lifecycle.js";
 import { RunClaim } from "./core/run-claim.js";
+import { IdleWakeController } from "./core/idle-wake.js";
 import {
   IMPLEMENT_PLAN_PROMPT as SHARED_IMPLEMENT_PLAN_PROMPT,
   PLAN_SUBMITTED_FOR_REVIEW,
@@ -40,7 +42,11 @@ import { createMotionAgentSession } from "./motion-agent/motion-agent.js";
 import { buildJiwaTools, JiwaStore } from "./chat-agents/jiwa.js";
 import { buildMemoryTools, MemoryStore } from "./chat-agents/memory.js";
 import { buildNolanSystemPrompt, buildNolanAutopilotSystemPrompt } from "./core/nolan-prompt.js";
-import { countAssistantMessages, type WorkflowCommandSpec } from "./core/autopilot-gate.js";
+import {
+  countAssistantMessages,
+  extractTurnToolCalls,
+  type WorkflowCommandSpec,
+} from "./core/autopilot-gate.js";
 import { describeRunVerification, describeTurnVerification } from "./core/run-status.js";
 import {
   validateNolanModelPref,
@@ -74,6 +80,7 @@ import { ensureAppDirs, loadSavedSettings } from "./config.js";
 import { SettingsManager } from "./core/settings-manager.js";
 import {
   getModel,
+  withoutPaidTier,
   getDefaultThinkingLevel,
   getContextWindow,
   clearRuntimeModels,
@@ -120,6 +127,8 @@ import {
 } from "./app-sidecar/app-settings.js";
 import { NOLAN_ALLOWED_TOOLS } from "./app-sidecar/nolan-context.js";
 import { type ProgressManager, createProgressManager } from "./app-sidecar/progress-manager.js";
+import { type TrophyManager, createTrophyManager } from "./app-sidecar/trophy-manager.js";
+import { localTrophyDate } from "./core/trophies/engine.js";
 import { handleSessionRoutes } from "./app-sidecar/session-routes.js";
 import { handleGoalRoutes } from "./app-sidecar/goal-routes.js";
 import { readGitState, resolveGitCwd } from "./app-sidecar/git-target.js";
@@ -147,6 +156,9 @@ import type { SessionRouteContext } from "./app-sidecar/route-context.js";
 import { createHfPullManager } from "./app-sidecar/hf-pull-manager.js";
 import { keepAwake } from "./app-sidecar/keep-awake.js";
 import { createAutopilotRunner } from "./app-sidecar/autopilot-runner.js";
+
+/** Limit for re-reading git state in the background when git missed the usual 2 s. */
+const SLOW_GIT_READ_TIMEOUT_MS = 15_000;
 
 async function main(): Promise<void> {
   // Hidden persistent-worker dispatch must win before strict JSON/server parsing.
@@ -239,6 +251,10 @@ async function main(): Promise<void> {
   // Fire-and-forget: cleanup must never delay or break startup.
   void cleanupToolOutputs().catch(() => {});
 
+  // Daily malicious-package feed (OSV MAL-, npm + PyPI): deferred, background,
+  // fail-silent; at most one sync a day (core/threat-feed.ts).
+  startThreatFeedSync();
+
   const auth = new AuthStorage(paths.authFile);
   await auth.load();
 
@@ -298,6 +314,24 @@ async function main(): Promise<void> {
     for (const ctx of sessions.values())
       ctx.broadcast("progress", { ...snapshot, origin: ctx.id === originId });
   });
+
+  // Trophies — daemon-level like progress. XP totals (commits, streak, level)
+  // come from the progress snapshot rather than being counted twice.
+  const trophies = await createTrophyManager(
+    () => {
+      const p = progress.snapshot();
+      return {
+        prompts: p.totals.prompts,
+        commits: p.totals.commits,
+        linesShipped: p.totals.linesShipped,
+        level: p.level,
+      };
+    },
+    (snapshot, originId) => {
+      for (const ctx of sessions.values())
+        ctx.broadcast("trophies", { ...snapshot, origin: ctx.id === originId });
+    },
+  );
 
   const { subscriptionUsage } = createUsageService(auth);
 
@@ -371,6 +405,7 @@ async function main(): Promise<void> {
               auth,
               paths,
               progress,
+              trophies,
               memoryStore,
               jiwaStore,
               broadcastAll,
@@ -453,6 +488,12 @@ async function main(): Promise<void> {
     // session exists; per-session callers still work through the same endpoint.
     if (method === "GET" && url === "/progress") {
       daemonJson(res, 200, progress.snapshot());
+      return;
+    }
+
+    // Trophies are app-wide too: earned anywhere, shown in every window.
+    if (method === "GET" && url === "/trophies") {
+      daemonJson(res, 200, trophies.snapshot());
       return;
     }
 
@@ -553,6 +594,7 @@ async function createSession(
     auth: AuthStorage;
     paths: Awaited<ReturnType<typeof ensureAppDirs>>;
     progress: ProgressManager;
+    trophies: TrophyManager;
     memoryStore: MemoryStore;
     jiwaStore: JiwaStore;
     /** Fan one frame out to EVERY window, not just this session's. */
@@ -580,6 +622,7 @@ async function createSession(
   const {
     auth,
     progress,
+    trophies,
     memoryStore,
     jiwaStore,
     broadcastAll,
@@ -818,6 +861,7 @@ async function createSession(
     if (started) {
       goal = { dir: current.dir, record: started };
       broadcast("goal_state", { id: started.id, phase: goalPhase(started) });
+      void trophies.count("goalsStarted", opts.id);
     }
   };
   const askUserTool = createAskUserTool(async (request) => {
@@ -1092,7 +1136,8 @@ async function createSession(
   // follows the active model. A Goal window reads git from its attached
   // project folder, not the goal folder (see resolveGitCwd), and re-targets
   // when the goal's folders change (`retargetGit`).
-  let gitCwd = await resolveGitCwd(cwd, goal?.record ?? null);
+  const initialTarget = await resolveGitCwd(cwd, goal?.record ?? null);
+  let gitCwd = initialTarget.dir;
   const initialGit = await readGitState(gitCwd);
   let gitBranch: string | null = initialGit.branch;
   let gitIsRepo: boolean = initialGit.isRepo;
@@ -1348,13 +1393,18 @@ async function createSession(
   session.eventBus.on("model_change", (d) => broadcast("model_change", d));
   session.eventBus.on("hook", (d) => broadcast("hook", d));
   session.eventBus.on("diagnostics", (d) => broadcast("diagnostics", d));
+  session.eventBus.on("security_notice", (d) => broadcast("security_notice", d));
+  session.eventBus.on("security_block", (d) => broadcast("security_block", d));
   // Fires BEFORE the candidate final answer streams. The webview holds assistant
   // text back while armed, so an injected follow-up supersedes a draft that was never
   // painted instead of deleting one the user already started reading.
   session.eventBus.on("hook_armed", (d) => broadcast("hook_armed", d));
   session.eventBus.on("subagent_state", (d) => broadcast("subagent_state", d));
   session.eventBus.on("compaction_start", (d) => broadcast("compaction_start", d));
-  session.eventBus.on("compaction_end", (d) => broadcast("compaction_end", d));
+  session.eventBus.on("compaction_end", (d) => {
+    broadcast("compaction_end", d);
+    if (d.compacted) void trophies.count("compactions", opts.id);
+  });
   // Cold-prompt-cache notice: push the fresh TTL anchor + context size whenever
   // a run or compaction settles. Expiry itself is time-based, so the webview
   // also re-reads `cacheExpiry` from /state when the user returns or types.
@@ -1419,6 +1469,9 @@ async function createSession(
   // Bumped by /cancel — a run whose cancel generation changed mid-flight was
   // canceled and earns no XP.
   let cancelGeneration = 0;
+  // Wakes an idle session for its own failed background work; set up once the
+  // run machinery below exists. Null outside the coding agent.
+  let idleWake: IdleWakeController | null = null;
   // Autopilot (auto-review) toggle for THIS window's project. Loaded from
   // ezcoder-app.json on boot; flipped via POST /autopilot. When on, POST /prompt runs
   // runAutopilotCycle after the user's turn settles — Nolan auto-reviews the work
@@ -1562,21 +1615,26 @@ async function createSession(
     nolanModelOverride = null;
   }
 
-  /** The model Nolan uses next turn: the pin when set, else EZ Coder's. */
+  /** The model Nolan uses next turn: the pin when set, else EZ Coder's. Nolan never
+   *  follows GG onto a paid tier: he runs in the background, unwatched. */
   function nolanCurrentModel(): { provider: Provider; model: string } {
     if (nolanModelOverride) return nolanModelOverride;
     const st = session.getState();
-    return { provider: st.provider, model: st.model };
+    return { provider: st.provider, model: withoutPaidTier(st.model) };
   }
 
   /** Footer payload: Nolan's effective model + whether it's a pin. Merged into
    *  /state, the SSE ready frame, and every nolan_model_change broadcast. */
   function nolanStatePayload(): ReturnType<typeof effectiveNolanModel> {
     const st = session.getState();
-    return effectiveNolanModel(nolanModelOverride, { provider: st.provider, model: st.model });
+    return effectiveNolanModel(nolanModelOverride, {
+      provider: st.provider,
+      model: withoutPaidTier(st.model),
+    });
   }
 
-  async function syncNolanModel(provider: Provider, model: string): Promise<void> {
+  async function syncNolanModel(provider: Provider, requested: string): Promise<void> {
+    const model = withoutPaidTier(requested);
     if (nolanRunning) {
       pendingNolanModel = { provider, model };
       return;
@@ -1647,7 +1705,9 @@ async function createSession(
   let nolanAutoAbort = new AbortController();
   let pendingNolanAutoModel: { provider: Provider; model: string } | null = null;
 
-  async function syncNolanAutoModel(provider: Provider, model: string): Promise<void> {
+  async function syncNolanAutoModel(provider: Provider, requested: string): Promise<void> {
+    // The autopilot reviewer runs every turn, unwatched: never on a paid tier.
+    const model = withoutPaidTier(requested);
     if (autopilotReviewing) {
       pendingNolanAutoModel = { provider, model };
       return;
@@ -1691,6 +1751,8 @@ async function createSession(
 
   function abortOwnedWork(): void {
     cancelGeneration++;
+    // Stop means "stop acting on your own" — that includes background alerts.
+    idleWake?.noteStop();
     abort.abort();
     // An MCP tool call parked on user input is not cancelled by the signal —
     // the promise lives in the bridge. Release it, or the aborted turn's tool
@@ -1744,6 +1806,7 @@ async function createSession(
     const runStartedAt = Date.now();
     const cancelGenAtStart = cancelGeneration;
     const assistantsBeforeRun = countAssistantMessages(session.getMessages());
+    const messagesBeforeRun = session.getMessages().length;
     let runSucceeded = false;
     broadcast("run_start", {
       text: label,
@@ -1778,7 +1841,25 @@ async function createSession(
         countAssistantMessages(session.getMessages()) > assistantsBeforeRun
       ) {
         // Fire-and-forget — XP must never delay or break run teardown.
-        void progress.awardRun(cwd, runStartedAt, opts.id);
+        // Trophies follow the award so they see this run's commits and level.
+        const st = session.getState();
+        const runFacts = {
+          mode,
+          chatAgent: mode === "chat" ? chatAgent : undefined,
+          goal: goal !== null,
+          provider: st.provider,
+          model: st.model,
+          tools: extractTurnToolCalls(session.getMessages(), messagesBeforeRun),
+          durationMs: Date.now() - runStartedAt,
+          hour: new Date().getHours(),
+          day: new Date().getDay(),
+          date: localTrophyDate(new Date()),
+          // A hash, so the trophies file never holds project paths.
+          project: createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16),
+        };
+        void progress
+          .awardRun(cwd, runStartedAt, opts.id)
+          .then(() => trophies.recordRun(runFacts, opts.id));
       }
       // A run may have switched branches, changed files, or spawned/finished
       // background tasks. Refresh the workspace extras once it settles.
@@ -2049,6 +2130,43 @@ async function createSession(
     },
   });
 
+  // ── Idle wake for background alerts ────────────────────────
+  // A background task that fails, or a child agent that finishes, after the
+  // agent ended its turn would otherwise wait for the user's next message.
+  // The coding agent only: chat agents start no background work, Motion owns
+  // its own render flow, and GG Goals drives its workers itself.
+  if (mode !== "chat" && mode !== "motion" && !goal) {
+    idleWake = new IdleWakeController({
+      isBusy: () =>
+        running ||
+        runClaim.active ||
+        autopilotActive ||
+        autopilotReviewing ||
+        drainingStrandedQueue ||
+        taskRunAll,
+      isBlocked: () => pendingPlanPath !== null,
+      hasPendingAlert: () => session.hasPendingBackgroundAlert(),
+      humanPromptSeq: () => session.getHumanPromptSeq(),
+      onSkip: (reason) =>
+        log("INFO", "app-sidecar", "background alert left for the next message", { reason }),
+      start: async () => {
+        // Same race guard as POST /prompt: claim synchronously or yield.
+        if (!runClaim.claim()) return;
+        try {
+          log("INFO", "app-sidecar", "starting a run for a background alert");
+          await runAgent("Background task update", async () => {
+            await session.continueFromNotifications();
+          });
+          await runStrandedQueue();
+        } finally {
+          runClaim.release();
+          offerPendingPlan();
+        }
+      },
+    });
+    session.onBackgroundAlert(() => idleWake?.trigger());
+  }
+
   // ── Provider auth (login) bridge ───────────────────────────
   // OAuth login functions are interactive (open a URL, sometimes prompt for a
   // pasted code). We run one at a time and surface every step over SSE so the
@@ -2112,11 +2230,15 @@ async function createSession(
           ? ((await auth.getCredentials(oauthKey))?.usageExhaustedUntil ?? 0)
           : 0;
         const oauthSidelined = hasOAuth && Date.now() < exhaustedUntil && hasApiKey;
-        const activeMethod = connectedMethods.includes("oauth")
-          ? oauthSidelined
-            ? ("apikey" as const)
-            : ("oauth" as const)
-          : connectedMethods[0];
+        // Gemini resolves the API key first (model registry authStorageKeys).
+        const keyFirst = p.value === "gemini" && hasApiKey;
+        const activeMethod = keyFirst
+          ? ("apikey" as const)
+          : connectedMethods.includes("oauth")
+            ? oauthSidelined
+              ? ("apikey" as const)
+              : ("oauth" as const)
+            : connectedMethods[0];
 
         // `methodDetails` is the server-side lookup table behind
         // `methodGuidance` — shipping both would duplicate every string on the
@@ -2213,28 +2335,48 @@ async function createSession(
   let gitTargetGeneration = 0;
   /**
    * A goal's attached folders changed: point the titlebar's git state at the
-   * new project folder. No-op when the target is unchanged; a newer call or
-   * teardown supersedes one still reading git.
+   * new project folder. No-op when the target is unchanged, unless `reread`
+   * asks for a fresh read of the same folder; a newer call or teardown
+   * supersedes one still reading git.
    */
-  async function retargetGit(): Promise<void> {
+  async function retargetGit(
+    options: { reread?: boolean; timeoutMs?: number } = {},
+  ): Promise<void> {
     const generation = ++gitTargetGeneration;
-    const next = await resolveGitCwd(cwd, goal?.record ?? null);
-    if (generation !== gitTargetGeneration || repoWatchStopped || next === gitCwd) return;
-    const state = await readGitState(next);
+    const read = { timeoutMs: options.timeoutMs };
+    const { dir: next } = await resolveGitCwd(cwd, goal?.record ?? null, (dir) =>
+      isGitRepo(dir, read),
+    );
     if (generation !== gitTargetGeneration || repoWatchStopped) return;
-    repoWatch.unsubscribe();
+    if (next === gitCwd && !options.reread) return;
+    const state = await readGitState(next, read);
+    if (generation !== gitTargetGeneration || repoWatchStopped) return;
+    const moved = next !== gitCwd || state.gitHubSlug !== gitHubSlug;
     gitCwd = next;
     gitBranch = state.branch;
     gitIsRepo = state.isRepo;
     gitDirtyFileCount = state.dirtyFileCount;
     gitHubSlug = state.gitHubSlug;
-    // The old repo's numbers don't apply; the new watchers fill these in.
-    gitHubIssues = null;
-    gitHubPRs = null;
-    gitHubCI = null;
-    projectHealthScan = null;
-    repoWatch = watchRepo(gitCwd);
+    if (moved) {
+      // The old repo's numbers don't apply; the new watchers fill these in.
+      repoWatch.unsubscribe();
+      gitHubIssues = null;
+      gitHubPRs = null;
+      gitHubCI = null;
+      projectHealthScan = null;
+      repoWatch = watchRepo(gitCwd);
+    }
     broadcast("extras", footerExtras());
+  }
+  // Git missed its 2 s limit at startup (a busy machine): the titlebar would
+  // show "not a repo" until the next run. Read again in the background with
+  // more time; window creation doesn't wait for it.
+  if (!initialTarget.settled || !initialGit.settled) {
+    retargetGit({ reread: true, timeoutMs: SLOW_GIT_READ_TIMEOUT_MS }).catch((err: unknown) => {
+      log("WARN", "app-sidecar", "slow git re-read failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   const routeCtx: SessionRouteContext = {
@@ -2267,6 +2409,7 @@ async function createSession(
     nolanStatePayload,
     footerExtras,
     progress,
+    trophies,
     memoryStore,
     jiwaStore,
     get clientSeq() {
@@ -2484,6 +2627,7 @@ async function createSession(
     // started. Otherwise they keep streaming tokens and running tools on a
     // session that is being torn down.
     abortOwnedWork();
+    idleWake?.dispose();
     cancelHfPull();
     releaseRunAwake?.();
     releaseRunAwake = null;

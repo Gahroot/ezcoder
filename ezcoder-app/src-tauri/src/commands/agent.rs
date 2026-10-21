@@ -156,6 +156,22 @@ pub(crate) async fn agent_progress(
     sidecar_json(res).await
 }
 
+/// Proxy: every trophy, earned or not. Daemon-level like progress (trophies
+/// are app-wide), so no session header.
+#[tauri::command]
+pub(crate) async fn agent_trophies(
+    webview: WebviewWindow,
+    client: State<'_, reqwest::Client>,
+) -> Result<serde_json::Value, String> {
+    let port = port_for(&webview).ok_or("daemon not ready")?;
+    let res = client
+        .get(format!("{}/trophies", sidecar_base(port)))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    sidecar_json(res).await
+}
+
 /// Proxy: the app-wide "keep computer awake while the agent works" setting.
 /// Daemon-level (one OS assertion for every window), so no session header.
 #[tauri::command]
@@ -926,18 +942,24 @@ pub(crate) async fn agent_models(
 }
 
 /// Proxy: switch the active model. Returns the new provider/model + thinking state.
+/// `confirm_paid` carries the user's explicit "yes, spend real money" for a
+/// model that bills usage credits; the sidecar refuses such a switch without it.
 #[tauri::command]
 pub(crate) async fn agent_switch_model(
     webview: WebviewWindow,
     client: State<'_, reqwest::Client>,
     model: String,
+    confirm_paid: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let port = port_for(&webview).ok_or("daemon not ready")?;
     let ez_sid = session_for(&webview).ok_or("session not ready")?;
     let res = client
         .post(format!("{}/model", sidecar_base(port)))
         .header("x-ez-session", &ez_sid)
-        .json(&serde_json::json!({ "model": model }))
+        .json(&serde_json::json!({
+            "model": model,
+            "confirmPaid": confirm_paid.unwrap_or(false),
+        }))
         .send()
         .await
         .map_err(|e| e.to_string())?;

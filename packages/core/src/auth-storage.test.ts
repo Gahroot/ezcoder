@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   AuthStorage,
+  GEMINI_API_KEY,
+  GEMINI_API_KEY_BASE_URL,
   MOONSHOT_OAUTH_KEY,
   NotLoggedInError,
   XAI_OAUTH_KEY,
@@ -15,6 +17,11 @@ import {
 
 const refreshOpenAIToken = vi.hoisted(() => vi.fn());
 vi.mock("./oauth/openai.js", () => ({ refreshOpenAIToken }));
+const refreshGeminiToken = vi.hoisted(() => vi.fn());
+vi.mock("./oauth/gemini.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  refreshGeminiToken,
+}));
 const refreshKimiToken = vi.hoisted(() => vi.fn());
 vi.mock("./oauth/kimi.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -212,6 +219,50 @@ describe("AuthStorage — shared-file concurrency", () => {
     expect(refreshed.accessToken).toBe("token-fresh");
     expect(refreshOpenAIToken).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps a sibling's newer login when its own refresh is rejected mid-request", async () => {
+    const filePath = await tempAuthFile();
+    tmpFiles.push(filePath);
+    const session = new AuthStorage(filePath);
+    await session.setCredentials("openai", oauthCreds("token-a"));
+    await session.setCredentials("anthropic", oauthCreds("anthropic-token"));
+
+    // While this refresh is in flight, a sibling (which broke the file lock)
+    // refreshes the same grant and saves token-b; ours is then rejected as reused.
+    refreshOpenAIToken.mockImplementation(async () => {
+      const disk = JSON.parse(await fs.readFile(filePath, "utf-8"));
+      disk.openai = oauthCreds("token-b");
+      await fs.writeFile(filePath, JSON.stringify(disk));
+      throw new Error("OpenAI token refresh failed (400): invalid_grant");
+    });
+
+    const recovered = await session.resolveCredentials("openai", { forceRefresh: true });
+
+    // Deleting from the pre-request snapshot used to wipe token-b from disk and
+    // sign every window out ("Not logged in"), forcing a manual re-login.
+    expect(recovered.accessToken).toBe("token-b");
+    const onDisk = JSON.parse(await fs.readFile(filePath, "utf-8"));
+    expect(onDisk.openai.accessToken).toBe("token-b");
+    expect(onDisk.anthropic.accessToken).toBe("anthropic-token");
+  });
+
+  it("still signs out when the rejected refresh token is the one on disk", async () => {
+    const filePath = await tempAuthFile();
+    tmpFiles.push(filePath);
+    const session = new AuthStorage(filePath);
+    await session.setCredentials("openai", oauthCreds("token-a"));
+    await session.setCredentials("anthropic", oauthCreds("anthropic-token"));
+    refreshOpenAIToken.mockRejectedValue(
+      new Error("OpenAI token refresh failed (400): invalid_grant"),
+    );
+
+    await expect(session.resolveCredentials("openai", { forceRefresh: true })).rejects.toThrow(
+      NotLoggedInError,
+    );
+    const onDisk = JSON.parse(await fs.readFile(filePath, "utf-8"));
+    expect(onDisk.openai).toBeUndefined();
+    expect(onDisk.anthropic.accessToken).toBe("anthropic-token");
+  });
 });
 
 describe("AuthStorage — proactive refresh threshold (kimi-code parity)", () => {
@@ -335,6 +386,43 @@ describe("AuthStorage — Xiaomi dual credential (Token Plan vs. API Credits)", 
 
     expect(refreshKimiToken).toHaveBeenCalledTimes(1);
     expect(creds.accessToken).toBe("fresh");
+  });
+
+  it("uses a Gemini API key first, and still refreshes the Google sign-in when it is the only one", async () => {
+    const keys = [GEMINI_API_KEY, "gemini"];
+    const both = await makeStorage();
+    await both.setCredentials("gemini", oauthCreds("oauth-token"));
+    await both.setCredentials(GEMINI_API_KEY, {
+      accessToken: "aistudio-key",
+      refreshToken: "",
+      expiresAt: Date.now() + 1_000_000,
+      baseUrl: GEMINI_API_KEY_BASE_URL,
+    });
+    const picked = await both.resolveCredentials("gemini", { storageKeys: keys });
+    // The key carries the public API base URL — the transport routes on it.
+    expect(picked).toMatchObject({ accessToken: "aistudio-key", baseUrl: GEMINI_API_KEY_BASE_URL });
+    expect(await both.hasProviderAuth("gemini")).toBe(true);
+
+    // OAuth only, and expired: reached through the list, it must still refresh.
+    const oauthOnly = await makeStorage();
+    await oauthOnly.setCredentials("gemini", {
+      accessToken: "stale",
+      refreshToken: "g-refresh",
+      expiresAt: Date.now() - 1_000,
+    });
+    refreshGeminiToken.mockResolvedValueOnce({
+      accessToken: "fresh",
+      refreshToken: "g-refresh-2",
+      expiresAt: Date.now() + 1_000_000,
+    });
+    const refreshed = await oauthOnly.resolveCredentials("gemini", { storageKeys: keys });
+    expect(refreshGeminiToken).toHaveBeenCalledTimes(1);
+    expect(refreshed.accessToken).toBe("fresh");
+
+    // API key only satisfies hasProviderAuth too.
+    const keyOnly = await makeStorage();
+    await keyOnly.setCredentials(GEMINI_API_KEY, oauthCreds("k", ""));
+    expect(await keyOnly.hasProviderAuth("gemini")).toBe(true);
   });
 
   it("resolveCredentials prefers the first storageKey, falling back to the next when only that's configured", async () => {

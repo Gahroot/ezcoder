@@ -75,7 +75,13 @@ export function handleRunControlRoutes(
         .filter((m) => m.provider === "local" || loggedIn.includes(m.provider))
         .map((m) => {
           if (m.provider !== "local") {
-            return { id: m.id, name: m.name, provider: m.provider };
+            // `billing` flags models that change what the user pays (fast modes).
+            return {
+              id: m.id,
+              name: m.name,
+              provider: m.provider,
+              ...(m.billing ? { billing: m.billing } : {}),
+            };
           }
           const probed = findProbedModel(ctx.localProbes, m.id);
           return {
@@ -101,8 +107,11 @@ export function handleRunControlRoutes(
     void readBody(req, res).then(async (raw) => {
       if (raw === null) return;
       let modelId: string;
+      let confirmPaid: boolean;
       try {
-        modelId = (JSON.parse(raw) as { model?: string }).model ?? "";
+        const body = JSON.parse(raw) as { model?: string; confirmPaid?: unknown };
+        modelId = body.model ?? "";
+        confirmPaid = body.confirmPaid === true;
       } catch {
         json(res, 400, { error: "invalid JSON body" });
         return;
@@ -110,6 +119,17 @@ export function handleRunControlRoutes(
       const target = getModel(modelId);
       if (!target) {
         json(res, 404, { error: `unknown model: ${modelId}` });
+        return;
+      }
+      // A model that spends real money (Claude fast mode bills usage credits)
+      // is never switched to implicitly: the caller must pass the user's
+      // explicit confirmation. Fails closed for every client of this route.
+      if (target.billing?.paid && !confirmPaid) {
+        json(res, 409, {
+          error: `${target.name} spends real money: ${target.billing.detail} Confirm before switching.`,
+          requiresPaidConfirmation: true,
+          billing: target.billing,
+        });
         return;
       }
       if (ctx.running) {
@@ -126,7 +146,7 @@ export function handleRunControlRoutes(
           return;
         }
       }
-      await ctx.session.switchModel(target.provider, target.id);
+      await ctx.session.switchModel(target.provider, target.id, { confirmPaid });
       // Nolan follows EZ Coder's model only while un-pinned; a user-set Nolan
       // override survives EZ Coder model switches untouched.
       if (!ctx.nolanModelOverride) {
@@ -168,6 +188,7 @@ export function handleRunControlRoutes(
       // the footer's context meter rescales immediately.
       ctx.broadcast("extras", ctx.footerExtras());
       json(res, 200, { provider: target.provider, model: target.id, ...payload });
+      void ctx.trophies.count("modelSwitches", ctx.sessionId);
     });
     return true;
   }
@@ -212,6 +233,14 @@ export function handleRunControlRoutes(
           json(res, 404, { error: `unknown model: ${modelId}` });
           return;
         }
+        // Nolan and the autopilot reviewer run unwatched in the background, so
+        // they never run on a model that spends real money.
+        if (target.billing?.paid) {
+          json(res, 400, {
+            error: `${target.name} spends real money, so it's only for your main chat. Pick another model for Nolan.`,
+          });
+          return;
+        }
         ctx.nolanModelOverride = { provider: target.provider, model: target.id };
         await saveNolanModelPref(ctx.cwd, ctx.nolanModelOverride);
         await ctx.syncNolanModel(target.provider, target.id);
@@ -220,6 +249,7 @@ export function handleRunControlRoutes(
           provider: target.provider,
           model: target.id,
         });
+        void ctx.trophies.count("nolanPins", ctx.sessionId);
       }
       const payload = ctx.nolanStatePayload();
       ctx.broadcast("nolan_model_change", payload);
@@ -260,6 +290,7 @@ export function handleRunControlRoutes(
         ...(cancelled ? { cancelledId: id } : {}),
       });
       json(res, 200, { cancelled, queued });
+      if (cancelled) void ctx.trophies.count("queueCancels", ctx.sessionId);
     });
     return true;
   }
@@ -282,6 +313,7 @@ export function handleRunControlRoutes(
       // Push the updated task list right away rather than waiting for the poll.
       ctx.broadcast("tasks", { tasks: ctx.session.listBackgroundProcesses() });
       json(res, 200, { message });
+      void ctx.trophies.count("processKills", ctx.sessionId);
     });
     return true;
   }
@@ -308,6 +340,7 @@ export function handleRunControlRoutes(
         ...(body.cwd ? { cwd: body.cwd } : {}),
       });
       json(res, result.ok ? 200 : 400, result);
+      if (result.ok) void ctx.trophies.count("transcriptImports", ctx.sessionId);
     });
     return true;
   }
@@ -350,6 +383,7 @@ export function handleRunControlRoutes(
       };
       ctx.broadcast("thinking_change", payload);
       json(res, 200, payload);
+      void ctx.trophies.count("thinkingChanges", ctx.sessionId);
     });
     return true;
   }
@@ -405,6 +439,7 @@ export function handleRunControlRoutes(
         runState: ctx.runLifecycle.state,
         drained,
       });
+      if (result.status === "cancelled") void ctx.trophies.count("cancels", ctx.sessionId);
     })().catch((error) => {
       ctx.broadcast("cancel_failed", { error: "cancel_failed", runState: ctx.runLifecycle.state });
       json(res, 500, {
@@ -433,6 +468,7 @@ export function handleRunControlRoutes(
         ctx.broadcast("session_reset", {});
         // The new conversation's file, so a daemon restart reopens it.
         json(res, 200, { ok: true, sessionPath: ctx.session.getState().sessionPath ?? null });
+        void ctx.trophies.count("newSessions", ctx.sessionId);
       })
       .catch((err) => {
         json(res, 500, { error: err instanceof Error ? err.message : String(err) });
@@ -488,6 +524,7 @@ export function handleRunControlRoutes(
         ctx.broadcast("session_reset", { planTotal });
         ctx.broadcast("plan_progress", ctx.planProgressPayload());
         json(res, 200, { ok: true, planTotal });
+        void ctx.trophies.count("plansApproved", ctx.sessionId);
       } catch (err) {
         json(res, 500, { error: err instanceof Error ? err.message : String(err) });
       }

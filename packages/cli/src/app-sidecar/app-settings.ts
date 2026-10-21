@@ -6,7 +6,7 @@ import type { NolanModelPref } from "../core/nolan-model.js";
 import { SettingsManager, type Settings } from "../core/settings-manager.js";
 import { log } from "../core/logger.js";
 import { atomicWrite } from "../core/session-storage.js";
-import { withFileLock } from "@prestyj/core";
+import { withFileLock, withoutPaidTier } from "@prestyj/core";
 
 export const ALL_PROVIDERS: Provider[] = [
   // US
@@ -133,22 +133,27 @@ export async function updateAppSettings<T = void>(
 /** Read this project's persisted model/thinking prefs, if any. */
 export async function loadProjectModelPrefs(cwd: string): Promise<ProjectModelPrefs | undefined> {
   const s = await loadAppSettings();
-  return s.projectModels?.[projectModelKey(cwd)];
+  const prefs = s.projectModels?.[projectModelKey(cwd)];
+  // A paid tier (Claude fast mode) never comes back on its own: a restored or
+  // new session starts on the standard model and the user opts in again.
+  return prefs ? { ...prefs, model: withoutPaidTier(prefs.model) } : undefined;
 }
 
 /** Persist this project's model/thinking prefs via read-modify-write so the rest
  *  of the settings file (projectsRoot, other projects' entries) is preserved. */
 export async function saveProjectModelPrefs(cwd: string, prefs: ProjectModelPrefs): Promise<void> {
   const key = projectModelKey(cwd);
+  const safe = { ...prefs, model: withoutPaidTier(prefs.model) };
   await updateAppSettings((s) => {
-    s.projectModels = { ...(s.projectModels ?? {}), [key]: prefs };
+    s.projectModels = { ...(s.projectModels ?? {}), [key]: safe };
   });
 }
 
 /** Read this project's persisted Nolan model override, if any. */
 export async function loadNolanModelPref(cwd: string): Promise<NolanModelPref | undefined> {
   const s = await loadAppSettings();
-  return s.nolanModels?.[projectModelKey(cwd)];
+  const pref = s.nolanModels?.[projectModelKey(cwd)];
+  return pref ? { ...pref, model: withoutPaidTier(pref.model) } : undefined;
 }
 
 /** Persist (or with null, clear) this project's Nolan model override via
@@ -191,7 +196,8 @@ export async function persistModelSelection(
     const sm = new SettingsManager(settingsFile);
     await sm.load();
     await sm.set("defaultProvider", provider as Settings["defaultProvider"]);
-    await sm.set("defaultModel", model);
+    // Never persist a paid tier as the default every new session boots with.
+    await sm.set("defaultModel", withoutPaidTier(model));
   } catch (err) {
     log("WARN", "app-sidecar", "failed to persist model selection", { err: String(err) });
   }
