@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createHash } from "node:crypto";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
-import { getAppPaths, type AppPaths } from "@prestyj/core";
+import { getAppPaths, withoutPaidTier, type AppPaths } from "@prestyj/core";
 import type { ThemeName } from "./ui/theme/theme.js";
 
 export const APP_NAME = "ezcoder";
@@ -100,7 +100,9 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
       result.provider = raw.defaultProvider;
       // Only honor the saved model when the provider was also accepted —
       // otherwise a model from the removed provider would leak through.
-      if (typeof raw.defaultModel === "string") result.model = raw.defaultModel;
+      // A saved paid tier (Claude fast mode bills usage credits) never boots a
+      // session by itself; it starts on the standard model instead.
+      if (typeof raw.defaultModel === "string") result.model = withoutPaidTier(raw.defaultModel);
     }
     if (raw.autoCompact === false) result.autoCompact = false;
     if (

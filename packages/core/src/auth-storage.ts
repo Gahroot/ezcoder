@@ -113,6 +113,18 @@ export function providerStorageKeys(provider: string): string[] {
 export const XIAOMI_CREDITS_KEY = "xiaomi-credits";
 
 /**
+ * Storage key for a Gemini API key (Google AI Studio, billed per token), served
+ * by the public Gemini API at {@link GEMINI_API_KEY_BASE_URL}. Kept distinct from
+ * the `gemini` entry, which holds the Code Assist OAuth login: Google stopped
+ * serving Code Assist to personal accounts on 2026-06-18, so an API key is how
+ * those accounts reach Gemini at all, and a licensed account may hold both.
+ */
+export const GEMINI_API_KEY = "gemini-api";
+
+/** Public Gemini API (AI Studio key). The transport routes on this base URL. */
+export const GEMINI_API_KEY_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+/**
  * Prefix for local-endpoint credentials (`local:ollama`, `local:lmstudio`, …).
  * One entry per endpoint, each carrying that endpoint's `baseUrl`, so the
  * existing `resolveCredentials({ storageKeys })` override resolves a local model
@@ -270,6 +282,9 @@ export class AuthStorage {
     }
     if (provider === "xiaomi") {
       return Boolean(this.data["xiaomi"] || this.data[XIAOMI_CREDITS_KEY]);
+    }
+    if (provider === "gemini") {
+      return Boolean(this.data["gemini"] || this.data[GEMINI_API_KEY]);
     }
     // `local` has no single credential — any configured endpoint counts.
     if (provider === "local") {
@@ -573,6 +588,15 @@ export class AuthStorage {
             ...(opts.rejectedToken !== undefined ? { rejectedToken: opts.rejectedToken } : {}),
           });
         }
+        // The provider's own key in an ordered list (Gemini: API key first,
+        // then the `gemini` Code Assist OAuth login) may be a refreshable OAuth
+        // credential — resolve it through the normal path so it refreshes.
+        if (key === provider) {
+          return await this.resolveCredentials(provider, {
+            ...(opts.forceRefresh ? { forceRefresh: true } : {}),
+            ...(opts.rejectedToken !== undefined ? { rejectedToken: opts.rejectedToken } : {}),
+          });
+        }
         return creds;
       }
       throw new NotLoggedInError(provider);
@@ -716,9 +740,26 @@ export class AuthStorage {
           /invalid_grant|invalid_token|invalid.*refresh/i.test(msg) ||
           /unauthorized/i.test(msg);
         if (isAuthFailure) {
-          delete latest[provider];
-          this.data = latest;
-          await atomicWriteFile(this.filePath, JSON.stringify(latest, null, 2));
+          // Re-read before deleting. The refresh ran over the network while
+          // the file lock can be broken by a waiter (5s wait vs 30s request);
+          // a sibling may have refreshed with this grant or re-logged in
+          // meanwhile, so the rejection only proves OUR token is dead.
+          // Writing the pre-request snapshot back would erase their fresh
+          // login and sign every window out.
+          const current = await readAuthData(this.filePath);
+          const currentCreds = current[provider];
+          if (currentCreds && currentCreds.refreshToken !== latestCreds.refreshToken) {
+            log(
+              "WARN",
+              "auth",
+              `${provider} token refresh was rejected, but another gg process already saved a newer credential — adopting it instead of signing out`,
+            );
+            this.data = current;
+            return currentCreds;
+          }
+          delete current[provider];
+          this.data = current;
+          await atomicWriteFile(this.filePath, JSON.stringify(current, null, 2));
           throw new NotLoggedInError(provider);
         }
         throw err;
