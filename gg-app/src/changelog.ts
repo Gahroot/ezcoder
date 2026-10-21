@@ -22,6 +22,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.95.0",
+    date: "2026-10-21",
+    items: [
+      "Trophies are here, and there are `144` of them to hunt. Every one you earn teaches you something GG can do, from your first slash command and a polished `Enhance` prompt all the way up to a `365`-day streak. Each unlock lands in the corner as a card that charges up, crackles with light and spins over, with its own sound, then files itself away. Open the context key on the deck and hit the trophy button beside your level to see what you've won, what's still out there and exactly how to get it. Everyone starts from zero today, so the race is wide open.",
+    ],
+  },
+  {
     version: "0.94.3",
     date: "2026-10-21",
     items: [
