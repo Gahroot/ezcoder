@@ -559,6 +559,43 @@ export async function getProgress(): Promise<ProgressSnapshot> {
   return invoke<ProgressSnapshot>("agent_progress");
 }
 
+// ── Trophies ─────────────────────────────────────────────────────────────
+
+export type TrophyTier = "bronze" | "silver" | "gold" | "platinum";
+
+/** One trophy, as the sidecar computed it. Secret, unearned ones arrive redacted. */
+export interface Trophy {
+  id: string;
+  title: string;
+  tier: TrophyTier;
+  category: string;
+  description: string;
+  hint: string;
+  goal: number;
+  current: number;
+  /** ISO time it was earned, or null. */
+  unlockedAt: string | null;
+  secret: boolean;
+}
+
+export interface TrophySnapshot {
+  trophies: Trophy[];
+  categories: Array<{ id: string; label: string }>;
+  earned: number;
+  total: number;
+  /** Ids earned by the event this frame came from (empty on a plain refresh). */
+  unlocked: string[];
+  eventNonce: string | null;
+  /** True only on the frame sent to the window whose action earned them. */
+  origin?: boolean;
+}
+
+/** Every trophy, earned or not (initial paint; live updates ride `trophies` frames). */
+export async function getTrophies(): Promise<TrophySnapshot> {
+  await waitForReady();
+  return invoke<TrophySnapshot>("agent_trophies");
+}
+
 /** Non-2xx sidecar errors throw from the proxy; also reject a malformed body. */
 function keepAwakeEnabled(result: { enabled?: unknown; error?: unknown }): boolean {
   if (typeof result.enabled === "boolean") return result.enabled;

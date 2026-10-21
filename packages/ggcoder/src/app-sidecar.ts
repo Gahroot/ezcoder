@@ -16,7 +16,7 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { environmentSecrets, formatChatError, redactValue } from "@kenkaiiii/gg-ai";
 import type { AddressInfo } from "node:net";
 import { createAppErrorPayload } from "./app-error.js";
@@ -42,7 +42,11 @@ import { createMotionAgentSession } from "./motion-agent/motion-agent.js";
 import { buildJiwaTools, JiwaStore } from "./chat-agents/jiwa.js";
 import { buildMemoryTools, MemoryStore } from "./chat-agents/memory.js";
 import { buildKenSystemPrompt, buildKenAutopilotSystemPrompt } from "./core/ken-prompt.js";
-import { countAssistantMessages, type WorkflowCommandSpec } from "./core/autopilot-gate.js";
+import {
+  countAssistantMessages,
+  extractTurnToolCalls,
+  type WorkflowCommandSpec,
+} from "./core/autopilot-gate.js";
 import { describeRunVerification, describeTurnVerification } from "./core/run-status.js";
 import { validateKenModelPref, effectiveKenModel, type KenModelPref } from "./core/ken-model.js";
 import type { RunOutcome } from "./core/session-manager.js";
@@ -119,6 +123,8 @@ import {
 } from "./app-sidecar/app-settings.js";
 import { KEN_ALLOWED_TOOLS } from "./app-sidecar/ken-context.js";
 import { type ProgressManager, createProgressManager } from "./app-sidecar/progress-manager.js";
+import { type TrophyManager, createTrophyManager } from "./app-sidecar/trophy-manager.js";
+import { localTrophyDate } from "./core/trophies/engine.js";
 import { handleSessionRoutes } from "./app-sidecar/session-routes.js";
 import { handleGoalRoutes } from "./app-sidecar/goal-routes.js";
 import { readGitState, resolveGitCwd } from "./app-sidecar/git-target.js";
@@ -305,6 +311,24 @@ async function main(): Promise<void> {
       ctx.broadcast("progress", { ...snapshot, origin: ctx.id === originId });
   });
 
+  // Trophies — daemon-level like progress. XP totals (commits, streak, level)
+  // come from the progress snapshot rather than being counted twice.
+  const trophies = await createTrophyManager(
+    () => {
+      const p = progress.snapshot();
+      return {
+        prompts: p.totals.prompts,
+        commits: p.totals.commits,
+        linesShipped: p.totals.linesShipped,
+        level: p.level,
+      };
+    },
+    (snapshot, originId) => {
+      for (const ctx of sessions.values())
+        ctx.broadcast("trophies", { ...snapshot, origin: ctx.id === originId });
+    },
+  );
+
   const { subscriptionUsage } = createUsageService(auth);
 
   // git status / GitHub counts / CI pollers, one per repo however many windows
@@ -377,6 +401,7 @@ async function main(): Promise<void> {
               auth,
               paths,
               progress,
+              trophies,
               memoryStore,
               jiwaStore,
               broadcastAll,
@@ -459,6 +484,12 @@ async function main(): Promise<void> {
     // session exists; per-session callers still work through the same endpoint.
     if (method === "GET" && url === "/progress") {
       daemonJson(res, 200, progress.snapshot());
+      return;
+    }
+
+    // Trophies are app-wide too: earned anywhere, shown in every window.
+    if (method === "GET" && url === "/trophies") {
+      daemonJson(res, 200, trophies.snapshot());
       return;
     }
 
@@ -562,6 +593,7 @@ async function createSession(
     auth: AuthStorage;
     paths: Awaited<ReturnType<typeof ensureAppDirs>>;
     progress: ProgressManager;
+    trophies: TrophyManager;
     memoryStore: MemoryStore;
     jiwaStore: JiwaStore;
     /** Fan one frame out to EVERY window, not just this session's. */
@@ -589,6 +621,7 @@ async function createSession(
   const {
     auth,
     progress,
+    trophies,
     memoryStore,
     jiwaStore,
     broadcastAll,
@@ -827,6 +860,7 @@ async function createSession(
     if (started) {
       goal = { dir: current.dir, record: started };
       broadcast("goal_state", { id: started.id, phase: goalPhase(started) });
+      void trophies.count("goalsStarted", opts.id);
     }
   };
   const askUserTool = createAskUserTool(async (request) => {
@@ -1351,7 +1385,10 @@ async function createSession(
   session.eventBus.on("hook_armed", (d) => broadcast("hook_armed", d));
   session.eventBus.on("subagent_state", (d) => broadcast("subagent_state", d));
   session.eventBus.on("compaction_start", (d) => broadcast("compaction_start", d));
-  session.eventBus.on("compaction_end", (d) => broadcast("compaction_end", d));
+  session.eventBus.on("compaction_end", (d) => {
+    broadcast("compaction_end", d);
+    if (d.compacted) void trophies.count("compactions", opts.id);
+  });
   // Cold-prompt-cache notice: push the fresh TTL anchor + context size whenever
   // a run or compaction settles. Expiry itself is time-based, so the webview
   // also re-reads `cacheExpiry` from /state when the user returns or types.
@@ -1756,6 +1793,7 @@ async function createSession(
     const runStartedAt = Date.now();
     const cancelGenAtStart = cancelGeneration;
     const assistantsBeforeRun = countAssistantMessages(session.getMessages());
+    const messagesBeforeRun = session.getMessages().length;
     let runSucceeded = false;
     broadcast("run_start", {
       text: label,
@@ -1790,7 +1828,25 @@ async function createSession(
         countAssistantMessages(session.getMessages()) > assistantsBeforeRun
       ) {
         // Fire-and-forget — XP must never delay or break run teardown.
-        void progress.awardRun(cwd, runStartedAt, opts.id);
+        // Trophies follow the award so they see this run's commits and level.
+        const st = session.getState();
+        const runFacts = {
+          mode,
+          chatAgent: mode === "chat" ? chatAgent : undefined,
+          goal: goal !== null,
+          provider: st.provider,
+          model: st.model,
+          tools: extractTurnToolCalls(session.getMessages(), messagesBeforeRun),
+          durationMs: Date.now() - runStartedAt,
+          hour: new Date().getHours(),
+          day: new Date().getDay(),
+          date: localTrophyDate(new Date()),
+          // A hash, so the trophies file never holds project paths.
+          project: createHash("sha256").update(path.resolve(cwd)).digest("hex").slice(0, 16),
+        };
+        void progress
+          .awardRun(cwd, runStartedAt, opts.id)
+          .then(() => trophies.recordRun(runFacts, opts.id));
       }
       // A run may have switched branches, changed files, or spawned/finished
       // background tasks. Refresh the workspace extras once it settles.
@@ -2323,6 +2379,7 @@ async function createSession(
     kenStatePayload,
     footerExtras,
     progress,
+    trophies,
     memoryStore,
     jiwaStore,
     get clientSeq() {

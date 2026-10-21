@@ -20,6 +20,8 @@ export interface AppPaths {
   agentsDir: string;
   progressFile: string;
   progressBackupFile: string;
+  /** Earned trophies and the counters that unlock them. */
+  trophiesFile: string;
 }
 
 export function getAppPaths(): AppPaths {
@@ -42,5 +44,6 @@ export function getAppPaths(): AppPaths {
     agentsDir: path.join(agentDir, "agents"),
     progressFile: path.join(agentDir, "progress.json"),
     progressBackupFile: path.join(agentDir, "progress.backup.json"),
+    trophiesFile: path.join(agentDir, "trophies.json"),
   };
 }

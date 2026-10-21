@@ -11,6 +11,7 @@ import {
   type GitHubCI,
   type ModelOption,
   type ProgressSnapshot,
+  type TrophySnapshot,
 } from "./agent";
 import type { ActiveSchedule } from "./RunningSchedulesButton";
 import { RunningSchedulesButton } from "./RunningSchedulesButton";
@@ -30,6 +31,7 @@ import { ThinkingDots, thinkingLabel } from "./thinking-display";
 import { useSubscriptionUsage } from "./TitleUsageMeter";
 import { compactResetLabel, fullResetLabel } from "./usage-display";
 import { toast } from "./toast";
+import { TrophiesPanel } from "./TrophiesPanel";
 import { useRadio, type Radio } from "./useRadio";
 import { pluralize } from "./workspace-title";
 
@@ -53,7 +55,8 @@ export type DeckPanelId =
   | "checklist"
   | "health"
   | "scorecard"
-  | "goal";
+  | "goal"
+  | "trophies";
 
 /** A tool that used to be a pop-up dialog, now shown in the deck. */
 export interface DeckTool {
@@ -92,6 +95,8 @@ export interface DeckProps {
   usageExtras: ReactNode;
   /** Level and rank, for the usage panel's level row (it opens Scorecard). */
   progress: ProgressSnapshot | null;
+  /** Every trophy, for the trophies key and its panel; null until loaded. */
+  trophies: TrophySnapshot | null;
   /** Notes, Tasks and Brain: undefined where the workspace has no such tool. */
   tools: Partial<Record<DeckToolId, DeckTool>>;
 }
@@ -207,6 +212,7 @@ const PANEL_NAMES: Readonly<Record<DeckPanelId, string>> = {
   health: "Project Health",
   scorecard: "Scorecard",
   goal: "Goal settings",
+  trophies: "Trophies",
 };
 
 function Rail({
@@ -278,6 +284,8 @@ function Rail({
         <button
           type="button"
           className="key rail-key ctx-key"
+          // Trophies live in the panel this key opens, so an unlock files in here.
+          data-trophy-key=""
           data-hot={hot || undefined}
           title={`Context used: ${contextPct}%`}
           aria-label={`Context ${contextPct}% used. Usage`}
@@ -365,10 +373,14 @@ function PanelBody(
           onOpenHealth={() => props.onPanelChange("health")}
           progress={props.progress}
           onOpenScorecard={() => props.onPanelChange("scorecard")}
+          trophies={props.trophies}
+          onOpenTrophies={() => props.onPanelChange("trophies")}
           extras={props.usageExtras}
           onClose={close}
         />
       );
+    case "trophies":
+      return <TrophiesPanel snapshot={props.trophies} onClose={close} />;
     case "bg":
       return <TasksPanel tasks={props.tasks} onEmpty={close} onClose={close} />;
     case "radio":
@@ -667,6 +679,8 @@ function UsagePanel({
   onOpenHealth,
   progress,
   onOpenScorecard,
+  trophies,
+  onOpenTrophies,
   extras,
   onClose,
 }: {
@@ -676,6 +690,8 @@ function UsagePanel({
   onOpenHealth: () => void;
   progress: ProgressSnapshot | null;
   onOpenScorecard: () => void;
+  trophies: TrophySnapshot | null;
+  onOpenTrophies: () => void;
   extras: ReactNode;
   onClose: () => void;
 }): React.ReactElement {
@@ -739,6 +755,18 @@ function UsagePanel({
       )}
       {progress && (
         <div className="deck-prow level-row">
+          {trophies && (
+            <button
+              type="button"
+              className="key key-sm trophy-key"
+              aria-label={`Trophies, ${trophies.earned} of ${trophies.total} earned`}
+              title={`Trophies: ${trophies.earned} of ${trophies.total} earned`}
+              onClick={onOpenTrophies}
+            >
+              <Icon name="trophy" size={13} />
+              <span className="well">{trophies.earned}</span>
+            </button>
+          )}
           <button
             type="button"
             className="key key-sm level-key"

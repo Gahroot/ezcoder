@@ -157,6 +157,8 @@ import { useWindowFocused } from "./useWindowFocused";
 import { WorkspaceHeader } from "./WorkspaceHeader";
 import { formatWorkspaceTitle } from "./workspace-title";
 import { useProgress } from "./useProgress";
+import { useTrophies } from "./useTrophies";
+import { TrophyUnlock } from "./TrophyUnlock";
 import { SettingsScreen, type SettingsTabId } from "./SettingsScreen";
 import { PromptSendProvider } from "./Markdown";
 import { TranscriptSkeleton } from "./Skeleton";
@@ -190,6 +192,7 @@ import { usePromptHistory } from "./usePromptHistory";
 import { usePromptEnhance } from "./usePromptEnhance";
 import "./App.css";
 import "./Deck.css";
+import "./Trophies.css";
 
 const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Ken for help";
 const INPUT_PLACEHOLDERS = [
@@ -267,6 +270,7 @@ function App(): React.ReactElement {
   // shared setItems/nextId pattern as useKenMentor.
   const { autopilotReviewing, handleAutopilotEvent } = useAutopilot({ setItems, nextId });
   const { snapshot: progress, levelUp, levelUpNonce, levelUpOrigin } = useProgress();
+  const trophies = useTrophies();
   const [, setRankCelebrateNonce] = useState<string | null>(null);
   const [xpChips, setXpChips] = useState<Array<{ id: string; label: string }>>([]);
   const lastProgressXpRef = useRef<number | null>(null);
@@ -2995,6 +2999,7 @@ function App(): React.ReactElement {
                   : undefined,
             }}
             progress={progress}
+            trophies={trophies.snapshot}
             usageExtras={
               windowTotal > 1 &&
               windowIndex !== null && (
@@ -3186,6 +3191,18 @@ function App(): React.ReactElement {
       {/* Workspace toasts (saved transcript, Remote on/off, rank-up) need their
           own host: the one in the Home/Settings branch isn't mounted here. */}
       <Toaster />
+
+      {/* One trophy at a time, in the order earned; it files itself into the
+          deck's trophies key, so it only plays where the deck is. */}
+      {trophies.queue[0] && (
+        <TrophyUnlock
+          key={trophies.queue[0].id}
+          trophy={trophies.queue[0]}
+          snapshot={trophies.snapshot}
+          onOpenTrophies={() => setDeckPanel("trophies")}
+          onDone={trophies.shift}
+        />
+      )}
     </div>
   );
 }
