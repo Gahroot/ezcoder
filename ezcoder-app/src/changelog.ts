@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.92.3",
+    date: "2026-10-21",
+    items: [
+      "The engine just got a big upgrade. I pulled in the latest improvements from the upstream framework, so everything under the hood is sharper, steadier, and ready for more.",
+      "Adding to your task list is now smarter. A new `task-list` skill writes each task as a clear, standalone prompt that can run all on its own.",
+      "I cleaned up the model picker. The older `Claude Opus 5` is retired so `Claude Opus 5.5` leads the way without clutter.",
+    ],
+  },
+  {
     version: "0.92.2",
     date: "2026-10-16",
     items: [
