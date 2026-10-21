@@ -1,5 +1,15 @@
 # @kenkaiiii/ggcoder
 
+## 5.84.3
+
+### Patch Changes
+
+- Updated dependencies [dd2c2e6]
+- Updated dependencies [dd2c2e6]
+  - @kenkaiiii/gg-core@5.84.3
+  - @kenkaiiii/gg-ai@5.84.3
+  - @kenkaiiii/gg-agent@5.84.3
+
 ## 5.84.2
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @kenkaiiii/gg-core
 
+## 5.84.3
+
+### Patch Changes
+
+- dd2c2e6: Stop a rejected OAuth token refresh from signing every window out: re-read auth.json before deleting the credential, and adopt a newer login that another gg process saved while the refresh was in flight.
+- dd2c2e6: Keep long-lived processes logging: rotate the debug log mid-run when the shared file fills, and count the 10 MB cap against this process's own writes instead of the whole file. The app daemon previously went dark within minutes when it started next to a nearly full log.
+  - @kenkaiiii/gg-ai@5.84.3
+
 ## 5.84.2
 
 ### Patch Changes
