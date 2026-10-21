@@ -181,12 +181,6 @@ describe("Claude Opus 5.5", () => {
       maxThinkingLevel: "max",
     });
   });
-
-  it("lists ahead of the Opus 5 it supersedes in the Anthropic picker", () => {
-    const ids = getModelsForProvider("anthropic").map((m) => m.id);
-    expect(ids).toContain("claude-opus-5-5");
-    expect(ids.indexOf("claude-opus-5-5")).toBeLessThan(ids.indexOf("claude-opus-5"));
-  });
 });
 
 describe("Claude Sonnet 5.5", () => {

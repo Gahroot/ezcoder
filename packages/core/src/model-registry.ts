@@ -192,28 +192,6 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "max",
   },
   {
-    // Released 2026-07-24 — "For complex agentic coding and enterprise work".
-    // Near-Fable capability at half the price ($5/$25 vs $10/$50). Adaptive
-    // thinking with the full effort ladder (low→max, xhigh included); dateless
-    // ID is the canonical pinned snapshot (post-4.6 naming scheme). Kept as a
-    // legacy option now that Opus 5.5 leads the line: it's the last Opus that
-    // accepts disabled thinking and forced tool use.
-    id: "claude-opus-5",
-    name: "Claude Opus 5",
-    provider: "anthropic",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportsImages: true,
-    supportsVideo: false,
-    costTier: "high",
-    // Anthropic's API and Claude Code both start the 5.5 family at medium; at a
-    // given level 5.5 thinks more than 5, so the ladder ceiling (max) made fresh
-    // sessions slow and expensive. Users can still opt up.
-    defaultThinkingLevel: "medium",
-    maxThinkingLevel: "max",
-  },
-  {
     // Opus 5.5 in fast mode (research preview): the same model at up to 2.5x
     // output tokens/sec, $8/$40 MTok. @prestyj/ai's `stream()` sends it as
     // `claude-opus-5-5` + `speed: "fast"` + the fast-mode beta. On a Claude

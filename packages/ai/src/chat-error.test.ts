@@ -153,9 +153,9 @@ describe("formatChatError", () => {
     expect(
       formatChatError(new ResponseStalledError("stopped", { inToolCall: false })).guidance,
     ).toBe("Try again, or choose another model if it keeps happening.");
-    expect(formatChatError(new EZCoderAIError("fetch failed", { source: "network" })).headline).toBe(
-      "Couldn’t reach the provider",
-    );
+    expect(
+      formatChatError(new EZCoderAIError("fetch failed", { source: "network" })).headline,
+    ).toBe("Couldn’t reach the provider");
     // The CLI/TUI formats with formatError and must not blame the network either.
     expect(
       formatError(new ResponseStalledError("stopped", { inToolCall: false })).headline,

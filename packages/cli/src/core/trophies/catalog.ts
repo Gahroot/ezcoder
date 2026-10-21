@@ -132,7 +132,8 @@ const DEFS: readonly TrophyDef[] = [
     title: "Second opinion",
     tier: "bronze",
     category: "flow",
-    description: "Nolan Grout is a mentor who reads along and gives advice without touching your code.",
+    description:
+      "Nolan Grout is a mentor who reads along and gives advice without touching your code.",
     hint: "Start a message with @Nolan.",
     stat: count("nolanQuestions"),
     goal: 1,

@@ -223,7 +223,7 @@ Reusable behaviors across projects. Drop `.md` files in:
 
 They get loaded into the system prompt automatically. The agent knows what it can do without you explaining it each session. <kbd>Ctrl+S</kbd> opens a pane to browse and toggle them.
 
-Eleven ship built in, and route themselves when the work matches:
+Twelve ship built in, and route themselves when the work matches:
 
 | Skill              | Fires on                                                                                                                                                                                                                                                                                                                            |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -237,6 +237,7 @@ Eleven ship built in, and route themselves when the work matches:
 | `refactoring`      | Restructuring existing code without changing behavior — "refactor", "clean up", "reduce tech debt", "modernize" or migrate legacy code; test-guarded steps, revert-on-red, characterization tests for untested code.                                                                                                                |
 | `root-cause`       | A bug that resists the obvious fix, makes no sense, or keeps coming back — gated diagnosis from red repro to ranked hypotheses to regression test.                                                                                                                                                                                  |
 | `shared-language`  | Fuzzy or drifting domain vocabulary, recurring naming decisions, and hard-to-reverse decisions worth recording (glossary + decision records).                                                                                                                                                                                       |
+| `task-list`        | Adding items to the project task list — writes each as a standalone, plain-language task prompt that runs on its own and ends with the commit-and-PR instruction.                                                                                                                                                                   |
 | `tdd`              | Test-driven development — red-green-refactor with pre-agreed seams, when the user asks for test-first work.                                                                                                                                                                                                                         |
 
 ---

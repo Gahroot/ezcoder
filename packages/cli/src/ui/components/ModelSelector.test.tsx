@@ -78,9 +78,7 @@ describe("ModelSelector — a model that spends real money", () => {
   it("asks first, defaults to Cancel, and switches only on the explicit yes", async () => {
     const view = renderSelector();
     try {
-      // From Claude Opus 5.5, Claude Opus 5 (kept as a legacy option in this
-      // fork) is one step down and Claude Opus 5.5 Fast two.
-      await press({ downArrow: true });
+      // From Claude Opus 5.5, one step down is Claude Opus 5.5 Fast.
       await press({ downArrow: true });
       await press({ return: true });
       expect(view.onSelect).not.toHaveBeenCalled();
@@ -94,7 +92,6 @@ describe("ModelSelector — a model that spends real money", () => {
 
       // Back in the list: pick it again, then explicitly choose to pay.
       await press({ downArrow: true });
-      await press({ downArrow: true });
       await press({ return: true });
       await press({ downArrow: true });
       send({ return: true });
@@ -107,7 +104,6 @@ describe("ModelSelector — a model that spends real money", () => {
   it("backs out of the confirmation on Escape", async () => {
     const view = renderSelector();
     try {
-      await press({ downArrow: true });
       await press({ downArrow: true });
       await press({ return: true });
       await press({ escape: true });

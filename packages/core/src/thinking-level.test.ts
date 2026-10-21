@@ -59,7 +59,7 @@ describe("thinking-level helpers", () => {
   });
 
   it("cycles Anthropic adaptive Opus models through max, including xhigh", () => {
-    for (const model of ["claude-opus-5-5", "claude-opus-5"]) {
+    for (const model of ["claude-opus-5-5"]) {
       expect(getSupportedThinkingLevels("anthropic", model)).toEqual([
         "low",
         "medium",

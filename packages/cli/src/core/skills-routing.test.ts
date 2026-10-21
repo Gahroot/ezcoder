@@ -359,6 +359,16 @@ describe("skill routing prompts", () => {
         // Spec and standards findings stay unlabeled-merge-proof; security
         // defers to bulletproof instead of duplicating its lane.
         { name: "code-review", markers: ["never merge the lists", "bulletproof"] },
+        // Task prompts run in a fresh agent with no chat context, so each must
+        // stand alone and carry the user's mandated closing instruction verbatim.
+        {
+          name: "task-list",
+          markers: [
+            "Never reference another task",
+            "plain natural language",
+            "use steroids corpus tool implement working code. /commit when done and open a PR but before marking the task done. do not wait for CI to finish.",
+          ],
+        },
       ];
 
       for (const { name, markers } of expectations) {
