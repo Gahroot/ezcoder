@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.32.1
+
+### Patch Changes
+
+- Sync the engine with upstream gg-framework v0.95.0, add the built-in task-list skill, and retire the legacy Claude Opus 5 model in favor of Opus 5.5.
+  - @prestyj/ai@5.32.1
+  - @prestyj/agent@5.32.1
+  - @prestyj/core@5.32.1
+
 ## 5.85.0
 
 ### Minor Changes
@@ -115,6 +124,7 @@
 - @prestyj/core@5.83.0
 
 ## 5.82.0
+
 ## 5.32.0
 
 ### Minor Changes
