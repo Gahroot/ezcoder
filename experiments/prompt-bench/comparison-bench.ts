@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { Agent } from "../../packages/gg-agent/src/agent.js";
-import type { AgentTool } from "../../packages/gg-agent/src/types.js";
-import type { Message, Usage } from "@kenkaiiii/gg-ai";
-import { redactValue } from "../../packages/gg-ai/src/redaction.js";
-import { VerificationGate, isCodeFilePath, detectCheckWeakening } from "../../packages/ggcoder/src/core/verification-gate.js";
-import { ReviewCoverageTracker, evaluateIdealReview, detectTestDrift, buildReviewCoverageMessage, buildReviewCoverageEscalationMessage, withReviewCoverageRequirements } from "../../packages/ggcoder/src/core/ideal-review.js";
+import { Agent } from "../../packages/agent/src/agent.js";
+import type { AgentTool } from "../../packages/agent/src/types.js";
+import type { Message, Usage } from "@prestyj/ai";
+import { redactValue } from "../../packages/ai/src/redaction.js";
+import { VerificationGate, isCodeFilePath, detectCheckWeakening } from "../../packages/cli/src/core/verification-gate.js";
+import { ReviewCoverageTracker, evaluateIdealReview, detectTestDrift, buildReviewCoverageMessage, buildReviewCoverageEscalationMessage, withReviewCoverageRequirements } from "../../packages/cli/src/core/ideal-review.js";
 import { loadAuth } from "./auth.js";
 import { ARMS, ROOT, PROJECT_CONTEXT, buildComparisonPrompts, sha256, type Arm, type PromptArm } from "./comparison-prompts.js";
 import { COMPARISON_FIXTURES, type ComparisonFixture } from "./comparison-fixtures.js";
@@ -47,8 +47,8 @@ export function fixturePath(raw: string): string {
 }
 export interface CheckResult { passed: boolean; output: string; ms: number }
 export async function containerCheck(files: Record<string, string>, hidden: string | null, signal?: AbortSignal): Promise<CheckResult> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gg-prompt-check-"));
-  const name = `gg-prompt-check-${randomUUID()}`;
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "ez-prompt-check-"));
+  const name = `ez-prompt-check-${randomUUID()}`;
   const started = performance.now();
   try {
     await fs.chmod(root, 0o755);
@@ -290,7 +290,7 @@ export async function main(argv = process.argv.slice(2)) {
   const limits = repeat20 ? REPEAT20_LIMITS : quick ? QUICK_LIMITS : LIMITS;
   const output = path.join(ROOT, "artifacts", "prompt-comparison", `${new Date().toISOString().replaceAll(":","-")}-${repeat20 ? "response-controlled-20-each" : quick ? "response-controlled-quick" : pilot ? "pilot" : "study"}`);
   await fs.mkdir(output, { recursive: true, mode: 0o700 });
-  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "gg-prompt-protocol-"));
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "ez-prompt-protocol-"));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error("Study time limit")), limits.overallMs);
   const abort = () => controller.abort(new Error("Interrupted"));

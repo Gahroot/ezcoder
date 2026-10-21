@@ -19,7 +19,7 @@ concurrency:
 # typecheck + test + bin-smoke on macOS, Linux, and Windows so we catch
 # platform-specific regressions before they hit npm.
 #
-# The framework release spine is gg-ai, gg-agent, gg-core, and ggcoder.
+# The framework release spine is @prestyj/ai, @prestyj/agent, @prestyj/core, and ezcoder.
 
 jobs:
   test:
@@ -79,18 +79,18 @@ jobs:
       # `shell: bash` on EVERY multi-line step is load-bearing, not cosmetic.
       # On Windows the default shell is PowerShell, which does not abort a
       # multi-line script when an intermediate command exits non-zero — only the
-      # LAST line decides the step's outcome. So `ggcoder test` failing was
-      # silently swallowed by `gg-boss test` succeeding right after it, and the
-      # Windows leg reported SUCCESS while 72 ggcoder tests were failing. Every
+      # LAST line decides the step's outcome. So `ezcoder test` failing was
+      # silently swallowed by `ezboss test` succeeding right after it, and the
+      # Windows leg reported SUCCESS while 72 ezcoder tests were failing. Every
       # Windows bug this suite was supposed to catch shipped through that gap.
       # bash's `-e` (set by the runner) makes each line fail the step.
       - name: Build framework packages
         shell: bash
         run: |
-          pnpm --filter @kenkaiiii/gg-ai build
-          pnpm --filter @kenkaiiii/gg-agent build
-          pnpm --filter @kenkaiiii/gg-core build
-          pnpm --filter @kenkaiiii/ggcoder build
+          pnpm --filter @prestyj/ai build
+          pnpm --filter @prestyj/agent build
+          pnpm --filter @prestyj/core build
+          pnpm --filter @prestyj/cli build
 
       # Bundle growth is informational; measured CLI startup remains blocking.
       # Reference sizes live in bench/baseline/sizes.json.
@@ -100,7 +100,7 @@ jobs:
           # --only: a positional arg is ignored by the script, which then checks
           # every artifact — including the sidecar this job never builds (that
           # one is reported in the `app` job, which bundles it).
-          node bench/size-gate.mjs --only dist:ggcoder
+          node bench/size-gate.mjs --only dist:ezcoder
           node bench/startup-gate.mjs
 
       # Lint and formatting are OS-independent, so one leg is enough.
@@ -114,17 +114,17 @@ jobs:
       - name: Typecheck
         shell: bash
         run: |
-          pnpm --filter @kenkaiiii/gg-ai check
-          pnpm --filter @kenkaiiii/gg-agent check
-          pnpm --filter @kenkaiiii/gg-core check
-          pnpm --filter @kenkaiiii/ggcoder check
+          pnpm --filter @prestyj/ai check
+          pnpm --filter @prestyj/agent check
+          pnpm --filter @prestyj/core check
+          pnpm --filter @prestyj/cli check
 
       - name: Test framework packages
         shell: bash
         run: |
-          pnpm --filter @kenkaiiii/gg-ai test
-          pnpm --filter @kenkaiiii/gg-agent test
-          pnpm --filter @kenkaiiii/gg-core test
+          pnpm --filter @prestyj/ai test
+          pnpm --filter @prestyj/agent test
+          pnpm --filter @prestyj/core test
 
       # Motion's media regressions decode real clips on every OS. CI-only
       # provisioning is intentional; never skip these tests when a tool is absent.
@@ -165,9 +165,9 @@ jobs:
       # shell swallowed it (see above); it is now zero, so the leg is a real
       # gate again. Do NOT reintroduce continue-on-error to get a red build
       # green — a non-blocking Windows leg is how the original bugs shipped.
-      - name: Test ggcoder
+      - name: Test ezcoder
         shell: bash
-        run: pnpm --filter @kenkaiiii/ggcoder test
+        run: pnpm --filter @prestyj/cli test
 
   # Distribution-critical cross-OS job: stages the per-platform Node runtime,
   # bundles the sidecar, boots it with the bundled runtime (smoke), and runs the
@@ -204,7 +204,7 @@ jobs:
       # it from scratch on every run.
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: gg-app/src-tauri
+          workspaces: ezcoder-app/src-tauri
 
       - name: Linux system deps (tauri)
         if: runner.os == 'Linux'
@@ -221,19 +221,19 @@ jobs:
       - name: Build framework packages
         shell: bash
         run: |
-          pnpm --filter @kenkaiiii/gg-ai build
-          pnpm --filter @kenkaiiii/gg-agent build
-          pnpm --filter @kenkaiiii/gg-core build
-          pnpm --filter @kenkaiiii/ggcoder build
+          pnpm --filter @prestyj/ai build
+          pnpm --filter @prestyj/agent build
+          pnpm --filter @prestyj/core build
+          pnpm --filter @prestyj/cli build
 
       - name: Stage node runtime + bundle sidecar
         run: |
-          pnpm --filter gg-app stage:node
-          pnpm --filter gg-app bundle:sidecar
+          pnpm --filter ezcoder-app stage:node
+          pnpm --filter ezcoder-app bundle:sidecar
         shell: bash
 
       - name: Sidecar smoke (bundled runtime + bundle, per-OS)
-        run: node gg-app/scripts/smoke-sidecar.mjs
+        run: node ezcoder-app/scripts/smoke-sidecar.mjs
         shell: bash
 
       # OS-independent slice of the sidecar bundle (app-sidecar.mjs + skills;
@@ -246,41 +246,41 @@ jobs:
       - name: Frontend build + initial JavaScript size report
         shell: bash
         run: |
-          pnpm --filter gg-app build
+          pnpm --filter ezcoder-app build
           node bench/size-gate.mjs --only frontend:initial
 
       - name: Frontend platform-class test
-        run: pnpm --filter gg-app test
+        run: pnpm --filter ezcoder-app test
 
       - name: Rust format check
         if: runner.os == 'Linux'
-        working-directory: gg-app/src-tauri
+        working-directory: ezcoder-app/src-tauri
         shell: bash
         run: cargo fmt --check
 
       # Every OS: lib.rs has Windows- and macOS-only code paths.
       - name: Rust lint (clippy)
-        working-directory: gg-app/src-tauri
+        working-directory: ezcoder-app/src-tauri
         shell: bash
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Rust unit tests (path + window-chrome resolution)
-        working-directory: gg-app/src-tauri
+        working-directory: ezcoder-app/src-tauri
         run: cargo test
 
       # Windows-only, and the ONLY job that exercises real installer output.
       # `smoke-sidecar` above proves the bundled runtime loads, but it launches
       # the sidecar directly — it cannot catch what actually breaks for a
       # Windows user who installed the app: the shell failing to find
-      # `ggnode.exe` beside the exe, the sidecar resource missing from the MSI,
+      # `eznode.exe` beside the exe, the sidecar resource missing from the MSI,
       # or the app starting with no visible window. This builds an MSI,
       # administratively extracts it (installs nothing), launches it with a
       # throwaway user profile, and requires a visible window plus a packaged
-      # ggnode child running the packaged bundle.
+      # eznode child running the packaged bundle.
       #
       # Only the Windows matrix leg pays the release-build cost; the macOS and
       # Linux legs run in parallel and stay fast.
       - name: Packaged app smoke (MSI build + launch)
         if: runner.os == 'Windows'
-        working-directory: gg-app
+        working-directory: ezcoder-app
         run: pnpm smoke:packaged

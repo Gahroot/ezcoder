@@ -56,12 +56,12 @@ importers:
 
   experiments/lean-code-bench:
     dependencies:
-      '@kenkaiiii/gg-agent':
+      '@kenkaiiii/@prestyj/agent':
         specifier: workspace:*
-        version: link:../../packages/gg-agent
-      '@kenkaiiii/gg-ai':
+        version: link:../../packages/@prestyj/agent
+      '@kenkaiiii/@prestyj/ai':
         specifier: workspace:*
-        version: link:../../packages/gg-ai
+        version: link:../../packages/@prestyj/ai
       '@kenkaiiii/ggcoder':
         specifier: workspace:*
         version: link:../../packages/ggcoder
@@ -71,12 +71,12 @@ importers:
 
   experiments/prompt-bench:
     dependencies:
-      '@kenkaiiii/gg-agent':
+      '@kenkaiiii/@prestyj/agent':
         specifier: workspace:*
-        version: link:../../packages/gg-agent
-      '@kenkaiiii/gg-ai':
+        version: link:../../packages/@prestyj/agent
+      '@kenkaiiii/@prestyj/ai':
         specifier: workspace:*
-        version: link:../../packages/gg-ai
+        version: link:../../packages/@prestyj/ai
       '@kenkaiiii/ggcoder':
         specifier: workspace:*
         version: link:../../packages/ggcoder
@@ -84,7 +84,7 @@ importers:
         specifier: ^4.5.4
         version: 4.5.4
 
-  gg-app:
+  ez-app:
     dependencies:
       '@phosphor-icons/react':
         specifier: 2.1.10
@@ -193,11 +193,11 @@ importers:
         specifier: ^4.0.0
         version: 4.1.7(@types/node@25.9.1)(jsdom@29.1.1)(vite@8.2.2(@types/node@25.9.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
 
-  packages/gg-agent:
+  packages/@prestyj/agent:
     dependencies:
-      '@kenkaiiii/gg-ai':
+      '@kenkaiiii/@prestyj/ai':
         specifier: workspace:*
-        version: link:../gg-ai
+        version: link:../@prestyj/ai
       zod:
         specifier: ^4.5.4
         version: 4.5.4
@@ -209,7 +209,7 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@25.9.1)(jsdom@29.1.1)(vite@8.3.0(@types/node@25.9.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
 
-  packages/gg-ai:
+  packages/@prestyj/ai:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.124.0
@@ -234,11 +234,11 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@25.9.1)(jsdom@29.1.1)(vite@8.3.0(@types/node@25.9.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
 
-  packages/gg-core:
+  packages/@prestyj/core:
     dependencies:
-      '@kenkaiiii/gg-ai':
+      '@kenkaiiii/@prestyj/ai':
         specifier: workspace:*
-        version: link:../gg-ai
+        version: link:../@prestyj/ai
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -268,15 +268,15 @@ importers:
       '@kenkaiiii/agent-home-sdk':
         specifier: ^0.3.8
         version: 0.3.8
-      '@kenkaiiii/gg-agent':
+      '@kenkaiiii/@prestyj/agent':
         specifier: workspace:*
-        version: link:../gg-agent
-      '@kenkaiiii/gg-ai':
+        version: link:../@prestyj/agent
+      '@kenkaiiii/@prestyj/ai':
         specifier: workspace:*
-        version: link:../gg-ai
-      '@kenkaiiii/gg-core':
+        version: link:../@prestyj/ai
+      '@kenkaiiii/@prestyj/core':
         specifier: workspace:*
-        version: link:../gg-core
+        version: link:../@prestyj/core
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0

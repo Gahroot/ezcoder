@@ -14,7 +14,7 @@ import {
   staticText,
   trial,
 } from "./review-bench.js";
-import { parseAutopilotVerdict } from "../../packages/ggcoder/src/core/autopilot-verdict.js";
+import { parseAutopilotVerdict } from "../../packages/cli/src/core/autopilot-verdict.js";
 
 const exec = promisify(execFile);
 
@@ -50,7 +50,7 @@ test("assessment does not misclassify Markdown failure reports or empty final re
   assert.equal(isApproval("ken", "HUMAN\nThe required check failed."), false);
 });
 
-test("a warning in raw Ken output is not proof it survives the production parser", () => {
+test("a warning in raw Nolan output is not proof it survives the production parser", () => {
   const reply = "ALL_CLEAR\nCorpus comparison unavailable; user declined indexing.";
   assert.deepEqual(parseAutopilotVerdict(reply), { kind: "all_clear" });
 });
@@ -65,7 +65,7 @@ test("model edits can only select the pre-authored safe repair", () => {
 
 for (const fixture of FIXTURES) {
   test(`independent executable oracle: ${fixture.id}`, async () => {
-    const cwd = await mkdtemp(path.join(os.tmpdir(), "gg-study-oracle-test-"));
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "ez-study-oracle-test-"));
     const checks =
       "import assert from 'node:assert/strict';\nimport { subject } from './subject.mjs';\n";
     try {

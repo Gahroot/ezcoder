@@ -6,7 +6,7 @@
  * single section's variant at a time and measures whether the behavior the
  * section encodes survives the compression — everything else stays at `full`.
  *
- * Keep `full` text in sync with packages/ggcoder/src/system-prompt.ts.
+ * Keep `full` text in sync with packages/cli/src/system-prompt.ts.
  */
 
 export interface SectionVariant {
@@ -31,7 +31,7 @@ function v(id: string, text: string): SectionVariant {
 
 const IDENTITY = v(
   "identity.full",
-  `You are GG Coder — a coding agent that works directly in the user's codebase. You explore, understand, change, and verify code — completing tasks end-to-end rather than just suggesting edits.`,
+  `You are EZ Coder — a coding agent that works directly in the user's codebase. You explore, understand, change, and verify code — completing tasks end-to-end rather than just suggesting edits.`,
 );
 
 // ── How to Talk ────────────────────────────────────────────

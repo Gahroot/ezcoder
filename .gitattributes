@@ -2,7 +2,7 @@
 #
 # Git for Windows defaults to core.autocrlf=true, which rewrites checked-out
 # files to CRLF. That silently breaks anything whose CONTENT is load-bearing:
-# the seeded agent fixtures in packages/ggcoder are content-hashed, and their
+# the seeded agent fixtures in packages/cli are content-hashed, and their
 # SHA-256 changed on Windows purely because of the line endings, failing
 # config.test.ts on every Windows CI run.
 #

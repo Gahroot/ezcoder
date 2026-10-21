@@ -9,27 +9,27 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { Message } from "@kenkaiiii/gg-ai";
-import { Agent } from "../../packages/gg-agent/src/agent.js";
-import type { AgentTool } from "../../packages/gg-agent/src/types.js";
-import { buildSystemPrompt } from "../../packages/ggcoder/src/system-prompt.js";
-import { buildKenAutopilotSystemPrompt } from "../../packages/ggcoder/src/core/ken-prompt.js";
-import { buildKenAutopilotContext } from "../../packages/ggcoder/src/core/ken-context.js";
-import { parseAutopilotVerdict } from "../../packages/ggcoder/src/core/autopilot-verdict.js";
-import { driveAutopilotCycle } from "../../packages/ggcoder/src/core/autopilot-cycle.js";
+import type { Message } from "@prestyj/ai";
+import { Agent } from "../../packages/agent/src/agent.js";
+import type { AgentTool } from "../../packages/agent/src/types.js";
+import { buildSystemPrompt } from "../../packages/cli/src/system-prompt.js";
+import { buildNolanAutopilotSystemPrompt } from "../../packages/cli/src/core/nolan-prompt.js";
+import { buildNolanAutopilotContext } from "../../packages/cli/src/core/nolan-context.js";
+import { parseAutopilotVerdict } from "../../packages/cli/src/core/autopilot-verdict.js";
+import { driveAutopilotCycle } from "../../packages/cli/src/core/autopilot-cycle.js";
 import {
   IDEAL_REVIEW_PROMPT,
   ReviewCoverageTracker,
-} from "../../packages/ggcoder/src/core/ideal-review.js";
-import { VerificationGate } from "../../packages/ggcoder/src/core/verification-gate.js";
+} from "../../packages/cli/src/core/ideal-review.js";
+import { VerificationGate } from "../../packages/cli/src/core/verification-gate.js";
 import { loadAuth } from "./auth.js";
 
 const exec = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const BASE = "073aa149d7466ed8f1e4505327c4f07d34132eab";
-const SYSTEM_FILE = "packages/ggcoder/src/system-prompt.ts";
-const IDEAL_FILE = "packages/ggcoder/src/core/ideal-review.ts";
-const KEN_FILE = "packages/ggcoder/src/core/ken-prompt.ts";
+const SYSTEM_FILE = "packages/cli/src/system-prompt.ts";
+const IDEAL_FILE = "packages/cli/src/core/ideal-review.ts";
+const KEN_FILE = "packages/cli/src/core/nolan-prompt.ts";
 const VERSIONS = ["old", "current", "refined"] as const;
 const REVIEWERS = ["ideal", "ken"] as const;
 type Version = (typeof VERSIONS)[number];
@@ -110,7 +110,7 @@ async function promptVariants(cwd: string): Promise<Record<Version, Prompts>> {
         maxBuffer: 200_000,
       })
     ).stdout;
-  const [oldSystem, oldIdeal, oldKen, currentSystem, currentKen] = await Promise.all([
+  const [oldSystem, oldIdeal, oldNolan, currentSystem, currentNolan] = await Promise.all([
     oldSource(SYSTEM_FILE),
     oldSource(IDEAL_FILE),
     oldSource(KEN_FILE),
@@ -120,18 +120,18 @@ async function promptVariants(cwd: string): Promise<Record<Version, Prompts>> {
   const current: Prompts = {
     system: await buildSystemPrompt(cwd, undefined, false, undefined, TOOL_NAMES),
     ideal: IDEAL_REVIEW_PROMPT,
-    ken: await buildKenAutopilotSystemPrompt(cwd),
+    ken: await buildNolanAutopilotSystemPrompt(cwd),
   };
-  let baselineKen = current.ken;
+  let baselineNolan = current.nolan;
   for (const name of ["renderSkeptical", "renderAutopilotContract"]) {
-    baselineKen = replaceOnce(baselineKen, renderer(currentKen, name), renderer(oldKen, name));
+    baselineNolan = replaceOnce(baselineNolan, renderer(currentNolan, name), renderer(oldNolan, name));
   }
   const idealExpression = oldIdeal.match(/export const IDEAL_REVIEW_PROMPT =\s*([\s\S]*?);\n/)?.[1];
   assert(idealExpression);
   const old: Prompts = {
     system: replaceOnce(current.system, research(currentSystem), research(oldSystem)),
     ideal: staticText(idealExpression),
-    ken: baselineKen,
+    ken: baselineNolan,
   };
   // Candidate, NOT production: compact evidence guidance + one bounded post-edit check.
   const shortResearch =
@@ -152,8 +152,8 @@ async function promptVariants(cwd: string): Promise<Record<Version, Prompts>> {
       "Finish concisely with only verified outcomes.",
     ken:
       replaceOnce(
-        current.ken,
-        renderer(currentKen, "renderSkeptical"),
+        current.nolan,
+        renderer(currentNolan, "renderSkeptical"),
         "## Evidence\n\nCheck actual changed code against the original request. Reuse supplied " +
           "Steroids samples; search/show only for a concrete evidence gap. Examples are not proof. " +
           "No indexing without user approval. If declined/unavailable, use supplied source/docs. " +
@@ -162,7 +162,7 @@ async function promptVariants(cwd: string): Promise<Record<Version, Prompts>> {
       "\nEvidence limitation exception: ALL_CLEAR may have one following line disclosing " +
       "an unavailable corpus comparison. This warning is not a reason to block or repeat indexing.",
   };
-  assert(old.ideal !== current.ideal && old.system !== current.system && old.ken !== current.ken);
+  assert(old.ideal !== current.ideal && old.system !== current.system && old.nolan !== current.nolan);
   return { old, current, refined };
 }
 
@@ -352,7 +352,7 @@ export async function trial(
   overall: AbortSignal,
   runtime = false,
 ): Promise<Sample> {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), "gg-review-study-"));
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "ez-review-study-"));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 180_000);
   const signal = AbortSignal.any([overall, controller.signal]);
@@ -517,7 +517,7 @@ export async function trial(
       ? tools
       : tools.filter((tool) => tool.name !== "edit" && tool.name !== "bash");
     const system =
-      (writer ? prompts.system : prompts.ken) +
+      (writer ? prompts.system : prompts.nolan) +
       "\nBenchmark workspace: subject.mjs and smoke.test.mjs. Inspect both before a verdict. " +
       "Tests are immutable in this task. Only expression-level repairs to the implementation are needed. " +
       "A supplied requirement oracle is included when you run the fixed check command. " +
@@ -614,7 +614,7 @@ export async function trial(
     else if (runtime) gate.recordFailedVerification("node --test smoke.test.mjs");
     coverage.start(["subject.mjs", "smoke.test.mjs"]);
     const context = () =>
-      buildKenAutopilotContext({
+      buildNolanAutopilotContext({
         cwd,
         gitBranch: null,
         originalRequest: fixture.request,
@@ -741,7 +741,7 @@ async function main() {
   );
   await mkdir(path.join(ROOT, "artifacts"), { recursive: true });
   const output = await mkdtemp(path.join(ROOT, "artifacts/review-study-"));
-  const workspace = await mkdtemp(path.join(os.tmpdir(), "gg-review-prompts-"));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "ez-review-prompts-"));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25 * 60_000);
   const abort = () => controller.abort();
@@ -761,8 +761,8 @@ async function main() {
       arms: runtime ? { old: "enforcement disabled", current: "enforcement enabled" } : undefined,
       sourceHashes: Object.fromEntries(await Promise.all([
         SYSTEM_FILE, IDEAL_FILE, KEN_FILE,
-        "packages/ggcoder/src/core/verification-gate.ts",
-        "packages/ggcoder/src/core/autopilot-cycle.ts",
+        "packages/cli/src/core/verification-gate.ts",
+        "packages/cli/src/core/autopilot-cycle.ts",
         "experiments/prompt-bench/review-bench.ts",
       ].map(async (file) => [file, createHash("sha256").update(await readFile(path.join(ROOT, file))).digest("hex")]))),
       node: process.version,
@@ -780,7 +780,7 @@ async function main() {
         "Provider caching is uncontrolled. Not an old-binary, desktop, or unconstrained coding benchmark." :
         "Old vs current exact changed prompt sections; refined candidate is experiment-only. " +
         "Fixed safe repair targets, real fixture checks, replayed corpus, seeded authorship history. " +
-        "One Ken repair-and-rereview cycle; refined Ideal gets one post-edit verification prompt. " +
+        "One Nolan repair-and-rereview cycle; refined Ideal gets one post-edit verification prompt. " +
         "Provider caching and concurrency affect timing. Not a desktop or unconstrained coding benchmark.",
       prompts: Object.fromEntries(
         versions.map((v) => [

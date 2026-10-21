@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // startup-gate — median CLI startup latency gate (fx-pattern CI ratchet).
-// Measures `node packages/ggcoder/dist/cli.js --version` (fresh process each
+// Measures `node packages/cli/dist/cli.js --version` (fresh process each
 // run), median of 5. Budget is deliberately generous (the Windows CI leg is a
 // BLOCKING gate): max(baseline * 1.5, 5000ms) — this catches pathological
 // regressions like sync I/O at import time, not 50ms scheduler noise.
@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASELINE_PATH = path.join(REPO_ROOT, "bench/baseline/sizes.json");
-const CLI = path.join(REPO_ROOT, "packages/ggcoder/dist/cli.js");
+const CLI = path.join(REPO_ROOT, "packages/cli/dist/cli.js");
 const RUNS = 5;
 const HARD_FLOOR_MS = 5000;
 

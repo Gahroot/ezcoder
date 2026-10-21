@@ -24,8 +24,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Message } from "@kenkaiiii/gg-ai";
-import { AgentSession } from "../../packages/ggcoder/src/core/agent-session.js";
+import type { Message } from "@prestyj/ai";
+import { AgentSession } from "../../packages/cli/src/core/agent-session.js";
 
 const LIB = `export const appointments = [];
 
@@ -54,7 +54,7 @@ interface SessionInternals {
 }
 
 async function makeWorkspace(): Promise<string> {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), "gg-hook-sim-"));
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "ez-hook-sim-"));
   await writeFile(path.join(cwd, "lib.mjs"), LIB);
   await writeFile(path.join(cwd, "lib.test.mjs"), TEST);
   return cwd;

@@ -4,22 +4,22 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const port = process.env.GG_LIVE_BROKER_PORT;
-const token = process.env.GG_LIVE_BROKER_TOKEN;
-const caseFile = process.env.GG_LIVE_CASE_FILE;
-const outFile = process.env.GG_LIVE_OUT_FILE;
+const port = process.env.EZ_LIVE_BROKER_PORT;
+const token = process.env.EZ_LIVE_BROKER_TOKEN;
+const caseFile = process.env.EZ_LIVE_CASE_FILE;
+const outFile = process.env.EZ_LIVE_OUT_FILE;
 if (!port || !token || !caseFile || !outFile) throw new Error("missing broker/case env");
 
 const home = process.env.HOME;
 const cwd = process.cwd();
-await fs.mkdir(path.join(home, ".gg"), { recursive: true });
+await fs.mkdir(path.join(home, ".ezcoder"), { recursive: true });
 // Static-key credential pointing at the broker. The real key never enters here.
-await fs.writeFile(path.join(home, ".gg", "auth.json"), JSON.stringify({
+await fs.writeFile(path.join(home, ".ezcoder", "auth.json"), JSON.stringify({
   glm: { accessToken: token, refreshToken: "", expiresAt: Date.now() + 86_400_000, baseUrl: `http://127.0.0.1:${port}` },
 }, null, 2));
-await fs.writeFile(path.join(home, ".gg", "settings.json"), JSON.stringify({ defaultProvider: "glm", defaultModel: "glm-5.3" }));
+await fs.writeFile(path.join(home, ".ezcoder", "settings.json"), JSON.stringify({ defaultProvider: "glm", defaultModel: "glm-5.3" }));
 
-const { AgentSession } = await import(new URL("../../packages/ggcoder/dist/core/agent-session.js", import.meta.url).href);
+const { AgentSession } = await import(new URL("../../packages/cli/dist/core/agent-session.js", import.meta.url).href);
 
 const scenario = JSON.parse(await fs.readFile(caseFile, "utf8"));
 const started = Date.now();

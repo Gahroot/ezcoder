@@ -10,7 +10,7 @@ import { ARMS, PROJECT_CONTEXT, buildComparisonPrompts } from "./comparison-prom
 import { containerCheck, fixturePath, grade, makeSandbox, schedule, QUICK_FIXTURES, QUICK_LIMITS, REPEAT20_FIXTURES, REPEAT20_LIMITS, REPEAT20_ORDERS } from "./comparison-bench.js";
 
 async function promptFixture(preserveResponses = false) {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "gg-comparison-unit-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ez-comparison-unit-"));
   try {
     await fs.writeFile(path.join(cwd, "AGENTS.md"), PROJECT_CONTEXT);
     return await buildComparisonPrompts(cwd, preserveResponses);
@@ -117,7 +117,7 @@ test("TDD grading rejects test and source edits without a failing test run", asy
 });
 
 test("analysis discloses zero-usage provider failures instead of dividing by zero", async () => {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "gg-comparison-analysis-"));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ez-comparison-analysis-"));
   try {
     await fs.writeFile(path.join(cwd, "protocol.json"), JSON.stringify({
       model: "fixture", thinking: "off", jobs: [{ fixture: "failure", round: 0, arms: ARMS }],
@@ -161,6 +161,6 @@ import fs from 'node:fs'; import os from 'node:os';
 assert.ok(Object.values(os.networkInterfaces()).flat().every(x=>x.internal));
 assert.throws(()=>fs.writeFileSync('/workspace/unauthorized','x'));
 assert.equal(process.env.ZAI_API_KEY,undefined);assert.equal(process.env.GLM_API_KEY,undefined);
-assert.equal(fs.existsSync('/root/.gg/auth.json'),false);`);
+assert.equal(fs.existsSync('/root/.ezcoder/auth.json'),false);`);
   assert.equal(result.passed,true,result.output);
 });

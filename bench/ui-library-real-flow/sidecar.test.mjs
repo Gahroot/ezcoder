@@ -7,11 +7,11 @@ import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 
 test('built source sidecar boots and serves an isolated desktop session without credentials', { timeout: 45000 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'gg-ui-sidecar-'));
+  const root = await mkdtemp(join(tmpdir(), 'ez-ui-sidecar-'));
   const home = join(root, 'home');
   const project = join(root, 'project');
   await mkdir(home); await mkdir(project);
-  const child = spawn(process.execPath, [resolve('packages/ggcoder/dist/app-sidecar.js')], {
+  const child = spawn(process.execPath, [resolve('packages/cli/dist/app-sidecar.js')], {
     cwd: project,
     env: { HOME: home, USERPROFILE: home, PATH: process.env.PATH, TMPDIR: root, GG_APP_PORT: '0', GG_APP_CWD: project },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -31,12 +31,12 @@ test('built source sidecar boots and serves an isolated desktop session without 
       });
     });
     const base = `http://127.0.0.1:${port}`;
-    const headers = { 'content-type': 'application/json', 'x-gg-token': token };
+    const headers = { 'content-type': 'application/json', 'x-ez-token': token };
     const response = await fetch(`${base}/session`, { method: 'POST', headers, body: JSON.stringify({ cwd: project }), signal: AbortSignal.timeout(10000) });
     assert.equal(response.status, 200);
     const { sessionId } = await response.json();
     assert.ok(sessionId);
-    const state = await fetch(`${base}/state`, { headers: { ...headers, 'x-gg-session': sessionId }, signal: AbortSignal.timeout(10000) });
+    const state = await fetch(`${base}/state`, { headers: { ...headers, 'x-ez-session': sessionId }, signal: AbortSignal.timeout(10000) });
     assert.equal(state.status, 200);
     assert.ok('ready' in await state.json());
     // This is boot/session routing evidence, not model generation or prompt/tool-event evidence.

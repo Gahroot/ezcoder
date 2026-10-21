@@ -10,11 +10,11 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
-import type { Message } from "@kenkaiiii/gg-ai";
-import { Agent } from "../../packages/gg-agent/src/agent.js";
-import type { AgentTool } from "../../packages/gg-agent/src/types.js";
-import { buildSystemPrompt } from "../../packages/ggcoder/src/system-prompt.js";
-import { VerificationGate } from "../../packages/ggcoder/src/core/verification-gate.js";
+import type { Message } from "@prestyj/ai";
+import { Agent } from "../../packages/agent/src/agent.js";
+import type { AgentTool } from "../../packages/agent/src/types.js";
+import { buildSystemPrompt } from "../../packages/cli/src/system-prompt.js";
+import { VerificationGate } from "../../packages/cli/src/core/verification-gate.js";
 import { loadAuth, type BenchAuth } from "./auth.js";
 
 const exec = promisify(execFile);
@@ -254,7 +254,7 @@ async function runArm(
   signal: AbortSignal,
   round: number,
 ): Promise<{ fullHooks: boolean; dice: number; jaccard: number }> {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), "gg-dupesim-"));
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "ez-dupesim-"));
   const source = { text: PORTAL };
   await writeFile(path.join(cwd, "portal.mjs"), PORTAL);
   await writeFile(path.join(cwd, "portal.test.mjs"), TEST);

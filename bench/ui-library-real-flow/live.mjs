@@ -13,7 +13,7 @@ import fsSync from "node:fs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
 const dist = path.join(repoRoot, "packages", "gcoder");
-const ggcoderDist = path.join(repoRoot, "packages", "ggcoder", "dist");
+const ezcoderDist = path.join(repoRoot, "packages", "cli", "dist");
 const dryRun = process.argv.includes("--dry-run");
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const runsDir = path.join(here, "runs", `live-${stamp}`);
@@ -100,7 +100,7 @@ ${[...new Set([workspace, home, ...readRoots])].map((root) => `(allow file-read*
 
 function launchWorker({ useSandbox, profile, env, cwd }) {
   if (useSandbox) return spawn("/usr/bin/sandbox-exec", ["-p", profile, process.execPath, path.join(here, "live-worker.mjs")], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
-  // Fallback: environment isolation only (isolated HOME/GG_HOME/cwd; no real
+  // Fallback: environment isolation only (isolated HOME/EZ_HOME/cwd; no real
   // credential in env; broker bound to loopback with a per-launch token).
   return spawn(process.execPath, [path.join(here, "live-worker.mjs")], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
 }
@@ -172,7 +172,7 @@ async function hostChecks(project, expected) {
 }
 
 async function main() {
-  const auth = JSON.parse(await fs.readFile(path.join(process.env.HOME, ".gg", "auth.json"), "utf8"));
+  const auth = JSON.parse(await fs.readFile(path.join(process.env.HOME, ".ezcoder", "auth.json"), "utf8"));
   const apiKey = auth?.glm?.accessToken;
   if (!apiKey) throw new Error("No GLM credential in supervising auth file");
   await fs.mkdir(runsDir, { recursive: true });
@@ -224,9 +224,9 @@ async function main() {
         profile,
         cwd: project,
         env: {
-          HOME: home, GG_HOME: home, TMPDIR: home, PATH: `/usr/bin:/bin:${nodeBinDir}`,
-          GG_LIVE_BROKER_PORT: new URL(broker.url).port, GG_LIVE_BROKER_TOKEN: broker.token,
-          GG_LIVE_CASE_FILE: caseFile, GG_LIVE_OUT_FILE: outFileFinal,
+          HOME: home, EZ_HOME: home, TMPDIR: home, PATH: `/usr/bin:/bin:${nodeBinDir}`,
+          EZ_LIVE_BROKER_PORT: new URL(broker.url).port, EZ_LIVE_BROKER_TOKEN: broker.token,
+          EZ_LIVE_CASE_FILE: caseFile, EZ_LIVE_OUT_FILE: outFileFinal,
         },
       });
       let log = "";
@@ -273,9 +273,9 @@ async function main() {
       profile,
       cwd: project,
       env: {
-        HOME: home, GG_HOME: home, TMPDIR: home, PATH: `/usr/bin:/bin:${nodeBinDir}`,
-        GG_LIVE_BROKER_PORT: new URL(broker.url).port, GG_LIVE_BROKER_TOKEN: broker.token,
-        GG_LIVE_CASE_FILE: caseFile, GG_LIVE_OUT_FILE: outFile,
+        HOME: home, EZ_HOME: home, TMPDIR: home, PATH: `/usr/bin:/bin:${nodeBinDir}`,
+        EZ_LIVE_BROKER_PORT: new URL(broker.url).port, EZ_LIVE_BROKER_TOKEN: broker.token,
+        EZ_LIVE_CASE_FILE: caseFile, EZ_LIVE_OUT_FILE: outFile,
       },
     });
     let workerLog = "";

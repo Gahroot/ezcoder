@@ -36,9 +36,9 @@ updates:
       - dependency-name: "@tauri-apps/plugin-*"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
-  # Tauri desktop app (gg-app).
+  # Tauri desktop app (ezcoder-app).
   - package-ecosystem: cargo
-    directory: /gg-app/src-tauri
+    directory: /ezcoder-app/src-tauri
     schedule:
       interval: weekly
     # Counterpart of the @tauri-apps ignore above.

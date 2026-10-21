@@ -9,13 +9,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { Agent, type AgentEvent, type AgentTool } from "@kenkaiiii/gg-agent";
-import { buildSystemPrompt } from "@kenkaiiii/ggcoder";
+import { Agent, type AgentEvent, type AgentTool } from "@prestyj/agent";
+import { buildSystemPrompt } from "@prestyj/cli";
 import { loadAuth, type ModelTarget } from "./auth.js";
 import { createSandbox, type TrajectoryEntry } from "./sandbox.js";
 // Not on the package's public export map; the bench reaches into dist directly.
-import { createSteroidsTool } from "../../packages/ggcoder/dist/tools/steroids.js";
-import { findSteroidsBinary } from "../../packages/ggcoder/dist/core/steroids.js";
+import { createSteroidsTool } from "../../packages/cli/dist/tools/steroids.js";
+import { findSteroidsBinary } from "../../packages/cli/dist/core/steroids.js";
 
 const TARGET: ModelTarget = { label: "glm-5.3", provider: "glm", model: "glm-5.3", authKey: "glm" };
 
@@ -42,7 +42,7 @@ const steroidsAction = (t: TrajectoryEntry, ...actions: string[]) =>
   t.tool === "steroids" && actions.includes(String(t.args.action));
 const isCodeWrite = (t: TrajectoryEntry) =>
   (t.tool === "write" || t.tool === "edit") &&
-  !String(t.args.file_path ?? "").startsWith(".gg/plans");
+  !String(t.args.file_path ?? "").startsWith(".ezcoder/plans");
 const firstCodeWrite = (ctx: Ctx) => idx(ctx, isCodeWrite);
 const firstRead = (ctx: Ctx) => idx(ctx, (t) => steroidsAction(t, "search", "define", "show"));
 const before = (a: number, b: number) => a >= 0 && b >= 0 && a < b;
@@ -137,15 +137,15 @@ const SCENARIOS: Scenario[] = [
     checks: [
       {
         id: "corpus-read-before-plan-write",
-        pass: (ctx) => before(firstRead(ctx), idx(ctx, (t) => t.tool === "write" && String(t.args.file_path).startsWith(".gg/plans"))),
+        pass: (ctx) => before(firstRead(ctx), idx(ctx, (t) => t.tool === "write" && String(t.args.file_path).startsWith(".ezcoder/plans"))),
       },
-      { id: "wrote-plan", pass: (ctx) => ctx.trajectory.some((t) => t.tool === "write" && String(t.args.file_path).startsWith(".gg/plans")) },
+      { id: "wrote-plan", pass: (ctx) => ctx.trajectory.some((t) => t.tool === "write" && String(t.args.file_path).startsWith(".ezcoder/plans")) },
       { id: "called-exit-plan", pass: (ctx) => ctx.trajectory.some((t) => t.tool === "exit_plan") },
       { id: "no-code-writes", pass: (ctx) => firstCodeWrite(ctx) < 0 },
       {
         id: "plan-cites-corpus",
         pass: (ctx) => {
-          const plan = ctx.trajectory.find((t) => t.tool === "write" && String(t.args.file_path).startsWith(".gg/plans"));
+          const plan = ctx.trajectory.find((t) => t.tool === "write" && String(t.args.file_path).startsWith(".ezcoder/plans"));
           return !!plan && /steroids|corpus|[\w.-]+\/[\w.-]+/.test(String(plan.args.content ?? ""));
         },
       },
@@ -158,7 +158,7 @@ const SCENARIOS: Scenario[] = [
     prompt: RATE_LIMIT_PROMPT,
     seed: EXPRESS_SEED,
     checks: [
-      { id: "wrote-plan", pass: (ctx) => ctx.trajectory.some((t) => t.tool === "write" && String(t.args.file_path).startsWith(".gg/plans")) },
+      { id: "wrote-plan", pass: (ctx) => ctx.trajectory.some((t) => t.tool === "write" && String(t.args.file_path).startsWith(".ezcoder/plans")) },
       { id: "called-exit-plan", pass: (ctx) => ctx.trajectory.some((t) => t.tool === "exit_plan") },
       noBashSteroids,
       { id: "no-code-writes", pass: (ctx) => firstCodeWrite(ctx) < 0 },
@@ -205,7 +205,7 @@ function askUserStub(trajectory: TrajectoryEntry[]): AgentTool {
 function exitPlanStub(trajectory: TrajectoryEntry[]): AgentTool {
   return {
     name: "exit_plan",
-    description: "Submit a .gg/plans/ markdown plan for user review and leave plan mode.",
+    description: "Submit a .ezcoder/plans/ markdown plan for user review and leave plan mode.",
     parameters: z.object({ plan_path: z.string() }),
     execute: async (a) => {
       trajectory.push({ tool: "exit_plan", args: a as Record<string, unknown>, ok: true, result: "submitted" });

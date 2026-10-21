@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // size-gate — informational bundle-size report (legacy command name).
 // Artifacts:
-//   dist:ggcoder — total bytes of packages/ggcoder/dist (the shipped CLI).
+//   dist:ezcoder — total bytes of packages/cli/dist (the shipped CLI).
 //   frontend:initial — entry JS + static imports, excluding on-demand chunks.
-//   sidecar      — app-sidecar.mjs + bundled skills bytes (gg-app/src-tauri/sidecar).
+//   sidecar      — app-sidecar.mjs + bundled skills bytes (ezcoder-app/src-tauri/sidecar).
 //                  Deliberately EXCLUDES node_modules: it carries platform-
 //                  conditional binaries (sharp, onnxruntime), so one baseline
 //                  cannot hold across the CI matrix's three OSes. Dependency-
-//                  tree churn is still caught by the dist:ggcoder artifact.
+//                  tree churn is still caught by the dist:ezcoder artifact.
 // Usage:
 //   node bench/size-gate.mjs                 # check all artifacts against baseline
 //   node bench/size-gate.mjs --only sidecar  # check one artifact
@@ -34,7 +34,7 @@ function dirBytes(target) {
 }
 
 function initialFrontendBytes() {
-  const dist = path.join(REPO_ROOT, "gg-app/dist");
+  const dist = path.join(REPO_ROOT, "ezcoder-app/dist");
   const manifest = JSON.parse(readFileSync(path.join(dist, ".vite/manifest.json"), "utf8"));
   const entries = Object.keys(manifest).filter((key) => manifest[key].isEntry);
   if (entries.length === 0) throw new Error("Frontend manifest has no entry points");
@@ -52,11 +52,11 @@ function initialFrontendBytes() {
 }
 
 const ARTIFACTS = {
-  "dist:ggcoder": () => dirBytes(path.join(REPO_ROOT, "packages/ggcoder/dist")),
+  "dist:ezcoder": () => dirBytes(path.join(REPO_ROOT, "packages/cli/dist")),
   "frontend:initial": initialFrontendBytes,
   sidecar: () =>
-    dirBytes(path.join(REPO_ROOT, "gg-app/src-tauri/sidecar/app-sidecar.mjs")) +
-    dirBytes(path.join(REPO_ROOT, "gg-app/src-tauri/sidecar/skills")),
+    dirBytes(path.join(REPO_ROOT, "ezcoder-app/src-tauri/sidecar/app-sidecar.mjs")) +
+    dirBytes(path.join(REPO_ROOT, "ezcoder-app/src-tauri/sidecar/skills")),
 };
 
 const fmt = (bytes) => `${(bytes / 1024).toFixed(1)}KB`;

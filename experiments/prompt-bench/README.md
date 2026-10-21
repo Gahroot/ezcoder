@@ -1,6 +1,6 @@
 # prompt-bench
 
-Section-by-section ablation of the ggcoder system prompt. For each prompt
+Section-by-section ablation of the ezcoder system prompt. For each prompt
 **section**, we test a `full` (production wording) variant against `compressed`
 and `tiny` variants — keeping every other section at baseline — and measure
 whether the **behavior** the section encodes survives the word cut.
@@ -22,8 +22,8 @@ Flags:
 - `-s, --section <key>` — `talk` or `work` (default: all).
 - `-t, --targets <a,b>` — `opus`, `gpt-5.5` (default: both).
 
-Auth comes from `~/.gg/auth.json` via the CLI's `AuthStorage` (OAuth refresh
-included). If a provider 401s with "invalidated token", re-run `ggcoder login`
+Auth comes from `~/.ezcoder/auth.json` via the CLI's `AuthStorage` (OAuth refresh
+included). If a provider 401s with "invalidated token", re-run `ezcoder login`
 for that provider.
 
 ## How it works
@@ -33,7 +33,7 @@ for that provider.
   throwaway temp dir. Every call is recorded into a `trajectory`. Destructive
   commands can only damage the sandbox, never the real repo.
 - **`variants.ts`** — `full` / `compressed` / `tiny` text per section. Keep
-  `full` in sync with `packages/ggcoder/src/system-prompt.ts`.
+  `full` in sync with `packages/cli/src/system-prompt.ts`.
 - **`tasks.ts`** — seeded scenarios + binary rubric checks that read the
   trajectory (e.g. "did read precede the first edit?", "did it avoid `rm -rf`?").
 - **`run.ts`** — drives the real `Agent` loop per (target × variant × task ×

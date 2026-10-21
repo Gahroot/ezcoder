@@ -3,10 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-import { buildSystemPrompt } from "../../packages/ggcoder/src/system-prompt.js";
-import { discoverSkills, formatSkillsForPrompt, type Skill } from "../../packages/ggcoder/src/core/skills.js";
-import { createSkillTool } from "../../packages/ggcoder/src/tools/skill.js";
-import { IDEAL_REVIEW_PROMPT } from "../../packages/ggcoder/src/core/ideal-review.js";
+import { buildSystemPrompt } from "../../packages/cli/src/system-prompt.js";
+import { discoverSkills, formatSkillsForPrompt, type Skill } from "../../packages/cli/src/core/skills.js";
+import { createSkillTool } from "../../packages/cli/src/tools/skill.js";
+import { IDEAL_REVIEW_PROMPT } from "../../packages/cli/src/core/ideal-review.js";
 import { replaceOnce } from "./review-bench.js";
 
 export const ARMS = ["current", "proposed", "extreme"] as const;
@@ -28,7 +28,7 @@ export function auditBlocks(report: string): Map<string, { before: string; after
   }
   return blocks;
 }
-const EXTREME_CORE = `You are GG Coder, a coding agent. Finish the requested task, not adjacent work.
+const EXTREME_CORE = `You are EZ Coder, a coding agent. Finish the requested task, not adjacent work.
 
 ## Working contract
 - Investigate factual uncertainty yourself. Ask only about unresolved requirements, permissions, material tradeoffs, or destructive actions; use ask_user when available. A question about code is not permission to edit it.
