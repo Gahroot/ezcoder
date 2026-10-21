@@ -1,5 +1,15 @@
 # @kenkaiiii/gg-core
 
+## 5.85.0
+
+### Minor Changes
+
+- Add Trophies: 144 achievements earned by using GG Coder, from a first slash command to a 365-day streak. The app sidecar records them in `~/.gg/trophies.json` (counting only what happens from now on), serves `GET /trophies`, and broadcasts a `trophies` event when one is earned. `getAppPaths()` gains `trophiesFile`.
+
+### Patch Changes
+
+- @kenkaiiii/gg-ai@5.85.0
+
 ## 5.84.3
 
 ### Patch Changes
