@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.92.4",
+    date: "2026-10-25",
+    items: [
+      "Grok subscription chats work again. I updated the way I identify myself to xAI so `Grok` stops failing with an error and you can get back to building.",
+      "Everyday terminal output got leaner. I trim the boilerplate from things like `git log`, `git status` and passing test runs, so the agent reads less and answers faster.",
+      "Code changes land faster. I now ask for each edit in a single command and show the agent your project files up front, so it opens the right files on the first try.",
+    ],
+  },
+  {
     version: "0.92.3",
     date: "2026-10-21",
     items: [

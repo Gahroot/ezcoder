@@ -1,7 +1,7 @@
 {
   "name": "ezcoder-app",
   "private": true,
-  "version": "0.92.3",
+  "version": "0.92.4",
   "description": "EZ Coder desktop app: Tauri + React workspace for code, chat and motion agents",
   "type": "module",
   "scripts": {

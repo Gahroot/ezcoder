@@ -1001,7 +1001,7 @@ dependencies = [
 
 [[package]]
 name = "ezcoder-app"
-version = "0.92.3"
+version = "0.92.4"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
