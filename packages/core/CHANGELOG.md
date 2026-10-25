@@ -1,5 +1,13 @@
 # @prestyj/core
 
+## 5.32.2
+
+### Patch Changes
+
+- 4d3d4d2: Fix Grok subscription (OAuth) chats failing with HTTP 426: report Grok CLI version 1.0.67, since xAI's chat proxy now rejects clients below 1.0.13.
+- Updated dependencies [4d3d4d2]
+  - @prestyj/ai@5.32.2
+
 ## 5.32.1
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @prestyj/agent
 
+## 5.32.2
+
+### Patch Changes
+
+- Updated dependencies [4d3d4d2]
+  - @prestyj/ai@5.32.2
+
 ## 5.32.1
 
 ### Patch Changes

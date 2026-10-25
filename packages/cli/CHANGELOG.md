@@ -1,5 +1,16 @@
 # @prestyj/cli
 
+## 5.32.2
+
+### Patch Changes
+
+- 4d3d4d2: Faster code changes: when a POSIX `bash` is available, the prompt now asks for each change in one command that writes only what's new (heredoc for a small file, an asserted replace for a few lines of a bigger one, appended tests) and ends with the test command. It replaces the "prefer edit over write" line and the scripted-edit rule; without bash, or under the cmd.exe fallback, those stay. The Environment section also lists the project's files once per session (shallowest 60, from `git ls-files`), so the first call reads the right files instead of listing them. On Claude Haiku 5.5 this ran the benchmark suite about 21% faster on about 19% less usage, with no whole-file rewrites of a one-line fix in a 700-line file.
+- 4d3d4d2: Trim routine boilerplate from small bash output: `git log` headers fold to one line per commit, `git status` drops its `(use "git …")` hints, `ls -l` states a shared owner/group once, and all-green vitest/jest runs list a count instead of every passing file. Failing runs, file lists and anything that doesn't match these shapes pass through unchanged.
+- Updated dependencies [4d3d4d2]
+  - @prestyj/core@5.32.2
+  - @prestyj/ai@5.32.2
+  - @prestyj/agent@5.32.2
+
 ## 5.32.1
 
 ### Patch Changes
