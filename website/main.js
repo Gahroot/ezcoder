@@ -280,8 +280,63 @@ function formatSize(bytes) {
   return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
 }
 
+// ── Quick start ────────────────────────────────────────────
+// Accessible tabs (arrow keys move between them) that open on the visitor's
+// own OS, plus copy buttons for the setup prompts.
+function selectQuickStartTab(os, focus) {
+  const tabs = document.querySelectorAll("[data-qs-tab]");
+  tabs.forEach((tab) => {
+    const on = tab.dataset.qsTab === os;
+    tab.setAttribute("aria-selected", String(on));
+    tab.tabIndex = on ? 0 : -1;
+    const panel = document.getElementById(tab.getAttribute("aria-controls"));
+    if (panel) panel.hidden = !on;
+    if (on && focus) tab.focus();
+  });
+}
+
+function wireQuickStart() {
+  const tabs = [...document.querySelectorAll("[data-qs-tab]")];
+  if (tabs.length === 0) return;
+  tabs.forEach((tab, i) => {
+    tab.addEventListener("click", () => selectQuickStartTab(tab.dataset.qsTab, false));
+    tab.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const next = tabs[(i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+      selectQuickStartTab(next.dataset.qsTab, true);
+    });
+  });
+  if (detectOS() === "windows") selectQuickStartTab("windows", false);
+
+  document.querySelectorAll("[data-copy]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const src = document.getElementById(btn.dataset.copy);
+      if (!src) return;
+      const label = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(src.textContent);
+        btn.textContent = "Copied!";
+      } catch {
+        // Clipboard blocked (e.g. insecure context) — select the text instead
+        // so the visitor can copy it by hand.
+        const range = document.createRange();
+        range.selectNodeContents(src);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        btn.textContent = "Press Ctrl/⌘+C";
+      }
+      setTimeout(() => {
+        btn.textContent = label;
+      }, 2000);
+    });
+  });
+}
+
 // ── Boot ───────────────────────────────────────────────────
 buildGallery();
 wireLightbox();
 applyOS();
+wireQuickStart();
 wireDownloads();

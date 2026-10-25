@@ -55,6 +55,7 @@
       <nav class="nav-links">
         <a href="#features">Features</a>
         <a href="#screens">Screens</a>
+        <a href="#quickstart">Quick start</a>
         <a href="#faq">FAQ</a>
         <a class="nav-gh" href="https://github.com/Gahroot/ezcoder" target="_blank" rel="noopener">
           GitHub
@@ -289,6 +290,159 @@
             >read the build docs</a
           >.
         </p>
+      </section>
+
+      <!-- ── Quick start ───────────────────────────────────── -->
+      <section class="section" id="quickstart">
+        <header class="section-head">
+          <h2>Quick start: a dev-ready machine in one prompt.</h2>
+          <p>
+            Install EZ Coder, then paste one prompt and let it set up your whole machine for coding:
+            Git, Node.js, Python, Docker and more. It checks what you already have and skips it.
+          </p>
+        </header>
+
+        <div class="qs" data-qs>
+          <div class="qs-tabs" role="tablist" aria-label="Operating system">
+            <button
+              class="qs-tab"
+              role="tab"
+              id="qs-tab-mac"
+              aria-controls="qs-panel-mac"
+              aria-selected="true"
+              data-qs-tab="mac"
+            >
+              macOS
+            </button>
+            <button
+              class="qs-tab"
+              role="tab"
+              id="qs-tab-windows"
+              aria-controls="qs-panel-windows"
+              aria-selected="false"
+              tabindex="-1"
+              data-qs-tab="windows"
+            >
+              Windows
+            </button>
+          </div>
+
+          <!-- macOS -->
+          <div class="qs-panel" role="tabpanel" id="qs-panel-mac" aria-labelledby="qs-tab-mac">
+            <ol class="qs-steps">
+              <li>
+                <strong>Install EZ Coder.</strong> Download the <code>.dmg</code> above, drag EZ
+                Coder into Applications and open it. If macOS blocks it, right-click the app and
+                choose <em>Open</em>.
+              </li>
+              <li>
+                <strong>Sign in.</strong> Connect your Claude, ChatGPT or Gemini account from the
+                home screen.
+              </li>
+              <li>
+                <strong>Make a project.</strong> Click <em>New project</em> and call it something
+                like <code>dev-setup</code>. The agent needs a folder to work in.
+              </li>
+              <li>
+                <strong>Paste the prompt below</strong> and press Enter. When it asks for your Mac
+                password or a click in a system dialog, it'll tell you exactly what to do. Plan on
+                about 20–40 minutes, mostly downloads.
+              </li>
+            </ol>
+
+            <div class="qs-prompt">
+              <div class="qs-prompt-bar">
+                <span>Setup prompt · macOS</span>
+                <button class="btn btn-ghost btn-sm" type="button" data-copy="qs-prompt-mac">
+                  Copy prompt
+                </button>
+              </div>
+              <pre><code id="qs-prompt-mac">Set up this Mac for software development. Go through the checklist below one step at a time.
+
+Ground rules:
+- Check before installing. If a tool is already installed and working, skip it and say so. Never reinstall or downgrade something that works.
+- Use Homebrew for installs. Don't run sudo yourself. If a step needs my password or a click in a system dialog, stop, tell me exactly what to type or click, and wait for me to say "done".
+- After each install, check it with a version command before moving on.
+- Don't delete anything or change settings beyond what's listed here.
+
+Checklist:
+1. Xcode Command Line Tools: check `xcode-select -p`. If missing, run `xcode-select --install` and wait while I finish the dialog.
+2. Homebrew: check `brew --version`. If missing, give me the official install command from brew.sh to paste into Terminal (it needs my password). Then make sure brew is on PATH in ~/.zprofile (/opt/homebrew on Apple Silicon).
+3. Git and GitHub CLI: `brew install git gh`.
+4. Node.js LTS: `brew install fnm`, add `eval "$(fnm env --use-on-cd --shell zsh)"` to ~/.zshrc, then `fnm install --lts` and `fnm default lts-latest`. Install pnpm with `npm install -g pnpm`. Check `node -v`, `npm -v` and `pnpm -v`.
+5. Python: `brew install python uv`. Check `python3 --version` and `uv --version`.
+6. Docker Desktop: `brew install --cask docker-desktop` (on older Homebrew the cask is called `docker`), then `open -a Docker`. Tell me to accept the license and permission prompts. Wait until `docker info` works, then run `docker run --rm hello-world` to prove it.
+7. Git identity: if `git config --global user.name` or `user.email` is empty, ask me for my name and email and set them. Also set `git config --global init.defaultBranch main`.
+8. GitHub sign-in: if `gh auth status` says I'm not logged in, tell me to run `gh auth login` in Terminal (pick HTTPS and browser login) and wait.
+
+At the end, show a table of every tool with its version and whether you installed it or it was already there. Tell me to open a new Terminal window so the PATH changes take effect, and list anything that still needs me to do something.</code></pre>
+            </div>
+          </div>
+
+          <!-- Windows -->
+          <div
+            class="qs-panel"
+            role="tabpanel"
+            id="qs-panel-windows"
+            aria-labelledby="qs-tab-windows"
+            hidden
+          >
+            <ol class="qs-steps">
+              <li>
+                <strong>Install EZ Coder.</strong> Download the <code>.exe</code> above and run it.
+                If SmartScreen pops up, choose <em>More info → Run anyway</em>.
+              </li>
+              <li>
+                <strong>Sign in.</strong> Connect your Claude, ChatGPT or Gemini account from the
+                home screen.
+              </li>
+              <li>
+                <strong>Make a project.</strong> Click <em>New project</em> and call it something
+                like <code>dev-setup</code>. The agent needs a folder to work in.
+              </li>
+              <li>
+                <strong>Paste the prompt below</strong> and press Enter. Click <em>Yes</em> on the
+                Windows admin (UAC) prompts it warns you about.
+              </li>
+              <li>
+                <strong>Restart when it asks.</strong> Turning on WSL 2 needs a reboot. Afterwards,
+                reopen the same project and paste the prompt again. It saves its progress and
+                carries on where it stopped.
+              </li>
+            </ol>
+
+            <div class="qs-prompt">
+              <div class="qs-prompt-bar">
+                <span>Setup prompt · Windows (Docker on WSL 2)</span>
+                <button class="btn btn-ghost btn-sm" type="button" data-copy="qs-prompt-windows">
+                  Copy prompt
+                </button>
+              </div>
+              <pre><code id="qs-prompt-windows">Set up this Windows PC for software development, with Docker Desktop running on WSL 2. Go through the checklist below one step at a time.
+
+Ground rules:
+- Run Windows commands with PowerShell (`powershell -NoProfile -Command "..."`). Install with winget, always adding `--accept-source-agreements --accept-package-agreements`.
+- Check before installing. If something is already installed and working, skip it and say so. Never reinstall or downgrade something that works.
+- After each winget install, reload PATH from the registry (Machine + User) or use the full install path. Don't assume a new tool is visible yet.
+- For steps that need admin rights, use `Start-Process ... -Verb RunAs -Wait`. Tell me before each one so I know to click Yes on the UAC prompt.
+- If a step needs a restart, first save what's done and what's next to ~/dev-setup-progress.md, then tell me to restart and stop. When I paste this prompt again, read that file first and carry on from there.
+- Don't delete anything or change settings beyond what's listed here.
+
+Checklist:
+1. winget: check `winget --version`. If it doesn't work, tell me to update "App Installer" from the Microsoft Store and wait.
+2. Git for Windows and GitHub CLI: `winget install --id Git.Git -e` and `winget install --id GitHub.cli -e`. EZ Coder uses Git Bash as its shell, so do this first.
+3. Virtualization: check `(Get-CimInstance Win32_Processor).VirtualizationFirmwareEnabled` (or Task Manager > Performance > CPU). If it's off, stop and tell me how to turn it on in the BIOS/UEFI for my PC.
+4. WSL 2: check `wsl --status`. If WSL isn't installed, run `wsl --install` as admin (this installs WSL 2 and Ubuntu), then save progress and ask me to restart. After the restart: run `wsl --update` and `wsl --set-default-version 2`, and make sure `wsl -l -v` shows Ubuntu on VERSION 2 (fix it with `wsl --set-version Ubuntu 2` if not). Tell me to open "Ubuntu" from the Start menu once to create my Linux username and password.
+5. Docker Desktop on WSL 2: install it with `winget install --id Docker.DockerDesktop -e --override "install --quiet --accept-license --backend=wsl-2"`. Make sure my Windows user is in the `docker-users` group; if not, add it as admin and tell me to sign out and back in. Start Docker Desktop and confirm "Use the WSL 2 based engine" is on (`"wslEngineEnabled": true` in %APPDATA%\Docker\settings-store.json) and that WSL integration is on for Ubuntu (Settings > Resources > WSL integration). Wait until `docker info` works and shows a WSL2 kernel, then run `docker run --rm hello-world` to prove it.
+6. Node.js LTS: `winget install --id OpenJS.NodeJS.LTS -e`, then `npm install -g pnpm`. Check `node -v`, `npm -v` and `pnpm -v`.
+7. Python: run `winget search Python.Python.3` and install the newest Python 3, plus uv (`winget install --id astral-sh.uv -e`). Check `python --version` and `uv --version`.
+8. Git identity: if `git config --global user.name` or `user.email` is empty, ask me for my name and email and set them. Also set `git config --global init.defaultBranch main`.
+9. GitHub sign-in: if `gh auth status` says I'm not logged in, tell me to run `gh auth login` in a terminal (pick HTTPS and browser login) and wait.
+
+At the end, show a table of every tool with its version and whether you installed it or it was already there. Delete ~/dev-setup-progress.md if everything is done. Tell me to fully quit and reopen EZ Coder so it picks up Git Bash and the new PATH, and list anything that still needs me to do something.</code></pre>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ── FAQ ───────────────────────────────────────────── -->
