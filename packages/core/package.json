@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/core",
-  "version": "5.32.2",
+  "version": "5.33.0",
   "type": "module",
   "description": "Model registry, sign-in and stored credentials, and local model discovery for apps built on @prestyj/ai. No UI, no agent loop.",
   "author": "Nolan Grout",

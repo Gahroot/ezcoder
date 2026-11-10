@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/agent",
-  "version": "5.32.2",
+  "version": "5.33.0",
   "type": "module",
   "description": "Agent loop for LLMs: runs your tools, feeds results back and loops until done, with retries, steering and cancellation. Works with every @prestyj/ai provider.",
   "author": "Nolan Grout",

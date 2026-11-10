@@ -1,5 +1,17 @@
 # @prestyj/cli
 
+## 5.33.0
+
+### Minor Changes
+
+- Sync the upstream v0.109 engine: faster, cheaper agent runs (cache-safe tool loading, earlier compaction, leaner tool output), fixes for long Anthropic thinking being cut off and restored sessions failing with HTTP 400, large and PDF/EPUB chat attachments, goals on local models, `!` terminal commands, animated GIF image generation, and new models (Claude Fable 5.2, GPT-6.1 Terra, MiniMax M3.1 Flash). Keeps the Claude subscription and ChatGPT-plan sign-ins; removes the clarify, code-review, evidence-led-ui, refactoring, root-cause, shared-language and tdd skills, the code_search/code_nav tools and language style packs.
+
+### Patch Changes
+
+- @prestyj/ai@5.33.0
+- @prestyj/agent@5.33.0
+- @prestyj/core@5.33.0
+
 ## 5.32.2
 
 ### Patch Changes
