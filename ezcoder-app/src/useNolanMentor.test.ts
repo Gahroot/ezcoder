@@ -1,0 +1,151 @@
+// @vitest-environment jsdom
+import { describe, it, expect } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import { useNolanMentor } from "./useNolanMentor";
+import { createLiveTextStore } from "./live-text";
+import type { Item } from "./App";
+import type { SidecarEvent } from "./agent";
+
+/**
+ * Drive the hook with a real (mutable) items array + monotonic id minter, mirroring
+ * how App wires it. setItems runs synchronously here, so transcript appends are
+ * observable immediately; the hook's own React state (nolanRunning, nolanTokens, …) is
+ * read off result.current after an act() flush.
+ */
+function setup() {
+  let items: Item[] = [];
+  let id = 0;
+  const setItems = (u: Item[] | ((prev: Item[]) => Item[])): void => {
+    items = typeof u === "function" ? u(items) : u;
+  };
+  const nextId = (): number => ++id;
+  const liveText = createLiveTextStore();
+  const hook = renderHook(() => useNolanMentor({ setItems, nextId, liveText }));
+  return { hook, getItems: () => items, liveText };
+}
+
+const ev = (type: string, data: Record<string, unknown> = {}): SidecarEvent =>
+  ({ type, data }) as SidecarEvent;
+
+describe("useNolanMentor", () => {
+  it("nolan_text_delta streams into a single kind:'ken' item", () => {
+    const { hook, getItems, liveText } = setup();
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_text_delta", { text: "hello" }));
+    });
+    const items = getItems();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: "ken", text: "hello" });
+    const id = items[0]?.id ?? -1;
+
+    // A second delta grows the SAME bubble through the live-text store (only
+    // that row re-renders), not a new item and not a whole-transcript update.
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_text_delta", { text: " world" }));
+    });
+    expect(getItems()).toHaveLength(1);
+    expect(liveText.get(id)).toBe("hello world");
+
+    // When Nolan's run ends, the final text lands in the transcript once.
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_run_end"));
+    });
+    const after = getItems();
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ kind: "ken", text: "hello world" });
+    expect(liveText.get(id)).toBeUndefined();
+  });
+
+  it("nolan_run_start flips nolanRunning true and resets tokens", () => {
+    const { hook } = setup();
+    // Seed some tokens first so the reset is observable.
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_turn_end", { usage: { outputTokens: 42 } }));
+    });
+    expect(hook.result.current.nolanTokens).toBe(42);
+
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_run_start"));
+    });
+    expect(hook.result.current.nolanRunning).toBe(true);
+    expect(hook.result.current.nolanTokens).toBe(0);
+    expect(hook.result.current.nolanRunStartTs).toBeTypeOf("number");
+  });
+
+  it("nolan_turn_end accumulates outputTokens across turns", () => {
+    const { hook } = setup();
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_run_start"));
+    });
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_turn_end", { usage: { outputTokens: 10 } }));
+    });
+    expect(hook.result.current.nolanTokens).toBe(10);
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_turn_end", { usage: { outputTokens: 5 } }));
+    });
+    expect(hook.result.current.nolanTokens).toBe(15);
+  });
+
+  it("nolan_error with only a message (legacy shape) falls back to a flat text item", () => {
+    const { hook, getItems } = setup();
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_run_start"));
+    });
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_error", { message: "boom" }));
+    });
+    const items = getItems();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: "error" });
+    expect((items[0] as { text: string }).text).toContain("boom");
+    expect(hook.result.current.nolanRunning).toBe(false);
+  });
+
+  it("nolan_error with a structured payload (headline/message/guidance) prefixes the headline with Nolan", () => {
+    const { hook, getItems } = setup();
+    act(() => {
+      hook.result.current.handleNolanEvent(ev("nolan_run_start"));
+    });
+    act(() => {
+      hook.result.current.handleNolanEvent(
+        ev("nolan_error", {
+          headline: "Anthropic usage limit reached.",
+          message: "Your Anthropic usage is finished. It resets at 12:50 PM.",
+          guidance: "Try again once it's back. Your conversation is preserved.",
+          reason: "usage_limit",
+          resetsAt: 1_800_000_000,
+          occurredAt: 1_799_000_000_000,
+          provider: "anthropic",
+        }),
+      );
+    });
+    const items = getItems();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: "error",
+      headline: "Nolan: Anthropic usage limit reached.",
+      message: "Your Anthropic usage is finished. It resets at 12:50 PM.",
+      guidance: "Try again once it's back. Your conversation is preserved.",
+      reason: "usage_limit",
+      resetsAt: 1_800_000_000,
+      occurredAt: 1_799_000_000_000,
+      provider: "anthropic",
+    });
+    expect(hook.result.current.nolanRunning).toBe(false);
+  });
+
+  it("returns true for nolan events and false for a non-ken event", () => {
+    const { hook, getItems } = setup();
+    let nolanHandled = false;
+    let buildHandled = true;
+    act(() => {
+      nolanHandled = hook.result.current.handleNolanEvent(ev("nolan_run_start"));
+      buildHandled = hook.result.current.handleNolanEvent(ev("text_delta", { text: "build" }));
+    });
+    expect(nolanHandled).toBe(true);
+    expect(buildHandled).toBe(false);
+    // A non-ken event must NOT have touched the transcript.
+    expect(getItems()).toHaveLength(0);
+  });
+});

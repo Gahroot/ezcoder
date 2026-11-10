@@ -17,7 +17,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const srcTauri = join(here, "..", "src-tauri");
 const binDir = join(srcTauri, "binaries");
 const sidecar = join(srcTauri, "sidecar", "app-sidecar.mjs");
-const evidenceSkill = join(srcTauri, "sidecar", "skills", "evidence-led-ui", "SKILL.md");
+const complianceSkill = join(srcTauri, "sidecar", "skills", "compliance-guard", "SKILL.md");
 
 function fail(msg) {
   console.error(`SMOKE FAIL: ${msg}`);
@@ -234,6 +234,24 @@ function smokeSandboxRuntime(node) {
 }
 
 /**
+ * The Claude subscription route imports the external Agent SDK, but Claude Code
+ * itself is downloaded on first sign-in. Shipping a platform build would add
+ * ~200 MB to every install.
+ */
+function smokeClaudeAgentSdk() {
+  const scope = join(srcTauri, "sidecar", "node_modules", "@anthropic-ai");
+  if (!existsSync(join(scope, "claude-agent-sdk", "sdk.mjs"))) {
+    fail("bundled Claude Agent SDK missing: @anthropic-ai/claude-agent-sdk/sdk.mjs");
+  }
+  if (!existsSync(join(srcTauri, "sidecar", "node_modules", "zod", "package.json"))) {
+    fail("bundled Claude Agent SDK peer missing: zod");
+  }
+  const shipped = readdirSync(scope).filter((name) => name.startsWith("claude-agent-sdk-"));
+  if (shipped.length > 0) fail(`Claude Code platform builds were bundled: ${shipped.join(", ")}`);
+  console.log("smoke: Claude Agent SDK bundled without Claude Code platform builds");
+}
+
+/**
  * Payload gate: bundle-sidecar strips dev-only weight after copying the
  * dependency tree (source maps; onnxruntime-web's browser wasm/webgl/webgpu
  * payloads, which the Node exports map never resolves). If either returns,
@@ -257,7 +275,8 @@ function smokeLeanPayload() {
 
 async function main() {
   if (!existsSync(sidecar)) fail(`bundled sidecar missing: ${sidecar}`);
-  if (!existsSync(evidenceSkill)) fail(`bundled evidence-led-ui skill missing: ${evidenceSkill}`);
+  if (!existsSync(complianceSkill))
+    fail(`bundled compliance-guard skill missing: ${complianceSkill}`);
   const node = nodeBin();
   console.log(`smoke: ${node} ${sidecar}`);
 
@@ -265,6 +284,7 @@ async function main() {
   smokeOpenSrc(node);
   smokeSandboxRuntime(node);
   smokeMotionBundle(node);
+  smokeClaudeAgentSdk();
   smokeLeanPayload();
 
   const child = spawn(node, [sidecar], {

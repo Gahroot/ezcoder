@@ -42,7 +42,8 @@ interface FooterProps {
 
 // Model ID → short display name
 const MODEL_SHORT_NAMES: Record<string, string> = {
-  "claude-fable-5-1": "Fable",
+  "claude-fable-5-2": "Fable",
+  "claude-fable-5-2-fast": "Fable Fast",
   "claude-mythos-5": "Mythos",
   "claude-opus-5-5": "Opus",
   "claude-opus-5-5-fast": "Opus Fast",
@@ -52,6 +53,8 @@ const MODEL_SHORT_NAMES: Record<string, string> = {
   "gpt-6-astra-fast": "GPT-6 Astra Fast",
   "gpt-6.1-sol": "GPT-6.1 Sol",
   "gpt-6.1-sol-fast": "GPT-6.1 Sol Fast",
+  "gpt-6.1-terra": "GPT-6.1 Terra",
+  "gpt-6.1-terra-fast": "GPT-6.1 Terra Fast",
   "gpt-6-luna": "GPT-6 Luna",
   "gpt-6-luna-fast": "GPT-6 Luna Fast",
 };

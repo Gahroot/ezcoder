@@ -199,6 +199,36 @@ describe("streamAnthropic request shaping", () => {
     ]);
   });
 
+  it("never sends sampling params, which API version 2026-10-21 rejects", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const AnthropicMock = Anthropic as unknown as {
+      nextError: Error | null;
+      nextEvents: unknown[] | null;
+    };
+    AnthropicMock.nextError = null;
+    AnthropicMock.nextEvents = [
+      { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+      { type: "message_stop" },
+    ];
+
+    const result = streamAnthropic({
+      provider: "anthropic",
+      model: "claude-sonnet-4-5",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "sk-ant-test",
+      temperature: 0.2,
+      topP: 0.9,
+    });
+    for await (const _event of result) {
+      /* consume */
+    }
+
+    const params = createMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(params).not.toHaveProperty("temperature");
+    expect(params).not.toHaveProperty("top_p");
+    expect(params).not.toHaveProperty("top_k");
+  });
+
   it("merges providerOptions into the request without overriding core fields", async () => {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const AnthropicMock = Anthropic as unknown as {
@@ -230,6 +260,7 @@ describe("streamAnthropic request shaping", () => {
 
   it.each([
     { label: "fast-mode id", model: "claude-opus-5-5-fast", baseUrl: undefined, fast: true },
+    { label: "Fable fast-mode id", model: "claude-fable-5-2-fast", baseUrl: undefined, fast: true },
     { label: "standard id", model: "claude-opus-5-5", baseUrl: undefined, fast: false },
     {
       label: "fast-mode id via a gateway",
@@ -259,7 +290,7 @@ describe("streamAnthropic request shaping", () => {
       Record<string, unknown>,
       { headers?: Record<string, string> },
     ];
-    expect(params.model).toBe("claude-opus-5-5");
+    expect(params.model).toBe(route.model.replace(/-fast$/, ""));
     const beta = requestOptions.headers?.["anthropic-beta"] ?? "";
     if (route.fast) {
       expect(params.speed).toBe("fast");
@@ -539,7 +570,7 @@ describe("streamAnthropic error normalization", () => {
       expect(rejection).toMatchObject({
         statusCode: 429,
         message: `Fast mode unavailable (${reason ?? "unknown"}): ${headline}.`,
-        hint: expect.stringContaining("Claude Opus 5.5 (standard speed)"),
+        hint: expect.stringContaining("same model without Fast (standard speed)"),
       });
       expect(isUsageLimitError(rejection)).toBe(false);
       expect(isHardBillingMessage((rejection as Error).message)).toBe(true);
@@ -662,6 +693,42 @@ describe("streamAnthropic error normalization", () => {
       statusCode: 500,
     } satisfies Partial<ProviderError>);
     await expect(result.response).rejects.toThrow(/usage limit reached/i);
+  });
+
+  it("labels errors from an Anthropic-compatible provider with that provider", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const AnthropicMock = Anthropic as unknown as {
+      APIError: new (
+        status: number | undefined,
+        error: unknown,
+        message: string,
+        requestID?: string | null,
+        type?: string | null,
+      ) => Error;
+      nextError: Error | null;
+      nextEvents: unknown[] | null;
+    };
+    AnthropicMock.nextEvents = null;
+    AnthropicMock.nextError = new AnthropicMock.APIError(
+      402,
+      { type: "insufficient_balance_error", message: "insufficient balance (1008)" },
+      "402 Payment Required",
+      "req_minimax_label",
+      "insufficient_balance_error",
+    );
+
+    const result = streamAnthropic({
+      provider: "minimax",
+      model: "MiniMax-M3.1-Flash",
+      baseUrl: "https://api.minimax.io/anthropic",
+      messages: [{ role: "user", content: "hi" }],
+      apiKey: "sk-cp-test",
+    });
+
+    await expect(result.response).rejects.toMatchObject({
+      provider: "minimax",
+      statusCode: 402,
+    } satisfies Partial<ProviderError>);
   });
 
   it("preserves tool arguments carried on the streamed content block start", async () => {
@@ -1003,7 +1070,7 @@ describe("streamAnthropic prewarm", () => {
     provider: "anthropic" as const,
     model: "claude-opus-5-5",
     messages: [
-      { role: "system" as const, content: "system prompt" },
+      { role: "system" as const, content: "system prompt ".repeat(400) },
       { role: "user" as const, content: "hello" },
     ],
     tools: [
@@ -1051,5 +1118,18 @@ describe("streamAnthropic prewarm", () => {
     }).response;
     expect(createMock).not.toHaveBeenCalled();
     expect(response.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
+
+  it("skips the request when the prefix is below the model's cacheable minimum", async () => {
+    await setupMock();
+    createMock.mockClear();
+    // ~1.4k tokens: under Haiku 4.5's 4,096 minimum, over Opus 5.5's 512.
+    const small = { ...base, thinking: undefined, prewarm: true };
+    const skipped = await streamAnthropic({ ...small, model: "claude-haiku-4-5-20251001" })
+      .response;
+    expect(createMock).not.toHaveBeenCalled();
+    expect(skipped.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+    await streamAnthropic({ ...small, model: "claude-opus-5-5" }).response;
+    expect(createMock).toHaveBeenCalledTimes(1);
   });
 });

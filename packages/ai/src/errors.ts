@@ -318,7 +318,7 @@ export function formatError(err: unknown): FormattedError {
         statusCode: err.statusCode,
         ...(err.requestId ? { requestId: err.requestId } : {}),
         guidance:
-          "Request access via your Anthropic account team (see platform.claude.com/docs/en/about-claude/models/overview), or switch to Claude Fable 5.1 via the model selector — same underlying model, generally available.",
+          "Request access via your Anthropic account team (see platform.claude.com/docs/en/about-claude/models/overview), or switch to Claude Fable 5.2 via the model selector — same underlying model, generally available.",
       };
     }
     // Fast mode rejections must never read as the plan's usage running out:
@@ -334,6 +334,25 @@ export function formatError(err: unknown): FormattedError {
         statusCode: err.statusCode,
         ...(err.requestId ? { requestId: err.requestId } : {}),
         guidance: fastRejection.guidance,
+      };
+    }
+    const miniMax = err.provider === "minimax" ? formatMiniMaxError(err, cleanMessage) : undefined;
+    if (miniMax) return miniMax;
+    if (isUsageLimitError(err) && err.provider === "openai" && /chatgpt/i.test(err.message)) {
+      // OpenAI: don't assume the whole plan is empty or guess a reset time —
+      // the limit can be one the user set for EZ Coder.
+      return {
+        headline: "ChatGPT plan usage limit reached.",
+        source: "provider",
+        message:
+          "EZ Coder has used what your ChatGPT plan allows for now. That can be your plan's limit or one you set for EZ Coder.",
+        provider: err.provider,
+        statusCode: err.statusCode,
+        ...(err.requestId ? { requestId: err.requestId } : {}),
+        ...(err.resetsAt ? { resetsAt: err.resetsAt } : {}),
+        guidance:
+          err.hint ??
+          "Check or raise it at chatgpt.com/settings/usage, or add an OpenAI API key to keep going.",
       };
     }
     if (isUsageLimitError(err)) {
@@ -482,6 +501,47 @@ function inferSource(err: Error): ErrorSource {
     return "auth";
   }
   return "ezcoder";
+}
+
+/**
+ * MiniMax's documented error codes (platform.minimax.io/docs/api-reference/errorcode)
+ * whose generic wording misleads: a plan key calling a model its plan doesn't
+ * cover answers "insufficient balance", which otherwise reads as a spent quota.
+ */
+function formatMiniMaxError(err: ProviderError, cleanMessage: string): FormattedError | undefined {
+  const code = /\((\d{4,5})\)/.exec(err.message)?.[1];
+  const base = {
+    source: "provider" as const,
+    message: cleanMessage,
+    provider: err.provider,
+    statusCode: err.statusCode,
+    ...(err.requestId ? { requestId: err.requestId } : {}),
+  };
+  if (code === "2049" || code === "1004") {
+    return {
+      ...base,
+      headline: "MiniMax didn't accept this API key.",
+      guidance:
+        "A MiniMax key only works in the region that issued it (Global: platform.minimax.io, Mainland China: platform.minimaxi.com). Connect MiniMax again with the key so EZ Coder can detect its region, and check the key is active.",
+    };
+  }
+  if (code === "2061") {
+    return {
+      ...base,
+      headline: "Your MiniMax plan doesn't include this model.",
+      guidance:
+        "Switch to MiniMax M3.1 Flash in the model selector — it's the model M Plan and Token Plan cover. MiniMax M3 needs a pay-as-you-go key.",
+    };
+  }
+  if (code === "1008") {
+    return {
+      ...base,
+      headline: "MiniMax has no balance for this request.",
+      guidance:
+        "Check this key's plan is active, or its pay-as-you-go balance, at platform.minimax.io (platform.minimaxi.com for Mainland China keys). Plan keys only cover MiniMax M3.1 Flash. Not a EZ Coder issue.",
+    };
+  }
+  return undefined;
 }
 
 /**

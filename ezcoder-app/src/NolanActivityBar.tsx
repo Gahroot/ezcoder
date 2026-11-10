@@ -1,0 +1,87 @@
+import { useEffect, useId, useState } from "react";
+import { ThinkingOrb } from "thinking-orbs";
+import { theme } from "./theme";
+import { formatElapsed, formatTokenCount, ToolsToggle } from "./ActivityBar";
+import { ShimmerText } from "./ShimmerText";
+import { useMotionLevel } from "./window-motion";
+
+interface Props {
+  /** Timestamp (ms) Nolan's run began, or null when not running. */
+  runStartTs: number | null;
+  /** Accumulated output tokens for Nolan's current run. */
+  tokens: number;
+  /** The tool panel's show/hide chevron, as on the main bar. */
+  toolsHidden?: boolean;
+  onToggleTools?: () => void;
+}
+
+/**
+ * Nolan Grout's activity bar: the EZ Coder ActivityBar's running row exactly (the
+ * listening orb, label and `elapsed · N tok` meta), with the orb
+ * and label tinted Nolan's colour and reading "Nolan is thinking…".
+ */
+export function NolanActivityBar({
+  runStartTs,
+  tokens,
+  toolsHidden = false,
+  onToggleTools,
+}: Props): React.ReactElement {
+  const orbTintId = useId();
+  const [now, setNow] = useState(() => Date.now());
+  const motion = useMotionLevel();
+
+  // Same clock as ActivityBar: ticks in a visible window, catches up when shown.
+  useEffect(() => {
+    if (motion === "off") return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [motion]);
+
+  const elapsed = runStartTs ? Math.max(0, now - runStartTs) : 0;
+
+  return (
+    <div className="task-activity" data-phase="working">
+      <div className="statusrow running nolan-statusrow">
+        <div className="activity-summary">
+          <span className="statusrow-left" role="status" aria-live="polite" aria-atomic="true">
+            {/* Tint the canvas alpha with Nolan's colour; the package has no color prop. */}
+            <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}>
+              <defs>
+                <filter id={orbTintId} colorInterpolationFilters="sRGB">
+                  {/* In `style`, not the attribute: presentation attributes don't resolve var(). */}
+                  <feFlood style={{ floodColor: theme.nolan }} />
+                  <feComposite in2="SourceAlpha" operator="in" />
+                </filter>
+              </defs>
+            </svg>
+            <ThinkingOrb
+              state="listening"
+              size={20}
+              theme="auto"
+              paused={motion !== "full"}
+              aria-hidden="true"
+              style={{ flexShrink: 0, filter: `url(#${orbTintId})` }}
+            />
+            <span className="activity-label-reveal" title="Nolan is thinking…">
+              <ShimmerText base={theme.nolan} bright={theme.text}>
+                {"Nolan is thinking…"}
+              </ShimmerText>
+            </span>
+          </span>
+          <span className="activity-meta dissolve-in">
+            {formatElapsed(elapsed)}
+            {tokens > 0 && (
+              <span className="activity-token-count" title="Output tokens">
+                {` · ${formatTokenCount(tokens)} tok`}
+              </span>
+            )}
+          </span>
+        </div>
+        <span className="statusrow-right">
+          {onToggleTools && <ToolsToggle hidden={toolsHidden} onToggle={onToggleTools} />}
+        </span>
+      </div>
+    </div>
+  );
+}

@@ -23,6 +23,7 @@ import { createAppErrorPayload } from "./app-error.js";
 import { runSubagentWorkerMode } from "./modes/subagent-worker-mode.js";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { setStreamDiagnostic } from "@prestyj/agent";
+import { streamDiagLevel } from "./core/stream-diag-level.js";
 import { AgentSession } from "./core/agent-session.js";
 import { RunLifecycle } from "./core/run-lifecycle.js";
 import { RunClaim } from "./core/run-claim.js";
@@ -32,7 +33,9 @@ import {
   PLAN_SUBMITTED_FOR_REVIEW,
   shouldOfferPendingPlan,
 } from "./core/plan-handoff.js";
+import { discoverSkillsWithBlocked } from "./core/skills.js";
 import {
+  chatWorkspaceDir,
   createChatAgent,
   parseChatAgentId,
   switchChatAgent,
@@ -52,17 +55,28 @@ import { validateNolanModelPref, effectiveNolanModel, type NolanModelPref } from
 import type { RunOutcome } from "./core/session-manager.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { cleanupToolOutputs } from "./tools/overflow.js";
+import { pruneDiagnosticsRecords } from "./core/internal-diagnostics.js";
+import { pruneCheckpointSessions } from "./core/checkpoint-store.js";
 import {
   dualAuthProvider,
   discoverLocalModels,
+  findProbedModel,
+  isLocalModelId,
   formatLocalModelId,
   parseLocalModelId,
   probeEndpoint,
+  ollamaServedContext,
+  resolveClaudeCodeBinary,
   toModelInfo as localModelInfo,
   type LocalEndpoint,
   type LocalEndpointProbe,
 } from "@prestyj/core";
-import { listAllEndpoints, syncEndpointCredentials } from "./core/local-endpoint-store.js";
+import {
+  listAllEndpoints,
+  listCustomEndpoints,
+  syncEndpointCredentials,
+} from "./core/local-endpoint-store.js";
+import { loadOpenRouterCatalog } from "./core/openrouter-catalog-store.js";
 import type { OAuthLoginCallbacks } from "./core/oauth/types.js";
 import {
   AUTH_PROVIDERS,
@@ -88,13 +102,15 @@ import type { GitHubCI } from "./utils/github-ci.js";
 import type { ProjectHealthScan } from "./core/project-health-scan.js";
 import { scoreProjectHealth, type ProjectHealth } from "./core/project-health-score.js";
 import { type RepoPolls, createRepoPolls } from "./app-sidecar/repo-polls.js";
-import { extractPlanSteps } from "./utils/plan-steps.js";
+import { extractPlanSteps, stepsDoneThrough } from "./utils/plan-steps.js";
+import { desktopGuidance } from "./app-sidecar/desktop-guidance.js";
 import { getSupportedThinkingLevels, isThinkingLevelSupported } from "./core/thinking-level.js";
 import { PROMPT_COMMANDS } from "./core/prompt-commands.js";
 import { pruneDoneTasksSync } from "./core/tasks-store.js";
 import { initLogger, log } from "./core/logger.js";
 import { installTerminationHandlers } from "./core/shutdown.js";
 import { stopRadio } from "./core/radio.js";
+import { reapOrphanedRadioPlayers } from "./core/radio-players.js";
 import { enrichProcessPath } from "./core/shell-path.js";
 import type { ServeController } from "./modes/serve-mode.js";
 import { createElicitationBridge } from "./core/mcp/index.js";
@@ -123,6 +139,7 @@ import {
 } from "./app-sidecar/app-settings.js";
 import { NOLAN_ALLOWED_TOOLS } from "./app-sidecar/nolan-context.js";
 import { type ProgressManager, createProgressManager } from "./app-sidecar/progress-manager.js";
+import { createPollClient } from "./app-sidecar/poll.js";
 import { type TrophyManager, createTrophyManager } from "./app-sidecar/trophy-manager.js";
 import { localTrophyDate } from "./core/trophies/engine.js";
 import { handleSessionRoutes } from "./app-sidecar/session-routes.js";
@@ -132,6 +149,7 @@ import {
   goalPhase,
   goalsRoot,
   isGoalDir,
+  isGoalStartMessage,
   startGoalOnAnswer,
   readGoal,
 } from "./core/goals-store.js";
@@ -148,6 +166,8 @@ import { handleRunControlRoutes } from "./app-sidecar/run-control-routes.js";
 import { handleAuthRoutes } from "./app-sidecar/auth-routes.js";
 import { handleIntegrationRoutes } from "./app-sidecar/integration-routes.js";
 import { handleMcpRoutes } from "./app-sidecar/mcp-routes.js";
+import { finishShellRun, handleShellRoutes } from "./app-sidecar/shell-routes.js";
+import { ShellRunner } from "./app-sidecar/shell-runs.js";
 import type { SessionRouteContext } from "./app-sidecar/route-context.js";
 import { createHfPullManager } from "./app-sidecar/hf-pull-manager.js";
 import { keepAwake } from "./app-sidecar/keep-awake.js";
@@ -196,9 +216,9 @@ async function main(): Promise<void> {
       phase === "idle_timeout_fired" ||
       phase === "hard_timeout_fired" ||
       phase === "stall_exhausted";
-    // A session stuck on the non-streaming fallback costs real money and real
-    // latency; it does not belong in the INFO noise floor.
-    log(phase === "non_streaming_session" ? "WARN" : "INFO", "stream", phase, {
+    const level = streamDiagLevel(phase, data);
+    if (level === null) return;
+    log(level, "stream", phase, {
       ...(data ?? {}),
       ...(includeRuntime
         ? {
@@ -240,12 +260,38 @@ async function main(): Promise<void> {
   // omits Homebrew/Cargo/version-manager dirs, so the agent can't find node,
   // git, python, rg, etc. Enrich process.env.PATH from the login shell once,
   // before anything spawns (bash tool, background tasks, LSP, git helpers all
-  // inherit it). Best-effort — never blocks startup beyond its internal cap.
-  await enrichProcessPath();
+  // inherit it). Best-effort, capped internally. Not awaited here: it overlaps
+  // the rest of boot (nothing below spawns), and the HTTP handler holds every
+  // request until it settles, so no window-driven spawn can see the bare PATH.
+  let pathReady = false;
+  const pathReadyPromise = enrichProcessPath()
+    .catch(() => {})
+    .finally(() => {
+      pathReady = true;
+    });
 
   // Sweep recoverable full tool outputs (~/.ezcoder/tool-output/) older than 48h.
   // Fire-and-forget: cleanup must never delay or break startup.
   void cleanupToolOutputs().catch(() => {});
+  // ~/.ezcoder/diagnostics/sessions records older than 30 days (best-effort, non-blocking).
+  void pruneDiagnosticsRecords()
+    .then(({ removed, freedBytes }) => {
+      if (removed > 0) {
+        log("INFO", "diagnostics", "Pruned old diagnostics records", {
+          removed: String(removed),
+          freedBytes: String(freedBytes),
+        });
+      }
+    })
+    .catch(() => {});
+  // ~/.ezcoder/checkpoints/<session> folders untouched for 30 days (best-effort, non-blocking).
+  void pruneCheckpointSessions()
+    .then(({ removed }) => {
+      if (removed > 0) {
+        log("INFO", "checkpoints", "Pruned old checkpoint folders", { removed: String(removed) });
+      }
+    })
+    .catch(() => {});
 
   // Daily malicious-package feed (OSV MAL-, npm + PyPI): deferred, background,
   // fail-silent; at most one sync a day (core/threat-feed.ts).
@@ -270,6 +316,17 @@ async function main(): Promise<void> {
   const broadcastAll = (type: string, data: unknown): void => {
     for (const ctx of sessions.values()) ctx.broadcast(type, data);
   };
+
+  // A synced OpenRouter catalog replaces the built-in list; never fatal.
+  void loadOpenRouterCatalog(auth)
+    .then((s) => {
+      if (s.synced) broadcastAll("models_change", {});
+    })
+    .catch((err: unknown) => {
+      log("WARN", "app-sidecar", "openrouter catalog load failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
   const sessionIdsAt = (cwd: string): string[] => {
     const target = path.resolve(cwd);
@@ -306,6 +363,8 @@ async function main(): Promise<void> {
   // XP/rank progress — loaded once per daemon; awards fan out to every window.
   // Each frame is tagged `origin: true` only for the session that earned the
   // XP, so that window alone plays sounds/chips while the rest just re-render.
+  // Home's weekly poll (daemon-level; one random voter id in ~/.ezcoder/poll.json).
+  const poll = createPollClient({ agentDir: paths.agentDir });
   const progress = await createProgressManager(paths.agentDir, (snapshot, originId) => {
     for (const ctx of sessions.values())
       ctx.broadcast("progress", { ...snapshot, origin: ctx.id === originId });
@@ -348,6 +407,13 @@ async function main(): Promise<void> {
   }
 
   const server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
+    if (!pathReady) {
+      void pathReadyPromise.then(() => handleRequest(req, res));
+      return;
+    }
+    handleRequest(req, res);
+  });
+  function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = req.url ?? "/";
     const method = req.method ?? "GET";
 
@@ -493,13 +559,38 @@ async function main(): Promise<void> {
       return;
     }
 
+    // The weekly poll is app-wide, so no session header. Always 200 with the poll state; its
+    // `status` tells the app the poll server's answer (0 = unreachable).
+    if (method === "GET" && url === "/poll") {
+      void poll.current().then((state) => daemonJson(res, 200, state));
+      return;
+    }
+    if (method === "POST" && url === "/poll/vote") {
+      void daemonReadBody(req, res).then(async (raw) => {
+        if (raw === null) return;
+        let parsed: { pollId?: unknown; choice?: unknown };
+        try {
+          parsed = JSON.parse(raw || "{}") as { pollId?: unknown; choice?: unknown };
+        } catch {
+          daemonJson(res, 400, { error: "invalid JSON" });
+          return;
+        }
+        if (typeof parsed.pollId !== "string" || typeof parsed.choice !== "number") {
+          daemonJson(res, 400, { error: "pollId and choice are required" });
+          return;
+        }
+        daemonJson(res, 200, await poll.vote(parsed.pollId, parsed.choice));
+      });
+      return;
+    }
+
     // Subscription quota is account-wide, not project/session-specific. OAuth
     // tokens stay in this daemon; only the active provider's normalized snapshot
     // reaches the webview.
     if (method === "GET" && (url === "/usage" || url.startsWith("/usage?"))) {
       void (async () => {
         const provider = new URL(url, `http://${host}`).searchParams.get("provider");
-        if (provider !== "anthropic" && provider !== "openai" && provider !== "moonshot") {
+        if (provider !== "anthropic" && provider !== "moonshot") {
           daemonJson(res, 400, { error: "unsupported usage provider" });
           return;
         }
@@ -521,7 +612,7 @@ async function main(): Promise<void> {
       return;
     }
     ctx.handle(req, res, url, method);
-  });
+  }
   server.listen(port, host, () => {
     const addr = server.address() as AddressInfo;
     // The Rust shell reads this line to learn the daemon port (it already
@@ -529,6 +620,10 @@ async function main(): Promise<void> {
     process.stdout.write(`GG_APP_LISTENING ${addr.port} ${authToken}\n`);
     log("INFO", "app-sidecar", "daemon listening", { port: String(addr.port), host });
   });
+
+  // A daemon killed hard never stopped its radio player; stop it now so the
+  // next play doesn't stack a second stream on top.
+  void reapOrphanedRadioPlayers().catch(() => {});
 
   const shellPid = process.ppid;
   // Session teardown awaits MCP servers, LSP servers and third-party extension
@@ -633,10 +728,12 @@ async function createSession(
   const paths = deps.paths;
   const mode = opts.mode;
   let chatAgent = opts.chatAgent;
-  const cwd = opts.cwd;
+  const cwd = mode === "chat" ? chatWorkspaceDir(opts.cwd) : opts.cwd;
   // Motion's workspace is a dedicated folder the app names inside the projects
   // root; create it on first use so a fresh install can start a video at once.
-  if (mode === "motion") await fs.mkdir(cwd, { recursive: true });
+  // GG Chat's folder likewise; both get a ready skills folder.
+  if (mode === "motion" || mode === "chat")
+    await fs.mkdir(path.join(cwd, ".ezcoder", "skills"), { recursive: true });
   // A coding session whose cwd is a Goal folder is that goal's coordinator.
   let goal =
     mode === "code" && isGoalDir(goalsRoot(paths.agentDir), cwd)
@@ -646,7 +743,7 @@ async function createSession(
   // parsing); the daemon owns the real listen host.
   const host = "127.0.0.1";
 
-  const saved = loadSavedSettings(paths.settingsFile);
+  const saved = loadSavedSettings(paths.settingsFile, { localModels: true });
   // Native login/logout and other live sessions share auth.json. Refresh the
   // daemon-level snapshot before choosing this session's provider so a project
   // never boots against credentials that were just replaced or disconnected.
@@ -695,54 +792,29 @@ async function createSession(
     for (const c of clients) c.res.write(frame);
   }
 
-  // Replace CLI-specific guidance (slash commands, CLI tool names) with
-  // desktop-app equivalents so the webview never shows "run ezcoder login".
-  // Applied to BOTH the message and guidance fields — the auth "Not logged in…
-  // Run "ezcoder login"" string lives in `message`, not `guidance`.
-  function desktopGuidance(guidance: string): string {
-    return (
-      guidance
-        // Auth: `Run "ezcoder login"` / `Run 'ezcoder login'` / `Run `ezcoder login``
-        // (any quote style, or none) → button. Do this first so the whole phrase
-        // is rewritten cleanly instead of leaving a dangling `Run "…"`.
-        .replaceAll(/Run ["'`]?ezcoder login["'`]?/gi, "Use the Login to AI Providers button")
-        // Any remaining bare mention.
-        .replaceAll(/ezcoder login/gi, "the Login to AI Providers button")
-        // /compact: the app has NO manual compact command or button — it only
-        // auto-compacts (and now auto-recovers on overflow). If this guidance is
-        // reached, auto-compaction already couldn't reduce enough, so the only
-        // real affordance is a fresh session. Don't tell the user to run a
-        // command that doesn't exist in the app.
-        .replaceAll(
-          /Run \/compact to shrink history, or start a new session\./gi,
-          "Start a new session to reset the context.",
-        )
-        // /model: handle each phrasing pattern
-        .replaceAll(/switch to (\S+) with \/model/gi, "switch to $1 using the model selector")
-        .replaceAll(/Switch with \/model\./gi, "Switch using the model selector.")
-        .replaceAll(
-          /try a different model with \/model\./gi,
-          "try a different model using the model selector.",
-        )
-        .replaceAll(/Use \/model to switch/gi, "Use the model selector to switch")
-        // /help
-        .replaceAll(/see \/help/gi, "check the help menu")
-    );
-  }
-
   /**
-   * Guidance for a connection failure against the ACTIVE local endpoint, or
+   * Guidance for a connection or auth failure against the ACTIVE local endpoint, or
    * undefined when that isn't the situation (so the generic wording stands).
    * "Disable your VPN / allow us through the firewall" is useless advice for a
    * server running on this machine — name what the user has to restart.
    */
-  function localNetworkGuidance(source: string | undefined): string | undefined {
-    if (source !== "network") return undefined;
+  function localEndpointGuidance(
+    source: string | undefined,
+    reason: string | undefined,
+  ): string | undefined {
+    if (source !== "network" && reason !== "auth") return undefined;
     const state = session.getState();
     if (state.provider !== "local") return undefined;
     const parsed = parseLocalModelId(state.model);
     const probe = localProbes.find((p) => p.endpoint.id === parsed?.endpointId);
     if (!probe) return undefined;
+    // Custom endpoints live in the Local models tile, not the provider sign-in tiles.
+    if (reason === "auth") {
+      return (
+        `${probe.endpoint.label} rejected the request at ${probe.endpoint.baseUrl}. ` +
+        "Check its key under Local models in AI Providers settings."
+      );
+    }
     return (
       `${probe.endpoint.label} stopped responding at ${probe.endpoint.baseUrl}. ` +
       "Start it again and retry, or pick another model."
@@ -762,7 +834,7 @@ async function createSession(
   ): void {
     const f = formatChatError(err);
     const message = f.message ? desktopGuidance(f.message) : undefined;
-    const guidance = localNetworkGuidance(f.source) ?? desktopGuidance(f.guidance);
+    const guidance = localEndpointGuidance(f.source, f.reason) ?? desktopGuidance(f.guidance);
     const payload = createAppErrorPayload(
       { ...f, ...(message ? { message } : {}), guidance },
       type,
@@ -852,9 +924,10 @@ async function createSession(
       new Date(),
       questions,
     ).catch((err: unknown) => {
-      log("WARN", "app-sidecar", "couldn't record goal start", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      const message = err instanceof Error ? err.message : String(err);
+      log("WARN", "app-sidecar", "couldn't record goal start", { error: message });
+      // Silent, GG Goals just asked the start question again and again.
+      broadcastError("error", "goal start", new Error(`Couldn't start the goal: ${message}`));
       return null;
     });
     if (started) {
@@ -862,6 +935,12 @@ async function createSession(
       broadcast("goal_state", { id: started.id, phase: goalPhase(started) });
       void trophies.count("goalsStarted", opts.id);
     }
+  };
+  // A typed "start the goal now" starts it like the card does: small local
+  // models often never show the card (#133).
+  const startGoalFromMessage = async (text: string): Promise<void> => {
+    if (!goal || goal.record.startedAt || !isGoalStartMessage(text)) return;
+    await startGoalFrom({ action: "answer", answers: { message: text } }, []);
   };
   const askUserTool = createAskUserTool(async (request) => {
     const result = await asks.park(request);
@@ -904,9 +983,17 @@ async function createSession(
   };
   let session!: AgentSession;
   if (mode === "chat") {
+    // Only GG Chat's own skills: EZ Coder's global and built-in ones stay in code mode.
+    const chatSkills = await discoverSkillsWithBlocked({
+      globalSkillsDir: paths.skillsDir,
+      projectDir: cwd,
+      workspaceOnly: true,
+    });
     session = createChatAgent(chatAgent, {
       ...baseSessionOptions,
       sessionsDir: paths.sessionsDir,
+      skills: chatSkills.skills,
+      blockedSkills: chatSkills.blocked,
       additionalTools: [
         askUserTool,
         ...buildMemoryTools(memoryStore),
@@ -925,9 +1012,17 @@ async function createSession(
       },
     });
   } else if (mode === "motion") {
+    // Only GG Motion's own skills, added to the built-in Motion ones.
+    const motionSkills = await discoverSkillsWithBlocked({
+      globalSkillsDir: paths.skillsDir,
+      projectDir: cwd,
+      workspaceOnly: true,
+    });
     session = await createMotionAgentSession({
       ...baseSessionOptions,
       sessionsDir: paths.sessionsDir,
+      workspaceSkills: motionSkills.skills,
+      blockedSkills: motionSkills.blocked,
       additionalTools: [askUserTool],
     });
   } else if (goal) {
@@ -999,9 +1094,66 @@ async function createSession(
   // frame when it lands.
   let localProbes: LocalEndpointProbe[] = [];
 
+  // Context Ollama served each model with, learned when it was last loaded
+  // ("<endpointId>/<rawId>"). A model Ollama has since unloaded keeps its size.
+  const servedContexts = new Map<string, number>();
+
+  function withServedContexts(probe: LocalEndpointProbe): LocalEndpointProbe {
+    if (probe.endpoint.kind !== "ollama") return probe;
+    return {
+      ...probe,
+      models: probe.models.map((m) => {
+        const served = servedContexts.get(`${m.endpointId}/${m.rawId}`);
+        return served === undefined || m.contextWindowKnown
+          ? m
+          : { ...m, contextWindow: served, contextWindowKnown: true };
+      }),
+    };
+  }
+
+  /**
+   * Learn the context an Ollama model really runs with and use it everywhere.
+   * `load` (on an explicit pick) loads the model first; after a run it's
+   * already loaded and `/api/ps` alone answers.
+   */
+  async function learnServedContext(modelId: string, load: boolean): Promise<void> {
+    const parsed = parseLocalModelId(modelId);
+    const probe = localProbes.find((p) => p.endpoint.id === parsed?.endpointId);
+    if (!parsed || !probe || probe.endpoint.kind !== "ollama") return;
+    const served = await ollamaServedContext(probe.endpoint, parsed.rawId, { load });
+    if (served === undefined) return;
+    const known = probe.models.find((m) => m.rawId === parsed.rawId);
+    if (known?.contextWindowKnown && known.contextWindow === served) return;
+    servedContexts.set(`${parsed.endpointId}/${parsed.rawId}`, served);
+    localProbes = localProbes.map((p) =>
+      p.endpoint.id !== parsed.endpointId
+        ? p
+        : {
+            ...p,
+            models: p.models.map((m) =>
+              m.rawId === parsed.rawId
+                ? { ...m, contextWindow: served, contextWindowKnown: true }
+                : m,
+            ),
+          },
+    );
+    const updated = findProbedModel(localProbes, modelId);
+    if (updated) registerRuntimeModels([localModelInfo(updated.model, updated.endpoint)]);
+    log("INFO", "app-sidecar", "learned served context", {
+      model: modelId,
+      contextWindow: String(served),
+    });
+    broadcast("extras", footerExtras());
+    broadcast("models_change", { local: localStatePayload() });
+  }
+
   async function scanLocalModels(force: boolean): Promise<LocalEndpointProbe[]> {
     const endpoints = await listAllEndpoints();
-    const { probes, models } = await discoverLocalModels(endpoints, { force });
+    const discovered = await discoverLocalModels(endpoints, { force });
+    const probes = discovered.probes.map(withServedContexts);
+    const models = probes.flatMap((probe) =>
+      probe.models.map((model) => localModelInfo(model, probe.endpoint)),
+    );
     localProbes = probes;
     // Only endpoints that answered get a credential: writing one for a server
     // that isn't running would make `hasProviderAuth("local")` true forever.
@@ -1025,6 +1177,7 @@ async function createSession(
       baseUrl: string;
       kind: LocalEndpoint["kind"];
       custom: boolean;
+      contextLength?: number;
       reachable: boolean;
       reason?: string;
       models: {
@@ -1046,6 +1199,7 @@ async function createSession(
         baseUrl: probe.endpoint.baseUrl,
         kind: probe.endpoint.kind,
         custom: probe.endpoint.custom === true,
+        ...(probe.endpoint.contextLength ? { contextLength: probe.endpoint.contextLength } : {}),
         reachable: probe.reachable,
         ...(probe.reason ? { reason: probe.reason } : {}),
         models: probe.models.map((m) => ({
@@ -1086,7 +1240,7 @@ async function createSession(
     if (!endpoint)
       return `Unknown local endpoint "${parsed.endpointId}" — re-scan for local models.`;
 
-    const probe = await probeEndpoint(endpoint);
+    const probe = withServedContexts(await probeEndpoint(endpoint));
     // Keep the cached view honest: this probe is fresher than the last scan.
     localProbes = localProbes.map((p) => (p.endpoint.id === endpoint.id ? probe : p));
     if (!probe.reachable) {
@@ -1193,8 +1347,26 @@ async function createSession(
     };
   }
 
-  void scanLocalModels(false)
-    .then(() => {
+  // Startup resolves the model before discovery runs, so a saved local model
+  // isn't registered yet and boot falls back. Switch to it once the scan finds it,
+  // unless the user has already picked something else or a run has started.
+  async function restoreSavedLocalModel(): Promise<void> {
+    if (preferred !== "local" || !savedModel || parseLocalModelId(savedModel) === undefined) return;
+    const stillBootModel = (): boolean => !running && session.getState().model === model;
+    if (savedModel === model || !stillBootModel() || !getModel(savedModel)) return;
+    const blocker = await localModelBlocker(savedModel);
+    if (blocker) {
+      log("WARN", "app-sidecar", "saved local model not restored", { model: savedModel, blocker });
+      return;
+    }
+    if (!stillBootModel()) return;
+    await session.switchModel("local", savedModel);
+    log("INFO", "app-sidecar", "restored saved local model", { model: savedModel });
+  }
+
+  const initialLocalScan = scanLocalModels(false)
+    .then(async () => {
+      await restoreSavedLocalModel();
       clampLocalThinking();
       broadcast("extras", footerExtras());
     })
@@ -1206,6 +1378,18 @@ async function createSession(
         error: err instanceof Error ? err.message : String(err),
       });
     });
+  // A run that starts before the scan would run on the fallback model; a goal's
+  // kickoff fires as its window opens and lost that race (#133). Never rejects.
+  let savedLocalModelPending: Promise<void> | null =
+    preferred === "local" &&
+    savedModel !== undefined &&
+    savedModel !== model &&
+    isLocalModelId(savedModel)
+      ? initialLocalScan
+      : null;
+  void initialLocalScan.finally(() => {
+    savedLocalModelPending = null;
+  });
 
   // tool_call_end carries no tool name (only the id), so remember each call's
   // name from tool_call_start to log a useful line on completion. Mirrors the
@@ -1228,10 +1412,10 @@ async function createSession(
   let planProgressSync: Promise<boolean> = Promise.resolve(false);
 
   function planProgressPayload(): { total: number; completed: number[] } {
-    const completed = [...approvedPlanMarkers]
-      .filter((step) => step >= 1 && step <= approvedPlanTotal)
-      .sort((a, b) => a - b);
-    return { total: approvedPlanTotal, completed };
+    return {
+      total: approvedPlanTotal,
+      completed: stepsDoneThrough(approvedPlanMarkers, approvedPlanTotal),
+    };
   }
 
   async function syncApprovedPlanProgress(generation: number): Promise<boolean> {
@@ -1245,13 +1429,9 @@ async function createSession(
       // Keep the last real total instead of flashing 0 or declaring completion.
       if (freshTotal > 0 || approvedPlanTotal === 0) approvedPlanTotal = freshTotal;
     }
-    broadcast("plan_progress", planProgressPayload());
-    return (
-      approvedPlanTotal > 0 &&
-      Array.from({ length: approvedPlanTotal }, (_, index) => index + 1).every((step) =>
-        approvedPlanMarkers.has(step),
-      )
-    );
+    const progress = planProgressPayload();
+    broadcast("plan_progress", progress);
+    return progress.total > 0 && progress.completed.length === progress.total;
   }
 
   function queueApprovedPlanProgressSync(): Promise<boolean> {
@@ -1783,6 +1963,8 @@ async function createSession(
     run: () => Promise<void>,
     reviewPending: () => boolean = () => false,
   ): Promise<void> {
+    // Only at boot: afterwards runAgent stays synchronous up to its first await.
+    if (savedLocalModelPending) await savedLocalModelPending;
     const ownsGeneration = !runLifecycle.running;
     const generation = ownsGeneration
       ? runLifecycle.begin(abortOwnedWork).generation
@@ -1894,6 +2076,11 @@ async function createSession(
       // cycle; its outer finalizer emits the one terminal cancelled run_end.
       if (!(cancelled && !ownsGeneration)) {
         if (cancelled) cancelledRunEndGenerations.add(generation);
+        // The run loaded the model, so Ollama can now say what size it served.
+        const runModel = session.getState().model;
+        if (session.getState().provider === "local") {
+          void learnServedContext(runModel, false).catch(() => {});
+        }
         broadcast("run_end", {
           ...(cancelled ? { cancelled: true } : {}),
           ...(verificationProblem ? { unverified: true } : {}),
@@ -2161,15 +2348,19 @@ async function createSession(
   }
 
   async function authStatusPayload(): Promise<{
-    providers: (AuthProviderMeta & {
+    providers: (Omit<AuthProviderMeta, "methodDetails"> & {
       connected: boolean;
       connectedMethods: AuthMethod[];
       activeMethod?: AuthMethod;
       oauthExhaustedUntil?: number;
       priorityNote?: string;
       methodGuidance: AuthMethodMeta[];
+      claudeCodeInstalled?: boolean;
+      reauthMessage?: string;
     })[];
+    localConnected: boolean;
   }> {
+    const retired = await auth.legacySignIns();
     const providers = await Promise.all(
       AUTH_PROVIDERS.map(async (p) => {
         const dual = dualAuthProvider(p.value);
@@ -2178,19 +2369,12 @@ async function createSession(
         // cannot express "OAuth signed in, key also on file as backup", nor offer
         // a per-method disconnect.
         const oauthKey = dual?.oauthKey;
-        const hasOAuth = oauthKey ? await auth.hasCredentials(oauthKey) : false;
-        const apiKeyKeys = p.apiKeyVariants?.map((v) => v.key) ?? [p.value];
-        const hasApiKey = p.methods.includes("apikey")
-          ? (await Promise.all(apiKeyKeys.map((k) => auth.hasCredentials(k)))).some(Boolean)
-          : false;
+        const hasOAuth = oauthKey
+          ? await auth.hasCredentials(oauthKey)
+          : p.value === "anthropic" && (await auth.hasClaudeCodeLogin());
+        const hasApiKey = p.methods.includes("apikey") && (await auth.hasApiKey(p.value));
         const connectedMethods: AuthMethod[] = [];
-        // OAuth-only providers (Anthropic/OpenAI/Gemini) store under the provider
-        // id itself, so `hasProviderAuth` is what proves their OAuth connection.
-        if (
-          p.methods.includes("oauth") &&
-          (hasOAuth || (!dual && (await auth.hasCredentials(p.value))))
-        )
-          connectedMethods.push("oauth");
+        if (p.methods.includes("oauth") && hasOAuth) connectedMethods.push("oauth");
         if (hasApiKey) connectedMethods.push("apikey");
 
         // Which one a request would actually use, mirroring AuthStorage's
@@ -2200,15 +2384,12 @@ async function createSession(
           ? ((await auth.getCredentials(oauthKey))?.usageExhaustedUntil ?? 0)
           : 0;
         const oauthSidelined = hasOAuth && Date.now() < exhaustedUntil && hasApiKey;
-        // Gemini resolves the API key first (model registry authStorageKeys).
-        const keyFirst = p.value === "gemini" && hasApiKey;
-        const activeMethod = keyFirst
-          ? ("apikey" as const)
-          : connectedMethods.includes("oauth")
-            ? oauthSidelined
-              ? ("apikey" as const)
-              : ("oauth" as const)
-            : connectedMethods[0];
+        const reauthMessage = retired.find((r) => r.provider === p.value)?.message;
+        const activeMethod = connectedMethods.includes("oauth")
+          ? oauthSidelined
+            ? ("apikey" as const)
+            : ("oauth" as const)
+          : connectedMethods[0];
 
         // `methodDetails` is the server-side lookup table behind
         // `methodGuidance` — shipping both would duplicate every string on the
@@ -2222,10 +2403,22 @@ async function createSession(
           ...(oauthSidelined ? { oauthExhaustedUntil: exhaustedUntil } : {}),
           ...(authPriorityNote(p.value) ? { priorityNote: authPriorityNote(p.value)! } : {}),
           methodGuidance: describeAuthMethods(p.value),
+          // A retired sign-in is still on disk: ask the user once to reconnect.
+          ...(reauthMessage ? { reauthMessage } : {}),
+          // Whether "Sign in with Claude" still has to download Claude Code first.
+          ...(p.value === "anthropic"
+            ? { claudeCodeInstalled: resolveClaudeCodeBinary() !== null }
+            : {}),
         };
       }),
     );
-    return { providers };
+    // Local endpoints have no tile here, but they are a usable model source. An
+    // auto-detected server's credential outlives it, so it counts only while it
+    // answered the last scan with a model; a user-added endpoint always counts.
+    const localConnected =
+      (await listCustomEndpoints()).length > 0 ||
+      localProbes.some((probe) => probe.reachable && probe.models.length > 0);
+    return { providers, localConnected };
   }
 
   // Background tasks have no event source (the bash tool just spawns them), so
@@ -2241,7 +2434,8 @@ async function createSession(
     if (tasksPollStopped) return;
     tasksPoll = setTimeout(() => {
       const tasks = session.listBackgroundProcesses();
-      const next = JSON.stringify(tasks);
+      // Common case: no tasks now and none last time — nothing to serialize.
+      const next = tasks.length === 0 ? "[]" : JSON.stringify(tasks);
       if (next !== lastTasksJson) {
         lastTasksJson = next;
         broadcast("tasks", { tasks });
@@ -2349,7 +2543,12 @@ async function createSession(
     });
   }
 
+  const shell = new ShellRunner({
+    emit: (type, data) => broadcast(type, data),
+    onEnd: (run) => finishShellRun(routeCtx, run),
+  });
   const routeCtx: SessionRouteContext = {
+    shell,
     get session() {
       return session;
     },
@@ -2492,6 +2691,8 @@ async function createSession(
       localProbes = v;
     },
     localModelBlocker,
+    learnServedContext,
+    startGoalFromMessage,
     get nolanModelOverride() {
       return nolanModelOverride;
     },
@@ -2587,6 +2788,7 @@ async function createSession(
     if (handleAuthRoutes(routeCtx, req, res, url, method)) return;
     if (handleIntegrationRoutes(routeCtx, req, res, url, method)) return;
     if (handleMcpRoutes(routeCtx, req, res, url, method)) return;
+    if (handleShellRoutes(routeCtx, req, res, url, method)) return;
 
     json(res, 404, { error: "not found" });
   }
@@ -2597,6 +2799,7 @@ async function createSession(
     // started. Otherwise they keep streaming tokens and running tools on a
     // session that is being torn down.
     abortOwnedWork();
+    shell.stopAll();
     idleWake?.dispose();
     cancelHfPull();
     releaseRunAwake?.();
@@ -2620,6 +2823,7 @@ async function createSession(
   }
 
   function stopBackgroundProcesses(): void {
+    shell.stopAll();
     session.stopBackgroundProcesses();
     nolanSession?.stopBackgroundProcesses();
     nolanAutoSession?.stopBackgroundProcesses();

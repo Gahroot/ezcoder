@@ -66,20 +66,23 @@ beforeEach(async () => {
     );
   await fs.mkdir(path.join(tempHome, ".ezcoder"), { recursive: true });
   await fs.writeFile(
-    path.join(tempHome, ".ezcoder", "claude-code-version.json"),
-    JSON.stringify({ version: "2.1.75", fetchedAt: Date.now() }),
-  );
-  await fs.writeFile(
     path.join(tempHome, ".ezcoder", "auth.json"),
     JSON.stringify({
-      gemini: {
-        accessToken: "test-gemini-token",
-        refreshToken: "test-gemini-refresh",
+      "gemini-api": {
+        accessToken: "test-gemini-key",
+        refreshToken: "",
         expiresAt: Date.now() + 3_600_000,
-        projectId: "test-google-project",
+        baseUrl: "https://generativelanguage.googleapis.com/v1beta",
       },
-      anthropic: { accessToken: "t", refreshToken: "t", expiresAt: Date.now() + 3_600_000 },
-      openai: { accessToken: "t", refreshToken: "t", expiresAt: Date.now() + 3_600_000 },
+      anthropic: { accessToken: "t", refreshToken: "", expiresAt: Date.now() + 3_600_000 },
+      "openai-chatgpt": {
+        accessToken: "t",
+        refreshToken: "t",
+        expiresAt: Date.now() + 3_600_000,
+        accountId: "user-sub",
+        clientId: "oaiapp_test",
+        baseUrl: "https://api.openai.com/v1",
+      },
       moonshot: { accessToken: "t", refreshToken: "", expiresAt: Date.now() + 3_600_000 },
     }),
   );
@@ -132,7 +135,7 @@ describe("AgentSession model switch", () => {
     try {
       for (const [provider, model] of [
         ["openai", "gpt-6.1-sol"],
-        ["anthropic", "claude-fable-5-1"],
+        ["anthropic", "claude-fable-5-2"],
         ["gemini", "gemini-3.1-pro-preview"],
         ["openai", "custom-future-model"],
       ]) {
@@ -148,12 +151,8 @@ describe("AgentSession model switch", () => {
           thinking: "high",
           maxTokens: getModel(model)?.maxOutputTokens ?? 16384,
         });
-        if (provider === "anthropic") {
-          expect(request.userAgent).toMatch(/^claude-cli\//);
-        }
-        if (provider === "gemini") {
-          expect(request.projectId).toBe("test-google-project");
-        }
+        expect(request).not.toHaveProperty("userAgent");
+        expect(request).not.toHaveProperty("projectId");
       }
     } finally {
       await session.dispose();
@@ -228,7 +227,7 @@ describe("AgentSession model switch", () => {
     try {
       session.setThinkingLevel("high");
       const enhancement = session.enhancePrompt("fix bug");
-      await session.switchModel("anthropic", "claude-fable-5-1");
+      await session.switchModel("anthropic", "claude-fable-5-2");
       session.setThinkingLevel("low");
       release();
       await enhancement;

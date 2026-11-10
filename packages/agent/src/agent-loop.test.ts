@@ -1230,6 +1230,55 @@ describe("agentLoop", () => {
     expect(events.some((event) => event.type === "agent_done")).toBe(true);
   });
 
+  it.each([
+    { name: "past the idle budget", pauseMs: 720_000 },
+    { name: "past the old 15min hard cap", pauseMs: 1_200_000 },
+  ])("keeps silent thinking alive $name while transport pings arrive", async ({ pauseMs }) => {
+    // help-me session: Opus thought silently >10 min; Anthropic only sent SSE pings
+    // (every 30s), which the SDK swallows, so the watchdog killed healthy requests.
+    vi.useFakeTimers();
+    mockStream.mockImplementation((opts: StreamOptions) => {
+      return {
+        [Symbol.asyncIterator]: async function* () {
+          yield { type: "thinking_delta" as const, text: "" };
+          await new Promise<void>((resolve, reject) => {
+            const ping = setInterval(() => opts.onTransportActivity?.(), 30_000);
+            const timer = setTimeout(() => {
+              clearInterval(ping);
+              resolve();
+            }, pauseMs);
+            opts.signal?.addEventListener(
+              "abort",
+              () => {
+                clearInterval(ping);
+                clearTimeout(timer);
+                reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+              },
+              { once: true },
+            );
+          });
+          yield { type: "text_delta" as const, text: "Done." };
+        },
+        response: Promise.resolve(makeResponse("Done.")),
+      } as unknown as ReturnType<typeof stream>;
+    });
+
+    const loopPromise = collectLoop(
+      [
+        { role: "system", content: "sys" },
+        { role: "user", content: "go" },
+      ],
+      { provider: "anthropic", model: "test", thinking: "high" },
+    );
+    await vi.advanceTimersByTimeAsync(pauseMs + 1_000);
+    const { events } = await loopPromise;
+    vi.useRealTimers();
+
+    expect(mockStream).toHaveBeenCalledTimes(1);
+    expect(events.some((event) => event.type === "retry")).toBe(false);
+    expect(events.some((event) => event.type === "agent_done")).toBe(true);
+  });
+
   it("still retries a stall after output when no tool call is open", async () => {
     vi.useFakeTimers();
     let call = 0;
@@ -1628,6 +1677,76 @@ describe("agentLoop", () => {
     });
     expect(texts[partialIdx + 1]).toContain("cut off");
     expect(texts.some((t) => t === "and the second half.")).toBe(true);
+  }, 30_000);
+
+  it("hedges a hung first event on a warm cached prompt instead of stall-retrying", async () => {
+    // 2026-10-22 ez-addict: on a fully cached ~370K-token prompt, Anthropic
+    // sometimes sent nothing for 90-118s until the watchdog fired
+    // ("Retrying…"); the identical retry answered in ~6-14s.
+    vi.useFakeTimers();
+    const diagnostics: string[] = [];
+    setStreamDiagnostic((phase) => diagnostics.push(phase));
+    const signals: AbortSignal[] = [];
+    mockStream.mockImplementation((opts: StreamOptions) => {
+      signals.push(opts.signal as AbortSignal);
+      if (signals.length === 1) {
+        return mockToolCallResult("context_probe", {
+          inputTokens: 200,
+          outputTokens: 20,
+          cacheRead: 370_000,
+        }) as unknown as ReturnType<typeof stream>;
+      }
+      if (signals.length === 2) {
+        const hung = new Promise<never>((_, reject) => {
+          opts.signal?.addEventListener(
+            "abort",
+            () => reject(Object.assign(new Error("Aborted"), { name: "AbortError" })),
+            { once: true },
+          );
+        });
+        hung.catch(() => {});
+        return {
+          [Symbol.asyncIterator]: async function* () {
+            yield* [];
+            await hung;
+          },
+          response: hung,
+        } as unknown as ReturnType<typeof stream>;
+      }
+      return mockOkResult("answered by the hedge") as unknown as ReturnType<typeof stream>;
+    });
+
+    const loopPromise = collectLoop(
+      [
+        { role: "system", content: "sys" },
+        // Large enough that the first-event watchdog (~66s) leaves room to hedge.
+        { role: "user", content: "x".repeat(100_000) },
+      ],
+      {
+        provider: "anthropic",
+        model: "test",
+        tools: [
+          {
+            name: "context_probe",
+            description: "continue the test",
+            parameters: emptyParams,
+            execute: () => "ok",
+          },
+        ],
+      },
+    );
+    await vi.advanceTimersByTimeAsync(40_000);
+    const { events } = await loopPromise;
+    setStreamDiagnostic(null);
+    vi.useRealTimers();
+
+    expect(events.some((e) => e.type === "retry")).toBe(false);
+    expect(signals).toHaveLength(3);
+    expect(signals[1]?.aborted).toBe(true);
+    expect(diagnostics).toContain("hedge_started");
+    expect(diagnostics).toContain("hedge_settled");
+    expect(diagnostics).not.toContain("idle_timeout_fired");
+    expect(events).toContainEqual({ type: "text_delta", text: "answered by the hedge" });
   }, 30_000);
 
   it("discards a sub-threshold partial on transport-failure retry", async () => {
@@ -2491,6 +2610,33 @@ describe("agentLoop resolveTool", () => {
     expect(end).toMatchObject({ isError: false, result: "late result" });
     expect(resolveTool).toHaveBeenCalledWith("late_tool");
     expect(tools.map((t) => t.name)).toEqual(["late_tool"]);
+    // The resolved tool loads at this result (transcript tool loading).
+    const secondCall = mockStream.mock.calls[1]?.[0] as { messages: Message[] };
+    const toolMsg = secondCall.messages.find((m) => m.role === "tool");
+    expect(toolMsg?.role === "tool" && toolMsg.content[0]?.loadedTools).toEqual(["late_tool"]);
+  });
+
+  it("copies a structured result's loadedTools onto the provider tool result", async () => {
+    const usage: Usage = { inputTokens: 1, outputTokens: 1 };
+    mockStream
+      .mockReturnValueOnce(
+        mockToolCallResult("loader", usage) as unknown as ReturnType<typeof stream>,
+      )
+      .mockReturnValueOnce(mockOkResult("done") as unknown as ReturnType<typeof stream>);
+    const loader: AgentTool = {
+      name: "loader",
+      description: "loads",
+      parameters: emptyParams,
+      execute: () => ({ content: "ok", loadedTools: ["b", "a"] }),
+    };
+    await collectLoop([{ role: "user", content: "go" }], {
+      provider: "anthropic",
+      model: "test",
+      tools: [loader],
+    });
+    const secondCall = mockStream.mock.calls[1]?.[0] as { messages: Message[] };
+    const toolMsg = secondCall.messages.find((m) => m.role === "tool");
+    expect(toolMsg?.role === "tool" && toolMsg.content[0]?.loadedTools).toEqual(["a", "b"]);
   });
 });
 
@@ -3120,6 +3266,44 @@ describe("agentLoop — per-turn credential resolution", () => {
     });
 
     expect(mockStream.mock.calls[0]?.[0].apiKey).toBe("token-captured");
+  });
+
+  it("drops the ChatGPT account when the resolved credential switches to an API key", async () => {
+    // Plan usage ran out mid-run in another window: the next turn resolves the
+    // OpenAI API key, which has no account and must not ride the plan route.
+    mockStream
+      .mockReturnValueOnce(
+        mockToolCallResult("context_probe", {
+          inputTokens: 10,
+          outputTokens: 5,
+        }) as unknown as ReturnType<typeof stream>,
+      )
+      .mockReturnValueOnce(mockOkResult("Done") as unknown as ReturnType<typeof stream>);
+    const creds = [{ apiKey: "plan-token", accountId: "user-sub" }, { apiKey: "sk-key" }];
+    let calls = 0;
+
+    await collectLoop([{ role: "user", content: "test" }], {
+      provider: "openai",
+      model: "test",
+      apiKey: "plan-token",
+      accountId: "user-sub",
+      resolveCredentials: async () => creds[calls++] ?? { apiKey: "sk-key" },
+      tools: [
+        {
+          name: "context_probe",
+          description: "continue the test",
+          parameters: emptyParams,
+          execute: () => "ok",
+        },
+      ],
+    });
+
+    expect(mockStream.mock.calls[0]?.[0]).toMatchObject({
+      apiKey: "plan-token",
+      accountId: "user-sub",
+    });
+    expect(mockStream.mock.calls[1]?.[0].apiKey).toBe("sk-key");
+    expect(mockStream.mock.calls[1]?.[0].accountId).toBeUndefined();
   });
 });
 

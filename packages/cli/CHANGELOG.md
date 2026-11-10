@@ -1,5 +1,311 @@
 # @prestyj/cli
 
+## 5.97.0
+
+### Minor Changes
+
+- 4900c19: Add Claude Fable 5.2 (`claude-fable-5-2`, released 2026-11-09) to the model registry — 1M context, 128k output, image input, always-on adaptive thinking, now $8/$40 MTok (down from $10/$50) with cache reads at $0.20/MTok. It replaces Fable 5.1, which is retired from the registry, model picker and login copy — a session still pinned to it falls back to the provider default on next start. The API surface matches 5.1 (no forced tool use, no prefill, no sampling params), so no call path changes.
+
+  Add Claude Fable 5.2 Fast (`claude-fable-5-2-fast`): the same model in fast mode at up to 2.5x output speed, billed to Claude usage credits at $16/$80 MTok, with the same paid-model confirmation as Opus 5.5 Fast. The thinking picker now offers `xhigh` on the Fable line, which Anthropic supports on all five effort levels. Fast-mode refusals now point back to "the same model without Fast" instead of always naming Opus 5.5.
+
+### Patch Changes
+
+- Updated dependencies [4900c19]
+  - @prestyj/ai@5.97.0
+  - @prestyj/core@5.97.0
+  - @prestyj/agent@5.97.0
+
+## 5.96.2
+
+### Patch Changes
+
+- Claude subscription sessions (via Claude Code) now use GG's own auto-compaction before and after each run, so long chats compact at the same limit as every other route instead of growing until Claude Code's near-full fallback.
+  - @prestyj/ai@5.96.2
+  - @prestyj/agent@5.96.2
+  - @prestyj/core@5.96.2
+
+## 5.96.1
+
+### Patch Changes
+
+- Fix filler "[Awaiting the user's next message.]" replies: a typed answer to a question card now hands its attachments to the agent along with the text.
+  - @prestyj/ai@5.96.1
+  - @prestyj/agent@5.96.1
+  - @prestyj/core@5.96.1
+
+## 5.96.0
+
+### Minor Changes
+
+- Give Code, Chat and Motion their own skills: Chat and Motion load only skills from their own `.ezcoder/skills` folder, each agent's prompt says where new skills go, and chats now live in a `GG Chat` folder inside the projects root.
+
+### Patch Changes
+
+- @prestyj/ai@5.96.0
+- @prestyj/agent@5.96.0
+- @prestyj/core@5.96.0
+
+## 5.95.4
+
+### Patch Changes
+
+- Claude Code chats: a message typed instead of answering `ask_user` now goes into the question's result, so the model acts on it instead of saying it will wait; a run keeps going until Claude Code has answered every message sent to it (tracked by the uuids each result reports, since `queued_turn_count` reads 0), so a reply to a message sent mid-answer is no longer lost; and a message sent while a tool runs (e.g. a long `task_output` wait) cuts that tool short, as on the native loop. The sign-in dialog no longer shows CLI `ezcoder login` advice, and failed sign-ins are logged.
+  - @prestyj/ai@5.95.4
+  - @prestyj/agent@5.95.4
+  - @prestyj/core@5.95.4
+
+## 5.95.3
+
+### Patch Changes
+
+- Claude Code chats keep one live Claude Code process across messages (closed after 15 idle minutes, restarted when wedged) instead of spawning a fresh one per run, and messages queued mid-run are delivered into the running turn. The approved-plan prompt now asks for `[DONE:n]` markers in reply text, so progress no longer stays at 0 when a model echoes them from a tool call.
+- a17ea1e: The app daemon serves Home's weekly feature poll: `GET /poll` reads the open poll and its counts, and `POST /poll/vote` votes or moves a vote under a salted SHA-256 of the OS machine id (so deleting `~/.ezcoder` or reinstalling doesn't add a vote), falling back to a random id in `~/.ezcoder/poll.json`.
+- a17ea1e: GG World is retired. The app no longer has the World game, its online save or its live multiplayer link, and the app daemon no longer serves the `/world/*` routes.
+  - @prestyj/ai@5.95.3
+  - @prestyj/agent@5.95.3
+  - @prestyj/core@5.95.3
+
+## 5.95.2
+
+### Patch Changes
+
+- 538741d: On a Claude subscription, a message you send while the agent is working no longer stays labelled "Queued" after Claude has already picked it up. EZ Coder handed the message to Claude Code before reporting it as queued, so the app never saw it pending and never cleared the label; the message is now taken a moment later, after the app has been told.
+  - @prestyj/ai@5.95.2
+  - @prestyj/agent@5.95.2
+  - @prestyj/core@5.95.2
+
+## 5.95.1
+
+### Patch Changes
+
+- 488d9b2: On a Claude subscription, a tool loaded with `tool_search` (such as `web_search`, `web_fetch`, `screenshot` or `subagent`) now works on its first call. EZ Coder used to answer `tool_search` before Claude Code had re-read the tool list, so the next call failed with "No such tool available" and had to be retried; it now waits (up to 3 seconds) for Claude Code to pick up the new tool first.
+  - @prestyj/ai@5.95.1
+  - @prestyj/agent@5.95.1
+  - @prestyj/core@5.95.1
+
+## 5.95.0
+
+### Minor Changes
+
+- f5d115b: Every provider now connects only in a way its owner allows, and EZ Coder no longer poses as Codex CLI, Kimi Code CLI, Grok CLI or Gemini CLI anywhere (#139).
+
+  - **OpenAI:** "Continue with ChatGPT" uses OpenAI's official Sign in with ChatGPT for open-source apps: EZ Coder registers itself once per ChatGPT account, checks the ID token against OpenAI's keys, needs the "Use your ChatGPT plan" permission, and revokes the session on sign-out. Requests go to the public Responses API (`api.openai.com/v1/responses`) with EZ Coder's own User-Agent. An OpenAI API key is new and rides the same Responses transport, so GPT-6 models can call tools on a key; it takes over while the plan's usage is out. The ChatGPT usage meter is replaced by a "Using ChatGPT plan · Manage usage" link, and plan usage-limit errors point to chatgpt.com/settings/usage.
+  - **Models your plan or keys can't run** are greyed out in the app's model picker with the reason ("Not in your ChatGPT plan", read from the account's own model list; "Needs a Kimi Code plan key"; "Needs an API Credits key"). Requests that still hit those limits say so: "gpt-6.1-sol isn't included in your ChatGPT plan", "Fast mode isn't included in your ChatGPT plan".
+  - **Kimi:** the Kimi sign-in is gone. Paste a Kimi Code plan key (from the Kimi Code Console; `api.kimi.com` or `api.kimi.ai` is detected) or a Moonshot API key. K2.8 Preview needs the plan key.
+  - **xAI:** API key only (xAI offers SuperGrok and X Premium usage only in apps it partners with).
+  - **Gemini:** the Google sign-in and Code Assist route are gone; Gemini is back in the provider list with a Google AI Studio key.
+  - **GLM:** keys use Z.AI's standard pay-per-token endpoint, because the GLM Coding Plan is limited to the tools Z.AI lists.
+  - **MiniMax and Xiaomi:** each key type now says what it bills (plan or pay-per-token).
+  - Old sign-ins (Codex, Kimi, Grok, Google) are never used and never read as API keys. The app and CLI ask once to reconnect, and connecting again or dismissing removes them.
+  - gg-agent: the per-turn credential refresh now drops the ChatGPT account when the credential switches to an API key, so a key never rides the plan route.
+  - `generate_image` moves to OpenAI's public Image API (GPT Image 2.6) and needs an OpenAI API key; with only the ChatGPT plan it explains that.
+  - gg-core: `loginOpenAI`/`refreshOpenAIToken` become `loginChatGPT`/`refreshChatGPTToken`/`revokeChatGPTSignIn`; `loginKimi`, `loginXai`, `loginGemini` and their helpers are removed; new `KIMI_CODE_KEY`, `OPENAI_CHATGPT_KEY`, `RETIRED_SIGN_INS`, `AuthStorage.legacySignIns()`/`takeLegacySignIn()`/`hasApiKey()`/`resolveApiKey()` and `detectKimiCodeBaseUrl`. gg-ai: `streamOpenAICodex` becomes `streamOpenAIResponses`, `CODEX_CLIENT_VERSION` and the `responsesLite`/`projectId` stream options are removed, and `EZ_CODER_USER_AGENT` is exported. The `codexResponsesLite` setting is removed.
+
+### Patch Changes
+
+- Updated dependencies [f5d115b]
+  - @prestyj/ai@5.95.0
+  - @prestyj/agent@5.95.0
+  - @prestyj/core@5.95.0
+
+## 5.94.0
+
+### Minor Changes
+
+- 5092ebc: Updated Claude sign-in. Claude Pro/Max plans now connect through Anthropic's official sign-in, and an Anthropic API key is also an option. If you were signed in to Claude before, sign in once more (`ezcoder login`, or AI Providers in the desktop app) to keep using Claude models. Removed `loginAnthropic`, `refreshAnthropicToken` and `getClaudeCliUserAgent`.
+- 5092ebc: Add GPT-6.1 Terra (`gpt-6.1-terra`, released 2026-10-26) and its Fast mode (`gpt-6.1-terra-fast`, 1.5x speed). It has a 1.05M context window on the public Responses API, 500K on the ChatGPT OAuth/Codex route, 128K output and text+image input, and costs $1/$5 per MTok (cached input $0.05). It starts at `low` effort and runs the full ladder up to `ultra`, which maps to xhigh plus the async-subagent orchestration prompt, the same as Sol and Astra. GPT-6.1 Sol stays the OpenAI default.
+
+### Patch Changes
+
+- Updated dependencies [5092ebc]
+- Updated dependencies [5092ebc]
+  - @prestyj/ai@5.94.0
+  - @prestyj/agent@5.94.0
+  - @prestyj/core@5.94.0
+
+## 5.93.0
+
+### Minor Changes
+
+- Plan mode is now always available and only used for work that needs research: it names the research tools a session can reach, asks before guessing, and can run read-only helper agents. Removed unused internal modules and the source-map dependency.
+
+### Patch Changes
+
+- @prestyj/ai@5.93.0
+- @prestyj/agent@5.93.0
+- @prestyj/core@5.93.0
+
+## 5.92.0
+
+### Minor Changes
+
+- `generate_image` makes animated GIFs (native GPT Image 2.6 output, or a sprite sheet stitched locally when a ChatGPT login has native GIF off), with animated, size-capped previews. Image previews are no longer cut off by redaction, the Codex client identity is now 0.166.0, and a Windows file-lock race (pending-delete EPERM) is fixed.
+
+### Patch Changes
+
+- @prestyj/ai@5.92.0
+- @prestyj/agent@5.92.0
+- @prestyj/core@5.92.0
+
+## 5.91.2
+
+### Patch Changes
+
+- Fix chat attachments: `/prompt` accepts up to 100 MB of attachments, refused prompts return a readable error, the `read` tool extracts text from PDF and EPUB files, files that could not be saved are reported to the model, and restored sessions keep file and video attachment names.
+  - @prestyj/ai@5.91.2
+  - @prestyj/agent@5.91.2
+  - @prestyj/core@5.91.2
+
+## 5.91.1
+
+### Patch Changes
+
+- 8627ee6: Radio no longer keeps playing after the app crashes or is force-quit: the next start stops the leftover player, but only when it is still playing that station, so an unrelated process that reused the ID is never touched. On Windows, stopping a station now stops the real player behind a launcher too. Custom local endpoints can pin a context length (a new field in Local models), and llama.cpp-style servers that report `meta.n_ctx` get their real window. OpenRouter keys can point at a compatible gateway with an optional base URL, changeable without pasting the key again, and "Sync models" replaces the built-in OpenRouter list with what that endpoint actually serves (tool-capable models only, with their context, output cap, image support and effort levels). A model that lists its own effort levels gets exactly those in the picker, and the chosen one is sent as-is, so `max` is no longer sent as `xhigh`.
+- Updated dependencies
+- Updated dependencies [8627ee6]
+  - @prestyj/core@5.91.1
+  - @prestyj/ai@5.91.1
+  - @prestyj/agent@5.91.1
+
+## 5.91.0
+
+### Minor Changes
+
+- Add MiniMax M3.1 Flash (now the MiniMax default) with a real effort ladder, route MiniMax and Xiaomi Token Plan keys to the region that issued them, name the real provider in Anthropic-compatible errors, update the Anthropic SDK to 1.4, and fix goals not starting on local models.
+
+### Patch Changes
+
+- @prestyj/ai@5.91.0
+- @prestyj/agent@5.91.0
+- @prestyj/core@5.91.0
+
+## 5.90.0
+
+### Minor Changes
+
+- Local models: keyless endpoints send no auth header, Ollama's real served context is learned, custom endpoints read their context size, and a saved local model is restored at startup. Web search on Anthropic runs as a side request, web_fetch reads pages in windows (offset, #section) with a length cap, bash inlines less output, and language style packs are removed.
+
+### Patch Changes
+
+- @prestyj/ai@5.90.0
+- @prestyj/agent@5.90.0
+- @prestyj/core@5.90.0
+
+## 5.89.0
+
+### Minor Changes
+
+- Add the app sidecar's `!` command runner: user-confirmed shell commands in the project folder with streamed output, Stop, per-project trust, run history and project suggestions, with the output handed to the agent on the user's next message.
+
+### Patch Changes
+
+- @prestyj/ai@5.89.0
+- @prestyj/agent@5.89.0
+- @prestyj/core@5.89.0
+
+## 5.88.1
+
+### Patch Changes
+
+- Fix restored Anthropic sessions whose history used native web search failing with HTTP 400 ("server_tool_use block references web_search"), drop the duplicate sub-agent completion notice after wait_agent collects a result, and prune old checkpoint folders at desktop app startup.
+  - @prestyj/ai@5.88.1
+  - @prestyj/agent@5.88.1
+  - @prestyj/core@5.88.1
+
+## 5.88.0
+
+### Minor Changes
+
+- Speed and cost pass: cache-safe tool loading on Anthropic and Codex, 1h cache tail anchor, earlier default compaction (400k) with overflow-safe summaries, leaner sub-agent and tool output, OpenAI SDK retries removed, 30s keep-alive and connection pre-open, faster find/read and session resume, log volume cut and retention for diagnostics, checkpoints and sub-agent files, plus new compactAtTokens and bashPath settings.
+
+### Patch Changes
+
+- @prestyj/ai@5.88.0
+- @prestyj/agent@5.88.0
+- @prestyj/core@5.88.0
+
+## 5.87.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/ai@5.87.3
+  - @prestyj/agent@5.87.3
+  - @prestyj/core@5.87.3
+
+## 5.87.2
+
+### Patch Changes
+
+- Fix the stall watchdog killing long silent Anthropic thinking: SSE pings now count as stream activity, and the streaming thinking cap is raised to 30 minutes
+  - @prestyj/ai@5.87.2
+  - @prestyj/agent@5.87.2
+  - @prestyj/core@5.87.2
+
+## 5.87.1
+
+### Patch Changes
+
+- Retire the seeded find-skills skill and the /setup-skills command (untouched seeded copies are cleaned from ~/.ezcoder/skills), add a light-comments rule to the system prompt, and sharpen the bulletproof, compliance-guard, durable and lean skill descriptions so they load only for the work they cover.
+  - @prestyj/ai@5.87.1
+  - @prestyj/agent@5.87.1
+  - @prestyj/core@5.87.1
+
+## 5.87.0
+
+### Minor Changes
+
+- World mode replaces GG Royale (live multiplayer hangout, online save). Skills trimmed to the two that change results (compliance-guard, durable); bulletproof and lean stay for Checklist audits only; the rest are removed. OpenAI models get a skill-loading rule; the skill tool now requires a skill name. Removed the unused code_search and code_nav tools.
+
+### Patch Changes
+
+- @prestyj/ai@5.87.0
+- @prestyj/agent@5.87.0
+- @prestyj/core@5.87.0
+
+## 5.86.3
+
+### Patch Changes
+
+- Fix the threat feed cache serving a stale feed when a rewrite keeps the same file mtime (coarse Windows timestamps).
+  - @prestyj/ai@5.86.3
+  - @prestyj/agent@5.86.3
+  - @prestyj/core@5.86.3
+
+## 5.86.2
+
+### Patch Changes
+
+- ba10f31: Faster code changes: when a POSIX `bash` is available, the prompt now asks for each change in one command that writes only what's new (heredoc for a small file, an asserted replace for a few lines of a bigger one, appended tests) and ends with the test command. It replaces the "prefer edit over write" line and the scripted-edit rule; without bash, or under the cmd.exe fallback, those stay. The Environment section also lists the project's files once per session (shallowest 60, from `git ls-files`), so the first call reads the right files instead of listing them. On Claude Haiku 5.5 this ran the benchmark suite about 21% faster on about 19% less usage, with no whole-file rewrites of a one-line fix in a 700-line file.
+  - @prestyj/ai@5.86.2
+  - @prestyj/agent@5.86.2
+  - @prestyj/core@5.86.2
+
+## 5.86.1
+
+### Patch Changes
+
+- 1c91814: Remove Gemini from login lists, model pickers and startup. Google is suspending accounts that use their Gemini subscription through third-party harnesses (any of them, not just EZ Coder), so EZ Coder no longer supports signing in to Gemini. Existing stored credentials are left untouched but are no longer used.
+- 1c91814: Trim routine boilerplate from small bash output: `git log` headers fold to one line per commit, `git status` drops its `(use "git …")` hints, `ls -l` states a shared owner/group once, and all-green vitest/jest runs list a count instead of every passing file. Failing runs, file lists and anything that doesn't match these shapes pass through unchanged.
+- Updated dependencies [1c91814]
+- Updated dependencies [1c91814]
+  - @prestyj/core@5.86.1
+  - @prestyj/ai@5.86.1
+  - @prestyj/agent@5.86.1
+
+## 5.86.0
+
+### Minor Changes
+
+- Hedge a late first stream event with one duplicate request when the prompt prefix is provably warm, so a hung provider request no longer costs ~2 minutes of retrying; add the GG Royale sidecar endpoints (linking, bug-fixed and deploy signals); refresh the bundled skills.
+
+### Patch Changes
+
+- Updated dependencies
+  - @prestyj/agent@5.86.0
+  - @prestyj/ai@5.86.0
+  - @prestyj/core@5.86.0
+
 ## 5.85.0
 
 ### Minor Changes
