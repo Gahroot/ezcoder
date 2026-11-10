@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.93.0",
+    date: "2026-11-10",
+    items: [
+      "The engine got a serious tune-up. I made every run leaner and smarter about what it keeps in memory, so long sessions feel faster, cost less and stop getting cut off when `Claude` thinks for a long time.",
+      "You can now run your own commands right from the chat. Start a message with `!` to run it in your project, pick from the commands you use most, and choose whether EZ Coder sees the output.",
+      "Attachments got way more useful. Drop in big files, PDFs and EPUBs and I read the text for you, with tidy file chips on every message so you can see exactly what you sent.",
+      "Image generation can now make animated `GIF` loops. You get a live progress card while it works and a save button on every image so keeping your favorites takes one click.",
+      "Fresh models just landed, including `Claude Fable 5.2`, `GPT-6.1 Terra` and `MiniMax M3.1 Flash`. Chats now show their own title up top, and if an update ever fails you get a clear `Retry` instead of silence.",
+    ],
+  },
+  {
     version: "0.92.4",
     date: "2026-10-25",
     items: [
