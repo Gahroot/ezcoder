@@ -10,7 +10,7 @@ import {
   type ChatAgentId,
   type RecentSession,
 } from "./agent";
-import { motionWorkspacePath } from "./motion-workspace";
+import { chatWorkspacePath, motionWorkspacePath } from "./motion-workspace";
 import { Badge } from "./Badge";
 import { BackButton } from "./BackButton";
 import { ListSkeleton } from "./Skeleton";
@@ -87,7 +87,8 @@ export function ChatPicker({
       .then(async (settings) => {
         const projects = settings?.projectsRoot.trim() ?? "";
         if (!projects) throw new Error(copy.noRoot);
-        const root = mode === "motion" ? motionWorkspacePath(projects) : projects;
+        const root =
+          mode === "motion" ? motionWorkspacePath(projects) : chatWorkspacePath(projects);
         if (!cancelled) setProjectsRoot(root);
         await waitForReady();
         return listSessions(root, mode === "motion" ? "motion" : "all");

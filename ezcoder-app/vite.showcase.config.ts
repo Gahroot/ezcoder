@@ -20,6 +20,10 @@ export default defineConfig({
     alias: [
       { find: /^@tauri-apps\/api\/core$/, replacement: mock },
       { find: /^@tauri-apps\/api\/webviewWindow$/, replacement: mock },
+      { find: /^@tauri-apps\/api\/webview$/, replacement: mock },
+      { find: /^@tauri-apps\/api\/window$/, replacement: mock },
+      { find: /^@tauri-apps\/api\/event$/, replacement: mock },
+      { find: /^@tauri-apps\/api\/dpi$/, replacement: mock },
       { find: /^@tauri-apps\/api\/app$/, replacement: mock },
       { find: /^@tauri-apps\/plugin-log$/, replacement: mock },
       { find: /^@tauri-apps\/plugin-opener$/, replacement: mock },

@@ -1,5 +1,10 @@
 import type http from "node:http";
-import { GEMINI_API_KEY, XIAOMI_CREDITS_KEY, dualAuthProvider } from "@prestyj/core";
+import {
+  GEMINI_API_KEY,
+  NotLoggedInError,
+  XIAOMI_CREDITS_KEY,
+  dualAuthProvider,
+} from "@prestyj/core";
 import { loginAnthropic } from "../core/oauth/anthropic.js";
 import { loginOpenAI } from "../core/oauth/openai.js";
 import { loginGemini } from "../core/oauth/gemini.js";
@@ -10,6 +15,14 @@ import { AUTH_PROVIDERS, type AuthMethod } from "../core/auth-providers.js";
 import type { ElicitResult } from "@modelcontextprotocol/client";
 import type { AskUserResult } from "../core/ask-user.js";
 import { readBody, json } from "./http.js";
+import { desktopGuidance } from "./desktop-guidance.js";
+import { log } from "../core/logger.js";
+import {
+  CatalogSyncError,
+  openRouterCatalogStatus,
+  resetOpenRouterCatalog,
+  syncOpenRouterCatalog,
+} from "../core/openrouter-catalog-store.js";
 import type { SessionRouteContext } from "./route-context.js";
 
 export function handleAuthRoutes(
@@ -22,6 +35,38 @@ export function handleAuthRoutes(
   // ── Provider auth (login) ───────────────────────────────
   if (method === "GET" && url === "/auth/status") {
     void ctx.authStatusPayload().then((payload) => json(res, 200, payload));
+    return true;
+  }
+
+  // ── OpenRouter catalog sync (the key's endpoint lists its own models) ──
+  if (url === "/providers/openrouter/catalog" && (method === "GET" || method === "DELETE")) {
+    const run = method === "GET" ? openRouterCatalogStatus : resetOpenRouterCatalog;
+    void run(ctx.auth)
+      .then((status) => {
+        if (method === "DELETE") ctx.broadcastAll("models_change", {});
+        json(res, 200, status);
+      })
+      .catch((err: unknown) => {
+        ctx.broadcastError("error", "openrouter catalog failed", err);
+        json(res, 500, { error: "Couldn't read the OpenRouter model list — see the sidecar log." });
+      });
+    return true;
+  }
+
+  if (method === "POST" && url === "/providers/openrouter/sync") {
+    void syncOpenRouterCatalog(ctx.auth)
+      .then((result) => {
+        ctx.broadcastAll("models_change", {});
+        json(res, 200, result);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof CatalogSyncError) {
+          json(res, 400, { error: err.message });
+          return;
+        }
+        ctx.broadcastError("error", "openrouter catalog sync failed", err);
+        json(res, 500, { error: "Model sync failed — see the sidecar log." });
+      });
     return true;
   }
 
@@ -142,9 +187,19 @@ export function handleAuthRoutes(
           // Deliberately session-scoped: this is the outcome of ONE window's
           // attempt. Another window that never pressed Connect has nothing to
           // show an error about, and its modal correctly still offers login.
+          const message = err instanceof Error ? err.message : String(err);
+          log("WARN", "auth", "sign-in failed", {
+            provider,
+            message,
+            ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
+          });
+          // Shown inside the sign-in dialog: "not logged in" there means the sign-in didn't take.
           ctx.broadcast("auth_error", {
             provider,
-            message: err instanceof Error ? err.message : String(err),
+            message:
+              err instanceof NotLoggedInError
+                ? `${meta.label} sign-in didn't finish. Try again.`
+                : desktopGuidance(message),
           });
         } finally {
           ctx.oauthInFlight = false;

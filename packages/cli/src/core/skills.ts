@@ -79,6 +79,12 @@ export interface Skill {
   source: string;
   /** Directory used to resolve references linked from the skill content. */
   root?: string;
+  /**
+   * `hidden: true` in frontmatter: left out of the skill catalog and the skill
+   * tool's list, so the model never picks it for routine work, but still
+   * loadable by exact name (the app's Checklist audits name bulletproof/lean).
+   */
+  hidden?: boolean;
 }
 
 /** A skill that discovery refused to load because the safety scan caught it. */
@@ -139,6 +145,8 @@ export async function discoverSkillsWithBlocked(options: {
   projectDir?: string;
   cacheFile?: string;
   cache?: SkillScanCache;
+  /** Only `<projectDir>/.ezcoder/skills`: no bundled or global skills (Chat, Motion). */
+  workspaceOnly?: boolean;
 }): Promise<SkillDiscovery> {
   const ctx = newLoadContext(options.cache);
   // Under vitest only an explicit file is used: many suites discover skills
@@ -156,8 +164,10 @@ export async function discoverSkillsWithBlocked(options: {
 
   // Bundled defaults ship with EZ Coder. Global and project definitions with
   // the same name override them, preserving user control.
-  addSkills(await loadBundledSkills(ctx));
-  addSkills(await loadSkillsFromDir(options.globalSkillsDir, "global", ctx));
+  if (!options.workspaceOnly) {
+    addSkills(await loadBundledSkills(ctx));
+    addSkills(await loadSkillsFromDir(options.globalSkillsDir, "global", ctx));
+  }
 
   if (options.projectDir) {
     const projectSkillsDir = path.join(options.projectDir, ".ezcoder", "skills");
@@ -293,7 +303,13 @@ export function parseSkillFile(rawInput: string, source: string): Skill {
     });
   }
 
-  return { name, description, content, source };
+  return {
+    name,
+    description,
+    content,
+    source,
+    ...(fields.hidden === "true" ? { hidden: true } : {}),
+  };
 }
 
 /**
@@ -314,6 +330,7 @@ export function renderSkillLines(
   const dropped: string[] = [];
   let used = 0;
   for (const skill of skills) {
+    if (skill.hidden) continue;
     // Every bundled description opens "Use when/for …"; on a one-line-per-
     // skill list that prefix is pure repetition, so the catalog drops it.
     const description = skill.description
@@ -342,7 +359,7 @@ export function formatSkillsForPrompt(
   skills: Skill[],
   limits: ContextLimits = CONTEXT_LIMITS,
 ): string {
-  if (skills.length === 0) return "";
+  if (!skills.some((skill) => !skill.hidden)) return "";
 
   const { lines, dropped } = renderSkillLines(skills, limits);
   const list = lines.join("\n");
@@ -353,7 +370,7 @@ export function formatSkillsForPrompt(
     `## Skills\n\n` +
     `Before acting, compare the user's request with every skill description below; when the work enters one's scope, load it with the **skill** tool first. ` +
     `Match the work, not the topic; respect exclusions; skip skills for routine work; never reload one. ` +
-    `Launch-readiness asks: one report-only child per in-scope skill (durable, bulletproof, compliance-guard, lean, evidence-led-ui) in one spawn_agent call; a failed child is "not checked", never clean.\n\n` +
+    `Launch-readiness asks: one report-only child per in-scope skill (durable, compliance-guard) in one spawn_agent call; a failed child is "not checked", never clean.\n\n` +
     list +
     overflow
   );

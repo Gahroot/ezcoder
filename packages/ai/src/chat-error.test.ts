@@ -30,6 +30,13 @@ describe("formatChatError", () => {
     );
   });
 
+  it("sends a rejected local key to the local endpoint settings, not account sign-in", () => {
+    const error = formatChatError(new ProviderError("local", "Unauthorized", { statusCode: 401 }));
+    expect(error.reason).toBe("auth");
+    expect(error.headline).toBe("The local server rejected its key");
+    expect(error.guidance).toMatch(/Local models in AI Providers/);
+  });
+
   it.each([
     {
       message: "Fast mode unavailable (out_of_credits): Your Claude usage credits have run out.",
@@ -55,7 +62,7 @@ describe("formatChatError", () => {
     expect(error.reason).toBe(row.reason);
     expect(error.headline).toBe(row.headline);
     expect(error.guidance).toMatch(row.guidance);
-    expect(error.guidance).toMatch(/Claude Opus 5\.5 \(standard speed\)/);
+    expect(error.guidance).toMatch(/same model without Fast \(standard speed\)/);
   });
 
   it("does not tell an empty balance to wait for a subscription reset", () => {

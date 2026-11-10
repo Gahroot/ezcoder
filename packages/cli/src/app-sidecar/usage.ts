@@ -1,5 +1,6 @@
 import {
   fetchSubscriptionUsage,
+  readClaudeCodeUsage,
   SubscriptionUsageError,
   oauthStorageKey,
   type SubscriptionUsageProvider,
@@ -54,7 +55,26 @@ export function createUsageService(auth: AuthStorage): {
     }
   }
 
+  // A Claude Code sign-in reports usage on each request it makes (SDK
+  // rate-limit events, saved by the loop): show the last report.
+  async function claudeUsage(): Promise<UsageResult> {
+    const displayName = "Anthropic";
+    const snapshot = await readClaudeCodeUsage();
+    if (!snapshot || snapshot.windows.length === 0) {
+      return {
+        provider: "anthropic",
+        displayName,
+        connected: true,
+        windows: [],
+        fetchedAt: Date.now(),
+      };
+    }
+    return { ...snapshot, connected: true };
+  }
+
   async function fetchUsageProvider(provider: SubscriptionUsageProvider): Promise<UsageResult> {
+    // A Claude Code sign-in reports its own usage; our Claude sign-in is fetched below.
+    if (provider === "anthropic" && (await auth.hasClaudeCodeLogin())) return await claudeUsage();
     const displayName =
       provider === "anthropic" ? "Anthropic" : provider === "openai" ? "Codex" : "Kimi";
     // Kimi plan usage is tracked on the OAuth credential specifically — the
@@ -68,6 +88,11 @@ export function createUsageService(auth: AuthStorage): {
     }
     try {
       let credentials = await auth.resolveCredentials(authKey);
+      // Only the Claude sign-in (an OAuth token) has a plan meter; an API key
+      // is billed per token, and the usage endpoint would just refuse it.
+      if (provider === "anthropic" && !credentials.accessToken.startsWith("sk-ant-oat")) {
+        return { provider, displayName, connected: false, windows: [], fetchedAt: Date.now() };
+      }
       try {
         const snapshot = {
           ...(await fetchSubscriptionUsage(provider, credentials)),
@@ -107,7 +132,7 @@ export function createUsageService(auth: AuthStorage): {
           ),
         );
         usageRateLimitedUntil.set(provider, Date.now() + backoffMs);
-        // Rate limits on this auxiliary endpoint are expected (every GG process
+        // Rate limits on this auxiliary endpoint are expected (every EZ Coder process
         // on the machine polls it) and already handled by the backoff plus the
         // last-good replay. Log the transition, not every retry.
         if (!usageRateLimitLogged.has(provider)) {

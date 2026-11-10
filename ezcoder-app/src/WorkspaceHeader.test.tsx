@@ -52,6 +52,23 @@ describe("WorkspaceHeader", () => {
     expect(screen.getByRole("button", { name: "New chat" })).toBeDefined();
   });
 
+  it("titles a chat window by its conversation, not its folder", () => {
+    render(
+      <WorkspaceHeader
+        workspaceMode="chat"
+        cwd="/work/EZ Chat"
+        title={"Plan my tr\u2026"}
+        navHidden={false}
+        onToggleNav={() => {}}
+      >
+        <span />
+      </WorkspaceHeader>,
+    );
+
+    expect(screen.getByText("Plan my tr\u2026")).toBeDefined();
+    expect(screen.queryByText("EZ Chat")).toBeNull();
+  });
+
   it("formats clean, dirty, and pre-commit project context", () => {
     expect(formatWorkspaceTitle("/work/app", "main", "EZ Coder")).toBe("app │ ⎇ main");
     expect(formatWorkspaceTitle("/work/app", "main", "EZ Coder", 3)).toBe(

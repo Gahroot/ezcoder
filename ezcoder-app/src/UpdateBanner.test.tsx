@@ -4,6 +4,9 @@
 // layout, so that is checked in the browser, not here.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+vi.mock("./agent", () => ({ openUrl: vi.fn(async () => {}) }));
+
+import { openUrl } from "./agent";
 import { UpdateBanner } from "./UpdateBanner";
 import type { UpdatePhase } from "./update";
 
@@ -18,7 +21,7 @@ afterEach(cleanup);
 
 describe("UpdateBanner", () => {
   it("renders nothing until an update is ready", () => {
-    for (const phase of ["idle", "checking", "error"] as const) {
+    for (const phase of ["idle", "checking"] as const) {
       const { container } = render(<UpdateBanner appUpdate={update(phase)} />);
       expect(container.innerHTML).toBe("");
       cleanup();
@@ -46,5 +49,16 @@ describe("UpdateBanner", () => {
     expect(bar.textContent).toBe("42%");
     // The crew marches at the front of the fill.
     expect((bar.querySelector(".update-banner-march") as HTMLElement).style.left).toBe("42%");
+  });
+
+  it("says a failed install failed, with Retry and a manual download", () => {
+    const appUpdate = { ...update("error"), error: "signature mismatch" };
+    render(<UpdateBanner appUpdate={appUpdate} />);
+    const bar = screen.getByRole("alert");
+    expect(bar.textContent).toContain("Update failed");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(appUpdate.install).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Download manually" }));
+    expect(openUrl).toHaveBeenCalledWith("https://github.com/Gahroot/ezcoder/releases/latest");
   });
 });

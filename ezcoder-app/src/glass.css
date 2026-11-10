@@ -277,6 +277,25 @@
     inset 0 1px 3px rgb(0 0 0 / 0.45),
     inset 0 -1px 0 rgb(255 255 255 / 0.05);
 }
+/* The user's own `!` commands: the same recessed pane as a code block, with a
+   clear-glass header strip for the command line. */
+.shell-run {
+  background: rgb(0 0 0 / 0.35);
+  border-color: rgb(255 255 255 / 0.08);
+  box-shadow:
+    inset 0 1px 3px rgb(0 0 0 / 0.45),
+    inset 0 -1px 0 rgb(255 255 255 / 0.05);
+}
+.shell-run-head {
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.06);
+}
+.shell-run-out {
+  background: transparent;
+}
+.shell-run-foot {
+  border-top-color: rgb(255 255 255 / 0.06);
+}
 /* Inline code: a small clear-glass chip. */
 .markdown :not(pre) > code {
   background: rgb(255 255 255 / 0.07);

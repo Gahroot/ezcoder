@@ -1,9 +1,13 @@
 import type { CSSProperties } from "react";
+import { openUrl } from "./agent";
 import { Badge } from "./Badge";
 import { renderCritterFrame, renderPixelGrid } from "./critter-sprites";
 import { BIOMES } from "./critter-terrain";
 import { critterById } from "./PopCritter";
 import type { UpdateInfo } from "./update";
+
+/** Where to get the installer by hand when the in-app install fails. */
+const RELEASES_URL = "https://github.com/Gahroot/ezcoder/releases/latest";
 
 // The banner's crew: a frog, a bee and an axolotl, hopping on a strip of the
 // home screen's meadow. Built once; the art never changes.
@@ -48,9 +52,35 @@ function Crew({ walking }: { walking: boolean }): React.ReactElement {
 export function UpdateBanner({
   appUpdate,
 }: {
-  appUpdate: Pick<UpdateInfo, "phase" | "version" | "progress" | "install">;
+  appUpdate: Pick<UpdateInfo, "phase" | "version" | "progress" | "install"> &
+    Partial<Pick<UpdateInfo, "error">>;
 }): React.ReactElement | null {
-  const { phase, version, progress } = appUpdate;
+  const { phase, version, progress, error } = appUpdate;
+  // A failed install must say so: hiding the bar read as "nothing happened".
+  if (phase === "error" && version) {
+    return (
+      <div className="update-banner-slot">
+        <div className="update-banner update-banner-error" role="alert">
+          <Grass />
+          <span title={error ?? undefined}>Update failed</span>
+          <button
+            type="button"
+            className="update-banner-action"
+            onClick={() => void appUpdate.install()}
+          >
+            <Badge>Retry</Badge>
+          </button>
+          <button
+            type="button"
+            className="update-banner-action"
+            onClick={() => void openUrl(RELEASES_URL).catch(() => {})}
+          >
+            <Badge>Download manually</Badge>
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (phase !== "available" && phase !== "installing") return null;
   const pct = progress ?? 0;
   return (

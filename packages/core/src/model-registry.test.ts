@@ -88,9 +88,11 @@ describe("model registry invariants", () => {
   it("registers fast-mode entries as the same model as their base, wired in @prestyj/ai", () => {
     const fastIds = MODELS.filter((m) => m.id.endsWith(FAST_MODE_SUFFIX)).map((m) => m.id);
     expect(fastIds).toEqual([
+      "claude-fable-5-2-fast",
       "claude-opus-5-5-fast",
       "gpt-6-astra-fast",
       "gpt-6.1-sol-fast",
+      "gpt-6.1-terra-fast",
       "gpt-6-luna-fast",
     ]);
     for (const id of fastIds) {
@@ -110,6 +112,8 @@ describe("model registry invariants", () => {
     // Only a real-money tier is ever stripped back to the standard model.
     expect(isPaidModel("claude-opus-5-5-fast")).toBe(true);
     expect(withoutPaidTier("claude-opus-5-5-fast")).toBe("claude-opus-5-5");
+    expect(isPaidModel("claude-fable-5-2-fast")).toBe(true);
+    expect(withoutPaidTier("claude-fable-5-2-fast")).toBe("claude-fable-5-2");
     expect(withoutPaidTier("gpt-6.1-sol-fast")).toBe("gpt-6.1-sol-fast");
     expect(withoutPaidTier("claude-sonnet-5-5")).toBe("claude-sonnet-5-5");
     expect(withoutPaidTier("not-a-model")).toBe("not-a-model");
@@ -516,16 +520,20 @@ describe("model registry context windows", () => {
     }
   });
 
-  it("defaults MiniMax to the multimodal M3 with a 1M context window", () => {
+  it("defaults MiniMax to M3.1 Flash, the model plan keys cover, and keeps M3", () => {
     expect(getDefaultModel("minimax")).toMatchObject({
-      id: "MiniMax-M3",
-      name: "MiniMax M3",
+      id: "MiniMax-M3.1-Flash",
+      name: "MiniMax M3.1 Flash",
       provider: "minimax",
       contextWindow: 1_000_000,
       supportsImages: true,
       supportsVideo: true,
+      maxThinkingLevel: "max",
     });
-    expect(getModelsForProvider("minimax").map((model) => model.id)).toEqual(["MiniMax-M3"]);
+    expect(getModelsForProvider("minimax").map((model) => model.id)).toEqual([
+      "MiniMax-M3.1-Flash",
+      "MiniMax-M3",
+    ]);
     expect(getContextWindow("MiniMax-M3", { provider: "minimax" })).toBe(1_000_000);
   });
 
@@ -748,5 +756,21 @@ describe("runtime model registry", () => {
     registerRuntimeModels([local]);
 
     expect(getDefaultModel("local")).toBe(local);
+  });
+});
+
+describe("GPT-6.1 Terra", () => {
+  it("matches the Codex catalog: 500K Codex window, low default, Ultra ladder", () => {
+    expect(getModel("gpt-6.1-terra")).toMatchObject({
+      provider: "openai",
+      contextWindow: 1_050_000,
+      codexContextWindow: 500_000,
+      defaultThinkingLevel: "low",
+      maxThinkingLevel: "ultra",
+      costTier: "medium",
+    });
+    expect(getModel("gpt-6.1-terra-fast")?.billing).toBeDefined();
+    // Sol stays the OpenAI default.
+    expect(getDefaultModel("openai").id).toBe("gpt-6.1-sol");
   });
 });

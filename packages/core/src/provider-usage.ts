@@ -2,6 +2,8 @@ import { kimiCodeBaseUrl, kimiCodingHeaders } from "./oauth/kimi.js";
 import type { OAuthCredentials } from "./oauth/types.js";
 
 export type SubscriptionUsageProvider = "anthropic" | "openai" | "moonshot";
+/** Providers whose usage endpoint we call with a token. Claude reports its own (claude-code/usage.ts). */
+export type FetchedSubscriptionUsageProvider = Exclude<SubscriptionUsageProvider, "anthropic">;
 
 export interface SubscriptionUsageWindow {
   kind: "current" | "weekly";

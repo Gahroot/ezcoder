@@ -2,7 +2,16 @@
   "name": "@prestyj/core",
   "version": "5.32.2",
   "type": "module",
-  "description": "Provider-agnostic, UI-free shared foundation: model registry, auth, paths, telegram, voice",
+  "description": "Model registry, sign-in and stored credentials, and local model discovery for apps built on @prestyj/ai. No UI, no agent loop.",
+  "author": "Nolan Grout",
+  "keywords": [
+    "llm",
+    "ai",
+    "model-registry",
+    "oauth",
+    "ollama",
+    "local-models"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=22"
@@ -11,6 +20,10 @@
     "type": "git",
     "url": "git+https://github.com/Gahroot/ezcoder.git",
     "directory": "packages/core"
+  },
+  "homepage": "https://github.com/Gahroot/ezcoder/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/Gahroot/ezcoder/issues"
   },
   "exports": {
     ".": {

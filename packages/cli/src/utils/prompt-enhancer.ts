@@ -4,6 +4,7 @@ import {
   type Provider,
   type TextContent,
   type ThinkingLevel,
+  type StreamResponse,
 } from "@prestyj/ai";
 
 /**
@@ -172,6 +173,8 @@ export async function enhancePrompt(opts: {
   projectId?: string;
   userAgent?: string;
   signal?: AbortSignal;
+  /** Sends the request elsewhere (a Claude subscription runs it through Claude Code). */
+  complete?: (messages: Message[]) => Promise<StreamResponse>;
 }): Promise<EnhanceResult> {
   // Append a one-line, fact-only stack hint so terminology is idiomatic to the
   // user's project (e.g. "reactive state" for React vs "goroutine" for Go),
@@ -185,6 +188,32 @@ export async function enhancePrompt(opts: {
     { role: "user", content: opts.prompt },
   ];
 
+  const response = opts.complete
+    ? await opts.complete(messages)
+    : await streamEnhance(opts, messages);
+  if (response.stopReason === "max_tokens") {
+    throw new Error("Prompt enhancement was cut short. Your original draft has been kept.");
+  }
+  const msg = response.message;
+  const text =
+    typeof msg.content === "string"
+      ? msg.content
+      : msg.content
+          .filter((c): c is TextContent => c.type === "text")
+          .map((c) => c.text)
+          .join("");
+
+  const enhanced = parseEnhanced(text);
+  if (!enhanced.enhanced.trim()) {
+    throw new Error("Prompt enhancement returned no text. Your original draft has been kept.");
+  }
+  return enhanced;
+}
+
+async function streamEnhance(
+  opts: Parameters<typeof enhancePrompt>[0],
+  messages: Message[],
+): Promise<StreamResponse> {
   const result = stream({
     provider: opts.provider,
     model: opts.model,
@@ -207,22 +236,5 @@ export async function enhancePrompt(opts: {
   // detection from firing in the microtask gap before our await hooks up.
   result.response.catch(() => {});
 
-  const response = await result;
-  if (response.stopReason === "max_tokens") {
-    throw new Error("Prompt enhancement was cut short. Your original draft has been kept.");
-  }
-  const msg = response.message;
-  const text =
-    typeof msg.content === "string"
-      ? msg.content
-      : msg.content
-          .filter((c): c is TextContent => c.type === "text")
-          .map((c) => c.text)
-          .join("");
-
-  const enhanced = parseEnhanced(text);
-  if (!enhanced.enhanced.trim()) {
-    throw new Error("Prompt enhancement returned no text. Your original draft has been kept.");
-  }
-  return enhanced;
+  return await result;
 }

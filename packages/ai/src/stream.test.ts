@@ -1,16 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localWireModelId, stream } from "./stream.js";
 import { EZCoderAIError } from "./errors.js";
 import { providerRegistry } from "./provider-registry.js";
 import { streamOpenAI } from "./providers/openai.js";
+import type * as OpenAIModule from "./providers/openai.js";
 import { continuesTurn } from "./utils/turn-continuation.js";
 import type { StreamOptions } from "./types.js";
 
-// The Xiaomi handler delegates to streamOpenAI; stub it so the host it picked
-// is observable without opening a socket.
-vi.mock("./providers/openai.js", () => ({
-  streamOpenAI: vi.fn(() => ({ events: [], final: Promise.resolve() })),
-}));
+// The Xiaomi handler delegates to streamOpenAI; the Xiaomi tests stub it so the
+// host it picked is observable without opening a socket. Everything else runs
+// the real transport.
+vi.mock("./providers/openai.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof OpenAIModule>();
+  return { ...actual, streamOpenAI: vi.fn(actual.streamOpenAI) };
+});
+const realStreamOpenAI = (await vi.importActual<typeof OpenAIModule>("./providers/openai.js"))
+  .streamOpenAI;
 
 describe("localWireModelId", () => {
   it("strips the endpoint routing prefix so the server sees its own id", () => {
@@ -36,6 +41,27 @@ describe("local provider", () => {
       }),
     ).toThrow(EZCoderAIError);
   });
+
+  it.each([
+    ["local", null],
+    ["sk-gateway", "Bearer sk-gateway"],
+  ])("sends key %s as Authorization %s", async (apiKey, expected) => {
+    let authorization: string | null | undefined;
+    const fetch: typeof globalThis.fetch = async (_url, init) => {
+      authorization = new Headers(init?.headers).get("authorization");
+      return new Response("{}", { status: 401 });
+    };
+    const result = stream({
+      provider: "local",
+      model: "local/custom-gw/free-model",
+      messages: [{ role: "user", content: "hi" }],
+      baseUrl: "http://127.0.0.1:9/v1",
+      apiKey,
+      fetch,
+    });
+    await expect(result).rejects.toThrow();
+    expect(authorization).toBe(expected);
+  });
 });
 
 describe("xiaomi host routing", () => {
@@ -55,6 +81,14 @@ describe("xiaomi host routing", () => {
 
   beforeEach(() => {
     vi.mocked(streamOpenAI).mockClear();
+    vi.mocked(streamOpenAI).mockImplementation(
+      () =>
+        ({ events: [], final: Promise.resolve() }) as unknown as ReturnType<typeof streamOpenAI>,
+    );
+  });
+
+  afterEach(() => {
+    vi.mocked(streamOpenAI).mockImplementation(realStreamOpenAI);
   });
 
   it("sends Token Plan models to the Token Plan host by default", () => {

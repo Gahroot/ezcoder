@@ -20,9 +20,11 @@ import { SettingsModal } from "../src/SettingsModal";
 import { TasksModal } from "../src/TasksModal";
 import { PlanReviewModal } from "../src/PlanReviewModal";
 import "../src/App.css";
+import "../src/glass.css";
+import { PortedShowcase } from "./ported";
 
 import { emitAgentEvent } from "./tauri-mock";
-import { PLAN_MARKDOWN, PROJECTS, PROJECTS_ROOT, PROVIDERS, TASKS } from "./data";
+import { PLAN_MARKDOWN, PROJECTS, PROJECTS_ROOT, PROVIDERS, SIGNIN_PROVIDERS, TASKS } from "./data";
 
 const noop = (): void => {};
 const params = new URLSearchParams(location.search);
@@ -157,6 +159,22 @@ function Showcase(): React.ReactElement {
           />
         </Stage>
       );
+
+    case "signin-claude":
+    case "signin-chatgpt": {
+      // The real provider metadata (ezcoder-app/src-tauri/src/auth.rs AUTH_PROVIDERS),
+      // signed out, so the modal shows the subscription sign-in flow.
+      const real = SIGNIN_PROVIDERS[screen === "signin-claude" ? 0 : 1]!;
+      return (
+        <Stage>
+          <LoginScreen onClose={noop} />
+          <ProviderLoginModal provider={real} onClose={noop} onChanged={noop} />
+        </Stage>
+      );
+    }
+
+    case "ported":
+      return <PortedShowcase />;
 
     case "chat":
     case "chat-live":

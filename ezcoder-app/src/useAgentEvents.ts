@@ -94,6 +94,8 @@ export interface AgentEventsDeps {
   handleNolanEvent: (e: SidecarEvent) => boolean;
   /** Autopilot event delegate — consulted first; autopilot events early-return. */
   handleAutopilotEvent: (e: SidecarEvent) => boolean;
+  /** The user's own `!` commands: consulted first; their events early-return. */
+  handleShellEvent?: (e: SidecarEvent) => boolean;
   /** Whole-task status sees events before delegates consume their frames. */
   handleActivityEvent?: (e: SidecarEvent) => void;
 
@@ -148,6 +150,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
     nextId,
     handleNolanEvent,
     handleAutopilotEvent,
+    handleShellEvent,
     handleActivityEvent,
     setState,
     setTasks,
@@ -182,6 +185,9 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
 
   // ── Event-machine private refs (used nowhere outside this hook) ──
   const streamingIdRef = useRef<number | null>(null);
+  // A model turn ended: its text is complete, so the next turn's text gets its
+  // own bubble instead of running on ("…skills.**Next reply**") in one run.
+  const turnEndedRef = useRef(false);
   const pendingChunksRef = useRef<string>("");
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Transcript id of the active sub-agent group for this run (null until the
@@ -564,6 +570,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
       // Autopilot (auto-review) events are owned by the useAutopilot hook; same
       // early-return so they never touch the build-session handling below.
       if (handleAutopilotEvent(e)) return;
+      if (handleShellEvent?.(e)) return;
       const d = e.data as Record<string, unknown>;
       switch (e.type) {
         case "ready": {
@@ -611,6 +618,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           runOpenRef.current = true;
           runErroredRef.current = false;
           runFromItemRef.current = lastIssuedId();
+          turnEndedRef.current = false;
 
           tokensRef.current = 0;
           turnsRef.current = 0;
@@ -641,6 +649,10 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
         case "text_delta": {
           finalizeThinking();
           const chunk = String(d.text ?? "");
+          if (turnEndedRef.current) {
+            turnEndedRef.current = false;
+            endStreamingText();
+          }
           appendAssistant(chunk);
           // Track plan-step completion for the activity bar. Accumulate the
           // run's assistant text (markers can split across deltas) and union in
@@ -734,7 +746,14 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           if (name === "generate_image") {
             const prompt = typeof args.prompt === "string" ? args.prompt : "generating image…";
             endStreamingText();
-            pushItem({ kind: "generating_image", id: nextId(), prompt, toolCallId });
+            pushItem({
+              kind: "generating_image",
+              id: nextId(),
+              prompt,
+              toolCallId,
+              gif: typeof args.gif === "object" && args.gif !== null,
+              startedAt: Date.now(),
+            });
           }
           break;
         }
@@ -850,6 +869,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
               }
             | undefined;
           turnsRef.current += 1;
+          turnEndedRef.current = true;
           if (usage && typeof usage.outputTokens === "number") {
             tokensRef.current += usage.outputTokens;
             setTokens(tokensRef.current);
@@ -865,6 +885,10 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
           }
           break;
         }
+        case "truncated":
+          // A reply cut off at the output limit continues mid-sentence: keep one bubble.
+          if (d.continued === true) turnEndedRef.current = false;
+          break;
         case "agent_done": {
           // The loop stopped and no review was injected, so anything held under
           // arming was the real final answer after all — paint it.
@@ -1450,6 +1474,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
     [
       handleNolanEvent,
       handleAutopilotEvent,
+      handleShellEvent,
       handleActivityEvent,
       appendAssistant,
       pushItem,

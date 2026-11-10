@@ -66,7 +66,7 @@ app screens, supplied footage or diagrams, not the same choices for every job.
      screen. No sound needed.
    - Sent to someone: A gift, birthday or memorial. Paced to feel personal, not
      to grab attention.
-2. "Should it have music?" GG's built-in tracks are all upbeat and cheerful.
+2. "Should it have music?" EZ Coder's built-in tracks are all upbeat and cheerful.
    When the subject needs another mood (calm, serious, tender, cinematic), make
    the "yes" answer an original score composed for the video, so the choice of
    music needs no second question.

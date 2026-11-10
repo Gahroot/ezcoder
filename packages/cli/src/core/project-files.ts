@@ -36,7 +36,7 @@ export async function listProjectFiles(
     ...new Set(
       stdout
         .split("\0")
-        // EZ's own state isn't project code; control characters would break the line.
+        // EZ Coder's own state isn't project code; control characters would break the line.
         // eslint-disable-next-line no-control-regex
         .filter((f) => f && !f.startsWith(".ezcoder/") && !/[\u0000-\u001f]/.test(f)),
     ),

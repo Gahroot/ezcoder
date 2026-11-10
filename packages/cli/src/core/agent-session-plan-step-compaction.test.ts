@@ -201,7 +201,7 @@ afterEach(async () => {
 
 describe("plan-step compaction inside one approved-plan run", () => {
   it("compacts mid-run at the step boundary when the cost rule says it pays", async () => {
-    // Sol over GG auth: 272K window, size trigger at 231,200 — never reached here.
+    // Sol over EZ Coder auth: 272K window, size trigger at 231,200 — never reached here.
     scriptStream(planRun([20_000, 40_000, 60_000, 70_000, 80_000, 90_000]));
 
     const { internals } = await runApprovedPlan();

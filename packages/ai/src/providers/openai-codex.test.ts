@@ -123,6 +123,7 @@ describe("streamOpenAICodex", () => {
   it.each([
     { model: "gpt-6-luna-fast", tier: "priority" },
     { model: "gpt-6.1-sol-fast", tier: "priority" },
+    { model: "gpt-6.1-terra-fast", tier: "priority" },
     { model: "gpt-6-luna", tier: undefined },
   ])("sends Codex Fast mode as service_tier priority: $model", async ({ model, tier }) => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
@@ -294,6 +295,7 @@ describe("streamOpenAICodex", () => {
     ["gpt-6-sol", "ultra", "max"],
     ["gpt-6-astra", "ultra", "xhigh"],
     ["gpt-6.1-sol", "ultra", "xhigh"],
+    ["gpt-6.1-terra", "ultra", "xhigh"],
     ["gpt-6-astra", "max", "max"],
     ["gpt-6.1-sol", "max", "max"],
   ] as const)(
@@ -695,8 +697,8 @@ describe("streamOpenAICodex", () => {
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(init.headers).toMatchObject({
       originator: "codex_cli_rs",
-      version: "0.161.0",
-      "User-Agent": "codex_cli_rs/0.161.0",
+      version: "0.166.0",
+      "User-Agent": "codex_cli_rs/0.166.0",
       "X-OpenAI-Internal-Codex-Responses-Lite": "true",
     });
     expect(body).toMatchObject({
@@ -746,7 +748,7 @@ describe("streamOpenAICodex", () => {
     // The server rejects parallel_tool_calls under lite, so the header and the
     // flag must flip together; the Codex identity and verbosity stay.
     expect(headers).not.toHaveProperty("X-OpenAI-Internal-Codex-Responses-Lite");
-    expect(headers).toMatchObject({ originator: "codex_cli_rs", version: "0.161.0" });
+    expect(headers).toMatchObject({ originator: "codex_cli_rs", version: "0.166.0" });
     expect(body.parallel_tool_calls).toBe(true);
     expect(body.reasoning).not.toHaveProperty("context");
     expect(body.text).toEqual({ verbosity: "low" });

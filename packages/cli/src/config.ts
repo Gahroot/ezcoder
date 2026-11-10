@@ -22,7 +22,7 @@ export async function ensureAppDirs(): Promise<AppPaths> {
   await fs.mkdir(paths.extensionsDir, { recursive: true, mode: 0o700 });
   await fs.mkdir(paths.agentsDir, { recursive: true, mode: 0o700 });
   await seedDefaultAgents(paths.agentsDir);
-  await seedDefaultSkills(paths.skillsDir);
+  await removeRetiredSeededSkills(paths.skillsDir);
   return paths;
 }
 
@@ -31,6 +31,8 @@ export interface SavedSettings {
   model?: string;
   autoCompact: boolean;
   compactThreshold: number;
+  /** Absolute auto-compaction trigger (settings `compactAtTokens`). */
+  compactAtTokens?: number;
   thinkingEnabled: boolean;
   thinkingLevel?: ThinkingLevel;
   theme: "auto" | ThemeName;
@@ -77,8 +79,15 @@ function isValidProvider(value: unknown): value is Provider {
   return typeof value === "string" && VALID_PROVIDERS.has(value as Provider);
 }
 
-/** Load saved settings from the settings file. Returns defaults on missing/invalid file. */
-export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
+/**
+ * Load saved settings from the settings file. Returns defaults on missing/invalid file.
+ * `localModels`: accept a saved local model. Only the desktop app discovers
+ * local endpoints; the CLI would boot on a model it can't find.
+ */
+export function loadSavedSettings(
+  settingsFilePath?: string,
+  { localModels = false }: { localModels?: boolean } = {},
+): SavedSettings {
   const filePath = settingsFilePath ?? getAppPaths().settingsFile;
   const result: SavedSettings = {
     autoCompact: true,
@@ -98,8 +107,8 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
     // Only accept providers the current build actually supports. A stale
     // provider name (e.g. a previously-supported provider that's since been
     // removed) would otherwise poison startup with "Not logged in" errors.
-    if (isValidProvider(raw.defaultProvider)) {
-      result.provider = raw.defaultProvider;
+    if (isValidProvider(raw.defaultProvider) || (localModels && raw.defaultProvider === "local")) {
+      result.provider = raw.defaultProvider as Provider;
       // Only honor the saved model when the provider was also accepted —
       // otherwise a model from the removed provider would leak through.
       // A saved paid tier (Claude fast mode bills usage credits) never boots a
@@ -114,6 +123,13 @@ export function loadSavedSettings(settingsFilePath?: string): SavedSettings {
       raw.compactThreshold <= 1
     ) {
       result.compactThreshold = raw.compactThreshold;
+    }
+    if (
+      typeof raw.compactAtTokens === "number" &&
+      Number.isInteger(raw.compactAtTokens) &&
+      raw.compactAtTokens >= 20_000
+    ) {
+      result.compactAtTokens = raw.compactAtTokens;
     }
     if (raw.thinkingEnabled === true) result.thinkingEnabled = true;
     if (isValidThinkingLevel(raw.thinkingLevel)) result.thinkingLevel = raw.thinkingLevel;
@@ -247,104 +263,36 @@ async function removeShadowingSeededAgents(agentsDir: string): Promise<void> {
   }
 }
 
-/** Seed built-in skill definitions on first run (won't overwrite user edits). */
-async function seedDefaultSkills(skillsDir: string): Promise<void> {
-  const defaults: Record<string, string> = {
-    "find-skills.md": FIND_SKILLS_MD,
-  };
+/**
+ * find-skills was seeded into `~/.ezcoder/skills` by earlier versions and is no
+ * longer shipped (nor is the /setup-skills command that drove it). Delete a
+ * copy only when it is byte-identical to one we wrote, so a user who edited
+ * it keeps theirs. Hashes cover every variant in `git log -p -- src/config.ts`.
+ */
+export const RETIRED_SEEDED_SKILL_HASHES: Record<string, readonly string[]> = {
+  "find-skills.md": [
+    "352d5d6a76a2c8f3c35932ea368e221e7dd9760e25124eb4b38c59ddce8465de",
+    "e098327dbd76b56d25a54974819d4be7a73ee86c9109c9dbe2c12f46c0f136b8",
+    // EZ Coder's rebranded seeds (the upstream copies above, and the fork's own).
+    "452cb98b7ad749594401f2d2b6eb4a04c20b21774866725bb6b8185013a9241d",
+    "a712c658900fdb5d5e0f73ed70f4023fbef6a2e2fb8cdfafc589b29267ad921d",
+    "9f017a4a150a1fe44beedeea6fd0fffe5ea0813d04531e1febf11053b83d8faa",
+  ],
+};
 
-  for (const [filename, content] of Object.entries(defaults)) {
+/**
+ * Exported for tests, which must pass a temp dir (see seedDefaultAgents for
+ * why going through ensureAppDirs would touch the real `~/.ezcoder`).
+ */
+export async function removeRetiredSeededSkills(skillsDir: string): Promise<void> {
+  for (const [filename, seededHashes] of Object.entries(RETIRED_SEEDED_SKILL_HASHES)) {
     const filePath = path.join(skillsDir, filename);
     try {
-      await fs.access(filePath);
-      // File exists — don't overwrite user edits
+      const content = await fs.readFile(filePath, "utf-8");
+      const hash = createHash("sha256").update(content, "utf-8").digest("hex");
+      if (seededHashes.includes(hash)) await fs.rm(filePath, { force: true });
     } catch {
-      await fs.writeFile(filePath, content, "utf-8");
+      // Missing or unreadable — nothing to clean up.
     }
   }
 }
-
-const FIND_SKILLS_MD = `---
-name: find-skills
-description: Use when the user wants to find or install a skill for some capability. Do NOT use for normal coding.
----
-
-# Find Skills
-
-Help the user discover and install reusable agent skills from the open ecosystem.
-
-## When to use
-
-Activate this skill when the user:
-
-- Asks "how do I do X" for a specialized, recurring task
-- Says "find a skill for…", "add a skill that…", "is there something that handles…"
-- Wants to extend the agent with capabilities that likely already exist
-
-## Install location — read this carefully
-
-- **Default: project-local** → \`./.ezcoder/skills/\`. Project-specific skills (React testing, Convex patterns, Next.js conventions, etc.) must live with the project they belong to. A React skill installed globally pollutes every other project.
-- **Global** → \`~/.ezcoder/skills/\`. Only install here if the user **explicitly** asks ("install globally", "across all projects") and the skill is genuinely cross-cutting (e.g. a release-notes generator, a git-hygiene helper).
-
-When in doubt, install to the project. It is trivial to promote a project skill to global later; harder to unpollute a global namespace.
-
-## Where to look
-
-- **Catalog**: https://skills.sh — browsable leaderboard
-- **Vercel Labs**: https://github.com/vercel-labs/agent-skills
-- **Anthropic**: https://github.com/anthropics/skills
-- Any trusted GitHub repo containing a \`SKILL.md\`
-
-Prefer publishers with track record (vercel-labs, anthropics) and repos with stars + recent commits.
-
-## Process
-
-1. **Clarify the need** in one question if it's not obvious from context — what domain, what task?
-2. **Search** using the \`web_search\` and \`web_fetch\` tools. Use precise terms ("react testing skill" beats "testing").
-3. **Shortlist 2–3 candidates.** Present each with: name, one-line description, source repo URL, why it fits. Don't just install the first hit.
-4. **Confirm scope** with the user: project (default) or global.
-5. **Install** using the \`bash\` tool (see below).
-6. **Verify** the file landed and tell the user to start a new ez-coder session so the loader picks it up.
-
-## How to install
-
-Skills come in two shapes. ez-coder's loader handles both.
-
-### Shape A — single file
-
-A single \`SKILL.md\` (or \`<name>.md\`). Install as one flat file:
-
-\`\`\`bash
-mkdir -p .ezcoder/skills
-curl -fsSL <raw-githubusercontent-url> -o .ezcoder/skills/<skill-name>.md
-\`\`\`
-
-### Shape B — directory with supporting files
-
-A directory containing \`SKILL.md\` plus scripts, reference docs, or assets. Preserve the directory:
-
-\`\`\`bash
-mkdir -p .ezcoder/skills
-# Simplest: tarball the repo, extract only the skill path
-curl -fsSL https://github.com/<owner>/<repo>/archive/refs/heads/main.tar.gz \\
-  | tar -xz --strip-components=2 -C .ezcoder/skills <repo>-main/skills/<skill-name>
-\`\`\`
-
-If that layout doesn't match the source repo, inspect with \`gh api repos/<owner>/<repo>/contents/<path>\` and fetch individual files via their \`download_url\`.
-
-For global installs, swap \`.ezcoder/skills\` for \`~/.ezcoder/skills\` — but remember the default is project.
-
-## If nothing fits
-
-- Say so honestly — don't fabricate a match.
-- Offer to either (a) complete the task directly this once, or (b) scaffold a new \`./.ezcoder/skills/<name>.md\` based on what the user describes. A minimal skill is just frontmatter plus instructions:
-
-\`\`\`markdown
----
-name: my-skill
-description: One-line description of when this skill should be used
----
-
-Instructions the agent should follow when invoked…
-\`\`\`
-`;

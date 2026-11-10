@@ -9,6 +9,7 @@ import {
   XIAOMI_CREDITS_KEY,
   dualAuthProvider,
 } from "./auth-storage.js";
+import { isHiddenProvider } from "./hidden-providers.js";
 
 export type AuthMethod = "oauth" | "apikey";
 
@@ -76,19 +77,21 @@ export interface AuthMethodMeta {
  * lists that provider's models and feeds both the CLI login screen and the
  * app's provider list, so `auth-providers.test.ts` pins each one to the model
  * registry — a registry change that isn't reflected here fails the suite.
+ * Hidden providers (see `hidden-providers.ts`) keep their row here but are
+ * left out of the exported list.
  */
-export const AUTH_PROVIDERS: AuthProviderMeta[] = [
+const ALL_AUTH_PROVIDERS: AuthProviderMeta[] = [
   {
     value: "anthropic",
     label: "Anthropic",
-    description: "Claude Fable 5.1, Opus 5.5, Opus 5.5 Fast, Sonnet 5.5, Haiku 5.5",
+    description: "Claude Fable 5.2, Fable 5.2 Fast, Opus 5.5, Opus 5.5 Fast, Sonnet 5.5, Haiku 5.5",
     methods: ["oauth"],
   },
   {
     value: "openai",
     label: "OpenAI",
     description:
-      "GPT-6 Astra, GPT-6 Astra Fast, GPT-6.1 Sol, GPT-6.1 Sol Fast, GPT-6 Luna, GPT-6 Luna Fast",
+      "GPT-6 Astra, GPT-6 Astra Fast, GPT-6.1 Sol, GPT-6.1 Sol Fast, GPT-6.1 Terra, GPT-6.1 Terra Fast, GPT-6 Luna, GPT-6 Luna Fast",
     methods: ["oauth"],
   },
   {
@@ -170,7 +173,7 @@ export const AUTH_PROVIDERS: AuthProviderMeta[] = [
   {
     value: "minimax",
     label: "MiniMax",
-    description: "MiniMax M3",
+    description: "MiniMax M3.1 Flash, M3",
     methods: ["apikey"],
     apiKeyLabel: "MiniMax",
   },
@@ -224,6 +227,11 @@ export const AUTH_PROVIDERS: AuthProviderMeta[] = [
     apiKeyLabel: "Hugging Face",
   },
 ];
+
+/** Every provider a user can connect right now, in login-screen order. */
+export const AUTH_PROVIDERS: AuthProviderMeta[] = ALL_AUTH_PROVIDERS.filter(
+  (p) => !isHiddenProvider(p.value),
+);
 
 export function getAuthProvider(value: string): AuthProviderMeta | undefined {
   return AUTH_PROVIDERS.find((p) => p.value === value);

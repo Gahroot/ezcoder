@@ -5,7 +5,7 @@ import type {
   AppMarkerPayload,
   NolanTurnPayload,
 } from "./session-manager.js";
-import { STEERING_PREFIX, NOTIFICATION_PREFIX } from "./steering.js";
+import { STEERING_PREFIX, isNotificationText } from "./steering.js";
 import { matchPromptCommand } from "./prompt-command-expansion.js";
 import { AUTOPILOT_INJECTION_PREAMBLE } from "./autopilot-cycle.js";
 
@@ -326,13 +326,50 @@ const ATTACHMENT_NOTE_PATTERNS = [
   /^\[Image saved at .+\]$/s,
   /^The user attached a video at .+/s,
   /^\[User attached a video file .+\]$/s,
+  /^\[User attached a file ".+" but it could not be saved, so it can't be opened\.\]$/s,
 ];
+
+/** A non-image attachment shown as a chip in the user bubble. */
+export interface RestoredAttachment {
+  kind: "file" | "video";
+  name: string;
+}
+
+// prepareAttachments saves uploads as `<base36 timestamp>-<sanitized name>`.
+function uploadDisplayName(filePath: string): string {
+  const base = filePath.split(/[\\/]/).pop() ?? filePath;
+  return base.replace(/^[0-9a-z]+-/, "") || base;
+}
+
+/** The chips a single text part implies: its attached-files block, a video
+ *  note's saved path, or an unsaved-file note's name. */
+function attachmentsInText(text: string): RestoredAttachment[] {
+  const video =
+    /^(?:The user attached a video at |\[User attached a video file at )(.+?)\. You (?:CAN|cannot) /s.exec(
+      text,
+    );
+  if (video) return [{ kind: "video", name: uploadDisplayName(video[1]!) }];
+  const unsaved = /^\[User attached a file "(.+)" but it could not be saved/s.exec(text);
+  if (unsaved) return [{ kind: "file", name: unsaved[1]! }];
+  const idx = text.startsWith(ATTACHED_FILES_HEADER)
+    ? 0
+    : text.indexOf(`\n\n${ATTACHED_FILES_HEADER}`);
+  if (idx === -1) return [];
+  const out: RestoredAttachment[] = [];
+  for (const line of text.slice(idx).split("\n")) {
+    const m = /^- (.+) \(saved at .+\)$/.exec(line);
+    if (m) out.push({ kind: "file", name: m[1]! });
+  }
+  return out;
+}
 
 export interface RestoredUserRow {
   /** The typed text as the live bubble showed it. */
   text: string;
   /** Attached image data URLs. */
   images: string[];
+  /** Attached files and videos, by name. */
+  attachments: RestoredAttachment[];
   /** True when the message carried a video the model could NOT watch natively
    *  (live showed an info row after the bubble). */
   videoWarning: boolean;
@@ -361,7 +398,7 @@ function stripSteering(text: string): string {
 /** Whether a persisted user message is a pushed background-status update.
  *  `buildNotificationSteeringText` adds this prefix and nothing else does. */
 function isNotification(text: string): boolean {
-  return text.startsWith(NOTIFICATION_PREFIX);
+  return isNotificationText(text);
 }
 
 /** Strip the autopilot situational-awareness preamble that the sidecar prepends
@@ -399,6 +436,7 @@ export function restoreUserRow(
     return {
       text: stripAttachedFilesBlock(legacy ? stripAutopilotPreamble(unsteered) : unsteered).trim(),
       images: [],
+      attachments: attachmentsInText(unsteered),
       videoWarning: false,
       autopilotInjected:
         provenance?.kind === "automation" || (legacy && hasAutopilotPreamble(unsteered)),
@@ -406,6 +444,7 @@ export function restoreUserRow(
     };
   }
   const images: string[] = [];
+  const attachments: RestoredAttachment[] = [];
   const textParts: string[] = [];
   let videoWarning = false;
   let autopilotInjected = provenance?.kind === "automation";
@@ -422,6 +461,7 @@ export function restoreUserRow(
     if (legacy && hasAutopilotPreamble(unsteered)) autopilotInjected = true;
     const stripped = legacy ? stripAutopilotPreamble(unsteered) : unsteered;
     if (stripped.startsWith("[User attached a video file")) videoWarning = true;
+    attachments.push(...attachmentsInText(stripped));
     if (ATTACHMENT_NOTE_PATTERNS.some((re) => re.test(stripped))) continue;
     const cleaned = stripAttachedFilesBlock(stripped);
     if (cleaned.trim()) textParts.push(cleaned);
@@ -429,6 +469,7 @@ export function restoreUserRow(
   return {
     text: textParts.join("\n\n").trim(),
     images,
+    attachments,
     videoWarning,
     autopilotInjected,
     notification,

@@ -305,9 +305,9 @@ const FOLDER_SCAN_IGNORED = new Set([
   "temp",
   "Library",
   "Applications",
-  // Motion's video workspace lives in the projects root but is not a codebase.
+  // Motion's and Chat's workspaces live in the projects root but are not codebases.
   "EZ Motion",
-  "EZ Motion", // Keep older workspaces out of project discovery too.
+  "EZ Chat",
 ]);
 
 /**

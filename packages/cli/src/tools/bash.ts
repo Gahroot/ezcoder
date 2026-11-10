@@ -2,9 +2,13 @@ import { z } from "zod";
 import type { AgentTool } from "@prestyj/agent";
 import type { ProcessManager } from "../core/process-manager.js";
 import { killProcessTree } from "../utils/process.js";
-import { truncateTail, MAX_BYTES, describeCompressed } from "./truncate.js";
+import { truncateTail, MAX_LINES, describeCompressed } from "./truncate.js";
 import { compressToolOutput } from "./compress.js";
-import { compactRoutineOutput } from "./routine-output.js";
+import {
+  cleanTerminalOutput,
+  compactProgressRuns,
+  compactRoutineOutput,
+} from "./routine-output.js";
 import { writeOverflow } from "./overflow.js";
 import { localOperations, type ToolOperations } from "./operations.js";
 import { getSafeToolEnv } from "./safe-env.js";
@@ -103,6 +107,14 @@ function killLeftoverGroup(pid: number): boolean {
     return false;
   }
 }
+/**
+ * Bash output over this many bytes is offloaded and shown compressed — Claude
+ * Code's inline limit (BASH_MAX_OUTPUT_LENGTH default 30,000). At the old 50KB,
+ * `cat` of whole source files came back verbatim and stayed in every later
+ * request (agent-race, 2026-11-04).
+ */
+export const BASH_INLINE_MAX_BYTES = 30_000;
+
 /** A sleep at least this long is a guess at when something finishes, not a
  *  settle pause before poking a service that is already up. */
 const GUESSED_WAIT_SECONDS = 10;
@@ -143,19 +155,24 @@ function isGoalModeRef(value: unknown): value is { current: GoalMode } {
  * paired trials, 2026-10-18).
  */
 export async function renderBashOutput(rawOutput: string): Promise<string> {
-  const result = truncateTail(rawOutput);
+  // ANSI codes and \r redraws never mean anything in a tool result; runs of
+  // installer/build progress lines collapse to first + count + last. Error
+  // lines are never touched (routine-output.ts).
+  const cleaned = cleanTerminalOutput(rawOutput);
+  const shown = compactProgressRuns(cleaned);
+  const result = truncateTail(shown, MAX_LINES, BASH_INLINE_MAX_BYTES);
   // Under the limit: drop routine boilerplate (git log/status labels, ls
   // owner columns, green per-file test lines) — see routine-output.ts.
   if (!result.truncated) return compactRoutineOutput(result.content);
   const overflowPath =
-    Buffer.byteLength(rawOutput, "utf-8") > MAX_BYTES
-      ? await writeOverflow(rawOutput, "bash").catch(() => null)
+    Buffer.byteLength(shown, "utf-8") > BASH_INLINE_MAX_BYTES
+      ? await writeOverflow(cleaned, "bash").catch(() => null)
       : null;
   const overflowNotice = overflowPath
     ? ` Full output saved to ${overflowPath} — read it with offset/limit if needed.`
     : "";
-  const c = compressToolOutput(rawOutput);
-  const what = describeCompressed(rawOutput, c.content);
+  const c = compressToolOutput(shown);
+  const what = describeCompressed(shown, c.content);
   return `[${c.notice}${what ? ` ${what}` : ""}${overflowNotice}]\n${c.content}`;
 }
 
@@ -225,7 +242,10 @@ export function createBashTool(
     description:
       description +
       " Servers/watchers/REPLs: run_in_background + wake.pattern, then task_output wait_ms; " +
-      "never `&`, nohup or sleep. Leave servers running. Kill by exact PID.",
+      // "Never by name or pattern" moved here from the lean skill, which only
+      // loads for perf work: a pattern kill took down the host daemon and every
+      // sibling session.
+      "never `&`, nohup or sleep. Leave servers running. Kill by exact PID, never by name or pattern (pkill, killall, taskkill /IM): you run inside a host process.",
     parameters: BashParams,
     executionMode: "sequential",
     async execute(

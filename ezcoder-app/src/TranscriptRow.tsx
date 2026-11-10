@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { AtIcon } from "@phosphor-icons/react";
+import { AtIcon, FileTextIcon, FilmStripIcon } from "@phosphor-icons/react";
 import { theme } from "./theme";
 import { ChatErrorNotice } from "./ChatErrorNotice";
 import { openImageDataUrl, openProjectPath } from "./agent";
@@ -13,8 +13,11 @@ import { PlanModeLogo } from "./PlanModeLogo";
 import { PlanDecisionNotice } from "./PlanDecisionNotice";
 import { NolanFace } from "./NolanFace";
 import { AskBand } from "./AskBand";
+import { ShellBlock } from "./ShellBlock";
+import type { ShellActions } from "./useShellRuns";
 import { Markdown } from "./Markdown";
-import { Skeleton } from "./Skeleton";
+import { ImageGenCard } from "./image-gen/ImageGenCard";
+import { ImageCard } from "./ImageCard";
 import { segmentDoneMarkers, hasDoneMarker } from "./plan-steps";
 import { hidePartialNolanLine, stripNolanLine } from "./goal-nolan-talk";
 import { EnhancedSegments } from "./PromptEnhancement";
@@ -154,6 +157,7 @@ export const TranscriptRow = memo(function TranscriptRow({
   onContentGrow,
   onAskAnswer,
   onAskType,
+  shellActions,
 }: {
   item: Item;
   view: { readonly visible: boolean };
@@ -172,6 +176,7 @@ export const TranscriptRow = memo(function TranscriptRow({
     delta: Record<string, string | string[]>,
   ) => void;
   onAskType?: (itemId: number, promptId: string, questionId: string, seed?: string) => void;
+  shellActions?: ShellActions;
 }): React.ReactElement | null {
   const entranceRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -197,6 +202,7 @@ export const TranscriptRow = memo(function TranscriptRow({
       onContentGrow={onContentGrow}
       onAskAnswer={onAskAnswer}
       onAskType={onAskType}
+      shellActions={shellActions}
     />
   );
   if (!animateIn) return row;
@@ -217,6 +223,7 @@ function TranscriptRowBody({
   onContentGrow,
   onAskAnswer,
   onAskType,
+  shellActions,
 }: {
   item: Item;
   /** This is the Nolan reply currently streaming in, so his face talks. */
@@ -233,6 +240,8 @@ function TranscriptRowBody({
   ) => void;
   /** Answer this question by typing in the composer instead of clicking. */
   onAskType?: (itemId: number, promptId: string, questionId: string, seed?: string) => void;
+  /** Run, cancel or stop the user's own `!` commands. */
+  shellActions?: ShellActions;
 }): React.ReactElement | null {
   switch (item.kind) {
     case "user":
@@ -297,9 +306,20 @@ function TranscriptRowBody({
           ) : (
             item.text
           )}
-          {item.files && item.files.length > 0 && (
+          {((item.attachments && item.attachments.length > 0) ||
+            (item.files && item.files.length > 0)) && (
             <div className="user-files-row">
-              {item.files.map((p) => (
+              {item.attachments?.map((a, i) => (
+                <span key={`attachment-${i}`} className="user-file-chip" title={a.name}>
+                  {a.kind === "video" ? (
+                    <FilmStripIcon size={11} aria-hidden style={{ color: theme.textMuted }} />
+                  ) : (
+                    <FileTextIcon size={11} aria-hidden style={{ color: theme.textMuted }} />
+                  )}
+                  <span>{a.name}</span>
+                </span>
+              ))}
+              {item.files?.map((p) => (
                 <span key={p} className="user-file-chip" title={p}>
                   <AtIcon size={11} style={{ color: theme.accent }} />
                   <span style={{ color: theme.code }}>{p}</span>
@@ -378,35 +398,18 @@ function TranscriptRowBody({
       return (
         <div className="img-grid">
           {item.images.map((img, i) => {
-            const openImage = (): void => {
-              if (img.path) void openProjectPath(img.path);
-            };
+            const path = img.path;
             return (
-              <figure
-                key={img.path ?? i}
-                className={`img-card${img.path ? " img-card-clickable" : ""}`}
-                role={img.path ? "button" : undefined}
-                tabIndex={img.path ? 0 : undefined}
-                title={img.path ? `Open ${img.path}` : undefined}
-                onClick={openImage}
-                onKeyDown={(e) => {
-                  if (!img.path || (e.key !== "Enter" && e.key !== " ")) return;
-                  e.preventDefault();
-                  openImage();
-                }}
-              >
-                <img
-                  className="img-thumb"
-                  src={img.src}
-                  alt={img.path ?? "image"}
-                  onLoad={onContentGrow}
-                />
-                {img.path && (
-                  <figcaption className="img-cap" title={img.path}>
-                    {basename(img.path)}
-                  </figcaption>
-                )}
-              </figure>
+              <ImageCard
+                key={path ?? i}
+                src={img.src}
+                alt={path ?? "image"}
+                path={path}
+                caption={path ? basename(path) : undefined}
+                title={path ? `Open ${path}` : undefined}
+                onOpen={path ? () => void openProjectPath(path) : undefined}
+                onLoad={onContentGrow}
+              />
             );
           })}
         </div>
@@ -414,12 +417,7 @@ function TranscriptRowBody({
     case "generating_image":
       return (
         <div className="img-grid">
-          <div className="img-gen-placeholder">
-            <Skeleton width={200} height={200} radius={12} />
-            <span className="img-gen-label">
-              {item.prompt.length > 60 ? item.prompt.slice(0, 57) + "\u2026" : item.prompt}
-            </span>
-          </div>
+          <ImageGenCard prompt={item.prompt} gif={item.gif} startedAt={item.startedAt} />
         </div>
       );
     case "plan":
@@ -453,6 +451,8 @@ function TranscriptRowBody({
       );
     case "subagent_group":
       return <SubAgentFeed agents={item.agents} aborted={item.aborted} />;
+    case "shell":
+      return <ShellBlock item={item} actions={shellActions} onGrow={onContentGrow} />;
     case "compaction":
       return (
         <CompactionNotice

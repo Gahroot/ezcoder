@@ -8,7 +8,7 @@ import { listProjectFiles, PROJECT_FILES_SHOWN } from "./project-files.js";
 const tempDirs: string[] = [];
 
 async function makeDir(): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ggcoder-project-files-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ezcoder-project-files-"));
   tempDirs.push(dir);
   return dir;
 }

@@ -714,6 +714,31 @@ describe("useAgentEvents", () => {
     expect(items[0]).toMatchObject({ kind: "assistant", text: "Hello world" });
   });
 
+  it("gives each model turn's text its own bubble, but keeps an auto-continued reply in one", () => {
+    const { hook, getItems } = setup();
+    act(() => {
+      hook.result.current.handleEvent(ev("text_delta", { text: "those skills." }));
+      hook.result.current.handleEvent(ev("turn_end", { usage: { outputTokens: 5 } }));
+      // A mid-run message (e.g. a status update) starts another turn in the same run.
+      hook.result.current.handleEvent(ev("text_delta", { text: "**Dev isn't stuck.**" }));
+      hook.result.current.endStreamingText();
+    });
+    expect(getItems()).toMatchObject([
+      { kind: "assistant", text: "those skills." },
+      { kind: "assistant", text: "**Dev isn't stuck.**" },
+    ]);
+
+    act(() => {
+      hook.result.current.handleEvent(ev("text_delta", { text: "Cut off mid" }));
+      hook.result.current.handleEvent(ev("turn_end", { usage: { outputTokens: 5 } }));
+      hook.result.current.handleEvent(ev("truncated", { reason: "max_tokens", continued: true }));
+      hook.result.current.handleEvent(ev("text_delta", { text: "-sentence." }));
+      hook.result.current.endStreamingText();
+    });
+    expect(getItems()[2]).toMatchObject({ kind: "assistant", text: "Cut off mid-sentence." });
+    expect(getItems()).toHaveLength(3);
+  });
+
   it("grows a streaming reply in the live-text store, not the transcript, until it ends", () => {
     vi.useFakeTimers();
     try {
@@ -1094,12 +1119,45 @@ describe("useAgentEvents", () => {
       );
       hook.result.current.handleEvent(ev("tool_call_end", { toolCallId: "r1", isError: false }));
     });
-    expect(getItems().filter((it) => it.kind === "generating_image")).toHaveLength(1);
+    const placeholders = getItems().filter((it) => it.kind === "generating_image");
+    expect(placeholders).toHaveLength(1);
+    expect(placeholders[0]).toMatchObject({ prompt: "a cat", gif: false });
 
     act(() => {
       hook.result.current.handleEvent(ev("tool_call_end", { toolCallId: "g1", isError: false }));
     });
     expect(getItems().filter((it) => it.kind === "generating_image")).toHaveLength(0);
+  });
+
+  it("shows a generated GIF as an animated image in the transcript", () => {
+    const { hook, getItems } = setup();
+    act(() => {
+      hook.result.current.handleEvent(
+        ev("tool_call_start", {
+          toolCallId: "g1",
+          name: "generate_image",
+          args: { prompt: "x", gif: {} },
+        }),
+      );
+    });
+    expect(getItems().find((it) => it.kind === "generating_image")).toMatchObject({ gif: true });
+    act(() => {
+      hook.result.current.handleEvent(
+        ev("tool_call_end", {
+          toolCallId: "g1",
+          isError: false,
+          details: {
+            imagePreviews: [
+              { base64: "R0lGODlhAQ", mediaType: "image/gif", path: "/p/.ezcoder/generated/a.gif" },
+            ],
+          },
+        }),
+      );
+    });
+    const images = getItems().find((it) => it.kind === "images");
+    expect(images).toMatchObject({
+      images: [{ src: "data:image/gif;base64,R0lGODlhAQ", path: "/p/.ezcoder/generated/a.gif" }],
+    });
   });
 
   it("turn_end accumulates output tokens across turns", () => {

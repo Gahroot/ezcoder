@@ -19,6 +19,7 @@ import {
   createMotionAgentSession,
   MOTION_SKILL_CATALOG_BYTES,
   MOTION_TOOL_NAMES,
+  mergeMotionSkills,
   motionCliCommand,
   motionMusicDir,
   motionSessionsDir,
@@ -270,8 +271,8 @@ describe("Motion agent", () => {
     expect(motion).toContain("already settles it. Tailor the options to the source");
     expect(motion).toContain('1. "Where will people mostly watch this?"');
     // The music answer can't promise a library that only fits upbeat subjects.
-    expect(motion).toContain("GG's built-in tracks are all upbeat and cheerful.");
-    expect(motion).not.toContain("I'll pick a fitting track from GG's built-in music");
+    expect(motion).toContain("EZ Coder's built-in tracks are all upbeat and cheerful.");
+    expect(motion).not.toContain("I'll pick a fitting track from EZ Coder's built-in music");
     // Delivery reports what was actually looked at, in a final message no card can hide.
     expect(motion).toContain("Say what you looked at");
     expect(motion).not.toMatch(/call `ask_user` in the same reply/);
@@ -546,7 +547,6 @@ describe("Motion agent", () => {
       "tool_search",
       "ui_registry",
       "ui_adopt",
-      "code_nav",
       "source_path",
       "steroids",
       "motion_review",
@@ -564,6 +564,36 @@ describe("Motion agent", () => {
     ])
       expect(options.allowedTools).toContain(name);
     expect((options.skills ?? []).map((skill) => skill.name)).toEqual(EXPECTED_SKILLS);
+  });
+
+  it("adds the user's EZ Motion skills after built-in ones, which win name clashes", async () => {
+    const userSkill = (name: string) => ({
+      name,
+      description: `User ${name}.`,
+      content: "User body.",
+      source: "project",
+    });
+    const blocked = { name: "evil", path: "/x", scope: "project", reason: "r", hash: "h" };
+    const agent = await createMotionAgentSession({
+      provider: "anthropic",
+      model: "claude-test",
+      cwd: "/tmp/workspace",
+      sessionsDir: "/tmp/gg/sessions",
+      workspaceSkills: [userSkill("my-intro"), userSkill("Motion")],
+      blockedSkills: [blocked],
+    });
+    const options = optionsOf(agent);
+    const skills = options.skills ?? [];
+    expect(skills.map((skill) => skill.name)).toEqual([...EXPECTED_SKILLS, "my-intro"]);
+    expect(skills.find((skill) => skill.name === "motion")?.source).toBe("motion");
+    expect(options.agentPrompt).toContain(
+      `New skills go in \`${path.join("/tmp/workspace", ".ezcoder", "skills")}\` as \`<name>/SKILL.md\``,
+    );
+    expect(options.agentPrompt).toContain(
+      "cannot replace them; EZ Coder and EZ Chat cannot use them",
+    );
+    expect(options.blockedSkills).toEqual([blocked]);
+    expect(mergeMotionSkills([], undefined)).toEqual([]);
   });
 
   it("refuses to resume a session outside the Motion namespace", async () => {

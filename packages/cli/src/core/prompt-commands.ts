@@ -744,7 +744,7 @@ This file is injected verbatim into the **cached prefix of every request in ever
 Read this list once and apply it to every step below. These are already supplied by the system prompt, so writing them into the context file is pure duplication:
 
 1. **Agent behavior** — Do NOT add generic agent behavior already covered by the system prompt: read before edit/write, re-read after formatters, ask before destructive actions, no fake verification, generic code-quality advice, how to use tools, or how to talk to the user.
-2. **Language conventions** — a Language Style Packs section is auto-injected for every language detected in this repo. Do not duplicate language style packs, generic verification rules, or boilerplate quality gates such as "After editing ANY file" / "Code Quality — Zero Tolerance".
+2. **Generic conventions** — Do not add generic language style guides, generic verification rules, or boilerplate quality gates such as "After editing ANY file" / "Code Quality — Zero Tolerance". Record only conventions this project actually enforces.
 3. **Verify commands** — a Verification section is auto-generated from package scripts / manifests (lint, typecheck, format, test) with the correct runner already resolved from the lockfile. Only write a command down if it is NOT discoverable that way: an undocumented multi-step sequence, a required ordering, a non-obvious flag, or a command that lives outside the manifest. Never add guidance that requires running checks, builds, or the full quality suite after every edit or every file change, and never turn discovered commands into mandatory after-every-edit requirements unless local CI explicitly enforces that sequence.
 4. **The file tree** — the agent can list and grep the repo in one call. Do NOT embed generated symbol maps, exhaustive file indexes, auto-generated directory listings, or large trees. Do not add symbol indexes or auto-generated project inventories; the context file must remain durable, agent-focused project context.
 
@@ -1076,103 +1076,69 @@ ${checklistSetupStep(["ci", "git-github"])}
   now runs, rough minutes impact, and anything skipped with the reason.`,
   },
   {
-    name: "setup-skills",
+    name: "compare",
     aliases: [],
-    description: "Recommend useful skills",
-    prompt: `# Skills Audit: Find useful skills for this project
+    description: "Compare real-world code",
+    prompt: `Compare the code you just created or modified in this conversation against real-world implementations using the \`steroids\` tool (\`search\`, then \`show\` to read the full file).
 
-Analyze this project and recommend skills from the open ecosystem that would make **working on this project more efficient, easier, and safer**. That is the goal, full stop. Every recommendation must pass the test: does this skill save real time, lower real cognitive load, or prevent real mistakes for someone working on THIS project, repeatedly?
+You already know what you just built. For each file you created or modified, use \`steroids\` \`search\` to find how real projects implement the same patterns. Look at the specific APIs, hooks, functions, and architecture you used.
 
-Ranked by real impact, not volume.
-
-This project could be anything — a web app, a CLI, a mobile app, a game, firmware, a data pipeline, a library, a scientific tool. Do not assume a stack. Let the codebase tell you what it is, then decide what to look for.
-
-## Phase 1: Understand what this project is
-
-Read just enough to know what kind of project this is. Look at whichever signals actually apply:
-
-- Build / manifest files: \`package.json\`, \`pyproject.toml\`, \`Cargo.toml\`, \`go.mod\`, \`pubspec.yaml\`, \`Podfile\`, Xcode project, Gradle build, \`*.csproj\`, \`CMakeLists.txt\`, Unity/Unreal project files, Makefile — whatever exists.
-- Any README, CLAUDE.md, or AGENTS.md.
-- Top-level directory layout and obvious entry points.
-- Any CI config, lockfile, or config directory that hints at workflow.
-
-**Do NOT read source code yet.** You need only a coarse answer to: what kind of project is this, what platform/stack/language, what stage (greenfield vs mature), and what does the surrounding workflow look like (build, test, release, distribute, deploy — whatever applies for THIS project type).
-
-## Phase 2: Decide which domains to investigate
-
-Based on Phase 1, pick 4–6 domain slices that represent the **recurring work someone actually does on this project** — not abstract "areas of the codebase," but the real activities that eat time, attention, or trust. Do not use a fixed template. The right domains for a Rust CLI are different from an iOS app, a Unity game, a Django backend, a Kubernetes operator, or an ML notebook.
-
-Illustrative only (not prescriptive):
-
-- Web app → shipping features, API changes, handling data safely, deploys
-- Mobile app → building screens, store releases, platform quirks, crash & accessibility triage
-- CLI tool → adding commands, packaging & distribution, user-facing UX, error handling
-- Game → adding content, platform ports, perf passes, build pipeline
-- Library → designing public APIs, cutting releases, downstream compatibility, docs/examples
-- Data / ML → running experiments, pipeline orchestration, reproducibility, serving models
-- Embedded → adding peripherals, size/memory passes, flashing, hardware bring-up
-
-**Announce your chosen domains to the user in one line before spawning agents**, so they can see what you're looking at (e.g. \`Domains: adding content, platform ports, perf passes, build pipeline\`).
-
-## Phase 3: Parallel sweep
-
-Spawn one sub-agent per domain you chose, ${spawnParallel("N")} — one task per domain. Each explores its assigned domain and returns skill-worthy opportunities.
-
-**Skill-worthy means**: a recurring activity someone will do on THIS project — shipping, reviewing, migrating, debugging, onboarding, whatever applies — where a reusable instruction set would make it **faster** (efficient), **lower-effort** (easier), or **less likely to break something** (safer). The test is: will this skill save real time, reduce real cognitive load, or prevent real mistakes, repeatedly, on this project? If no, drop it. A domain returning zero candidates is a valid outcome.
-
-Each sub-agent must return candidates in this exact shape, nothing else:
+If you find something consistently done differently across real codebases, or something commonly included that you left out, report it:
 
 \`\`\`
-[domain] — candidate title
-Why: one sentence on the real friction observed in THIS project
-Search terms: 2–3 keywords the parent should feed to find-skills
+[MISSING/DIVERGENT/INCOMPLETE] file:line - What it is
+Wrote: What was implemented
+Real-world: What real projects do instead/additionally
+Evidence: steroids — pattern seen in X of Y repos
 \`\`\`
 
-Don't invent. Don't pad.
+Style preferences and subjective improvements are not valid findings. Only report things backed by clear steroids evidence across multiple repos.
 
-## Phase 4: Ecosystem search
+If the code aligns well with real-world patterns, say so. That's a good outcome.`,
+  },
+  {
+    name: "steroids",
+    aliases: [],
+    description: "Index real repos like this project",
+    prompt: `# Steroids: build a code corpus that matches THIS project
 
-After all sub-agents complete, use the **skill** tool to invoke the \`find-skills\` skill. Feed it the aggregated candidate list with search terms. Let find-skills drive discovery across skills.sh, vercel-labs/agent-skills, and anthropics/skills.
+Goal: fill the local \`steroids\` corpus with real, current, well-maintained repos that do what this project does, in the same stack, so later work can read proven code instead of guessing.
 
-For each candidate, record the best 0–1 ecosystem match: skill name, source repo URL, and enough evidence from the skill README/source to prove it fits this project. If no fit exists, record "no match". **Do NOT install anything yet.**
+If the \`steroids\` tool is not available, stop and tell the user to install Agent Steroids first (Home screen, Steroids button). Do not improvise with bash.
 
-## Phase 5: Prioritized recommendation
+## Phase 0: Profile the project
 
-Rank every candidate that returned a real match by **crucial factor** — a 0–100% score combining:
+Inspect the local project (manifests, top-level layout, README, main entry points) and write a short private profile:
 
-- **Frequency** — how often someone will do this work on this project
-- **Lift** — how much the skill makes it faster (efficient), lower-effort (easier), or safer (fewer mistakes, broken builds, bad releases) per hit
-- **Fit** — how well the ecosystem match actually matches this project
+- What it is and does, and who uses it.
+- Primary language(s) and the frameworks/libraries that define it (not every dependency, the ones that shape the code).
+- Its shape: CLI, web app, desktop app, API, library, game, firmware, pipeline, etc.
+- The 3-5 hardest or most central technical topics (e.g. "Tauri sidecar lifecycle", "streaming LLM tool calls", "trigram search index").
 
-Present highest first, in this exact format:
+If the user passed arguments to /steroids, treat them as the focus and let them override the profile.
 
-\`\`\`
-# Skills Audit
+## Phase 1: Discover candidates
 
-1. <skill-name> — 92%
-   Benefit: <one sentence on what it does for this project>
-   Source: <repo URL>
-   Scope: project
+Call \`steroids\` \`repos\` once so you know what is already indexed. Then run 3-6 \`steroids\` \`discover\` queries WITHOUT \`add\`, each targeting a different angle from the profile: the framework (\`topic:<framework> language:<lang>\`), the product category (peer projects), and the central technical topics. Queries are GitHub repo searches, so keep each one SHORT: one \`topic:\` plus \`language:\`, or 2-3 keywords. A sentence like "llm streaming tool calls sdk" returns nothing. \`limit\` 10-15 per query. Never pass \`add\`.
 
-2. <skill-name> — 78%
-   Benefit: …
-   Source: …
-   Scope: project
-\`\`\`
+Merge the results, drop anything already indexed, and rank by fit with this project first, then stars and recent \`pushed_at\`. Keep at most 20.
 
-Cap the list at 8. If you'd list more, you're padding. Default scope is \`project\` per find-skills' rules; only mark \`global\` when the skill is genuinely cross-cutting.
+## Phase 2: Present and ask
 
-If strong candidates had no ecosystem match, list them at the bottom:
+FIRST print ONE markdown table of the ranked candidates: rank, repo, stars, last push, and a one-line "why it fits" tied to the profile. The user decides from this table, so it is never optional and never summarised away. ONLY THEN ask with the \`ask_user\` tool: one \`choice\` question (\`id: "count"\`, question "How many of these should I index?") with these options, each with a one-line hint on disk/time cost:
 
-\`\`\`
-## Gaps worth authoring
+- All of them
+- Top 10
+- Top 5
+- None
 
-- <candidate title> — <why it matters for this project> — consider scaffolding a custom SKILL.md
-\`\`\`
+Mark Top 10 as recommended. Leave the free-text escape on so they can name specific ranks. The card is the ONLY ask: do not also list the options as text, and do not end with an asking line. Only if \`ask_user\` is unavailable, ask the same question in prose as a lettered list.
 
-## Phase 6: Wait for the user
+Do not index anything until the user answers.
 
-After presenting the list, ask which (if any) to install. Install nothing without explicit confirmation. Once confirmed, hand off to find-skills to perform the actual install.`,
+## Phase 3: Index
+
+Tell the user indexing is starting and can take a few minutes (each repo is a full download). Then index exactly the chosen repos with \`steroids\` \`add\` (\`repos\` = owner/name list, \`tag\` = a short slug for this project, e.g. its directory name), 2-3 repos per call so progress is visible and a cancel loses little. Then confirm with \`steroids\` \`repos\` filtered by that tag and report what was added, what failed, and the new corpus size. Suggest one concrete \`steroids\` \`search\` the user could run next against the new repos.`,
   },
 ];
 

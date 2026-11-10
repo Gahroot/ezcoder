@@ -2,7 +2,17 @@
   "name": "@prestyj/agent",
   "version": "5.32.2",
   "type": "module",
-  "description": "Agentic loop system with tool execution for LLMs",
+  "description": "Agent loop for LLMs: runs your tools, feeds results back and loops until done, with retries, steering and cancellation. Works with every @prestyj/ai provider.",
+  "author": "Nolan Grout",
+  "keywords": [
+    "llm",
+    "ai",
+    "agent",
+    "agent-loop",
+    "tool-calling",
+    "anthropic",
+    "openai"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=22"
@@ -11,6 +21,10 @@
     "type": "git",
     "url": "git+https://github.com/Gahroot/ezcoder.git",
     "directory": "packages/agent"
+  },
+  "homepage": "https://github.com/Gahroot/ezcoder/tree/main/packages/agent#readme",
+  "bugs": {
+    "url": "https://github.com/Gahroot/ezcoder/issues"
   },
   "exports": {
     ".": {
