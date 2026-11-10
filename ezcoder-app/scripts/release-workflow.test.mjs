@@ -47,3 +47,12 @@ describe("release framework build", () => {
     }
   });
 });
+
+describe("release platform matrix", () => {
+  it("ships Linux deb + rpm from the oldest supported Ubuntu, never AppImage", () => {
+    expect(workflow).toMatch(
+      /^ {10}- platform: ubuntu-22\.04\r?\n {12}args: "--bundles deb,rpm"\r?$/m,
+    );
+    expect(workflow).not.toMatch(/--bundles [^"\n]*appimage/i);
+  });
+});

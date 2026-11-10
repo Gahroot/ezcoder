@@ -25,6 +25,8 @@ import {
   downgradeUnsupportedImages,
   downgradeUnsupportedVideos,
   toCodexReasoningEffort,
+  planDeferredTools,
+  supportsResponsesToolSearch,
 } from "./transform.js";
 import { readSseStream } from "../utils/sse.js";
 import { providerFetch } from "../utils/provider-fetch.js";
@@ -43,10 +45,10 @@ const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
 // 2026-09-30). Below the gate it answers "The '<model>' model is not supported
 // when using Codex with a ChatGPT account". Track the latest openai/codex
 // `rust-v*` release when adding a model, and check that model's live listing.
-// 0.161.0 = latest `rust-v0.161.0` release (2026-10-07). Exported so every
-// other caller of the ChatGPT Codex backend (ezcoder's generate_image) sends
-// the same client identity as chat.
-export const CODEX_CLIENT_VERSION = "0.161.0";
+// 0.166.0 = latest `rust-v0.166.0` release (2026-11-05; same live model list
+// as 0.161.0). Exported so every other caller of the ChatGPT Codex backend
+// (ezcoder's generate_image) sends the same client identity as chat.
+export const CODEX_CLIENT_VERSION = "0.166.0";
 // OpenAI's Codex CLI enables zstd request compression by default. Keep tiny
 // synthetic/API requests readable, but compress real agent payloads before they
 // hit the backend's finite Envoy retry buffer.
@@ -148,8 +150,26 @@ async function* runStream(
   const downgradedImages = downgradeUnsupportedImages(options.messages, options.supportsImages);
   // Codex (GPT OAuth) has no video support — always strip video to a placeholder.
   const downgraded = downgradeUnsupportedVideos(downgradedImages, options.supportsVideo);
+  // Client tool search (GPT-5.4+): a promoted tool is loaded by a
+  // tool_search_output in the transcript instead of growing `tools`, which
+  // would miss the whole cached prefix (live: cached 0 → 5,248 of 5,413).
+  const deferredPlan = supportsResponsesToolSearch(options.model)
+    ? planDeferredTools(options.tools, options.deferredTools, downgraded)
+    : undefined;
+  const strictTools = options.strictTools ?? true;
+  const toolSearchLoads = deferredPlan
+    ? new Map(
+        [...deferredPlan.loaded].map((name) => {
+          const tool = deferredPlan.byName.get(name);
+          const [wire] = tool ? toCodexTools([tool], strictTools) : [];
+          return [name, { ...(wire as Record<string, unknown>), defer_loading: true }] as const;
+        }),
+      )
+    : undefined;
+  const liveTools = deferredPlan?.live ?? options.tools;
   const { system, input } = toResponsesInput(downgraded, {
     supportsImages: options.supportsImages,
+    toolSearchLoads,
     mapId: remapCodexId,
     // Stamped reasoning belongs to another transport (e.g. Grok's) and would
     // be rejected here; Codex's own items are never stamped.
@@ -167,13 +187,13 @@ async function* runStream(
     stream: true,
     instructions: system,
     input,
-    tool_choice: toCodexToolChoice(options.toolChoice, options.tools),
+    tool_choice: toCodexToolChoice(options.toolChoice, liveTools),
     parallel_tool_calls: !liteShape,
     include: ["reasoning.encrypted_content"],
   };
 
-  if (options.tools?.length) {
-    body.tools = toCodexTools(options.tools, options.strictTools ?? true);
+  if (liveTools?.length) {
+    body.tools = toCodexTools(liveTools, strictTools);
   }
   // Always set a prompt_cache_key. OpenAI uses this key to route requests
   // with the same prefix to the same cache shard — without it, the codex
@@ -185,7 +205,6 @@ async function* runStream(
   // accepted by the Codex backend — it returns 400 "Unsupported parameter".
   // Cache TTL on Codex is controlled server-side (~5-10 min in-memory).
   // The session_id + x-client-request-id headers below handle cache routing.
-
   if (options.temperature != null && !options.thinking) {
     body.temperature = options.temperature;
   }

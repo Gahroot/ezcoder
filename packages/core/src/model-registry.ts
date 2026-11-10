@@ -1,6 +1,9 @@
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
 import { isKimiCodingEndpoint } from "./oauth/kimi.js";
 import { GEMINI_API_KEY, MOONSHOT_OAUTH_KEY, XIAOMI_CREDITS_KEY } from "./auth-storage.js";
+import { isHiddenProvider } from "./hidden-providers.js";
+
+export { HIDDEN_PROVIDERS, isHiddenProvider } from "./hidden-providers.js";
 
 export interface ModelInfo {
   id: string;
@@ -44,7 +47,7 @@ export interface ModelInfo {
    *   - OpenAI GPT-6 Astra / GPT-6.1 Sol: `ultra` (Codex orchestration preset above `max`)
    *   - OpenAI GPT-6 Luna: `max`
    *   - OpenAI Pro/Codex/old: clamped to what the model accepts
-   *   - Claude Fable 5.1 / Fable 5 / Mythos 5, Opus 5.5, Sonnet 5.5 and
+   *   - Claude Fable 5.2 / Fable 5.1 / Mythos 5, Opus 5.5, Sonnet 5.5 and
    *     Haiku 5.5: `max` (the Fable / Mythos line uses always-on adaptive
    *     thinking, low→max)
    *   - Kimi K3: `max` (always-on reasoning; currently the only API effort)
@@ -54,6 +57,12 @@ export interface ModelInfo {
    *   - DeepSeek V4: `xhigh` (DeepSeek maps `xhigh` → its internal `max`)
    */
   maxThinkingLevel: ThinkingLevel;
+  /**
+   * Effort rungs the endpoint itself declared (a synced gateway catalog's
+   * `reasoning.supported_efforts`). When set, the picker offers exactly these
+   * and the transport sends the chosen one unchanged. Absent on static models.
+   */
+  thinkingLevels?: ThinkingLevel[];
   /**
    * Ordered preference of auth-storage keys this model resolves credentials
    * from, for providers that split auth across multiple distinct
@@ -107,6 +116,15 @@ const CLAUDE_FAST_BILLING: ModelBilling = {
   standardModel: "claude-opus-5-5",
 };
 
+/** Claude Fable 5.2 fast mode: usage credits at double Fable's standard rate. */
+const CLAUDE_FABLE_FAST_BILLING: ModelBilling = {
+  label: "bills usage credits",
+  detail:
+    "Fast mode bills your Claude usage credits ($16 in / $80 out per million tokens) from the first token, never your plan's included usage.",
+  paid: true,
+  standardModel: "claude-fable-5-2",
+};
+
 /** MiMo UltraSpeed: API Credits only, billed per token, never the Token Plan. */
 const XIAOMI_ULTRASPEED_BILLING: ModelBilling = {
   label: "bills API Credits",
@@ -131,18 +149,18 @@ const GEMINI_AUTH_KEYS = [GEMINI_API_KEY, "gemini"];
 
 export const MODELS: ModelInfo[] = [
   // ── Anthropic ──────────────────────────────────────────
-  // NOTE: Claude Mythos 5.1 (`claude-mythos-5-1`, 2026-09-01) is kept commented
-  // out — it's a Project Glasswing model, still "Active (invite only)" in
-  // Anthropic's docs and unavailable to most users. Re-enable once it's
-  // generally available.
+  // NOTE: Claude Mythos 5.2 (`claude-mythos-5-2`, 2026-11-09) is kept commented
+  // out — it's only for organizations verified through Anthropic's verification
+  // programs and unavailable to most users. Re-enable once it's generally
+  // available.
   {
-    // Released 2026-09-01 — replaces Fable 5 at the same $10/$50 MTok (cache
-    // reads drop to $0.25). Always-on adaptive thinking steered by effort;
-    // forced tool use is rejected with a 400, which @prestyj/ai never sends on the
-    // Anthropic path. Fable 5 is retired here — a session that still has it
-    // saved falls back to the provider default on next start.
-    id: "claude-fable-5-1",
-    name: "Claude Fable 5.1",
+    // Released 2026-11-09 — replaces Fable 5.1 at $8/$40 MTok (down from
+    // $10/$50; cache reads $0.20). Same API surface as 5.1: always-on adaptive
+    // thinking steered by effort, forced tool use rejected with a 400 (@prestyj/ai
+    // never sends it on the Anthropic path). Fable 5.1 is retired here — a
+    // session that still has it saved falls back to the provider default.
+    id: "claude-fable-5-2",
+    name: "Claude Fable 5.2",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -152,12 +170,28 @@ export const MODELS: ModelInfo[] = [
     costTier: "high",
     maxThinkingLevel: "max",
   },
+  {
+    // Fable 5.2 in fast mode: the same model at up to 2.5x output tokens/sec,
+    // $16/$80 MTok. Sent as `claude-fable-5-2` + `speed: "fast"`; on a Claude
+    // subscription it bills usage credits only, like Opus 5.5 Fast.
+    id: "claude-fable-5-2-fast",
+    name: "Claude Fable 5.2 Fast",
+    provider: "anthropic",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "high",
+    maxThinkingLevel: "max",
+    billing: CLAUDE_FABLE_FAST_BILLING,
+  },
   // {
   //   // Mythos-class model offered through Project Glasswing (limited
-  //   // availability, invitation-only). Same underlying model as Fable 5.1 with
-  //   // some safeguards lifted; kept here so approved accounts can select it.
-  //   id: "claude-mythos-5-1",
-  //   name: "Claude Mythos 5.1",
+  //   // availability, verified organizations only). Same specs and pricing as
+  //   // Fable 5.2; kept here so approved accounts can select it.
+  //   id: "claude-mythos-5-2",
+  //   name: "Claude Mythos 5.2",
   //   provider: "anthropic",
   //   contextWindow: 1_000_000,
   //   maxOutputTokens: 128_000,
@@ -299,9 +333,9 @@ export const MODELS: ModelInfo[] = [
     billing: CODEX_FAST_BILLING,
   },
   // GPT-6 Sol + Luna — released 2026-09-22 below Astra, replacing the whole
-  // GPT-5.6 family (Sol/Terra/Luna; there is no GPT-6 Terra — OpenAI's Codex
+  // GPT-5.6 family (Sol/Terra/Luna; there was no GPT-6 Terra — OpenAI's Codex
   // catalog upgrades 5.6 Terra to 6 Sol). GPT-6.1 Sol (2026-09-29) then replaced
-  // GPT-6 Sol. Same window split as Astra: 1.05M on the public Responses API,
+  // GPT-6 Sol, and GPT-6.1 Terra (2026-10-26) sits between Sol and Luna. Same window split as Astra: 1.05M on the public Responses API,
   // 272K on the Codex route; 128K output, text+image input, freeform
   // apply_patch, responses-lite transport. The GPT-5.6 ids and `gpt-6-sol` are
   // retired — a saved session on one falls back to the provider default on
@@ -334,6 +368,40 @@ export const MODELS: ModelInfo[] = [
     provider: "openai",
     contextWindow: 1_050_000,
     codexContextWindow: 272_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    defaultThinkingLevel: "low",
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "medium",
+    maxThinkingLevel: "ultra",
+    billing: CODEX_FAST_BILLING,
+  },
+  {
+    // GPT-6.1 Terra (Codex priority 7, default low, client >= 0.153.0). $1/$5
+    // MTok, cached input $0.05. Unlike Sol/Astra the Codex route gets a 500K
+    // window (catalog `context_window`). Same ladder and Ultra preset as Sol.
+    id: "gpt-6.1-terra",
+    name: "GPT-6.1 Terra",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    codexContextWindow: 500_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    defaultThinkingLevel: "low",
+    supportsImages: true,
+    supportsVideo: false,
+    costTier: "medium",
+    maxThinkingLevel: "ultra",
+  },
+  {
+    // Codex Fast mode for 6.1 Terra ("1.5x speed") — see `gpt-6-astra-fast`
+    // for the wire mapping and billing.
+    id: "gpt-6.1-terra-fast",
+    name: "GPT-6.1 Terra Fast",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    codexContextWindow: 500_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
     defaultThinkingLevel: "low",
@@ -648,6 +716,23 @@ export const MODELS: ModelInfo[] = [
   },
   // ── MiniMax ────────────────────────────────────────────
   {
+    // The only text model M Plan / Token Plan keys cover; MiniMax-M3 on those
+    // keys fails with "insufficient balance (1008)". Pay-as-you-go serves both.
+    // Always thinks (`thinking: disabled` 400s; omitted = on) with a real
+    // low→max effort ladder on output_config.effort, API default max.
+    id: "MiniMax-M3.1-Flash",
+    name: "MiniMax M3.1 Flash",
+    provider: "minimax",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 131_072,
+    supportsThinking: true,
+    supportsImages: true,
+    supportsVideo: true,
+    maxVideoBytes: 50 * 1024 * 1024,
+    costTier: "low",
+    maxThinkingLevel: "max",
+  },
+  {
     id: "MiniMax-M3",
     name: "MiniMax M3",
     provider: "minimax",
@@ -885,17 +970,76 @@ export function clearRuntimeModels(predicate?: (model: ModelInfo) => boolean): v
   }
 }
 
+/**
+ * A provider's model list synced from its own endpoint (OpenRouter today).
+ * While set it REPLACES that provider's static rows in listings; the static
+ * rows still resolve by id so a session saved on one keeps working.
+ */
+const providerCatalogs = new Map<Provider, Map<string, ModelInfo>>();
+
+/**
+ * Replace (or, with undefined, restore) a provider's listed catalog. Rows whose
+ * id is already a static model of ANOTHER provider are dropped: getModel()
+ * resolves by bare id, so a collision would route to the wrong provider.
+ * Returns the rows actually installed.
+ */
+export function setProviderCatalog(
+  provider: Provider,
+  models: readonly ModelInfo[] | undefined,
+): ModelInfo[] {
+  if (!models) {
+    providerCatalogs.delete(provider);
+    return [];
+  }
+  const installed = new Map<string, ModelInfo>();
+  for (const model of models) {
+    if (model.provider !== provider) continue;
+    if (MODELS.some((m) => m.id === model.id && m.provider !== provider)) continue;
+    installed.set(model.id, model);
+  }
+  providerCatalogs.set(provider, installed);
+  return [...installed.values()];
+}
+
+export function getProviderCatalog(provider: Provider): ModelInfo[] | undefined {
+  const catalog = providerCatalogs.get(provider);
+  return catalog ? [...catalog.values()] : undefined;
+}
+
 /** Static table plus everything discovered at runtime. */
 export function getAllModels(): ModelInfo[] {
-  return [...MODELS, ...runtimeModels.values()];
+  const synced = [...providerCatalogs.values()].flatMap((c) => [...c.values()]);
+  return [
+    ...MODELS.filter((m) => !providerCatalogs.has(m.provider)),
+    ...synced,
+    ...runtimeModels.values(),
+  ];
 }
 
 export function getModel(id: string): ModelInfo | undefined {
-  return MODELS.find((m) => m.id === id) ?? runtimeModels.get(id);
+  const fixed = MODELS.find((m) => m.id === id);
+  if (fixed && !providerCatalogs.has(fixed.provider)) return fixed;
+  return findSynced(id) ?? fixed ?? runtimeModels.get(id);
+}
+
+function findSynced(id: string): ModelInfo | undefined {
+  for (const catalog of providerCatalogs.values()) {
+    const hit = catalog.get(id);
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 export function getModelsForProvider(provider: Provider): ModelInfo[] {
   return getAllModels().filter((m) => m.provider === provider);
+}
+
+/**
+ * Models offered in lists that don't filter by login (Telegram `/m`, the
+ * agent's model list): everything except hidden providers' models.
+ */
+export function getListedModels(): ModelInfo[] {
+  return getAllModels().filter((m) => !isHiddenProvider(m.provider));
 }
 
 /** True when running `modelId` spends real money (Claude fast mode, MiMo UltraSpeed). */
@@ -966,7 +1110,7 @@ const DEFAULT_MODEL_IDS: Partial<Record<Provider, string>> = {
   gemini: "gemini-3.1-flash-lite",
   glm: "glm-5.3",
   moonshot: "kimi-k3",
-  minimax: "MiniMax-M3",
+  minimax: "MiniMax-M3.1-Flash",
   deepseek: "deepseek-v4-pro",
   huggingface: "moonshotai/Kimi-K2.7-Code",
   openrouter: "qwen/qwen3.8-max",
@@ -1021,7 +1165,7 @@ export function usesOpenAICodexTransport(options?: ContextWindowOptions): boolea
 }
 
 /**
- * Codex applies a 10K-token history cap to every tool/function output. GG's
+ * Codex applies a 10K-token history cap to every tool/function output. EZ Coder's
  * generic 30%-of-context allowance is far larger on 272K/372K Codex windows
  * and can turn a few reads into 100K+ fresh input tokens. Four characters per
  * token matches Codex's byte approximation and keeps this provider policy in

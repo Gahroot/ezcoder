@@ -87,6 +87,13 @@ export interface ToolResult {
     /** Which budget triggered the trim. */
     scope: "per-result" | "per-turn";
   };
+  /**
+   * Deferred tools (names from `StreamOptions.deferredTools`) that became
+   * callable while this tool ran. Providers with transcript-anchored tool
+   * loading (Anthropic `tool_reference`, OpenAI client `tool_search_output`)
+   * load them here instead of growing the cached `tools` block.
+   */
+  loadedTools?: string[];
 }
 
 export interface ServerToolCall {
@@ -311,6 +318,14 @@ export interface StreamOptions {
   model: string;
   messages: Message[];
   tools?: Tool[];
+  /**
+   * Stable, ordered catalog of on-demand tools (a superset of any of them that
+   * are live in `tools`). Providers that support deferred tool loading send
+   * the whole catalog from the first request and load a tool through the
+   * transcript (see `ToolResult.loadedTools`), so the cached tools block never
+   * changes. Others ignore it and send `tools` only.
+   */
+  deferredTools?: Tool[];
   toolChoice?: ToolChoice;
   serverTools?: ServerToolDefinition[];
   maxTokens?: number;
@@ -318,6 +333,8 @@ export interface StreamOptions {
   topP?: number;
   stop?: string[];
   thinking?: ThinkingLevel;
+  /** Effort rungs the endpoint itself declared for this model (synced gateway catalogs). */
+  thinkingLevels?: readonly ThinkingLevel[];
   apiKey?: string;
   baseUrl?: string;
   signal?: AbortSignal;
@@ -336,7 +353,7 @@ export interface StreamOptions {
    *  the model family (on for gpt-5.6/gpt-6 models). Lite allows only one tool
    *  call per response, so turning it off lets the model batch calls. */
   responsesLite?: boolean;
-  /** OpenAI only (Codex and API-key routes): send tools with strict
+  /** OpenAI only (ChatGPT plan and API-key routes): send tools with strict
    *  (grammar-constrained) schemas. Default true. Strict calls carry every
    *  optional field as null, which costs output tokens and latency per call. */
   strictTools?: boolean;
@@ -378,6 +395,10 @@ export interface StreamOptions {
    *  stalls — broken SSE connections (transient CDN / proxy issues) often
    *  recover when the same request is issued over a plain HTTP request/response. */
   streaming?: boolean;
+  /** Called whenever response body bytes arrive, including SSE pings the SDK
+   *  swallows. Lets the agent loop's watchdog see a live connection while the
+   *  model thinks silently (Anthropic sends only a ping every 30s then). */
+  onTransportActivity?: () => void;
   /** Cache prewarm (Anthropic only; other providers ignore it). Sends the exact
    *  same request prefix (system, tools, messages, thinking, betas) with
    *  `max_tokens: 1` over a non-streaming request so the prompt cache is written

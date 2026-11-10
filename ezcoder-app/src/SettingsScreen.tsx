@@ -22,7 +22,7 @@ import {
 } from "./settings-header";
 import {
   waitForReady,
-  authStatus,
+  hasModelSource,
   getServeStatus,
   startServe,
   stopServe,
@@ -169,8 +169,7 @@ function RemotePage(): React.ReactElement {
     try {
       if (!serving) {
         // The bot hands messages to an agent, so serving needs a provider.
-        const providers = await authStatus();
-        if (!providers.some((p) => p.connected)) {
+        if (!(await hasModelSource())) {
           toast("Connect an AI provider first.", "warning");
           return;
         }

@@ -29,12 +29,23 @@ const RESULTS: Record<string, (args: Json) => unknown> = {
   // State + catalogs.
   agent_state: () => data.STATE,
   agent_auth_status: () => ({ providers: data.PROVIDERS }),
+  // Native (Rust) auth read the app actually uses. The sign-in captures show
+  // the real Anthropic/OpenAI metadata from auth.rs.
+  app_auth_status: () => ({
+    providers: new URLSearchParams(location.search).get("screen")?.startsWith("signin")
+      ? data.SIGNIN_PROVIDERS
+      : data.PROVIDERS,
+  }),
   agent_models: () => ({ models: data.MODELS }),
   agent_commands: () => ({ commands: data.COMMANDS }),
   agent_tasks: () => ({ tasks: data.TASKS }),
   agent_history: () => ({ history: data.HISTORY }),
   agent_projects: () => ({ projects: data.PROJECTS }),
-  agent_sessions: () => ({ sessions: data.SESSIONS }),
+  agent_sessions: (args) => {
+    // Recorded so the "ported" capture can show which folder a picker listed.
+    (window as unknown as { __sessionsCwd?: string }).__sessionsCwd = String(args.cwd ?? "");
+    return { sessions: data.SESSIONS };
+  },
   agent_radio_state: () => ({ stations: data.RADIO_STATIONS, current: null }),
 
   // App settings (read natively in Rust in the real app).
@@ -78,6 +89,9 @@ const RESULTS: Record<string, (args: Json) => unknown> = {
 
 /** Mock of `@tauri-apps/api/core`'s invoke. */
 export async function invoke<T = unknown>(cmd: string, args: Json = {}): Promise<T> {
+  // Recorded so a capture can show which command a control sent.
+  const w = window as unknown as { __invokes?: { cmd: string; args: Json }[] };
+  (w.__invokes ??= []).push({ cmd, args });
   const handler = RESULTS[cmd];
   if (!handler) {
     // Unknown command — resolve to null so nothing throws during a capture.
@@ -142,4 +156,32 @@ export interface Update {
 export async function check(): Promise<Update | null> {
   // No pending update — keeps the captures free of the update banner.
   return null;
+}
+
+// ── @tauri-apps/plugin-dialog (save) ───────────────────────
+export async function save(): Promise<string | null> {
+  return null;
+}
+
+// ── @tauri-apps/api/webview / window helpers ───────────────
+export function getCurrentWebview(): { onDragDropEvent: () => Promise<() => void> } {
+  return { onDragDropEvent: async () => () => {} };
+}
+export class PhysicalPosition {
+  constructor(
+    public x: number,
+    public y: number,
+  ) {}
+}
+export class PhysicalSize {
+  constructor(
+    public width: number,
+    public height: number,
+  ) {}
+}
+export class LogicalSize {
+  constructor(
+    public width: number,
+    public height: number,
+  ) {}
 }

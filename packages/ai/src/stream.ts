@@ -4,6 +4,7 @@ import type { StreamResult } from "./utils/event-stream.js";
 import { streamAnthropic } from "./providers/anthropic.js";
 import { streamOpenAI } from "./providers/openai.js";
 import { streamOpenAICodex } from "./providers/openai-codex.js";
+import { streamOpenAIResponses } from "./providers/openai-responses.js";
 import { streamXaiResponses } from "./providers/xai-responses.js";
 import { streamGemini } from "./providers/gemini.js";
 import { GEMINI_EMBED_BATCH_SIZE, embedGemini } from "./providers/gemini-embeddings.js";
@@ -19,8 +20,10 @@ import {
 } from "./providers/transform.js";
 import { sanitizeMessagesForWire } from "./utils/well-formed.js";
 import { observePreparedContext } from "./utils/context-observation.js";
+import { planDeferredTools, usesDeferredToolLoading } from "./providers/transform.js";
 import { markContinuesTurn } from "./utils/turn-continuation.js";
 import { resolveFastModeModel } from "./fast-mode.js";
+import { localBearerKey } from "./local-api-key.js";
 
 /** OpenAI's documented cap: an embeddings `input` array may hold at most 2048 entries. */
 const OPENAI_EMBED_BATCH_SIZE = 2048;
@@ -98,10 +101,11 @@ providerRegistry.register("xiaomi", {
 
 providerRegistry.register("openai", {
   stream: (options) => {
-    // Use codex endpoint for OAuth tokens (have accountId)
-    if (options.accountId) {
-      return streamOpenAICodex(options);
-    }
+    // The ChatGPT plan (Codex sign-in, carries an accountId) goes to the Codex
+    // endpoint; an OpenAI API key rides the Responses API; a custom
+    // OpenAI-compatible server stays on Chat Completions.
+    if (options.accountId) return streamOpenAICodex(options);
+    if (isOpenAIHost(options.baseUrl)) return streamOpenAIResponses(options);
     return streamOpenAI(options);
   },
   // OpenAI API-key auth only; ChatGPT-subscription (Codex) tokens have no embeddings API.
@@ -268,21 +272,36 @@ providerRegistry.register("local", {
   // Every supported local server exposes OpenAI-compatible `/v1/embeddings`
   // (the model must be an embedding model). None has an input-type parameter.
   embed: (request) =>
-    embedOpenAICompatible(request, {
-      provider: "local",
-      baseUrl: requireLocalBaseUrl(request.baseUrl),
-      wireModel: localWireModelId(request.model),
-    }),
+    embedOpenAICompatible(
+      { ...request, apiKey: localBearerKey(request.apiKey) },
+      {
+        provider: "local",
+        baseUrl: requireLocalBaseUrl(request.baseUrl),
+        wireModel: localWireModelId(request.model),
+      },
+    ),
   embedBatchSize: LOCAL_EMBED_BATCH_SIZE,
   // llama.cpp (`llama-server --rerank`) and vLLM serve `/v1/rerank`; Ollama and
   // LM Studio don't, and answer with a 404 ProviderError.
   rerank: (request) =>
-    rerankCohereCompatible(request, {
-      provider: "local",
-      baseUrl: requireLocalBaseUrl(request.baseUrl),
-      wireModel: localWireModelId(request.model),
-    }),
+    rerankCohereCompatible(
+      { ...request, apiKey: localBearerKey(request.apiKey) },
+      {
+        provider: "local",
+        baseUrl: requireLocalBaseUrl(request.baseUrl),
+        wireModel: localWireModelId(request.model),
+      },
+    ),
 });
+
+function isOpenAIHost(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return true;
+  try {
+    return new URL(baseUrl).hostname === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
 
 function requireLocalBaseUrl(baseUrl: string | undefined): string {
   if (!baseUrl) {
@@ -366,7 +385,7 @@ export function stream(requested: StreamOptions): StreamResult {
         observePreparedContext(
           replayable === sanitized ? wireMessages : replayable,
           messages,
-          options.tools ?? [],
+          observedTools(options, messages),
         ),
       );
     } catch {
@@ -374,6 +393,17 @@ export function stream(requested: StreamOptions): StreamResult {
     }
   }
   return entry.stream(messages === options.messages ? options : { ...options, messages });
+}
+
+/**
+ * The tools block as the wire sees it. With transcript tool loading a promoted
+ * tool does not change the block (live + whole deferred catalog), so
+ * diagnostics must not report a request_settings change for it.
+ */
+function observedTools(options: StreamOptions, messages: Message[]): StreamOptions["tools"] & {} {
+  if (!usesDeferredToolLoading(options)) return options.tools ?? [];
+  const plan = planDeferredTools(options.tools, options.deferredTools, messages);
+  return plan ? [...plan.live, ...plan.deferred] : (options.tools ?? []);
 }
 
 /** Clone provenance-bearing messages and remove internal metadata at the provider boundary. */

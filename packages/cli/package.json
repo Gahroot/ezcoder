@@ -2,7 +2,18 @@
   "name": "@prestyj/cli",
   "version": "5.32.2",
   "type": "module",
-  "description": "Lean CLI coding agent for 12 LLM providers and local models, with OAuth for Anthropic, OpenAI and Gemini",
+  "description": "The engine and CLI behind the EZ Coder desktop app: a lean coding agent for Claude, ChatGPT, Grok, Kimi, 12 providers and local models.",
+  "author": "Nolan Grout",
+  "keywords": [
+    "coding-agent",
+    "ai",
+    "cli",
+    "llm",
+    "claude",
+    "openai",
+    "agent",
+    "terminal"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=22"
@@ -11,6 +22,10 @@
     "type": "git",
     "url": "git+https://github.com/Gahroot/ezcoder.git",
     "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/Gahroot/ezcoder/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/Gahroot/ezcoder/issues"
   },
   "bin": {
     "ezcoder": "./dist/cli.js"
@@ -103,10 +118,12 @@
     "verify:goal:tests": "vitest run src/core/goal-controller.test.ts src/core/goal-engine.test.ts src/core/goal-store.test.ts src/core/goal-integration.test.ts src/core/goal-prerequisites.test.ts src/core/goal-verifier.test.ts src/core/goal-worker.test.ts src/core/goal-worker-dev-server-lifecycle.test.ts src/core/goal-worktree.test.ts src/core/goal-lifecycle-smoke.test.ts src/tools/goals.test.ts src/tools/goal-mode.test.ts src/ui/goal-events.test.ts src/ui/goal-lifecycle-orchestration.test.ts src/ui/goal-overlay.test.ts src/ui/goal-status-bar.test.ts src/system-prompt.test.ts",
     "verify:goal:overhead": "tsx scripts/verify-goal-overhead-harness.ts",
     "goal:overhead-audit": "tsx scripts/verify-goal-overhead-audit.ts",
-    "verify:goal:e2e": "pnpm dlx tsx scripts/verify-goal-e2e.ts"
+    "verify:goal:e2e": "pnpm dlx tsx scripts/verify-goal-e2e.ts",
+    "bench:context": "tsx src/core/context-policy-benchmark.ts"
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.78",
+    "@anthropic-ai/claude-agent-sdk": "0.3.318",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@kenkaiiii/agent-home-sdk": "^0.3.8",
     "@prestyj/agent": "workspace:*",

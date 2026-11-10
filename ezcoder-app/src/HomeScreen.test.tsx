@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { error as logError } from "@tauri-apps/plugin-log";
-import { authStatus, getSettings } from "./agent";
+import { getSettings, hasModelSource } from "./agent";
 import { HomeScreen } from "./HomeScreen";
 
 vi.mock("@tauri-apps/plugin-log", () => ({ error: vi.fn(async () => undefined) }));
@@ -19,7 +19,7 @@ vi.mock("./agent", () => ({
   openUrl: vi.fn(),
   waitForReady: vi.fn(async () => undefined),
   getSettings: vi.fn(),
-  authStatus: vi.fn(),
+  hasModelSource: vi.fn(),
   openWhatsNewWindow: vi.fn(),
   getProgress: vi.fn(async () => null),
   setRemoteActive: vi.fn(),
@@ -34,7 +34,7 @@ afterEach(() => {
 describe("HomeScreen", () => {
   it("logs a failed setup check instead of swallowing it", async () => {
     vi.mocked(getSettings).mockRejectedValue(new Error("settings unreadable"));
-    vi.mocked(authStatus).mockResolvedValue([]);
+    vi.mocked(hasModelSource).mockResolvedValue(false);
 
     render(
       <HomeScreen
@@ -54,16 +54,7 @@ describe("HomeScreen", () => {
 
   it("offers Motion beside Code and Chat and opens it once set up", async () => {
     vi.mocked(getSettings).mockResolvedValue({ projectsRoot: "/workspaces", configured: true });
-    vi.mocked(authStatus).mockResolvedValue([
-      {
-        value: "anthropic",
-        label: "Anthropic",
-        description: "",
-        methods: [],
-        connected: true,
-        connectedMethods: [],
-      },
-    ]);
+    vi.mocked(hasModelSource).mockResolvedValue(true);
     const onMotion = vi.fn();
 
     render(
@@ -88,16 +79,7 @@ describe("HomeScreen", () => {
 
   it("orders the workspaces Code, Goals, Chat, Motion and opens Goals", async () => {
     vi.mocked(getSettings).mockResolvedValue({ projectsRoot: "/workspaces", configured: true });
-    vi.mocked(authStatus).mockResolvedValue([
-      {
-        value: "anthropic",
-        label: "Anthropic",
-        description: "",
-        methods: [],
-        connected: true,
-        connectedMethods: [],
-      },
-    ]);
+    vi.mocked(hasModelSource).mockResolvedValue(true);
     const onGoals = vi.fn();
 
     render(
@@ -126,7 +108,7 @@ describe("HomeScreen", () => {
 
   it("says under the Goals button that Goals is in beta", async () => {
     vi.mocked(getSettings).mockResolvedValue({ projectsRoot: "/workspaces", configured: true });
-    vi.mocked(authStatus).mockResolvedValue([]);
+    vi.mocked(hasModelSource).mockResolvedValue(false);
 
     render(
       <HomeScreen

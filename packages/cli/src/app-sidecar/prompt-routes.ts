@@ -11,6 +11,7 @@ import {
 import { PROMPT_COMMANDS } from "../core/prompt-commands.js";
 import { log } from "../core/logger.js";
 import { readBody, json } from "./http.js";
+import { MAX_PROMPT_BODY_BYTES } from "../utils/http-body.js";
 import { type AppAttachment, prepareAttachments } from "./attachments.js";
 import { saveAutopilot } from "./app-settings.js";
 import { lastAssistantText, buildNolanContext } from "./nolan-context.js";
@@ -128,7 +129,7 @@ export function handlePromptRoutes(
     // it. A bare release would let an early-returning request (bad JSON, or a
     // prompt that queued) clear a claim another request is still holding.
     let claimedStart = false;
-    void readBody(req, res)
+    void readBody(req, res, MAX_PROMPT_BODY_BYTES)
       .then(async (raw) => {
         if (raw === null) return;
         let text: string;
@@ -163,19 +164,40 @@ export function handlePromptRoutes(
           json(res, 400, { error: "empty prompt" });
           return;
         }
+        // Before the run checks below, so the run claim stays synchronous with them.
+        if (meta?.scheduled !== true) await ctx.startGoalFromMessage(text);
         // A typed prompt supersedes any question parked on the user: they
         // answered with a message of their own. Release the blocked tool call
         // NOW — otherwise it waits out its ten-minute timeout while this very
         // message sits behind it as steering that only drains once the tool
         // returns, so the turn looks frozen. The webview closes the band on
         // send; a racing /ask POST just 409s.
-        ctx.asks.cancelAll({ action: "cancel", superseded: true });
+        // The reply, attachments included, also goes into the question's result,
+        // so the model reads it there instead of waiting for it to arrive as
+        // steering (on Claude Code that only lands after another turn).
+        const answersAsk = ctx.asks.pendingCount > 0;
+        const preparedForAsk =
+          answersAsk && attachments.length > 0
+            ? await prepareAttachments(ctx.cwd, attachments)
+            : null;
+        ctx.asks.cancelAll({
+          action: "cancel",
+          superseded: true,
+          ...(answersAsk ? { message: text } : {}),
+          ...(preparedForAsk?.length
+            ? { attachments: ctx.session.askReplyAttachmentParts(preparedForAsk) }
+            : {}),
+        });
         if (
           ctx.runLifecycle.running &&
           ctx.runLifecycle.isCancellationRequested(ctx.runLifecycle.generation)
         ) {
+          const cancelling = ctx.runLifecycle.state === "cancelling";
           json(res, 409, {
-            error: ctx.runLifecycle.state === "cancelling" ? "run_cancelling" : "cancel_failed",
+            error: cancelling ? "run_cancelling" : "cancel_failed",
+            message: cancelling
+              ? "The last run is still stopping."
+              : "The last run couldn't be stopped. Stop it again first.",
             runState: ctx.runLifecycle.state,
           });
           return;
@@ -190,8 +212,9 @@ export function handlePromptRoutes(
           // .ezcoder/uploads first so the queued media rides the same native-block
           // path as a non-queued attachment prompt when it drains.
           const prepared =
-            attachments.length > 0 ? await prepareAttachments(ctx.cwd, attachments) : [];
-          const count = ctx.session.queueMessage(text, prepared);
+            preparedForAsk ??
+            (attachments.length > 0 ? await prepareAttachments(ctx.cwd, attachments) : []);
+          const count = ctx.session.queueMessage(text, prepared, { answeredAsk: answersAsk });
           ctx.broadcast("queued", { count, messages: ctx.session.listQueuedMessages() });
           json(res, 202, { queued: true, count });
           void recordPromptTrophies(ctx, {

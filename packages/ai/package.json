@@ -2,7 +2,20 @@
   "name": "@prestyj/ai",
   "version": "5.32.2",
   "type": "module",
-  "description": "Unified LLM streaming API for Anthropic, OpenAI, Gemini, xAI, Moonshot, GLM, DeepSeek, OpenRouter, local models and more",
+  "description": "One streaming API for 12 LLM providers and local models: Anthropic, OpenAI, Gemini, xAI, Moonshot, GLM, DeepSeek, OpenRouter and more. Tool calls, reasoning, embeddings and reranking.",
+  "author": "Nolan Grout",
+  "keywords": [
+    "llm",
+    "ai",
+    "streaming",
+    "anthropic",
+    "openai",
+    "gemini",
+    "openrouter",
+    "ollama",
+    "tool-calling",
+    "embeddings"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=22"
@@ -11,6 +24,10 @@
     "type": "git",
     "url": "git+https://github.com/Gahroot/ezcoder.git",
     "directory": "packages/ai"
+  },
+  "homepage": "https://github.com/Gahroot/ezcoder/tree/main/packages/ai#readme",
+  "bugs": {
+    "url": "https://github.com/Gahroot/ezcoder/issues"
   },
   "exports": {
     ".": {
@@ -31,9 +48,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.124.0",
+    "@anthropic-ai/sdk": "^1.4.0",
     "@bokuweb/zstd-wasm": "^0.0.27",
-    "openai": "^7.13.0",
+    "openai": "^7.50.0",
     "undici": "7.25.0",
     "zod": "^4.5.4"
   },

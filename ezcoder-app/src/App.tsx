@@ -38,6 +38,8 @@ import {
   type PromptMeta,
   type QueuedMessage,
   listHistory,
+  listShellSuggestions,
+  type ShellSuggestion,
   listTasks,
   type ChecklistEntry,
   runTask,
@@ -163,6 +165,7 @@ import { TitleUsageMeter } from "./TitleUsageMeter";
 import { useWindowFocused } from "./useWindowFocused";
 import { WorkspaceHeader } from "./WorkspaceHeader";
 import { formatWorkspaceTitle } from "./workspace-title";
+import { chatTitle, firstUserPrompt } from "./chat-title";
 import { useProgress } from "./useProgress";
 import { SettingsScreen, type SettingsTabId } from "./SettingsScreen";
 import { PromptSendProvider } from "./Markdown";
@@ -171,7 +174,13 @@ import { recoverPromptLabel } from "./prompt-labels";
 import { playSound } from "./sounds";
 import { countPlanSteps } from "./plan-steps";
 import { toast } from "./toast";
-import { toWire, type PendingAttachment } from "./attachments";
+import {
+  MAX_ATTACHMENT_BYTES,
+  attachmentBytes,
+  attachmentChips,
+  toWire,
+  type PendingAttachment,
+} from "./attachments";
 import { TranscriptRow } from "./TranscriptRow";
 import { nextId, lastIssuedId, type Item } from "./transcript-item";
 import { AppFooter } from "./AppFooter";
@@ -186,10 +195,12 @@ import { useChromeToggles } from "./useChromeToggles";
 import { useTranscriptExport } from "./useTranscriptExport";
 import { useWindowOrder } from "./useWindowOrder";
 import { dropHiddenFocus } from "./hidden-focus";
-import { Composer } from "./Composer";
+import { Composer, type ShellMenu } from "./Composer";
 import { UpdateBanner } from "./UpdateBanner";
 import { usePromptHistory } from "./usePromptHistory";
 import { usePromptEnhance } from "./usePromptEnhance";
+import { shellCommandFromInput, shellItemFromHistory, useShellRuns } from "./useShellRuns";
+import { filterShellSuggestions, shellEnterPicks } from "./shell-menu";
 import "./App.css";
 // Liquid glass trial layer (from veditor-app). Delete this line to revert.
 import "./glass.css";
@@ -198,18 +209,23 @@ const DEFAULT_INPUT_PLACEHOLDER = "Type a message, / commands, @ files, @Nolan f
 const INPUT_PLACEHOLDERS = [
   DEFAULT_INPUT_PLACEHOLDER,
   "Need a second opinion? Ask @Nolan",
+  "Start with ! to run a command, like !git status",
   "Stuck on what to do next? Ask @Nolan",
   DEFAULT_INPUT_PLACEHOLDER,
+  "Run tests yourself with !pnpm test, then ask EZ Coder to fix them",
   "Want a second set of eyes? Ask @Nolan",
   "Unsure how to proceed? Ask @Nolan",
+  "!ls runs in this project. EZ Coder sees the output next message",
   "Need a quick review? Ask @Nolan",
 ] as const;
 const RUNNING_INPUT_PLACEHOLDERS = [
   "Agent is working. Add a follow-up if you want",
   "Got another thought? Queue it here",
+  "Run a command while you wait, like !git diff",
   "Agent is on it. You can stack the next note",
   "Thinking ahead? Drop the next instruction",
   "Keep going. Your next message will queue up",
+  "Check something yourself with !, it won't interrupt EZ Coder",
 ] as const;
 const INPUT_PLACEHOLDER_INTERVAL_MS = 12_000;
 const PLACEHOLDER_SHUFFLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -220,12 +236,12 @@ const PLACEHOLDER_SHUFFLE_FRAME_MS = 24;
 // video analysis. Shared by the live send path and history restore so the
 // resumed transcript matches the live one exactly.
 const VIDEO_CAPABILITY_WARNING =
-  "This model can't watch video directly. The agent can still extract frames or audio with ffmpeg if needed — switch to a video-capable model (Gemini, Kimi, MiniMax) for native video analysis.";
+  "This model can't watch video directly. The agent can still extract frames or audio with ffmpeg if needed — switch to a video-capable model (Kimi, MiniMax, MiMo) for native video analysis.";
 
 function shufflePlaceholderFrame(target: string, frame: number): string {
   const revealCount = Math.ceil((target.length * frame) / PLACEHOLDER_SHUFFLE_FRAMES);
   return Array.from(target, (char, index) => {
-    if (index < revealCount || /\s|[.,?/@]/.test(char)) return char;
+    if (index < revealCount || /\s|[.,?/@!]/.test(char)) return char;
     const pick = Math.floor(Math.random() * PLACEHOLDER_SHUFFLE_CHARS.length);
     return PLACEHOLDER_SHUFFLE_CHARS[pick];
   }).join("");
@@ -276,6 +292,12 @@ function App(): React.ReactElement {
   const lastProgressXpRef = useRef<number | null>(null);
   const [confettiNonce, setConfettiNonce] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [shellSuggestions, setShellSuggestions] = useState<ShellSuggestion[]>([]);
+  const [shellIndex, setShellIndex] = useState(0);
+  // The input the `!` picker was closed for (Esc or a pick); it reopens on edit.
+  const [shellMenuDismissedFor, setShellMenuDismissedFor] = useState<string | null>(null);
+  // The input the user last moved the picker's highlight for (↑/↓).
+  const [shellNavigatedFor, setShellNavigatedFor] = useState<string | null>(null);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [displayPlaceholder, setDisplayPlaceholder] = useState(DEFAULT_INPUT_PLACEHOLDER);
   const displayPlaceholderRef = useRef(DEFAULT_INPUT_PLACEHOLDER);
@@ -788,27 +810,34 @@ function App(): React.ReactElement {
         toast("Could not save this tab name.", "error");
       });
   }, []);
+  // A chat is titled by its first prompt: the saved one survives compaction,
+  // the transcript's covers a new chat before the next state refresh.
+  const chatHeaderTitle =
+    workspaceMode === "chat" ? chatTitle(state?.sessionTitle ?? firstUserPrompt(items)) : null;
 
   // Keep the native window title aligned with the visible title-bar context.
   useEffect(() => {
     const fallbackTitle = workspaceProductName(workspaceMode, Boolean(state?.goal));
     const title =
-      !needsProject && !showPicker && state?.goal
-        ? `${state.goal.name} \u2502 ${fallbackTitle}`
-        : !needsProject && !showPicker
-          ? formatWorkspaceTitle(
-              state?.cwd,
-              state?.gitBranch,
-              fallbackTitle,
-              state?.gitDirtyFileCount,
-              state?.gitHubIssues ?? null,
-              state?.gitHubPRs ?? null,
-              state?.additionalRoots,
-              windowCustomTitle,
-            )
-          : fallbackTitle;
+      chatHeaderTitle !== null && !needsProject && !showPicker && !windowCustomTitle
+        ? `${chatHeaderTitle} \u2502 ${fallbackTitle}`
+        : !needsProject && !showPicker && state?.goal
+          ? `${state.goal.name} \u2502 ${fallbackTitle}`
+          : !needsProject && !showPicker
+            ? formatWorkspaceTitle(
+                state?.cwd,
+                state?.gitBranch,
+                fallbackTitle,
+                state?.gitDirtyFileCount,
+                state?.gitHubIssues ?? null,
+                state?.gitHubPRs ?? null,
+                state?.additionalRoots,
+                windowCustomTitle,
+              )
+            : fallbackTitle;
     setWindowTitle(title);
   }, [
+    chatHeaderTitle,
     needsProject,
     showPicker,
     state?.cwd,
@@ -1020,11 +1049,26 @@ function App(): React.ReactElement {
   // state (its render + other handlers use it) and passes the setters +
   // cross-cutting refs in. App consumes `handleEvent` (for the SSE subscription)
   // and the two helpers it still calls directly (`pushItem`, `endStreamingText`).
+  const focusComposer = useCallback(() => inputRef.current?.focus(), []);
+  const shellRuns = useShellRuns({ setItems, nextId, liveText, focusComposer, toast });
+  const {
+    shellTrusted,
+    refreshShellTrust,
+    revokeShellTrust,
+    submitShell,
+    markShellShared,
+    handleShellEvent,
+  } = shellRuns;
+  const shellActions = useMemo(
+    () => ({ confirm: shellRuns.confirm, stop: shellRuns.stop }),
+    [shellRuns.confirm, shellRuns.stop],
+  );
   const { handleEvent, pushItem, endStreamingText } = useAgentEvents({
     setItems,
     nextId,
     handleNolanEvent,
     handleAutopilotEvent,
+    handleShellEvent,
     handleActivityEvent,
     setState,
     setTasks,
@@ -1117,6 +1161,8 @@ function App(): React.ReactElement {
       // Hydrate the transcript when resuming an existing session — the webview
       // only sees live SSE events, so past messages must be fetched explicitly.
       const history = await listHistory();
+      const pendingShellRuns = Array.isArray(st?.pendingShellRuns) ? st.pendingShellRuns : [];
+      void refreshShellTrust();
       if (history.length > 0) {
         // A freshly hydrated session lands at the bottom (newest message).
         stickToBottomRef.current = true;
@@ -1185,6 +1231,7 @@ function App(): React.ReactElement {
             }
             if (h.infoKind === "video_warning")
               return { kind: "info", id: nextId(), text: VIDEO_CAPABILITY_WARNING };
+            if (h.shell) return shellItemFromHistory(h.shell, nextId(), pendingShellRuns);
             // Nolan "Send to EZ Coder" prompts: restore the shimmer label, not the
             // full prompt body (matches live).
             if (h.nolanSent && h.role === "user")
@@ -1223,6 +1270,7 @@ function App(): React.ReactElement {
               command: h.command || label !== null,
               ...(label !== null ? { label } : {}),
               images: h.images && h.images.length > 0 ? h.images : undefined,
+              ...(h.attachments && h.attachments.length > 0 ? { attachments: h.attachments } : {}),
               ...(parsed && parsed.files.length > 0 ? { files: parsed.files } : {}),
               ...(h.enhancements && h.enhancements.length > 0
                 ? { enhancements: h.enhancements }
@@ -1267,7 +1315,7 @@ function App(): React.ReactElement {
       setLiveFromId(lastIssuedId() + 1);
       setHydrated(true);
     }
-  }, [stickToBottomRef, refreshTasks]);
+  }, [stickToBottomRef, refreshTasks, refreshShellTrust]);
 
   useEffect(() => {
     const unsub = subscribe(handleEvent);
@@ -1489,7 +1537,54 @@ function App(): React.ReactElement {
   // `@`-mention picker: open whenever a mention token is active and the search
   // returned at least one file. Clamp the highlighted row to the result count.
   // Never open while `@Nolan` is active — that token addresses Nolan, not a file.
-  const mentionOpen = mention !== null && fileMatches.length > 0 && !nolanActive;
+  // `!cmd`: the input runs a command instead of messaging the agent.
+  const shellMode = workspaceMode === "code" && shellCommandFromInput(input) !== null;
+  // Entering `!` loads the picker's commands (history counts change per run).
+  useEffect(() => {
+    if (!shellMode) return;
+    let live = true;
+    void listShellSuggestions().then((list) => {
+      if (live) setShellSuggestions(list);
+    });
+    return () => {
+      live = false;
+    };
+  }, [shellMode]);
+  const shellMatches = useMemo(
+    () => (shellMode ? filterShellSuggestions(shellSuggestions, input.slice(1)) : []),
+    [shellMode, shellSuggestions, input],
+  );
+  const shellMenu: ShellMenu | null =
+    shellMatches.length > 0 && shellMenuDismissedFor !== input
+      ? {
+          matches: shellMatches,
+          activeIndex: shellIndex % shellMatches.length,
+          setActiveIndex: setShellIndex,
+          navigate: (delta) => {
+            const n = shellMatches.length;
+            setShellIndex((i) => (((i + delta) % n) + n) % n);
+            setShellNavigatedFor(input);
+          },
+          enterPicks: shellEnterPicks(input, shellNavigatedFor),
+          pick: (s) => {
+            const next = `!${s.command}`;
+            setInput(next);
+            setShellIndex(0);
+            // A picked command is complete: close the picker until the user edits it.
+            setShellMenuDismissedFor(next);
+            requestAnimationFrame(() => {
+              const el = inputRef.current;
+              if (!el) return;
+              el.focus();
+              el.setSelectionRange(next.length, next.length);
+            });
+          },
+          dismiss: () => setShellMenuDismissedFor(input),
+          trusted: shellTrusted,
+          revokeTrust: () => void revokeShellTrust(),
+        }
+      : null;
+  const mentionOpen = mention !== null && fileMatches.length > 0 && !nolanActive && !shellMode;
   const clampedFileIndex = fileMatches.length > 0 ? fileIndex % fileMatches.length : 0;
   // Footer background-tasks indicator only shows while something is actually
   // running (exited tasks shouldn't keep the bar item around).
@@ -1672,6 +1767,7 @@ function App(): React.ReactElement {
     const disposition = submitDisposition(trimmed, readyRef.current, running);
     if (disposition === "ignore") return false;
     chatLayout.capture();
+    markShellShared();
     // A send that supersedes an open question is consumed the moment it lands
     // (the sidecar releases the parked call), so it must not wear the queued
     // look for the one frame before that, nor open the queued strip below the
@@ -2219,6 +2315,21 @@ function App(): React.ReactElement {
     if (!readyRef.current) return;
     if (!trimmed && attachments.length === 0 && mentionedPaths.length === 0) return;
 
+    // `!cmd` runs a command for the user, in the project folder, with no agent
+    // turn. Attachments and file chips stay in the composer for the next message.
+    const shellCommand = workspaceMode === "code" ? shellCommandFromInput(input) : null;
+    if (shellCommand !== null) {
+      if (!shellCommand) return;
+      chatLayout.capture();
+      recordHistory(trimmed);
+      stickToBottomRef.current = true;
+      submitShell(shellCommand, state?.cwd ?? "");
+      setInput("");
+      setSlashIndex(0);
+      setMention(null);
+      return;
+    }
+
     // `/schedule` registers a recurring prompt instead of sending anything now.
     if (isScheduleDraft(input)) {
       const result = parseScheduleCommand(input);
@@ -2270,11 +2381,23 @@ function App(): React.ReactElement {
       return;
     }
 
+    // Over this the sidecar refuses the whole request, so stop here with the draft intact.
+    const totalBytes = attachmentBytes(attachments);
+    if (totalBytes > MAX_ATTACHMENT_BYTES) {
+      const mb = (bytes: number): number => Math.ceil(bytes / (1024 * 1024));
+      toast(
+        `Attachments are too big to send (${mb(totalBytes)} MB). The limit is ${mb(MAX_ATTACHMENT_BYTES)} MB per message.`,
+        "error",
+      );
+      return;
+    }
+
     chatLayout.capture();
     // The strips this send clears (chips, the cold-cache notice) must leave in
     // the bubble's commit, or their fold resizes the transcript mid-move.
     setSendCount((n) => n + 1);
     recordHistory(trimmed);
+    markShellShared();
     // Read BEFORE the dismissal clears the band: a prompt that supersedes a
     // question is consumed as soon as it lands, so it must neither flash the
     // queued look on the way in nor open the queued strip below the transcript
@@ -2313,6 +2436,7 @@ function App(): React.ReactElement {
         text: trimmed,
         command: isWorkflowCommand(trimmed),
         images: queuedImgs.length > 0 ? queuedImgs : undefined,
+        attachments: attachmentChips(attachments),
         files: mentionedPaths.length > 0 ? mentionedPaths : undefined,
         enhancements: sentEnhancements,
         queued: showsQueuedBubble("queue", supersedesQuestion) ? true : undefined,
@@ -2338,6 +2462,7 @@ function App(): React.ReactElement {
       text: trimmed,
       command: isWorkflowCommand(trimmed),
       images: imgPreviews.length > 0 ? imgPreviews : undefined,
+      attachments: attachmentChips(attachments),
       files: mentionedPaths.length > 0 ? mentionedPaths : undefined,
       enhancements: sentEnhancements,
     });
@@ -2652,6 +2777,7 @@ function App(): React.ReactElement {
         workspaceMode={workspaceMode}
         cwd={state?.cwd}
         goalName={state?.goal?.name ?? null}
+        title={chatHeaderTitle}
         gitBranch={state?.gitBranch}
         gitDirtyFileCount={state?.gitDirtyFileCount}
         gitHubIssues={state?.gitHubIssues}
@@ -2904,6 +3030,7 @@ function App(): React.ReactElement {
                           onContentGrow={maybeScrollToBottom}
                           onAskAnswer={answerAsk}
                           onAskType={typeAskInstead}
+                          shellActions={shellActions}
                         />
                       );
                       // Zero-height landing spot for "You have new chats". A flat
@@ -3032,7 +3159,9 @@ function App(): React.ReactElement {
           enhancement={enhancement}
           setEnhancement={setEnhancement}
           enhancing={enhancing}
-          enhanceHintVisible={enhanceHintVisible}
+          enhanceHintVisible={enhanceHintVisible && !shellMode}
+          shellMode={shellMode}
+          shellMenu={shellMenu}
           runEnhance={runEnhance}
           nolanActive={nolanActive}
           nolanInputParts={nolanInputParts}

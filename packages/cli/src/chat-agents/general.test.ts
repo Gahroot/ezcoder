@@ -35,6 +35,10 @@ describe("General chat agent", () => {
     );
     expect(options.systemPrompt).toContain("- Active agent: general");
     expect(options.systemPrompt).toContain("- Workspace root: /tmp/workspace");
+    expect(options.systemPrompt).toContain(
+      `New skills go in ${path.join("/tmp/workspace", ".ezcoder", "skills")} as <name>/SKILL.md`,
+    );
+    expect(options.systemPrompt).toContain("EZ Coder and EZ Motion cannot");
     expect(options.promptCacheKeyPrefix).toBe("ezchat:general");
     expect(options.sessionRootDir).toBe(path.resolve("/tmp/ezcoder/chat-sessions/general"));
     expect(options.coderSlashCommands).toBe(false);

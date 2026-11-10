@@ -1,6 +1,6 @@
 import type http from "node:http";
 import type { Provider, ThinkingLevel } from "@prestyj/ai";
-import { findProbedModel, parseLocalModelId } from "@prestyj/core";
+import { findProbedModel, localModelShortName, parseLocalModelId } from "@prestyj/core";
 import { getModel, getAllModels } from "../core/model-registry.js";
 import {
   getNextThinkingLevel,
@@ -84,9 +84,12 @@ export function handleRunControlRoutes(
             };
           }
           const probed = findProbedModel(ctx.localProbes, m.id);
+          const rawId = parseLocalModelId(m.id)?.rawId;
           return {
             id: m.id,
-            name: m.name,
+            // The app groups local models by endpoint, so the name drops the
+            // registry's "(Endpoint)" suffix, like every other model's name.
+            name: rawId ? localModelShortName(rawId) : m.name,
             provider: m.provider,
             local: true,
             endpoint: probed?.endpoint.label ?? parseLocalModelId(m.id)?.endpointId,
@@ -147,6 +150,9 @@ export function handleRunControlRoutes(
         }
       }
       await ctx.session.switchModel(target.provider, target.id, { confirmPaid });
+      // Picking an Ollama model loads it, so the footer shows the context Ollama
+      // really serves instead of the 4K guess. Never delays the switch.
+      if (target.provider === "local") void ctx.learnServedContext(target.id, true).catch(() => {});
       // Nolan follows EZ Coder's model only while un-pinned; a user-set Nolan
       // override survives EZ Coder model switches untouched.
       if (!ctx.nolanModelOverride) {

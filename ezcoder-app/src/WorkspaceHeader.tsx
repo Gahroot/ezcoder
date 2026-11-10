@@ -20,6 +20,9 @@ interface WorkspaceHeaderProps {
   cwd?: string;
   /** A Goal window: titled with the goal's name instead of its folder slug. */
   goalName?: string | null;
+  /** A chat window: titled by its conversation instead of its folder. */
+  title?: string | null;
+  /** Feed the title's tooltip: the full project context on hover. */
   gitBranch?: string | null;
   gitDirtyFileCount?: number;
   /** Open issue/PR counts for the project's GitHub origin (null = unknown/hidden). */
@@ -49,6 +52,7 @@ export function WorkspaceHeader({
   workspaceMode,
   cwd,
   goalName = null,
+  title = null,
   gitBranch,
   gitDirtyFileCount = 0,
   gitHubIssues = null,
@@ -66,7 +70,7 @@ export function WorkspaceHeader({
   children,
 }: WorkspaceHeaderProps): React.ReactElement {
   const fallbackTitle = workspaceProductName(workspaceMode, goalName !== null);
-  const directory = goalName ?? cwd?.split(/[\\/]/).filter(Boolean).pop();
+  const directory = title ?? goalName ?? cwd?.split(/[\\/]/).filter(Boolean).pop();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(customTitle ?? "");
   const titleInputRef = useRef<HTMLInputElement>(null);

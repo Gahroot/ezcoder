@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { anthropicMinCacheableTokens, estimatePrefixTokens } from "./cache-minimums.js";
 import type {
   ContentPart,
   ServerToolCall,
@@ -18,6 +19,11 @@ import {
   providerHtmlErrorMessage,
 } from "../errors.js";
 import { StreamResult } from "../utils/event-stream.js";
+import {
+  CLAUDE_CODE_FALLBACK_VERSION,
+  claudeCliUserAgent,
+  getClaudeCliUserAgent,
+} from "../claude-code-version.js";
 import { mergeProviderOptions } from "../utils/provider-options.js";
 import {
   downgradeUnsupportedImages,
@@ -28,10 +34,16 @@ import {
   toAnthropicThinking,
   toAnthropicToolChoice,
   toAnthropicTools,
+  planDeferredTools,
+  supportsAnthropicDeferredTools,
   isAdaptiveThinkingModel,
 } from "./transform.js";
 import { isJsonObject } from "../utils/json.js";
-import { PROVIDER_TRANSPORT_TIMEOUT_MS, providerFetch } from "../utils/provider-fetch.js";
+import {
+  PROVIDER_TRANSPORT_TIMEOUT_MS,
+  providerFetch,
+  withBodyActivity,
+} from "../utils/provider-fetch.js";
 import {
   FAST_MODE_REJECTION_HEADER,
   describeFastModeRejection,
@@ -168,9 +180,19 @@ export function sumUsageIterations(usage: unknown): IterationTotals | null {
   return totals;
 }
 
+/** OAuth callers that don't pass `userAgent` get the live Claude Code version. */
+async function withClaudeUserAgent<T extends { apiKey?: string; userAgent?: string }>(
+  options: T,
+): Promise<T> {
+  if (options.userAgent || !options.apiKey?.startsWith("sk-ant-oat")) return options;
+  return { ...options, userAgent: await getClaudeCliUserAgent() };
+}
+
 function createClient(options: StreamOptions): Anthropic {
   const isOAuth = options.apiKey?.startsWith("sk-ant-oat");
-  const userAgent = isOAuth ? (options.userAgent ?? "claude-cli/2.1.75 (external, cli)") : "";
+  const userAgent = isOAuth
+    ? (options.userAgent ?? claudeCliUserAgent(CLAUDE_CODE_FALLBACK_VERSION))
+    : "";
   const cacheKey = `${options.apiKey ?? ""}|${options.baseUrl ?? ""}|${userAgent}`;
 
   // Skip cache when a custom fetch is provided (tests, React Native, etc.) —
@@ -191,9 +213,6 @@ function createClient(options: StreamOptions): Anthropic {
     ...(isOAuth
       ? {
           defaultHeaders: {
-            // Anthropic's OAuth edge validates the claude-cli version. Callers
-            // (ezcoder) resolve the live version at runtime; the literal here
-            // is the offline fallback for direct ai consumers.
             "user-agent": userAgent,
             "x-app": "cli",
           },
@@ -234,11 +253,13 @@ export async function prewarmAnthropicCache(options: {
   signal?: AbortSignal;
 }): Promise<void> {
   try {
-    const client = createClient({
-      apiKey: options.apiKey,
-      baseUrl: options.baseUrl,
-      userAgent: options.userAgent,
-    } as StreamOptions);
+    const client = createClient(
+      await withClaudeUserAgent({
+        apiKey: options.apiKey,
+        baseUrl: options.baseUrl,
+        userAgent: options.userAgent,
+      } as StreamOptions),
+    );
     const cacheControl = toAnthropicCacheControl(options.cacheRetention ?? "long", options.baseUrl);
     const { system, messages } = toAnthropicMessages(
       [
@@ -265,6 +286,9 @@ export async function prewarmAnthropicCache(options: {
           enableFineGrainedToolStreaming: fineGrainedToolStreamingEnabled(),
         })
       : undefined;
+    if (estimatePrefixTokens(fullSystem, tools) < anthropicMinCacheableTokens(options.model)) {
+      return;
+    }
     await client.messages.create(
       {
         model: options.model,
@@ -305,7 +329,7 @@ export function streamAnthropic(options: StreamOptions): StreamResult {
 }
 
 async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, StreamResponse> {
-  const client = createClient(options);
+  const client = createClient(await withClaudeUserAgent(options));
   const isOAuth = options.apiKey?.startsWith("sk-ant-oat");
   // Prewarm uses a single non-streaming request: the stream flag is not part of
   // the prompt-cache key, and a 1-token response needs no incremental events.
@@ -325,8 +349,21 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     options.provider !== "minimax" &&
     isDirectAnthropicApi(options.baseUrl) &&
     !anthropicServerFallback.disabled.has(fallbackKey);
+  // Deferred tool loading (tool search): the whole on-demand catalog rides in
+  // `tools` with defer_loading from the first request, and a promotion loads
+  // its tool through a tool_reference in the transcript, so the cached tools
+  // block never changes. Without it, each promotion grew `tools` and rewrote
+  // the entire cached prefix (measured: cache read 0 after every tool_search).
+  const deferredPlan =
+    options.provider === "anthropic" &&
+    isDirectAnthropicApi(options.baseUrl) &&
+    supportsAnthropicDeferredTools(options.model)
+      ? planDeferredTools(options.tools, options.deferredTools, downgradedMessages)
+      : undefined;
+  const toolReferences = deferredPlan?.loaded;
   const { system: rawSystem, messages } = toAnthropicMessages(downgradedMessages, cacheControl, {
     fallbackBlocks: useServerFallback,
+    toolReferences,
   });
   // Fast mode (`speed: "fast"` + its beta) is a first-party-API feature; never
   // send it to Anthropic-compatible endpoints (MiniMax, gateways).
@@ -383,10 +420,11 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     ...(outputConfig
       ? { output_config: outputConfig as unknown as Anthropic.MessageCreateParams["output_config"] }
       : {}),
-    ...(options.temperature != null && !thinking ? { temperature: options.temperature } : {}),
-    ...(options.topP != null ? { top_p: options.topP } : {}),
+    // API version 2026-10-21 (SDK 1.x) rejects temperature/top_p/top_k with a 400.
     ...(options.stop ? { stop_sequences: options.stop } : {}),
-    ...(options.tools?.length || options.serverTools?.length || options.webSearch
+    ...((deferredPlan?.live ?? options.tools)?.length ||
+    options.serverTools?.length ||
+    options.webSearch
       ? (() => {
           // Build the tools array with server-side tools taking precedence over
           // client tools that share their name. Anthropic rejects duplicate tool
@@ -399,16 +437,16 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
             const name = (t as { name?: string }).name;
             if (name) reservedServerNames.add(name);
           }
-          const clientTools = options.tools?.length
-            ? toAnthropicTools(
-                options.tools.filter((t) => !reservedServerNames.has(t.name)),
-                {
-                  ...(supportsFirstPartyToolExtras && cacheControl ? { cacheControl } : {}),
-                  ...(supportsFirstPartyToolExtras && fineGrainedToolStreamingEnabled()
-                    ? { enableFineGrainedToolStreaming: true }
-                    : {}),
-                },
-              )
+          const notReserved = (t: { name: string }) => !reservedServerNames.has(t.name);
+          const liveTools = deferredPlan?.live ?? options.tools ?? [];
+          const clientTools = liveTools.length
+            ? toAnthropicTools(liveTools.filter(notReserved), {
+                ...(supportsFirstPartyToolExtras && cacheControl ? { cacheControl } : {}),
+                ...(supportsFirstPartyToolExtras && fineGrainedToolStreamingEnabled()
+                  ? { enableFineGrainedToolStreaming: true }
+                  : {}),
+                ...(deferredPlan ? { deferred: deferredPlan.deferred.filter(notReserved) } : {}),
+              })
             : [];
           return {
             tools: [
@@ -433,10 +471,23 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     ...(useFastMode ? { speed: "fast" } : {}),
     stream: useStreaming,
   } as Anthropic.MessageCreateParams;
+  // A prefix below the model's minimum cacheable size is never cached: the
+  // prewarm would write nothing, so skip it.
+  if (
+    options.prewarm &&
+    estimatePrefixTokens(baseParams.system, baseParams.tools) <
+      anthropicMinCacheableTokens(options.model)
+  ) {
+    return {
+      message: { role: "assistant", content: [] },
+      stopReason: "end_turn",
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
   // Caller-supplied provider-specific body fields; they only fill unset fields.
   const params = mergeProviderOptions(baseParams, options.providerOptions);
 
-  // Adaptive thinking models (Fable 5.1, Opus 5.5/5, Opus 4.8/4.7/4.6, Sonnet 5.5/5, Haiku 5.5)
+  // Adaptive thinking models (Fable 5.2/5.1, Opus 5.5/5, Opus 4.8/4.7/4.6, Sonnet 5.5/5, Haiku 5.5)
   // don't need the interleaved-thinking beta — they have it built in.
   const hasAdaptiveThinking = isAdaptiveThinkingModel(options.model);
 
@@ -488,8 +539,10 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       };
       const retryParams = {
         ...rest,
-        messages: toAnthropicMessages(downgradedMessages, cacheControl, { fallbackBlocks: false })
-          .messages,
+        messages: toAnthropicMessages(downgradedMessages, cacheControl, {
+          fallbackBlocks: false,
+          toolReferences,
+        }).messages,
       } as Anthropic.MessageCreateParams;
       return create(
         retryParams,
@@ -519,7 +572,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       yield* synthesizeEventsFromMessage(message);
       return messageToResponse(message);
     } catch (err) {
-      throw toError(err, { fastMode: useFastMode });
+      throw toError(err, { fastMode: useFastMode, provider: options.provider });
     }
   }
 
@@ -557,8 +610,12 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
     // request before our async iterator attaches listeners, its iterator can miss
     // the already-emitted error/end event and wait forever. That surfaced as the
     // CLI sitting on "Working..." when an OAuth account ran out of usage.
+    const onActivity = options.onTransportActivity;
+    const streamClient = onActivity
+      ? client.withOptions({ fetch: withBodyActivity(options.fetch ?? providerFetch, onActivity) })
+      : client;
     const stream = (await send((p, o) =>
-      client.messages.create(p as Anthropic.MessageCreateParamsStreaming, o),
+      streamClient.messages.create(p as Anthropic.MessageCreateParamsStreaming, o),
     )) as AsyncIterable<Anthropic.MessageStreamEvent>;
 
     for await (const event of stream) {
@@ -690,7 +747,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
                 const snippet =
                   rawPartial.length > 200 ? `${rawPartial.slice(0, 200)}\u2026` : rawPartial;
                 throw new ProviderError(
-                  "anthropic",
+                  options.provider,
                   `Tool "${accum.toolName}" input JSON was truncated in the stream ` +
                     `(${rawPartial.length} bytes): ${snippet}; ${(parseErr as Error).message}`,
                   { cause: parseErr },
@@ -810,7 +867,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
       }
     }
   } catch (err) {
-    throw toError(err, { fastMode: useFastMode });
+    throw toError(err, { fastMode: useFastMode, provider: options.provider });
   }
 
   // Race-condition safety: if the SDK's stream ended (or error'd) before the
@@ -818,7 +875,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // Treat that as a transport failure so the agent loop retries instead of
   // presenting a phantom empty reply.
   if (!receivedAnyEvent) {
-    throw new ProviderError("anthropic", "Stream ended without producing any events.", {
+    throw new ProviderError(options.provider, "Stream ended without producing any events.", {
       statusCode: 504,
     });
   }
@@ -832,7 +889,7 @@ async function* runStream(options: StreamOptions): AsyncGenerator<StreamEvent, S
   // transport failure (same bucket as a mid-stream socket destroy). The partial
   // body is surfaced on `cause` for debugging, never silently returned.
   if (stopReason === null) {
-    throw new ProviderError("anthropic", "Stream ended before completion (no stop_reason).", {
+    throw new ProviderError(options.provider, "Stream ended before completion (no stop_reason).", {
       statusCode: 504,
       cause: { partialContent: contentParts, outputTokens },
     });
@@ -1011,7 +1068,13 @@ function readUnifiedRateLimit(headers: unknown): { rejected: boolean; resetsAt?:
   return { rejected: status === "rejected", ...(resetsAt ? { resetsAt } : {}) };
 }
 
-function toError(err: unknown, context?: { fastMode?: boolean }): ProviderError {
+function toError(
+  err: unknown,
+  context?: { fastMode?: boolean; provider?: StreamOptions["provider"] },
+): ProviderError {
+  // Anthropic-compatible third parties (MiniMax) ride this transport; name them
+  // in errors so a MiniMax problem never reads as "Anthropic usage limit".
+  const provider = context?.provider ?? "anthropic";
   // Already normalized (e.g. the truncated-tool-JSON guard in runStream throws a
   // ProviderError whose cause is the SyntaxError). Pass it through untouched so
   // its statusCode and cause chain survive for agent-loop's retry classifiers
@@ -1102,21 +1165,21 @@ function toError(err: unknown, context?: { fastMode?: boolean }): ProviderError 
       const usageMessage = /usage limit reached/i.test(message)
         ? message
         : `usage limit reached: ${message}`;
-      return new ProviderError("anthropic", usageMessage, {
+      return new ProviderError(provider, usageMessage, {
         statusCode: err.status,
         ...(requestId ? { requestId } : {}),
         cause: err,
       });
     }
 
-    return new ProviderError("anthropic", message, {
+    return new ProviderError(provider, message, {
       statusCode: err.status,
       ...(requestId ? { requestId } : {}),
       cause: err,
     });
   }
   if (err instanceof Error) {
-    return new ProviderError("anthropic", err.message, { cause: err });
+    return new ProviderError(provider, err.message, { cause: err });
   }
-  return new ProviderError("anthropic", String(err));
+  return new ProviderError(provider, String(err));
 }

@@ -1,6 +1,8 @@
 import type { AgentTool } from "@prestyj/agent";
 import { AgentSession, type AgentSessionOptions } from "../core/agent-session.js";
 import {
+  GOAL_HOLD_OPTION,
+  GOAL_START_OPTION,
   readGoalMemory,
   renderGoalPrompt,
   type GoalBriefExtras,
@@ -188,7 +190,8 @@ export const GOALS_WITHOUT_TOOLS: readonly string[] = ["ui_adopt", "generate_ima
 
 /** What editing, running or starting work returns during the briefing. */
 export const BRIEFING_ERROR =
-  "Not yet: the goal hasn't started. During the briefing you only read (read, ls, find, web search) and ask. Editing, running commands and starting workers open once the user starts the goal. If the user has told you to go ahead, ask the start question now with ask_user (the goal starts when they pick it); never begin the work before that.";
+  "Not yet: the goal hasn't started. During the briefing you only read (read, ls, find, web search) and ask. Editing, running commands and starting workers open once the user starts the goal. If the user has told you to go ahead, ask the start question now with ask_user (the goal starts when they pick it): " +
+  `kind "choice", with exactly the option labels "${GOAL_START_OPTION}" and "${GOAL_HOLD_OPTION}". Never begin the work before that.`;
 
 /** Error text ask_user returns while EZ Goals has not spoken yet. */
 export const GREET_FIRST_ERROR =
@@ -274,7 +277,7 @@ export function createGoalsAgentSession(options: GoalsAgentOptions): AgentSessio
     ...sessionOptions
   } = options;
   let spokeThisSession = false;
-  // The goal is being worked on while GG Goals' own loop runs or any worker
+  // The goal is being worked on while EZ Goals' own loop runs or any worker
   // is still live (a turn can end waiting on its team). Other processes read
   // that from the marker, so a goal this one is running never shows there as
   // interrupted, and is never resumed twice.

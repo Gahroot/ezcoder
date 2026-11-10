@@ -212,7 +212,7 @@ export interface AcpAgentSession {
   switchModel(provider: string, model: string): Promise<void>;
   getThinkingLevel(): ThinkingLevel | undefined;
   setThinkingLevel(level: ThinkingLevel | undefined): void;
-  /** Plan mode is GG's session mode: read-only research until exit_plan. */
+  /** Plan mode is EZ Coder's session mode: read-only research until exit_plan. */
   getPlanMode(): boolean;
   setPlanMode(active: boolean): Promise<void>;
   /** Bake an approved plan into the prompt so [DONE:n] progress markers work. */
@@ -355,7 +355,6 @@ const TOOL_KINDS: Record<string, string> = {
   ls: "read",
   find: "read",
   grep: "search",
-  code_search: "search",
   web_search: "search",
   edit: "edit",
   write: "edit",
@@ -476,9 +475,9 @@ function snapshotForDiff(filePath: string): DiffSnapshot {
 // ── Plans ──────────────────────────────────────────────────
 
 /**
- * GG's plan steps as ACP plan entries.
+ * EZ Coder's plan steps as ACP plan entries.
  *
- * ACP requires a priority per entry and GG's plans have no such concept, so
+ * ACP requires a priority per entry and EZ Coder's plans have no such concept, so
  * every entry reports `medium` rather than inventing a ranking the user never
  * expressed. The first unfinished step is reported `in_progress`: entries are
  * worked in order, so this is what the agent is actually doing now, and it
@@ -535,7 +534,7 @@ export const MODEL_CONFIG_ID = "model";
 export const THINKING_CONFIG_ID = "thinking";
 export const MODE_CONFIG_ID = "mode";
 
-/** ACP session modes, mapped onto GG's plan mode. */
+/** ACP session modes, mapped onto EZ Coder's plan mode. */
 const MODE_DEFAULT = "default";
 const MODE_PLAN = "plan";
 
@@ -2083,7 +2082,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
         // `{}` is how ACP says "supported" for a capability with no options of
         // its own. Omitting the key means unsupported, so this is not cosmetic.
         sessionCapabilities: { list: {}, resume: {}, close: {}, delete: {} },
-        // GG's own extensions (custom `_gg/*` methods). Clients that don't
+        // EZ Coder's own extensions (custom `_gg/*` methods). Clients that don't
         // read this see standard ACP only.
         _meta: {
           gg: { queue: 1, askUser: 1, goals: 1, planReview: 1, autopilot: 1, checklist: 1 },

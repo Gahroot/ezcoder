@@ -67,6 +67,25 @@ export const PROVIDERS: AuthProvider[] = [
   },
 ];
 
+/** Anthropic and OpenAI exactly as auth.rs's AUTH_PROVIDERS describes them, signed out. */
+export const SIGNIN_PROVIDERS: AuthProvider[] = [
+  {
+    value: "anthropic",
+    label: "Anthropic",
+    description: "Claude Fable 5.2, Fable 5.2 Fast, Opus 5.5, Opus 5.5 Fast, Sonnet 5.5, Haiku 5.5",
+    methods: ["oauth"],
+    connected: false,
+  },
+  {
+    value: "openai",
+    label: "OpenAI",
+    description:
+      "GPT-6 Astra, GPT-6 Astra Fast, GPT-6.1 Sol, GPT-6.1 Sol Fast, GPT-6.1 Terra, GPT-6.1 Terra Fast, GPT-6 Luna, GPT-6 Luna Fast",
+    methods: ["oauth"],
+    connected: false,
+  },
+];
+
 export const MODELS: ModelOption[] = [
   { id: "claude-opus-4", name: "Claude Opus 4", provider: "anthropic" },
   { id: "claude-sonnet-4", name: "Claude Sonnet 4", provider: "anthropic" },

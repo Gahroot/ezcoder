@@ -900,6 +900,13 @@ fn tile_area(win: &WebviewWindow) -> Option<(i32, i32, i32, i32, f64)> {
 
 /// Only project windows participate in arrangement and keyboard cycling. Auxiliary
 /// windows such as the What's New dialog must remain untouched.
+/// True for real workspace windows (`main`, `project-N`). Transient chrome —
+/// the `whatsnew` dialog — is excluded from tiling, the focus cycle, the
+/// restore snapshot and the "last window closed" logic.
+pub(crate) fn is_workspace_window(label: &str) -> bool {
+    is_arrangeable_window_label(label)
+}
+
 fn is_arrangeable_window_label(label: &str) -> bool {
     label == "main"
         || label
