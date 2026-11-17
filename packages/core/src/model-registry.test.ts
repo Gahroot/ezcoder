@@ -93,7 +93,6 @@ describe("model registry invariants", () => {
       "claude-fable-5-2-fast",
       "claude-opus-5-5-fast",
       "gpt-6.2-astra-fast",
-      "gpt-6-astra-fast",
       "gpt-6.2-sol-fast",
       "gpt-6.1-terra-fast",
       "gpt-6-luna-fast",
@@ -345,6 +344,8 @@ describe("GPT-6.2 Sol", () => {
     expect(getModel("gpt-6-sol")).toBeUndefined();
     expect(getModel("gpt-6.1-sol")).toBeUndefined();
     expect(getModel("gpt-6.1-sol-fast")).toBeUndefined();
+    expect(getModel("gpt-6-astra")).toBeUndefined();
+    expect(getModel("gpt-6-astra-fast")).toBeUndefined();
     expect(getDefaultModel("openai")).toBe(model);
   });
 });
@@ -371,7 +372,7 @@ describe("GPT-6.2 Astra", () => {
 
 describe("model registry context windows", () => {
   it.each([
-    ["gpt-6-astra", 1_050_000],
+    ["gpt-6.2-astra", 1_050_000],
     ["gpt-6.2-sol", 1_050_000],
     ["gpt-6-luna", 1_050_000],
   ] as const)("uses the %s public API context window without an OAuth account", (model, limit) => {
@@ -379,7 +380,6 @@ describe("model registry context windows", () => {
   });
 
   it.each([
-    ["gpt-6-astra", 272_000],
     ["gpt-6.2-astra", 272_000],
     ["gpt-6.2-sol", 500_000],
     ["gpt-6-luna", 272_000],
@@ -480,11 +480,11 @@ describe("model registry context windows", () => {
     // openai/codex models.json `default_reasoning_level`: the deep-reasoning
     // models (Astra, GPT-6.2 Sol) ship "low", GPT-6 Luna "medium". Defaulting to
     // maxThinkingLevel made fresh Astra sessions reason at max effort.
-    expect(getDefaultThinkingLevel("gpt-6-astra")).toBe("low");
+    expect(getDefaultThinkingLevel("gpt-6.2-astra")).toBe("low");
     expect(getDefaultThinkingLevel("gpt-6.2-sol")).toBe("low");
     expect(getDefaultThinkingLevel("gpt-6-luna")).toBe("medium");
     // Ceilings are unchanged — users can still opt up.
-    expect(getModel("gpt-6-astra")?.maxThinkingLevel).toBe("ultra");
+    expect(getModel("gpt-6.2-astra")?.maxThinkingLevel).toBe("ultra");
     expect(getModel("gpt-6-luna")?.maxThinkingLevel).toBe("max");
   });
 

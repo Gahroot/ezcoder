@@ -225,7 +225,7 @@ async function* runStream(
     summary: "auto",
     ...(liteShape ? { context: "all_turns" } : {}),
   };
-  // Catalog parity: every responses-lite model (gpt-6.2-astra, gpt-6-astra, gpt-6.2-sol,
+  // Catalog parity: every responses-lite model (gpt-6.2-astra, gpt-6.2-sol,
   // gpt-6-luna and the older gpt-6-sol and gpt-5.6-sol/terra/luna) declares
   // `support_verbosity: true` with `default_verbosity: "low"` in openai/codex
   // models.json, and the Codex CLI sends `text.verbosity` accordingly. Omitting

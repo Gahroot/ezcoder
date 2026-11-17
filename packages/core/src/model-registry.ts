@@ -294,7 +294,7 @@ export const MODELS: ModelInfo[] = [
     // hardest projects." (Codex catalog priority 2, default low, client >=
     // 0.166.0). $8/$40 MTok, cached input $0.40. 1.05M on the public Responses
     // API, 272K on the Codex route; 128K output, text+image input. Same ladder
-    // and Ultra preset as GPT-6 Astra; the API rejects reasoning effort `none`.
+    // and Ultra preset as GPT-6 Astra, which it retires; the API rejects reasoning effort `none`.
     id: "gpt-6.2-astra",
     name: "GPT-6.2 Astra",
     provider: "openai",
@@ -309,53 +309,12 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "ultra",
   },
   {
-    // Codex Fast mode for 6.2 Astra ("2x speed, increased usage") — see
-    // `gpt-6-astra-fast` for the wire mapping and billing.
+    // Codex Fast mode for 6.2 Astra ("2x speed, increased usage"). @prestyj/ai's
+    // `stream()` sends it as `gpt-6.2-astra` + `service_tier: "priority"`,
+    // exactly what the Codex CLI sends. On a ChatGPT plan it draws included
+    // limits at 2.5x the standard rate.
     id: "gpt-6.2-astra-fast",
     name: "GPT-6.2 Astra Fast",
-    provider: "openai",
-    contextWindow: 1_050_000,
-    codexContextWindow: 272_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    defaultThinkingLevel: "low",
-    supportsImages: true,
-    supportsVideo: false,
-    costTier: "high",
-    maxThinkingLevel: "ultra",
-    billing: CODEX_FAST_BILLING,
-  },
-  {
-    // GPT-6 Astra — "Our most capable model for complex, demanding work."
-    // (Codex catalog priority 2, listed for every ChatGPT plan, requires a
-    // Codex client >= 0.153.0 — see CODEX_CLIENT_VERSION). Same split as 5.6:
-    // 1.05M on the public Responses API, 272K on the ChatGPT OAuth route
-    // (openai/codex models.json, `gpt-6-astra`). Reasoning ladder low → medium
-    // → high → xhigh → max → ultra; `ultra` is the Codex orchestration preset
-    // (multi_agent v2) and is Codex-only — the public API tops out at `max`.
-    // Note: through a plain API key OpenAI requires the Responses API for tool
-    // calling on Astra, so the Chat Completions path is text-only; the OAuth
-    // Codex route is the supported way to use it as an agent.
-    id: "gpt-6-astra",
-    name: "GPT-6 Astra",
-    provider: "openai",
-    contextWindow: 1_050_000,
-    codexContextWindow: 272_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    defaultThinkingLevel: "low",
-    supportsImages: true,
-    supportsVideo: false,
-    costTier: "high",
-    maxThinkingLevel: "ultra",
-  },
-  {
-    // Codex Fast mode for Astra (catalog `service_tiers: priority`, "2x speed,
-    // increased usage"). @prestyj/ai's `stream()` sends it as `gpt-6-astra` +
-    // `service_tier: "priority"`, exactly what the Codex CLI sends. On a
-    // ChatGPT plan it draws included limits at 2.5x the standard rate.
-    id: "gpt-6-astra-fast",
-    name: "GPT-6 Astra Fast",
     provider: "openai",
     contextWindow: 1_050_000,
     codexContextWindow: 272_000,
@@ -399,7 +358,7 @@ export const MODELS: ModelInfo[] = [
   },
   {
     // Codex Fast mode for 6.2 Sol ("2x speed, increased usage") — see
-    // `gpt-6-astra-fast` for the wire mapping and billing.
+    // `gpt-6.2-astra-fast` for the wire mapping and billing.
     id: "gpt-6.2-sol-fast",
     name: "GPT-6.2 Sol Fast",
     provider: "openai",
@@ -432,7 +391,7 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "ultra",
   },
   {
-    // Codex Fast mode for 6.1 Terra ("1.5x speed") — see `gpt-6-astra-fast`
+    // Codex Fast mode for 6.1 Terra ("1.5x speed") — see `gpt-6.2-astra-fast`
     // for the wire mapping and billing.
     id: "gpt-6.1-terra-fast",
     name: "GPT-6.1 Terra Fast",
@@ -466,7 +425,7 @@ export const MODELS: ModelInfo[] = [
     maxThinkingLevel: "max",
   },
   {
-    // Codex Fast mode for Luna ("1.5x speed") — see `gpt-6-astra-fast` for the
+    // Codex Fast mode for Luna ("1.5x speed") — see `gpt-6.2-astra-fast` for the
     // wire mapping and billing. Listed after Luna so compaction summaries
     // (first `low` OpenAI model) stay on standard-speed Luna.
     id: "gpt-6-luna-fast",

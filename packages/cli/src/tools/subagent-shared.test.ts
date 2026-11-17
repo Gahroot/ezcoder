@@ -112,7 +112,7 @@ describe("selectSubAgent", () => {
         agent({ name: "worker", model: "inherit" }),
         agent({ name: "owl", model: "fast" }),
       ];
-      for (const model of ["gpt-6-astra", "gpt-6.2-sol"]) {
+      for (const model of ["gpt-6.2-astra", "gpt-6.2-sol"]) {
         for (const name of ["worker", "owl", undefined]) {
           expect(selectSubAgent(agents, name, "openai", model, thinkingLevel).thinkingLevel).toBe(
             thinkingLevel,

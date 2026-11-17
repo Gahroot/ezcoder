@@ -414,7 +414,7 @@ describe("buildSystemPrompt", () => {
       "Take safe, reversible steps without asking",
       "Do the requested task fully, nothing adjacent",
       "Read before editing; follow existing conventions",
-      // Replay-tested on gpt-6-astra against the pi agent: batching moved a
+      // Replay-tested on gpt-6.2-astra against the pi agent: batching moved a
       // 7-file refactor from one edit per turn to all 7 in one response.
       "Emit all edits for a change in one response",
       // One check after the batch, not repeated suites mid-build.

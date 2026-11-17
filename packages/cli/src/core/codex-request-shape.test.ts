@@ -4,13 +4,13 @@ import { resolveResponsesLite, resolveStrictTools } from "./codex-request-shape.
 describe("resolveResponsesLite", () => {
   it.each([
     // setting, provider, model, expected stream option
-    ["auto", "openai", "gpt-6-astra", false],
+    ["auto", "openai", "gpt-6.2-astra", false],
     ["auto", "openai", "gpt-6.2-sol", false],
     ["auto", "openai", "gpt-6-luna", false],
-    ["on", "openai", "gpt-6-astra", true],
+    ["on", "openai", "gpt-6.2-astra", true],
     ["off", "openai", "gpt-6.2-sol", false],
     ["auto", "openai", "gpt-5.5", undefined],
-    ["on", "anthropic", "gpt-6-astra", undefined],
+    ["on", "anthropic", "gpt-6.2-astra", undefined],
   ] as const)("%s / %s / %s → %s", (setting, provider, model, expected) => {
     expect(resolveResponsesLite(setting, provider, model)).toBe(expected);
   });

@@ -163,7 +163,7 @@ const SettingsSchema = z.object({
   cachePrewarm: z.boolean().default(true),
   /** Codex (ChatGPT login) Responses-Lite request shape for gpt-5.6/gpt-6 models.
    *  Lite allows one tool call per response. `auto` turns it off (measured
-   *  faster on gpt-6-astra, gpt-6.2-sol and gpt-6-luna); `on` restores it. */
+   *  faster on gpt-6.2-astra, gpt-6.2-sol and gpt-6-luna); `on` restores it. */
   codexResponsesLite: z.enum(["auto", "on", "off"]).default("auto"),
   /** OpenAI strict tool schemas. Strict calls spell out every optional
    *  argument as null, costing output tokens and latency per call. `auto`

@@ -62,7 +62,7 @@ describe("streamOpenAIResponses", () => {
       const original = structuredClone(messages);
       const result = streamOpenAIResponses({
         provider: "openai",
-        model: "gpt-6-astra",
+        model: "gpt-6.2-astra",
         apiKey: "test",
         messages,
       });
@@ -91,7 +91,7 @@ describe("streamOpenAIResponses", () => {
       vi.stubGlobal("fetch", fetchMock);
       const result = streamOpenAIResponses({
         provider: "openai",
-        model: "gpt-6-astra",
+        model: "gpt-6.2-astra",
         apiKey: "test",
         messages: [
           ...(reasoning
@@ -291,10 +291,10 @@ describe("streamOpenAIResponses", () => {
     ["gpt-5.5", "high", "high"],
     ["gpt-5.5", "xhigh", "xhigh"],
     ["gpt-6-sol", "ultra", "max"],
-    ["gpt-6-astra", "ultra", "xhigh"],
+    ["gpt-6.2-astra", "ultra", "xhigh"],
     ["gpt-6.2-sol", "ultra", "xhigh"],
     ["gpt-6.1-terra", "ultra", "xhigh"],
-    ["gpt-6-astra", "max", "max"],
+    ["gpt-6.2-astra", "max", "max"],
     ["gpt-6.2-sol", "max", "max"],
   ] as const)(
     "maps %s %s to %s reasoning effort through Codex transport",
@@ -645,7 +645,7 @@ describe("streamOpenAIResponses", () => {
     ["gpt-5.5", "none"],
     ["gpt-6-luna", "low"],
     ["gpt-6.2-sol", "low"],
-    ["gpt-6-astra", "low"],
+    ["gpt-6.2-astra", "low"],
     ["gpt-5.6-terra", "low"],
   ])("uses a supported default effort for %s without explicit thinking", async (model, effort) => {
     vi.stubGlobal(
@@ -732,7 +732,7 @@ describe("streamOpenAIResponses", () => {
     const send = async (strictTools: boolean | undefined): Promise<Record<string, unknown>> => {
       const result = streamOpenAIResponses({
         provider: "openai",
-        model: "gpt-6-astra",
+        model: "gpt-6.2-astra",
         messages: [{ role: "user", content: "hi" }],
         apiKey: "token",
         tools,
@@ -758,14 +758,14 @@ describe("streamOpenAIResponses", () => {
 
   it("passes a plain 400 through without plan guidance", async () => {
     const message =
-      "Unsupported value: 'none' is not supported with the 'gpt-6-astra' model. Supported values are: 'low', 'medium', 'high', 'xhigh', and 'max'.";
+      "Unsupported value: 'none' is not supported with the 'gpt-6.2-astra' model. Supported values are: 'low', 'medium', 'high', 'xhigh', and 'max'.";
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ error: { message } }), { status: 400 })),
     );
     const result = streamOpenAIResponses({
       provider: "openai",
-      model: "gpt-6-astra",
+      model: "gpt-6.2-astra",
       messages: [{ role: "user", content: "Review this work" }],
       apiKey: "test-key",
       accountId: "acct",

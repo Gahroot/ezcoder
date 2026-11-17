@@ -50,7 +50,7 @@ describe("Astra/Sol async orchestration policy", () => {
     INIT_TIMEOUT_MS,
   );
 
-  it.each(["gpt-6-astra", "gpt-6.2-sol"])(
+  it.each(["gpt-6.2-astra", "gpt-6.2-sol"])(
     "refreshes %s delegation policy when Ultra is enabled and disabled",
     async (model) => {
       await systemPrompt(model, "high");
