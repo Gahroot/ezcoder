@@ -10,7 +10,7 @@ const prompt: AskUserPrompt = {
 
 // A Nolan session that replies from a script, one reply per prompt.
 function harness(replies: string[]) {
-  const nolanAgent = {
+  const mentor = {
     messages: [] as Message[],
     prompts: [] as string[],
     concurrent: 0,
@@ -43,34 +43,34 @@ function harness(replies: string[]) {
     },
     broadcast: vi.fn(),
     broadcastError: vi.fn(),
-    ensureNolanAutoSession: async () => ken,
+    ensureNolanAutoSession: async () => mentor,
     loadWorkflowCommandSpecs: async () => [],
     syncNolanAutoModel: vi.fn(async () => {}),
   };
   const runner = createAutopilotRunner(ctx as unknown as AutopilotRunnerContext);
-  return { ctx, ken, runner };
+  return { ctx, mentor, runner };
 }
 
 describe("answerAskWithNolan", () => {
   it("prompts Nolan with the question and parses his answer", async () => {
-    const { ctx, ken, runner } = harness(['ANSWER\n{"go":"yes"}']);
+    const { ctx, mentor, runner } = harness(['ANSWER\n{"go":"yes"}']);
     const reviewing: boolean[] = [];
     ctx.ensureNolanAutoSession = async () => {
       reviewing.push(ctx.autopilotReviewing);
-      return nolanAgent;
+      return mentor;
     };
     expect(await runner.answerAskWithNolan(prompt, () => true)).toEqual({
       kind: "answer",
       answers: { go: "yes" },
     });
-    expect(nolanAgent.prompts[0]).toContain("## Question for you");
-    expect(nolanAgent.prompts[0]).toContain("add a regression test");
+    expect(mentor.prompts[0]).toContain("## Question for you");
+    expect(mentor.prompts[0]).toContain("add a regression test");
     expect(reviewing).toEqual([true]);
     expect(ctx.autopilotReviewing).toBe(false);
   });
 
   it("answers one card at a time and reviews wait for an answer in flight", async () => {
-    const { ctx, ken, runner } = harness([
+    const { ctx, mentor, runner } = harness([
       'ANSWER {"go":"yes"}',
       "HUMAN\nDestructive.",
       "ALL_CLEAR",
@@ -81,7 +81,7 @@ describe("answerAskWithNolan", () => {
       runner.answerAskWithNolan(second, () => true),
       runner.runAutopilotReview("add a regression test"),
     ]);
-    expect(nolanAgent.maxConcurrent).toBe(1);
+    expect(mentor.maxConcurrent).toBe(1);
     expect(a).toMatchObject({ kind: "answer" });
     expect(b).toEqual({ kind: "human", reason: "Destructive." });
     expect(review).toEqual({ kind: "all_clear" });
@@ -89,13 +89,13 @@ describe("answerAskWithNolan", () => {
   });
 
   it("skips a card that is no longer pending and applies a model switch afterwards", async () => {
-    const { ctx, ken, runner } = harness(['ANSWER {"go":"no"}']);
+    const { ctx, mentor, runner } = harness(['ANSWER {"go":"no"}']);
     expect(await runner.answerAskWithNolan(prompt, () => false)).toBeNull();
-    expect(nolanAgent.prompts).toHaveLength(0);
+    expect(mentor.prompts).toHaveLength(0);
 
     ctx.ensureNolanAutoSession = async () => {
       ctx.pendingNolanAutoModel = { provider: "anthropic", model: "m" };
-      return nolanAgent;
+      return mentor;
     };
     await runner.answerAskWithNolan(prompt, () => true);
     expect(ctx.syncNolanAutoModel).toHaveBeenCalledWith("anthropic", "m");
