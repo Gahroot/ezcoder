@@ -72,6 +72,14 @@ export interface AuthMethodMeta {
   requires?: string;
 }
 
+function apiKeyDetails(
+  label: string,
+  billing: string,
+  when = "",
+): Partial<Record<AuthMethod, AuthMethodMeta>> {
+  return { apikey: { method: "apikey", label, billing, when } };
+}
+
 /**
  * Every provider a user can connect, in login-screen order. `description`
  * lists that provider's models and feeds both the CLI login screen and the

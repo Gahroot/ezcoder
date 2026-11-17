@@ -3,17 +3,17 @@ import type http from "node:http";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RunClaim } from "../core/run-claim.js";
 import { RunLifecycle } from "../core/run-lifecycle.js";
-import type { TaskRecord } from "../core/tasks-store.js";
+import type { TaskListItem } from "../core/task-store.js";
 import { createAutopilotRunner, type AutopilotRunnerContext } from "./autopilot-runner.js";
 import { handlePromptRoutes } from "./prompt-routes.js";
 import { handleTaskRoutes } from "./task-routes.js";
 import type { SessionRouteContext } from "./route-context.js";
 
 // The real store writes under the user's home directory.
-const store = vi.hoisted(() => ({ tasks: [] as TaskRecord[] }));
-vi.mock("../core/tasks-store.js", () => ({
+const store = vi.hoisted(() => ({ tasks: [] as TaskListItem[] }));
+vi.mock("../core/task-store.js", () => ({
   loadTasksSync: () => store.tasks,
-  saveTasksSync: (_cwd: string, tasks: readonly TaskRecord[]) => {
+  saveTasksSync: (_cwd: string, tasks: readonly TaskListItem[]) => {
     store.tasks = [...tasks];
   },
   pruneDoneTasksSync: () => (store.tasks = store.tasks.filter((t) => t.status !== "done")),
@@ -57,11 +57,11 @@ function post(handler: Handler, ctx: object, url: string, body: unknown): Promis
   return reply;
 }
 
-function task(id: string, prompt: string): TaskRecord {
+function task(id: string, prompt: string): TaskListItem {
   return { id, title: prompt, prompt, status: "pending", createdAt: "2026-01-01T00:00:00.000Z" };
 }
 
-function harness(tasks: TaskRecord[]) {
+function harness(tasks: TaskListItem[]) {
   store.tasks = tasks;
   const queue: Array<{ text: string; attachments: never[] }> = [];
   const prompts: string[] = [];
