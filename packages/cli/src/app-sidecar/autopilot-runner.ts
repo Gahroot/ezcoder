@@ -4,9 +4,13 @@ import type { AgentSession } from "../core/agent-session.js";
 import type { RunClaim } from "../core/run-claim.js";
 import type { RunLifecycle } from "../core/run-lifecycle.js";
 import {
+  buildNolanAutopilotAskContext,
   buildNolanAutopilotContext,
   buildNolanAutopilotPlanContext,
+  latestHumanRequest,
 } from "../core/nolan-context.js";
+import { parseNolanAskAnswer, type NolanAskAnswer } from "../core/nolan-ask-answer.js";
+import type { AskUserPrompt } from "../core/ask-user.js";
 import { parseAutopilotVerdict, type AutopilotVerdict } from "../core/autopilot-verdict.js";
 import {
   isWorkflowCommandText,
@@ -88,6 +92,12 @@ export interface AutopilotRunnerContext {
 }
 
 export interface AutopilotRunnerContextApi {
+  /** Ask Autopilot Nolan to answer a question card. Null when it was no longer
+   *  pending (or autopilot went off) by the time Nolan's turn came. */
+  answerAskWithNolan: (
+    prompt: AskUserPrompt,
+    isPending: () => boolean,
+  ) => Promise<NolanAskAnswer | null>;
   runAutopilotReview: (originalRequest: string) => Promise<AutopilotVerdict | null>;
   runAutopilotPlanReview: (originalRequest: string) => Promise<AutopilotVerdict | null>;
   runAutopilotCycle: (originalRequest: string) => Promise<void>;
@@ -97,6 +107,52 @@ export interface AutopilotRunnerContextApi {
 }
 
 export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRunnerContextApi {
+  // Nolan's answers to question cards, one at a time: parallel ask_user calls
+  // (and the reviews below) share the one nolanAuto session, which takes a
+  // single prompt at a time.
+  let nolanAskChain: Promise<unknown> = Promise.resolve();
+
+  function answerAskWithNolan(
+    prompt: AskUserPrompt,
+    isPending: () => boolean,
+  ): Promise<NolanAskAnswer | null> {
+    const run = nolanAskChain.then(() => answerOneAsk(prompt, isPending));
+    nolanAskChain = run.catch(() => {});
+    return run;
+  }
+
+  async function answerOneAsk(
+    prompt: AskUserPrompt,
+    isPending: () => boolean,
+  ): Promise<NolanAskAnswer | null> {
+    if (!ctx.autopilot || !isPending()) return null;
+    ctx.autopilotReviewing = true;
+    try {
+      const nolanAgent = await ctx.ensureNolanAutoSession();
+      const messages = ctx.session.getMessages();
+      const injectedPrompts = [...ctx.injectedAutopilotPrompts];
+      const digest = buildNolanAutopilotAskContext({
+        cwd: ctx.cwd,
+        gitBranch: ctx.gitBranch,
+        messages,
+        verificationEvidence: ctx.session.getVerificationEvidence(),
+        verificationProblem: ctx.session.getVerificationProblem(),
+        originalRequest: latestHumanRequest(messages, injectedPrompts),
+        injectedPrompts,
+        workflowCommands: await ctx.loadWorkflowCommandSpecs(),
+        questions: prompt.questions,
+      });
+      await nolanAgent.prompt(digest);
+      return parseNolanAskAnswer(lastAssistantText(nolanAgent.getMessages()), prompt.questions);
+    } finally {
+      ctx.autopilotReviewing = false;
+      // Apply any model switch that landed while Nolan was answering.
+      const pending = ctx.pendingNolanAutoModel;
+      ctx.pendingNolanAutoModel = null;
+      if (pending) await ctx.syncNolanAutoModel(pending.provider, pending.model);
+    }
+  }
+
   // ── Autopilot orchestration ─────────────────────────────────
   // One review = prompt the nolanAuto session with the review digest, read its
   // final assistant text, parse a verdict. Returns null on failure (surfaced as
@@ -104,6 +160,7 @@ export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRun
   // `originalRequest` is the user prompt that started the turn under review —
   // pinned in the digest so it can't scroll out during multi-round cycles.
   async function runAutopilotReview(originalRequest: string): Promise<AutopilotVerdict | null> {
+    await nolanAskChain;
     ctx.autopilotReviewing = true;
     ctx.broadcast("autopilot_review_start", {});
     try {
@@ -140,6 +197,7 @@ export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRun
   // (cancel or a manual Accept/Reject that bumped planGeneration) stays
   // SILENT — no autopilot_error — because the user's decision already won.
   async function runAutopilotPlanReview(originalRequest: string): Promise<AutopilotVerdict | null> {
+    await nolanAskChain;
     const planPath = ctx.pendingPlanPath;
     if (planPath === null) return null;
     const genAtStart = ctx.planGeneration;
@@ -458,6 +516,7 @@ export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRun
   }
 
   return {
+    answerAskWithNolan,
     runAutopilotReview,
     runAutopilotPlanReview,
     runAutopilotCycle,

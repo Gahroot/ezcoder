@@ -123,6 +123,7 @@ import {
   createAskUserBridge,
   deliverLateAnswer,
   type AskQuestion,
+  type AskUserPrompt,
   type AskUserResult,
 } from "./core/ask-user.js";
 import { createAskUserTool } from "./tools/ask-user.js";
@@ -868,7 +869,11 @@ async function createSession(
   // run-all, a scheduled prompt).
   let scheduledRunActive = false;
   const asks = createAskUserBridge({
-    broadcast: (prompt) => broadcast("ask_user", prompt),
+    broadcast: (prompt) => {
+      broadcast("ask_user", prompt);
+      // Code windows only: GG Goals' start card and chat/motion stay with the user.
+      if (autopilot && mode !== "chat" && mode !== "motion" && !goal) nolanAnswerAsk(prompt);
+    },
     timeoutMs: () =>
       askSoftDeadlineMs(autopilot || autopilotActive || taskRunAll || scheduledRunActive),
     onTimeout: (prompt) => {
@@ -929,6 +934,35 @@ async function createSession(
   const startGoalFromMessage = async (text: string): Promise<void> => {
     if (!goal || goal.record.startedAt || !isGoalStartMessage(text)) return;
     await startGoalFrom({ action: "answer", answers: { message: text } }, []);
+  };
+  // Autopilot: Nolan answers a card in the user's place or leaves it to them.
+  // The user can still answer first; the first answer wins. A failure only
+  // leaves the card with the user, who can still answer, so no error frame.
+  const isAskPending = (id: string): boolean =>
+    asks.openPrompts().some((open) => open.prompt.id === id && !open.deferred);
+  const nolanAnswerAsk = (prompt: AskUserPrompt): void => {
+    answerAskWithNolan(prompt, () => isAskPending(prompt.id)).then(
+      (reply) => {
+        if (!reply) return;
+        if (reply.kind === "human") {
+          if (asks.openIds().includes(prompt.id)) {
+            broadcast("ask_user_left", { id: prompt.id, reason: reply.reason });
+          }
+          return;
+        }
+        // Past the deadline the agent already moved on: drop Nolan's answer.
+        if (!isAskPending(prompt.id)) return;
+        if (asks.settle(prompt.id, { action: "answer", answers: reply.answers, by: "ken" })) {
+          log("INFO", "app-sidecar", "ken answered ask_user", { id: prompt.id });
+          broadcast("ask_user_answered", { id: prompt.id, answers: reply.answers, by: "ken" });
+        }
+      },
+      (err: unknown) =>
+        log("WARN", "app-sidecar", "ken couldn't answer ask_user", {
+          id: prompt.id,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+    );
   };
   const askUserTool = createAskUserTool(async (request) => {
     const result = await asks.park(request);
@@ -2157,167 +2191,168 @@ async function createSession(
   let taskRunActive = false;
 
   // Moved to app-sidecar/autopilot-runner.ts
-  const { runAutopilotCycle, runStrandedQueue, runTasks } = createAutopilotRunner({
-    get taskRunActive() {
-      return taskRunActive;
-    },
-    set taskRunActive(value) {
-      taskRunActive = value;
-    },
-    get autopilotReviewing() {
-      return autopilotReviewing;
-    },
-    set autopilotReviewing(v) {
-      autopilotReviewing = v;
-    },
-    get broadcast() {
-      return broadcast;
-    },
-    get ensureNolanAutoSession() {
-      return ensureNolanAutoSession;
-    },
-    get cwd() {
-      return cwd;
-    },
-    get gitBranch() {
-      return gitBranch;
-    },
-    set gitBranch(v) {
-      gitBranch = v;
-    },
-    get session() {
-      return session;
-    },
-    set session(v) {
-      session = v;
-    },
-    get injectedAutopilotPrompts() {
-      return injectedAutopilotPrompts;
-    },
-    set injectedAutopilotPrompts(v) {
-      injectedAutopilotPrompts = v;
-    },
-    get loadWorkflowCommandSpecs() {
-      return loadWorkflowCommandSpecs;
-    },
-    get autopilotCancelled() {
-      return autopilotCancelled;
-    },
-    set autopilotCancelled(v) {
-      autopilotCancelled = v;
-    },
-    get broadcastError() {
-      return broadcastError;
-    },
-    get pendingNolanAutoModel() {
-      return pendingNolanAutoModel;
-    },
-    set pendingNolanAutoModel(v) {
-      pendingNolanAutoModel = v;
-    },
-    get syncNolanAutoModel() {
-      return syncNolanAutoModel;
-    },
-    get pendingPlanPath() {
-      return pendingPlanPath;
-    },
-    set pendingPlanPath(v) {
-      pendingPlanPath = v;
-    },
-    get planGeneration() {
-      return planGeneration;
-    },
-    set planGeneration(v) {
-      planGeneration = v;
-    },
-    get pendingPlanContent() {
-      return pendingPlanContent;
-    },
-    set pendingPlanContent(v) {
-      pendingPlanContent = v;
-    },
-    get autopilot() {
-      return autopilot;
-    },
-    set autopilot(v) {
-      autopilot = v;
-    },
-    get runLifecycle() {
-      return runLifecycle;
-    },
-    get abortOwnedWork() {
-      return abortOwnedWork;
-    },
-    get pendingCancelDrain() {
-      return pendingCancelDrain;
-    },
-    set pendingCancelDrain(v) {
-      pendingCancelDrain = v;
-    },
-    get autopilotActive() {
-      return autopilotActive;
-    },
-    set autopilotActive(v) {
-      autopilotActive = v;
-    },
-    get MAX_AUTOPILOT_ROUNDS() {
-      return MAX_AUTOPILOT_ROUNDS;
-    },
-    get activateApprovedPlan() {
-      return activateApprovedPlan;
-    },
-    get clearPendingPlan() {
-      return clearPendingPlan;
-    },
-    get planProgressPayload() {
-      return planProgressPayload;
-    },
-    get IMPLEMENT_PLAN_PROMPT() {
-      return IMPLEMENT_PLAN_PROMPT;
-    },
-    get runAgent() {
-      return runAgent;
-    },
-    get nolanAutoSession() {
-      return nolanAutoSession;
-    },
-    set nolanAutoSession(v) {
-      nolanAutoSession = v;
-    },
-    get reenterPlanModeForRevision() {
-      return reenterPlanModeForRevision;
-    },
-    get finishOwnedGeneration() {
-      return finishOwnedGeneration;
-    },
-    get drainingStrandedQueue() {
-      return drainingStrandedQueue;
-    },
-    set drainingStrandedQueue(v) {
-      drainingStrandedQueue = v;
-    },
-    get running() {
-      return running;
-    },
-    set running(v) {
-      running = v;
-    },
-    get offerPendingPlan() {
-      return offerPendingPlan;
-    },
-    get deactivateApprovedPlan() {
-      return deactivateApprovedPlan;
-    },
-    get taskRunAll() {
-      return taskRunAll;
-    },
-    set taskRunAll(v) {
-      taskRunAll = v;
-    },
-    get runClaim() {
-      return runClaim;
-    },
-  });
+  const { answerAskWithNolan, runAutopilotCycle, runStrandedQueue, runTasks } =
+    createAutopilotRunner({
+      get taskRunActive() {
+        return taskRunActive;
+      },
+      set taskRunActive(value) {
+        taskRunActive = value;
+      },
+      get autopilotReviewing() {
+        return autopilotReviewing;
+      },
+      set autopilotReviewing(v) {
+        autopilotReviewing = v;
+      },
+      get broadcast() {
+        return broadcast;
+      },
+      get ensureNolanAutoSession() {
+        return ensureNolanAutoSession;
+      },
+      get cwd() {
+        return cwd;
+      },
+      get gitBranch() {
+        return gitBranch;
+      },
+      set gitBranch(v) {
+        gitBranch = v;
+      },
+      get session() {
+        return session;
+      },
+      set session(v) {
+        session = v;
+      },
+      get injectedAutopilotPrompts() {
+        return injectedAutopilotPrompts;
+      },
+      set injectedAutopilotPrompts(v) {
+        injectedAutopilotPrompts = v;
+      },
+      get loadWorkflowCommandSpecs() {
+        return loadWorkflowCommandSpecs;
+      },
+      get autopilotCancelled() {
+        return autopilotCancelled;
+      },
+      set autopilotCancelled(v) {
+        autopilotCancelled = v;
+      },
+      get broadcastError() {
+        return broadcastError;
+      },
+      get pendingNolanAutoModel() {
+        return pendingNolanAutoModel;
+      },
+      set pendingNolanAutoModel(v) {
+        pendingNolanAutoModel = v;
+      },
+      get syncNolanAutoModel() {
+        return syncNolanAutoModel;
+      },
+      get pendingPlanPath() {
+        return pendingPlanPath;
+      },
+      set pendingPlanPath(v) {
+        pendingPlanPath = v;
+      },
+      get planGeneration() {
+        return planGeneration;
+      },
+      set planGeneration(v) {
+        planGeneration = v;
+      },
+      get pendingPlanContent() {
+        return pendingPlanContent;
+      },
+      set pendingPlanContent(v) {
+        pendingPlanContent = v;
+      },
+      get autopilot() {
+        return autopilot;
+      },
+      set autopilot(v) {
+        autopilot = v;
+      },
+      get runLifecycle() {
+        return runLifecycle;
+      },
+      get abortOwnedWork() {
+        return abortOwnedWork;
+      },
+      get pendingCancelDrain() {
+        return pendingCancelDrain;
+      },
+      set pendingCancelDrain(v) {
+        pendingCancelDrain = v;
+      },
+      get autopilotActive() {
+        return autopilotActive;
+      },
+      set autopilotActive(v) {
+        autopilotActive = v;
+      },
+      get MAX_AUTOPILOT_ROUNDS() {
+        return MAX_AUTOPILOT_ROUNDS;
+      },
+      get activateApprovedPlan() {
+        return activateApprovedPlan;
+      },
+      get clearPendingPlan() {
+        return clearPendingPlan;
+      },
+      get planProgressPayload() {
+        return planProgressPayload;
+      },
+      get IMPLEMENT_PLAN_PROMPT() {
+        return IMPLEMENT_PLAN_PROMPT;
+      },
+      get runAgent() {
+        return runAgent;
+      },
+      get nolanAutoSession() {
+        return nolanAutoSession;
+      },
+      set nolanAutoSession(v) {
+        nolanAutoSession = v;
+      },
+      get reenterPlanModeForRevision() {
+        return reenterPlanModeForRevision;
+      },
+      get finishOwnedGeneration() {
+        return finishOwnedGeneration;
+      },
+      get drainingStrandedQueue() {
+        return drainingStrandedQueue;
+      },
+      set drainingStrandedQueue(v) {
+        drainingStrandedQueue = v;
+      },
+      get running() {
+        return running;
+      },
+      set running(v) {
+        running = v;
+      },
+      get offerPendingPlan() {
+        return offerPendingPlan;
+      },
+      get deactivateApprovedPlan() {
+        return deactivateApprovedPlan;
+      },
+      get taskRunAll() {
+        return taskRunAll;
+      },
+      set taskRunAll(v) {
+        taskRunAll = v;
+      },
+      get runClaim() {
+        return runClaim;
+      },
+    });
 
   // ── Idle wake for background alerts ────────────────────────
   // A background task that fails, or a child agent that finishes, after the

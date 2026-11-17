@@ -300,7 +300,7 @@ export function handlePromptRoutes(
         );
         // After the user's run settles, kick off Nolan's auto-review loop — but
         // only when the turn is actually reviewable (shouldStartAutopilotCycle):
-        // workflow commands (/compare, /expand, …) end with reports or
+        // workflow commands (/expand, /init, …) end with reports or
         // A/B/C choices reserved for the USER; registry commands (/help) and
         // failed runs add no assistant work to judge; a turn that ended in plan
         // mode has a pending Accept/Reject modal Nolan must not preempt. This is

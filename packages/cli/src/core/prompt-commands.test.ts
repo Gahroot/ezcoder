@@ -49,11 +49,9 @@ describe("prompt commands", () => {
   });
 
   it("routes real-code comparison through the native steroids tool", () => {
-    for (const name of ["compare", "expand"]) {
-      const cmd = PROMPT_COMMANDS.find((command) => command.name === name);
-      expect(cmd?.prompt, name).toContain("`steroids`");
-      expect(cmd?.prompt, name).not.toContain("kencode");
-    }
+    const cmd = PROMPT_COMMANDS.find((command) => command.name === "expand");
+    expect(cmd?.prompt).toContain("`steroids`");
+    expect(cmd?.prompt).not.toContain("kencode");
   });
 
   it("points at the app's Tasks button / New Session instead of CLI keybinds", async () => {
@@ -235,5 +233,99 @@ describe("prompt commands", () => {
     expect(init?.prompt).not.toContain("single responsibility");
     expect(init?.prompt).not.toContain("zero-tolerance code quality checks");
     expect(init?.prompt).not.toContain("run full quality suite after every edit");
+  });
+
+  it("states each redundancy rule exactly once so /init reads as one filter", () => {
+    const init = PROMPT_COMMANDS.find((command) => command.name === "init");
+    const count = (needle: string): number => init!.prompt.split(needle).length - 1;
+
+    // The old prompt restated these across the preamble and 3 separate steps.
+    // Repetition-as-emphasis is what you write when a rule isn't structurally
+    // enforceable; the fence + budget now carry that load instead.
+    expect(count("Do NOT add generic agent behavior")).toBe(1);
+    expect(count("Do NOT embed generated symbol maps")).toBe(1);
+    expect(count("Never add guidance that requires running checks")).toBe(1);
+  });
+
+  it("makes /init regeneration replace a fenced block instead of appending", () => {
+    const init = PROMPT_COMMANDS.find((command) => command.name === "init");
+
+    // /init is re-run over a project's lifetime. Without a marker separating
+    // agent-generated from user-written content, "preserve custom sections"
+    // preserves everything and the file grows monotonically.
+    expect(init?.prompt).toContain("<!-- gg:init:start -->");
+    expect(init?.prompt).toContain("<!-- gg:init:end -->");
+    expect(init?.prompt).toContain("replace everything between the markers wholesale");
+    expect(init?.prompt).toContain("Text outside the fence is user-owned");
+  });
+
+  it("makes /init write to the context file the loader actually reads", () => {
+    const init = PROMPT_COMMANDS.find((command) => command.name === "init");
+
+    // CONTEXT_FILES takes one file per directory, AGENTS.md outranks CLAUDE.md.
+    // Writing a fresh CLAUDE.md next to an existing AGENTS.md creates a file
+    // that is silently never loaded.
+    expect(init?.prompt).toContain("one per directory, first match wins");
+    expect(init?.prompt).toContain("AGENTS.override.md`");
+    expect(init?.prompt).toContain("already has an `AGENTS.md`, update that file");
+  });
+
+  it("budgets /init output in bytes with a stated token cost, not a line cap", () => {
+    const init = PROMPT_COMMANDS.find((command) => command.name === "init");
+
+    // A line cap is unverifiable by the model and doesn't constrain tables or
+    // code fences; the real constraint is PROJECT_CONTEXT_MAX_BYTES (32KB).
+    expect(init?.prompt).toContain("cached prefix of every request");
+    // A target gets filled; a ceiling with no minimum lets a simple project stay tiny.
+    expect(init?.prompt).toContain("Ceiling: 3KB for the generated block, with no minimum");
+    expect(init?.prompt).not.toContain("Target 6KB");
+    expect(init?.prompt).toContain("`wc -c`");
+    expect(init?.prompt).not.toContain("under 100 lines");
+  });
+
+  it("hunts non-derivable knowledge instead of mapping directories", () => {
+    const init = PROMPT_COMMANDS.find((command) => command.name === "init");
+
+    // Gotchas/invariants are the only content an agent can't recover by
+    // reading the code, so they replace the directory-structure sweep whose
+    // output the prompt then forbids embedding anyway.
+    expect(init?.prompt).toContain("Traps Agent");
+    expect(init?.prompt).toContain("would a competent agent get this wrong without being told?");
+    expect(init?.prompt).not.toContain("Directory Structure Agent");
+  });
+
+  it("keeps /init output to traps instead of a repo overview", () => {
+    const init = PROMPT_COMMANDS.find((command) => command.name === "init");
+
+    // Overviews are the part of a generated context file that costs tokens
+    // without helping, so no step or sub-agent may ask for one.
+    expect(init?.prompt).toContain("## What earns a line");
+    expect(init?.prompt).toContain("No module-by-module overview, architecture summary");
+    expect(init?.prompt).toContain("name the mistake each line prevents");
+    expect(init?.prompt).toContain("Do not pad to look thorough");
+    expect(init?.prompt).not.toContain("Purpose & Shape Agent");
+    expect(init?.prompt).not.toContain("Key packages/apps/modules");
+  });
+
+  it("scales /init exploration to the repo and drops fixed or self-reporting traps", () => {
+    const init = PROMPT_COMMANDS.find((command) => command.name === "init");
+
+    expect(init?.prompt).toContain("search it yourself. No sub-agents.");
+    expect(init?.prompt).toContain("spawn 2 sub-agents");
+    expect(init?.prompt).toContain("its cause is no longer in the code");
+    expect(init?.prompt).toContain("Write the pointer, plus the one constraint");
+  });
+
+  it("asks once for unwritten knowledge and stores it outside the fence", () => {
+    const init = PROMPT_COMMANDS.find((command) => command.name === "init");
+
+    // Answers inside the fence would be wiped by the next /init run.
+    expect(init?.prompt).toContain('id: "unwritten"');
+    // ask_user rejects a choice question with fewer than 2 options.
+    expect(init?.prompt).toContain(
+      'with two options, "Nothing to add" and "Yes, I\'ll type it next"',
+    );
+    expect(init?.prompt).toContain("**above** the fence");
+    expect(init?.prompt).toContain("Do not ask in prose and do not ask again");
   });
 });

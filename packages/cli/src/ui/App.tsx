@@ -3190,7 +3190,6 @@ export function App(props: AppProps) {
       "compare",
       // Setup / installers
       "setup-commit",
-      "setup-ci",
     ];
     const orderedPromptCommands = promptOrder
       .map(fromPrompt)
