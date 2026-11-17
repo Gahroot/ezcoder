@@ -3130,6 +3130,8 @@ export function App(props: AppProps) {
               | "deepseek"
               | "openrouter"
               | "huggingface"
+              | "opencode"
+              | "opencode-go"
               | "sakana"
               | "xai",
           );

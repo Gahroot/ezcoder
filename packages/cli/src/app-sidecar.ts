@@ -80,6 +80,7 @@ import {
   syncEndpointCredentials,
 } from "./core/local-endpoint-store.js";
 import { loadOpenRouterCatalog } from "./core/openrouter-catalog-store.js";
+import { openCodeCatalogs } from "./core/opencode-catalog-store.js";
 import type { OAuthLoginCallbacks } from "./core/oauth/types.js";
 import {
   AUTH_PROVIDERS,
@@ -329,6 +330,11 @@ async function main(): Promise<void> {
         error: err instanceof Error ? err.message : String(err),
       });
     });
+
+  // OpenCode's cached model lists; `/models` reads them again when stale.
+  void openCodeCatalogs.load().then((installed) => {
+    if (installed) broadcastAll("models_change", {});
+  });
 
   const sessionIdsAt = (cwd: string): string[] => {
     const target = path.resolve(cwd);
