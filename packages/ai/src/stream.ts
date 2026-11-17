@@ -24,6 +24,7 @@ import { planDeferredTools, usesDeferredToolLoading } from "./providers/transfor
 import { markContinuesTurn } from "./utils/turn-continuation.js";
 import { resolveFastModeModel } from "./fast-mode.js";
 import { localBearerKey } from "./local-api-key.js";
+import { EZ_CODER_USER_AGENT } from "./user-agent.js";
 
 /** OpenAI's documented cap: an embeddings `input` array may hold at most 2048 entries. */
 const OPENAI_EMBED_BATCH_SIZE = 2048;
