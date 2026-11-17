@@ -54,8 +54,13 @@ import { loadWorkspaceCustomCommands, type CustomCommand } from "./custom-comman
 import { expandPromptCommand } from "./prompt-command-expansion.js";
 import { SettingsManager } from "./settings-manager.js";
 import { AuthStorage, NotLoggedInError } from "./auth-storage.js";
-import { dualAuthProvider } from "@prestyj/core";
+import { claudeCodeConfigDir, dualAuthProvider } from "@prestyj/core";
 import { getClaudeCliUserAgent } from "./claude-code-version.js";
+import {
+  claudeCodeTranscriptExists,
+  holdClaudeCodeTranscript,
+  pruneClaudeCodeTranscriptsOnce,
+} from "./claude-code/transcripts.js";
 import {
   runSideWebSearch,
   runSideWebSearchViaClaudeCode,
@@ -67,6 +72,7 @@ import { kimiCodingHeaders, isKimiCodingEndpoint } from "./oauth/kimi.js";
 import { isGrokCliEndpoint } from "./oauth/xai.js";
 import {
   SessionManager,
+  processIsAlive,
   type MessageEntry,
   type BranchInfo,
   type CustomEntry,
@@ -1268,6 +1274,7 @@ export class AgentSession {
             message: error instanceof Error ? error.message : String(error),
           });
         });
+      void pruneClaudeCodeTranscriptsOnce(claudeCodeConfigDir());
     }
     // EZ Coder owns its command registry. Other agents start with an isolated
     // empty registry and can register their own commands in their own file.
@@ -1702,7 +1709,19 @@ export class AgentSession {
     options: PromptRunOptions,
   ): Promise<void> {
     let loopMessages = await this.prepareDynamicContext();
-    const resume = claudeCodeResumeId(this.claudeCodeSession, loopMessages);
+    let resume = claudeCodeResumeId(this.claudeCodeSession, loopMessages);
+    // Claude Code fails a resume whose transcript is gone (retention pass, or
+    // removed by hand); our history can seed a fresh session instead.
+    if (
+      resume &&
+      !(await claudeCodeTranscriptExists(
+        process.env.CLAUDE_CONFIG_DIR ?? claudeCodeConfigDir(),
+        resume,
+      ))
+    ) {
+      log("INFO", "claude-code", "Transcript missing; seeding a fresh session from history");
+      resume = undefined;
+    }
     // A fresh Claude Code session gets our history as text; summarize it first
     // when it would not fit.
     if (
@@ -1768,6 +1787,34 @@ export class AgentSession {
             provider: this.provider,
             model: this.model,
             policy: CLAUDE_CODE_CACHE_TTL,
+          });
+        }
+        // Same line names as the public-API route, which logs them from the agent loop.
+        if (event.type === "turn_end") {
+          const cacheRead = event.usage.cacheRead ?? 0;
+          const cacheWrite = event.usage.cacheWrite ?? 0;
+          const promptTokens = event.usage.inputTokens + cacheRead + cacheWrite;
+          log("INFO", "stream", "cache_health", {
+            promptTokens,
+            cacheRead,
+            cacheWrite,
+            ...(promptTokens > 0
+              ? { ratio: Math.round((cacheRead / promptTokens) * 100) / 100 }
+              : {}),
+            ...(event.timing.ttftMs !== undefined ? { ttftMs: event.timing.ttftMs } : {}),
+            providerDurationMs: event.timing.providerDurationMs,
+            outputTokens: event.usage.outputTokens,
+            provider: this.provider,
+            model: this.model,
+            transport: "claude_code",
+          });
+        } else if (event.type === "retry") {
+          log("INFO", "stream", "retry", {
+            reason: event.reason,
+            attempt: event.attempt,
+            maxAttempts: event.maxAttempts,
+            delayMs: event.delayMs,
+            transport: "claude_code",
           });
         }
         this.eventBus.forwardAgentEvent(event);
@@ -1848,6 +1895,7 @@ export class AgentSession {
     const history = this.messages.filter((m) => m.role !== "system");
     const state = { sessionId, messageCount: history.length, anchor: history.at(-1) };
     this.claudeCodeSession = state;
+    this.holdClaudeCodeTranscript();
     if (!this.sessionPath) return;
     await this.sessionManager.appendEntry(this.sessionPath, {
       type: "custom",
@@ -1872,6 +1920,23 @@ export class AgentSession {
     const [tool] = this.mcp.promote([name]);
     if (tool) this.tools.push(tool);
     return tool;
+  }
+
+  // A restored conversation still calls the on-demand tools it used; Claude
+  // Code refuses any name missing from the list this process gives it.
+  private reloadUsedTools(messages: readonly Message[]): void {
+    if (this.deferredBuiltinToolNames.length === 0) return;
+    for (const message of messages) {
+      if (message.role === "assistant" && Array.isArray(message.content)) {
+        for (const part of message.content) {
+          if (part.type === "tool_call") this.promoteDeferredBuiltin(part.name);
+        }
+      } else if (message.role === "tool") {
+        for (const result of message.content) {
+          for (const name of result.loadedTools ?? []) this.promoteDeferredBuiltin(name);
+        }
+      }
+    }
   }
 
   private wrapToPromote(
@@ -3122,7 +3187,7 @@ export class AgentSession {
             if (shouldPruneToolResults(activeTokens, policy.targetTokens)) {
               const cacheCold = this.getCacheExpiryStatus()?.expired ?? false;
               const pruneResult = pruneStaleToolResults(messages, {
-                minimumTokens: pruneMinimumTokens(activeTokens, cacheCold),
+                minimumTokens: pruneMinimumTokens(activeTokens, cacheCold, policy.targetTokens),
               });
               if (pruneResult.pruned) {
                 this.cacheDiagnostics.noteEdit("tool_prune", pruneResult.freedTokens);
@@ -3815,6 +3880,18 @@ export class AgentSession {
     })();
   }
 
+  // A caller's token was captured at run start; the loop may have rotated it since.
+  private async withLiveAccessToken<T extends { accessToken: string }>(captured: T): Promise<T> {
+    try {
+      const live = await this.authStorage.resolveCredentials(this.provider, {
+        storageKeys: this.currentAuthStorageKeys(),
+      });
+      return { ...captured, accessToken: live.accessToken };
+    } catch {
+      return captured;
+    }
+  }
+
   async compact(
     existingCredentials?: {
       accessToken: string;
@@ -3835,12 +3912,13 @@ export class AgentSession {
         : (abortSignal ?? this.opts.signal);
     const claudeCode = existingCredentials ? null : await this.claudeCodeProcess();
     const creds: { accessToken: string; accountId?: string; projectId?: string; baseUrl?: string } =
-      existingCredentials ??
-      (claudeCode
+      existingCredentials
+        ? await this.withLiveAccessToken(existingCredentials)
+        : claudeCode
         ? { accessToken: "" }
         : await this.authStorage.resolveCredentials(this.provider, {
             storageKeys: this.currentAuthStorageKeys(),
-          }));
+          });
     const contextWindow = getContextWindow(this.model, {
       provider: this.provider,
       accountId: creds.accountId,
@@ -3874,8 +3952,12 @@ export class AgentSession {
         focus,
         ...(claudeCode
           ? {
-              complete: (req: { model: string; messages: Message[]; signal: AbortSignal }) =>
-                claudeCodeComplete({ ...claudeCode, ...req }),
+              complete: (req: {
+                model: string;
+                messages: Message[];
+                signal: AbortSignal;
+                onActivity: () => void;
+              }) => claudeCodeComplete({ ...claudeCode, ...req }),
             }
           : {}),
       });
@@ -4741,6 +4823,9 @@ export class AgentSession {
     }
     const toolNames = this.tools.map((tool) => tool.name);
     const deferredToolNames = this.deferredToolNamesForPrompt(toolNames);
+    // A missing Claude Code binary fails the run itself with a clear message, not the prompt build.
+    const deferredNeedSearch =
+      deferredToolNames.length > 0 && (await this.claudeCodeProcess().then(Boolean, () => false));
     // Whatever is rendered now is what the model has been told.
     this.announcedLanguages = new Set(this.activeLanguages);
     if (this.agentPrompt !== undefined) {
@@ -4748,6 +4833,7 @@ export class AgentSession {
         cwd: this.cwd,
         toolNames,
         deferredToolNames,
+        deferredNeedSearch,
         context: this.opts.agentContext,
         role: this.opts.agentRole,
         environment: this.recordRenderedEnvironment(),
@@ -4766,6 +4852,8 @@ export class AgentSession {
       this.recordRenderedEnvironment(),
       deferredToolNames,
       this.contextLimits,
+      undefined,
+      deferredNeedSearch,
     );
   }
 
@@ -5126,6 +5214,7 @@ export class AgentSession {
       generation,
       startedAt: new Date().toISOString(),
       afterMessageCount: this.persistedTranscriptCount(),
+      pid: process.pid,
     });
   }
 
@@ -5259,6 +5348,14 @@ export class AgentSession {
   private prewarmController: AbortController | null = null;
   /** Claude Code session that has seen this history (Claude subscription route). */
   private claudeCodeSession: ClaudeCodeSessionState | null = null;
+  private releaseClaudeCodeTranscript: (() => void) | undefined;
+
+  /** Keep the retention pass off the transcript this chat would resume. */
+  private holdClaudeCodeTranscript(): void {
+    this.releaseClaudeCodeTranscript?.();
+    const sessionId = this.claudeCodeSession?.sessionId;
+    this.releaseClaudeCodeTranscript = sessionId ? holdClaudeCodeTranscript(sessionId) : undefined;
+  }
   /** This chat's running Claude Code process, reused while `key` (its start settings) matches. */
   private claudeCodeLive: { session: ClaudeCodeLiveSession; key: Record<string, string> } | null =
     null;
@@ -5433,6 +5530,8 @@ export class AgentSession {
     // step leaves background commands running after the app has quit.
     this.stopBackgroundProcesses();
     this.installedWatchStop?.();
+    this.releaseClaudeCodeTranscript?.();
+    this.releaseClaudeCodeTranscript = undefined;
     // Quiesce any in-flight post-turn compaction BEFORE tearing down state:
     // the background compact() snapshots and replaces `this.messages`, so
     // letting it run past this point would checkpoint a near-empty history
@@ -5566,10 +5665,12 @@ export class AgentSession {
     // not fail when Anthropic's stricter many-image limit activates later.
     const systemMsg = this.messages[0]; // Already built
     this.messages = [systemMsg, ...loadedMessages];
+    this.reloadUsedTools(loadedMessages);
     this.claudeCodeSession = parseClaudeCodeSessionState(
       savedClaudeCode?.type === "custom" ? savedClaudeCode.data : null,
       loadedMessages,
     );
+    this.holdClaudeCodeTranscript();
     // Reads recorded for the previous conversation don't carry over.
     this.clearReadTracker?.();
     const normalizedImageCount = await normalizeMessageImages(this.messages);
@@ -5674,6 +5775,15 @@ export class AgentSession {
    */
   private async recordInterruptedRuns(runs: RunJournalEntry[]): Promise<void> {
     for (const run of runs) {
+      // Another app has this chat open and is still running it: not a crash.
+      if (run.pid !== undefined && run.pid !== process.pid && processIsAlive(run.pid)) {
+        log("WARN", "session", "Unfinished run belongs to another live process; left open", {
+          generation: String(run.generation),
+          startedAt: run.startedAt,
+          pid: String(run.pid),
+        });
+        continue;
+      }
       log("WARN", "session", "Restored a session with an unfinished run", {
         generation: String(run.generation),
         startedAt: run.startedAt,

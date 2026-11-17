@@ -247,6 +247,8 @@ function renderToolsSection(
   toolNames: readonly string[] | undefined,
   deferredToolNames?: readonly string[],
   discoveryOnly = false,
+  // Claude Code rejects a tool name it has not listed, so the search must come first.
+  deferredNeedSearch = false,
 ): string | null {
   const activeTools = toolNames ?? DEFAULT_TOOL_NAMES;
   const deferred = activeTools.includes("tool_search")
@@ -272,8 +274,11 @@ function renderToolsSection(
   if (steering) parts.push(steering);
   if (toolLines.length > 0) parts.push(toolLines.join("\n"));
   if (deferredLines.length > 0) {
+    const how = deferredNeedSearch
+      ? "not loaded yet: run `tool_search` with the name first, then call it"
+      : "call by name";
     parts.push(
-      `On demand (call by name; \`tool_search\` finds more, so check it before saying you can't):\n${deferredLines.join("\n")}`,
+      `On demand (${how}; \`tool_search\` finds more, so check it before saying you can't):\n${deferredLines.join("\n")}`,
     );
   } else if (discoveryOnly && activeTools.includes("tool_search")) {
     parts.push("Call `tool_search` before concluding a capability is missing.");
@@ -520,6 +525,8 @@ export async function buildSubAgentSystemPrompt(
     toolNames?: readonly string[];
     /** Tools available via `tool_search` but not carrying a schema this turn. */
     deferredToolNames?: readonly string[];
+    /** True on the Claude Code route, where a deferred tool cannot be called before `tool_search` loads it. */
+    deferredNeedSearch?: boolean;
     context?: "project" | "none";
     role?: "subagent" | "primary";
     environment?: SystemPromptEnvironment;
@@ -532,7 +539,12 @@ export async function buildSubAgentSystemPrompt(
   const limits = opts.contextLimits ?? CONTEXT_LIMITS;
   const sections: string[] = [agentBody.trim()];
 
-  const toolsSection = renderToolsSection(opts.toolNames, opts.deferredToolNames);
+  const toolsSection = renderToolsSection(
+    opts.toolNames,
+    opts.deferredToolNames,
+    false,
+    opts.deferredNeedSearch,
+  );
   if (toolsSection) sections.push(toolsSection);
 
   // A child may itself delegate (up to the nesting limit), so it needs the same
@@ -590,6 +602,8 @@ export async function buildSystemPrompt(
   environmentArgOrDeferred?: SystemPromptEnvironment | readonly string[],
   deferredToolNamesArgOrLimits?: readonly string[] | ContextLimits,
   contextLimitsArg?: ContextLimits,
+  /** True on the Claude Code route, where a deferred tool cannot be called before `tool_search` loads it. */
+  deferredNeedSearch?: boolean,
 ): Promise<string> {
   const goalMode = typeof goalModeOrEnvironment === "string" ? goalModeOrEnvironment : "off";
   const legacyDeferredToolNames = Array.isArray(environmentArgOrDeferred)
@@ -625,7 +639,7 @@ export async function buildSystemPrompt(
   if (approvedPlanSection) sections.push(approvedPlanSection);
 
   // Active tools own their invocation details; deferred capabilities must remain discoverable.
-  const toolsSection = renderToolsSection(toolNames, deferredToolNames, true);
+  const toolsSection = renderToolsSection(toolNames, deferredToolNames, true, deferredNeedSearch);
   if (toolsSection) sections.push(toolsSection);
 
   const delegationSection = renderDelegationSection(reachableTools);
