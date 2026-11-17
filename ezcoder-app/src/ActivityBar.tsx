@@ -24,7 +24,6 @@ export const SPINNER_FRAMES = [
   "\u2807",
   "\u280f",
 ];
-export const SPINNER_FRAME_MS = 80;
 
 /**
  * Idle-line variations for the ready state — rotated so the quiet line under

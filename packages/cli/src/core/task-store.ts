@@ -166,10 +166,6 @@ export function saveTasksSync(cwd: string, tasks: readonly TaskListItem[]): void
   writeTasksToBaseSync(cwd, tasks, tasksBase());
 }
 
-export function getTaskCount(cwd: string): number {
-  return loadTasksSync(cwd).filter((task) => task.status !== "done").length;
-}
-
 /**
  * Drop every completed task and persist the pruned list, returning the
  * survivors. Used by the desktop app so finished tasks disappear from the Tasks
