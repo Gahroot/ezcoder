@@ -1,4 +1,5 @@
 import { GearSixIcon, PauseIcon, PlayIcon, PlusIcon } from "@phosphor-icons/react";
+import type { ReactNode } from "react";
 import type { ProjectTask, WorkspaceMode } from "./agent";
 import { AutopilotToggle } from "./AutopilotToggle";
 import { MetalButton } from "./MetalButton";
@@ -57,6 +58,7 @@ export function WorkspaceHeaderActions({
   commitCommand,
   hasCommit,
   onCommit,
+  livePreview,
 }: {
   workspaceMode: WorkspaceMode;
   /**
@@ -105,6 +107,8 @@ export function WorkspaceHeaderActions({
   commitCommand: string | null;
   hasCommit: boolean;
   onCommit: () => void;
+  /** Code windows: the live preview button (with its panel). */
+  livePreview?: ReactNode;
 }): React.ReactElement {
   return (
     <>
@@ -272,6 +276,7 @@ export function WorkspaceHeaderActions({
             >
               Checklist
             </button>
+            {livePreview}
             <RadioButton />
             <WindowLayoutButton onArrange={onArrange} />
             {needsGitInit ? (
