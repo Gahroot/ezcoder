@@ -99,7 +99,7 @@ async function createSession() {
   const { AgentSession } = await import("./agent-session.js");
   const session = new AgentSession({
     provider: "openai",
-    model: "gpt-6.1-sol",
+    model: "gpt-6.2-sol",
     // Repo cwd so the bundled agent definitions register spawn_agent — the
     // Sol/Ultra orchestration block only renders when that tool exists, and it
     // is the model-dependent prompt content this test is about.
@@ -131,7 +131,7 @@ describe("AgentSession model switch", () => {
     const session = await createSession();
     try {
       for (const [provider, model] of [
-        ["openai", "gpt-6.1-sol"],
+        ["openai", "gpt-6.2-sol"],
         ["anthropic", "claude-fable-5-2"],
         ["gemini", "gemini-3.1-pro-preview"],
         ["openai", "custom-future-model"],
@@ -192,7 +192,7 @@ describe("AgentSession model switch", () => {
     expect(
       outputCapForRequest({
         provider: "openai",
-        model: "gpt-6.1-sol",
+        model: "gpt-6.2-sol",
         maxTokens: 128_000,
         threshold,
         accountId: "acct",
@@ -234,7 +234,7 @@ describe("AgentSession model switch", () => {
       await enhancement;
       expect(vi.mocked(stream).mock.lastCall![0]).toMatchObject({
         provider: "openai",
-        model: "gpt-6.1-sol",
+        model: "gpt-6.2-sol",
         thinking: "high",
       });
     } finally {
@@ -270,7 +270,7 @@ describe("AgentSession model switch", () => {
       const messages = session.getMessages();
       const last = messages[messages.length - 1]!;
       expect(last.role).toBe("user");
-      expect(String(last.content)).toContain("gpt-6.1-sol");
+      expect(String(last.content)).toContain("gpt-6.2-sol");
       expect(String(last.content)).toContain("gpt-5.5-codex");
       // Cross-provider switches name the provider on both sides.
       await session.switchModel("anthropic", "claude-test");
@@ -288,7 +288,7 @@ describe("AgentSession model switch", () => {
       const markers = session.getAppMarkers().filter((m) => m.kind === "model_switch");
       expect(markers).toHaveLength(1);
       expect(markers[0]!.data).toMatchObject({
-        from: "gpt-6.1-sol",
+        from: "gpt-6.2-sol",
         to: "gpt-5.5-codex",
         provider: "openai",
         fromProvider: "openai",
@@ -307,7 +307,7 @@ describe("AgentSession model switch", () => {
         modelName: "Claude Opus 5.5 Fast",
       });
       // Nothing changed: same model, no switch note, no marker.
-      expect(session.getState().model).toBe("gpt-6.1-sol");
+      expect(session.getState().model).toBe("gpt-6.2-sol");
       expect(session.getMessages()).toHaveLength(before.length);
       expect(session.getAppMarkers().filter((m) => m.kind === "model_switch")).toHaveLength(0);
 
@@ -326,7 +326,7 @@ describe("AgentSession model switch", () => {
     try {
       const before = [...session.getMessages()];
 
-      await session.switchModel("openai", "gpt-6.1-sol");
+      await session.switchModel("openai", "gpt-6.2-sol");
 
       expect(session.getMessages()).toHaveLength(before.length);
       expect(session.getAppMarkers().filter((m) => m.kind === "model_switch")).toHaveLength(0);

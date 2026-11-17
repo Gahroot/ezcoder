@@ -70,7 +70,7 @@ Switch mid-conversation with `/model`. Not locked to anyone.
 | Provider          | Models                                                                                      | Auth             |
 | ----------------- | ------------------------------------------------------------------------------------------- | ---------------- |
 | **Anthropic**     | Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5                                           | OAuth            |
-| **OpenAI**        | GPT-6 Astra, GPT-6.1 Sol, GPT-6 Luna                                                        | OAuth            |
+| **OpenAI**        | GPT-6.2 Astra, GPT-6 Astra, GPT-6.2 Sol, GPT-6.1 Terra, GPT-6 Luna                                                        | OAuth            |
 | **Gemini**        | Gemini 3.1 Pro (Preview), 3.8 Flash, 3.5 Flash, 3.5 Flash Lite, 3.1 Flash Lite              | OAuth            |
 | **xAI (Grok)**    | Grok 4.7                                                                                    | OAuth or API key |
 | **Moonshot**      | Kimi K3, K2.8 Preview (Kimi sign-in), K2.7 Code, K2.7 Code HighSpeed                        | OAuth or API key |
@@ -192,7 +192,7 @@ Add your own MCPs in `~/.ezcoder/mcp.json` or `.ezcoder/mcp.json` if you need mo
 
 `subagent` remains blocking. The async suite launches persistent NDJSON worker processes, so a parent can start up to four active child turns, keep working, steer them, and wait for any or all results. Up to eight idle workers remain available for follow-up; bounded snapshots retain the latest 20 agents.
 
-Only GPT-6 Astra and GPT-6.1 Sol at **Ultra** delegate proactively. Lower Astra/Sol levels use async agents only when the user or project/skill instructions request delegation; other models receive no proactive policy.
+Only GPT-6.2 Astra, GPT-6 Astra, GPT-6.2 Sol and GPT-6.1 Terra at **Ultra** delegate proactively. Lower Astra/Sol levels use async agents only when the user or project/skill instructions request delegation; other models receive no proactive policy.
 
 Children share the parent working directory by default, so parallel writes must target disjoint files or subsystems. Pass `isolate: true` to `subagent` to give a child its own copy of the repo on a new branch instead — the right choice when several children edit at once, or when a child's changes should land on a branch of their own. The copy is reclaimed automatically when the child finishes without committing; a child that did commit keeps its branch, because that branch is the deliverable. `/integrate` then merges those branches one at a time, running the suite between each. Async fan-out is one level deep, child output is bounded, idle workers reap after 10 minutes, and workers are not resumable after a CLI/app restart.
 

@@ -122,7 +122,7 @@ describe("streamOpenAICodex", () => {
 
   it.each([
     { model: "gpt-6-luna-fast", tier: "priority" },
-    { model: "gpt-6.1-sol-fast", tier: "priority" },
+    { model: "gpt-6.2-sol-fast", tier: "priority" },
     { model: "gpt-6.1-terra-fast", tier: "priority" },
     { model: "gpt-6-luna", tier: undefined },
   ])("sends Codex Fast mode as service_tier priority: $model", async ({ model, tier }) => {
@@ -294,10 +294,10 @@ describe("streamOpenAICodex", () => {
     ["gpt-5.5", "xhigh", "xhigh"],
     ["gpt-6-sol", "ultra", "max"],
     ["gpt-6-astra", "ultra", "xhigh"],
-    ["gpt-6.1-sol", "ultra", "xhigh"],
+    ["gpt-6.2-sol", "ultra", "xhigh"],
     ["gpt-6.1-terra", "ultra", "xhigh"],
     ["gpt-6-astra", "max", "max"],
-    ["gpt-6.1-sol", "max", "max"],
+    ["gpt-6.2-sol", "max", "max"],
   ] as const)(
     "maps %s %s to %s reasoning effort through Codex transport",
     async (model, thinking, effort) => {
@@ -404,7 +404,7 @@ describe("streamOpenAICodex", () => {
     const fetchMock = vi.mocked(fetch);
     const result = streamOpenAICodex({
       provider: "openai",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       messages: [{ role: "user", content: longMessage }],
       apiKey: "test-credential",
       accountId: "acct",
@@ -639,7 +639,7 @@ describe("streamOpenAICodex", () => {
   it.each([
     ["gpt-5.5", "none"],
     ["gpt-6-luna", "low"],
-    ["gpt-6.1-sol", "low"],
+    ["gpt-6.2-sol", "low"],
     ["gpt-6-astra", "low"],
     ["gpt-5.6-terra", "low"],
   ])("uses a supported default effort for %s without explicit thinking", async (model, effort) => {
@@ -873,7 +873,7 @@ describe("streamOpenAICodex", () => {
 
     const result = streamOpenAICodex({
       provider: "openai",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       messages: [{ role: "user", content: "hi" }],
       apiKey: "token",
       accountId: "acct",

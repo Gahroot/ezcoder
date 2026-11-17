@@ -120,7 +120,7 @@ describe("streamOpenAIResponses", () => {
 
   it.each([
     { model: "gpt-6-luna-fast", tier: "priority" },
-    { model: "gpt-6.1-sol-fast", tier: "priority" },
+    { model: "gpt-6.2-sol-fast", tier: "priority" },
     { model: "gpt-6.1-terra-fast", tier: "priority" },
     { model: "gpt-6-luna", tier: undefined },
   ])("sends Codex Fast mode as service_tier priority: $model", async ({ model, tier }) => {
@@ -292,10 +292,10 @@ describe("streamOpenAIResponses", () => {
     ["gpt-5.5", "xhigh", "xhigh"],
     ["gpt-6-sol", "ultra", "max"],
     ["gpt-6-astra", "ultra", "xhigh"],
-    ["gpt-6.1-sol", "ultra", "xhigh"],
+    ["gpt-6.2-sol", "ultra", "xhigh"],
     ["gpt-6.1-terra", "ultra", "xhigh"],
     ["gpt-6-astra", "max", "max"],
-    ["gpt-6.1-sol", "max", "max"],
+    ["gpt-6.2-sol", "max", "max"],
   ] as const)(
     "maps %s %s to %s reasoning effort through Codex transport",
     async (model, thinking, effort) => {
@@ -482,7 +482,7 @@ describe("streamOpenAIResponses", () => {
     const fetchMock = vi.mocked(fetch);
     const result = streamOpenAIResponses({
       provider: "openai",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       messages: [{ role: "user", content: longMessage }],
       apiKey: "test-credential",
       accountId: "acct",
@@ -644,7 +644,7 @@ describe("streamOpenAIResponses", () => {
   it.each([
     ["gpt-5.5", "none"],
     ["gpt-6-luna", "low"],
-    ["gpt-6.1-sol", "low"],
+    ["gpt-6.2-sol", "low"],
     ["gpt-6-astra", "low"],
     ["gpt-5.6-terra", "low"],
   ])("uses a supported default effort for %s without explicit thinking", async (model, effort) => {
@@ -821,7 +821,7 @@ describe("streamOpenAIResponses", () => {
 
     const result = streamOpenAIResponses({
       provider: "openai",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       messages: [{ role: "user", content: "hi" }],
       apiKey: "token",
       accountId: "acct",
@@ -1814,7 +1814,7 @@ describe("ChatGPT plan: what the plan doesn't include", () => {
   }
 
   it("says a model isn't in the user's plan instead of echoing OpenAI's Codex wording", async () => {
-    // The live answer for gpt-6.1-sol on a plan that serves only Luna (2026-11-07).
+    // The live answer for gpt-6.2-sol on a plan that serves only Luna (2026-11-07).
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -1824,16 +1824,16 @@ describe("ChatGPT plan: what the plan doesn't include", () => {
               error: {
                 code: "model_not_found",
                 message:
-                  "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.",
+                  "The 'gpt-6.2-sol' model is not supported when using Codex with a ChatGPT account.",
               },
             }),
             { status: 400 },
           ),
       ),
     );
-    await expect(planRequest("gpt-6.1-sol").response).rejects.toMatchObject({
+    await expect(planRequest("gpt-6.2-sol").response).rejects.toMatchObject({
       statusCode: 400,
-      message: "gpt-6.1-sol isn't included in your ChatGPT plan.",
+      message: "gpt-6.2-sol isn't included in your ChatGPT plan.",
       hint: expect.stringMatching(/model your plan includes/),
     });
   });

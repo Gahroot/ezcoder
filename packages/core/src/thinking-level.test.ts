@@ -12,7 +12,7 @@ import type { ThinkingLevel } from "@prestyj/ai";
 describe("getLowestThinkingLevel", () => {
   it.each([
     ["anthropic", "claude-opus-5-5"],
-    ["openai", "gpt-6.1-sol"],
+    ["openai", "gpt-6.2-sol"],
     ["gemini", "gemini-3.8-flash"],
     ["glm", "glm-5.3"],
     ["deepseek", "deepseek-v4-pro"],
@@ -52,10 +52,10 @@ describe("thinking-level helpers", () => {
 
   it("exposes Ultra only for GPT-6 models that support proactive delegation", () => {
     const baseLevels = ["low", "medium", "high", "xhigh", "max"];
-    expect(getSupportedThinkingLevels("openai", "gpt-6.1-sol")).toEqual([...baseLevels, "ultra"]);
+    expect(getSupportedThinkingLevels("openai", "gpt-6.2-sol")).toEqual([...baseLevels, "ultra"]);
     expect(getSupportedThinkingLevels("openai", "gpt-6-luna")).toEqual(baseLevels);
-    expect(getNextThinkingLevel("openai", "gpt-6.1-sol", "max")).toBe("ultra");
-    expect(getNextThinkingLevel("openai", "gpt-6.1-sol", "ultra")).toBeUndefined();
+    expect(getNextThinkingLevel("openai", "gpt-6.2-sol", "max")).toBe("ultra");
+    expect(getNextThinkingLevel("openai", "gpt-6.2-sol", "ultra")).toBeUndefined();
   });
 
   it("cycles Anthropic adaptive Opus models through max, including xhigh", () => {

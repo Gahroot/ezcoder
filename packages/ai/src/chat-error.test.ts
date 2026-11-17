@@ -15,7 +15,7 @@ describe("formatChatError", () => {
     ["ChatGPT usage limit reached", 429, "usage_limit"],
     ["Rate limit exceeded", 429, "rate_limit"],
     [
-      "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.",
+      "The 'gpt-6.2-sol' model is not supported when using Codex with a ChatGPT account.",
       400,
       "model_access",
     ],
