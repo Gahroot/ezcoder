@@ -84,7 +84,15 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
 
 /** Where Claude Code keeps its copy of session `id`. */
 function transcriptPath(id: string): string {
-  return path.join(tmpHome, ".ezcoder", "claude-code", "config", "projects", "-proj", `${id}.jsonl`);
+  return path.join(
+    tmpHome,
+    ".ezcoder",
+    "claude-code",
+    "config",
+    "projects",
+    "-proj",
+    `${id}.jsonl`,
+  );
 }
 
 /** A Claude Code run: reports `id`, saves its transcript, answers `reply`. */

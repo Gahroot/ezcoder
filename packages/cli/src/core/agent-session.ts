@@ -3915,10 +3915,10 @@ export class AgentSession {
       existingCredentials
         ? await this.withLiveAccessToken(existingCredentials)
         : claudeCode
-        ? { accessToken: "" }
-        : await this.authStorage.resolveCredentials(this.provider, {
-            storageKeys: this.currentAuthStorageKeys(),
-          });
+          ? { accessToken: "" }
+          : await this.authStorage.resolveCredentials(this.provider, {
+              storageKeys: this.currentAuthStorageKeys(),
+            });
     const contextWindow = getContextWindow(this.model, {
       provider: this.provider,
       accountId: creds.accountId,

@@ -77,7 +77,10 @@ function human(reason: string): NolanAskAnswer {
 }
 
 /** Parse Nolan's raw reply against the questions he was shown. Never throws. */
-export function parseNolanAskAnswer(reply: string, questions: readonly AskQuestion[]): NolanAskAnswer {
+export function parseNolanAskAnswer(
+  reply: string,
+  questions: readonly AskQuestion[],
+): NolanAskAnswer {
   const raw = (reply ?? "").trim();
   if (!raw) return human(DEFAULT_HUMAN_REASON);
   const newline = raw.indexOf("\n");
