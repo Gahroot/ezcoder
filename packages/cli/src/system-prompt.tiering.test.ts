@@ -97,6 +97,7 @@ describe("tool tiering in the system prompt", () => {
       undefined,
       deferred,
       undefined,
+      undefined,
       true,
     );
     const searchFirst =
