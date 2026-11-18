@@ -1,5 +1,24 @@
 # @prestyj/cli
 
+## 5.34.0
+
+### Minor Changes
+
+- 351069d: Add OpenAI GPT-6.2 Astra and GPT-6.2 Sol, replacing GPT-6 Astra and GPT-6.1 Sol (released 2026-11-17), each with a
+  Codex Fast tier. GPT-6.2 Sol replaces GPT-6.1 Sol and is the new default OpenAI
+  model; on the ChatGPT-plan (Codex) route it gets a 500K context window, Astra
+  272K, and both get 1.05M on the public API. Both use the low → ultra reasoning
+  ladder. GPT-6.1 Sol and GPT-6 Astra are retired: a saved session on either falls
+  back to the OpenAI default on next start. GPT-6.1 Terra stays, since 6.2 has no Terra.
+- Add Live Preview (a `live_preview` tool that opens a running dev server and lets you point at elements), Autopilot, OpenCode Go and OpenCode pay-as-you-go providers, MCP shell commands, and selected upstream fixes since v0.109. Remove unused code, including the old plugin install chain.
+
+### Patch Changes
+
+- Updated dependencies [351069d]
+  - @prestyj/ai@5.34.0
+  - @prestyj/core@5.34.0
+  - @prestyj/agent@5.34.0
+
 ## 5.33.0
 
 ### Minor Changes

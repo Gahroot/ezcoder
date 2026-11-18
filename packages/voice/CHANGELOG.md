@@ -1,5 +1,13 @@
 # @prestyj/voice
 
+## 4.6.33
+
+### Patch Changes
+
+- Updated dependencies [351069d]
+  - @prestyj/ai@5.34.0
+  - @prestyj/agent@5.34.0
+
 ## 4.6.32
 
 ### Patch Changes
