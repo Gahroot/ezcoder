@@ -9,7 +9,7 @@
  * remaining requests (horizon). Pure — the session owns the bookkeeping.
  */
 
-/** SoL-Pi default cache write/read price ratio. GPT-6.1 Sol's real ratio is 25. */
+/** SoL-Pi default cache write/read price ratio. GPT-6.2 Sol's real ratio is 25. */
 export const DEFAULT_CACHE_WRITE_READ_RATIO = 12.5;
 /** Recent tail kept verbatim by compaction (SoL-Pi keep budget). */
 export const PLAN_STEP_KEEP_TOKENS = 20_000;

@@ -40,8 +40,8 @@ import {
 const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
 // Advertised Codex client version. The ChatGPT backend gates models on it, and
 // the live gate can be stricter than the bundled catalog's
-// `minimal_client_version`: GPT-6.1 Sol is listed at 0.153.0 there, but the
-// server only serves it from 0.159.0 (GET /codex/models?client_version=...,
+// `minimal_client_version`: GPT-6.1 Sol was listed at 0.153.0 there, but the
+// server only served it from 0.159.0 (GET /codex/models?client_version=...,
 // 2026-09-30). Below the gate it answers "The '<model>' model is not supported
 // when using Codex with a ChatGPT account". Track the latest openai/codex
 // `rust-v*` release when adding a model, and check that model's live listing.
@@ -109,7 +109,7 @@ async function encodeCodexRequest(body: Record<string, unknown>): Promise<Encode
   }
 }
 
-// GPT-6 point releases (gpt-6.1-sol) keep the dotted version in the id, so a
+// GPT-6 point releases (gpt-6.2-sol) keep the dotted version in the id, so a
 // bare `gpt-6-` prefix would miss them. This is the model family Codex CLI
 // serves with Responses-Lite; it also owns the effort floor, verbosity and
 // client identity, which stay on even when the lite request shape is turned off.
@@ -225,7 +225,7 @@ async function* runStream(
     summary: "auto",
     ...(liteShape ? { context: "all_turns" } : {}),
   };
-  // Catalog parity: every responses-lite model (gpt-6-astra, gpt-6.1-sol,
+  // Catalog parity: every responses-lite model (gpt-6.2-astra, gpt-6.2-sol,
   // gpt-6-luna and the older gpt-6-sol and gpt-5.6-sol/terra/luna) declares
   // `support_verbosity: true` with `default_verbosity: "low"` in openai/codex
   // models.json, and the Codex CLI sends `text.verbosity` accordingly. Omitting

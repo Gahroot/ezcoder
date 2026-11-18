@@ -92,8 +92,8 @@ describe("model registry invariants", () => {
     expect(fastIds).toEqual([
       "claude-fable-5-2-fast",
       "claude-opus-5-5-fast",
-      "gpt-6-astra-fast",
-      "gpt-6.1-sol-fast",
+      "gpt-6.2-astra-fast",
+      "gpt-6.2-sol-fast",
       "gpt-6.1-terra-fast",
       "gpt-6-luna-fast",
     ]);
@@ -110,17 +110,17 @@ describe("model registry invariants", () => {
     }
     // Claude fast mode spends real money (usage credits); Codex fast spends plan allowance.
     expect(getModel("claude-opus-5-5-fast")?.billing?.paid).toBe(true);
-    expect(getModel("gpt-6.1-sol-fast")?.billing?.paid).toBe(false);
+    expect(getModel("gpt-6.2-sol-fast")?.billing?.paid).toBe(false);
     // Only a real-money tier is ever stripped back to the standard model.
     expect(isPaidModel("claude-opus-5-5-fast")).toBe(true);
     expect(withoutPaidTier("claude-opus-5-5-fast")).toBe("claude-opus-5-5");
     expect(isPaidModel("claude-fable-5-2-fast")).toBe(true);
     expect(withoutPaidTier("claude-fable-5-2-fast")).toBe("claude-fable-5-2");
-    expect(withoutPaidTier("gpt-6.1-sol-fast")).toBe("gpt-6.1-sol-fast");
+    expect(withoutPaidTier("gpt-6.2-sol-fast")).toBe("gpt-6.2-sol-fast");
     expect(withoutPaidTier("claude-sonnet-5-5")).toBe("claude-sonnet-5-5");
     expect(withoutPaidTier("not-a-model")).toBe("not-a-model");
     // Compaction summaries never land on a fast (premium) tier.
-    expect(getSummaryModel("openai", "gpt-6.1-sol-fast").id).toBe("gpt-6-luna");
+    expect(getSummaryModel("openai", "gpt-6.2-sol-fast").id).toBe("gpt-6-luna");
     expect(getSummaryModel("anthropic", "claude-opus-5-5-fast").id).toBe("claude-sonnet-5-5");
   });
 
@@ -284,7 +284,7 @@ describe("getSummaryModel when the catalog changes", () => {
   });
 
   it.each([
-    ["openai", "gpt-6-luna", "gpt-6.1-sol"],
+    ["openai", "gpt-6-luna", "gpt-6.2-sol"],
     ["glm", "glm-5.3-flash", "glm-5.3"],
     ["deepseek", "deepseek-flash", "deepseek-v4-pro"],
   ] as const)(
@@ -323,15 +323,15 @@ describe("getSummaryModel when the catalog changes", () => {
   });
 });
 
-describe("GPT-6.1 Sol", () => {
-  it("replaces GPT-6 Sol in the catalog and OpenAI defaults", () => {
-    const model = getModel("gpt-6.1-sol");
+describe("GPT-6.2 Sol", () => {
+  it("replaces GPT-6.1 Sol in the catalog and OpenAI defaults", () => {
+    const model = getModel("gpt-6.2-sol");
     expect(model).toEqual({
-      id: "gpt-6.1-sol",
-      name: "GPT-6.1 Sol",
+      id: "gpt-6.2-sol",
+      name: "GPT-6.2 Sol",
       provider: "openai",
       contextWindow: 1_050_000,
-      codexContextWindow: 272_000,
+      codexContextWindow: 500_000,
       maxOutputTokens: 128_000,
       supportsThinking: true,
       defaultThinkingLevel: "low",
@@ -342,22 +342,46 @@ describe("GPT-6.1 Sol", () => {
     });
     expect(getModelsForProvider("openai")).toContain(model);
     expect(getModel("gpt-6-sol")).toBeUndefined();
+    expect(getModel("gpt-6.1-sol")).toBeUndefined();
+    expect(getModel("gpt-6.1-sol-fast")).toBeUndefined();
+    expect(getModel("gpt-6-astra")).toBeUndefined();
+    expect(getModel("gpt-6-astra-fast")).toBeUndefined();
     expect(getDefaultModel("openai")).toBe(model);
+  });
+});
+
+describe("GPT-6.2 Astra", () => {
+  it("matches the OpenAI model page and Codex catalog: 272K Codex window, low default, Ultra ladder", () => {
+    expect(getModel("gpt-6.2-astra")).toEqual({
+      id: "gpt-6.2-astra",
+      name: "GPT-6.2 Astra",
+      provider: "openai",
+      contextWindow: 1_050_000,
+      codexContextWindow: 272_000,
+      maxOutputTokens: 128_000,
+      supportsThinking: true,
+      defaultThinkingLevel: "low",
+      supportsImages: true,
+      supportsVideo: false,
+      costTier: "high",
+      maxThinkingLevel: "ultra",
+    });
+    expect(getModel("gpt-6.2-astra-fast")?.billing?.paid).toBe(false);
   });
 });
 
 describe("model registry context windows", () => {
   it.each([
-    ["gpt-6-astra", 1_050_000],
-    ["gpt-6.1-sol", 1_050_000],
+    ["gpt-6.2-astra", 1_050_000],
+    ["gpt-6.2-sol", 1_050_000],
     ["gpt-6-luna", 1_050_000],
   ] as const)("uses the %s public API context window without an OAuth account", (model, limit) => {
     expect(getContextWindow(model, { provider: "openai" })).toBe(limit);
   });
 
   it.each([
-    ["gpt-6-astra", 272_000],
-    ["gpt-6.1-sol", 272_000],
+    ["gpt-6.2-astra", 272_000],
+    ["gpt-6.2-sol", 500_000],
     ["gpt-6-luna", 272_000],
   ] as const)("uses the %s Codex product window for OpenAI OAuth", (model, limit) => {
     const options = { provider: "openai" as const, accountId: "acct_123" };
@@ -376,7 +400,7 @@ describe("model registry context windows", () => {
   });
 
   it("keeps the generic tool-output allowance outside Codex OAuth", () => {
-    expect(getToolResultCharLimit("gpt-6.1-sol", { provider: "openai" })).toBeUndefined();
+    expect(getToolResultCharLimit("gpt-6.2-sol", { provider: "openai" })).toBeUndefined();
     expect(
       getToolResultCharLimit("claude-sonnet-5-5", {
         provider: "anthropic",
@@ -454,13 +478,13 @@ describe("model registry context windows", () => {
 
   it("starts Codex models at their catalog default, not the ladder ceiling", () => {
     // openai/codex models.json `default_reasoning_level`: the deep-reasoning
-    // models (Astra, GPT-6.1 Sol) ship "low", GPT-6 Luna "medium". Defaulting to
+    // models (Astra, GPT-6.2 Sol) ship "low", GPT-6 Luna "medium". Defaulting to
     // maxThinkingLevel made fresh Astra sessions reason at max effort.
-    expect(getDefaultThinkingLevel("gpt-6-astra")).toBe("low");
-    expect(getDefaultThinkingLevel("gpt-6.1-sol")).toBe("low");
+    expect(getDefaultThinkingLevel("gpt-6.2-astra")).toBe("low");
+    expect(getDefaultThinkingLevel("gpt-6.2-sol")).toBe("low");
     expect(getDefaultThinkingLevel("gpt-6-luna")).toBe("medium");
     // Ceilings are unchanged — users can still opt up.
-    expect(getModel("gpt-6-astra")?.maxThinkingLevel).toBe("ultra");
+    expect(getModel("gpt-6.2-astra")?.maxThinkingLevel).toBe("ultra");
     expect(getModel("gpt-6-luna")?.maxThinkingLevel).toBe("max");
   });
 
@@ -773,6 +797,6 @@ describe("GPT-6.1 Terra", () => {
     });
     expect(getModel("gpt-6.1-terra-fast")?.billing).toBeDefined();
     // Sol stays the OpenAI default.
-    expect(getDefaultModel("openai").id).toBe("gpt-6.1-sol");
+    expect(getDefaultModel("openai").id).toBe("gpt-6.2-sol");
   });
 });

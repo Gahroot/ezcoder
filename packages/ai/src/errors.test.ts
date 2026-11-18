@@ -167,7 +167,7 @@ describe("formatErrorForDisplay", () => {
     const out = formatErrorForDisplay(
       new ProviderError(
         "openai",
-        "The 'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
+        "The 'gpt-6.2-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
         { statusCode: 400 },
       ),
     );

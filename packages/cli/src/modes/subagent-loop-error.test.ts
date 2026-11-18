@@ -375,7 +375,7 @@ describe("spawn_agent worker", () => {
     const { done } = await runWorkerTurn({
       provider: "openai",
       model: "gpt-6-luna",
-      fallbackModel: "gpt-6.1-sol",
+      fallbackModel: "gpt-6.2-sol",
       thinkingLevel: "max",
       parentThinkingLevel: "ultra",
     });
@@ -388,7 +388,7 @@ describe("spawn_agent worker", () => {
       }),
     ).toEqual([
       { model: "gpt-6-luna", thinking: "max" },
-      { model: "gpt-6.1-sol", thinking: "ultra" },
+      { model: "gpt-6.2-sol", thinking: "ultra" },
     ]);
   });
 
