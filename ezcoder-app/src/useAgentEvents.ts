@@ -1235,6 +1235,22 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
         case "tasks_run_done":
           // Run-all sweep finished — nothing to render; the modal reflects it.
           break;
+        case "live_preview_prompt": {
+          // Sent from the live preview chat on the running web app: show the
+          // typed words and the picked element, not the context block the agent
+          // receives (core/live-preview.ts in the CLI).
+          const text = typeof d.text === "string" ? d.text : "";
+          const element = typeof d.element === "string" && d.element ? d.element : null;
+          if (!text.trim() && !element) break;
+          stickToBottomRef.current = true;
+          pushItem({
+            kind: "user",
+            id: nextId(),
+            text,
+            ...(element ? { attachments: [{ kind: "file" as const, name: element }] } : {}),
+          });
+          break;
+        }
         case "queued": {
           setQueuedCount(Number(d.count ?? 0));
           // The sidecar sends the full pending list alongside the depth so each

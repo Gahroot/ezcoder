@@ -18,6 +18,11 @@ import { lastAssistantText, buildNolanContext } from "./nolan-context.js";
 import { keepAwake } from "./keep-awake.js";
 import type { SessionRouteContext } from "./route-context.js";
 import { mentionedPaths, slashCommandName } from "../core/trophies/engine.js";
+import {
+  buildLivePreviewPrompt,
+  livePreviewChip,
+  parseLivePreviewMeta,
+} from "../core/live-preview.js";
 
 /**
  * Count a sent prompt toward trophies: a slash command (and whether it's the
@@ -89,37 +94,18 @@ export function handlePromptRoutes(
         description: c.description,
         source: "built-in" as const,
       }));
-      // Desktop-safe registry actions belong in the same picker as workflows.
-      // Most registry commands have dedicated app controls or TUI-only flows;
-      // multi-root management has no other affordance, so expose only these.
-      const workspaceActions = [
-        {
-          name: "add-dir",
-          aliases: ["adddir"],
-          description: "Add another project folder to this workspace",
-          source: "built-in" as const,
-        },
-        {
-          name: "remove-dir",
-          aliases: ["removedir"],
-          description: "Remove an added project folder from this workspace",
-          source: "built-in" as const,
-        },
-      ];
+      // Registry commands have dedicated app controls (folders: the More
+      // panel's Add folder / Remove folder) or are TUI-only, so none are listed.
       const custom = (await ctx.session.loadCustomCommands())
-        // A custom command can't shadow a built-in name or app action.
-        .filter(
-          (c) =>
-            !PROMPT_COMMANDS.some((b) => b.name === c.name) &&
-            !workspaceActions.some((action) => action.name === c.name),
-        )
+        // A custom command can't shadow a built-in name.
+        .filter((c) => !PROMPT_COMMANDS.some((b) => b.name === c.name))
         .map((c) => ({
           name: c.name,
           aliases: [] as string[],
           description: c.description,
           source: "custom" as const,
         }));
-      json(res, 200, { commands: [...workspaceActions, ...builtins, ...custom] });
+      json(res, 200, { commands: [...builtins, ...custom] });
     })();
     return true;
   }
@@ -140,6 +126,7 @@ export function handlePromptRoutes(
               enhancements?: unknown[];
               scheduled?: boolean;
               planRevision?: boolean;
+              livePreview?: unknown;
             }
           | undefined;
         try {
@@ -151,6 +138,7 @@ export function handlePromptRoutes(
               enhancements?: unknown[];
               scheduled?: boolean;
               planRevision?: boolean;
+              livePreview?: unknown;
             };
           };
           text = body.text ?? "";
@@ -164,8 +152,21 @@ export function handlePromptRoutes(
           json(res, 400, { error: "empty prompt" });
           return;
         }
+        // Live preview: the agent gets the picked element and short-reply rules,
+        // while every transcript shows only the typed words (core/live-preview.ts).
+        const livePreview = parseLivePreviewMeta(meta?.livePreview);
+        const typed = text;
+        if (livePreview) text = buildLivePreviewPrompt(text, livePreview, ctx.cwd);
+        const announceLivePreview = (queued: boolean): void => {
+          if (!livePreview) return;
+          ctx.broadcast("live_preview_prompt", {
+            text: typed,
+            element: livePreview.element ? livePreviewChip(livePreview.element) : null,
+            queued,
+          });
+        };
         // Before the run checks below, so the run claim stays synchronous with them.
-        if (meta?.scheduled !== true) await ctx.startGoalFromMessage(text);
+        if (meta?.scheduled !== true) await ctx.startGoalFromMessage(typed);
         // A typed prompt supersedes any question parked on the user: they
         // answered with a message of their own. Release the blocked tool call
         // NOW — otherwise it waits out its ten-minute timeout while this very
@@ -215,10 +216,11 @@ export function handlePromptRoutes(
             preparedForAsk ??
             (attachments.length > 0 ? await prepareAttachments(ctx.cwd, attachments) : []);
           const count = ctx.session.queueMessage(text, prepared, { answeredAsk: answersAsk });
+          announceLivePreview(true);
           ctx.broadcast("queued", { count, messages: ctx.session.listQueuedMessages() });
           json(res, 202, { queued: true, count });
           void recordPromptTrophies(ctx, {
-            text,
+            text: typed,
             attachments: attachments.length,
             enhanced: Array.isArray(meta?.enhancements) && meta.enhancements.length > 0,
             // A scheduled prompt that queued behind a run isn't the user steering.
@@ -253,7 +255,7 @@ export function handlePromptRoutes(
           void ctx.trophies.count("scheduledRuns", ctx.sessionId);
         } else {
           void recordPromptTrophies(ctx, {
-            text,
+            text: typed,
             attachments: attachments.length,
             enhanced: Array.isArray(meta?.enhancements) && meta.enhancements.length > 0,
             steer: false,
@@ -297,6 +299,7 @@ export function handlePromptRoutes(
         ctx.clearPendingPlan();
         const assistantsBefore = countAssistantMessages(ctx.session.getMessages());
         const messagesBefore = ctx.session.getMessages().length;
+        announceLivePreview(false);
         await ctx.runAgent(
           text,
           async () => {
@@ -319,7 +322,7 @@ export function handlePromptRoutes(
         );
         // After the user's run settles, kick off Nolan's auto-review loop — but
         // only when the turn is actually reviewable (shouldStartAutopilotCycle):
-        // workflow commands (/compare, /expand, …) end with reports or
+        // workflow commands (/expand, /init, …) end with reports or
         // A/B/C choices reserved for the USER; registry commands (/help) and
         // failed runs add no assistant work to judge; a turn that ended in plan
         // mode has a pending Accept/Reject modal Nolan must not preempt. This is
@@ -350,7 +353,10 @@ export function handlePromptRoutes(
           if (!ctx.autopilotCancelled) void ctx.trophies.count("autopilotReviews", ctx.sessionId);
         } else {
           ctx.broadcast("autopilot_ignored", { reason: decision.reason });
-          log("INFO", "app-sidecar", "autopilot skipped", { reason: decision.reason });
+          // Autopilot off is the normal case, not an event worth a line per turn.
+          if (decision.reason !== "disabled") {
+            log("INFO", "app-sidecar", "autopilot skipped", { reason: decision.reason });
+          }
         }
         // A prompt sent while Nolan was reviewing (build idle) queued but had no
         // run to steer into — run it now as a fresh turn so it never strands.

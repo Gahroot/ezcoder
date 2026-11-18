@@ -189,6 +189,9 @@ import { useTrayIntents } from "./useTrayIntents";
 import { useAttachments } from "./useAttachments";
 import { useDragOverlay, useWindowFileDrop } from "./useFileDrop";
 import { WorkspaceHeaderActions } from "./WorkspaceHeaderActions";
+import { LivePreviewButton } from "./LivePreviewButton";
+import { livePreviewAvailable, START_DEV_SERVER_PROMPT } from "./livePreviewAvailable";
+import { useLivePreview } from "./useLivePreview";
 import { useChecklist } from "./useChecklist";
 import { useProjectNotes } from "./useProjectNotes";
 import { useChromeToggles } from "./useChromeToggles";
@@ -738,6 +741,8 @@ function App(): React.ReactElement {
   const sendDisabled =
     attachmentsLoading ||
     (!input.trim() && attachments.length === 0 && mentionedPaths.length === 0);
+  const canLivePreview = livePreviewAvailable(workspaceMode, needsProject, state);
+  const livePreview = useLivePreview(canLivePreview);
   // Cosmetic work only belongs to a focused, visible, empty code composer.
   const animatePlaceholder =
     windowFocused &&
@@ -2878,6 +2883,20 @@ function App(): React.ReactElement {
           onInitGit={() => setShowInitGit(true)}
           commitCommand={commitCommand}
           hasCommit={hasCommit}
+          livePreview={
+            canLivePreview ? (
+              <LivePreviewButton
+                preview={livePreview}
+                onStartDevServer={() =>
+                  submitText(
+                    START_DEV_SERVER_PROMPT,
+                    "Start the dev server and open the live preview",
+                    { keepInput: true },
+                  )
+                }
+              />
+            ) : undefined
+          }
           onCommit={() =>
             submitText(
               `/${commitCommand}`,

@@ -3130,6 +3130,8 @@ export function App(props: AppProps) {
               | "deepseek"
               | "openrouter"
               | "huggingface"
+              | "opencode"
+              | "opencode-go"
               | "sakana"
               | "xai",
           );
@@ -3188,7 +3190,6 @@ export function App(props: AppProps) {
       "compare",
       // Setup / installers
       "setup-commit",
-      "setup-ci",
     ];
     const orderedPromptCommands = promptOrder
       .map(fromPrompt)

@@ -12664,3 +12664,66 @@ select {
   color: var(--warning);
   font-style: italic;
 }
+
+/* ── Live preview (header button + panel) ── */
+.livepreview-trigger {
+  gap: var(--space-3);
+}
+.livepreview-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background-color var(--t-fast);
+}
+.livepreview-led[data-state="on"] {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+.livepreview-menu {
+  width: 340px;
+  padding: var(--space-3);
+}
+.livepreview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.livepreview-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.livepreview-main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.livepreview-url {
+  font-family: var(--mono);
+}
+.livepreview-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.livepreview-field {
+  display: flex;
+  gap: var(--space-2);
+}
+.livepreview-field input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--surface-1);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-base);
+}

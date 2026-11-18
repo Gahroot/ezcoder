@@ -52,6 +52,8 @@ Tool parameters are Zod schemas. Converted to JSON Schema at the provider bounda
 | `sakana` | Fugu, Fugu Max, Fugu Ultra | OpenAI-compatible |
 | `openrouter` | Qwen3.8 Max, or any OpenRouter model id | OpenAI-compatible gateway |
 | `huggingface` | Kimi K2.7 Code, DeepSeek V4.1 Flash, GPT-OSS 120B | Inference Providers router, OpenAI-compatible |
+| `opencode-go` | Kimi K3, GLM-5.3, GLM-5.3-Flash | OpenCode Go subscription, Chat Completions models only. Ids are `opencode-go/<id>` |
+| `opencode` | Kimi K3, GLM-5.3, GLM-5.3-Flash | OpenCode pay-as-you-go, Chat Completions models only. Ids are `opencode/<id>` |
 | `local` | Any model your server exposes | Ollama, LM Studio, llama.cpp, vLLM; `baseUrl` is required |
 
 The model lists are the ones EZ Coder ships in its registry (`@prestyj/core`). `stream()` passes `model` straight through, so any id the provider accepts works. Every provider's default endpoint can be overridden with `baseUrl`, and `providerRegistry.register()` adds your own.

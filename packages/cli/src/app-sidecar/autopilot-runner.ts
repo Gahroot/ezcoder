@@ -1,11 +1,16 @@
 import fs from "node:fs/promises";
 import type { Provider, MessageProvenance } from "@prestyj/ai";
 import type { AgentSession } from "../core/agent-session.js";
+import type { RunClaim } from "../core/run-claim.js";
 import type { RunLifecycle } from "../core/run-lifecycle.js";
 import {
+  buildNolanAutopilotAskContext,
   buildNolanAutopilotContext,
   buildNolanAutopilotPlanContext,
+  latestHumanRequest,
 } from "../core/nolan-context.js";
+import { parseNolanAskAnswer, type NolanAskAnswer } from "../core/nolan-ask-answer.js";
+import type { AskUserPrompt } from "../core/ask-user.js";
 import { parseAutopilotVerdict, type AutopilotVerdict } from "../core/autopilot-verdict.js";
 import {
   isWorkflowCommandText,
@@ -57,6 +62,7 @@ export interface AutopilotRunnerContext {
   pendingPlanContent: string;
   autopilot: boolean;
   readonly runLifecycle: RunLifecycle;
+  readonly runClaim: RunClaim;
   readonly abortOwnedWork: () => void;
   pendingCancelDrain: { generation: number; text: string } | null;
   autopilotActive: boolean;
@@ -86,6 +92,12 @@ export interface AutopilotRunnerContext {
 }
 
 export interface AutopilotRunnerContextApi {
+  /** Ask Autopilot Nolan to answer a question card. Null when it was no longer
+   *  pending (or autopilot went off) by the time Nolan's turn came. */
+  answerAskWithNolan: (
+    prompt: AskUserPrompt,
+    isPending: () => boolean,
+  ) => Promise<NolanAskAnswer | null>;
   runAutopilotReview: (originalRequest: string) => Promise<AutopilotVerdict | null>;
   runAutopilotPlanReview: (originalRequest: string) => Promise<AutopilotVerdict | null>;
   runAutopilotCycle: (originalRequest: string) => Promise<void>;
@@ -95,6 +107,52 @@ export interface AutopilotRunnerContextApi {
 }
 
 export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRunnerContextApi {
+  // Nolan's answers to question cards, one at a time: parallel ask_user calls
+  // (and the reviews below) share the one nolanAuto session, which takes a
+  // single prompt at a time.
+  let nolanAskChain: Promise<unknown> = Promise.resolve();
+
+  function answerAskWithNolan(
+    prompt: AskUserPrompt,
+    isPending: () => boolean,
+  ): Promise<NolanAskAnswer | null> {
+    const run = nolanAskChain.then(() => answerOneAsk(prompt, isPending));
+    nolanAskChain = run.catch(() => {});
+    return run;
+  }
+
+  async function answerOneAsk(
+    prompt: AskUserPrompt,
+    isPending: () => boolean,
+  ): Promise<NolanAskAnswer | null> {
+    if (!ctx.autopilot || !isPending()) return null;
+    ctx.autopilotReviewing = true;
+    try {
+      const nolanAgent = await ctx.ensureNolanAutoSession();
+      const messages = ctx.session.getMessages();
+      const injectedPrompts = [...ctx.injectedAutopilotPrompts];
+      const digest = buildNolanAutopilotAskContext({
+        cwd: ctx.cwd,
+        gitBranch: ctx.gitBranch,
+        messages,
+        verificationEvidence: ctx.session.getVerificationEvidence(),
+        verificationProblem: ctx.session.getVerificationProblem(),
+        originalRequest: latestHumanRequest(messages, injectedPrompts),
+        injectedPrompts,
+        workflowCommands: await ctx.loadWorkflowCommandSpecs(),
+        questions: prompt.questions,
+      });
+      await nolanAgent.prompt(digest);
+      return parseNolanAskAnswer(lastAssistantText(nolanAgent.getMessages()), prompt.questions);
+    } finally {
+      ctx.autopilotReviewing = false;
+      // Apply any model switch that landed while Nolan was answering.
+      const pending = ctx.pendingNolanAutoModel;
+      ctx.pendingNolanAutoModel = null;
+      if (pending) await ctx.syncNolanAutoModel(pending.provider, pending.model);
+    }
+  }
+
   // ── Autopilot orchestration ─────────────────────────────────
   // One review = prompt the nolanAuto session with the review digest, read its
   // final assistant text, parse a verdict. Returns null on failure (surfaced as
@@ -102,6 +160,7 @@ export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRun
   // `originalRequest` is the user prompt that started the turn under review —
   // pinned in the digest so it can't scroll out during multi-round cycles.
   async function runAutopilotReview(originalRequest: string): Promise<AutopilotVerdict | null> {
+    await nolanAskChain;
     ctx.autopilotReviewing = true;
     ctx.broadcast("autopilot_review_start", {});
     try {
@@ -138,6 +197,7 @@ export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRun
   // (cancel or a manual Accept/Reject that bumped planGeneration) stays
   // SILENT — no autopilot_error — because the user's decision already won.
   async function runAutopilotPlanReview(originalRequest: string): Promise<AutopilotVerdict | null> {
+    await nolanAskChain;
     const planPath = ctx.pendingPlanPath;
     if (planPath === null) return null;
     const genAtStart = ctx.planGeneration;
@@ -377,9 +437,11 @@ export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRun
           await runAutopilotCycle(next.text);
         } else {
           ctx.broadcast("autopilot_ignored", { reason: decision.reason });
-          log("INFO", "app-sidecar", "autopilot skipped (queued turn)", {
-            reason: decision.reason,
-          });
+          if (decision.reason !== "disabled") {
+            log("INFO", "app-sidecar", "autopilot skipped (queued turn)", {
+              reason: decision.reason,
+            });
+          }
         }
       }
     } finally {
@@ -425,24 +487,36 @@ export function createAutopilotRunner(ctx: AutopilotRunnerContext): AutopilotRun
   }
 
   async function runTasks(startId: string | null, all: boolean): Promise<void> {
+    // Held for the whole sweep: `running` drops between tasks, and a prompt or
+    // session reset landing in that gap would collide with the next task.
+    if (!ctx.runClaim.claim()) return;
     ctx.taskRunAll = all;
-    let currentId: string | null = startId ?? getNextPendingTask(ctx.cwd)?.id ?? null;
-    while (currentId) {
-      const ran = await runTaskById(currentId);
-      if (!ran || !ctx.taskRunAll) break;
-      const next = getNextPendingTask(ctx.cwd);
-      currentId = next ? next.id : null;
-      // Brief pause between tasks (mirrors the CLI cadence).
-      if (currentId) await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      let currentId: string | null = startId ?? getNextPendingTask(ctx.cwd)?.id ?? null;
+      while (currentId) {
+        const ran = await runTaskById(currentId);
+        if (!ran || !ctx.taskRunAll) break;
+        const next = getNextPendingTask(ctx.cwd);
+        currentId = next ? next.id : null;
+        // Brief pause between tasks (mirrors the CLI cadence).
+        if (currentId) await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      // A message that queued during the sweep and was never steered in.
+      await runStrandedQueue();
+    } catch (err) {
+      ctx.broadcastError("error", "task run failed", err);
+    } finally {
+      ctx.taskRunAll = false;
+      ctx.runClaim.release();
+      ctx.broadcast("tasks_run_done", {});
+      // Task runs never start an autopilot cycle; a plan a task submitted goes
+      // straight to the user.
+      ctx.offerPendingPlan();
     }
-    ctx.taskRunAll = false;
-    ctx.broadcast("tasks_run_done", {});
-    // Task runs never start an autopilot cycle; a plan a task submitted goes
-    // straight to the user.
-    ctx.offerPendingPlan();
   }
 
   return {
+    answerAskWithNolan,
     runAutopilotReview,
     runAutopilotPlanReview,
     runAutopilotCycle,

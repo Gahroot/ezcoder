@@ -72,6 +72,14 @@ export interface AuthMethodMeta {
   requires?: string;
 }
 
+function apiKeyDetails(
+  label: string,
+  billing: string,
+  when = "",
+): Partial<Record<AuthMethod, AuthMethodMeta>> {
+  return { apikey: { method: "apikey", label, billing, when } };
+}
+
 /**
  * Every provider a user can connect, in login-screen order. `description`
  * lists that provider's models and feeds both the CLI login screen and the
@@ -211,6 +219,30 @@ const ALL_AUTH_PROVIDERS: AuthProviderMeta[] = [
     description: "Fugu, Fugu Max, Fugu Ultra",
     methods: ["apikey"],
     apiKeyLabel: "Sakana",
+  },
+  {
+    value: "opencode-go",
+    label: "OpenCode Go",
+    description: "Kimi K3, GLM-5.3, GLM-5.3-Flash and more Go models",
+    methods: ["apikey"],
+    apiKeyLabel: "OpenCode",
+    methodDetails: apiKeyDetails(
+      "OpenCode API key",
+      "Uses your OpenCode Go subscription.",
+      "Create a personal API key in the OpenCode Console, in a workspace subscribed to Go.",
+    ),
+  },
+  {
+    value: "opencode",
+    label: "OpenCode",
+    description: "Kimi K3, GLM-5.3, GLM-5.3-Flash and more paid Console models",
+    methods: ["apikey"],
+    apiKeyLabel: "OpenCode",
+    methodDetails: apiKeyDetails(
+      "OpenCode API key",
+      "Pay-per-token from your OpenCode Console credits.",
+      "Free-tier models only run inside OpenCode, so they are not listed here.",
+    ),
   },
   {
     value: "openrouter",

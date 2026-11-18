@@ -54,6 +54,8 @@ export interface ClaudeCodeCompleteOptions extends ClaudeCodeProcess {
   builtinTools?: string[];
   /** Default 1; raise it when `builtinTools` must run before the answer. */
   maxTurns?: number;
+  /** Called on every SDK message (partial deltas included), as proof of life. */
+  onActivity?: () => void;
 }
 
 export interface ClaudeCodeCompletion extends StreamResponse {
@@ -109,6 +111,8 @@ export async function claudeCodeComplete(
     strictMcpConfig: true,
     mcpServers: {},
     persistSession: false,
+    // Deltas are only used as a heartbeat; the full assistant messages still arrive.
+    includePartialMessages: true,
     maxTurns: opts.maxTurns ?? 1,
     pathToClaudeCodeExecutable: opts.executable,
     env: opts.env,
@@ -124,6 +128,7 @@ export async function claudeCodeComplete(
   const q = (opts.query ?? sdkQuery)({ prompt: input, options: sdkOptions });
   try {
     for await (const message of q) {
+      opts.onActivity?.();
       if (message.type === "assistant" && !message.parent_tool_use_id) {
         const blocks = message.message.content as unknown as Record<string, unknown>[];
         if ((message.message as { model?: string }).model === "<synthetic>") {

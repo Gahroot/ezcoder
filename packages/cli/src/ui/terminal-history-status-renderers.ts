@@ -112,22 +112,6 @@ export function renderCompacted(
   );
 }
 
-export function renderPlanEvent(
-  event: "approved" | "rejected" | "dismissed" | "auto-approved",
-  detail: string | undefined,
-  context: TerminalHistoryContext,
-): string {
-  const labels = {
-    approved: "Plan approved",
-    rejected: "Plan rejected",
-    dismissed: "Plan dismissed",
-    "auto-approved": "Plan auto-approved",
-  } satisfies Record<typeof event, string>;
-  const lines = [color(context.theme.commandColor, ` ○ ${labels[event]}`, true)];
-  if (detail) lines[0] += dim(context, ` — "${detail}"`);
-  return block(lines);
-}
-
 export function renderStepDone(
   stepNum: number,
   description: string,
