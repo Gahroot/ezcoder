@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.94.0",
+    date: "2026-11-18",
+    items: [
+      "Meet `Live Preview`. Hit the new `Preview` button and your running app opens right next to the chat. Point at any element on the page and I know exactly which part you mean, so changing the look of your app is as easy as clicking it.",
+      "The newest OpenAI models just landed: `GPT-6.2 Sol` is now the default and `GPT-6.2 Astra` is right beside it, both with a Fast option. Older picks you no longer need are gone, and your saved chats move over on their own.",
+      "`Autopilot` now answers my own check-in questions for you, so long jobs keep moving while you are away. Long chats also summarize more reliably and pick up right where they left off.",
+      "More ways to plug in. You can sign in with `OpenCode Go` or OpenCode pay-as-you-go, and connect MCP tools that run as shell commands.",
+      "I cleared out a pile of unused code, so EZ Coder is lighter and steadier everywhere, including on Windows and Mac.",
+    ],
+  },
+  {
     version: "0.93.0",
     date: "2026-11-10",
     items: [
