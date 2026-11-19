@@ -176,7 +176,7 @@ EZ Coder comes with a focused set of tools. Only six core tools — `read`, `wri
 | `web_fetch` / `web_search`        | Fetch a URL / search the web                                                                           |
 | `steroids`                        | Find real production repos similar to yours and read how they do it                                    |
 | `source_path`                     | Locate an installed dependency's source                                                                |
-| `screenshot`                      | Open a URL / dev server in a headless browser and capture a PNG so the agent can see the rendered page |
+| `browser`                         | Test a page in a real browser: clicks, forms, checks, screenshots, console and network errors          |
 | `debug`                           | Drive the Node debugger                                                                                |
 | `enter_plan` / `exit_plan`        | Plan before editing, then hand the plan back for approval                                              |
 | `subagent`                        | Run one blocking, isolated child task (backward-compatible)                                            |
@@ -184,7 +184,7 @@ EZ Coder comes with a focused set of tools. Only six core tools — `read`, `wri
 | `send_message` / `followup_task`  | Steer a running child or reuse an idle child's context                                                 |
 | `list_agents` / `interrupt_agent` | Inspect or interrupt persistent children                                                               |
 
-The `screenshot` tool needs the optional `playwright` dependency plus a one-time `npx playwright install chromium`. Without it the tool returns an install hint instead of failing the turn. Captured images render inline in graphics-capable terminals (kitty, Ghostty, WezTerm, iTerm2); other terminals show a text line.
+The `browser` tool uses Playwright's Chromium (`npx playwright install chromium`) or an installed Google Chrome. Without either, it returns an install hint instead of failing the turn.
 
 Add your own MCPs in `~/.ezcoder/mcp.json` or `.ezcoder/mcp.json` if you need more — but start lean.
 

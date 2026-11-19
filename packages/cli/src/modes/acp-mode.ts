@@ -359,7 +359,7 @@ const TOOL_KINDS: Record<string, string> = {
   edit: "edit",
   write: "edit",
   bash: "execute",
-  screenshot: "execute",
+  browser: "execute",
   web_fetch: "fetch",
   source_path: "fetch",
   subagent: "think",

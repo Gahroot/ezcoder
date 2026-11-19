@@ -652,6 +652,7 @@ async function runInkTUI(opts: {
     clearReadTracker,
     lspManager,
     debugManager,
+    browserManager,
     subAgentManager,
   } = await createTools(cwd, {
     agents,
@@ -753,6 +754,8 @@ async function runInkTUI(opts: {
     processManager.shutdownAll();
     activeLspManager?.shutdownAll();
     debugManager?.shutdown();
+    // Playwright also kills its browsers on exit; this covers a normal close.
+    void browserManager?.shutdown();
     mcpManager.dispose().catch(() => {});
   });
 

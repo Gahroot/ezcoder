@@ -27,7 +27,7 @@ const NOLAN_ALLOWED_TOOLS = [
   "source_path",
   "web_fetch",
   "web_search",
-  "screenshot",
+  "browser",
   "steroids",
 ];
 
@@ -51,7 +51,7 @@ describe("Nolan allowedTools filter", () => {
         expect(nolanTools).not.toContain(banned);
       }
       // The read-only research/vision tools must survive.
-      for (const allowed of ["read", "grep", "find", "ls", "screenshot", "steroids"]) {
+      for (const allowed of ["read", "grep", "find", "ls", "browser", "steroids"]) {
         expect(nolanTools).toContain(allowed);
       }
     } finally {
