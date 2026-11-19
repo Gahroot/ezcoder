@@ -147,8 +147,7 @@ pub(crate) const AUTH_PROVIDERS: &[ProviderMeta] = &[
     ProviderMeta {
         value: "gemini",
         label: "Gemini",
-        description:
-            "Gemini 3.8 Flash, 3.5 Flash Lite, 3.1 Flash Lite, 3.5 Flash, 3.1 Pro (Preview)",
+        description: "Gemini 4 Hydrogen, 4 Argon, 4 Carbon, 3.8 Flash, 3.6 Flash, 3.5 Flash Lite, 3.1 Flash Lite, 3.5 Flash, 3.1 Pro (Preview)",
         // Google sign-in (Code Assist, stored under `gemini`) or an AI Studio
         // key stored under its own `gemini-api` key — mirrors @prestyj/core's
         // AUTH_PROVIDERS. Not a dual-auth provider: the API key is used first.
