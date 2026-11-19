@@ -1,6 +1,7 @@
 # Upstream picks (KenKaiii/gg-framework → ezcoder)
 
 Status of the take/skip plan made on 2026-11-17 for upstream up to e8d8c9ab (v0.114.0).
+Extended on 2026-11-19 through 4b1946a3 (after v0.117.0).
 
 `origin/main` already holds upstream up to **ab961083 (v0.109, 2026-11-10)**: the
 "Sync upstream v0.109 (keep our sign-ins and UI)" merge (#39). Every planned
@@ -48,6 +49,10 @@ Ports live on branch `upstream-picks` (PR #45) as `Port upstream <sha>: …` com
 | 6d7297ca                     | Autopilot answers for ask_user, slim /init             | `upstream-picks` aaf5c90e |
 | 9b4a191f                     | Live Preview (panel rebuilt in our UI)                 | `upstream-picks` 290a17e3 |
 | 58013cac                     | Dead-code removal (partial, see below)                 | `upstream-picks` ce3a0a0a |
+| 7c90836a                     | GPT-6.2 Astra and Sol                                  | #44 (own port)            |
+| cecf292e                     | Gemini 4 and 3.6 Flash, `@prestyj/cli/mcp` export      | `main` f1401821           |
+| 7c582859                     | `browser` tool replaces `screenshot`                   | `main` bccdb4f6           |
+| 4b1946a3                     | Subagent thinking, full-diff review gate, ask_user     | `main` 5bacff35           |
 
 ## Partial picks
 
@@ -87,6 +92,10 @@ Ports live on branch `upstream-picks` (PR #45) as `Port upstream <sha>: …` com
 
 ## Dropped
 
+- **7c90836a** ChatGPT Manage usage button: it reacts to `subscription_sharing_*`
+  codes from upstream's plan route. Our ChatGPT sign-in goes through the Codex
+  route, which never sends them. The GPT-6.2 half came in through #44.
+- cc98f16a, e15df372: upstream community and marketing links.
 - **16913f9e** ChatGPT `invalid_grant` retry: it patches upstream's
   `loginChatGPT`/`exchangeCode` sign-in. We kept our own `loginOpenAI` flow, so
   the fix has nothing to apply to.
@@ -110,4 +119,4 @@ Ports live on branch `upstream-picks` (PR #45) as `Port upstream <sha>: …` com
 
 ## Deferred
 
-- None from the plan. Upstream commits after e8d8c9ab weren't reviewed.
+- None. Upstream commits after 4b1946a3 haven't been reviewed.
