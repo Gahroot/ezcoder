@@ -117,6 +117,9 @@ pub fn run() {
     );
     let http_client = reqwest::Client::builder()
         .default_headers(default_headers)
+        // Loopback only: never route through a system/env HTTP proxy (VPN or
+        // corporate proxies break `127.0.0.1` requests with "error sending request").
+        .no_proxy()
         // The daemon is on loopback, so a connect that doesn't land quickly
         // never will. No overall timeout here: the SSE stream is long-lived.
         .connect_timeout(std::time::Duration::from_secs(5))
