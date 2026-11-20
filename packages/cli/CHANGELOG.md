@@ -1,5 +1,21 @@
 # @prestyj/cli
 
+## 5.35.0
+
+### Minor Changes
+
+- f67e021: Add the `browser` tool, which replaces `screenshot`: the agent drives a real browser with a short script (clicks, forms, checks, screenshots) and gets back console and network errors. It uses Playwright's Chromium or an installed Google Chrome.
+- f140182: Export the MCP client as `@prestyj/cli/mcp`, and keep each MCP tool's annotations (`readOnlyHint`, `destructiveHint`) on the agent tool.
+- f140182: Add Gemini 4 Hydrogen (`gemini-4-hydrogen`), Argon (`gemini-4-argon`) and Carbon (`gemini-4-carbon`), each with a 1M window, 64K output and image and video input, and Gemini 3.6 Flash (`gemini-3.6-flash`), which replaced 3.5 Flash. Gemini 3.1 Flash Lite stays the Gemini default. Gemini 4 and later get a thinking level instead of a token budget, the way Gemini 3 does (a budget 400s there).
+
+### Patch Changes
+
+- f67e021: Subagents now run at the parent's thinking level instead of the lowest one. The `/commit` review gate only counts a CLEAR when the reviewer read the whole diff. Questions get a full answer before the `ask_user` card instead of just the card.
+- Updated dependencies [f140182]
+  - @prestyj/ai@5.35.0
+  - @prestyj/core@5.35.0
+  - @prestyj/agent@5.35.0
+
 ## 5.34.0
 
 ### Minor Changes
