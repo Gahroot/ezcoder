@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.95.0",
+    date: "2026-11-19",
+    items: [
+      "I can now test your app like a real person. The new `browser` tool clicks through pages, fills in forms, checks what shows up and takes screenshots, then tells you about any console or network errors it hits along the way.",
+      "Fresh Google models just landed: `Gemini 4 Hydrogen`, `Argon` and `Carbon`, plus the speedy `Gemini 3.6 Flash`, each with proper thinking control.",
+      "Helpers I hand work to now think as hard as you asked me to, and my `/commit` reviewer has to read your whole change before it gives the all clear. When you ask me something, you get a full answer, not just a question card.",
+      "The app now talks to its own engine directly, even when your computer runs through a proxy, so it starts up reliably on more networks.",
+    ],
+  },
+  {
     version: "0.94.0",
     date: "2026-11-18",
     items: [
