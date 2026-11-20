@@ -418,7 +418,12 @@ export function createBrowserApi(m: BrowserManager, cwd: string, shots: Screensh
         element && hasTarget(element)
           ? await onElement(p, element, (loc) => loc.screenshot({ timeout: ACTION_TIMEOUT_MS }))
           : await p.screenshot({ fullPage: o.full_page === true });
-      const out = path.join(cwd, ".ezcoder", "browser", `shot-${Date.now()}-${shots.length + 1}.png`);
+      const out = path.join(
+        cwd,
+        ".ezcoder",
+        "browser",
+        `shot-${Date.now()}-${shots.length + 1}.png`,
+      );
       await mkdir(path.dirname(out), { recursive: true });
       await writeFile(out, data);
       shots.push({ path: out, data });
