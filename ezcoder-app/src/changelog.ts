@@ -17,6 +17,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.95.1",
+    date: "2026-11-20",
+    items: [
+      "I tightened up the new `browser` tool so it always ships with the browser engine it needs, so clicking through your app works right out of the box.",
+    ],
+  },
+  {
     version: "0.95.0",
     date: "2026-11-19",
     items: [
