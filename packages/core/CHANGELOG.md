@@ -1,5 +1,11 @@
 # @prestyj/core
 
+## 5.35.1
+
+### Patch Changes
+
+- @prestyj/ai@5.35.1
+
 ## 5.35.0
 
 ### Minor Changes

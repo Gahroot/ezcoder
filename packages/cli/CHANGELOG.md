@@ -1,5 +1,14 @@
 # @prestyj/cli
 
+## 5.35.1
+
+### Patch Changes
+
+- 6267c28: Require Playwright 1.65 or newer, which the `browser` tool needs. With an older Playwright, element clicks by snapshot ref failed.
+  - @prestyj/ai@5.35.1
+  - @prestyj/agent@5.35.1
+  - @prestyj/core@5.35.1
+
 ## 5.35.0
 
 ### Minor Changes
