@@ -35,6 +35,7 @@ import { createTaskStopTool } from "./task-stop.js";
 import { createTaskSendTool } from "./task-send.js";
 import { createTasksTool } from "./tasks.js";
 import { createChecklistTool } from "./checklist.js";
+import { createValidateTool } from "./validate.js";
 
 import { createSkillTool } from "./skill.js";
 import { BrowserManager, createBrowserTool } from "./browser.js";
@@ -319,6 +320,7 @@ export async function createTools(
     createTasksTool(cwd),
     createGoalsTool(cwd, goalModeRef),
     createChecklistTool(cwd),
+    ...(ops === localOperations ? [createValidateTool(cwd)] : []),
     ...(browserManager ? [createBrowserTool(cwd, browserManager)] : []),
     // The debugger connects to a loopback inspector port, so the program must
     // run on this machine: local operations only, like LSP.

@@ -219,6 +219,7 @@ import {
   STEERING_PREFIX,
 } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
+import { attachValidationNotifications } from "./validation/session-hook.js";
 import { VerificationGate, VERIFICATION_STATE_KIND } from "./verification-gate.js";
 import type { VerificationEvidence } from "./verification-evidence.js";
 
@@ -836,6 +837,8 @@ export class AgentSession {
    * live turn so the agent never has to spend a turn asking.
    */
   private readonly notifications = new AgentNotificationQueue();
+  /** Stops async-validation notifications for this session's project. */
+  private detachValidation: (() => void) | undefined;
   private managerAbortSignal?: AbortSignal;
   private readonly managerAbortHandler = () => {
     this.lspManager?.clearPendingDiagnostics();
@@ -1147,6 +1150,8 @@ export class AgentSession {
           }
         : {}),
     });
+    this.detachValidation?.();
+    this.detachValidation = attachValidationNotifications(() => this.cwd, this.notifications);
     const tools = [...builtInTools, ...(this.opts.additionalTools ?? [])];
     // Internal-only tool, appended last so public sessions keep a
     // byte-identical tool block (prefix-cache stability).
@@ -5533,6 +5538,8 @@ export class AgentSession {
     // First and synchronous: nothing below may delay this, or a hung teardown
     // step leaves background commands running after the app has quit.
     this.stopBackgroundProcesses();
+    this.detachValidation?.();
+    this.detachValidation = undefined;
     this.installedWatchStop?.();
     this.releaseClaudeCodeTranscript?.();
     this.releaseClaudeCodeTranscript = undefined;

@@ -16,7 +16,7 @@
  */
 
 /** Notification source. Extended as new push producers are added. */
-export type NotificationKind = "subagent" | "process" | "goal";
+export type NotificationKind = "subagent" | "process" | "goal" | "validation";
 
 export interface AgentNotification {
   kind: NotificationKind;

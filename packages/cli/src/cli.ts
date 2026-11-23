@@ -123,6 +123,7 @@ import chalk from "chalk";
 import { checkAndAutoUpdate } from "./core/auto-update.js";
 
 import { routeCliCommandInput, type CliSubcommandName } from "./cli/command-routing.js";
+import { runValidate } from "./cli/validate.js";
 import { parseThinkingLevel } from "./cli/thinking-arg.js";
 
 function printHelp(): void {
@@ -161,6 +162,7 @@ function printHelp(): void {
     ["telegram", "Configure Telegram bot integration"],
     ["agent-home-login", "Configure Agent Home relay connection"],
     ["agent-home", "Connect to Agent Home as a remote agent"],
+    ["validate", "Async validation on workers (run, status, gate, workers)"],
     ["mcp", "Add and manage MCP servers"],
   ];
   for (const [name, desc] of cmds) {
@@ -252,6 +254,7 @@ function createCliSubcommandHandlers(): Record<CliSubcommandName, () => void> {
     },
     "agent-home-login": () => runWithStandardErrorHandling(runAgentHomeLogin),
     "agent-home": () => runWithStandardErrorHandling(runAgentHome),
+    validate: () => runWithStandardErrorHandling(() => runValidate()),
   };
 }
 

@@ -1001,6 +1001,55 @@
       "hash": "e6a5135f1c194b71165bdac1e15292b34e421789048f643d253b29dc0b695176"
     },
     {
+      "name": "validate",
+      "description": "Async tests on workers (local quick checks, remote heavy suites) against exact commits; returns at once and you're notified when each stage finishes — keep working, never wait or poll. Stages come from .ezcoder/validation.json or are detected. Remote stages test the committed SHA (commit and push first); a newer commit supersedes older runs. Use gate before calling work merge- or release-ready.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "run",
+              "status",
+              "gate",
+              "logs",
+              "cancel",
+              "retry",
+              "workers"
+            ],
+            "description": "run: queue stages for a commit and return at once. status: config and jobs. gate: did every required stage pass at this exact commit. logs/cancel/retry: one job. workers: backends and health."
+          },
+          "stages": {
+            "description": "run: stage names (default all)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ref": {
+            "description": "run/gate: commit or branch (default HEAD)",
+            "type": "string"
+          },
+          "id": {
+            "description": "logs/cancel/retry: job id",
+            "type": "string"
+          },
+          "full": {
+            "description": "logs: whole log, not only the failing part",
+            "type": "boolean"
+          },
+          "force": {
+            "description": "run: re-run even if this commit already passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "hash": "893600004d61ac83163817c376ed22b034631d8a2f4c639bd2598297771411d7"
+    },
+    {
       "name": "web_fetch",
       "description": "Fetch pages/PDFs as Markdown. format outline numbers links; then `follow: N`.",
       "schema": {

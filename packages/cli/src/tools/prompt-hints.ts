@@ -34,6 +34,8 @@ export const TOOL_PROMPT_HINTS: Record<string, string> = {
   checklist:
     "Read/record project checks with evidence and scope; re-record an item after fixing it. No unasked audits.",
   tasks: "Task list; only if asked.",
+  validate:
+    "Async tests on workers against a commit; returns at once, notifies when done. Merge/release gate.",
   ask_user: "Ask the user via clickable options; mark your pick `recommended`.",
   exit_plan: "Submit a plan.",
   subagent: "Blocking child agent.",
@@ -164,6 +166,7 @@ export const BUILTIN_TOOL_NAMES: readonly string[] = [
   "tool_search",
   "ui_registry",
   "ui_adopt",
+  "validate",
   "wait_agent",
   "web_fetch",
   "web_search",

@@ -14,6 +14,7 @@ function handlers(calls: string[]): Record<CliSubcommandName, () => void> {
     acp: () => calls.push("acp"),
     "agent-home-login": () => calls.push("agent-home-login"),
     "agent-home": () => calls.push("agent-home"),
+    validate: () => calls.push("validate"),
   };
 }
 
