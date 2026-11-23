@@ -17,6 +17,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.96.0",
+    date: "2026-11-23",
+    items: [
+      "Your tests now run in the background while we keep talking. Just ask me to `validate` a commit and I queue the checks, keep working with you, and tell you the moment they pass or fail. Got a spare PC or a cloud runner? Add it once with `ezcoder validate add-worker` and every project can send its heavy test runs there.",
+    ],
+  },
+  {
     version: "0.95.1",
     date: "2026-11-20",
     items: [
