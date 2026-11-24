@@ -17,6 +17,14 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.98.0",
+    date: "2026-11-24",
+    items: [
+      "Your other computers can now do real work for me, not just run tests. Set one up with `ezcoder node` and connect it over Tailscale, then I can run builds, browser tests, video renders and deploys there and bring the results back to you. Deploys still wait for your tests to pass.",
+      "Got a machine with a good graphics card? I can start a local AI model on it, and it shows up in your model list automatically. I can also spin up dev environments and remote browsers on your machines, and send helper agents to work there with `spawn_agent`. Their changes come back to your folder.",
+    ],
+  },
+  {
     version: "0.97.0",
     date: "2026-11-24",
     items: [
