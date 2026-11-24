@@ -10,7 +10,9 @@ export type CliSubcommandName =
   | "acp"
   | "agent-home-login"
   | "agent-home"
-  | "validate";
+  | "validate"
+  | "node"
+  | "fleet";
 
 export type CliCommandRouteResult =
   | { kind: "handled"; subcommand: CliSubcommandName }
@@ -49,7 +51,9 @@ function isCliSubcommandName(value: string | undefined): value is CliSubcommandN
     value === "acp" ||
     value === "agent-home-login" ||
     value === "agent-home" ||
-    value === "validate"
+    value === "validate" ||
+    value === "node" ||
+    value === "fleet"
   );
 }
 

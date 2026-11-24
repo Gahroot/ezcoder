@@ -36,6 +36,8 @@ export const TOOL_PROMPT_HINTS: Record<string, string> = {
   tasks: "Task list; only if asked.",
   validate:
     "Async tests on workers against a commit; returns at once, notifies when done. Merge/release gate.",
+  fleet:
+    "Jobs/services on the user's other machines (builds, e2e, renders, deploys, GPU LLMs, remote browser, dev envs); returns at once, notifies.",
   ask_user: "Ask the user via clickable options; mark your pick `recommended`.",
   exit_plan: "Submit a plan.",
   subagent: "Blocking child agent.",
@@ -145,6 +147,7 @@ export const BUILTIN_TOOL_NAMES: readonly string[] = [
   "enter_plan",
   "exit_plan",
   "find",
+  "fleet",
   "followup_task",
   "generate_image",
   "grep",

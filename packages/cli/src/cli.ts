@@ -124,6 +124,8 @@ import { checkAndAutoUpdate } from "./core/auto-update.js";
 
 import { routeCliCommandInput, type CliSubcommandName } from "./cli/command-routing.js";
 import { runValidate } from "./cli/validate.js";
+import { runNode } from "./cli/node.js";
+import { runFleet } from "./cli/fleet.js";
 import { parseThinkingLevel } from "./cli/thinking-arg.js";
 
 function printHelp(): void {
@@ -163,6 +165,8 @@ function printHelp(): void {
     ["agent-home-login", "Configure Agent Home relay connection"],
     ["agent-home", "Connect to Agent Home as a remote agent"],
     ["validate", "Async validation on workers (run, status, gate, workers)"],
+    ["node", "Run this machine as a fleet node (init, serve, status, secret, install)"],
+    ["fleet", "Send jobs and services to your other machines (nodes, run, service)"],
     ["mcp", "Add and manage MCP servers"],
   ];
   for (const [name, desc] of cmds) {
@@ -255,6 +259,8 @@ function createCliSubcommandHandlers(): Record<CliSubcommandName, () => void> {
     "agent-home-login": () => runWithStandardErrorHandling(runAgentHomeLogin),
     "agent-home": () => runWithStandardErrorHandling(runAgentHome),
     validate: () => runWithStandardErrorHandling(() => runValidate()),
+    node: () => runWithStandardErrorHandling(() => runNode()),
+    fleet: () => runWithStandardErrorHandling(() => runFleet()),
   };
 }
 

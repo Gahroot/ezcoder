@@ -207,5 +207,5 @@ export interface ExecResult {
 export type Exec = (
   cmd: string,
   args: string[],
-  opts?: { cwd?: string; timeoutMs?: number },
+  opts?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> },
 ) => Promise<ExecResult>;

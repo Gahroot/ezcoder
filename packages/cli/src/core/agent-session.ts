@@ -220,6 +220,7 @@ import {
 } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
 import { attachValidationNotifications } from "./validation/session-hook.js";
+import { attachFleetNotifications } from "./fleet/session-hook.js";
 import { VerificationGate, VERIFICATION_STATE_KIND } from "./verification-gate.js";
 import type { VerificationEvidence } from "./verification-evidence.js";
 
@@ -839,6 +840,7 @@ export class AgentSession {
   private readonly notifications = new AgentNotificationQueue();
   /** Stops async-validation notifications for this session's project. */
   private detachValidation: (() => void) | undefined;
+  private detachFleet: (() => void) | undefined;
   private managerAbortSignal?: AbortSignal;
   private readonly managerAbortHandler = () => {
     this.lspManager?.clearPendingDiagnostics();
@@ -1152,6 +1154,8 @@ export class AgentSession {
     });
     this.detachValidation?.();
     this.detachValidation = attachValidationNotifications(() => this.cwd, this.notifications);
+    this.detachFleet?.();
+    this.detachFleet = attachFleetNotifications(() => this.cwd, this.notifications);
     const tools = [...builtInTools, ...(this.opts.additionalTools ?? [])];
     // Internal-only tool, appended last so public sessions keep a
     // byte-identical tool block (prefix-cache stability).
@@ -5540,6 +5544,8 @@ export class AgentSession {
     this.stopBackgroundProcesses();
     this.detachValidation?.();
     this.detachValidation = undefined;
+    this.detachFleet?.();
+    this.detachFleet = undefined;
     this.installedWatchStop?.();
     this.releaseClaudeCodeTranscript?.();
     this.releaseClaudeCodeTranscript = undefined;

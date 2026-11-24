@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { GitHubActionsBackend, type GitHubActionsBackendConfig } from "./github-actions-backend.js";
 import { LocalBackend } from "./local-backend.js";
+import { NodeBackend, type NodeBackendConfig, type NodeBackendDeps } from "./node-backend.js";
 import type { Exec, Resources, ValidationBackend } from "./types.js";
 
 export interface BackendsFile {
@@ -11,7 +12,9 @@ export interface BackendsFile {
   maxConcurrent?: number;
   /** Concurrent local stages. */
   localMaxConcurrent?: number;
-  backends?: GitHubActionsBackendConfig[];
+  backends?: Array<GitHubActionsBackendConfig | NodeBackendConfig>;
+  /** Use every paired fleet node (~/.ezcoder/fleet/nodes.json) as a pool "fleet". */
+  fleetNodes?: boolean;
 }
 
 export function backendsFilePath(dir: string): string {
@@ -35,6 +38,7 @@ export function writeBackendsFile(dir: string, data: BackendsFile): void {
 export function loadBackends(
   dir: string,
   exec: Exec,
+  nodeDeps?: Partial<NodeBackendDeps>,
 ): { backends: ValidationBackend[]; maxConcurrent: number; problems: string[] } {
   const file = readBackendsFile(dir);
   const problems: string[] = [];
@@ -51,11 +55,22 @@ export function loadBackends(
         problems.push(`backend "${cfg.id}": "cloud" needs "discover": true; cloud ignored`);
       }
       backends.push(new GitHubActionsBackend(cfg, exec));
+    } else if (cfg.kind === "node") {
+      const id = cfg.id ?? "fleet";
+      if (id === "local" || backends.some((b) => b.id === id)) {
+        problems.push(`duplicate backend id "${id}"`);
+        continue;
+      }
+      backends.push(new NodeBackend({ ...cfg, id }, nodeDeps));
     } else {
       problems.push(
         `backend "${String(cfg.id)}": unsupported or incomplete (kind ${String(cfg.kind)})`,
       );
     }
+  }
+  // Every paired node, unless an explicit node entry already took the "fleet" id.
+  if (file.fleetNodes && !backends.some((b) => b.id === "fleet")) {
+    backends.push(new NodeBackend({ kind: "node", id: "fleet" }, nodeDeps));
   }
   return { backends, maxConcurrent: Math.max(1, file.maxConcurrent ?? 4), problems };
 }

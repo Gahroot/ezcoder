@@ -7,7 +7,12 @@ export const defaultExec: Exec = (cmd, args, opts = {}) =>
     execFile(
       cmd,
       args,
-      { cwd: opts.cwd, timeout: opts.timeoutMs ?? 60_000, maxBuffer: 32 * 1024 * 1024 },
+      {
+        cwd: opts.cwd,
+        timeout: opts.timeoutMs ?? 60_000,
+        maxBuffer: 32 * 1024 * 1024,
+        ...(opts.env ? { env: { ...process.env, ...opts.env } } : {}),
+      },
       (err, stdout, stderr) => {
         const code =
           err && typeof (err as NodeJS.ErrnoException).code === "number"

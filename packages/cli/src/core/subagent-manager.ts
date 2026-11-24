@@ -1,8 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { statSync } from "node:fs";
 import path from "node:path";
+import type { Readable, Writable } from "node:stream";
 import type { Message, Provider, ThinkingLevel } from "@prestyj/ai";
 import { getAppPaths, withoutPaidTier } from "@prestyj/core";
 import { mcpServersForAgent, type AgentDefinition } from "./agents.js";
@@ -29,6 +30,7 @@ import {
   SUB_AGENT_MAX_STDERR_CHARS,
   SUB_AGENT_TIMEOUT_MS,
 } from "../tools/subagent-shared.js";
+import { RemoteWorkerProcess, type RemoteWorkerSpawn } from "./fleet/remote-agent.js";
 
 export type SubAgentState =
   "starting" | "running" | "completed" | "failed" | "interrupted" | "closed" | "reaped";
@@ -65,6 +67,12 @@ export interface SubAgentSnapshot {
   child_session_path?: string;
   /** Folder the child works in, when it isn't the parent's cwd. */
   cwd?: string;
+  /**
+   * Fleet node the child runs on ("auto" until one is picked); absent = this
+   * machine. Recovery re-attaches to `remote_agent_id` on that node.
+   */
+  machine?: string;
+  remote_agent_id?: string;
   collected?: boolean;
   recovered?: boolean;
 }
@@ -128,10 +136,32 @@ export interface SubAgentManagerOptions {
   adoptionPollMs?: number;
   store?: SubAgentStore;
   sessionRootDir?: string;
+  /** Remote (fleet) worker factory; injectable for tests. */
+  createRemoteWorker?: (spawn: RemoteWorkerSpawn) => RemoteWorkerHandle;
+  /** Sync state and kept conflict patches of remote children (default: <sessionRootDir>/remote). */
+  remoteStateDir?: string;
+}
+
+/** The part of a ChildProcess the manager drives; a remote worker provides the same. */
+export interface SubAgentWorkerProcess {
+  readonly stdin: Writable | null;
+  readonly stdout: Readable | null;
+  readonly stderr: Readable | null;
+  readonly pid?: number | undefined;
+  readonly exitCode: number | null;
+  readonly killed: boolean;
+  kill(signal?: NodeJS.Signals | number): boolean;
+  on(event: string, listener: (...args: unknown[]) => void): unknown;
+  once(event: string, listener: (...args: unknown[]) => void): unknown;
+}
+
+export interface RemoteWorkerHandle extends SubAgentWorkerProcess {
+  /** Resolves once attached; `resumed` = joined a worker that was already running. */
+  readonly attached: Promise<{ resumed: boolean }>;
 }
 
 interface WorkerRecord extends SubAgentSnapshot {
-  process: ChildProcess;
+  process: SubAgentWorkerProcess;
   requests: Map<
     string,
     { resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void }
@@ -273,7 +303,8 @@ export class SubAgentManager {
             }
           : { recovered: true }),
       };
-      if (wasActive && snapshot.child_session_path) {
+      // A remote child's transcript and turn record live on its node.
+      if (wasActive && snapshot.child_session_path && !snapshot.machine) {
         adoptable.push({ snapshot, lastObservedAt: persisted.updated_at });
       }
       this.snapshots.set(snapshot.agent_id, snapshot);
@@ -433,6 +464,8 @@ export class SubAgentManager {
       cwd?: string;
       /** Files the parent already read, handed over in the brief (see withContextFiles). */
       contextFiles?: readonly string[];
+      /** Fleet node to run on: "auto" or a paired node name. Absent = this machine. */
+      machine?: string;
     },
   ): Promise<SubAgentSnapshot> {
     this.assertAvailable();
@@ -479,7 +512,10 @@ export class SubAgentManager {
 
     const now = Date.now();
     const agentId = this.createId();
-    const child = this.spawnWorkerProcess(childCwd);
+    const machine = overrides?.machine?.trim() || undefined;
+    const child = machine
+      ? this.spawnRemoteWorker(agentId, childCwd, { machine })
+      : this.spawnWorkerProcess(childCwd);
     const record: WorkerRecord = {
       agent_id: agentId,
       task_name: taskName,
@@ -494,6 +530,7 @@ export class SubAgentManager {
       provider,
       model: selection.model,
       ...(childCwd !== this.options.cwd ? { cwd: childCwd } : {}),
+      ...(machine && { machine }),
       collected: false,
       process: child,
       requests: new Map(),
@@ -547,7 +584,7 @@ export class SubAgentManager {
       if (typeof initialized.model === "string") record.model = initialized.model;
       record.child_session_path =
         typeof initialized.child_session_path === "string"
-          ? this.assertChildSessionPath(initialized.child_session_path)
+          ? this.childSessionPathFor(record, initialized.child_session_path)
           : undefined;
       this.publish(record);
       await this.waitForPersistence();
@@ -825,7 +862,40 @@ export class SubAgentManager {
     return roots.length > 0 ? roots : undefined;
   }
 
-  private spawnWorkerProcess(cwd: string): ChildProcess {
+  /**
+   * A worker on a fleet node. Edits come back to `cwd`; the node and remote
+   * id are recorded as soon as they are known so recovery can re-attach.
+   */
+  private spawnRemoteWorker(
+    agentId: string,
+    cwd: string,
+    target: { machine: string; resume?: { node: string; remoteAgentId: string } },
+  ): RemoteWorkerHandle {
+    const spawnOptions: RemoteWorkerSpawn = {
+      machine: target.machine,
+      cwd,
+      localAgentId: agentId,
+      stateRoot: this.options.remoteStateDir ?? path.join(this.sessionRootDir, "remote"),
+      ...(target.resume && { resume: target.resume }),
+      onRemote: (info) => {
+        const worker = this.workers.get(agentId);
+        if (!worker) return;
+        worker.machine = info.node;
+        worker.remote_agent_id = info.remoteAgentId;
+        this.publish(worker);
+      },
+    };
+    return this.options.createRemoteWorker
+      ? this.options.createRemoteWorker(spawnOptions)
+      : new RemoteWorkerProcess(spawnOptions);
+  }
+
+  /** Local transcripts must sit under the session root; a remote one is a node path. */
+  private childSessionPathFor(worker: SubAgentSnapshot, candidate: string): string {
+    return worker.machine ? candidate : this.assertChildSessionPath(candidate);
+  }
+
+  private spawnWorkerProcess(cwd: string): SubAgentWorkerProcess {
     return spawn(
       process.execPath,
       [this.options.workerEntry ?? resolveSubAgentCliEntry(), "--subagent-worker"],
@@ -839,7 +909,15 @@ export class SubAgentManager {
   }
 
   private async respawnRecovered(snapshot: SubAgentSnapshot): Promise<WorkerRecord> {
-    if (!snapshot.child_session_path) {
+    const remote = snapshot.machine
+      ? { node: snapshot.machine, remoteAgentId: snapshot.remote_agent_id }
+      : undefined;
+    if (remote && (!remote.remoteAgentId || remote.node === "auto")) {
+      throw new Error(
+        `Agent ${snapshot.agent_id} never started on a machine; spawn a new agent instead`,
+      );
+    }
+    if (!remote && !snapshot.child_session_path) {
       throw new Error(`Agent ${snapshot.agent_id} was reaped and has no recoverable child session`);
     }
     const agentDef = snapshot.agent_name
@@ -850,11 +928,21 @@ export class SubAgentManager {
     const parentModel = this.options.getModel();
     const parentThinkingLevel = this.options.getThinkingLevel?.();
     this.assertModelCapacity(model);
-    const childSessionPath = this.assertChildSessionPath(snapshot.child_session_path);
+    // A remote transcript path is the node's; the node fills it in itself.
+    const childSessionPath = remote
+      ? undefined
+      : this.assertChildSessionPath(snapshot.child_session_path!);
     // Wake it where it was working; re-checked, since the workspace may have
     // changed since it was started.
     const childCwd = this.resolveChildCwd(snapshot.cwd);
-    const child = this.spawnWorkerProcess(childCwd);
+    // Remote: re-attach to the same agent on its node, never respawn locally.
+    const remoteChild = remote
+      ? this.spawnRemoteWorker(snapshot.agent_id, childCwd, {
+          machine: remote.node,
+          resume: { node: remote.node, remoteAgentId: remote.remoteAgentId! },
+        })
+      : undefined;
+    const child = remoteChild ?? this.spawnWorkerProcess(childCwd);
     const worker: WorkerRecord = {
       ...snapshot,
       state: "starting",
@@ -877,6 +965,14 @@ export class SubAgentManager {
     this.attach(worker);
     await this.waitForPersistence();
     try {
+      if (remoteChild && (await remoteChild.attached).resumed) {
+        // Its worker outlived the parent and is still initialized: keep it.
+        worker.state = snapshot.state;
+        worker.updated_at = Date.now();
+        this.publish(worker);
+        await this.waitForPersistence();
+        return worker;
+      }
       const initialized = await this.request(worker, "initialize", {
         options: {
           provider,
@@ -907,7 +1003,10 @@ export class SubAgentManager {
         worker.child_session_id = initialized.child_session_id;
       }
       if (typeof initialized.child_session_path === "string") {
-        worker.child_session_path = this.assertChildSessionPath(initialized.child_session_path);
+        worker.child_session_path = this.childSessionPathFor(
+          worker,
+          initialized.child_session_path,
+        );
       }
       if (typeof initialized.model === "string") worker.model = initialized.model;
       worker.state = snapshot.state;
@@ -1096,6 +1195,8 @@ export class SubAgentManager {
       child_session_id: worker.child_session_id,
       child_session_path: worker.child_session_path,
       ...(worker.cwd !== undefined && { cwd: worker.cwd }),
+      ...(worker.machine !== undefined && { machine: worker.machine }),
+      ...(worker.remote_agent_id !== undefined && { remote_agent_id: worker.remote_agent_id }),
       collected: worker.collected,
       recovered: worker.recovered,
     };

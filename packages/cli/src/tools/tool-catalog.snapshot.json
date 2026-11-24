@@ -409,6 +409,63 @@
       "hash": "6f58f3bd0ce914f5cdb56f2d507e812620ab5e3bdde53e5101dd45a193df5513"
     },
     {
+      "name": "fleet",
+      "description": "Run work on the user's other machines (nodes): builds, e2e/browser tests, renders, deploys, GPU inference, remote browsers, dev environments. Returns at once; you're notified when jobs finish — keep working, never wait or poll. Jobs run the pushed commit (push first, or uncommitted: true).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "nodes",
+              "run",
+              "status",
+              "logs",
+              "artifacts",
+              "cancel",
+              "service_up",
+              "service_down",
+              "services",
+              "exec"
+            ],
+            "description": "nodes: machines and load. run: queue a project job. status: jobs and config. logs/artifacts/cancel: one job. service_up/service_down/services: long-running services (llm, browser, dev, ...). exec: run a command in a devenv service."
+          },
+          "name": {
+            "description": "run: job name. service_up/service_down/exec: service name or id (exec default dev)",
+            "type": "string"
+          },
+          "id": {
+            "description": "logs/artifacts/cancel: job id",
+            "type": "string"
+          },
+          "node": {
+            "description": "run/service_up: pin a node (default: best fit)",
+            "type": "string"
+          },
+          "uncommitted": {
+            "description": "run/service_up: include uncommitted changes as a patch",
+            "type": "boolean"
+          },
+          "command": {
+            "description": "exec: shell command",
+            "type": "string"
+          },
+          "use": {
+            "description": "service_up browser: make the browser tool use it",
+            "type": "boolean"
+          },
+          "out": {
+            "description": "artifacts: download folder",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "hash": "a619d0b3f88f7a43eb35d9fd0e5c3f29bbf0132acd66bd8e6b2c3090777e1c6d"
+    },
+    {
       "name": "goals",
       "description": "Manage durable Goal runs for /goal and Ctrl+G workflows. Use this instead of tasks when the user wants a programmatic goal loop: define success criteria first, check prerequisites before launching workers, persist harness/diagnostics/evidence, add standalone worker tasks, record final completion audits, and only mark the goal complete when verifier plus final-audit evidence proves the original objective. Do not require paid services or signups without recording a blocker and asking the user for the missing prerequisite.",
       "schema": {

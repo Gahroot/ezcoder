@@ -50,8 +50,20 @@ export interface CaptureMark {
   events: number;
 }
 
-interface Chromium {
+export interface Chromium {
   launch(opts: { headless: boolean; channel?: string }): Promise<Browser>;
+  /** Attach to a remote Playwright server (`playwright run-server`). */
+  connect(wsEndpoint: string, opts?: { timeout?: number }): Promise<Browser>;
+}
+
+export interface BrowserManagerOptions {
+  /** Load Playwright's chromium (tests inject a fake). */
+  loadChromium?: () => Promise<Chromium>;
+  /**
+   * A remote Playwright server to connect to instead of launching locally
+   * (a fleet browser service, EZCODER_BROWSER_WS). Undefined keeps the default.
+   */
+  wsEndpoint?: () => Promise<string | undefined> | string | undefined;
 }
 
 let chromiumModule: Promise<Chromium> | undefined;
@@ -105,6 +117,10 @@ export class BrowserManager {
   private launching: Promise<Page> | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
   private closedWhileIdle = false;
+  /** ws endpoint of the remote browser in use, if connected rather than launched. */
+  remoteEndpoint: string | undefined;
+
+  constructor(private readonly opts: BrowserManagerOptions = {}) {}
 
   get isOpen(): boolean {
     return this.context !== undefined;
@@ -164,6 +180,7 @@ export class BrowserManager {
 
   private reset(): void {
     this.browser = undefined;
+    this.remoteEndpoint = undefined;
     this.context = undefined;
     this.current = undefined;
     this.console = [];
@@ -176,23 +193,37 @@ export class BrowserManager {
   private async launch(): Promise<Page> {
     let chromium: Chromium;
     try {
-      chromium = await loadChromium();
+      chromium = await (this.opts.loadChromium ?? loadChromium)();
     } catch (err) {
       if (isModuleNotFound(err)) throw new BrowserUnavailableError(BROWSER_INSTALL_HINT);
       const reason = err instanceof Error ? err.message : String(err);
       throw new BrowserUnavailableError(`${BROWSER_INSTALL_HINT}\n(load error: ${reason})`);
     }
     let browser: Browser;
-    try {
-      browser = await chromium.launch({ headless: true });
-    } catch (err) {
-      if (!isBinaryMissing(err)) throw err;
-      // Playwright's own Chromium isn't downloaded; an installed Chrome works as well.
-      browser = await chromium.launch({ headless: true, channel: "chrome" }).catch((): never => {
-        throw new BrowserUnavailableError(BROWSER_INSTALL_HINT);
+    const ws = await this.opts.wsEndpoint?.();
+    if (ws) {
+      browser = await chromium.connect(ws, { timeout: 30_000 }).catch((err: unknown): never => {
+        const reason = err instanceof Error ? err.message.split("\n")[0] : String(err);
+        throw new BrowserUnavailableError(
+          `Could not connect to the remote browser at ${ws}: ${reason}\n` +
+            "Is the fleet browser service running (and on the same Playwright version)? " +
+            "Unset EZCODER_BROWSER_WS / the fleet browser to use a local one.",
+        );
       });
+    } else {
+      try {
+        browser = await chromium.launch({ headless: true });
+      } catch (err) {
+        if (!isBinaryMissing(err)) throw err;
+        // Playwright's own Chromium isn't downloaded; an installed Chrome works as well.
+        browser = await chromium.launch({ headless: true, channel: "chrome" }).catch((): never => {
+          throw new BrowserUnavailableError(BROWSER_INSTALL_HINT);
+        });
+      }
     }
     this.reset();
+    this.remoteEndpoint = ws || undefined;
+    if (ws) this.events.push(`Using the remote browser at ${ws}.`);
     if (this.closedWhileIdle) {
       this.closedWhileIdle = false;
       this.events.push(

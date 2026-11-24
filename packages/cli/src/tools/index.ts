@@ -36,6 +36,8 @@ import { createTaskSendTool } from "./task-send.js";
 import { createTasksTool } from "./tasks.js";
 import { createChecklistTool } from "./checklist.js";
 import { createValidateTool } from "./validate.js";
+import { createFleetTool } from "./fleet.js";
+import { resolveBrowserWsEndpoint } from "../core/fleet/browser.js";
 
 import { createSkillTool } from "./skill.js";
 import { BrowserManager, createBrowserTool } from "./browser.js";
@@ -252,7 +254,10 @@ export async function createTools(
     (opts?.editImpact ?? true) && ops === localOperations ? new TestImpactIndex(cwd) : undefined;
   const debugManager = ops === localOperations ? new DebugManager() : undefined;
   // The browser runs on this machine, so it can only test pages this machine can reach.
-  const browserManager = ops === localOperations ? new BrowserManager() : undefined;
+  const browserManager =
+    ops === localOperations
+      ? new BrowserManager({ wsEndpoint: () => resolveBrowserWsEndpoint() })
+      : undefined;
   const getDiagnostics =
     lspDiagnostics || testImpact
       ? async (filePath: string, content: string, source?: EditSource): Promise<string> => {
@@ -320,7 +325,7 @@ export async function createTools(
     createTasksTool(cwd),
     createGoalsTool(cwd, goalModeRef),
     createChecklistTool(cwd),
-    ...(ops === localOperations ? [createValidateTool(cwd)] : []),
+    ...(ops === localOperations ? [createValidateTool(cwd), createFleetTool(cwd)] : []),
     ...(browserManager ? [createBrowserTool(cwd, browserManager)] : []),
     // The debugger connects to a loopback inspector port, so the program must
     // run on this machine: local operations only, like LSP.

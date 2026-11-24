@@ -30,6 +30,7 @@ function spawnView(s: SubAgentSnapshot) {
     ...(s.agent_name && { agent_name: s.agent_name }),
     ...(s.model && { model: s.model }),
     ...(s.cwd && { cwd: s.cwd }),
+    ...(s.machine && { machine: s.machine }),
     ...(s.error && { error: s.error }),
   };
 }
@@ -48,6 +49,7 @@ function waitView(s: SubAgentSnapshot) {
     ...(s.receipt && { receipt: s.receipt }),
     ...(s.child_session_path && { transcript: s.child_session_path }),
     ...(s.cwd && { cwd: s.cwd }),
+    ...(s.machine && { machine: s.machine }),
     ...(s.recovered && { recovered: true }),
   };
 }
@@ -64,6 +66,7 @@ function listView(s: SubAgentSnapshot) {
     ...(s.current_activity && { current_activity: s.current_activity }),
     ...(s.agent_name && { agent_name: s.agent_name }),
     ...(s.model && { model: s.model }),
+    ...(s.machine && { machine: s.machine }),
     ...(s.acceptance && { acceptance: s.acceptance }),
   };
 }
@@ -112,6 +115,11 @@ export function createSubAgentControlTools(
       .describe(
         "Files you already read that it needs: their contents go in its brief, so it doesn't read them again",
       ),
+    machine: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Paired fleet machine to run on ("auto" or its name); edits come back here'),
   });
   // A list, so one call starts every child: on models that send one tool call
   // per turn (GPT-6.x), a one-child-per-call shape cost a model turn per child
@@ -140,11 +148,12 @@ export function createSubAgentControlTools(
       // exceed ACTIVE_LIMIT or the per-model cap.
       const settled = await Promise.allSettled(
         args.tasks.map((t) =>
-          t.checks || t.cwd || t.context_files
+          t.checks || t.cwd || t.context_files || t.machine
             ? manager.spawn(t.task_name, t.task, t.agent, {
                 ...(t.checks && { checks: t.checks }),
                 ...(t.cwd && { cwd: t.cwd }),
                 ...(t.context_files && { contextFiles: t.context_files }),
+                ...(t.machine && { machine: t.machine }),
               })
             : manager.spawn(t.task_name, t.task, t.agent),
         ),
