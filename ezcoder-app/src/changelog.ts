@@ -17,6 +17,13 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.97.0",
+    date: "2026-11-24",
+    items: [
+      "Background tests can now spread across as many computers as you like. Set up a Linux box or a Windows PC once and I'll find it on my own, then send each job to whichever machine has a free slot and enough memory and CPU. If a machine drops out mid-run, I move the job to another one. Run `ezcoder validate workers` to see how busy each machine is.",
+    ],
+  },
+  {
     version: "0.96.0",
     date: "2026-11-23",
     items: [
