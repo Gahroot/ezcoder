@@ -1,6 +1,6 @@
 {
   "name": "@prestyj/ai",
-  "version": "5.37.0",
+  "version": "5.38.0",
   "type": "module",
   "description": "One streaming API for 12 LLM providers and local models: Anthropic, OpenAI, Gemini, xAI, Moonshot, GLM, DeepSeek, OpenRouter and more. Tool calls, reasoning, embeddings and reranking.",
   "author": "Nolan Grout",
