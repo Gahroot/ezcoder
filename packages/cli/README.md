@@ -1,7 +1,7 @@
 ![ezcoder](screenshots/ezcoder.png)
 
 <p align="center">
-  <strong>The fast, lean coding agent. Twelve providers plus local models. Zero bloat.</strong>
+  <strong>The lean coding agent you can walk away from. 13 providers plus local models. Tests in the background. Your other computers on call.</strong>
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
   <a href="https://github.com/Gahroot"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
 </p>
 
-A coding agent that ships only what the model needs to work — a tiny system prompt, no bundled MCPs, and a focused tool set. Switch between Anthropic, OpenAI, Gemini, xAI, Moonshot, GLM, MiniMax, Xiaomi, DeepSeek, Sakana, OpenRouter, Hugging Face, and your own local models mid-conversation. Run it on its own, or let [`@prestyj/boss`](../ezboss/README.md) drive a fleet of `ezcoder` workers across many projects from a single chat.
+A coding agent that ships only what the model needs to work — a tiny system prompt, no bundled MCPs, and a focused tool set. Switch between Anthropic, OpenAI, Gemini, xAI, Moonshot, GLM, MiniMax, Xiaomi, DeepSeek, Sakana, OpenRouter, Hugging Face, OpenCode and your own local models mid-conversation. Validation runs in the background against exact commits, so testing never holds up a session, and the fleet sends builds, renders, local AI and whole agents to your other machines. Run it on its own, or let [`@prestyj/boss`](../boss/README.md) drive many `ezcoder` workers across projects from a single chat.
 
 Built on [`@prestyj/ai`](../ai/README.md) and [`@prestyj/agent`](../agent/README.md). Part of the [EZCoder Framework](../../README.md) monorepo.
 
@@ -63,25 +63,26 @@ You can still add your own MCPs in `~/.ezcoder/mcp.json` or `.ezcoder/mcp.json`.
 
 ---
 
-## Twelve providers, one agent
+## 13 providers, one agent
 
 Switch mid-conversation with `/model`. Not locked to anyone.
 
-| Provider          | Models                                                                         | Auth             |
-| ----------------- | ------------------------------------------------------------------------------ | ---------------- |
-| **Anthropic**     | Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5                              | OAuth            |
-| **OpenAI**        | GPT-6.2 Astra, GPT-6.2 Sol, GPT-6.1 Terra, GPT-6 Luna                          | OAuth            |
-| **Gemini**        | Gemini 3.1 Pro (Preview), 3.8 Flash, 3.5 Flash, 3.5 Flash Lite, 3.1 Flash Lite | OAuth            |
-| **xAI (Grok)**    | Grok 4.7                                                                       | OAuth or API key |
-| **Moonshot**      | Kimi K3, K2.8 Preview (Kimi sign-in), K2.7 Code, K2.7 Code HighSpeed           | OAuth or API key |
-| **Z.AI (GLM)**    | GLM-5.3, GLM-5.3-Flash                                                         | API key          |
-| **MiniMax**       | MiniMax M3                                                                     | API key          |
-| **Xiaomi (MiMo)** | MiMo-V2.6-Pro, MiMo-V2.6-Flash, MiMo-V2.6-Pro-UltraSpeed                       | API key          |
-| **DeepSeek**      | DeepSeek V4 Pro, V4.1 Flash                                                    | API key          |
-| **Sakana (Fugu)** | Fugu, Fugu Max, Fugu Ultra                                                     | API key          |
-| **OpenRouter**    | Qwen3.8 Max                                                                    | API key          |
-| **Hugging Face**  | Kimi K2.7 Code, DeepSeek V4.1 Flash, GPT-OSS 120B (Inference Providers router) | API key          |
-| **Local**         | Any model on an OpenAI-compatible server: Ollama, LM Studio, llama.cpp, vLLM   | None             |
+| Provider          | Models                                                                                                            | Auth             |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------- |
+| **Anthropic**     | Claude Fable 5.2, Opus 5.5, Sonnet 5.5, Haiku 5.5 (Fable and Opus have Fast variants)                             | OAuth            |
+| **OpenAI**        | GPT-6.2 Sol, GPT-6.2 Astra, GPT-6.1 Terra, GPT-6 Luna (each with a Fast variant)                                  | OAuth            |
+| **Gemini**        | Gemini 4 Hydrogen, Argon, Carbon, Gemini 3.1 Pro (Preview), 3.8 Flash, 3.6 Flash, 3.5 Flash, 3.5 / 3.1 Flash Lite | OAuth            |
+| **xAI (Grok)**    | Grok 4.7                                                                                                          | OAuth or API key |
+| **Moonshot**      | Kimi K3, K2.8 Preview (Kimi sign-in), K2.7 Code, K2.7 Code HighSpeed                                              | OAuth or API key |
+| **Z.AI (GLM)**    | GLM-5.3, GLM-5.3-Flash                                                                                            | API key          |
+| **MiniMax**       | MiniMax M3, M3.1 Flash                                                                                            | API key          |
+| **Xiaomi (MiMo)** | MiMo-V2.6-Pro, MiMo-V2.6-Flash, MiMo-V2.6-Pro-UltraSpeed                                                          | API key          |
+| **DeepSeek**      | DeepSeek V4 Pro, V4.1 Flash                                                                                       | API key          |
+| **Sakana (Fugu)** | Fugu, Fugu Max, Fugu Ultra                                                                                        | API key          |
+| **OpenRouter**    | Qwen3.8 Max                                                                                                       | API key          |
+| **Hugging Face**  | Kimi K2.7 Code, DeepSeek V4.1 Flash, GPT-OSS 120B (Inference Providers router)                                    | API key          |
+| **OpenCode**      | Kimi K3, GLM-5.3, GLM-5.3-Flash (OpenCode Go subscription or pay-as-you-go)                                       | Sign-in          |
+| **Local**         | Any OpenAI-compatible server: Ollama, LM Studio, llama.cpp, vLLM, or a model your fleet runs on a GPU machine     | None             |
 
 Every hosted model above except GLM-5.3, DeepSeek V4 Pro, and GPT-OSS 120B accepts images.
 
@@ -91,9 +92,53 @@ The same conversation, the same tools, the same project context — only the mod
 
 ---
 
+## ⚡ Background validation
+
+Testing never holds up a session. `validate` queues the checks for an exact commit and returns at once; the agent keeps working and gets a notification when they pass or fail.
+
+```bash
+ezcoder validate run        # queue the required stages for HEAD
+ezcoder validate status     # where every job is
+ezcoder validate workers    # every machine, its slots, CPU, memory and load
+ezcoder validate gate       # exits non-zero until every required stage passed
+```
+
+- **Exact commits, real gates.** Results are bound to the commit they tested, so a stale result can't approve newer code. Each required stage can post a GitHub commit status (`ezcoder/<stage>`) for branch protection and releases.
+- **Automatic defaults.** Test commands, Docker setup and stages are inferred from the project; `.ezcoder/validation.json` overrides them. Quick checks run locally, heavy ones go to workers.
+- **Any number of workers.** GitHub Actions self-hosted runners (Linux, Windows WSL2, macOS), GitHub-hosted runners, and fleet nodes. Jobs go to whichever machine has a free slot and enough CPU and memory; adding a machine never changes a project.
+- **Bounded and durable.** Global and per-machine concurrency limits, state saved across restarts, jobs requeued on another machine if a worker drops, and worker health shown in `validate workers`.
+
+→ [Async validation guide](docs/async-validation.md)
+
+---
+
+## 🖥️ Fleet: your other machines on call
+
+Pair any machine running `ezcoder node` (native Linux, Windows WSL2, macOS) over Tailscale, and EZ Coder can send it far more than tests:
+
+|                      |                                                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Jobs**             | Builds, Playwright and browser tests, video renders, deploys. Artifacts come back to `.ezcoder/artifacts/`     |
+| **Services**         | Local AI on GPU machines (auto-added to `/model`), remote Playwright browsers, custom servers                  |
+| **Dev environments** | A container with your project, from `.devcontainer` or a Dockerfile, that you or the agent can run commands in |
+| **Agents**           | `spawn_agent` with `machine: "auto"` runs a helper on another machine; its edits come back as a patch          |
+
+Scheduling uses each machine's free slots, CPU, memory, GPUs and labels, preferring the one with a warm cache. Jobs survive restarts and move if a machine drops. Deploys wait for the exact commit's required validation to pass, are never retried automatically, and use secrets that live only on the deploy machine. Every job gets its own workspace, container and cache, so projects never collide.
+
+```bash
+ezcoder node init && ezcoder node install   # on the other machine; prints a pairing code
+ezcoder fleet add <pairing-code>            # on your main machine
+ezcoder fleet run build                     # jobs from .ezcoder/fleet.json, or automatic defaults
+ezcoder fleet service up llm                # start a model on a GPU machine
+```
+
+→ [Fleet](docs/fleet.md) · [Setting up a machine](docs/fleet-nodes.md) · [Agents on other machines](docs/fleet-agents.md)
+
+---
+
 ## 🤝 Pair it with ezboss
 
-`ezcoder` is the unit of work. [`ezboss`](../ezboss/README.md) is the orchestrator that drives many of them at once.
+`ezcoder` is the unit of work. [`ezboss`](../boss/README.md) is the orchestrator that drives many of them at once.
 
 ```bash
 npm i -g @prestyj/boss
@@ -162,27 +207,29 @@ Plus built-in workflows that ship with the binary:
 
 EZ Coder comes with a focused set of tools. Only six core tools — `read`, `write`, `edit`, `bash`, `grep`, and `skill` — plus `tool_search` send their full schemas on every request. Everything else is listed as a one-line hint and loads the first time the agent needs it, so rarely used tools cost almost nothing.
 
-| Tool                              | What it does                                                                                           |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `bash`                            | Run shell commands, in the foreground or background (`task_output` / `task_send` / `task_stop`)        |
-| `read`                            | Read file contents                                                                                     |
-| `write`                           | Write files                                                                                            |
-| `edit`                            | Surgical string replacements                                                                           |
-| `grep`                            | Search file contents (regex)                                                                           |
-| `skill`                           | Load a skill's instructions                                                                            |
-| `tool_search`                     | Load an on-demand tool by capability                                                                   |
-| `find` / `ls`                     | Find files by glob pattern / list a directory                                                          |
-| `code_search` / `code_nav`        | Find code by meaning / jump to exact definitions and callers                                           |
-| `web_fetch` / `web_search`        | Fetch a URL / search the web                                                                           |
-| `steroids`                        | Find real production repos similar to yours and read how they do it                                    |
-| `source_path`                     | Locate an installed dependency's source                                                                |
-| `browser`                         | Test a page in a real browser: clicks, forms, checks, screenshots, console and network errors          |
-| `debug`                           | Drive the Node debugger                                                                                |
-| `enter_plan` / `exit_plan`        | Plan before editing, then hand the plan back for approval                                              |
-| `subagent`                        | Run one blocking, isolated child task (backward-compatible)                                            |
-| `spawn_agent` / `wait_agent`      | Launch persistent child turns concurrently and collect results                                         |
-| `send_message` / `followup_task`  | Steer a running child or reuse an idle child's context                                                 |
-| `list_agents` / `interrupt_agent` | Inspect or interrupt persistent children                                                               |
+| Tool                              | What it does                                                                                    |
+| --------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `bash`                            | Run shell commands, in the foreground or background (`task_output` / `task_send` / `task_stop`) |
+| `read`                            | Read file contents                                                                              |
+| `write`                           | Write files                                                                                     |
+| `edit`                            | Surgical string replacements                                                                    |
+| `grep`                            | Search file contents (regex)                                                                    |
+| `skill`                           | Load a skill's instructions                                                                     |
+| `tool_search`                     | Load an on-demand tool by capability                                                            |
+| `find` / `ls`                     | Find files by glob pattern / list a directory                                                   |
+| `code_search` / `code_nav`        | Find code by meaning / jump to exact definitions and callers                                    |
+| `web_fetch` / `web_search`        | Fetch a URL / search the web                                                                    |
+| `steroids`                        | Find real production repos similar to yours and read how they do it                             |
+| `source_path`                     | Locate an installed dependency's source                                                         |
+| `browser`                         | Test a page in a real browser: clicks, forms, checks, screenshots, console and network errors   |
+| `debug`                           | Drive the Node debugger                                                                         |
+| `enter_plan` / `exit_plan`        | Plan before editing, then hand the plan back for approval                                       |
+| `subagent`                        | Run one blocking, isolated child task (backward-compatible)                                     |
+| `spawn_agent` / `wait_agent`      | Launch persistent child turns concurrently and collect results                                  |
+| `send_message` / `followup_task`  | Steer a running child or reuse an idle child's context                                          |
+| `list_agents` / `interrupt_agent` | Inspect or interrupt persistent children                                                        |
+| `validate`                        | Queue background checks for an exact commit; returns at once and notifies when done             |
+| `fleet`                           | Run jobs, services and dev environments on your other machines                                  |
 
 The `browser` tool uses Playwright's Chromium (`npx playwright install chromium`) or an installed Google Chrome. Without either, it returns an install hint instead of failing the turn.
 
@@ -193,6 +240,8 @@ Add your own MCPs in `~/.ezcoder/mcp.json` or `.ezcoder/mcp.json` if you need mo
 `subagent` remains blocking. The async suite launches persistent NDJSON worker processes, so a parent can start up to four active child turns, keep working, steer them, and wait for any or all results. Up to eight idle workers remain available for follow-up; bounded snapshots retain the latest 20 agents.
 
 Only GPT-6.2 Astra, GPT-6.2 Sol and GPT-6.1 Terra at **Ultra** delegate proactively. Lower Astra/Sol levels use async agents only when the user or project/skill instructions request delegation; other models receive no proactive policy.
+
+Pass `machine` to `spawn_agent` to run a child on a fleet node instead of this computer.
 
 Children share the parent working directory by default, so parallel writes must target disjoint files or subsystems. Pass `isolate: true` to `subagent` to give a child its own copy of the repo on a new branch instead — the right choice when several children edit at once, or when a child's changes should land on a branch of their own. The copy is reclaimed automatically when the child finishes without committing; a child that did commit keeps its branch, because that branch is the deliverable. `/integrate` then merges those branches one at a time, running the suite between each. Async fan-out is one level deep, child output is bounded, idle workers reap after 10 minutes, and workers are not resumable after a CLI/app restart.
 
@@ -264,9 +313,9 @@ MIT
 ---
 
 <p align="center">
-  <strong>Lean prompt. Sharp tools. Real results.</strong>
+  <strong>Lean prompt. Sharp tools. Tests that never block.</strong>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@prestyj/cli"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40Gahroot%2Fezcoder-blue?style=for-the-badge" alt="Install"></a>
+  <a href="https://www.npmjs.com/package/@prestyj/cli"><img src="https://img.shields.io/badge/Install-npm%20i%20--g%20%40prestyj%2Fcli-blue?style=for-the-badge" alt="Install"></a>
 </p>
