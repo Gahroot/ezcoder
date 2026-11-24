@@ -10,15 +10,19 @@ import os from "node:os";
 import path from "node:path";
 import { withFileLock } from "@prestyj/core";
 import { fits, loadBackends } from "./backends.js";
-import { buildStageCommand, loadProjectConfig, parseGitHubRepo } from "./config.js";
+import { BILLING_SUMMARY } from "./github-actions-backend.js";
+import { buildStageCommand, cacheKeyFor, loadProjectConfig, parseGitHubRepo } from "./config.js";
 import { defaultExec } from "./exec.js";
+import { chooseTarget, jobTarget, jobsOn, listTargets, loadOf, type Target } from "./scheduler.js";
 import { JobStore, defaultValidationDir } from "./store.js";
 import {
   isTerminal,
+  MAX_ATTEMPTS,
   type BackendHealth,
   type Exec,
   type JobState,
   type ProjectValidationConfig,
+  type Resources,
   type ValidationBackend,
   type ValidationJob,
 } from "./types.js";
@@ -32,6 +36,10 @@ export interface ValidationServiceOptions {
   maxConcurrent?: number;
   /** Minutes a job may wait on an offline worker before we say so. */
   offlineWarnMinutes?: number;
+  /** Minutes a dispatched run may wait on an offline pool machine before it's moved. */
+  machineOfflineRequeueMinutes?: number;
+  /** Minutes a target stays out of scheduling after GitHub refused it for billing reasons. */
+  billingBlockMinutes?: number;
   /** Start the poll loop when work is queued (off for short-lived CLI commands). */
   autoStart?: boolean;
 }
@@ -67,16 +75,37 @@ export interface GateResult {
 }
 
 export interface WorkerInfo {
+  /** Backend id, or `<pool>/<machine>` for a pool machine. */
   id: string;
+  backend: string;
+  machine?: string;
   kind: string;
+  /** Slots (concurrent EZCODER jobs). */
   maxConcurrent: number;
+  /** Our jobs dispatched there and not finished. */
   active: number;
+  /** Slots taken (GitHub-busy runners plus our not-yet-started runs). */
+  used: number;
+  /** Runners GitHub reports busy. */
+  busy: number;
   queued: number;
   health: BackendHealth;
+  platform: string[];
+  capacity?: Resources;
+  /** CPU/memory held by our in-flight jobs there. */
+  reserved: { cpus: number; memoryGb: number };
+  cloud?: boolean;
+  /** Infra errors and lost runs there in the last 24 h. */
   recentFailures: number;
+  /** Out of scheduling until then (GitHub refused it for billing reasons). */
+  blockedUntil?: string;
 }
 
-export type JobListener = (job: ValidationJob, previous: JobState | undefined) => void;
+export type JobListener = (
+  job: ValidationJob,
+  previous: JobState | undefined,
+  info?: { requeued: boolean },
+) => void;
 
 const ACTIVE: ReadonlySet<JobState> = new Set(["queued", "waiting", "running"]);
 
@@ -109,6 +138,10 @@ export class ValidationService {
   private readonly exec: Exec;
   private readonly pollMs: number;
   private readonly offlineWarnMs: number;
+  private readonly machineOfflineMs: number;
+  /** Targets GitHub refused to run on (billing), until when (ms epoch). In memory only. */
+  private readonly unavailable = new Map<string, number>();
+  private readonly unavailableMs: number;
   private backends: ValidationBackend[];
   private maxConcurrent: number;
   private readonly injected: boolean;
@@ -129,6 +162,8 @@ export class ValidationService {
     this.exec = opts.exec ?? defaultExec;
     this.pollMs = opts.pollMs ?? 20_000;
     this.offlineWarnMs = (opts.offlineWarnMinutes ?? 10) * 60_000;
+    this.machineOfflineMs = (opts.machineOfflineRequeueMinutes ?? 5) * 60_000;
+    this.unavailableMs = (opts.billingBlockMinutes ?? 60) * 60_000;
     this.injected = !!opts.backends;
     this.backends = opts.backends ?? [];
     this.maxConcurrent = opts.maxConcurrent ?? 4;
@@ -170,13 +205,16 @@ export class ValidationService {
     const changed: ValidationJob[] = [];
     for (const job of jobs) {
       const prev = this.seen.get(job.id);
-      const key = `${job.state}|${job.offlineWarned ? 1 : 0}`;
+      const key = `${job.state}|${job.offlineWarned ? 1 : 0}|${job.requeues?.length ?? 0}|${job.noWorkerWarned ? 1 : 0}`;
       if (prev === key) continue;
       this.seen.set(job.id, key);
       // First look after start: only report finished jobs nobody was told about.
       if (!this.seeded && (!isTerminal(job.state) || job.notifiedState === job.state)) continue;
       changed.push(job);
-      this.events.emit("job", job, prev ? (prev.split("|")[0] as JobState) : undefined);
+      const requeued = !!prev && (job.requeues?.length ?? 0) > Number(prev.split("|")[2] ?? 0);
+      this.events.emit("job", job, prev ? (prev.split("|")[0] as JobState) : undefined, {
+        requeued,
+      });
     }
     this.seeded = true;
     return changed;
@@ -241,8 +279,12 @@ export class ValidationService {
     const reused: ValidationJob[] = [];
     await this.store.update((jobs) => {
       for (const stage of stages) {
-        let backend = stage.run === "local" ? "local" : (stage.backend ?? "");
-        let command = buildStageCommand(stage);
+        const pin = stage.run === "local" ? undefined : stage.backend;
+        const slash = pin?.indexOf("/") ?? -1;
+        let backend =
+          stage.run === "local" ? "local" : pin ? (slash > 0 ? pin.slice(0, slash) : pin) : "";
+        const pinnedMachine = pin && slash > 0 ? pin.slice(slash + 1) : undefined;
+        let command = buildStageCommand(stage, cacheKeyFor(repo));
         if (stage.run === "remote" && !stage.backend && (!repo || !hasRemote)) {
           backend = "local";
           command = stage.setup ? `${stage.setup} && ${stage.command}` : stage.command;
@@ -251,7 +293,14 @@ export class ValidationService {
           );
         }
         if (backend && !this.backend(backend)) {
-          throw new Error(`stage ${stage.name} names backend "${backend}", which isn't configured`);
+          throw new Error(
+            `stage ${stage.name} names backend "${pin ?? backend}", which isn't configured`,
+          );
+        }
+        if (pinnedMachine && !this.backend(backend)?.machines) {
+          throw new Error(
+            `stage ${stage.name} pins "${pin}", but ${backend} isn't a pool (discover)`,
+          );
         }
         const isLocal = backend === "local";
         const same = jobs
@@ -282,6 +331,8 @@ export class ValidationService {
           command,
           timeoutMinutes: stage.timeoutMinutes,
           backend,
+          ...(pin && !isLocal ? { pinned: true } : {}),
+          ...(pinnedMachine && !isLocal ? { machine: pinnedMachine } : {}),
           ...(stage.resources ? { resources: stage.resources } : {}),
           ...(config.postCommitStatus && repo && !isLocal
             ? { statusContext: `${config.statusContextPrefix}/${stage.name}` }
@@ -393,7 +444,8 @@ export class ValidationService {
         required: j.required,
         command: j.command,
         timeoutMinutes: j.timeoutMinutes,
-        backend: j.run === "local" ? "local" : "",
+        backend: j.run === "local" ? "local" : j.pinned ? j.backend : "",
+        ...(j.pinned ? { pinned: true, ...(j.machine ? { machine: j.machine } : {}) } : {}),
         ...(j.resources ? { resources: j.resources } : {}),
         ...(j.statusContext ? { statusContext: j.statusContext } : {}),
         ...(j.dirty ? { dirty: true } : {}),
@@ -420,29 +472,55 @@ export class ValidationService {
     return b.logs(job, failedOnly && job.state === "failed");
   }
 
+  /** Every place jobs can run: plain backends and each pool machine. */
   async workers(): Promise<WorkerInfo[]> {
     const jobs = await this.store.read();
     const dayAgo = Date.now() - 86_400_000;
+    const targets = await listTargets(this.backends);
     return Promise.all(
-      this.backends.map(async (b) => ({
-        id: b.id,
-        kind: b.kind,
-        maxConcurrent: b.maxConcurrent,
-        active: jobs.filter(
-          (j) => j.backend === b.id && (j.state === "waiting" || j.state === "running"),
-        ).length,
-        queued: jobs.filter(
-          (j) =>
-            j.state === "queued" && (j.backend === b.id || (!j.backend && b.runs === "remote")),
-        ).length,
-        health: await b.health().catch((e: unknown) => ({
-          online: false,
-          detail: e instanceof Error ? e.message : String(e),
-        })),
-        recentFailures: jobs.filter(
-          (j) => j.backend === b.id && j.state === "error" && Date.parse(j.updatedAt) > dayAgo,
-        ).length,
-      })),
+      targets.map(async (t) => {
+        const mine = jobsOn(t, jobs);
+        const load = loadOf(t, jobs);
+        const health: BackendHealth = t.info
+          ? { online: t.online, busy: t.online && t.busy >= t.slots, detail: t.info.detail }
+          : await t.backend.health().catch((e: unknown) => ({
+              online: false,
+              detail: e instanceof Error ? e.message : String(e),
+            }));
+        const here = (j: ValidationJob) =>
+          j.backend === t.backend.id &&
+          (t.machine === undefined || (j.machine ?? t.backend.id) === t.machine);
+        const recent = (at: string) => Date.parse(at) > dayAgo;
+        return {
+          id: t.key,
+          backend: t.backend.id,
+          ...(t.machine !== undefined ? { machine: t.machine } : {}),
+          kind: t.backend.kind,
+          maxConcurrent: t.slots,
+          active: mine.length,
+          used: load.used,
+          busy: t.busy,
+          queued: jobs.filter(
+            (j) =>
+              j.state === "queued" &&
+              (j.backend
+                ? j.backend === t.backend.id && (!j.machine || j.machine === t.machine)
+                : t.backend.runs === "remote"),
+          ).length,
+          health,
+          platform: t.platform,
+          ...(t.capacity ? { capacity: t.capacity } : {}),
+          reserved: { cpus: load.reservedCpus, memoryGb: load.reservedMemoryGb },
+          ...(t.cloud ? { cloud: true } : {}),
+          ...(this.unavailableUntil(t.key)
+            ? { blockedUntil: new Date(this.unavailableUntil(t.key)!).toISOString() }
+            : {}),
+          recentFailures:
+            jobs.filter((j) => here(j) && j.state === "error" && recent(j.updatedAt)).length +
+            jobs.flatMap((j) => j.requeues ?? []).filter((r) => r.from === t.key && recent(r.at))
+              .length,
+        };
+      }),
     );
   }
 
@@ -523,6 +601,14 @@ export class ValidationService {
       }
       try {
         const r = await b.poll(j);
+        if (r.blocked) {
+          await this.handleBlocked(j, r.blocked, r.url);
+          continue;
+        }
+        if (r.lost) {
+          await this.requeueLost(j, r.lost);
+          continue;
+        }
         const patch: Partial<ValidationJob> = {};
         if (r.url && r.url !== j.url) patch.url = r.url;
         if (r.state !== j.state) {
@@ -537,8 +623,26 @@ export class ValidationService {
             }
           }
         }
-        if (
+        // A run still waiting for a pool machine that went offline: move it elsewhere.
+        if (r.state === "waiting" && b.machines && j.machine) {
+          const m = (await b.machines().catch(() => [])).find((x) => x.name === j.machine);
+          if (m && !m.cloud && !m.online) {
+            const since = j.machineOfflineSince ? Date.parse(j.machineOfflineSince) : undefined;
+            if (since === undefined) patch.machineOfflineSince = nowIso();
+            else if (Date.now() - since > this.machineOfflineMs) {
+              await b.cancel(j).catch(() => {});
+              await this.requeueLost(
+                j,
+                `machine ${jobTarget(j)} went offline before the run started`,
+              );
+              continue;
+            }
+          } else if (j.machineOfflineSince) {
+            patch.machineOfflineSince = undefined;
+          }
+        } else if (
           (r.state === "waiting" || j.state === "waiting") &&
+          !(b.machines && j.machine) &&
           !j.offlineWarned &&
           j.dispatchedAt &&
           Date.now() - Date.parse(j.dispatchedAt) > this.offlineWarnMs
@@ -564,19 +668,41 @@ export class ValidationService {
     // Dispatch queued jobs into free slots, oldest first.
     jobs = await this.store.read();
     let inFlight = jobs.filter((j) => j.state === "waiting" || j.state === "running").length;
-    for (const j of jobs.filter((x) => x.state === "queued")) {
+    const queued = jobs.filter((x) => x.state === "queued");
+    const targets: Target[] = queued.length ? await this.availableTargets() : [];
+    for (const j of queued) {
       if (inFlight >= this.maxConcurrent) break;
-      const b = this.chooseBackend(j, jobs);
-      if (b === "none") {
+      const t = chooseTarget(j, targets, jobs);
+      if (t === "none") {
         await this.patch(j.id, {
           state: "error",
-          summary: "no configured worker fits this stage's resources",
+          summary: j.machine
+            ? `pinned machine ${jobTarget(j)} isn't known to its pool`
+            : "no configured worker fits this stage's resources",
           finishedAt: nowIso(),
         });
         continue;
       }
-      if (!b) continue; // every fitting backend is full
-      const claimed = await this.patch(j.id, { backend: b.id }, "queued");
+      if (t === "offline") {
+        if (!j.noWorkerWarned) {
+          await this.patch(
+            j.id,
+            {
+              noWorkerWarned: true,
+              summary: "no worker online; it stays queued and runs when one comes online",
+            },
+            "queued",
+          );
+        }
+        continue;
+      }
+      if (!t) continue; // every fitting machine is full
+      const b = t.backend;
+      const claim: Partial<ValidationJob> = {
+        backend: b.id,
+        ...(t.machine !== undefined ? { machine: t.machine } : {}),
+      };
+      const claimed = await this.patch(j.id, claim, "queued");
       if (!claimed) continue;
       try {
         if (b.runs === "remote" && j.repo && !(await this.commitOnGitHub(j.repo, j.sha))) {
@@ -587,22 +713,24 @@ export class ValidationService {
           });
           continue;
         }
-        const handle = await b.dispatch({ ...claimed, backend: b.id });
+        const handle = await b.dispatch(claimed);
         const at = nowIso();
         const updated = await this.patch(
           j.id,
-          { state: "waiting", dispatchedAt: at, ...handle },
+          { state: "waiting", dispatchedAt: at, attempts: j.attempts ?? 1, ...handle },
           "queued",
         );
         inFlight++;
-        j.backend = b.id;
-        j.state = "waiting";
-        if (updated?.statusContext) await this.postStatus(updated, "pending", `running on ${b.id}`);
+        // Count it against the machine for the rest of this pass.
+        Object.assign(j, claim, { state: "waiting", dispatchedAt: at });
+        if (updated?.statusContext) {
+          await this.postStatus(updated, "pending", `running on ${jobTarget(updated)}`);
+        }
       } catch (e) {
         await this.patch(j.id, {
           state: "error",
           summary:
-            `dispatch to ${b.id} failed: ${e instanceof Error ? e.message : String(e)}`.slice(
+            `dispatch to ${t.key} failed: ${e instanceof Error ? e.message : String(e)}`.slice(
               0,
               400,
             ),
@@ -613,28 +741,111 @@ export class ValidationService {
     this.emitAndMark(await this.store.read());
   }
 
-  private chooseBackend(
-    job: ValidationJob,
-    jobs: ValidationJob[],
-  ): ValidationBackend | undefined | "none" {
-    const load = (b: ValidationBackend) =>
-      jobs.filter((j) => j.backend === b.id && (j.state === "waiting" || j.state === "running"))
-        .length;
-    let candidates: ValidationBackend[];
-    if (job.backend) {
-      const b = this.backend(job.backend);
-      if (!b) return "none";
-      candidates = [b];
-    } else {
-      candidates = this.backends.filter(
-        (b) => b.runs === "remote" && fits(job.resources, b.capacity),
-      );
-      if (!candidates.length) return "none";
-    }
-    const free = candidates
-      .filter((b) => load(b) < b.maxConcurrent)
-      .sort((a, b) => load(a) / a.maxConcurrent - load(b) / b.maxConcurrent);
-    return free[0];
+  /** Targets minus the ones GitHub recently refused (billing). */
+  private async availableTargets(): Promise<Target[]> {
+    const now = Date.now();
+    for (const [k, until] of this.unavailable) if (until <= now) this.unavailable.delete(k);
+    return (await listTargets(this.backends)).filter((t) => !this.unavailable.has(t.key));
+  }
+
+  /** Is a target out of scheduling (billing), and until when? */
+  unavailableUntil(key: string): number | undefined {
+    const until = this.unavailable.get(key);
+    return until && until > Date.now() ? until : undefined;
+  }
+
+  /**
+   * GitHub refused to start the run (Actions budget/billing). Never a runner-loss loop:
+   * the target is benched for a while and the job goes back once to a self-hosted
+   * machine that fits; otherwise it ends as an infra error.
+   */
+  private async handleBlocked(j: ValidationJob, why: string, url?: string): Promise<void> {
+    const from = jobTarget(j);
+    this.unavailable.set(from, Date.now() + this.unavailableMs);
+    const alreadyMoved = (j.requeues ?? []).some((r) => r.reason.startsWith(BILLING_SUMMARY));
+    const selfHosted = (await this.availableTargets()).some(
+      (t) =>
+        !t.cloud &&
+        t.backend.runs === "remote" &&
+        (!j.pinned || t.backend.id === j.backend) &&
+        fits(j.resources, t.capacity),
+    );
+    const at = nowIso();
+    const reason = `${BILLING_SUMMARY} (${why})`.slice(0, 300);
+    const updated = await this.store.update((jobs) => {
+      const x = jobs.find((y) => y.id === j.id);
+      if (!x || (x.state !== "waiting" && x.state !== "running")) return undefined;
+      x.updatedAt = at;
+      if (alreadyMoved || !selfHosted || (x.pinned && x.machine)) {
+        x.state = "error";
+        x.finishedAt = at;
+        x.summary = reason;
+        if (url) x.url = url;
+        return { ...x };
+      }
+      x.requeues = [
+        ...(x.requeues ?? []),
+        { at, from, ...(x.runId ? { runId: x.runId } : {}), reason },
+      ];
+      x.state = "queued";
+      x.avoid = [...new Set([...(x.avoid ?? []), from])];
+      x.summary = `requeued to a self-hosted worker: ${reason}`.slice(0, 400);
+      if (!x.pinned) {
+        x.backend = "";
+        delete x.machine;
+      }
+      for (const k of ["runId", "url", "dispatchedAt", "startedAt", "finishedAt"] as const)
+        delete x[k];
+      return { ...x };
+    });
+    if (updated?.state === "error" && updated.statusContext) await this.postFinal(updated);
+  }
+
+  /**
+   * A run lost its runner (or its machine went away before it started): queue the
+   * job again, up to MAX_ATTEMPTS, steering it away from that machine. Jobs that
+   * EZCODER cancelled or superseded meanwhile are left alone.
+   */
+  private async requeueLost(j: ValidationJob, reason: string): Promise<void> {
+    const from = jobTarget(j);
+    const at = nowIso();
+    const updated = await this.store.update((jobs) => {
+      const x = jobs.find((y) => y.id === j.id);
+      if (!x || (x.state !== "waiting" && x.state !== "running")) return undefined;
+      const attempts = x.attempts ?? 1;
+      x.requeues = [
+        ...(x.requeues ?? []),
+        { at, from, ...(x.runId ? { runId: x.runId } : {}), reason },
+      ];
+      x.updatedAt = at;
+      if (attempts >= MAX_ATTEMPTS) {
+        x.state = "error";
+        x.finishedAt = at;
+        x.summary = `worker lost ${attempts} times; last: ${reason}`.slice(0, 400);
+        return { ...x };
+      }
+      x.state = "queued";
+      x.attempts = attempts + 1;
+      x.avoid = [...new Set([...(x.avoid ?? []), from])];
+      x.summary = `requeued (attempt ${attempts + 1}/${MAX_ATTEMPTS}): ${reason}`.slice(0, 400);
+      if (!x.pinned) {
+        x.backend = "";
+        delete x.machine;
+      }
+      for (const k of [
+        "runId",
+        "url",
+        "dispatchedAt",
+        "startedAt",
+        "finishedAt",
+        "offlineWarned",
+        "machineOfflineSince",
+      ] as const) {
+        delete x[k];
+      }
+      return { ...x };
+    });
+    if (updated?.state === "error" && updated.statusContext) await this.postFinal(updated);
   }
 
   private async movedSince(job: ValidationJob): Promise<boolean> {
@@ -779,19 +990,52 @@ export class ValidationService {
   }
 }
 
+/** Plain-words one-liner for a worker / pool machine, used by the tool and the CLI. */
+export function describeWorker(w: WorkerInfo): string {
+  const cap = [
+    w.capacity?.cpus ? `${w.capacity.cpus} cpu` : "",
+    w.capacity?.memoryGb ? `${w.capacity.memoryGb} GB` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const reserved =
+    w.reserved.cpus || w.reserved.memoryGb
+      ? `; reserved ${w.reserved.cpus} cpu, ${w.reserved.memoryGb} GB`
+      : "";
+  const kind = w.cloud ? "cloud" : w.kind;
+  return (
+    `${w.id} (${kind}${w.platform.length ? `, ${w.platform.join("/")}` : ""}): ` +
+    `${w.health.online ? "online" : "OFFLINE"}${w.blockedUntil ? `, blocked until ${w.blockedUntil} (billing)` : ""}; ` +
+    `slots ${w.used}/${w.maxConcurrent} used, ${w.busy} busy on GitHub, ${w.active} ours, ${w.queued} queued` +
+    `${cap ? `; ${cap}` : ""}${reserved}` +
+    `${w.recentFailures ? `; ${w.recentFailures} infra errors/lost runs in 24h` : ""} — ${w.health.detail}`
+  );
+}
+
 /** Plain-words one-liner for a job, used by notifications, the tool and the CLI. */
 export function describeJob(j: ValidationJob): string {
-  const where = j.backend ? ` on ${j.backend}` : "";
+  const where = j.backend ? ` on ${jobTarget(j)}` : "";
   const extra = j.summary ? ` — ${j.summary}` : "";
   const dirty = j.dirty ? " (uncommitted changes; advisory only)" : "";
   return `${j.id} ${j.stage} @ ${short(j.sha)}${where}: ${j.state}${dirty}${extra}${j.url ? ` ${j.url}` : ""}`;
+}
+
+/** Non-urgent note that a job went back to the queue after a lost runner or billing refusal. */
+export function requeueNotification(j: ValidationJob): string | undefined {
+  const last = j.requeues?.at(-1);
+  if (!last) return undefined;
+  return (
+    `Validation re-queued: ${j.stage} at ${short(j.sha)}: ${last.reason} on ${last.from} ` +
+    `(attempt ${j.attempts ?? 1}/${MAX_ATTEMPTS}, now ${j.state}${j.backend ? ` on ${jobTarget(j)}` : ""}). ` +
+    `Nothing to do; it runs again automatically.`
+  );
 }
 
 /** The notification a session gets for a job change, or undefined for routine ones. */
 export function notificationFor(
   j: ValidationJob,
 ): { text: string; terminal: boolean; urgent: boolean } | undefined {
-  const at = `${j.stage} at ${short(j.sha)}${j.backend ? ` on ${j.backend}` : ""}`;
+  const at = `${j.stage} at ${short(j.sha)}${j.backend ? ` on ${jobTarget(j)}` : ""}`;
   switch (j.state) {
     case "passed":
       return {
@@ -816,6 +1060,16 @@ export function notificationFor(
         terminal: true,
         urgent: true,
       };
+    case "queued":
+      return j.noWorkerWarned
+        ? {
+            text:
+              `No validation worker online for ${j.stage} at ${short(j.sha)}; it stays queued and ` +
+              `runs when a worker comes online. Tell the user if they're waiting on it.`,
+            terminal: false,
+            urgent: false,
+          }
+        : undefined;
     case "waiting":
       return j.offlineWarned
         ? {

@@ -35,7 +35,7 @@ export interface StageConfig {
   setup?: string;
   docker?: DockerSpec;
   resources?: Resources;
-  /** Pin one backend id; otherwise the first fitting, available one is used. */
+  /** Pin one backend id or one pool machine (`pool/machine`); otherwise the best fitting one is used. */
   backend?: string;
 }
 
@@ -117,12 +117,63 @@ export interface ValidationJob {
   supersededBy?: string;
   /** Previous job this one retries. */
   retryOf?: string;
+  /** Pool machine the job was sent to (or pinned to); "cloud" for GitHub-hosted overflow. */
+  machine?: string;
+  /** The stage pinned `backend` (and maybe `machine`); requeues keep the pin. */
+  pinned?: boolean;
+  /** Dispatch attempts so far (1 when absent); runner losses requeue up to MAX_ATTEMPTS. */
+  attempts?: number;
+  /** Automatic requeues after a lost runner or an offline machine. */
+  requeues?: JobRequeue[];
+  /** Targets (`pool/machine` or backend id) a requeued job should avoid if it can. */
+  avoid?: string[];
+  /** When the job's machine was first seen offline while the run was still waiting. */
+  machineOfflineSince?: string;
+  /** Set once we've said that no worker is online for this job. */
+  noWorkerWarned?: boolean;
 }
+
+export interface JobRequeue {
+  at: string;
+  /** Where the lost run was (`pool/machine` or backend id). */
+  from: string;
+  runId?: string;
+  reason: string;
+}
+
+/** Most dispatches a job gets before a lost runner becomes an error. */
+export const MAX_ATTEMPTS = 3;
 
 export interface BackendPollResult {
   state: Exclude<JobState, "queued" | "superseded">;
   url?: string;
   summary?: string;
+  /** The run ended because its runner/machine was lost (not a test result): why. */
+  lost?: string;
+  /** GitHub refused to start the run (Actions budget, billing, spending limit): why. */
+  blocked?: string;
+}
+
+/** One schedulable machine of a pool backend (a group of runners, or cloud runners). */
+export interface MachineInfo {
+  /** Machine id (the `ezw-` label without prefix, the backend id, or "cloud"). */
+  name: string;
+  online: boolean;
+  /** GitHub-hosted runners: always online, cost Actions minutes. */
+  cloud?: boolean;
+  /** Cloud used only when no self-hosted machine is online. */
+  overflowOnly?: boolean;
+  /** Max concurrent EZCODER jobs. */
+  slots: number;
+  /** Online runners GitHub reports busy (any job, ours or not). */
+  busy: number;
+  platform: string[];
+  capacity?: Resources;
+  /** Workflow `runs_on` input that lands a run on this machine. */
+  runsOn: string[];
+  /** Discovery failed; static capacity/maxConcurrent assumed. */
+  assumed?: boolean;
+  detail: string;
 }
 
 export interface BackendHealth {
@@ -143,6 +194,8 @@ export interface ValidationBackend {
   logs(job: ValidationJob, failedOnly: boolean): Promise<string>;
   cancel(job: ValidationJob): Promise<void>;
   health(): Promise<BackendHealth>;
+  /** Pools only: the machines behind this backend (discovery is cached). */
+  readonly machines?: () => Promise<MachineInfo[]>;
 }
 
 export interface ExecResult {

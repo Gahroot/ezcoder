@@ -3,9 +3,15 @@
 // holds the session.
 import { z } from "zod";
 import type { AgentTool } from "@prestyj/agent";
-import { describeJob, short, ValidationService } from "../core/validation/service.js";
+import {
+  describeJob,
+  describeWorker,
+  short,
+  ValidationService,
+} from "../core/validation/service.js";
 import { VALIDATION_CONFIG_FILE } from "../core/validation/config.js";
 import { isTerminal } from "../core/validation/types.js";
+import { jobTarget } from "../core/validation/scheduler.js";
 
 const ValidateParams = z.object({
   action: z
@@ -46,7 +52,9 @@ export function createValidateTool(
               `Commit ${short(r.sha)}${r.branch ? ` (${r.branch})` : ""}: ${r.jobs.length} queued` +
                 (r.reused.length ? `, ${r.reused.length} already done or running` : "") +
                 ". You'll be notified as each finishes; carry on.",
-              ...r.jobs.map((j) => `- ${j.id} ${j.stage} (${j.backend || "next free worker"})`),
+              ...r.jobs.map(
+                (j) => `- ${j.id} ${j.stage} (${j.backend ? jobTarget(j) : "next free worker"})`,
+              ),
               ...r.reused.map((j) => `- ${describeJob(j)}`),
               ...r.messages,
             ];
@@ -100,12 +108,7 @@ export function createValidateTool(
           case "workers": {
             const ws = await svc.workers();
             return [
-              ...ws.map(
-                (w) =>
-                  `- ${w.id} (${w.kind}): ${w.health.online ? "online" : "OFFLINE"}${w.health.busy ? ", busy" : ""}; ` +
-                  `${w.active}/${w.maxConcurrent} running, ${w.queued} queued` +
-                  `${w.recentFailures ? `, ${w.recentFailures} infra errors in 24h` : ""} — ${w.health.detail}`,
-              ),
+              ...ws.map((w) => `- ${describeWorker(w)}`),
               ...svc.problems.map((p) => `Config problem: ${p}`),
             ].join("\n");
           }

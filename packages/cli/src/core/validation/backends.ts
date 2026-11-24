@@ -47,6 +47,9 @@ export function loadBackends(
         problems.push(`duplicate backend id "${cfg.id}"`);
         continue;
       }
+      if (cfg.cloud?.enabled && !cfg.discover) {
+        problems.push(`backend "${cfg.id}": "cloud" needs "discover": true; cloud ignored`);
+      }
       backends.push(new GitHubActionsBackend(cfg, exec));
     } else {
       problems.push(

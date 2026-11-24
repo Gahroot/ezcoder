@@ -5,7 +5,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { readBackendsFile, writeBackendsFile } from "../core/validation/backends.js";
 import { detectStages, VALIDATION_CONFIG_FILE } from "../core/validation/config.js";
-import { describeJob, short, ValidationService } from "../core/validation/service.js";
+import {
+  describeJob,
+  describeWorker,
+  short,
+  ValidationService,
+} from "../core/validation/service.js";
 import { isTerminal } from "../core/validation/types.js";
 
 const HELP = `ezcoder validate — asynchronous validation against exact commits
@@ -15,10 +20,13 @@ const HELP = `ezcoder validate — asynchronous validation against exact commits
   gate [--ref R] [--wait]                    exit 0 only if every required stage passed at the commit
   logs <id> [--full]                         failing (or whole) log of a job
   cancel <id> | retry <id>
-  workers                                    backends, health, load
+  workers                                    each machine: online, platform, slots, cpu/mem, load
   init                                       write ${VALIDATION_CONFIG_FILE} from detected defaults
   add-worker <id> --repo owner/name [--workflow remote-test.yml] [--max N]
              [--labels a,b] [--cpus N] [--memory-gb N]
+             [--discover]                   pool: machines come from runner labels (ezw-…)
+             [--cloud] [--cloud-runs-on ubuntu-latest] [--cloud-max N]
+             [--cloud-when overflow|always] (GitHub-hosted runners; cost Actions minutes)
   remove-worker <id>
   daemon                                     keep jobs moving until none are left (started for you)`;
 
@@ -155,12 +163,7 @@ export async function runValidate(argv: string[] = process.argv.slice(2)): Promi
       return;
     }
     case "workers": {
-      for (const w of await svc.workers()) {
-        out(
-          `${w.id} (${w.kind}): ${w.health.online ? "online" : "OFFLINE"}${w.health.busy ? ", busy" : ""}; ` +
-            `${w.active}/${w.maxConcurrent} running, ${w.queued} queued — ${w.health.detail}`,
-        );
-      }
+      for (const w of await svc.workers()) out(describeWorker(w));
       for (const p of svc.problems) out(`config problem: ${p}`);
       return;
     }
@@ -184,6 +187,17 @@ export async function runValidate(argv: string[] = process.argv.slice(2)): Promi
       const labels = flag(args, "--labels");
       const cpus = flag(args, "--cpus");
       const mem = flag(args, "--memory-gb");
+      const discover = bool(args, "--discover");
+      const cloudOn = bool(args, "--cloud");
+      const cloudRunsOn = flag(args, "--cloud-runs-on");
+      const cloudMax = flag(args, "--cloud-max");
+      const cloudWhen = flag(args, "--cloud-when");
+      if (cloudWhen && cloudWhen !== "overflow" && cloudWhen !== "always") {
+        throw new Error("--cloud-when must be overflow or always");
+      }
+      if ((cloudOn || cloudRunsOn || cloudMax || cloudWhen) && !discover) {
+        throw new Error("cloud options need --discover (cloud overflow belongs to a pool)");
+      }
       const file = readBackendsFile(svc.dir);
       const backends = (file.backends ?? []).filter((b) => b.id !== id);
       backends.push({
@@ -201,9 +215,23 @@ export async function runValidate(argv: string[] = process.argv.slice(2)): Promi
               },
             }
           : {}),
+        ...(discover ? { discover: true } : {}),
+        ...(cloudOn || cloudRunsOn || cloudMax || cloudWhen
+          ? {
+              cloud: {
+                enabled: cloudOn,
+                runsOn: (cloudRunsOn ?? "ubuntu-latest").split(",").map((l) => l.trim()),
+                maxConcurrent: Number(cloudMax ?? 2),
+                when: (cloudWhen ?? "overflow") as "overflow" | "always",
+              },
+            }
+          : {}),
       });
       writeBackendsFile(svc.dir, { ...file, backends });
-      out(`Worker ${id} saved. Every project can use it now.`);
+      out(
+        `Worker ${id} saved${discover ? " as a pool (machines come from its runner labels)" : ""}. ` +
+          "Every project can use it now.",
+      );
       return;
     }
     case "remove-worker": {

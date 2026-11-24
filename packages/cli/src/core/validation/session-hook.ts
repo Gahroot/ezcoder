@@ -3,7 +3,7 @@
 // session can wake to repair), and unfinished jobs resume after a restart.
 import path from "node:path";
 import type { AgentNotificationQueue } from "../agent-notifications.js";
-import { notificationFor, ValidationService } from "./service.js";
+import { notificationFor, requeueNotification, ValidationService } from "./service.js";
 import { isTerminal } from "./types.js";
 
 export function attachValidationNotifications(
@@ -11,8 +11,15 @@ export function attachValidationNotifications(
   queue: AgentNotificationQueue,
   service: ValidationService = ValidationService.shared(),
 ): () => void {
-  const unsubscribe = service.onJob((job) => {
+  const unsubscribe = service.onJob((job, _prev, info) => {
     if (job.project !== path.resolve(getCwd())) return;
+    const re = info?.requeued && !isTerminal(job.state) ? requeueNotification(job) : undefined;
+    if (re) {
+      queue.enqueue("validation", `${job.id}:requeue${job.requeues?.length ?? 0}`, re, {
+        terminal: false,
+        urgent: false,
+      });
+    }
     const n = notificationFor(job);
     if (n) queue.enqueue("validation", job.id, n.text, { terminal: n.terminal, urgent: n.urgent });
   });

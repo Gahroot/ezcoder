@@ -15,8 +15,31 @@ export function shQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-/** The shell command a worker runs for a stage: setup, then the command (in Docker if asked). */
-export function buildStageCommand(stage: StageConfig): string {
+/** Per-project cache key for workers: the repo name, limited to [A-Za-z0-9._-]. */
+export function cacheKeyFor(repo: string | undefined): string {
+  const name = (repo ?? "").split("/").pop() ?? "";
+  const key = name.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^[._-]+/, "");
+  return key.slice(0, 100) || "default";
+}
+
+/** Package-manager caches pointed into the per-project cache mounted at /cache. */
+export const IMAGE_CACHE_ENV: Readonly<Record<string, string>> = {
+  npm_config_cache: "/cache/npm",
+  npm_config_store_dir: "/cache/pnpm-store",
+  YARN_CACHE_FOLDER: "/cache/yarn",
+  PIP_CACHE_DIR: "/cache/pip",
+  BUNDLE_PATH: "/cache/bundle",
+  GOMODCACHE: "/cache/go/mod",
+  GOCACHE: "/cache/go/build",
+  CARGO_HOME: "/cache/cargo",
+};
+
+/**
+ * The shell command a worker runs for a stage: setup, then the command (in Docker if asked).
+ * Image-mode stages mount the worker's per-project cache (`$EZ_CACHE`, else the default
+ * directory for `cacheKey`) at /cache.
+ */
+export function buildStageCommand(stage: StageConfig, cacheKey = "default"): string {
   let cmd = stage.command;
   const d: DockerSpec | undefined = stage.run === "remote" ? stage.docker : undefined;
   if (d?.compose && d.service) {
@@ -26,7 +49,13 @@ export function buildStageCommand(stage: StageConfig): string {
       `docker compose -f ${f} build ${shQuote(d.service)} && ` +
       `docker compose -f ${f} run --rm${ep} ${shQuote(d.service)} sh -c ${shQuote(stage.command)}`;
   } else if (d?.image) {
-    cmd = `docker run --rm -v "$PWD":/w -w /w ${shQuote(d.image)} sh -c ${shQuote(stage.command)}`;
+    const cache = `"\${EZ_CACHE:-$HOME/.cache/ezcoder-worker/${cacheKeyFor(cacheKey)}}"`;
+    const env = Object.entries(IMAGE_CACHE_ENV)
+      .map(([k, v]) => ` -e ${k}=${v}`)
+      .join("");
+    cmd =
+      `mkdir -p ${cache} && docker run --rm -v "$PWD":/w -v ${cache}:/cache -w /w${env} ` +
+      `${shQuote(d.image)} sh -c ${shQuote(stage.command)}`;
   }
   return stage.setup ? `${stage.setup} && ${cmd}` : cmd;
 }
