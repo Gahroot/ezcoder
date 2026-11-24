@@ -237,18 +237,22 @@ export class ServiceManager {
     for (const rec of watched) {
       const st = live.get(rec.status.id);
       const next =
-        st === "running" || st === "restarting"
+        st === "running"
           ? "running"
-          : st === undefined
-            ? rec.status.state === "running"
-              ? "error"
-              : rec.status.state
-            : "stopped";
+          : st === "restarting"
+            ? "error"
+            : st === undefined
+              ? rec.status.state === "running"
+                ? "error"
+                : rec.status.state
+              : "stopped";
       if (next !== rec.status.state) {
         rec.status.state = next;
         rec.status.summary =
           next === "error"
-            ? "container is gone"
+            ? st === "restarting"
+              ? "container keeps crashing and restarting; check the service log"
+              : "container is gone"
             : next === "stopped"
               ? `container ${st}`
               : undefined;

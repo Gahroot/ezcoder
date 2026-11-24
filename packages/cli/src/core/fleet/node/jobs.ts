@@ -597,6 +597,7 @@ export class JobManager {
 
   private async dockerCleanup(rec: JobRecord): Promise<void> {
     const id = rec.status.id;
+    await this.reclaimWorkspace(rec);
     const ps = await this.exec("docker", ["ps", "-aq", "--filter", `label=${FLEET_LABEL}=${id}`], {
       timeoutMs: 15_000,
     });
@@ -621,6 +622,45 @@ export class JobManager {
     if (!rec.docker?.image && rec.docker?.dockerfile) {
       await this.exec("docker", ["rmi", "-f", containerName(id)], { timeoutMs: 60_000 });
     }
+  }
+
+  /**
+   * Containers often run as root, so files they write into the mounted
+   * workspace can't be read or removed by the node's user afterwards. Hand
+   * them back (Linux only; Docker Desktop on macOS maps ownership itself).
+   */
+  private async reclaimWorkspace(rec: JobRecord): Promise<void> {
+    if (process.platform !== "linux" || typeof process.getuid !== "function") return;
+    const uid = process.getuid();
+    const gid = process.getgid?.() ?? uid;
+    if (uid === 0) return;
+    const root = workspaceRoot(this.cfg.dataDir, "job", rec.status.id);
+    if (!fs.existsSync(root)) return;
+    const owner = `${uid}:${gid}`;
+    const run = (image: string) =>
+      this.exec(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "--network",
+          "none",
+          "-v",
+          `${root}:/w`,
+          "--entrypoint",
+          "chown",
+          image,
+          "-R",
+          owner,
+          "/w",
+        ],
+        { timeoutMs: 120_000 },
+      );
+    const own =
+      rec.docker?.image ?? (rec.docker?.dockerfile ? containerName(rec.status.id) : undefined);
+    if (own && (await run(own)).code === 0) return;
+    const r = await run("alpine:3");
+    if (r.code !== 0) this.log(`job ${rec.status.id}: could not reclaim workspace ownership`);
   }
 
   async collectArtifacts(id: string, cwd: string, globs: string[]): Promise<ArtifactInfo[]> {

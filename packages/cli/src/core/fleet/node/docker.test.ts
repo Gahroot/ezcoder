@@ -158,6 +158,25 @@ describe("services (mocked docker)", () => {
     expect(st.endpoints).toEqual([{ name: "openai", url: "http://my-pc.example.ts.net:41234" }]);
   });
 
+  it("reports a crash-looping (restarting) container as an error, not running", async () => {
+    const { svc } = manager((_c, args) =>
+      args[0] === "ps" ? { stdout: "web\trestarting\n" } : {},
+    );
+    const req: ServiceRequest = {
+      id: "web",
+      kind: "custom",
+      docker: { image: "alpine:3" },
+      command: "exit 1",
+      ports: [{ container: 8080, name: "http" }],
+    };
+    expect((await svc.submit(req)).status).toBe(201);
+    await svc.settled("web");
+    await svc.refresh();
+    const st = (await svc.get("web"))!;
+    expect(st.state).toBe("error");
+    expect(st.summary).toMatch(/restarting/);
+  });
+
   it("devenv picks the devcontainer image, sleeps forever and execs in /w", async () => {
     const ws = tempDir("ezf-ws-");
     fs.mkdirSync(path.join(ws, ".devcontainer"));
