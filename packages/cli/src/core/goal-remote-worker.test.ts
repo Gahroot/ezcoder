@@ -31,7 +31,7 @@ let nodesFile: string;
 const closers: Array<() => Promise<void>> = [];
 
 beforeEach(() => {
-  root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ez-goal-remote-")));
+  root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "ez-goal-remote-")));
   process.env.EZ_GOALS_BASE = path.join(root, "goals");
   local = makeRepo(root).local;
   nodesFile = path.join(root, "nodes.json");
@@ -39,7 +39,7 @@ beforeEach(() => {
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await close();
   delete process.env.EZ_GOALS_BASE;
-  fs.rmSync(root, { recursive: true, force: true });
+  fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 async function nodes(slots: number[]): Promise<TestNode[]> {

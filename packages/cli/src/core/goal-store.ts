@@ -701,7 +701,18 @@ async function withGoalStoreLock<T>(dir: string, fn: () => Promise<T>): Promise<
 async function atomicWriteJson(path: string, value: unknown): Promise<void> {
   const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmpPath, JSON.stringify(value, null, 2) + "\n", "utf-8");
-  await rename(tmpPath, path);
+  // Windows refuses to replace a file another process has open (a reader, an
+  // antivirus scan); it clears within moments, so retry before giving up.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(tmpPath, path);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if ((code !== "EPERM" && code !== "EBUSY" && code !== "EACCES") || attempt >= 20) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 25 + attempt * 25));
+    }
+  }
 }
 
 async function readGoalRunsFile(cwd: string): Promise<GoalRun[]> {

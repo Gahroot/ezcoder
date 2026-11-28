@@ -29,7 +29,7 @@ function sh(cwd: string, ...args: string[]): string {
 }
 
 function makeRepo(): { root: string; local: string; head: string } {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ez-cloud-agent-")));
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "ez-cloud-agent-")));
   // Retries: a worker may still be removing its sync state as the test ends.
   cleanups.push(() =>
     fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
@@ -40,6 +40,7 @@ function makeRepo(): { root: string; local: string; head: string } {
   sh(local, "config", "user.email", "t@example.com");
   sh(local, "config", "user.name", "Test");
   sh(local, "config", "commit.gpgsign", "false");
+  sh(local, "config", "core.autocrlf", "false");
   fs.writeFileSync(path.join(local, "a.txt"), "a\n");
   sh(local, "add", "-A");
   sh(local, "commit", "-q", "-m", "init");
@@ -176,7 +177,9 @@ describe("CloudWorkerProcess through SubAgentManager", () => {
     expect(request.prompt).toContain("fix the bug");
     expect(request.model).toBe("claude-opus-5");
     expect(request.maxTurns).toBeGreaterThanOrEqual(100);
-    expect(request.source).toMatchObject({ repoRoot: s.local, sha: s.head });
+    expect(request.source.sha).toBe(s.head);
+    // git reports the root with forward slashes on Windows.
+    expect(path.resolve(request.source.repoRoot)).toBe(path.resolve(s.local));
     expect(request.source.patch).toBeUndefined();
 
     await m.followup(spawned.agent_id, "and the test");

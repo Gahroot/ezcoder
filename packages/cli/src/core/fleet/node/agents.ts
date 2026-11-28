@@ -247,7 +247,15 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
     if (agents.get(entry.id) !== entry) return;
     agents.delete(entry.id);
     clearTimeout(entry.graceTimer);
-    if (entry.proc) killTree(entry.proc, "SIGKILL");
+    const proc = entry.proc;
+    const exited =
+      proc && proc.exitCode === null && proc.signalCode === null
+        ? new Promise<void>((resolve) => {
+            proc.once("exit", () => resolve());
+            setTimeout(resolve, 5000).unref();
+          })
+        : undefined;
+    if (proc) killTree(proc, "SIGKILL");
     entry.socket?.close(1000, "removed");
     entry.socket = undefined;
     if (entry.adopted && entry.pid && entry.state === "running") {
@@ -259,8 +267,13 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
     }
     ctx.releaseSlot(entry.owner);
     persist();
+    // Windows keeps a dying process's cwd locked; wait for it, then retry.
+    await exited;
     for (const dir of [entry.removeDir, entry.sessionsDir]) {
-      if (dir) await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+      if (dir)
+        await fs
+          .rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+          .catch(() => {});
     }
   };
 

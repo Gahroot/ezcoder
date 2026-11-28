@@ -223,10 +223,10 @@ function checkMountSource(source: string, allowedRoot: MountScope | undefined): 
   if (!isHostPath(source)) return undefined; // named volume
   if (SENSITIVE_HOST_PATHS.includes(source)) return `docker mount not allowed: ${source}`;
   if (Array.isArray(allowedRoot)) {
-    if (source.startsWith("/") && allowedRoot.some((r) => insideReal(r, source))) return undefined;
+    if (path.isAbsolute(source) && allowedRoot.some((r) => insideReal(r, source))) return undefined;
     return `docker host mount not allowed: ${source} (only this job's own workspace and cache can be mounted; use a named volume)`;
   }
-  if (typeof allowedRoot === "string" && source.startsWith("/")) {
+  if (typeof allowedRoot === "string" && path.isAbsolute(source)) {
     // Docker follows symlinks on the host, so compare real paths.
     const rel = path.relative(realish(allowedRoot), realish(source));
     const first = rel.split(path.sep)[0] ?? "";

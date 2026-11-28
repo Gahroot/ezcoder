@@ -984,3 +984,26 @@ describe("billing-blocked cloud runs", () => {
     svc.stop();
   });
 });
+
+describe("tick while a pass is running", () => {
+  it("runs a fresh pass instead of returning the stale one", async () => {
+    const svc = new ValidationService({
+      dir: path.join(tmp, "state"),
+      backends: [],
+      autoStart: false,
+    });
+    let passes = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    (svc as unknown as { tickInner: () => Promise<void> }).tickInner = async () => {
+      passes++;
+      if (passes === 1) await gate;
+    };
+    const first = svc.tick();
+    const second = svc.tick();
+    release();
+    await Promise.all([first, second]);
+    expect(passes).toBe(2);
+    svc.stop();
+  });
+});

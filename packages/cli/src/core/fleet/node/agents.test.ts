@@ -19,8 +19,10 @@ afterEach(async () => {
 });
 
 function tmp(): string {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ez-fleet-agents-")));
-  cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "ez-fleet-agents-")));
+  cleanups.push(() =>
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+  );
   return dir;
 }
 

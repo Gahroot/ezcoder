@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentNotificationQueue } from "../agent-notifications.js";
 import { attachFleetNotifications } from "./session-hook.js";
@@ -15,7 +16,7 @@ const failed = (over: Partial<FleetJob> = {}): FleetJob =>
     id: "f1",
     name: "test",
     kind: "test",
-    project: "/p",
+    project: path.resolve("/p"),
     projectKey: "p",
     git: "g",
     sha: "abcdef1234",

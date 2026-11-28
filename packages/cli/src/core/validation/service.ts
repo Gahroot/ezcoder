@@ -570,10 +570,10 @@ export class ValidationService {
 
   /** One pass: observe, and if we lead, poll/dispatch. Returns whether work remains. */
   async tick(): Promise<boolean> {
-    if (this.ticking) {
-      await this.ticking;
-      return this.hasActive();
-    }
+    // A pass already running may have read the queue before newer work was
+    // added; wait for it, then run a fresh pass so that work isn't left for
+    // the next poll.
+    while (this.ticking) await this.ticking;
     this.ticking = this.tickInner().finally(() => {
       this.ticking = undefined;
     });

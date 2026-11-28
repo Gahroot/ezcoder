@@ -35,7 +35,7 @@ export function createValidateTool(
     description:
       "Async tests on workers (local quick checks, remote heavy suites) against exact commits; " +
       "returns at once and you're notified when each stage finishes — keep working, never wait or poll. " +
-      `Stages come from ${VALIDATION_CONFIG_FILE} or are detected. Remote stages test the committed SHA ` +
+      "Stages come from .ezcoder/validation.json or are detected. Remote stages test the committed SHA " +
       "(commit and push first); a newer commit supersedes older runs. Use gate before calling work merge- or release-ready.",
     parameters: ValidateParams,
     async execute(args) {

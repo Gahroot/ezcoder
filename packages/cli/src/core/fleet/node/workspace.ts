@@ -139,6 +139,9 @@ export async function prepareWorkspaceDetailed(opts: PrepareOptions): Promise<Pr
 
   step(`cloning ${display} at ${src.sha.slice(0, 12)}`);
   await must(["init", "-q"], "git init");
+  // Keep the exact bytes of the commit (Windows git defaults to CRLF), so
+  // patches made here apply cleanly back home and vice versa.
+  await must(["config", "core.autocrlf", "false"], "git config");
   await must(["remote", "add", "origin", display], "git remote add");
   // Exact sha first (cheapest); servers that refuse unadvertised shas get all heads + tags.
   let fetched = await git(["fetch", "-q", "--filter=blob:none", "--no-tags", src.git, src.sha]);
@@ -200,5 +203,10 @@ export async function prepareWorkspace(opts: PrepareOptions): Promise<string> {
 }
 
 export function cleanupWorkspace(dataDir: string, kind: WorkspaceKind, id: string): void {
-  fs.rmSync(workspaceRoot(dataDir, kind, id), { recursive: true, force: true });
+  fs.rmSync(workspaceRoot(dataDir, kind, id), {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  });
 }
