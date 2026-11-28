@@ -22,3 +22,9 @@ tests. Release automation (`release.yml`) triggers on `v*` tags; see
 Never commit with `--no-verify`.
 
 - **Headless CLI first.** Apps expose a CLI for testing without simulators. See the `headless-cli-testing` skill.
+
+<!-- ez-safe:blocked-packages:start -->
+## Blocked packages
+EZ Coder's safety checks blocked these. Never install or run them; use another version or package.
+- npm `node.js@0.0.1-security`: known malware (MAL-2025-27668)
+<!-- ez-safe:blocked-packages:end -->
