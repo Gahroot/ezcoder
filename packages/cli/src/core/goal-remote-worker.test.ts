@@ -39,8 +39,21 @@ beforeEach(() => {
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await close();
   delete process.env.EZ_GOALS_BASE;
-  fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  removeTempDir(root);
 });
+
+/**
+ * Nodes leave agent processes running on purpose (they survive a node restart),
+ * and Windows keeps a running process's folder locked; a leftover temp folder
+ * there must not fail the test.
+ */
+function removeTempDir(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (err) {
+    if (process.platform !== "win32") throw err;
+  }
+}
 
 async function nodes(slots: number[]): Promise<TestNode[]> {
   const started: TestNode[] = [];

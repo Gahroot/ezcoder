@@ -33,11 +33,22 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
+/**
+ * Nodes leave agent processes running on purpose (they survive a node restart),
+ * and Windows keeps a running process's folder locked; a leftover temp folder
+ * there must not fail the test.
+ */
+function removeTempDir(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (err) {
+    if (process.platform !== "win32") throw err;
+  }
+}
+
 function tmp(): string {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "ez-remote-cap-")));
-  cleanups.push(() =>
-    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
-  );
+  cleanups.push(() => removeTempDir(dir));
   return dir;
 }
 
