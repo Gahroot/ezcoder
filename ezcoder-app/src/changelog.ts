@@ -17,6 +17,16 @@ export interface ChangelogEntry {
 /** Newest first. Prepended by the `/release` flow. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.99.0",
+    date: "2026-11-28",
+    items: [
+      "All your computers now work as one big team. Every machine's slots go into a single pool for tests, builds, helper agents and Goal workers, so I can run `6` test shards on one beefy PC, one on each of six machines, or any mix you like. When everything is busy, new work simply waits its turn instead of failing.",
+      "Adding a machine is now a two-minute job. Open the new `Machines` panel, copy the setup line for Linux, Windows or macOS, type the short pairing code it prints, and I check that machine top to bottom and tell you exactly how to fix anything that is missing. The panel shows how busy every machine is and lets you remove one, give it a new key or share your model login.",
+      "Goals can now run on your other computers. I can send Goal workers and the final check to a node, and I never quietly mix up two workers' edits to the same file. You can even hand a whole Goal to a machine with `ezcoder goals host` and close your laptop; the result lands on its own branch.",
+      "Your machines are locked down tighter. A node can refuse anything outside Docker, deploy secrets live in the system keychain, agents only see a short list of safe settings, and you can turn on encrypted connections with certificate pinning. Fleet jobs also show up in the activity area with their logs one click away.",
+    ],
+  },
+  {
     version: "0.98.0",
     date: "2026-11-24",
     items: [
