@@ -27,7 +27,8 @@ jobs:
   test:
     name: ${{ matrix.os }} · node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # Windows runs the full CLI suite in ~14 min; leave headroom for slow runners.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
