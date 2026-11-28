@@ -90,6 +90,10 @@ detected defaults as a starting point.
 
 ## Workers (per user, never per project)
 
+No workers at all still works (stages run locally). Signed in to Claude? Then
+Claude Code cloud is extra capacity automatically: stages spill over to it when
+your workers are busy, full or offline. See [cloud.md](cloud.md).
+
 `~/.ezcoder/validation/backends.json`, managed with `ezcoder validate add-worker`.
 A worker is a repo (e.g. `you/test-worker`) with a `workflow_dispatch` workflow
 `remote-test.yml` taking `repo`, `ref`, `command`, `timeout_minutes`, `job_id`

@@ -32,6 +32,18 @@ const agents: AgentDefinition[] = [
 const managers: SubAgentManager[] = [];
 const tempDirs: string[] = [];
 
+/**
+ * Wait until `check` holds, re-checking on every macrotask instead of after a
+ * fixed sleep, so a loaded (or Windows) runner only makes it slower, never red.
+ */
+async function waitUntil(check: () => boolean | Promise<boolean>, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error("waitUntil timed out");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 async function tempDir(): Promise<string> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ez-subagent-manager-"));
   tempDirs.push(directory);
@@ -433,9 +445,7 @@ describe("SubAgentManager", () => {
     // Event-driven, NOT a collection: poll the state instead of wait().
     const isDone = () =>
       instance.list().some((a) => a.agent_id === child.agent_id && a.state === "completed");
-    for (let i = 0; i < 200 && !isDone(); i++) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    await waitUntil(isDone);
     expect(isDone()).toBe(true);
 
     const drained = notifications.drain();
@@ -469,9 +479,7 @@ describe("SubAgentManager", () => {
     // Read the completion notice before wait() collects (and clears) it.
     const isDone = () =>
       instance.list().some((a) => a.agent_id === child.agent_id && a.state === "completed");
-    for (let i = 0; i < 200 && !isDone(); i++) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    await waitUntil(isDone);
     expect(notifications.drain()[0]!.text).toContain("Acceptance checks: 0/2 passed.");
     const agent = (await instance.wait([child.agent_id], "all", 1_000)).agents[0]!;
     expect(agent.acceptance).toBe("0/2 passed");
@@ -584,7 +592,8 @@ describe("SubAgentManager", () => {
     await expect(malformed.spawn("bad", "task", "bad")).rejects.toThrow("malformed");
     // Let the worker exit and close stdin. A late EPIPE must be consumed by the
     // manager rather than surfacing as Vitest's process-level unhandled error.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitUntil(() => malformed.list().some((agent) => agent.state === "failed"));
+    await malformed.waitForPersistence();
     expect(malformed.list()).toEqual([expect.objectContaining({ state: "failed" })]);
   });
 
@@ -594,7 +603,8 @@ describe("SubAgentManager", () => {
     const launch = instance.spawn("hanging", "task", "hanging");
     const rejection = expect(launch).rejects.toThrow("Subagent worker closed");
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // The worker is up and the launch is still in its starting state.
+    await waitUntil(() => instance.list().some((agent) => agent.state === "starting"));
     await instance.interruptAll();
     await rejection;
   });
@@ -757,7 +767,7 @@ describe("SubAgentManager", () => {
     const shutdown = instance.shutdownAll();
     await instance.resetParentSession("parent-new");
     await shutdown;
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await instance.waitForPersistence();
 
     expect(instance.list()).toEqual([]);
     expect(await store.load(process.cwd(), "parent-new")).toEqual([]);
@@ -983,7 +993,7 @@ describe("durable turn-record adoption on hydrate", () => {
       token_usage: { input: 50, output: 9 },
       completed_at: Date.now(),
     });
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await waitUntil(() => instance.list().find((s) => s.agent_id === "a1")?.state === "completed");
 
     const snapshot = instance.list().find((s) => s.agent_id === "a1")!;
     expect(snapshot.state).toBe("completed");

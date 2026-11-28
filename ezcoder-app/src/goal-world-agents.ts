@@ -3,6 +3,7 @@
 // tool feed, and every worker it brought in from the transcript's sub-agent
 // groups. Pure, so the world view and its tests share one mapping.
 
+import { machineLabel } from "./machine-label";
 import type { FloorAgent } from "./critter-floor";
 import type { NolanMark } from "./goal-nolan-status";
 import { toolKindOf } from "./critter-tool-kind";
@@ -37,6 +38,8 @@ export interface WorldAgent {
   readonly kind: WorkKind | null;
   /** The same in words, for the roster and screen readers. */
   readonly detail: string;
+  /** Workers only: the computer it runs on, in words ("this computer" or a machine's name; D4). */
+  readonly machine?: string;
   /** EZ Goals only: the thought mark over its head (see goal-nolan-status). */
   readonly mark?: NolanMark | null;
 }
@@ -210,6 +213,7 @@ export function collectWorldAgents(input: WorldInput): WorldAgent[] {
       key: agent.key,
       agentName: agent.agentName,
       name: agent.label,
+      machine: machineLabel(agent.machine),
       coordinator: false,
       status,
       kind,

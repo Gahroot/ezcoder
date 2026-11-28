@@ -1,0 +1,225 @@
+/* Machines panel, Add a machine and fleet activity (PRD 8.5, D1–D5). */
+.machine-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.machine-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--surface-2);
+}
+.machine-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+.machine-name {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.machine-address {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+}
+.machine-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-8);
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.machine-facts dt {
+  color: var(--text-muted);
+}
+.machine-facts div {
+  display: flex;
+  gap: var(--space-3);
+}
+.machine-facts dd {
+  margin: 0;
+}
+.machine-notice {
+  margin: 0;
+  color: var(--warning);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.machine-notice[data-kind="protocol"] {
+  color: var(--error);
+}
+.machine-notice[data-kind="offline"] {
+  color: var(--text-muted);
+}
+.machine-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.machine-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-base);
+  line-height: 1.45;
+}
+.machine-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+.machine-tab {
+  padding: var(--space-2) var(--space-6);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.machine-tab[aria-selected="true"] {
+  border-color: var(--primary);
+  color: var(--text);
+}
+.machine-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+.machine-setup-needs {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.machine-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  margin: 0;
+  padding-left: var(--space-10);
+}
+.machine-step-label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.machine-step-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.machine-command {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.machine-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.machine-doctor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.machine-doctor-summary {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-base);
+}
+.machine-doctor-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.machine-doctor-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.machine-doctor-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--text-dim);
+}
+.machine-doctor-line[data-status="ok"] .machine-doctor-dot {
+  background: var(--success);
+}
+.machine-doctor-line[data-status="warn"] .machine-doctor-dot {
+  background: var(--warning);
+}
+.machine-doctor-line[data-status="fail"] .machine-doctor-dot {
+  background: var(--error);
+}
+.machine-doctor-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.machine-doctor-detail {
+  color: var(--text-secondary);
+}
+.machine-doctor-fix {
+  display: block;
+  color: var(--text-muted);
+}
+.machine-doctor-fix code {
+  font-family: var(--mono);
+  color: var(--text-secondary);
+}
+.machine-log {
+  max-height: 50vh;
+  margin: 0;
+  overflow: auto;
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-button);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.machine-badge {
+  font-variant-numeric: tabular-nums;
+}
+.subagent-machines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+}

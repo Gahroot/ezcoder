@@ -137,6 +137,25 @@ describe("SubAgentFeed", () => {
     return renderCritterFrame(bee, 0);
   };
 
+  it("badges the machines remote agents run on, once each, and nothing for local ones", () => {
+    const { container, rerender } = render(<SubAgentFeed agents={[agent("running")]} />);
+    expect(container.querySelector(".subagent-machines")).toBeNull();
+    rerender(
+      <SubAgentFeed
+        agents={[
+          { ...agent("running"), machine: "gpu-box" },
+          { ...agent("running"), machine: "gpu-box" },
+          { ...agent("running"), machine: "auto" },
+          agent("running"),
+        ]}
+      />,
+    );
+    const badges = [...container.querySelectorAll(".subagent-machines > *")].map(
+      (b) => b.textContent,
+    );
+    expect(badges).toEqual(["on gpu-box", "on another machine"]);
+  });
+
   it("leads the line with the agent's own critter instead of a dot", () => {
     const bee = { ...agent("running"), agentName: "bee" };
     const { container } = render(<SubAgentFeed agents={[bee]} />);

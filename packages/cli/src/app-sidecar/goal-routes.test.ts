@@ -7,7 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGoal, goalsRoot, markGoalStarted, readGoal } from "../core/goals-store.js";
 import { RunClaim } from "../core/run-claim.js";
 import { goalRunMarkerPath } from "../core/goal-run-marker.js";
-import { goalListStatus, handleGoalRoutes } from "./goal-routes.js";
+import { upsertGoalRun, type GoalRun } from "../core/goal-store.js";
+import {
+  goalListStatus,
+  handleGoalRoutes,
+  HOSTED_GOAL_REFRESH_MS,
+  resetHostedGoalThrottle,
+} from "./goal-routes.js";
+
+const refreshHostedGoal = vi.hoisted(() => vi.fn());
+vi.mock("../core/goal-fleet.js", () => ({ refreshHostedGoal }));
 import type { SessionRouteContext } from "./route-context.js";
 
 interface Reply {
@@ -291,5 +300,75 @@ describe("goal kickoff route", () => {
     await expect(fs.stat(dir)).rejects.toThrow();
     expect(ctx.goal).toBeNull();
     expect(await remove(ctx, "perf")).toEqual({ status: 404, body: { error: "Unknown goal" } });
+  });
+
+  it("refreshes a Goal hosted on a fleet node when the app lists goals, at most every 30 s", async () => {
+    process.env.EZ_GOALS_BASE = path.join(tmp, "goal-store");
+    resetHostedGoalThrottle();
+    refreshHostedGoal.mockReset();
+    const { ctx, dir } = await goalContext();
+    await upsertGoalRun(dir, {
+      id: "hosted-run",
+      title: "Overnight",
+      goal: "Keep going with the laptop closed",
+      status: "running",
+      hosted: {
+        node: "gpu-box",
+        hostId: "hosted-run",
+        state: "running",
+        startedAt: "2026-11-27T00:00:00.000Z",
+        checkedAt: "2026-11-27T00:00:00.000Z",
+      },
+    });
+    refreshHostedGoal.mockImplementation(async (_cwd: string, run: GoalRun) => ({
+      run: {
+        ...run,
+        hosted: {
+          ...run.hosted!,
+          state: "done",
+          resultBranch: "ezcoder/goal/hosted-run",
+          resultSha: "abc123",
+        },
+      },
+    }));
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const list = async () => {
+      const { res, reply } = fakeResponse();
+      handleGoalRoutes(
+        ctx as unknown as SessionRouteContext,
+        Readable.from([]) as unknown as http.IncomingMessage,
+        res,
+        "/goals",
+        "GET",
+      );
+      return (await reply) as { status: number; body: { goals: Array<{ hosted?: unknown }> } };
+    };
+    try {
+      const first = await list();
+      expect(first.status).toBe(200);
+      expect(first.body.goals[0]?.hosted).toEqual([
+        expect.objectContaining({
+          runId: "hosted-run",
+          title: "Overnight",
+          node: "gpu-box",
+          state: "done",
+          resultBranch: "ezcoder/goal/hosted-run",
+          resultSha: "abc123",
+        }),
+      ]);
+      expect(refreshHostedGoal).toHaveBeenCalledTimes(1);
+
+      now += HOSTED_GOAL_REFRESH_MS - 1;
+      await list();
+      expect(refreshHostedGoal).toHaveBeenCalledTimes(1);
+
+      now += 1;
+      await list();
+      expect(refreshHostedGoal).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+      delete process.env.EZ_GOALS_BASE;
+    }
   });
 });

@@ -8,6 +8,7 @@ vi.mock("./SettingsModal", () => ({ SettingsModal: () => <p>general page</p> }))
 vi.mock("./McpModal", () => ({ McpModal: () => <p>mcp page</p> }));
 vi.mock("./SteroidsModal", () => ({ SteroidsModal: () => <p>steroids page</p> }));
 vi.mock("./TelegramSettingsModal", () => ({ TelegramSettingsModal: () => <p>telegram setup</p> }));
+vi.mock("./MachinesPanel", () => ({ MachinesPanel: () => <p>machines page</p> }));
 vi.mock("./LoginScreen", async () => {
   const { SettingsHeaderStatus } = await import("./settings-header");
   return {
@@ -65,6 +66,13 @@ describe("SettingsScreen", () => {
     expect(heading()).toBe("MCP");
     expect(screen.getByText("mcp page")).toBeTruthy();
     expect(screen.queryByText("general page")).toBeNull();
+  });
+
+  it("has a Machines tab", async () => {
+    await renderScreen();
+    fireEvent.click(screen.getByRole("tab", { name: "Machines" }));
+    expect(heading()).toBe("Machines");
+    expect(screen.getByText("machines page")).toBeTruthy();
   });
 
   it("opens on the requested tab", async () => {

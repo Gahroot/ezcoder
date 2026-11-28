@@ -166,6 +166,7 @@ import { handleWorkspaceRoutes } from "./app-sidecar/workspace-routes.js";
 import { handleHistoryRoutes } from "./app-sidecar/history-routes.js";
 import { handlePromptRoutes } from "./app-sidecar/prompt-routes.js";
 import { handleTaskRoutes } from "./app-sidecar/task-routes.js";
+import { handleFleetRoutes } from "./app-sidecar/fleet-routes.js";
 import { handleRunControlRoutes } from "./app-sidecar/run-control-routes.js";
 import { handleAuthRoutes } from "./app-sidecar/auth-routes.js";
 import { handleIntegrationRoutes } from "./app-sidecar/integration-routes.js";
@@ -1124,6 +1125,8 @@ async function createSession(
       additionalTools: startLivePreview
         ? [askUserTool, createLivePreviewTool((url) => startLivePreview(opts.id, url))]
         : [askUserTool],
+      // Built-in tools that need the user's own answer (fleet apply_config) ask here too.
+      askUser: (request) => asks.park(request),
       // A run must not end mid-plan with nothing submitted: nobody could review it.
       planSubmissionGate: true,
       // Plan mode belongs only to the coding agent.
@@ -2914,6 +2917,7 @@ async function createSession(
     if (handleIntegrationRoutes(routeCtx, req, res, url, method)) return;
     if (handleMcpRoutes(routeCtx, req, res, url, method)) return;
     if (handleShellRoutes(routeCtx, req, res, url, method)) return;
+    if (handleFleetRoutes(routeCtx, req, res, url, method)) return;
 
     json(res, 404, { error: "not found" });
   }

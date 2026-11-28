@@ -54,7 +54,13 @@ export interface TestNode {
 
 export async function startTestNode(
   dataDir: string,
-  options: AgentRoutesOptions & { slots?: number } = {},
+  options: AgentRoutesOptions & {
+    slots?: number;
+    /** Send Retry-After (seconds) with a 429 busy answer, like the real server. */
+    retryAfterSeconds?: number;
+    /** Called for every 429 the node sends. */
+    onBusy?: () => void;
+  } = {},
 ): Promise<TestNode> {
   const module = createAgentRouteModule({ cliEntry: FAKE_WORKER, ...options });
   const slots = new Set<string>();
@@ -94,7 +100,14 @@ export async function startTestNode(
     },
     cliEntry: () => "unused",
     json(res, status, body) {
-      res.writeHead(status, { "content-type": "application/json" });
+      if (status === 429) options.onBusy?.();
+      res.writeHead(status, {
+        "content-type": "application/json",
+        ...(status === 429 &&
+          options.retryAfterSeconds !== undefined && {
+            "retry-after": String(options.retryAfterSeconds),
+          }),
+      });
       res.end(JSON.stringify(body));
     },
     log() {},

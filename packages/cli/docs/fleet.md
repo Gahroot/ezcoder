@@ -11,7 +11,17 @@ finishes.
   where work runs, remembers jobs across restarts and notifies sessions.
 
 Nodes are reached over [Tailscale](https://tailscale.com) (a private network; no
-open ports). Each node has its own token.
+open ports), or over TLS with a pinned certificate. Each node has its own token.
+
+| Page                                                 | For                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------ |
+| [fleet-quickstart.md](fleet-quickstart.md)           | Add a Linux, WSL2 or macOS machine in five minutes                 |
+| [fleet-nodes.md](fleet-nodes.md)                     | Node setup in detail: Docker, GPUs, run at login, secrets, updates |
+| [fleet-agents.md](fleet-agents.md)                   | Helper agents on other machines                                    |
+| [fleet-goals.md](fleet-goals.md)                     | Goal workers and verifiers on nodes                                |
+| [fleet-troubleshooting.md](fleet-troubleshooting.md) | Every error message, its cause and fix                             |
+| [fleet-security.md](fleet-security.md)               | Threat model, and each security claim with its test                |
+| [fleet-data.md](fleet-data.md)                       | What leaves your machine and where it goes                         |
 
 ## What can run where
 
@@ -32,24 +42,58 @@ last ran the project (warm caches), then the emptiest, then the least loaded.
 If nothing has room the job stays queued; if nothing could ever fit it fails at
 once and says why.
 
+## Capacity
+
+Each node has a number of **slots**, and they are the only limit on it. One pool
+of slots is shared by every kind of work sent there: fleet jobs, validation
+stages, helper agents and Goal workers. Services don't take slots.
+
+- The default is `max(1, min(cpus / 2, memoryGb / 2))`, so a 16-core 32 GB box
+  gets 8.
+- Change it on the node with `ezcoder node config --slots N` (any N of 1 or
+  more, also above the default). A running node picks it up at once, with no
+  restart. `ezcoder node doctor` warns when slots exceed the CPU count.
+- Paired nodes join [validation](async-validation.md) automatically as the
+  `fleet` pool; `"fleetNodes": false` in the validation backends file turns that
+  off. Validation counts the node's other work, so the two never over-book it.
+- When every slot is busy the node answers "busy" with a `Retry-After` time.
+  The main machine keeps the work queued and starts it as soon as a slot frees;
+  nothing fails because a node is full.
+- No hidden cap applies on top of the slots. Six jobs, stages or agents run at
+  once on one 6-slot node, or spread over six 1-slot nodes, and a seventh waits.
+  To cap jobs in flight across all nodes, set `maxConcurrent` in
+  `~/.ezcoder/fleet/settings.json`.
+
+Jobs that fit a cloud sandbox (Linux, up to 4 CPUs / 16 GB, no secrets, GPU or
+artifacts) overflow to Claude Code cloud when no node has room. See
+[cloud.md](cloud.md).
+
 ## Pairing
 
-On the new machine:
+The [quick start](fleet-quickstart.md) has the full steps. In short, on the
+new machine run the bootstrap script for its platform (or `ezcoder node init`
+and `ezcoder node install`), then:
 
 ```sh
-npm i -g @prestyj/cli
-ezcoder node init        # prints a pairing string
-ezcoder node serve
+ezcoder node doctor --repo https://github.com/you/repo   # one fix per problem
+ezcoder node pair --code                                 # short code + QR
 ```
 
 On your main machine:
 
 ```sh
-ezcoder fleet discover                                  # nodes on the tailnet, paired or not
-ezcoder fleet add 'ezfleet://gpu-box@gpu-box.tailnet.ts.net:7377#<token>'
-ezcoder fleet nodes                                     # online, slots, CPU/memory, GPUs, labels
+ezcoder fleet discover                    # nodes on the tailnet, paired or not
+ezcoder fleet add --code K7QM-2XPA        # or `ezcoder fleet add` and paste the string at the prompt
+ezcoder fleet nodes                       # online, slots, CPU/memory, GPUs, labels
+ezcoder fleet rotate-token gpu-box        # new token; the old one stops working at once
+ezcoder fleet update gpu-box              # bring the node's EZ Coder up to date
 ezcoder fleet remove gpu-box
 ```
+
+`fleet add` refuses a node it can't reach or whose token is rejected, unless
+you pass `--offline`, and shows the node's doctor report. Controller and node
+check each other's protocol version on every request; a mismatch says which
+side to update.
 
 Paired nodes live in `~/.ezcoder/fleet/nodes.json` (mode 0600, it holds tokens).
 
@@ -60,7 +104,7 @@ ezcoder fleet run build                 # the pushed HEAD, best fitting node
 ezcoder fleet run e2e --node my-pc      # pin a node
 ezcoder fleet run build --uncommitted   # include local changes as a patch
 ezcoder fleet status                    # config and recent jobs
-ezcoder fleet logs <id>
+ezcoder fleet logs <id>                 # agents use the fleet tool's tail / offset / grep instead of the whole log
 ezcoder fleet artifacts <id> [--out dir]
 ezcoder fleet cancel <id>
 ```
@@ -117,6 +161,7 @@ these in `.ezcoder/fleet.json`:
 ```
 
 Job kinds: `build`, `test`, `validate`, `browser`, `render`, `deploy`, `custom`.
+Jobs that use a compose file only run on nodes labelled `compose`.
 Resources: `cpus`, `memoryGb`, `gpus`, `gpuMemoryGb`, `labels`.
 
 ## Services
@@ -158,8 +203,8 @@ the deploy and again right before dispatch. Deploys always run pushed commits,
 never patches. A project can turn the gate off for one job with `"gate": false`.
 
 Secrets are never sent from your machine. They live on the node
-(`ezcoder node secret set NAME`); jobs only name them, and only nodes labelled
-`deploy` accept jobs with secrets.
+(`ezcoder node secret set NAME`); only `deploy` jobs can name them, and only nodes
+labelled `deploy` accept those jobs.
 
 ## Recovery
 
@@ -172,10 +217,14 @@ survives restarts, and exactly one EZCODER process (a session or
   attempts. This applies to `build`, `test`, `validate`, `browser`, `render`
   and `custom`.
 - **Deploys are never retried automatically** (they may have partly run). They
-  end in `error` and you're told to check the target.
+  end in `error` and you're told to check the target. If a node doesn't answer
+  when a deploy is sent, the deploy waits for that node to confirm whether it
+  started; it is never sent to a second node.
+- A state file that can't be read is set aside as `<name>.corrupt-<time>`
+  instead of being overwritten.
 
 Settings (`~/.ezcoder/fleet/settings.json`): `maxConcurrent` (jobs in flight
-across all nodes, default 8) and `browser`.
+across all nodes; unset means only the nodes' slots limit it) and `browser`.
 
 ## Model credentials
 
@@ -185,6 +234,8 @@ copy this machine's credentials instead, opt in explicitly:
 ```sh
 ezcoder fleet share-auth gpu-box --yes
 ```
+
+It refuses to replace credentials the node already has unless you add `--force`.
 
 ## Costs
 

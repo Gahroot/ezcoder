@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  DesktopTowerIcon,
   GearSixIcon,
   KeyIcon,
   PuzzlePieceIcon,
@@ -13,6 +14,7 @@ import { SettingsModal } from "./SettingsModal";
 import { LoginScreen } from "./LoginScreen";
 import { TelegramSettingsModal } from "./TelegramSettingsModal";
 import { McpModal } from "./McpModal";
+import { MachinesPanel } from "./MachinesPanel";
 import { SteroidsModal } from "./SteroidsModal";
 import { SettingsTabBar, type SettingsTab } from "./SettingsTabBar";
 import {
@@ -34,7 +36,7 @@ import {
 import { theme } from "./theme";
 import { toast } from "./toast";
 
-export type SettingsTabId = "general" | "providers" | "remote" | "mcp" | "steroids";
+export type SettingsTabId = "general" | "providers" | "machines" | "remote" | "mcp" | "steroids";
 
 interface Props {
   onClose: () => void;
@@ -72,6 +74,7 @@ export function SettingsScreen({ onClose, initialTab = "general" }: Props): Reac
   const tabs: SettingsTab<SettingsTabId>[] = [
     { id: "general", label: "General", icon: GearSixIcon },
     { id: "providers", label: "AI Providers", icon: KeyIcon },
+    { id: "machines", label: "Machines", icon: DesktopTowerIcon },
     { id: "remote", label: "Remote", icon: PaperPlaneTiltIcon },
     { id: "mcp", label: "MCP", icon: PuzzlePieceIcon },
     {
@@ -122,6 +125,7 @@ export function SettingsScreen({ onClose, initialTab = "general" }: Props): Reac
               </EmbeddedModal>
             )}
             {tab === "providers" && <LoginScreen />}
+            {tab === "machines" && <MachinesPanel />}
             {tab === "remote" && <RemotePage />}
             {tab === "mcp" && (
               <EmbeddedModal>

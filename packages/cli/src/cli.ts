@@ -126,6 +126,8 @@ import { routeCliCommandInput, type CliSubcommandName } from "./cli/command-rout
 import { runValidate } from "./cli/validate.js";
 import { runNode } from "./cli/node.js";
 import { runFleet } from "./cli/fleet.js";
+import { runGoals } from "./cli/goals.js";
+import { runCloud } from "./cli/cloud.js";
 import { parseThinkingLevel } from "./cli/thinking-arg.js";
 
 function printHelp(): void {
@@ -167,6 +169,8 @@ function printHelp(): void {
     ["validate", "Async validation on workers (run, status, gate, workers)"],
     ["node", "Run this machine as a fleet node (init, serve, status, secret, install)"],
     ["fleet", "Send jobs and services to your other machines (nodes, run, service)"],
+    ["goals", "Goals from a shell; host a Goal on a fleet node (status, host, fetch, stop)"],
+    ["cloud", "Claude Code / Codex cloud as extra capacity (status, on, off, when, use)"],
     ["mcp", "Add and manage MCP servers"],
   ];
   for (const [name, desc] of cmds) {
@@ -261,6 +265,8 @@ function createCliSubcommandHandlers(): Record<CliSubcommandName, () => void> {
     validate: () => runWithStandardErrorHandling(() => runValidate()),
     node: () => runWithStandardErrorHandling(() => runNode()),
     fleet: () => runWithStandardErrorHandling(() => runFleet()),
+    goals: () => runWithStandardErrorHandling(() => runGoals()),
+    cloud: () => runWithStandardErrorHandling(() => runCloud()),
   };
 }
 

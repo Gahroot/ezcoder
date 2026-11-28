@@ -85,6 +85,8 @@ class FakeFleet {
     return new FleetClientError(`node ${name} is unreachable`, "unreachable");
   }
 
+  /** Fleet jobs in flight per node (shared slot accounting). */
+  fleetJobs = new Map<string, number>();
   deps(): NodeBackendDeps {
     return {
       listNodes: async () => [...this.infos.keys()].map((name) => ({ name })),
@@ -97,6 +99,7 @@ class FakeFleet {
         return { ...info, slotsUsed: info.slotsUsed + used };
       },
       client: async (name) => this.client(name),
+      fleetInFlight: async () => new Map(this.fleetJobs),
     };
   }
 
@@ -262,7 +265,11 @@ describe("backends.json with fleet nodes", () => {
   };
   const write = (dir: string, data: unknown) => {
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "backends.json"), JSON.stringify(data));
+    // Cloud overflow is covered in cloud-backend.test.ts.
+    fs.writeFileSync(
+      path.join(dir, "backends.json"),
+      JSON.stringify({ cloud: false, ...(data as object) }),
+    );
   };
   const exec: Exec = async () => ({ code: 0, stdout: "", stderr: "" });
 

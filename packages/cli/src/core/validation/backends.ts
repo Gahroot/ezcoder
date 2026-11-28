@@ -2,19 +2,43 @@
 // never name machines; adding a worker here makes every project able to use it.
 import fs from "node:fs";
 import path from "node:path";
+import { readCloudSettings, type CloudSettings } from "../cloud/config.js";
+import {
+  CLOUD_BACKEND_ID,
+  CloudValidationBackend,
+  cloudValidationEnabled,
+  type CloudBackendDeps,
+} from "./cloud-backend.js";
 import { GitHubActionsBackend, type GitHubActionsBackendConfig } from "./github-actions-backend.js";
 import { LocalBackend } from "./local-backend.js";
 import { NodeBackend, type NodeBackendConfig, type NodeBackendDeps } from "./node-backend.js";
 import type { Exec, Resources, ValidationBackend } from "./types.js";
 
 export interface BackendsFile {
-  /** Max jobs in flight across all backends. */
+  /**
+   * Max jobs in flight across all backends. Unset: the real total capacity
+   * (local slots plus every online machine's slots), recomputed each pass.
+   */
   maxConcurrent?: number;
   /** Concurrent local stages. */
   localMaxConcurrent?: number;
   backends?: Array<GitHubActionsBackendConfig | NodeBackendConfig>;
-  /** Use every paired fleet node (~/.ezcoder/fleet/nodes.json) as a pool "fleet". */
+  /**
+   * Use every paired fleet node (~/.ezcoder/fleet/nodes.json) as a pool
+   * "fleet". On by default whenever a node is paired; false turns it off.
+   */
   fleetNodes?: boolean;
+  /**
+   * Cloud agent sandboxes (Claude Code cloud, Codex cloud) as overflow
+   * capacity. On by default when signed in; false turns them off here.
+   */
+  cloud?: boolean;
+}
+
+export interface CloudBackendOptions {
+  /** Cloud settings (default ~/.ezcoder/cloud.json). */
+  settings?: CloudSettings;
+  deps?: Partial<CloudBackendDeps>;
 }
 
 export function backendsFilePath(dir: string): string {
@@ -34,16 +58,41 @@ export function writeBackendsFile(dir: string, data: BackendsFile): void {
   fs.writeFileSync(backendsFilePath(dir), JSON.stringify(data, null, 2) + "\n");
 }
 
-/** Build backends from config. Unknown kinds are skipped with a reason. */
+/** The fleet folder next to a validation folder (~/.ezcoder/fleet beside ~/.ezcoder/validation). */
+export function siblingFleetDir(validationDir: string): string {
+  return path.join(path.dirname(validationDir), "fleet");
+}
+
+/** Is any fleet node paired? (sync read of nodes.json) */
+export function fleetNodesPaired(fleetDir: string): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(fleetDir, "nodes.json"), "utf8")) as {
+      nodes?: unknown[];
+    };
+    return Array.isArray(raw.nodes) && raw.nodes.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export const DEFAULT_LOCAL_SLOTS = 2;
+
+/**
+ * Build backends from config. Unknown kinds are skipped with a reason.
+ * `maxConcurrent` is the explicit cap from the file, or undefined: then the
+ * service uses the real total capacity of its targets.
+ */
 export function loadBackends(
   dir: string,
   exec: Exec,
   nodeDeps?: Partial<NodeBackendDeps>,
-): { backends: ValidationBackend[]; maxConcurrent: number; problems: string[] } {
+  cloud: CloudBackendOptions = {},
+  opts: { fleetDir?: string } = {},
+): { backends: ValidationBackend[]; maxConcurrent?: number; problems: string[] } {
   const file = readBackendsFile(dir);
   const problems: string[] = [];
   const backends: ValidationBackend[] = [
-    new LocalBackend(path.join(dir, "logs"), file.localMaxConcurrent ?? 2),
+    new LocalBackend(path.join(dir, "logs"), file.localMaxConcurrent ?? DEFAULT_LOCAL_SLOTS),
   ];
   for (const cfg of file.backends ?? []) {
     if (cfg.kind === "github-actions" && cfg.id && cfg.repo && cfg.workflow) {
@@ -69,10 +118,32 @@ export function loadBackends(
     }
   }
   // Every paired node, unless an explicit node entry already took the "fleet" id.
-  if (file.fleetNodes && !backends.some((b) => b.id === "fleet")) {
+  // On by default once a node is paired; `"fleetNodes": false` turns it off.
+  const useFleet = file.fleetNodes ?? fleetNodesPaired(opts.fleetDir ?? siblingFleetDir(dir));
+  if (useFleet && !backends.some((b) => b.id === "fleet")) {
     backends.push(new NodeBackend({ kind: "node", id: "fleet" }, nodeDeps));
   }
-  return { backends, maxConcurrent: Math.max(1, file.maxConcurrent ?? 4), problems };
+  // Zero config: cloud overflow whenever the user is signed in (checked lazily).
+  const cloudSettings = cloud.settings ?? readCloudSettings();
+  if (file.cloud !== false && cloudValidationEnabled(cloudSettings)) {
+    if (backends.some((b) => b.id === CLOUD_BACKEND_ID)) {
+      problems.push(
+        `backend id "${CLOUD_BACKEND_ID}" is reserved for cloud overflow; cloud skipped`,
+      );
+    } else {
+      backends.push(
+        new CloudValidationBackend(path.join(dir, "logs"), {
+          settings: () => cloud.settings ?? readCloudSettings(),
+          ...cloud.deps,
+        }),
+      );
+    }
+  }
+  return {
+    backends,
+    ...(file.maxConcurrent !== undefined ? { maxConcurrent: Math.max(1, file.maxConcurrent) } : {}),
+    problems,
+  };
 }
 
 /** Does a backend's declared capacity cover what a stage asks for? */

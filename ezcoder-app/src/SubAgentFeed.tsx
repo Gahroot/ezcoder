@@ -1,6 +1,9 @@
 import { formatTokenCount } from "./ActivityBar";
 import { CritterLine, type CritterTone } from "./CritterLine";
+import { Badge } from "./Badge";
 import { hashKey, pickCritter, type CritterDef } from "./critter-sprites";
+import { isRemoteMachine, machineLabel } from "./machine-label";
+import { theme } from "./theme";
 
 /** One delegated sub-agent, mirrored from the sidecar's subagent tool stream. */
 export interface SubAgentLine {
@@ -20,6 +23,8 @@ export interface SubAgentLine {
     cacheWrite?: number;
   };
   durationMs?: number;
+  /** Paired machine it runs on; absent = this computer (D4). */
+  machine?: string;
 }
 
 interface Props {
@@ -216,5 +221,23 @@ function rowCritter(agents: readonly SubAgentLine[]): CritterDef {
 export function SubAgentFeed({ agents, aborted = false }: Props): React.ReactElement | null {
   if (agents.length === 0) return null;
   const summary = summarizeCritters(agents, aborted);
-  return <CritterLine critter={rowCritter(agents)} tone={summary.tone} text={summary.text} />;
+  const remote = [
+    ...new Set(
+      agents.filter((a) => isRemoteMachine(a.machine)).map((a) => machineLabel(a.machine)),
+    ),
+  ];
+  const line = <CritterLine critter={rowCritter(agents)} tone={summary.tone} text={summary.text} />;
+  if (remote.length === 0) return line;
+  return (
+    <>
+      {line}
+      <p className="subagent-machines">
+        {remote.map((name) => (
+          <Badge key={name} color={theme.info}>
+            on {name}
+          </Badge>
+        ))}
+      </p>
+    </>
+  );
 }

@@ -2,7 +2,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { FLEET_PROTOCOL, PROTOCOL_HEADER } from "../../protocol.js";
 import type { NodeConfig } from "../context.js";
+import { memorySecretStore } from "../secrets.js";
 import { startNodeServer, type NodeServer, type NodeServerOptions } from "../server.js";
 
 export function tempDir(prefix = "ezf-node-"): string {
@@ -37,6 +39,8 @@ export async function startTestServer(
     gpus: async () => [],
     jobPollMs: 50,
     killGraceSeconds: 1,
+    secretStore: memorySecretStore(),
+    configCheckMs: 0,
     ...opts,
   });
 }
@@ -47,6 +51,7 @@ export function api(server: NodeServer, token = "secret-token-123") {
       method,
       headers: {
         authorization: `Bearer ${token}`,
+        [PROTOCOL_HEADER]: String(FLEET_PROTOCOL),
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

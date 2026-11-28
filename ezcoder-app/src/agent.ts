@@ -5,6 +5,7 @@
 //   - listen("agent-event")  ← forwarded SSE frames
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatErrorData } from "./chat-error";
+import type { HostedGoalRun } from "./goal-hosted";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { error as logError, info as logInfo } from "@tauri-apps/plugin-log";
 
@@ -44,6 +45,8 @@ export interface SubAgentStatePayload {
   };
   output?: string;
   error?: string;
+  /** Paired machine the agent runs on ("auto"/"cloud" until picked); absent = this computer. */
+  machine?: string;
 }
 
 export interface SidecarEvent {
@@ -1878,6 +1881,8 @@ export interface GoalSummary {
    * sidecar: treat as idle.
    */
   status?: "briefing" | "running" | "paused" | "interrupted" | "idle";
+  /** Runs of this goal that live on other machines (GL4); absent when none. */
+  hosted?: HostedGoalRun[];
 }
 
 /** Every Goal, most recently active first. */
@@ -2740,4 +2745,158 @@ export async function waitForReady(): Promise<void> {
  */
 export async function retryWindowSession(): Promise<void> {
   await invoke("retry_window_session");
+}
+
+// ── Fleet: other machines (Machines panel, activity) ──────────────────────
+// All through one Rust proxy (`agent_fleet`) onto the sidecar's /fleet/*
+// routes (packages/cli/src/app-sidecar/fleet-routes.ts).
+
+export type MachinePlatform = "linux" | "wsl2" | "macos" | "windows";
+
+export interface MachineNotice {
+  kind: "update" | "protocol" | "offline";
+  text: string;
+}
+
+/** One paired machine, as the Machines panel shows it. */
+export interface Machine {
+  name: string;
+  address: string;
+  online: boolean;
+  platform?: MachinePlatform;
+  version?: string;
+  /** Load per CPU (0..n). */
+  load?: number;
+  cpus?: number;
+  memoryGb?: number;
+  gpus: { name: string; memoryGb: number }[];
+  slots?: number;
+  slotsUsed?: number;
+  running: { jobs: number; services: number; agents: number };
+  ourJobs: number;
+  labels: string[];
+  modelLogin?: boolean;
+  dockerOnly?: boolean;
+  notices: MachineNotice[];
+  addedAt: string;
+}
+
+export interface DoctorCheck {
+  id: string;
+  status: "ok" | "warn" | "fail" | "skip";
+  detail: string;
+  fix?: string;
+}
+
+export interface DoctorReport {
+  node: string;
+  version: string;
+  protocol: number;
+  checks: DoctorCheck[];
+  ok: boolean;
+}
+
+export interface AddMachineResult {
+  name: string;
+  online: boolean;
+  doctor?: DoctorReport;
+}
+
+export type FleetJobState =
+  "queued" | "preparing" | "running" | "passed" | "failed" | "error" | "cancelled";
+
+export interface FleetActivityJob {
+  id: string;
+  name: string;
+  kind: string;
+  state: FleetJobState;
+  node?: string;
+  summary?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  updatedAt: string;
+}
+
+export interface FleetActivityService {
+  id: string;
+  name: string;
+  kind: string;
+  state: "starting" | "running" | "stopped" | "error";
+  node: string;
+  summary?: string;
+  endpoints: { name: string; url: string }[];
+}
+
+export interface FleetActivity {
+  jobs: FleetActivityJob[];
+  services: FleetActivityService[];
+}
+
+async function fleetCall<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  await waitForReady();
+  return invoke<T>("agent_fleet", { method, path, body: body ?? null }).catch((e: unknown) =>
+    Promise.reject(new Error(errorText(e))),
+  );
+}
+
+/** Slots in use / total: one slot runs one job or helper agent. */
+export interface MachineCapacity {
+  slots: number;
+  slotsUsed: number;
+}
+
+export interface MachinesOverview {
+  machines: Machine[];
+  /** This computer's share; `estimated` when its slots are a default guess. */
+  local: MachineCapacity & { estimated?: boolean };
+  /** This computer plus every online machine. */
+  total: MachineCapacity;
+  /** This computer's EZ Coder version. */
+  version: string;
+}
+
+/** Paired machines with live state, capacity totals and this computer's version. */
+export function listMachines(): Promise<MachinesOverview> {
+  return fleetCall("GET", "/fleet/machines");
+}
+
+/** Pair a machine from its pairing text or short code; runs its checks when reachable. */
+export function addMachine(pairing: string, offline = false): Promise<AddMachineResult> {
+  return fleetCall("POST", "/fleet/machines/add", { pairing, offline });
+}
+
+export function removeMachine(name: string): Promise<{ removed: boolean }> {
+  return fleetCall("POST", "/fleet/machines/remove", { name });
+}
+
+/** Give the machine a new key; the old one stops working at once. */
+export function rotateMachineToken(name: string): Promise<{ rotated: boolean }> {
+  return fleetCall("POST", "/fleet/machines/rotate-token", { name });
+}
+
+/** Copy this computer's model logins to the machine. "exists": it has its own; ask first. */
+export function shareMachineLogin(
+  name: string,
+  force = false,
+): Promise<{ status: "shared" | "exists"; providers: string[] }> {
+  return fleetCall("POST", "/fleet/machines/share-auth", { name, force });
+}
+
+export function checkMachine(name: string): Promise<DoctorReport> {
+  return fleetCall("POST", "/fleet/machines/doctor", { name });
+}
+
+/** This project's fleet jobs and services. */
+export function getFleetActivity(): Promise<FleetActivity> {
+  return fleetCall("GET", "/fleet/activity");
+}
+
+/** The last `tail` lines of a fleet job's or service's log. */
+export async function getFleetLog(
+  kind: "job" | "service",
+  id: string,
+  tail = 200,
+): Promise<string> {
+  const res = await fleetCall<{ text: string }>("POST", "/fleet/log", { kind, id, tail });
+  return res.text;
 }

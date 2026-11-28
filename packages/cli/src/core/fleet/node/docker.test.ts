@@ -2,7 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ServiceRequest } from "../protocol.js";
-import { pairingString, parsePairingString, defaultSlots, isWildcardBind } from "./config.js";
+import {
+  defaultSlots,
+  isPrivateBind,
+  isWildcardBind,
+  pairingString,
+  parsePairingString,
+  readNodeConfig,
+  readSecrets,
+  setSecret,
+} from "./config.js";
 import { validateDockerArgs, validateDockerSpec } from "./docker.js";
 import type { ExecOptions, ExecResult, NodeExec } from "./exec.js";
 import { detectPlatform, parseNvidiaSmi } from "./info.js";
@@ -40,7 +49,7 @@ describe("docker validation", () => {
     expect(
       validateDockerArgs(["--shm-size", "2g", "-v", "models:/models", "--network", "bridge"]),
     ).toBeUndefined();
-    expect(validateDockerArgs(["-v", "/data/node/x:/x"], "/data/node")).toBeUndefined();
+    expect(validateDockerArgs(["-v", "/data/node/cache/x:/x"], "/data/node")).toBeUndefined();
   });
 
   it("checks specs", () => {
@@ -251,7 +260,8 @@ describe("config and info helpers", () => {
       port: 7377,
       token: "t0k",
     });
-    expect(defaultSlots(16, 32)).toBe(4);
+    expect(defaultSlots(16, 32)).toBe(8);
+    expect(defaultSlots(4, 64)).toBe(2);
     expect(defaultSlots(2, 64)).toBe(1);
   });
 
@@ -347,5 +357,63 @@ describe("security regressions", () => {
     for (const b of ["100.64.0.1", "127.0.0.1", "fd7a:115c:a1e0::1", "my-pc"]) {
       expect(isWildcardBind(b), b).toBe(false);
     }
+  });
+});
+
+describe("hardening regressions", () => {
+  it("never lets a flag hide as another flag's value, and refuses unknown flags", () => {
+    const root = tempDir();
+    for (const bad of [
+      ["--label", "-l", "--privileged"],
+      ["--label", "-l", "--volume=/:/host"],
+      ["--hostname", "-e", "--pid=host"],
+      ["--env-file", "/etc/passwd"],
+      ["--label-file=/etc/passwd"],
+      ["--cidfile", "/tmp/x"],
+      ["-p", "0.0.0.0:80:80"],
+      ["-p", "8080:80"],
+      ["--security-opt", "seccomp=/w/profile.json"],
+      ["--label", "ezcoder.fleet=other"],
+      ["--runtime", "sysbox"],
+      ["-d"],
+      ["ubuntu"],
+      ["--label"],
+      // Other people's work and the node's private files, even under dataDir.
+      ["-v", `${root}/agents/a1:/a`],
+      ["-v", `${root}/artifacts:/a`],
+      ["-v", `${root}/Node.json:/n`],
+      ["-v", `${root}/SECRETS.JSON:/s`],
+    ]) {
+      expect(validateDockerArgs(bad, root), bad.join(" ")).toBeDefined();
+    }
+    for (const ok of [
+      ["--label", "team=a", "-e", "FOO=bar", "--shm-size=2g"],
+      ["-p", "127.0.0.1:8080:80", "--init", "--tmpfs", "/tmp"],
+      ["--security-opt", "no-new-privileges", "--cap-drop", "ALL"],
+      ["-v", `${root}/cache/x:/c`],
+    ]) {
+      expect(validateDockerArgs(ok, root), ok.join(" ")).toBeUndefined();
+    }
+  });
+
+  it("only treats loopback and Tailscale addresses as private", () => {
+    for (const b of ["127.0.0.1", "100.64.0.1", "100.127.255.254", "fd7a:115c:a1e0::1", "::1"]) {
+      expect(isPrivateBind(b), b).toBe(true);
+    }
+    for (const b of ["192.168.1.20", "10.0.0.5", "100.128.0.1", "100.63.0.1", "8.8.8.8", "my-pc"]) {
+      expect(isPrivateBind(b), b).toBe(false);
+    }
+  });
+
+  it("refuses a damaged secrets or node file instead of treating it as empty", () => {
+    const dir = tempDir();
+    setSecret(dir, "A", "1");
+    fs.writeFileSync(path.join(dir, "secrets.json"), '{"A":"1"');
+    expect(() => readSecrets(dir)).toThrow(/damaged/);
+    expect(() => setSecret(dir, "B", "2")).toThrow(/damaged/);
+    expect(fs.readFileSync(path.join(dir, "secrets.json"), "utf8")).toBe('{"A":"1"');
+    fs.writeFileSync(path.join(dir, "node.json"), "{oops");
+    expect(() => readNodeConfig(dir)).toThrow(/damaged/);
+    expect(readNodeConfig(tempDir())).toBeUndefined();
   });
 });

@@ -1606,6 +1606,44 @@ describe("goal start to workers on the farm", () => {
   });
 });
 
+describe("sub-agent machine (D4)", () => {
+  it("carries the machine a remote agent runs on, and leaves local ones unmarked", async () => {
+    const { hook, getItems } = setup();
+    const snap = (id: string, state: string, machine?: string) => ({
+      agent_id: id,
+      task_name: id,
+      state,
+      started_at: 1,
+      updated_at: 2,
+      elapsed_ms: 10,
+      turn_count: 1,
+      tool_use_count: 1,
+      token_usage: { input: 0, output: 0 },
+      ...(machine ? { machine } : {}),
+    });
+    act(() => {
+      hook.result.current.handleEvent(ev("subagent_state", snap("remote", "starting", "auto")));
+      hook.result.current.handleEvent(ev("subagent_state", snap("local", "running")));
+    });
+    await flushSubagents();
+    // The node picked for "auto" arrives on a later snapshot.
+    act(() => {
+      hook.result.current.handleEvent(ev("subagent_state", snap("remote", "running", "gpu-box")));
+    });
+    await flushSubagents();
+    const groups = getItems().filter(
+      (item): item is Extract<Item, { kind: "subagent_group" }> & CritterGroup =>
+        item.kind === "subagent_group",
+    );
+    const agents = groups.flatMap((g) => g.agents);
+    expect(agents.map((a) => [a.toolCallId, a.machine])).toEqual([
+      ["remote", "gpu-box"],
+      ["local", undefined],
+    ]);
+    expect(collectFloorAgents(groups).map((a) => a.machine)).toEqual(["gpu-box", undefined]);
+  });
+});
+
 describe("models_change", () => {
   it("refreshes the picker when local-model discovery lands", async () => {
     const discovered = [

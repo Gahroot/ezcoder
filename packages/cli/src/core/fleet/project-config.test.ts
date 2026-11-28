@@ -88,3 +88,22 @@ describe("fleet project config", () => {
     }
   });
 });
+
+describe("fleet.json defaults (A8)", () => {
+  it("parses defaults and rejects bad values", () => {
+    write(".ezcoder/fleet.json", JSON.stringify({ defaults: { e2e: "fleet", build: "local" } }));
+    const cfg = loadFleetConfig(tmp);
+    expect("error" in cfg ? cfg.error : cfg.defaults).toEqual({ e2e: "fleet", build: "local" });
+    write(".ezcoder/fleet.json", JSON.stringify({ defaults: { e2e: "cloud" } }));
+    const bad = loadFleetConfig(tmp);
+    expect("error" in bad && bad.error).toMatch(/defaults\.e2e must be "fleet" or "local"/);
+    write(".ezcoder/fleet.json", JSON.stringify({ defaults: ["e2e"] }));
+    expect("error" in loadFleetConfig(tmp)).toBe(true);
+  });
+
+  it("has no defaults when none are set", () => {
+    write(".ezcoder/fleet.json", "{}");
+    const cfg = loadFleetConfig(tmp);
+    expect("error" in cfg ? cfg.error : cfg.defaults).toBeUndefined();
+  });
+});

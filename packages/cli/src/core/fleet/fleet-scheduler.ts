@@ -14,6 +14,10 @@ export interface NodeView {
   /** Controller-side labels from nodes.json. */
   labels?: string[];
   error?: string;
+  /** S3: reachable but no common protocol; the message names the side to update. Never gets work. */
+  incompatible?: string;
+  /** Temporarily not taking work (e.g. it answered 429 with Retry-After): why. */
+  unavailable?: string;
 }
 
 export interface PlacementRequest {
@@ -85,7 +89,9 @@ export function liveShortage(
   inFlight: readonly InFlightWork[],
 ): string | undefined {
   const info = v.info;
+  if (v.incompatible) return v.incompatible;
   if (!v.online || !info) return "offline";
+  if (v.unavailable) return v.unavailable;
   if (req.takesSlot && slotsUsed(v, inFlight) >= info.slots) return "all slots busy";
   const need = req.resources ?? {};
   const mine = inFlight.filter((w) => w.node === v.name);
@@ -130,7 +136,13 @@ export function chooseNode(
     return !why;
   });
   if (!withRoom.length) {
-    const online = fitting.filter((n) => n.online);
+    const online = fitting.filter((n) => n.online && !n.incompatible);
+    const incompatible = fitting.filter((n) => n.incompatible);
+    if (!online.length && incompatible.length) {
+      return {
+        wait: `no fitting node can take work: ${incompatible.map((n) => n.incompatible).join("; ")}`,
+      };
+    }
     return {
       wait: online.length
         ? `every fitting node is busy (${reasons.join("; ")})`

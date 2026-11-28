@@ -116,6 +116,7 @@ import {
 import { partitionToolsByTier } from "../tools/tool-tiers.js";
 import type { BackgroundProcess } from "./process-manager.js";
 import { formatImpactForVerification, type TestImpactIndex } from "./test-impact.js";
+import type { AskUserHandler } from "../tools/ask-user.js";
 import type { DebugManager } from "../tools/debug.js";
 import type { BrowserManager } from "../tools/browser.js";
 import { buildProcessCompletionFollowUp, mergeCompletionGateFollowUps } from "./process-gate.js";
@@ -220,6 +221,7 @@ import {
 } from "./steering.js";
 import { AgentNotificationQueue } from "./agent-notifications.js";
 import { attachValidationNotifications } from "./validation/session-hook.js";
+import { loadFleetHint } from "./fleet/prompt-hint.js";
 import { attachFleetNotifications } from "./fleet/session-hook.js";
 import { VerificationGate, VERIFICATION_STATE_KIND } from "./verification-gate.js";
 import type { VerificationEvidence } from "./verification-evidence.js";
@@ -562,6 +564,11 @@ export interface AgentSessionOptions {
   orchestrationPrompt?: boolean;
   /** Host-provided tools appended to this session only (for example, chat delegation). */
   additionalTools?: AgentTool[];
+  /**
+   * The host's ask_user bridge, for built-in tools that need the user's own
+   * answer (fleet `apply_config`). Hosts without a question UI leave it unset.
+   */
+  askUser?: AskUserHandler;
   /** Mode-owned completion policy; absent in Coder/chat/worker sessions. */
   completionReview?: CompletionReview;
   /** Remind the agent to submit its plan (exit_plan) when a run is about to
@@ -748,6 +755,8 @@ export class AgentSession {
   private projectFiles: ProjectFileList | null | undefined;
   /** `git ls-files` started at the top of initialize(), overlapping the rest of setup. */
   private projectFilesPending?: Promise<ProjectFileList | null>;
+  /** A5: fleet prompt section, computed once per session (null: no node paired). */
+  private fleetHint?: string | null;
   /** Wall-clock start of the current run; scopes the background-process gate. */
   private runStartedAt = 0;
   /** Gate injections spent this run, capped by MAX_PROCESS_GATE_INJECTIONS. */
@@ -1142,6 +1151,7 @@ export class AgentSession {
       disableSubagents: this.opts.subagentWorker,
       onSubAgentState: (snapshot) => this.eventBus.emit("subagent_state", snapshot),
       notifications: this.notifications,
+      ...(this.opts.askUser ? { askUser: this.opts.askUser } : {}),
       // Plan mode: only wired when the host supplies callbacks. The ref is
       // shared so bash/edit/write enforce read-only restrictions live.
       ...(this.opts.onEnterPlan || this.opts.onExitPlan
@@ -4815,7 +4825,12 @@ export class AgentSession {
       this.settingsManager.get("networkMode") === "allowlist"
         ? this.settingsManager.get("networkAllow")
         : [];
-    return { additionalRoots: this.additionalRoots, networkAllow, projectFiles: this.projectFiles };
+    return {
+      additionalRoots: this.additionalRoots,
+      networkAllow,
+      projectFiles: this.projectFiles,
+      ...(this.fleetHint ? { fleetHint: this.fleetHint } : {}),
+    };
   }
 
   /**
@@ -4835,6 +4850,14 @@ export class AgentSession {
       this.projectFiles = await (pending ?? listProjectFiles(this.cwd));
     }
     const toolNames = this.tools.map((tool) => tool.name);
+    // Once per session, like projectFiles, so rebuilds keep the prompt byte-stable.
+    if (this.fleetHint === undefined) {
+      // Never in unit tests: the shared registry may list the developer's real nodes.
+      this.fleetHint =
+        toolNames.includes("fleet") && !process.env.VITEST
+          ? ((await loadFleetHint(this.cwd)) ?? null)
+          : null;
+    }
     const deferredToolNames = this.deferredToolNamesForPrompt(toolNames);
     // A missing Claude Code binary fails the run itself with a clear message, not the prompt build.
     const deferredNeedSearch =

@@ -78,6 +78,13 @@ describe("collectFloorAgents", () => {
     ]);
     expect(agents[0]?.label).toBe("researcher");
   });
+
+  it("passes on which machine each agent runs on", () => {
+    const agents = collectFloorAgents([
+      group(1, [line("a", "running", { machine: "gpu-box" }), line("b", "running")]),
+    ]);
+    expect(agents.map((a) => a.machine)).toEqual(["gpu-box", undefined]);
+  });
 });
 
 describe("CritterFloor", () => {

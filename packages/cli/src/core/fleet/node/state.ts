@@ -1,10 +1,16 @@
-// Durable node state (<dataDir>/state.json): jobs and services survive a node
+// Durable node state (<dataDir>/state.json): jobs, services and agents survive a node
 // restart so they can be re-adopted. Single writer (the node process), atomic
 // replace on every save.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { DockerSpec, JobStatus, PortSpec, ServiceStatus } from "../protocol.js";
+import type {
+  AgentWorkspaceStatus,
+  DockerSpec,
+  JobStatus,
+  PortSpec,
+  ServiceStatus,
+} from "../protocol.js";
 import { writeFileAtomic } from "./config.js";
 
 export interface JobRecord {
@@ -19,6 +25,29 @@ export interface JobRecord {
   /** Pid of the detached wrapper shell (its own process group). */
   wrapperPid?: number;
   cancelRequested?: boolean;
+  /** Sanitized cache folder name, so GC never trims a cache a running job uses (R5). */
+  cacheKey?: string;
+  /** Max log bytes kept (R6). */
+  logCapBytes?: number;
+}
+
+/** A remote agent workspace (R3): survives a node restart so its diff can still be fetched. */
+export interface AgentRecord {
+  id: string;
+  project: string;
+  base: string;
+  cwd: string;
+  root: string;
+  removeDir: string;
+  sessionsDir: string;
+  env: Record<string, string>;
+  createdAt: string;
+  state: AgentWorkspaceStatus["state"];
+  pid?: number;
+  exitCode?: number;
+  sessionPath?: string;
+  /** R9: `git ls-files -o -i --directory` at prepare time, path -> "size:mtimeMs". */
+  ignoredSnapshot?: Record<string, string>;
 }
 
 export interface ServiceRecord {
@@ -40,6 +69,7 @@ interface StateFile {
   bootTime: number;
   jobs: JobRecord[];
   services: ServiceRecord[];
+  agents: AgentRecord[];
 }
 
 export function currentBootTime(): number {
@@ -57,8 +87,15 @@ export class StateStore {
     let loaded: Partial<StateFile> = {};
     try {
       loaded = JSON.parse(fs.readFileSync(this.file, "utf8")) as Partial<StateFile>;
-    } catch {
-      // fresh node
+    } catch (e) {
+      // Missing = fresh node. Damaged: set it aside rather than overwrite it.
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        try {
+          fs.renameSync(this.file, `${this.file}.corrupt-${Date.now()}`);
+        } catch {
+          // unreadable and unmovable: the next save replaces it
+        }
+      }
     }
     this.previousBootTime = loaded.bootTime ?? 0;
     this.data = {
@@ -66,6 +103,7 @@ export class StateStore {
       bootTime: currentBootTime(),
       jobs: Array.isArray(loaded.jobs) ? loaded.jobs : [],
       services: Array.isArray(loaded.services) ? loaded.services : [],
+      agents: Array.isArray(loaded.agents) ? loaded.agents : [],
     };
   }
 

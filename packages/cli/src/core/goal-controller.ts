@@ -10,7 +10,7 @@ export const DEFAULT_GOAL_VERIFIER_FIX_LIMIT = 5;
 export const DEFAULT_GOAL_EVIDENCE_RECONCILIATION_LIMIT = 2;
 
 const EVIDENCE_RECONCILIATION_TASK_TITLE = "Reconcile Goal evidence plan";
-const FINAL_COMPLETION_AUDIT_TASK_TITLE = "Audit Goal completion evidence";
+export const FINAL_COMPLETION_AUDIT_TASK_TITLE = "Audit Goal completion evidence";
 const DEFAULT_GOAL_COMPLETION_AUDIT_LIMIT = 3;
 
 export type GoalControllerDecision =

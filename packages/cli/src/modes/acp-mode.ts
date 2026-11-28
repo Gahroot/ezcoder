@@ -36,7 +36,7 @@ import {
   type AskUserResult,
   type LateAskAnswer,
 } from "../core/ask-user.js";
-import { createAskUserTool } from "../tools/ask-user.js";
+import { createAskUserTool, type AskUserHandler } from "../tools/ask-user.js";
 import {
   deleteGoal,
   goalKickoffPrompt,
@@ -272,6 +272,8 @@ export interface AcpSessionContext {
    * construction (the tool array is append-only for the prompt cache).
    */
   askUserTool?: ReturnType<typeof createAskUserTool>;
+  /** The same ask bridge, for built-in tools that need the user's answer (fleet apply_config). */
+  askUser?: AskUserHandler;
   /**
    * The client reviews plans itself (`clientCapabilities._meta.gg.planReview`):
    * exit_plan parks the plan for a human decision instead of auto-approving,
@@ -2058,6 +2060,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
         onExitPlan: hooks.onExitPlan,
         ...(context.planReview ? { planSubmissionGate: true } : {}),
         ...(additionalTools.length > 0 ? { additionalTools } : {}),
+        ...(context.askUser ? { askUser: context.askUser } : {}),
         signal,
       });
     });
@@ -2126,7 +2129,7 @@ export async function runAcpMode(options: AcpModeOptions): Promise<void> {
       ...(goalExtras ? { goalExtras } : {}),
       isGoalActive: () => Boolean(goal?.record.startedAt),
       getChildModel: () => goalCritterPick(goal?.record),
-      ...(clientAsksUser ? { askUserTool } : {}),
+      ...(clientAsksUser ? { askUserTool, askUser: (request) => asks.park(request) } : {}),
     });
     await created.initialize();
     if (restorePath) await created.loadSession(restorePath);

@@ -439,6 +439,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
         tokenUsage: snapshot.token_usage,
         durationMs: snapshot.elapsed_ms,
         activities: appendActivities(agent.activities),
+        ...(snapshot.machine ? { machine: snapshot.machine } : {}),
       });
       const mappedGroupId = subagentGroupByAgentRef.current.get(snapshot.agent_id);
       const activeGroupId = subagentGroupIdRef.current;
@@ -462,6 +463,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
               toolUseCount: snapshot.tool_use_count,
               tokenUsage: snapshot.token_usage,
               durationMs: snapshot.elapsed_ms,
+              ...(snapshot.machine ? { machine: snapshot.machine } : {}),
             },
           ],
         });
@@ -487,6 +489,7 @@ export function useAgentEvents(deps: AgentEventsDeps): AgentEvents {
                       toolUseCount: snapshot.tool_use_count,
                       tokenUsage: snapshot.token_usage,
                       durationMs: snapshot.elapsed_ms,
+                      ...(snapshot.machine ? { machine: snapshot.machine } : {}),
                     },
                   ],
             };

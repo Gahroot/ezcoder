@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { Provider } from "@prestyj/ai";
 import { killProcessTree } from "../utils/process.js";
 import { log } from "./logger.js";
+import type { GoalWorkerFleetOptions } from "./goal-remote-worker.js";
 import {
   appendGoalEvidence,
   projectDir,
@@ -33,6 +34,13 @@ export interface GoalWorkerRecord {
   status: "running" | "done" | "failed" | "stopped";
   exitCode: number | null;
   currentActivity?: string;
+  /**
+   * Where the worker runs (D4): absent = this machine; otherwise the requested
+   * machine ("auto" until a node is picked) and then the node's name.
+   */
+  machine?: string;
+  /** Patch saved in the goal folder when its edits could not be applied (GL3). */
+  keptPatch?: string;
 }
 
 export interface GoalWorkerToolUse {
@@ -72,10 +80,16 @@ export interface StartGoalWorkerOptions extends GoalWorkerContext {
   maxTurns?: number;
   timeoutMs?: number;
   onComplete?: (completion: GoalWorkerCompletion) => void;
+  /** Run on a fleet node ("auto" or a paired node name) as a remote agent (GL1). Absent = locally. */
+  machine?: string;
+  /** Fleet test seams (nodes file, factories). */
+  fleet?: GoalWorkerFleetOptions;
 }
 
 const workers = new Map<string, GoalWorkerRecord>();
 const children = new Map<string, ChildProcess>();
+/** Stop handles of remote workers (they have no local child process). */
+const remoteStops = new Map<string, () => Promise<void>>();
 const completionSubscriptions = new Set<GoalWorkerCompletionSubscription>();
 const pendingCompletions: GoalWorkerCompletion[] = [];
 const MAX_PENDING_COMPLETIONS = 100;
@@ -164,9 +178,12 @@ async function setRunWorker(
   cwd: string,
   runId: string,
   workerId: string | undefined,
+  /** Only clear when the run's active worker is this one (parallel remote workers). */
+  clearOnlyIf?: string,
 ): Promise<void> {
   const run = await getGoalRun(cwd, runId);
   if (!run) return;
+  if (!workerId && clearOnlyIf && run.activeWorkerId && run.activeWorkerId !== clearOnlyIf) return;
   const patch: GoalRun = workerId
     ? { ...run, activeWorkerId: workerId, status: "running" }
     : {
@@ -178,6 +195,8 @@ async function setRunWorker(
 }
 
 export async function startGoalWorker(options: StartGoalWorkerOptions): Promise<GoalWorkerRecord> {
+  const machine = options.machine?.trim();
+  if (machine) return startRemoteGoalWorkerRecord({ ...options, machine });
   const cliPath = getCliPath();
   if (!cliPath) throw new Error("Cannot start Goal worker: CLI path is unavailable.");
 
@@ -407,6 +426,146 @@ export async function startGoalWorker(options: StartGoalWorkerOptions): Promise<
   return record;
 }
 
+/** Remote Goal workers of one run that are running now (for the per-goal cap). */
+function runningRemoteWorkers(cwd: string, runId: string): GoalWorkerRecord[] {
+  return listGoalWorkers(cwd).filter(
+    (worker) => worker.goalRunId === runId && worker.machine && worker.status === "running",
+  );
+}
+
+/**
+ * GL1: the task runs as a remote agent on a node. Several may run at once for
+ * one goal (one per task), bounded by free node slots and the goal's
+ * optional maxRemoteWorkers cap.
+ */
+async function startRemoteGoalWorkerRecord(
+  options: StartGoalWorkerOptions & { machine: string },
+): Promise<GoalWorkerRecord> {
+  const existing = listGoalWorkers(options.cwd).find(
+    (worker) =>
+      worker.goalRunId === options.goalRunId &&
+      worker.goalTaskId === options.goalTaskId &&
+      worker.status === "running",
+  );
+  if (existing) return existing;
+  const run = await getGoalRun(options.cwd, options.goalRunId);
+  const cap = run?.maxRemoteWorkers;
+  if (cap !== undefined && runningRemoteWorkers(options.cwd, options.goalRunId).length >= cap) {
+    throw new Error(
+      `Goal "${run?.title ?? options.goalRunId}" already has ${cap} worker(s) on fleet nodes (max_remote_workers=${cap}). Wait for one to finish or raise the cap.`,
+    );
+  }
+
+  const workerId = randomUUID().slice(0, 8);
+  const workerDir = join(projectDir(options.cwd), "workers");
+  await mkdir(workerDir, { recursive: true });
+  const logFile = join(workerDir, `${workerId}.ndjson`);
+  const logStream = createWriteStream(logFile, { flags: "a" });
+  const record: GoalWorkerRecord = {
+    id: workerId,
+    pid: 0,
+    goalRunId: options.goalRunId,
+    goalTaskId: options.goalTaskId,
+    cwd: options.cwd,
+    provider: options.provider,
+    model: options.model,
+    startedAt: new Date().toISOString(),
+    logFile,
+    status: "running",
+    exitCode: null,
+    machine: options.machine,
+  };
+  workers.set(workerId, record);
+  await updateGoalTask(options.cwd, options.goalRunId, options.goalTaskId, {
+    status: "running",
+    workerId,
+    machine: options.machine,
+  });
+  await setRunWorker(options.cwd, options.goalRunId, workerId);
+
+  const systemPrompt =
+    options.systemPrompt ??
+    buildGoalWorkerSystemPrompt({
+      cwd: options.cwd,
+      goalRunId: options.goalRunId,
+      goalTaskId: options.goalTaskId,
+      ...(options.taskTitle ? { taskTitle: options.taskTitle } : {}),
+    });
+  const { startRemoteGoalWorker } = await import("./goal-remote-worker.js");
+  const remote = startRemoteGoalWorker({
+    workerId,
+    cwd: options.cwd,
+    goalRunId: options.goalRunId,
+    goalTaskId: options.goalTaskId,
+    machine: options.machine,
+    provider: options.provider,
+    model: options.model,
+    brief: `${systemPrompt}\n\n${options.prompt}`,
+    timeoutMs: options.timeoutMs ?? DEFAULT_GOAL_WORKER_TIMEOUT_MS,
+    ...(options.fleet && { fleet: options.fleet }),
+    onNode: (node) => {
+      if (record.machine === node) return;
+      record.machine = node;
+      logStream.write(JSON.stringify({ type: "machine", node }) + "\n");
+      void updateGoalTask(options.cwd, options.goalRunId, options.goalTaskId, {
+        remoteNode: node,
+      });
+    },
+    onActivity: (activity) => {
+      record.currentActivity = activity;
+    },
+  });
+  remoteStops.set(workerId, remote.stop);
+
+  void remote.done
+    .then(async (outcome) => {
+      remoteStops.delete(workerId);
+      logStream.write(JSON.stringify({ type: "outcome", ...outcome }) + "\n");
+      logStream.end();
+      if (outcome.node) record.machine = outcome.node;
+      record.exitCode = outcome.exitCode;
+      if (record.status === "stopped") return;
+      record.status = outcome.status;
+      if (outcome.keptPatch) record.keptPatch = outcome.keptPatch;
+      await updateGoalTask(options.cwd, options.goalRunId, options.goalTaskId, {
+        status: outcome.status,
+        workerId,
+        lastSummary: outcome.summary,
+        ...(outcome.node && { remoteNode: outcome.node }),
+        ...(outcome.keptPatch && { keptPatch: outcome.keptPatch }),
+      });
+      await appendGoalEvidence(options.cwd, options.goalRunId, {
+        kind: "log",
+        label: outcome.conflictFiles
+          ? `Worker ${workerId} conflict`
+          : `Worker ${workerId} ${outcome.status}`,
+        content: outcome.summary,
+        path: outcome.keptPatch ?? logFile,
+      });
+      await setRunWorker(options.cwd, options.goalRunId, undefined, workerId);
+      const completion: GoalWorkerCompletion = {
+        worker: { ...record },
+        summary: outcome.summary,
+        status: outcome.status,
+        exitCode: outcome.exitCode,
+        toolsUsed: [],
+        reason: outcome.exitCode === 124 ? "timeout" : "exit",
+      };
+      options.onComplete?.(completion);
+      emitGoalWorkerCompletion(completion);
+    })
+    .catch((err: unknown) => {
+      log("ERROR", "goal-worker", err instanceof Error ? err.message : String(err));
+    });
+
+  log("INFO", "goal-worker", `Remote worker ${workerId} starting`, {
+    machine: options.machine,
+    goalRunId: options.goalRunId,
+    goalTaskId: options.goalTaskId,
+  });
+  return record;
+}
+
 export function listGoalWorkers(projectPath?: string): GoalWorkerRecord[] {
   const records = [...workers.values()];
   return projectPath ? records.filter((record) => record.cwd === projectPath) : records;
@@ -416,15 +575,24 @@ export async function stopGoalWorker(workerId: string): Promise<string> {
   const record = workers.get(workerId);
   if (!record) return `No Goal worker with id "${workerId}".`;
   const child = children.get(workerId);
-  if (!child || record.status !== "running") return `Goal worker ${workerId} is not running.`;
+  const remoteStop = remoteStops.get(workerId);
+  if ((!child && !remoteStop) || record.status !== "running") {
+    return `Goal worker ${workerId} is not running.`;
+  }
 
   record.status = "stopped";
-  try {
-    if (child.pid) killProcessTree(child.pid);
-  } catch {
-    child.kill("SIGTERM");
+  if (remoteStop) {
+    // Its edits so far are synced, saved as a patch, or left on the node (R2).
+    remoteStops.delete(workerId);
+    await remoteStop().catch(() => undefined);
+  } else if (child) {
+    try {
+      if (child.pid) killProcessTree(child.pid);
+    } catch {
+      child.kill("SIGTERM");
+    }
+    children.delete(workerId);
   }
-  children.delete(workerId);
   await updateGoalTask(record.cwd, record.goalRunId, record.goalTaskId, {
     status: "blocked",
     workerId,
@@ -442,6 +610,13 @@ export async function stopGoalWorker(workerId: string): Promise<string> {
 
 export function shutdownGoalWorkers(projectPath?: string): void {
   for (const record of listGoalWorkers(projectPath)) {
+    const remoteStop = remoteStops.get(record.id);
+    if (remoteStop) {
+      remoteStops.delete(record.id);
+      record.status = "stopped";
+      void remoteStop().catch(() => undefined);
+      continue;
+    }
     const child = children.get(record.id);
     if (!child || !child.pid) continue;
     killProcessTree(child.pid);

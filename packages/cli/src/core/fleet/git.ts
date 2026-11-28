@@ -11,6 +11,25 @@ import type { Exec } from "../validation/types.js";
 /** Nodes accept patches up to 50 MB (base64). */
 export const MAX_PATCH_BYTES = 50 * 1024 * 1024;
 
+/**
+ * A git remote URL without embedded credentials (X7). `https://user:token@host/x`
+ * becomes `https://host/x`: nodes clone with their own credentials, and the URL
+ * goes into job state, logs and containers. ssh usernames (`git@host:o/r`,
+ * `ssh://git@host/o/r`) are kept; only an ssh password is dropped.
+ */
+export function stripUrlCredentials(url: string): string {
+  const m = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*@)?(.*)$/i.exec(url.trim());
+  if (!m) return url.trim();
+  const scheme = m[1]!;
+  const userinfo = m[2];
+  if (!userinfo) return url.trim();
+  if (/^ssh$|^git\+ssh$|^ssh\+git$/i.test(scheme)) {
+    const user = userinfo.slice(0, -1).split(":")[0]!;
+    return `${scheme}://${user ? `${user}@` : ""}${m[3]}`;
+  }
+  return `${scheme}://${m[3]}`;
+}
+
 export interface SourceState {
   git: string;
   sha: string;
@@ -46,7 +65,8 @@ export class FleetGit {
     const sha = await this.run(cwd, ["rev-parse", "--verify", `${ref}^{commit}`]);
     if (!sha)
       throw new Error(`"${ref}" is not a commit in ${cwd} (is this a Git repo with commits?)`);
-    const git = await this.run(cwd, ["remote", "get-url", "origin"]);
+    const rawGit = await this.run(cwd, ["remote", "get-url", "origin"]);
+    const git = rawGit ? stripUrlCredentials(rawGit) : undefined;
     if (!git) {
       throw new Error(
         "this repo has no `origin` remote; nodes clone the code from it (add one and push first)",

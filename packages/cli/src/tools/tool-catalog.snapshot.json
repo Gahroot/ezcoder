@@ -418,6 +418,7 @@
             "type": "string",
             "enum": [
               "nodes",
+              "doctor",
               "run",
               "status",
               "logs",
@@ -426,20 +427,90 @@
               "service_up",
               "service_down",
               "services",
-              "exec"
+              "exec",
+              "propose_config",
+              "apply_config"
             ],
-            "description": "nodes: machines and load. run: queue a project job. status: jobs and config. logs/artifacts/cancel: one job. service_up/service_down/services: long-running services (llm, browser, dev, ...). exec: run a command in a devenv service."
+            "description": "nodes: machines and load. doctor: per node, usable or not and why. run: queue a project job, or an ad hoc `command`. status: jobs, queue position, why waiting. logs/artifacts/cancel: one job. service_up/service_down/services: long-running services (llm, browser, dev, ...). exec: run a command in a devenv service. propose_config: suggest .ezcoder/fleet.json from the project. apply_config: write it, only after the user approved it."
           },
           "name": {
-            "description": "run: job name. service_up/service_down/exec: service name or id (exec default dev)",
+            "description": "run: job name (omit with command). service_up/service_down/exec: service name or id (exec default dev)",
             "type": "string"
           },
           "id": {
             "description": "logs/artifacts/cancel: job id",
             "type": "string"
           },
+          "image": {
+            "description": "run with command: Docker image to run it in (else host shell)",
+            "type": "string"
+          },
+          "kind": {
+            "description": "run with command: job kind (default custom)",
+            "type": "string",
+            "enum": [
+              "build",
+              "test",
+              "browser",
+              "render",
+              "custom"
+            ]
+          },
+          "timeout_minutes": {
+            "description": "run with command: timeout (default 30)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440
+          },
+          "count": {
+            "description": "run: start N copies at once, spread over free slots; each gets EZ_SHARD (1..N) and EZ_SHARD_TOTAL",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "tail": {
+            "description": "logs: last N lines (after grep)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "offset": {
+            "description": "logs: bytes from this offset",
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "description": "logs: max bytes from offset",
+            "type": "integer",
+            "minimum": 1
+          },
+          "grep": {
+            "description": "logs: JS regex; only matching lines",
+            "type": "string",
+            "maxLength": 200
+          },
+          "repo": {
+            "description": "doctor: git URL to test access to (default: origin)",
+            "type": "string"
+          },
+          "config": {
+            "description": "apply_config: the fleet.json to write (default: the current proposal)",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "approved": {
+            "description": "apply_config: the user approved this exact config (ask_user first)",
+            "type": "boolean"
+          },
+          "overwrite": {
+            "description": "apply_config: replace an existing fleet.json",
+            "type": "boolean"
+          },
           "node": {
-            "description": "run/service_up: pin a node (default: best fit)",
+            "description": "run/service_up: pin a node (default: best fit). run also takes \"cloud\", \"claude-cloud\" or \"codex-cloud\"",
             "type": "string"
           },
           "uncommitted": {
@@ -447,7 +518,7 @@
             "type": "boolean"
           },
           "command": {
-            "description": "exec: shell command",
+            "description": "run: ad hoc shell command. exec: shell command",
             "type": "string"
           },
           "use": {
@@ -463,7 +534,7 @@
           "action"
         ]
       },
-      "hash": "a619d0b3f88f7a43eb35d9fd0e5c3f29bbf0132acd66bd8e6b2c3090777e1c6d"
+      "hash": "63578c3e0f9d43cf9f21767c540597159a77aa1c3e9eb55a044c70d064848264"
     },
     {
       "name": "goals",
@@ -689,6 +760,10 @@
             "description": "Natural-language verifier description",
             "type": "string"
           },
+          "verifier_machine": {
+            "description": "create/verify: run the verifier as a fleet job at the exact commit on a node (\"auto\" or a paired node name); evidence comes from the job log. \"local\" runs it on this machine again.",
+            "type": "string"
+          },
           "task_id": {
             "description": "Goal task id to update",
             "type": "string"
@@ -716,6 +791,15 @@
           "worker_id": {
             "description": "Worker id associated with a task",
             "type": "string"
+          },
+          "machine": {
+            "description": "task: run this task's worker on a fleet node (\"auto\" or a paired node name) as a remote agent; its edits come back per turn and a conflict fails the task. Omit to run on this machine.",
+            "type": "string"
+          },
+          "max_remote_workers": {
+            "description": "create: cap on this Goal's workers running on fleet nodes at once (default: no cap beyond free node slots)",
+            "type": "integer",
+            "minimum": 1
           },
           "attempts": {
             "description": "Task attempt count",
@@ -778,7 +862,7 @@
           "action"
         ]
       },
-      "hash": "8a9aeb58eabf40fb2c44c789973e3018c15f9a743eaea8e193764eab6c18dc55"
+      "hash": "2628259c8beb93fab99669058a54f35406b5e30d496cce2e21a0b8d4dad2df54"
     },
     {
       "name": "grep",

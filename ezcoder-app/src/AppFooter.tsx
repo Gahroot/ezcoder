@@ -9,6 +9,7 @@ import {
 } from "./agent";
 import { FooterSkeleton } from "./Skeleton";
 import { BackgroundTasksButton } from "./BackgroundTasksButton";
+import { FleetActivityButton } from "./FleetActivityButton";
 import { RunningSchedulesButton } from "./RunningSchedulesButton";
 import { ShimmerText } from "./ShimmerText";
 import { ContextMeter } from "./ContextMeter";
@@ -104,6 +105,7 @@ export function AppFooter({
           ) : (
             <span className="footer-left footer-reveal">
               <BackgroundTasksButton tasks={tasks} />
+              <FleetActivityButton />
               {schedules.length > 0 && runningTaskCount > 0 && <FooterSep />}
               <RunningSchedulesButton schedules={schedules} onStop={stopSchedule} />
               {state?.planMode && (

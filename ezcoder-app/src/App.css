@@ -3359,6 +3359,13 @@ select {
   min-width: 0;
   padding-right: 38px;
 }
+.goal-hosted {
+  color: var(--info);
+  font-size: var(--fs-sm);
+}
+.goal-hosted:is([data-state="failed"], [data-state="lost"], [data-state="unreachable"]) {
+  color: var(--warning);
+}
 .modal-radio-group {
   display: flex;
   gap: var(--space-9);

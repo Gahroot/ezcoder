@@ -16,6 +16,11 @@ export interface RunGoalVerifierOptions {
   command: string;
   timeoutMs?: number;
   now?: () => number;
+  /**
+   * Run as a fleet job at the exact commit ("auto" or a paired node name) so
+   * evidence comes from a clean checkout on that node (GL2). Absent = locally.
+   */
+  machine?: string;
 }
 
 export interface RunGoalVerifierResult {
@@ -34,6 +39,16 @@ function appendOutput(output: string, chunk: Buffer): string {
 export async function runGoalVerifierCommand(
   options: RunGoalVerifierOptions,
 ): Promise<RunGoalVerifierResult> {
+  if (options.machine?.trim()) {
+    const { runGoalVerifierOnFleet } = await import("./goal-fleet.js");
+    return runGoalVerifierOnFleet({
+      cwd: options.cwd,
+      runId: options.runId,
+      command: options.command,
+      machine: options.machine.trim(),
+      ...(options.timeoutMs !== undefined && { timeoutMs: options.timeoutMs }),
+    });
+  }
   const now = options.now ?? Date.now;
   const startedAt = now();
   const timeoutMs = options.timeoutMs ?? DEFAULT_GOAL_VERIFIER_TIMEOUT_MS;

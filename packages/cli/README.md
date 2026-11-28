@@ -106,6 +106,7 @@ ezcoder validate gate       # exits non-zero until every required stage passed
 - **Exact commits, real gates.** Results are bound to the commit they tested, so a stale result can't approve newer code. Each required stage can post a GitHub commit status (`ezcoder/<stage>`) for branch protection and releases.
 - **Automatic defaults.** Test commands, Docker setup and stages are inferred from the project; `.ezcoder/validation.json` overrides them. Quick checks run locally, heavy ones go to workers.
 - **Any number of workers.** GitHub Actions self-hosted runners (Linux, Windows WSL2, macOS), GitHub-hosted runners, and fleet nodes. Jobs go to whichever machine has a free slot and enough CPU and memory; adding a machine never changes a project.
+- **Cloud overflow, zero setup.** Signed in to Claude? When your machines are busy, full or off, stages and jobs spill over to Claude Code cloud sandboxes on your plan, with results checked against the cloud's own record of the exact command. → [Cloud capacity](docs/cloud.md)
 - **Bounded and durable.** Global and per-machine concurrency limits, state saved across restarts, jobs requeued on another machine if a worker drops, and worker health shown in `validate workers`.
 
 → [Async validation guide](docs/async-validation.md)

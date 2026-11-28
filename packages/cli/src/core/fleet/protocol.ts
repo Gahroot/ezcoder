@@ -6,7 +6,16 @@
 // Shared by the node server (core/fleet/node/*) and the controller client
 // (core/fleet/client.ts). Change only additively; bump FLEET_PROTOCOL on breaks.
 
-export const FLEET_PROTOCOL = 1;
+export const FLEET_PROTOCOL = 2;
+/**
+ * Oldest peer protocol this build still talks to (S3). Controller and node
+ * each accept a peer whose protocol is in [FLEET_MIN_PROTOCOL, FLEET_PROTOCOL];
+ * outside that range the side with the LOWER protocol must be updated.
+ */
+export const FLEET_MIN_PROTOCOL = 2;
+/** Request headers the controller sends on every call (S3). */
+export const PROTOCOL_HEADER = "x-ezcoder-protocol";
+export const VERSION_HEADER = "x-ezcoder-version";
 export const DEFAULT_NODE_PORT = 7377;
 
 /** Platform family the node runs on. */
@@ -28,6 +37,14 @@ export interface HelloResponse {
   name: string;
   version: string;
   platform: NodePlatform;
+  /** Oldest controller protocol this node accepts (absent on protocol-1 nodes). */
+  minProtocol?: number;
+  /** Optional capabilities, e.g. "doctor", "log-query", "pair-code", "tls", "goals", "rotate-token". */
+  features?: string[];
+  /** Node refuses host-shell jobs and remote agents (X5, `serve --docker-only`). */
+  dockerOnly?: boolean;
+  /** SHA-256 fingerprint (hex, colon-free) of the TLS cert when serving https (X10). */
+  tlsFingerprint?: string;
 }
 
 /** Live resources, GET /v1/info. */
@@ -78,6 +95,8 @@ export interface SourceSpec {
   patch?: string;
   /** Sub-folder of the repo to work in. */
   subdir?: string;
+  /** Run `git submodule update --init --recursive` after checkout (R11). Default true when .gitmodules exists. */
+  submodules?: boolean;
 }
 
 /** How a command is wrapped in Docker on the node (absent = run on the host shell). */
@@ -114,6 +133,8 @@ export interface JobRequest {
   artifacts?: string[];
   /** Cache key; defaults to a sanitized `project`. Mounted at /cache (docker) or exported as EZ_CACHE. */
   cacheKey?: string;
+  /** Max log bytes kept (R6, default 200 MB); beyond it head and tail are kept. */
+  logCapBytes?: number;
 }
 
 export type NodeJobState =
@@ -142,10 +163,18 @@ export interface JobStatus {
   finishedAt?: string;
   artifacts?: ArtifactInfo[];
   logBytes: number;
+  /** The log hit its cap; the middle was dropped (R6). */
+  logTruncated?: boolean;
+  /** Why a job is still waiting on the node, e.g. "waiting for a free slot" (A6). */
+  waitingReason?: string;
 }
 
 // GET /v1/jobs/:id -> JobStatus
 // GET /v1/jobs/:id/log?offset=N -> text/plain (bytes from offset); header X-Log-Size
+// GET /v1/jobs/:id/log?tail=N[&grep=RE] -> last N lines (after grep filter); A2.
+//   ?offset=N&limit=B returns at most B bytes from offset. ?grep=RE (JS regex, max 200 chars)
+//   filters lines server-side. The node never sends the whole log for tail/grep queries.
+//   Headers: X-Log-Size (total bytes), X-Log-Truncated: 1 when capped.
 // GET /v1/jobs/:id/artifacts/<path> -> file bytes
 // DELETE /v1/jobs/:id -> cancel (JobStatus); DELETE /v1/jobs/:id?purge=1 removes workspace+artifacts
 
@@ -250,14 +279,136 @@ export interface AgentDiff {
   patch: string;
   files: string[];
   base: string;
+  /** Git-ignored files the agent changed; NOT in the patch (R9). */
+  ignoredChanged?: string[];
 }
 
 /** POST /v1/auth (opt-in `ezcoder fleet share-auth`): provider credentials for the node's own ~/.ezcoder/auth.json. */
 export interface ShareAuthRequest {
   /** Raw auth.json entries keyed by provider id. */
   credentials: Record<string, unknown>;
+  /** Overwrite providers the node already has credentials for (R8). Without it: 409 code "exists". */
+  force?: boolean;
 }
+
+export type FleetErrorCodeWire =
+  | "protocol_mismatch" // S3: see ProtocolMismatch fields
+  | "docker_only" // X5: host-shell job or agent refused
+  | "exists" // R8
+  | "bad_code" // S9: pairing code wrong/expired/used
+  | "rate_limited"
+  | "busy" // every slot is taken: 429 with Retry-After; queue and retry, don't fail
+  | "secrets_refused"
+  | "bad_request";
 
 export interface ErrorResponse {
   error: string;
+  /** Machine-readable reason (absent on older nodes). */
+  code?: FleetErrorCodeWire;
+  /** S3 only: which side must be updated so both speak a common protocol. */
+  update?: "node" | "controller";
+  nodeProtocol?: number;
+  controllerProtocol?: number;
+}
+
+// ---- S3: protocol handshake ----
+// The controller sends PROTOCOL_HEADER + VERSION_HEADER on every request. A node
+// answers 426 with ErrorResponse{code:"protocol_mismatch", update, nodeProtocol,
+// controllerProtocol} when the controller protocol is outside its range. The
+// controller checks HelloResponse.protocol itself on pairing and every poll and
+// refuses (with the same "update node|controller" wording) before sending work.
+// A missing header (very old controller) is treated as protocol 1.
+
+// ---- S1/A4: GET /v1/doctor?repo=<git url> ----
+export type DoctorCheckId =
+  | "tailscale"
+  | "docker"
+  | "gpu"
+  | "git"
+  | "model_login"
+  | "disk"
+  | "version"
+  | "slots"
+  | "keychain";
+export interface DoctorCheck {
+  id: DoctorCheckId;
+  status: "ok" | "warn" | "fail" | "skip";
+  /** One line, plain words: what was found. */
+  detail: string;
+  /** One line, a concrete fix (command to run) when status is warn/fail. */
+  fix?: string;
+}
+export interface DoctorReport {
+  node: string;
+  version: string;
+  protocol: number;
+  checks: DoctorCheck[];
+  /** true when no check is "fail". */
+  ok: boolean;
+}
+
+// ---- S4/D5: POST /v1/token/rotate (auth: current token) ----
+// Issues a new token, persists it, and invalidates the old one for every later
+// request (in-flight WebSockets on the old token are closed). Returns:
+export interface RotateTokenResponse {
+  token: string;
+  /** Fresh pairing string with the new token. */
+  pairing: string;
+}
+
+// ---- S9: short-code pairing ----
+// `ezcoder node pair --code` prints an 8-char code (e.g. "K7QM-2XPA", Crockford
+// base32), valid 10 minutes, single use. Also printed as a QR of the pairing
+// string. POST /v1/pair (no auth) body PairCodeRequest -> PairCodeResponse;
+// wrong code -> 403 code "bad_code"; >5 bad attempts per 10 min -> 429 "rate_limited".
+export interface PairCodeRequest {
+  code: string;
+}
+export interface PairCodeResponse {
+  /** Full pairing string (ezfleet://...#token, or ezfleets:// for TLS). */
+  pairing: string;
+}
+
+// ---- S7: POST /v1/update {version?} (auth) ----
+// Node installs the requested CLI version (default: latest) with its own package
+// manager, then restarts its login service. Returns 202 {from, to}; refuses while
+// jobs/agents run unless {force:true}.
+export interface UpdateRequest {
+  version?: string;
+  force?: boolean;
+}
+export interface UpdateResponse {
+  from: string;
+  to: string;
+  restarting: boolean;
+}
+
+// ---- R9 additions to AgentDiff are in AgentDiff.ignoredChanged ----
+
+// ---- GL4: whole Goals hosted on a node (feature "goals") ----
+// POST /v1/goals GoalHostRequest -> GoalHostStatus (prepares a workspace like an
+// agent, then runs the Goal controller headless there, surviving controller
+// disconnects and node restarts). GET /v1/goals -> GoalHostStatus[];
+// GET /v1/goals/:id -> GoalHostStatus; GET /v1/goals/:id/log?tail=N;
+// DELETE /v1/goals/:id -> stop. On finish the node pushes the result branch
+// `ezcoder/goal/<id>` to origin with its own git credentials (GL6).
+export interface GoalHostRequest {
+  id: string;
+  project: string;
+  source: SourceSpec;
+  /** The serialized goal definition (as stored in the goal store). */
+  goal: unknown;
+  /** Branch to push the result to (default ezcoder/goal/<id>). */
+  resultBranch?: string;
+}
+export interface GoalHostStatus {
+  id: string;
+  project: string;
+  state: "preparing" | "running" | "done" | "failed" | "stopped" | "lost";
+  summary?: string;
+  /** Pushed result branch once done. */
+  resultBranch?: string;
+  resultSha?: string;
+  startedAt: string;
+  finishedAt?: string;
 }

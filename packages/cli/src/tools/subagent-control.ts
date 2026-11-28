@@ -119,7 +119,9 @@ export function createSubAgentControlTools(
       .string()
       .min(1)
       .optional()
-      .describe('Paired fleet machine to run on ("auto" or its name); edits come back here'),
+      .describe(
+        'Where to run: a paired fleet machine\'s name, "auto" (a free machine, else the cloud), "cloud" (first available), "claude-cloud" or "codex-cloud"; machine edits come back here, Claude cloud edits stay in its session',
+      ),
   });
   // A list, so one call starts every child: on models that send one tool call
   // per turn (GPT-6.x), a one-child-per-call shape cost a model turn per child

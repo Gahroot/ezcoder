@@ -86,6 +86,7 @@ function service(): FleetService {
       gateCalls.push(sha);
       return { sha, ok: gateOk, rows: [{ stage: "test", state: gateOk ? "passed" : "missing" }] };
     },
+    cloud: false,
     localEndpoints: {
       settingsFile: path.join(tmp, "app.json"),
       auth: new AuthStorage(path.join(tmp, "auth.json")),
@@ -335,5 +336,25 @@ describe("FleetService services", () => {
     const local = new BrowserManager({ loadChromium: async () => chromium });
     await local.page();
     expect(calls).toEqual([`connect ${ws}`, "launch"]);
+  });
+});
+
+describe("deploy dispatch that never answers", () => {
+  it("confirms with the same node instead of running the deploy somewhere else", async () => {
+    const a = await addNode("a", { labels: ["deploy"] });
+    const b = await addNode("b", { labels: ["deploy"] });
+    a.dropSubmit = b.dropSubmit = true;
+    const svc = service();
+    const { job } = await svc.run(repo, "deploy");
+    await svc.tick();
+    const claimed = (await svc.get(job.id))!;
+    expect(claimed.state).toBe("queued");
+    expect(claimed.node).toBeDefined();
+    a.dropSubmit = b.dropSubmit = false;
+    await svc.tick();
+    const j = (await svc.get(job.id))!;
+    expect(j.state).toBe("running");
+    expect(j.node).toBe(claimed.node);
+    expect(a.requests.length + b.requests.length).toBe(1);
   });
 });

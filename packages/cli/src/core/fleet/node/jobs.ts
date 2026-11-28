@@ -16,7 +16,9 @@ import type {
   SourceSpec,
 } from "../protocol.js";
 import type { NodeConfig } from "./context.js";
-import { readSecrets } from "./config.js";
+import { stripUrlCredentials } from "../git.js";
+import { allowedBaseEnv } from "./env.js";
+import { NodeSecrets } from "./secrets.js";
 import {
   containerCacheEnv,
   containerName,
@@ -74,6 +76,48 @@ const KEEP_DAYS = 14;
 const MAX_ARTIFACT_FILES = 5000;
 const MAX_ARTIFACT_BYTES = 10 * 1024 ** 3;
 const MAX_LOG_CHUNK = 8 * 1024 * 1024;
+/** R6: default per-job log cap. */
+export const DEFAULT_LOG_CAP_BYTES = 200 * 1024 * 1024;
+const MIN_LOG_CAP_BYTES = 4096;
+const MAX_GREP_CHARS = 200;
+/** A2: tail/grep queries never return more than this many lines or bytes. */
+const MAX_TAIL_LINES = 10_000;
+const MAX_QUERY_BYTES = 4 * 1024 * 1024;
+export const LOG_TRUNCATED_MARKER =
+  "\n[ezcoder node] … log over its cap: the middle was dropped …\n";
+
+export interface LogQuery {
+  offset?: number;
+  limit?: number;
+  tail?: number;
+  grep?: RegExp;
+}
+
+/** Parse ?offset&limit&tail&grep; returns an error string for a bad query. */
+export function parseLogQuery(params: URLSearchParams): LogQuery | string {
+  const q: LogQuery = {};
+  const num = (name: string): number | undefined | string => {
+    const v = params.get(name);
+    if (v === null || v === "") return undefined;
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 0 ? n : `${name} must be a non-negative integer`;
+  };
+  for (const k of ["offset", "limit", "tail"] as const) {
+    const n = num(k);
+    if (typeof n === "string") return n;
+    if (n !== undefined) q[k] = n;
+  }
+  const grep = params.get("grep");
+  if (grep) {
+    if (grep.length > MAX_GREP_CHARS) return `grep must be at most ${MAX_GREP_CHARS} characters`;
+    try {
+      q.grep = new RegExp(grep);
+    } catch (e) {
+      return `invalid grep pattern: ${(e as Error).message}`;
+    }
+  }
+  return q;
+}
 
 export function isTerminalJob(state: NodeJobState): boolean {
   return TERMINAL.has(state);
@@ -92,7 +136,14 @@ export interface JobManagerOptions {
   slots: SlotTable;
   log?: (msg: string) => void;
   dockerAvailable?: () => Promise<boolean>;
-  prepare?: (kind: "job", id: string, source: SourceSpec | undefined) => Promise<PreparedWorkspace>;
+  prepare?: (
+    kind: "job",
+    id: string,
+    source: SourceSpec | undefined,
+    onStep?: (step: string) => void,
+  ) => Promise<PreparedWorkspace>;
+  /** Deploy secrets (X8, OS keychain). */
+  secrets?: NodeSecrets;
   pollMs?: number;
   /** Seconds between TERM and KILL on cancel/timeout. */
   killGraceSeconds?: number;
@@ -105,7 +156,10 @@ export interface ApiResult {
   body: unknown;
 }
 
-const err = (status: number, error: string): ApiResult => ({ status, body: { error } });
+const err = (status: number, error: string, code?: string): ApiResult => ({
+  status,
+  body: code ? { error, code } : { error },
+});
 
 export class JobManager {
   private readonly cfg: NodeConfig;
@@ -116,6 +170,7 @@ export class JobManager {
   private timer?: ReturnType<typeof setInterval>;
   private finalizing = new Set<string>();
   private readonly grace: number;
+  readonly secrets: NodeSecrets;
 
   constructor(private readonly opts: JobManagerOptions) {
     this.cfg = opts.config;
@@ -124,6 +179,7 @@ export class JobManager {
     this.slots = opts.slots;
     this.log = opts.log ?? (() => {});
     this.grace = opts.killGraceSeconds ?? 10;
+    this.secrets = opts.secrets ?? new NodeSecrets(this.cfg.dataDir);
   }
 
   // ── paths ──────────────────────────────────────────────────────────────
@@ -236,6 +292,12 @@ export class JobManager {
     if (typeof req.project !== "string" || !req.project) return "project is required";
     if (typeof req.command !== "string" || !req.command.trim()) return "command is required";
     if (
+      req.logCapBytes !== undefined &&
+      (!Number.isInteger(req.logCapBytes) || req.logCapBytes < MIN_LOG_CAP_BYTES)
+    ) {
+      return `logCapBytes must be an integer of at least ${MIN_LOG_CAP_BYTES}`;
+    }
+    if (
       typeof req.timeoutMinutes !== "number" ||
       !(req.timeoutMinutes > 0) ||
       req.timeoutMinutes > 7 * 24 * 60
@@ -252,7 +314,7 @@ export class JobManager {
       }
     }
     if (req.docker) {
-      const e = validateDockerSpec(req.docker, this.cfg.dataDir);
+      const e = validateDockerSpec(req.docker, this.mountScope(req));
       if (e) return e;
     }
     if (req.source && (typeof req.source.git !== "string" || typeof req.source.sha !== "string")) {
@@ -267,15 +329,35 @@ export class JobManager {
     const invalid = this.validate(req);
     if (invalid) return err(400, invalid);
 
+    if (!req.docker && this.cfg.dockerOnly) {
+      return err(
+        403,
+        "this node only runs containerised work (docker-only): give the job a docker image, or use another node",
+        "docker_only",
+      );
+    }
+    if (req.docker?.compose && !this.cfg.labels.includes("compose")) {
+      // A compose file can grant itself anything Docker can, so the node owner opts in.
+      return err(
+        403,
+        "this node does not run compose jobs; add the 'compose' label to allow them (ezcoder node init --labels <labels>,compose)",
+      );
+    }
     let secrets: Record<string, string> = {};
     if (req.secrets?.length) {
+      if (req.kind !== "deploy") return err(403, "only deploy jobs can use secrets");
       if (!this.cfg.labels.includes("deploy")) {
         return err(403, "this node is not labelled 'deploy' and does not accept jobs with secrets");
       }
-      const all = readSecrets(this.cfg.dataDir);
-      const missing = req.secrets.filter((n) => !(n in all));
-      if (missing.length) return err(400, `secret not set on this node: ${missing.join(", ")}`);
-      secrets = Object.fromEntries(req.secrets.map((n) => [n, all[n]!]));
+      secrets = await this.secrets.read(req.secrets);
+      const missing = req.secrets.filter((n) => !(n in secrets));
+      if (missing.length) {
+        return err(
+          400,
+          `secret not set on this node: ${missing.join(", ")} (set it there with \`ezcoder node secret set NAME\`)`,
+          "secrets_refused",
+        );
+      }
     }
     const needLabels = (req.resources?.labels ?? []).filter(
       (l) => !this.cfg.labels.includes(l) && l !== "gpu",
@@ -284,7 +366,7 @@ export class JobManager {
     if (req.docker && this.opts.dockerAvailable && !(await this.opts.dockerAvailable())) {
       return err(409, "docker is not available on this node");
     }
-    if (!this.slots.acquire(req.id)) return err(429, "all slots are busy");
+    if (!this.slots.acquire(req.id)) return err(429, "all slots are busy", "busy");
 
     const rec: JobRecord = {
       status: {
@@ -294,8 +376,11 @@ export class JobManager {
         state: "preparing",
         startedAt: new Date().toISOString(),
         logBytes: 0,
+        waitingReason: "preparing the workspace",
       },
       timeoutMinutes: req.timeoutMinutes,
+      cacheKey: sanitizeCacheKey(req.cacheKey ?? req.project),
+      logCapBytes: req.logCapBytes ?? DEFAULT_LOG_CAP_BYTES,
       docker: req.docker,
       artifactGlobs: req.artifacts,
     };
@@ -323,16 +408,24 @@ export class JobManager {
   ): Promise<void> {
     const id = req.id;
     try {
-      if (req.source)
-        this.appendLog(id, `[ezcoder node] preparing ${req.source.git} @ ${req.source.sha}`);
+      if (req.source) {
+        this.appendLog(
+          id,
+          `[ezcoder node] preparing ${stripUrlCredentials(req.source.git)} @ ${req.source.sha}`,
+        );
+      }
+      const onStep = (step: string) => {
+        if (rec.status.state === "preparing") rec.status.waitingReason = step;
+      };
       const ws = await (this.opts.prepare
-        ? this.opts.prepare("job", id, req.source)
+        ? this.opts.prepare("job", id, req.source, onStep)
         : prepareWorkspaceDetailed({
             dataDir: this.cfg.dataDir,
             kind: "job",
             id,
             source: req.source,
             exec: this.exec,
+            onStep,
           }));
       rec.root = ws.root;
       rec.cwd = ws.cwd;
@@ -347,7 +440,7 @@ export class JobManager {
       }
       if (req.docker) {
         // Re-check host mounts now that the workspace (and any symlinks in it) exists.
-        const argsErr = validateDockerArgs(req.docker.args, this.cfg.dataDir);
+        const argsErr = validateDockerArgs(req.docker.args, this.mountScope(req, ws.root));
         if (argsErr) throw new Error(argsErr);
         for (const p of [req.docker.dockerfile, req.docker.compose]) {
           if (p && !isRealPathInside(ws.root, path.join(ws.cwd, p)))
@@ -360,6 +453,17 @@ export class JobManager {
       this.appendLog(id, `[ezcoder node] ${msg}`);
       await this.finalize(rec, "error", undefined, msg.split("\n")[0]!.slice(0, 300));
     }
+  }
+
+  /** X9: a job may mount only its own workspace and its own cache folder. */
+  private mountScope(
+    req: Pick<JobRequest, "id" | "cacheKey" | "project">,
+    root = workspaceRoot(this.cfg.dataDir, "job", req.id),
+  ): string[] {
+    return [
+      root,
+      path.join(this.cfg.dataDir, "cache", sanitizeCacheKey(req.cacheKey ?? req.project)),
+    ];
   }
 
   /** The shell command for the job (host or docker) and the env the wrapper needs. */
@@ -460,7 +564,8 @@ export class JobManager {
       stdio: "ignore",
       cwd: ws.cwd,
       env: {
-        ...process.env,
+        // X6: only allow-listed node env reaches the job (never the node's own keys).
+        ...allowedBaseEnv(process.env),
         ...env,
         CI: "1",
         EZF_CWD: ws.cwd,
@@ -476,6 +581,7 @@ export class JobManager {
     });
     child.unref();
     rec.wrapperPid = child.pid;
+    delete rec.status.waitingReason;
     rec.status.state = "running";
     rec.status.startedAt = new Date().toISOString();
     this.state.save();
@@ -497,7 +603,7 @@ export class JobManager {
       detached: true,
       stdio: "ignore",
       env: {
-        ...process.env,
+        ...allowedBaseEnv(process.env),
         EZF_CWD: rec.cwd && fs.existsSync(rec.cwd) ? rec.cwd : this.runDir(id),
         EZF_CMD: cmd,
         EZF_DIR: this.runDir(id),
@@ -515,6 +621,7 @@ export class JobManager {
     for (const rec of [...this.records()]) {
       if (rec.status.state !== "running") continue;
       const id = rec.status.id;
+      this.capLog(rec);
       if (fs.existsSync(path.join(this.runDir(id), "exit"))) {
         await this.collect(rec);
       } else if (rec.wrapperPid && !pidAlive(rec.wrapperPid)) {
@@ -574,6 +681,8 @@ export class JobManager {
       } catch (e) {
         this.log(`job ${id}: workspace cleanup failed: ${(e as Error).message}`);
       }
+      this.capLog(rec);
+      delete rec.status.waitingReason;
       rec.status.state = state;
       if (exitCode !== undefined && Number.isFinite(exitCode)) rec.status.exitCode = exitCode;
       if (summary) rec.status.summary = summary;
@@ -713,6 +822,82 @@ export class JobManager {
     }
   }
 
+  /**
+   * R6: keep the log under its cap. The runner appends with O_APPEND, so the
+   * file is rewritten in place as head + marker + tail and truncated; later
+   * output lands after the tail. Compacts to ~75% of the cap to leave room.
+   */
+  capLog(rec: JobRecord): void {
+    const cap = rec.logCapBytes ?? DEFAULT_LOG_CAP_BYTES;
+    const file = this.logFile(rec.status.id);
+    let fd: number;
+    try {
+      fd = fs.openSync(file, "r+");
+    } catch {
+      return;
+    }
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (size <= cap) return;
+      const marker = Buffer.from(LOG_TRUNCATED_MARKER);
+      // The head never moves: the first half of the cap (marker follows it after compaction).
+      const headLen = Math.floor(cap / 2);
+      const tailLen = Math.max(0, Math.floor(cap / 4));
+      const tail = Buffer.alloc(tailLen);
+      fs.readSync(fd, tail, 0, tailLen, size - tailLen);
+      fs.writeSync(fd, marker, 0, marker.length, headLen);
+      fs.writeSync(fd, tail, 0, tailLen, headLen + marker.length);
+      fs.ftruncateSync(fd, headLen + marker.length + tailLen);
+      if (!rec.status.logTruncated) {
+        rec.status.logTruncated = true;
+        this.state.save();
+      }
+    } catch (e) {
+      this.log(`job ${rec.status.id}: log cap failed: ${(e as Error).message}`);
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  /**
+   * A2 queries without reading the whole log: `tail` reads backwards from the
+   * end in chunks; `grep` filters lines (with `tail`: the last N matches);
+   * `offset`+`limit` returns a byte range.
+   */
+  queryLog(
+    id: string,
+    q: LogQuery,
+  ): { data: Buffer; size: number; truncated: boolean } | undefined {
+    const rec = this.find(id);
+    if (!rec) return undefined;
+    const truncated = !!rec.status.logTruncated;
+    let fd: number;
+    try {
+      fd = fs.openSync(this.logFile(id), "r");
+    } catch {
+      return { data: Buffer.alloc(0), size: 0, truncated };
+    }
+    try {
+      const size = fs.fstatSync(fd).size;
+      if (q.tail !== undefined) {
+        const want = Math.min(q.tail, MAX_TAIL_LINES);
+        const lines = want > 0 ? tailLines(fd, size, want, q.grep) : [];
+        return { data: Buffer.from(lines.join("")), size, truncated };
+      }
+      const start = Math.max(0, Math.min(q.offset ?? 0, size));
+      if (q.grep) {
+        const lines = forwardGrep(fd, size, start, q.grep, q.limit ?? MAX_QUERY_BYTES);
+        return { data: Buffer.from(lines.join("")), size, truncated };
+      }
+      const len = Math.min(size - start, q.limit ?? MAX_LOG_CHUNK, MAX_LOG_CHUNK);
+      const data = Buffer.alloc(len);
+      if (len > 0) fs.readSync(fd, data, 0, len, start);
+      return { data, size, truncated };
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
   /** Absolute path of a collected artifact, or undefined. */
   artifactFile(id: string, rel: string): string | undefined {
     const rec = this.find(id);
@@ -783,4 +968,64 @@ export class JobManager {
       this.log(`job ${id}: cleanup failed: ${(e as Error).message}`);
     }
   }
+}
+
+const SCAN_CHUNK = 64 * 1024;
+
+/** Last `n` lines (matching `re` when given), scanning backwards from the end. */
+export function tailLines(fd: number, size: number, n: number, re?: RegExp): string[] {
+  const out: string[] = [];
+  let pos = size;
+  let carry = Buffer.alloc(0);
+  let bytes = 0;
+  while (pos > 0 && out.length < n && bytes < MAX_QUERY_BYTES * 16) {
+    const len = Math.min(SCAN_CHUNK, pos);
+    pos -= len;
+    const chunk = Buffer.alloc(len);
+    fs.readSync(fd, chunk, 0, len, pos);
+    bytes += len;
+    let buf = Buffer.concat([chunk, carry]);
+    // Every complete line after the first newline in buf; the part before it may continue left.
+    let end = buf.length;
+    for (let i = buf.length - 1; i >= 0 && out.length < n; i--) {
+      if (buf[i] !== 0x0a || i === buf.length - 1) continue;
+      pushLine(out, buf.subarray(i + 1, end), re);
+      end = i + 1;
+    }
+    buf = buf.subarray(0, end);
+    carry = buf;
+  }
+  if (pos === 0 && out.length < n && carry.length) pushLine(out, carry, re);
+  return out.reverse();
+}
+
+function pushLine(out: string[], line: Buffer, re: RegExp | undefined): void {
+  if (!line.length) return;
+  const text = line.toString("utf8");
+  if (re && !re.test(text.replace(/\n$/, ""))) return;
+  out.push(text);
+}
+
+/** Lines matching `re` from `start`, until `limit` bytes of output. */
+function forwardGrep(fd: number, size: number, start: number, re: RegExp, limit: number): string[] {
+  const out: string[] = [];
+  let outBytes = 0;
+  let pos = start;
+  let carry = "";
+  while (pos < size && outBytes < limit) {
+    const len = Math.min(SCAN_CHUNK, size - pos);
+    const chunk = Buffer.alloc(len);
+    fs.readSync(fd, chunk, 0, len, pos);
+    pos += len;
+    const parts = (carry + chunk.toString("utf8")).split("\n");
+    carry = parts.pop() ?? "";
+    for (const line of parts) {
+      if (!re.test(line)) continue;
+      out.push(line + "\n");
+      outBytes += line.length + 1;
+      if (outBytes >= limit) break;
+    }
+  }
+  if (carry && outBytes < limit && re.test(carry)) out.push(carry);
+  return out;
 }

@@ -37,6 +37,7 @@ export function collectFloorAgents(groups: readonly CritterGroup[]): FloorAgent[
       tokens: formatSubAgentTokens(agent.tokenUsage),
       durationMs: agent.durationMs,
       toolUseCount: agent.toolUseCount,
+      ...(agent.machine ? { machine: agent.machine } : {}),
     })),
   );
 }

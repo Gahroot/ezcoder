@@ -91,6 +91,25 @@ describe("GoalPicker", () => {
     }
   });
 
+  it("says which machine a goal runs on, and where its result went", async () => {
+    renderPicker([
+      {
+        ...GOAL,
+        hosted: [
+          { node: "groot-pc", state: "running", runId: "r1" },
+          {
+            node: "gpu-box",
+            state: "done",
+            runId: "r2",
+            resultBranch: "ezcoder/goal/r2",
+          },
+        ],
+      },
+    ]);
+    expect(await screen.findByText("Running on groot-pc")).toBeTruthy();
+    expect(screen.getByText("Done on gpu-box, result on branch ezcoder/goal/r2")).toBeTruthy();
+  });
+
   it("lists goals with their total, objective and context, and resumes the latest session", async () => {
     const { onChosen } = renderPicker([GOAL]);
 

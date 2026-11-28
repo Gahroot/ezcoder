@@ -156,3 +156,17 @@ describe("discovery", () => {
     ]);
   });
 });
+
+describe("damaged state", () => {
+  it("sets a damaged nodes.json aside instead of overwriting it with an empty list", async () => {
+    const reg = new NodeRegistry(tmp);
+    await reg.add({ name: "my-pc", url: "http://h:1", token: TOKEN, labels: [] });
+    const damaged = fs.readFileSync(reg.file, "utf8").slice(0, -20);
+    fs.writeFileSync(reg.file, damaged);
+    await reg.add({ name: "gpu-box", url: "http://h:2", token: TOKEN, labels: [] });
+    expect((await reg.list()).map((n) => n.name)).toEqual(["gpu-box"]);
+    const aside = fs.readdirSync(tmp).filter((f) => f.includes(".corrupt-"));
+    expect(aside).toHaveLength(1);
+    expect(fs.readFileSync(path.join(tmp, aside[0]!), "utf8")).toBe(damaged);
+  });
+});

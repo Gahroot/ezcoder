@@ -7,7 +7,8 @@ environments) and whole sub-agents. Nodes are reached over
 [Tailscale](https://tailscale.com), so no ports are opened to the internet.
 
 Examples below use generic names: a Linux box `gpu-box`, a Windows PC `my-pc`,
-a repo `you/repo`.
+a repo `you/repo`. For the fastest path use the bootstrap scripts in the
+[quick start](fleet-quickstart.md); this page explains each piece.
 
 ## 1. Install on the node
 
@@ -89,12 +90,41 @@ On your main machine:
 ezcoder fleet add 'ezfleet://gpu-box@gpu-box.your-tailnet.ts.net:7377#<token>'
 ```
 
-`ezcoder node pair` prints the string again; `ezcoder node status` shows the
-config and, while serving, live load, GPUs, slots and running work.
+`ezcoder node pair` prints the string again, and `ezcoder node pair --code`
+prints a short single-use code (10 minutes) and a QR code instead
+(`ezcoder fleet add --code <code>` on the main machine). `ezcoder node status`
+shows the config and, while serving, live load, GPUs, slots and running work.
+`ezcoder node doctor [--repo URL]` checks Tailscale, Docker, GPU passthrough,
+git access, model login, disk, slots and the keychain, with one fix per problem.
 
-Slots (concurrent jobs + agents) default to `max(1, min(cpus/4, memoryGb/4))`.
-Services do not use slots. A full node answers `429` and the controller picks
-another node.
+Slots are shared by every kind of work on the node: jobs, validation stages,
+helper agents and Goal workers. They default to
+`max(1, min(cpus/2, memoryGb/2))`. Change them with
+`ezcoder node config --slots N`; a running node picks the change up at once.
+Services do not use slots. A full node answers "busy" with a `Retry-After`
+time, and the controller keeps the work queued until a slot frees. See
+[Capacity](fleet.md#capacity).
+
+### Settings
+
+```bash
+ezcoder node config                       # show them
+ezcoder node config --slots 8             # any N >= 1
+ezcoder node config --gc-days 3           # remove finished work older than this (default 7)
+ezcoder node config --cache-cap-gb 50     # trim caches beyond this, oldest-used first (default 20)
+```
+
+To limit a node to containerised work, use `ezcoder node init --docker-only`
+(saved in `node.json`) or `ezcoder node serve --docker-only` (for that run).
+The node then refuses host-shell jobs and helper agents, and says so in its
+hello, so the main machine doesn't send them there.
+
+### TLS instead of Tailscale
+
+`ezcoder node init --tls --host <address>` makes a self-signed certificate
+with openssl. `--tls-cert FILE --tls-key FILE` uses your own. The pairing
+string becomes `ezfleets://<name>@<host>:<port>#<token>;fp=<sha-256>`, and the
+main machine pins that certificate.
 
 ### Run at login
 
@@ -111,17 +141,40 @@ ezcoder node install
 - **macOS**: writes `~/Library/LaunchAgents/dev.ezcoder.node.plist` and prints the
   `launchctl bootstrap` command.
 
+`ezcoder node uninstall` removes the login service again; `--purge` also deletes
+the data folder and the node's deploy secrets, and says what it removed.
+
+### Updating
+
+```bash
+ezcoder node update                 # latest; or --version V
+ezcoder fleet update gpu-box        # the same, from the main machine
+```
+
+The node installs the CLI with npm, then restarts its login service. It refuses
+while jobs or agents run, unless you pass `--force`.
+
+### Restarts and cleanup
+
 Jobs run detached: restarting the node (or its service) does not kill them.
 On start the node re-adopts running jobs (by pid or Docker label) and marks
 ones it cannot find as `lost`, which the controller requeues elsewhere
-(except deploys).
+(except deploys). Helper-agent workspaces are re-adopted too. A worker that
+stopped with the node is marked `error`, and its workspace is kept so its edits
+can still be fetched.
+
+While running, the node removes finished jobs, logs and artifacts older than
+`gcDays` and trims caches beyond `cacheCapGb`. It never touches running work.
+Each job's log is capped (200 MB by default); past the cap the start and the
+end are kept and the middle is dropped.
 
 ## 4. Model credentials for remote agents
 
 Remote sub-agents use the node's own `~/.ezcoder/auth.json`. Either run
 `ezcoder login` on the node, or opt in from the main machine with
-`ezcoder fleet share-auth gpu-box`, which sends your provider credentials over
-Tailscale once. Nothing is shared automatically.
+`ezcoder fleet share-auth gpu-box --yes`, which sends your provider credentials over
+Tailscale once. Nothing is shared automatically, and credentials the node
+already has are kept unless you add `--force`.
 
 ## 5. Secrets for deploys
 
@@ -134,43 +187,35 @@ ezcoder node secret list                   # names only
 ezcoder node secret rm DEPLOY_TOKEN
 ```
 
-Secrets are stored in `~/.ezcoder/node/secrets.json` (mode 0600). A project's
+Values are stored in the OS keychain: the macOS keychain, or Secret Service
+(`secret-tool`) on Linux. Only the names are written to
+`~/.ezcoder/node/secret-names.json`. Without a keychain, `secret set` refuses;
+there is no plain-text fallback. On a headless Linux box install
+`libsecret-tools` and `gnome-keyring`. An old plain-text `secrets.json` is moved
+into the keychain, then deleted, the next time the node starts. A project's
 job names the secrets it needs (`"secrets": ["DEPLOY_TOKEN"]`) and the node
-exposes them as environment variables for that job only. Inside Docker they are
+exposes them as environment variables for that job only. Jobs of any other kind
+that ask for secrets are refused. Inside Docker they are
 passed with `-e NAME`, so values never appear on a command line. Deploy jobs
 also need the project's required validation to have passed for the exact
 commit, and they are never retried automatically.
 
 ## 6. Security model
 
-- **Network**: the node binds to its Tailscale address. Binding `0.0.0.0` is
-  refused unless you pass both `--bind 0.0.0.0` and `--insecure-bind`. Service
-  ports are published on the same address.
-- **Auth**: every call except `GET /v1/hello` needs `Authorization: Bearer <token>`,
-  compared in constant time. Anyone with the token can run commands as your user
-  on the node, so treat the pairing string like a password. To rotate it, delete
-  `token` from `node.json`, run `ezcoder node init`, then re-add the node on the
-  controller.
-- **Isolation**: each job, agent and service gets its own workspace under
-  `~/.ezcoder/node/{jobs,agents,services}/<id>` and its own container named
-  `ezf-<id>`, labelled `ezcoder.fleet=<id>`. Cleanup only touches those labels.
-  Host-shell jobs run as your user without a sandbox; use Docker jobs for code
-  you trust less.
-- **Docker limits**: `--privileged`, `--cap-add`, host network/PID/IPC
-  namespaces, unconfined security profiles, the Docker socket and host-path
-  mounts (other than the node's own data folder) are rejected. Use named volumes.
-- **Limits**: request bodies are capped at 64 MB (patches at 50 MB), artifacts
-  at 10 GB per job; jobs stop at their timeout.
-- **Logs**: the node never logs tokens, secret values or credentials, only names.
+See [fleet-security.md](fleet-security.md): what the token grants, the network
+rules, Docker and mount limits, docker-only nodes, the environment allow-list,
+keychain secrets and TLS pinning, each with the test that proves it.
 
 ## Data layout
 
 ```
 ~/.ezcoder/node/
-  node.json        name, token, port, bind, labels, slots
-  secrets.json     deploy secrets (0600)
-  state.json       jobs and services, for re-adoption after restarts
+  node.json        name, token, port, bind, labels, slots, TLS files, GC settings (0600)
+  secret-names.json  names of deploy secrets (values are in the OS keychain)
+  state.json       jobs, services and agents, for re-adoption after restarts
+  agents/<id>      helper-agent workspaces
   jobs/<id>        job workspaces (removed when the job ends)
+  tls/             self-signed certificate and key from `init --tls`
   run/<id>         job logs and exit files
   artifacts/<id>   collected artifacts
   services/<id>    service workspaces

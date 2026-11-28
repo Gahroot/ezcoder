@@ -2,7 +2,7 @@
 // each probed on GET /v1/hello with a short timeout.
 import { defaultExec } from "../validation/exec.js";
 import type { Exec } from "../validation/types.js";
-import { FleetClient } from "./client.js";
+import { FleetClient, protocolProblem } from "./client.js";
 import { DEFAULT_NODE_PORT, type NodePlatform } from "./protocol.js";
 import { NodeRegistry } from "./registry.js";
 
@@ -24,6 +24,8 @@ export interface FoundNode {
   protocol: number;
   /** Already in nodes.json (by name or URL). */
   paired: boolean;
+  /** S3: no common protocol; the message names the side to update. */
+  incompatible?: string;
   peer: string;
 }
 
@@ -95,7 +97,9 @@ export async function discoverNodes(opts: DiscoverOptions = {}): Promise<FoundNo
             timeoutMs,
             ...(opts.fetch ? { fetch: opts.fetch } : {}),
           }).hello(timeoutMs);
+          const problem = protocolProblem(h.name, h);
           return {
+            ...(problem ? { incompatible: problem.message } : {}),
             name: h.name,
             host,
             url,

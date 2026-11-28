@@ -7,6 +7,7 @@ import {
   decideGoalNextAction,
   hasFreshGoalCompletionAudit,
 } from "../core/goal-controller.js";
+import { formatHostedGoal, refreshHostedGoal } from "../core/goal-fleet.js";
 import { runGoalPrerequisiteCheckCommand } from "../core/goal-prerequisites.js";
 import {
   appendGoalBlockers,
@@ -121,6 +122,12 @@ const GoalsParams = z.object({
     .describe("Updated evidence-plan item status"),
   verifier_command: z.string().optional().describe("Command that verifies the goal end-to-end"),
   verifier_description: z.string().optional().describe("Natural-language verifier description"),
+  verifier_machine: z
+    .string()
+    .optional()
+    .describe(
+      'create/verify: run the verifier as a fleet job at the exact commit on a node ("auto" or a paired node name); evidence comes from the job log. "local" runs it on this machine again.',
+    ),
   task_id: z.string().optional().describe("Goal task id to update"),
   task_title: z.string().optional().describe("Short worker task title"),
   task_prompt: z
@@ -132,6 +139,20 @@ const GoalsParams = z.object({
     .optional()
     .describe("Goal task status"),
   worker_id: z.string().optional().describe("Worker id associated with a task"),
+  machine: z
+    .string()
+    .optional()
+    .describe(
+      'task: run this task\'s worker on a fleet node ("auto" or a paired node name) as a remote agent; its edits come back per turn and a conflict fails the task. Omit to run on this machine.',
+    ),
+  max_remote_workers: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe(
+      "create: cap on this Goal's workers running on fleet nodes at once (default: no cap beyond free node slots)",
+    ),
   attempts: z.number().int().min(0).optional().describe("Task attempt count"),
   summary: z.string().optional().describe("Short summary or verification note"),
   evidence_kind: z
@@ -257,7 +278,7 @@ function asVerificationStatus(value: string | undefined): GoalVerificationStatus
   return "unknown";
 }
 
-function formatRun(run: GoalRun): string {
+function formatRun(run: GoalRun, hostedError?: string): string {
   const prereqs = run.prerequisites.length
     ? `${run.prerequisites.filter((item) => item.status === "met").length}/${run.prerequisites.length} prereqs met`
     : "no prereqs";
@@ -277,7 +298,15 @@ function formatRun(run: GoalRun): string {
   const blocker = goalHasBlockingPrerequisites(run)
     ? `\nUser prerequisites: ${formatGoalBlockingPrerequisites(run)}`
     : "";
-  return `[${run.status}] ${run.title} (id: ${run.id.slice(0, 8)}) — ${prereqs}, ${tasks}, ${verifier}${audit}${blocker}`;
+  const hosted = run.hosted ? `\nHosted ${formatHostedGoal(run.hosted, hostedError)}` : "";
+  return `[${run.status}] ${run.title} (id: ${run.id.slice(0, 8)}) — ${prereqs}, ${tasks}, ${verifier}${audit}${blocker}${hosted}`;
+}
+
+/** A hosted Goal's state lives on its node: refresh it before showing it (GL4). */
+async function formatRunRefreshed(cwd: string, run: GoalRun): Promise<string> {
+  if (!run.hosted) return formatRun(run);
+  const refreshed = await refreshHostedGoal(cwd, run);
+  return formatRun(refreshed.run, refreshed.error);
 }
 
 function recoverableTaskStatus(status: GoalTaskStatus): boolean {
@@ -319,6 +348,17 @@ function validatePassAuditContract(
     return "pass audit must include output_path or an output/artifact/log/path reference in the summary.";
   }
   return undefined;
+}
+
+/** Verifier placement: a new value wins ("local" clears it), else keep the old one. */
+function verifierMachine(
+  requested: string | undefined,
+  existing: string | undefined,
+): { machine?: string } {
+  const value = requested?.trim();
+  if (value === "local") return {};
+  if (value) return { machine: value };
+  return existing ? { machine: existing } : {};
 }
 
 async function resolveRun(cwd: string, id?: string): Promise<GoalRun | null> {
@@ -369,7 +409,7 @@ export function createGoalsTool(
             ...(item.evidence ? { evidence: item.evidence } : {}),
           }));
           const verifier =
-            args.verifier_command || args.verifier_description
+            args.verifier_command || args.verifier_description || args.verifier_machine
               ? {
                   description:
                     args.verifier_description ?? existing?.verifier?.description ?? "Goal verifier",
@@ -379,6 +419,7 @@ export function createGoalsTool(
                   ...(existing?.verifier?.lastResult
                     ? { lastResult: existing.verifier.lastResult }
                     : {}),
+                  ...verifierMachine(args.verifier_machine, existing?.verifier?.machine),
                 }
               : existing?.verifier;
           const nextPrerequisites = prerequisites ?? existing?.prerequisites ?? [];
@@ -413,6 +454,9 @@ export function createGoalsTool(
             harness: harness ?? existing?.harness ?? [],
             evidencePlan: draftProbe.evidencePlan,
             ...(verifier ? { verifier } : {}),
+            ...(args.max_remote_workers !== undefined
+              ? { maxRemoteWorkers: args.max_remote_workers }
+              : {}),
             blockers,
           });
           await appendGoalDecision(cwd, run.id, {
@@ -428,11 +472,13 @@ export function createGoalsTool(
         case "status": {
           if (args.run_id) {
             const run = await getGoalRun(cwd, args.run_id);
-            return run ? formatRun(run) : `Error: no goal found matching id "${args.run_id}".`;
+            return run
+              ? formatRunRefreshed(cwd, run)
+              : `Error: no goal found matching id "${args.run_id}".`;
           }
           const runs = await loadGoalRuns(cwd);
           if (runs.length === 0) return "No goals.";
-          return runs.map(formatRun).join("\n");
+          return (await Promise.all(runs.map((run) => formatRunRefreshed(cwd, run)))).join("\n");
         }
 
         case "prerequisite": {
@@ -515,6 +561,7 @@ export function createGoalsTool(
             ...(args.task_prompt ? { prompt: args.task_prompt } : {}),
             status: taskStatus,
             ...(args.worker_id ? { workerId: args.worker_id } : {}),
+            ...(args.machine?.trim() ? { machine: args.machine.trim() } : {}),
             ...(args.attempts !== undefined ? { attempts: args.attempts } : {}),
             ...(args.summary ? { lastSummary: args.summary } : {}),
           });
@@ -608,6 +655,7 @@ export function createGoalsTool(
               ...((args.verifier_command ?? run.verifier?.command)
                 ? { command: args.verifier_command ?? run.verifier?.command }
                 : {}),
+              ...verifierMachine(args.verifier_machine, run.verifier?.machine),
               lastResult: result,
             },
             ...(result.status === "pass"

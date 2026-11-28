@@ -429,6 +429,10 @@ Today's date: <DATE>
         "description": "Natural-language verifier description",
         "type": "string"
       },
+      "verifier_machine": {
+        "description": "create/verify: run the verifier as a fleet job at the exact commit on a node (\"auto\" or a paired node name); evidence comes from the job log. \"local\" runs it on this machine again.",
+        "type": "string"
+      },
       "task_id": {
         "description": "Goal task id to update",
         "type": "string"
@@ -456,6 +460,16 @@ Today's date: <DATE>
       "worker_id": {
         "description": "Worker id associated with a task",
         "type": "string"
+      },
+      "machine": {
+        "description": "task: run this task's worker on a fleet node (\"auto\" or a paired node name) as a remote agent; its edits come back per turn and a conflict fails the task. Omit to run on this machine.",
+        "type": "string"
+      },
+      "max_remote_workers": {
+        "description": "create: cap on this Goal's workers running on fleet nodes at once (default: no cap beyond free node slots)",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
       },
       "attempts": {
         "description": "Task attempt count",

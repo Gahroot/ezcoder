@@ -2295,6 +2295,7 @@ export function App(props: AppProps) {
               provider: currentProviderRef.current,
               model: currentModelRef.current,
               prompt: taskForPrompt.prompt,
+              ...(taskForPrompt.machine ? { machine: taskForPrompt.machine } : {}),
             });
             upsertGoalStatusEntry({
               runId: run.id,
@@ -2337,6 +2338,7 @@ export function App(props: AppProps) {
                 cwd,
                 runId: run.id,
                 command: decision.command,
+                ...(run.verifier?.machine ? { machine: run.verifier.machine } : {}),
               });
               const verification = completed.verification;
               const verificationStatus = verification.status === "pass" ? "pass" : "fail";

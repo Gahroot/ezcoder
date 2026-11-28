@@ -24,6 +24,8 @@ export interface FleetJobSpec {
   /** deploy only: false skips the validation gate for this job. */
   gate?: boolean;
   cacheKey?: string;
+  /** custom only: safe to run again on another node after a node loss (R4). Default false. */
+  retry?: boolean;
 }
 
 export interface FleetServiceSpec {
@@ -45,6 +47,27 @@ export interface FleetProjectConfig {
   services: Record<string, FleetServiceSpec>;
   source: "file" | "auto";
   notes: string[];
+  /**
+   * A8: where kinds of work run by default, e.g. {"e2e": "fleet", "build": "local"}.
+   * Keys are job names or kinds; shown in the system prompt so agents don't re-decide.
+   */
+  defaults?: Record<string, FleetPlacement>;
+}
+
+export type FleetPlacement = "fleet" | "local";
+
+/** A8: `"defaults": {"e2e": "fleet"}`. Keys: job names or kinds; values "fleet" or "local". */
+export function parseFleetDefaults(v: unknown): Record<string, FleetPlacement> {
+  if (!isObj(v)) throw new Error(`"defaults" must be an object like {"e2e": "fleet"}`);
+  const out: Record<string, FleetPlacement> = {};
+  for (const [k, p] of Object.entries(v)) {
+    if (!NAME.test(k)) throw new Error(`defaults.${k}: names use a-z, 0-9, ".", "_" or "-"`);
+    if (p !== "fleet" && p !== "local") {
+      throw new Error(`defaults.${k} must be "fleet" or "local"`);
+    }
+    out[k] = p;
+  }
+  return out;
 }
 
 const NAME = /^[a-z0-9][a-z0-9._-]{0,39}$/;
@@ -360,6 +383,18 @@ function parseJob(name: string, v: unknown, base: FleetJobSpec | undefined): Fle
   const res =
     v.resources !== undefined ? parseResources(v.resources, `${what}.resources`) : base?.resources;
   if (res) job.resources = res;
+  if (job.docker?.compose) {
+    // Nodes only run compose files when their owner labelled them for it.
+    job.resources = {
+      ...job.resources,
+      labels: [...new Set([...(job.resources?.labels ?? []), "compose"])],
+    };
+  }
+  if (v.retry !== undefined) {
+    if (typeof v.retry !== "boolean") throw new Error(`${what}.retry must be true or false`);
+    if (v.retry && kind === "deploy") throw new Error(`${what}.retry: a deploy is never retried`);
+    job.retry = v.retry;
+  } else if (base?.retry !== undefined) job.retry = base.retry;
   const artifacts =
     v.artifacts !== undefined ? strArray(v.artifacts, `${what}.artifacts`) : base?.artifacts;
   if (artifacts) job.artifacts = artifacts;
@@ -479,7 +514,14 @@ export function loadFleetConfig(cwd: string): FleetProjectConfig | { error: stri
         services[name] = parseService(name, v, detected.services[name] ?? devBase);
       }
     }
-    return { jobs, services, source: "file", notes: detected.notes };
+    const defaults = raw.defaults !== undefined ? parseFleetDefaults(raw.defaults) : undefined;
+    return {
+      jobs,
+      services,
+      source: "file",
+      notes: detected.notes,
+      ...(defaults && Object.keys(defaults).length ? { defaults } : {}),
+    };
   } catch (e) {
     return { error: `${FLEET_CONFIG_FILE}: ${(e as Error).message}` };
   }

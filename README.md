@@ -87,21 +87,24 @@ Got a gaming PC under the desk, an old laptop, a Linux box with a good graphics 
 | **Dev environments and browsers** | A ready container or browser on another machine, for you or the agent                             |
 | **Whole agents**                  | Helper agents run on another machine and their edits come back to your folder                     |
 | **Deploys**                       | Only after the required checks pass for that exact commit; secrets never leave the deploy machine |
+| **Whole Goals**                   | A Goal runs on another machine with your laptop closed and pushes its result to a branch          |
 
-If a machine drops out mid-job, the job moves to another one. Projects run side by side without stepping on each other. Machines connect over [Tailscale](https://tailscale.com), so nothing is opened to the internet, and it works on native Linux, Windows (WSL2) and macOS, with GitHub Actions runners for cloud capacity.
+Every machine's slots form one pool shared by all of this work: run six tests on one machine, one on each of six machines, or any mix, and anything that doesn't fit yet waits its turn. If a machine drops out mid-job, the job moves to another one. Projects run side by side without stepping on each other. Machines connect over [Tailscale](https://tailscale.com), so nothing is opened to the internet, and it works on native Linux, Windows (WSL2) and macOS, with GitHub Actions runners for cloud capacity.
 
 ```bash
 # on the spare machine
 npm i -g @prestyj/cli
-ezcoder node init && ezcoder node install      # prints a pairing code
+ezcoder node init && ezcoder node install      # set it up and run it at login
+ezcoder node doctor                            # checks Tailscale, Docker, git, login, disk
+ezcoder node pair --code                       # prints a short code (and a QR)
 
-# on your main machine
-ezcoder fleet add <pairing-code>
+# on your main machine (or use Settings → Machines in the desktop app)
+ezcoder fleet add --code <code>
 ezcoder fleet nodes                            # every machine, how busy it is
 ezcoder fleet run build                        # or just ask the agent
 ```
 
-→ [Fleet guide](packages/cli/docs/fleet.md) · [Setting up a machine](packages/cli/docs/fleet-nodes.md) · [Agents on other machines](packages/cli/docs/fleet-agents.md)
+→ [Fleet guide](packages/cli/docs/fleet.md) · [Quick start](packages/cli/docs/fleet-quickstart.md) · [Setting up a machine](packages/cli/docs/fleet-nodes.md) · [Agents on other machines](packages/cli/docs/fleet-agents.md) · [Goals on the fleet](packages/cli/docs/fleet-goals.md) · [Security](packages/cli/docs/fleet-security.md) · [Troubleshooting](packages/cli/docs/fleet-troubleshooting.md)
 
 ## 📱 Send it work from your phone
 

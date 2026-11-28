@@ -17,12 +17,19 @@ import { PassThrough, Writable } from "node:stream";
 import { WebSocket } from "ws";
 import { log } from "../logger.js";
 import { currentSubAgentDepth, SUB_AGENT_DEPTH_ENV } from "../../tools/subagent-shared.js";
-import type { AgentDiff, AgentFrame, AgentRequest, ErrorResponse, SourceSpec } from "./protocol.js";
 import {
+  AGENT_DETACH_GRACE_MS,
+  type AgentDiff,
+  type AgentFrame,
+  type AgentRequest,
+  type ErrorResponse,
+  type SourceSpec,
+} from "./protocol.js";
+import {
+  acquireAgentNode,
   nodeHeaders,
   nodeUrl,
   readFleetNodes,
-  selectAgentNode,
   type FleetNodeEntry,
 } from "./remote-agent-nodes.js";
 import { AGENT_RESUMED_HEADER } from "./node/agents.js";
@@ -51,6 +58,33 @@ export interface RemoteWorkerSpawn {
   nodesFile?: string;
   reconnectWindowMs?: number;
   onRemote?: (info: RemoteAgentInfo) => void;
+  /** Every sync-back attempt's outcome (Goal workers turn a conflict into a task failure, GL3). */
+  onSync?: (event: RemoteSyncEvent) => void;
+  /**
+   * Last check of the picked node before any work is sent (Goals: S3 protocol
+   * and GL5 prerequisites on that node). Throw to refuse the start.
+   */
+  vetNode?: (node: FleetNodeEntry) => Promise<void>;
+  /** Told once when every usable node is full and the start waits for a slot. */
+  onQueued?: (reason: string) => void;
+  /** Re-check interval while queued (default 2 s). */
+  queuePollMs?: number;
+  /** Give up waiting for a slot after this long (default 6 h). */
+  queueTimeoutMs?: number;
+  /** Longest a node's Retry-After is honoured, ms (default 60 s; tests shorten it). */
+  maxRetryAfterMs?: number;
+}
+
+export interface RemoteSyncEvent {
+  when: "turn" | "close";
+  node: string;
+  /** Present when the node's diff was fetched (applied, conflict or refused). */
+  result?: SyncResult;
+  /** Present when the sync itself failed; `kept` = the full patch was saved locally. */
+  error?: string;
+  kept?: boolean;
+  /** Full patch saved locally when `kept`. */
+  keptPath?: string;
 }
 
 interface GitResult {
@@ -189,8 +223,46 @@ export interface SyncResult {
   applied: boolean;
   /** Kept patch when it could not be applied cleanly. */
   conflictPatch?: string;
+  /** Files whose hunks do not apply to the local folder (subset of `files`). */
+  conflictFiles?: string[];
+  /** Git-ignored files the agent changed that were not brought back (R9). */
+  notBroughtBack?: string[];
   /** One line for the agent's receipt / stderr. */
   note?: string;
+}
+
+/** Escape fnmatch metacharacters for `git apply --include`. */
+function literalPathspec(file: string): string {
+  return file.replace(/[[\]*?\\]/g, (c) => `\\${c}`);
+}
+
+/** Which of `files` make `patchFile` fail to apply (checked one file at a time, nothing written). */
+export async function conflictingFiles(
+  repoRoot: string,
+  patchFile: string,
+  files: readonly string[],
+): Promise<string[]> {
+  if (files.length > 200) return [...files];
+  const out: string[] = [];
+  for (const file of files) {
+    const check = await runGit(repoRoot, [
+      "apply",
+      "--check",
+      "--binary",
+      "--whitespace=nowarn",
+      `--include=${literalPathspec(file)}`,
+      patchFile,
+    ]);
+    if (check.code !== 0) out.push(file);
+  }
+  return out.length > 0 ? out : [...files];
+}
+
+/** Receipt line for git-ignored files the agent changed (R9). */
+export function notBroughtBackNote(node: string, files: readonly string[]): string {
+  const shown = files.slice(0, 20).join(", ");
+  const more = files.length > 20 ? ` and ${files.length - 20} more` : "";
+  return `Not brought back (git ignores them, so they stay on ${node}): ${shown}${more}`;
 }
 
 /**
@@ -296,13 +368,15 @@ export async function applyRemoteDelta(options: {
       `conflict-${new Date().toISOString().replace(/[:.]/g, "-")}.patch`,
     );
     await fs.writeFile(kept, delta);
+    const conflicts = await conflictingFiles(repoRoot, deltaFile, files);
     return {
       files,
       applied: false,
       conflictPatch: kept,
+      conflictFiles: conflicts,
       note:
-        `CONFLICT: edits from ${options.node} to ${files.join(", ")} did not apply cleanly to the local folder, ` +
-        `so none were applied (${plain.stderr.trim().split("\n").slice(-2).join(" ")}). ` +
+        `CONFLICT: edits from ${options.node} to ${conflicts.join(", ")} did not apply cleanly to the local folder, ` +
+        `so none of its edits (${files.join(", ")}) were applied (${plain.stderr.trim().split("\n").slice(-2).join(" ")}). ` +
         `The patch is kept at ${kept}; apply it manually with: ` +
         `git -C "${repoRoot}" apply --3way --binary "${kept}"`,
     };
@@ -330,13 +404,35 @@ interface RemoteState {
   base: string;
 }
 
+/** The apply failed but the node's full patch is saved locally, so nothing is lost. */
+class KeptPatchError extends Error {
+  constructor(
+    message: string,
+    readonly keptPath: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
+
 class HttpError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** From Retry-After on a 429 ("busy"). */
+    readonly retryAfterMs?: number,
   ) {
     super(message);
   }
+}
+
+/** Retry-After (seconds or HTTP date) in ms, capped at a minute. */
+export function retryAfterMs(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, 60_000);
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? undefined : Math.min(Math.max(at - Date.now(), 0), 60_000);
 }
 
 export class RemoteWorkerProcess extends EventEmitter {
@@ -365,6 +461,10 @@ export class RemoteWorkerProcess extends EventEmitter {
   private stateDir?: string;
   private killTimer?: NodeJS.Timeout;
   private closing?: Promise<void>;
+  /** The node holds edits we could not fetch: don't remove its workspace. */
+  private unsynced = false;
+  /** Git-ignored changes already listed in a receipt (R9: each is reported once). */
+  private readonly reportedIgnored = new Set<string>();
 
   constructor(private readonly spawnOptions: RemoteWorkerSpawn) {
     super();
@@ -389,7 +489,14 @@ export class RemoteWorkerProcess extends EventEmitter {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ t: "kill", signal: name } satisfies AgentFrame));
       clearTimeout(this.killTimer);
-      this.killTimer = setTimeout(() => void this.cleanupAndFinish(null, name), KILL_GRACE_MS);
+      this.killTimer = setTimeout(
+        () =>
+          void this.syncNote("close", 1).then((note) => {
+            if (note && !this.finished) this.stderr.write(`${note}\n`);
+            return this.cleanupAndFinish(null, name);
+          }),
+        KILL_GRACE_MS,
+      );
       this.killTimer.unref?.();
     } else if (!this.reconnecting) {
       // Still starting: start() sees `killed` and its failure path cleans up.
@@ -426,13 +533,17 @@ export class RemoteWorkerProcess extends EventEmitter {
     } else {
       // Source first: a "push first" error should not wait on node probes.
       const prepared = await prepareRemoteSource(this.spawnOptions.cwd);
-      this.node = await selectAgentNode(this.spawnOptions.machine, {
-        file: this.spawnOptions.nodesFile,
-      });
       this.remoteAgentId = `ez-${this.spawnOptions.localAgentId}-${randomBytes(3).toString("hex")}`;
+      const request: AgentRequest = {
+        id: this.remoteAgentId,
+        project: prepared.project,
+        source: prepared.source,
+        env: { [SUB_AGENT_DEPTH_ENV]: String(currentSubAgentDepth() + 1) },
+      };
+      const node = await this.createOnFreeNode(request);
       this.stateDir = path.join(stateRoot, this.remoteAgentId);
       this.state = {
-        node: this.node.name,
+        node: node.name,
         remoteAgentId: this.remoteAgentId,
         repoRoot: prepared.repoRoot,
         base: prepared.source.sha,
@@ -441,24 +552,59 @@ export class RemoteWorkerProcess extends EventEmitter {
       await fs.writeFile(path.join(this.stateDir, "state.json"), JSON.stringify(this.state));
       // The node starts from base + this patch, so it counts as already applied.
       await fs.writeFile(path.join(this.stateDir, "last.patch"), prepared.patch);
-      const request: AgentRequest = {
-        id: this.remoteAgentId,
-        project: prepared.project,
-        source: prepared.source,
-        env: { [SUB_AGENT_DEPTH_ENV]: String(currentSubAgentDepth() + 1) },
-      };
-      await this.http("POST", "/v1/agents", request);
-      this.created = true;
     }
-    this.spawnOptions.onRemote?.({ node: this.node.name, remoteAgentId: this.remoteAgentId });
+    const node = this.node!;
+    this.spawnOptions.onRemote?.({ node: node.name, remoteAgentId: this.remoteAgentId });
     if (this.killed) throw new Error("Killed before the remote agent started");
     const attached = await this.connect();
     log("INFO", "subagent", "Remote agent attached", {
-      node: this.node.name,
+      node: node.name,
       remote_agent_id: this.remoteAgentId,
       resumed: attached.resumed,
     });
     return attached;
+  }
+
+  /**
+   * Pick a node with a free slot (waiting while all are full), then create the
+   * agent there. A node that answers 429 (busy: a slot went to someone else
+   * between probe and start) sends us back to the queue after its Retry-After.
+   */
+  private async createOnFreeNode(request: AgentRequest): Promise<FleetNodeEntry> {
+    const { spawnOptions } = this;
+    let queuedTold = false;
+    const onQueued = (reason: string) => {
+      if (queuedTold) return;
+      queuedTold = true;
+      spawnOptions.onQueued?.(reason);
+    };
+    for (;;) {
+      if (this.killed) throw new Error("Killed before the remote agent started");
+      const { node, release } = await acquireAgentNode(spawnOptions.machine, {
+        file: spawnOptions.nodesFile,
+        pollMs: spawnOptions.queuePollMs,
+        queueTimeoutMs: spawnOptions.queueTimeoutMs,
+        cancelled: () => this.killed,
+        onQueued,
+      });
+      try {
+        this.node = node;
+        await spawnOptions.vetNode?.(node);
+        await this.http("POST", "/v1/agents", request);
+        this.created = true;
+        return node;
+      } catch (error) {
+        if (!(error instanceof HttpError) || error.status !== 429) throw error;
+        onQueued(error.message);
+        const wait = Math.min(
+          error.retryAfterMs ?? spawnOptions.queuePollMs ?? 2_000,
+          spawnOptions.maxRetryAfterMs ?? 60_000,
+        );
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      } finally {
+        release();
+      }
+    }
   }
 
   private async http<T>(method: string, route: string, body?: unknown): Promise<T> {
@@ -489,7 +635,11 @@ export class RemoteWorkerProcess extends EventEmitter {
     }
     if (!res.ok) {
       const reason = (parsed as ErrorResponse | undefined)?.error ?? `HTTP ${res.status}`;
-      throw new HttpError(`Machine "${node.name}": ${reason}`, res.status);
+      throw new HttpError(
+        `Machine "${node.name}": ${reason}`,
+        res.status,
+        retryAfterMs(res.headers.get("retry-after")),
+      );
     }
     return parsed as T;
   }
@@ -589,7 +739,7 @@ export class RemoteWorkerProcess extends EventEmitter {
     } else if (frame.t === "exit") {
       this.exitSeen = true;
       this.lineChain = this.lineChain.then(async () => {
-        await this.syncNote("close").then((note) => note && this.stderr.write(`${note}\n`));
+        await this.syncNote("close", 3).then((note) => note && this.stderr.write(`${note}\n`));
         await this.cleanupAndFinish(frame.code, (frame.signal as NodeJS.Signals | null) ?? null);
       });
     }
@@ -617,15 +767,53 @@ export class RemoteWorkerProcess extends EventEmitter {
   }
 
   /** Sync and describe the outcome; never throws (a failed sync is reported, not fatal). */
-  private async syncNote(when: "turn" | "close"): Promise<string | undefined> {
-    try {
-      const result = await this.syncBack();
-      return result?.note;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      log("WARN", "subagent", "Remote agent sync-back failed", { when, error: message });
-      return `Could not bring edits back from ${this.node?.name}: ${message}`;
+  private async syncNote(when: "turn" | "close", tries = 1): Promise<string | undefined> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const result = await this.syncBack();
+        this.unsynced = false;
+        if (result) this.reportSync({ when, node: this.node?.name ?? "", result });
+        return result?.note;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const gone = error instanceof HttpError && error.status === 404;
+        const kept = error instanceof KeptPatchError;
+        if (attempt < tries && !gone && !kept) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+        this.unsynced = !gone && !kept;
+        log("WARN", "subagent", "Remote agent sync-back failed", { when, error: message });
+        const note = `Could not bring edits back from ${this.node?.name}: ${message}`;
+        this.reportSync({
+          when,
+          node: this.node?.name ?? "",
+          error: note,
+          kept,
+          ...(error instanceof KeptPatchError && { keptPath: error.keptPath }),
+        });
+        return note;
+      }
     }
+  }
+
+  private reportSync(event: RemoteSyncEvent): void {
+    try {
+      this.spawnOptions.onSync?.(event);
+    } catch (error) {
+      log("WARN", "subagent", "Remote agent sync listener failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Ignored files changed since the last receipt, reported once each (R9). */
+  private newlyIgnored(diff: AgentDiff): string[] {
+    const fresh = (diff.ignoredChanged ?? []).filter(
+      (file) => typeof file === "string" && !this.reportedIgnored.has(file),
+    );
+    for (const file of fresh) this.reportedIgnored.add(file);
+    return fresh;
   }
 
   /** GET the node's diff and apply what changed since the last sync. */
@@ -639,20 +827,50 @@ export class RemoteWorkerProcess extends EventEmitter {
     );
     const next = Buffer.from(diff.patch, "base64");
     const lastFile = path.join(stateDir, "last.patch");
+    const ignored = this.newlyIgnored(diff);
+    const withIgnored = (result: SyncResult | undefined): SyncResult | undefined => {
+      if (ignored.length === 0) return result;
+      const line = notBroughtBackNote(state.node, ignored);
+      const base = result ?? { files: [], applied: true };
+      return {
+        ...base,
+        notBroughtBack: ignored,
+        note: [base.note, line].filter(Boolean).join("\n"),
+      };
+    };
     return withRepoLock(state.repoRoot, async () => {
       const previous = await fs.readFile(lastFile).catch(() => Buffer.alloc(0));
-      if (previous.equals(next)) return undefined;
-      const result = await applyRemoteDelta({
-        repoRoot: state.repoRoot,
-        base: diff.base || state.base,
-        previous,
-        next,
-        keepDir: stateDir,
-        node: state.node,
-      });
+      if (previous.equals(next)) return withIgnored(undefined);
+      let result: SyncResult;
+      try {
+        result = await applyRemoteDelta({
+          repoRoot: state.repoRoot,
+          base: diff.base || state.base,
+          previous,
+          next,
+          keepDir: stateDir,
+          node: state.node,
+        });
+      } catch (error) {
+        // The node's copy goes away when the agent closes: keep everything it sent.
+        const kept = path.join(
+          stateDir,
+          `unsynced-${new Date().toISOString().replace(/[:.]/g, "-")}.patch`,
+        );
+        await fs.mkdir(stateDir, { recursive: true });
+        await fs.writeFile(kept, next);
+        throw new KeptPatchError(
+          `${error instanceof Error ? error.message : String(error)}. ` +
+            `All of the agent's changes since ${(diff.base || state.base).slice(0, 10)} are kept at ${kept}`,
+          kept,
+          { cause: error },
+        );
+      }
       // Consumed either way: a conflict is kept and reported once, not retried.
-      await fs.writeFile(lastFile, next);
-      return result;
+      const tmpFile = `${lastFile}.${process.pid}.tmp`;
+      await fs.writeFile(tmpFile, next);
+      await fs.rename(tmpFile, lastFile);
+      return withIgnored(result);
     });
   }
 
@@ -672,6 +890,16 @@ export class RemoteWorkerProcess extends EventEmitter {
   ): Promise<void> {
     if (this.finished) return;
     clearTimeout(this.killTimer);
+    if (this.created && this.remoteAgentId && this.unsynced) {
+      reason = [
+        reason,
+        `The agent's edits are still on ${this.node?.name} (~/.ezcoder/node/agents/${this.remoteAgentId}); ` +
+          `its workspace was left in place and the node removes it after ${AGENT_DETACH_GRACE_MS / 60_000} minutes.`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      this.created = false;
+    }
     if (this.created && this.remoteAgentId) {
       await this.http("DELETE", `/v1/agents/${encodeURIComponent(this.remoteAgentId)}`).catch(
         (error: unknown) =>

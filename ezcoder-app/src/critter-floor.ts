@@ -15,6 +15,7 @@
 // something more important (higher PRIO) interrupts it; `ok()` turns false
 // the moment the script loses ownership, so it stops at its next check.
 
+import { machineLabel } from "./machine-label";
 import { discard, makeCritterFx, SIZE } from "./critter-fx";
 import { makeCritterIdle } from "./critter-idle";
 import { makeCritterScare } from "./critter-scare";
@@ -58,6 +59,8 @@ export interface FloorAgent {
   readonly tokens: string | null;
   readonly durationMs: number | undefined;
   readonly toolUseCount: number;
+  /** Paired machine it runs on; absent = this computer (D4). */
+  readonly machine?: string;
 }
 
 export interface CritterFloorOptions {
@@ -1199,6 +1202,9 @@ export function createCritterFloor(
     const status = el("div", "critter-tooltip-dim");
     status.textContent = `${c.def.name} \u00b7 ${tooltipStatus(c.agent, now() - c.startedAt)}`;
     lines.push(status);
+    const where = el("div", "critter-tooltip-dim");
+    where.textContent = `On ${machineLabel(c.agent.machine)}`;
+    lines.push(where);
     if (c.agent.tokens) {
       const tokens = el("div", "critter-tooltip-dim");
       tokens.textContent = c.agent.tokens;

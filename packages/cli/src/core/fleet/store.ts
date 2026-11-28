@@ -5,7 +5,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { getAppPaths, withFileLock } from "@prestyj/core";
+import { getAppPaths, log, withFileLock } from "@prestyj/core";
 
 export function defaultFleetDir(): string {
   return path.join(getAppPaths().agentDir, "fleet");
@@ -31,13 +31,27 @@ export class JsonListStore<T> {
   }
 
   async read(): Promise<T[]> {
+    let text: string;
     try {
-      const data = JSON.parse(await fs.readFile(this.file, "utf8")) as Record<string, unknown>;
-      const list = data[this.key];
-      return Array.isArray(list) ? (list as T[]) : [];
-    } catch {
-      return [];
+      text = await fs.readFile(this.file, "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new Error(`can't read ${this.file}: ${(e as Error).message}`, { cause: e });
     }
+    try {
+      const list = (JSON.parse(text) as Record<string, unknown> | null)?.[this.key];
+      if (Array.isArray(list)) return list as T[];
+    } catch {
+      // damaged: handled below
+    }
+    // The next write would replace a damaged file with an empty list: set it aside first.
+    const aside = `${this.file}.corrupt-${Date.now()}`;
+    await fs.rename(this.file, aside).catch(() => {});
+    log("WARN", "fleet", "Fleet state file was damaged and has been set aside", {
+      file: this.file,
+      aside,
+    });
+    return [];
   }
 
   /** Read-modify-write under the lock. `fn` mutates the array in place and may return a value. */

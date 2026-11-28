@@ -10,7 +10,9 @@ import {
   listNodes,
   nodeClient,
 } from "../fleet/client.js";
+import { fleetInFlightByNode } from "../fleet/node-load.js";
 import type { JobRequest, JobStatus, NodeInfo } from "../fleet/protocol.js";
+import { defaultFleetDir } from "../fleet/store.js";
 import type {
   BackendHealth,
   BackendPollResult,
@@ -42,12 +44,15 @@ export interface NodeBackendDeps {
   listNodes(): Promise<{ name: string }[]>;
   client(name: string): Promise<NodeJobClient>;
   info(name: string): Promise<NodeInfo>;
+  /** Fleet jobs in flight per node (shared slot accounting with the fleet scheduler). */
+  fleetInFlight(): Promise<Map<string, number>>;
 }
 
 const defaultDeps: NodeBackendDeps = {
   listNodes: () => listNodes(),
   client: (name) => nodeClient(name),
   info: (name) => getNodeInfo(name),
+  fleetInFlight: () => fleetInFlightByNode(defaultFleetDir()),
 };
 
 /** A running job's node unreachable this long counts as lost (fleet design: 3 min). */
@@ -92,6 +97,7 @@ export class NodeBackend implements ValidationBackend {
 
   readonly machines = async (): Promise<MachineInfo[]> => {
     const names = await this.nodeNames();
+    const fleet = await this.deps.fleetInFlight().catch(() => new Map<string, number>());
     return Promise.all(
       names.map(async (name): Promise<MachineInfo> => {
         try {
@@ -102,6 +108,7 @@ export class NodeBackend implements ValidationBackend {
             online: true,
             slots: info.slots,
             busy: info.slotsUsed,
+            externalInFlight: fleet.get(name) ?? 0,
             platform: PLATFORM_LABELS[info.platform] ?? [info.platform],
             capacity: { cpus: info.cpus, memoryGb: info.memoryGb, labels },
             runsOn: [],

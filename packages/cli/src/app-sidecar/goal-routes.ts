@@ -29,11 +29,58 @@ import { goalCritterPick } from "../goals-agent/goals-agent.js";
 import { SessionManager } from "../core/session-manager.js";
 import { log } from "../core/logger.js";
 import { readBody, json } from "./http.js";
+import { refreshHostedGoal } from "../core/goal-fleet.js";
+import { loadGoalRuns, type GoalHostedInfo } from "../core/goal-store.js";
 import type { SessionRouteContext } from "./route-context.js";
 
 const KICKOFF_PROVENANCE = GOAL_RUNTIME_PROVENANCE;
 
 export { goalListStatus, type GoalSummary };
+
+/** How often a hosted Goal's node is asked for fresh state while the app lists goals. */
+export const HOSTED_GOAL_REFRESH_MS = 30_000;
+const hostedCheckedAt = new Map<string, number>();
+
+/** Goal runs in this goal folder that live on a fleet node (GL4), with node and state. */
+export type HostedGoalRow = GoalHostedInfo & { runId: string; title: string; error?: string };
+
+/**
+ * Hosted Goal runs in `dir`, refreshed from their node at most once every
+ * HOSTED_GOAL_REFRESH_MS per run (otherwise the last stored state is shown).
+ */
+export async function hostedGoalsFor(
+  dir: string,
+  deps: { now?: () => number; refresh?: typeof refreshHostedGoal } = {},
+): Promise<HostedGoalRow[]> {
+  const now = deps.now ?? Date.now;
+  const refresh = deps.refresh ?? refreshHostedGoal;
+  const runs = (await loadGoalRuns(dir)).filter((run) => run.hosted);
+  return Promise.all(
+    runs.map(async (run): Promise<HostedGoalRow> => {
+      const key = `${dir}\0${run.id}`;
+      const last = hostedCheckedAt.get(key);
+      let current = run;
+      let error: string | undefined;
+      if (last === undefined || now() - last >= HOSTED_GOAL_REFRESH_MS) {
+        hostedCheckedAt.set(key, now());
+        const refreshed = await refresh(dir, run);
+        current = refreshed.run;
+        error = refreshed.error;
+      }
+      return {
+        ...current.hosted!,
+        runId: current.id,
+        title: current.title,
+        ...(error && { error }),
+      };
+    }),
+  );
+}
+
+/** Forget throttle state (tests). */
+export function resetHostedGoalThrottle(): void {
+  hostedCheckedAt.clear();
+}
 
 /** The sidecar's row: the shared summary without the ACP-only session id. */
 async function summarize(
@@ -63,7 +110,14 @@ export function handleGoalRoutes(
     const sessions = new SessionManager(ctx.paths.sessionsDir);
     void listGoals(goalsRoot(ctx.paths.agentDir))
       .then((goals) =>
-        Promise.all(goals.map((g) => summarize(sessions, g.dir, g.record, ctx.busyAt(g.dir)))),
+        Promise.all(
+          goals.map(async (g) => {
+            const summary = await summarize(sessions, g.dir, g.record, ctx.busyAt(g.dir));
+            // A Goal run on a fleet node: show its node state (never fails the list).
+            const hosted = await hostedGoalsFor(g.dir).catch(() => []);
+            return hosted.length > 0 ? { ...summary, hosted } : summary;
+          }),
+        ),
       )
       .then((goals) => {
         goals.sort((a, b) => b.lastActiveMs - a.lastActiveMs || a.id.localeCompare(b.id));

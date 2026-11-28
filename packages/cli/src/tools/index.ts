@@ -36,6 +36,7 @@ import { createTaskSendTool } from "./task-send.js";
 import { createTasksTool } from "./tasks.js";
 import { createChecklistTool } from "./checklist.js";
 import { createValidateTool } from "./validate.js";
+import type { AskUserHandler } from "./ask-user.js";
 import { createFleetTool } from "./fleet.js";
 import { resolveBrowserWsEndpoint } from "../core/fleet/browser.js";
 
@@ -177,6 +178,12 @@ export interface CreateToolsOptions {
    * turn polling.
    */
   notifications?: AgentNotificationQueue;
+  /**
+   * Puts a question in front of the user and waits (the host's ask_user bridge).
+   * The fleet tool uses it so `apply_config` asks the user itself; without it the
+   * tool tells the agent to ask first.
+   */
+  askUser?: AskUserHandler;
 }
 
 export interface CreateToolsResult {
@@ -325,7 +332,12 @@ export async function createTools(
     createTasksTool(cwd),
     createGoalsTool(cwd, goalModeRef),
     createChecklistTool(cwd),
-    ...(ops === localOperations ? [createValidateTool(cwd), createFleetTool(cwd)] : []),
+    ...(ops === localOperations
+      ? [
+          createValidateTool(cwd),
+          createFleetTool(cwd, undefined, opts?.askUser ? { ask: opts.askUser } : {}),
+        ]
+      : []),
     ...(browserManager ? [createBrowserTool(cwd, browserManager)] : []),
     // The debugger connects to a loopback inspector port, so the program must
     // run on this machine: local operations only, like LSP.

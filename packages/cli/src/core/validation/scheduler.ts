@@ -12,6 +12,10 @@ export interface Target {
   online: boolean;
   cloud: boolean;
   overflowOnly: boolean;
+  /** Overflow capacity: used when no other fitting target has room (see MachineInfo). */
+  spillover: boolean;
+  /** Only for jobs pinned to it. */
+  manualOnly: boolean;
   slots: number;
   /** Runners GitHub reports busy (ours or anyone's). */
   busy: number;
@@ -43,6 +47,8 @@ export async function listTargets(backends: readonly ValidationBackend[]): Promi
           online: m.online,
           cloud: !!m.cloud,
           overflowOnly: !!m.overflowOnly,
+          spillover: !!m.spillover,
+          manualOnly: !!m.manualOnly,
           slots: m.slots,
           busy: m.busy,
           ...(m.capacity ? { capacity: m.capacity } : {}),
@@ -58,6 +64,8 @@ export async function listTargets(backends: readonly ValidationBackend[]): Promi
         online: true,
         cloud: false,
         overflowOnly: false,
+        spillover: false,
+        manualOnly: false,
         slots: b.maxConcurrent,
         busy: 0,
         ...(b.capacity ? { capacity: b.capacity } : {}),
@@ -66,6 +74,16 @@ export async function listTargets(backends: readonly ValidationBackend[]): Promi
     }
   }
   return out;
+}
+
+/** Does a stage command need a Docker daemon (docker image / compose mode)? */
+export function commandNeedsDocker(command: string): boolean {
+  return /(^|[\s;&|(])(docker|docker-compose)\s/.test(command);
+}
+
+/** A target that can never run this job (no Docker where the stage needs it). */
+function excluded(t: Target, job: ValidationJob): boolean {
+  return !!t.info?.noDocker && commandNeedsDocker(job.command);
 }
 
 const inFlight = (j: ValidationJob) => j.state === "waiting" || j.state === "running";
@@ -91,8 +109,14 @@ export function loadOf(t: Target, jobs: readonly ValidationJob[]): TargetLoad {
   const mine = jobsOn(t, jobs);
   const running = mine.filter((j) => j.state === "running").length;
   const waiting = mine.length - running;
+  // A fleet node's live slotsUsed already counts everything it runs; our
+  // dispatches plus the fleet's own in-flight jobs may be newer than it.
+  const external = t.info?.externalInFlight;
   return {
-    used: Math.max(t.busy, running) + waiting,
+    used:
+      external !== undefined
+        ? Math.max(t.busy, mine.length + external)
+        : Math.max(t.busy, running) + waiting,
     reservedCpus: mine.reduce((n, j) => n + (j.resources?.cpus ?? 0), 0),
     reservedMemoryGb: mine.reduce((n, j) => n + (j.resources?.memoryGb ?? 0), 0),
   };
@@ -120,6 +144,11 @@ function hasRoom(t: Target, job: ValidationJob, jobs: readonly ValidationJob[]):
  * - undefined: fitting machines exist but none has room; stay queued
  * - "none": nothing configured could ever fit the stage
  * - "offline": no fitting machine is online (and no cloud overflow); stay queued
+ *
+ * Spillover targets (cloud agent sandboxes) only take a job when no other
+ * fitting target has room right now, so a free self-hosted slot always wins
+ * and a full or offline PC never makes a job wait. Manual-only targets take
+ * only jobs pinned to them.
  */
 export function chooseTarget(
   job: ValidationJob,
@@ -137,18 +166,22 @@ export function chooseTarget(
     }
     // Pinned to exactly one place: trust the pin, as before.
     if (pool.length > 1) pool = pool.filter((t) => fits(job.resources, t.capacity));
+    pool = pool.filter((t) => !excluded(t, job));
   } else {
-    const remote = targets.filter((t) => t.backend.runs === "remote");
-    pool = remote.filter((t) => fits(job.resources, t.capacity));
+    const remote = targets.filter((t) => t.backend.runs === "remote" && !t.manualOnly);
+    pool = remote.filter((t) => fits(job.resources, t.capacity) && !excluded(t, job));
     if (!pool.length) return remote.length ? "none" : "offline";
   }
   if (!pool.length) return "none";
-  const selfHostedOnline = pool.filter((t) => !t.cloud && t.online);
+  const spill = pool.filter((t) => t.spillover && t.online);
+  const main = pool.filter((t) => !t.spillover);
+  const selfHostedOnline = main.filter((t) => !t.cloud && t.online);
   let candidates = selfHostedOnline.length
-    ? [...selfHostedOnline, ...pool.filter((t) => t.cloud && !t.overflowOnly)]
-    : pool.filter((t) => t.cloud);
-  if (!candidates.length) return "offline";
+    ? [...selfHostedOnline, ...main.filter((t) => t.cloud && t.online && !t.overflowOnly)]
+    : main.filter((t) => t.cloud && t.online);
+  if (!candidates.length && !spill.length) return "offline";
   candidates = candidates.filter((t) => hasRoom(t, job, jobs));
+  if (!candidates.length) candidates = spill.filter((t) => hasRoom(t, job, jobs));
   if (!candidates.length) return undefined;
 
   const avoid = new Set(job.avoid ?? []);

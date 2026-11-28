@@ -3,6 +3,7 @@
 // the controller's uncommitted work as a binary patch.
 import fs from "node:fs";
 import path from "node:path";
+import { stripUrlCredentials } from "../git.js";
 import type { SourceSpec } from "../protocol.js";
 import { defaultExec, isSafeId, type NodeExec } from "./exec.js";
 
@@ -79,12 +80,19 @@ function gitEnv(): NodeJS.ProcessEnv {
   };
 }
 
+/** X7: remove `user:token@` from every URL inside free text (git error output). */
+export function redactUrlCredentials(text: string): string {
+  return text.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"]+/gi, (u) => stripUrlCredentials(u));
+}
+
 export interface PrepareOptions {
   dataDir: string;
   kind: WorkspaceKind;
   id: string;
   source?: SourceSpec;
   exec?: NodeExec;
+  /** Progress, e.g. "cloning https://github.com/o/r at abc1234" (A6 waitingReason). */
+  onStep?: (step: string) => void;
 }
 
 export interface PreparedWorkspace {
@@ -113,44 +121,60 @@ export async function prepareWorkspaceDetailed(opts: PrepareOptions): Promise<Pr
   if (src.patch && src.patch.length > MAX_PATCH_BASE64) throw new Error("patch exceeds 50 MB");
 
   const env = gitEnv();
+  const step = opts.onStep ?? (() => {});
+  // X7: credentials in the URL are used for this fetch only. The workspace's
+  // .git/config (mounted into containers), logs and state see the bare URL.
+  const display = stripUrlCredentials(src.git);
   const git = async (args: string[], timeoutMs = 10 * 60_000) => {
     const r = await exec("git", args, { cwd: root, env, timeoutMs });
     return r;
   };
+  const tail = (r: { stderr: string; stdout: string }) =>
+    redactUrlCredentials((r.stderr || r.stdout).trim().slice(-2000));
   const must = async (args: string[], what: string) => {
     const r = await git(args);
-    if (r.code !== 0)
-      throw new Error(`${what} failed: ${(r.stderr || r.stdout).trim().slice(-2000)}`);
+    if (r.code !== 0) throw new Error(`${what} failed: ${tail(r)}`);
     return r;
   };
 
+  step(`cloning ${display} at ${src.sha.slice(0, 12)}`);
   await must(["init", "-q"], "git init");
-  await must(["remote", "add", "origin", src.git], "git remote add");
+  await must(["remote", "add", "origin", display], "git remote add");
   // Exact sha first (cheapest); servers that refuse unadvertised shas get all heads + tags.
-  let fetched = await git(["fetch", "-q", "--filter=blob:none", "--no-tags", "origin", src.sha]);
+  let fetched = await git(["fetch", "-q", "--filter=blob:none", "--no-tags", src.git, src.sha]);
   if (fetched.code !== 0) {
     fetched = await git([
       "fetch",
       "-q",
       "--filter=blob:none",
       "--tags",
-      "origin",
+      src.git,
       "+refs/heads/*:refs/remotes/origin/*",
     ]);
-    if (fetched.code !== 0) {
-      throw new Error(
-        `git fetch failed: ${(fetched.stderr || fetched.stdout).trim().slice(-2000)}`,
-      );
-    }
+    if (fetched.code !== 0) throw new Error(`git fetch failed: ${tail(fetched)}`);
   }
   const has = await git(["cat-file", "-e", `${src.sha}^{commit}`]);
-  if (has.code !== 0) throw new Error(`commit ${src.sha} not found in ${src.git} (is it pushed?)`);
+  if (has.code !== 0) throw new Error(`commit ${src.sha} not found in ${display} (is it pushed?)`);
   await must(
     ["-c", "advice.detachedHead=false", "checkout", "-q", "--detach", src.sha],
     "git checkout",
   );
 
+  // R11: submodules, unless the request opts out.
+  if (src.submodules !== false && fs.existsSync(path.join(root, ".gitmodules"))) {
+    step("initialising git submodules");
+    const sub = await git(["submodule", "update", "--init", "--recursive"], 20 * 60_000);
+    if (sub.code !== 0) {
+      throw new Error(
+        `git submodules could not be initialised: ${tail(sub)}. ` +
+          "Make sure this node can reach every submodule's remote with its own git credentials, " +
+          'or send the job with source.submodules: false (".ezcoder/fleet.json")',
+      );
+    }
+  }
+
   if (src.patch) {
+    step("applying local changes");
     const bytes = Buffer.from(src.patch, "base64");
     if (bytes.length > 0) {
       const patchFile = path.join(opts.dataDir, "tmp", `${opts.kind}-${opts.id}.patch`);

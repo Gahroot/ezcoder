@@ -30,7 +30,8 @@ import {
   SUB_AGENT_MAX_STDERR_CHARS,
   SUB_AGENT_TIMEOUT_MS,
 } from "../tools/subagent-shared.js";
-import { RemoteWorkerProcess, type RemoteWorkerSpawn } from "./fleet/remote-agent.js";
+import type { RemoteWorkerSpawn } from "./fleet/remote-agent.js";
+import { createAgentWorker } from "./cloud/cloud-agent.js";
 
 export type SubAgentState =
   "starting" | "running" | "completed" | "failed" | "interrupted" | "closed" | "reaped";
@@ -68,8 +69,10 @@ export interface SubAgentSnapshot {
   /** Folder the child works in, when it isn't the parent's cwd. */
   cwd?: string;
   /**
-   * Fleet node the child runs on ("auto" until one is picked); absent = this
-   * machine. Recovery re-attaches to `remote_agent_id` on that node.
+   * Fleet node or cloud provider ("claude-cloud"/"codex-cloud") the child
+   * runs on ("auto"/"cloud" until one is picked); absent = this machine.
+   * Recovery re-attaches to `remote_agent_id` there (for cloud agents
+   * "<task id>@<base commit>").
    */
   machine?: string;
   remote_agent_id?: string;
@@ -464,7 +467,11 @@ export class SubAgentManager {
       cwd?: string;
       /** Files the parent already read, handed over in the brief (see withContextFiles). */
       contextFiles?: readonly string[];
-      /** Fleet node to run on: "auto" or a paired node name. Absent = this machine. */
+      /**
+       * Where to run: a paired fleet node name, "claude-cloud"/"codex-cloud",
+       * "cloud" (first available cloud), or "auto" (a fleet node, else the
+       * cloud). Absent = this machine.
+       */
       machine?: string;
     },
   ): Promise<SubAgentSnapshot> {
@@ -475,8 +482,10 @@ export class SubAgentManager {
     if ([...this.workers.values()].some((worker) => worker.task_name === taskName)) {
       throw new Error(`An agent named "${taskName}" already exists`);
     }
-    if (this.activeCount() >= ACTIVE_LIMIT)
-      throw new Error(`At most ${ACTIVE_LIMIT} agents may run at once`);
+    // Remote children run on their node's slots, not this machine's (the node,
+    // or the start queue for "auto", limits them); only local ones count here.
+    if (!overrides?.machine?.trim() && this.localActiveCount() >= ACTIVE_LIMIT)
+      throw new Error(`At most ${ACTIVE_LIMIT} agents may run at once on this machine`);
 
     this.reapExcessIdle();
     const pick = this.options.getChildModel?.();
@@ -624,8 +633,8 @@ export class SubAgentManager {
     if (worker.state === "running" || worker.state === "starting") {
       throw new Error(`Agent ${agentId} already has an active turn`);
     }
-    if (this.activeCount() >= ACTIVE_LIMIT)
-      throw new Error(`At most ${ACTIVE_LIMIT} agents may run at once`);
+    if (!worker.machine && this.localActiveCount() >= ACTIVE_LIMIT)
+      throw new Error(`At most ${ACTIVE_LIMIT} agents may run at once on this machine`);
     if (worker.model) this.assertModelCapacity(worker.model);
     clearTimeout(worker.idleTimer);
     worker.taskOutput = "";
@@ -887,7 +896,7 @@ export class SubAgentManager {
     };
     return this.options.createRemoteWorker
       ? this.options.createRemoteWorker(spawnOptions)
-      : new RemoteWorkerProcess(spawnOptions);
+      : createAgentWorker(spawnOptions);
   }
 
   /** Local transcripts must sit under the session root; a remote one is a node path. */
@@ -912,7 +921,7 @@ export class SubAgentManager {
     const remote = snapshot.machine
       ? { node: snapshot.machine, remoteAgentId: snapshot.remote_agent_id }
       : undefined;
-    if (remote && (!remote.remoteAgentId || remote.node === "auto")) {
+    if (remote && (!remote.remoteAgentId || remote.node === "auto" || remote.node === "cloud")) {
       throw new Error(
         `Agent ${snapshot.agent_id} never started on a machine; spawn a new agent instead`,
       );
@@ -1239,8 +1248,10 @@ export class SubAgentManager {
     );
   }
 
-  private activeCount(): number {
-    return [...this.workers.values()].filter((worker) => this.isActive(worker)).length;
+  /** Active children on this machine; remote ones are bounded by their node's slots. */
+  private localActiveCount(): number {
+    return [...this.workers.values()].filter((worker) => this.isActive(worker) && !worker.machine)
+      .length;
   }
 
   /** Enforce the optional per-model cap against the resolved child model. */

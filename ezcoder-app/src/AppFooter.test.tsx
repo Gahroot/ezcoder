@@ -10,6 +10,8 @@ vi.mock("./platform", () => ({ supportsNativeSelectPopup: vi.fn(() => true) }));
 vi.mock("./agent", () => ({
   cycleThinking: vi.fn(),
   killTask: vi.fn(),
+  getFleetActivity: vi.fn(() => Promise.resolve({ jobs: [], services: [] })),
+  getFleetLog: vi.fn(),
   workspaceProductName: (_mode: string, isGoal = false) => (isGoal ? "EZ Goals" : "EZ Coder"),
 }));
 

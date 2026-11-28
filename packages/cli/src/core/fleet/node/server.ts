@@ -4,13 +4,17 @@
 // modules (agents.ts) through the NodeContext seam in context.ts.
 import { createHash, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
-import http, { type IncomingMessage, type ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { AuthStorage, type OAuthCredentials } from "@prestyj/core";
 import {
+  FLEET_MIN_PROTOCOL,
   FLEET_PROTOCOL,
+  PROTOCOL_HEADER,
+  type ErrorResponse,
+  type RotateTokenResponse,
   type ExecRequest,
   type GpuInfo,
   type HelloResponse,
@@ -19,6 +23,13 @@ import {
   type ServiceRequest,
   type ShareAuthRequest,
 } from "../protocol.js";
+import {
+  NODE_CONFIG_FILE,
+  newToken,
+  pairingString,
+  readNodeConfig,
+  writeNodeConfig,
+} from "./config.js";
 import type { NodeConfig, NodeContext, NodeRouteModule } from "./context.js";
 import { defaultExec, type NodeExec } from "./exec.js";
 import {
@@ -30,10 +41,15 @@ import {
   machineSnapshot,
   Probe,
 } from "./info.js";
-import { JobManager, type SlotTable } from "./jobs.js";
+import { isTerminalJob, JobManager, parseLogQuery, type SlotTable } from "./jobs.js";
+import { defaultSecretStore, NodeSecrets, type SecretStore } from "./secrets.js";
+import { createOpsRouteModule, type OpsRouteOptions } from "./ops-routes.js";
+import { createPairCodeRoute } from "./pair-code-route.js";
 import { ServiceManager } from "./services.js";
 import { StateStore } from "./state.js";
+import { createNodeListener } from "./tls.js";
 import { prepareWorkspace } from "./workspace.js";
+import { createGoalHostRouteModule, GOAL_HOST_FEATURE, isGoalHostModule } from "./goals.js";
 
 /** JSON bodies up to 64 MB (base64 patches are capped at 50 MB). */
 export const MAX_BODY_BYTES = 64 * 1024 * 1024;
@@ -56,6 +72,39 @@ export interface NodeServerOptions {
   jobSecondsPerMinute?: number;
   killGraceSeconds?: number;
   freePort?: (host: string) => Promise<number>;
+  /** Doctor/update route overrides (tests). */
+  ops?: Partial<OpsRouteOptions>;
+  /** Clock for the pairing-code rate limit (tests). */
+  now?: () => number;
+  /** Deploy-secret keychain (X8); tests inject an in-memory one. */
+  secretStore?: SecretStore;
+  /** How often node.json is re-read for a rotated token or new slot count (ms, default 1000). */
+  configCheckMs?: number;
+}
+
+/** Seconds a controller should wait before retrying when every slot is busy. */
+export const BUSY_RETRY_AFTER_SECONDS = 15;
+
+/**
+ * S3: the controller's protocol from PROTOCOL_HEADER (missing = 1). Returns
+ * the 426 body when it is outside [FLEET_MIN_PROTOCOL, FLEET_PROTOCOL].
+ */
+export function protocolMismatch(header: string | string[] | undefined): ErrorResponse | undefined {
+  const raw = Array.isArray(header) ? header[0] : header;
+  const n = raw === undefined || raw === "" ? 1 : Number(raw);
+  const controller = Number.isInteger(n) && n > 0 ? n : 1;
+  if (controller >= FLEET_MIN_PROTOCOL && controller <= FLEET_PROTOCOL) return undefined;
+  const update = controller < FLEET_MIN_PROTOCOL ? "controller" : "node";
+  return {
+    error:
+      update === "controller"
+        ? `this node speaks fleet protocol ${FLEET_MIN_PROTOCOL}-${FLEET_PROTOCOL} but the controller speaks ${controller}: update EZ Coder on the controller (npm i -g @prestyj/cli@latest)`
+        : `the controller speaks fleet protocol ${controller} but this node only ${FLEET_MIN_PROTOCOL}-${FLEET_PROTOCOL}: update the node (ezcoder node update)`,
+    code: "protocol_mismatch",
+    update,
+    nodeProtocol: FLEET_PROTOCOL,
+    controllerProtocol: controller,
+  };
 }
 
 export interface NodeServer {
@@ -64,6 +113,10 @@ export interface NodeServer {
   jobs: JobManager;
   services: ServiceManager;
   context: NodeContext;
+  /** Change the slot count live (shared by jobs, agents and goal-hosted work). */
+  setSlots(n: number): void;
+  /** S4: issue a new token now; the old one stops working and its WebSockets close. */
+  rotateToken(): RotateTokenResponse;
   close(): Promise<void>;
 }
 
@@ -97,6 +150,7 @@ class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: ErrorResponse["code"],
   ) {
     super(message);
   }
@@ -139,10 +193,13 @@ function readBody(req: IncomingMessage, limit = MAX_BODY_BYTES): Promise<unknown
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const data = JSON.stringify(body);
+  const busy = status === 429 && (body as { code?: string } | null)?.code === "busy";
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(data),
     "cache-control": "no-store",
+    // Every slot is taken: the controller queues and retries instead of failing.
+    ...(busy && { "retry-after": String(BUSY_RETRY_AFTER_SECONDS) }),
   });
   res.end(data);
 }
@@ -200,10 +257,19 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
     platform === "macos" ? 300_000 : 10_000,
   );
   const auth = new AuthStorage(opts.authFile);
+  const secrets = new NodeSecrets(config.dataDir, opts.secretStore ?? defaultSecretStore(exec));
+  try {
+    const migrated = await secrets.migrateLegacy();
+    if (migrated) log(migrated);
+  } catch (e) {
+    log(`deploy secrets were not migrated: ${(e as Error).message}`);
+  }
 
   const context: NodeContext = {
     config,
-    acquireSlot: (owner) => slots.acquire(owner),
+    state,
+    // One pool for every kind of work: jobs, agents, goal-hosted work.
+    acquireSlot: (owner, force) => slots.acquire(owner, force),
     releaseSlot: (owner) => slots.release(owner),
     prepareWorkspace: (kind, id, source) =>
       prepareWorkspace({ dataDir: config.dataDir, kind, id, source, exec }),
@@ -219,6 +285,7 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
     slots,
     log,
     dockerAvailable: () => dockerProbe.get(),
+    secrets,
     pollMs: opts.jobPollMs,
     secondsPerMinute: opts.jobSecondsPerMinute,
     killGraceSeconds: opts.killGraceSeconds,
@@ -233,7 +300,87 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
   });
   await jobs.init();
   await services.init();
-  const modules = opts.modules ?? (await loadDefaultModules(log));
+  const modules: NodeRouteModule[] = [
+    ...(opts.modules ?? [...(await loadDefaultModules(log)), createGoalHostRouteModule()]),
+  ];
+  modules.push(
+    createOpsRouteModule({
+      activeWork: () =>
+        jobs.list().filter((j) => !isTerminalJob(j.state)).length +
+        modules.reduce((n, m) => n + (m.activeCount?.() ?? 0), 0),
+      modelProviders: () => auth.listProviders(),
+      ...opts.ops,
+    }),
+  );
+  for (const m of modules) {
+    try {
+      await m.init?.(context);
+    } catch (e) {
+      log(`route module init failed: ${(e as Error).message}`);
+    }
+  }
+
+  // node.json is re-read so `ezcoder node rotate-token` / `node config --slots`
+  // take effect on a running server at once (checked on every authed request).
+  const configFile = path.join(config.dataDir, NODE_CONFIG_FILE);
+  let configStamp = "";
+  const startedDockerOnly = config.dockerOnly === true;
+  let configCheckedAt = 0;
+  const stampOf = () => {
+    try {
+      const st = fs.statSync(configFile);
+      return `${st.mtimeMs}:${st.size}`;
+    } catch {
+      return "";
+    }
+  };
+  configStamp = stampOf();
+  const tokenChanged = () => {
+    for (const m of modules) m.tokenRotated?.();
+  };
+  const refreshConfig = (force = false) => {
+    const now = Date.now();
+    if (!force && now - configCheckedAt < (opts.configCheckMs ?? 1000)) return;
+    configCheckedAt = now;
+    const stamp = stampOf();
+    if (!stamp || stamp === configStamp) return;
+    configStamp = stamp;
+    let fresh;
+    try {
+      fresh = readNodeConfig(config.dataDir);
+    } catch (e) {
+      log(`node.json changed but could not be read: ${(e as Error).message}`);
+      return;
+    }
+    if (!fresh) return;
+    if (fresh.slots !== config.slots) {
+      config.slots = fresh.slots;
+      log(`slots now ${config.slots}`);
+    }
+    // `serve --docker-only` stays on for this run whatever node.json says.
+    const dockerOnly = startedDockerOnly || fresh.dockerOnly === true;
+    if (dockerOnly !== !!config.dockerOnly) config.dockerOnly = dockerOnly;
+    if (fresh.token !== config.token) {
+      config.token = fresh.token;
+      log("token rotated (node.json changed): the old token no longer works");
+      tokenChanged();
+    }
+  };
+  const authorized = (header: string | undefined) => {
+    refreshConfig();
+    if (tokenMatches(header, config.token)) return true;
+    // A rotation may have landed within the check interval.
+    refreshConfig(true);
+    return tokenMatches(header, config.token);
+  };
+  const rotateToken = (): RotateTokenResponse => {
+    config.token = newToken();
+    if (fs.existsSync(configFile)) writeNodeConfig(config);
+    configStamp = stampOf();
+    tokenChanged();
+    log("token rotated: the old token no longer works");
+    return { token: config.token, pairing: pairingString(config, listener.fingerprint) };
+  };
 
   const hello = (): HelloResponse => ({
     ezcoderNode: true,
@@ -241,6 +388,19 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
     name: config.name,
     version: cliVersion(),
     platform,
+    minProtocol: FLEET_MIN_PROTOCOL,
+    ...(config.dockerOnly && { dockerOnly: true }),
+    features: [
+      "doctor",
+      "update",
+      "pair-code",
+      "log-query",
+      "rotate-token",
+      "busy-retry",
+      ...(modules.some(isGoalHostModule) ? [GOAL_HOST_FEATURE] : []),
+      ...(listener.fingerprint ? ["tls"] : []),
+    ],
+    ...(listener.fingerprint && { tlsFingerprint: listener.fingerprint }),
   });
 
   const info = async (): Promise<NodeInfo> => {
@@ -273,11 +433,28 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
     if (!creds || typeof creds !== "object" || Array.isArray(creds)) {
       throw new HttpError(400, "credentials must be an object keyed by provider id");
     }
+    const valid = Object.entries(creds).filter(
+      ([provider, value]) =>
+        /^[A-Za-z0-9:._-]{1,128}$/.test(provider) &&
+        !["__proto__", "constructor", "prototype"].includes(provider) &&
+        !!value &&
+        typeof value === "object" &&
+        !Array.isArray(value),
+    );
+    // R8: never silently replace the node's own login.
+    if (body.force !== true) {
+      const have = new Set(await auth.listProviders().catch(() => [] as string[]));
+      const clash = valid.map(([p]) => p).filter((p) => have.has(p));
+      if (clash.length) {
+        throw new HttpError(
+          409,
+          `this node already has its own credentials for ${clash.join(", ")}; pass --force to replace them`,
+          "exists",
+        );
+      }
+    }
     const stored: string[] = [];
-    for (const [provider, value] of Object.entries(creds)) {
-      if (!/^[A-Za-z0-9:._-]{1,128}$/.test(provider)) continue;
-      if (["__proto__", "constructor", "prototype"].includes(provider)) continue;
-      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    for (const [provider, value] of valid) {
       await auth.setCredentials(provider, value as OAuthCredentials);
       stored.push(provider);
     }
@@ -292,6 +469,10 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
     const parts = p.split("/").slice(1); // ["v1", ...]
 
     if (p === "/v1/info" && method === "GET") return sendJson(res, 200, await info());
+
+    if (p === "/v1/token/rotate" && method === "POST") {
+      return sendJson(res, 200, rotateToken());
+    }
 
     if (p === "/v1/auth" && method === "POST") {
       const stored = await shareAuth((await readBody(req)) as ShareAuthRequest);
@@ -320,13 +501,15 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
         }
       }
       if (parts.length === 4 && parts[3] === "log" && method === "GET") {
-        const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
-        const chunk = jobs.readLog(id, offset);
+        const q = parseLogQuery(url.searchParams);
+        if (typeof q === "string") return sendJson(res, 400, { error: q, code: "bad_request" });
+        const chunk = jobs.queryLog(id, q);
         if (!chunk) return sendJson(res, 404, { error: "no such job" });
         res.writeHead(200, {
           "content-type": "text/plain; charset=utf-8",
           "content-length": chunk.data.length,
           "x-log-size": String(chunk.size),
+          ...(chunk.truncated && { "x-log-truncated": "1" }),
           "cache-control": "no-store",
         });
         res.end(chunk.data);
@@ -392,23 +575,44 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
     sendJson(res, 404, { error: `no route for ${method} ${p}` });
   };
 
-  const server = http.createServer((req, res) => {
+  const pairRoute = createPairCodeRoute({
+    dataDir: config.dataDir,
+    pairing: () => pairingString(config, listener.fingerprint),
+    now: opts.now,
+    log,
+  });
+  const listener = createNodeListener(config, (req, res) => {
     const url = new URL(req.url ?? "/", "http://node.invalid");
     if (url.pathname === "/v1/hello" && (req.method ?? "GET") === "GET") {
       return sendJson(res, 200, hello());
     }
-    if (!tokenMatches(req.headers.authorization, config.token)) {
+    if (url.pathname.replace(/\/+$/, "") === "/v1/pair" && req.method === "POST") {
+      // S9: no token yet; rate-limited inside.
+      void pairRoute(req, res, url).catch(() => res.destroy());
+      return;
+    }
+    if (!authorized(req.headers.authorization)) {
       req.resume();
       return sendJson(res, 401, { error: "unauthorized" });
+    }
+    const mismatch = protocolMismatch(req.headers[PROTOCOL_HEADER]);
+    if (mismatch) {
+      req.resume();
+      return sendJson(res, 426, mismatch);
     }
     route(req, res, url).catch((e: unknown) => {
       const status = e instanceof HttpError ? e.status : 500;
       if (status === 500) log(`error on ${req.method} ${url.pathname}: ${(e as Error).message}`);
-      if (!res.headersSent)
-        sendJson(res, status, { error: (e as Error).message ?? "internal error" });
-      else res.destroy();
+      if (!res.headersSent) {
+        const code = e instanceof HttpError ? e.code : undefined;
+        sendJson(res, status, {
+          error: (e as Error).message ?? "internal error",
+          ...(code && { code }),
+        });
+      } else res.destroy();
     });
   });
+  const server = listener.server;
   server.requestTimeout = 0; // large patch uploads on slow links
   server.headersTimeout = 60_000;
 
@@ -418,7 +622,8 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
       socket.write(`HTTP/1.1 ${code} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
       socket.destroy();
     };
-    if (!tokenMatches(req.headers.authorization, config.token)) return reject(401, "Unauthorized");
+    if (!authorized(req.headers.authorization)) return reject(401, "Unauthorized");
+    if (protocolMismatch(req.headers[PROTOCOL_HEADER])) return reject(426, "Upgrade Required");
     for (const m of modules) {
       try {
         if (m.upgrade?.(context, req, socket, head, url)) return;
@@ -440,7 +645,7 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
   const addr = server.address();
   const port = typeof addr === "object" && addr ? addr.port : config.port;
   const host = config.bind && config.bind !== "0.0.0.0" ? config.bind : "127.0.0.1";
-  const url = `http://${host.includes(":") ? `[${host}]` : host}:${port}`;
+  const url = `${listener.scheme}://${host.includes(":") ? `[${host}]` : host}:${port}`;
   log(
     `node "${config.name}" listening on ${url} (slots ${config.slots}, labels ${config.labels.join(",") || "-"})`,
   );
@@ -451,6 +656,13 @@ export async function startNodeServer(opts: NodeServerOptions): Promise<NodeServ
     jobs,
     services,
     context,
+    setSlots(n: number) {
+      if (!Number.isInteger(n) || n < 1)
+        throw new Error("slots must be a whole number of at least 1");
+      config.slots = n;
+      log(`slots now ${n}`);
+    },
+    rotateToken,
     async close() {
       jobs.close();
       services.close();

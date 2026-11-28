@@ -1,3 +1,4 @@
+import { hostedGoalLine } from "./goal-hosted";
 import { useEffect, useState } from "react";
 import { TrashIcon } from "@phosphor-icons/react";
 import { theme } from "./theme";
@@ -267,6 +268,15 @@ export function GoalPicker({ onChosen, onClose }: Props): React.ReactElement {
                     <span className="picker-meta goal-meta">
                       <span className="picker-preview goal-preview">{g.goal}</span>
                     </span>
+                    {g.hosted?.map((run) => (
+                      <span
+                        key={run.runId ?? run.node}
+                        className="picker-meta goal-meta goal-hosted"
+                        data-state={run.state}
+                      >
+                        {hostedGoalLine(run)}
+                      </span>
+                    ))}
                   </button>
                   <button
                     className="picker-hide"

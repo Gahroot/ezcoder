@@ -897,3 +897,39 @@ describe("goals tool state guards", () => {
     expect(run?.completionAudit).toMatchObject({ status: "pass" });
   });
 });
+
+describe("goals tool fleet placement", () => {
+  it("records task machine, verifier machine and the remote worker cap", async () => {
+    await executeGoals({
+      action: "create",
+      run_id: "fleet-goal",
+      title: "Fleet goal",
+      goal: "Place work on nodes",
+      success_criteria: ["ok"],
+      verifier_command: "true",
+      verifier_machine: "auto",
+      max_remote_workers: 3,
+    });
+    await executeGoals({
+      action: "task",
+      run_id: "fleet-goal",
+      task_id: "t1",
+      task_title: "Remote task",
+      task_prompt: "Do it",
+      machine: "gpu-box",
+    });
+    let run = await getGoalRun(tmpProject, "fleet-goal");
+    expect(run?.verifier?.machine).toBe("auto");
+    expect(run?.maxRemoteWorkers).toBe(3);
+    expect(run?.tasks.find((task) => task.id === "t1")?.machine).toBe("gpu-box");
+    await executeGoals({
+      action: "create",
+      run_id: "fleet-goal",
+      title: "Fleet goal",
+      goal: "Place work on nodes",
+      verifier_machine: "local",
+    });
+    run = await getGoalRun(tmpProject, "fleet-goal");
+    expect(run?.verifier?.machine).toBeUndefined();
+  });
+});

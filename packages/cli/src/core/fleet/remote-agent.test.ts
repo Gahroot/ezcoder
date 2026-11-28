@@ -199,6 +199,22 @@ describe("remote sub-agents through SubAgentManager", () => {
     expect(sh(s.local, "diff")).not.toContain("<<<<<<<");
   });
 
+  it("leaves the agent's folder on the node when its last edits can't be fetched", async () => {
+    const s = await setup();
+    const manager = s.manager();
+    const spawned = await manager.spawn("remote", "write a.txt=one", undefined, {
+      machine: "my-pc",
+    });
+    const done = (await manager.wait([spawned.agent_id], "all", 15_000)).agents[0]!;
+    const repoDir = path.join(s.node.dataDir, "agents", done.remote_agent_id!, "repo");
+    // The node can no longer produce a diff (its /diff answers 500).
+    fs.renameSync(path.join(repoDir, ".git"), path.join(repoDir, ".git-broken"));
+    await manager.shutdownAll();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(s.node.module.agents?.().map((a) => a.id)).toEqual([done.remote_agent_id]);
+    expect(fs.existsSync(path.join(repoDir, "a.txt"))).toBe(true);
+  }, 30_000);
+
   it("recovery re-attaches to the same remote agent instead of respawning locally", async () => {
     const s = await setup();
     const first = s.manager();

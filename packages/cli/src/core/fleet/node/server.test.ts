@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HelloResponse, JobStatus, NodeInfo } from "../protocol.js";
 import { tokenMatches, type NodeServer } from "./server.js";
-import { setSecret } from "./config.js";
+import { memorySecretStore } from "./secrets.js";
 import { api, startTestServer, tempDir, waitFor } from "./__fixtures__/server.js";
 
 const isWindows = process.platform === "win32";
@@ -51,7 +51,7 @@ describe.skipIf(isWindows)("node server", () => {
     const dir = tempDir();
     const s = await start(dir);
     const hello = (await (await fetch(s.url + "/v1/hello")).json()) as HelloResponse;
-    expect(hello).toMatchObject({ ezcoderNode: true, protocol: 1, name: "test-node" });
+    expect(hello).toMatchObject({ ezcoderNode: true, protocol: 2, name: "test-node" });
     expect((await fetch(s.url + "/v1/info")).status).toBe(401);
     expect((await api(s, "wrong")("GET", "/v1/jobs")).status).toBe(401);
     expect((await api(s)("GET", "/v1/nope")).status).toBe(404);
@@ -221,19 +221,44 @@ describe.skipIf(isWindows)("node server", () => {
     expect(denied.status).toBe(403);
 
     const dir = tempDir();
-    setSecret(dir, "DEPLOY_TOKEN", "s3cr3t");
-    const deploy = await start(dir, { labels: ["deploy"] });
+    const store = memorySecretStore();
+    const deploy = await start(dir, { labels: ["deploy"] }, { secretStore: store });
+    // Names are tracked on disk, values only in the keychain (X8).
+    await deploy.jobs.secrets.set("DEPLOY_TOKEN", "s3cr3t");
     const call = api(deploy);
-    const missing = await call("POST", "/v1/jobs", job("d0", "true", { secrets: ["OTHER"] }));
+    const missing = await call(
+      "POST",
+      "/v1/jobs",
+      job("d0", "true", { kind: "deploy", secrets: ["OTHER"] }),
+    );
     expect(missing.status).toBe(400);
+    // A test or custom job can't ask for the deploy secrets, even on a deploy node.
+    const notDeploy = await call(
+      "POST",
+      "/v1/jobs",
+      job("d3", "true", { secrets: ["DEPLOY_TOKEN"] }),
+    );
+    expect(notDeploy.status).toBe(403);
+    // Compose files can grant themselves anything, so the node owner opts in with a label.
+    const compose = await call(
+      "POST",
+      "/v1/jobs",
+      job("c1", "true", { docker: { compose: "compose.yml", service: "app" } }),
+    );
+    expect(compose.status).toBe(403);
+    expect(((await compose.json()) as { error: string }).error).toMatch(/compose/);
     await call(
       "POST",
       "/v1/jobs",
-      job("d2", 'test "$DEPLOY_TOKEN" = s3cr3t && echo ok', { secrets: ["DEPLOY_TOKEN"] }),
+      job("d2", 'test "$DEPLOY_TOKEN" = s3cr3t && echo ok', {
+        kind: "deploy",
+        secrets: ["DEPLOY_TOKEN"],
+      }),
     );
     const st = await finished(call, "d2");
     expect(st.state).toBe("passed");
-    expect(fs.statSync(path.join(dir, "secrets.json")).mode & 0o777).toBe(0o600);
+    expect(fs.existsSync(path.join(dir, "secrets.json"))).toBe(false);
+    expect(store.values.get("DEPLOY_TOKEN")).toBe("s3cr3t");
   });
 
   it("re-adopts a running job after a restart and marks unrecoverable ones lost", async () => {

@@ -17,6 +17,8 @@ function handlers(calls: string[]): Record<CliSubcommandName, () => void> {
     validate: () => calls.push("validate"),
     node: () => calls.push("node"),
     fleet: () => calls.push("fleet"),
+    cloud: () => calls.push("cloud"),
+    goals: () => calls.push("goals"),
   };
 }
 

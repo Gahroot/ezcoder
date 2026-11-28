@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { withFileLock } from "@prestyj/core";
 import { fits, loadBackends } from "./backends.js";
+import { CLOUD_LIMIT_SUMMARY } from "./cloud-backend.js";
 import { BILLING_SUMMARY } from "./github-actions-backend.js";
 import { buildStageCommand, cacheKeyFor, loadProjectConfig, parseGitHubRepo } from "./config.js";
 import { defaultExec } from "./exec.js";
@@ -33,6 +34,7 @@ export interface ValidationServiceOptions {
   pollMs?: number;
   /** Inject backends (tests); otherwise read from backends.json. */
   backends?: ValidationBackend[];
+  /** Cap on jobs in flight; default the real total capacity of every target. */
   maxConcurrent?: number;
   /** Minutes a job may wait on an offline worker before we say so. */
   offlineWarnMinutes?: number;
@@ -143,7 +145,7 @@ export class ValidationService {
   private readonly unavailable = new Map<string, number>();
   private readonly unavailableMs: number;
   private backends: ValidationBackend[];
-  private maxConcurrent: number;
+  private maxConcurrent: number | undefined;
   private readonly injected: boolean;
   private readonly events = new EventEmitter();
   private seen = new Map<string, string>();
@@ -166,7 +168,7 @@ export class ValidationService {
     this.unavailableMs = (opts.billingBlockMinutes ?? 60) * 60_000;
     this.injected = !!opts.backends;
     this.backends = opts.backends ?? [];
-    this.maxConcurrent = opts.maxConcurrent ?? 4;
+    this.maxConcurrent = opts.maxConcurrent;
     this.autoStart = opts.autoStart ?? true;
     if (!opts.backends) this.reloadBackends();
     this.events.setMaxListeners(100);
@@ -184,6 +186,20 @@ export class ValidationService {
     this.backends = loaded.backends;
     this.maxConcurrent = loaded.maxConcurrent;
     this.problems = loaded.problems;
+  }
+
+  /** Slots of this machine's local backend. */
+  localCapacity(): number {
+    return this.backend("local")?.maxConcurrent ?? 0;
+  }
+
+  /** The in-flight cap: explicit, or the total slots of every self-hosted target online. */
+  capacityOf(targets: readonly Target[]): number {
+    if (this.maxConcurrent !== undefined) return Math.max(1, this.maxConcurrent);
+    const total = targets
+      .filter((t) => t.online && t.backend.kind !== "cloud")
+      .reduce((n, t) => n + Math.max(0, t.slots), 0);
+    return Math.max(1, total);
   }
 
   getBackends(): readonly ValidationBackend[] {
@@ -269,7 +285,9 @@ export class ValidationService {
     if (stages.length === 0) throw new Error(`no validation stages. ${config.notes.join(" ")}`);
 
     const messages: string[] = [];
-    const hasRemote = this.backends.some((b) => b.runs === "remote");
+    // Cloud overflow alone doesn't make stages remote: without a self-hosted
+    // worker they keep running on this machine.
+    const hasRemote = this.backends.some((b) => b.runs === "remote" && b.kind !== "cloud");
     if (g.dirty && stages.some((s) => s.run === "remote")) {
       messages.push(
         `Uncommitted changes are not included in remote stages; they test commit ${short(sha)}. Commit first to test them.`,
@@ -667,12 +685,21 @@ export class ValidationService {
 
     // Dispatch queued jobs into free slots, oldest first.
     jobs = await this.store.read();
-    let inFlight = jobs.filter((j) => j.state === "waiting" || j.state === "running").length;
+    // Cloud overflow is extra capacity: it doesn't count against the cap, and
+    // once the cap is reached a job may still go to the cloud.
+    const isCloud = (id: string) => this.backend(id)?.kind === "cloud";
+    let inFlight = jobs.filter(
+      (j) => (j.state === "waiting" || j.state === "running") && !isCloud(j.backend),
+    ).length;
     const queued = jobs.filter((x) => x.state === "queued");
     const targets: Target[] = queued.length ? await this.availableTargets() : [];
+    const cloudTargets = targets.filter((t) => t.backend.kind === "cloud");
+    const cap = this.capacityOf(targets);
     for (const j of queued) {
-      if (inFlight >= this.maxConcurrent) break;
-      const t = chooseTarget(j, targets, jobs);
+      const atCap = inFlight >= cap;
+      if (atCap && !cloudTargets.length) break;
+      const t = atCap ? chooseTarget(j, cloudTargets, jobs) : chooseTarget(j, targets, jobs);
+      if (atCap && (t === undefined || typeof t === "string")) continue;
       if (t === "none") {
         await this.patch(j.id, {
           state: "error",
@@ -705,7 +732,13 @@ export class ValidationService {
       const claimed = await this.patch(j.id, claim, "queued");
       if (!claimed) continue;
       try {
-        if (b.runs === "remote" && j.repo && !(await this.commitOnGitHub(j.repo, j.sha))) {
+        // Cloud sandboxes get the commit as an upload, not from GitHub.
+        if (
+          b.runs === "remote" &&
+          b.kind !== "cloud" &&
+          j.repo &&
+          !(await this.commitOnGitHub(j.repo, j.sha))
+        ) {
           await this.patch(j.id, {
             state: "error",
             summary: `commit ${short(j.sha)} isn't on GitHub; push it, then run validation again`,
@@ -720,13 +753,23 @@ export class ValidationService {
           { state: "waiting", dispatchedAt: at, attempts: j.attempts ?? 1, ...handle },
           "queued",
         );
-        inFlight++;
+        if (b.kind !== "cloud") inFlight++;
         // Count it against the machine for the rest of this pass.
         Object.assign(j, claim, { state: "waiting", dispatchedAt: at });
         if (updated?.statusContext) {
           await this.postStatus(updated, "pending", `running on ${jobTarget(updated)}`);
         }
       } catch (e) {
+        if ((e as { code?: unknown }).code === "busy") {
+          // The machine filled up since we looked (other work took the slot):
+          // back to the queue; it starts when a slot frees. Never an error.
+          await this.patch(
+            j.id,
+            { backend: j.backend, machine: j.machine, summary: `waiting: ${t.key} is full` },
+            "queued",
+          );
+          continue;
+        }
         await this.patch(j.id, {
           state: "error",
           summary:
@@ -762,7 +805,10 @@ export class ValidationService {
   private async handleBlocked(j: ValidationJob, why: string, url?: string): Promise<void> {
     const from = jobTarget(j);
     this.unavailable.set(from, Date.now() + this.unavailableMs);
-    const alreadyMoved = (j.requeues ?? []).some((r) => r.reason.startsWith(BILLING_SUMMARY));
+    // Cloud: plan usage limit (the provider is benched until it lifts). GitHub: billing.
+    const prefix =
+      this.backend(j.backend)?.kind === "cloud" ? CLOUD_LIMIT_SUMMARY : BILLING_SUMMARY;
+    const alreadyMoved = (j.requeues ?? []).some((r) => r.reason.startsWith(prefix));
     const selfHosted = (await this.availableTargets()).some(
       (t) =>
         !t.cloud &&
@@ -771,7 +817,7 @@ export class ValidationService {
         fits(j.resources, t.capacity),
     );
     const at = nowIso();
-    const reason = `${BILLING_SUMMARY} (${why})`.slice(0, 300);
+    const reason = (why.startsWith(prefix) ? why : `${prefix} (${why})`).slice(0, 300);
     const updated = await this.store.update((jobs) => {
       const x = jobs.find((y) => y.id === j.id);
       if (!x || (x.state !== "waiting" && x.state !== "running")) return undefined;
@@ -1005,7 +1051,7 @@ export function describeWorker(w: WorkerInfo): string {
   const kind = w.cloud ? "cloud" : w.kind;
   return (
     `${w.id} (${kind}${w.platform.length ? `, ${w.platform.join("/")}` : ""}): ` +
-    `${w.health.online ? "online" : "OFFLINE"}${w.blockedUntil ? `, blocked until ${w.blockedUntil} (billing)` : ""}; ` +
+    `${w.health.online ? "online" : "OFFLINE"}${w.blockedUntil ? `, blocked until ${w.blockedUntil} (${w.kind === "cloud" ? "usage limit" : "billing"})` : ""}; ` +
     `slots ${w.used}/${w.maxConcurrent} used, ${w.busy} busy on GitHub, ${w.active} ours, ${w.queued} queued` +
     `${cap ? `; ${cap}` : ""}${reserved}` +
     `${w.recentFailures ? `; ${w.recentFailures} infra errors/lost runs in 24h` : ""} — ${w.health.detail}`

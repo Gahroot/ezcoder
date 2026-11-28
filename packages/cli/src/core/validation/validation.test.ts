@@ -613,7 +613,10 @@ describe("pool discovery", () => {
     const dir = path.join(tmp, "cfg");
     fs.mkdirSync(dir);
     const entry = { ...poolCfg, id: "my-pc", discover: undefined, labels: ["self-hosted"] };
-    fs.writeFileSync(path.join(dir, "backends.json"), JSON.stringify({ backends: [entry] }));
+    fs.writeFileSync(
+      path.join(dir, "backends.json"),
+      JSON.stringify({ cloud: false, backends: [entry] }),
+    );
     const exec: Exec = async () => ({ code: 0, stdout: "", stderr: "" });
     const first = loadBackends(dir, exec);
     let backends = first.backends;
@@ -625,7 +628,7 @@ describe("pool discovery", () => {
     ]);
     fs.writeFileSync(
       path.join(dir, "backends.json"),
-      JSON.stringify({ backends: [{ ...entry, discover: true }] }),
+      JSON.stringify({ cloud: false, backends: [{ ...entry, discover: true }] }),
     );
     ({ backends } = loadBackends(dir, exec));
     expect(!!backends[1]!.machines).toBe(true);

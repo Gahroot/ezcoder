@@ -182,6 +182,17 @@ describe("goal world agents", () => {
     expect(coordinatorKind("some_mcp_tool")).toBe("think");
   });
 
+  it("says which computer each worker runs on", () => {
+    const agents = collectWorldAgents({
+      running: true,
+      waitingOnUser: false,
+      liveTools: [],
+      workers: [worker({ machine: "gpu-box" }), worker({ key: "g1:t2" })],
+    });
+    expect(agents[0]?.machine).toBeUndefined();
+    expect(agents.slice(1).map((a) => a.machine)).toEqual(["gpu-box", "this computer"]);
+  });
+
   it("marks finished and failed workers so they leave", () => {
     const agents = collectWorldAgents({
       running: false,

@@ -400,6 +400,11 @@ export interface SystemPromptEnvironment {
    * own once-computed list so rebuilds keep the prompt byte-stable.
    */
   projectFiles?: ProjectFileList | null;
+  /**
+   * A5: fleet section (core/fleet/prompt-hint.ts), computed once per session and
+   * only when a node is paired. Rendered only when the `fleet` tool is reachable.
+   */
+  fleetHint?: string;
 }
 
 /** Fill in `projectFiles` when the caller didn't supply it. */
@@ -660,6 +665,10 @@ export async function buildSystemPrompt(
   // per host+project, so it sits in the cached body next to Environment.
   const platformClis = renderPlatformClisSection(detectPlatformClis(cwd));
   if (platformClis) sections.push(platformClis);
+
+  if (environment?.fleetHint && (reachableTools ?? DEFAULT_TOOL_NAMES).includes("fleet")) {
+    sections.push(environment.fleetHint);
+  }
 
   sections.push(
     renderUncachedTail(renderEnvironmentSection(cwd, await withProjectFiles(cwd, environment))),

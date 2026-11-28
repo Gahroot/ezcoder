@@ -163,6 +163,15 @@ export interface MachineInfo {
   cloud?: boolean;
   /** Cloud used only when no self-hosted machine is online. */
   overflowOnly?: boolean;
+  /**
+   * Overflow capacity (cloud agent sandboxes): used whenever no self-hosted
+   * machine that fits has room right now — busy, full or offline.
+   */
+  spillover?: boolean;
+  /** Used only by stages pinned to its backend or to this machine. */
+  manualOnly?: boolean;
+  /** No Docker daemon: stages whose command runs docker never go here. */
+  noDocker?: boolean;
   /** Max concurrent EZCODER jobs. */
   slots: number;
   /** Online runners GitHub reports busy (any job, ours or not). */
@@ -173,6 +182,11 @@ export interface MachineInfo {
   runsOn: string[];
   /** Discovery failed; static capacity/maxConcurrent assumed. */
   assumed?: boolean;
+  /**
+   * Fleet nodes: slots taken by other controller work (fleet jobs) that this
+   * backend didn't dispatch. Counted with ours so the node is never over-booked.
+   */
+  externalInFlight?: number;
   detail: string;
 }
 

@@ -124,7 +124,9 @@ export function describeWorld(agents: readonly WorldAgent[]): string {
     .map((agent) => {
       const status =
         agent.status === "done" ? "done" : agent.status === "error" ? "stopped" : agent.detail;
-      return `${agent.name}: ${status}.`;
+      const where =
+        agent.machine && agent.machine !== "this computer" ? ` (on ${agent.machine})` : "";
+      return `${agent.name}${where}: ${status}.`;
     })
     .join(" ");
 }

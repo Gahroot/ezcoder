@@ -1,4 +1,5 @@
 // Controller-side records for fleet jobs and services (~/.ezcoder/fleet).
+import type { CloudTaskHandle } from "../cloud/types.js";
 import type {
   ArtifactInfo,
   DockerSpec,
@@ -24,15 +25,24 @@ export function isFleetTerminal(state: FleetJobState): boolean {
   return TERMINAL.has(state);
 }
 
-/** Kinds that are safe to run again elsewhere after a node loss. Never deploy. */
+/**
+ * Kinds that are safe to run again elsewhere after a node loss. Never deploy;
+ * `custom` only when its project config says `"retry": true` (see canRequeue).
+ */
 export const REQUEUE_KINDS: ReadonlySet<JobKind> = new Set([
   "validate",
   "build",
   "test",
   "browser",
   "render",
-  "custom",
 ]);
+
+/** R4: may this job run again after its node was lost (or a dispatch went unanswered)? */
+export function canRequeue(j: { kind: JobKind; retry?: boolean }): boolean {
+  if (j.kind === "deploy") return false;
+  if (j.kind === "custom") return j.retry === true;
+  return REQUEUE_KINDS.has(j.kind);
+}
 
 /** Most dispatches a job gets before a lost node becomes an error. */
 export const FLEET_MAX_ATTEMPTS = 3;
@@ -69,6 +79,8 @@ export interface FleetJob {
   timeoutMinutes: number;
   /** deploy with `"gate": false`. */
   ungated?: boolean;
+  /** custom with `"retry": true`: requeued after a node loss (R4). */
+  retry?: boolean;
   state: FleetJobState;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +95,12 @@ export interface FleetJob {
   finishedAt?: string;
   exitCode?: number;
   summary?: string;
+  /** A3: last lines of the log when the job failed (shown in the notification). */
+  failTail?: string[];
+  /** Ad hoc command (fleet tool `run` with `command`), not a job from the project config. */
+  adhoc?: boolean;
+  /** A1: shard index/total when the job is one of `count` copies. */
+  shard?: { index: number; total: number };
   artifacts?: ArtifactInfo[];
   /** Where artifacts were downloaded. */
   artifactsDir?: string;
@@ -98,6 +116,17 @@ export interface FleetJob {
   /** Set once we've said nothing can run it right now. */
   waitWarned?: boolean;
   notifiedState?: FleetJobState;
+  /** Local commit with the exact tree incl. uncommitted work (cloud runs). */
+  snapshot?: string;
+  /**
+   * Queued with a local-only source (no nodes were paired; the commit may not
+   * be on origin): only cloud may run it, never a node.
+   */
+  cloudOnly?: boolean;
+  /** Pinned to cloud: "cloud", "claude-cloud" or "codex-cloud". */
+  cloudPin?: string;
+  /** Cloud session running the job (node "cloud:<provider>"). */
+  cloud?: { handle: CloudTaskHandle; tree: string; runId: string };
 }
 
 export interface FleetServiceRecord {

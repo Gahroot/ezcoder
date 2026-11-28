@@ -26,7 +26,10 @@ import {
   type AgentWorkspaceStatus,
 } from "../protocol.js";
 import type { NodeContext, NodeRouteModule } from "./context.js";
-import { childSubAgentEnv } from "../../../tools/subagent-shared.js";
+import { SUB_AGENT_DEPTH_ENV, childSubAgentEnv } from "../../../tools/subagent-shared.js";
+import { allowedBaseEnv } from "./env.js";
+import { pidAlive } from "./exec.js";
+import type { AgentRecord } from "./state.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,6 +40,10 @@ const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 const DEFAULT_BUFFER_BYTES = 8 * 1024 * 1024;
 const STDERR_TAIL_CHARS = 64 * 1024;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
+/** Seconds a controller should wait before retrying when every slot is busy. */
+const BUSY_RETRY_AFTER = "15";
+/** EZ_* names the worker itself needs from the node (beyond the allow-list). */
+const WORKER_EZ_ENV = [SUB_AGENT_DEPTH_ENV];
 /** Env names a controller may never set on the node (credentials, loaders, identity). */
 const BLOCKED_ENV =
   /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH|COOKIE|SESSION)|^(PATH|HOME|USERPROFILE|NODE_OPTIONS|NODE_PATH|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_.*|SHELL|GIT_.*|SSH_.*)$/i;
@@ -76,6 +83,11 @@ interface AgentEntry {
   sessionPath?: string;
   graceTimer?: NodeJS.Timeout;
   owner: string;
+  /** R9: ignored files at prepare time, path -> "size:mtimeMs". */
+  ignoredSnapshot?: Record<string, string>;
+  /** Re-adopted after a node restart: its worker (if any) is no longer ours. */
+  adopted?: boolean;
+  pid?: number;
 }
 
 function sendFrame(socket: WebSocket | undefined, frame: AgentFrame): boolean {
@@ -126,6 +138,38 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout.toString("latin1");
 }
 
+/** R9: git-ignored files (recursively) with size and mtime. Cheap: no content reads. */
+async function ignoredFiles(root: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  let listing: string;
+  try {
+    listing = await git(root, ["ls-files", "-z", "-o", "-i", "--exclude-standard"]);
+  } catch {
+    return out;
+  }
+  const names = Buffer.from(listing, "latin1").toString("utf-8").split("\0").filter(Boolean);
+  for (const name of names.slice(0, 200_000)) {
+    try {
+      const st = await fs.lstat(path.join(root, name));
+      out[name] = `${st.size}:${Math.round(st.mtimeMs)}`;
+    } catch {
+      // vanished meanwhile
+    }
+  }
+  return out;
+}
+
+/** Ignored files the agent added, changed or removed since the snapshot. */
+export function ignoredChanges(
+  before: Record<string, string>,
+  after: Record<string, string>,
+): string[] {
+  const changed = new Set<string>();
+  for (const [name, sig] of Object.entries(after)) if (before[name] !== sig) changed.add(name);
+  for (const name of Object.keys(before)) if (!(name in after)) changed.add(name);
+  return [...changed].sort();
+}
+
 function killTree(proc: ChildProcess, signal: NodeJS.Signals): void {
   if (proc.exitCode !== null || proc.signalCode !== null) return;
   try {
@@ -149,12 +193,42 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
   const graceMs = options.graceMs ?? AGENT_DETACH_GRACE_MS;
   const bufferLimit = options.bufferBytes ?? DEFAULT_BUFFER_BYTES;
 
+  let stateCtx: NodeContext | undefined;
+  const toRecord = (e: AgentEntry): AgentRecord => ({
+    id: e.id,
+    project: e.project,
+    base: e.base,
+    cwd: e.cwd,
+    root: e.root,
+    removeDir: e.removeDir,
+    sessionsDir: e.sessionsDir,
+    env: e.env,
+    createdAt: e.createdAt,
+    state: e.state,
+    ...((e.proc?.pid ?? e.pid) !== undefined && { pid: e.proc?.pid ?? e.pid }),
+    ...(e.exitCode !== undefined && { exitCode: e.exitCode }),
+    ...(e.sessionPath && { sessionPath: e.sessionPath }),
+    ...(e.ignoredSnapshot && { ignoredSnapshot: e.ignoredSnapshot }),
+  });
+  /** R3: mirror every agent into node state so a restart can re-adopt it. */
+  const persist = () => {
+    const state = stateCtx?.state;
+    if (!state) return;
+    state.data.agents = [...agents.values()].map(toRecord);
+    try {
+      state.save();
+    } catch (e) {
+      stateCtx?.log(`agents: could not save state: ${(e as Error).message}`);
+    }
+  };
+
   const status = (entry: AgentEntry): AgentWorkspaceStatus => ({
     id: entry.id,
     project: entry.project,
     state: entry.state,
     cwd: entry.cwd,
-    ...(entry.proc?.pid !== undefined && entry.state === "running" && { pid: entry.proc.pid }),
+    ...((entry.proc?.pid ?? entry.pid) !== undefined &&
+      entry.state === "running" && { pid: entry.proc?.pid ?? entry.pid }),
     ...(entry.exitCode !== undefined && { exitCode: entry.exitCode }),
     createdAt: entry.createdAt,
   });
@@ -176,7 +250,15 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
     if (entry.proc) killTree(entry.proc, "SIGKILL");
     entry.socket?.close(1000, "removed");
     entry.socket = undefined;
+    if (entry.adopted && entry.pid && entry.state === "running") {
+      try {
+        process.kill(-entry.pid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
     ctx.releaseSlot(entry.owner);
+    persist();
     for (const dir of [entry.removeDir, entry.sessionsDir]) {
       if (dir) await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
     }
@@ -231,11 +313,17 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
     const proc = spawn(process.execPath, [entryPath, "--subagent-worker"], {
       cwd: entry.cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...childSubAgentEnv(process.env), ...entry.env },
+      // X6: allow-listed node env only, plus the worker's own depth marker.
+      env: { ...allowedBaseEnv(childSubAgentEnv(process.env), WORKER_EZ_ENV), ...entry.env },
       detached: process.platform !== "win32",
     });
     entry.proc = proc;
+    entry.adopted = false;
+    entry.pid = proc.pid;
     entry.state = "running";
+    // A worker takes a slot while it runs (re-taken after an earlier exit released it).
+    ctx.acquireSlot(entry.owner, true);
+    persist();
     entry.exitCode = undefined;
     entry.pendingExit = undefined;
     entry.stdinPartial = "";
@@ -246,6 +334,7 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
           const frame = JSON.parse(line) as { type?: string; child_session_path?: unknown };
           if (frame.type === "ack" && typeof frame.child_session_path === "string") {
             entry.sessionPath = frame.child_session_path;
+            persist();
           }
         } catch {
           // Not a protocol line; pass through untouched.
@@ -264,6 +353,8 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
       if (entry.proc !== proc) return;
       entry.state = code === 0 ? "exited" : "error";
       entry.exitCode = code ?? undefined;
+      ctx.releaseSlot(entry.owner);
+      persist();
       ctx.log(`agent ${entry.id}: worker exited (${code ?? signal})`);
       deliver(entry, { t: "exit", code, signal });
     };
@@ -299,6 +390,7 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
 
   const handleAttach = (ctx: NodeContext, entry: AgentEntry, socket: WebSocket) => {
     clearTimeout(entry.graceTimer);
+    tokens.set(socket, ctx.config.token);
     // A newer attach wins: the old socket is a stale connection.
     if (entry.socket && entry.socket !== socket) entry.socket.close(4000, "replaced");
     entry.socket = socket;
@@ -327,10 +419,26 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
       sendFrame(socket, exit);
       return;
     }
+    if (entry.adopted && entry.state === "running") {
+      // The worker from before the node restart has no stdio bridge any more.
+      sendFrame(socket, {
+        t: "stderr",
+        data: "[node] the node restarted; the previous worker can't be re-attached. Its edits are still in the workspace (fetch the diff).\n",
+      });
+      sendFrame(socket, { t: "exit", code: null, signal: null });
+      return;
+    }
     if (entry.state !== "running") startWorker(ctx, entry);
   };
 
   const handleCreate = async (ctx: NodeContext, req: IncomingMessage, res: ServerResponse) => {
+    if (ctx.config.dockerOnly) {
+      return ctx.json(res, 403, {
+        error:
+          "this node only runs containerised work (docker-only) and does not host remote agents; use another node",
+        code: "docker_only",
+      });
+    }
     const body = (await readJson(req)) as Partial<AgentRequest>;
     if (!body || typeof body.id !== "string" || !ID_RE.test(body.id)) {
       return ctx.json(res, 400, { error: "id must match [A-Za-z0-9._-]{1,80}" });
@@ -349,7 +457,10 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
     const existing = agents.get(body.id);
     if (existing) return ctx.json(res, 200, status(existing));
     const owner = `agent:${body.id}`;
-    if (!ctx.acquireSlot(owner)) return ctx.json(res, 429, { error: "No free slot on this node" });
+    if (!ctx.acquireSlot(owner)) {
+      res.setHeader("retry-after", BUSY_RETRY_AFTER);
+      return ctx.json(res, 429, { error: "all slots are busy", code: "busy" });
+    }
     let workspace: string;
     try {
       workspace = path.resolve(await ctx.prepareWorkspace("agent", body.id, source));
@@ -393,7 +504,9 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
       owner,
     };
     await fs.mkdir(entry.sessionsDir, { recursive: true });
+    entry.ignoredSnapshot = await ignoredFiles(root);
     agents.set(entry.id, entry);
+    persist();
     armGrace(ctx, entry);
     ctx.log(`agent ${entry.id}: workspace ready at ${cwd}`);
     ctx.json(res, 201, status(entry));
@@ -414,6 +527,10 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
         files: Buffer.from(names, "latin1").toString("utf-8").split("\0").filter(Boolean),
         base: entry.base,
       };
+      if (entry.ignoredSnapshot) {
+        const changed = ignoredChanges(entry.ignoredSnapshot, await ignoredFiles(entry.root));
+        if (changed.length) body.ignoredChanged = changed;
+      }
       ctx.json(res, 200, body);
     } catch (error) {
       ctx.json(res, 500, {
@@ -422,8 +539,66 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
     }
   };
 
+  const tokens = new WeakMap<WebSocket, string>();
+
   return {
+    /** R3: re-adopt agents from the previous node process. */
+    init(ctx) {
+      stateCtx = ctx;
+      const records = ctx.state?.data.agents ?? [];
+      const rebooted = ctx.state?.rebooted() ?? true;
+      for (const r of records) {
+        if (agents.has(r.id)) continue;
+        const alive = r.state === "running" && !rebooted && pidAlive(r.pid);
+        const entry: AgentEntry = {
+          ...r,
+          state:
+            r.state === "running"
+              ? alive
+                ? "running"
+                : "error"
+              : r.state === "ready"
+                ? "ready"
+                : r.state,
+          ...(r.state === "running" && !alive && { exitCode: r.exitCode }),
+          buffer: [],
+          bufferBytes: 0,
+          dropped: 0,
+          stderrTail: "",
+          stdinPartial: "",
+          owner: `agent:${r.id}`,
+          adopted: alive,
+          ...(alive ? { pid: r.pid } : { pid: undefined }),
+        };
+        if (r.state === "running" && !alive) {
+          entry.stderrTail =
+            "[node] the node restarted and the worker stopped; its workspace is kept so the diff can still be fetched.\n";
+        }
+        if (alive) ctx.acquireSlot(entry.owner, true);
+        agents.set(entry.id, entry);
+        // A stopped worker's edits stay until the controller fetches them and DELETEs (R2).
+        if (alive) armGrace(ctx, entry);
+        ctx.log(`agent ${entry.id}: re-adopted (${entry.state})`);
+      }
+      persist();
+    },
+
+    /** S4: sockets opened with the old token are closed at once. */
+    tokenRotated() {
+      for (const entry of agents.values()) {
+        const socket = entry.socket;
+        if (socket && tokens.get(socket) !== stateCtx?.config.token) {
+          socket.close(4001, "token rotated");
+        }
+      }
+    },
+
+    activeCount() {
+      return [...agents.values()].filter((a) => a.state === "running").length;
+    },
+
     async handle(ctx, req, res, url) {
+      stateCtx ??= ctx;
       const parts = url.pathname.split("/").filter(Boolean);
       if (parts[0] !== "v1" || parts[1] !== "agents") return false;
       try {
@@ -456,6 +631,7 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
     },
 
     upgrade(ctx, req, socket, head, url) {
+      stateCtx ??= ctx;
       const match = /^\/v1\/agents\/([^/]+)\/attach$/.exec(url.pathname);
       if (!match) return false;
       const entry = agents.get(decodeURIComponent(match[1]!));
@@ -475,9 +651,15 @@ export function createAgentRouteModule(options: AgentRoutesOptions = {}): NodeRo
     async close() {
       for (const entry of agents.values()) {
         clearTimeout(entry.graceTimer);
-        if (entry.proc) killTree(entry.proc, "SIGKILL");
+        if (entry.proc && entry.state === "running") {
+          killTree(entry.proc, "SIGKILL");
+          // Recorded now: the exit event may land after the next node process read the state.
+          entry.state = "error";
+          entry.adopted = false;
+        }
         entry.socket?.close(1001, "node shutting down");
       }
+      persist();
       wss.close();
     },
   };

@@ -646,7 +646,7 @@ function actorItems(
       // A poked critter says what it's doing; EZ Goals sums up the goal.
       const pokeText =
         poked?.action === "wave"
-          ? actor.detail || actor.name
+          ? `${actor.detail || actor.name}${actor.machine && actor.machine !== "this computer" ? ` on ${actor.machine}` : ""}`
           : poked?.action === "summary"
             ? summaryOf(world)
             : null;

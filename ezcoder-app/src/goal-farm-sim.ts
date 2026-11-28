@@ -35,6 +35,8 @@ export interface Actor {
   name: string;
   /** What its agent is doing, in words ("Reading app.ts"): shown when it's poked. */
   detail: string;
+  /** The computer its work runs on, in words (D4); absent for EZ Goals. */
+  machine?: string;
   state: ActorState;
   stateAt: number;
   /** Where its feet are (where its current trip started, while moving). */
@@ -216,6 +218,7 @@ function spawn(world: FarmWorld, agent: WorldAgent, now: number): Actor {
     coordinator: agent.coordinator,
     name: agent.name,
     detail: agent.detail,
+    ...(agent.machine ? { machine: agent.machine } : {}),
     state: "idle",
     stateAt: now,
     spot: world.farm.origin,
@@ -281,6 +284,7 @@ export function syncFarm(world: FarmWorld, agents: readonly WorldAgent[], now: n
     }
     actor.name = agent.name;
     actor.detail = agent.detail;
+    if (agent.machine) actor.machine = agent.machine;
     actor.mark = agent.mark ?? null;
     const want = agent.status === "working" ? agent.kind : null;
     if (want !== actor.want) {

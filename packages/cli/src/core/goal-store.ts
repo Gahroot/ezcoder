@@ -84,6 +84,12 @@ export interface GoalTask {
   attempts: number;
   verification?: GoalVerificationResult;
   lastSummary?: string;
+  /** Fleet machine for this task's worker ("auto" or a paired node name); absent = this machine (GL1). */
+  machine?: string;
+  /** Node the last remote worker actually ran on (D4). */
+  remoteNode?: string;
+  /** Patch kept in the goal folder when the worker's edits could not be applied (GL3/R2). */
+  keptPatch?: string;
 }
 
 export interface GoalEvidence {
@@ -99,6 +105,29 @@ export interface GoalVerifier {
   description: string;
   command?: string;
   lastResult?: GoalVerificationResult;
+  /** Run the verifier as a fleet job at the exact commit ("auto" or a node name); absent = locally (GL2). */
+  machine?: string;
+}
+
+/**
+ * Default cap on a Goal's workers running on fleet nodes at once: none, so a
+ * Goal can use every free node slot. A per-goal `maxRemoteWorkers` still caps it.
+ */
+export const DEFAULT_GOAL_MAX_REMOTE_WORKERS: number | undefined = undefined;
+
+/** A whole Goal hosted on a fleet node (GL4/GL6); mirrors the node's GoalHostStatus. */
+export interface GoalHostedInfo {
+  node: string;
+  /** Id on the node (GoalHostRequest.id). */
+  hostId: string;
+  state: "preparing" | "running" | "done" | "failed" | "stopped" | "lost" | "unreachable";
+  summary?: string;
+  resultBranch?: string;
+  resultSha?: string;
+  startedAt: string;
+  finishedAt?: string;
+  /** When the laptop last heard from the node. */
+  checkedAt: string;
 }
 
 export interface GoalRun {
@@ -120,6 +149,10 @@ export interface GoalRun {
   blockers: string[];
   activeWorkerId?: string;
   continueRequestedAt?: string;
+  /** Max workers of this Goal running on fleet nodes at once; absent = bounded only by free node slots. */
+  maxRemoteWorkers?: number;
+  /** Set when the whole Goal runs on a fleet node (GL4). */
+  hosted?: GoalHostedInfo;
 }
 
 export interface GoalCounts {
@@ -159,6 +192,8 @@ export interface GoalRunInput {
   blockers?: string[];
   activeWorkerId?: string;
   continueRequestedAt?: string;
+  maxRemoteWorkers?: number;
+  hosted?: GoalHostedInfo;
 }
 
 export interface GoalTaskInput {
@@ -170,6 +205,7 @@ export interface GoalTaskInput {
   attempts?: number;
   verification?: GoalVerificationResult;
   lastSummary?: string;
+  machine?: string;
 }
 
 export interface GoalEvidenceInput {
@@ -392,6 +428,42 @@ function normalizeTask(value: unknown): GoalTask | null {
     ...(optionalString(value.lastSummary)
       ? { lastSummary: optionalString(value.lastSummary) }
       : {}),
+    ...(optionalString(value.machine) ? { machine: optionalString(value.machine) } : {}),
+    ...(optionalString(value.remoteNode) ? { remoteNode: optionalString(value.remoteNode) } : {}),
+    ...(optionalString(value.keptPatch) ? { keptPatch: optionalString(value.keptPatch) } : {}),
+  };
+}
+
+const HOSTED_STATES = new Set<GoalHostedInfo["state"]>([
+  "preparing",
+  "running",
+  "done",
+  "failed",
+  "stopped",
+  "lost",
+  "unreachable",
+]);
+
+function normalizeHosted(value: unknown): GoalHostedInfo | undefined {
+  if (!isObject(value)) return undefined;
+  const node = optionalString(value.node);
+  const hostId = optionalString(value.hostId);
+  if (!node || !hostId) return undefined;
+  const state = HOSTED_STATES.has(value.state as GoalHostedInfo["state"])
+    ? (value.state as GoalHostedInfo["state"])
+    : "running";
+  return {
+    node,
+    hostId,
+    state,
+    ...(optionalString(value.summary) ? { summary: optionalString(value.summary) } : {}),
+    ...(optionalString(value.resultBranch)
+      ? { resultBranch: optionalString(value.resultBranch) }
+      : {}),
+    ...(optionalString(value.resultSha) ? { resultSha: optionalString(value.resultSha) } : {}),
+    startedAt: optionalString(value.startedAt) ?? nowIso(),
+    ...(optionalString(value.finishedAt) ? { finishedAt: optionalString(value.finishedAt) } : {}),
+    checkedAt: optionalString(value.checkedAt) ?? nowIso(),
   };
 }
 
@@ -417,6 +489,7 @@ function normalizeVerifier(value: unknown): GoalVerifier | undefined {
     ...(normalizeVerification(value.lastResult)
       ? { lastResult: normalizeVerification(value.lastResult) }
       : {}),
+    ...(optionalString(value.machine) ? { machine: optionalString(value.machine) } : {}),
   };
 }
 
@@ -486,7 +559,18 @@ function normalizeRun(value: unknown, fallbackProjectPath: string): GoalRun | nu
     ...(optionalString(value.continueRequestedAt)
       ? { continueRequestedAt: optionalString(value.continueRequestedAt) }
       : {}),
+    ...(typeof value.maxRemoteWorkers === "number" &&
+    Number.isInteger(value.maxRemoteWorkers) &&
+    value.maxRemoteWorkers >= 1
+      ? { maxRemoteWorkers: value.maxRemoteWorkers }
+      : {}),
+    ...(normalizeHosted(value.hosted) ? { hosted: normalizeHosted(value.hosted) } : {}),
   };
+}
+
+/** Parse a serialized GoalRun (e.g. one sent to a fleet node); null when it isn't one. */
+export function normalizeGoalRun(value: unknown, fallbackProjectPath: string): GoalRun | null {
+  return normalizeRun(value, fallbackProjectPath);
 }
 
 function sortNewestFirst(runs: GoalRun[]): GoalRun[] {
@@ -690,6 +774,7 @@ export function createGoalTask(input: GoalTaskInput): GoalTask {
     attempts: input.attempts ?? 0,
     ...(input.verification ? { verification: input.verification } : {}),
     ...(input.lastSummary ? { lastSummary: input.lastSummary } : {}),
+    ...(input.machine ? { machine: input.machine } : {}),
   };
 }
 
@@ -728,6 +813,8 @@ export function createGoalRun(cwd: string, input: GoalRunInput): GoalRun {
     blockers: dedupeGoalBlockers(input.blockers ?? []),
     ...(input.activeWorkerId ? { activeWorkerId: input.activeWorkerId } : {}),
     ...(input.continueRequestedAt ? { continueRequestedAt: input.continueRequestedAt } : {}),
+    ...(input.maxRemoteWorkers ? { maxRemoteWorkers: input.maxRemoteWorkers } : {}),
+    ...(input.hosted ? { hosted: input.hosted } : {}),
   };
 }
 

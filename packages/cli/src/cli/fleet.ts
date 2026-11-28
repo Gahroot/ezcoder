@@ -1,12 +1,22 @@
 // `ezcoder fleet …`: the fleet controller from a shell, plus the background
 // daemon that keeps fleet jobs moving when no EZCODER session is open.
 import { spawn } from "node:child_process";
-import fs from "node:fs";
+import { Writable } from "node:stream";
+import readline from "node:readline";
 import { getAppPaths } from "@prestyj/core";
-import { FleetClient } from "../core/fleet/client.js";
+import { FleetClientError } from "../core/fleet/client.js";
 import { discoverNodes } from "../core/fleet/discovery.js";
+import {
+  addMachine,
+  fleetCapacity,
+  listMachines,
+  removeMachine,
+  rotateMachineToken,
+  shareableCredentials,
+  shareAuth,
+  type AddMachineOptions,
+} from "../core/fleet/machines.js";
 import { FLEET_CONFIG_FILE } from "../core/fleet/project-config.js";
-import { parsePairing } from "../core/fleet/registry.js";
 import {
   describeFleetJob,
   describeFleetService,
@@ -18,18 +28,24 @@ import { isFleetTerminal } from "../core/fleet/types.js";
 
 const HELP = `ezcoder fleet — send jobs and services to your other machines (nodes)
 
-  nodes                                   paired nodes: online, slots, cpu/mem, GPUs, labels
+  nodes                                   paired nodes (and cloud capacity): online, slots, cpu/mem, GPUs, labels
   discover                                find nodes on the tailnet (tailscale status)
-  add <ezfleet://name@host:port#token>    pair a node (string printed by \`ezcoder node init\`)
+  add [<pairing string>] [--offline] [--labels a,b]
+                                          pair a node (string printed by \`ezcoder node init\`);
+                                          no argument: read it from stdin or a hidden prompt
+  add --code XXXX-XXXX [--host H]         pair with a short code from \`ezcoder node pair --code\`
   remove <node>
-  run <job> [--node N] [--uncommitted] [--out DIR] [--wait]
+  rotate-token <node>                     give the node a new token (the old one stops working)
+  update <node> [--version V] [--force]   update EZ Coder on the node and restart it
+  run <job> [--node N|cloud] [--uncommitted] [--out DIR] [--wait]
                                           queue a job from ${FLEET_CONFIG_FILE} (or detected); returns at once
   status                                  jobs/services config and recent jobs for this project
   logs <id> | cancel <id>
   artifacts <id> [--out DIR]              download a job's artifacts
   service up <name> [--node N] | down <name|id> | list | log <name|id>
   dev up [--node N] [--committed] | exec <command…> | down
-  share-auth <node> --yes                 copy this machine's model credentials to the node
+  share-auth <node> --yes [--force]       copy this machine's model credentials to the node
+                                          (--force replaces credentials it already has)
   daemon                                  keep jobs moving until none are left (started for you)`;
 
 function flag(args: string[], name: string): string | undefined {
@@ -61,20 +77,52 @@ export async function ensureFleetDaemon(svc: FleetService): Promise<boolean> {
   return true;
 }
 
-/** Model credentials safe to share: provider entries, never local endpoint keys. */
-export function shareableCredentials(authFile: string): Record<string, unknown> {
-  const raw = JSON.parse(fs.readFileSync(authFile, "utf8")) as Record<string, unknown>;
-  return Object.fromEntries(Object.entries(raw).filter(([k]) => !k.startsWith("local:")));
+export { shareableCredentials };
+
+/**
+ * S5: the pairing string without putting it in shell history: all of stdin
+ * when piped, else one line typed at a prompt that doesn't echo.
+ */
+export async function readPairingInput(
+  input: NodeJS.ReadableStream & { isTTY?: boolean } = process.stdin,
+  output: NodeJS.WritableStream = process.stderr,
+): Promise<string> {
+  if (!input.isTTY) {
+    let data = "";
+    for await (const chunk of input) data += String(chunk);
+    return data.trim();
+  }
+  output.write("Pairing string (input hidden): ");
+  const muted = new Writable({ write: (_c, _e, cb) => cb() });
+  const rl = readline.createInterface({ input, output: muted, terminal: true });
+  try {
+    const line = await new Promise<string>((resolve) => rl.once("line", resolve));
+    return line.trim();
+  } finally {
+    rl.close();
+    output.write("\n");
+  }
 }
 
-export async function runFleet(argv: string[] = process.argv.slice(2)): Promise<void> {
+export interface RunFleetDeps {
+  svc?: FleetService;
+  out?: (line: string) => void;
+  stdin?: NodeJS.ReadableStream & { isTTY?: boolean };
+  /** Passed to addMachine (tests: discovery, client options). */
+  add?: Pick<AddMachineOptions, "discover" | "client">;
+}
+
+export async function runFleet(
+  argv: string[] = process.argv.slice(2),
+  deps: RunFleetDeps = {},
+): Promise<void> {
   const args = [...argv];
   const action = args.shift();
   const cwd = process.cwd();
-  const svc = FleetService.shared();
+  const svc = deps.svc ?? FleetService.shared();
   // This process exits in a moment: let a session host or the daemon lead.
   svc.autoStart = false;
-  const out = (s: string) => process.stdout.write(s + "\n");
+  const out = deps.out ?? ((s: string) => process.stdout.write(s + "\n"));
 
   switch (action) {
     case "nodes": {
@@ -82,6 +130,11 @@ export async function runFleet(argv: string[] = process.argv.slice(2)): Promise<
       if (!nodes.length)
         out("No nodes paired. Run `ezcoder fleet discover`, then `ezcoder fleet add`.");
       for (const n of nodes) out(describeNode(n));
+      const cap = fleetCapacity(await listMachines({ svc }), svc.localCapacity());
+      out(
+        `Capacity: ${cap.total} slots: this machine ${cap.local}, nodes ${cap.nodesUsed}/${cap.nodesTotal} used`,
+      );
+      for (const l of await svc.cloudLines(cwd).catch(() => [])) out(l);
       return;
     }
     case "discover": {
@@ -90,33 +143,70 @@ export async function runFleet(argv: string[] = process.argv.slice(2)): Promise<
         out("No EZCODER nodes found on the tailnet (run `ezcoder node serve` there).");
       for (const f of found) {
         out(
-          `${f.name} ${f.url} (${f.platform}, v${f.version})${f.paired ? " paired" : " NOT PAIRED — run `ezcoder node init` there and add its pairing string"}`,
+          `${f.name} ${f.url} (${f.platform}, v${f.version})${f.paired ? " paired" : " NOT PAIRED — run `ezcoder node init` there and add its pairing string"}` +
+            `${f.incompatible ? `; INCOMPATIBLE: ${f.incompatible}` : ""}`,
         );
       }
       return;
     }
     case "add": {
-      const p = parsePairing(args[0] ?? "");
-      const client = new FleetClient(p.name, p.url, p.token, { timeoutMs: 5000 });
-      let note = "";
-      try {
-        await client.info();
-      } catch (e) {
-        note = ` (not verified: ${e instanceof Error ? e.message : String(e)})`;
-      }
       const labels = flag(args, "--labels");
-      await svc.registry.add({
-        name: p.name,
-        url: p.url,
-        token: p.token,
-        labels: labels ? labels.split(",").map((l) => l.trim()) : [],
+      const code = flag(args, "--code");
+      const host = flag(args, "--host");
+      const repo = flag(args, "--repo");
+      const offline = bool(args, "--offline");
+      const input =
+        code ?? args[0] ?? (await readPairingInput(deps.stdin ?? process.stdin, process.stderr));
+      if (!input) throw new Error("no pairing string given (usage: ezcoder fleet add <pairing>)");
+      const r = await addMachine(input, {
+        svc,
+        offline,
+        ...(host ? { host } : {}),
+        ...(repo ? { repo } : {}),
+        ...(labels ? { labels: labels.split(",").map((l) => l.trim()) } : {}),
+        ...deps.add,
       });
-      out(`Paired ${p.name} at ${p.url}${note}.`);
+      out(
+        `Paired ${r.node.name} at ${r.node.url}${r.node.fingerprint ? " (TLS, certificate pinned)" : ""}` +
+          `${r.verified ? "" : " without checking it (--offline)"}.`,
+      );
+      for (const c of r.doctor?.checks ?? []) {
+        out(
+          `  ${c.status.toUpperCase().padEnd(4)} ${c.id}: ${c.detail}${c.fix ? ` — fix: ${c.fix}` : ""}`,
+        );
+      }
+      if (r.doctor && !r.doctor.ok)
+        out("  Some checks failed; fix them on the node before sending work.");
+      for (const w of r.warnings) out(`  note: ${w}`);
       return;
     }
     case "remove": {
       if (!args[0]) throw new Error("usage: ezcoder fleet remove <node>");
-      out((await svc.registry.remove(args[0])) ? `Removed ${args[0]}.` : `No node ${args[0]}.`);
+      out((await removeMachine(args[0], { svc })) ? `Removed ${args[0]}.` : `No node ${args[0]}.`);
+      return;
+    }
+    case "rotate-token": {
+      if (!args[0]) throw new Error("usage: ezcoder fleet rotate-token <node>");
+      const r = await rotateMachineToken(args[0], { svc });
+      out(
+        `New token for ${args[0]} saved here; the old one no longer works.\n` +
+          `Other machines that use ${args[0]} must pair again with:\n  ${r.pairing}`,
+      );
+      return;
+    }
+    case "update": {
+      const version = flag(args, "--version");
+      const force = bool(args, "--force");
+      const name = args[0];
+      if (!name) throw new Error("usage: ezcoder fleet update <node> [--version V] [--force]");
+      const node = await svc.registry.get(name);
+      if (!node) throw new Error(`no paired node "${name}"`);
+      const r = await svc
+        .client(node)
+        .update({ ...(version ? { version } : {}), ...(force ? { force: true } : {}) });
+      out(
+        `${name}: updating EZ Coder ${r.from} -> ${r.to}${r.restarting ? "; it restarts when done" : ""}.`,
+      );
       return;
     }
     case "run": {
@@ -242,7 +332,8 @@ export async function runFleet(argv: string[] = process.argv.slice(2)): Promise<
     case "share-auth": {
       const yes = bool(args, "--yes");
       const name = args[0];
-      if (!name) throw new Error("usage: ezcoder fleet share-auth <node> --yes");
+      const force = bool(args, "--force");
+      if (!name) throw new Error("usage: ezcoder fleet share-auth <node> --yes [--force]");
       const node = await svc.registry.get(name);
       if (!node) throw new Error(`no paired node "${name}"`);
       const creds = shareableCredentials(getAppPaths().authFile);
@@ -259,7 +350,19 @@ export async function runFleet(argv: string[] = process.argv.slice(2)): Promise<
         process.exitCode = 1;
         return;
       }
-      await svc.client(node).shareAuth({ credentials: creds });
+      try {
+        await shareAuth(name, { svc, ...(force ? { force: true } : {}) });
+      } catch (e) {
+        if (e instanceof FleetClientError && e.code === "exists") {
+          out(
+            `${name} already has its own model login, so nothing was changed.\n` +
+              `To replace it with this machine's credentials, run: ezcoder fleet share-auth ${name} --yes --force`,
+          );
+          process.exitCode = 1;
+          return;
+        }
+        throw e;
+      }
       out(`Shared ${providers.length} credential(s) with ${name}.`);
       return;
     }

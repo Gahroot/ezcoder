@@ -203,6 +203,7 @@ pub fn run() {
             commands::agent::agent_radio_set,
             commands::agent::agent_radio_volume,
             commands::agent::agent_tasks,
+            commands::fleet::agent_fleet,
             commands::agent::agent_checklist,
             commands::agent::agent_git_overview,
             commands::agent::agent_run_tasks,
